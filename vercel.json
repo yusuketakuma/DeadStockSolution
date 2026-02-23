@@ -1,4 +1,5 @@
 {
+  "framework": "vite",
   "buildCommand": "sh scripts/vercel-build.sh || sh ../scripts/vercel-build.sh",
   "outputDirectory": "dist",
   "rewrites": [
