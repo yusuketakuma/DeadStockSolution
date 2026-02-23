@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, inArray, or, desc, count } from 'drizzle-orm';
+import { eq, inArray, or, desc } from 'drizzle-orm';
 import { db } from '../config/database';
 import { exchangeProposals, exchangeProposalItems, exchangeHistory, deadStockItems, pharmacies } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
@@ -7,6 +7,7 @@ import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
 import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
 import { parsePagination, parsePositiveInt } from '../utils/request-utils';
+import { rowCount } from '../utils/db-utils';
 
 const router = Router();
 router.use(requireLogin);
@@ -100,7 +101,7 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
     }));
 
-    const [total] = await db.select({ count: count() })
+    const [total] = await db.select({ count: rowCount })
       .from(exchangeProposals)
       .where(or(
         eq(exchangeProposals.pharmacyAId, pharmacyId),
@@ -312,7 +313,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
     }));
 
-    const [total] = await db.select({ count: count() })
+    const [total] = await db.select({ count: rowCount })
       .from(exchangeHistory)
       .where(or(
         eq(exchangeHistory.pharmacyAId, pharmacyId),

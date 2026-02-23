@@ -1,11 +1,12 @@
 import { Router, Response } from 'express';
-import { and, eq, like, count, desc } from 'drizzle-orm';
+import { and, eq, like, desc } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { haversineDistance } from '../utils/geo-utils';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination, parsePositiveInt } from '../utils/request-utils';
+import { rowCount } from '../utils/db-utils';
 
 const router = Router();
 router.use(requireLogin);
@@ -77,7 +78,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       result.sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999));
     }
 
-    const [total] = await db.select({ count: count() }).from(pharmacies).where(whereExpr);
+    const [total] = await db.select({ count: rowCount }).from(pharmacies).where(whereExpr);
 
     res.json({
       data: result,

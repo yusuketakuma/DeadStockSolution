@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+import { migrate } from 'drizzle-orm/vercel-postgres/migrator';
 import { db } from '../config/database';
 
 async function main() {

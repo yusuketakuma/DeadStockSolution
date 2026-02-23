@@ -1,10 +1,11 @@
 import { Router, Response } from 'express';
-import { eq, and, like, count, desc } from 'drizzle-orm';
+import { eq, and, like, desc } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, usedMedicationItems, pharmacies } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination } from '../utils/request-utils';
+import { rowCount } from '../utils/db-utils';
 
 const router = Router();
 
@@ -25,7 +26,7 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    const [total] = await db.select({ count: count() })
+    const [total] = await db.select({ count: rowCount })
       .from(deadStockItems)
       .where(eq(deadStockItems.pharmacyId, req.user!.id));
 
@@ -82,7 +83,7 @@ router.get('/used-medication', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    const [total] = await db.select({ count: count() })
+    const [total] = await db.select({ count: rowCount })
       .from(usedMedicationItems)
       .where(eq(usedMedicationItems.pharmacyId, req.user!.id));
 
@@ -130,7 +131,7 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    const [total] = await db.select({ count: count() })
+    const [total] = await db.select({ count: rowCount })
       .from(deadStockItems)
       .where(whereExpr);
 

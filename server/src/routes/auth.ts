@@ -4,12 +4,14 @@ import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword, verifyPassword, generateToken } from '../services/auth-service';
+import { ensureTestAccount, getTestAccountByKey } from '../services/test-account-service';
 import { validateRegistration, validateLogin } from '../utils/validators';
 import { postalCodeToCoordinates } from '../utils/postal-code';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
 
 const router = Router();
+const isTestAccountLoginEnabled = process.env.ENABLE_TEST_ACCOUNT_LOGIN !== 'false';
 const registerLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -154,6 +156,41 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'ログインに失敗しました' });
+  }
+});
+
+router.post('/test-login', loginLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!isTestAccountLoginEnabled) {
+      res.status(403).json({ error: 'テストログインは無効です' });
+      return;
+    }
+
+    const key = typeof req.body?.key === 'string' ? req.body.key : '';
+    const account = getTestAccountByKey(key);
+    if (!account) {
+      res.status(400).json({ error: '不正なテストアカウントです' });
+      return;
+    }
+
+    const user = await ensureTestAccount(account);
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      isAdmin: false,
+    });
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+
+    res.json(user);
+  } catch (err) {
+    console.error('Test login error:', err);
+    res.status(500).json({ error: 'テストログインに失敗しました' });
   }
 });
 

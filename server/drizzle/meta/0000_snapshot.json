@@ -1,0 +1,1279 @@
+{
+  "id": "6d87a91a-68b8-4ede-8b9c-37e3f31c9020",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.admin_message_reads": {
+      "name": "admin_message_reads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pharmacy_id": {
+          "name": "pharmacy_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "read_at": {
+          "name": "read_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_admin_message_reads_unique": {
+          "name": "idx_admin_message_reads_unique",
+          "columns": [
+            {
+              "expression": "message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pharmacy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "admin_message_reads_message_id_admin_messages_id_fk": {
+          "name": "admin_message_reads_message_id_admin_messages_id_fk",
+          "tableFrom": "admin_message_reads",
+          "tableTo": "admin_messages",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "admin_message_reads_pharmacy_id_pharmacies_id_fk": {
+          "name": "admin_message_reads_pharmacy_id_pharmacies_id_fk",
+          "tableFrom": "admin_message_reads",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "pharmacy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.admin_messages": {
+      "name": "admin_messages",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "sender_admin_id": {
+          "name": "sender_admin_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "admin_message_target_type_enum",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'all'"
+        },
+        "target_pharmacy_id": {
+          "name": "target_pharmacy_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action_path": {
+          "name": "action_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_admin_messages_target": {
+          "name": "idx_admin_messages_target",
+          "columns": [
+            {
+              "expression": "target_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target_pharmacy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "admin_messages_sender_admin_id_pharmacies_id_fk": {
+          "name": "admin_messages_sender_admin_id_pharmacies_id_fk",
+          "tableFrom": "admin_messages",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "sender_admin_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "admin_messages_target_pharmacy_id_pharmacies_id_fk": {
+          "name": "admin_messages_target_pharmacy_id_pharmacies_id_fk",
+          "tableFrom": "admin_messages",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "target_pharmacy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.column_mapping_templates": {
+      "name": "column_mapping_templates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pharmacy_id": {
+          "name": "pharmacy_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "upload_type": {
+          "name": "upload_type",
+          "type": "upload_type_enum",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "header_hash": {
+          "name": "header_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mapping": {
+          "name": "mapping",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_mapping_templates_pharmacy_type_hash": {
+          "name": "idx_mapping_templates_pharmacy_type_hash",
+          "columns": [
+            {
+              "expression": "pharmacy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "upload_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "header_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "column_mapping_templates_pharmacy_id_pharmacies_id_fk": {
+          "name": "column_mapping_templates_pharmacy_id_pharmacies_id_fk",
+          "tableFrom": "column_mapping_templates",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "pharmacy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.dead_stock_items": {
+      "name": "dead_stock_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pharmacy_id": {
+          "name": "pharmacy_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "upload_id": {
+          "name": "upload_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "drug_code": {
+          "name": "drug_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drug_name": {
+          "name": "drug_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit": {
+          "name": "unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "yakka_unit_price": {
+          "name": "yakka_unit_price",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "yakka_total": {
+          "name": "yakka_total",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expiration_date": {
+          "name": "expiration_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lot_number": {
+          "name": "lot_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_available": {
+          "name": "is_available",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_dead_stock_pharmacy_available_created": {
+          "name": "idx_dead_stock_pharmacy_available_created",
+          "columns": [
+            {
+              "expression": "pharmacy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "is_available",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_dead_stock_available_name": {
+          "name": "idx_dead_stock_available_name",
+          "columns": [
+            {
+              "expression": "is_available",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "drug_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "dead_stock_items_pharmacy_id_pharmacies_id_fk": {
+          "name": "dead_stock_items_pharmacy_id_pharmacies_id_fk",
+          "tableFrom": "dead_stock_items",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "pharmacy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "dead_stock_items_upload_id_uploads_id_fk": {
+          "name": "dead_stock_items_upload_id_uploads_id_fk",
+          "tableFrom": "dead_stock_items",
+          "tableTo": "uploads",
+          "columnsFrom": [
+            "upload_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.exchange_history": {
+      "name": "exchange_history",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "proposal_id": {
+          "name": "proposal_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pharmacy_a_id": {
+          "name": "pharmacy_a_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pharmacy_b_id": {
+          "name": "pharmacy_b_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_value": {
+          "name": "total_value",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_exchange_history_a_completed": {
+          "name": "idx_exchange_history_a_completed",
+          "columns": [
+            {
+              "expression": "pharmacy_a_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "completed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_exchange_history_b_completed": {
+          "name": "idx_exchange_history_b_completed",
+          "columns": [
+            {
+              "expression": "pharmacy_b_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "completed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "exchange_history_proposal_id_exchange_proposals_id_fk": {
+          "name": "exchange_history_proposal_id_exchange_proposals_id_fk",
+          "tableFrom": "exchange_history",
+          "tableTo": "exchange_proposals",
+          "columnsFrom": [
+            "proposal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchange_history_pharmacy_a_id_pharmacies_id_fk": {
+          "name": "exchange_history_pharmacy_a_id_pharmacies_id_fk",
+          "tableFrom": "exchange_history",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "pharmacy_a_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchange_history_pharmacy_b_id_pharmacies_id_fk": {
+          "name": "exchange_history_pharmacy_b_id_pharmacies_id_fk",
+          "tableFrom": "exchange_history",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "pharmacy_b_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.exchange_proposal_items": {
+      "name": "exchange_proposal_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "proposal_id": {
+          "name": "proposal_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dead_stock_item_id": {
+          "name": "dead_stock_item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_pharmacy_id": {
+          "name": "from_pharmacy_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_pharmacy_id": {
+          "name": "to_pharmacy_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "yakka_value": {
+          "name": "yakka_value",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_exchange_items_proposal": {
+          "name": "idx_exchange_items_proposal",
+          "columns": [
+            {
+              "expression": "proposal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "exchange_proposal_items_proposal_id_exchange_proposals_id_fk": {
+          "name": "exchange_proposal_items_proposal_id_exchange_proposals_id_fk",
+          "tableFrom": "exchange_proposal_items",
+          "tableTo": "exchange_proposals",
+          "columnsFrom": [
+            "proposal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchange_proposal_items_dead_stock_item_id_dead_stock_items_id_fk": {
+          "name": "exchange_proposal_items_dead_stock_item_id_dead_stock_items_id_fk",
+          "tableFrom": "exchange_proposal_items",
+          "tableTo": "dead_stock_items",
+          "columnsFrom": [
+            "dead_stock_item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchange_proposal_items_from_pharmacy_id_pharmacies_id_fk": {
+          "name": "exchange_proposal_items_from_pharmacy_id_pharmacies_id_fk",
+          "tableFrom": "exchange_proposal_items",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "from_pharmacy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchange_proposal_items_to_pharmacy_id_pharmacies_id_fk": {
+          "name": "exchange_proposal_items_to_pharmacy_id_pharmacies_id_fk",
+          "tableFrom": "exchange_proposal_items",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "to_pharmacy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.exchange_proposals": {
+      "name": "exchange_proposals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pharmacy_a_id": {
+          "name": "pharmacy_a_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pharmacy_b_id": {
+          "name": "pharmacy_b_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "exchange_status_enum",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'proposed'"
+        },
+        "total_value_a": {
+          "name": "total_value_a",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_value_b": {
+          "name": "total_value_b",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value_difference": {
+          "name": "value_difference",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "proposed_at": {
+          "name": "proposed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_exchange_proposals_a_proposed": {
+          "name": "idx_exchange_proposals_a_proposed",
+          "columns": [
+            {
+              "expression": "pharmacy_a_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "proposed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_exchange_proposals_b_proposed": {
+          "name": "idx_exchange_proposals_b_proposed",
+          "columns": [
+            {
+              "expression": "pharmacy_b_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "proposed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_exchange_proposals_status_proposed": {
+          "name": "idx_exchange_proposals_status_proposed",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "proposed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "exchange_proposals_pharmacy_a_id_pharmacies_id_fk": {
+          "name": "exchange_proposals_pharmacy_a_id_pharmacies_id_fk",
+          "tableFrom": "exchange_proposals",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "pharmacy_a_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchange_proposals_pharmacy_b_id_pharmacies_id_fk": {
+          "name": "exchange_proposals_pharmacy_b_id_pharmacies_id_fk",
+          "tableFrom": "exchange_proposals",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "pharmacy_b_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pharmacies": {
+      "name": "pharmacies",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "postal_code": {
+          "name": "postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fax": {
+          "name": "fax",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "license_number": {
+          "name": "license_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prefecture": {
+          "name": "prefecture",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_admin": {
+          "name": "is_admin",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "pharmacies_email_unique": {
+          "name": "pharmacies_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        },
+        "pharmacies_license_number_unique": {
+          "name": "pharmacies_license_number_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "license_number"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.uploads": {
+      "name": "uploads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pharmacy_id": {
+          "name": "pharmacy_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "upload_type": {
+          "name": "upload_type",
+          "type": "upload_type_enum",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "original_filename": {
+          "name": "original_filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "column_mapping": {
+          "name": "column_mapping",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "row_count": {
+          "name": "row_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_uploads_pharmacy_type_created": {
+          "name": "idx_uploads_pharmacy_type_created",
+          "columns": [
+            {
+              "expression": "pharmacy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "upload_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "uploads_pharmacy_id_pharmacies_id_fk": {
+          "name": "uploads_pharmacy_id_pharmacies_id_fk",
+          "tableFrom": "uploads",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "pharmacy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.used_medication_items": {
+      "name": "used_medication_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pharmacy_id": {
+          "name": "pharmacy_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "upload_id": {
+          "name": "upload_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "drug_code": {
+          "name": "drug_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drug_name": {
+          "name": "drug_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "monthly_usage": {
+          "name": "monthly_usage",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unit": {
+          "name": "unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "yakka_unit_price": {
+          "name": "yakka_unit_price",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_used_medication_pharmacy_created": {
+          "name": "idx_used_medication_pharmacy_created",
+          "columns": [
+            {
+              "expression": "pharmacy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "used_medication_items_pharmacy_id_pharmacies_id_fk": {
+          "name": "used_medication_items_pharmacy_id_pharmacies_id_fk",
+          "tableFrom": "used_medication_items",
+          "tableTo": "pharmacies",
+          "columnsFrom": [
+            "pharmacy_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "used_medication_items_upload_id_uploads_id_fk": {
+          "name": "used_medication_items_upload_id_uploads_id_fk",
+          "tableFrom": "used_medication_items",
+          "tableTo": "uploads",
+          "columnsFrom": [
+            "upload_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.admin_message_target_type_enum": {
+      "name": "admin_message_target_type_enum",
+      "schema": "public",
+      "values": [
+        "all",
+        "pharmacy"
+      ]
+    },
+    "public.exchange_status_enum": {
+      "name": "exchange_status_enum",
+      "schema": "public",
+      "values": [
+        "proposed",
+        "accepted_a",
+        "accepted_b",
+        "confirmed",
+        "rejected",
+        "completed",
+        "cancelled"
+      ]
+    },
+    "public.upload_type_enum": {
+      "name": "upload_type_enum",
+      "schema": "public",
+      "values": [
+        "dead_stock",
+        "used_medication"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

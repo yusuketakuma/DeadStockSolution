@@ -12,13 +12,9 @@ import exchangeRoutes from './routes/exchange';
 import pharmaciesRoutes from './routes/pharmacies';
 import notificationsRoutes from './routes/notifications';
 import { errorHandler } from './middleware/error-handler';
-import { ensureAuxiliarySchema } from './db/ensure-schema';
 
 const app = express();
 app.disable('x-powered-by');
-void ensureAuxiliarySchema().catch((err) => {
-  console.error('Auxiliary schema ensure error:', err);
-});
 
 const configuredOrigins = (process.env.CORS_ORIGINS ?? '')
   .split(',')

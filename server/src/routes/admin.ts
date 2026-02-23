@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { and, eq, inArray, desc, sql, count } from 'drizzle-orm';
+import { and, eq, inArray, desc, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -13,6 +13,7 @@ import { requireLogin, requireAdmin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { isSafeInternalPath, sanitizeInternalPath } from '../utils/path-utils';
+import { rowCount } from '../utils/db-utils';
 
 const router = Router();
 
@@ -30,14 +31,14 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
       [pickupCount],
       [exchangeAmount],
     ] = await Promise.all([
-      db.select({ count: count() }).from(pharmacies),
-      db.select({ count: count() })
+      db.select({ count: rowCount }).from(pharmacies),
+      db.select({ count: rowCount })
         .from(pharmacies)
         .where(eq(pharmacies.isActive, true)),
-      db.select({ count: count() }).from(uploads),
-      db.select({ count: count() }).from(exchangeProposals),
-      db.select({ count: count() }).from(exchangeHistory),
-      db.select({ count: count() })
+      db.select({ count: rowCount }).from(uploads),
+      db.select({ count: rowCount }).from(exchangeProposals),
+      db.select({ count: rowCount }).from(exchangeHistory),
+      db.select({ count: rowCount })
         .from(exchangeProposalItems)
         .innerJoin(exchangeProposals, eq(exchangeProposalItems.proposalId, exchangeProposals.id))
         .where(eq(exchangeProposals.status, 'completed')),
@@ -104,7 +105,7 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    const [total] = await db.select({ count: count() }).from(pharmacies);
+    const [total] = await db.select({ count: rowCount }).from(pharmacies);
 
     res.json({
       data: rows,
@@ -190,7 +191,7 @@ router.get('/exchanges', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    const [total] = await db.select({ count: count() }).from(exchangeProposals);
+    const [total] = await db.select({ count: rowCount }).from(exchangeProposals);
 
     res.json({
       data: rows,
@@ -238,7 +239,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       : [];
 
     const pharmacyMap = new Map(pharmacyRows.map((row) => [row.id, row.name]));
-    const [total] = await db.select({ count: count() }).from(exchangeHistory);
+    const [total] = await db.select({ count: rowCount }).from(exchangeHistory);
 
     res.json({
       data: rows.map((row) => ({
@@ -281,7 +282,7 @@ router.get('/messages', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    const [total] = await db.select({ count: count() }).from(adminMessages);
+    const [total] = await db.select({ count: rowCount }).from(adminMessages);
 
     res.json({
       data: rows.map((row) => ({

@@ -8,11 +8,12 @@
     "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:legacy": "tsx src/db/migrate-legacy.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed-test-account.ts"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.0",
+    "@vercel/postgres": "^0.10.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -27,6 +28,7 @@
     "read-excel-file": "^6.0.3"
   },
   "devDependencies": {
+    "@libsql/client": "^0.17.0",
     "@types/cookie-parser": "^1.4.7",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",

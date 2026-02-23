@@ -4,8 +4,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const TEST_ACCOUNTS = [
-  { label: 'テスト薬局（東京）', email: 'test@example.com', password: 'test1234' },
-  { label: 'テスト薬局2号店（大阪）', email: 'test2@example.com', password: 'test1234' },
+  { key: 'tokyo' as const, label: 'テスト薬局（東京）' },
+  { key: 'osaka' as const, label: 'テスト薬局2号店（大阪）' },
 ];
 
 export default function LoginPage() {
@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, testLogin } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: FormEvent) => {
@@ -30,11 +30,11 @@ export default function LoginPage() {
     }
   };
 
-  const handleTestLogin = async (testEmail: string, testPassword: string) => {
+  const handleTestLogin = async (key: 'tokyo' | 'osaka') => {
     setError('');
     setLoading(true);
     try {
-      await login(testEmail, testPassword);
+      await testLogin(key);
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ログインに失敗しました');
@@ -82,11 +82,11 @@ export default function LoginPage() {
           <div className="d-grid gap-2">
             {TEST_ACCOUNTS.map((account) => (
               <Button
-                key={account.email}
+                key={account.key}
                 variant="outline-secondary"
                 size="sm"
                 disabled={loading}
-                onClick={() => handleTestLogin(account.email, account.password)}
+                onClick={() => handleTestLogin(account.key)}
               >
                 {account.label}
               </Button>
