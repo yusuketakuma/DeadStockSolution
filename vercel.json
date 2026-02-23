@@ -1,5 +1,6 @@
 {
   "framework": "vite",
+  "installCommand": "sh scripts/vercel-install.sh || sh ../scripts/vercel-install.sh",
   "buildCommand": "sh scripts/vercel-build.sh || sh ../scripts/vercel-build.sh",
   "outputDirectory": "dist",
   "rewrites": [
