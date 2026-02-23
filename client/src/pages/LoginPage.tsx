@@ -3,6 +3,11 @@ import { Container, Card, Form, Button, Alert } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
+const TEST_ACCOUNTS = [
+  { label: 'テスト薬局（東京）', email: 'test@example.com', password: 'test1234' },
+  { label: 'テスト薬局2号店（大阪）', email: 'test2@example.com', password: 'test1234' },
+];
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,6 +22,19 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ログインに失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTestLogin = async (testEmail: string, testPassword: string) => {
+    setError('');
+    setLoading(true);
+    try {
+      await login(testEmail, testPassword);
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ログインに失敗しました');
@@ -57,6 +75,22 @@ export default function LoginPage() {
           </Form>
           <div className="text-center mt-3">
             <Link to="/register">新規登録はこちら</Link>
+          </div>
+
+          <hr />
+          <p className="text-muted small text-center mb-2">テストアカウントでログイン</p>
+          <div className="d-grid gap-2">
+            {TEST_ACCOUNTS.map((account) => (
+              <Button
+                key={account.email}
+                variant="outline-secondary"
+                size="sm"
+                disabled={loading}
+                onClick={() => handleTestLogin(account.email, account.password)}
+              >
+                {account.label}
+              </Button>
+            ))}
           </div>
         </Card.Body>
         <Card.Footer className="text-muted small text-center">

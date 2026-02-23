@@ -99,3 +99,21 @@ export const columnMappingTemplates = sqliteTable('column_mapping_templates', {
   mapping: text('mapping').notNull(),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const adminMessages = sqliteTable('admin_messages', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  senderAdminId: integer('sender_admin_id').notNull().references(() => pharmacies.id),
+  targetType: text('target_type', { enum: ['all', 'pharmacy'] }).notNull().default('all'),
+  targetPharmacyId: integer('target_pharmacy_id').references(() => pharmacies.id),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  actionPath: text('action_path'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const adminMessageReads = sqliteTable('admin_message_reads', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  messageId: integer('message_id').notNull().references(() => adminMessages.id),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
+  readAt: text('read_at').default(sql`CURRENT_TIMESTAMP`),
+});

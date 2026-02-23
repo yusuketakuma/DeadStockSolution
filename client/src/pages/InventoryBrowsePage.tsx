@@ -43,7 +43,7 @@ export default function InventoryBrowsePage() {
 
   return (
     <div>
-      <h4 className="mb-3">全薬局の在庫参照</h4>
+      <h4 className="page-title mb-3">全薬局の在庫参照</h4>
 
       <Form onSubmit={handleSearch} className="mb-3">
         <InputGroup>
@@ -67,7 +67,7 @@ export default function InventoryBrowsePage() {
         </Alert>
       ) : (
         <div className="table-responsive">
-          <Table striped hover size="sm">
+          <Table striped hover size="sm" className="mobile-table">
             <thead className="table-light">
               <tr>
                 <th>薬品名</th>

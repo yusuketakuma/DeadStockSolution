@@ -1,57 +1,250 @@
-import { useState, useEffect } from 'react';
-import { Card, Row, Col } from 'react-bootstrap';
+import { useState, useEffect, FormEvent } from 'react';
+import { Card, Row, Col, Form, Button, Alert, Table } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 
 interface Stats {
   totalPharmacies: number;
+  activePharmacies: number;
+  inactivePharmacies: number;
   totalUploads: number;
   totalProposals: number;
   totalExchanges: number;
+  totalPickupItems: number;
+  totalExchangeValue: number;
+}
+
+interface PharmacyOption {
+  id: number;
+  name: string;
+  isActive: boolean;
+}
+
+interface AdminMessage {
+  id: number;
+  targetType: 'all' | 'pharmacy';
+  targetPharmacyId: number | null;
+  title: string;
+  body: string;
+  actionPath: string | null;
+  createdAt: string | null;
+}
+
+interface MessagesResponse {
+  data: AdminMessage[];
 }
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [pharmacies, setPharmacies] = useState<PharmacyOption[]>([]);
+  const [messages, setMessages] = useState<AdminMessage[]>([]);
+  const [targetType, setTargetType] = useState<'all' | 'pharmacy'>('all');
+  const [targetPharmacyId, setTargetPharmacyId] = useState('');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [actionPath, setActionPath] = useState('');
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const fetchData = async () => {
+    const [statsData, pharmacyData, messagesData] = await Promise.all([
+      api.get<Stats>('/admin/stats'),
+      api.get<{ data: PharmacyOption[] }>('/admin/pharmacies/options'),
+      api.get<MessagesResponse>('/admin/messages?page=1&limit=10'),
+    ]);
+
+    setStats(statsData);
+    setPharmacies(pharmacyData.data);
+    setMessages(messagesData.data);
+  };
 
   useEffect(() => {
-    api.get<Stats>('/admin/stats').then(setStats).catch(() => {});
+    fetchData().catch(() => {});
   }, []);
+
+  const handleSend = async (e: FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.post('/admin/messages', {
+        targetType,
+        targetPharmacyId: targetType === 'pharmacy' ? Number(targetPharmacyId) : null,
+        title,
+        body,
+        actionPath: actionPath || null,
+      });
+      setMessage('加盟薬局へメッセージを送信しました');
+      setTitle('');
+      setBody('');
+      setActionPath('');
+      if (targetType === 'pharmacy') {
+        setTargetPharmacyId('');
+      }
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'メッセージ送信に失敗しました');
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div>
-      <h4 className="mb-3">管理者ダッシュボード</h4>
-      <Row className="g-3">
-        <Col md={3}>
-          <Card className="text-center">
+      <h4 className="page-title mb-3">管理者ダッシュボード</h4>
+
+      <Row className="g-3 mb-3">
+        <Col md={4} xl={3}>
+          <Card className="text-center h-100">
             <Card.Body>
               <Card.Title className="display-6">{stats?.totalPharmacies ?? '-'}</Card.Title>
               <Card.Text>登録薬局数</Card.Text>
-              <Link to="/admin/pharmacies" className="btn btn-sm btn-outline-primary">一覧を見る</Link>
+              <div className="small text-muted">
+                有効: {stats?.activePharmacies ?? '-'} / 無効: {stats?.inactivePharmacies ?? '-'}
+              </div>
+              <Link to="/admin/pharmacies" className="btn btn-sm btn-outline-primary mt-2">登録薬局情報を見る</Link>
             </Card.Body>
           </Card>
         </Col>
-        <Col md={3}>
-          <Card className="text-center">
+        <Col md={4} xl={3}>
+          <Card className="text-center h-100">
             <Card.Body>
-              <Card.Title className="display-6">{stats?.totalUploads ?? '-'}</Card.Title>
-              <Card.Text>アップロード数</Card.Text>
+              <Card.Title className="display-6">{stats?.totalPickupItems ?? '-'}</Card.Title>
+              <Card.Text>引き取り数（明細件数）</Card.Text>
             </Card.Body>
           </Card>
         </Col>
-        <Col md={3}>
-          <Card className="text-center">
+        <Col md={4} xl={3}>
+          <Card className="text-center h-100">
             <Card.Body>
-              <Card.Title className="display-6">{stats?.totalProposals ?? '-'}</Card.Title>
-              <Card.Text>交換提案数</Card.Text>
-              <Link to="/admin/exchanges" className="btn btn-sm btn-outline-primary">一覧を見る</Link>
+              <Card.Title className="display-6">{(stats?.totalExchangeValue ?? 0).toLocaleString()}</Card.Title>
+              <Card.Text>交換金額（累計）</Card.Text>
             </Card.Body>
           </Card>
         </Col>
-        <Col md={3}>
-          <Card className="text-center">
+        <Col md={4} xl={3}>
+          <Card className="text-center h-100">
             <Card.Body>
               <Card.Title className="display-6">{stats?.totalExchanges ?? '-'}</Card.Title>
-              <Card.Text>交換完了数</Card.Text>
+              <Card.Text>交換履歴件数</Card.Text>
+              <Link to="/admin/exchanges" className="btn btn-sm btn-outline-primary mt-2">交換履歴を見る</Link>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {message && <Alert variant="success" onClose={() => setMessage('')} dismissible>{message}</Alert>}
+      {error && <Alert variant="danger" onClose={() => setError('')} dismissible>{error}</Alert>}
+
+      <Row className="g-3">
+        <Col lg={5}>
+          <Card>
+            <Card.Header>加盟薬局へのメッセージ送信</Card.Header>
+            <Card.Body>
+              <Form onSubmit={handleSend}>
+                <Form.Group className="mb-2">
+                  <Form.Label>送信対象</Form.Label>
+                  <Form.Select
+                    value={targetType}
+                    onChange={(e) => setTargetType(e.target.value as 'all' | 'pharmacy')}
+                  >
+                    <option value="all">全加盟薬局</option>
+                    <option value="pharmacy">特定薬局</option>
+                  </Form.Select>
+                </Form.Group>
+
+                {targetType === 'pharmacy' && (
+                  <Form.Group className="mb-2">
+                    <Form.Label>送信先薬局</Form.Label>
+                    <Form.Select
+                      value={targetPharmacyId}
+                      onChange={(e) => setTargetPharmacyId(e.target.value)}
+                      required
+                    >
+                      <option value="">選択してください</option>
+                      {pharmacies.filter((pharmacy) => pharmacy.isActive).map((pharmacy) => (
+                        <option key={pharmacy.id} value={pharmacy.id}>
+                          {pharmacy.name} (ID: {pharmacy.id})
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </Form.Group>
+                )}
+
+                <Form.Group className="mb-2">
+                  <Form.Label>タイトル</Form.Label>
+                  <Form.Control
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    maxLength={100}
+                    required
+                  />
+                </Form.Group>
+
+                <Form.Group className="mb-2">
+                  <Form.Label>本文</Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={4}
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    maxLength={2000}
+                    required
+                  />
+                </Form.Group>
+
+                <Form.Group className="mb-3">
+                  <Form.Label>通知クリック時の遷移先（任意）</Form.Label>
+                  <Form.Control
+                    placeholder="/proposals など"
+                    value={actionPath}
+                    onChange={(e) => setActionPath(e.target.value)}
+                  />
+                  <Form.Text className="text-muted">先頭は / で入力してください。</Form.Text>
+                </Form.Group>
+
+                <Button type="submit" disabled={sending}>
+                  {sending ? '送信中...' : '送信'}
+                </Button>
+              </Form>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col lg={7}>
+          <Card>
+            <Card.Header>送信済みメッセージ（最新10件）</Card.Header>
+            <Card.Body>
+              {messages.length === 0 ? (
+                <div className="text-muted small">送信済みメッセージはありません。</div>
+              ) : (
+                <div className="table-responsive">
+                  <Table striped size="sm" className="mobile-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>対象</th>
+                        <th>タイトル</th>
+                        <th>遷移先</th>
+                        <th>送信日時</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {messages.map((item) => (
+                        <tr key={item.id}>
+                          <td>{item.id}</td>
+                          <td>{item.targetType === 'all' ? '全体' : `薬局ID:${item.targetPharmacyId}`}</td>
+                          <td>{item.title}</td>
+                          <td>{item.actionPath || '-'}</td>
+                          <td>{item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              )}
             </Card.Body>
           </Card>
         </Col>

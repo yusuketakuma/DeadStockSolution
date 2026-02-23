@@ -6,10 +6,19 @@ interface ApiOptions {
   headers?: Record<string, string>;
 }
 
+export interface FieldError {
+  field: string;
+  message: string;
+}
+
 class ApiError extends Error {
+  public fieldErrors?: FieldError[];
   constructor(public status: number, message: string, public data?: unknown) {
     super(message);
     this.name = 'ApiError';
+    if (data && typeof data === 'object' && 'errors' in data && Array.isArray((data as Record<string, unknown>).errors)) {
+      this.fieldErrors = (data as Record<string, unknown>).errors as FieldError[];
+    }
   }
 }
 

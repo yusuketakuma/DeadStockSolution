@@ -1,9 +1,10 @@
 import { Router, Response } from 'express';
-import { eq, like, count, desc } from 'drizzle-orm';
+import { eq, and, like, count, desc } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, usedMedicationItems, pharmacies } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
+import { normalizeSearchTerm, parsePagination } from '../utils/request-utils';
 
 const router = Router();
 
@@ -12,9 +13,10 @@ router.use(requireLogin);
 // My dead stock list
 router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 50;
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
+      defaultLimit: 50,
+      maxLimit: 200,
+    });
 
     const items = await db.select()
       .from(deadStockItems)
@@ -40,9 +42,24 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
 // Delete dead stock item
 router.delete('/dead-stock/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id as string);
-    await db.delete(deadStockItems)
-      .where(eq(deadStockItems.id, id));
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+
+    const deleted = await db.delete(deadStockItems)
+      .where(and(
+        eq(deadStockItems.id, id),
+        eq(deadStockItems.pharmacyId, req.user!.id),
+      ))
+      .returning({ id: deadStockItems.id });
+
+    if (deleted.length === 0) {
+      res.status(404).json({ error: '対象データが見つかりません' });
+      return;
+    }
+
     res.json({ message: '削除しました' });
   } catch (err) {
     console.error('Delete dead stock error:', err);
@@ -53,9 +70,10 @@ router.delete('/dead-stock/:id', async (req: AuthRequest, res: Response) => {
 // My used medication list
 router.get('/used-medication', async (req: AuthRequest, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 50;
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
+      defaultLimit: 50,
+      maxLimit: 200,
+    });
 
     const items = await db.select()
       .from(usedMedicationItems)
@@ -81,12 +99,20 @@ router.get('/used-medication', async (req: AuthRequest, res: Response) => {
 // Browse all pharmacies' inventory
 router.get('/browse', async (req: AuthRequest, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 50;
-    const offset = (page - 1) * limit;
-    const search = req.query.search as string | undefined;
+    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
+      defaultLimit: 50,
+      maxLimit: 200,
+    });
+    const search = normalizeSearchTerm(req.query.search);
 
-    let query = db.select({
+    const whereExpr = search
+      ? and(
+        eq(deadStockItems.isAvailable, true),
+        like(deadStockItems.drugName, `%${search}%`),
+      )
+      : eq(deadStockItems.isAvailable, true);
+
+    const items = await db.select({
       id: deadStockItems.id,
       drugName: deadStockItems.drugName,
       quantity: deadStockItems.quantity,
@@ -99,36 +125,18 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
     })
       .from(deadStockItems)
       .innerJoin(pharmacies, eq(deadStockItems.pharmacyId, pharmacies.id))
-      .where(eq(deadStockItems.isAvailable, true))
+      .where(whereExpr)
       .orderBy(desc(deadStockItems.createdAt))
       .limit(limit)
       .offset(offset);
 
-    if (search) {
-      query = db.select({
-        id: deadStockItems.id,
-        drugName: deadStockItems.drugName,
-        quantity: deadStockItems.quantity,
-        unit: deadStockItems.unit,
-        yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-        yakkaTotal: deadStockItems.yakkaTotal,
-        expirationDate: deadStockItems.expirationDate,
-        pharmacyName: pharmacies.name,
-        prefecture: pharmacies.prefecture,
-      })
-        .from(deadStockItems)
-        .innerJoin(pharmacies, eq(deadStockItems.pharmacyId, pharmacies.id))
-        .where(like(deadStockItems.drugName, `%${search}%`))
-        .orderBy(desc(deadStockItems.createdAt))
-        .limit(limit)
-        .offset(offset);
-    }
-
-    const items = await query;
+    const [total] = await db.select({ count: count() })
+      .from(deadStockItems)
+      .where(whereExpr);
 
     res.json({
       data: items,
-      pagination: { page, limit },
+      pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {
     console.error('Browse inventory error:', err);

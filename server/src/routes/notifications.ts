@@ -1,0 +1,248 @@
+import { Router, Response } from 'express';
+import { and, desc, eq, inArray, or } from 'drizzle-orm';
+import { db } from '../config/database';
+import { requireLogin } from '../middleware/auth';
+import { AuthRequest } from '../types';
+import { adminMessages, adminMessageReads, exchangeProposals } from '../db/schema';
+import { parsePositiveInt } from '../utils/request-utils';
+import { sanitizeInternalPath } from '../utils/path-utils';
+
+type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message';
+
+interface NoticeItem {
+  id: string;
+  type: NoticeType;
+  title: string;
+  body: string;
+  actionPath: string;
+  actionLabel: string;
+  createdAt: string | null;
+  unread: boolean;
+  priority: number;
+}
+
+function proposalActionNotice(proposal: {
+  id: number;
+  pharmacyAId: number;
+  pharmacyBId: number;
+  status: string;
+  proposedAt: string | null;
+}, currentPharmacyId: number): NoticeItem | null {
+  const isA = proposal.pharmacyAId === currentPharmacyId;
+  const actionPath = `/proposals/${proposal.id}`;
+
+  if (proposal.status === 'proposed') {
+    if (isA) {
+      return {
+        id: `proposal-${proposal.id}-outbound`,
+        type: 'outbound_request',
+        title: '出庫依頼を送信済みです',
+        body: `提案 #${proposal.id} の相手薬局承認待ちです。`,
+        actionPath,
+        actionLabel: '提案詳細へ',
+        createdAt: proposal.proposedAt,
+        unread: true,
+        priority: 3,
+      };
+    }
+    return {
+      id: `proposal-${proposal.id}-inbound`,
+      type: 'inbound_request',
+      title: '入庫依頼が届いています',
+      body: `提案 #${proposal.id} を確認し、承認または拒否してください。`,
+      actionPath,
+      actionLabel: '承認/拒否を行う',
+      createdAt: proposal.proposedAt,
+      unread: true,
+      priority: 1,
+    };
+  }
+
+  if ((proposal.status === 'accepted_a' && !isA) || (proposal.status === 'accepted_b' && isA)) {
+    return {
+      id: `proposal-${proposal.id}-pending-my-approval`,
+      type: 'inbound_request',
+      title: '相手承認済みの提案があります',
+      body: `提案 #${proposal.id} はあなたの承認待ちです。`,
+      actionPath,
+      actionLabel: '承認する',
+      createdAt: proposal.proposedAt,
+      unread: true,
+      priority: 1,
+    };
+  }
+
+  if (proposal.status === 'confirmed') {
+    return {
+      id: `proposal-${proposal.id}-confirmed`,
+      type: 'status_update',
+      title: '出庫・入庫依頼が確定しました',
+      body: `提案 #${proposal.id} の受け渡し後、交換完了を実行してください。`,
+      actionPath,
+      actionLabel: '交換完了へ進む',
+      createdAt: proposal.proposedAt,
+      unread: true,
+      priority: 2,
+    };
+  }
+
+  return null;
+}
+
+const router = Router();
+router.use(requireLogin);
+
+router.get('/', async (req: AuthRequest, res: Response) => {
+  try {
+    const pharmacyId = req.user!.id;
+
+    const [proposalRows, messageRows] = await Promise.all([
+      db.select({
+        id: exchangeProposals.id,
+        pharmacyAId: exchangeProposals.pharmacyAId,
+        pharmacyBId: exchangeProposals.pharmacyBId,
+        status: exchangeProposals.status,
+        proposedAt: exchangeProposals.proposedAt,
+      })
+        .from(exchangeProposals)
+        .where(and(
+          or(
+            eq(exchangeProposals.pharmacyAId, pharmacyId),
+            eq(exchangeProposals.pharmacyBId, pharmacyId),
+          ),
+          inArray(exchangeProposals.status, ['proposed', 'accepted_a', 'accepted_b', 'confirmed']),
+        ))
+        .orderBy(desc(exchangeProposals.proposedAt))
+        .limit(50),
+      db.select({
+        id: adminMessages.id,
+        title: adminMessages.title,
+        body: adminMessages.body,
+        actionPath: adminMessages.actionPath,
+        createdAt: adminMessages.createdAt,
+      })
+        .from(adminMessages)
+        .where(or(
+          eq(adminMessages.targetType, 'all'),
+          and(
+            eq(adminMessages.targetType, 'pharmacy'),
+            eq(adminMessages.targetPharmacyId, pharmacyId),
+          ),
+        ))
+        .orderBy(desc(adminMessages.createdAt))
+        .limit(50),
+    ]);
+
+    const messageIds = messageRows.map((message) => message.id);
+    const messageReadRows = messageIds.length > 0
+      ? await db.select({ messageId: adminMessageReads.messageId })
+        .from(adminMessageReads)
+        .where(and(
+          inArray(adminMessageReads.messageId, messageIds),
+          eq(adminMessageReads.pharmacyId, pharmacyId),
+        ))
+      : [];
+    const readMessageIdSet = new Set(messageReadRows.map((row) => row.messageId));
+
+    const notices: NoticeItem[] = [];
+
+    for (const proposal of proposalRows) {
+      const item = proposalActionNotice(proposal, pharmacyId);
+      if (item) notices.push(item);
+    }
+
+    for (const message of messageRows) {
+      const unread = !readMessageIdSet.has(message.id);
+      const actionPath = sanitizeInternalPath(message.actionPath) ?? '/';
+      notices.push({
+        id: `message-${message.id}`,
+        type: 'admin_message',
+        title: `管理者: ${message.title}`,
+        body: message.body,
+        actionPath,
+        actionLabel: actionPath === '/' ? 'ダッシュボードへ' : '内容を確認',
+        createdAt: message.createdAt,
+        unread,
+        priority: unread ? 1 : 4,
+      });
+    }
+
+    notices.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    const unreadMessages = notices.filter((item) => item.type === 'admin_message' && item.unread).length;
+    const actionableRequests = notices.filter((item) =>
+      item.type === 'inbound_request' || item.type === 'status_update'
+    ).length;
+
+    res.json({
+      notices: notices.slice(0, 20),
+      summary: {
+        unreadMessages,
+        actionableRequests,
+        total: notices.length,
+      },
+    });
+  } catch (err) {
+    console.error('Notifications fetch error:', err);
+    res.status(500).json({ error: '通知の取得に失敗しました' });
+  }
+});
+
+router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+
+    const pharmacyId = req.user!.id;
+
+    const [message] = await db.select({
+      id: adminMessages.id,
+      targetType: adminMessages.targetType,
+      targetPharmacyId: adminMessages.targetPharmacyId,
+    })
+      .from(adminMessages)
+      .where(eq(adminMessages.id, id))
+      .limit(1);
+
+    if (!message) {
+      res.status(404).json({ error: 'メッセージが見つかりません' });
+      return;
+    }
+
+    const isTarget = message.targetType === 'all' || message.targetPharmacyId === pharmacyId;
+    if (!isTarget) {
+      res.status(403).json({ error: 'アクセス権限がありません' });
+      return;
+    }
+
+    const existing = await db.select({ id: adminMessageReads.id })
+      .from(adminMessageReads)
+      .where(and(
+        eq(adminMessageReads.messageId, id),
+        eq(adminMessageReads.pharmacyId, pharmacyId),
+      ))
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(adminMessageReads).values({
+        messageId: id,
+        pharmacyId,
+      });
+    }
+
+    res.json({ message: '既読にしました' });
+  } catch (err) {
+    console.error('Notification read error:', err);
+    res.status(500).json({ error: '既読処理に失敗しました' });
+  }
+});
+
+export default router;

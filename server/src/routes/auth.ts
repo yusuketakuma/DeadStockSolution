@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
@@ -9,8 +10,23 @@ import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
 
 const router = Router();
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: '登録試行回数が多すぎます。しばらくしてから再試行してください' },
+});
 
-router.post('/register', async (req: AuthRequest, res: Response) => {
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'ログイン試行回数が多すぎます。しばらくしてから再試行してください' },
+});
+
+router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const errors = validateRegistration(req.body);
     if (errors.length > 0) {
@@ -82,7 +98,7 @@ router.post('/register', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/login', async (req: AuthRequest, res: Response) => {
+router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const errors = validateLogin(req.body);
     if (errors.length > 0) {

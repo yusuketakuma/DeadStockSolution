@@ -58,6 +58,8 @@ export default function AdminPharmaciesPage() {
             <th>メール</th>
             <th>都道府県</th>
             <th>電話</th>
+            <th>FAX</th>
+            <th>登録日</th>
             <th>状態</th>
             <th>操作</th>
           </tr>
@@ -70,6 +72,8 @@ export default function AdminPharmaciesPage() {
               <td>{p.email}</td>
               <td>{p.prefecture}</td>
               <td>{p.phone}</td>
+              <td>{p.fax}</td>
+              <td>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('ja-JP') : '-'}</td>
               <td>
                 <Badge bg={p.isActive ? 'success' : 'secondary'}>
                   {p.isActive ? '有効' : '無効'}

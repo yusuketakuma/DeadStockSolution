@@ -1,22 +1,24 @@
 import { Router, Response } from 'express';
-import { eq, like, count, desc } from 'drizzle-orm';
+import { and, eq, like, count, desc } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { haversineDistance } from '../utils/geo-utils';
 import { AuthRequest } from '../types';
+import { normalizeSearchTerm, parsePagination, parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 router.use(requireLogin);
 
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
-    const offset = (page - 1) * limit;
-    const search = req.query.search as string | undefined;
-    const prefecture = req.query.prefecture as string | undefined;
-    const sortBy = req.query.sortBy as string | undefined;
+    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
+      defaultLimit: 20,
+      maxLimit: 100,
+    });
+    const search = normalizeSearchTerm(req.query.search);
+    const prefecture = normalizeSearchTerm(req.query.prefecture, 20);
+    const sortBy = req.query.sortBy === 'distance' ? 'distance' : undefined;
 
     // Get current pharmacy coordinates for distance calculation
     const [currentPharmacy] = await db.select({
@@ -27,7 +29,16 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       .where(eq(pharmacies.id, req.user!.id))
       .limit(1);
 
-    let query = db.select({
+    const conditions = [eq(pharmacies.isActive, true)];
+    if (search) {
+      conditions.push(like(pharmacies.name, `%${search}%`));
+    }
+    if (prefecture) {
+      conditions.push(eq(pharmacies.prefecture, prefecture));
+    }
+    const whereExpr = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+    const rows = await db.select({
       id: pharmacies.id,
       name: pharmacies.name,
       prefecture: pharmacies.prefecture,
@@ -38,35 +49,20 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       longitude: pharmacies.longitude,
     })
       .from(pharmacies)
-      .where(eq(pharmacies.isActive, true))
+      .where(whereExpr)
       .orderBy(desc(pharmacies.createdAt))
       .limit(limit)
       .offset(offset);
 
-    if (search) {
-      query = db.select({
-        id: pharmacies.id,
-        name: pharmacies.name,
-        prefecture: pharmacies.prefecture,
-        address: pharmacies.address,
-        phone: pharmacies.phone,
-        fax: pharmacies.fax,
-        latitude: pharmacies.latitude,
-        longitude: pharmacies.longitude,
-      })
-        .from(pharmacies)
-        .where(like(pharmacies.name, `%${search}%`))
-        .orderBy(desc(pharmacies.createdAt))
-        .limit(limit)
-        .offset(offset);
-    }
-
-    let rows = await query;
-
     // Enrich with distance
     const enriched = rows.map((row) => {
       let distance: number | null = null;
-      if (currentPharmacy?.latitude && currentPharmacy?.longitude && row.latitude && row.longitude) {
+      if (
+        currentPharmacy?.latitude !== null &&
+        currentPharmacy?.longitude !== null &&
+        row.latitude !== null &&
+        row.longitude !== null
+      ) {
         distance = Math.round(
           haversineDistance(currentPharmacy.latitude, currentPharmacy.longitude, row.latitude, row.longitude) * 10
         ) / 10;
@@ -74,18 +70,14 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       return { ...row, distance };
     });
 
-    // Filter by prefecture
     let result = enriched;
-    if (prefecture) {
-      result = result.filter((r) => r.prefecture === prefecture);
-    }
 
     // Sort by distance if requested
     if (sortBy === 'distance') {
       result.sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999));
     }
 
-    const [total] = await db.select({ count: count() }).from(pharmacies).where(eq(pharmacies.isActive, true));
+    const [total] = await db.select({ count: count() }).from(pharmacies).where(whereExpr);
 
     res.json({
       data: result,
@@ -99,7 +91,11 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
     const [pharmacy] = await db.select({
       id: pharmacies.id,
       name: pharmacies.name,

@@ -2,6 +2,7 @@ import { useState, useEffect, FormEvent } from 'react';
 import { Card, Form, Button, Alert, Row, Col } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
+import { useNavigate } from 'react-router-dom';
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -27,7 +28,8 @@ interface AccountData {
 }
 
 export default function AccountPage() {
-  const { refreshUser } = useAuth();
+  const { refreshUser, logout } = useAuth();
+  const navigate = useNavigate();
   const [form, setForm] = useState({
     name: '', postalCode: '', address: '', phone: '', fax: '', prefecture: '',
     currentPassword: '', newPassword: '',
@@ -36,6 +38,7 @@ export default function AccountPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   useEffect(() => {
     api.get<AccountData>('/account').then((data) => {
@@ -73,11 +76,31 @@ export default function AccountPage() {
     }
   };
 
+  const handleWithdraw = async () => {
+    const confirmed = confirm(
+      '退会するとアカウントが無効化され、現在のセッションは終了します。実行しますか？'
+    );
+    if (!confirmed) return;
+
+    setWithdrawing(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.delete<{ message: string }>('/account');
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '退会処理に失敗しました');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
   if (!account) return null;
 
   return (
     <div>
-      <h4 className="mb-3">アカウント設定</h4>
+      <h4 className="page-title mb-3">薬局登録情報の編集</h4>
       {message && <Alert variant="success" onClose={() => setMessage('')} dismissible>{message}</Alert>}
       {error && <Alert variant="danger" onClose={() => setError('')} dismissible>{error}</Alert>}
 
@@ -160,6 +183,22 @@ export default function AccountPage() {
               {loading ? '更新中...' : '更新'}
             </Button>
           </Form>
+        </Card.Body>
+      </Card>
+
+      <Card className="mt-3 border-danger">
+        <Card.Header className="bg-danger-subtle text-danger-emphasis">退会</Card.Header>
+        <Card.Body>
+          <p className="small mb-3">
+            退会するとアカウントは無効化され、ログインできなくなります。再利用する場合は管理者へお問い合わせください。
+          </p>
+          <Button
+            variant="outline-danger"
+            onClick={handleWithdraw}
+            disabled={withdrawing}
+          >
+            {withdrawing ? '処理中...' : '退会する'}
+          </Button>
         </Card.Body>
       </Card>
     </div>

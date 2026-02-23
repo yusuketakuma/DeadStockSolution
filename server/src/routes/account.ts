@@ -46,9 +46,24 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
 
     const updates: Record<string, unknown> = {};
 
-    if (name) updates.name = name;
-    if (postalCode) {
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 100) {
+        res.status(400).json({ error: '薬局名は1〜100文字で入力してください' });
+        return;
+      }
+      updates.name = name.trim();
+    }
+
+    if (postalCode !== undefined) {
+      if (typeof postalCode !== 'string') {
+        res.status(400).json({ error: '郵便番号が不正です' });
+        return;
+      }
       const normalized = postalCode.replace(/[-ー－\s]/g, '');
+      if (!/^\d{7}$/.test(normalized)) {
+        res.status(400).json({ error: '郵便番号は7桁の数字で入力してください' });
+        return;
+      }
       updates.postalCode = normalized;
       const coords = postalCodeToCoordinates(normalized);
       if (coords) {
@@ -56,13 +71,46 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
         updates.longitude = coords.lng;
       }
     }
-    if (address) updates.address = address;
-    if (phone) updates.phone = phone;
-    if (fax) updates.fax = fax;
-    if (prefecture) updates.prefecture = prefecture;
 
-    if (newPassword) {
-      if (!currentPassword) {
+    if (address !== undefined) {
+      if (typeof address !== 'string' || address.trim().length === 0 || address.trim().length > 255) {
+        res.status(400).json({ error: '住所は1〜255文字で入力してください' });
+        return;
+      }
+      updates.address = address.trim();
+    }
+
+    if (phone !== undefined) {
+      if (typeof phone !== 'string' || phone.trim().length === 0 || phone.trim().length > 30) {
+        res.status(400).json({ error: '電話番号が不正です' });
+        return;
+      }
+      updates.phone = phone.trim();
+    }
+
+    if (fax !== undefined) {
+      if (typeof fax !== 'string' || fax.trim().length === 0 || fax.trim().length > 30) {
+        res.status(400).json({ error: 'FAX番号が不正です' });
+        return;
+      }
+      updates.fax = fax.trim();
+    }
+
+    if (prefecture !== undefined) {
+      if (typeof prefecture !== 'string' || prefecture.trim().length === 0 || prefecture.trim().length > 10) {
+        res.status(400).json({ error: '都道府県が不正です' });
+        return;
+      }
+      updates.prefecture = prefecture.trim();
+    }
+
+    if (newPassword !== undefined && newPassword !== '') {
+      if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 100) {
+        res.status(400).json({ error: '新しいパスワードは8〜100文字で入力してください' });
+        return;
+      }
+
+      if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
         res.status(400).json({ error: '現在のパスワードを入力してください' });
         return;
       }
@@ -87,11 +135,27 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       .set(updates)
       .where(eq(pharmacies.id, req.user!.id));
 
-    // Regenerate token if needed
+    const [updatedPharmacy] = await db.select({
+      id: pharmacies.id,
+      email: pharmacies.email,
+      isAdmin: pharmacies.isAdmin,
+      isActive: pharmacies.isActive,
+    })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, req.user!.id))
+      .limit(1);
+
+    if (!updatedPharmacy || !updatedPharmacy.isActive) {
+      res.clearCookie('token');
+      res.status(401).json({ error: 'アカウントが無効です。再度ログインしてください' });
+      return;
+    }
+
+    // Regenerate token from current DB state
     const token = generateToken({
-      id: req.user!.id,
-      email: req.user!.email,
-      isAdmin: req.user!.isAdmin,
+      id: updatedPharmacy.id,
+      email: updatedPharmacy.email,
+      isAdmin: updatedPharmacy.isAdmin ?? false,
     });
 
     res.cookie('token', token, {

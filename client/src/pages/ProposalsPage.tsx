@@ -48,20 +48,20 @@ export default function ProposalsPage() {
 
   return (
     <div>
-      <h4 className="mb-3">交換提案一覧</h4>
+      <h4 className="page-title mb-3">交換提案一覧</h4>
       {proposals.length === 0 ? (
         <Alert variant="secondary">交換提案はまだありません。</Alert>
       ) : (
         <div className="table-responsive">
-          <Table striped hover>
+          <Table striped hover className="mobile-table">
             <thead className="table-light">
               <tr>
                 <th>ID</th>
                 <th>相手薬局</th>
                 <th>ステータス</th>
-                <th>A側薬価</th>
-                <th>B側薬価</th>
-                <th>差額</th>
+                <th className="mobile-hide">A側薬価</th>
+                <th className="mobile-hide">B側薬価</th>
+                <th className="mobile-hide">差額</th>
                 <th>提案日</th>
                 <th></th>
               </tr>
@@ -77,9 +77,9 @@ export default function ProposalsPage() {
                     <td>{p.id}</td>
                     <td>{otherName}</td>
                     <td><Badge bg={statusInfo.variant}>{statusInfo.label}</Badge></td>
-                    <td>{p.totalValueA?.toLocaleString()}円</td>
-                    <td>{p.totalValueB?.toLocaleString()}円</td>
-                    <td>{p.valueDifference}円</td>
+                    <td className="mobile-hide">{p.totalValueA?.toLocaleString()}円</td>
+                    <td className="mobile-hide">{p.totalValueB?.toLocaleString()}円</td>
+                    <td className="mobile-hide">{p.valueDifference}円</td>
                     <td>{p.proposedAt ? new Date(p.proposedAt).toLocaleDateString('ja-JP') : ''}</td>
                     <td><Link to={`/proposals/${p.id}`} className="btn btn-sm btn-outline-primary">詳細</Link></td>
                   </tr>

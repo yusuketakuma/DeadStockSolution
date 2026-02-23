@@ -23,15 +23,22 @@ export default function UploadPage() {
   const navigate = useNavigate();
 
   const fieldLabels: Record<string, string> = {
-    drug_code: '薬品コード',
-    drug_name: '薬品名',
+    drug_code: 'YJコード / GS1コード',
+    drug_name: '薬剤名',
     quantity: '数量',
-    unit: '単位',
+    unit: '包装単位',
     yakka_unit_price: '薬価（単価）',
-    expiration_date: '使用期限',
+    expiration_date: '期限',
     lot_number: 'ロット番号',
     monthly_usage: '月間使用量',
   };
+
+  const requiredFields: Record<string, Set<string>> = {
+    dead_stock: new Set(['drug_code', 'drug_name', 'quantity', 'unit', 'expiration_date']),
+    used_medication: new Set(['drug_code', 'drug_name', 'quantity', 'unit', 'expiration_date', 'monthly_usage']),
+  };
+
+  const isRequired = (field: string) => requiredFields[uploadType]?.has(field) ?? false;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0] || null;
@@ -80,10 +87,9 @@ export default function UploadPage() {
       setFile(null);
       if (fileRef.current) fileRef.current.value = '';
 
-      // Navigate to the appropriate list
       setTimeout(() => {
         navigate(uploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
-      }, 1500);
+      }, 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : '登録に失敗しました');
     } finally {
@@ -97,9 +103,32 @@ export default function UploadPage() {
 
   return (
     <div>
-      <h4 className="mb-3">Excelアップロード</h4>
+      <h4 className="page-title mb-3">Excelアップロード</h4>
       {error && <Alert variant="danger">{error}</Alert>}
       {message && <Alert variant="success">{message}</Alert>}
+
+      <Card className="mb-3">
+        <Card.Header>アップロード手順</Card.Header>
+        <Card.Body>
+          <ol className="mb-2 upload-step-list">
+            <li>アップロードタイプを選択します（不動在庫 / 使用薬剤）。</li>
+            <li><code>.xlsx</code> 形式のExcelファイルを選択します（最大10MB）。</li>
+            <li>「プレビュー」を押してカラム自動判定を確認します。</li>
+            <li>必要に応じてマッピングを修正し、「この設定でデータを登録」を押します。</li>
+          </ol>
+          <div className="small mt-2">
+            <strong>必須項目（<span className="text-danger">赤字</span>）:</strong>
+            {uploadType === 'dead_stock' ? (
+              <div className="text-danger">YJコード / GS1コード、薬剤名、数量、包装単位、期限</div>
+            ) : (
+              <div className="text-danger">YJコード / GS1コード、薬剤名、数量、包装単位、期限、調剤回数、調剤数量</div>
+            )}
+          </div>
+          <div className="small text-muted mt-1">
+            見出し行が複数ある場合は、プレビュー結果を見て割当を調整してください。
+          </div>
+        </Card.Body>
+      </Card>
 
       <Card className="mb-3">
         <Card.Body>
@@ -108,7 +137,10 @@ export default function UploadPage() {
               <Form.Label>アップロードタイプ</Form.Label>
               <Form.Select
                 value={uploadType}
-                onChange={(e) => { setUploadType(e.target.value as typeof uploadType); setPreview(null); }}
+                onChange={(e) => {
+                  setUploadType(e.target.value as typeof uploadType);
+                  setPreview(null);
+                }}
               >
                 <option value="dead_stock">不動在庫</option>
                 <option value="used_medication">使用薬剤</option>
@@ -116,10 +148,10 @@ export default function UploadPage() {
             </Form.Group>
 
             <Form.Group className="mb-3">
-              <Form.Label>Excelファイル (.xls, .xlsx, .csv)</Form.Label>
+              <Form.Label>Excelファイル (.xlsx)</Form.Label>
               <Form.Control
                 type="file"
-                accept=".xls,.xlsx,.csv"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={handleFileChange}
                 ref={fileRef}
               />
@@ -144,19 +176,19 @@ export default function UploadPage() {
             <p className="text-muted small">各カラムに対応するフィールドを選択してください。薬品名は必須です。</p>
 
             <div className="table-responsive mb-3">
-              <table className="table table-sm table-bordered">
+              <table className="table table-sm table-bordered mobile-table">
                 <thead>
                   <tr>
-                    {preview.headers.map((h, i) => (
-                      <th key={i} className="small">{h || `列${i + 1}`}</th>
+                    {preview.headers.map((header, headerIdx) => (
+                      <th key={headerIdx} className="small">{header || `列${headerIdx + 1}`}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.rows.slice(0, 3).map((row, ri) => (
-                    <tr key={ri}>
-                      {row.map((cell, ci) => (
-                        <td key={ci} className="small">{cell}</td>
+                  {preview.rows.slice(0, 3).map((row, rowIdx) => (
+                    <tr key={rowIdx}>
+                      {row.map((cell, cellIdx) => (
+                        <td key={cellIdx} className="small">{cell}</td>
                       ))}
                     </tr>
                   ))}
@@ -165,35 +197,36 @@ export default function UploadPage() {
             </div>
 
             <h6>フィールド割り当て</h6>
-            {Object.entries(mapping).map(([field, colIdx]) => (
-              <Form.Group key={field} className="mb-2 row align-items-center">
-                <Form.Label className="col-sm-3 col-form-label small">
-                  {fieldLabels[field] || field}
-                  {field === 'drug_name' && <span className="text-danger"> *</span>}
-                </Form.Label>
-                <div className="col-sm-9">
+            <div className="d-flex flex-column gap-2">
+              {Object.entries(mapping).map(([field, colIdx]) => (
+                <div key={field}>
+                  <Form.Label className={`small mb-1${isRequired(field) ? ' text-danger fw-semibold' : ''}`}>
+                    {fieldLabels[field] || field}
+                    {isRequired(field) && <span> *</span>}
+                  </Form.Label>
                   <Form.Select
                     size="sm"
                     value={colIdx ?? ''}
                     onChange={(e) => handleMappingChange(field, e.target.value)}
                   >
                     <option value="">（未選択）</option>
-                    {preview.headers.map((h, i) => (
-                      <option key={i} value={String(i)}>{h || `列${i + 1}`}</option>
+                    {preview.headers.map((header, headerIdx) => (
+                      <option key={headerIdx} value={String(headerIdx)}>{header || `列${headerIdx + 1}`}</option>
                     ))}
                   </Form.Select>
                 </div>
-              </Form.Group>
-            ))}
+              ))}
+            </div>
 
-            <Button
-              variant="success"
-              onClick={handleConfirm}
-              disabled={loading || !mapping.drug_name}
-              className="mt-3"
-            >
-              {loading ? '登録中...' : 'この設定でデータを登録'}
-            </Button>
+            <div className="mt-3 mobile-stack">
+              <Button
+                variant="success"
+                onClick={handleConfirm}
+                disabled={loading || !mapping.drug_name}
+              >
+                {loading ? '登録中...' : 'この設定でデータを登録'}
+              </Button>
+            </div>
           </Card.Body>
         </Card>
       )}

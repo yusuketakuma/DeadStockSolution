@@ -87,8 +87,8 @@ export default function ProposalDetailPage() {
   return (
     <div>
       <DisclaimerBanner />
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4>交換提案 #{proposal.id}</h4>
+      <div className="d-flex justify-content-between align-items-center mb-3 mobile-card-header">
+        <h4 className="page-title mb-0">交換提案 #{proposal.id}</h4>
         <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank">
           印刷用ページ
         </Link>
@@ -119,22 +119,36 @@ export default function ProposalDetailPage() {
       </Row>
 
       <Card className="mb-3">
+        <Card.Header>FAX送信手順</Card.Header>
+        <Card.Body className="small">
+          <ol className="mb-0">
+            <li>印刷用ページを開いて交換様式を印刷します。</li>
+            <li>提案元が署名/押印後、相手先FAXへ送信します。</li>
+            <li>受信側は同意欄を記入してFAX返信し、双方同意を確認します。</li>
+            <li>同意後に本画面で「承認」、受渡し完了後に「交換完了」を実行します。</li>
+          </ol>
+        </Card.Body>
+      </Card>
+
+      <Card className="mb-3">
         <Card.Header>
           <strong>{pharmacyA.name}</strong> → <strong>{pharmacyB.name}</strong>
           <Badge bg="primary" className="ms-2">{proposal.totalValueA?.toLocaleString()}円</Badge>
         </Card.Header>
         <Card.Body>
-          <Table size="sm" striped>
-            <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
-            <tbody>
-              {itemsAtoB.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
-                  <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+          <div className="table-responsive">
+            <Table size="sm" striped className="mobile-table">
+              <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
+              <tbody>
+                {itemsAtoB.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
+                    <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         </Card.Body>
       </Card>
 
@@ -144,21 +158,23 @@ export default function ProposalDetailPage() {
           <Badge bg="primary" className="ms-2">{proposal.totalValueB?.toLocaleString()}円</Badge>
         </Card.Header>
         <Card.Body>
-          <Table size="sm" striped>
-            <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
-            <tbody>
-              {itemsBtoA.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
-                  <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+          <div className="table-responsive">
+            <Table size="sm" striped className="mobile-table">
+              <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
+              <tbody>
+                {itemsBtoA.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
+                    <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         </Card.Body>
       </Card>
 
-      <div className="d-flex gap-2">
+      <div className="d-flex gap-2 mobile-stack">
         {canAccept && <Button variant="success" onClick={() => handleAction('accept')}>承認</Button>}
         {canReject && <Button variant="danger" onClick={() => handleAction('reject')}>拒否</Button>}
         {canComplete && <Button variant="primary" onClick={() => handleAction('complete')}>交換完了</Button>}

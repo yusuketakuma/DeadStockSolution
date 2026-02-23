@@ -1,14 +1,27 @@
 import { Router, Response } from 'express';
-import { eq, or, and, desc, count } from 'drizzle-orm';
+import { eq, inArray, or, desc, count } from 'drizzle-orm';
 import { db } from '../config/database';
 import { exchangeProposals, exchangeProposalItems, exchangeHistory, deadStockItems, pharmacies } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
-import { AuthRequest, MatchCandidate } from '../types';
+import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
 import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
+import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 router.use(requireLogin);
+
+function isProposalInputError(message: string): boolean {
+  return [
+    '不正',
+    '見つかりません',
+    '在庫',
+    '薬局',
+    '提案',
+    '交換金額',
+    '数量',
+  ].some((token) => message.includes(token));
+}
 
 // Find matching candidates
 router.post('/find', async (req: AuthRequest, res: Response) => {
@@ -17,15 +30,18 @@ router.post('/find', async (req: AuthRequest, res: Response) => {
     res.json({ candidates });
   } catch (err) {
     console.error('Find matches error:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'マッチングに失敗しました' });
+    const message = process.env.NODE_ENV === 'production'
+      ? 'マッチングに失敗しました'
+      : (err instanceof Error ? err.message : 'マッチングに失敗しました');
+    res.status(500).json({ error: message });
   }
 });
 
 // Create proposal from selected candidate
 router.post('/proposals', async (req: AuthRequest, res: Response) => {
   try {
-    const candidate: MatchCandidate = req.body.candidate;
-    if (!candidate) {
+    const candidate = req.body?.candidate;
+    if (!candidate || typeof candidate !== 'object') {
       res.status(400).json({ error: '候補データが必要です' });
       return;
     }
@@ -34,6 +50,10 @@ router.post('/proposals', async (req: AuthRequest, res: Response) => {
     res.status(201).json({ proposalId, message: '交換提案を送信しました' });
   } catch (err) {
     console.error('Create proposal error:', err);
+    if (err instanceof Error && isProposalInputError(err.message)) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
     res.status(500).json({ error: '提案の作成に失敗しました' });
   }
 });
@@ -41,9 +61,10 @@ router.post('/proposals', async (req: AuthRequest, res: Response) => {
 // List my proposals
 router.get('/proposals', async (req: AuthRequest, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
+      defaultLimit: 20,
+      maxLimit: 100,
+    });
     const pharmacyId = req.user!.id;
 
     const rows = await db.select({
@@ -65,15 +86,18 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    // Enrich with pharmacy names
-    const enriched = await Promise.all(rows.map(async (row) => {
-      const [pharmA] = await db.select({ name: pharmacies.name }).from(pharmacies).where(eq(pharmacies.id, row.pharmacyAId)).limit(1);
-      const [pharmB] = await db.select({ name: pharmacies.name }).from(pharmacies).where(eq(pharmacies.id, row.pharmacyBId)).limit(1);
-      return {
-        ...row,
-        pharmacyAName: pharmA?.name ?? '',
-        pharmacyBName: pharmB?.name ?? '',
-      };
+    const pharmacyIds = [...new Set(rows.flatMap((row) => [row.pharmacyAId, row.pharmacyBId]))];
+    const pharmacyRows = pharmacyIds.length > 0
+      ? await db.select({ id: pharmacies.id, name: pharmacies.name })
+        .from(pharmacies)
+        .where(inArray(pharmacies.id, pharmacyIds))
+      : [];
+    const pharmacyMap = new Map(pharmacyRows.map((row) => [row.id, row.name]));
+
+    const enriched = rows.map((row) => ({
+      ...row,
+      pharmacyAName: pharmacyMap.get(row.pharmacyAId) ?? '',
+      pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
     }));
 
     const [total] = await db.select({ count: count() })
@@ -96,7 +120,11 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
 // Proposal detail
 router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
     const pharmacyId = req.user!.id;
 
     const [proposal] = await db.select()
@@ -131,15 +159,16 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       .where(eq(exchangeProposalItems.proposalId, id));
 
     // Get pharmacy info
-    const [pharmA] = await db.select({
-      name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,
-      address: pharmacies.address, prefecture: pharmacies.prefecture,
-    }).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1);
-
-    const [pharmB] = await db.select({
-      name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,
-      address: pharmacies.address, prefecture: pharmacies.prefecture,
-    }).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1);
+    const [[pharmA], [pharmB]] = await Promise.all([
+      db.select({
+        name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,
+        address: pharmacies.address, prefecture: pharmacies.prefecture,
+      }).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
+      db.select({
+        name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,
+        address: pharmacies.address, prefecture: pharmacies.prefecture,
+      }).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
+    ]);
 
     res.json({
       proposal,
@@ -157,7 +186,11 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
 router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
   try {
     // Reuse detail logic
-    const id = parseInt(req.params.id as string);
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
     const pharmacyId = req.user!.id;
 
     const [proposal] = await db.select()
@@ -184,8 +217,10 @@ router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
       .innerJoin(deadStockItems, eq(exchangeProposalItems.deadStockItemId, deadStockItems.id))
       .where(eq(exchangeProposalItems.proposalId, id));
 
-    const [pharmA] = await db.select().from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1);
-    const [pharmB] = await db.select().from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1);
+    const [[pharmA], [pharmB]] = await Promise.all([
+      db.select().from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
+      db.select().from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
+    ]);
 
     res.json({
       proposal,
@@ -202,7 +237,11 @@ router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
 // Accept proposal
 router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
     const newStatus = await acceptProposal(id, req.user!.id);
     res.json({ message: '提案を承認しました', status: newStatus });
   } catch (err) {
@@ -213,7 +252,11 @@ router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => 
 // Reject proposal
 router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
     await rejectProposal(id, req.user!.id);
     res.json({ message: '提案を拒否しました' });
   } catch (err) {
@@ -224,7 +267,11 @@ router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => 
 // Complete exchange
 router.post('/proposals/:id/complete', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
     await completeProposal(id, req.user!.id);
     res.json({ message: '交換を完了しました' });
   } catch (err) {
@@ -235,9 +282,10 @@ router.post('/proposals/:id/complete', async (req: AuthRequest, res: Response) =
 // Exchange history
 router.get('/history', async (req: AuthRequest, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
+      defaultLimit: 20,
+      maxLimit: 100,
+    });
     const pharmacyId = req.user!.id;
 
     const rows = await db.select()
@@ -250,10 +298,18 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    const enriched = await Promise.all(rows.map(async (row) => {
-      const [pharmA] = await db.select({ name: pharmacies.name }).from(pharmacies).where(eq(pharmacies.id, row.pharmacyAId)).limit(1);
-      const [pharmB] = await db.select({ name: pharmacies.name }).from(pharmacies).where(eq(pharmacies.id, row.pharmacyBId)).limit(1);
-      return { ...row, pharmacyAName: pharmA?.name ?? '', pharmacyBName: pharmB?.name ?? '' };
+    const pharmacyIds = [...new Set(rows.flatMap((row) => [row.pharmacyAId, row.pharmacyBId]))];
+    const pharmacyRows = pharmacyIds.length > 0
+      ? await db.select({ id: pharmacies.id, name: pharmacies.name })
+        .from(pharmacies)
+        .where(inArray(pharmacies.id, pharmacyIds))
+      : [];
+    const pharmacyMap = new Map(pharmacyRows.map((row) => [row.id, row.name]));
+
+    const enriched = rows.map((row) => ({
+      ...row,
+      pharmacyAName: pharmacyMap.get(row.pharmacyAId) ?? '',
+      pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
     }));
 
     const [total] = await db.select({ count: count() })

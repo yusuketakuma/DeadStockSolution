@@ -20,49 +20,81 @@ interface ExtractedUsedMedication {
   yakkaUnitPrice: number | null;
 }
 
-function getCellValue(row: unknown[], colIndex: string | null): unknown {
-  if (colIndex === null) return null;
-  const idx = parseInt(colIndex);
-  if (isNaN(idx) || idx < 0 || idx >= row.length) return null;
-  return row[idx];
+interface CompiledMapping {
+  drugCodeIdx: number;
+  drugNameIdx: number;
+  quantityIdx: number;
+  unitIdx: number;
+  yakkaUnitPriceIdx: number;
+  expirationDateIdx: number;
+  lotNumberIdx: number;
+  monthlyUsageIdx: number;
 }
 
-function getStringValue(row: unknown[], colIndex: string | null): string | null {
+function parseColumnIndex(index: string | null | undefined): number {
+  if (index === null || index === undefined) return -1;
+  const parsed = Number(index);
+  if (!Number.isInteger(parsed) || parsed < 0) return -1;
+  return parsed;
+}
+
+function compileMapping(mapping: ColumnMapping): CompiledMapping {
+  return {
+    drugCodeIdx: parseColumnIndex(mapping.drug_code),
+    drugNameIdx: parseColumnIndex(mapping.drug_name),
+    quantityIdx: parseColumnIndex(mapping.quantity),
+    unitIdx: parseColumnIndex(mapping.unit),
+    yakkaUnitPriceIdx: parseColumnIndex(mapping.yakka_unit_price),
+    expirationDateIdx: parseColumnIndex(mapping.expiration_date),
+    lotNumberIdx: parseColumnIndex(mapping.lot_number),
+    monthlyUsageIdx: parseColumnIndex(mapping.monthly_usage),
+  };
+}
+
+function getCellValue(row: unknown[], colIndex: number): unknown {
+  if (colIndex < 0 || colIndex >= row.length) return null;
+  return row[colIndex];
+}
+
+function getStringValue(row: unknown[], colIndex: number): string | null {
   const val = getCellValue(row, colIndex);
   if (val === null || val === undefined || String(val).trim() === '') return null;
   return String(val).trim();
 }
 
-function getNumberValue(row: unknown[], colIndex: string | null): number | null {
+function getNumberValue(row: unknown[], colIndex: number): number | null {
   const val = getCellValue(row, colIndex);
   return parseNumber(val);
 }
 
 export function extractDeadStockRows(
   dataRows: unknown[][],
-  mapping: ColumnMapping
+  mapping: ColumnMapping,
+  startIndex: number = 0
 ): ExtractedDeadStock[] {
+  const m = compileMapping(mapping);
   const results: ExtractedDeadStock[] = [];
 
-  for (const row of dataRows) {
-    const drugName = getStringValue(row, mapping.drug_name ?? null);
-    const quantity = getNumberValue(row, mapping.quantity ?? null);
+  for (let i = startIndex; i < dataRows.length; i++) {
+    const row = dataRows[i];
+    const drugName = getStringValue(row, m.drugNameIdx);
+    const quantity = getNumberValue(row, m.quantityIdx);
 
     // Skip rows without drug name or quantity
     if (!drugName || quantity === null || quantity <= 0) continue;
 
-    const yakkaUnitPrice = getNumberValue(row, mapping.yakka_unit_price ?? null);
+    const yakkaUnitPrice = getNumberValue(row, m.yakkaUnitPriceIdx);
     const yakkaTotal = yakkaUnitPrice !== null ? yakkaUnitPrice * quantity : null;
 
     results.push({
-      drugCode: getStringValue(row, mapping.drug_code ?? null),
+      drugCode: getStringValue(row, m.drugCodeIdx),
       drugName,
       quantity,
-      unit: getStringValue(row, mapping.unit ?? null),
+      unit: getStringValue(row, m.unitIdx),
       yakkaUnitPrice,
       yakkaTotal,
-      expirationDate: getStringValue(row, mapping.expiration_date ?? null),
-      lotNumber: getStringValue(row, mapping.lot_number ?? null),
+      expirationDate: getStringValue(row, m.expirationDateIdx),
+      lotNumber: getStringValue(row, m.lotNumberIdx),
     });
   }
 
@@ -71,20 +103,23 @@ export function extractDeadStockRows(
 
 export function extractUsedMedicationRows(
   dataRows: unknown[][],
-  mapping: ColumnMapping
+  mapping: ColumnMapping,
+  startIndex: number = 0
 ): ExtractedUsedMedication[] {
+  const m = compileMapping(mapping);
   const results: ExtractedUsedMedication[] = [];
 
-  for (const row of dataRows) {
-    const drugName = getStringValue(row, mapping.drug_name ?? null);
+  for (let i = startIndex; i < dataRows.length; i++) {
+    const row = dataRows[i];
+    const drugName = getStringValue(row, m.drugNameIdx);
     if (!drugName) continue;
 
     results.push({
-      drugCode: getStringValue(row, mapping.drug_code ?? null),
+      drugCode: getStringValue(row, m.drugCodeIdx),
       drugName,
-      monthlyUsage: getNumberValue(row, mapping.monthly_usage ?? null),
-      unit: getStringValue(row, mapping.unit ?? null),
-      yakkaUnitPrice: getNumberValue(row, mapping.yakka_unit_price ?? null),
+      monthlyUsage: getNumberValue(row, m.monthlyUsageIdx),
+      unit: getStringValue(row, m.unitIdx),
+      yakkaUnitPrice: getNumberValue(row, m.yakkaUnitPriceIdx),
     });
   }
 

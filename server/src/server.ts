@@ -1,8 +1,42 @@
 import 'dotenv/config';
 import app from './app';
 
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
+const SHUTDOWN_TIMEOUT_MS = 10000;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+});
+
+function gracefulShutdown(signal: NodeJS.Signals): void {
+  console.log(`Received ${signal}. Graceful shutdown started...`);
+
+  const forceCloseTimer = setTimeout(() => {
+    console.error('Graceful shutdown timed out. Forcing exit.');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  forceCloseTimer.unref();
+
+  server.close((err) => {
+    clearTimeout(forceCloseTimer);
+    if (err) {
+      console.error('Error during server close:', err);
+      process.exit(1);
+      return;
+    }
+    console.log('Server stopped.');
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  gracefulShutdown('SIGTERM');
 });

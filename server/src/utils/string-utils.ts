@@ -24,6 +24,18 @@ export function toHalfWidth(str: string): string {
 
 export function parseNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return null;
+    const maybeAsciiNumber = trimmed.replace(/,/g, '');
+    const quick = Number(maybeAsciiNumber);
+    if (Number.isFinite(quick)) return quick;
+  }
+
   const str = String(value).normalize('NFKC').replace(/,/g, '').trim();
   const num = parseFloat(str);
   return isNaN(num) ? null : num;

@@ -1,6 +1,6 @@
 {
-  "buildCommand": "cd client && npm install && npm run build",
-  "outputDirectory": "client/dist",
+  "buildCommand": "CURRENT_DIR=$(pwd); if [ -d client ]; then npm run build --workspace=client && rm -rf \"$CURRENT_DIR/dist\" && cp -r client/dist \"$CURRENT_DIR/dist\"; elif [ -f ../client/package.json ]; then cd ../client && npm install && npm run build && cd \"$CURRENT_DIR\" && rm -rf dist && cp -r ../client/dist dist; elif [ -f package.json ] && grep -q '\"name\"[[:space:]]*:[[:space:]]*\"client\"' package.json; then npm run build; else echo \"client directory not found\" && exit 1; fi",
+  "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/server/src/index.ts" }
   ],

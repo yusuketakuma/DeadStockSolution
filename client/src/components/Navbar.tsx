@@ -35,9 +35,9 @@ export default function AppNavbar() {
               <Nav.Link as={Link} to="/admin">管理者</Nav.Link>
             )}
           </Nav>
-          <Nav>
+          <Nav className="align-items-lg-center">
             <Nav.Link as={Link} to="/account">{user.name}</Nav.Link>
-            <Button variant="outline-light" size="sm" onClick={handleLogout}>
+            <Button variant="outline-light" size="sm" className="mt-2 mt-lg-0 ms-lg-2" onClick={handleLogout}>
               ログアウト
             </Button>
           </Nav>

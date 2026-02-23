@@ -25,11 +25,15 @@ export interface MatchCandidate {
   pharmacyId: number;
   pharmacyName: string;
   distance: number;
+  pharmacyPhone?: string | null;
+  pharmacyFax?: string | null;
   itemsFromA: MatchItem[];
   itemsFromB: MatchItem[];
   totalValueA: number;
   totalValueB: number;
   valueDifference: number;
+  score?: number;
+  matchRate?: number;
 }
 
 export interface MatchItem {
@@ -39,6 +43,8 @@ export interface MatchItem {
   unit: string | null;
   yakkaUnitPrice: number;
   yakkaValue: number;
+  expirationDate?: string | null;
+  matchScore?: number;
 }
 
 export const DEAD_STOCK_FIELDS = [

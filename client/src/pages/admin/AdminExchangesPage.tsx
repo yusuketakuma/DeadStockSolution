@@ -1,83 +1,67 @@
 import { useState, useEffect } from 'react';
-import { Table, Badge, Alert } from 'react-bootstrap';
+import { Table, Alert, Badge } from 'react-bootstrap';
 import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
 
-interface Exchange {
+interface ExchangeHistoryItem {
   id: number;
+  proposalId: number;
   pharmacyAId: number;
   pharmacyBId: number;
-  status: string;
-  totalValueA: number | null;
-  totalValueB: number | null;
-  valueDifference: number | null;
-  proposedAt: string | null;
+  pharmacyAName: string;
+  pharmacyBName: string;
+  totalValue: number | null;
   completedAt: string | null;
 }
 
-interface ExchangesResponse {
-  data: Exchange[];
+interface HistoryResponse {
+  data: ExchangeHistoryItem[];
   pagination: { page: number; totalPages: number; total: number };
 }
 
-const STATUS_LABELS: Record<string, { label: string; variant: string }> = {
-  proposed: { label: '提案中', variant: 'primary' },
-  accepted_a: { label: 'A承認', variant: 'info' },
-  accepted_b: { label: 'B承認', variant: 'info' },
-  confirmed: { label: '確定', variant: 'success' },
-  completed: { label: '完了', variant: 'secondary' },
-  rejected: { label: '拒否', variant: 'danger' },
-  cancelled: { label: 'キャンセル', variant: 'dark' },
-};
-
 export default function AdminExchangesPage() {
-  const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  const [history, setHistory] = useState<ExchangeHistoryItem[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    api.get<ExchangesResponse>(`/admin/exchanges?page=${page}`).then((data) => {
-      setExchanges(data.data);
+    api.get<HistoryResponse>(`/admin/history?page=${page}`).then((data) => {
+      setHistory(data.data);
       setTotalPages(data.pagination.totalPages);
     });
   }, [page]);
 
   return (
     <div>
-      <h4 className="mb-3">全交換一覧（管理者）</h4>
-      {exchanges.length === 0 ? (
-        <Alert variant="secondary">交換データがありません。</Alert>
+      <h4 className="page-title mb-3">交換履歴（管理者）</h4>
+      {history.length === 0 ? (
+        <Alert variant="secondary">交換履歴データがありません。</Alert>
       ) : (
         <div className="table-responsive">
-          <Table striped hover>
+          <Table striped hover className="mobile-table">
             <thead className="table-light">
               <tr>
-                <th>ID</th>
-                <th>薬局A (ID)</th>
-                <th>薬局B (ID)</th>
-                <th>ステータス</th>
-                <th>A側薬価</th>
-                <th>B側薬価</th>
-                <th>差額</th>
-                <th>提案日</th>
+                <th>履歴ID</th>
+                <th>提案ID</th>
+                <th>薬局A</th>
+                <th>薬局B</th>
+                <th>交換金額</th>
+                <th>完了日時</th>
+                <th>状態</th>
               </tr>
             </thead>
             <tbody>
-              {exchanges.map((e) => {
-                const statusInfo = STATUS_LABELS[e.status] || { label: e.status, variant: 'secondary' };
-                return (
-                  <tr key={e.id}>
-                    <td>{e.id}</td>
-                    <td>{e.pharmacyAId}</td>
-                    <td>{e.pharmacyBId}</td>
-                    <td><Badge bg={statusInfo.variant}>{statusInfo.label}</Badge></td>
-                    <td>{e.totalValueA?.toLocaleString()}</td>
-                    <td>{e.totalValueB?.toLocaleString()}</td>
-                    <td>{e.valueDifference}</td>
-                    <td>{e.proposedAt ? new Date(e.proposedAt).toLocaleDateString('ja-JP') : ''}</td>
-                  </tr>
-                );
-              })}
+              {history.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.id}</td>
+                  <td>{item.proposalId}</td>
+                  <td>{item.pharmacyAName} (ID:{item.pharmacyAId})</td>
+                  <td>{item.pharmacyBName} (ID:{item.pharmacyBId})</td>
+                  <td>{item.totalValue?.toLocaleString() ?? 0}円</td>
+                  <td>{item.completedAt ? new Date(item.completedAt).toLocaleString('ja-JP') : '-'}</td>
+                  <td><Badge bg="secondary">完了</Badge></td>
+                </tr>
+              ))}
             </tbody>
           </Table>
         </div>
