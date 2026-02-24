@@ -6,6 +6,8 @@ import { hashPassword, verifyPassword, generateToken } from '../services/auth-se
 import { requireLogin } from '../middleware/auth';
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
+import { clearCsrfCookie } from '../middleware/csrf';
+import { writeLog, getClientIp } from '../services/log-service';
 
 const router = Router();
 
@@ -133,6 +135,10 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
         .from(pharmacies)
         .where(eq(pharmacies.id, req.user!.id))
         .limit(1);
+      if (rows.length === 0) {
+        res.status(404).json({ error: 'アカウントが見つかりません' });
+        return;
+      }
 
       const valid = await verifyPassword(currentPassword, rows[0].passwordHash);
       if (!valid) {
@@ -179,6 +185,12 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       maxAge: 24 * 60 * 60 * 1000,
     });
 
+    void writeLog('account_update', {
+      pharmacyId: req.user!.id,
+      detail: 'アカウント情報を更新',
+      ipAddress: getClientIp(req),
+    });
+
     res.json({ message: 'アカウント情報を更新しました' });
   } catch (err) {
     console.error('Update account error:', err);
@@ -188,11 +200,41 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
 
 router.delete('/', requireLogin, async (req: AuthRequest, res: Response) => {
   try {
+    const currentPassword = typeof req.body?.currentPassword === 'string'
+      ? req.body.currentPassword
+      : '';
+    if (!currentPassword) {
+      res.status(400).json({ error: '退会には現在のパスワードが必要です' });
+      return;
+    }
+
+    const rows = await db.select({ passwordHash: pharmacies.passwordHash })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, req.user!.id))
+      .limit(1);
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'アカウントが見つかりません' });
+      return;
+    }
+
+    const valid = await verifyPassword(currentPassword, rows[0].passwordHash);
+    if (!valid) {
+      res.status(400).json({ error: '現在のパスワードが正しくありません' });
+      return;
+    }
+
     await db.update(pharmacies)
       .set({ isActive: false, updatedAt: new Date().toISOString() })
       .where(eq(pharmacies.id, req.user!.id));
 
     res.clearCookie('token');
+    clearCsrfCookie(res);
+    void writeLog('account_deactivate', {
+      pharmacyId: req.user!.id,
+      detail: 'アカウントを無効化',
+      ipAddress: getClientIp(req),
+    });
     res.json({ message: 'アカウントを無効化しました' });
   } catch (err) {
     console.error('Delete account error:', err);

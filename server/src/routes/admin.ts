@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { and, eq, inArray, desc, sql, like } from 'drizzle-orm';
+import { and, eq, inArray, desc, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -8,6 +8,7 @@ import {
   exchangeProposalItems,
   exchangeHistory,
   adminMessages,
+  userRequests,
   activityLogs,
 } from '../db/schema';
 import { requireLogin, requireAdmin } from '../middleware/auth';
@@ -18,6 +19,12 @@ import { rowCount } from '../utils/db-utils';
 import { writeLog, getClientIp, type LogAction } from '../services/log-service';
 import { logger } from '../services/logger';
 import { getObservabilitySnapshot } from '../services/observability-service';
+import {
+  getOpenClawImplementationBranch,
+  handoffToOpenClaw,
+  isOpenClawConnectorConfigured,
+  isOpenClawWebhookConfigured,
+} from '../services/openclaw-service';
 
 const VALID_LOG_ACTIONS: LogAction[] = [
   'login', 'login_failed', 'admin_login', 'register', 'logout',
@@ -31,6 +38,47 @@ const router = Router();
 
 router.use(requireLogin);
 router.use(requireAdmin);
+
+function sendPaginated<T>(
+  res: Response,
+  data: T[],
+  page: number,
+  limit: number,
+  total: number,
+  extra: Record<string, unknown> = {},
+): void {
+  res.json({
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+    ...extra,
+  });
+}
+
+function parseListPagination(req: AuthRequest, defaultLimit: number = 20): { page: number; limit: number; offset: number } {
+  return parsePagination(req.query.page, req.query.limit, {
+    defaultLimit,
+    maxLimit: 100,
+  });
+}
+
+function parseIdOrBadRequest(res: Response, rawId: string | string[] | undefined): number | null {
+  const id = parsePositiveInt(typeof rawId === 'string' ? rawId : undefined);
+  if (!id) {
+    res.status(400).json({ error: '不正なIDです' });
+    return null;
+  }
+  return id;
+}
+
+function handleAdminError(err: unknown, logContext: string, responseMessage: string, res: Response): void {
+  logger.error(logContext, { error: (err as Error).message });
+  res.status(500).json({ error: responseMessage });
+}
 
 router.get('/stats', async (_req: AuthRequest, res: Response) => {
   try {
@@ -70,8 +118,7 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
       totalExchangeValue: Number(exchangeAmount.total ?? 0),
     });
   } catch (err) {
-    logger.error('Admin stats error', { error: (err as Error).message });
-    res.status(500).json({ error: '統計情報の取得に失敗しました' });
+    handleAdminError(err, 'Admin stats error', '統計情報の取得に失敗しました', res);
   }
 });
 
@@ -82,8 +129,7 @@ router.get('/observability', async (req: AuthRequest, res: Response) => {
     const snapshot = getObservabilitySnapshot(minutes);
     res.json(snapshot);
   } catch (err) {
-    logger.error('Admin observability error', { error: (err as Error).message });
-    res.status(500).json({ error: '監視情報の取得に失敗しました' });
+    handleAdminError(err, 'Admin observability error', '監視情報の取得に失敗しました', res);
   }
 });
 
@@ -101,17 +147,13 @@ router.get('/pharmacies/options', async (_req: AuthRequest, res: Response) => {
       data: rows,
     });
   } catch (err) {
-    logger.error('Admin pharmacy options error', { error: (err as Error).message });
-    res.status(500).json({ error: '薬局候補の取得に失敗しました' });
+    handleAdminError(err, 'Admin pharmacy options error', '薬局候補の取得に失敗しました', res);
   }
 });
 
 router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
   try {
-    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
-      defaultLimit: 20,
-      maxLimit: 100,
-    });
+    const { page, limit, offset } = parseListPagination(req);
 
     const rows = await db.select({
       id: pharmacies.id,
@@ -131,28 +173,16 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
 
     const [total] = await db.select({ count: rowCount }).from(pharmacies);
 
-    res.json({
-      data: rows,
-      pagination: {
-        page,
-        limit,
-        total: total.count,
-        totalPages: Math.ceil(total.count / limit),
-      },
-    });
+    sendPaginated(res, rows, page, limit, total.count);
   } catch (err) {
-    logger.error('Admin pharmacies error', { error: (err as Error).message });
-    res.status(500).json({ error: '薬局一覧の取得に失敗しました' });
+    handleAdminError(err, 'Admin pharmacies error', '薬局一覧の取得に失敗しました', res);
   }
 });
 
 router.get('/pharmacies/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parsePositiveInt(req.params.id);
-    if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const id = parseIdOrBadRequest(res, req.params.id);
+    if (!id) return;
     const rows = await db.select()
       .from(pharmacies)
       .where(eq(pharmacies.id, id))
@@ -166,18 +196,14 @@ router.get('/pharmacies/:id', async (req: AuthRequest, res: Response) => {
     const { passwordHash: _, ...pharmacy } = rows[0];
     res.json(pharmacy);
   } catch (err) {
-    logger.error('Admin pharmacy detail error', { error: (err as Error).message });
-    res.status(500).json({ error: '薬局情報の取得に失敗しました' });
+    handleAdminError(err, 'Admin pharmacy detail error', '薬局情報の取得に失敗しました', res);
   }
 });
 
 router.put('/pharmacies/:id/toggle-active', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parsePositiveInt(req.params.id);
-    if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const id = parseIdOrBadRequest(res, req.params.id);
+    if (!id) return;
     const rows = await db.select({ isActive: pharmacies.isActive })
       .from(pharmacies)
       .where(eq(pharmacies.id, id))
@@ -203,17 +229,13 @@ router.put('/pharmacies/:id/toggle-active', async (req: AuthRequest, res: Respon
 
     res.json({ message: `薬局を${rows[0].isActive ? '無効' : '有効'}にしました` });
   } catch (err) {
-    logger.error('Admin toggle active error', { error: (err as Error).message });
-    res.status(500).json({ error: '状態変更に失敗しました' });
+    handleAdminError(err, 'Admin toggle active error', '状態変更に失敗しました', res);
   }
 });
 
 router.get('/exchanges', async (req: AuthRequest, res: Response) => {
   try {
-    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
-      defaultLimit: 20,
-      maxLimit: 100,
-    });
+    const { page, limit, offset } = parseListPagination(req);
 
     const rows = await db.select()
       .from(exchangeProposals)
@@ -223,27 +245,15 @@ router.get('/exchanges', async (req: AuthRequest, res: Response) => {
 
     const [total] = await db.select({ count: rowCount }).from(exchangeProposals);
 
-    res.json({
-      data: rows,
-      pagination: {
-        page,
-        limit,
-        total: total.count,
-        totalPages: Math.ceil(total.count / limit),
-      },
-    });
+    sendPaginated(res, rows, page, limit, total.count);
   } catch (err) {
-    logger.error('Admin exchanges error', { error: (err as Error).message });
-    res.status(500).json({ error: '交換一覧の取得に失敗しました' });
+    handleAdminError(err, 'Admin exchanges error', '交換一覧の取得に失敗しました', res);
   }
 });
 
 router.get('/history', async (req: AuthRequest, res: Response) => {
   try {
-    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
-      defaultLimit: 20,
-      maxLimit: 100,
-    });
+    const { page, limit, offset } = parseListPagination(req);
 
     const rows = await db.select({
       id: exchangeHistory.id,
@@ -271,31 +281,20 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
     const pharmacyMap = new Map(pharmacyRows.map((row) => [row.id, row.name]));
     const [total] = await db.select({ count: rowCount }).from(exchangeHistory);
 
-    res.json({
-      data: rows.map((row) => ({
-        ...row,
-        pharmacyAName: pharmacyMap.get(row.pharmacyAId) ?? '',
-        pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
-      })),
-      pagination: {
-        page,
-        limit,
-        total: total.count,
-        totalPages: Math.ceil(total.count / limit),
-      },
-    });
+    const mappedRows = rows.map((row) => ({
+      ...row,
+      pharmacyAName: pharmacyMap.get(row.pharmacyAId) ?? '',
+      pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
+    }));
+    sendPaginated(res, mappedRows, page, limit, total.count);
   } catch (err) {
-    logger.error('Admin history error', { error: (err as Error).message });
-    res.status(500).json({ error: '交換履歴の取得に失敗しました' });
+    handleAdminError(err, 'Admin history error', '交換履歴の取得に失敗しました', res);
   }
 });
 
 router.get('/messages', async (req: AuthRequest, res: Response) => {
   try {
-    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
-      defaultLimit: 20,
-      maxLimit: 100,
-    });
+    const { page, limit, offset } = parseListPagination(req);
 
     const rows = await db.select({
       id: adminMessages.id,
@@ -314,21 +313,13 @@ router.get('/messages', async (req: AuthRequest, res: Response) => {
 
     const [total] = await db.select({ count: rowCount }).from(adminMessages);
 
-    res.json({
-      data: rows.map((row) => ({
-        ...row,
-        actionPath: sanitizeInternalPath(row.actionPath) ?? null,
-      })),
-      pagination: {
-        page,
-        limit,
-        total: total.count,
-        totalPages: Math.ceil(total.count / limit),
-      },
-    });
+    const mappedRows = rows.map((row) => ({
+      ...row,
+      actionPath: sanitizeInternalPath(row.actionPath) ?? null,
+    }));
+    sendPaginated(res, mappedRows, page, limit, total.count);
   } catch (err) {
-    logger.error('Admin messages list error', { error: (err as Error).message });
-    res.status(500).json({ error: '管理者メッセージ一覧の取得に失敗しました' });
+    handleAdminError(err, 'Admin messages list error', '管理者メッセージ一覧の取得に失敗しました', res);
   }
 });
 
@@ -399,17 +390,116 @@ router.post('/messages', async (req: AuthRequest, res: Response) => {
 
     res.status(201).json({ message: '加盟薬局へメッセージを送信しました' });
   } catch (err) {
-    logger.error('Admin message send error', { error: (err as Error).message });
-    res.status(500).json({ error: 'メッセージ送信に失敗しました' });
+    handleAdminError(err, 'Admin message send error', 'メッセージ送信に失敗しました', res);
+  }
+});
+
+router.get('/requests', async (req: AuthRequest, res: Response) => {
+  try {
+    const { page, limit, offset } = parseListPagination(req);
+
+    const rows = await db.select({
+      id: userRequests.id,
+      pharmacyId: userRequests.pharmacyId,
+      pharmacyName: pharmacies.name,
+      requestText: userRequests.requestText,
+      openclawStatus: userRequests.openclawStatus,
+      openclawThreadId: userRequests.openclawThreadId,
+      openclawSummary: userRequests.openclawSummary,
+      createdAt: userRequests.createdAt,
+      updatedAt: userRequests.updatedAt,
+    })
+      .from(userRequests)
+      .innerJoin(pharmacies, eq(userRequests.pharmacyId, pharmacies.id))
+      .orderBy(desc(userRequests.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const [total] = await db.select({ count: rowCount }).from(userRequests);
+    sendPaginated(res, rows, page, limit, total.count, {
+      connector: {
+        configured: isOpenClawConnectorConfigured(),
+        webhookConfigured: isOpenClawWebhookConfigured(),
+        implementationBranch: getOpenClawImplementationBranch(),
+      },
+    });
+  } catch (err) {
+    handleAdminError(err, 'Admin user requests list error', '要望一覧の取得に失敗しました', res);
+  }
+});
+
+router.post('/requests/:id/handoff', async (req: AuthRequest, res: Response) => {
+  try {
+    const requestId = parseIdOrBadRequest(res, req.params.id);
+    if (!requestId) return;
+
+    const [requestRow] = await db.select({
+      id: userRequests.id,
+      pharmacyId: userRequests.pharmacyId,
+      requestText: userRequests.requestText,
+      openclawStatus: userRequests.openclawStatus,
+    })
+      .from(userRequests)
+      .where(eq(userRequests.id, requestId))
+      .limit(1);
+
+    if (!requestRow) {
+      res.status(404).json({ error: '要望が見つかりません' });
+      return;
+    }
+
+    if (requestRow.openclawStatus === 'completed') {
+      res.status(400).json({ error: '完了済み要望は再連携できません' });
+      return;
+    }
+
+    const handoff = await handoffToOpenClaw({
+      requestId: requestRow.id,
+      pharmacyId: requestRow.pharmacyId,
+      requestText: requestRow.requestText,
+    });
+
+    if (handoff.accepted) {
+      await db.update(userRequests)
+        .set({
+          openclawStatus: handoff.status,
+          openclawThreadId: handoff.threadId,
+          openclawSummary: handoff.summary,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(userRequests.id, requestRow.id));
+
+      res.json({
+        message: 'OpenClawへ再連携しました',
+        handoff: {
+          accepted: handoff.accepted,
+          connectorConfigured: handoff.connectorConfigured,
+          implementationBranch: handoff.implementationBranch,
+          status: handoff.status,
+          note: handoff.note,
+        },
+      });
+      return;
+    }
+
+    res.status(202).json({
+      message: 'OpenClaw連携は保留中です',
+      handoff: {
+        accepted: handoff.accepted,
+        connectorConfigured: handoff.connectorConfigured,
+        implementationBranch: handoff.implementationBranch,
+        status: handoff.status,
+        note: handoff.note,
+      },
+    });
+  } catch (err) {
+    handleAdminError(err, 'Admin user request handoff error', '再連携に失敗しました', res);
   }
 });
 
 router.get('/logs', async (req: AuthRequest, res: Response) => {
   try {
-    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
-      defaultLimit: 50,
-      maxLimit: 100,
-    });
+    const { page, limit, offset } = parseListPagination(req, 50);
 
     const rawAction = typeof req.query.action === 'string' ? req.query.action.trim() : '';
     const actionFilter = VALID_LOG_ACTIONS.includes(rawAction as LogAction) ? rawAction : undefined;
@@ -448,21 +538,13 @@ router.get('/logs', async (req: AuthRequest, res: Response) => {
       .from(activityLogs)
       .where(whereClause);
 
-    res.json({
-      data: rows.map((row) => ({
-        ...row,
-        pharmacyName: row.pharmacyId ? pharmacyMap.get(row.pharmacyId) ?? null : null,
-      })),
-      pagination: {
-        page,
-        limit,
-        total: total.count,
-        totalPages: Math.ceil(total.count / limit),
-      },
-    });
+    const mappedRows = rows.map((row) => ({
+      ...row,
+      pharmacyName: row.pharmacyId ? pharmacyMap.get(row.pharmacyId) ?? null : null,
+    }));
+    sendPaginated(res, mappedRows, page, limit, total.count);
   } catch (err) {
-    logger.error('Admin logs error', { error: (err as Error).message });
-    res.status(500).json({ error: 'ログの取得に失敗しました' });
+    handleAdminError(err, 'Admin logs error', 'ログの取得に失敗しました', res);
   }
 });
 

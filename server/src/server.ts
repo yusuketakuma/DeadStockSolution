@@ -4,9 +4,17 @@ import { startDrugMasterScheduler, stopDrugMasterScheduler } from './services/dr
 import { startDrugPackageScheduler, stopDrugPackageScheduler } from './services/drug-package-scheduler';
 import { seedTestAccounts } from './services/test-account-service';
 
-const PORT = Number(process.env.PORT) || 3001;
+function resolvePort(): number {
+  const parsed = Number(process.env.PORT);
+  if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) {
+    return parsed;
+  }
+  return 3001;
+}
+
+const PORT = resolvePort();
 const SHUTDOWN_TIMEOUT_MS = 10000;
-const shouldSeedTestAccounts = process.env.ENABLE_TEST_PHARMACY_ACCOUNTS !== 'false';
+const shouldSeedTestAccounts = process.env.ENABLE_TEST_PHARMACY_ACCOUNTS === 'true';
 
 const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

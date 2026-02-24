@@ -5,6 +5,10 @@ import {
 } from 'react-bootstrap';
 import { api, apiUpload } from '../../api/client';
 import Pagination from '../../components/Pagination';
+import DrugMasterSyncCard from './components/DrugMasterSyncCard';
+import PackageUploadCard from './components/PackageUploadCard';
+import AutoSyncStatusCard from './components/AutoSyncStatusCard';
+import SyncLogsTable from './components/SyncLogsTable';
 
 // ── 型定義 ──────────────────────────────────────
 
@@ -411,208 +415,41 @@ export default function AdminDrugMasterPage() {
       {/* 同期セクション */}
       <Row className="g-3 mb-3">
         <Col lg={6}>
-          <Card>
-            <Card.Header>薬価基準収載品目リストから同期</Card.Header>
-            <Card.Body>
-              <Form.Group className="mb-2">
-                <Form.Label className="small">改定日</Form.Label>
-                <Form.Control
-                  type="date"
-                  value={revisionDate}
-                  onChange={(e) => setRevisionDate(e.target.value)}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
-                <Form.Label className="small">ファイル（xlsx / csv）</Form.Label>
-                <Form.Control type="file" ref={syncFileRef} accept=".xlsx,.csv" />
-              </Form.Group>
-              {syncResult && <Alert variant="success" className="py-1 small">{syncResult}</Alert>}
-              {syncError && <Alert variant="danger" className="py-1 small">{syncError}</Alert>}
-              <Button size="sm" onClick={handleSync} disabled={syncing}>
-                {syncing ? <><Spinner size="sm" className="me-1" />同期中...</> : '同期実行'}
-              </Button>
-              <Form.Text className="d-block mt-1 text-muted">
-                厚生労働省の薬価基準収載品目リスト（Excel/CSV）をアップロードしてください。
-              </Form.Text>
-            </Card.Body>
-          </Card>
+          <DrugMasterSyncCard
+            revisionDate={revisionDate}
+            onRevisionDateChange={setRevisionDate}
+            syncFileRef={syncFileRef}
+            syncing={syncing}
+            syncResult={syncResult}
+            syncError={syncError}
+            onSync={handleSync}
+          />
         </Col>
         <Col lg={6}>
-          <Card>
-            <Card.Header>包装単位データ登録（GS1/JAN/HOTコード）</Card.Header>
-            <Card.Body>
-              <Form.Group className="mb-2">
-                <Form.Label className="small">ファイル（xlsx / csv / xml / zip）</Form.Label>
-                <Form.Control type="file" ref={pkgFileRef} accept=".xlsx,.csv,.xml,.zip" />
-              </Form.Group>
-              <Button size="sm" onClick={handlePackageUpload} disabled={pkgUploading}>
-                {pkgUploading ? <><Spinner size="sm" className="me-1" />登録中...</> : '登録実行'}
-              </Button>
-              <Form.Text className="d-block mt-1 text-muted">
-                GS1コード・JANコード・HOTコードを含む包装単位データを登録します（PMDA XML / ZIPにも対応）。
-              </Form.Text>
-              <hr className="my-3" />
-              <div className="small fw-semibold mb-2">外部データ自動取得</div>
-              {packageAutoSyncStatus ? (
-                <>
-                  <div className="small mb-1">
-                    状態:
-                    {' '}
-                    <Badge bg={packageAutoSyncStatus.enabled ? 'success' : 'secondary'}>
-                      {packageAutoSyncStatus.enabled ? '有効' : '無効'}
-                    </Badge>
-                    {packageAutoSyncStatus.enabled && (
-                      <span className="ms-2 text-muted">{packageAutoSyncStatus.checkIntervalHours}時間ごと</span>
-                    )}
-                  </div>
-                  <div className="small mb-2">
-                    取得元:
-                    {' '}
-                    {packageAutoSyncStatus.hasSourceUrl ? (
-                      <span className="font-monospace">{packageAutoSyncStatus.sourceHost}</span>
-                    ) : (
-                      <span className="text-muted">未設定</span>
-                    )}
-                  </div>
-                  <Form.Group className="mb-2">
-                    <Form.Control
-                      size="sm"
-                      placeholder="https://... (手動実行時のURL)"
-                      value={packageManualSourceUrl}
-                      onChange={(e) => setPackageManualSourceUrl(e.target.value)}
-                    />
-                  </Form.Group>
-                  <Button
-                    size="sm"
-                    variant="outline-primary"
-                    onClick={handlePackageAutoSyncTrigger}
-                    disabled={packageAutoSyncTriggering || (!packageAutoSyncStatus.hasSourceUrl && !packageManualSourceUrl.trim())}
-                  >
-                    {packageAutoSyncTriggering ? <><Spinner size="sm" className="me-1" />確認中...</> : '包装単位データを今すぐ取得'}
-                  </Button>
-                  {!packageAutoSyncStatus.hasSourceUrl && (
-                    <Form.Text className="d-block mt-1 text-muted">
-                      環境変数 DRUG_PACKAGE_SOURCE_URL を設定してください。
-                    </Form.Text>
-                  )}
-                </>
-              ) : (
-                <Spinner size="sm" />
-              )}
-            </Card.Body>
-          </Card>
+          <PackageUploadCard
+            pkgFileRef={pkgFileRef}
+            pkgUploading={pkgUploading}
+            packageAutoSyncStatus={packageAutoSyncStatus}
+            packageAutoSyncTriggering={packageAutoSyncTriggering}
+            packageManualSourceUrl={packageManualSourceUrl}
+            onPackageManualSourceUrlChange={setPackageManualSourceUrl}
+            onPackageUpload={handlePackageUpload}
+            onPackageAutoSyncTrigger={handlePackageAutoSyncTrigger}
+          />
         </Col>
       </Row>
 
       {/* 自動取得（URLからの取込） */}
-      <Card className="mb-3">
-        <Card.Header>厚生労働省サイトからの自動取得</Card.Header>
-        <Card.Body>
-          {autoSyncStatus ? (
-            <>
-              <Row className="mb-2">
-                <Col sm={3} className="text-muted small">自動検知</Col>
-                <Col sm={9}>
-                  <Badge bg={autoSyncStatus.enabled ? 'success' : 'secondary'}>
-                    {autoSyncStatus.enabled ? '有効' : '無効'}
-                  </Badge>
-                  {autoSyncStatus.enabled && (
-                    <span className="ms-2 small text-muted">
-                      {autoSyncStatus.checkIntervalHours}時間ごとにチェック
-                    </span>
-                  )}
-                </Col>
-              </Row>
-              <Row className="mb-2">
-                <Col sm={3} className="text-muted small">取得元URL</Col>
-                <Col sm={9}>
-                  {autoSyncStatus.hasSourceUrl ? (
-                    <span className="small font-monospace">{autoSyncStatus.sourceHost}</span>
-                  ) : (
-                    <span className="small text-muted">未設定</span>
-                  )}
-                </Col>
-              </Row>
-              <Row className="mb-2">
-                <Col sm={3} className="text-muted small">手動URL指定</Col>
-                <Col sm={9}>
-                  <Form.Control
-                    size="sm"
-                    placeholder="https://..."
-                    value={manualSourceUrl}
-                    onChange={(e) => setManualSourceUrl(e.target.value)}
-                  />
-                  <Form.Text className="text-muted">
-                    DRUG_MASTER_SOURCE_URL未設定時でも、HTTPS URLを指定して手動実行できます。
-                  </Form.Text>
-                </Col>
-              </Row>
-              <hr className="my-2" />
-              <Button
-                size="sm"
-                variant="outline-primary"
-                onClick={handleAutoSyncTrigger}
-                disabled={autoSyncTriggering || (!autoSyncStatus.hasSourceUrl && !manualSourceUrl.trim())}
-              >
-                {autoSyncTriggering ? <><Spinner size="sm" className="me-1" />確認中...</> : '今すぐ更新を確認・取得'}
-              </Button>
-              {!autoSyncStatus.hasSourceUrl && (
-                <Form.Text className="d-block mt-1 text-muted">
-                  環境変数 DRUG_MASTER_SOURCE_URL を設定してください。
-                </Form.Text>
-              )}
-              {!autoSyncStatus.enabled && autoSyncStatus.hasSourceUrl && (
-                <Form.Text className="d-block mt-1 text-muted">
-                  環境変数 DRUG_MASTER_AUTO_SYNC=true で定期チェックを有効にできます。
-                </Form.Text>
-              )}
-            </>
-          ) : (
-            <Spinner size="sm" />
-          )}
-        </Card.Body>
-      </Card>
+      <AutoSyncStatusCard
+        autoSyncStatus={autoSyncStatus}
+        autoSyncTriggering={autoSyncTriggering}
+        manualSourceUrl={manualSourceUrl}
+        onManualSourceUrlChange={setManualSourceUrl}
+        onAutoSyncTrigger={handleAutoSyncTrigger}
+      />
 
       {/* 同期ログ */}
-      {syncLogs.length > 0 && (
-        <Card className="mb-3">
-          <Card.Header>同期ログ（最新5件）</Card.Header>
-          <Card.Body className="p-0">
-            <Table size="sm" responsive className="mb-0">
-              <thead>
-                <tr>
-                  <th>日時</th>
-                  <th>状態</th>
-                  <th>ソース</th>
-                  <th>処理</th>
-                  <th>追加</th>
-                  <th>更新</th>
-                  <th>削除</th>
-                  <th>エラー</th>
-                </tr>
-              </thead>
-              <tbody>
-                {syncLogs.map((log) => (
-                  <tr key={log.id}>
-                    <td className="small">{log.startedAt ? new Date(log.startedAt).toLocaleString('ja-JP') : '-'}</td>
-                    <td>
-                      <Badge bg={log.status === 'success' ? 'success' : log.status === 'running' ? 'primary' : 'danger'}>
-                        {log.status}
-                      </Badge>
-                    </td>
-                    <td className="small text-truncate" style={{ maxWidth: 150 }}>{log.sourceDescription || '-'}</td>
-                    <td>{log.itemsProcessed}</td>
-                    <td>{log.itemsAdded}</td>
-                    <td>{log.itemsUpdated}</td>
-                    <td>{log.itemsDeleted}</td>
-                    <td className="small text-danger text-truncate" style={{ maxWidth: 200 }}>{log.errorMessage || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </Card.Body>
-        </Card>
-      )}
+      <SyncLogsTable syncLogs={syncLogs} />
 
       {/* 検索・フィルター */}
       <Card className="mb-3">

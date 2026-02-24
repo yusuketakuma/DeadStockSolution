@@ -46,24 +46,38 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     }
     const whereExpr = conditions.length === 1 ? conditions[0] : and(...conditions);
 
-    const rows = await db.select({
-      id: pharmacies.id,
-      name: pharmacies.name,
-      prefecture: pharmacies.prefecture,
-      address: pharmacies.address,
-      phone: pharmacies.phone,
-      fax: pharmacies.fax,
-      latitude: pharmacies.latitude,
-      longitude: pharmacies.longitude,
-    })
-      .from(pharmacies)
-      .where(whereExpr)
-      .orderBy(desc(pharmacies.createdAt))
-      .limit(limit)
-      .offset(offset);
+    const [total] = await db.select({ count: rowCount }).from(pharmacies).where(whereExpr);
 
-    // Enrich with distance
-    const enriched = rows.map((row) => {
+    const baseRows = sortBy === 'distance'
+      ? await db.select({
+        id: pharmacies.id,
+        name: pharmacies.name,
+        prefecture: pharmacies.prefecture,
+        address: pharmacies.address,
+        phone: pharmacies.phone,
+        fax: pharmacies.fax,
+        latitude: pharmacies.latitude,
+        longitude: pharmacies.longitude,
+      })
+        .from(pharmacies)
+        .where(whereExpr)
+      : await db.select({
+        id: pharmacies.id,
+        name: pharmacies.name,
+        prefecture: pharmacies.prefecture,
+        address: pharmacies.address,
+        phone: pharmacies.phone,
+        fax: pharmacies.fax,
+        latitude: pharmacies.latitude,
+        longitude: pharmacies.longitude,
+      })
+        .from(pharmacies)
+        .where(whereExpr)
+        .orderBy(desc(pharmacies.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+    const withDistance = baseRows.map((row) => {
       let distance: number | null = null;
       if (
         currentPharmacy?.latitude !== null &&
@@ -78,8 +92,14 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       return { ...row, distance };
     });
 
-    // Fetch business hours for all pharmacies in the result
-    const pharmacyIds = enriched.map((r) => r.id);
+    const pagedRows = sortBy === 'distance'
+      ? withDistance
+        .sort((a, b) => ((a.distance ?? 9999) - (b.distance ?? 9999)) || a.name.localeCompare(b.name, 'ja'))
+        .slice(offset, offset + limit)
+      : withDistance;
+
+    // Fetch business hours for all pharmacies in the page result
+    const pharmacyIds = pagedRows.map((r) => r.id);
     const [allHours, allSpecialHours] = pharmacyIds.length > 0
       ? await Promise.all([
         db.select({
@@ -124,7 +144,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     }
 
     const now = new Date();
-    const enrichedWithHours = enriched.map((row) => {
+    const enrichedWithHours = pagedRows.map((row) => {
       const hours = hoursByPharmacy.get(row.id) ?? [];
       const specialHours = specialHoursByPharmacy.get(row.id) ?? [];
       const status = getBusinessHoursStatus(hours, specialHours, now);
@@ -135,17 +155,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       };
     });
 
-    let result = enrichedWithHours;
-
-    // Sort by distance if requested
-    if (sortBy === 'distance') {
-      result.sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999));
-    }
-
-    const [total] = await db.select({ count: rowCount }).from(pharmacies).where(whereExpr);
-
     res.json({
-      data: result,
+      data: enrichedWithHours,
       pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {
@@ -236,34 +247,19 @@ router.post('/:id/favorite', async (req: AuthRequest, res: Response) => {
       .limit(1);
     if (!target) { res.status(404).json({ error: '対象の薬局が見つかりません' }); return; }
 
-    // Check if a relationship already exists
-    const [existing] = await db.select()
-      .from(pharmacyRelationships)
-      .where(and(
-        eq(pharmacyRelationships.pharmacyId, req.user!.id),
-        eq(pharmacyRelationships.targetPharmacyId, targetId),
-      ))
-      .limit(1);
-
-    if (existing) {
-      if (existing.relationshipType === 'favorite') {
-        res.json({ message: '既にお気に入りに追加済みです' });
-        return;
-      }
-      // Switch from blocked to favorite
-      await db.update(pharmacyRelationships)
-        .set({ relationshipType: 'favorite' })
-        .where(eq(pharmacyRelationships.id, existing.id));
-      res.json({ message: 'お気に入りに変更しました' });
-      return;
-    }
-
     await db.insert(pharmacyRelationships).values({
       pharmacyId: req.user!.id,
       targetPharmacyId: targetId,
       relationshipType: 'favorite',
+    }).onConflictDoUpdate({
+      target: [pharmacyRelationships.pharmacyId, pharmacyRelationships.targetPharmacyId],
+      set: {
+        relationshipType: 'favorite',
+        createdAt: new Date().toISOString(),
+      },
     });
-    res.json({ message: 'お気に入りに追加しました' });
+
+    res.json({ message: 'お気に入りに設定しました' });
   } catch (err) {
     console.error('Add favorite error:', err);
     res.status(500).json({ error: 'お気に入りの追加に失敗しました' });
@@ -301,32 +297,18 @@ router.post('/:id/block', async (req: AuthRequest, res: Response) => {
       .limit(1);
     if (!target) { res.status(404).json({ error: '対象の薬局が見つかりません' }); return; }
 
-    const [existing] = await db.select()
-      .from(pharmacyRelationships)
-      .where(and(
-        eq(pharmacyRelationships.pharmacyId, req.user!.id),
-        eq(pharmacyRelationships.targetPharmacyId, targetId),
-      ))
-      .limit(1);
-
-    if (existing) {
-      if (existing.relationshipType === 'blocked') {
-        res.json({ message: '既にブロック済みです' });
-        return;
-      }
-      // Switch from favorite to blocked
-      await db.update(pharmacyRelationships)
-        .set({ relationshipType: 'blocked' })
-        .where(eq(pharmacyRelationships.id, existing.id));
-      res.json({ message: 'ブロックしました' });
-      return;
-    }
-
     await db.insert(pharmacyRelationships).values({
       pharmacyId: req.user!.id,
       targetPharmacyId: targetId,
       relationshipType: 'blocked',
+    }).onConflictDoUpdate({
+      target: [pharmacyRelationships.pharmacyId, pharmacyRelationships.targetPharmacyId],
+      set: {
+        relationshipType: 'blocked',
+        createdAt: new Date().toISOString(),
+      },
     });
+
     res.json({ message: 'ブロックしました' });
   } catch (err) {
     console.error('Add block error:', err);

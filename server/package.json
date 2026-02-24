@@ -4,15 +4,18 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
     "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:legacy": "tsx src/db/migrate-legacy.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed-test-account.ts",
-    "test": "vitest run --exclude dist/**",
-    "test:watch": "vitest"
+    "db:seed-admin": "tsx src/db/seed-admin-account.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

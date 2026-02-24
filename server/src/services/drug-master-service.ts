@@ -665,6 +665,82 @@ export async function syncPackageData(
     : [];
   const yjToId = new Map(masterItems.map((m) => [m.yjCode, m.id]));
 
+  const relevantMasterIds = [...new Set(masterItems.map((m) => m.id))];
+  const existingPackages = relevantMasterIds.length > 0
+    ? await db.select({
+      id: drugMasterPackages.id,
+      drugMasterId: drugMasterPackages.drugMasterId,
+      gs1Code: drugMasterPackages.gs1Code,
+      janCode: drugMasterPackages.janCode,
+      hotCode: drugMasterPackages.hotCode,
+      packageDescription: drugMasterPackages.packageDescription,
+      packageQuantity: drugMasterPackages.packageQuantity,
+      packageUnit: drugMasterPackages.packageUnit,
+      normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
+      packageForm: drugMasterPackages.packageForm,
+      isLoosePackage: drugMasterPackages.isLoosePackage,
+    })
+      .from(drugMasterPackages)
+      .where(inArray(drugMasterPackages.drugMasterId, relevantMasterIds))
+    : [];
+
+  type ExistingPackage = (typeof existingPackages)[number];
+  interface PackageBucket {
+    byGs1: Map<string, ExistingPackage>;
+    byJan: Map<string, ExistingPackage>;
+    byHot: Map<string, ExistingPackage>;
+  }
+
+  const buckets = new Map<number, PackageBucket>();
+  function ensureBucket(drugMasterId: number): PackageBucket {
+    const existing = buckets.get(drugMasterId);
+    if (existing) return existing;
+    const created: PackageBucket = {
+      byGs1: new Map(),
+      byJan: new Map(),
+      byHot: new Map(),
+    };
+    buckets.set(drugMasterId, created);
+    return created;
+  }
+
+  function addToBucket(pkg: ExistingPackage): void {
+    const bucket = ensureBucket(pkg.drugMasterId);
+    if (pkg.gs1Code) bucket.byGs1.set(pkg.gs1Code, pkg);
+    if (pkg.janCode) bucket.byJan.set(pkg.janCode, pkg);
+    if (pkg.hotCode) bucket.byHot.set(pkg.hotCode, pkg);
+  }
+
+  function removeFromBucket(pkg: ExistingPackage): void {
+    const bucket = buckets.get(pkg.drugMasterId);
+    if (!bucket) return;
+    if (pkg.gs1Code) bucket.byGs1.delete(pkg.gs1Code);
+    if (pkg.janCode) bucket.byJan.delete(pkg.janCode);
+    if (pkg.hotCode) bucket.byHot.delete(pkg.hotCode);
+  }
+
+  function findExistingPackage(drugMasterId: number, row: ParsedPackageRow): ExistingPackage | null {
+    const bucket = buckets.get(drugMasterId);
+    if (!bucket) return null;
+    if (row.gs1Code) {
+      const hit = bucket.byGs1.get(row.gs1Code);
+      if (hit) return hit;
+    }
+    if (row.janCode) {
+      const hit = bucket.byJan.get(row.janCode);
+      if (hit) return hit;
+    }
+    if (row.hotCode) {
+      const hit = bucket.byHot.get(row.hotCode);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  for (const pkg of existingPackages) {
+    addToBucket(pkg);
+  }
+
   for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
     const batch = parsedRows.slice(i, i + BATCH_SIZE);
 
@@ -673,7 +749,7 @@ export async function syncPackageData(
       if (!drugMasterId) continue; // 対応するマスターがなければスキップ
 
       // GS1コード or JANコード or HOTコードで既存チェック
-      const existingPkg = await findExistingPackage(drugMasterId, row);
+      const existingPkg = findExistingPackage(drugMasterId, row);
 
       if (existingPkg) {
         const normalized = normalizePackageInfo({
@@ -681,20 +757,30 @@ export async function syncPackageData(
           packageQuantity: row.packageQuantity,
           packageUnit: row.packageUnit,
         });
+        const nextValues = {
+          gs1Code: row.gs1Code ?? existingPkg.gs1Code,
+          janCode: row.janCode ?? existingPkg.janCode,
+          hotCode: row.hotCode ?? existingPkg.hotCode,
+          packageDescription: row.packageDescription ?? existingPkg.packageDescription,
+          packageQuantity: row.packageQuantity ?? existingPkg.packageQuantity,
+          packageUnit: row.packageUnit ?? existingPkg.packageUnit,
+          normalizedPackageLabel: normalized.normalizedPackageLabel ?? existingPkg.normalizedPackageLabel,
+          packageForm: normalized.packageForm ?? existingPkg.packageForm,
+          isLoosePackage: normalized.isLoosePackage,
+          updatedAt: new Date().toISOString(),
+        };
+
         await db.update(drugMasterPackages)
-          .set({
-            gs1Code: row.gs1Code ?? existingPkg.gs1Code,
-            janCode: row.janCode ?? existingPkg.janCode,
-            hotCode: row.hotCode ?? existingPkg.hotCode,
-            packageDescription: row.packageDescription ?? existingPkg.packageDescription,
-            packageQuantity: row.packageQuantity ?? existingPkg.packageQuantity,
-            packageUnit: row.packageUnit ?? existingPkg.packageUnit,
-            normalizedPackageLabel: normalized.normalizedPackageLabel ?? existingPkg.normalizedPackageLabel,
-            packageForm: normalized.packageForm ?? existingPkg.packageForm,
-            isLoosePackage: normalized.isLoosePackage,
-            updatedAt: new Date().toISOString(),
-          })
+          .set(nextValues)
           .where(eq(drugMasterPackages.id, existingPkg.id));
+
+        removeFromBucket(existingPkg);
+        const { updatedAt: _updatedAt, ...cacheValues } = nextValues;
+        addToBucket({
+          ...existingPkg,
+          ...cacheValues,
+        });
+
         updated++;
       } else {
         const normalized = normalizePackageInfo({
@@ -702,7 +788,7 @@ export async function syncPackageData(
           packageQuantity: row.packageQuantity,
           packageUnit: row.packageUnit,
         });
-        await db.insert(drugMasterPackages).values({
+        const [created] = await db.insert(drugMasterPackages).values({
           drugMasterId,
           gs1Code: row.gs1Code,
           janCode: row.janCode,
@@ -713,31 +799,30 @@ export async function syncPackageData(
           normalizedPackageLabel: normalized.normalizedPackageLabel,
           packageForm: normalized.packageForm,
           isLoosePackage: normalized.isLoosePackage,
+        }).returning({
+          id: drugMasterPackages.id,
+          drugMasterId: drugMasterPackages.drugMasterId,
+          gs1Code: drugMasterPackages.gs1Code,
+          janCode: drugMasterPackages.janCode,
+          hotCode: drugMasterPackages.hotCode,
+          packageDescription: drugMasterPackages.packageDescription,
+          packageQuantity: drugMasterPackages.packageQuantity,
+          packageUnit: drugMasterPackages.packageUnit,
+          normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
+          packageForm: drugMasterPackages.packageForm,
+          isLoosePackage: drugMasterPackages.isLoosePackage,
         });
+
+        if (created) {
+          addToBucket(created);
+        }
+
         added++;
       }
     }
   }
 
   return { added, updated };
-}
-
-async function findExistingPackage(drugMasterId: number, row: ParsedPackageRow) {
-  const conditions = [eq(drugMasterPackages.drugMasterId, drugMasterId)];
-  const codeConditions = [];
-
-  if (row.gs1Code) codeConditions.push(eq(drugMasterPackages.gs1Code, row.gs1Code));
-  if (row.janCode) codeConditions.push(eq(drugMasterPackages.janCode, row.janCode));
-  if (row.hotCode) codeConditions.push(eq(drugMasterPackages.hotCode, row.hotCode));
-
-  if (codeConditions.length === 0) return null;
-
-  const result = await db.select()
-    .from(drugMasterPackages)
-    .where(and(...conditions, or(...codeConditions)))
-    .limit(1);
-
-  return result[0] || null;
 }
 
 // ── 検索・照会 ──────────────────────────────────────

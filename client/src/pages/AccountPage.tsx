@@ -175,6 +175,7 @@ export default function AccountPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawPassword, setWithdrawPassword] = useState('');
 
   // Business hours state
   const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
@@ -433,6 +434,11 @@ export default function AccountPage() {
   };
 
   const handleWithdraw = async () => {
+    if (!withdrawPassword) {
+      setError('退会には現在のパスワードが必要です');
+      return;
+    }
+
     const confirmed = confirm(
       '退会するとアカウントが無効化され、現在のセッションは終了します。実行しますか？'
     );
@@ -442,7 +448,8 @@ export default function AccountPage() {
     setError('');
     setMessage('');
     try {
-      await api.delete<{ message: string }>('/account');
+      await api.delete<{ message: string }>('/account', { currentPassword: withdrawPassword });
+      setWithdrawPassword('');
       await logout();
       navigate('/login');
     } catch (err) {
@@ -824,10 +831,20 @@ export default function AccountPage() {
           <p className="small mb-3">
             退会するとアカウントは無効化され、ログインできなくなります。再利用する場合は管理者へお問い合わせください。
           </p>
+          <Form.Group className="mb-3" style={{ maxWidth: '360px' }}>
+            <Form.Label>現在のパスワード</Form.Label>
+            <Form.Control
+              type="password"
+              value={withdrawPassword}
+              onChange={(e) => setWithdrawPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            <Form.Text className="text-muted">本人確認のため必須です</Form.Text>
+          </Form.Group>
           <Button
             variant="outline-danger"
             onClick={handleWithdraw}
-            disabled={withdrawing}
+            disabled={withdrawing || !withdrawPassword}
           >
             {withdrawing ? '処理中...' : '退会する'}
           </Button>

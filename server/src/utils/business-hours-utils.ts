@@ -30,6 +30,13 @@ interface EffectiveBusinessHoursEntry {
   is24Hours: boolean;
 }
 
+interface OpenCloseLike {
+  openTime: string | null;
+  closeTime: string | null;
+  isClosed: boolean | null;
+  is24Hours?: boolean | null;
+}
+
 /** Minutes before closing to trigger "closing soon" warning */
 const CLOSING_SOON_MINUTES = 60;
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -66,7 +73,7 @@ function addDaysJst(now: Date, deltaDays: number): Date {
   return jst;
 }
 
-function toEffectiveWeeklyEntry(entry: BusinessHourEntry | undefined): EffectiveBusinessHoursEntry | null {
+function toEffectiveEntry(entry: OpenCloseLike | undefined): EffectiveBusinessHoursEntry | null {
   if (!entry) return null;
   const isClosed = Boolean(entry.isClosed);
   const is24Hours = !isClosed && Boolean(entry.is24Hours);
@@ -85,6 +92,10 @@ function toEffectiveWeeklyEntry(entry: BusinessHourEntry | undefined): Effective
     openTime: entry.openTime,
     closeTime: entry.closeTime,
   };
+}
+
+function toEffectiveWeeklyEntry(entry: BusinessHourEntry | undefined): EffectiveBusinessHoursEntry | null {
+  return toEffectiveEntry(entry);
 }
 
 function isValidDateString(value: string): boolean {
@@ -136,23 +147,7 @@ function pickSpecialEntryForDate(
 }
 
 function toEffectiveSpecialEntry(entry: SpecialBusinessHourEntry): EffectiveBusinessHoursEntry | null {
-  const isClosed = Boolean(entry.isClosed);
-  const is24Hours = !isClosed && Boolean(entry.is24Hours);
-  if (isClosed) {
-    return { isClosed: true, is24Hours: false, openTime: null, closeTime: null };
-  }
-  if (is24Hours) {
-    return { isClosed: false, is24Hours: true, openTime: null, closeTime: null };
-  }
-  if (!entry.openTime || !entry.closeTime) {
-    return null;
-  }
-  return {
-    isClosed: false,
-    is24Hours: false,
-    openTime: entry.openTime,
-    closeTime: entry.closeTime,
-  };
+  return toEffectiveEntry(entry);
 }
 
 function resolveEntryForDate(

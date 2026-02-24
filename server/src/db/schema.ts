@@ -27,6 +27,12 @@ export const exchangeStatusEnum = pgEnum('exchange_status_enum', [
   'cancelled',
 ]);
 export const adminMessageTargetTypeEnum = pgEnum('admin_message_target_type_enum', ['all', 'pharmacy']);
+export const openclawStatusEnum = pgEnum('openclaw_status_enum', [
+  'pending_handoff',
+  'in_dialogue',
+  'implementing',
+  'completed',
+]);
 export const drugMasterSyncStatusEnum = pgEnum('drug_master_sync_status_enum', ['running', 'success', 'failed', 'partial']);
 export const drugMasterRevisionTypeEnum = pgEnum('drug_master_revision_type_enum', ['price_revision', 'new_listing', 'delisting', 'transition']);
 export const specialBusinessHoursTypeEnum = pgEnum('special_business_hours_type_enum', [
@@ -206,6 +212,21 @@ export const adminMessageReads = pgTable('admin_message_reads', {
 }, (table) => ({
   idxAdminMessageReadsUnique: uniqueIndex('idx_admin_message_reads_unique')
     .on(table.messageId, table.pharmacyId),
+}));
+
+export const userRequests = pgTable('user_requests', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  requestText: text('request_text').notNull(),
+  openclawStatus: openclawStatusEnum('openclaw_status').notNull().default('pending_handoff'),
+  openclawThreadId: text('openclaw_thread_id'),
+  openclawSummary: text('openclaw_summary'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxUserRequestsCreatedAt: index('idx_user_requests_created_at').on(table.createdAt),
+  idxUserRequestsPharmacyCreated: index('idx_user_requests_pharmacy_created').on(table.pharmacyId, table.createdAt),
+  idxUserRequestsStatusCreated: index('idx_user_requests_status_created').on(table.openclawStatus, table.createdAt),
 }));
 
 export const passwordResetTokens = pgTable('password_reset_tokens', {

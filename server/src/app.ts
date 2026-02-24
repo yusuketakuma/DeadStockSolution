@@ -11,6 +11,8 @@ import inventoryRoutes from './routes/inventory';
 import exchangeRoutes from './routes/exchange';
 import pharmaciesRoutes from './routes/pharmacies';
 import notificationsRoutes from './routes/notifications';
+import requestsRoutes from './routes/requests';
+import openclawRoutes from './routes/openclaw';
 import businessHoursRoutes from './routes/business-hours';
 import searchRoutes from './routes/search';
 import drugMasterRoutes from './routes/drug-master';
@@ -23,6 +25,15 @@ import { logger } from './services/logger';
 
 const app = express();
 app.disable('x-powered-by');
+
+const trustProxyRaw = process.env.TRUST_PROXY?.trim();
+if (trustProxyRaw === 'true') {
+  app.set('trust proxy', 1);
+} else if (trustProxyRaw === 'false' || trustProxyRaw === undefined || trustProxyRaw === '') {
+  app.set('trust proxy', false);
+} else if (/^\d+$/.test(trustProxyRaw)) {
+  app.set('trust proxy', Number(trustProxyRaw));
+}
 
 function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/\/$/, '');
@@ -120,6 +131,8 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/exchange', exchangeRoutes);
 app.use('/api/pharmacies', pharmaciesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/requests', requestsRoutes);
+app.use('/api/openclaw', openclawRoutes);
 app.use('/api/business-hours', businessHoursRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/admin/drug-master', drugMasterRoutes);

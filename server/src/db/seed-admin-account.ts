@@ -1,0 +1,68 @@
+import 'dotenv/config';
+import { eq } from 'drizzle-orm';
+import { db } from '../config/database';
+import { pharmacies } from './schema';
+import { hashPassword } from '../services/auth-service';
+
+const ADMIN_LOGIN_ID = 'admin@admin.com';
+const LEGACY_ADMIN_LOGIN_ID = 'admin';
+const ADMIN_PASSWORD = 'admin';
+
+async function findByEmail(email: string): Promise<{ id: number } | null> {
+  const [row] = await db.select({
+    id: pharmacies.id,
+  })
+    .from(pharmacies)
+    .where(eq(pharmacies.email, email))
+    .limit(1);
+  return row ?? null;
+}
+
+async function seedAdminAccount(): Promise<void> {
+  const passwordHash = await hashPassword(ADMIN_PASSWORD);
+
+  const existing = await findByEmail(ADMIN_LOGIN_ID) ?? await findByEmail(LEGACY_ADMIN_LOGIN_ID);
+
+  if (existing) {
+    await db.update(pharmacies)
+      .set({
+        email: ADMIN_LOGIN_ID,
+        passwordHash,
+        isAdmin: true,
+        isActive: true,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(pharmacies.id, existing.id));
+
+    console.log(`Updated admin account: ${ADMIN_LOGIN_ID}`);
+    return;
+  }
+
+  await db.insert(pharmacies).values({
+    email: ADMIN_LOGIN_ID,
+    passwordHash,
+    name: '管理者',
+    postalCode: '1000001',
+    address: '東京都千代田区千代田1-1',
+    phone: '03-0000-0000',
+    fax: '03-0000-0001',
+    licenseNumber: 'ADMIN-LOCAL-001',
+    prefecture: '東京都',
+    latitude: 35.6762,
+    longitude: 139.6503,
+    isAdmin: true,
+    isActive: true,
+  });
+
+  console.log(`Created admin account: ${ADMIN_LOGIN_ID}`);
+}
+
+seedAdminAccount()
+  .then(() => {
+    console.log('Done.');
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('Admin account seed failed:', err);
+    process.exit(1);
+  });

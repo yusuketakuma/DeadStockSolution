@@ -149,7 +149,7 @@ export default function PharmacyListPage() {
           </Form.Select>
         </Col>
         <Col md={3}>
-          <Form.Select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+          <Form.Select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1); }}>
             <option value="">登録順</option>
             <option value="distance">距離が近い順</option>
           </Form.Select>

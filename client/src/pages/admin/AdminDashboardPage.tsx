@@ -121,6 +121,16 @@ export default function AdminDashboardPage() {
     <div>
       <h4 className="page-title mb-3">管理者ダッシュボード</h4>
 
+      <Card className="mb-3">
+        <Card.Header>運用クイック導線</Card.Header>
+        <Card.Body className="d-flex gap-2 flex-wrap mobile-stack">
+          <Link to="/admin/openclaw" className="btn btn-sm btn-primary">OpenClaw連携を確認</Link>
+          <Link to="/admin/drug-master" className="btn btn-sm btn-outline-primary">医薬品マスター管理</Link>
+          <Link to="/admin/pharmacies" className="btn btn-sm btn-outline-secondary">加盟薬局管理</Link>
+          <Link to="/admin/logs" className="btn btn-sm btn-outline-secondary">操作ログを見る</Link>
+        </Card.Body>
+      </Card>
+
       <Row className="g-3 mb-3">
         <Col md={4} xl={3}>
           <Card className="text-center h-100">
@@ -364,6 +374,7 @@ export default function AdminDashboardPage() {
           </Card>
         </Col>
       </Row>
+
     </div>
   );
 }

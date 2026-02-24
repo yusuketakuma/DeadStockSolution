@@ -19,6 +19,8 @@ const MIN_EXCHANGE_VALUE = 10000;
 const VALUE_TOLERANCE = 10;
 const NAME_MATCH_THRESHOLD = 0.7;
 const MAX_CANDIDATES = 30;
+const MAX_DRUG_MATCH_CACHE_SIZE = 2000;
+const MAX_PARSED_EXPIRY_CACHE_SIZE = 5000;
 
 interface PharmacyCandidate {
   id: number;
@@ -65,6 +67,16 @@ interface BalancedValueResult {
   balancedB: MatchItem[];
   totalA: number;
   totalB: number;
+}
+
+function setLimitedCacheEntry<T>(cache: Map<string, T>, key: string, value: T, maxSize: number): void {
+  if (!cache.has(key) && cache.size >= maxSize) {
+    const oldestKey = cache.keys().next().value;
+    if (typeof oldestKey === 'string') {
+      cache.delete(oldestKey);
+    }
+  }
+  cache.set(key, value);
 }
 
 function roundTo2(value: number): number {
@@ -221,7 +233,7 @@ function findBestDrugMatch(
 
   if (index.exactNames.has(normalizedDrugName)) {
     const result = { score: 1 };
-    cache.set(normalizedDrugName, result);
+    setLimitedCacheEntry(cache, normalizedDrugName, result, MAX_DRUG_MATCH_CACHE_SIZE);
     return result;
   }
 
@@ -240,7 +252,7 @@ function findBestDrugMatch(
   }
 
   const result = { score: bestScore };
-  cache.set(normalizedDrugName, result);
+  setLimitedCacheEntry(cache, normalizedDrugName, result, MAX_DRUG_MATCH_CACHE_SIZE);
   return result;
 }
 
@@ -261,11 +273,11 @@ function parseExpiryDate(value: string | null | undefined): Date | null {
 
   const parsed = new Date(normalized);
   if (Number.isNaN(parsed.getTime())) {
-    parsedExpiryCache.set(raw, null);
+    setLimitedCacheEntry(parsedExpiryCache, raw, null, MAX_PARSED_EXPIRY_CACHE_SIZE);
     return null;
   }
 
-  parsedExpiryCache.set(raw, parsed);
+  setLimitedCacheEntry(parsedExpiryCache, raw, parsed, MAX_PARSED_EXPIRY_CACHE_SIZE);
   return parsed;
 }
 

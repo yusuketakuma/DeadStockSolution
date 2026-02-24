@@ -3,8 +3,8 @@ import rateLimit from 'express-rate-limit';
 import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
-import { hashPassword, verifyPassword, generateToken } from '../services/auth-service';
-import { validateRegistration, validateLogin, passwordSchema } from '../utils/validators';
+import { hashPassword, verifyPassword, generateToken, verifyToken } from '../services/auth-service';
+import { validateRegistration, validateLogin, emailSchema, passwordSchema } from '../utils/validators';
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
@@ -13,6 +13,7 @@ import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 
 const router = Router();
+const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
 const registerLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -184,19 +185,24 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
       res.status(400).json({ error: 'メールアドレスを入力してください' });
       return;
     }
+    const emailResult = emailSchema.safeParse(email);
+    if (!emailResult.success) {
+      res.status(400).json({ error: emailResult.error.issues[0].message });
+      return;
+    }
 
     const result = await createPasswordResetToken(email);
 
     // Always return success to prevent email enumeration
     writeLog('password_reset_request', {
-      detail: `パスワードリセット要求: ${email} (${result ? '成功' : 'アカウント不明'})`,
+      detail: 'パスワードリセット要求を受理',
       ipAddress: getClientIp(req),
     });
 
     res.json({
       message: 'パスワードリセットの手続きを受け付けました',
-      // In production, send email with token. For now, return token directly for dev/demo.
-      ...(process.env.NODE_ENV !== 'production' && result ? { token: result.token } : {}),
+      // Token exposure should be explicitly enabled only in secured dev/test environments.
+      ...(EXPOSE_PASSWORD_RESET_TOKEN && result ? { token: result.token } : {}),
     });
   } catch (err) {
     console.error('Password reset request error:', err);
@@ -236,8 +242,24 @@ router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, re
 });
 
 router.post('/logout', (req: AuthRequest, res: Response) => {
+  let pharmacyId: number | null = null;
+  const token = typeof req.cookies?.token === 'string' ? req.cookies.token : '';
+  if (token) {
+    try {
+      const payload = verifyToken(token);
+      pharmacyId = payload.id;
+    } catch {
+      // ignore invalid token
+    }
+  }
+
   res.clearCookie('token');
   clearCsrfCookie(res);
+  void writeLog('logout', {
+    pharmacyId,
+    detail: 'ログアウト',
+    ipAddress: getClientIp(req),
+  });
   res.json({ message: 'ログアウトしました' });
 });
 

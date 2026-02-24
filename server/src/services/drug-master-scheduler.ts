@@ -11,11 +11,21 @@ import {
 } from './drug-master-service';
 import { parseExcelBuffer } from './upload-service';
 import { logger } from './logger';
+import { validateExternalHttpsUrl } from '../utils/network-utils';
 
 // ── 設定 ──────────────────────────────────────────
 
+function parseIntervalHours(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 24 * 30) {
+    return fallback;
+  }
+  return parsed;
+}
+
 // チェック間隔: デフォルト24時間（環境変数で変更可能）
-const CHECK_INTERVAL_MS = Number(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS || 24) * 60 * 60 * 1000;
+const CHECK_INTERVAL_HOURS = parseIntervalHours(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS, 24);
+const CHECK_INTERVAL_MS = CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
 
 // 自動同期の有効/無効
 const AUTO_SYNC_ENABLED = process.env.DRUG_MASTER_AUTO_SYNC === 'true';
@@ -25,24 +35,6 @@ const FETCH_TIMEOUT_MS = 120_000; // 2分（大きなファイルのため）
 
 // ダウンロードサイズ上限
 const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024; // 100MB
-
-// ── URL バリデーション ─────────────────────────────────
-
-function validateSourceUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    // HTTPS のみ許可（SSRF 防止）
-    if (parsed.protocol !== 'https:') return false;
-    // ローカル/プライベートアドレスを拒否
-    const host = parsed.hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return false;
-    if (host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('169.254.')) return false;
-    if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 // ── 状態管理 ──────────────────────────────────────
 
@@ -193,9 +185,11 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
     return;
   }
 
-  if (!validateSourceUrl(sourceUrl)) {
-    logger.error('Drug master auto-sync: source URL is invalid (must be HTTPS, non-private)', {
+  const validated = await validateExternalHttpsUrl(sourceUrl);
+  if (!validated.ok) {
+    logger.error('Drug master auto-sync: source URL is invalid', {
       source: summarizeSourceUrl(sourceUrl),
+      reason: validated.reason,
     });
     return;
   }
@@ -303,9 +297,8 @@ export function startDrugMasterScheduler(): void {
     return;
   }
 
-  const intervalHours = CHECK_INTERVAL_MS / (60 * 60 * 1000);
   logger.info('Drug master auto-sync: starting scheduler', {
-    intervalHours,
+    intervalHours: CHECK_INTERVAL_HOURS,
     source: summarizeSourceUrl(sourceUrl),
   });
 
@@ -363,10 +356,11 @@ export async function triggerManualAutoSync(options?: { sourceUrl?: string | nul
     };
   }
 
-  if (!validateSourceUrl(sourceUrl)) {
+  const validated = await validateExternalHttpsUrl(sourceUrl);
+  if (!validated.ok) {
     return {
       triggered: false,
-      message: 'sourceUrl が不正です（HTTPS かつプライベートネットワーク以外を指定）',
+      message: validated.reason ?? 'sourceUrl が不正です',
     };
   }
 

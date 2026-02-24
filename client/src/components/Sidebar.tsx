@@ -7,16 +7,33 @@ interface Props {
   onClose: () => void;
 }
 
-const NAV_ITEMS = [
-  { to: '/', label: 'ダッシュボード', icon: '🏠' },
-  { to: '/upload', label: 'アップロード', icon: '📤' },
-  { to: '/inventory/dead-stock', label: '不動在庫', icon: '📦' },
-  { to: '/inventory/used-medication', label: '使用薬剤', icon: '💊' },
-  { to: '/inventory/browse', label: '在庫参照', icon: '🔍' },
-  { to: '/matching', label: 'マッチング', icon: '🔄' },
-  { to: '/proposals', label: 'マッチング一覧', icon: '📋' },
-  { to: '/exchange-history', label: '交換履歴', icon: '📜' },
-  { to: '/pharmacies', label: '薬局一覧', icon: '🏥' },
+const NAV_GROUPS = [
+  {
+    title: '主要操作',
+    items: [
+      { to: '/', label: 'ダッシュボード', icon: '🏠' },
+      { to: '/upload', label: 'アップロード', icon: '📤' },
+      { to: '/matching', label: 'マッチング', icon: '🔄' },
+      { to: '/proposals', label: 'マッチング一覧', icon: '📋' },
+      { to: '/exchange-history', label: '交換履歴', icon: '📜' },
+    ],
+  },
+  {
+    title: '在庫・参照',
+    items: [
+      { to: '/inventory/dead-stock', label: '不動在庫', icon: '📦' },
+      { to: '/inventory/used-medication', label: '使用薬剤', icon: '💊' },
+      { to: '/inventory/browse', label: '在庫参照', icon: '🔍' },
+      { to: '/pharmacies', label: '薬局一覧', icon: '🏥' },
+    ],
+  },
+];
+
+const ADMIN_ITEMS = [
+  { to: '/admin', label: '管理者ダッシュボード', icon: '⚙️' },
+  { to: '/admin/openclaw', label: 'OpenClaw連携', icon: '🤖' },
+  { to: '/admin/drug-master', label: '医薬品マスター', icon: '💊' },
+  { to: '/admin/logs', label: '操作ログ', icon: '📝' },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
@@ -37,50 +54,44 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
-    return location.pathname.startsWith(path);
+    if (path === '/admin') return location.pathname === '/admin';
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
   return (
     <div className="sidebar-content d-flex flex-column h-100">
       <Nav className="flex-column flex-grow-1 pt-2">
-        {NAV_ITEMS.map((item) => (
-          <Nav.Link
-            key={item.to}
-            href={item.to}
-            className={`sidebar-link${isActive(item.to) ? ' active' : ''}`}
-            onClick={handleNav(item.to)}
-          >
-            <span className="sidebar-icon">{item.icon}</span>
-            {item.label}
-          </Nav.Link>
+        {NAV_GROUPS.map((group) => (
+          <div key={group.title} className="sidebar-group">
+            <div className="sidebar-group-title">{group.title}</div>
+            {group.items.map((item) => (
+              <Nav.Link
+                key={item.to}
+                href={item.to}
+                className={`sidebar-link${isActive(item.to) ? ' active' : ''}`}
+                onClick={handleNav(item.to)}
+              >
+                <span className="sidebar-icon">{item.icon}</span>
+                {item.label}
+              </Nav.Link>
+            ))}
+          </div>
         ))}
         {user?.isAdmin && (
-          <>
-            <Nav.Link
-              href="/admin"
-              className={`sidebar-link${isActive('/admin') ? ' active' : ''}`}
-              onClick={handleNav('/admin')}
-            >
-              <span className="sidebar-icon">⚙️</span>
-              管理者
-            </Nav.Link>
-            <Nav.Link
-              href="/admin/drug-master"
-              className={`sidebar-link${location.pathname === '/admin/drug-master' ? ' active' : ''}`}
-              onClick={handleNav('/admin/drug-master')}
-            >
-              <span className="sidebar-icon">💊</span>
-              医薬品マスター
-            </Nav.Link>
-            <Nav.Link
-              href="/admin/logs"
-              className={`sidebar-link${location.pathname === '/admin/logs' ? ' active' : ''}`}
-              onClick={handleNav('/admin/logs')}
-            >
-              <span className="sidebar-icon">📝</span>
-              操作ログ
-            </Nav.Link>
-          </>
+          <div className="sidebar-group">
+            <div className="sidebar-group-title">管理者</div>
+            {ADMIN_ITEMS.map((item) => (
+              <Nav.Link
+                key={item.to}
+                href={item.to}
+                className={`sidebar-link${isActive(item.to) ? ' active' : ''}`}
+                onClick={handleNav(item.to)}
+              >
+                <span className="sidebar-icon">{item.icon}</span>
+                {item.label}
+              </Nav.Link>
+            ))}
+          </div>
         )}
       </Nav>
 

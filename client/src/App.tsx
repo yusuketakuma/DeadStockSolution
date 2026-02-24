@@ -1,27 +1,48 @@
+import { Suspense, lazy, type ReactElement } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import DashboardPage from './pages/DashboardPage';
-import AccountPage from './pages/AccountPage';
-import UploadPage from './pages/UploadPage';
-import DeadStockListPage from './pages/DeadStockListPage';
-import UsedMedicationListPage from './pages/UsedMedicationListPage';
-import InventoryBrowsePage from './pages/InventoryBrowsePage';
-import MatchingPage from './pages/MatchingPage';
-import ProposalsPage from './pages/ProposalsPage';
-import ProposalDetailPage from './pages/ProposalDetailPage';
-import ProposalPrintPage from './pages/ProposalPrintPage';
-import ExchangeHistoryPage from './pages/ExchangeHistoryPage';
-import PharmacyListPage from './pages/PharmacyListPage';
-import AdminDashboardPage from './pages/admin/AdminDashboardPage';
-import AdminPharmaciesPage from './pages/admin/AdminPharmaciesPage';
-import AdminExchangesPage from './pages/admin/AdminExchangesPage';
-import AdminLogsPage from './pages/admin/AdminLogsPage';
-import AdminDrugMasterPage from './pages/admin/AdminDrugMasterPage';
 import PasswordResetPage from './pages/PasswordResetPage';
+
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AccountPage = lazy(() => import('./pages/AccountPage'));
+const UploadPage = lazy(() => import('./pages/UploadPage'));
+const DeadStockListPage = lazy(() => import('./pages/DeadStockListPage'));
+const UsedMedicationListPage = lazy(() => import('./pages/UsedMedicationListPage'));
+const InventoryBrowsePage = lazy(() => import('./pages/InventoryBrowsePage'));
+const MatchingPage = lazy(() => import('./pages/MatchingPage'));
+const ProposalsPage = lazy(() => import('./pages/ProposalsPage'));
+const ProposalDetailPage = lazy(() => import('./pages/ProposalDetailPage'));
+const ProposalPrintPage = lazy(() => import('./pages/ProposalPrintPage'));
+const ExchangeHistoryPage = lazy(() => import('./pages/ExchangeHistoryPage'));
+const PharmacyListPage = lazy(() => import('./pages/PharmacyListPage'));
+const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
+const AdminPharmaciesPage = lazy(() => import('./pages/admin/AdminPharmaciesPage'));
+const AdminExchangesPage = lazy(() => import('./pages/admin/AdminExchangesPage'));
+const AdminLogsPage = lazy(() => import('./pages/admin/AdminLogsPage'));
+const AdminDrugMasterPage = lazy(() => import('./pages/admin/AdminDrugMasterPage'));
+const AdminOpenClawPage = lazy(() => import('./pages/admin/AdminOpenClawPage'));
+
+function RouteLoadingFallback() {
+  return (
+    <div className="d-flex justify-content-center align-items-center py-5">
+      <div className="spinner-border text-primary" role="status">
+        <span className="visually-hidden">読み込み中...</span>
+      </div>
+    </div>
+  );
+}
+
+function withRouteSuspense(element: ReactElement): ReactElement {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      {element}
+    </Suspense>
+  );
+}
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -43,57 +64,60 @@ function AppRoutes() {
       <Route path="/password-reset" element={user ? <Navigate to="/" /> : <PasswordResetPage />} />
 
       <Route path="/" element={
-        <ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/account" element={
-        <ProtectedRoute><Layout><AccountPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><AccountPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/upload" element={
-        <ProtectedRoute><Layout><UploadPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><UploadPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/inventory/dead-stock" element={
-        <ProtectedRoute><Layout><DeadStockListPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><DeadStockListPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/inventory/used-medication" element={
-        <ProtectedRoute><Layout><UsedMedicationListPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><UsedMedicationListPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/inventory/browse" element={
-        <ProtectedRoute><Layout><InventoryBrowsePage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><InventoryBrowsePage /></Layout></ProtectedRoute>)
       } />
       <Route path="/matching" element={
-        <ProtectedRoute><Layout><MatchingPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><MatchingPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/proposals" element={
-        <ProtectedRoute><Layout><ProposalsPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><ProposalsPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/proposals/:id" element={
-        <ProtectedRoute><Layout><ProposalDetailPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><ProposalDetailPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/proposals/:id/print" element={
-        <ProtectedRoute><ProposalPrintPage /></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><ProposalPrintPage /></ProtectedRoute>)
       } />
       <Route path="/exchange-history" element={
-        <ProtectedRoute><Layout><ExchangeHistoryPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><ExchangeHistoryPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/pharmacies" element={
-        <ProtectedRoute><Layout><PharmacyListPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute><Layout><PharmacyListPage /></Layout></ProtectedRoute>)
       } />
 
       {/* Admin */}
       <Route path="/admin" element={
-        <ProtectedRoute adminOnly><Layout><AdminDashboardPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute adminOnly><Layout><AdminDashboardPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/admin/pharmacies" element={
-        <ProtectedRoute adminOnly><Layout><AdminPharmaciesPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute adminOnly><Layout><AdminPharmaciesPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/admin/exchanges" element={
-        <ProtectedRoute adminOnly><Layout><AdminExchangesPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute adminOnly><Layout><AdminExchangesPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/admin/logs" element={
-        <ProtectedRoute adminOnly><Layout><AdminLogsPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute adminOnly><Layout><AdminLogsPage /></Layout></ProtectedRoute>)
       } />
       <Route path="/admin/drug-master" element={
-        <ProtectedRoute adminOnly><Layout><AdminDrugMasterPage /></Layout></ProtectedRoute>
+        withRouteSuspense(<ProtectedRoute adminOnly><Layout><AdminDrugMasterPage /></Layout></ProtectedRoute>)
+      } />
+      <Route path="/admin/openclaw" element={
+        withRouteSuspense(<ProtectedRoute adminOnly><Layout><AdminOpenClawPage /></Layout></ProtectedRoute>)
       } />
 
       <Route path="*" element={<Navigate to="/" />} />

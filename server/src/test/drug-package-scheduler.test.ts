@@ -21,6 +21,6 @@ describe('drug-package-scheduler triggerManualPackageAutoSync', () => {
     delete process.env.DRUG_PACKAGE_SOURCE_URL;
     const result = await triggerManualPackageAutoSync({ sourceUrl: 'http://localhost/packages.xml' });
     expect(result.triggered).toBe(false);
-    expect(result.message).toContain('sourceUrl');
+    expect(result.message).toContain('HTTPS');
   });
 });

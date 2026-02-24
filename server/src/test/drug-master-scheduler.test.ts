@@ -25,6 +25,6 @@ describe('drug-master-scheduler triggerManualAutoSync', () => {
 
     const result = await triggerManualAutoSync({ sourceUrl: 'http://localhost/file.csv' });
     expect(result.triggered).toBe(false);
-    expect(result.message).toContain('sourceUrl');
+    expect(result.message).toContain('HTTPS');
   });
 });

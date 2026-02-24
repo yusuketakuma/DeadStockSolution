@@ -8,12 +8,16 @@
   "scripts": {
     "dev:server": "npm run dev --workspace=server",
     "dev:client": "npm run dev --workspace=client",
+    "clean": "npm run clean --workspace=server && npm run clean --workspace=client",
     "build:client": "npm run build --workspace=client",
     "build:server": "npm run build --workspace=server",
     "test": "npm run test --workspace=server && npm run test --workspace=client",
     "test:server": "npm run test --workspace=server",
     "test:client": "npm run test --workspace=client",
     "test:e2e": "npm run test --workspace=client",
+    "typecheck": "npm run typecheck --workspace=server && npm run typecheck --workspace=client",
+    "typecheck:server": "npm run typecheck --workspace=server",
+    "typecheck:client": "npm run typecheck --workspace=client",
     "deploy:preview": "sh scripts/vercel-deploy-preview.sh",
     "deploy:prod": "sh scripts/vercel-deploy-prod.sh"
   }

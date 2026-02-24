@@ -28,8 +28,10 @@ npm run db:migrate:legacy --workspace=server
 ## 環境変数（認証・テスト薬局）
 
 - `CORS_ORIGINS`: 許可するオリジンをカンマ区切りで指定（本番必須）
-- `ENABLE_TEST_PHARMACY_ACCOUNTS`: `false` でテスト薬局シードを無効化
+- `ENABLE_TEST_PHARMACY_ACCOUNTS`: `true` のときのみテスト薬局シードを有効化（本番は `false` 推奨）
 - `TEST_ACCOUNT_PASSWORD`: テスト薬局の共通パスワード（8文字以上必須）
+- `EXPOSE_PASSWORD_RESET_TOKEN`: `true` のときのみパスワードリセットトークンをAPIレスポンスに含める（開発限定）
+- `TRUST_PROXY`: `true` または hop数（例: `1`）で `trust proxy` を有効化
 - `DRUG_MASTER_AUTO_SYNC`: `true` で医薬品マスター自動取得を有効化
 - `DRUG_MASTER_SOURCE_URL`: 医薬品マスター取得元URL（HTTPS）
 - `DRUG_MASTER_CHECK_INTERVAL_HOURS`: 自動取得の確認間隔（時間）

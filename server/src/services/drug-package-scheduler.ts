@@ -13,8 +13,18 @@ import {
 } from './drug-master-service';
 import { parseExcelBuffer } from './upload-service';
 import { logger } from './logger';
+import { validateExternalHttpsUrl } from '../utils/network-utils';
 
-const CHECK_INTERVAL_MS = Number(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS || 24) * 60 * 60 * 1000;
+function parseIntervalHours(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 24 * 30) {
+    return fallback;
+  }
+  return parsed;
+}
+
+const CHECK_INTERVAL_HOURS = parseIntervalHours(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS, 24);
+const CHECK_INTERVAL_MS = CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
 const AUTO_SYNC_ENABLED = process.env.DRUG_PACKAGE_AUTO_SYNC === 'true';
 const FETCH_TIMEOUT_MS = 120_000;
 const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024;
@@ -28,20 +38,6 @@ function buildSourceRequestHeaders(): Record<string, string> {
   if (authorization) headers.Authorization = authorization;
   if (cookie) headers.Cookie = cookie;
   return headers;
-}
-
-function validateSourceUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:') return false;
-    const host = parsed.hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return false;
-    if (host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('169.254.')) return false;
-    if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 let lastKnownETag: string | null = null;
@@ -160,9 +156,11 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
     return;
   }
 
-  if (!validateSourceUrl(sourceUrl)) {
-    logger.error('Drug package auto-sync: source URL is invalid (must be HTTPS, non-private)', {
+  const validated = await validateExternalHttpsUrl(sourceUrl);
+  if (!validated.ok) {
+    logger.error('Drug package auto-sync: source URL is invalid', {
       source: summarizeSourceUrl(sourceUrl),
+      reason: validated.reason,
     });
     return;
   }
@@ -260,9 +258,8 @@ export function startDrugPackageScheduler(): void {
     return;
   }
 
-  const intervalHours = CHECK_INTERVAL_MS / (60 * 60 * 1000);
   logger.info('Drug package auto-sync: starting scheduler', {
-    intervalHours,
+    intervalHours: CHECK_INTERVAL_HOURS,
     source: summarizeSourceUrl(sourceUrl),
   });
 
@@ -311,10 +308,11 @@ export async function triggerManualPackageAutoSync(options?: { sourceUrl?: strin
     };
   }
 
-  if (!validateSourceUrl(sourceUrl)) {
+  const validated = await validateExternalHttpsUrl(sourceUrl);
+  if (!validated.ok) {
     return {
       triggered: false,
-      message: 'sourceUrl が不正です（HTTPS かつプライベートネットワーク以外を指定）',
+      message: validated.reason ?? 'sourceUrl が不正です',
     };
   }
 

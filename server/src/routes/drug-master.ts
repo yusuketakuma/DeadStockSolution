@@ -6,7 +6,7 @@ import { db } from '../config/database';
 import { drugMaster } from '../db/schema';
 import { requireLogin, requireAdmin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { parsePagination, normalizeSearchTerm } from '../utils/request-utils';
+import { parsePagination, normalizeSearchTerm, escapeLikeWildcards } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { writeLog, getClientIp } from '../services/log-service';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
@@ -69,6 +69,14 @@ const upload = multer({
     cb(null, true);
   },
 });
+
+function resolveIntervalHours(raw: string | undefined, fallback: number = 24): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 24 * 30) {
+    return fallback;
+  }
+  return parsed;
+}
 
 function uploadSingleFile(req: Request, res: Response, next: NextFunction): void {
   upload.single('file')(req, res, (err: unknown) => {
@@ -138,14 +146,13 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       const hiragana = katakanaToHiragana(normalized);
       const katakana = hiraganaToKatakana(normalized);
       const likeTerms = new Set([normalized, hiragana, katakana]);
-      const escape = (s: string) => s.replace(/%/g, '\\%').replace(/_/g, '\\_');
-      const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${escape(term)}%`));
-      const genericConditions = [...likeTerms].map((term) => like(drugMaster.genericName, `%${escape(term)}%`));
+      const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${escapeLikeWildcards(term)}%`));
+      const genericConditions = [...likeTerms].map((term) => like(drugMaster.genericName, `%${escapeLikeWildcards(term)}%`));
       const allSearchConditions = [...nameConditions, ...genericConditions];
 
       // YJコード検索
       if (/^[A-Z0-9]+$/i.test(search.trim())) {
-        allSearchConditions.push(like(drugMaster.yjCode, `%${escape(search.trim())}%`));
+        allSearchConditions.push(like(drugMaster.yjCode, `%${escapeLikeWildcards(search.trim())}%`));
       }
 
       conditions.push(or(...allSearchConditions));
@@ -452,7 +459,7 @@ router.get('/auto-sync/status', async (_req: AuthRequest, res: Response) => {
   try {
     const sourceUrl = process.env.DRUG_MASTER_SOURCE_URL || '';
     const autoSyncEnabled = process.env.DRUG_MASTER_AUTO_SYNC === 'true';
-    const checkIntervalHours = Number(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS || 24);
+    const checkIntervalHours = resolveIntervalHours(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS, 24);
     const sourceHost = sourceUrl
       ? (() => {
           try {
@@ -506,7 +513,7 @@ router.get('/auto-sync/packages/status', async (_req: AuthRequest, res: Response
   try {
     const sourceUrl = process.env.DRUG_PACKAGE_SOURCE_URL || '';
     const autoSyncEnabled = process.env.DRUG_PACKAGE_AUTO_SYNC === 'true';
-    const checkIntervalHours = Number(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS || 24);
+    const checkIntervalHours = resolveIntervalHours(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS, 24);
     const sourceHost = sourceUrl
       ? (() => {
           try {

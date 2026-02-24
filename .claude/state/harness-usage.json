@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-02-24T12:26:23.218Z",
+  "skills": {},
+  "commands": {
+    "harness-init": {
+      "count": 1,
+      "lastUsed": "2026-02-24T12:14:31.676Z"
+    },
+    "harness-update": {
+      "count": 1,
+      "lastUsed": "2026-02-24T12:16:23.454Z"
+    },
+    "setup": {
+      "count": 1,
+      "lastUsed": "2026-02-24T12:19:32.154Z"
+    },
+    "sync-status": {
+      "count": 1,
+      "lastUsed": "2026-02-24T12:23:15.731Z"
+    }
+  },
+  "agents": {
+    "Explore": {
+      "count": 4,
+      "lastUsed": "2026-02-24T12:25:12.261Z"
+    }
+  },
+  "hooks": {
+    "session-init": {
+      "triggered": 2,
+      "blocked": 0,
+      "lastTriggered": "2026-02-24T12:26:23.218Z"
+    }
+  }
+}

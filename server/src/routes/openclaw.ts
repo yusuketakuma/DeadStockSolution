@@ -1,0 +1,116 @@
+import { Router, Response } from 'express';
+import rateLimit from 'express-rate-limit';
+import { eq } from 'drizzle-orm';
+import { db } from '../config/database';
+import { userRequests } from '../db/schema';
+import { logger } from '../services/logger';
+import {
+  canTransitionOpenClawStatus,
+  getOpenClawImplementationBranch,
+  isImplementationBranchAllowed,
+  isOpenClawStatus,
+  isOpenClawWebhookConfigured,
+  verifyOpenClawWebhookSecret,
+  type OpenClawStatus,
+} from '../services/openclaw-service';
+import { parsePositiveInt } from '../utils/request-utils';
+
+const router = Router();
+const callbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'リクエストが多すぎます。時間をおいて再試行してください' },
+});
+
+function parseRequestId(rawValue: unknown): number | null {
+  if (typeof rawValue === 'number' && Number.isSafeInteger(rawValue) && rawValue > 0) {
+    return rawValue;
+  }
+  return parsePositiveInt(String(rawValue ?? ''));
+}
+
+function normalizeText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLength);
+}
+
+router.post('/callback', callbackLimiter, async (req, res: Response) => {
+  try {
+    if (!isOpenClawWebhookConfigured()) {
+      res.status(503).json({ error: 'OpenClaw webhook が未設定です' });
+      return;
+    }
+
+    const secret = req.header('x-openclaw-secret');
+    if (!verifyOpenClawWebhookSecret(secret)) {
+      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+      return;
+    }
+
+    const requestId = parseRequestId(req.body.requestId);
+    const statusRaw = req.body.status;
+    if (!requestId || !isOpenClawStatus(statusRaw)) {
+      res.status(400).json({ error: 'requestId または status が不正です' });
+      return;
+    }
+    const status = statusRaw as OpenClawStatus;
+
+    const reportedBranch = normalizeText(req.body.implementationBranch, 120);
+    if ((status === 'implementing' || status === 'completed') && !isImplementationBranchAllowed(reportedBranch)) {
+      res.status(409).json({
+        error: '許可されていない実装ブランチです',
+      });
+      return;
+    }
+
+    const threadId = normalizeText(req.body.threadId, 120);
+    const summary = normalizeText(req.body.summary, 4000);
+
+    const [current] = await db.select({
+      id: userRequests.id,
+      openclawStatus: userRequests.openclawStatus,
+      openclawThreadId: userRequests.openclawThreadId,
+      openclawSummary: userRequests.openclawSummary,
+    })
+      .from(userRequests)
+      .where(eq(userRequests.id, requestId))
+      .limit(1);
+
+    if (!current) {
+      res.status(404).json({ error: '対象の要望が見つかりません' });
+      return;
+    }
+
+    if (!canTransitionOpenClawStatus(current.openclawStatus, status)) {
+      res.status(409).json({
+        error: `状態遷移が不正です。現在: ${current.openclawStatus}, 受信: ${status}`,
+      });
+      return;
+    }
+
+    await db.update(userRequests)
+      .set({
+        openclawStatus: status,
+        openclawThreadId: threadId ?? current.openclawThreadId,
+        openclawSummary: summary ?? current.openclawSummary,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(userRequests.id, requestId));
+
+    res.json({
+      message: 'OpenClawコールバックを反映しました',
+      requestId,
+      openclawStatus: status,
+      implementationBranch: reportedBranch ?? getOpenClawImplementationBranch(),
+    });
+  } catch (err) {
+    logger.error('OpenClaw callback error', { error: (err as Error).message });
+    res.status(500).json({ error: 'OpenClawコールバック処理に失敗しました' });
+  }
+});
+
+export default router;

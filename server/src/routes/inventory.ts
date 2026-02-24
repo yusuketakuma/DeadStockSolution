@@ -16,6 +16,7 @@ import { normalizeSearchTerm, parsePagination, escapeLikeWildcards } from '../ut
 import { rowCount } from '../utils/db-utils';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 import { logger } from '../services/logger';
+import { writeLog, getClientIp } from '../services/log-service';
 
 const router = Router();
 
@@ -70,6 +71,12 @@ router.delete('/dead-stock/:id', async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: '対象データが見つかりません' });
       return;
     }
+
+    void writeLog('dead_stock_delete', {
+      pharmacyId: req.user!.id,
+      detail: `在庫ID:${id} を削除`,
+      ipAddress: getClientIp(req),
+    });
 
     res.json({ message: '削除しました' });
   } catch (err) {

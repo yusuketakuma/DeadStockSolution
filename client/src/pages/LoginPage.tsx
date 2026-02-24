@@ -2,12 +2,12 @@ import { useState, FormEvent } from 'react';
 import { Container, Card, Form, Button, Alert, Nav } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { APP_VERSION } from '../constants/appVersion';
 
 const TEST_ACCOUNTS = [
   { label: 'テスト薬局（東京）', email: 'test@example.com' },
   { label: 'テスト薬局2号店（大阪）', email: 'test2@example.com' },
 ];
-const DEMO_ACCOUNT_PASSWORD = 'DemoStock2026!';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -48,7 +48,7 @@ export default function LoginPage() {
   const handleTestLogin = (account: { email: string }) => {
     setError('');
     setEmail(account.email);
-    setPassword(DEMO_ACCOUNT_PASSWORD);
+    setPassword('');
   };
 
   const switchMode = (newMode: 'user' | 'admin') => {
@@ -62,7 +62,15 @@ export default function LoginPage() {
     <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
       <Card style={{ width: '100%', maxWidth: '420px' }}>
         <Card.Header className="p-0">
-          <Nav variant="tabs" activeKey={mode} onSelect={(k) => switchMode(k as 'user' | 'admin')}>
+          <Nav
+            variant="tabs"
+            activeKey={mode}
+            onSelect={(k) => {
+              if (k === 'user' || k === 'admin') {
+                switchMode(k);
+              }
+            }}
+          >
             <Nav.Item>
               <Nav.Link eventKey="user">薬局ログイン</Nav.Link>
             </Nav.Item>
@@ -72,7 +80,10 @@ export default function LoginPage() {
           </Nav>
         </Card.Header>
         <Card.Body>
-          <h3 className="text-center mb-4">薬局不動在庫交換システム</h3>
+          <div className="login-title-wrap mb-4">
+            <h3 className="mb-0">薬局不動在庫交換システム</h3>
+            <span className="login-title-version">{APP_VERSION}</span>
+          </div>
           <h5 className="text-center mb-3">
             {mode === 'admin' ? '管理者ログイン' : 'ログイン'}
           </h5>
@@ -118,7 +129,7 @@ export default function LoginPage() {
 
               <>
                 <hr />
-                <p className="text-muted small text-center mb-2">デモアカウント（ID/パスワード自動入力）</p>
+                <p className="text-muted small text-center mb-2">デモアカウント（メールアドレス入力補助）</p>
                 <div className="d-grid gap-2">
                   {TEST_ACCOUNTS.map((account) => (
                     <Button
@@ -133,7 +144,7 @@ export default function LoginPage() {
                   ))}
                 </div>
                 <p className="text-muted small text-center mt-2 mb-0">
-                  ボタンを押すとIDとパスワードが自動入力されます。
+                  ボタンを押すとメールアドレスのみ入力されます。パスワードは手入力してください。
                 </p>
               </>
             </>

@@ -1,0 +1,181 @@
+import dns from 'node:dns/promises';
+import net from 'node:net';
+
+interface ExternalUrlValidationResult {
+  ok: boolean;
+  reason: string | null;
+  hostname: string | null;
+}
+
+function isPrivateIpv4(ip: string): boolean {
+  const parts = ip.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return true;
+  }
+
+  const [a, b] = parts;
+  if (a === 0) return true;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function expandIpv6(ip: string): string[] | null {
+  const doubleColonParts = ip.split('::');
+  if (doubleColonParts.length > 2) return null;
+
+  const left = doubleColonParts[0]
+    .split(':')
+    .filter((part) => part.length > 0);
+  const right = (doubleColonParts[1] ?? '')
+    .split(':')
+    .filter((part) => part.length > 0);
+
+  const hasIpv4Tail = (right[right.length - 1] ?? left[left.length - 1] ?? '').includes('.');
+  const normalizedRight = [...right];
+  const normalizedLeft = [...left];
+
+  if (hasIpv4Tail) {
+    const tail = normalizedRight.length > 0
+      ? normalizedRight.pop()!
+      : normalizedLeft.pop();
+    if (!tail) return null;
+
+    if (!net.isIPv4(tail)) {
+      return null;
+    }
+
+    const octets = tail.split('.').map((part) => Number(part));
+    const hi = ((octets[0] << 8) | octets[1]).toString(16);
+    const lo = ((octets[2] << 8) | octets[3]).toString(16);
+
+    if (normalizedRight.length > 0) {
+      normalizedRight.push(hi, lo);
+    } else {
+      normalizedLeft.push(hi, lo);
+    }
+  }
+
+  const total = normalizedLeft.length + normalizedRight.length;
+  if (total > 8) return null;
+
+  const fillCount = 8 - total;
+  const middle = doubleColonParts.length === 2 ? Array(fillCount).fill('0') : [];
+  const groups = [...normalizedLeft, ...middle, ...normalizedRight];
+  if (groups.length !== 8) return null;
+
+  return groups.map((group) => group.padStart(4, '0').toLowerCase());
+}
+
+function isPrivateIpv6(ip: string): boolean {
+  const expanded = expandIpv6(ip);
+  if (!expanded) return true;
+
+  const first = parseInt(expanded[0], 16);
+  const second = parseInt(expanded[1], 16);
+
+  const isLoopback = expanded.every((group, idx) => (idx < 7 ? group === '0000' : group === '0001'));
+  if (isLoopback) return true;
+
+  const isUnspecified = expanded.every((group) => group === '0000');
+  if (isUnspecified) return true;
+
+  // fc00::/7 unique local address
+  if ((first & 0xfe00) === 0xfc00) return true;
+  // fe80::/10 link-local
+  if ((first & 0xffc0) === 0xfe80) return true;
+  // ff00::/8 multicast
+  if ((first & 0xff00) === 0xff00) return true;
+
+  // ::ffff:0:0/96 IPv4-mapped IPv6
+  const isIpv4Mapped = expanded.slice(0, 5).every((group) => group === '0000')
+    && expanded[5] === 'ffff';
+  if (isIpv4Mapped) {
+    const hi = parseInt(expanded[6], 16);
+    const lo = parseInt(expanded[7], 16);
+    const ipv4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    return isPrivateIpv4(ipv4);
+  }
+
+  void second;
+  return false;
+}
+
+function isPrivateIpAddress(ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    return isPrivateIpv4(ip);
+  }
+  if (net.isIPv6(ip)) {
+    return isPrivateIpv6(ip);
+  }
+  return true;
+}
+
+function isBlockedHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  if (lower === 'localhost') return true;
+  if (lower.endsWith('.localhost')) return true;
+  if (lower.endsWith('.local')) return true;
+  return false;
+}
+
+async function resolveHostname(hostname: string): Promise<string[]> {
+  if (net.isIP(hostname)) {
+    return [hostname];
+  }
+
+  const records = await dns.lookup(hostname, { all: true, verbatim: true });
+  const unique = new Set<string>();
+  for (const record of records) {
+    if (record?.address) {
+      unique.add(record.address);
+    }
+  }
+  return [...unique];
+}
+
+export async function validateExternalHttpsUrl(url: string): Promise<ExternalUrlValidationResult> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, reason: 'URL形式が不正です', hostname: null };
+  }
+
+  if (parsed.protocol !== 'https:') {
+    return { ok: false, reason: 'HTTPSのみ許可されています', hostname: parsed.hostname };
+  }
+
+  if (isBlockedHostname(parsed.hostname)) {
+    return { ok: false, reason: 'ローカルドメインは許可されていません', hostname: parsed.hostname };
+  }
+
+  let addresses: string[];
+  try {
+    addresses = await resolveHostname(parsed.hostname);
+  } catch {
+    return { ok: false, reason: 'ホスト名を解決できませんでした', hostname: parsed.hostname };
+  }
+
+  if (addresses.length === 0) {
+    return { ok: false, reason: 'ホスト名の解決結果が空です', hostname: parsed.hostname };
+  }
+
+  for (const address of addresses) {
+    if (isPrivateIpAddress(address)) {
+      return {
+        ok: false,
+        reason: 'プライベート/ローカルIPへの接続は許可されていません',
+        hostname: parsed.hostname,
+      };
+    }
+  }
+
+  return { ok: true, reason: null, hostname: parsed.hostname };
+}
+

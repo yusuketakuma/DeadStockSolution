@@ -24,6 +24,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Typecheck server
+        run: npm run typecheck:server
+
+      - name: Typecheck client
+        run: npm run typecheck:client
+
       - name: Build server
         run: npm run build:server
 

@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(claude plugin:*)",
+      "Bash(claude:*)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "harness"
+  ],
+  "prefersReducedMotion": true
 }

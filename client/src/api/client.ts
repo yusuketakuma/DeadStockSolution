@@ -93,6 +93,19 @@ async function fetchWithTimeout(url: string, config: RequestInit, timeout: numbe
   }
 }
 
+async function parseSuccessResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    return undefined as T;
+  }
+
+  return response.json() as Promise<T>;
+}
+
 async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', body, headers = {}, timeout = REQUEST_TIMEOUT_MS } = options;
   const shouldUseCsrf = requiresCsrf(method, path);
@@ -106,7 +119,7 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
     },
   };
 
-  if (body) {
+  if (body !== undefined) {
     config.body = JSON.stringify(body);
   }
 
@@ -134,7 +147,7 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
     throw new ApiError(response.status, data.error || 'リクエストに失敗しました', data);
   }
 
-  return response.json();
+  return parseSuccessResponse<T>(response);
 }
 
 export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
@@ -166,14 +179,14 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
     throw new ApiError(response.status, data.error || 'アップロードに失敗しました', data);
   }
 
-  return response.json();
+  return parseSuccessResponse<T>(response);
 }
 
 export const api = {
   get: <T>(path: string) => apiRequest<T>(path),
   post: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'POST', body }),
   put: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'PUT', body }),
-  delete: <T>(path: string) => apiRequest<T>(path, { method: 'DELETE' }),
+  delete: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'DELETE', body }),
   upload: apiUpload,
 };
 

@@ -179,6 +179,7 @@ async function clearTargetData(): Promise<void> {
     TRUNCATE TABLE
       "admin_message_reads",
       "admin_messages",
+      "user_requests",
       "exchange_history",
       "exchange_proposal_items",
       "exchange_proposals",
