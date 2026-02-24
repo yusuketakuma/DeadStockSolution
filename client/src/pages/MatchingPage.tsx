@@ -51,6 +51,9 @@ function BusinessStatusBadge({ status }: { status?: BusinessHoursStatus }) {
   if (!status.isOpen) {
     return <Badge bg="secondary">営業時間外</Badge>;
   }
+  if (status.todayHours?.openTime === '00:00' && status.todayHours?.closeTime === '24:00') {
+    return <Badge bg="success">24時間営業</Badge>;
+  }
   if (status.todayHours) {
     return <Badge bg="success">営業中 {status.todayHours.openTime}〜{status.todayHours.closeTime}</Badge>;
   }

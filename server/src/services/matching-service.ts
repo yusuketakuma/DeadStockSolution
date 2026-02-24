@@ -468,6 +468,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     openTime: pharmacyBusinessHours.openTime,
     closeTime: pharmacyBusinessHours.closeTime,
     isClosed: pharmacyBusinessHours.isClosed,
+    is24Hours: pharmacyBusinessHours.is24Hours,
   })
     .from(pharmacyBusinessHours)
     .where(inArray(pharmacyBusinessHours.pharmacyId, activePharmacyIds));

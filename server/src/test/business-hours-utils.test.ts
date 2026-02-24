@@ -167,6 +167,53 @@ describe('getBusinessHoursStatus', () => {
     });
   });
 
+  // 24-hour pharmacy tests
+  describe('24-hour pharmacy', () => {
+    const hours24 = [
+      { dayOfWeek: 0, openTime: null, closeTime: null, isClosed: true, is24Hours: false },
+      { dayOfWeek: 1, openTime: null, closeTime: null, isClosed: false, is24Hours: true },
+      { dayOfWeek: 2, openTime: null, closeTime: null, isClosed: false, is24Hours: true },
+      { dayOfWeek: 3, openTime: null, closeTime: null, isClosed: false, is24Hours: true },
+      { dayOfWeek: 4, openTime: null, closeTime: null, isClosed: false, is24Hours: true },
+      { dayOfWeek: 5, openTime: null, closeTime: null, isClosed: false, is24Hours: true },
+      { dayOfWeek: 6, openTime: null, closeTime: null, isClosed: false, is24Hours: true },
+    ];
+
+    it('is always open during 24-hour day', () => {
+      const monday3am = new Date('2026-02-23T03:00:00');
+      const status = getBusinessHoursStatus(hours24, monday3am);
+      expect(status.isOpen).toBe(true);
+      expect(status.closingSoon).toBe(false);
+      expect(status.todayHours).toEqual({ openTime: '00:00', closeTime: '24:00' });
+    });
+
+    it('is open at midnight for 24-hour day', () => {
+      const mondayMidnight = new Date('2026-02-23T00:00:00');
+      const status = getBusinessHoursStatus(hours24, mondayMidnight);
+      expect(status.isOpen).toBe(true);
+      expect(status.closingSoon).toBe(false);
+    });
+
+    it('is open at 23:59 for 24-hour day', () => {
+      const monday2359 = new Date('2026-02-23T23:59:00');
+      const status = getBusinessHoursStatus(hours24, monday2359);
+      expect(status.isOpen).toBe(true);
+      expect(status.closingSoon).toBe(false);
+    });
+
+    it('is closed on Sunday even when other days are 24h', () => {
+      const sunday = new Date('2026-02-22T12:00:00');
+      const status = getBusinessHoursStatus(hours24, sunday);
+      expect(status.isOpen).toBe(false);
+    });
+
+    it('never shows closingSoon for 24-hour day', () => {
+      const monday1159pm = new Date('2026-02-23T23:59:00');
+      const status = getBusinessHoursStatus(hours24, monday1159pm);
+      expect(status.closingSoon).toBe(false);
+    });
+  });
+
   // Edge cases
   it('handles null isClosed as not closed', () => {
     const hours = [
@@ -209,5 +256,10 @@ describe('formatDayHours', () => {
   it('formats overnight hours', () => {
     expect(formatDayHours({ dayOfWeek: 1, openTime: '22:00', closeTime: '06:00', isClosed: false }))
       .toBe('22:00〜06:00');
+  });
+
+  it('formats 24-hour day', () => {
+    expect(formatDayHours({ dayOfWeek: 1, openTime: null, closeTime: null, isClosed: false, is24Hours: true }))
+      .toBe('24時間営業');
   });
 });

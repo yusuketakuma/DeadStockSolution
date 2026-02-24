@@ -7,6 +7,7 @@ interface BusinessHourEntry {
   openTime: string | null;
   closeTime: string | null;
   isClosed: boolean | null;
+  is24Hours?: boolean | null;
 }
 
 /** Minutes before closing to trigger "closing soon" warning */
@@ -41,6 +42,11 @@ export function getBusinessHoursStatus(
 
   if (!todayEntry || todayEntry.isClosed) {
     return { isOpen: false, closingSoon: false, todayHours: null };
+  }
+
+  // 24-hour pharmacy: always open, never closing soon
+  if (todayEntry.is24Hours) {
+    return { isOpen: true, closingSoon: false, todayHours: { openTime: '00:00', closeTime: '24:00' } };
   }
 
   if (!todayEntry.openTime || !todayEntry.closeTime) {
@@ -83,8 +89,11 @@ export function getBusinessHoursStatus(
  * Format business hours for a given day.
  */
 export function formatDayHours(entry: BusinessHourEntry): string {
-  if (entry.isClosed || !entry.openTime || !entry.closeTime) {
+  if (entry.isClosed || (!entry.is24Hours && (!entry.openTime || !entry.closeTime))) {
     return '定休日';
+  }
+  if (entry.is24Hours) {
+    return '24時間営業';
   }
   return `${entry.openTime}〜${entry.closeTime}`;
 }

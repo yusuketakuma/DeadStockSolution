@@ -16,6 +16,7 @@ interface BusinessHourInput {
   openTime: string | null;
   closeTime: string | null;
   isClosed: boolean;
+  is24Hours: boolean;
 }
 
 function validateBusinessHours(hours: unknown): { valid: BusinessHourInput[] } | { error: string } {
@@ -31,14 +32,19 @@ function validateBusinessHours(hours: unknown): { valid: BusinessHourInput[] } |
     if (typeof h !== 'object' || h === null) {
       return { error: '営業時間のフォーマットが不正です' };
     }
-    const { dayOfWeek, openTime, closeTime, isClosed } = h as Record<string, unknown>;
+    const { dayOfWeek, openTime, closeTime, isClosed, is24Hours } = h as Record<string, unknown>;
 
     if (typeof dayOfWeek !== 'number' || dayOfWeek < 0 || dayOfWeek > 6 || !Number.isInteger(dayOfWeek)) {
       return { error: '曜日の値が不正です' };
     }
 
     if (isClosed) {
-      validated.push({ dayOfWeek, openTime: null, closeTime: null, isClosed: true });
+      validated.push({ dayOfWeek, openTime: null, closeTime: null, isClosed: true, is24Hours: false });
+      continue;
+    }
+
+    if (is24Hours) {
+      validated.push({ dayOfWeek, openTime: null, closeTime: null, isClosed: false, is24Hours: true });
       continue;
     }
 
@@ -54,7 +60,7 @@ function validateBusinessHours(hours: unknown): { valid: BusinessHourInput[] } |
       return { error: `${DAY_NAMES[dayOfWeek]}の開店時間と閉店時間が同じです` };
     }
 
-    validated.push({ dayOfWeek, openTime, closeTime, isClosed: false });
+    validated.push({ dayOfWeek, openTime, closeTime, isClosed: false, is24Hours: false });
   }
 
   // Check for duplicate days
@@ -74,6 +80,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       openTime: pharmacyBusinessHours.openTime,
       closeTime: pharmacyBusinessHours.closeTime,
       isClosed: pharmacyBusinessHours.isClosed,
+      is24Hours: pharmacyBusinessHours.is24Hours,
     })
       .from(pharmacyBusinessHours)
       .where(eq(pharmacyBusinessHours.pharmacyId, req.user!.id))
@@ -107,6 +114,7 @@ router.put('/', async (req: AuthRequest, res: Response) => {
           openTime: h.openTime,
           closeTime: h.closeTime,
           isClosed: h.isClosed,
+          is24Hours: h.is24Hours,
         }))
       );
     });
@@ -132,6 +140,7 @@ router.get('/:pharmacyId', async (req: AuthRequest, res: Response) => {
       openTime: pharmacyBusinessHours.openTime,
       closeTime: pharmacyBusinessHours.closeTime,
       isClosed: pharmacyBusinessHours.isClosed,
+      is24Hours: pharmacyBusinessHours.is24Hours,
     })
       .from(pharmacyBusinessHours)
       .where(eq(pharmacyBusinessHours.pharmacyId, pharmacyId))

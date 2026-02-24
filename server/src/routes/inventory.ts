@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, and, like, desc, inArray } from 'drizzle-orm';
+import { eq, and, or, like, desc, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, usedMedicationItems, pharmacies, pharmacyBusinessHours } from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
@@ -7,6 +7,7 @@ import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
+import { katakanaToHiragana, hiraganaToKatakana } from '../utils/kana-utils';
 
 const router = Router();
 
@@ -107,11 +108,22 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
     });
     const search = normalizeSearchTerm(req.query.search);
 
-    const whereExpr = search
-      ? and(
-        eq(deadStockItems.isAvailable, true),
-        like(deadStockItems.drugName, `%${search}%`),
-      )
+    let searchCondition;
+    if (search) {
+      const hiragana = katakanaToHiragana(search);
+      const katakana = hiraganaToKatakana(search);
+      const likeConditions = [like(deadStockItems.drugName, `%${search}%`)];
+      if (hiragana !== search) {
+        likeConditions.push(like(deadStockItems.drugName, `%${hiragana}%`));
+      }
+      if (katakana !== search && katakana !== hiragana) {
+        likeConditions.push(like(deadStockItems.drugName, `%${katakana}%`));
+      }
+      searchCondition = likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
+    }
+
+    const whereExpr = searchCondition
+      ? and(eq(deadStockItems.isAvailable, true), searchCondition)
       : eq(deadStockItems.isAvailable, true);
 
     const items = await db.select({
@@ -142,6 +154,7 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
         openTime: pharmacyBusinessHours.openTime,
         closeTime: pharmacyBusinessHours.closeTime,
         isClosed: pharmacyBusinessHours.isClosed,
+        is24Hours: pharmacyBusinessHours.is24Hours,
       })
         .from(pharmacyBusinessHours)
         .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds))

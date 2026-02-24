@@ -1,7 +1,8 @@
-import { useState, useEffect, FormEvent } from 'react';
-import { Table, Form, Button, InputGroup, Badge, Row, Col, Alert } from 'react-bootstrap';
+import { useState, useEffect } from 'react';
+import { Table, Form, Button, Badge, Row, Col, Alert } from 'react-bootstrap';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
+import SearchInput from '../components/SearchInput';
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -45,6 +46,9 @@ function BusinessStatusBadge({ status }: { status?: BusinessHoursStatus }) {
   if (!status.isOpen) {
     return <Badge bg="secondary">営業時間外</Badge>;
   }
+  if (status.todayHours?.openTime === '00:00' && status.todayHours?.closeTime === '24:00') {
+    return <Badge bg="success">24時間営業</Badge>;
+  }
   if (status.todayHours) {
     return <Badge bg="success">{status.todayHours.openTime}〜{status.todayHours.closeTime}</Badge>;
   }
@@ -72,10 +76,9 @@ export default function PharmacyListPage() {
 
   useEffect(() => { fetchData(page); }, [page, search, prefecture, sortBy]);
 
-  const handleSearch = (e: FormEvent) => {
-    e.preventDefault();
+  const handleSearch = (q: string) => {
     setPage(1);
-    setSearch(searchInput);
+    setSearch(q);
   };
 
   return (
@@ -84,16 +87,18 @@ export default function PharmacyListPage() {
 
       <Row className="mb-3 g-2">
         <Col md={5}>
-          <Form onSubmit={handleSearch}>
-            <InputGroup>
-              <Form.Control
-                placeholder="薬局名で検索..."
+          <div className="d-flex gap-2">
+            <div className="flex-grow-1">
+              <SearchInput
+                placeholder="薬局名で検索（ひらがな・カタカナ対応）..."
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+                onChange={setSearchInput}
+                onSearch={handleSearch}
+                suggestUrl="/search/pharmacies"
               />
-              <Button type="submit" variant="primary">検索</Button>
-            </InputGroup>
-          </Form>
+            </div>
+            <Button variant="primary" onClick={() => handleSearch(searchInput)}>検索</Button>
+          </div>
         </Col>
         <Col md={4}>
           <Form.Select value={prefecture} onChange={(e) => { setPrefecture(e.target.value); setPage(1); }}>

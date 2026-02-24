@@ -246,6 +246,6 @@ describe('InventoryBrowsePage', () => {
       expect(screen.getByText('全薬局の在庫参照')).toBeInTheDocument();
     });
     expect(screen.getByText('在庫データがありません')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('薬品名で検索...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('薬品名で検索（ひらがな・カタカナ対応）...')).toBeInTheDocument();
   });
 });

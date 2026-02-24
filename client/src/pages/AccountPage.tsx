@@ -34,6 +34,7 @@ interface BusinessHourEntry {
   openTime: string | null;
   closeTime: string | null;
   isClosed: boolean;
+  is24Hours: boolean;
 }
 
 function createDefaultHours(): BusinessHourEntry[] {
@@ -42,6 +43,7 @@ function createDefaultHours(): BusinessHourEntry[] {
     openTime: i === 0 ? null : '09:00', // Sunday closed by default
     closeTime: i === 0 ? null : '18:00',
     isClosed: i === 0,
+    is24Hours: false,
   }));
 }
 
@@ -118,7 +120,16 @@ export default function AccountPage() {
   const handleClosedChange = (dayOfWeek: number, isClosed: boolean) => {
     setBusinessHours((prev) =>
       prev.map((h) => h.dayOfWeek === dayOfWeek
-        ? { ...h, isClosed, openTime: isClosed ? null : (h.openTime || '09:00'), closeTime: isClosed ? null : (h.closeTime || '18:00') }
+        ? { ...h, isClosed, is24Hours: false, openTime: isClosed ? null : (h.openTime || '09:00'), closeTime: isClosed ? null : (h.closeTime || '18:00') }
+        : h
+      )
+    );
+  };
+
+  const handle24HoursChange = (dayOfWeek: number, is24Hours: boolean) => {
+    setBusinessHours((prev) =>
+      prev.map((h) => h.dayOfWeek === dayOfWeek
+        ? { ...h, is24Hours, isClosed: false, openTime: is24Hours ? null : (h.openTime || '09:00'), closeTime: is24Hours ? null : (h.closeTime || '18:00') }
         : h
       )
     );
@@ -267,6 +278,7 @@ export default function AccountPage() {
                     <tr>
                       <th>曜日</th>
                       <th>定休日</th>
+                      <th>24時間</th>
                       <th>開店時間</th>
                       <th>閉店時間</th>
                     </tr>
@@ -282,6 +294,15 @@ export default function AccountPage() {
                               type="checkbox"
                               checked={h.isClosed}
                               onChange={(e) => handleClosedChange(h.dayOfWeek, e.target.checked)}
+                              disabled={h.is24Hours}
+                            />
+                          </td>
+                          <td>
+                            <Form.Check
+                              type="checkbox"
+                              checked={h.is24Hours}
+                              onChange={(e) => handle24HoursChange(h.dayOfWeek, e.target.checked)}
+                              disabled={h.isClosed}
                             />
                           </td>
                           <td>
@@ -290,7 +311,7 @@ export default function AccountPage() {
                               size="sm"
                               value={h.openTime || ''}
                               onChange={(e) => handleHoursChange(h.dayOfWeek, 'openTime', e.target.value)}
-                              disabled={h.isClosed}
+                              disabled={h.isClosed || h.is24Hours}
                               style={{ maxWidth: '140px' }}
                             />
                           </td>
@@ -300,7 +321,7 @@ export default function AccountPage() {
                               size="sm"
                               value={h.closeTime || ''}
                               onChange={(e) => handleHoursChange(h.dayOfWeek, 'closeTime', e.target.value)}
-                              disabled={h.isClosed}
+                              disabled={h.isClosed || h.is24Hours}
                               style={{ maxWidth: '140px' }}
                             />
                           </td>

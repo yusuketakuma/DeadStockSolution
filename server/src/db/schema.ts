@@ -202,6 +202,7 @@ export const pharmacyBusinessHours = pgTable('pharmacy_business_hours', {
   openTime: text('open_time'), // "09:00" format, null if closed
   closeTime: text('close_time'), // "18:00" format, null if closed
   isClosed: boolean('is_closed').default(false),
+  is24Hours: boolean('is_24_hours').default(false),
 }, (table) => ({
   idxBusinessHoursPharmacy: index('idx_business_hours_pharmacy').on(table.pharmacyId),
   idxBusinessHoursPharmacyDay: uniqueIndex('idx_business_hours_pharmacy_day').on(table.pharmacyId, table.dayOfWeek),

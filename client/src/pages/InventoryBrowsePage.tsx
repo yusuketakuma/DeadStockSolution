@@ -1,7 +1,8 @@
-import { useState, useEffect, FormEvent } from 'react';
-import { Table, Form, Button, InputGroup, Alert, Badge } from 'react-bootstrap';
+import { useState, useEffect } from 'react';
+import { Table, Button, Alert, Badge } from 'react-bootstrap';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
+import SearchInput from '../components/SearchInput';
 
 interface BusinessHoursStatus {
   isOpen: boolean;
@@ -36,6 +37,9 @@ function BusinessStatusBadge({ status }: { status?: BusinessHoursStatus }) {
   if (!status.isOpen) {
     return <Badge bg="secondary">営業時間外</Badge>;
   }
+  if (status.todayHours?.openTime === '00:00' && status.todayHours?.closeTime === '24:00') {
+    return <Badge bg="success">24時間営業</Badge>;
+  }
   if (status.todayHours) {
     return <Badge bg="success">営業中</Badge>;
   }
@@ -59,31 +63,32 @@ export default function InventoryBrowsePage() {
 
   useEffect(() => { fetchData(page, search); }, [page, search]);
 
-  const handleSearch = (e: FormEvent) => {
-    e.preventDefault();
+  const handleSearch = (q: string) => {
     setPage(1);
-    setSearch(searchInput);
+    setSearch(q);
   };
 
   return (
     <div>
       <h4 className="page-title mb-3">全薬局の在庫参照</h4>
 
-      <Form onSubmit={handleSearch} className="mb-3">
-        <InputGroup>
-          <Form.Control
-            placeholder="薬品名で検索..."
+      <div className="mb-3 d-flex gap-2">
+        <div className="flex-grow-1">
+          <SearchInput
+            placeholder="薬品名で検索（ひらがな・カタカナ対応）..."
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            onChange={setSearchInput}
+            onSearch={handleSearch}
+            suggestUrl="/search/drugs"
           />
-          <Button type="submit" variant="primary">検索</Button>
-          {search && (
-            <Button variant="outline-secondary" onClick={() => { setSearch(''); setSearchInput(''); }}>
-              クリア
-            </Button>
-          )}
-        </InputGroup>
-      </Form>
+        </div>
+        <Button variant="primary" onClick={() => handleSearch(searchInput)}>検索</Button>
+        {search && (
+          <Button variant="outline-secondary" onClick={() => { setSearch(''); setSearchInput(''); }}>
+            クリア
+          </Button>
+        )}
+      </div>
 
       {items.length === 0 ? (
         <Alert variant="secondary">

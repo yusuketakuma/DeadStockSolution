@@ -279,7 +279,7 @@ describe('PharmacyListPage', () => {
     renderWithProviders(<PharmacyListPage />);
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('薬局名で検索...')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('薬局名で検索（ひらがな・カタカナ対応）...')).toBeInTheDocument();
     });
   });
 
@@ -330,10 +330,10 @@ describe('PharmacyListPage', () => {
     renderWithProviders(<PharmacyListPage />);
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('薬局名で検索...')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('薬局名で検索（ひらがな・カタカナ対応）...')).toBeInTheDocument();
     });
 
-    await user.type(screen.getByPlaceholderText('薬局名で検索...'), '大阪');
+    await user.type(screen.getByPlaceholderText('薬局名で検索（ひらがな・カタカナ対応）...'), '大阪');
     await user.click(screen.getByRole('button', { name: '検索' }));
 
     await waitFor(() => {

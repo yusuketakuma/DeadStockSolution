@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { and, eq, like, desc, inArray } from 'drizzle-orm';
+import { and, eq, or, like, desc, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies, pharmacyBusinessHours } from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
@@ -8,6 +8,7 @@ import { haversineDistance } from '../utils/geo-utils';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
+import { katakanaToHiragana, hiraganaToKatakana } from '../utils/kana-utils';
 
 const router = Router();
 router.use(requireLogin);
@@ -33,7 +34,16 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     const conditions = [eq(pharmacies.isActive, true)];
     if (search) {
-      conditions.push(like(pharmacies.name, `%${search}%`));
+      const hiragana = katakanaToHiragana(search);
+      const katakana = hiraganaToKatakana(search);
+      const nameConditions = [like(pharmacies.name, `%${search}%`)];
+      if (hiragana !== search) {
+        nameConditions.push(like(pharmacies.name, `%${hiragana}%`));
+      }
+      if (katakana !== search && katakana !== hiragana) {
+        nameConditions.push(like(pharmacies.name, `%${katakana}%`));
+      }
+      conditions.push(nameConditions.length === 1 ? nameConditions[0] : or(...nameConditions)!);
     }
     if (prefecture) {
       conditions.push(eq(pharmacies.prefecture, prefecture));
@@ -81,6 +91,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         openTime: pharmacyBusinessHours.openTime,
         closeTime: pharmacyBusinessHours.closeTime,
         isClosed: pharmacyBusinessHours.isClosed,
+        is24Hours: pharmacyBusinessHours.is24Hours,
       })
         .from(pharmacyBusinessHours)
         .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds))
