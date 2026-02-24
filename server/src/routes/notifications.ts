@@ -17,8 +17,19 @@ interface NoticeItem {
   actionPath: string;
   actionLabel: string;
   createdAt: string | null;
+  deadlineAt: string | null;
   unread: boolean;
   priority: number;
+}
+
+const PROPOSAL_RESPONSE_DEADLINE_HOURS = 72;
+
+function buildProposalDeadlineAt(proposedAt: string | null): string | null {
+  if (!proposedAt) return null;
+  const proposedAtMs = new Date(proposedAt).getTime();
+  if (!Number.isFinite(proposedAtMs)) return null;
+  const deadlineMs = proposedAtMs + (PROPOSAL_RESPONSE_DEADLINE_HOURS * 60 * 60 * 1000);
+  return new Date(deadlineMs).toISOString();
 }
 
 function proposalActionNotice(proposal: {
@@ -30,6 +41,7 @@ function proposalActionNotice(proposal: {
 }, currentPharmacyId: number): NoticeItem | null {
   const isA = proposal.pharmacyAId === currentPharmacyId;
   const actionPath = `/proposals/${proposal.id}`;
+  const deadlineAt = buildProposalDeadlineAt(proposal.proposedAt);
 
   if (proposal.status === 'proposed') {
     if (isA) {
@@ -41,6 +53,7 @@ function proposalActionNotice(proposal: {
         actionPath,
         actionLabel: '詳細へ',
         createdAt: proposal.proposedAt,
+        deadlineAt,
         unread: true,
         priority: 3,
       };
@@ -53,6 +66,7 @@ function proposalActionNotice(proposal: {
       actionPath,
       actionLabel: '承認/拒否を行う',
       createdAt: proposal.proposedAt,
+      deadlineAt,
       unread: true,
       priority: 1,
     };
@@ -67,6 +81,7 @@ function proposalActionNotice(proposal: {
       actionPath,
       actionLabel: '承認する',
       createdAt: proposal.proposedAt,
+      deadlineAt,
       unread: true,
       priority: 1,
     };
@@ -81,6 +96,7 @@ function proposalActionNotice(proposal: {
       actionPath,
       actionLabel: '交換完了へ進む',
       createdAt: proposal.proposedAt,
+      deadlineAt: null,
       unread: true,
       priority: 2,
     };
@@ -162,6 +178,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         actionPath,
         actionLabel: actionPath === '/' ? 'ダッシュボードへ' : '内容を確認',
         createdAt: message.createdAt,
+        deadlineAt: null,
         unread,
         priority: unread ? 1 : 4,
       });
@@ -223,20 +240,12 @@ router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const existing = await db.select({ id: adminMessageReads.id })
-      .from(adminMessageReads)
-      .where(and(
-        eq(adminMessageReads.messageId, id),
-        eq(adminMessageReads.pharmacyId, pharmacyId),
-      ))
-      .limit(1);
-
-    if (existing.length === 0) {
-      await db.insert(adminMessageReads).values({
-        messageId: id,
-        pharmacyId,
-      });
-    }
+    await db.insert(adminMessageReads).values({
+      messageId: id,
+      pharmacyId,
+    }).onConflictDoNothing({
+      target: [adminMessageReads.messageId, adminMessageReads.pharmacyId],
+    });
 
     res.json({ message: '既読にしました' });
   } catch (err) {

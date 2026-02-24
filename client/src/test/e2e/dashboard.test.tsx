@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import DashboardPage from '../../pages/DashboardPage';
 import Layout from '../../components/Layout';
-import { renderWithProviders, mockUser } from '../helpers';
+import { renderWithProviders, mockAdminUser, mockUser } from '../helpers';
 
 function mockAuthenticatedFetchWithDashboardData(overrides: Record<string, unknown> = {}) {
   const defaults: Record<string, unknown> = {
@@ -116,6 +116,135 @@ describe('DashboardPage', () => {
     });
   });
 
+  it('shows next action card for upload when used medication is missing', async () => {
+    mockAuthenticatedFetchWithDashboardData();
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('次にやること')).toBeInTheDocument();
+    });
+    expect(screen.getByText('使用薬剤をアップロード')).toBeInTheDocument();
+    expect(screen.getByText('アップロードへ進む')).toBeInTheDocument();
+  });
+
+  it('switches next action to proposal handling when actionable requests exist', async () => {
+    const createdAt = new Date().toISOString();
+    const deadlineAt = new Date(Date.now() + (48 * 60 * 60 * 1000)).toISOString();
+    mockAuthenticatedFetchWithDashboardData({
+      '/api/upload/status': {
+        deadStockUploaded: true,
+        usedMedicationUploaded: true,
+        lastDeadStockUpload: '2026-01-15T10:00:00Z',
+        lastUsedMedicationUpload: '2026-01-16T10:00:00Z',
+      },
+      '/api/notifications': {
+        notices: [
+          {
+            id: 'proposal-1',
+            type: 'inbound_request',
+            title: '交換提案が届いています',
+            body: 'テスト薬局2号店から交換提案',
+            actionPath: '/proposals/1',
+            actionLabel: '確認',
+            createdAt,
+            deadlineAt,
+            unread: true,
+            priority: 1,
+          },
+        ],
+        summary: { unreadMessages: 0, actionableRequests: 1, total: 1 },
+      },
+    });
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('届いている提案に対応')).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('確認').length).toBeGreaterThan(0);
+  });
+
+  it('prioritizes nearing proposal deadline in next action', async () => {
+    const now = Date.now();
+    const nearDeadlineCreatedAt = new Date(now - (70 * 60 * 60 * 1000)).toISOString();
+    mockAuthenticatedFetchWithDashboardData({
+      '/api/upload/status': {
+        deadStockUploaded: true,
+        usedMedicationUploaded: true,
+        lastDeadStockUpload: '2026-01-15T10:00:00Z',
+        lastUsedMedicationUpload: '2026-01-16T10:00:00Z',
+      },
+      '/api/notifications': {
+        notices: [
+          {
+            id: 'proposal-urgent-1',
+            type: 'inbound_request',
+            title: '交換提案が届いています',
+            body: '承認期限が近い提案です',
+            actionPath: '/proposals/1',
+            actionLabel: '承認/拒否を行う',
+            createdAt: nearDeadlineCreatedAt,
+            unread: true,
+            priority: 1,
+          },
+        ],
+        summary: { unreadMessages: 0, actionableRequests: 1, total: 1 },
+      },
+    });
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('承認期限が近い提案に対応')).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('承認/拒否を行う').length).toBeGreaterThan(0);
+  });
+
+  it('prioritizes unread admin message when it has higher priority', async () => {
+    const createdAt = new Date().toISOString();
+    const deadlineAt = new Date(Date.now() + (48 * 60 * 60 * 1000)).toISOString();
+    mockAuthenticatedFetchWithDashboardData({
+      '/api/upload/status': {
+        deadStockUploaded: true,
+        usedMedicationUploaded: true,
+        lastDeadStockUpload: '2026-01-15T10:00:00Z',
+        lastUsedMedicationUpload: '2026-01-16T10:00:00Z',
+      },
+      '/api/notifications': {
+        notices: [
+          {
+            id: 'proposal-low-1',
+            type: 'inbound_request',
+            title: '交換提案が届いています',
+            body: '通常優先度の提案',
+            actionPath: '/proposals/2',
+            actionLabel: '確認',
+            createdAt,
+            deadlineAt,
+            unread: true,
+            priority: 3,
+          },
+          {
+            id: 'message-5',
+            type: 'admin_message',
+            title: '管理者: 重要連絡',
+            body: 'システム更新のお知らせ',
+            actionPath: '/account',
+            actionLabel: '内容を確認',
+            createdAt: '2026-01-19T10:00:00Z',
+            unread: true,
+            priority: 1,
+          },
+        ],
+        summary: { unreadMessages: 1, actionableRequests: 1, total: 2 },
+      },
+    });
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('優先度の高い未読メッセージを確認')).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('内容を確認').length).toBeGreaterThan(0);
+  });
+
   it('shows notification badges with counts', async () => {
     mockAuthenticatedFetchWithDashboardData({
       '/api/notifications': {
@@ -198,6 +327,57 @@ describe('Layout with Sidebar navigation', () => {
     await waitFor(() => {
       expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
     });
+    expect(screen.getByText('v2026.2.24')).toBeInTheDocument();
+  });
+
+  it('renders mobile quick navigation rail in header', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(
+      <Layout><div>Test Content</div></Layout>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText('ヘッダークイック導線')).toBeInTheDocument();
+  });
+
+  it('shows OpenClaw integration link in admin menu', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockAdminUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(
+      <Layout><div>Test Content</div></Layout>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
+    });
+    expect(screen.getByText('OpenClaw連携')).toBeInTheDocument();
   });
 
   it('renders the sidebar navigation links', async () => {
@@ -222,11 +402,11 @@ describe('Layout with Sidebar navigation', () => {
     await waitFor(() => {
       expect(screen.getByText('ダッシュボード')).toBeInTheDocument();
     });
-    expect(screen.getByText('アップロード')).toBeInTheDocument();
+    expect(screen.getAllByText('アップロード').length).toBeGreaterThan(0);
     expect(screen.getByText('不動在庫')).toBeInTheDocument();
     expect(screen.getByText('使用薬剤')).toBeInTheDocument();
     expect(screen.getByText('在庫参照')).toBeInTheDocument();
-    expect(screen.getByText('マッチング')).toBeInTheDocument();
+    expect(screen.getAllByText('マッチング').length).toBeGreaterThan(0);
     expect(screen.getByText('マッチング一覧')).toBeInTheDocument();
     expect(screen.getByText('交換履歴')).toBeInTheDocument();
     expect(screen.getByText('薬局一覧')).toBeInTheDocument();

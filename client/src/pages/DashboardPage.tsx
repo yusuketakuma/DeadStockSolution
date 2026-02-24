@@ -20,6 +20,7 @@ interface Notice {
   actionPath: string;
   actionLabel: string;
   createdAt: string | null;
+  deadlineAt?: string | null;
   unread: boolean;
   priority: number;
 }
@@ -35,11 +36,194 @@ interface NotificationsResponse {
   summary: NotificationSummary;
 }
 
+interface NextAction {
+  title: string;
+  description: string;
+  primaryLabel: string;
+  primaryPath: string;
+  secondaryLabel: string;
+  secondaryPath: string;
+  badge: 'warning' | 'primary' | 'success';
+}
+
+const PROPOSAL_RESPONSE_DEADLINE_HOURS = 72;
+const PROPOSAL_DEADLINE_ALERT_HOURS = 24;
+
+function parseNoticeTime(value: string | null | undefined): number {
+  if (!value) return 0;
+  const ts = new Date(value).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function proposalDeadlineMs(notice: Notice): number | null {
+  if (notice.type !== 'inbound_request') return null;
+  const directDeadline = parseNoticeTime(notice.deadlineAt ?? null);
+  if (directDeadline > 0) return directDeadline;
+
+  const createdAtMs = parseNoticeTime(notice.createdAt);
+  if (createdAtMs <= 0) return null;
+  return createdAtMs + (PROPOSAL_RESPONSE_DEADLINE_HOURS * 60 * 60 * 1000);
+}
+
+function effectiveNoticePriority(notice: Notice, nowMs: number): number {
+  const basePriority = notice.priority > 0 ? notice.priority : 5;
+  const deadlineMs = proposalDeadlineMs(notice);
+  if (deadlineMs === null) return basePriority;
+
+  const remainingMs = deadlineMs - nowMs;
+  if (remainingMs <= 0) return 0;
+  if (remainingMs <= PROPOSAL_DEADLINE_ALERT_HOURS * 60 * 60 * 1000) {
+    return Math.max(1, basePriority - 1);
+  }
+  return basePriority;
+}
+
+function pickTopUnreadNotice(notifications: NotificationsResponse | null, now: Date): Notice | null {
+  const unreadNotices = notifications?.notices.filter((notice) => notice.unread) ?? [];
+  if (unreadNotices.length === 0) return null;
+
+  const nowMs = now.getTime();
+  const sorted = [...unreadNotices].sort((a, b) => {
+    const aPriority = effectiveNoticePriority(a, nowMs);
+    const bPriority = effectiveNoticePriority(b, nowMs);
+    if (aPriority !== bPriority) return aPriority - bPriority;
+
+    const aDeadline = proposalDeadlineMs(a);
+    const bDeadline = proposalDeadlineMs(b);
+    if (aDeadline !== null || bDeadline !== null) {
+      if (aDeadline === null) return 1;
+      if (bDeadline === null) return -1;
+      if (aDeadline !== bDeadline) return aDeadline - bDeadline;
+    }
+
+    const aCreated = parseNoticeTime(a.createdAt);
+    const bCreated = parseNoticeTime(b.createdAt);
+    return bCreated - aCreated;
+  });
+
+  return sorted[0] ?? null;
+}
+
+function formatDeadline(deadlineMs: number): string {
+  return new Date(deadlineMs).toLocaleString('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function noticeVariant(type: Notice['type']): string {
   if (type === 'inbound_request') return 'danger';
   if (type === 'status_update') return 'warning';
   if (type === 'admin_message') return 'info';
   return 'secondary';
+}
+
+function buildNextAction(
+  status: UploadStatus | null,
+  notifications: NotificationsResponse | null,
+  now: Date = new Date(),
+): NextAction {
+  if (!status?.deadStockUploaded) {
+    return {
+      title: '不動在庫をアップロード',
+      description: 'まずは交換候補の母集団になる不動在庫データを登録してください。',
+      primaryLabel: 'アップロードへ進む',
+      primaryPath: '/upload',
+      secondaryLabel: '不動在庫一覧へ',
+      secondaryPath: '/inventory/dead-stock',
+      badge: 'warning',
+    };
+  }
+
+  if (!status.usedMedicationUploaded) {
+    return {
+      title: '使用薬剤をアップロード',
+      description: '当月の使用薬剤が未登録です。登録後にマッチングを実行できます。',
+      primaryLabel: 'アップロードへ進む',
+      primaryPath: '/upload',
+      secondaryLabel: '使用薬剤一覧へ',
+      secondaryPath: '/inventory/used-medication',
+      badge: 'warning',
+    };
+  }
+
+  const topUnreadNotice = pickTopUnreadNotice(notifications, now);
+  if (topUnreadNotice?.type === 'admin_message') {
+    return {
+      title: '優先度の高い未読メッセージを確認',
+      description: '管理者から未読メッセージがあります。優先度の高い内容から確認してください。',
+      primaryLabel: topUnreadNotice.actionLabel || '内容を確認',
+      primaryPath: topUnreadNotice.actionPath || '/',
+      secondaryLabel: 'マッチング一覧を確認',
+      secondaryPath: '/proposals',
+      badge: 'primary',
+    };
+  }
+
+  if (topUnreadNotice && (topUnreadNotice.type === 'inbound_request' || topUnreadNotice.type === 'status_update')) {
+    const primaryPath = topUnreadNotice.actionPath || '/proposals';
+    const primaryLabel = topUnreadNotice.actionLabel || 'マッチング一覧を確認';
+    const deadlineMs = proposalDeadlineMs(topUnreadNotice);
+    if (deadlineMs !== null) {
+      const remainingMs = deadlineMs - now.getTime();
+      if (remainingMs <= 0) {
+        return {
+          title: '承認期限を過ぎた提案に対応',
+          description: `承認期限（${formatDeadline(deadlineMs)}）を超過した提案があります。至急ご確認ください。`,
+          primaryLabel,
+          primaryPath,
+          secondaryLabel: 'マッチング一覧を確認',
+          secondaryPath: '/proposals',
+          badge: 'warning',
+        };
+      }
+      if (remainingMs <= PROPOSAL_DEADLINE_ALERT_HOURS * 60 * 60 * 1000) {
+        return {
+          title: '承認期限が近い提案に対応',
+          description: `承認期限（${formatDeadline(deadlineMs)}）が近い提案があります。先に確認してください。`,
+          primaryLabel,
+          primaryPath,
+          secondaryLabel: '交換履歴を見る',
+          secondaryPath: '/exchange-history',
+          badge: 'warning',
+        };
+      }
+    }
+
+    return {
+      title: '届いている提案に対応',
+      description: '承認待ちの提案があります。先に確認すると交換確定までが早くなります。',
+      primaryLabel,
+      primaryPath,
+      secondaryLabel: '交換履歴を見る',
+      secondaryPath: '/exchange-history',
+      badge: 'primary',
+    };
+  }
+
+  if ((notifications?.summary.actionableRequests ?? 0) > 0) {
+    return {
+      title: '届いている提案に対応',
+      description: '承認待ちの提案があります。先に確認すると交換確定までが早くなります。',
+      primaryLabel: 'マッチング一覧を確認',
+      primaryPath: '/proposals',
+      secondaryLabel: '交換履歴を見る',
+      secondaryPath: '/exchange-history',
+      badge: 'primary',
+    };
+  }
+
+  return {
+    title: 'マッチングを実行',
+    description: '最新データで交換候補を探し、仮マッチング提案を開始してください。',
+    primaryLabel: 'マッチングへ進む',
+    primaryPath: '/matching',
+    secondaryLabel: '在庫参照を開く',
+    secondaryPath: '/inventory/browse',
+    badge: 'success',
+  };
 }
 
 function parseMessageId(noticeId: string): number | null {
@@ -55,6 +239,7 @@ export default function DashboardPage() {
   const [status, setStatus] = useState<UploadStatus | null>(null);
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const nextAction = buildNextAction(status, notifications);
 
   const fetchDashboardData = async () => {
     setLoadingNotifications(true);
@@ -98,6 +283,28 @@ export default function DashboardPage() {
     <div>
       <DisclaimerBanner />
       <h4 className="page-title mb-3">ダッシュボード</h4>
+
+      <Card className="mb-3">
+        <Card.Body>
+          <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+            <div>
+              <div className="mb-2">
+                <Badge bg={nextAction.badge}>次にやること</Badge>
+              </div>
+              <h5 className="mb-1">{nextAction.title}</h5>
+              <div className="text-muted small">{nextAction.description}</div>
+            </div>
+            <div className="d-flex gap-2 mobile-stack">
+              <Link to={nextAction.primaryPath} className="btn btn-primary btn-sm">
+                {nextAction.primaryLabel}
+              </Link>
+              <Link to={nextAction.secondaryPath} className="btn btn-outline-secondary btn-sm">
+                {nextAction.secondaryLabel}
+              </Link>
+            </div>
+          </div>
+        </Card.Body>
+      </Card>
 
       <Card className="mb-3">
         <Card.Header className="d-flex justify-content-between align-items-center">
