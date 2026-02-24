@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
-import { eq, and, like, desc } from 'drizzle-orm';
+import { eq, and, like, desc, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
-import { deadStockItems, usedMedicationItems, pharmacies } from '../db/schema';
+import { deadStockItems, usedMedicationItems, pharmacies, pharmacyBusinessHours } from '../db/schema';
+import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination } from '../utils/request-utils';
@@ -115,6 +116,7 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
 
     const items = await db.select({
       id: deadStockItems.id,
+      pharmacyId: deadStockItems.pharmacyId,
       drugName: deadStockItems.drugName,
       quantity: deadStockItems.quantity,
       unit: deadStockItems.unit,
@@ -131,12 +133,40 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
+    // Fetch business hours for pharmacies in results
+    const pharmacyIds = [...new Set(items.map((i) => i.pharmacyId))];
+    const allHours = pharmacyIds.length > 0
+      ? await db.select({
+        pharmacyId: pharmacyBusinessHours.pharmacyId,
+        dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+        openTime: pharmacyBusinessHours.openTime,
+        closeTime: pharmacyBusinessHours.closeTime,
+        isClosed: pharmacyBusinessHours.isClosed,
+      })
+        .from(pharmacyBusinessHours)
+        .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds))
+      : [];
+
+    const hoursByPharmacy = new Map<number, typeof allHours>();
+    for (const h of allHours) {
+      const list = hoursByPharmacy.get(h.pharmacyId) ?? [];
+      list.push(h);
+      hoursByPharmacy.set(h.pharmacyId, list);
+    }
+
+    const now = new Date();
+    const enrichedItems = items.map(({ pharmacyId, ...item }) => {
+      const hours = hoursByPharmacy.get(pharmacyId) ?? [];
+      const status = getBusinessHoursStatus(hours, now);
+      return { ...item, businessStatus: status };
+    });
+
     const [total] = await db.select({ count: rowCount })
       .from(deadStockItems)
       .where(whereExpr);
 
     res.json({
-      data: items,
+      data: enrichedItems,
       pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {

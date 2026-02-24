@@ -11,6 +11,7 @@ import inventoryRoutes from './routes/inventory';
 import exchangeRoutes from './routes/exchange';
 import pharmaciesRoutes from './routes/pharmacies';
 import notificationsRoutes from './routes/notifications';
+import businessHoursRoutes from './routes/business-hours';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { db } from './config/database';
@@ -87,6 +88,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/exchange', exchangeRoutes);
 app.use('/api/pharmacies', pharmaciesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/business-hours', businessHoursRoutes);
 
 // Health check with DB connectivity
 app.get('/api/health', async (_req, res) => {

@@ -195,6 +195,19 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   idxPasswordResetPharmacy: index('idx_password_reset_pharmacy').on(table.pharmacyId),
 }));
 
+export const pharmacyBusinessHours = pgTable('pharmacy_business_hours', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  dayOfWeek: integer('day_of_week').notNull(), // 0=日曜, 1=月曜, ..., 6=土曜
+  openTime: text('open_time'), // "09:00" format, null if closed
+  closeTime: text('close_time'), // "18:00" format, null if closed
+  isClosed: boolean('is_closed').default(false),
+}, (table) => ({
+  idxBusinessHoursPharmacy: index('idx_business_hours_pharmacy').on(table.pharmacyId),
+  idxBusinessHoursPharmacyDay: uniqueIndex('idx_business_hours_pharmacy_day').on(table.pharmacyId, table.dayOfWeek),
+  chkDayOfWeek: check('chk_day_of_week', sql`${table.dayOfWeek} >= 0 AND ${table.dayOfWeek} <= 6`),
+}));
+
 export const activityLogs = pgTable('activity_logs', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').references(() => pharmacies.id, { onDelete: 'set null' }),

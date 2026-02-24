@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
-import { and, eq, like, desc } from 'drizzle-orm';
+import { and, eq, like, desc, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies } from '../db/schema';
+import { pharmacies, pharmacyBusinessHours } from '../db/schema';
+import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { requireLogin } from '../middleware/auth';
 import { haversineDistance } from '../utils/geo-utils';
 import { AuthRequest } from '../types';
@@ -71,7 +72,39 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       return { ...row, distance };
     });
 
-    let result = enriched;
+    // Fetch business hours for all pharmacies in the result
+    const pharmacyIds = enriched.map((r) => r.id);
+    const allHours = pharmacyIds.length > 0
+      ? await db.select({
+        pharmacyId: pharmacyBusinessHours.pharmacyId,
+        dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+        openTime: pharmacyBusinessHours.openTime,
+        closeTime: pharmacyBusinessHours.closeTime,
+        isClosed: pharmacyBusinessHours.isClosed,
+      })
+        .from(pharmacyBusinessHours)
+        .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds))
+      : [];
+
+    const hoursByPharmacy = new Map<number, typeof allHours>();
+    for (const h of allHours) {
+      const list = hoursByPharmacy.get(h.pharmacyId) ?? [];
+      list.push(h);
+      hoursByPharmacy.set(h.pharmacyId, list);
+    }
+
+    const now = new Date();
+    const enrichedWithHours = enriched.map((row) => {
+      const hours = hoursByPharmacy.get(row.id) ?? [];
+      const status = getBusinessHoursStatus(hours, now);
+      return {
+        ...row,
+        businessHours: hours.map(({ pharmacyId: _, ...rest }) => rest),
+        businessStatus: status,
+      };
+    });
+
+    let result = enrichedWithHours;
 
     // Sort by distance if requested
     if (sortBy === 'distance') {

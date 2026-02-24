@@ -1,7 +1,13 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { Table, Form, Button, InputGroup, Alert } from 'react-bootstrap';
+import { Table, Form, Button, InputGroup, Alert, Badge } from 'react-bootstrap';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
+
+interface BusinessHoursStatus {
+  isOpen: boolean;
+  closingSoon: boolean;
+  todayHours: { openTime: string; closeTime: string } | null;
+}
 
 interface BrowseItem {
   id: number;
@@ -13,11 +19,27 @@ interface BrowseItem {
   expirationDate: string | null;
   pharmacyName: string;
   prefecture: string;
+  businessStatus?: BusinessHoursStatus;
 }
 
 interface BrowseResponse {
   data: BrowseItem[];
   pagination: { page: number };
+}
+
+function BusinessStatusBadge({ status }: { status?: BusinessHoursStatus }) {
+  if (!status) return <span className="text-muted">-</span>;
+
+  if (status.closingSoon) {
+    return <Badge bg="warning" text="dark">まもなく営業終了</Badge>;
+  }
+  if (!status.isOpen) {
+    return <Badge bg="secondary">営業時間外</Badge>;
+  }
+  if (status.todayHours) {
+    return <Badge bg="success">営業中</Badge>;
+  }
+  return <span className="text-muted">-</span>;
 }
 
 export default function InventoryBrowsePage() {
@@ -78,6 +100,7 @@ export default function InventoryBrowsePage() {
                 <th>使用期限</th>
                 <th>薬局名</th>
                 <th>都道府県</th>
+                <th>営業状況</th>
               </tr>
             </thead>
             <tbody>
@@ -91,6 +114,7 @@ export default function InventoryBrowsePage() {
                   <td>{item.expirationDate}</td>
                   <td>{item.pharmacyName}</td>
                   <td>{item.prefecture}</td>
+                  <td><BusinessStatusBadge status={item.businessStatus} /></td>
                 </tr>
               ))}
             </tbody>

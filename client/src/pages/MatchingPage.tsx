@@ -15,6 +15,12 @@ interface MatchItem {
   matchScore?: number;
 }
 
+interface BusinessHoursStatus {
+  isOpen: boolean;
+  closingSoon: boolean;
+  todayHours: { openTime: string; closeTime: string } | null;
+}
+
 interface MatchCandidate {
   pharmacyId: number;
   pharmacyName: string;
@@ -28,11 +34,27 @@ interface MatchCandidate {
   valueDifference: number;
   score?: number;
   matchRate?: number;
+  businessStatus?: BusinessHoursStatus;
 }
 
 function formatPercent(value?: number): string {
   if (!value || Number.isNaN(value)) return '-';
   return `${Math.round(value)}%`;
+}
+
+function BusinessStatusBadge({ status }: { status?: BusinessHoursStatus }) {
+  if (!status) return null;
+
+  if (status.closingSoon) {
+    return <Badge bg="warning" text="dark">まもなく営業終了</Badge>;
+  }
+  if (!status.isOpen) {
+    return <Badge bg="secondary">営業時間外</Badge>;
+  }
+  if (status.todayHours) {
+    return <Badge bg="success">営業中 {status.todayHours.openTime}〜{status.todayHours.closeTime}</Badge>;
+  }
+  return null;
 }
 
 export default function MatchingPage() {
@@ -111,6 +133,7 @@ export default function MatchingPage() {
                 </div>
               </div>
               <div className="d-flex flex-wrap gap-2">
+                <BusinessStatusBadge status={candidate.businessStatus} />
                 <Badge bg="info">{candidate.distance}km</Badge>
                 <Badge bg="secondary">一致度 {formatPercent(candidate.matchRate)}</Badge>
                 <Badge bg="primary">総合 {candidate.score?.toFixed(1) ?? '-'}</Badge>
@@ -122,6 +145,11 @@ export default function MatchingPage() {
 
             {expandedIdx === idx && (
               <Card.Body>
+                {candidate.businessStatus?.closingSoon && (
+                  <Alert variant="warning" className="py-2 mb-3">
+                    この薬局はまもなく営業終了です（本日 {candidate.businessStatus.todayHours?.closeTime} まで）
+                  </Alert>
+                )}
                 <Row className="g-3 mb-3">
                   <Col md={6}>
                     <h6>あなた → {candidate.pharmacyName} ({candidate.totalValueA.toLocaleString()}円)</h6>

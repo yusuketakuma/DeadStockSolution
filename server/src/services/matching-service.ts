@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, ne } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, deadStockItems, usedMedicationItems, uploads } from '../db/schema';
+import { pharmacies, deadStockItems, usedMedicationItems, uploads, pharmacyBusinessHours } from '../db/schema';
+import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { haversineDistance } from '../utils/geo-utils';
 import { normalizeString } from '../utils/string-utils';
 import { distance as levenshtein } from 'fastest-levenshtein';
@@ -460,6 +461,24 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       .where(inArray(usedMedicationItems.pharmacyId, activePharmacyIds)),
   ]);
 
+  // Fetch business hours for all candidate pharmacies
+  const allBusinessHours = await db.select({
+    pharmacyId: pharmacyBusinessHours.pharmacyId,
+    dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+    openTime: pharmacyBusinessHours.openTime,
+    closeTime: pharmacyBusinessHours.closeTime,
+    isClosed: pharmacyBusinessHours.isClosed,
+  })
+    .from(pharmacyBusinessHours)
+    .where(inArray(pharmacyBusinessHours.pharmacyId, activePharmacyIds));
+
+  const businessHoursByPharmacy = new Map<number, typeof allBusinessHours>();
+  for (const h of allBusinessHours) {
+    const list = businessHoursByPharmacy.get(h.pharmacyId) ?? [];
+    list.push(h);
+    businessHoursByPharmacy.set(h.pharmacyId, list);
+  }
+
   const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(allOtherDeadStock);
   const usedMedsByPharmacy = groupByPharmacy<UsedMedRow>(allOtherUsedMeds);
   const myUsedMedIndex = buildUsedMedIndex(myUsedMeds);
@@ -541,6 +560,9 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     const score = calculateCandidateScore(totalA, totalB, diff, otherPharmacy.distance, balancedA, balancedB);
     const matchRate = calculateMatchRate(balancedA, balancedB);
 
+    const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id) ?? [];
+    const businessStatus = getBusinessHoursStatus(pharmacyHours, now);
+
     candidates.push({
       pharmacyId: otherPharmacy.id,
       pharmacyName: otherPharmacy.name,
@@ -554,6 +576,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       valueDifference: diff,
       score,
       matchRate,
+      businessStatus,
     });
   }
 

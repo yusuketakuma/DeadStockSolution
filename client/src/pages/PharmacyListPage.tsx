@@ -14,6 +14,12 @@ const PREFECTURES = [
   '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
 ];
 
+interface BusinessHoursStatus {
+  isOpen: boolean;
+  closingSoon: boolean;
+  todayHours: { openTime: string; closeTime: string } | null;
+}
+
 interface Pharmacy {
   id: number;
   name: string;
@@ -22,11 +28,27 @@ interface Pharmacy {
   phone: string;
   fax: string;
   distance: number | null;
+  businessStatus?: BusinessHoursStatus;
 }
 
 interface PharmaciesResponse {
   data: Pharmacy[];
   pagination: { page: number; totalPages: number; total: number };
+}
+
+function BusinessStatusBadge({ status }: { status?: BusinessHoursStatus }) {
+  if (!status) return <span className="text-muted small">-</span>;
+
+  if (status.closingSoon) {
+    return <Badge bg="warning" text="dark">まもなく営業終了</Badge>;
+  }
+  if (!status.isOpen) {
+    return <Badge bg="secondary">営業時間外</Badge>;
+  }
+  if (status.todayHours) {
+    return <Badge bg="success">{status.todayHours.openTime}〜{status.todayHours.closeTime}</Badge>;
+  }
+  return <span className="text-muted small">-</span>;
 }
 
 export default function PharmacyListPage() {
@@ -101,6 +123,7 @@ export default function PharmacyListPage() {
                 <th>住所</th>
                 <th>電話</th>
                 <th>FAX</th>
+                <th>営業状況</th>
                 <th>距離</th>
               </tr>
             </thead>
@@ -112,6 +135,7 @@ export default function PharmacyListPage() {
                   <td className="small">{p.address}</td>
                   <td>{p.phone}</td>
                   <td>{p.fax}</td>
+                  <td><BusinessStatusBadge status={p.businessStatus} /></td>
                   <td>
                     {p.distance !== null ? (
                       <Badge bg="info">{p.distance}km</Badge>
