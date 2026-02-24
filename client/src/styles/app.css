@@ -34,6 +34,12 @@ body {
   width: 100%;
 }
 
+.app-header-brand-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .app-header-brand {
   display: inline-flex;
   align-items: baseline;
@@ -54,6 +60,21 @@ body {
   font-weight: 500;
   color: #dbeafe;
   letter-spacing: 0;
+}
+
+.app-header-request-btn {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.28rem 0.6rem;
+  white-space: nowrap;
+}
+
+.app-header-request-message {
+  font-size: 0.72rem;
+  color: #dbeafe;
+  margin-right: 0.2rem;
 }
 
 .app-header-quick {
@@ -269,6 +290,15 @@ body {
 
   .app-header-version {
     font-size: 0.72rem;
+  }
+
+  .app-header-request-btn {
+    font-size: 0.68rem;
+    padding: 0.24rem 0.5rem;
+  }
+
+  .app-header-request-message {
+    white-space: nowrap;
   }
 
   .app-header-quick-mobile {

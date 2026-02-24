@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Button } from 'react-bootstrap';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Alert, Button, Form, Modal } from 'react-bootstrap';
 import { Link, useLocation } from 'react-router-dom';
+import { api } from '../api/client';
 import { APP_VERSION } from '../constants/appVersion';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -35,6 +36,11 @@ export default function Header({ onToggleSidebar }: Props) {
   const { user } = useAuth();
   const location = useLocation();
   const [previousPath, setPreviousPath] = useState('');
+  const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [requestText, setRequestText] = useState('');
+  const [requestError, setRequestError] = useState('');
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [requestMessage, setRequestMessage] = useState('');
 
   useEffect(() => {
     const nextPath = `${location.pathname}${location.search}${location.hash}`;
@@ -55,6 +61,44 @@ export default function Header({ onToggleSidebar }: Props) {
     return source.filter((item) => !location.pathname.startsWith(item.to)).slice(0, 2);
   }, [location.pathname, user?.isAdmin]);
 
+  const openRequestModal = () => {
+    setRequestError('');
+    setRequestMessage('');
+    setRequestModalOpen(true);
+  };
+
+  const closeRequestModal = () => {
+    if (requestSubmitting) return;
+    setRequestModalOpen(false);
+  };
+
+  const handleRequestSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const message = requestText.trim();
+    if (!message) {
+      setRequestError('要望内容を入力してください');
+      return;
+    }
+    if (message.length > 2000) {
+      setRequestError('要望は2000文字以内で入力してください');
+      return;
+    }
+
+    setRequestSubmitting(true);
+    setRequestError('');
+    try {
+      const result = await api.post<{ message?: string; nextStep?: string }>('/requests', { message });
+      const detail = result.nextStep ? ` ${result.nextStep}` : '';
+      setRequestMessage(`${result.message ?? '要望を受け付けました。'}${detail}`);
+      setRequestText('');
+      setRequestModalOpen(false);
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : '要望の送信に失敗しました');
+    } finally {
+      setRequestSubmitting(false);
+    }
+  };
+
   return (
     <header className="app-header">
       <div className="app-header-main">
@@ -70,12 +114,28 @@ export default function Header({ onToggleSidebar }: Props) {
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </Button>
-        <Link to="/" className="app-header-brand">
-          <span>DeadStockSolution</span>
-          <span className="app-header-version">{APP_VERSION}</span>
-        </Link>
+        <div className="app-header-brand-group">
+          <Link to="/" className="app-header-brand">
+            <span>DeadStockSolution</span>
+            <span className="app-header-version">{APP_VERSION}</span>
+          </Link>
+          {!user?.isAdmin && (
+            <Button
+              type="button"
+              variant="outline-light"
+              size="sm"
+              className="app-header-request-btn"
+              onClick={openRequestModal}
+            >
+              要望をあげる
+            </Button>
+          )}
+        </div>
 
         <div className="app-header-quick ms-auto d-none d-lg-flex">
+          {requestMessage && (
+            <span className="app-header-request-message" role="status">{requestMessage}</span>
+          )}
           {previousPath && (
             <Link to={previousPath} className="app-header-quick-link app-header-quick-link-muted">
               前回の画面へ戻る
@@ -90,6 +150,9 @@ export default function Header({ onToggleSidebar }: Props) {
       </div>
 
       <div className="app-header-quick-mobile d-lg-none" aria-label="ヘッダークイック導線">
+        {requestMessage && (
+          <span className="app-header-request-message" role="status">{requestMessage}</span>
+        )}
         {previousPath && (
           <Link to={previousPath} className="app-header-quick-link app-header-quick-link-muted">
             前回の画面へ戻る
@@ -101,6 +164,40 @@ export default function Header({ onToggleSidebar }: Props) {
           </Link>
         ))}
       </div>
+
+      <Modal show={requestModalOpen} onHide={closeRequestModal} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>要望をあげる</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleRequestSubmit}>
+          <Modal.Body>
+            {requestError && <Alert variant="danger">{requestError}</Alert>}
+            <Form.Group controlId="request-message">
+              <Form.Label>要望内容</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={5}
+                maxLength={2000}
+                value={requestText}
+                onChange={(event) => setRequestText(event.target.value)}
+                placeholder="改善してほしい点、困っていることを入力してください"
+                required
+              />
+              <Form.Text className="text-muted">
+                {requestText.length}/2000 文字
+              </Form.Text>
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" type="button" onClick={closeRequestModal} disabled={requestSubmitting}>
+              閉じる
+            </Button>
+            <Button variant="primary" type="submit" disabled={requestSubmitting}>
+              {requestSubmitting ? '送信中...' : '送信する'}
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
     </header>
   );
 }

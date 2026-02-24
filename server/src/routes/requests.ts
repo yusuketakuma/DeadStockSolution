@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { userRequests } from '../db/schema';
-import { requireLogin, requireAdmin } from '../middleware/auth';
+import { requireLogin } from '../middleware/auth';
 import { logger } from '../services/logger';
 import { handoffToOpenClaw } from '../services/openclaw-service';
 import { AuthRequest } from '../types';
@@ -10,7 +10,6 @@ import { AuthRequest } from '../types';
 const router = Router();
 
 router.use(requireLogin);
-router.use(requireAdmin);
 
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {

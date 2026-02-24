@@ -1,5 +1,11 @@
 # DeadStockSolution
 
+## システム紹介
+
+DeadStockSolution は、薬局間の不動在庫交換を支援する業務システムです。  
+在庫アップロード、マッチング、提案対応、通知、管理者向け運用機能を一つの画面で扱えるようにし、
+日々の在庫調整を効率化することを目的としています。
+
 ## Vercel Postgres移行手順
 
 1. `server/.env` に `POSTGRES_URL`（必要なら `POSTGRES_URL_NON_POOLING`）を設定

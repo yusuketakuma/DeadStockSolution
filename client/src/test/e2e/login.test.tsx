@@ -45,7 +45,7 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByText('薬局不動在庫交換システム')).toBeInTheDocument();
     });
-    expect(screen.getByText('v2026.2.24')).toBeInTheDocument();
+    expect(screen.getByText('v2026.2.25')).toBeInTheDocument();
     // Tab navigation
     expect(screen.getByText('薬局ログイン')).toBeInTheDocument();
     expect(screen.getByText('管理者ログイン')).toBeInTheDocument();

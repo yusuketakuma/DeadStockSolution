@@ -327,7 +327,8 @@ describe('Layout with Sidebar navigation', () => {
     await waitFor(() => {
       expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
     });
-    expect(screen.getByText('v2026.2.24')).toBeInTheDocument();
+    expect(screen.getByText('v2026.2.25')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '要望をあげる' })).toBeInTheDocument();
   });
 
   it('renders mobile quick navigation rail in header', async () => {
@@ -378,6 +379,7 @@ describe('Layout with Sidebar navigation', () => {
       expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
     });
     expect(screen.getByText('OpenClaw連携')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '要望をあげる' })).not.toBeInTheDocument();
   });
 
   it('renders the sidebar navigation links', async () => {
