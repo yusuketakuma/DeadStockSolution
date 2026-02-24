@@ -7,6 +7,7 @@ const TEST_ACCOUNTS = [
   { label: 'テスト薬局（東京）', email: 'test@example.com' },
   { label: 'テスト薬局2号店（大阪）', email: 'test2@example.com' },
 ];
+const DEMO_ACCOUNT_PASSWORD = 'DemoStock2026!';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,7 +17,6 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'user' | 'admin'>('user');
   const { login, logout } = useAuth();
   const navigate = useNavigate();
-  const showTestAccountHelper = !import.meta.env.PROD || import.meta.env.MODE === 'test';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -48,7 +48,7 @@ export default function LoginPage() {
   const handleTestLogin = (account: { email: string }) => {
     setError('');
     setEmail(account.email);
-    setPassword('');
+    setPassword(DEMO_ACCOUNT_PASSWORD);
   };
 
   const switchMode = (newMode: 'user' | 'admin') => {
@@ -116,28 +116,26 @@ export default function LoginPage() {
                 <Link to="/register">新規登録はこちら</Link>
               </div>
 
-              {showTestAccountHelper && (
-                <>
-                  <hr />
-                  <p className="text-muted small text-center mb-2">テストアカウント（メール入力補助）</p>
-                  <div className="d-grid gap-2">
-                    {TEST_ACCOUNTS.map((account) => (
-                      <Button
-                        key={account.email}
-                        variant="outline-secondary"
-                        size="sm"
-                        disabled={loading}
-                        onClick={() => handleTestLogin(account)}
-                      >
-                        {account.label}
-                      </Button>
-                    ))}
-                  </div>
-                  <p className="text-muted small text-center mt-2 mb-0">
-                    メールを選択後、共通パスワードを入力してください。
-                  </p>
-                </>
-              )}
+              <>
+                <hr />
+                <p className="text-muted small text-center mb-2">デモアカウント（ID/パスワード自動入力）</p>
+                <div className="d-grid gap-2">
+                  {TEST_ACCOUNTS.map((account) => (
+                    <Button
+                      key={account.email}
+                      variant="outline-secondary"
+                      size="sm"
+                      disabled={loading}
+                      onClick={() => handleTestLogin(account)}
+                    >
+                      {account.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-muted small text-center mt-2 mb-0">
+                  ボタンを押すとIDとパスワードが自動入力されます。
+                </p>
+              </>
             </>
           )}
 

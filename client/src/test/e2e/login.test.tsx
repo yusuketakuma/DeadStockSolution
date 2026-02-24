@@ -63,7 +63,7 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
-      expect(screen.getByText('テストアカウント（メール入力補助）')).toBeInTheDocument();
+      expect(screen.getByText('デモアカウント（ID/パスワード自動入力）')).toBeInTheDocument();
     });
     expect(screen.getByText('テスト薬局（東京）')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局2号店（大阪）')).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('LoginPage', () => {
     expect(submitBtn).toBeTruthy();
     expect(submitBtn.textContent).toBe('管理者ログイン');
     // Test accounts and register link should NOT be visible
-    expect(screen.queryByText('テストアカウント（メール入力補助）')).not.toBeInTheDocument();
+    expect(screen.queryByText('デモアカウント（ID/パスワード自動入力）')).not.toBeInTheDocument();
     expect(screen.queryByText('新規登録はこちら')).not.toBeInTheDocument();
     // Admin mode hint
     expect(screen.getByText('管理者アカウントでログインしてください。')).toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('LoginPage', () => {
     });
   });
 
-  it('fills email when test account is selected', async () => {
+  it('fills email and password when test account is selected', async () => {
     const user = userEvent.setup();
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -205,7 +205,7 @@ describe('LoginPage', () => {
 
     await waitFor(() => {
       expect(getInputByLabel('メールアドレス').value).toBe('test@example.com');
-      expect(getInputByLabel('パスワード').value).toBe('');
+      expect(getInputByLabel('パスワード').value).toBe('DemoStock2026!');
     });
 
     const loginCall = fetchMock.mock.calls.find(
