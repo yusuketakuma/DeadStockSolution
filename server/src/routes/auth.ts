@@ -5,10 +5,13 @@ import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword, verifyPassword, generateToken } from '../services/auth-service';
 import { ensureTestAccount, getTestAccountByKey } from '../services/test-account-service';
-import { validateRegistration, validateLogin } from '../utils/validators';
+import { validateRegistration, validateLogin, passwordSchema } from '../utils/validators';
 import { postalCodeToCoordinates } from '../utils/postal-code';
+import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
+import { writeLog, getClientIp } from '../services/log-service';
+import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 
 const router = Router();
 const isTestAccountLoginEnabled = process.env.ENABLE_TEST_ACCOUNT_LOGIN !== 'false';
@@ -61,7 +64,16 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     }
 
     const passwordHash = await hashPassword(password);
-    const coords = postalCodeToCoordinates(postalCode);
+
+    // 住所からジオコーディング（都道府県+住所で検索）
+    const fullAddress = `${prefecture}${address}`;
+    const coords = await geocodeAddress(fullAddress);
+    if (!coords) {
+      res.status(400).json({
+        errors: [{ field: 'address', message: '住所から位置情報を特定できませんでした。正しい住所を入力してください' }],
+      });
+      return;
+    }
 
     const result = await db.insert(pharmacies).values({
       email,
@@ -73,8 +85,8 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       fax,
       licenseNumber,
       prefecture,
-      latitude: coords?.lat ?? null,
-      longitude: coords?.lng ?? null,
+      latitude: coords.lat,
+      longitude: coords.lng,
     }).returning({ id: pharmacies.id });
 
     const pharmacyId = result[0].id;
@@ -87,6 +99,8 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000,
     });
+
+    writeLog('register', { pharmacyId, detail: `新規登録: ${name}`, ipAddress: getClientIp(req) });
 
     res.status(201).json({
       id: pharmacyId,
@@ -129,6 +143,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
 
     const valid = await verifyPassword(password, pharmacy.passwordHash);
     if (!valid) {
+      writeLog('login_failed', { detail: `ログイン失敗: ${email}`, ipAddress: getClientIp(req) });
       res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
       return;
     }
@@ -145,6 +160,9 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000,
     });
+
+    const logAction = pharmacy.isAdmin ? 'admin_login' as const : 'login' as const;
+    writeLog(logAction, { pharmacyId: pharmacy.id, detail: `ログイン: ${pharmacy.name}`, ipAddress: getClientIp(req) });
 
     res.json({
       id: pharmacy.id,
@@ -187,6 +205,8 @@ router.post('/test-login', loginLimiter, async (req: AuthRequest, res: Response)
       maxAge: 24 * 60 * 60 * 1000,
     });
 
+    writeLog('test_login', { pharmacyId: user.id, detail: `テストログイン: ${key}`, ipAddress: getClientIp(req) });
+
     res.json(user);
   } catch (err) {
     console.error('Test login error:', err);
@@ -194,7 +214,65 @@ router.post('/test-login', loginLimiter, async (req: AuthRequest, res: Response)
   }
 });
 
-router.post('/logout', (_req: AuthRequest, res: Response) => {
+router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!email) {
+      res.status(400).json({ error: 'メールアドレスを入力してください' });
+      return;
+    }
+
+    const result = await createPasswordResetToken(email);
+
+    // Always return success to prevent email enumeration
+    writeLog('password_reset_request', {
+      detail: `パスワードリセット要求: ${email} (${result ? '成功' : 'アカウント不明'})`,
+      ipAddress: getClientIp(req),
+    });
+
+    res.json({
+      message: 'パスワードリセットの手続きを受け付けました',
+      // In production, send email with token. For now, return token directly for dev/demo.
+      ...(process.env.NODE_ENV !== 'production' && result ? { token: result.token } : {}),
+    });
+  } catch (err) {
+    console.error('Password reset request error:', err);
+    res.status(500).json({ error: 'パスワードリセットに失敗しました' });
+  }
+});
+
+router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+
+    if (!token || !/^[a-f0-9]{64}$/.test(token)) {
+      res.status(400).json({ error: 'リセットトークンが無効です' });
+      return;
+    }
+
+    const passwordResult = passwordSchema.safeParse(newPassword);
+    if (!passwordResult.success) {
+      res.status(400).json({ error: passwordResult.error.issues[0].message });
+      return;
+    }
+
+    const success = await resetPasswordWithToken(token, newPassword);
+    if (!success) {
+      writeLog('password_reset_failed', { detail: 'リセットトークン無効または期限切れ', ipAddress: getClientIp(req) });
+      res.status(400).json({ error: 'リセットトークンが無効または期限切れです' });
+      return;
+    }
+
+    writeLog('password_reset_complete', { detail: 'パスワードリセット完了', ipAddress: getClientIp(req) });
+    res.json({ message: 'パスワードをリセットしました。新しいパスワードでログインしてください' });
+  } catch (err) {
+    console.error('Password reset confirm error:', err);
+    res.status(500).json({ error: 'パスワードリセットに失敗しました' });
+  }
+});
+
+router.post('/logout', (req: AuthRequest, res: Response) => {
   res.clearCookie('token');
   res.json({ message: 'ログアウトしました' });
 });

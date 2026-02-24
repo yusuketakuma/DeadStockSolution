@@ -8,6 +8,7 @@ import { findMatches } from '../services/matching-service';
 import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
 import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
+import { logger } from '../services/logger';
 
 const router = Router();
 router.use(requireLogin);
@@ -18,6 +19,7 @@ function isProposalInputError(message: string): boolean {
     '見つかりません',
     '在庫',
     '薬局',
+    'マッチング',
     '提案',
     '交換金額',
     '数量',
@@ -30,7 +32,7 @@ router.post('/find', async (req: AuthRequest, res: Response) => {
     const candidates = await findMatches(req.user!.id);
     res.json({ candidates });
   } catch (err) {
-    console.error('Find matches error:', err);
+    logger.error('Find matches error:', { error: (err as Error).message });
     const message = process.env.NODE_ENV === 'production'
       ? 'マッチングに失敗しました'
       : (err instanceof Error ? err.message : 'マッチングに失敗しました');
@@ -48,14 +50,14 @@ router.post('/proposals', async (req: AuthRequest, res: Response) => {
     }
 
     const proposalId = await createProposal(req.user!.id, candidate);
-    res.status(201).json({ proposalId, message: '交換提案を送信しました' });
+    res.status(201).json({ proposalId, message: '仮マッチングを開始しました' });
   } catch (err) {
-    console.error('Create proposal error:', err);
+    logger.error('Create proposal error:', { error: (err as Error).message });
     if (err instanceof Error && isProposalInputError(err.message)) {
       res.status(400).json({ error: err.message });
       return;
     }
-    res.status(500).json({ error: '提案の作成に失敗しました' });
+    res.status(500).json({ error: '仮マッチングの作成に失敗しました' });
   }
 });
 
@@ -113,8 +115,8 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {
-    console.error('List proposals error:', err);
-    res.status(500).json({ error: '提案一覧の取得に失敗しました' });
+    logger.error('List proposals error:', { error: (err as Error).message });
+    res.status(500).json({ error: 'マッチング一覧の取得に失敗しました' });
   }
 });
 
@@ -134,7 +136,7 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       .limit(1);
 
     if (!proposal) {
-      res.status(404).json({ error: '提案が見つかりません' });
+      res.status(404).json({ error: 'マッチングが見つかりません' });
       return;
     }
 
@@ -178,8 +180,8 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       pharmacyB: { id: proposal.pharmacyBId, ...pharmB },
     });
   } catch (err) {
-    console.error('Proposal detail error:', err);
-    res.status(500).json({ error: '提案詳細の取得に失敗しました' });
+    logger.error('Proposal detail error:', { error: (err as Error).message });
+    res.status(500).json({ error: 'マッチング詳細の取得に失敗しました' });
   }
 });
 
@@ -218,19 +220,23 @@ router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
       .innerJoin(deadStockItems, eq(exchangeProposalItems.deadStockItemId, deadStockItems.id))
       .where(eq(exchangeProposalItems.proposalId, id));
 
+    const printFields = {
+      name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,
+      address: pharmacies.address, prefecture: pharmacies.prefecture, licenseNumber: pharmacies.licenseNumber,
+    };
     const [[pharmA], [pharmB]] = await Promise.all([
-      db.select().from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
-      db.select().from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
+      db.select(printFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
+      db.select(printFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
     ]);
 
     res.json({
       proposal,
       items,
-      pharmacyA: pharmA ? { name: pharmA.name, phone: pharmA.phone, fax: pharmA.fax, address: pharmA.address, prefecture: pharmA.prefecture, licenseNumber: pharmA.licenseNumber } : null,
-      pharmacyB: pharmB ? { name: pharmB.name, phone: pharmB.phone, fax: pharmB.fax, address: pharmB.address, prefecture: pharmB.prefecture, licenseNumber: pharmB.licenseNumber } : null,
+      pharmacyA: pharmA ?? null,
+      pharmacyB: pharmB ?? null,
     });
   } catch (err) {
-    console.error('Print data error:', err);
+    logger.error('Print data error:', { error: (err as Error).message });
     res.status(500).json({ error: '印刷データの取得に失敗しました' });
   }
 });
@@ -244,7 +250,8 @@ router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => 
       return;
     }
     const newStatus = await acceptProposal(id, req.user!.id);
-    res.json({ message: '提案を承認しました', status: newStatus });
+    const msg = newStatus === 'confirmed' ? '仮マッチングが確定しました' : '仮マッチングを承認しました（相手薬局の承認待ち）';
+    res.json({ message: msg, status: newStatus });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : '承認に失敗しました' });
   }
@@ -259,7 +266,7 @@ router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => 
       return;
     }
     await rejectProposal(id, req.user!.id);
-    res.json({ message: '提案を拒否しました' });
+    res.json({ message: '仮マッチングを拒否しました' });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : '拒否に失敗しました' });
   }
@@ -325,7 +332,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {
-    console.error('Exchange history error:', err);
+    logger.error('Exchange history error:', { error: (err as Error).message });
     res.status(500).json({ error: '交換履歴の取得に失敗しました' });
   }
 });

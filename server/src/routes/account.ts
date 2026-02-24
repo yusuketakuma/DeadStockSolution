@@ -4,7 +4,7 @@ import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword, verifyPassword, generateToken } from '../services/auth-service';
 import { requireLogin } from '../middleware/auth';
-import { postalCodeToCoordinates } from '../utils/postal-code';
+import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 
 const router = Router();
@@ -65,11 +65,6 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
         return;
       }
       updates.postalCode = normalized;
-      const coords = postalCodeToCoordinates(normalized);
-      if (coords) {
-        updates.latitude = coords.lat;
-        updates.longitude = coords.lng;
-      }
     }
 
     if (address !== undefined) {
@@ -78,6 +73,25 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
         return;
       }
       updates.address = address.trim();
+    }
+
+    // 住所または都道府県が変更された場合、再ジオコーディング
+    if (address !== undefined || prefecture !== undefined) {
+      const currentRows = await db.select({ address: pharmacies.address, prefecture: pharmacies.prefecture })
+        .from(pharmacies)
+        .where(eq(pharmacies.id, req.user!.id))
+        .limit(1);
+      const current = currentRows[0];
+      const newPrefecture = (updates.prefecture as string) ?? current.prefecture;
+      const newAddress = (updates.address as string) ?? current.address;
+      const fullAddress = `${newPrefecture}${newAddress}`;
+      const coords = await geocodeAddress(fullAddress);
+      if (!coords) {
+        res.status(400).json({ error: '住所から位置情報を特定できませんでした。正しい住所を入力してください' });
+        return;
+      }
+      updates.latitude = coords.lat;
+      updates.longitude = coords.lng;
     }
 
     if (phone !== undefined) {

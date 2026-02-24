@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { to: '/inventory/used-medication', label: '使用薬剤', icon: '💊' },
   { to: '/inventory/browse', label: '在庫参照', icon: '🔍' },
   { to: '/matching', label: 'マッチング', icon: '🔄' },
-  { to: '/proposals', label: '提案一覧', icon: '📋' },
+  { to: '/proposals', label: 'マッチング一覧', icon: '📋' },
   { to: '/exchange-history', label: '交換履歴', icon: '📜' },
   { to: '/pharmacies', label: '薬局一覧', icon: '🏥' },
 ];
@@ -55,14 +55,32 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </Nav.Link>
         ))}
         {user?.isAdmin && (
-          <Nav.Link
-            href="/admin"
-            className={`sidebar-link${isActive('/admin') ? ' active' : ''}`}
-            onClick={handleNav('/admin')}
-          >
-            <span className="sidebar-icon">⚙️</span>
-            管理者
-          </Nav.Link>
+          <>
+            <Nav.Link
+              href="/admin"
+              className={`sidebar-link${isActive('/admin') ? ' active' : ''}`}
+              onClick={handleNav('/admin')}
+            >
+              <span className="sidebar-icon">⚙️</span>
+              管理者
+            </Nav.Link>
+            <Nav.Link
+              href="/admin/drug-master"
+              className={`sidebar-link${location.pathname === '/admin/drug-master' ? ' active' : ''}`}
+              onClick={handleNav('/admin/drug-master')}
+            >
+              <span className="sidebar-icon">💊</span>
+              医薬品マスター
+            </Nav.Link>
+            <Nav.Link
+              href="/admin/logs"
+              className={`sidebar-link${location.pathname === '/admin/logs' ? ' active' : ''}`}
+              onClick={handleNav('/admin/logs')}
+            >
+              <span className="sidebar-icon">📝</span>
+              操作ログ
+            </Nav.Link>
+          </>
         )}
       </Nav>
 

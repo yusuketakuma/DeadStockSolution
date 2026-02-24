@@ -11,7 +11,14 @@ import inventoryRoutes from './routes/inventory';
 import exchangeRoutes from './routes/exchange';
 import pharmaciesRoutes from './routes/pharmacies';
 import notificationsRoutes from './routes/notifications';
+import businessHoursRoutes from './routes/business-hours';
+import searchRoutes from './routes/search';
+import drugMasterRoutes from './routes/drug-master';
 import { errorHandler } from './middleware/error-handler';
+import { requestLogger } from './middleware/request-logger';
+import { db } from './config/database';
+import { sql } from 'drizzle-orm';
+import { logger } from './services/logger';
 
 const app = express();
 app.disable('x-powered-by');
@@ -52,6 +59,9 @@ app.use(helmet({
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
+// Request logging
+app.use(requestLogger);
+
 const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1200,
@@ -80,10 +90,36 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/exchange', exchangeRoutes);
 app.use('/api/pharmacies', pharmaciesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/business-hours', businessHoursRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/admin/drug-master', drugMasterRoutes);
 
-// Health check
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health check with DB connectivity
+app.get('/api/health', async (_req, res) => {
+  const checks: Record<string, string> = {
+    server: 'ok',
+    database: 'unknown',
+  };
+
+  try {
+    await db.execute(sql`SELECT 1`);
+    checks.database = 'ok';
+  } catch (err) {
+    checks.database = 'error';
+    logger.error('Health check: database connection failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  const allOk = Object.values(checks).every((v) => v === 'ok');
+  const status = allOk ? 'ok' : 'degraded';
+
+  res.status(allOk ? 200 : 503).json({
+    status,
+    timestamp: new Date().toISOString(),
+    checks,
+    uptime: process.uptime(),
+  });
 });
 
 app.use(errorHandler);

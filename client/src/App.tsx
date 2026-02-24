@@ -19,16 +19,28 @@ import PharmacyListPage from './pages/PharmacyListPage';
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import AdminPharmaciesPage from './pages/admin/AdminPharmaciesPage';
 import AdminExchangesPage from './pages/admin/AdminExchangesPage';
+import AdminLogsPage from './pages/admin/AdminLogsPage';
+import AdminDrugMasterPage from './pages/admin/AdminDrugMasterPage';
+import PasswordResetPage from './pages/PasswordResetPage';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">読み込み中...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
       <Route path="/register" element={user ? <Navigate to="/" /> : <RegisterPage />} />
+      <Route path="/password-reset" element={user ? <Navigate to="/" /> : <PasswordResetPage />} />
 
       <Route path="/" element={
         <ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>
@@ -76,6 +88,12 @@ function AppRoutes() {
       } />
       <Route path="/admin/exchanges" element={
         <ProtectedRoute adminOnly><Layout><AdminExchangesPage /></Layout></ProtectedRoute>
+      } />
+      <Route path="/admin/logs" element={
+        <ProtectedRoute adminOnly><Layout><AdminLogsPage /></Layout></ProtectedRoute>
+      } />
+      <Route path="/admin/drug-master" element={
+        <ProtectedRoute adminOnly><Layout><AdminDrugMasterPage /></Layout></ProtectedRoute>
       } />
 
       <Route path="*" element={<Navigate to="/" />} />

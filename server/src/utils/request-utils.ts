@@ -45,8 +45,12 @@ export function normalizeSearchTerm(value: unknown, maxLength: number = 100): st
   if (typeof value !== 'string') return undefined;
   const sanitized = value
     .replace(/[\x00-\x1F\x7F]/g, '')
-    .replace(/[%_]/g, '')
     .trim();
   if (!sanitized) return undefined;
   return sanitized.slice(0, maxLength);
+}
+
+/** Escape LIKE wildcards for safe use in SQL LIKE patterns */
+export function escapeLikeWildcards(value: string): string {
+  return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);
 }

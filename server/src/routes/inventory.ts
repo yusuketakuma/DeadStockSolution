@@ -1,11 +1,14 @@
 import { Router, Response } from 'express';
-import { eq, and, like, desc } from 'drizzle-orm';
+import { eq, and, or, like, desc, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../config/database';
-import { deadStockItems, usedMedicationItems, pharmacies } from '../db/schema';
+import { deadStockItems, usedMedicationItems, pharmacies, pharmacyBusinessHours, pharmacyRelationships } from '../db/schema';
+import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { normalizeSearchTerm, parsePagination } from '../utils/request-utils';
+import { normalizeSearchTerm, parsePagination, escapeLikeWildcards } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
+import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -35,7 +38,7 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
       pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {
-    console.error('Dead stock list error:', err);
+    logger.error('Dead stock list error:', { error: (err as Error).message });
     res.status(500).json({ error: '不動在庫の取得に失敗しました' });
   }
 });
@@ -63,7 +66,7 @@ router.delete('/dead-stock/:id', async (req: AuthRequest, res: Response) => {
 
     res.json({ message: '削除しました' });
   } catch (err) {
-    console.error('Delete dead stock error:', err);
+    logger.error('Delete dead stock error:', { error: (err as Error).message });
     res.status(500).json({ error: '削除に失敗しました' });
   }
 });
@@ -92,7 +95,7 @@ router.get('/used-medication', async (req: AuthRequest, res: Response) => {
       pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {
-    console.error('Used medication list error:', err);
+    logger.error('Used medication list error:', { error: (err as Error).message });
     res.status(500).json({ error: '使用薬剤の取得に失敗しました' });
   }
 });
@@ -106,15 +109,38 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
     });
     const search = normalizeSearchTerm(req.query.search);
 
-    const whereExpr = search
-      ? and(
-        eq(deadStockItems.isAvailable, true),
-        like(deadStockItems.drugName, `%${search}%`),
-      )
-      : eq(deadStockItems.isAvailable, true);
+    let searchCondition;
+    if (search) {
+      const normalized = normalizeKana(search);
+      const hiragana = katakanaToHiragana(normalized);
+      const katakana = hiraganaToKatakana(normalized);
+      const likeTerms = [...new Set([normalized, hiragana, katakana])];
+      const likeConditions = likeTerms.map((term) => like(deadStockItems.drugName, `%${escapeLikeWildcards(term)}%`));
+      searchCondition = likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
+    }
+
+    // Exclude blocked pharmacies from browse results
+    const blockedRows = await db.select({ targetPharmacyId: pharmacyRelationships.targetPharmacyId })
+      .from(pharmacyRelationships)
+      .where(and(
+        eq(pharmacyRelationships.pharmacyId, req.user!.id),
+        eq(pharmacyRelationships.relationshipType, 'blocked'),
+      ));
+    const blockedIds = blockedRows.map((r) => r.targetPharmacyId);
+
+    const blockCondition = blockedIds.length > 0
+      ? notInArray(deadStockItems.pharmacyId, blockedIds)
+      : undefined;
+
+    const whereExpr = and(
+      eq(deadStockItems.isAvailable, true),
+      searchCondition,
+      blockCondition,
+    );
 
     const items = await db.select({
       id: deadStockItems.id,
+      pharmacyId: deadStockItems.pharmacyId,
       drugName: deadStockItems.drugName,
       quantity: deadStockItems.quantity,
       unit: deadStockItems.unit,
@@ -131,16 +157,45 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
+    // Fetch business hours for pharmacies in results
+    const pharmacyIds = [...new Set(items.map((i) => i.pharmacyId))];
+    const allHours = pharmacyIds.length > 0
+      ? await db.select({
+        pharmacyId: pharmacyBusinessHours.pharmacyId,
+        dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+        openTime: pharmacyBusinessHours.openTime,
+        closeTime: pharmacyBusinessHours.closeTime,
+        isClosed: pharmacyBusinessHours.isClosed,
+        is24Hours: pharmacyBusinessHours.is24Hours,
+      })
+        .from(pharmacyBusinessHours)
+        .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds))
+      : [];
+
+    const hoursByPharmacy = new Map<number, typeof allHours>();
+    for (const h of allHours) {
+      const list = hoursByPharmacy.get(h.pharmacyId) ?? [];
+      list.push(h);
+      hoursByPharmacy.set(h.pharmacyId, list);
+    }
+
+    const now = new Date();
+    const enrichedItems = items.map(({ pharmacyId, ...item }) => {
+      const hours = hoursByPharmacy.get(pharmacyId) ?? [];
+      const status = getBusinessHoursStatus(hours, now);
+      return { ...item, businessStatus: status };
+    });
+
     const [total] = await db.select({ count: rowCount })
       .from(deadStockItems)
       .where(whereExpr);
 
     res.json({
-      data: items,
+      data: enrichedItems,
       pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {
-    console.error('Browse inventory error:', err);
+    logger.error('Browse inventory error:', { error: (err as Error).message });
     res.status(500).json({ error: '在庫参照に失敗しました' });
   }
 });

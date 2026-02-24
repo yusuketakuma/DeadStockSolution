@@ -49,6 +49,11 @@ function toNullableNumber(value: unknown): number | null {
   return toNumber(value, 'nullable_number');
 }
 
+function toNullableNumericString(value: unknown): string | null {
+  const num = toNullableNumber(value);
+  return num === null ? null : String(num);
+}
+
 function toBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;
@@ -246,8 +251,8 @@ async function main() {
       drugName: toStringValue(row.drug_name, 'dead_stock_items.drug_name'),
       quantity: toNumber(row.quantity, 'dead_stock_items.quantity'),
       unit: toNullableString(row.unit),
-      yakkaUnitPrice: toNullableNumber(row.yakka_unit_price),
-      yakkaTotal: toNullableNumber(row.yakka_total),
+      yakkaUnitPrice: toNullableNumericString(row.yakka_unit_price),
+      yakkaTotal: toNullableNumericString(row.yakka_total),
       expirationDate: toNullableString(row.expiration_date),
       lotNumber: toNullableString(row.lot_number),
       isAvailable: toNullableBoolean(row.is_available) ?? true,
@@ -265,7 +270,7 @@ async function main() {
       drugName: toStringValue(row.drug_name, 'used_medication_items.drug_name'),
       monthlyUsage: toNullableNumber(row.monthly_usage),
       unit: toNullableString(row.unit),
-      yakkaUnitPrice: toNullableNumber(row.yakka_unit_price),
+      yakkaUnitPrice: toNullableNumericString(row.yakka_unit_price),
       createdAt: toNullableString(row.created_at) ?? undefined,
     })), async (chunk) => {
       await db.insert(usedMedicationItems).values(chunk).onConflictDoNothing();
@@ -277,9 +282,9 @@ async function main() {
       pharmacyAId: toNumber(row.pharmacy_a_id, 'exchange_proposals.pharmacy_a_id'),
       pharmacyBId: toNumber(row.pharmacy_b_id, 'exchange_proposals.pharmacy_b_id'),
       status: toExchangeStatus(row.status),
-      totalValueA: toNullableNumber(row.total_value_a),
-      totalValueB: toNullableNumber(row.total_value_b),
-      valueDifference: toNullableNumber(row.value_difference),
+      totalValueA: toNullableNumericString(row.total_value_a),
+      totalValueB: toNullableNumericString(row.total_value_b),
+      valueDifference: toNullableNumericString(row.value_difference),
       proposedAt: toNullableString(row.proposed_at) ?? undefined,
       completedAt: toNullableString(row.completed_at),
     })), async (chunk) => {
@@ -294,7 +299,7 @@ async function main() {
       fromPharmacyId: toNumber(row.from_pharmacy_id, 'exchange_proposal_items.from_pharmacy_id'),
       toPharmacyId: toNumber(row.to_pharmacy_id, 'exchange_proposal_items.to_pharmacy_id'),
       quantity: toNumber(row.quantity, 'exchange_proposal_items.quantity'),
-      yakkaValue: toNullableNumber(row.yakka_value),
+      yakkaValue: toNullableNumericString(row.yakka_value),
     })), async (chunk) => {
       await db.insert(exchangeProposalItems).values(chunk).onConflictDoNothing();
     });
@@ -305,7 +310,7 @@ async function main() {
       proposalId: toNumber(row.proposal_id, 'exchange_history.proposal_id'),
       pharmacyAId: toNumber(row.pharmacy_a_id, 'exchange_history.pharmacy_a_id'),
       pharmacyBId: toNumber(row.pharmacy_b_id, 'exchange_history.pharmacy_b_id'),
-      totalValue: toNullableNumber(row.total_value),
+      totalValue: toNullableNumericString(row.total_value),
       completedAt: toNullableString(row.completed_at) ?? undefined,
     })), async (chunk) => {
       await db.insert(exchangeHistory).values(chunk).onConflictDoNothing();

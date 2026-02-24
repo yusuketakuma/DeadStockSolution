@@ -94,7 +94,7 @@ export default function ProposalPrintPage() {
 
       <h1 style={{ textAlign: 'center', marginBottom: '8px', fontSize: '22px' }}>医薬品交換様式（FAX確認用）</h1>
       <p style={{ textAlign: 'center', marginTop: 0, color: '#555', marginBottom: '12px' }}>
-        提案番号: {proposal.id} / 提案日: {new Date(proposal.proposedAt).toLocaleDateString('ja-JP')}
+        マッチング番号: {proposal.id} / 開始日: {new Date(proposal.proposedAt).toLocaleDateString('ja-JP')}
       </p>
 
       <table style={{ width: '100%', marginBottom: '12px', borderCollapse: 'collapse' }}>
@@ -121,12 +121,12 @@ export default function ProposalPrintPage() {
       </table>
 
       <div style={{ border: '1px solid #111', padding: '8px 10px', marginBottom: '14px', backgroundColor: '#f8f8f8' }}>
-        <strong>FAX送信手順</strong>
+        <strong>交換手順（3フェーズ）</strong>
         <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
-          <li>提案元薬局が本様式を印刷し、内容を確認したうえで同意欄を記入します。</li>
-          <li>提案元薬局から相手薬局FAX宛に送信します。</li>
-          <li>受信側薬局が同意欄を記入し、FAX返信します。</li>
-          <li>双方同意後にシステム上で「承認」を行い、受渡し完了後に「交換完了」を実行します。</li>
+          <li><strong>仮マッチング:</strong> 提案元薬局が本様式を印刷し、内容を確認したうえで同意欄を記入します。</li>
+          <li>提案元薬局から相手薬局FAX宛に送信し、受信側薬局が同意欄を記入してFAX返信します。</li>
+          <li><strong>確定:</strong> 双方がシステム上で「承認」を行い、仮マッチングが確定します。</li>
+          <li><strong>完了:</strong> 受渡し完了後にシステム上で「交換完了」を実行します。</li>
         </ol>
       </div>
 

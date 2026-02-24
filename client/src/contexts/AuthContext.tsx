@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client';
+import { setAuthExpiredHandler } from '../api/client';
 
 interface User {
   id: number;
@@ -12,7 +13,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   testLogin: (key: 'tokyo' | 'osaka') => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
@@ -50,9 +51,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshUser().finally(() => setLoading(false));
   }, [refreshUser]);
 
-  const login = async (email: string, password: string) => {
+  // Auto-logout when session expires
+  useEffect(() => {
+    setAuthExpiredHandler(() => {
+      setUser(null);
+    });
+    return () => setAuthExpiredHandler(() => {});
+  }, []);
+
+  const login = async (email: string, password: string): Promise<User> => {
     const data = await api.post<User>('/auth/login', { email, password });
     setUser(data);
+    return data;
   };
 
   const testLogin = async (key: 'tokyo' | 'osaka') => {

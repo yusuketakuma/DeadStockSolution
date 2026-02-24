@@ -1,7 +1,9 @@
-import { useState, useEffect, FormEvent } from 'react';
-import { Table, Form, Button, InputGroup, Alert } from 'react-bootstrap';
+import { useState, useEffect } from 'react';
+import { Table, Button, Alert } from 'react-bootstrap';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
+import SearchInput from '../components/SearchInput';
+import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
 
 interface BrowseItem {
   id: number;
@@ -13,11 +15,12 @@ interface BrowseItem {
   expirationDate: string | null;
   pharmacyName: string;
   prefecture: string;
+  businessStatus?: BusinessHoursStatus;
 }
 
 interface BrowseResponse {
   data: BrowseItem[];
-  pagination: { page: number };
+  pagination: { page: number; totalPages: number; total: number };
 }
 
 export default function InventoryBrowsePage() {
@@ -25,41 +28,44 @@ export default function InventoryBrowsePage() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const fetchData = async (p: number, q: string) => {
     const params = new URLSearchParams({ page: String(p) });
     if (q) params.set('search', q);
     const data = await api.get<BrowseResponse>(`/inventory/browse?${params}`);
     setItems(data.data);
+    setTotalPages(data.pagination.totalPages);
   };
 
   useEffect(() => { fetchData(page, search); }, [page, search]);
 
-  const handleSearch = (e: FormEvent) => {
-    e.preventDefault();
+  const handleSearch = (q: string) => {
     setPage(1);
-    setSearch(searchInput);
+    setSearch(q);
   };
 
   return (
     <div>
       <h4 className="page-title mb-3">全薬局の在庫参照</h4>
 
-      <Form onSubmit={handleSearch} className="mb-3">
-        <InputGroup>
-          <Form.Control
-            placeholder="薬品名で検索..."
+      <div className="mb-3 d-flex gap-2">
+        <div className="flex-grow-1">
+          <SearchInput
+            placeholder="薬品名で検索（ひらがな・カタカナ対応）..."
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            onChange={setSearchInput}
+            onSearch={handleSearch}
+            suggestUrl="/search/drugs"
           />
-          <Button type="submit" variant="primary">検索</Button>
-          {search && (
-            <Button variant="outline-secondary" onClick={() => { setSearch(''); setSearchInput(''); }}>
-              クリア
-            </Button>
-          )}
-        </InputGroup>
-      </Form>
+        </div>
+        <Button variant="primary" onClick={() => handleSearch(searchInput)}>検索</Button>
+        {search && (
+          <Button variant="outline-secondary" onClick={() => { setSearch(''); setSearchInput(''); }}>
+            クリア
+          </Button>
+        )}
+      </div>
 
       {items.length === 0 ? (
         <Alert variant="secondary">
@@ -78,6 +84,7 @@ export default function InventoryBrowsePage() {
                 <th>使用期限</th>
                 <th>薬局名</th>
                 <th>都道府県</th>
+                <th>営業状況</th>
               </tr>
             </thead>
             <tbody>
@@ -91,13 +98,14 @@ export default function InventoryBrowsePage() {
                   <td>{item.expirationDate}</td>
                   <td>{item.pharmacyName}</td>
                   <td>{item.prefecture}</td>
+                  <td><BusinessStatusBadge status={item.businessStatus} fallback="dash" /></td>
                 </tr>
               ))}
             </tbody>
           </Table>
         </div>
       )}
-      <Pagination currentPage={page} totalPages={10} onPageChange={setPage} />
+      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 }

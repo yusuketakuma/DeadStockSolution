@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { and, eq, inArray, desc, sql } from 'drizzle-orm';
+import { and, eq, inArray, desc, sql, like } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -8,12 +8,23 @@ import {
   exchangeProposalItems,
   exchangeHistory,
   adminMessages,
+  activityLogs,
 } from '../db/schema';
 import { requireLogin, requireAdmin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { isSafeInternalPath, sanitizeInternalPath } from '../utils/path-utils';
 import { rowCount } from '../utils/db-utils';
+import { writeLog, getClientIp, type LogAction } from '../services/log-service';
+import { logger } from '../services/logger';
+
+const VALID_LOG_ACTIONS: LogAction[] = [
+  'login', 'login_failed', 'admin_login', 'test_login', 'register', 'logout',
+  'upload', 'proposal_create', 'proposal_accept', 'proposal_reject', 'proposal_complete',
+  'account_update', 'account_deactivate', 'admin_toggle_active', 'admin_send_message',
+  'dead_stock_delete', 'password_reset_request', 'password_reset_complete',
+  'password_reset_failed', 'drug_master_sync', 'drug_master_package_upload', 'drug_master_edit',
+];
 
 const router = Router();
 
@@ -58,7 +69,7 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
       totalExchangeValue: Number(exchangeAmount.total ?? 0),
     });
   } catch (err) {
-    console.error('Admin stats error:', err);
+    logger.error('Admin stats error', { error: (err as Error).message });
     res.status(500).json({ error: '統計情報の取得に失敗しました' });
   }
 });
@@ -77,7 +88,7 @@ router.get('/pharmacies/options', async (_req: AuthRequest, res: Response) => {
       data: rows,
     });
   } catch (err) {
-    console.error('Admin pharmacy options error:', err);
+    logger.error('Admin pharmacy options error', { error: (err as Error).message });
     res.status(500).json({ error: '薬局候補の取得に失敗しました' });
   }
 });
@@ -117,7 +128,7 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Admin pharmacies error:', err);
+    logger.error('Admin pharmacies error', { error: (err as Error).message });
     res.status(500).json({ error: '薬局一覧の取得に失敗しました' });
   }
 });
@@ -142,7 +153,7 @@ router.get('/pharmacies/:id', async (req: AuthRequest, res: Response) => {
     const { passwordHash: _, ...pharmacy } = rows[0];
     res.json(pharmacy);
   } catch (err) {
-    console.error('Admin pharmacy detail error:', err);
+    logger.error('Admin pharmacy detail error', { error: (err as Error).message });
     res.status(500).json({ error: '薬局情報の取得に失敗しました' });
   }
 });
@@ -171,9 +182,15 @@ router.put('/pharmacies/:id/toggle-active', async (req: AuthRequest, res: Respon
       })
       .where(eq(pharmacies.id, id));
 
+    writeLog('admin_toggle_active', {
+      pharmacyId: req.user!.id,
+      detail: `薬局ID:${id}を${rows[0].isActive ? '無効' : '有効'}に変更`,
+      ipAddress: getClientIp(req),
+    });
+
     res.json({ message: `薬局を${rows[0].isActive ? '無効' : '有効'}にしました` });
   } catch (err) {
-    console.error('Admin toggle active error:', err);
+    logger.error('Admin toggle active error', { error: (err as Error).message });
     res.status(500).json({ error: '状態変更に失敗しました' });
   }
 });
@@ -203,7 +220,7 @@ router.get('/exchanges', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Admin exchanges error:', err);
+    logger.error('Admin exchanges error', { error: (err as Error).message });
     res.status(500).json({ error: '交換一覧の取得に失敗しました' });
   }
 });
@@ -255,7 +272,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Admin history error:', err);
+    logger.error('Admin history error', { error: (err as Error).message });
     res.status(500).json({ error: '交換履歴の取得に失敗しました' });
   }
 });
@@ -297,7 +314,7 @@ router.get('/messages', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Admin messages list error:', err);
+    logger.error('Admin messages list error', { error: (err as Error).message });
     res.status(500).json({ error: '管理者メッセージ一覧の取得に失敗しました' });
   }
 });
@@ -361,10 +378,78 @@ router.post('/messages', async (req: AuthRequest, res: Response) => {
       actionPath: actionPath || null,
     });
 
+    writeLog('admin_send_message', {
+      pharmacyId: req.user!.id,
+      detail: `メッセージ送信: ${title} (対象: ${targetType === 'all' ? '全体' : `薬局ID:${targetPharmacyId}`})`,
+      ipAddress: getClientIp(req),
+    });
+
     res.status(201).json({ message: '加盟薬局へメッセージを送信しました' });
   } catch (err) {
-    console.error('Admin message send error:', err);
+    logger.error('Admin message send error', { error: (err as Error).message });
     res.status(500).json({ error: 'メッセージ送信に失敗しました' });
+  }
+});
+
+router.get('/logs', async (req: AuthRequest, res: Response) => {
+  try {
+    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
+      defaultLimit: 50,
+      maxLimit: 100,
+    });
+
+    const rawAction = typeof req.query.action === 'string' ? req.query.action.trim() : '';
+    const actionFilter = VALID_LOG_ACTIONS.includes(rawAction as LogAction) ? rawAction : undefined;
+
+    const conditions = [];
+    if (actionFilter) {
+      conditions.push(eq(activityLogs.action, actionFilter));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const rows = await db.select({
+      id: activityLogs.id,
+      pharmacyId: activityLogs.pharmacyId,
+      action: activityLogs.action,
+      detail: activityLogs.detail,
+      ipAddress: activityLogs.ipAddress,
+      createdAt: activityLogs.createdAt,
+    })
+      .from(activityLogs)
+      .where(whereClause)
+      .orderBy(desc(activityLogs.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    // Resolve pharmacy names
+    const pharmacyIds = [...new Set(rows.map((r) => r.pharmacyId).filter((id): id is number => id !== null))];
+    const pharmacyRows = pharmacyIds.length > 0
+      ? await db.select({ id: pharmacies.id, name: pharmacies.name })
+          .from(pharmacies)
+          .where(inArray(pharmacies.id, pharmacyIds))
+      : [];
+    const pharmacyMap = new Map(pharmacyRows.map((r) => [r.id, r.name]));
+
+    const [total] = await db.select({ count: rowCount })
+      .from(activityLogs)
+      .where(whereClause);
+
+    res.json({
+      data: rows.map((row) => ({
+        ...row,
+        pharmacyName: row.pharmacyId ? pharmacyMap.get(row.pharmacyId) ?? null : null,
+      })),
+      pagination: {
+        page,
+        limit,
+        total: total.count,
+        totalPages: Math.ceil(total.count / limit),
+      },
+    });
+  } catch (err) {
+    logger.error('Admin logs error', { error: (err as Error).message });
+    res.status(500).json({ error: 'ログの取得に失敗しました' });
   }
 });
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { Card, Form, Button, Alert, Row, Col } from 'react-bootstrap';
+import { Card, Form, Button, Alert, Row, Col, Table } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +15,8 @@ const PREFECTURES = [
   '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
 ];
 
+const DAY_NAMES = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
+
 interface AccountData {
   id: number;
   email: string;
@@ -25,6 +27,24 @@ interface AccountData {
   fax: string;
   licenseNumber: string;
   prefecture: string;
+}
+
+interface BusinessHourEntry {
+  dayOfWeek: number;
+  openTime: string | null;
+  closeTime: string | null;
+  isClosed: boolean;
+  is24Hours: boolean;
+}
+
+function createDefaultHours(): BusinessHourEntry[] {
+  return Array.from({ length: 7 }, (_, i) => ({
+    dayOfWeek: i,
+    openTime: i === 0 ? null : '09:00', // Sunday closed by default
+    closeTime: i === 0 ? null : '18:00',
+    isClosed: i === 0,
+    is24Hours: false,
+  }));
 }
 
 export default function AccountPage() {
@@ -40,6 +60,13 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
 
+  // Business hours state
+  const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
+  const [hoursLoaded, setHoursLoaded] = useState(false);
+  const [hoursSaving, setHoursSaving] = useState(false);
+  const [hoursMessage, setHoursMessage] = useState('');
+  const [hoursError, setHoursError] = useState('');
+
   useEffect(() => {
     api.get<AccountData>('/account').then((data) => {
       setAccount(data);
@@ -52,6 +79,14 @@ export default function AccountPage() {
         fax: data.fax,
         prefecture: data.prefecture,
       }));
+    });
+
+    // Load business hours
+    api.get<BusinessHourEntry[]>('/business-hours').then((data) => {
+      if (data.length > 0) {
+        setBusinessHours(data);
+      }
+      setHoursLoaded(true);
     });
   }, []);
 
@@ -73,6 +108,44 @@ export default function AccountPage() {
       setError(err instanceof Error ? err.message : '更新に失敗しました');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleHoursChange = (dayOfWeek: number, field: 'openTime' | 'closeTime', value: string) => {
+    setBusinessHours((prev) =>
+      prev.map((h) => h.dayOfWeek === dayOfWeek ? { ...h, [field]: value } : h)
+    );
+  };
+
+  const handleClosedChange = (dayOfWeek: number, isClosed: boolean) => {
+    setBusinessHours((prev) =>
+      prev.map((h) => h.dayOfWeek === dayOfWeek
+        ? { ...h, isClosed, is24Hours: false, openTime: isClosed ? null : (h.openTime || '09:00'), closeTime: isClosed ? null : (h.closeTime || '18:00') }
+        : h
+      )
+    );
+  };
+
+  const handle24HoursChange = (dayOfWeek: number, is24Hours: boolean) => {
+    setBusinessHours((prev) =>
+      prev.map((h) => h.dayOfWeek === dayOfWeek
+        ? { ...h, is24Hours, isClosed: false, openTime: is24Hours ? null : (h.openTime || '09:00'), closeTime: is24Hours ? null : (h.closeTime || '18:00') }
+        : h
+      )
+    );
+  };
+
+  const handleHoursSave = async () => {
+    setHoursError('');
+    setHoursMessage('');
+    setHoursSaving(true);
+    try {
+      await api.put('/business-hours', { hours: businessHours });
+      setHoursMessage('営業時間を更新しました');
+    } catch (err) {
+      setHoursError(err instanceof Error ? err.message : '営業時間の更新に失敗しました');
+    } finally {
+      setHoursSaving(false);
     }
   };
 
@@ -183,6 +256,85 @@ export default function AccountPage() {
               {loading ? '更新中...' : '更新'}
             </Button>
           </Form>
+        </Card.Body>
+      </Card>
+
+      {/* Business Hours Section */}
+      <Card className="mt-3">
+        <Card.Header>営業時間設定</Card.Header>
+        <Card.Body>
+          {hoursMessage && <Alert variant="success" onClose={() => setHoursMessage('')} dismissible>{hoursMessage}</Alert>}
+          {hoursError && <Alert variant="danger" onClose={() => setHoursError('')} dismissible>{hoursError}</Alert>}
+
+          <p className="small text-muted mb-3">
+            営業時間を設定すると、マッチングや在庫検索で他の薬局に表示されます。
+          </p>
+
+          {hoursLoaded && (
+            <>
+              <div className="table-responsive">
+                <Table size="sm" className="mb-3">
+                  <thead className="table-light">
+                    <tr>
+                      <th>曜日</th>
+                      <th>定休日</th>
+                      <th>24時間</th>
+                      <th>開店時間</th>
+                      <th>閉店時間</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {businessHours
+                      .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
+                      .map((h) => (
+                        <tr key={h.dayOfWeek}>
+                          <td className="align-middle fw-medium">{DAY_NAMES[h.dayOfWeek]}</td>
+                          <td>
+                            <Form.Check
+                              type="checkbox"
+                              checked={h.isClosed}
+                              onChange={(e) => handleClosedChange(h.dayOfWeek, e.target.checked)}
+                              disabled={h.is24Hours}
+                            />
+                          </td>
+                          <td>
+                            <Form.Check
+                              type="checkbox"
+                              checked={h.is24Hours}
+                              onChange={(e) => handle24HoursChange(h.dayOfWeek, e.target.checked)}
+                              disabled={h.isClosed}
+                            />
+                          </td>
+                          <td>
+                            <Form.Control
+                              type="time"
+                              size="sm"
+                              value={h.openTime || ''}
+                              onChange={(e) => handleHoursChange(h.dayOfWeek, 'openTime', e.target.value)}
+                              disabled={h.isClosed || h.is24Hours}
+                              style={{ maxWidth: '140px' }}
+                            />
+                          </td>
+                          <td>
+                            <Form.Control
+                              type="time"
+                              size="sm"
+                              value={h.closeTime || ''}
+                              onChange={(e) => handleHoursChange(h.dayOfWeek, 'closeTime', e.target.value)}
+                              disabled={h.isClosed || h.is24Hours}
+                              style={{ maxWidth: '140px' }}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </Table>
+              </div>
+              <Button variant="primary" onClick={handleHoursSave} disabled={hoursSaving}>
+                {hoursSaving ? '保存中...' : '営業時間を保存'}
+              </Button>
+            </>
+          )}
         </Card.Body>
       </Card>
 

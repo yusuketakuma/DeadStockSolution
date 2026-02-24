@@ -28,7 +28,7 @@ export default function AppNavbar() {
             <Nav.Link as={Link} to="/inventory/used-medication">使用薬剤</Nav.Link>
             <Nav.Link as={Link} to="/inventory/browse">在庫参照</Nav.Link>
             <Nav.Link as={Link} to="/matching">マッチング</Nav.Link>
-            <Nav.Link as={Link} to="/proposals">提案一覧</Nav.Link>
+            <Nav.Link as={Link} to="/proposals">マッチング一覧</Nav.Link>
             <Nav.Link as={Link} to="/exchange-history">交換履歴</Nav.Link>
             <Nav.Link as={Link} to="/pharmacies">薬局一覧</Nav.Link>
             {user.isAdmin && (

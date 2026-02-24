@@ -232,9 +232,9 @@ export default function DashboardPage() {
         <Col md={6} lg={4}>
           <Card>
             <Card.Body>
-              <Card.Title>交換提案</Card.Title>
-              <Card.Text>受信・送信した交換提案を確認</Card.Text>
-              <Link to="/proposals" className="btn btn-outline-primary btn-sm">提案一覧</Link>
+              <Card.Title>マッチング状況</Card.Title>
+              <Card.Text>仮マッチング・確定済みの一覧を確認</Card.Text>
+              <Link to="/proposals" className="btn btn-outline-primary btn-sm">マッチング一覧</Link>
             </Card.Body>
           </Card>
         </Col>

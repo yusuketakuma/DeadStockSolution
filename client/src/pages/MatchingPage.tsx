@@ -3,6 +3,7 @@ import { Card, Button, Alert, Table, Badge, Spinner, Row, Col } from 'react-boot
 import { api } from '../api/client';
 import RequireUpload from '../components/RequireUpload';
 import DisclaimerBanner from '../components/DisclaimerBanner';
+import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -28,6 +29,8 @@ interface MatchCandidate {
   valueDifference: number;
   score?: number;
   matchRate?: number;
+  businessStatus?: BusinessHoursStatus;
+  isFavorite?: boolean;
 }
 
 function formatPercent(value?: number): string {
@@ -59,13 +62,13 @@ export default function MatchingPage() {
   };
 
   const handleSendProposal = async (candidate: MatchCandidate) => {
-    if (!confirm(`${candidate.pharmacyName}に交換提案を送信しますか？`)) return;
+    if (!confirm(`${candidate.pharmacyName}と仮マッチングしますか？\n双方の承認後に確定となります。`)) return;
     try {
       await api.post('/exchange/proposals', { candidate });
-      setMessage(`${candidate.pharmacyName}に交換提案を送信しました`);
+      setMessage(`${candidate.pharmacyName}との仮マッチングを開始しました。相手薬局の承認をお待ちください。`);
       setCandidates((prev) => prev.filter((c) => c.pharmacyId !== candidate.pharmacyId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : '提案の送信に失敗しました');
+      setError(err instanceof Error ? err.message : '仮マッチングの送信に失敗しました');
     }
   };
 
@@ -106,11 +109,13 @@ export default function MatchingPage() {
             >
               <div>
                 <strong>{candidate.pharmacyName}</strong>
+                {candidate.isFavorite && <Badge bg="warning" text="dark" className="ms-2">お気に入り</Badge>}
                 <div className="small text-muted">
                   TEL: {candidate.pharmacyPhone || '-'} / FAX: {candidate.pharmacyFax || '-'}
                 </div>
               </div>
               <div className="d-flex flex-wrap gap-2">
+                <BusinessStatusBadge status={candidate.businessStatus} showHours />
                 <Badge bg="info">{candidate.distance}km</Badge>
                 <Badge bg="secondary">一致度 {formatPercent(candidate.matchRate)}</Badge>
                 <Badge bg="primary">総合 {candidate.score?.toFixed(1) ?? '-'}</Badge>
@@ -122,6 +127,11 @@ export default function MatchingPage() {
 
             {expandedIdx === idx && (
               <Card.Body>
+                {candidate.businessStatus?.closingSoon && (
+                  <Alert variant="warning" className="py-2 mb-3">
+                    この薬局はまもなく営業終了です（本日 {candidate.businessStatus.todayHours?.closeTime} まで）
+                  </Alert>
+                )}
                 <Row className="g-3 mb-3">
                   <Col md={6}>
                     <h6>あなた → {candidate.pharmacyName} ({candidate.totalValueA.toLocaleString()}円)</h6>
@@ -193,10 +203,11 @@ export default function MatchingPage() {
                   </Card.Header>
                   <Card.Body className="small">
                     <ol className="mb-3">
-                      <li>本内容を印刷し、提案元薬局が同意欄に記入・押印します。</li>
-                      <li>提案元薬局から相手薬局のFAXへ送信します（送信先: {candidate.pharmacyFax || '相手薬局に確認'}）。</li>
-                      <li>相手薬局は内容確認後、同意欄に記入してFAX返信します。</li>
-                      <li>双方の同意後、システム上で「承認」し、受け渡し完了後に「交換完了」を実行します。</li>
+                      <li>「仮マッチングする」ボタンで仮マッチングを開始します。</li>
+                      <li>本内容を印刷し、提案元薬局が同意欄に記入・押印後、相手薬局のFAXへ送信します（送信先: {candidate.pharmacyFax || '相手薬局に確認'}）。</li>
+                      <li>相手薬局は内容確認後、同意欄を記入してFAX返信します。</li>
+                      <li>双方がシステム上で「承認」すると仮マッチングが確定となります。</li>
+                      <li>受け渡し完了後に「交換完了」を実行します。</li>
                     </ol>
                     <div className="table-responsive">
                       <Table bordered size="sm" className="mb-0 mobile-table">
@@ -229,7 +240,7 @@ export default function MatchingPage() {
 
                 <div className="d-flex gap-2 mobile-stack">
                   <Button variant="success" onClick={() => handleSendProposal(candidate)}>
-                    この薬局に提案を送る
+                    仮マッチングする
                   </Button>
                 </div>
               </Card.Body>

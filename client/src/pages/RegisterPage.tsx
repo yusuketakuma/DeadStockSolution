@@ -160,8 +160,10 @@ export default function RegisterPage() {
                 onChange={handleChange('address')}
                 required
                 isInvalid={!!getFieldError('address')}
+                placeholder="市区町村以降の住所"
               />
               <Form.Control.Feedback type="invalid">{getFieldError('address')}</Form.Control.Feedback>
+              {!getFieldError('address') && <Form.Text className="text-muted">位置情報の特定に使用します。正確な住所を入力してください</Form.Text>}
             </Form.Group>
 
             <Row>

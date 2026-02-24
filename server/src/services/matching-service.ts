@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, ne } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, deadStockItems, usedMedicationItems, uploads } from '../db/schema';
+import { pharmacies, deadStockItems, usedMedicationItems, uploads, pharmacyBusinessHours, pharmacyRelationships } from '../db/schema';
+import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { haversineDistance } from '../utils/geo-utils';
 import { normalizeString } from '../utils/string-utils';
 import { distance as levenshtein } from 'fastest-levenshtein';
@@ -26,7 +27,7 @@ interface DeadStockRow {
   drugName: string;
   quantity: number;
   unit: string | null;
-  yakkaUnitPrice: number | null;
+  yakkaUnitPrice: number | string | null;
   expirationDate: string | null;
 }
 
@@ -274,13 +275,16 @@ function getNearExpiryCount(items: MatchItem[]): number {
   return count;
 }
 
+const FAVORITE_BONUS = 15;
+
 function calculateCandidateScore(
   totalA: number,
   totalB: number,
   diff: number,
   distanceKm: number,
   itemsFromA: MatchItem[],
-  itemsFromB: MatchItem[]
+  itemsFromB: MatchItem[],
+  isFavorite: boolean = false
 ): number {
   const minValue = Math.min(totalA, totalB);
   const valueScore = Math.min(55, minValue / 2500);
@@ -288,8 +292,9 @@ function calculateCandidateScore(
   const distanceScore = distanceKm >= 9999 ? 2 : Math.max(0, 15 - distanceKm / 8);
   const nearExpiryScore = Math.min(10, (getNearExpiryCount(itemsFromA) + getNearExpiryCount(itemsFromB)) * 1.5);
   const diversityScore = Math.min(10, Math.min(itemsFromA.length, itemsFromB.length) * 1.5);
+  const favoriteScore = isFavorite ? FAVORITE_BONUS : 0;
 
-  return roundTo2(valueScore + balanceScore + distanceScore + nearExpiryScore + diversityScore);
+  return roundTo2(valueScore + balanceScore + distanceScore + nearExpiryScore + diversityScore + favoriteScore);
 }
 
 function calculateMatchRate(itemsA: MatchItem[], itemsB: MatchItem[]): number {
@@ -419,6 +424,25 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   const uniquePharmacyIds = [...new Set(otherPharmacyIdRows.map((row) => row.pharmacyId))];
   if (uniquePharmacyIds.length === 0) return [];
 
+  // Load pharmacy relationships (favorites and blocked)
+  const relationships = await db.select({
+    targetPharmacyId: pharmacyRelationships.targetPharmacyId,
+    relationshipType: pharmacyRelationships.relationshipType,
+  })
+    .from(pharmacyRelationships)
+    .where(eq(pharmacyRelationships.pharmacyId, pharmacyId));
+
+  const blockedIds = new Set(
+    relationships.filter((r) => r.relationshipType === 'blocked').map((r) => r.targetPharmacyId)
+  );
+  const favoriteIds = new Set(
+    relationships.filter((r) => r.relationshipType === 'favorite').map((r) => r.targetPharmacyId)
+  );
+
+  // Exclude blocked pharmacies from candidates
+  const filteredPharmacyIds = uniquePharmacyIds.filter((id) => !blockedIds.has(id));
+  if (filteredPharmacyIds.length === 0) return [];
+
   const allOtherPharmacies = await db.select({
     id: pharmacies.id,
     name: pharmacies.name,
@@ -429,7 +453,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   })
     .from(pharmacies)
     .where(and(
-      inArray(pharmacies.id, uniquePharmacyIds),
+      inArray(pharmacies.id, filteredPharmacyIds),
       eq(pharmacies.isActive, true),
     ));
 
@@ -459,6 +483,25 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       .from(usedMedicationItems)
       .where(inArray(usedMedicationItems.pharmacyId, activePharmacyIds)),
   ]);
+
+  // Fetch business hours for all candidate pharmacies
+  const allBusinessHours = await db.select({
+    pharmacyId: pharmacyBusinessHours.pharmacyId,
+    dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+    openTime: pharmacyBusinessHours.openTime,
+    closeTime: pharmacyBusinessHours.closeTime,
+    isClosed: pharmacyBusinessHours.isClosed,
+    is24Hours: pharmacyBusinessHours.is24Hours,
+  })
+    .from(pharmacyBusinessHours)
+    .where(inArray(pharmacyBusinessHours.pharmacyId, activePharmacyIds));
+
+  const businessHoursByPharmacy = new Map<number, typeof allBusinessHours>();
+  for (const h of allBusinessHours) {
+    const list = businessHoursByPharmacy.get(h.pharmacyId) ?? [];
+    list.push(h);
+    businessHoursByPharmacy.set(h.pharmacyId, list);
+  }
 
   const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(allOtherDeadStock);
   const usedMedsByPharmacy = groupByPharmacy<UsedMedRow>(allOtherUsedMeds);
@@ -491,7 +534,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
 
     const itemsFromA: MatchItem[] = [];
     for (const stock of myDeadStock) {
-      if (!stock.yakkaUnitPrice || stock.yakkaUnitPrice <= 0) continue;
+      const price = Number(stock.yakkaUnitPrice);
+      if (!price || price <= 0) continue;
 
       const match = findBestDrugMatch(stock.drugName, theirUsedMedIndex, myToTheirCache);
       if (match.score < NAME_MATCH_THRESHOLD) continue;
@@ -501,8 +545,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
         drugName: stock.drugName,
         quantity: stock.quantity,
         unit: stock.unit,
-        yakkaUnitPrice: stock.yakkaUnitPrice,
-        yakkaValue: roundTo2(stock.yakkaUnitPrice * stock.quantity),
+        yakkaUnitPrice: price,
+        yakkaValue: roundTo2(price * stock.quantity),
         expirationDate: stock.expirationDate,
         matchScore: roundTo2(match.score),
       });
@@ -510,7 +554,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
 
     const itemsFromB: MatchItem[] = [];
     for (const stock of theirDeadStock) {
-      if (!stock.yakkaUnitPrice || stock.yakkaUnitPrice <= 0) continue;
+      const priceB = Number(stock.yakkaUnitPrice);
+      if (!priceB || priceB <= 0) continue;
 
       const match = findBestDrugMatch(stock.drugName, myUsedMedIndex, theirToMyCache);
       if (match.score < NAME_MATCH_THRESHOLD) continue;
@@ -520,8 +565,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
         drugName: stock.drugName,
         quantity: stock.quantity,
         unit: stock.unit,
-        yakkaUnitPrice: stock.yakkaUnitPrice,
-        yakkaValue: roundTo2(stock.yakkaUnitPrice * stock.quantity),
+        yakkaUnitPrice: priceB,
+        yakkaValue: roundTo2(priceB * stock.quantity),
         expirationDate: stock.expirationDate,
         matchScore: roundTo2(match.score),
       });
@@ -538,8 +583,12 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     const diff = roundTo2(Math.abs(totalA - totalB));
     if (diff > VALUE_TOLERANCE) continue;
 
-    const score = calculateCandidateScore(totalA, totalB, diff, otherPharmacy.distance, balancedA, balancedB);
+    const isFavorite = favoriteIds.has(otherPharmacy.id);
+    const score = calculateCandidateScore(totalA, totalB, diff, otherPharmacy.distance, balancedA, balancedB, isFavorite);
     const matchRate = calculateMatchRate(balancedA, balancedB);
+
+    const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id) ?? [];
+    const businessStatus = getBusinessHoursStatus(pharmacyHours, now);
 
     candidates.push({
       pharmacyId: otherPharmacy.id,
@@ -554,6 +603,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       valueDifference: diff,
       score,
       matchRate,
+      businessStatus,
+      isFavorite,
     });
   }
 

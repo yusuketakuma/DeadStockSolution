@@ -21,6 +21,13 @@ export interface PreviewResult {
   headerRowIndex: number;
 }
 
+export interface BusinessHoursStatus {
+  isOpen: boolean;
+  closingSoon: boolean;
+  is24Hours: boolean;
+  todayHours: { openTime: string; closeTime: string } | null;
+}
+
 export interface MatchCandidate {
   pharmacyId: number;
   pharmacyName: string;
@@ -34,6 +41,8 @@ export interface MatchCandidate {
   valueDifference: number;
   score?: number;
   matchRate?: number;
+  businessStatus?: BusinessHoursStatus;
+  isFavorite?: boolean;
 }
 
 export interface MatchItem {
