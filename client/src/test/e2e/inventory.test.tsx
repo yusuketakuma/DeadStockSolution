@@ -7,7 +7,7 @@ import InventoryBrowsePage from '../../pages/InventoryBrowsePage';
 import { renderWithProviders, mockUser } from '../helpers';
 
 function createMockFetch(routes: Record<string, unknown>) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
 
     for (const [path, data] of Object.entries(routes)) {

@@ -1,4 +1,5 @@
 /// <reference types="vitest" />
+import { vi } from 'vitest';
 import React from 'react';
 import { render, type RenderOptions } from '@testing-library/react';
 import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom';
@@ -59,7 +60,7 @@ export function mockAuthenticatedFetch(user = mockUser) {
 
 /** Setup global fetch mock with custom route handlers */
 export function setupFetchMock(routes: Record<string, unknown>) {
-  const mockFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const mockFetch = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
 
     for (const [path, responseData] of Object.entries(routes)) {

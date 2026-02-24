@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LoginPage from '../../pages/LoginPage';
-import { renderWithProviders, mockUser, mockAdminUser } from '../helpers';
+import { renderWithProviders, mockUser } from '../helpers';
 
 /** Find an input field by the label text in the same form group */
 function getInputByLabel(labelText: string): HTMLInputElement {
@@ -135,7 +135,7 @@ describe('LoginPage', () => {
   it('submits login form with correct credentials', async () => {
     const user = userEvent.setup();
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/login')) {
         return new Response(JSON.stringify(mockUser), {
@@ -180,7 +180,7 @@ describe('LoginPage', () => {
   it('handles test account login', async () => {
     const user = userEvent.setup();
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/test-login')) {
         return new Response(JSON.stringify(mockUser), {

@@ -106,7 +106,7 @@ describe('RegisterPage', () => {
   it('submits registration form with correct data', async () => {
     const user = userEvent.setup();
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/register')) {
         return new Response(JSON.stringify(mockUser), {
