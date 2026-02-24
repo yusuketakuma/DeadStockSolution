@@ -8,6 +8,7 @@ import { findMatches } from '../services/matching-service';
 import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
 import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
+import { logger } from '../services/logger';
 
 const router = Router();
 router.use(requireLogin);
@@ -31,7 +32,7 @@ router.post('/find', async (req: AuthRequest, res: Response) => {
     const candidates = await findMatches(req.user!.id);
     res.json({ candidates });
   } catch (err) {
-    console.error('Find matches error:', err);
+    logger.error('Find matches error:', { error: (err as Error).message });
     const message = process.env.NODE_ENV === 'production'
       ? 'マッチングに失敗しました'
       : (err instanceof Error ? err.message : 'マッチングに失敗しました');
@@ -51,7 +52,7 @@ router.post('/proposals', async (req: AuthRequest, res: Response) => {
     const proposalId = await createProposal(req.user!.id, candidate);
     res.status(201).json({ proposalId, message: '仮マッチングを開始しました' });
   } catch (err) {
-    console.error('Create proposal error:', err);
+    logger.error('Create proposal error:', { error: (err as Error).message });
     if (err instanceof Error && isProposalInputError(err.message)) {
       res.status(400).json({ error: err.message });
       return;
@@ -114,7 +115,7 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {
-    console.error('List proposals error:', err);
+    logger.error('List proposals error:', { error: (err as Error).message });
     res.status(500).json({ error: 'マッチング一覧の取得に失敗しました' });
   }
 });
@@ -179,7 +180,7 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       pharmacyB: { id: proposal.pharmacyBId, ...pharmB },
     });
   } catch (err) {
-    console.error('Proposal detail error:', err);
+    logger.error('Proposal detail error:', { error: (err as Error).message });
     res.status(500).json({ error: 'マッチング詳細の取得に失敗しました' });
   }
 });
@@ -219,19 +220,23 @@ router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
       .innerJoin(deadStockItems, eq(exchangeProposalItems.deadStockItemId, deadStockItems.id))
       .where(eq(exchangeProposalItems.proposalId, id));
 
+    const printFields = {
+      name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,
+      address: pharmacies.address, prefecture: pharmacies.prefecture, licenseNumber: pharmacies.licenseNumber,
+    };
     const [[pharmA], [pharmB]] = await Promise.all([
-      db.select().from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
-      db.select().from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
+      db.select(printFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
+      db.select(printFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
     ]);
 
     res.json({
       proposal,
       items,
-      pharmacyA: pharmA ? { name: pharmA.name, phone: pharmA.phone, fax: pharmA.fax, address: pharmA.address, prefecture: pharmA.prefecture, licenseNumber: pharmA.licenseNumber } : null,
-      pharmacyB: pharmB ? { name: pharmB.name, phone: pharmB.phone, fax: pharmB.fax, address: pharmB.address, prefecture: pharmB.prefecture, licenseNumber: pharmB.licenseNumber } : null,
+      pharmacyA: pharmA ?? null,
+      pharmacyB: pharmB ?? null,
     });
   } catch (err) {
-    console.error('Print data error:', err);
+    logger.error('Print data error:', { error: (err as Error).message });
     res.status(500).json({ error: '印刷データの取得に失敗しました' });
   }
 });
@@ -327,7 +332,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
     });
   } catch (err) {
-    console.error('Exchange history error:', err);
+    logger.error('Exchange history error:', { error: (err as Error).message });
     res.status(500).json({ error: '交換履歴の取得に失敗しました' });
   }
 });

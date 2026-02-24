@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, Table, Button, Alert, Badge, Row, Col } from 'react-bootstrap';
+import { Card, Table, Button, Alert, Badge, Row, Col, Spinner } from 'react-bootstrap';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -56,7 +56,7 @@ export default function ProposalDetailPage() {
 
   useEffect(() => { fetchDetail(); }, [id]);
 
-  if (!data) return error ? <Alert variant="danger">{error}</Alert> : null;
+  if (!data) return error ? <Alert variant="danger">{error}</Alert> : <div className="text-center my-4"><Spinner animation="border" /></div>;
 
   const { proposal, items, pharmacyA, pharmacyB } = data;
   const isA = proposal.pharmacyAId === user?.id;
@@ -96,6 +96,8 @@ export default function ProposalDetailPage() {
   const handleAction = async (action: 'accept' | 'reject' | 'complete') => {
     const confirmMsg = action === 'accept' ? '承認' : action === 'reject' ? '拒否' : '交換完了';
     if (!confirm(`この仮マッチングを${confirmMsg}しますか？`)) return;
+    setError('');
+    setMessage('');
     try {
       const result = await api.post<{ message: string }>(`/exchange/proposals/${id}/${action}`);
       setMessage(result.message);

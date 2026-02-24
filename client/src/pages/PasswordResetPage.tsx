@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { Container, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
@@ -8,6 +8,12 @@ export default function PasswordResetPage() {
   const tokenFromUrl = searchParams.get('token') || '';
 
   const [step, setStep] = useState<'request' | 'confirm'>(tokenFromUrl ? 'confirm' : 'request');
+
+  useEffect(() => {
+    if (tokenFromUrl) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [tokenFromUrl]);
   const [email, setEmail] = useState('');
   const [token, setToken] = useState(tokenFromUrl);
   const [newPassword, setNewPassword] = useState('');

@@ -80,90 +80,100 @@ function parseCandidate(pharmacyAId: number, rawCandidate: unknown): ParsedCandi
   };
 }
 
+// Valid state transitions for exchange proposals
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  proposed: ['accepted_a', 'accepted_b', 'rejected'],
+  accepted_a: ['confirmed', 'rejected'],
+  accepted_b: ['confirmed', 'rejected'],
+  confirmed: ['completed'],
+};
+
 export async function createProposal(
   pharmacyAId: number,
   rawCandidate: unknown
 ): Promise<number> {
   const candidate = parseCandidate(pharmacyAId, rawCandidate);
 
-  const [pharmacyB] = await db.select({ id: pharmacies.id, isActive: pharmacies.isActive })
-    .from(pharmacies)
-    .where(eq(pharmacies.id, candidate.pharmacyBId))
-    .limit(1);
-
-  if (!pharmacyB || !pharmacyB.isActive) {
-    throw new Error('交換先薬局が見つからないか、無効です');
-  }
-
-  const allIds = [...candidate.itemsFromA, ...candidate.itemsFromB].map((item) => item.deadStockItemId);
-  const stockRows = await db.select({
-    id: deadStockItems.id,
-    pharmacyId: deadStockItems.pharmacyId,
-    quantity: deadStockItems.quantity,
-    yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-    isAvailable: deadStockItems.isAvailable,
-  })
-    .from(deadStockItems)
-    .where(inArray(deadStockItems.id, allIds));
-
-  const stockMap = new Map<number, (typeof stockRows)[number]>();
-  for (const row of stockRows) {
-    stockMap.set(row.id, row);
-  }
-
-  const validatedA: ValidatedProposalItem[] = candidate.itemsFromA.map((item) => {
-    const stock = stockMap.get(item.deadStockItemId);
-    if (!stock) throw new Error('提案対象の在庫が見つかりません');
-    if (stock.pharmacyId !== pharmacyAId) throw new Error('自薬局の在庫のみ提案できます');
-    if (!stock.isAvailable) throw new Error('提案対象の在庫が既に利用不可です');
-    if (item.quantity > stock.quantity) throw new Error('提案数量が在庫数を超えています');
-    if (!stock.yakkaUnitPrice || stock.yakkaUnitPrice <= 0) throw new Error('薬価が設定されていない在庫は提案できません');
-
-    return {
-      deadStockItemId: item.deadStockItemId,
-      fromPharmacyId: pharmacyAId,
-      toPharmacyId: candidate.pharmacyBId,
-      quantity: item.quantity,
-      yakkaValue: roundTo2(stock.yakkaUnitPrice * item.quantity),
-    };
-  });
-
-  const validatedB: ValidatedProposalItem[] = candidate.itemsFromB.map((item) => {
-    const stock = stockMap.get(item.deadStockItemId);
-    if (!stock) throw new Error('提案対象の在庫が見つかりません');
-    if (stock.pharmacyId !== candidate.pharmacyBId) throw new Error('交換先薬局の在庫のみ指定できます');
-    if (!stock.isAvailable) throw new Error('提案対象の在庫が既に利用不可です');
-    if (item.quantity > stock.quantity) throw new Error('提案数量が在庫数を超えています');
-    if (!stock.yakkaUnitPrice || stock.yakkaUnitPrice <= 0) throw new Error('薬価が設定されていない在庫は提案できません');
-
-    return {
-      deadStockItemId: item.deadStockItemId,
-      fromPharmacyId: candidate.pharmacyBId,
-      toPharmacyId: pharmacyAId,
-      quantity: item.quantity,
-      yakkaValue: roundTo2(stock.yakkaUnitPrice * item.quantity),
-    };
-  });
-
-  const totalValueA = roundTo2(validatedA.reduce((sum, item) => sum + item.yakkaValue, 0));
-  const totalValueB = roundTo2(validatedB.reduce((sum, item) => sum + item.yakkaValue, 0));
-  const valueDifference = roundTo2(Math.abs(totalValueA - totalValueB));
-
-  if (Math.min(totalValueA, totalValueB) < MIN_EXCHANGE_VALUE) {
-    throw new Error('交換金額が最低金額に達していません');
-  }
-  if (valueDifference > VALUE_TOLERANCE) {
-    throw new Error('交換金額差が許容範囲を超えています');
-  }
-
   return db.transaction(async (tx) => {
+    const [pharmacyB] = await tx.select({ id: pharmacies.id, isActive: pharmacies.isActive })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, candidate.pharmacyBId))
+      .limit(1);
+
+    if (!pharmacyB || !pharmacyB.isActive) {
+      throw new Error('交換先薬局が見つからないか、無効です');
+    }
+
+    const allIds = [...candidate.itemsFromA, ...candidate.itemsFromB].map((item) => item.deadStockItemId);
+    const stockRows = await tx.select({
+      id: deadStockItems.id,
+      pharmacyId: deadStockItems.pharmacyId,
+      quantity: deadStockItems.quantity,
+      yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
+      isAvailable: deadStockItems.isAvailable,
+    })
+      .from(deadStockItems)
+      .where(inArray(deadStockItems.id, allIds));
+
+    const stockMap = new Map<number, (typeof stockRows)[number]>();
+    for (const row of stockRows) {
+      stockMap.set(row.id, row);
+    }
+
+    const validatedA: ValidatedProposalItem[] = candidate.itemsFromA.map((item) => {
+      const stock = stockMap.get(item.deadStockItemId);
+      if (!stock) throw new Error('提案対象の在庫が見つかりません');
+      if (stock.pharmacyId !== pharmacyAId) throw new Error('自薬局の在庫のみ提案できます');
+      if (!stock.isAvailable) throw new Error('提案対象の在庫が既に利用不可です');
+      if (item.quantity > stock.quantity) throw new Error('提案数量が在庫数を超えています');
+      const unitPrice = Number(stock.yakkaUnitPrice);
+      if (!unitPrice || unitPrice <= 0) throw new Error('薬価が設定されていない在庫は提案できません');
+
+      return {
+        deadStockItemId: item.deadStockItemId,
+        fromPharmacyId: pharmacyAId,
+        toPharmacyId: candidate.pharmacyBId,
+        quantity: item.quantity,
+        yakkaValue: roundTo2(unitPrice * item.quantity),
+      };
+    });
+
+    const validatedB: ValidatedProposalItem[] = candidate.itemsFromB.map((item) => {
+      const stock = stockMap.get(item.deadStockItemId);
+      if (!stock) throw new Error('提案対象の在庫が見つかりません');
+      if (stock.pharmacyId !== candidate.pharmacyBId) throw new Error('交換先薬局の在庫のみ指定できます');
+      if (!stock.isAvailable) throw new Error('提案対象の在庫が既に利用不可です');
+      if (item.quantity > stock.quantity) throw new Error('提案数量が在庫数を超えています');
+      const unitPrice = Number(stock.yakkaUnitPrice);
+      if (!unitPrice || unitPrice <= 0) throw new Error('薬価が設定されていない在庫は提案できません');
+
+      return {
+        deadStockItemId: item.deadStockItemId,
+        fromPharmacyId: candidate.pharmacyBId,
+        toPharmacyId: pharmacyAId,
+        quantity: item.quantity,
+        yakkaValue: roundTo2(unitPrice * item.quantity),
+      };
+    });
+
+    const totalValueA = roundTo2(validatedA.reduce((sum, item) => sum + item.yakkaValue, 0));
+    const totalValueB = roundTo2(validatedB.reduce((sum, item) => sum + item.yakkaValue, 0));
+    const valueDifference = roundTo2(Math.abs(totalValueA - totalValueB));
+
+    if (Math.min(totalValueA, totalValueB) < MIN_EXCHANGE_VALUE) {
+      throw new Error('交換金額が最低金額に達していません');
+    }
+    if (valueDifference > VALUE_TOLERANCE) {
+      throw new Error('交換金額差が許容範囲を超えています');
+    }
+
     const [proposal] = await tx.insert(exchangeProposals).values({
       pharmacyAId,
       pharmacyBId: candidate.pharmacyBId,
       status: 'proposed',
-      totalValueA,
-      totalValueB,
-      valueDifference,
+      totalValueA: String(totalValueA),
+      totalValueB: String(totalValueB),
+      valueDifference: String(valueDifference),
     }).returning({ id: exchangeProposals.id });
 
     await tx.insert(exchangeProposalItems).values(
@@ -173,7 +183,7 @@ export async function createProposal(
         fromPharmacyId: item.fromPharmacyId,
         toPharmacyId: item.toPharmacyId,
         quantity: item.quantity,
-        yakkaValue: item.yakkaValue,
+        yakkaValue: String(item.yakkaValue),
       }))
     );
 
@@ -182,50 +192,79 @@ export async function createProposal(
 }
 
 export async function acceptProposal(proposalId: number, pharmacyId: number): Promise<string> {
-  const [proposal] = await db.select()
-    .from(exchangeProposals)
-    .where(eq(exchangeProposals.id, proposalId))
-    .limit(1);
+  return db.transaction(async (tx) => {
+    const [proposal] = await tx.select()
+      .from(exchangeProposals)
+      .where(eq(exchangeProposals.id, proposalId))
+      .limit(1);
 
-  if (!proposal) throw new Error('マッチングが見つかりません');
+    if (!proposal) throw new Error('マッチングが見つかりません');
 
-  const isA = proposal.pharmacyAId === pharmacyId;
-  const isB = proposal.pharmacyBId === pharmacyId;
-  if (!isA && !isB) throw new Error('このマッチングにアクセスする権限がありません');
+    const isA = proposal.pharmacyAId === pharmacyId;
+    const isB = proposal.pharmacyBId === pharmacyId;
+    if (!isA && !isB) throw new Error('このマッチングにアクセスする権限がありません');
 
-  let newStatus: string;
+    let newStatus: string;
 
-  if (proposal.status === 'proposed') {
-    newStatus = isA ? 'accepted_a' : 'accepted_b';
-  } else if (proposal.status === 'accepted_a' && isB) {
-    newStatus = 'confirmed';
-  } else if (proposal.status === 'accepted_b' && isA) {
-    newStatus = 'confirmed';
-  } else {
-    throw new Error('この仮マッチングは現在承認できる状態ではありません');
-  }
+    if (proposal.status === 'proposed') {
+      newStatus = isA ? 'accepted_a' : 'accepted_b';
+    } else if (proposal.status === 'accepted_a' && isB) {
+      newStatus = 'confirmed';
+    } else if (proposal.status === 'accepted_b' && isA) {
+      newStatus = 'confirmed';
+    } else {
+      throw new Error('この仮マッチングは現在承認できる状態ではありません');
+    }
 
-  await db.update(exchangeProposals)
-    .set({ status: newStatus as typeof proposal.status })
-    .where(eq(exchangeProposals.id, proposalId));
+    if (!VALID_TRANSITIONS[proposal.status]?.includes(newStatus)) {
+      throw new Error('この仮マッチングは現在承認できる状態ではありません');
+    }
 
-  return newStatus;
+    // Optimistic lock: only update if status hasn't changed since read
+    const updated = await tx.update(exchangeProposals)
+      .set({ status: newStatus as typeof proposal.status })
+      .where(and(
+        eq(exchangeProposals.id, proposalId),
+        eq(exchangeProposals.status, proposal.status),
+      ))
+      .returning({ id: exchangeProposals.id });
+
+    if (updated.length === 0) {
+      throw new Error('状態が変更されたため、操作を完了できません。再読み込みしてください');
+    }
+
+    return newStatus;
+  });
 }
 
 export async function rejectProposal(proposalId: number, pharmacyId: number): Promise<void> {
-  const [proposal] = await db.select()
-    .from(exchangeProposals)
-    .where(eq(exchangeProposals.id, proposalId))
-    .limit(1);
+  return db.transaction(async (tx) => {
+    const [proposal] = await tx.select()
+      .from(exchangeProposals)
+      .where(eq(exchangeProposals.id, proposalId))
+      .limit(1);
 
-  if (!proposal) throw new Error('マッチングが見つかりません');
+    if (!proposal) throw new Error('マッチングが見つかりません');
 
-  const isParty = proposal.pharmacyAId === pharmacyId || proposal.pharmacyBId === pharmacyId;
-  if (!isParty) throw new Error('このマッチングにアクセスする権限がありません');
+    const isParty = proposal.pharmacyAId === pharmacyId || proposal.pharmacyBId === pharmacyId;
+    if (!isParty) throw new Error('このマッチングにアクセスする権限がありません');
 
-  await db.update(exchangeProposals)
-    .set({ status: 'rejected' })
-    .where(eq(exchangeProposals.id, proposalId));
+    if (!VALID_TRANSITIONS[proposal.status]?.includes('rejected')) {
+      throw new Error('このマッチングは拒否できる状態ではありません');
+    }
+
+    const updated = await tx.update(exchangeProposals)
+      .set({ status: 'rejected' })
+      .where(and(
+        eq(exchangeProposals.id, proposalId),
+        eq(exchangeProposals.status, proposal.status),
+      ))
+      .returning({ id: exchangeProposals.id });
+
+    if (updated.length === 0) {
+      throw new Error('状態が変更されたため、操作を完了できません。再読み込みしてください');
+    }
+  });
 }
 
 export async function completeProposal(proposalId: number, pharmacyId: number): Promise<void> {
@@ -272,12 +311,12 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
       .set({ status: 'completed', completedAt })
       .where(eq(exchangeProposals.id, proposalId));
 
-    const totalValue = (proposal.totalValueA ?? 0) + (proposal.totalValueB ?? 0);
+    const totalValue = Number(proposal.totalValueA ?? 0) + Number(proposal.totalValueB ?? 0);
     await tx.insert(exchangeHistory).values({
       proposalId,
       pharmacyAId: proposal.pharmacyAId,
       pharmacyBId: proposal.pharmacyBId,
-      totalValue,
+      totalValue: String(totalValue),
       completedAt,
     });
   });

@@ -5,6 +5,7 @@ import {
   text,
   integer,
   real,
+  numeric,
   boolean,
   timestamp,
   index,
@@ -72,8 +73,8 @@ export const deadStockItems = pgTable('dead_stock_items', {
   drugMasterId: integer('drug_master_id'),
   quantity: real('quantity').notNull(),
   unit: text('unit'),
-  yakkaUnitPrice: real('yakka_unit_price'),
-  yakkaTotal: real('yakka_total'),
+  yakkaUnitPrice: numeric('yakka_unit_price', { precision: 12, scale: 2 }),
+  yakkaTotal: numeric('yakka_total', { precision: 12, scale: 2 }),
   expirationDate: text('expiration_date'),
   lotNumber: text('lot_number'),
   isAvailable: boolean('is_available').default(true),
@@ -98,7 +99,7 @@ export const usedMedicationItems = pgTable('used_medication_items', {
   drugMasterId: integer('drug_master_id'),
   monthlyUsage: real('monthly_usage'),
   unit: text('unit'),
-  yakkaUnitPrice: real('yakka_unit_price'),
+  yakkaUnitPrice: numeric('yakka_unit_price', { precision: 12, scale: 2 }),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   idxUsedMedicationPharmacyCreated: index('idx_used_medication_pharmacy_created')
@@ -113,9 +114,9 @@ export const exchangeProposals = pgTable('exchange_proposals', {
   pharmacyAId: integer('pharmacy_a_id').notNull().references(() => pharmacies.id),
   pharmacyBId: integer('pharmacy_b_id').notNull().references(() => pharmacies.id),
   status: exchangeStatusEnum('status').notNull().default('proposed'),
-  totalValueA: real('total_value_a'),
-  totalValueB: real('total_value_b'),
-  valueDifference: real('value_difference'),
+  totalValueA: numeric('total_value_a', { precision: 12, scale: 2 }),
+  totalValueB: numeric('total_value_b', { precision: 12, scale: 2 }),
+  valueDifference: numeric('value_difference', { precision: 12, scale: 2 }),
   proposedAt: timestamp('proposed_at', { mode: 'string' }).defaultNow(),
   completedAt: timestamp('completed_at', { mode: 'string' }),
 }, (table) => ({
@@ -134,7 +135,7 @@ export const exchangeProposalItems = pgTable('exchange_proposal_items', {
   fromPharmacyId: integer('from_pharmacy_id').notNull().references(() => pharmacies.id),
   toPharmacyId: integer('to_pharmacy_id').notNull().references(() => pharmacies.id),
   quantity: real('quantity').notNull(),
-  yakkaValue: real('yakka_value'),
+  yakkaValue: numeric('yakka_value', { precision: 12, scale: 2 }),
 }, (table) => ({
   idxExchangeItemsProposal: index('idx_exchange_items_proposal').on(table.proposalId),
   chkQuantityPositive: check('chk_exchange_item_quantity', sql`${table.quantity} > 0`),
@@ -145,7 +146,7 @@ export const exchangeHistory = pgTable('exchange_history', {
   proposalId: integer('proposal_id').notNull().references(() => exchangeProposals.id),
   pharmacyAId: integer('pharmacy_a_id').notNull().references(() => pharmacies.id),
   pharmacyBId: integer('pharmacy_b_id').notNull().references(() => pharmacies.id),
-  totalValue: real('total_value'),
+  totalValue: numeric('total_value', { precision: 12, scale: 2 }),
   completedAt: timestamp('completed_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   idxExchangeHistoryACompleted: index('idx_exchange_history_a_completed')
@@ -227,7 +228,7 @@ export const drugMaster = pgTable('drug_master', {
   genericName: text('generic_name'),
   specification: text('specification'),
   unit: text('unit'),
-  yakkaPrice: real('yakka_price').notNull(),
+  yakkaPrice: numeric('yakka_price', { precision: 12, scale: 2 }).notNull(),
   manufacturer: text('manufacturer'),
   category: text('category'), // 内用薬/外用薬/注射薬/歯科用薬剤
   therapeuticCategory: text('therapeutic_category'), // 薬効分類番号
@@ -265,8 +266,8 @@ export const drugMasterPackages = pgTable('drug_master_packages', {
 export const drugMasterPriceHistory = pgTable('drug_master_price_history', {
   id: serial('id').primaryKey(),
   yjCode: text('yj_code').notNull(),
-  previousPrice: real('previous_price'),
-  newPrice: real('new_price'),
+  previousPrice: numeric('previous_price', { precision: 12, scale: 2 }),
+  newPrice: numeric('new_price', { precision: 12, scale: 2 }),
   revisionDate: text('revision_date').notNull(),
   revisionType: drugMasterRevisionTypeEnum('revision_type').notNull(),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
@@ -323,4 +324,5 @@ export const pharmacyRelationships = pgTable('pharmacy_relationships', {
     .on(table.pharmacyId, table.relationshipType),
   idxRelationshipsUnique: uniqueIndex('idx_relationships_unique')
     .on(table.pharmacyId, table.targetPharmacyId),
+  chkNotSelfRelationship: check('chk_not_self_relationship', sql`${table.pharmacyId} != ${table.targetPharmacyId}`),
 }));

@@ -27,7 +27,7 @@ interface DeadStockRow {
   drugName: string;
   quantity: number;
   unit: string | null;
-  yakkaUnitPrice: number | null;
+  yakkaUnitPrice: number | string | null;
   expirationDate: string | null;
 }
 
@@ -534,7 +534,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
 
     const itemsFromA: MatchItem[] = [];
     for (const stock of myDeadStock) {
-      if (!stock.yakkaUnitPrice || stock.yakkaUnitPrice <= 0) continue;
+      const price = Number(stock.yakkaUnitPrice);
+      if (!price || price <= 0) continue;
 
       const match = findBestDrugMatch(stock.drugName, theirUsedMedIndex, myToTheirCache);
       if (match.score < NAME_MATCH_THRESHOLD) continue;
@@ -544,8 +545,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
         drugName: stock.drugName,
         quantity: stock.quantity,
         unit: stock.unit,
-        yakkaUnitPrice: stock.yakkaUnitPrice,
-        yakkaValue: roundTo2(stock.yakkaUnitPrice * stock.quantity),
+        yakkaUnitPrice: price,
+        yakkaValue: roundTo2(price * stock.quantity),
         expirationDate: stock.expirationDate,
         matchScore: roundTo2(match.score),
       });
@@ -553,7 +554,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
 
     const itemsFromB: MatchItem[] = [];
     for (const stock of theirDeadStock) {
-      if (!stock.yakkaUnitPrice || stock.yakkaUnitPrice <= 0) continue;
+      const priceB = Number(stock.yakkaUnitPrice);
+      if (!priceB || priceB <= 0) continue;
 
       const match = findBestDrugMatch(stock.drugName, myUsedMedIndex, theirToMyCache);
       if (match.score < NAME_MATCH_THRESHOLD) continue;
@@ -563,8 +565,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
         drugName: stock.drugName,
         quantity: stock.quantity,
         unit: stock.unit,
-        yakkaUnitPrice: stock.yakkaUnitPrice,
-        yakkaValue: roundTo2(stock.yakkaUnitPrice * stock.quantity),
+        yakkaUnitPrice: priceB,
+        yakkaValue: roundTo2(priceB * stock.quantity),
         expirationDate: stock.expirationDate,
         matchScore: roundTo2(match.score),
       });

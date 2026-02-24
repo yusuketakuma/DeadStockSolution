@@ -37,7 +37,30 @@ export function getBusinessHoursStatus(
     return { isOpen: true, closingSoon: false, is24Hours: false, todayHours: null };
   }
 
-  const dayOfWeek = now.getDay(); // 0=Sunday, 6=Saturday
+  // Use JST explicitly to avoid server timezone issues
+  const jstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  const dayOfWeek = jstNow.getDay(); // 0=Sunday, 6=Saturday
+  const currentMinutes = jstNow.getHours() * 60 + jstNow.getMinutes();
+
+  // Check if we're in the overnight period of YESTERDAY's business hours
+  const yesterdayDow = (dayOfWeek + 6) % 7;
+  const yesterdayEntry = hours.find((h) => h.dayOfWeek === yesterdayDow);
+  if (yesterdayEntry && !yesterdayEntry.isClosed && !yesterdayEntry.is24Hours
+      && yesterdayEntry.openTime && yesterdayEntry.closeTime) {
+    const yOpen = parseTimeToMinutes(yesterdayEntry.openTime);
+    const yClose = parseTimeToMinutes(yesterdayEntry.closeTime);
+    // Overnight span from yesterday: closeTime < openTime, and we're before closeTime
+    if (yClose < yOpen && currentMinutes < yClose) {
+      const minutesUntilClose = yClose - currentMinutes;
+      return {
+        isOpen: true,
+        closingSoon: minutesUntilClose <= CLOSING_SOON_MINUTES,
+        is24Hours: false,
+        todayHours: { openTime: yesterdayEntry.openTime, closeTime: yesterdayEntry.closeTime },
+      };
+    }
+  }
+
   const todayEntry = hours.find((h) => h.dayOfWeek === dayOfWeek);
 
   if (!todayEntry || todayEntry.isClosed) {
@@ -53,7 +76,6 @@ export function getBusinessHoursStatus(
     return { isOpen: false, closingSoon: false, is24Hours: false, todayHours: null };
   }
 
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const openMinutes = parseTimeToMinutes(todayEntry.openTime);
   const closeMinutes = parseTimeToMinutes(todayEntry.closeTime);
 
@@ -68,7 +90,7 @@ export function getBusinessHoursStatus(
     // Overnight span (e.g. 22:00–06:00): open if after open OR before close
     isOpen = currentMinutes >= openMinutes || currentMinutes < closeMinutes;
     if (currentMinutes >= openMinutes) {
-      // Before midnight portion: distance to close is (minutes until midnight) + closeMinutes
+      // Before midnight portion
       minutesUntilClose = (24 * 60 - currentMinutes) + closeMinutes;
     } else {
       // After midnight portion

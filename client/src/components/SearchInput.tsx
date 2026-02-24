@@ -31,18 +31,25 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
       return;
     }
 
+    let cancelled = false;
+
     debounceRef.current = setTimeout(async () => {
       try {
         const results = await api.get<string[]>(`${suggestUrl}?q=${encodeURIComponent(value)}`);
-        setSuggestions(results);
-        setShowSuggestions(results.length > 0);
-        setSelectedIndex(-1);
+        if (!cancelled) {
+          setSuggestions(results);
+          setShowSuggestions(results.length > 0);
+          setSelectedIndex(-1);
+        }
       } catch {
-        setSuggestions([]);
+        if (!cancelled) {
+          setSuggestions([]);
+        }
       }
     }, DEBOUNCE_MS);
 
     return () => {
+      cancelled = true;
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }

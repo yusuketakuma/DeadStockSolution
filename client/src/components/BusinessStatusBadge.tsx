@@ -18,7 +18,7 @@ export default function BusinessStatusBadge({ status, showHours = false, fallbac
     return fallback === 'dash' ? <span className="text-muted small">-</span> : null;
   }
 
-  if (status.closingSoon) {
+  if (status.isOpen && status.closingSoon) {
     return <Badge bg="warning" text="dark">まもなく営業終了</Badge>;
   }
   if (!status.isOpen) {

@@ -69,13 +69,17 @@ export default function PharmacyListPage() {
   }, []);
 
   const fetchData = async (p: number) => {
-    const params = new URLSearchParams({ page: String(p) });
-    if (search) params.set('search', search);
-    if (prefecture) params.set('prefecture', prefecture);
-    if (sortBy) params.set('sortBy', sortBy);
-    const data = await api.get<PharmaciesResponse>(`/pharmacies?${params}`);
-    setPharmacies(data.data);
-    setTotalPages(data.pagination.totalPages);
+    try {
+      const params = new URLSearchParams({ page: String(p) });
+      if (search) params.set('search', search);
+      if (prefecture) params.set('prefecture', prefecture);
+      if (sortBy) params.set('sortBy', sortBy);
+      const data = await api.get<PharmaciesResponse>(`/pharmacies?${params}`);
+      setPharmacies(data.data);
+      setTotalPages(data.pagination.totalPages);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : '薬局一覧の取得に失敗しました');
+    }
   };
 
   useEffect(() => { fetchData(page); }, [page, search, prefecture, sortBy]);

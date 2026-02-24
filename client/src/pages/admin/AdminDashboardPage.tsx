@@ -48,19 +48,24 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState('');
 
   const fetchData = async () => {
-    const [statsData, pharmacyData, messagesData] = await Promise.all([
+    const [statsResult, pharmacyResult, messagesResult] = await Promise.allSettled([
       api.get<Stats>('/admin/stats'),
       api.get<{ data: PharmacyOption[] }>('/admin/pharmacies/options'),
       api.get<MessagesResponse>('/admin/messages?page=1&limit=10'),
     ]);
 
-    setStats(statsData);
-    setPharmacies(pharmacyData.data);
-    setMessages(messagesData.data);
+    if (statsResult.status === 'fulfilled') setStats(statsResult.value);
+    if (pharmacyResult.status === 'fulfilled') setPharmacies(pharmacyResult.value.data);
+    if (messagesResult.status === 'fulfilled') setMessages(messagesResult.value.data);
+
+    const failures = [statsResult, pharmacyResult, messagesResult].filter(r => r.status === 'rejected');
+    if (failures.length > 0) {
+      setError('一部のデータの取得に失敗しました');
+    }
   };
 
   useEffect(() => {
-    fetchData().catch(() => {});
+    fetchData();
   }, []);
 
   const handleSend = async (e: FormEvent) => {

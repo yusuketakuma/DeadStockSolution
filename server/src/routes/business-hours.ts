@@ -4,6 +4,7 @@ import { db } from '../config/database';
 import { pharmacyBusinessHours } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
+import { logger } from '../services/logger';
 
 const router = Router();
 router.use(requireLogin);
@@ -93,7 +94,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     res.json(hours);
   } catch (err) {
-    console.error('Get business hours error:', err);
+    logger.error('Get business hours error:', { error: (err as Error).message });
     res.status(500).json({ error: '営業時間の取得に失敗しました' });
   }
 });
@@ -126,7 +127,7 @@ router.put('/', async (req: AuthRequest, res: Response) => {
 
     res.json({ message: '営業時間を更新しました' });
   } catch (err) {
-    console.error('Update business hours error:', err);
+    logger.error('Update business hours error:', { error: (err as Error).message });
     res.status(500).json({ error: '営業時間の更新に失敗しました' });
   }
 });
@@ -153,7 +154,7 @@ router.get('/:pharmacyId', async (req: AuthRequest, res: Response) => {
 
     res.json(hours);
   } catch (err) {
-    console.error('Get pharmacy business hours error:', err);
+    logger.error('Get pharmacy business hours error:', { error: (err as Error).message });
     res.status(500).json({ error: '営業時間の取得に失敗しました' });
   }
 });

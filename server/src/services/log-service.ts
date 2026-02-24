@@ -46,10 +46,7 @@ export async function writeLog(
   }
 }
 
-export function getClientIp(req: { ip?: string; headers: Record<string, string | string[] | undefined> }): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0].trim();
-  }
+export function getClientIp(req: { ip?: string }): string {
+  // Rely on Express trust proxy setting for correct client IP via req.ip
   return req.ip ?? 'unknown';
 }

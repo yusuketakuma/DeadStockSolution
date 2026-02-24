@@ -12,10 +12,19 @@ import {
 } from '../db/schema';
 import { requireLogin, requireAdmin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { parsePagination, parsePositiveInt, normalizeSearchTerm } from '../utils/request-utils';
+import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { isSafeInternalPath, sanitizeInternalPath } from '../utils/path-utils';
 import { rowCount } from '../utils/db-utils';
-import { writeLog, getClientIp } from '../services/log-service';
+import { writeLog, getClientIp, type LogAction } from '../services/log-service';
+import { logger } from '../services/logger';
+
+const VALID_LOG_ACTIONS: LogAction[] = [
+  'login', 'login_failed', 'admin_login', 'test_login', 'register', 'logout',
+  'upload', 'proposal_create', 'proposal_accept', 'proposal_reject', 'proposal_complete',
+  'account_update', 'account_deactivate', 'admin_toggle_active', 'admin_send_message',
+  'dead_stock_delete', 'password_reset_request', 'password_reset_complete',
+  'password_reset_failed', 'drug_master_sync', 'drug_master_package_upload', 'drug_master_edit',
+];
 
 const router = Router();
 
@@ -60,7 +69,7 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
       totalExchangeValue: Number(exchangeAmount.total ?? 0),
     });
   } catch (err) {
-    console.error('Admin stats error:', err);
+    logger.error('Admin stats error', { error: (err as Error).message });
     res.status(500).json({ error: '統計情報の取得に失敗しました' });
   }
 });
@@ -79,7 +88,7 @@ router.get('/pharmacies/options', async (_req: AuthRequest, res: Response) => {
       data: rows,
     });
   } catch (err) {
-    console.error('Admin pharmacy options error:', err);
+    logger.error('Admin pharmacy options error', { error: (err as Error).message });
     res.status(500).json({ error: '薬局候補の取得に失敗しました' });
   }
 });
@@ -119,7 +128,7 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Admin pharmacies error:', err);
+    logger.error('Admin pharmacies error', { error: (err as Error).message });
     res.status(500).json({ error: '薬局一覧の取得に失敗しました' });
   }
 });
@@ -144,7 +153,7 @@ router.get('/pharmacies/:id', async (req: AuthRequest, res: Response) => {
     const { passwordHash: _, ...pharmacy } = rows[0];
     res.json(pharmacy);
   } catch (err) {
-    console.error('Admin pharmacy detail error:', err);
+    logger.error('Admin pharmacy detail error', { error: (err as Error).message });
     res.status(500).json({ error: '薬局情報の取得に失敗しました' });
   }
 });
@@ -181,7 +190,7 @@ router.put('/pharmacies/:id/toggle-active', async (req: AuthRequest, res: Respon
 
     res.json({ message: `薬局を${rows[0].isActive ? '無効' : '有効'}にしました` });
   } catch (err) {
-    console.error('Admin toggle active error:', err);
+    logger.error('Admin toggle active error', { error: (err as Error).message });
     res.status(500).json({ error: '状態変更に失敗しました' });
   }
 });
@@ -211,7 +220,7 @@ router.get('/exchanges', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Admin exchanges error:', err);
+    logger.error('Admin exchanges error', { error: (err as Error).message });
     res.status(500).json({ error: '交換一覧の取得に失敗しました' });
   }
 });
@@ -263,7 +272,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Admin history error:', err);
+    logger.error('Admin history error', { error: (err as Error).message });
     res.status(500).json({ error: '交換履歴の取得に失敗しました' });
   }
 });
@@ -305,7 +314,7 @@ router.get('/messages', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Admin messages list error:', err);
+    logger.error('Admin messages list error', { error: (err as Error).message });
     res.status(500).json({ error: '管理者メッセージ一覧の取得に失敗しました' });
   }
 });
@@ -377,7 +386,7 @@ router.post('/messages', async (req: AuthRequest, res: Response) => {
 
     res.status(201).json({ message: '加盟薬局へメッセージを送信しました' });
   } catch (err) {
-    console.error('Admin message send error:', err);
+    logger.error('Admin message send error', { error: (err as Error).message });
     res.status(500).json({ error: 'メッセージ送信に失敗しました' });
   }
 });
@@ -389,7 +398,8 @@ router.get('/logs', async (req: AuthRequest, res: Response) => {
       maxLimit: 100,
     });
 
-    const actionFilter = normalizeSearchTerm(req.query.action);
+    const rawAction = typeof req.query.action === 'string' ? req.query.action.trim() : '';
+    const actionFilter = VALID_LOG_ACTIONS.includes(rawAction as LogAction) ? rawAction : undefined;
 
     const conditions = [];
     if (actionFilter) {
@@ -438,7 +448,7 @@ router.get('/logs', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Admin logs error:', err);
+    logger.error('Admin logs error', { error: (err as Error).message });
     res.status(500).json({ error: 'ログの取得に失敗しました' });
   }
 });

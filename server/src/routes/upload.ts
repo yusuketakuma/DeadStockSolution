@@ -337,8 +337,8 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
             drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
             quantity: item.quantity,
             unit: item.unit,
-            yakkaUnitPrice: item.yakkaUnitPrice,
-            yakkaTotal: item.yakkaTotal,
+            yakkaUnitPrice: item.yakkaUnitPrice != null ? String(item.yakkaUnitPrice) : null,
+            yakkaTotal: item.yakkaTotal != null ? String(item.yakkaTotal) : null,
             expirationDate: item.expirationDate,
             lotNumber: item.lotNumber,
           }));
@@ -360,7 +360,7 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
             drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
             monthlyUsage: item.monthlyUsage,
             unit: item.unit,
-            yakkaUnitPrice: item.yakkaUnitPrice,
+            yakkaUnitPrice: item.yakkaUnitPrice != null ? String(item.yakkaUnitPrice) : null,
           }));
 
           for (let i = 0; i < insertRows.length; i += INSERT_BATCH_SIZE) {

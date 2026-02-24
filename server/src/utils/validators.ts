@@ -56,8 +56,8 @@ const loginSchema = z.object({
   password: z.string().min(1, 'パスワードを入力してください'),
 });
 
-function zodToValidationErrors(result: z.SafeParseReturnType<unknown, unknown>): ValidationError[] {
-  if (result.success) return [];
+function zodToValidationErrors(result: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }): ValidationError[] {
+  if (result.success || !result.error) return [];
   return result.error.issues.map((issue) => ({
     field: issue.path[0]?.toString() || 'unknown',
     message: issue.message,

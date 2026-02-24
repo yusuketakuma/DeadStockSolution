@@ -48,6 +48,7 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
 
   // コード→マスター情報のキャッシュ構築
   const codeCache = new Map<string, { id: number; yakkaPrice: number; unit: string | null }>();
+  const toNum = (v: string | number | null): number => Number(v ?? 0);
 
   if (codesInRows.size > 0) {
     // YJコードで直接検索（削除済も含む：不動在庫に削除済薬品が含まれることがある）
@@ -60,7 +61,7 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
 
     for (const m of allMaster) {
       if (codesInRows.has(m.yjCode)) {
-        codeCache.set(m.yjCode, { id: m.id, yakkaPrice: m.yakkaPrice, unit: m.unit });
+        codeCache.set(m.yjCode, { id: m.id, yakkaPrice: toNum(m.yakkaPrice), unit: m.unit });
       }
     }
 
@@ -86,7 +87,7 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
         if (masterId) {
           const masterInfo = allMaster.find((m) => m.id === masterId);
           if (masterInfo) {
-            codeCache.set(code, { id: masterInfo.id, yakkaPrice: masterInfo.yakkaPrice, unit: masterInfo.unit });
+            codeCache.set(code, { id: masterInfo.id, yakkaPrice: toNum(masterInfo.yakkaPrice), unit: masterInfo.unit });
           }
         }
       }
@@ -107,7 +108,10 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
     }).from(drugMaster);
 
     masterByName = all.map((m) => ({
-      ...m,
+      id: m.id,
+      drugName: m.drugName,
+      yakkaPrice: toNum(m.yakkaPrice),
+      unit: m.unit,
       normalizedName: normalizeString(m.drugName),
     }));
   }

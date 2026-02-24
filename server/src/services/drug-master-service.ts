@@ -385,7 +385,7 @@ export async function syncDrugMaster(
             genericName: row.genericName,
             specification: row.specification,
             unit: row.unit,
-            yakkaPrice: row.yakkaPrice,
+            yakkaPrice: String(row.yakkaPrice),
             manufacturer: row.manufacturer,
             category: row.category,
             therapeuticCategory: row.therapeuticCategory,
@@ -398,7 +398,7 @@ export async function syncDrugMaster(
           await tx.insert(drugMasterPriceHistory).values({
             yjCode: row.yjCode,
             previousPrice: null,
-            newPrice: row.yakkaPrice,
+            newPrice: String(row.yakkaPrice),
             revisionDate,
             revisionType: 'new_listing',
           });
@@ -406,7 +406,7 @@ export async function syncDrugMaster(
           result.itemsAdded++;
         } else {
           // 既存品目の更新チェック（float精度を考慮）
-          const priceChanged = Math.abs(existing.yakkaPrice - row.yakkaPrice) > 0.001;
+          const priceChanged = Math.abs(Number(existing.yakkaPrice) - row.yakkaPrice) > 0.001;
           const wasDelisted = !existing.isListed;
 
           await tx.update(drugMaster)
@@ -415,7 +415,7 @@ export async function syncDrugMaster(
               genericName: row.genericName,
               specification: row.specification,
               unit: row.unit,
-              yakkaPrice: row.yakkaPrice,
+              yakkaPrice: String(row.yakkaPrice),
               manufacturer: row.manufacturer,
               category: row.category,
               therapeuticCategory: row.therapeuticCategory,
@@ -431,7 +431,7 @@ export async function syncDrugMaster(
             await tx.insert(drugMasterPriceHistory).values({
               yjCode: row.yjCode,
               previousPrice: existing.yakkaPrice,
-              newPrice: row.yakkaPrice,
+              newPrice: String(row.yakkaPrice),
               revisionDate,
               revisionType: wasDelisted ? 'new_listing' : 'price_revision',
             });
@@ -705,8 +705,13 @@ export async function updateDrugMasterItem(yjCode: string, updates: {
   isListed?: boolean;
   transitionDeadline?: string | null;
 }) {
+  const { yakkaPrice, ...rest } = updates;
+  const setValues: Record<string, unknown> = { ...rest, updatedAt: new Date().toISOString() };
+  if (yakkaPrice !== undefined) {
+    setValues.yakkaPrice = String(yakkaPrice);
+  }
   const [updated] = await db.update(drugMaster)
-    .set({ ...updates, updatedAt: new Date().toISOString() })
+    .set(setValues)
     .where(eq(drugMaster.yjCode, yjCode))
     .returning();
   return updated || null;

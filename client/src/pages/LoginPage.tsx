@@ -26,7 +26,6 @@ export default function LoginPage() {
       if (mode === 'admin') {
         if (!user.isAdmin) {
           setError('管理者権限がありません');
-          setLoading(false);
           return;
         }
         navigate('/admin');
