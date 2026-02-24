@@ -24,6 +24,8 @@ export const exchangeStatusEnum = pgEnum('exchange_status_enum', [
   'cancelled',
 ]);
 export const adminMessageTargetTypeEnum = pgEnum('admin_message_target_type_enum', ['all', 'pharmacy']);
+export const drugMasterSyncStatusEnum = pgEnum('drug_master_sync_status_enum', ['running', 'success', 'failed', 'partial']);
+export const drugMasterRevisionTypeEnum = pgEnum('drug_master_revision_type_enum', ['price_revision', 'new_listing', 'delisting', 'transition']);
 
 export const pharmacies = pgTable('pharmacies', {
   id: serial('id').primaryKey(),
@@ -66,6 +68,7 @@ export const deadStockItems = pgTable('dead_stock_items', {
   uploadId: integer('upload_id').notNull().references(() => uploads.id, { onDelete: 'cascade' }),
   drugCode: text('drug_code'),
   drugName: text('drug_name').notNull(),
+  drugMasterId: integer('drug_master_id'),
   quantity: real('quantity').notNull(),
   unit: text('unit'),
   yakkaUnitPrice: real('yakka_unit_price'),
@@ -79,6 +82,8 @@ export const deadStockItems = pgTable('dead_stock_items', {
     .on(table.pharmacyId, table.isAvailable, table.createdAt),
   idxDeadStockAvailableName: index('idx_dead_stock_available_name')
     .on(table.isAvailable, table.drugName),
+  idxDeadStockDrugMasterId: index('idx_dead_stock_drug_master_id')
+    .on(table.drugMasterId),
   chkQuantityPositive: check('chk_dead_stock_quantity', sql`${table.quantity} > 0`),
   chkYakkaUnitPriceNonNeg: check('chk_dead_stock_yakka_price', sql`${table.yakkaUnitPrice} IS NULL OR ${table.yakkaUnitPrice} >= 0`),
 }));
@@ -89,6 +94,7 @@ export const usedMedicationItems = pgTable('used_medication_items', {
   uploadId: integer('upload_id').notNull().references(() => uploads.id, { onDelete: 'cascade' }),
   drugCode: text('drug_code'),
   drugName: text('drug_name').notNull(),
+  drugMasterId: integer('drug_master_id'),
   monthlyUsage: real('monthly_usage'),
   unit: text('unit'),
   yakkaUnitPrice: real('yakka_unit_price'),
@@ -96,6 +102,8 @@ export const usedMedicationItems = pgTable('used_medication_items', {
 }, (table) => ({
   idxUsedMedicationPharmacyCreated: index('idx_used_medication_pharmacy_created')
     .on(table.pharmacyId, table.createdAt),
+  idxUsedMedDrugMasterId: index('idx_used_med_drug_master_id')
+    .on(table.drugMasterId),
   chkYakkaUnitPriceNonNeg: check('chk_used_med_yakka_price', sql`${table.yakkaUnitPrice} IS NULL OR ${table.yakkaUnitPrice} >= 0`),
 }));
 
@@ -208,6 +216,82 @@ export const pharmacyBusinessHours = pgTable('pharmacy_business_hours', {
   idxBusinessHoursPharmacyDay: uniqueIndex('idx_business_hours_pharmacy_day').on(table.pharmacyId, table.dayOfWeek),
   chkDayOfWeek: check('chk_day_of_week', sql`${table.dayOfWeek} >= 0 AND ${table.dayOfWeek} <= 6`),
 }));
+
+// ── 医薬品マスター ──────────────────────────────────────
+
+export const drugMaster = pgTable('drug_master', {
+  id: serial('id').primaryKey(),
+  yjCode: text('yj_code').notNull().unique(),
+  drugName: text('drug_name').notNull(),
+  genericName: text('generic_name'),
+  specification: text('specification'),
+  unit: text('unit'),
+  yakkaPrice: real('yakka_price').notNull(),
+  manufacturer: text('manufacturer'),
+  category: text('category'), // 内用薬/外用薬/注射薬/歯科用薬剤
+  therapeuticCategory: text('therapeutic_category'), // 薬効分類番号
+  isListed: boolean('is_listed').default(true),
+  listedDate: text('listed_date'),
+  transitionDeadline: text('transition_deadline'), // 経過措置期限
+  deletedDate: text('deleted_date'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxDrugMasterName: index('idx_drug_master_name').on(table.drugName),
+  idxDrugMasterGenericName: index('idx_drug_master_generic_name').on(table.genericName),
+  idxDrugMasterListedName: index('idx_drug_master_listed_name').on(table.isListed, table.drugName),
+  chkYakkaPriceNonNeg: check('chk_drug_master_yakka_price', sql`${table.yakkaPrice} >= 0`),
+}));
+
+export const drugMasterPackages = pgTable('drug_master_packages', {
+  id: serial('id').primaryKey(),
+  drugMasterId: integer('drug_master_id').notNull().references(() => drugMaster.id, { onDelete: 'cascade' }),
+  gs1Code: text('gs1_code'),   // 14桁 販売包装単位コード
+  janCode: text('jan_code'),   // 13桁
+  hotCode: text('hot_code'),   // 9〜13桁
+  packageDescription: text('package_description'), // 例: 100錠(10錠×10)PTP
+  packageQuantity: real('package_quantity'),
+  packageUnit: text('package_unit'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxDrugPackagesDrugMasterId: index('idx_drug_packages_drug_master_id').on(table.drugMasterId),
+  idxDrugPackagesGs1: index('idx_drug_packages_gs1').on(table.gs1Code),
+  idxDrugPackagesJan: index('idx_drug_packages_jan').on(table.janCode),
+  idxDrugPackagesHot: index('idx_drug_packages_hot').on(table.hotCode),
+}));
+
+export const drugMasterPriceHistory = pgTable('drug_master_price_history', {
+  id: serial('id').primaryKey(),
+  yjCode: text('yj_code').notNull(),
+  previousPrice: real('previous_price'),
+  newPrice: real('new_price'),
+  revisionDate: text('revision_date').notNull(),
+  revisionType: drugMasterRevisionTypeEnum('revision_type').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxPriceHistoryYjCode: index('idx_price_history_yj_code').on(table.yjCode),
+  idxPriceHistoryDate: index('idx_price_history_date').on(table.revisionDate),
+}));
+
+export const drugMasterSyncLogs = pgTable('drug_master_sync_logs', {
+  id: serial('id').primaryKey(),
+  syncType: text('sync_type').notNull(), // manual / auto
+  sourceDescription: text('source_description'),
+  status: drugMasterSyncStatusEnum('status').notNull(),
+  itemsProcessed: integer('items_processed').default(0),
+  itemsAdded: integer('items_added').default(0),
+  itemsUpdated: integer('items_updated').default(0),
+  itemsDeleted: integer('items_deleted').default(0),
+  errorMessage: text('error_message'),
+  startedAt: timestamp('started_at', { mode: 'string' }).defaultNow(),
+  completedAt: timestamp('completed_at', { mode: 'string' }),
+  triggeredBy: integer('triggered_by').references(() => pharmacies.id, { onDelete: 'set null' }),
+}, (table) => ({
+  idxSyncLogsStartedAt: index('idx_sync_logs_started_at').on(table.startedAt),
+}));
+
+// ── アクティビティログ ──────────────────────────────────
 
 export const activityLogs = pgTable('activity_logs', {
   id: serial('id').primaryKey(),

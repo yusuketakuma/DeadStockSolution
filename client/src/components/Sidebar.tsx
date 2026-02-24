@@ -65,6 +65,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               管理者
             </Nav.Link>
             <Nav.Link
+              href="/admin/drug-master"
+              className={`sidebar-link${location.pathname === '/admin/drug-master' ? ' active' : ''}`}
+              onClick={handleNav('/admin/drug-master')}
+            >
+              <span className="sidebar-icon">💊</span>
+              医薬品マスター
+            </Nav.Link>
+            <Nav.Link
               href="/admin/logs"
               className={`sidebar-link${location.pathname === '/admin/logs' ? ' active' : ''}`}
               onClick={handleNav('/admin/logs')}

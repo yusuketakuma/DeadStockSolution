@@ -13,6 +13,7 @@ import pharmaciesRoutes from './routes/pharmacies';
 import notificationsRoutes from './routes/notifications';
 import businessHoursRoutes from './routes/business-hours';
 import searchRoutes from './routes/search';
+import drugMasterRoutes from './routes/drug-master';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { db } from './config/database';
@@ -91,6 +92,7 @@ app.use('/api/pharmacies', pharmaciesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/business-hours', businessHoursRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/admin/drug-master', drugMasterRoutes);
 
 // Health check with DB connectivity
 app.get('/api/health', async (_req, res) => {

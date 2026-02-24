@@ -9,6 +9,7 @@ import { AuthRequest, ColumnMapping, DEAD_STOCK_FIELDS, USED_MEDICATION_FIELDS }
 import { parseExcelBuffer, getPreviewRows } from '../services/upload-service';
 import { detectHeaderRow, suggestMapping, computeHeaderHash } from '../services/column-mapper';
 import { extractDeadStockRows, extractUsedMedicationRows } from '../services/data-extractor';
+import { enrichWithDrugMaster } from '../services/drug-master-enrichment';
 
 const router = Router();
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
@@ -306,6 +307,14 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
       : null;
     const rowCount = deadStockExtracted?.length ?? usedMedicationExtracted?.length ?? 0;
 
+    // 医薬品マスターから薬価・情報を自動補完
+    const enrichedDeadStock = deadStockExtracted
+      ? await enrichWithDrugMaster(deadStockExtracted, 'dead_stock')
+      : null;
+    const enrichedUsedMedication = usedMedicationExtracted
+      ? await enrichWithDrugMaster(usedMedicationExtracted, 'used_medication')
+      : null;
+
     const { uploadId } = await db.transaction(async (tx) => {
       const [uploadRecord] = await tx.insert(uploads).values({
         pharmacyId,
@@ -318,12 +327,14 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
       if (uploadType === 'dead_stock') {
         await tx.delete(deadStockItems).where(eq(deadStockItems.pharmacyId, pharmacyId));
 
-        if (deadStockExtracted && deadStockExtracted.length > 0) {
-          const insertRows = deadStockExtracted.map((item) => ({
+        const sourceRows = enrichedDeadStock ?? deadStockExtracted;
+        if (sourceRows && sourceRows.length > 0) {
+          const insertRows = sourceRows.map((item) => ({
             pharmacyId,
             uploadId: uploadRecord.id,
             drugCode: item.drugCode,
             drugName: item.drugName,
+            drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
             quantity: item.quantity,
             unit: item.unit,
             yakkaUnitPrice: item.yakkaUnitPrice,
@@ -339,12 +350,14 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
       } else {
         await tx.delete(usedMedicationItems).where(eq(usedMedicationItems.pharmacyId, pharmacyId));
 
-        if (usedMedicationExtracted && usedMedicationExtracted.length > 0) {
-          const insertRows = usedMedicationExtracted.map((item) => ({
+        const sourceRows = enrichedUsedMedication ?? usedMedicationExtracted;
+        if (sourceRows && sourceRows.length > 0) {
+          const insertRows = sourceRows.map((item) => ({
             pharmacyId,
             uploadId: uploadRecord.id,
             drugCode: item.drugCode,
             drugName: item.drugName,
+            drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
             monthlyUsage: item.monthlyUsage,
             unit: item.unit,
             yakkaUnitPrice: item.yakkaUnitPrice,

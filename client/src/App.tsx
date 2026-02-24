@@ -20,6 +20,7 @@ import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import AdminPharmaciesPage from './pages/admin/AdminPharmaciesPage';
 import AdminExchangesPage from './pages/admin/AdminExchangesPage';
 import AdminLogsPage from './pages/admin/AdminLogsPage';
+import AdminDrugMasterPage from './pages/admin/AdminDrugMasterPage';
 import PasswordResetPage from './pages/PasswordResetPage';
 
 function AppRoutes() {
@@ -90,6 +91,9 @@ function AppRoutes() {
       } />
       <Route path="/admin/logs" element={
         <ProtectedRoute adminOnly><Layout><AdminLogsPage /></Layout></ProtectedRoute>
+      } />
+      <Route path="/admin/drug-master" element={
+        <ProtectedRoute adminOnly><Layout><AdminDrugMasterPage /></Layout></ProtectedRoute>
       } />
 
       <Route path="*" element={<Navigate to="/" />} />

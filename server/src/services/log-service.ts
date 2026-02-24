@@ -20,7 +20,10 @@ export type LogAction =
   | 'dead_stock_delete'
   | 'password_reset_request'
   | 'password_reset_complete'
-  | 'password_reset_failed';
+  | 'password_reset_failed'
+  | 'drug_master_sync'
+  | 'drug_master_package_upload'
+  | 'drug_master_edit';
 
 export async function writeLog(
   action: LogAction,
