@@ -63,7 +63,7 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
-      expect(screen.getByText('テストアカウントでログイン')).toBeInTheDocument();
+      expect(screen.getByText('テストアカウント（メール入力補助）')).toBeInTheDocument();
     });
     expect(screen.getByText('テスト薬局（東京）')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局2号店（大阪）')).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('LoginPage', () => {
     expect(submitBtn).toBeTruthy();
     expect(submitBtn.textContent).toBe('管理者ログイン');
     // Test accounts and register link should NOT be visible
-    expect(screen.queryByText('テストアカウントでログイン')).not.toBeInTheDocument();
+    expect(screen.queryByText('テストアカウント（メール入力補助）')).not.toBeInTheDocument();
     expect(screen.queryByText('新規登録はこちら')).not.toBeInTheDocument();
     // Admin mode hint
     expect(screen.getByText('管理者アカウントでログインしてください。')).toBeInTheDocument();
@@ -177,17 +177,11 @@ describe('LoginPage', () => {
     });
   });
 
-  it('handles test account login', async () => {
+  it('fills email when test account is selected', async () => {
     const user = userEvent.setup();
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
-      if (url.includes('/api/auth/login')) {
-        return new Response(JSON.stringify(mockUser), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
       if (url.includes('/api/auth/me')) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
@@ -210,14 +204,14 @@ describe('LoginPage', () => {
     await user.click(screen.getByText('テスト薬局（東京）'));
 
     await waitFor(() => {
-      const loginCall = fetchMock.mock.calls.find(
-        (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/login')
-      );
-      expect(loginCall).toBeTruthy();
-      const body = JSON.parse((loginCall![1] as RequestInit).body as string);
-      expect(body.email).toBe('test@example.com');
-      expect(body.password).toBe('test1234');
+      expect(getInputByLabel('メールアドレス').value).toBe('test@example.com');
+      expect(getInputByLabel('パスワード').value).toBe('');
     });
+
+    const loginCall = fetchMock.mock.calls.find(
+      (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/login')
+    );
+    expect(loginCall).toBeFalsy();
   });
 
   it('has link to registration page in user mode', async () => {

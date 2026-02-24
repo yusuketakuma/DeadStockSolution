@@ -17,9 +17,10 @@ import { isSafeInternalPath, sanitizeInternalPath } from '../utils/path-utils';
 import { rowCount } from '../utils/db-utils';
 import { writeLog, getClientIp, type LogAction } from '../services/log-service';
 import { logger } from '../services/logger';
+import { getObservabilitySnapshot } from '../services/observability-service';
 
 const VALID_LOG_ACTIONS: LogAction[] = [
-  'login', 'login_failed', 'admin_login', 'test_login', 'register', 'logout',
+  'login', 'login_failed', 'admin_login', 'register', 'logout',
   'upload', 'proposal_create', 'proposal_accept', 'proposal_reject', 'proposal_complete',
   'account_update', 'account_deactivate', 'admin_toggle_active', 'admin_send_message',
   'dead_stock_delete', 'password_reset_request', 'password_reset_complete',
@@ -71,6 +72,18 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
   } catch (err) {
     logger.error('Admin stats error', { error: (err as Error).message });
     res.status(500).json({ error: '統計情報の取得に失敗しました' });
+  }
+});
+
+router.get('/observability', async (req: AuthRequest, res: Response) => {
+  try {
+    const minutesRaw = Number(req.query.minutes);
+    const minutes = Number.isFinite(minutesRaw) ? minutesRaw : 60;
+    const snapshot = getObservabilitySnapshot(minutes);
+    res.json(snapshot);
+  } catch (err) {
+    logger.error('Admin observability error', { error: (err as Error).message });
+    res.status(500).json({ error: '監視情報の取得に失敗しました' });
   }
 });
 

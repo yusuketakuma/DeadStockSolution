@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, Row, Col, Alert, Badge, ListGroup, Button, Spinner } from 'react-bootstrap';
+import { Card, Row, Col, Alert, Badge, ListGroup, Spinner } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -145,9 +145,9 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
-                  <Button variant="outline-primary" size="sm" className="mt-1">
+                  <span className="btn btn-outline-primary btn-sm mt-1" aria-hidden="true">
                     {notice.actionLabel}
-                  </Button>
+                  </span>
                 </ListGroup.Item>
               ))}
             </ListGroup>

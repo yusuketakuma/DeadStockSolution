@@ -10,6 +10,7 @@ interface BrowseItem {
   drugName: string;
   quantity: number;
   unit: string | null;
+  packageLabel?: string | null;
   yakkaUnitPrice: number | null;
   yakkaTotal: number | null;
   expirationDate: string | null;
@@ -79,6 +80,7 @@ export default function InventoryBrowsePage() {
                 <th>薬品名</th>
                 <th>数量</th>
                 <th>単位</th>
+                <th>包装</th>
                 <th>薬価(単価)</th>
                 <th>薬価(合計)</th>
                 <th>使用期限</th>
@@ -93,6 +95,7 @@ export default function InventoryBrowsePage() {
                   <td>{item.drugName}</td>
                   <td>{item.quantity}</td>
                   <td>{item.unit}</td>
+                  <td>{item.packageLabel || '-'}</td>
                   <td>{item.yakkaUnitPrice?.toLocaleString()}</td>
                   <td>{item.yakkaTotal?.toLocaleString()}</td>
                   <td>{item.expirationDate}</td>

@@ -16,6 +16,7 @@ import searchRoutes from './routes/search';
 import drugMasterRoutes from './routes/drug-master';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
+import { csrfProtection } from './middleware/csrf';
 import { db } from './config/database';
 import { sql } from 'drizzle-orm';
 import { logger } from './services/logger';
@@ -108,6 +109,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+app.use('/api', csrfProtection);
 
 // Routes
 app.use('/api/auth', authRoutes);

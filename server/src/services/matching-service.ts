@@ -1,6 +1,14 @@
 import { and, eq, gte, inArray, ne } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, deadStockItems, usedMedicationItems, uploads, pharmacyBusinessHours, pharmacyRelationships } from '../db/schema';
+import {
+  pharmacies,
+  deadStockItems,
+  usedMedicationItems,
+  uploads,
+  pharmacyBusinessHours,
+  pharmacySpecialHours,
+  pharmacyRelationships,
+} from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { haversineDistance } from '../utils/geo-utils';
 import { normalizeString } from '../utils/string-utils';
@@ -485,22 +493,45 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   ]);
 
   // Fetch business hours for all candidate pharmacies
-  const allBusinessHours = await db.select({
-    pharmacyId: pharmacyBusinessHours.pharmacyId,
-    dayOfWeek: pharmacyBusinessHours.dayOfWeek,
-    openTime: pharmacyBusinessHours.openTime,
-    closeTime: pharmacyBusinessHours.closeTime,
-    isClosed: pharmacyBusinessHours.isClosed,
-    is24Hours: pharmacyBusinessHours.is24Hours,
-  })
-    .from(pharmacyBusinessHours)
-    .where(inArray(pharmacyBusinessHours.pharmacyId, activePharmacyIds));
+  const [allBusinessHours, allSpecialHours] = await Promise.all([
+    db.select({
+      pharmacyId: pharmacyBusinessHours.pharmacyId,
+      dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+      openTime: pharmacyBusinessHours.openTime,
+      closeTime: pharmacyBusinessHours.closeTime,
+      isClosed: pharmacyBusinessHours.isClosed,
+      is24Hours: pharmacyBusinessHours.is24Hours,
+    })
+      .from(pharmacyBusinessHours)
+      .where(inArray(pharmacyBusinessHours.pharmacyId, activePharmacyIds)),
+    db.select({
+      pharmacyId: pharmacySpecialHours.pharmacyId,
+      id: pharmacySpecialHours.id,
+      specialType: pharmacySpecialHours.specialType,
+      startDate: pharmacySpecialHours.startDate,
+      endDate: pharmacySpecialHours.endDate,
+      openTime: pharmacySpecialHours.openTime,
+      closeTime: pharmacySpecialHours.closeTime,
+      isClosed: pharmacySpecialHours.isClosed,
+      is24Hours: pharmacySpecialHours.is24Hours,
+      note: pharmacySpecialHours.note,
+      updatedAt: pharmacySpecialHours.updatedAt,
+    })
+      .from(pharmacySpecialHours)
+      .where(inArray(pharmacySpecialHours.pharmacyId, activePharmacyIds)),
+  ]);
 
   const businessHoursByPharmacy = new Map<number, typeof allBusinessHours>();
   for (const h of allBusinessHours) {
     const list = businessHoursByPharmacy.get(h.pharmacyId) ?? [];
     list.push(h);
     businessHoursByPharmacy.set(h.pharmacyId, list);
+  }
+  const specialHoursByPharmacy = new Map<number, typeof allSpecialHours>();
+  for (const h of allSpecialHours) {
+    const list = specialHoursByPharmacy.get(h.pharmacyId) ?? [];
+    list.push(h);
+    specialHoursByPharmacy.set(h.pharmacyId, list);
   }
 
   const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(allOtherDeadStock);
@@ -588,7 +619,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     const matchRate = calculateMatchRate(balancedA, balancedB);
 
     const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id) ?? [];
-    const businessStatus = getBusinessHoursStatus(pharmacyHours, now);
+    const pharmacySpecialHours = specialHoursByPharmacy.get(otherPharmacy.id) ?? [];
+    const businessStatus = getBusinessHoursStatus(pharmacyHours, pharmacySpecialHours, now);
 
     candidates.push({
       pharmacyId: otherPharmacy.id,

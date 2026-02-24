@@ -1,4 +1,6 @@
 import { eq, like, or, and, desc, sql, count, isNotNull, inArray } from 'drizzle-orm';
+import { XMLParser } from 'fast-xml-parser';
+import AdmZip from 'adm-zip';
 import { db } from '../config/database';
 import {
   drugMaster,
@@ -8,7 +10,10 @@ import {
 } from '../db/schema';
 import { parseNumber } from '../utils/string-utils';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
+import { normalizePackageInfo } from '../utils/package-utils';
 import { logger } from './logger';
+import iconv from 'iconv-lite';
+import { parseExcelBuffer } from './upload-service';
 
 /** LIKE パターン中の % と _ をエスケープする */
 function escapeLikePattern(term: string): string {
@@ -92,8 +97,13 @@ function detectMhlwHeaderRow(rows: unknown[][]): { rowIndex: number; mapping: Re
         const header = headers[colIdx];
         if (!header) continue;
         for (const keyword of keywords) {
-          if (header === keyword || header.includes(keyword)) {
-            if (!mapping[field]) {
+          let matched = header === keyword || header.includes(keyword);
+          // 「薬価基準収載医薬品コード」を薬価列と誤認しない
+          if (field === 'yakkaPrice' && matched && header.includes('コード')) {
+            matched = false;
+          }
+          if (matched) {
+            if (mapping[field] === undefined) {
               mapping[field] = colIdx;
               score += header === keyword ? 10 : 5;
             }
@@ -135,7 +145,7 @@ function parseYjCode(raw: string | null): string | null {
 export function parseMhlwExcelData(rows: unknown[][]): ParsedDrugRow[] {
   const { rowIndex, mapping } = detectMhlwHeaderRow(rows);
 
-  if (!mapping.yjCode && !mapping.drugName) {
+  if (mapping.yjCode === undefined && mapping.drugName === undefined) {
     throw new Error('薬価基準収載品目リストのフォーマットを検出できません。YJコードまたは品名の列が必要です。');
   }
 
@@ -191,15 +201,8 @@ export function decodeCsvBuffer(buffer: Buffer): string {
   }
 
   // Shift_JIS（CP932）でデコードを試みる
-  try {
-    // iconv-lite が利用可能な場合
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const iconv = require('iconv-lite') as typeof import('iconv-lite');
-    if (iconv.encodingExists('CP932')) {
-      return iconv.decode(buffer, 'CP932');
-    }
-  } catch {
-    // iconv-lite が利用不可の場合はUTF-8でフォールバック
+  if (iconv.encodingExists('CP932')) {
+    return iconv.decode(buffer, 'CP932');
   }
 
   return utf8Text;
@@ -259,15 +262,184 @@ const PACKAGE_HEADER_KEYWORDS: Record<string, string[]> = {
   packageUnit: ['単位', '包装単位名'],
 };
 
+const PACKAGE_XML_KEYWORDS: Record<string, string[]> = {
+  yjCode: ['yjcode', 'yjコード', '薬価基準収載医薬品コード', '医薬品コード'],
+  gs1Code: ['gs1', '販売包装単位コード', 'gtin'],
+  janCode: ['jan'],
+  hotCode: ['hot'],
+  packageDescription: ['包装単位', '包装規格', '包装形態'],
+  packageQuantity: ['包装数量', '入数', '数量'],
+  packageUnit: ['包装単位名', '単位'],
+};
+
 export function parsePackageCsvData(csvContent: string): ParsedPackageRow[] {
   const lines = csvContent.split(/\r?\n/);
   const allRows = lines.map((line) => parseCsvLine(line));
   return parsePackageExcelData(allRows);
 }
 
+function normalizeXmlKey(key: string): string {
+  return key
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\s_\-（）()【】\[\]\/]/g, '');
+}
+
+function toXmlStringValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    const text = String(value).trim();
+    return text || null;
+  }
+  if (typeof value !== 'object') return null;
+
+  const record = value as Record<string, unknown>;
+  for (const key of ['#text', '_text', 'text']) {
+    const val = record[key];
+    if (typeof val === 'string') {
+      const text = val.trim();
+      if (text) return text;
+    }
+  }
+
+  return null;
+}
+
+function pickXmlField(
+  obj: Record<string, unknown>,
+  keywords: string[],
+  options?: { excludeIfKeyIncludes?: string[] },
+): string | null {
+  let bestValue: string | null = null;
+  let bestScore = -1;
+
+  for (const [rawKey, rawValue] of Object.entries(obj)) {
+    const key = normalizeXmlKey(rawKey);
+    if (options?.excludeIfKeyIncludes?.some((kw) => key.includes(normalizeXmlKey(kw)))) {
+      continue;
+    }
+
+    for (const keyword of keywords) {
+      const normalizedKeyword = normalizeXmlKey(keyword);
+      let score = -1;
+      if (key === normalizedKeyword) {
+        score = 100;
+      } else if (key.endsWith(normalizedKeyword)) {
+        score = 80;
+      } else if (key.includes(normalizedKeyword)) {
+        score = 60;
+      }
+
+      if (score > bestScore) {
+        const value = toXmlStringValue(rawValue);
+        if (value) {
+          bestScore = score;
+          bestValue = value;
+        }
+      }
+    }
+  }
+  return bestValue;
+}
+
+function extractPackageRowFromXmlObject(obj: Record<string, unknown>): ParsedPackageRow | null {
+  const yjRaw = pickXmlField(obj, PACKAGE_XML_KEYWORDS.yjCode);
+  const yjCode = parseYjCode(yjRaw);
+  if (!yjCode) return null;
+
+  const gs1Code = pickXmlField(obj, PACKAGE_XML_KEYWORDS.gs1Code);
+  const janCode = pickXmlField(obj, PACKAGE_XML_KEYWORDS.janCode);
+  const hotCode = pickXmlField(obj, PACKAGE_XML_KEYWORDS.hotCode);
+  if (!gs1Code && !janCode && !hotCode) return null;
+
+  return {
+    yjCode,
+    gs1Code,
+    janCode,
+    hotCode,
+    packageDescription: pickXmlField(obj, PACKAGE_XML_KEYWORDS.packageDescription, { excludeIfKeyIncludes: ['コード'] }),
+    packageQuantity: parseNumber(pickXmlField(obj, PACKAGE_XML_KEYWORDS.packageQuantity)),
+    packageUnit: pickXmlField(obj, PACKAGE_XML_KEYWORDS.packageUnit, { excludeIfKeyIncludes: ['コード'] }),
+  };
+}
+
+export function parsePackageXmlData(xmlContent: string): ParsedPackageRow[] {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '',
+    parseTagValue: true,
+    parseAttributeValue: false,
+    trimValues: true,
+  });
+
+  const parsed = parser.parse(xmlContent);
+  const rows: ParsedPackageRow[] = [];
+
+  const walk = (node: unknown): void => {
+    if (!node) return;
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    if (typeof node !== 'object') return;
+
+    const obj = node as Record<string, unknown>;
+    const row = extractPackageRowFromXmlObject(obj);
+    if (row) rows.push(row);
+
+    for (const value of Object.values(obj)) {
+      walk(value);
+    }
+  };
+
+  walk(parsed);
+
+  const deduped = new Map<string, ParsedPackageRow>();
+  for (const row of rows) {
+    const key = [row.yjCode, row.gs1Code ?? '', row.janCode ?? '', row.hotCode ?? '', row.packageDescription ?? ''].join('|');
+    if (!deduped.has(key)) {
+      deduped.set(key, row);
+    }
+  }
+  return [...deduped.values()];
+}
+
+export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackageRow[]> {
+  const zip = new AdmZip(buffer);
+  const rows: ParsedPackageRow[] = [];
+
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue;
+    const lowerName = entry.entryName.toLowerCase();
+    const entryBuffer = entry.getData();
+
+    try {
+      if (lowerName.endsWith('.xml')) {
+        rows.push(...parsePackageXmlData(entryBuffer.toString('utf-8')));
+      } else if (lowerName.endsWith('.csv')) {
+        rows.push(...parsePackageCsvData(decodeCsvBuffer(entryBuffer)));
+      } else if (lowerName.endsWith('.xlsx')) {
+        const excelRows = await parseExcelBuffer(entryBuffer);
+        rows.push(...parsePackageExcelData(excelRows));
+      }
+    } catch {
+      // Skip invalid entry and continue parsing remaining files.
+    }
+  }
+
+  const deduped = new Map<string, ParsedPackageRow>();
+  for (const row of rows) {
+    const key = [row.yjCode, row.gs1Code ?? '', row.janCode ?? '', row.hotCode ?? '', row.packageDescription ?? ''].join('|');
+    if (!deduped.has(key)) {
+      deduped.set(key, row);
+    }
+  }
+  return [...deduped.values()];
+}
+
 export function parsePackageExcelData(rows: unknown[][]): ParsedPackageRow[] {
   const { rowIndex, mapping } = detectPackageHeader(rows);
-  if (!mapping.yjCode) {
+  if (mapping.yjCode === undefined) {
     throw new Error('包装単位データのフォーマットを検出できません。YJコードの列が必要です。');
   }
 
@@ -319,7 +491,7 @@ function detectPackageHeader(rows: unknown[][]): { rowIndex: number; mapping: Re
         if (!header) continue;
         for (const keyword of keywords) {
           if (header === keyword || header.includes(keyword)) {
-            if (!mapping[field]) {
+            if (mapping[field] === undefined) {
               mapping[field] = colIdx;
               score += header === keyword ? 10 : 5;
             }
@@ -504,6 +676,11 @@ export async function syncPackageData(
       const existingPkg = await findExistingPackage(drugMasterId, row);
 
       if (existingPkg) {
+        const normalized = normalizePackageInfo({
+          packageDescription: row.packageDescription,
+          packageQuantity: row.packageQuantity,
+          packageUnit: row.packageUnit,
+        });
         await db.update(drugMasterPackages)
           .set({
             gs1Code: row.gs1Code ?? existingPkg.gs1Code,
@@ -512,11 +689,19 @@ export async function syncPackageData(
             packageDescription: row.packageDescription ?? existingPkg.packageDescription,
             packageQuantity: row.packageQuantity ?? existingPkg.packageQuantity,
             packageUnit: row.packageUnit ?? existingPkg.packageUnit,
+            normalizedPackageLabel: normalized.normalizedPackageLabel ?? existingPkg.normalizedPackageLabel,
+            packageForm: normalized.packageForm ?? existingPkg.packageForm,
+            isLoosePackage: normalized.isLoosePackage,
             updatedAt: new Date().toISOString(),
           })
           .where(eq(drugMasterPackages.id, existingPkg.id));
         updated++;
       } else {
+        const normalized = normalizePackageInfo({
+          packageDescription: row.packageDescription,
+          packageQuantity: row.packageQuantity,
+          packageUnit: row.packageUnit,
+        });
         await db.insert(drugMasterPackages).values({
           drugMasterId,
           gs1Code: row.gs1Code,
@@ -525,6 +710,9 @@ export async function syncPackageData(
           packageDescription: row.packageDescription,
           packageQuantity: row.packageQuantity,
           packageUnit: row.packageUnit,
+          normalizedPackageLabel: normalized.normalizedPackageLabel,
+          packageForm: normalized.packageForm,
+          isLoosePackage: normalized.isLoosePackage,
         });
         added++;
       }
@@ -650,8 +838,21 @@ export async function getDrugDetail(yjCode: string) {
   const [drug] = await db.select().from(drugMaster).where(eq(drugMaster.yjCode, yjCode));
   if (!drug) return null;
 
-  const packages = await db.select().from(drugMasterPackages)
+  const packageRows = await db.select().from(drugMasterPackages)
     .where(eq(drugMasterPackages.drugMasterId, drug.id));
+  const packages = packageRows.map((pkg) => {
+    const normalized = normalizePackageInfo({
+      packageDescription: pkg.packageDescription,
+      packageQuantity: pkg.packageQuantity,
+      packageUnit: pkg.packageUnit,
+    });
+    return {
+      ...pkg,
+      normalizedPackageLabel: pkg.normalizedPackageLabel ?? normalized.normalizedPackageLabel,
+      packageForm: pkg.packageForm ?? normalized.packageForm,
+      isLoosePackage: pkg.isLoosePackage ?? normalized.isLoosePackage,
+    };
+  });
 
   const priceHistory = await db.select().from(drugMasterPriceHistory)
     .where(eq(drugMasterPriceHistory.yjCode, yjCode))

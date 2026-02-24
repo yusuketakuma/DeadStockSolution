@@ -72,9 +72,9 @@ describe('normalizeSearchTerm', () => {
     expect(normalizeSearchTerm('   ')).toBeUndefined();
   });
 
-  it('removes SQL wildcard characters', () => {
-    expect(normalizeSearchTerm('test%drop')).toBe('testdrop');
-    expect(normalizeSearchTerm('test_drop')).toBe('testdrop');
+  it('keeps SQL wildcard characters for later escaping', () => {
+    expect(normalizeSearchTerm('test%drop')).toBe('test%drop');
+    expect(normalizeSearchTerm('test_drop')).toBe('test_drop');
   });
 
   it('removes control characters', () => {

@@ -1,12 +1,12 @@
 import { Router, Response } from 'express';
 import { and, eq, or, like, desc, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, pharmacyBusinessHours, pharmacyRelationships } from '../db/schema';
+import { pharmacies, pharmacyBusinessHours, pharmacySpecialHours, pharmacyRelationships } from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { requireLogin } from '../middleware/auth';
 import { haversineDistance } from '../utils/geo-utils';
 import { AuthRequest } from '../types';
-import { normalizeSearchTerm, parsePagination, parsePositiveInt } from '../utils/request-utils';
+import { normalizeSearchTerm, parsePagination, parsePositiveInt, escapeLikeWildcards } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 
@@ -38,7 +38,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       const hiragana = katakanaToHiragana(normalized);
       const katakana = hiraganaToKatakana(normalized);
       const likeTerms = [...new Set([normalized, hiragana, katakana])];
-      const nameConditions = likeTerms.map((term) => like(pharmacies.name, `%${term}%`));
+      const nameConditions = likeTerms.map((term) => like(pharmacies.name, `%${escapeLikeWildcards(term)}%`));
       conditions.push(nameConditions.length === 1 ? nameConditions[0] : or(...nameConditions)!);
     }
     if (prefecture) {
@@ -80,18 +80,35 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     // Fetch business hours for all pharmacies in the result
     const pharmacyIds = enriched.map((r) => r.id);
-    const allHours = pharmacyIds.length > 0
-      ? await db.select({
-        pharmacyId: pharmacyBusinessHours.pharmacyId,
-        dayOfWeek: pharmacyBusinessHours.dayOfWeek,
-        openTime: pharmacyBusinessHours.openTime,
-        closeTime: pharmacyBusinessHours.closeTime,
-        isClosed: pharmacyBusinessHours.isClosed,
-        is24Hours: pharmacyBusinessHours.is24Hours,
-      })
-        .from(pharmacyBusinessHours)
-        .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds))
-      : [];
+    const [allHours, allSpecialHours] = pharmacyIds.length > 0
+      ? await Promise.all([
+        db.select({
+          pharmacyId: pharmacyBusinessHours.pharmacyId,
+          dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+          openTime: pharmacyBusinessHours.openTime,
+          closeTime: pharmacyBusinessHours.closeTime,
+          isClosed: pharmacyBusinessHours.isClosed,
+          is24Hours: pharmacyBusinessHours.is24Hours,
+        })
+          .from(pharmacyBusinessHours)
+          .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds)),
+        db.select({
+          pharmacyId: pharmacySpecialHours.pharmacyId,
+          id: pharmacySpecialHours.id,
+          specialType: pharmacySpecialHours.specialType,
+          startDate: pharmacySpecialHours.startDate,
+          endDate: pharmacySpecialHours.endDate,
+          openTime: pharmacySpecialHours.openTime,
+          closeTime: pharmacySpecialHours.closeTime,
+          isClosed: pharmacySpecialHours.isClosed,
+          is24Hours: pharmacySpecialHours.is24Hours,
+          note: pharmacySpecialHours.note,
+          updatedAt: pharmacySpecialHours.updatedAt,
+        })
+          .from(pharmacySpecialHours)
+          .where(inArray(pharmacySpecialHours.pharmacyId, pharmacyIds)),
+      ])
+      : [[], []];
 
     const hoursByPharmacy = new Map<number, typeof allHours>();
     for (const h of allHours) {
@@ -99,11 +116,18 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       list.push(h);
       hoursByPharmacy.set(h.pharmacyId, list);
     }
+    const specialHoursByPharmacy = new Map<number, typeof allSpecialHours>();
+    for (const h of allSpecialHours) {
+      const list = specialHoursByPharmacy.get(h.pharmacyId) ?? [];
+      list.push(h);
+      specialHoursByPharmacy.set(h.pharmacyId, list);
+    }
 
     const now = new Date();
     const enrichedWithHours = enriched.map((row) => {
       const hours = hoursByPharmacy.get(row.id) ?? [];
-      const status = getBusinessHoursStatus(hours, now);
+      const specialHours = specialHoursByPharmacy.get(row.id) ?? [];
+      const status = getBusinessHoursStatus(hours, specialHours, now);
       return {
         ...row,
         businessHours: hours.map(({ pharmacyId: _, ...rest }) => rest),

@@ -39,6 +39,9 @@ interface PackageItem {
   packageDescription: string | null;
   packageQuantity: number | null;
   packageUnit: string | null;
+  normalizedPackageLabel?: string | null;
+  packageForm?: string | null;
+  isLoosePackage?: boolean;
 }
 
 interface PriceHistoryItem {
@@ -77,6 +80,14 @@ interface ListResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
+interface AutoSyncStatus {
+  enabled: boolean;
+  sourceHost: string;
+  hasSourceUrl: boolean;
+  checkIntervalHours: number;
+  supportsManualUrlOverride: boolean;
+}
+
 const REVISION_TYPE_LABELS: Record<string, string> = {
   price_revision: '薬価改定',
   new_listing: '新規収載',
@@ -110,13 +121,12 @@ export default function AdminDrugMasterPage() {
   const pkgFileRef = useRef<HTMLInputElement>(null);
 
   // 自動取得関連
-  const [autoSyncStatus, setAutoSyncStatus] = useState<{
-    enabled: boolean;
-    sourceUrl: string;
-    hasSourceUrl: boolean;
-    checkIntervalHours: number;
-  } | null>(null);
+  const [autoSyncStatus, setAutoSyncStatus] = useState<AutoSyncStatus | null>(null);
   const [autoSyncTriggering, setAutoSyncTriggering] = useState(false);
+  const [manualSourceUrl, setManualSourceUrl] = useState('');
+  const [packageAutoSyncStatus, setPackageAutoSyncStatus] = useState<AutoSyncStatus | null>(null);
+  const [packageAutoSyncTriggering, setPackageAutoSyncTriggering] = useState(false);
+  const [packageManualSourceUrl, setPackageManualSourceUrl] = useState('');
 
   // 同期ログ
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -170,15 +180,24 @@ export default function AdminDrugMasterPage() {
 
   const fetchAutoSyncStatus = async () => {
     try {
-      const data = await api.get<typeof autoSyncStatus>('/admin/drug-master/auto-sync/status');
+      const data = await api.get<AutoSyncStatus>('/admin/drug-master/auto-sync/status');
       setAutoSyncStatus(data);
+    } catch { /* ignore */ }
+  };
+
+  const fetchPackageAutoSyncStatus = async () => {
+    try {
+      const data = await api.get<AutoSyncStatus>('/admin/drug-master/auto-sync/packages/status');
+      setPackageAutoSyncStatus(data);
     } catch { /* ignore */ }
   };
 
   const handleAutoSyncTrigger = async () => {
     setAutoSyncTriggering(true);
     try {
-      const result = await api.post<{ triggered: boolean; message: string }>('/admin/drug-master/auto-sync', {});
+      const result = await api.post<{ triggered: boolean; message: string }>('/admin/drug-master/auto-sync', {
+        sourceUrl: manualSourceUrl.trim() || null,
+      });
       if (result.triggered) {
         setMessage(result.message);
         // 少し待ってからログを更新
@@ -193,10 +212,30 @@ export default function AdminDrugMasterPage() {
     }
   };
 
+  const handlePackageAutoSyncTrigger = async () => {
+    setPackageAutoSyncTriggering(true);
+    try {
+      const result = await api.post<{ triggered: boolean; message: string }>('/admin/drug-master/auto-sync/packages', {
+        sourceUrl: packageManualSourceUrl.trim() || null,
+      });
+      if (result.triggered) {
+        setMessage(result.message);
+        setTimeout(() => { fetchSyncLogs(); }, 5000);
+      } else {
+        setSyncError(result.message);
+      }
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : '包装単位データ自動取得の開始に失敗しました');
+    } finally {
+      setPackageAutoSyncTriggering(false);
+    }
+  };
+
   useEffect(() => {
     fetchStats();
     fetchSyncLogs();
     fetchAutoSyncStatus();
+    fetchPackageAutoSyncStatus();
   }, []);
 
   useEffect(() => {
@@ -403,15 +442,63 @@ export default function AdminDrugMasterPage() {
             <Card.Header>包装単位データ登録（GS1/JAN/HOTコード）</Card.Header>
             <Card.Body>
               <Form.Group className="mb-2">
-                <Form.Label className="small">ファイル（xlsx / csv）</Form.Label>
-                <Form.Control type="file" ref={pkgFileRef} accept=".xlsx,.csv" />
+                <Form.Label className="small">ファイル（xlsx / csv / xml / zip）</Form.Label>
+                <Form.Control type="file" ref={pkgFileRef} accept=".xlsx,.csv,.xml,.zip" />
               </Form.Group>
               <Button size="sm" onClick={handlePackageUpload} disabled={pkgUploading}>
                 {pkgUploading ? <><Spinner size="sm" className="me-1" />登録中...</> : '登録実行'}
               </Button>
               <Form.Text className="d-block mt-1 text-muted">
-                GS1コード・JANコード・HOTコードを含む包装単位データを登録します。
+                GS1コード・JANコード・HOTコードを含む包装単位データを登録します（PMDA XML / ZIPにも対応）。
               </Form.Text>
+              <hr className="my-3" />
+              <div className="small fw-semibold mb-2">外部データ自動取得</div>
+              {packageAutoSyncStatus ? (
+                <>
+                  <div className="small mb-1">
+                    状態:
+                    {' '}
+                    <Badge bg={packageAutoSyncStatus.enabled ? 'success' : 'secondary'}>
+                      {packageAutoSyncStatus.enabled ? '有効' : '無効'}
+                    </Badge>
+                    {packageAutoSyncStatus.enabled && (
+                      <span className="ms-2 text-muted">{packageAutoSyncStatus.checkIntervalHours}時間ごと</span>
+                    )}
+                  </div>
+                  <div className="small mb-2">
+                    取得元:
+                    {' '}
+                    {packageAutoSyncStatus.hasSourceUrl ? (
+                      <span className="font-monospace">{packageAutoSyncStatus.sourceHost}</span>
+                    ) : (
+                      <span className="text-muted">未設定</span>
+                    )}
+                  </div>
+                  <Form.Group className="mb-2">
+                    <Form.Control
+                      size="sm"
+                      placeholder="https://... (手動実行時のURL)"
+                      value={packageManualSourceUrl}
+                      onChange={(e) => setPackageManualSourceUrl(e.target.value)}
+                    />
+                  </Form.Group>
+                  <Button
+                    size="sm"
+                    variant="outline-primary"
+                    onClick={handlePackageAutoSyncTrigger}
+                    disabled={packageAutoSyncTriggering || (!packageAutoSyncStatus.hasSourceUrl && !packageManualSourceUrl.trim())}
+                  >
+                    {packageAutoSyncTriggering ? <><Spinner size="sm" className="me-1" />確認中...</> : '包装単位データを今すぐ取得'}
+                  </Button>
+                  {!packageAutoSyncStatus.hasSourceUrl && (
+                    <Form.Text className="d-block mt-1 text-muted">
+                      環境変数 DRUG_PACKAGE_SOURCE_URL を設定してください。
+                    </Form.Text>
+                  )}
+                </>
+              ) : (
+                <Spinner size="sm" />
+              )}
             </Card.Body>
           </Card>
         </Col>
@@ -440,10 +527,24 @@ export default function AdminDrugMasterPage() {
                 <Col sm={3} className="text-muted small">取得元URL</Col>
                 <Col sm={9}>
                   {autoSyncStatus.hasSourceUrl ? (
-                    <span className="small font-monospace">{autoSyncStatus.sourceUrl}</span>
+                    <span className="small font-monospace">{autoSyncStatus.sourceHost}</span>
                   ) : (
                     <span className="small text-muted">未設定</span>
                   )}
+                </Col>
+              </Row>
+              <Row className="mb-2">
+                <Col sm={3} className="text-muted small">手動URL指定</Col>
+                <Col sm={9}>
+                  <Form.Control
+                    size="sm"
+                    placeholder="https://..."
+                    value={manualSourceUrl}
+                    onChange={(e) => setManualSourceUrl(e.target.value)}
+                  />
+                  <Form.Text className="text-muted">
+                    DRUG_MASTER_SOURCE_URL未設定時でも、HTTPS URLを指定して手動実行できます。
+                  </Form.Text>
                 </Col>
               </Row>
               <hr className="my-2" />
@@ -451,7 +552,7 @@ export default function AdminDrugMasterPage() {
                 size="sm"
                 variant="outline-primary"
                 onClick={handleAutoSyncTrigger}
-                disabled={autoSyncTriggering || !autoSyncStatus.hasSourceUrl}
+                disabled={autoSyncTriggering || (!autoSyncStatus.hasSourceUrl && !manualSourceUrl.trim())}
               >
                 {autoSyncTriggering ? <><Spinner size="sm" className="me-1" />確認中...</> : '今すぐ更新を確認・取得'}
               </Button>
@@ -654,6 +755,7 @@ export default function AdminDrugMasterPage() {
                         <th>JANコード</th>
                         <th>HOTコード</th>
                         <th>包装</th>
+                        <th>判別ラベル</th>
                         <th>数量</th>
                       </tr>
                     </thead>
@@ -664,6 +766,7 @@ export default function AdminDrugMasterPage() {
                           <td className="font-monospace small">{pkg.janCode || '-'}</td>
                           <td className="font-monospace small">{pkg.hotCode || '-'}</td>
                           <td className="small">{pkg.packageDescription || '-'}</td>
+                          <td className="small">{pkg.normalizedPackageLabel || '-'}</td>
                           <td className="small">{pkg.packageQuantity ?? '-'} {pkg.packageUnit || ''}</td>
                         </tr>
                       ))}

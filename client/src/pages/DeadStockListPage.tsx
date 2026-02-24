@@ -10,6 +10,7 @@ interface DeadStockItem {
   drugCode: string | null;
   quantity: number;
   unit: string | null;
+  packageLabel?: string | null;
   yakkaUnitPrice: number | null;
   yakkaTotal: number | null;
   expirationDate: string | null;
@@ -68,6 +69,7 @@ export default function DeadStockListPage() {
                 <th>コード</th>
                 <th>数量</th>
                 <th>単位</th>
+                <th>包装</th>
                 <th>薬価(単価)</th>
                 <th>薬価(合計)</th>
                 <th>使用期限</th>
@@ -82,6 +84,7 @@ export default function DeadStockListPage() {
                   <td className="small text-muted">{item.drugCode}</td>
                   <td>{item.quantity}</td>
                   <td>{item.unit}</td>
+                  <td>{item.packageLabel || '-'}</td>
                   <td>{item.yakkaUnitPrice?.toLocaleString()}</td>
                   <td>{item.yakkaTotal?.toLocaleString()}</td>
                   <td>{item.expirationDate}</td>

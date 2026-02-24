@@ -6,7 +6,7 @@ async function seed() {
 
   for (const account of getAllTestAccounts()) {
     const user = await ensureTestAccount(account);
-    console.log(`  [ok] ${user.email} / ${account.password}`);
+    console.log(`  [ok] ${user.email}`);
   }
 
   console.log('Done.');

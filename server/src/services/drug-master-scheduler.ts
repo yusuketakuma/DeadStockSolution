@@ -17,10 +17,6 @@ import { logger } from './logger';
 // チェック間隔: デフォルト24時間（環境変数で変更可能）
 const CHECK_INTERVAL_MS = Number(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS || 24) * 60 * 60 * 1000;
 
-// 厚生労働省 薬価基準収載品目リスト のURL（環境変数で設定）
-// 例: https://www.mhlw.go.jp/content/12404000/xxxxxxxx.xlsx
-const MHLW_SOURCE_URL = process.env.DRUG_MASTER_SOURCE_URL || '';
-
 // 自動同期の有効/無効
 const AUTO_SYNC_ENABLED = process.env.DRUG_MASTER_AUTO_SYNC === 'true';
 
@@ -55,6 +51,19 @@ let lastKnownLastModified: string | null = null;
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let initialDelayTimer: ReturnType<typeof setTimeout> | null = null;
 let isRunning = false;
+
+function getConfiguredSourceUrl(): string {
+  return process.env.DRUG_MASTER_SOURCE_URL?.trim() || '';
+}
+
+function summarizeSourceUrl(sourceUrl: string): string {
+  try {
+    const parsed = new URL(sourceUrl);
+    return parsed.hostname;
+  } catch {
+    return sourceUrl.slice(0, 64);
+  }
+}
 
 // ── サイト更新検知 ──────────────────────────────────
 
@@ -170,28 +179,34 @@ async function downloadFile(url: string): Promise<{ buffer: Buffer; contentType:
  * 自動同期の実行
  */
 async function runAutoSync(): Promise<void> {
+  await runAutoSyncWithSource(getConfiguredSourceUrl());
+}
+
+async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
   if (isRunning) {
     logger.info('Drug master auto-sync: already running, skipping');
     return;
   }
 
-  if (!MHLW_SOURCE_URL) {
+  if (!sourceUrl) {
     logger.warn('Drug master auto-sync: DRUG_MASTER_SOURCE_URL is not configured');
     return;
   }
 
-  if (!validateSourceUrl(MHLW_SOURCE_URL)) {
-    logger.error('Drug master auto-sync: DRUG_MASTER_SOURCE_URL is invalid (must be HTTPS, non-private)', { url: MHLW_SOURCE_URL });
+  if (!validateSourceUrl(sourceUrl)) {
+    logger.error('Drug master auto-sync: source URL is invalid (must be HTTPS, non-private)', {
+      source: summarizeSourceUrl(sourceUrl),
+    });
     return;
   }
 
   isRunning = true;
 
   try {
-    logger.info('Drug master auto-sync: checking for updates', { url: MHLW_SOURCE_URL });
+    logger.info('Drug master auto-sync: checking for updates', { source: summarizeSourceUrl(sourceUrl) });
 
     // 1. 更新チェック
-    const updateCheck = await checkForUpdates(MHLW_SOURCE_URL);
+    const updateCheck = await checkForUpdates(sourceUrl);
 
     if (!updateCheck.hasUpdate) {
       logger.info('Drug master auto-sync: no updates detected');
@@ -204,10 +219,10 @@ async function runAutoSync(): Promise<void> {
     logger.info('Drug master auto-sync: update detected, downloading file');
 
     // 2. ファイルダウンロード
-    const { buffer, contentType } = await downloadFile(MHLW_SOURCE_URL);
+    const { buffer, contentType } = await downloadFile(sourceUrl);
 
     // 3. 同期ログ作成
-    const syncLog = await createSyncLog('auto', `自動取得: ${MHLW_SOURCE_URL}`, null);
+    const syncLog = await createSyncLog('auto', `自動取得: ${summarizeSourceUrl(sourceUrl)}`, null);
     const revisionDate = new Date().toISOString().slice(0, 10);
 
     try {
@@ -215,7 +230,7 @@ async function runAutoSync(): Promise<void> {
       let parsedRows;
       const isCsv = contentType?.includes('csv') ||
         contentType?.includes('text/plain') ||
-        MHLW_SOURCE_URL.endsWith('.csv');
+        sourceUrl.endsWith('.csv');
 
       if (isCsv) {
         const csvContent = decodeCsvBuffer(buffer);
@@ -277,7 +292,8 @@ export function startDrugMasterScheduler(): void {
     return;
   }
 
-  if (!MHLW_SOURCE_URL) {
+  const sourceUrl = getConfiguredSourceUrl();
+  if (!sourceUrl) {
     logger.warn('Drug master auto-sync: DRUG_MASTER_SOURCE_URL is not set, scheduler will not start');
     return;
   }
@@ -290,7 +306,7 @@ export function startDrugMasterScheduler(): void {
   const intervalHours = CHECK_INTERVAL_MS / (60 * 60 * 1000);
   logger.info('Drug master auto-sync: starting scheduler', {
     intervalHours,
-    sourceUrl: MHLW_SOURCE_URL,
+    source: summarizeSourceUrl(sourceUrl),
   });
 
   // 起動後5分遅延で初回チェック（サーバー起動直後は避ける）
@@ -335,12 +351,23 @@ export function stopDrugMasterScheduler(): void {
 /**
  * 手動で即時チェック＆同期をトリガーする（管理者API用）
  */
-export async function triggerManualAutoSync(): Promise<{
+export async function triggerManualAutoSync(options?: { sourceUrl?: string | null }): Promise<{
   triggered: boolean;
   message: string;
 }> {
-  if (!MHLW_SOURCE_URL) {
-    return { triggered: false, message: 'DRUG_MASTER_SOURCE_URL が設定されていません' };
+  const sourceUrl = options?.sourceUrl?.trim() || getConfiguredSourceUrl();
+  if (!sourceUrl) {
+    return {
+      triggered: false,
+      message: 'DRUG_MASTER_SOURCE_URL が設定されていません。手動実行時は sourceUrl を指定してください',
+    };
+  }
+
+  if (!validateSourceUrl(sourceUrl)) {
+    return {
+      triggered: false,
+      message: 'sourceUrl が不正です（HTTPS かつプライベートネットワーク以外を指定）',
+    };
   }
 
   if (isRunning) {
@@ -348,7 +375,7 @@ export async function triggerManualAutoSync(): Promise<{
   }
 
   // バックグラウンドで実行（レスポンスは即時返す）
-  runAutoSync().catch((err) => {
+  runAutoSyncWithSource(sourceUrl).catch((err) => {
     logger.error('Drug master manual trigger: failed', {
       error: err instanceof Error ? err.message : String(err),
     });
