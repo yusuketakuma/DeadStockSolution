@@ -143,7 +143,7 @@ export const exchangeHistory = pgTable('exchange_history', {
     .on(table.pharmacyAId, table.completedAt),
   idxExchangeHistoryBCompleted: index('idx_exchange_history_b_completed')
     .on(table.pharmacyBId, table.completedAt),
-  idxExchangeHistoryStatus: index('idx_exchange_history_proposal')
+  idxExchangeHistoryProposal: index('idx_exchange_history_proposal')
     .on(table.proposalId),
 }));
 

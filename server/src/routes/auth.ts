@@ -5,7 +5,7 @@ import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword, verifyPassword, generateToken } from '../services/auth-service';
 import { ensureTestAccount, getTestAccountByKey } from '../services/test-account-service';
-import { validateRegistration, validateLogin } from '../utils/validators';
+import { validateRegistration, validateLogin, passwordSchema } from '../utils/validators';
 import { postalCodeToCoordinates } from '../utils/postal-code';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
@@ -236,13 +236,14 @@ router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, re
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
 
-    if (!token) {
-      res.status(400).json({ error: 'リセットトークンが必要です' });
+    if (!token || !/^[a-f0-9]{64}$/.test(token)) {
+      res.status(400).json({ error: 'リセットトークンが無効です' });
       return;
     }
 
-    if (!newPassword || newPassword.length < 8 || newPassword.length > 100) {
-      res.status(400).json({ error: 'パスワードは8〜100文字で入力してください' });
+    const passwordResult = passwordSchema.safeParse(newPassword);
+    if (!passwordResult.success) {
+      res.status(400).json({ error: passwordResult.error.issues[0].message });
       return;
     }
 

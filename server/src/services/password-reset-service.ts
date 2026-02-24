@@ -55,13 +55,15 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
   const resetRecord = rows[0];
   const passwordHash = await hashPassword(newPassword);
 
-  await db.update(pharmacies)
-    .set({ passwordHash, updatedAt: new Date().toISOString() })
-    .where(eq(pharmacies.id, resetRecord.pharmacyId));
+  await db.transaction(async (tx) => {
+    await tx.update(passwordResetTokens)
+      .set({ usedAt: new Date().toISOString() })
+      .where(eq(passwordResetTokens.id, resetRecord.id));
 
-  await db.update(passwordResetTokens)
-    .set({ usedAt: new Date().toISOString() })
-    .where(eq(passwordResetTokens.id, resetRecord.id));
+    await tx.update(pharmacies)
+      .set({ passwordHash, updatedAt: new Date().toISOString() })
+      .where(eq(pharmacies.id, resetRecord.pharmacyId));
+  });
 
   return true;
 }

@@ -49,6 +49,14 @@ export default function PasswordResetPage() {
       setError('パスワードは8文字以上で入力してください');
       return;
     }
+    if (!/[a-zA-Z]/.test(newPassword)) {
+      setError('パスワードにはアルファベットを含めてください');
+      return;
+    }
+    if (!/\d/.test(newPassword)) {
+      setError('パスワードには数字を含めてください');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -117,7 +125,7 @@ export default function PasswordResetPage() {
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
                   minLength={8}
-                  placeholder="8文字以上"
+                  placeholder="英字+数字を含む8文字以上"
                 />
               </Form.Group>
               <Form.Group className="mb-3">
