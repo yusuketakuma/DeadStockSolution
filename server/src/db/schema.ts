@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
+export const pharmacyRelationshipTypeEnum = pgEnum('pharmacy_relationship_type_enum', ['favorite', 'blocked']);
 export const uploadTypeEnum = pgEnum('upload_type_enum', ['dead_stock', 'used_medication']);
 export const exchangeStatusEnum = pgEnum('exchange_status_enum', [
   'proposed',
@@ -307,4 +308,19 @@ export const activityLogs = pgTable('activity_logs', {
     .on(table.pharmacyId, table.createdAt),
   idxActivityLogsAction: index('idx_activity_logs_action')
     .on(table.action, table.createdAt),
+}));
+
+// ── 薬局リレーション（お気に入り / ブロック）────────────────
+
+export const pharmacyRelationships = pgTable('pharmacy_relationships', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  targetPharmacyId: integer('target_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  relationshipType: pharmacyRelationshipTypeEnum('relationship_type').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxRelationshipsPharmacy: index('idx_relationships_pharmacy')
+    .on(table.pharmacyId, table.relationshipType),
+  idxRelationshipsUnique: uniqueIndex('idx_relationships_unique')
+    .on(table.pharmacyId, table.targetPharmacyId),
 }));

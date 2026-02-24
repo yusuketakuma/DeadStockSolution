@@ -30,6 +30,7 @@ interface MatchCandidate {
   score?: number;
   matchRate?: number;
   businessStatus?: BusinessHoursStatus;
+  isFavorite?: boolean;
 }
 
 function formatPercent(value?: number): string {
@@ -108,6 +109,7 @@ export default function MatchingPage() {
             >
               <div>
                 <strong>{candidate.pharmacyName}</strong>
+                {candidate.isFavorite && <Badge bg="warning" text="dark" className="ms-2">お気に入り</Badge>}
                 <div className="small text-muted">
                   TEL: {candidate.pharmacyPhone || '-'} / FAX: {candidate.pharmacyFax || '-'}
                 </div>

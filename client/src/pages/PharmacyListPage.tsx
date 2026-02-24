@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Table, Form, Button, Badge, Row, Col, Alert } from 'react-bootstrap';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
@@ -32,6 +32,18 @@ interface PharmaciesResponse {
   pagination: { page: number; totalPages: number; total: number };
 }
 
+interface RelationshipItem {
+  id: number;
+  targetPharmacyId: number;
+  relationshipType: 'favorite' | 'blocked';
+  targetPharmacyName: string;
+}
+
+interface RelationshipsResponse {
+  favorites: RelationshipItem[];
+  blocked: RelationshipItem[];
+}
+
 export default function PharmacyListPage() {
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [page, setPage] = useState(1);
@@ -40,6 +52,19 @@ export default function PharmacyListPage() {
   const [search, setSearch] = useState('');
   const [prefecture, setPrefecture] = useState('');
   const [sortBy, setSortBy] = useState('');
+  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
+  const [blockedIds, setBlockedIds] = useState<Set<number>>(new Set());
+  const [message, setMessage] = useState('');
+
+  const fetchRelationships = useCallback(async () => {
+    try {
+      const data = await api.get<RelationshipsResponse>('/pharmacies/relationships');
+      setFavoriteIds(new Set(data.favorites.map((r) => r.targetPharmacyId)));
+      setBlockedIds(new Set(data.blocked.map((r) => r.targetPharmacyId)));
+    } catch {
+      // Silently fail - relationships are supplementary
+    }
+  }, []);
 
   const fetchData = async (p: number) => {
     const params = new URLSearchParams({ page: String(p) });
@@ -52,15 +77,47 @@ export default function PharmacyListPage() {
   };
 
   useEffect(() => { fetchData(page); }, [page, search, prefecture, sortBy]);
+  useEffect(() => { fetchRelationships(); }, [fetchRelationships]);
 
   const handleSearch = (q: string) => {
     setPage(1);
     setSearch(q);
   };
 
+  const toggleFavorite = async (pharmacyId: number) => {
+    setMessage('');
+    try {
+      if (favoriteIds.has(pharmacyId)) {
+        await api.delete(`/pharmacies/${pharmacyId}/favorite`);
+      } else {
+        await api.post(`/pharmacies/${pharmacyId}/favorite`);
+      }
+      await fetchRelationships();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'お気に入り操作に失敗しました');
+    }
+  };
+
+  const toggleBlock = async (pharmacyId: number) => {
+    setMessage('');
+    try {
+      if (blockedIds.has(pharmacyId)) {
+        await api.delete(`/pharmacies/${pharmacyId}/block`);
+      } else {
+        if (!confirm('この薬局をブロックしますか？\nブロックするとマッチング候補に表示されなくなります。')) return;
+        await api.post(`/pharmacies/${pharmacyId}/block`);
+      }
+      await fetchRelationships();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'ブロック操作に失敗しました');
+    }
+  };
+
   return (
     <div>
       <h4 className="mb-3">登録薬局一覧</h4>
+
+      {message && <Alert variant="danger" dismissible onClose={() => setMessage('')}>{message}</Alert>}
 
       <Row className="mb-3 g-2">
         <Col md={5}>
@@ -107,12 +164,17 @@ export default function PharmacyListPage() {
                 <th>FAX</th>
                 <th>営業状況</th>
                 <th>距離</th>
+                <th style={{ minWidth: '120px' }}>操作</th>
               </tr>
             </thead>
             <tbody>
               {pharmacies.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.name}</td>
+                <tr key={p.id} className={blockedIds.has(p.id) ? 'table-secondary' : ''}>
+                  <td>
+                    {p.name}
+                    {favoriteIds.has(p.id) && <Badge bg="warning" className="ms-1" text="dark">お気に入り</Badge>}
+                    {blockedIds.has(p.id) && <Badge bg="dark" className="ms-1">ブロック</Badge>}
+                  </td>
                   <td>{p.prefecture}</td>
                   <td className="small">{p.address}</td>
                   <td>{p.phone}</td>
@@ -122,6 +184,26 @@ export default function PharmacyListPage() {
                     {p.distance !== null ? (
                       <Badge bg="info">{p.distance}km</Badge>
                     ) : '-'}
+                  </td>
+                  <td>
+                    <div className="d-flex gap-1">
+                      <Button
+                        size="sm"
+                        variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
+                        title={favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り追加'}
+                        onClick={() => toggleFavorite(p.id)}
+                      >
+                        {favoriteIds.has(p.id) ? '\u2605' : '\u2606'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={blockedIds.has(p.id) ? 'dark' : 'outline-secondary'}
+                        title={blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
+                        onClick={() => toggleBlock(p.id)}
+                      >
+                        {blockedIds.has(p.id) ? '\u2715' : '\u2298'}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

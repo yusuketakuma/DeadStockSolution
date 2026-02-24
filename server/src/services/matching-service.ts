@@ -1,6 +1,6 @@
 import { and, eq, gte, inArray, ne } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, deadStockItems, usedMedicationItems, uploads, pharmacyBusinessHours } from '../db/schema';
+import { pharmacies, deadStockItems, usedMedicationItems, uploads, pharmacyBusinessHours, pharmacyRelationships } from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { haversineDistance } from '../utils/geo-utils';
 import { normalizeString } from '../utils/string-utils';
@@ -275,13 +275,16 @@ function getNearExpiryCount(items: MatchItem[]): number {
   return count;
 }
 
+const FAVORITE_BONUS = 15;
+
 function calculateCandidateScore(
   totalA: number,
   totalB: number,
   diff: number,
   distanceKm: number,
   itemsFromA: MatchItem[],
-  itemsFromB: MatchItem[]
+  itemsFromB: MatchItem[],
+  isFavorite: boolean = false
 ): number {
   const minValue = Math.min(totalA, totalB);
   const valueScore = Math.min(55, minValue / 2500);
@@ -289,8 +292,9 @@ function calculateCandidateScore(
   const distanceScore = distanceKm >= 9999 ? 2 : Math.max(0, 15 - distanceKm / 8);
   const nearExpiryScore = Math.min(10, (getNearExpiryCount(itemsFromA) + getNearExpiryCount(itemsFromB)) * 1.5);
   const diversityScore = Math.min(10, Math.min(itemsFromA.length, itemsFromB.length) * 1.5);
+  const favoriteScore = isFavorite ? FAVORITE_BONUS : 0;
 
-  return roundTo2(valueScore + balanceScore + distanceScore + nearExpiryScore + diversityScore);
+  return roundTo2(valueScore + balanceScore + distanceScore + nearExpiryScore + diversityScore + favoriteScore);
 }
 
 function calculateMatchRate(itemsA: MatchItem[], itemsB: MatchItem[]): number {
@@ -420,6 +424,25 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   const uniquePharmacyIds = [...new Set(otherPharmacyIdRows.map((row) => row.pharmacyId))];
   if (uniquePharmacyIds.length === 0) return [];
 
+  // Load pharmacy relationships (favorites and blocked)
+  const relationships = await db.select({
+    targetPharmacyId: pharmacyRelationships.targetPharmacyId,
+    relationshipType: pharmacyRelationships.relationshipType,
+  })
+    .from(pharmacyRelationships)
+    .where(eq(pharmacyRelationships.pharmacyId, pharmacyId));
+
+  const blockedIds = new Set(
+    relationships.filter((r) => r.relationshipType === 'blocked').map((r) => r.targetPharmacyId)
+  );
+  const favoriteIds = new Set(
+    relationships.filter((r) => r.relationshipType === 'favorite').map((r) => r.targetPharmacyId)
+  );
+
+  // Exclude blocked pharmacies from candidates
+  const filteredPharmacyIds = uniquePharmacyIds.filter((id) => !blockedIds.has(id));
+  if (filteredPharmacyIds.length === 0) return [];
+
   const allOtherPharmacies = await db.select({
     id: pharmacies.id,
     name: pharmacies.name,
@@ -430,7 +453,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   })
     .from(pharmacies)
     .where(and(
-      inArray(pharmacies.id, uniquePharmacyIds),
+      inArray(pharmacies.id, filteredPharmacyIds),
       eq(pharmacies.isActive, true),
     ));
 
@@ -558,7 +581,8 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     const diff = roundTo2(Math.abs(totalA - totalB));
     if (diff > VALUE_TOLERANCE) continue;
 
-    const score = calculateCandidateScore(totalA, totalB, diff, otherPharmacy.distance, balancedA, balancedB);
+    const isFavorite = favoriteIds.has(otherPharmacy.id);
+    const score = calculateCandidateScore(totalA, totalB, diff, otherPharmacy.distance, balancedA, balancedB, isFavorite);
     const matchRate = calculateMatchRate(balancedA, balancedB);
 
     const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id) ?? [];
@@ -578,6 +602,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       score,
       matchRate,
       businessStatus,
+      isFavorite,
     });
   }
 

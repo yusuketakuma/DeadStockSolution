@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { and, eq, or, like, desc, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, pharmacyBusinessHours } from '../db/schema';
+import { pharmacies, pharmacyBusinessHours, pharmacyRelationships } from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { requireLogin } from '../middleware/auth';
 import { haversineDistance } from '../utils/geo-utils';
@@ -158,6 +158,158 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     console.error('Pharmacy detail error:', err);
     res.status(500).json({ error: '薬局情報の取得に失敗しました' });
+  }
+});
+
+// ── お気に入り / ブロック ──────────────────────────────
+
+router.get('/relationships', async (req: AuthRequest, res: Response) => {
+  try {
+    const rows = await db.select({
+      id: pharmacyRelationships.id,
+      targetPharmacyId: pharmacyRelationships.targetPharmacyId,
+      relationshipType: pharmacyRelationships.relationshipType,
+      createdAt: pharmacyRelationships.createdAt,
+    })
+      .from(pharmacyRelationships)
+      .where(eq(pharmacyRelationships.pharmacyId, req.user!.id));
+
+    // Enrich with pharmacy names
+    const targetIds = rows.map((r) => r.targetPharmacyId);
+    const pharmacyNames = targetIds.length > 0
+      ? await db.select({ id: pharmacies.id, name: pharmacies.name })
+          .from(pharmacies)
+          .where(inArray(pharmacies.id, targetIds))
+      : [];
+    const nameMap = new Map(pharmacyNames.map((p) => [p.id, p.name]));
+
+    const enriched = rows.map((r) => ({
+      ...r,
+      targetPharmacyName: nameMap.get(r.targetPharmacyId) ?? '不明',
+    }));
+
+    res.json({
+      favorites: enriched.filter((r) => r.relationshipType === 'favorite'),
+      blocked: enriched.filter((r) => r.relationshipType === 'blocked'),
+    });
+  } catch (err) {
+    console.error('Relationships list error:', err);
+    res.status(500).json({ error: 'リレーション情報の取得に失敗しました' });
+  }
+});
+
+router.post('/:id/favorite', async (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = parsePositiveInt(req.params.id);
+    if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
+    if (targetId === req.user!.id) { res.status(400).json({ error: '自分自身をお気に入りに追加できません' }); return; }
+
+    // Check if a relationship already exists
+    const [existing] = await db.select()
+      .from(pharmacyRelationships)
+      .where(and(
+        eq(pharmacyRelationships.pharmacyId, req.user!.id),
+        eq(pharmacyRelationships.targetPharmacyId, targetId),
+      ))
+      .limit(1);
+
+    if (existing) {
+      if (existing.relationshipType === 'favorite') {
+        res.json({ message: '既にお気に入りに追加済みです' });
+        return;
+      }
+      // Switch from blocked to favorite
+      await db.update(pharmacyRelationships)
+        .set({ relationshipType: 'favorite' })
+        .where(eq(pharmacyRelationships.id, existing.id));
+      res.json({ message: 'お気に入りに変更しました' });
+      return;
+    }
+
+    await db.insert(pharmacyRelationships).values({
+      pharmacyId: req.user!.id,
+      targetPharmacyId: targetId,
+      relationshipType: 'favorite',
+    });
+    res.json({ message: 'お気に入りに追加しました' });
+  } catch (err) {
+    console.error('Add favorite error:', err);
+    res.status(500).json({ error: 'お気に入りの追加に失敗しました' });
+  }
+});
+
+router.delete('/:id/favorite', async (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = parsePositiveInt(req.params.id);
+    if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
+
+    await db.delete(pharmacyRelationships)
+      .where(and(
+        eq(pharmacyRelationships.pharmacyId, req.user!.id),
+        eq(pharmacyRelationships.targetPharmacyId, targetId),
+        eq(pharmacyRelationships.relationshipType, 'favorite'),
+      ));
+    res.json({ message: 'お気に入りを解除しました' });
+  } catch (err) {
+    console.error('Remove favorite error:', err);
+    res.status(500).json({ error: 'お気に入りの解除に失敗しました' });
+  }
+});
+
+router.post('/:id/block', async (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = parsePositiveInt(req.params.id);
+    if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
+    if (targetId === req.user!.id) { res.status(400).json({ error: '自分自身をブロックできません' }); return; }
+
+    const [existing] = await db.select()
+      .from(pharmacyRelationships)
+      .where(and(
+        eq(pharmacyRelationships.pharmacyId, req.user!.id),
+        eq(pharmacyRelationships.targetPharmacyId, targetId),
+      ))
+      .limit(1);
+
+    if (existing) {
+      if (existing.relationshipType === 'blocked') {
+        res.json({ message: '既にブロック済みです' });
+        return;
+      }
+      // Switch from favorite to blocked
+      await db.update(pharmacyRelationships)
+        .set({ relationshipType: 'blocked' })
+        .where(eq(pharmacyRelationships.id, existing.id));
+      res.json({ message: 'ブロックしました' });
+      return;
+    }
+
+    await db.insert(pharmacyRelationships).values({
+      pharmacyId: req.user!.id,
+      targetPharmacyId: targetId,
+      relationshipType: 'blocked',
+    });
+    res.json({ message: 'ブロックしました' });
+  } catch (err) {
+    console.error('Add block error:', err);
+    res.status(500).json({ error: 'ブロックの追加に失敗しました' });
+  }
+});
+
+router.delete('/:id/block', async (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = parsePositiveInt(req.params.id);
+    if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
+
+    await db.delete(pharmacyRelationships)
+      .where(and(
+        eq(pharmacyRelationships.pharmacyId, req.user!.id),
+        eq(pharmacyRelationships.targetPharmacyId, targetId),
+        eq(pharmacyRelationships.relationshipType, 'blocked'),
+      ));
+    res.json({ message: 'ブロックを解除しました' });
+  } catch (err) {
+    console.error('Remove block error:', err);
+    res.status(500).json({ error: 'ブロックの解除に失敗しました' });
   }
 });
 

@@ -42,6 +42,7 @@ export interface MatchCandidate {
   score?: number;
   matchRate?: number;
   businessStatus?: BusinessHoursStatus;
+  isFavorite?: boolean;
 }
 
 export interface MatchItem {
