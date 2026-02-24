@@ -59,6 +59,23 @@ npm run db:migrate:legacy --workspace=server
   - `npm run deploy:prod`（`main` ブランチのみ）
 - Neon連携時は `DRUG_PACKAGE_SOURCE_URL` などの環境変数を Vercel Project Settings に設定し、Preview環境で分離DBを利用してください。
 
+### main DB を preview DB に同期する（Neon branch reset）
+
+- リポジトリには `/.github/workflows/neon-sync-preview.yml` を追加しています。
+- `preview` ブランチへ push（または `workflow_dispatch`）すると、Neon の preview ブランチを親ブランチ最新状態にリセットします。
+- 想定構成は「Neon で preview ブランチの親を main（本番）にする」運用です。
+
+設定手順:
+
+1. GitHub Repository Secret に `NEON_API_KEY` を設定
+2. GitHub Repository Variable に `NEON_PROJECT_ID` を設定
+3. 必要に応じて `NEON_PREVIEW_BRANCH` を設定（未設定時は `preview`）
+
+注意:
+
+- この同期は preview 側のデータを上書きします（preview への書き込みデータは消えます）。
+- `main` と `preview` で完全分離を維持したい場合は、このワークフローを有効化しないでください。
+
 ## 営業時間設定
 
 - 通常営業時間（曜日別）に加えて、特例営業時間を登録できます。

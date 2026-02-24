@@ -1,0 +1,39 @@
+name: Neon Sync Preview DB
+
+on:
+  push:
+    branches:
+      - preview
+  workflow_dispatch:
+
+jobs:
+  reset-preview-branch:
+    name: Reset preview branch from parent
+    runs-on: ubuntu-latest
+    if: ${{ vars.NEON_PROJECT_ID != '' && secrets.NEON_API_KEY != '' }}
+    steps:
+      - name: Reset Neon preview branch to parent head
+        id: reset-neon-preview
+        uses: neondatabase/reset-branch-action@v1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: ${{ vars.NEON_PREVIEW_BRANCH != '' && vars.NEON_PREVIEW_BRANCH || 'preview' }}
+          parent: true
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Show reset result
+        run: |
+          echo "Branch ID: ${{ steps.reset-neon-preview.outputs.branch_id }}"
+          echo "Host: ${{ steps.reset-neon-preview.outputs.host }}"
+
+  skip-with-guide:
+    name: Missing Neon config
+    runs-on: ubuntu-latest
+    if: ${{ !(vars.NEON_PROJECT_ID != '' && secrets.NEON_API_KEY != '') }}
+    steps:
+      - name: Show required configuration
+        run: |
+          echo "Skipping Neon preview DB sync."
+          echo "Set repository variable: NEON_PROJECT_ID"
+          echo "Optional repository variable: NEON_PREVIEW_BRANCH (default: preview)"
+          echo "Set repository secret: NEON_API_KEY"

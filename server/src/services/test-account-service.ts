@@ -96,12 +96,37 @@ async function findExistingPharmacy(account: TestAccountDefinition): Promise<Ens
 }
 
 export async function ensureTestAccount(account: TestAccountDefinition): Promise<EnsuredTestAccount> {
+  const passwordHash = await hashPassword(resolveTestAccountPassword());
   const existing = await findExistingPharmacy(account);
   if (existing) {
-    return existing;
+    await db.update(pharmacies)
+      .set({
+        email: account.email,
+        passwordHash,
+        name: account.name,
+        postalCode: account.postalCode,
+        address: account.address,
+        phone: account.phone,
+        fax: account.fax,
+        licenseNumber: account.licenseNumber,
+        prefecture: account.prefecture,
+        latitude: account.latitude,
+        longitude: account.longitude,
+        isAdmin: false,
+        isActive: true,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(pharmacies.id, existing.id));
+
+    return {
+      id: existing.id,
+      email: account.email,
+      name: account.name,
+      prefecture: account.prefecture,
+      isAdmin: false,
+    };
   }
 
-  const passwordHash = await hashPassword(resolveTestAccountPassword());
   const [created] = await db.insert(pharmacies).values({
     email: account.email,
     passwordHash,
