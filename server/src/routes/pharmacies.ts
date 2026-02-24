@@ -130,38 +130,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/:id', async (req: AuthRequest, res: Response) => {
-  try {
-    const id = parsePositiveInt(req.params.id);
-    if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
-    const [pharmacy] = await db.select({
-      id: pharmacies.id,
-      name: pharmacies.name,
-      prefecture: pharmacies.prefecture,
-      address: pharmacies.address,
-      phone: pharmacies.phone,
-      fax: pharmacies.fax,
-    })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, id))
-      .limit(1);
-
-    if (!pharmacy) {
-      res.status(404).json({ error: '薬局が見つかりません' });
-      return;
-    }
-
-    res.json(pharmacy);
-  } catch (err) {
-    console.error('Pharmacy detail error:', err);
-    res.status(500).json({ error: '薬局情報の取得に失敗しました' });
-  }
-});
-
 // ── お気に入り / ブロック ──────────────────────────────
+// NOTE: These routes MUST be defined before /:id to avoid route collision
 
 router.get('/relationships', async (req: AuthRequest, res: Response) => {
   try {
@@ -198,11 +168,49 @@ router.get('/relationships', async (req: AuthRequest, res: Response) => {
   }
 });
 
+router.get('/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+    const [pharmacy] = await db.select({
+      id: pharmacies.id,
+      name: pharmacies.name,
+      prefecture: pharmacies.prefecture,
+      address: pharmacies.address,
+      phone: pharmacies.phone,
+      fax: pharmacies.fax,
+    })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, id))
+      .limit(1);
+
+    if (!pharmacy) {
+      res.status(404).json({ error: '薬局が見つかりません' });
+      return;
+    }
+
+    res.json(pharmacy);
+  } catch (err) {
+    console.error('Pharmacy detail error:', err);
+    res.status(500).json({ error: '薬局情報の取得に失敗しました' });
+  }
+});
+
 router.post('/:id/favorite', async (req: AuthRequest, res: Response) => {
   try {
     const targetId = parsePositiveInt(req.params.id);
     if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
     if (targetId === req.user!.id) { res.status(400).json({ error: '自分自身をお気に入りに追加できません' }); return; }
+
+    // Verify target pharmacy exists
+    const [target] = await db.select({ id: pharmacies.id })
+      .from(pharmacies)
+      .where(and(eq(pharmacies.id, targetId), eq(pharmacies.isActive, true)))
+      .limit(1);
+    if (!target) { res.status(404).json({ error: '対象の薬局が見つかりません' }); return; }
 
     // Check if a relationship already exists
     const [existing] = await db.select()
@@ -261,6 +269,13 @@ router.post('/:id/block', async (req: AuthRequest, res: Response) => {
     const targetId = parsePositiveInt(req.params.id);
     if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
     if (targetId === req.user!.id) { res.status(400).json({ error: '自分自身をブロックできません' }); return; }
+
+    // Verify target pharmacy exists
+    const [target] = await db.select({ id: pharmacies.id })
+      .from(pharmacies)
+      .where(and(eq(pharmacies.id, targetId), eq(pharmacies.isActive, true)))
+      .limit(1);
+    if (!target) { res.status(404).json({ error: '対象の薬局が見つかりません' }); return; }
 
     const [existing] = await db.select()
       .from(pharmacyRelationships)

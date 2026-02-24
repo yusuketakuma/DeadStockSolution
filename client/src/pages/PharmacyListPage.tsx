@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Form, Button, Badge, Row, Col, Alert } from 'react-bootstrap';
 import { api } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import SearchInput from '../components/SearchInput';
 import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
@@ -45,6 +46,7 @@ interface RelationshipsResponse {
 }
 
 export default function PharmacyListPage() {
+  const { user } = useAuth();
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -186,24 +188,28 @@ export default function PharmacyListPage() {
                     ) : '-'}
                   </td>
                   <td>
-                    <div className="d-flex gap-1">
-                      <Button
-                        size="sm"
-                        variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
-                        title={favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り追加'}
-                        onClick={() => toggleFavorite(p.id)}
-                      >
-                        {favoriteIds.has(p.id) ? '\u2605' : '\u2606'}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={blockedIds.has(p.id) ? 'dark' : 'outline-secondary'}
-                        title={blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
-                        onClick={() => toggleBlock(p.id)}
-                      >
-                        {blockedIds.has(p.id) ? '\u2715' : '\u2298'}
-                      </Button>
-                    </div>
+                    {p.id !== user?.id ? (
+                      <div className="d-flex gap-1">
+                        <Button
+                          size="sm"
+                          variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
+                          title={favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り追加'}
+                          onClick={() => toggleFavorite(p.id)}
+                        >
+                          {favoriteIds.has(p.id) ? '\u2605' : '\u2606'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={blockedIds.has(p.id) ? 'dark' : 'outline-secondary'}
+                          title={blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
+                          onClick={() => toggleBlock(p.id)}
+                        >
+                          {blockedIds.has(p.id) ? '\u2715' : '\u2298'}
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-muted small">自分</span>
+                    )}
                   </td>
                 </tr>
               ))}
