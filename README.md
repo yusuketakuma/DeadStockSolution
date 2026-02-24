@@ -61,6 +61,7 @@ npm run db:migrate:legacy --workspace=server
 - デモアカウントを Preview で使う場合は、Vercel Environment Variables に以下を設定してください。
   - `ENABLE_TEST_PHARMACY_ACCOUNTS=true`
   - `TEST_ACCOUNT_PASSWORD`（クライアントの `VITE_TEST_ACCOUNT_PASSWORD` と同じ値）
+  - 互換のため、`VERCEL_ENV=preview` かつ `TEST_ACCOUNT_PASSWORD` 未設定時は `password123` を既定値として使用します。
 
 ### main DB を preview DB に同期する（Neon branch reset）
 

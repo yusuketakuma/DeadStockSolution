@@ -24,6 +24,7 @@ interface EnsuredTestAccount {
   isAdmin: boolean;
 }
 
+const DEFAULT_TEST_ACCOUNT_PASSWORD = 'password123';
 let ensureSeedPromise: Promise<void> | null = null;
 
 const TEST_ACCOUNTS: TestAccountDefinition[] = [
@@ -65,6 +66,11 @@ function resolveTestAccountPassword(): string {
     }
     return configured;
   }
+
+  if (process.env.VERCEL_ENV === 'preview') {
+    return DEFAULT_TEST_ACCOUNT_PASSWORD;
+  }
+
   throw new Error('TEST_ACCOUNT_PASSWORD is required');
 }
 
@@ -169,7 +175,9 @@ export async function seedTestAccounts(): Promise<EnsuredTestAccount[]> {
 }
 
 export function ensureTestAccountsSeededIfEnabled(): Promise<void> {
-  if (process.env.ENABLE_TEST_PHARMACY_ACCOUNTS !== 'true') {
+  const enabledByEnv = process.env.ENABLE_TEST_PHARMACY_ACCOUNTS;
+  const shouldSeedInPreview = enabledByEnv === undefined && process.env.VERCEL_ENV === 'preview';
+  if (enabledByEnv !== 'true' && !shouldSeedInPreview) {
     return Promise.resolve();
   }
 
