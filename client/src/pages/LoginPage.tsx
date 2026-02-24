@@ -4,6 +4,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { APP_VERSION } from '../constants/appVersion';
 
+const DEFAULT_TEST_ACCOUNT_PASSWORD = 'password123';
+
 const TEST_ACCOUNTS = [
   { label: 'テスト薬局（東京）', email: 'test@example.com' },
   { label: 'テスト薬局2号店（大阪）', email: 'test2@example.com' },
@@ -17,6 +19,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'user' | 'admin'>('user');
   const { login, logout } = useAuth();
   const navigate = useNavigate();
+  const testAccountPassword = import.meta.env.VITE_TEST_ACCOUNT_PASSWORD?.trim() || DEFAULT_TEST_ACCOUNT_PASSWORD;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -48,7 +51,7 @@ export default function LoginPage() {
   const handleTestLogin = (account: { email: string }) => {
     setError('');
     setEmail(account.email);
-    setPassword('');
+    setPassword(testAccountPassword);
   };
 
   const switchMode = (newMode: 'user' | 'admin') => {
@@ -60,7 +63,7 @@ export default function LoginPage() {
 
   return (
     <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-      <Card style={{ width: '100%', maxWidth: '420px' }}>
+      <Card style={{ width: '100%', maxWidth: '483px' }}>
         <Card.Header className="p-0">
           <Nav
             variant="tabs"
@@ -129,7 +132,7 @@ export default function LoginPage() {
 
               <>
                 <hr />
-                <p className="text-muted small text-center mb-2">デモアカウント（メールアドレス入力補助）</p>
+                <p className="text-muted small text-center mb-2">デモアカウント（ワンクリック入力）</p>
                 <div className="d-grid gap-2">
                   {TEST_ACCOUNTS.map((account) => (
                     <Button
@@ -144,7 +147,7 @@ export default function LoginPage() {
                   ))}
                 </div>
                 <p className="text-muted small text-center mt-2 mb-0">
-                  ボタンを押すとメールアドレスのみ入力されます。パスワードは手入力してください。
+                  ボタンを押すとメールアドレスとパスワードが入力されます。
                 </p>
               </>
             </>

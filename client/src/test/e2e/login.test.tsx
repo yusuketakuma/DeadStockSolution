@@ -64,7 +64,7 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
-      expect(screen.getByText('デモアカウント（メールアドレス入力補助）')).toBeInTheDocument();
+      expect(screen.getByText('デモアカウント（ワンクリック入力）')).toBeInTheDocument();
     });
     expect(screen.getByText('テスト薬局（東京）')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局2号店（大阪）')).toBeInTheDocument();
@@ -89,7 +89,7 @@ describe('LoginPage', () => {
     expect(submitBtn).toBeTruthy();
     expect(submitBtn.textContent).toBe('管理者ログイン');
     // Test accounts and register link should NOT be visible
-    expect(screen.queryByText('デモアカウント（メールアドレス入力補助）')).not.toBeInTheDocument();
+    expect(screen.queryByText('デモアカウント（ワンクリック入力）')).not.toBeInTheDocument();
     expect(screen.queryByText('新規登録はこちら')).not.toBeInTheDocument();
     // Admin mode hint
     expect(screen.getByText('管理者アカウントでログインしてください。')).toBeInTheDocument();
@@ -178,7 +178,7 @@ describe('LoginPage', () => {
     });
   });
 
-  it('fills only email when test account is selected', async () => {
+  it('fills email and password when test account is selected', async () => {
     const user = userEvent.setup();
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -206,13 +206,26 @@ describe('LoginPage', () => {
 
     await waitFor(() => {
       expect(getInputByLabel('メールアドレス').value).toBe('test@example.com');
-      expect(getInputByLabel('パスワード').value).toBe('');
+      expect(getInputByLabel('パスワード').value).toBe('password123');
     });
 
     const loginCall = fetchMock.mock.calls.find(
       (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/login')
     );
     expect(loginCall).toBeFalsy();
+  });
+
+  it('uses wider login card width', async () => {
+    mockUnauthFetch();
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByText('薬局不動在庫交換システム')).toBeInTheDocument();
+    });
+
+    const card = document.querySelector('.card') as HTMLDivElement | null;
+    expect(card).toBeTruthy();
+    expect(card?.style.maxWidth).toBe('483px');
   });
 
   it('has link to registration page in user mode', async () => {
