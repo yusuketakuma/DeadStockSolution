@@ -102,11 +102,21 @@ export default function AdminDrugMasterPage() {
 
   // 同期関連
   const [syncing, setSyncing] = useState(false);
+  const [pkgUploading, setPkgUploading] = useState(false);
   const [syncResult, setSyncResult] = useState('');
   const [syncError, setSyncError] = useState('');
   const [revisionDate, setRevisionDate] = useState(new Date().toISOString().slice(0, 10));
   const syncFileRef = useRef<HTMLInputElement>(null);
   const pkgFileRef = useRef<HTMLInputElement>(null);
+
+  // 自動取得関連
+  const [autoSyncStatus, setAutoSyncStatus] = useState<{
+    enabled: boolean;
+    sourceUrl: string;
+    hasSourceUrl: boolean;
+    checkIntervalHours: number;
+  } | null>(null);
+  const [autoSyncTriggering, setAutoSyncTriggering] = useState(false);
 
   // 同期ログ
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -158,9 +168,35 @@ export default function AdminDrugMasterPage() {
     } catch { /* ignore */ }
   };
 
+  const fetchAutoSyncStatus = async () => {
+    try {
+      const data = await api.get<typeof autoSyncStatus>('/admin/drug-master/auto-sync/status');
+      setAutoSyncStatus(data);
+    } catch { /* ignore */ }
+  };
+
+  const handleAutoSyncTrigger = async () => {
+    setAutoSyncTriggering(true);
+    try {
+      const result = await api.post<{ triggered: boolean; message: string }>('/admin/drug-master/auto-sync', {});
+      if (result.triggered) {
+        setMessage(result.message);
+        // 少し待ってからログを更新
+        setTimeout(() => { fetchSyncLogs(); fetchStats(); }, 5000);
+      } else {
+        setSyncError(result.message);
+      }
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : '自動取得の開始に失敗しました');
+    } finally {
+      setAutoSyncTriggering(false);
+    }
+  };
+
   useEffect(() => {
     fetchStats();
     fetchSyncLogs();
+    fetchAutoSyncStatus();
   }, []);
 
   useEffect(() => {
@@ -215,7 +251,7 @@ export default function AdminDrugMasterPage() {
       return;
     }
 
-    setSyncing(true);
+    setPkgUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -227,7 +263,7 @@ export default function AdminDrugMasterPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '登録に失敗しました');
     } finally {
-      setSyncing(false);
+      setPkgUploading(false);
     }
   };
 
@@ -235,7 +271,7 @@ export default function AdminDrugMasterPage() {
 
   const openDetail = async (yjCode: string) => {
     try {
-      const data = await api.get<DrugMasterDetail>(`/admin/drug-master/detail/${yjCode}`);
+      const data = await api.get<DrugMasterDetail>(`/admin/drug-master/detail/${encodeURIComponent(yjCode)}`);
       setDetail(data);
       setShowDetail(true);
     } catch (err) {
@@ -247,7 +283,7 @@ export default function AdminDrugMasterPage() {
 
   const openEdit = async (yjCode: string) => {
     try {
-      const data = await api.get<DrugMasterDetail>(`/admin/drug-master/detail/${yjCode}`);
+      const data = await api.get<DrugMasterDetail>(`/admin/drug-master/detail/${encodeURIComponent(yjCode)}`);
       setEditItem(data);
       setShowEdit(true);
     } catch (err) {
@@ -259,7 +295,7 @@ export default function AdminDrugMasterPage() {
     if (!editItem) return;
     setEditSaving(true);
     try {
-      await api.put(`/admin/drug-master/detail/${editItem.yjCode}`, {
+      await api.put(`/admin/drug-master/detail/${encodeURIComponent(editItem.yjCode)}`, {
         drugName: editItem.drugName,
         genericName: editItem.genericName,
         specification: editItem.specification,
@@ -370,8 +406,8 @@ export default function AdminDrugMasterPage() {
                 <Form.Label className="small">ファイル（xlsx / csv）</Form.Label>
                 <Form.Control type="file" ref={pkgFileRef} accept=".xlsx,.csv" />
               </Form.Group>
-              <Button size="sm" onClick={handlePackageUpload} disabled={syncing}>
-                {syncing ? <><Spinner size="sm" className="me-1" />登録中...</> : '登録実行'}
+              <Button size="sm" onClick={handlePackageUpload} disabled={pkgUploading}>
+                {pkgUploading ? <><Spinner size="sm" className="me-1" />登録中...</> : '登録実行'}
               </Button>
               <Form.Text className="d-block mt-1 text-muted">
                 GS1コード・JANコード・HOTコードを含む包装単位データを登録します。
@@ -380,6 +416,61 @@ export default function AdminDrugMasterPage() {
           </Card>
         </Col>
       </Row>
+
+      {/* 自動取得（URLからの取込） */}
+      <Card className="mb-3">
+        <Card.Header>厚生労働省サイトからの自動取得</Card.Header>
+        <Card.Body>
+          {autoSyncStatus ? (
+            <>
+              <Row className="mb-2">
+                <Col sm={3} className="text-muted small">自動検知</Col>
+                <Col sm={9}>
+                  <Badge bg={autoSyncStatus.enabled ? 'success' : 'secondary'}>
+                    {autoSyncStatus.enabled ? '有効' : '無効'}
+                  </Badge>
+                  {autoSyncStatus.enabled && (
+                    <span className="ms-2 small text-muted">
+                      {autoSyncStatus.checkIntervalHours}時間ごとにチェック
+                    </span>
+                  )}
+                </Col>
+              </Row>
+              <Row className="mb-2">
+                <Col sm={3} className="text-muted small">取得元URL</Col>
+                <Col sm={9}>
+                  {autoSyncStatus.hasSourceUrl ? (
+                    <span className="small font-monospace">{autoSyncStatus.sourceUrl}</span>
+                  ) : (
+                    <span className="small text-muted">未設定</span>
+                  )}
+                </Col>
+              </Row>
+              <hr className="my-2" />
+              <Button
+                size="sm"
+                variant="outline-primary"
+                onClick={handleAutoSyncTrigger}
+                disabled={autoSyncTriggering || !autoSyncStatus.hasSourceUrl}
+              >
+                {autoSyncTriggering ? <><Spinner size="sm" className="me-1" />確認中...</> : '今すぐ更新を確認・取得'}
+              </Button>
+              {!autoSyncStatus.hasSourceUrl && (
+                <Form.Text className="d-block mt-1 text-muted">
+                  環境変数 DRUG_MASTER_SOURCE_URL を設定してください。
+                </Form.Text>
+              )}
+              {!autoSyncStatus.enabled && autoSyncStatus.hasSourceUrl && (
+                <Form.Text className="d-block mt-1 text-muted">
+                  環境変数 DRUG_MASTER_AUTO_SYNC=true で定期チェックを有効にできます。
+                </Form.Text>
+              )}
+            </>
+          ) : (
+            <Spinner size="sm" />
+          )}
+        </Card.Body>
+      </Card>
 
       {/* 同期ログ */}
       {syncLogs.length > 0 && (
@@ -461,7 +552,7 @@ export default function AdminDrugMasterPage() {
 
       {/* 一覧テーブル */}
       {loading ? (
-        <div className="text-center py-4"><Spinner /></div>
+        <div className="text-center py-4"><Spinner><span className="visually-hidden">読み込み中...</span></Spinner></div>
       ) : (
         <>
           <div className="table-responsive">
@@ -490,9 +581,9 @@ export default function AdminDrugMasterPage() {
                   <tr key={item.id}>
                     <td className="small font-monospace">{item.yjCode}</td>
                     <td>
-                      <a href="#" onClick={(e) => { e.preventDefault(); openDetail(item.yjCode); }} className="text-decoration-none">
+                      <button type="button" className="btn btn-link p-0 text-start text-decoration-none" onClick={() => openDetail(item.yjCode)}>
                         {item.drugName}
-                      </a>
+                      </button>
                     </td>
                     <td className="small">{item.genericName || '-'}</td>
                     <td className="small">{item.specification || '-'}</td>

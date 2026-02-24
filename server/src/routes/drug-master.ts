@@ -1,7 +1,7 @@
 import path from 'path';
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
-import { eq, and, like, or } from 'drizzle-orm';
+import { eq, and, like, or, isNotNull } from 'drizzle-orm';
 import { db } from '../config/database';
 import { drugMaster } from '../db/schema';
 import { requireLogin, requireAdmin } from '../middleware/auth';
@@ -26,6 +26,7 @@ import {
   completeSyncLog,
   updateDrugMasterItem,
 } from '../services/drug-master-service';
+import { triggerManualAutoSync } from '../services/drug-master-scheduler';
 import { parseExcelBuffer } from '../services/upload-service';
 
 const router = Router();
@@ -114,7 +115,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     } else if (statusFilter === 'transition') {
       conditions.push(and(
         eq(drugMaster.isListed, true),
-        like(drugMaster.transitionDeadline, '%'), // NOT NULL
+        isNotNull(drugMaster.transitionDeadline),
       ));
     }
 
@@ -129,13 +130,14 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       const hiragana = katakanaToHiragana(normalized);
       const katakana = hiraganaToKatakana(normalized);
       const likeTerms = new Set([normalized, hiragana, katakana]);
-      const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${term}%`));
-      const genericConditions = [...likeTerms].map((term) => like(drugMaster.genericName, `%${term}%`));
+      const escape = (s: string) => s.replace(/%/g, '\\%').replace(/_/g, '\\_');
+      const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${escape(term)}%`));
+      const genericConditions = [...likeTerms].map((term) => like(drugMaster.genericName, `%${escape(term)}%`));
       const allSearchConditions = [...nameConditions, ...genericConditions];
 
       // YJコード検索
       if (/^[A-Z0-9]+$/i.test(search.trim())) {
-        allSearchConditions.push(like(drugMaster.yjCode, `%${search.trim()}%`));
+        allSearchConditions.push(like(drugMaster.yjCode, `%${escape(search.trim())}%`));
       }
 
       conditions.push(or(...allSearchConditions));
@@ -395,6 +397,47 @@ router.put('/detail/:yjCode', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     console.error('Drug master update error:', err);
     res.status(500).json({ error: '医薬品の更新に失敗しました' });
+  }
+});
+
+// ── 自動取得トリガー（URL設定済みの場合のサイト更新検知＆同期）──
+
+router.post('/auto-sync', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await triggerManualAutoSync();
+
+    if (result.triggered) {
+      await writeLog('drug_master_sync', {
+        pharmacyId: req.user!.id,
+        detail: '自動取得を手動トリガー',
+        ipAddress: getClientIp(req as Request),
+      });
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('Auto-sync trigger error:', err);
+    res.status(500).json({ error: '自動取得の開始に失敗しました' });
+  }
+});
+
+// ── 自動取得設定状況 ──
+
+router.get('/auto-sync/status', async (_req: AuthRequest, res: Response) => {
+  try {
+    const sourceUrl = process.env.DRUG_MASTER_SOURCE_URL || '';
+    const autoSyncEnabled = process.env.DRUG_MASTER_AUTO_SYNC === 'true';
+    const checkIntervalHours = Number(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS || 24);
+
+    res.json({
+      enabled: autoSyncEnabled,
+      sourceUrl: sourceUrl ? `${sourceUrl.slice(0, 50)}...` : '',
+      hasSourceUrl: !!sourceUrl,
+      checkIntervalHours,
+    });
+  } catch (err) {
+    console.error('Auto-sync status error:', err);
+    res.status(500).json({ error: '設定状況の取得に失敗しました' });
   }
 });
 

@@ -1,4 +1,4 @@
-import { eq, like, or, and, desc, sql, count } from 'drizzle-orm';
+import { eq, like, or, and, desc, sql, count, isNotNull, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   drugMaster,
@@ -6,10 +6,14 @@ import {
   drugMasterPriceHistory,
   drugMasterSyncLogs,
 } from '../db/schema';
-import { parseExcelBuffer } from './upload-service';
 import { parseNumber } from '../utils/string-utils';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 import { logger } from './logger';
+
+/** LIKE パターン中の % と _ をエスケープする */
+function escapeLikePattern(term: string): string {
+  return term.replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
 
 // ── 型定義 ──────────────────────────────────────────
 
@@ -125,7 +129,7 @@ function parseYjCode(raw: string | null): string | null {
   if (/^\d{12}$/.test(cleaned)) return cleaned;
   // 先頭にアルファベットが入るパターン（一部旧形式）
   if (/^[A-Z0-9]{12}$/i.test(cleaned)) return cleaned;
-  return cleaned || null;
+  return null;
 }
 
 export function parseMhlwExcelData(rows: unknown[][]): ParsedDrugRow[] {
@@ -364,8 +368,8 @@ export async function syncDrugMaster(
 
         result.itemsAdded++;
       } else {
-        // 既存品目の更新チェック
-        const priceChanged = existing.yakkaPrice !== row.yakkaPrice;
+        // 既存品目の更新チェック（float精度を考慮）
+        const priceChanged = Math.abs(existing.yakkaPrice - row.yakkaPrice) > 0.001;
         const wasDelisted = !existing.isListed;
 
         await db.update(drugMaster)
@@ -442,10 +446,13 @@ export async function syncPackageData(
   let added = 0;
   let updated = 0;
 
-  // YJコード → drug_master.id のマップを構築
+  // YJコード → drug_master.id のマップを構築（必要なコードだけフィルター）
   const yjCodes = [...new Set(parsedRows.map((r) => r.yjCode))];
-  const masterItems = await db.select({ id: drugMaster.id, yjCode: drugMaster.yjCode })
-    .from(drugMaster);
+  const masterItems = yjCodes.length > 0
+    ? await db.select({ id: drugMaster.id, yjCode: drugMaster.yjCode })
+        .from(drugMaster)
+        .where(inArray(drugMaster.yjCode, yjCodes))
+    : [];
   const yjToId = new Map(masterItems.map((m) => [m.yjCode, m.id]));
 
   for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
@@ -510,17 +517,20 @@ async function findExistingPackage(drugMasterId: number, row: ParsedPackageRow) 
 // ── 検索・照会 ──────────────────────────────────────
 
 export async function searchDrugMaster(query: string, limit: number = 20) {
+  if (!query.trim()) return [];
+
+  const safeLimit = Math.min(Math.max(limit, 1), 100);
   const normalized = normalizeKana(query);
   const hiragana = katakanaToHiragana(normalized);
   const katakana = hiraganaToKatakana(normalized);
 
   const likeTerms = new Set([normalized, hiragana, katakana]);
-  const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${term}%`));
-  const genericConditions = [...likeTerms].map((term) => like(drugMaster.genericName, `%${term}%`));
+  const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${escapeLikePattern(term)}%`));
+  const genericConditions = [...likeTerms].map((term) => like(drugMaster.genericName, `%${escapeLikePattern(term)}%`));
 
   // YJコード直接検索も対応
   const isCodeSearch = /^[A-Z0-9]+$/i.test(query.trim());
-  const codeCondition = isCodeSearch ? like(drugMaster.yjCode, `%${query.trim()}%`) : null;
+  const codeCondition = isCodeSearch ? like(drugMaster.yjCode, `%${escapeLikePattern(query.trim())}%`) : null;
 
   const allConditions = [...nameConditions, ...genericConditions];
   if (codeCondition) allConditions.push(codeCondition);
@@ -540,7 +550,7 @@ export async function searchDrugMaster(query: string, limit: number = 20) {
   })
     .from(drugMaster)
     .where(or(...allConditions))
-    .limit(limit);
+    .limit(safeLimit);
 }
 
 export async function lookupByCode(code: string) {
@@ -613,13 +623,14 @@ export async function getDrugDetail(yjCode: string) {
 }
 
 export async function getSyncLogs(limit: number = 20) {
+  const safeLimit = Math.min(Math.max(limit, 1), 100);
   return db.select()
     .from(drugMasterSyncLogs)
     .orderBy(desc(drugMasterSyncLogs.startedAt))
-    .limit(limit);
+    .limit(safeLimit);
 }
 
-export async function createSyncLog(syncType: string, sourceDescription: string, triggeredBy: number) {
+export async function createSyncLog(syncType: string, sourceDescription: string, triggeredBy: number | null) {
   const [log] = await db.insert(drugMasterSyncLogs).values({
     syncType,
     sourceDescription,
