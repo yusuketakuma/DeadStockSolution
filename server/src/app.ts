@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -23,16 +23,44 @@ import { logger } from './services/logger';
 const app = express();
 app.disable('x-powered-by');
 
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/$/, '');
+}
+
+function isSameHostOrigin(origin: string, req: Request): boolean {
+  try {
+    const originHost = new URL(origin).host;
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const requestHost = Array.isArray(forwardedHost)
+      ? forwardedHost[0]
+      : forwardedHost ?? req.headers.host;
+
+    if (!requestHost) {
+      return false;
+    }
+
+    return originHost === requestHost;
+  } catch {
+    return false;
+  }
+}
+
 const configuredOrigins = (process.env.CORS_ORIGINS ?? '')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => normalizeOrigin(origin))
   .filter((origin) => origin.length > 0);
 
+const vercelOrigin = process.env.VERCEL_URL
+  ? normalizeOrigin(`https://${process.env.VERCEL_URL}`)
+  : null;
+
 const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? configuredOrigins
+  ? [...configuredOrigins, ...(vercelOrigin ? [vercelOrigin] : [])]
   : ['http://localhost:5173', 'http://127.0.0.1:5173', ...configuredOrigins];
 
-if (process.env.NODE_ENV === 'production' && allowedOrigins.length === 0) {
+const uniqueAllowedOrigins = Array.from(new Set(allowedOrigins));
+
+if (process.env.NODE_ENV === 'production' && uniqueAllowedOrigins.length === 0) {
   throw new Error('CORS_ORIGINS must be set in production');
 }
 
@@ -43,7 +71,7 @@ app.use(cors({
       return;
     }
 
-    if (allowedOrigins.includes(origin)) {
+    if (uniqueAllowedOrigins.includes(normalizeOrigin(origin))) {
       callback(null, true);
       return;
     }
@@ -74,7 +102,7 @@ app.use('/api', apiRateLimiter);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && !allowedOrigins.includes(origin)) {
+  if (origin && !uniqueAllowedOrigins.includes(normalizeOrigin(origin)) && !isSameHostOrigin(origin, req)) {
     res.status(403).json({ error: '許可されていないオリジンです' });
     return;
   }
