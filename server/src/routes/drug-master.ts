@@ -15,6 +15,7 @@ import {
   parseMhlwCsvData,
   parsePackageExcelData,
   parsePackageCsvData,
+  decodeCsvBuffer,
   syncDrugMaster,
   syncPackageData,
   searchDrugMaster,
@@ -232,45 +233,54 @@ router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) =
 
     // 同期ログ作成
     const syncLog = await createSyncLog('manual', file.originalname, userId);
+    const emptyResult = { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 };
 
     let parsedRows;
     try {
       if (ext === '.csv') {
-        const csvContent = file.buffer.toString('utf-8');
+        const csvContent = decodeCsvBuffer(file.buffer);
         parsedRows = parseMhlwCsvData(csvContent);
       } else {
         const excelRows = await parseExcelBuffer(file.buffer);
         parsedRows = parseMhlwExcelData(excelRows);
       }
     } catch (parseErr) {
-      await completeSyncLog(syncLog.id, 'failed', { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 },
+      await completeSyncLog(syncLog.id, 'failed', emptyResult,
         parseErr instanceof Error ? parseErr.message : 'パースエラー');
       res.status(400).json({ error: parseErr instanceof Error ? parseErr.message : 'ファイルのパースに失敗しました' });
       return;
     }
 
     if (parsedRows.length === 0) {
-      await completeSyncLog(syncLog.id, 'failed', { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 },
-        '有効なデータ行が見つかりません');
+      await completeSyncLog(syncLog.id, 'failed', emptyResult, '有効なデータ行が見つかりません');
       res.status(400).json({ error: '有効なデータ行が見つかりませんでした。ファイル形式を確認してください。' });
       return;
     }
 
-    // 同期実行
-    const result = await syncDrugMaster(parsedRows, syncLog.id, revisionDate);
-    await completeSyncLog(syncLog.id, 'success', result);
+    try {
+      // 同期実行
+      const result = await syncDrugMaster(parsedRows, syncLog.id, revisionDate);
+      await completeSyncLog(syncLog.id, 'success', result);
 
-    await writeLog('drug_master_sync', {
-      pharmacyId: userId,
-      detail: `同期完了: 処理${result.itemsProcessed}件, 追加${result.itemsAdded}件, 更新${result.itemsUpdated}件, 削除${result.itemsDeleted}件`,
-      ipAddress: getClientIp(req as Request),
-    });
+      await writeLog('drug_master_sync', {
+        pharmacyId: userId,
+        detail: `同期完了: 処理${result.itemsProcessed}件, 追加${result.itemsAdded}件, 更新${result.itemsUpdated}件, 削除${result.itemsDeleted}件`,
+        ipAddress: getClientIp(req as Request),
+      });
 
-    res.json({
-      message: '同期が完了しました',
-      result,
-      syncLogId: syncLog.id,
-    });
+      res.json({
+        message: '同期が完了しました',
+        result,
+        syncLogId: syncLog.id,
+      });
+    } catch (syncErr) {
+      // 同期失敗時もログを確実に閉じる
+      try {
+        await completeSyncLog(syncLog.id, 'failed', emptyResult,
+          syncErr instanceof Error ? syncErr.message : '同期処理中にエラーが発生しました');
+      } catch { /* ログ更新失敗は無視 */ }
+      throw syncErr;
+    }
   } catch (err) {
     console.error('Drug master sync error:', err);
     res.status(500).json({ error: '同期処理中にエラーが発生しました' });
@@ -292,7 +302,7 @@ router.post('/upload-packages', uploadSingleFile, async (req: AuthRequest, res: 
 
     try {
       if (ext === '.csv') {
-        const csvContent = file.buffer.toString('utf-8');
+        const csvContent = decodeCsvBuffer(file.buffer);
         parsedRows = parsePackageCsvData(csvContent);
       } else {
         const excelRows = await parseExcelBuffer(file.buffer);

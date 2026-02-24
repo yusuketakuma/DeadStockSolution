@@ -1,4 +1,3 @@
-import { eq, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import { drugMaster, drugMasterPackages } from '../db/schema';
 import { normalizeString } from '../utils/string-utils';
@@ -51,13 +50,13 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
   const codeCache = new Map<string, { id: number; yakkaPrice: number; unit: string | null }>();
 
   if (codesInRows.size > 0) {
-    // YJコードで直接検索
+    // YJコードで直接検索（削除済も含む：不動在庫に削除済薬品が含まれることがある）
     const allMaster = await db.select({
       id: drugMaster.id,
       yjCode: drugMaster.yjCode,
       yakkaPrice: drugMaster.yakkaPrice,
       unit: drugMaster.unit,
-    }).from(drugMaster).where(eq(drugMaster.isListed, true));
+    }).from(drugMaster);
 
     for (const m of allMaster) {
       if (codesInRows.has(m.yjCode)) {
@@ -105,7 +104,7 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
       drugName: drugMaster.drugName,
       yakkaPrice: drugMaster.yakkaPrice,
       unit: drugMaster.unit,
-    }).from(drugMaster).where(eq(drugMaster.isListed, true));
+    }).from(drugMaster);
 
     masterByName = all.map((m) => ({
       ...m,

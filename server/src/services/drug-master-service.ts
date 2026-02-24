@@ -171,6 +171,40 @@ export function parseMhlwExcelData(rows: unknown[][]): ParsedDrugRow[] {
   return results;
 }
 
+// ── CSV エンコーディング検出 ──────────────────────────────
+
+/**
+ * バッファから文字列に変換する（UTF-8 / Shift_JIS 自動判別）
+ * MHLWのCSVはShift_JIS（CP932）の場合が多い
+ */
+export function decodeCsvBuffer(buffer: Buffer): string {
+  // UTF-8 BOM check
+  if (buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+    return buffer.toString('utf-8').slice(1); // BOM除去
+  }
+
+  // UTF-8 として妥当かチェック（不正バイトシーケンスが含まれるならShift_JISの可能性）
+  const utf8Text = buffer.toString('utf-8');
+  // 置換文字（U+FFFD）が含まれる場合、UTF-8として不正
+  if (!utf8Text.includes('\uFFFD')) {
+    return utf8Text;
+  }
+
+  // Shift_JIS（CP932）でデコードを試みる
+  try {
+    // iconv-lite が利用可能な場合
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const iconv = require('iconv-lite') as typeof import('iconv-lite');
+    if (iconv.encodingExists('CP932')) {
+      return iconv.decode(buffer, 'CP932');
+    }
+  } catch {
+    // iconv-lite が利用不可の場合はUTF-8でフォールバック
+  }
+
+  return utf8Text;
+}
+
 // ── CSV パース ──────────────────────────────────────
 
 export function parseMhlwCsvData(csvContent: string): ParsedDrugRow[] {
@@ -321,59 +355,32 @@ export async function syncDrugMaster(
     itemsDeleted: 0,
   };
 
-  // 全既存YJコードを取得
-  const existingItems = await db.select({
-    id: drugMaster.id,
-    yjCode: drugMaster.yjCode,
-    yakkaPrice: drugMaster.yakkaPrice,
-    isListed: drugMaster.isListed,
-  }).from(drugMaster);
+  await db.transaction(async (tx) => {
+    const now = new Date().toISOString();
 
-  const existingMap = new Map(existingItems.map((item) => [item.yjCode, item]));
-  const incomingCodes = new Set(parsedRows.map((r) => r.yjCode));
+    // 全既存YJコードを取得
+    const existingItems = await tx.select({
+      id: drugMaster.id,
+      yjCode: drugMaster.yjCode,
+      yakkaPrice: drugMaster.yakkaPrice,
+      isListed: drugMaster.isListed,
+    }).from(drugMaster);
 
-  // バッチ処理: INSERT/UPDATE
-  for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
-    const batch = parsedRows.slice(i, i + BATCH_SIZE);
+    const existingMap = new Map(existingItems.map((item) => [item.yjCode, item]));
+    const incomingCodes = new Set(parsedRows.map((r) => r.yjCode));
 
-    for (const row of batch) {
-      const existing = existingMap.get(row.yjCode);
-      result.itemsProcessed++;
+    // バッチ処理: INSERT/UPDATE
+    for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
+      const batch = parsedRows.slice(i, i + BATCH_SIZE);
 
-      if (!existing) {
-        // 新規追加
-        await db.insert(drugMaster).values({
-          yjCode: row.yjCode,
-          drugName: row.drugName,
-          genericName: row.genericName,
-          specification: row.specification,
-          unit: row.unit,
-          yakkaPrice: row.yakkaPrice,
-          manufacturer: row.manufacturer,
-          category: row.category,
-          therapeuticCategory: row.therapeuticCategory,
-          isListed: true,
-          listedDate: row.listedDate,
-          transitionDeadline: row.transitionDeadline,
-          updatedAt: new Date().toISOString(),
-        });
+      for (const row of batch) {
+        const existing = existingMap.get(row.yjCode);
+        result.itemsProcessed++;
 
-        await db.insert(drugMasterPriceHistory).values({
-          yjCode: row.yjCode,
-          previousPrice: null,
-          newPrice: row.yakkaPrice,
-          revisionDate,
-          revisionType: 'new_listing',
-        });
-
-        result.itemsAdded++;
-      } else {
-        // 既存品目の更新チェック（float精度を考慮）
-        const priceChanged = Math.abs(existing.yakkaPrice - row.yakkaPrice) > 0.001;
-        const wasDelisted = !existing.isListed;
-
-        await db.update(drugMaster)
-          .set({
+        if (!existing) {
+          // 新規追加
+          await tx.insert(drugMaster).values({
+            yjCode: row.yjCode,
             drugName: row.drugName,
             genericName: row.genericName,
             specification: row.specification,
@@ -385,57 +392,88 @@ export async function syncDrugMaster(
             isListed: true,
             listedDate: row.listedDate,
             transitionDeadline: row.transitionDeadline,
-            deletedDate: null,
-            updatedAt: new Date().toISOString(),
-          })
-          .where(eq(drugMaster.yjCode, row.yjCode));
+            updatedAt: now,
+          });
 
-        if (priceChanged) {
-          await db.insert(drugMasterPriceHistory).values({
+          await tx.insert(drugMasterPriceHistory).values({
             yjCode: row.yjCode,
-            previousPrice: existing.yakkaPrice,
+            previousPrice: null,
             newPrice: row.yakkaPrice,
             revisionDate,
-            revisionType: wasDelisted ? 'new_listing' : 'price_revision',
+            revisionType: 'new_listing',
           });
-        }
 
-        result.itemsUpdated++;
+          result.itemsAdded++;
+        } else {
+          // 既存品目の更新チェック（float精度を考慮）
+          const priceChanged = Math.abs(existing.yakkaPrice - row.yakkaPrice) > 0.001;
+          const wasDelisted = !existing.isListed;
+
+          await tx.update(drugMaster)
+            .set({
+              drugName: row.drugName,
+              genericName: row.genericName,
+              specification: row.specification,
+              unit: row.unit,
+              yakkaPrice: row.yakkaPrice,
+              manufacturer: row.manufacturer,
+              category: row.category,
+              therapeuticCategory: row.therapeuticCategory,
+              isListed: true,
+              listedDate: row.listedDate,
+              transitionDeadline: row.transitionDeadline,
+              deletedDate: null,
+              updatedAt: now,
+            })
+            .where(eq(drugMaster.yjCode, row.yjCode));
+
+          if (priceChanged) {
+            await tx.insert(drugMasterPriceHistory).values({
+              yjCode: row.yjCode,
+              previousPrice: existing.yakkaPrice,
+              newPrice: row.yakkaPrice,
+              revisionDate,
+              revisionType: wasDelisted ? 'new_listing' : 'price_revision',
+            });
+          }
+
+          result.itemsUpdated++;
+        }
+      }
+
+      // 同期ログを中間更新（トランザクション外からも見える進捗のためdbを使用）
+      await db.update(drugMasterSyncLogs)
+        .set({
+          itemsProcessed: result.itemsProcessed,
+          itemsAdded: result.itemsAdded,
+          itemsUpdated: result.itemsUpdated,
+        })
+        .where(eq(drugMasterSyncLogs.id, syncLogId));
+    }
+
+    // ファイルに含まれない既存品目で、まだ収載中のものを経過措置 or 削除扱いにする
+    for (const [yjCode, existing] of existingMap) {
+      if (!incomingCodes.has(yjCode) && existing.isListed) {
+        await tx.update(drugMaster)
+          .set({
+            isListed: false,
+            deletedDate: revisionDate,
+            updatedAt: now,
+          })
+          .where(eq(drugMaster.yjCode, yjCode));
+
+        await tx.insert(drugMasterPriceHistory).values({
+          yjCode,
+          previousPrice: existing.yakkaPrice,
+          newPrice: null,
+          revisionDate,
+          revisionType: 'delisting',
+        });
+
+        result.itemsDeleted++;
       }
     }
-
-    // 同期ログを中間更新
-    await db.update(drugMasterSyncLogs)
-      .set({
-        itemsProcessed: result.itemsProcessed,
-        itemsAdded: result.itemsAdded,
-        itemsUpdated: result.itemsUpdated,
-      })
-      .where(eq(drugMasterSyncLogs.id, syncLogId));
-  }
-
-  // ファイルに含まれない既存品目で、まだ収載中のものを経過措置 or 削除扱いにする
-  for (const [yjCode, existing] of existingMap) {
-    if (!incomingCodes.has(yjCode) && existing.isListed) {
-      await db.update(drugMaster)
-        .set({
-          isListed: false,
-          deletedDate: revisionDate,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(drugMaster.yjCode, yjCode));
-
-      await db.insert(drugMasterPriceHistory).values({
-        yjCode,
-        previousPrice: existing.yakkaPrice,
-        newPrice: null,
-        revisionDate,
-        revisionType: 'delisting',
-      });
-
-      result.itemsDeleted++;
-    }
-  }
+  });
 
   return result;
 }

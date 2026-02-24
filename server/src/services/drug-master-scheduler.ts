@@ -4,6 +4,7 @@ import { drugMasterSyncLogs } from '../db/schema';
 import {
   parseMhlwExcelData,
   parseMhlwCsvData,
+  decodeCsvBuffer,
   syncDrugMaster,
   createSyncLog,
   completeSyncLog,
@@ -217,7 +218,7 @@ async function runAutoSync(): Promise<void> {
         MHLW_SOURCE_URL.endsWith('.csv');
 
       if (isCsv) {
-        const csvContent = buffer.toString('utf-8');
+        const csvContent = decodeCsvBuffer(buffer);
         parsedRows = parseMhlwCsvData(csvContent);
       } else {
         const excelRows = await parseExcelBuffer(buffer);
