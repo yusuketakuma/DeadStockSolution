@@ -58,6 +58,9 @@ npm run db:migrate:legacy --workspace=server
   - `npm run deploy:preview`（`preview` ブランチのみ）
   - `npm run deploy:prod`（`main` ブランチのみ）
 - Neon連携時は `DRUG_PACKAGE_SOURCE_URL` などの環境変数を Vercel Project Settings に設定し、Preview環境で分離DBを利用してください。
+- デモアカウントを Preview で使う場合は、Vercel Environment Variables に以下を設定してください。
+  - `ENABLE_TEST_PHARMACY_ACCOUNTS=true`
+  - `TEST_ACCOUNT_PASSWORD`（クライアントの `VITE_TEST_ACCOUNT_PASSWORD` と同じ値）
 
 ### main DB を preview DB に同期する（Neon branch reset）
 

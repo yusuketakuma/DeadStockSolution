@@ -24,6 +24,8 @@ interface EnsuredTestAccount {
   isAdmin: boolean;
 }
 
+let ensureSeedPromise: Promise<void> | null = null;
+
 const TEST_ACCOUNTS: TestAccountDefinition[] = [
   {
     email: 'test@example.com',
@@ -164,4 +166,24 @@ export async function seedTestAccounts(): Promise<EnsuredTestAccount[]> {
     seededAccounts.push(await ensureTestAccount(account));
   }
   return seededAccounts;
+}
+
+export function ensureTestAccountsSeededIfEnabled(): Promise<void> {
+  if (process.env.ENABLE_TEST_PHARMACY_ACCOUNTS !== 'true') {
+    return Promise.resolve();
+  }
+
+  if (ensureSeedPromise) {
+    return ensureSeedPromise;
+  }
+
+  ensureSeedPromise = seedTestAccounts()
+    .then((accounts) => {
+      console.log(`Test pharmacy accounts are ready (${accounts.length} accounts).`);
+    })
+    .catch((err) => {
+      console.error('Failed to seed test pharmacy accounts:', err);
+    });
+
+  return ensureSeedPromise;
 }
