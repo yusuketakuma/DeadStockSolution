@@ -1,3 +1,7 @@
+import type { BusinessHoursStatus } from '../types';
+
+export type { BusinessHoursStatus };
+
 interface BusinessHourEntry {
   dayOfWeek: number;
   openTime: string | null;
@@ -5,15 +9,23 @@ interface BusinessHourEntry {
   isClosed: boolean | null;
 }
 
-export interface BusinessHoursStatus {
-  isOpen: boolean;
-  closingSoon: boolean; // true if closing within 1 hour
-  todayHours: { openTime: string; closeTime: string } | null;
+/** Minutes before closing to trigger "closing soon" warning */
+const CLOSING_SOON_MINUTES = 60;
+
+/**
+ * Parse "HH:MM" into total minutes since midnight.
+ */
+function parseTimeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
 }
 
 /**
  * Check if a pharmacy is currently open based on its business hours.
  * Returns open/closed status and whether it's closing soon (within 1 hour).
+ *
+ * - No hours registered → assumed always open.
+ * - Supports overnight spans (e.g. 22:00–06:00) where closeTime < openTime.
  */
 export function getBusinessHoursStatus(
   hours: BusinessHourEntry[],
@@ -36,13 +48,29 @@ export function getBusinessHoursStatus(
   }
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const [openH, openM] = todayEntry.openTime.split(':').map(Number);
-  const [closeH, closeM] = todayEntry.closeTime.split(':').map(Number);
-  const openMinutes = openH * 60 + openM;
-  const closeMinutes = closeH * 60 + closeM;
+  const openMinutes = parseTimeToMinutes(todayEntry.openTime);
+  const closeMinutes = parseTimeToMinutes(todayEntry.closeTime);
 
-  const isOpen = currentMinutes >= openMinutes && currentMinutes < closeMinutes;
-  const closingSoon = isOpen && (closeMinutes - currentMinutes) <= 60;
+  let isOpen: boolean;
+  let minutesUntilClose: number;
+
+  if (closeMinutes > openMinutes) {
+    // Normal span (e.g. 09:00–18:00)
+    isOpen = currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+    minutesUntilClose = closeMinutes - currentMinutes;
+  } else {
+    // Overnight span (e.g. 22:00–06:00): open if after open OR before close
+    isOpen = currentMinutes >= openMinutes || currentMinutes < closeMinutes;
+    if (currentMinutes >= openMinutes) {
+      // Before midnight portion: distance to close is (minutes until midnight) + closeMinutes
+      minutesUntilClose = (24 * 60 - currentMinutes) + closeMinutes;
+    } else {
+      // After midnight portion
+      minutesUntilClose = closeMinutes - currentMinutes;
+    }
+  }
+
+  const closingSoon = isOpen && minutesUntilClose <= CLOSING_SOON_MINUTES;
 
   return {
     isOpen,

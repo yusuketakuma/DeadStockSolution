@@ -24,7 +24,7 @@ interface BrowseItem {
 
 interface BrowseResponse {
   data: BrowseItem[];
-  pagination: { page: number };
+  pagination: { page: number; totalPages: number; total: number };
 }
 
 function BusinessStatusBadge({ status }: { status?: BusinessHoursStatus }) {
@@ -47,12 +47,14 @@ export default function InventoryBrowsePage() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const fetchData = async (p: number, q: string) => {
     const params = new URLSearchParams({ page: String(p) });
     if (q) params.set('search', q);
     const data = await api.get<BrowseResponse>(`/inventory/browse?${params}`);
     setItems(data.data);
+    setTotalPages(data.pagination.totalPages);
   };
 
   useEffect(() => { fetchData(page, search); }, [page, search]);
@@ -121,7 +123,7 @@ export default function InventoryBrowsePage() {
           </Table>
         </div>
       )}
-      <Pagination currentPage={page} totalPages={10} onPageChange={setPage} />
+      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getBusinessHoursStatus, formatDayHours } from '../utils/business-hours-utils';
 
 describe('getBusinessHoursStatus', () => {
-  const mondayOpenHours = [
+  const standardHours = [
     { dayOfWeek: 0, openTime: null, closeTime: null, isClosed: true },
     { dayOfWeek: 1, openTime: '09:00', closeTime: '18:00', isClosed: false },
     { dayOfWeek: 2, openTime: '09:00', closeTime: '18:00', isClosed: false },
@@ -20,77 +20,173 @@ describe('getBusinessHoursStatus', () => {
   });
 
   it('returns isOpen=true during business hours on Monday', () => {
-    // Monday at 10:00
-    const monday10am = new Date('2026-02-23T10:00:00'); // Monday
-    const status = getBusinessHoursStatus(mondayOpenHours, monday10am);
+    const monday10am = new Date('2026-02-23T10:00:00');
+    const status = getBusinessHoursStatus(standardHours, monday10am);
     expect(status.isOpen).toBe(true);
     expect(status.closingSoon).toBe(false);
     expect(status.todayHours).toEqual({ openTime: '09:00', closeTime: '18:00' });
   });
 
   it('returns isOpen=false before opening time', () => {
-    // Monday at 08:00
     const monday8am = new Date('2026-02-23T08:00:00');
-    const status = getBusinessHoursStatus(mondayOpenHours, monday8am);
+    const status = getBusinessHoursStatus(standardHours, monday8am);
     expect(status.isOpen).toBe(false);
     expect(status.closingSoon).toBe(false);
   });
 
   it('returns isOpen=false after closing time', () => {
-    // Monday at 19:00
     const monday7pm = new Date('2026-02-23T19:00:00');
-    const status = getBusinessHoursStatus(mondayOpenHours, monday7pm);
+    const status = getBusinessHoursStatus(standardHours, monday7pm);
     expect(status.isOpen).toBe(false);
     expect(status.closingSoon).toBe(false);
   });
 
   it('returns isOpen=false on a closed day (Sunday)', () => {
-    // Sunday
-    const sunday = new Date('2026-02-22T12:00:00'); // Sunday
-    const status = getBusinessHoursStatus(mondayOpenHours, sunday);
+    const sunday = new Date('2026-02-22T12:00:00');
+    const status = getBusinessHoursStatus(standardHours, sunday);
     expect(status.isOpen).toBe(false);
     expect(status.closingSoon).toBe(false);
     expect(status.todayHours).toBeNull();
   });
 
   it('returns closingSoon=true when within 1 hour of closing', () => {
-    // Monday at 17:30 (30 minutes before 18:00 close)
     const monday530pm = new Date('2026-02-23T17:30:00');
-    const status = getBusinessHoursStatus(mondayOpenHours, monday530pm);
+    const status = getBusinessHoursStatus(standardHours, monday530pm);
     expect(status.isOpen).toBe(true);
     expect(status.closingSoon).toBe(true);
   });
 
   it('returns closingSoon=true at exactly 1 hour before closing', () => {
-    // Monday at 17:00 (exactly 1 hour before 18:00 close)
     const monday5pm = new Date('2026-02-23T17:00:00');
-    const status = getBusinessHoursStatus(mondayOpenHours, monday5pm);
+    const status = getBusinessHoursStatus(standardHours, monday5pm);
     expect(status.isOpen).toBe(true);
     expect(status.closingSoon).toBe(true);
   });
 
   it('returns closingSoon=false when more than 1 hour before closing', () => {
-    // Monday at 16:59 (1h1m before 18:00 close)
     const monday459pm = new Date('2026-02-23T16:59:00');
-    const status = getBusinessHoursStatus(mondayOpenHours, monday459pm);
+    const status = getBusinessHoursStatus(standardHours, monday459pm);
     expect(status.isOpen).toBe(true);
     expect(status.closingSoon).toBe(false);
   });
 
   it('handles Saturday with different hours', () => {
-    // Saturday at 12:00
-    const saturday = new Date('2026-02-28T12:00:00'); // Saturday
-    const status = getBusinessHoursStatus(mondayOpenHours, saturday);
+    const saturday = new Date('2026-02-28T12:00:00');
+    const status = getBusinessHoursStatus(standardHours, saturday);
     expect(status.isOpen).toBe(true);
     expect(status.todayHours).toEqual({ openTime: '10:00', closeTime: '15:00' });
   });
 
   it('returns closingSoon for Saturday within 1 hour of close', () => {
-    // Saturday at 14:15 (45 minutes before 15:00 close)
     const saturday215pm = new Date('2026-02-28T14:15:00');
-    const status = getBusinessHoursStatus(mondayOpenHours, saturday215pm);
+    const status = getBusinessHoursStatus(standardHours, saturday215pm);
     expect(status.isOpen).toBe(true);
     expect(status.closingSoon).toBe(true);
+  });
+
+  it('returns isOpen=false at exactly closing time', () => {
+    const monday6pm = new Date('2026-02-23T18:00:00');
+    const status = getBusinessHoursStatus(standardHours, monday6pm);
+    expect(status.isOpen).toBe(false);
+  });
+
+  it('returns isOpen=true at exactly opening time', () => {
+    const monday9am = new Date('2026-02-23T09:00:00');
+    const status = getBusinessHoursStatus(standardHours, monday9am);
+    expect(status.isOpen).toBe(true);
+  });
+
+  // Overnight hours tests (e.g. 22:00-06:00)
+  describe('overnight hours', () => {
+    const overnightHours = [
+      { dayOfWeek: 0, openTime: null, closeTime: null, isClosed: true },
+      { dayOfWeek: 1, openTime: '22:00', closeTime: '06:00', isClosed: false },
+      { dayOfWeek: 2, openTime: '22:00', closeTime: '06:00', isClosed: false },
+      { dayOfWeek: 3, openTime: '22:00', closeTime: '06:00', isClosed: false },
+      { dayOfWeek: 4, openTime: '22:00', closeTime: '06:00', isClosed: false },
+      { dayOfWeek: 5, openTime: '22:00', closeTime: '06:00', isClosed: false },
+      { dayOfWeek: 6, openTime: '22:00', closeTime: '06:00', isClosed: false },
+    ];
+
+    it('is open after opening time before midnight', () => {
+      // Monday 23:00
+      const monday11pm = new Date('2026-02-23T23:00:00');
+      const status = getBusinessHoursStatus(overnightHours, monday11pm);
+      expect(status.isOpen).toBe(true);
+      expect(status.closingSoon).toBe(false);
+    });
+
+    it('is open after midnight before closing', () => {
+      // Monday 03:00 (still within Mon's 22:00-06:00)
+      const monday3am = new Date('2026-02-23T03:00:00');
+      const status = getBusinessHoursStatus(overnightHours, monday3am);
+      expect(status.isOpen).toBe(true);
+      expect(status.closingSoon).toBe(false);
+    });
+
+    it('is closed before opening time', () => {
+      // Monday 15:00
+      const monday3pm = new Date('2026-02-23T15:00:00');
+      const status = getBusinessHoursStatus(overnightHours, monday3pm);
+      expect(status.isOpen).toBe(false);
+    });
+
+    it('is closed after closing time (morning)', () => {
+      // Monday 07:00 (after 06:00 close)
+      const monday7am = new Date('2026-02-23T07:00:00');
+      const status = getBusinessHoursStatus(overnightHours, monday7am);
+      expect(status.isOpen).toBe(false);
+    });
+
+    it('closingSoon before midnight when close is soon after midnight', () => {
+      // closeTime=06:00, so closingSoon at 05:30 (30 min before close)
+      const monday530am = new Date('2026-02-23T05:30:00');
+      const status = getBusinessHoursStatus(overnightHours, monday530am);
+      expect(status.isOpen).toBe(true);
+      expect(status.closingSoon).toBe(true);
+    });
+
+    it('not closingSoon when well before midnight', () => {
+      // At 22:30, close is at 06:00 next day = 7.5 hours away
+      const monday1030pm = new Date('2026-02-23T22:30:00');
+      const status = getBusinessHoursStatus(overnightHours, monday1030pm);
+      expect(status.isOpen).toBe(true);
+      expect(status.closingSoon).toBe(false);
+    });
+
+    it('is open at exactly opening time', () => {
+      const monday10pm = new Date('2026-02-23T22:00:00');
+      const status = getBusinessHoursStatus(overnightHours, monday10pm);
+      expect(status.isOpen).toBe(true);
+    });
+
+    it('is closed at exactly closing time', () => {
+      const monday6am = new Date('2026-02-23T06:00:00');
+      const status = getBusinessHoursStatus(overnightHours, monday6am);
+      expect(status.isOpen).toBe(false);
+    });
+  });
+
+  // Edge cases
+  it('handles null isClosed as not closed', () => {
+    const hours = [
+      { dayOfWeek: 1, openTime: '09:00', closeTime: '18:00', isClosed: null },
+    ];
+    // Monday at 12:00
+    const monday12pm = new Date('2026-02-23T12:00:00');
+    const status = getBusinessHoursStatus(hours, monday12pm);
+    expect(status.isOpen).toBe(true);
+  });
+
+  it('handles missing day entry as closed', () => {
+    // Only has Monday, testing on Tuesday
+    const hours = [
+      { dayOfWeek: 1, openTime: '09:00', closeTime: '18:00', isClosed: false },
+    ];
+    // Tuesday at 12:00
+    const tuesday12pm = new Date('2026-02-24T12:00:00');
+    const status = getBusinessHoursStatus(hours, tuesday12pm);
+    expect(status.isOpen).toBe(false);
   });
 });
 
@@ -108,5 +204,10 @@ describe('formatDayHours', () => {
   it('formats day with null times as closed', () => {
     expect(formatDayHours({ dayOfWeek: 0, openTime: null, closeTime: null, isClosed: false }))
       .toBe('定休日');
+  });
+
+  it('formats overnight hours', () => {
+    expect(formatDayHours({ dayOfWeek: 1, openTime: '22:00', closeTime: '06:00', isClosed: false }))
+      .toBe('22:00〜06:00');
   });
 });

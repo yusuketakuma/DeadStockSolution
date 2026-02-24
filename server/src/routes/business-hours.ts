@@ -49,6 +49,11 @@ function validateBusinessHours(hours: unknown): { valid: BusinessHourInput[] } |
       return { error: `${DAY_NAMES[dayOfWeek]}の閉店時間が不正です（HH:MM形式で入力してください）` };
     }
 
+    // openTime と closeTime が同じ場合はエラー
+    if (openTime === closeTime) {
+      return { error: `${DAY_NAMES[dayOfWeek]}の開店時間と閉店時間が同じです` };
+    }
+
     validated.push({ dayOfWeek, openTime, closeTime, isClosed: false });
   }
 
@@ -90,19 +95,21 @@ router.put('/', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    // Delete existing and insert new (upsert all 7 days)
-    await db.delete(pharmacyBusinessHours)
-      .where(eq(pharmacyBusinessHours.pharmacyId, req.user!.id));
+    // Atomic: delete + insert within a transaction
+    await db.transaction(async (tx) => {
+      await tx.delete(pharmacyBusinessHours)
+        .where(eq(pharmacyBusinessHours.pharmacyId, req.user!.id));
 
-    await db.insert(pharmacyBusinessHours).values(
-      result.valid.map((h) => ({
-        pharmacyId: req.user!.id,
-        dayOfWeek: h.dayOfWeek,
-        openTime: h.openTime,
-        closeTime: h.closeTime,
-        isClosed: h.isClosed,
-      }))
-    );
+      await tx.insert(pharmacyBusinessHours).values(
+        result.valid.map((h) => ({
+          pharmacyId: req.user!.id,
+          dayOfWeek: h.dayOfWeek,
+          openTime: h.openTime,
+          closeTime: h.closeTime,
+          isClosed: h.isClosed,
+        }))
+      );
+    });
 
     res.json({ message: '営業時間を更新しました' });
   } catch (err) {
