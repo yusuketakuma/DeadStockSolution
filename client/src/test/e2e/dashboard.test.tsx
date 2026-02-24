@@ -103,7 +103,7 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('在庫参照')).toBeInTheDocument();
     });
-    expect(screen.getByText('交換提案')).toBeInTheDocument();
+    expect(screen.getByText('マッチング状況')).toBeInTheDocument();
     expect(screen.getByText('交換履歴')).toBeInTheDocument();
   });
 
@@ -227,7 +227,7 @@ describe('Layout with Sidebar navigation', () => {
     expect(screen.getByText('使用薬剤')).toBeInTheDocument();
     expect(screen.getByText('在庫参照')).toBeInTheDocument();
     expect(screen.getByText('マッチング')).toBeInTheDocument();
-    expect(screen.getByText('提案一覧')).toBeInTheDocument();
+    expect(screen.getByText('マッチング一覧')).toBeInTheDocument();
     expect(screen.getByText('交換履歴')).toBeInTheDocument();
     expect(screen.getByText('薬局一覧')).toBeInTheDocument();
   });

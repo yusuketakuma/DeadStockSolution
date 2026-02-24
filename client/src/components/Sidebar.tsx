@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { to: '/inventory/used-medication', label: '使用薬剤', icon: '💊' },
   { to: '/inventory/browse', label: '在庫参照', icon: '🔍' },
   { to: '/matching', label: 'マッチング', icon: '🔄' },
-  { to: '/proposals', label: '提案一覧', icon: '📋' },
+  { to: '/proposals', label: 'マッチング一覧', icon: '📋' },
   { to: '/exchange-history', label: '交換履歴', icon: '📜' },
   { to: '/pharmacies', label: '薬局一覧', icon: '🏥' },
 ];

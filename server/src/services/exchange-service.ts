@@ -187,11 +187,11 @@ export async function acceptProposal(proposalId: number, pharmacyId: number): Pr
     .where(eq(exchangeProposals.id, proposalId))
     .limit(1);
 
-  if (!proposal) throw new Error('提案が見つかりません');
+  if (!proposal) throw new Error('マッチングが見つかりません');
 
   const isA = proposal.pharmacyAId === pharmacyId;
   const isB = proposal.pharmacyBId === pharmacyId;
-  if (!isA && !isB) throw new Error('この提案にアクセスする権限がありません');
+  if (!isA && !isB) throw new Error('このマッチングにアクセスする権限がありません');
 
   let newStatus: string;
 
@@ -202,7 +202,7 @@ export async function acceptProposal(proposalId: number, pharmacyId: number): Pr
   } else if (proposal.status === 'accepted_b' && isA) {
     newStatus = 'confirmed';
   } else {
-    throw new Error('この提案は現在承認できる状態ではありません');
+    throw new Error('この仮マッチングは現在承認できる状態ではありません');
   }
 
   await db.update(exchangeProposals)
@@ -218,10 +218,10 @@ export async function rejectProposal(proposalId: number, pharmacyId: number): Pr
     .where(eq(exchangeProposals.id, proposalId))
     .limit(1);
 
-  if (!proposal) throw new Error('提案が見つかりません');
+  if (!proposal) throw new Error('マッチングが見つかりません');
 
   const isParty = proposal.pharmacyAId === pharmacyId || proposal.pharmacyBId === pharmacyId;
-  if (!isParty) throw new Error('この提案にアクセスする権限がありません');
+  if (!isParty) throw new Error('このマッチングにアクセスする権限がありません');
 
   await db.update(exchangeProposals)
     .set({ status: 'rejected' })
@@ -235,11 +235,11 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
       .where(eq(exchangeProposals.id, proposalId))
       .limit(1);
 
-    if (!proposal) throw new Error('提案が見つかりません');
-    if (proposal.status !== 'confirmed') throw new Error('この提案はまだ確定されていません');
+    if (!proposal) throw new Error('マッチングが見つかりません');
+    if (proposal.status !== 'confirmed') throw new Error('このマッチングはまだ確定されていません');
 
     const isParty = proposal.pharmacyAId === pharmacyId || proposal.pharmacyBId === pharmacyId;
-    if (!isParty) throw new Error('この提案にアクセスする権限がありません');
+    if (!isParty) throw new Error('このマッチングにアクセスする権限がありません');
 
     const items = await tx.select({
       deadStockItemId: exchangeProposalItems.deadStockItemId,

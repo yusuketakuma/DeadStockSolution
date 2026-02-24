@@ -46,7 +46,7 @@ describe('ProposalsPage', () => {
     renderWithProviders(<ProposalsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('交換提案一覧')).toBeInTheDocument();
+      expect(screen.getByText('マッチング一覧')).toBeInTheDocument();
     });
   });
 
@@ -62,7 +62,7 @@ describe('ProposalsPage', () => {
     renderWithProviders(<ProposalsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('交換提案はまだありません。')).toBeInTheDocument();
+      expect(screen.getByText('マッチング履歴はまだありません。')).toBeInTheDocument();
     });
   });
 
@@ -129,7 +129,7 @@ describe('ProposalsPage', () => {
     renderWithProviders(<ProposalsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('提案中')).toBeInTheDocument();
+      expect(screen.getByText('仮マッチング中')).toBeInTheDocument();
     });
   });
 
@@ -183,7 +183,7 @@ describe('ProposalsPage', () => {
     });
     expect(screen.getByText('相手薬局')).toBeInTheDocument();
     expect(screen.getByText('ステータス')).toBeInTheDocument();
-    expect(screen.getByText('提案日')).toBeInTheDocument();
+    expect(screen.getByText('開始日')).toBeInTheDocument();
   });
 });
 

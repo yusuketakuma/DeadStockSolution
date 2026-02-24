@@ -24,9 +24,9 @@ interface ProposalsResponse {
 }
 
 const STATUS_LABELS: Record<string, { label: string; variant: string }> = {
-  proposed: { label: '提案中', variant: 'primary' },
-  accepted_a: { label: 'A承認済', variant: 'info' },
-  accepted_b: { label: 'B承認済', variant: 'info' },
+  proposed: { label: '仮マッチング中', variant: 'warning' },
+  accepted_a: { label: '仮マッチング中（A承認済）', variant: 'info' },
+  accepted_b: { label: '仮マッチング中（B承認済）', variant: 'info' },
   confirmed: { label: '確定', variant: 'success' },
   completed: { label: '完了', variant: 'secondary' },
   rejected: { label: '拒否', variant: 'danger' },
@@ -48,9 +48,9 @@ export default function ProposalsPage() {
 
   return (
     <div>
-      <h4 className="page-title mb-3">交換提案一覧</h4>
+      <h4 className="page-title mb-3">マッチング一覧</h4>
       {proposals.length === 0 ? (
-        <Alert variant="secondary">交換提案はまだありません。</Alert>
+        <Alert variant="secondary">マッチング履歴はまだありません。</Alert>
       ) : (
         <div className="table-responsive">
           <Table striped hover className="mobile-table">
@@ -62,7 +62,7 @@ export default function ProposalsPage() {
                 <th className="mobile-hide">A側薬価</th>
                 <th className="mobile-hide">B側薬価</th>
                 <th className="mobile-hide">差額</th>
-                <th>提案日</th>
+                <th>開始日</th>
                 <th></th>
               </tr>
             </thead>

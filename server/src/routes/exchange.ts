@@ -18,6 +18,7 @@ function isProposalInputError(message: string): boolean {
     '見つかりません',
     '在庫',
     '薬局',
+    'マッチング',
     '提案',
     '交換金額',
     '数量',
@@ -48,14 +49,14 @@ router.post('/proposals', async (req: AuthRequest, res: Response) => {
     }
 
     const proposalId = await createProposal(req.user!.id, candidate);
-    res.status(201).json({ proposalId, message: '交換提案を送信しました' });
+    res.status(201).json({ proposalId, message: '仮マッチングを開始しました' });
   } catch (err) {
     console.error('Create proposal error:', err);
     if (err instanceof Error && isProposalInputError(err.message)) {
       res.status(400).json({ error: err.message });
       return;
     }
-    res.status(500).json({ error: '提案の作成に失敗しました' });
+    res.status(500).json({ error: '仮マッチングの作成に失敗しました' });
   }
 });
 
@@ -114,7 +115,7 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
     });
   } catch (err) {
     console.error('List proposals error:', err);
-    res.status(500).json({ error: '提案一覧の取得に失敗しました' });
+    res.status(500).json({ error: 'マッチング一覧の取得に失敗しました' });
   }
 });
 
@@ -134,7 +135,7 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       .limit(1);
 
     if (!proposal) {
-      res.status(404).json({ error: '提案が見つかりません' });
+      res.status(404).json({ error: 'マッチングが見つかりません' });
       return;
     }
 
@@ -179,7 +180,7 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
     });
   } catch (err) {
     console.error('Proposal detail error:', err);
-    res.status(500).json({ error: '提案詳細の取得に失敗しました' });
+    res.status(500).json({ error: 'マッチング詳細の取得に失敗しました' });
   }
 });
 
@@ -244,7 +245,8 @@ router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => 
       return;
     }
     const newStatus = await acceptProposal(id, req.user!.id);
-    res.json({ message: '提案を承認しました', status: newStatus });
+    const msg = newStatus === 'confirmed' ? '仮マッチングが確定しました' : '仮マッチングを承認しました（相手薬局の承認待ち）';
+    res.json({ message: msg, status: newStatus });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : '承認に失敗しました' });
   }
@@ -259,7 +261,7 @@ router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => 
       return;
     }
     await rejectProposal(id, req.user!.id);
-    res.json({ message: '提案を拒否しました' });
+    res.json({ message: '仮マッチングを拒否しました' });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : '拒否に失敗しました' });
   }
