@@ -9,6 +9,7 @@ import { validateRegistration, validateLogin } from '../utils/validators';
 import { postalCodeToCoordinates } from '../utils/postal-code';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
+import { writeLog, getClientIp } from '../services/log-service';
 
 const router = Router();
 const isTestAccountLoginEnabled = process.env.ENABLE_TEST_ACCOUNT_LOGIN !== 'false';
@@ -88,6 +89,8 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       maxAge: 24 * 60 * 60 * 1000,
     });
 
+    writeLog('register', { pharmacyId, detail: `新規登録: ${name}`, ipAddress: getClientIp(req) });
+
     res.status(201).json({
       id: pharmacyId,
       email,
@@ -129,6 +132,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
 
     const valid = await verifyPassword(password, pharmacy.passwordHash);
     if (!valid) {
+      writeLog('login_failed', { detail: `ログイン失敗: ${email}`, ipAddress: getClientIp(req) });
       res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
       return;
     }
@@ -145,6 +149,9 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000,
     });
+
+    const logAction = pharmacy.isAdmin ? 'admin_login' as const : 'login' as const;
+    writeLog(logAction, { pharmacyId: pharmacy.id, detail: `ログイン: ${pharmacy.name}`, ipAddress: getClientIp(req) });
 
     res.json({
       id: pharmacy.id,
@@ -187,6 +194,8 @@ router.post('/test-login', loginLimiter, async (req: AuthRequest, res: Response)
       maxAge: 24 * 60 * 60 * 1000,
     });
 
+    writeLog('test_login', { pharmacyId: user.id, detail: `テストログイン: ${key}`, ipAddress: getClientIp(req) });
+
     res.json(user);
   } catch (err) {
     console.error('Test login error:', err);
@@ -194,7 +203,7 @@ router.post('/test-login', loginLimiter, async (req: AuthRequest, res: Response)
   }
 });
 
-router.post('/logout', (_req: AuthRequest, res: Response) => {
+router.post('/logout', (req: AuthRequest, res: Response) => {
   res.clearCookie('token');
   res.json({ message: 'ログアウトしました' });
 });

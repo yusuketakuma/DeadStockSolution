@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LoginPage from '../../pages/LoginPage';
-import { renderWithProviders, mockUser } from '../helpers';
+import { renderWithProviders, mockUser, mockAdminUser } from '../helpers';
 
 /** Find an input field by the label text in the same form group */
 function getInputByLabel(labelText: string): HTMLInputElement {
@@ -38,13 +38,17 @@ describe('LoginPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the login form with all required elements', async () => {
+  it('renders the login form with tabs', async () => {
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
       expect(screen.getByText('薬局不動在庫交換システム')).toBeInTheDocument();
     });
+    // Tab navigation
+    expect(screen.getByText('薬局ログイン')).toBeInTheDocument();
+    expect(screen.getByText('管理者ログイン')).toBeInTheDocument();
+    // Default tab is user login
     expect(screen.getByRole('heading', { level: 5 })).toHaveTextContent('ログイン');
     expect(screen.getByText('メールアドレス')).toBeInTheDocument();
     expect(screen.getByText('パスワード')).toBeInTheDocument();
@@ -54,7 +58,7 @@ describe('LoginPage', () => {
     expect(screen.getByText('新規登録はこちら')).toBeInTheDocument();
   });
 
-  it('renders test account login buttons', async () => {
+  it('renders test account login buttons in user mode', async () => {
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
 
@@ -63,6 +67,31 @@ describe('LoginPage', () => {
     });
     expect(screen.getByText('テスト薬局（東京）')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局2号店（大阪）')).toBeInTheDocument();
+  });
+
+  it('switches to admin login tab', async () => {
+    const user = userEvent.setup();
+    mockUnauthFetch();
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByText('管理者ログイン')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('管理者ログイン'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 5 })).toHaveTextContent('管理者ログイン');
+    });
+    // Admin tab shows admin login submit button
+    const submitBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
+    expect(submitBtn).toBeTruthy();
+    expect(submitBtn.textContent).toBe('管理者ログイン');
+    // Test accounts and register link should NOT be visible
+    expect(screen.queryByText('テストアカウントでログイン')).not.toBeInTheDocument();
+    expect(screen.queryByText('新規登録はこちら')).not.toBeInTheDocument();
+    // Admin mode hint
+    expect(screen.getByText('管理者アカウントでログインしてください。')).toBeInTheDocument();
   });
 
   it('shows error message when login fails', async () => {
@@ -190,7 +219,7 @@ describe('LoginPage', () => {
     });
   });
 
-  it('has link to registration page', async () => {
+  it('has link to registration page in user mode', async () => {
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
 
@@ -207,6 +236,53 @@ describe('LoginPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/本システムは業務補助ツールであり/)).toBeInTheDocument();
+    });
+  });
+
+  it('shows error when non-admin tries admin login', async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/login')) {
+        return new Response(JSON.stringify({ ...mockUser, isAdmin: false }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByText('管理者ログイン')).toBeInTheDocument();
+    });
+
+    // Switch to admin tab
+    await user.click(screen.getByText('管理者ログイン'));
+
+    await waitFor(() => {
+      const submitBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
+      expect(submitBtn).toBeTruthy();
+      expect(submitBtn.textContent).toBe('管理者ログイン');
+    });
+
+    await user.type(getInputByLabel('メールアドレス'), 'user@example.com');
+    await user.type(getInputByLabel('パスワード'), 'password123');
+    await user.click(document.querySelector('button[type="submit"]') as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(screen.getByText('管理者権限がありません')).toBeInTheDocument();
     });
   });
 });

@@ -171,3 +171,19 @@ export const adminMessageReads = pgTable('admin_message_reads', {
   idxAdminMessageReadsUnique: uniqueIndex('idx_admin_message_reads_unique')
     .on(table.messageId, table.pharmacyId),
 }));
+
+export const activityLogs = pgTable('activity_logs', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').references(() => pharmacies.id),
+  action: text('action').notNull(),
+  detail: text('detail'),
+  ipAddress: text('ip_address'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxActivityLogsCreatedAt: index('idx_activity_logs_created_at')
+    .on(table.createdAt),
+  idxActivityLogsPharmacyCreated: index('idx_activity_logs_pharmacy_created')
+    .on(table.pharmacyId, table.createdAt),
+  idxActivityLogsAction: index('idx_activity_logs_action')
+    .on(table.action, table.createdAt),
+}));

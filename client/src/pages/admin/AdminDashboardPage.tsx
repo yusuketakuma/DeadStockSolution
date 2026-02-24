@@ -133,6 +133,15 @@ export default function AdminDashboardPage() {
             </Card.Body>
           </Card>
         </Col>
+        <Col md={4} xl={3}>
+          <Card className="text-center h-100">
+            <Card.Body>
+              <Card.Title className="display-6">{stats?.totalUploads ?? '-'}</Card.Title>
+              <Card.Text>アップロード件数</Card.Text>
+              <Link to="/admin/logs" className="btn btn-sm btn-outline-secondary mt-2">操作ログを見る</Link>
+            </Card.Body>
+          </Card>
+        </Col>
       </Row>
 
       {message && <Alert variant="success" onClose={() => setMessage('')} dismissible>{message}</Alert>}

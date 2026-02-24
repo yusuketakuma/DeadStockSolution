@@ -19,6 +19,7 @@ import PharmacyListPage from './pages/PharmacyListPage';
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import AdminPharmaciesPage from './pages/admin/AdminPharmaciesPage';
 import AdminExchangesPage from './pages/admin/AdminExchangesPage';
+import AdminLogsPage from './pages/admin/AdminLogsPage';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -76,6 +77,9 @@ function AppRoutes() {
       } />
       <Route path="/admin/exchanges" element={
         <ProtectedRoute adminOnly><Layout><AdminExchangesPage /></Layout></ProtectedRoute>
+      } />
+      <Route path="/admin/logs" element={
+        <ProtectedRoute adminOnly><Layout><AdminLogsPage /></Layout></ProtectedRoute>
       } />
 
       <Route path="*" element={<Navigate to="/" />} />

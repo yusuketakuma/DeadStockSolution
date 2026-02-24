@@ -55,14 +55,24 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </Nav.Link>
         ))}
         {user?.isAdmin && (
-          <Nav.Link
-            href="/admin"
-            className={`sidebar-link${isActive('/admin') ? ' active' : ''}`}
-            onClick={handleNav('/admin')}
-          >
-            <span className="sidebar-icon">⚙️</span>
-            管理者
-          </Nav.Link>
+          <>
+            <Nav.Link
+              href="/admin"
+              className={`sidebar-link${isActive('/admin') ? ' active' : ''}`}
+              onClick={handleNav('/admin')}
+            >
+              <span className="sidebar-icon">⚙️</span>
+              管理者
+            </Nav.Link>
+            <Nav.Link
+              href="/admin/logs"
+              className={`sidebar-link${location.pathname === '/admin/logs' ? ' active' : ''}`}
+              onClick={handleNav('/admin/logs')}
+            >
+              <span className="sidebar-icon">📝</span>
+              操作ログ
+            </Nav.Link>
+          </>
         )}
       </Nav>
 
