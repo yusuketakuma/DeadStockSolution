@@ -13,6 +13,8 @@
     "test": "npm run test --workspace=server && npm run test --workspace=client",
     "test:server": "npm run test --workspace=server",
     "test:client": "npm run test --workspace=client",
-    "test:e2e": "npm run test --workspace=client"
+    "test:e2e": "npm run test --workspace=client",
+    "deploy:preview": "sh scripts/vercel-deploy-preview.sh",
+    "deploy:prod": "sh scripts/vercel-deploy-prod.sh"
   }
 }

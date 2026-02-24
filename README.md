@@ -24,3 +24,41 @@ npm run db:migrate:legacy --workspace=server
 ```
 
 `LEGACY_MIGRATION_MODE=replace` を設定すると、移行前にPostgres側テーブルを初期化します（既定は `append`）。
+
+## 環境変数（認証・テスト薬局）
+
+- `CORS_ORIGINS`: 許可するオリジンをカンマ区切りで指定（本番必須）
+- `ENABLE_TEST_PHARMACY_ACCOUNTS`: `false` でテスト薬局シードを無効化
+- `TEST_ACCOUNT_PASSWORD`: テスト薬局の共通パスワード（8文字以上必須）
+- `DRUG_MASTER_AUTO_SYNC`: `true` で医薬品マスター自動取得を有効化
+- `DRUG_MASTER_SOURCE_URL`: 医薬品マスター取得元URL（HTTPS）
+- `DRUG_MASTER_CHECK_INTERVAL_HOURS`: 自動取得の確認間隔（時間）
+- `DRUG_PACKAGE_AUTO_SYNC`: `true` で包装単位マスター自動取得を有効化
+- `DRUG_PACKAGE_SOURCE_URL`: 包装単位取得元URL（HTTPS、CSV/XLSX/XML/ZIP）
+- `DRUG_PACKAGE_CHECK_INTERVAL_HOURS`: 包装単位自動取得の確認間隔（時間）
+- `DRUG_PACKAGE_SOURCE_AUTHORIZATION`: 取得元に認証ヘッダーが必要な場合に指定（任意）
+- `DRUG_PACKAGE_SOURCE_COOKIE`: 取得元にCookieが必要な場合に指定（任意）
+
+## 包装単位マスター（公的ソース）
+
+- 包装単位（販売包装単位コード/JAN/HOT/包装単位）は PMDA の添付文書情報XMLで配信されます。
+  - PMDA（添付文書情報XMLのダウンロードサービス案内）: https://www.pmda.go.jp/safety/info-services/drugs/medicines-information/medicines-information-attached/0002.html
+  - 厚労省（薬価基準収載品目リスト）: https://www.mhlw.go.jp/topics/2025/04/tp20250401-01.html
+- 本システムは `DRUG_PACKAGE_SOURCE_URL` に設定した公的データURLを定期監視し、自動で取り込みます。
+- PMDA配信URLに認証が必要な場合は `DRUG_PACKAGE_SOURCE_AUTHORIZATION` / `DRUG_PACKAGE_SOURCE_COOKIE` で付与できます。
+- 管理画面から手動トリガーも可能です。
+
+## Vercel / Neon Preview運用
+
+- Vercelの自動デプロイは `main` / `preview` のみ許可しています（`vercel.json` の `git.deploymentEnabled`）。
+- featureブランチのGit pushでは自動デプロイされません。
+- CLI実行時の誤爆防止として、以下スクリプトはブランチを強制チェックします。
+  - `npm run deploy:preview`（`preview` ブランチのみ）
+  - `npm run deploy:prod`（`main` ブランチのみ）
+- Neon連携時は `DRUG_PACKAGE_SOURCE_URL` などの環境変数を Vercel Project Settings に設定し、Preview環境で分離DBを利用してください。
+
+## 営業時間設定
+
+- 通常営業時間（曜日別）に加えて、特例営業時間を登録できます。
+- 特例営業時間は `祝日休業 / 大型連休休業 / 臨時休業 / 特別営業時間` をサポートします。
+- 特例営業時間は同日の通常営業時間より優先して判定されます。

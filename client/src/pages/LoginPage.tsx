@@ -4,8 +4,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const TEST_ACCOUNTS = [
-  { label: 'テスト薬局（東京）', email: 'test@example.com', password: 'test1234' },
-  { label: 'テスト薬局2号店（大阪）', email: 'test2@example.com', password: 'test1234' },
+  { label: 'テスト薬局（東京）', email: 'test@example.com' },
+  { label: 'テスト薬局2号店（大阪）', email: 'test2@example.com' },
 ];
 
 export default function LoginPage() {
@@ -14,8 +14,9 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<'user' | 'admin'>('user');
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const navigate = useNavigate();
+  const showTestAccountHelper = !import.meta.env.PROD || import.meta.env.MODE === 'test';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -25,6 +26,11 @@ export default function LoginPage() {
       const user = await login(email, password);
       if (mode === 'admin') {
         if (!user.isAdmin) {
+          try {
+            await logout();
+          } catch {
+            // ignore
+          }
           setError('管理者権限がありません');
           return;
         }
@@ -39,17 +45,10 @@ export default function LoginPage() {
     }
   };
 
-  const handleTestLogin = async (account: { email: string; password: string }) => {
+  const handleTestLogin = (account: { email: string }) => {
     setError('');
-    setLoading(true);
-    try {
-      await login(account.email, account.password);
-      navigate('/');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'ログインに失敗しました');
-    } finally {
-      setLoading(false);
-    }
+    setEmail(account.email);
+    setPassword('');
   };
 
   const switchMode = (newMode: 'user' | 'admin') => {
@@ -117,21 +116,28 @@ export default function LoginPage() {
                 <Link to="/register">新規登録はこちら</Link>
               </div>
 
-              <hr />
-              <p className="text-muted small text-center mb-2">テストアカウントでログイン</p>
-              <div className="d-grid gap-2">
-                {TEST_ACCOUNTS.map((account) => (
-                  <Button
-                    key={account.email}
-                    variant="outline-secondary"
-                    size="sm"
-                    disabled={loading}
-                    onClick={() => handleTestLogin(account)}
-                  >
-                    {account.label}
-                  </Button>
-                ))}
-              </div>
+              {showTestAccountHelper && (
+                <>
+                  <hr />
+                  <p className="text-muted small text-center mb-2">テストアカウント（メール入力補助）</p>
+                  <div className="d-grid gap-2">
+                    {TEST_ACCOUNTS.map((account) => (
+                      <Button
+                        key={account.email}
+                        variant="outline-secondary"
+                        size="sm"
+                        disabled={loading}
+                        onClick={() => handleTestLogin(account)}
+                      >
+                        {account.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-muted small text-center mt-2 mb-0">
+                    メールを選択後、共通パスワードを入力してください。
+                  </p>
+                </>
+              )}
             </>
           )}
 

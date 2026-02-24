@@ -3,12 +3,8 @@ import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword } from './auth-service';
 
-export type TestAccountKey = 'tokyo' | 'osaka';
-
 interface TestAccountDefinition {
-  key: TestAccountKey;
   email: string;
-  password: string;
   name: string;
   postalCode: string;
   address: string;
@@ -30,9 +26,7 @@ interface EnsuredTestAccount {
 
 const TEST_ACCOUNTS: TestAccountDefinition[] = [
   {
-    key: 'tokyo',
     email: 'test@example.com',
-    password: 'test1234',
     name: 'テスト薬局',
     postalCode: '1000001',
     address: '東京都千代田区千代田1-1',
@@ -44,9 +38,7 @@ const TEST_ACCOUNTS: TestAccountDefinition[] = [
     longitude: 139.6503,
   },
   {
-    key: 'osaka',
     email: 'test2@example.com',
-    password: 'test1234',
     name: 'テスト薬局2号店',
     postalCode: '5300001',
     address: '大阪府大阪市北区梅田1-1',
@@ -59,12 +51,19 @@ const TEST_ACCOUNTS: TestAccountDefinition[] = [
   },
 ];
 
-export function getTestAccountByKey(key: string): TestAccountDefinition | null {
-  return TEST_ACCOUNTS.find((account) => account.key === key) ?? null;
-}
-
 export function getAllTestAccounts(): TestAccountDefinition[] {
   return [...TEST_ACCOUNTS];
+}
+
+function resolveTestAccountPassword(): string {
+  const configured = process.env.TEST_ACCOUNT_PASSWORD?.trim();
+  if (configured) {
+    if (configured.length < 8) {
+      throw new Error('TEST_ACCOUNT_PASSWORD must be at least 8 characters');
+    }
+    return configured;
+  }
+  throw new Error('TEST_ACCOUNT_PASSWORD is required');
 }
 
 async function findExistingPharmacy(account: TestAccountDefinition): Promise<EnsuredTestAccount | null> {
@@ -102,7 +101,7 @@ export async function ensureTestAccount(account: TestAccountDefinition): Promise
     return existing;
   }
 
-  const passwordHash = await hashPassword(account.password);
+  const passwordHash = await hashPassword(resolveTestAccountPassword());
   const [created] = await db.insert(pharmacies).values({
     email: account.email,
     passwordHash,

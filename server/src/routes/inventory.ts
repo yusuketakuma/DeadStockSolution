@@ -1,7 +1,14 @@
 import { Router, Response } from 'express';
 import { eq, and, or, like, desc, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../config/database';
-import { deadStockItems, usedMedicationItems, pharmacies, pharmacyBusinessHours, pharmacyRelationships } from '../db/schema';
+import {
+  deadStockItems,
+  usedMedicationItems,
+  pharmacies,
+  pharmacyBusinessHours,
+  pharmacySpecialHours,
+  pharmacyRelationships,
+} from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
@@ -144,6 +151,7 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       drugName: deadStockItems.drugName,
       quantity: deadStockItems.quantity,
       unit: deadStockItems.unit,
+      packageLabel: deadStockItems.packageLabel,
       yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
       yakkaTotal: deadStockItems.yakkaTotal,
       expirationDate: deadStockItems.expirationDate,
@@ -159,18 +167,35 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
 
     // Fetch business hours for pharmacies in results
     const pharmacyIds = [...new Set(items.map((i) => i.pharmacyId))];
-    const allHours = pharmacyIds.length > 0
-      ? await db.select({
-        pharmacyId: pharmacyBusinessHours.pharmacyId,
-        dayOfWeek: pharmacyBusinessHours.dayOfWeek,
-        openTime: pharmacyBusinessHours.openTime,
-        closeTime: pharmacyBusinessHours.closeTime,
-        isClosed: pharmacyBusinessHours.isClosed,
-        is24Hours: pharmacyBusinessHours.is24Hours,
-      })
-        .from(pharmacyBusinessHours)
-        .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds))
-      : [];
+    const [allHours, allSpecialHours] = pharmacyIds.length > 0
+      ? await Promise.all([
+        db.select({
+          pharmacyId: pharmacyBusinessHours.pharmacyId,
+          dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+          openTime: pharmacyBusinessHours.openTime,
+          closeTime: pharmacyBusinessHours.closeTime,
+          isClosed: pharmacyBusinessHours.isClosed,
+          is24Hours: pharmacyBusinessHours.is24Hours,
+        })
+          .from(pharmacyBusinessHours)
+          .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds)),
+        db.select({
+          pharmacyId: pharmacySpecialHours.pharmacyId,
+          id: pharmacySpecialHours.id,
+          specialType: pharmacySpecialHours.specialType,
+          startDate: pharmacySpecialHours.startDate,
+          endDate: pharmacySpecialHours.endDate,
+          openTime: pharmacySpecialHours.openTime,
+          closeTime: pharmacySpecialHours.closeTime,
+          isClosed: pharmacySpecialHours.isClosed,
+          is24Hours: pharmacySpecialHours.is24Hours,
+          note: pharmacySpecialHours.note,
+          updatedAt: pharmacySpecialHours.updatedAt,
+        })
+          .from(pharmacySpecialHours)
+          .where(inArray(pharmacySpecialHours.pharmacyId, pharmacyIds)),
+      ])
+      : [[], []];
 
     const hoursByPharmacy = new Map<number, typeof allHours>();
     for (const h of allHours) {
@@ -178,11 +203,18 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       list.push(h);
       hoursByPharmacy.set(h.pharmacyId, list);
     }
+    const specialHoursByPharmacy = new Map<number, typeof allSpecialHours>();
+    for (const h of allSpecialHours) {
+      const list = specialHoursByPharmacy.get(h.pharmacyId) ?? [];
+      list.push(h);
+      specialHoursByPharmacy.set(h.pharmacyId, list);
+    }
 
     const now = new Date();
     const enrichedItems = items.map(({ pharmacyId, ...item }) => {
       const hours = hoursByPharmacy.get(pharmacyId) ?? [];
-      const status = getBusinessHoursStatus(hours, now);
+      const specialHours = specialHoursByPharmacy.get(pharmacyId) ?? [];
+      const status = getBusinessHoursStatus(hours, specialHours, now);
       return { ...item, businessStatus: status };
     });
 

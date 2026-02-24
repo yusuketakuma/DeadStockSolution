@@ -1,11 +1,12 @@
 import 'dotenv/config';
 import app from './app';
 import { startDrugMasterScheduler, stopDrugMasterScheduler } from './services/drug-master-scheduler';
+import { startDrugPackageScheduler, stopDrugPackageScheduler } from './services/drug-package-scheduler';
 import { seedTestAccounts } from './services/test-account-service';
 
 const PORT = Number(process.env.PORT) || 3001;
 const SHUTDOWN_TIMEOUT_MS = 10000;
-const shouldSeedTestAccounts = process.env.NODE_ENV !== 'production';
+const shouldSeedTestAccounts = process.env.ENABLE_TEST_PHARMACY_ACCOUNTS !== 'false';
 
 const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
@@ -22,6 +23,7 @@ const server = app.listen(PORT, () => {
 
   // 医薬品マスター自動同期スケジューラを開始
   startDrugMasterScheduler();
+  startDrugPackageScheduler();
 });
 
 function gracefulShutdown(signal: NodeJS.Signals): void {
@@ -29,6 +31,7 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
 
   // 医薬品マスター自動同期スケジューラを停止
   stopDrugMasterScheduler();
+  stopDrugPackageScheduler();
 
   const forceCloseTimer = setTimeout(() => {
     console.error('Graceful shutdown timed out. Forcing exit.');

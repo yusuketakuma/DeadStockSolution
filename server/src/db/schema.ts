@@ -3,6 +3,7 @@ import {
   pgTable,
   serial,
   text,
+  date,
   integer,
   real,
   numeric,
@@ -28,6 +29,12 @@ export const exchangeStatusEnum = pgEnum('exchange_status_enum', [
 export const adminMessageTargetTypeEnum = pgEnum('admin_message_target_type_enum', ['all', 'pharmacy']);
 export const drugMasterSyncStatusEnum = pgEnum('drug_master_sync_status_enum', ['running', 'success', 'failed', 'partial']);
 export const drugMasterRevisionTypeEnum = pgEnum('drug_master_revision_type_enum', ['price_revision', 'new_listing', 'delisting', 'transition']);
+export const specialBusinessHoursTypeEnum = pgEnum('special_business_hours_type_enum', [
+  'holiday_closed',
+  'long_holiday_closed',
+  'temporary_closed',
+  'special_open',
+]);
 
 export const pharmacies = pgTable('pharmacies', {
   id: serial('id').primaryKey(),
@@ -71,6 +78,8 @@ export const deadStockItems = pgTable('dead_stock_items', {
   drugCode: text('drug_code'),
   drugName: text('drug_name').notNull(),
   drugMasterId: integer('drug_master_id'),
+  drugMasterPackageId: integer('drug_master_package_id'),
+  packageLabel: text('package_label'),
   quantity: real('quantity').notNull(),
   unit: text('unit'),
   yakkaUnitPrice: numeric('yakka_unit_price', { precision: 12, scale: 2 }),
@@ -86,6 +95,8 @@ export const deadStockItems = pgTable('dead_stock_items', {
     .on(table.isAvailable, table.drugName),
   idxDeadStockDrugMasterId: index('idx_dead_stock_drug_master_id')
     .on(table.drugMasterId),
+  idxDeadStockDrugMasterPackageId: index('idx_dead_stock_drug_master_package_id')
+    .on(table.drugMasterPackageId),
   chkQuantityPositive: check('chk_dead_stock_quantity', sql`${table.quantity} > 0`),
   chkYakkaUnitPriceNonNeg: check('chk_dead_stock_yakka_price', sql`${table.yakkaUnitPrice} IS NULL OR ${table.yakkaUnitPrice} >= 0`),
 }));
@@ -97,6 +108,8 @@ export const usedMedicationItems = pgTable('used_medication_items', {
   drugCode: text('drug_code'),
   drugName: text('drug_name').notNull(),
   drugMasterId: integer('drug_master_id'),
+  drugMasterPackageId: integer('drug_master_package_id'),
+  packageLabel: text('package_label'),
   monthlyUsage: real('monthly_usage'),
   unit: text('unit'),
   yakkaUnitPrice: numeric('yakka_unit_price', { precision: 12, scale: 2 }),
@@ -106,6 +119,8 @@ export const usedMedicationItems = pgTable('used_medication_items', {
     .on(table.pharmacyId, table.createdAt),
   idxUsedMedDrugMasterId: index('idx_used_med_drug_master_id')
     .on(table.drugMasterId),
+  idxUsedMedDrugMasterPackageId: index('idx_used_med_drug_master_package_id')
+    .on(table.drugMasterPackageId),
   chkYakkaUnitPriceNonNeg: check('chk_used_med_yakka_price', sql`${table.yakkaUnitPrice} IS NULL OR ${table.yakkaUnitPrice} >= 0`),
 }));
 
@@ -219,6 +234,26 @@ export const pharmacyBusinessHours = pgTable('pharmacy_business_hours', {
   chkDayOfWeek: check('chk_day_of_week', sql`${table.dayOfWeek} >= 0 AND ${table.dayOfWeek} <= 6`),
 }));
 
+export const pharmacySpecialHours = pgTable('pharmacy_special_hours', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  specialType: specialBusinessHoursTypeEnum('special_type').notNull(),
+  startDate: date('start_date', { mode: 'string' }).notNull(),
+  endDate: date('end_date', { mode: 'string' }).notNull(),
+  openTime: text('open_time'),
+  closeTime: text('close_time'),
+  isClosed: boolean('is_closed').notNull().default(true),
+  is24Hours: boolean('is_24_hours').notNull().default(false),
+  note: text('note'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxSpecialHoursPharmacyDate: index('idx_special_hours_pharmacy_date')
+    .on(table.pharmacyId, table.startDate, table.endDate),
+  chkSpecialHoursDateRange: check('chk_special_hours_date_range', sql`${table.startDate} <= ${table.endDate}`),
+  chkSpecialHoursFlags: check('chk_special_hours_flags', sql`NOT (${table.isClosed} = true AND ${table.is24Hours} = true)`),
+}));
+
 // ── 医薬品マスター ──────────────────────────────────────
 
 export const drugMaster = pgTable('drug_master', {
@@ -254,6 +289,9 @@ export const drugMasterPackages = pgTable('drug_master_packages', {
   packageDescription: text('package_description'), // 例: 100錠(10錠×10)PTP
   packageQuantity: real('package_quantity'),
   packageUnit: text('package_unit'),
+  normalizedPackageLabel: text('normalized_package_label'),
+  packageForm: text('package_form'),
+  isLoosePackage: boolean('is_loose_package').notNull().default(false),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
@@ -261,6 +299,7 @@ export const drugMasterPackages = pgTable('drug_master_packages', {
   idxDrugPackagesGs1: index('idx_drug_packages_gs1').on(table.gs1Code),
   idxDrugPackagesJan: index('idx_drug_packages_jan').on(table.janCode),
   idxDrugPackagesHot: index('idx_drug_packages_hot').on(table.hotCode),
+  idxDrugPackagesNormalizedLabel: index('idx_drug_packages_normalized_label').on(table.normalizedPackageLabel),
 }));
 
 export const drugMasterPriceHistory = pgTable('drug_master_price_history', {

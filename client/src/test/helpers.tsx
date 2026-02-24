@@ -13,8 +13,13 @@ interface WrapperOptions {
 function createWrapper(options: WrapperOptions = {}) {
   const { route = '/', routerProps } = options;
   return function Wrapper({ children }: { children: React.ReactNode }) {
+    const mergedRouterProps: MemoryRouterProps = {
+      future: { v7_startTransition: true, v7_relativeSplatPath: true },
+      ...routerProps,
+    };
+
     return (
-      <MemoryRouter initialEntries={[route]} {...routerProps}>
+      <MemoryRouter initialEntries={[route]} {...mergedRouterProps}>
         <AuthProvider>
           {children}
         </AuthProvider>

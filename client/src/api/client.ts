@@ -1,5 +1,12 @@
 const API_BASE = '/api';
 const REQUEST_TIMEOUT_MS = 30000;
+const CSRF_EXEMPT_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/password-reset/request',
+  '/auth/password-reset/confirm',
+  '/auth/csrf-token',
+];
 
 interface ApiOptions {
   method?: string;
@@ -26,9 +33,49 @@ class ApiError extends Error {
 
 type AuthExpiredHandler = () => void;
 let onAuthExpired: AuthExpiredHandler | null = null;
+let csrfTokenCache: string | null = null;
+let csrfTokenPromise: Promise<string> | null = null;
 
 export function setAuthExpiredHandler(handler: AuthExpiredHandler): void {
   onAuthExpired = handler;
+}
+
+function requiresCsrf(method: string, path: string): boolean {
+  if (import.meta.env.MODE === 'test') {
+    return false;
+  }
+  const upperMethod = method.toUpperCase();
+  const isSafeMethod = upperMethod === 'GET' || upperMethod === 'HEAD' || upperMethod === 'OPTIONS';
+  if (isSafeMethod) return false;
+  return !CSRF_EXEMPT_PATHS.some((prefix) => path.startsWith(prefix));
+}
+
+async function requestCsrfToken(timeout: number): Promise<string> {
+  const response = await fetchWithTimeout(`${API_BASE}/auth/csrf-token`, {
+    method: 'GET',
+    credentials: 'include',
+  }, timeout);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new ApiError(response.status, data.error || 'CSRFトークンの取得に失敗しました', data);
+  }
+  const data = await response.json().catch(() => ({}));
+  const token = typeof data?.csrfToken === 'string' ? data.csrfToken : '';
+  if (!token) {
+    throw new ApiError(0, 'CSRFトークンの取得に失敗しました');
+  }
+  csrfTokenCache = token;
+  return token;
+}
+
+async function ensureCsrfToken(timeout: number): Promise<string> {
+  if (csrfTokenCache) return csrfTokenCache;
+  if (!csrfTokenPromise) {
+    csrfTokenPromise = requestCsrfToken(timeout).finally(() => {
+      csrfTokenPromise = null;
+    });
+  }
+  return csrfTokenPromise;
 }
 
 async function fetchWithTimeout(url: string, config: RequestInit, timeout: number): Promise<Response> {
@@ -48,6 +95,7 @@ async function fetchWithTimeout(url: string, config: RequestInit, timeout: numbe
 
 async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', body, headers = {}, timeout = REQUEST_TIMEOUT_MS } = options;
+  const shouldUseCsrf = requiresCsrf(method, path);
 
   const config: RequestInit = {
     method,
@@ -62,10 +110,24 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
     config.body = JSON.stringify(body);
   }
 
-  const response = await fetchWithTimeout(`${API_BASE}${path}`, config, timeout);
+  if (shouldUseCsrf) {
+    const csrfToken = await ensureCsrfToken(timeout);
+    (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
+  }
+
+  const doRequest = () => fetchWithTimeout(`${API_BASE}${path}`, config, timeout);
+  let response = await doRequest();
+
+  if (!response.ok && shouldUseCsrf && response.status === 403) {
+    csrfTokenCache = null;
+    const csrfToken = await ensureCsrfToken(timeout);
+    (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
+    response = await doRequest();
+  }
 
   if (!response.ok) {
     if (response.status === 401) {
+      csrfTokenCache = null;
       onAuthExpired?.();
     }
     const data = await response.json().catch(() => ({}));
@@ -76,14 +138,28 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
 }
 
 export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
-  const response = await fetchWithTimeout(`${API_BASE}${path}`, {
+  const config: RequestInit = {
     method: 'POST',
     credentials: 'include',
+    headers: {},
     body: formData,
-  }, 60000);
+  };
+  if (requiresCsrf('POST', path)) {
+    const csrfToken = await ensureCsrfToken(60000);
+    (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
+  }
+
+  let response = await fetchWithTimeout(`${API_BASE}${path}`, config, 60000);
+  if (!response.ok && response.status === 403 && requiresCsrf('POST', path)) {
+    csrfTokenCache = null;
+    const csrfToken = await ensureCsrfToken(60000);
+    (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
+    response = await fetchWithTimeout(`${API_BASE}${path}`, config, 60000);
+  }
 
   if (!response.ok) {
     if (response.status === 401) {
+      csrfTokenCache = null;
       onAuthExpired?.();
     }
     const data = await response.json().catch(() => ({}));

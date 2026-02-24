@@ -4,17 +4,15 @@ import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword, verifyPassword, generateToken } from '../services/auth-service';
-import { ensureTestAccount, getTestAccountByKey } from '../services/test-account-service';
 import { validateRegistration, validateLogin, passwordSchema } from '../utils/validators';
-import { postalCodeToCoordinates } from '../utils/postal-code';
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
+import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } from '../middleware/csrf';
 import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 
 const router = Router();
-const isTestAccountLoginEnabled = process.env.ENABLE_TEST_ACCOUNT_LOGIN !== 'false';
 const registerLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -99,6 +97,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000,
     });
+    setCsrfCookie(res, generateCsrfToken());
 
     writeLog('register', { pharmacyId, detail: `新規登録: ${name}`, ipAddress: getClientIp(req) });
 
@@ -160,6 +159,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000,
     });
+    setCsrfCookie(res, generateCsrfToken());
 
     const logAction = pharmacy.isAdmin ? 'admin_login' as const : 'login' as const;
     writeLog(logAction, { pharmacyId: pharmacy.id, detail: `ログイン: ${pharmacy.name}`, ipAddress: getClientIp(req) });
@@ -174,43 +174,6 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'ログインに失敗しました' });
-  }
-});
-
-router.post('/test-login', loginLimiter, async (req: AuthRequest, res: Response) => {
-  try {
-    if (!isTestAccountLoginEnabled) {
-      res.status(403).json({ error: 'テストログインは無効です' });
-      return;
-    }
-
-    const key = typeof req.body?.key === 'string' ? req.body.key : '';
-    const account = getTestAccountByKey(key);
-    if (!account) {
-      res.status(400).json({ error: '不正なテストアカウントです' });
-      return;
-    }
-
-    const user = await ensureTestAccount(account);
-    const token = generateToken({
-      id: user.id,
-      email: user.email,
-      isAdmin: false,
-    });
-
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000,
-    });
-
-    writeLog('test_login', { pharmacyId: user.id, detail: `テストログイン: ${key}`, ipAddress: getClientIp(req) });
-
-    res.json(user);
-  } catch (err) {
-    console.error('Test login error:', err);
-    res.status(500).json({ error: 'テストログインに失敗しました' });
   }
 });
 
@@ -274,7 +237,13 @@ router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, re
 
 router.post('/logout', (req: AuthRequest, res: Response) => {
   res.clearCookie('token');
+  clearCsrfCookie(res);
   res.json({ message: 'ログアウトしました' });
+});
+
+router.get('/csrf-token', (req: AuthRequest, res: Response) => {
+  const token = ensureCsrfCookie(req, res);
+  res.json({ csrfToken: token });
 });
 
 router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {

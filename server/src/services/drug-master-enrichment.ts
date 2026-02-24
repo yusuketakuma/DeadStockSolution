@@ -1,6 +1,7 @@
 import { db } from '../config/database';
 import { drugMaster, drugMasterPackages } from '../db/schema';
 import { normalizeString } from '../utils/string-utils';
+import { normalizePackageInfo, scorePackageMatch } from '../utils/package-utils';
 
 interface BaseRow {
   drugCode: string | null;
@@ -20,7 +21,30 @@ interface UsedMedRow extends BaseRow {
   monthlyUsage: number | null;
 }
 
-type EnrichedRow<T> = T & { drugMasterId: number | null };
+type EnrichedRow<T> = T & {
+  drugMasterId: number | null;
+  drugMasterPackageId: number | null;
+  packageLabel: string | null;
+};
+
+interface MasterMatchInfo {
+  id: number;
+  yakkaPrice: number;
+  unit: string | null;
+  drugMasterPackageId: number | null;
+  packageLabel: string | null;
+}
+
+interface PackageCandidate {
+  id: number;
+  drugMasterId: number;
+  packageDescription: string | null;
+  packageQuantity: number | null;
+  packageUnit: string | null;
+  normalizedPackageLabel: string | null;
+  packageForm: string | null;
+  isLoosePackage: boolean;
+}
 
 /**
  * 医薬品マスターからの自動補完処理
@@ -35,7 +59,7 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
   // マスターが空なら何もしない
   const [masterCheck] = await db.select({ id: drugMaster.id }).from(drugMaster).limit(1);
   if (!masterCheck) {
-    return rows.map((r) => ({ ...r, drugMasterId: null }));
+    return rows.map((r) => ({ ...r, drugMasterId: null, drugMasterPackageId: null, packageLabel: null }));
   }
 
   // drugCodeを持つ行のコードをまとめて検索
@@ -47,8 +71,78 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
   }
 
   // コード→マスター情報のキャッシュ構築
-  const codeCache = new Map<string, { id: number; yakkaPrice: number; unit: string | null }>();
+  const codeCache = new Map<string, MasterMatchInfo>();
   const toNum = (v: string | number | null): number => Number(v ?? 0);
+  let packageCandidatesByMaster: Map<number, PackageCandidate[]> | null = null;
+
+  async function ensurePackageCandidatesByMaster(): Promise<Map<number, PackageCandidate[]>> {
+    if (packageCandidatesByMaster) return packageCandidatesByMaster;
+
+    const allPackagesRaw = await db.select({
+      id: drugMasterPackages.id,
+      gs1Code: drugMasterPackages.gs1Code,
+      janCode: drugMasterPackages.janCode,
+      hotCode: drugMasterPackages.hotCode,
+      drugMasterId: drugMasterPackages.drugMasterId,
+      packageDescription: drugMasterPackages.packageDescription,
+      packageQuantity: drugMasterPackages.packageQuantity,
+      packageUnit: drugMasterPackages.packageUnit,
+      normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
+      packageForm: drugMasterPackages.packageForm,
+      isLoosePackage: drugMasterPackages.isLoosePackage,
+    }).from(drugMasterPackages);
+
+    const grouped = new Map<number, PackageCandidate[]>();
+    for (const row of allPackagesRaw) {
+      const normalized = normalizePackageInfo({
+        packageDescription: row.packageDescription,
+        packageQuantity: row.packageQuantity,
+        packageUnit: row.packageUnit,
+      });
+
+      const candidate: PackageCandidate = {
+        id: row.id,
+        drugMasterId: row.drugMasterId,
+        packageDescription: row.packageDescription,
+        packageQuantity: row.packageQuantity,
+        packageUnit: row.packageUnit,
+        normalizedPackageLabel: row.normalizedPackageLabel ?? normalized.normalizedPackageLabel,
+        packageForm: row.packageForm ?? normalized.packageForm,
+        isLoosePackage: row.isLoosePackage ?? normalized.isLoosePackage,
+      };
+
+      const list = grouped.get(candidate.drugMasterId) ?? [];
+      list.push(candidate);
+      grouped.set(candidate.drugMasterId, list);
+    }
+
+    packageCandidatesByMaster = grouped;
+    return grouped;
+  }
+
+  async function findPackageByUnit(drugMasterId: number, rowUnit: string | null): Promise<PackageCandidate | null> {
+    if (!rowUnit) return null;
+    const grouped = await ensurePackageCandidatesByMaster();
+    const candidates = grouped.get(drugMasterId) ?? [];
+    if (candidates.length === 0) return null;
+
+    let best: PackageCandidate | null = null;
+    let bestScore = 0;
+    for (const candidate of candidates) {
+      const score = scorePackageMatch({
+        rowUnit,
+        normalizedPackageLabel: candidate.normalizedPackageLabel,
+        packageDescription: candidate.packageDescription,
+        isLoosePackage: candidate.isLoosePackage,
+      });
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+
+    return bestScore >= 40 ? best : null;
+  }
 
   if (codesInRows.size > 0) {
     // YJコードで直接検索（削除済も含む：不動在庫に削除済薬品が含まれることがある）
@@ -61,7 +155,13 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
 
     for (const m of allMaster) {
       if (codesInRows.has(m.yjCode)) {
-        codeCache.set(m.yjCode, { id: m.id, yakkaPrice: toNum(m.yakkaPrice), unit: m.unit });
+        codeCache.set(m.yjCode, {
+          id: m.id,
+          yakkaPrice: toNum(m.yakkaPrice),
+          unit: m.unit,
+          drugMasterPackageId: null,
+          packageLabel: null,
+        });
       }
     }
 
@@ -69,25 +169,59 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
     const unresolvedCodes = [...codesInRows].filter((c) => !codeCache.has(c));
     if (unresolvedCodes.length > 0) {
       const allPackages = await db.select({
+        id: drugMasterPackages.id,
         gs1Code: drugMasterPackages.gs1Code,
         janCode: drugMasterPackages.janCode,
         hotCode: drugMasterPackages.hotCode,
         drugMasterId: drugMasterPackages.drugMasterId,
+        packageDescription: drugMasterPackages.packageDescription,
+        packageQuantity: drugMasterPackages.packageQuantity,
+        packageUnit: drugMasterPackages.packageUnit,
+        normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
+        packageForm: drugMasterPackages.packageForm,
+        isLoosePackage: drugMasterPackages.isLoosePackage,
       }).from(drugMasterPackages);
 
-      const pkgMap = new Map<string, number>();
+      const pkgMap = new Map<string, PackageCandidate>();
+      const grouped = new Map<number, PackageCandidate[]>();
       for (const pkg of allPackages) {
-        if (pkg.gs1Code) pkgMap.set(pkg.gs1Code, pkg.drugMasterId);
-        if (pkg.janCode) pkgMap.set(pkg.janCode, pkg.drugMasterId);
-        if (pkg.hotCode) pkgMap.set(pkg.hotCode, pkg.drugMasterId);
+        const normalized = normalizePackageInfo({
+          packageDescription: pkg.packageDescription,
+          packageQuantity: pkg.packageQuantity,
+          packageUnit: pkg.packageUnit,
+        });
+        const candidate: PackageCandidate = {
+          id: pkg.id,
+          drugMasterId: pkg.drugMasterId,
+          packageDescription: pkg.packageDescription,
+          packageQuantity: pkg.packageQuantity,
+          packageUnit: pkg.packageUnit,
+          normalizedPackageLabel: pkg.normalizedPackageLabel ?? normalized.normalizedPackageLabel,
+          packageForm: pkg.packageForm ?? normalized.packageForm,
+          isLoosePackage: pkg.isLoosePackage ?? normalized.isLoosePackage,
+        };
+        if (pkg.gs1Code) pkgMap.set(pkg.gs1Code, candidate);
+        if (pkg.janCode) pkgMap.set(pkg.janCode, candidate);
+        if (pkg.hotCode) pkgMap.set(pkg.hotCode, candidate);
+
+        const list = grouped.get(candidate.drugMasterId) ?? [];
+        list.push(candidate);
+        grouped.set(candidate.drugMasterId, list);
       }
+      packageCandidatesByMaster = grouped;
 
       for (const code of unresolvedCodes) {
-        const masterId = pkgMap.get(code);
-        if (masterId) {
-          const masterInfo = allMaster.find((m) => m.id === masterId);
+        const packageCandidate = pkgMap.get(code);
+        if (packageCandidate) {
+          const masterInfo = allMaster.find((m) => m.id === packageCandidate.drugMasterId);
           if (masterInfo) {
-            codeCache.set(code, { id: masterInfo.id, yakkaPrice: toNum(masterInfo.yakkaPrice), unit: masterInfo.unit });
+            codeCache.set(code, {
+              id: masterInfo.id,
+              yakkaPrice: toNum(masterInfo.yakkaPrice),
+              unit: masterInfo.unit,
+              drugMasterPackageId: packageCandidate.id,
+              packageLabel: packageCandidate.normalizedPackageLabel ?? packageCandidate.packageDescription,
+            });
           }
         }
       }
@@ -95,7 +229,7 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
   }
 
   // 名前でのファジーマッチ用マスターデータ（コードで解決できなかった行用）
-  const nameCache = new Map<string, { id: number; yakkaPrice: number; unit: string | null }>();
+  const nameCache = new Map<string, MasterMatchInfo>();
   let masterByName: { id: number; drugName: string; normalizedName: string; yakkaPrice: number; unit: string | null }[] | null = null;
 
   async function loadNameCache() {
@@ -116,7 +250,7 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
     }));
   }
 
-  async function findByName(drugName: string): Promise<{ id: number; yakkaPrice: number; unit: string | null } | null> {
+  async function findByName(drugName: string): Promise<MasterMatchInfo | null> {
     const cached = nameCache.get(drugName);
     if (cached !== undefined) return cached;
 
@@ -128,7 +262,13 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
     // 完全一致
     const exact = masterByName.find((m) => m.normalizedName === normalized);
     if (exact) {
-      const result = { id: exact.id, yakkaPrice: exact.yakkaPrice, unit: exact.unit };
+      const result: MasterMatchInfo = {
+        id: exact.id,
+        yakkaPrice: exact.yakkaPrice,
+        unit: exact.unit,
+        drugMasterPackageId: null,
+        packageLabel: null,
+      };
       nameCache.set(drugName, result);
       return result;
     }
@@ -139,7 +279,7 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
   // 各行を処理
   const results: EnrichedRow<T>[] = [];
   for (const row of rows) {
-    let masterInfo: { id: number; yakkaPrice: number; unit: string | null } | null = null;
+    let masterInfo: MasterMatchInfo | null = null;
 
     // 1. コードでの検索
     if (row.drugCode) {
@@ -152,8 +292,21 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
       masterInfo = await findByName(row.drugName);
     }
 
+    let packageInfo: PackageCandidate | null = null;
+    if (masterInfo && !masterInfo.drugMasterPackageId && row.unit) {
+      packageInfo = await findPackageByUnit(masterInfo.id, row.unit);
+    }
+
     // 自動補完
-    const enriched = { ...row, drugMasterId: masterInfo?.id ?? null };
+    const enriched = {
+      ...row,
+      drugMasterId: masterInfo?.id ?? null,
+      drugMasterPackageId: packageInfo?.id ?? masterInfo?.drugMasterPackageId ?? null,
+      packageLabel: packageInfo?.normalizedPackageLabel
+        ?? packageInfo?.packageDescription
+        ?? masterInfo?.packageLabel
+        ?? null,
+    };
 
     if (masterInfo) {
       if (enriched.yakkaUnitPrice === null || enriched.yakkaUnitPrice === undefined) {

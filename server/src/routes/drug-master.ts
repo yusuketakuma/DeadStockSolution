@@ -15,6 +15,8 @@ import {
   parseMhlwCsvData,
   parsePackageExcelData,
   parsePackageCsvData,
+  parsePackageXmlData,
+  parsePackageZipData,
   decodeCsvBuffer,
   syncDrugMaster,
   syncPackageData,
@@ -28,6 +30,7 @@ import {
   updateDrugMasterItem,
 } from '../services/drug-master-service';
 import { triggerManualAutoSync } from '../services/drug-master-scheduler';
+import { triggerManualPackageAutoSync } from '../services/drug-package-scheduler';
 import { parseExcelBuffer } from '../services/upload-service';
 
 const router = Router();
@@ -36,13 +39,17 @@ router.use(requireLogin);
 router.use(requireAdmin);
 
 const MAX_UPLOAD_SIZE = 30 * 1024 * 1024; // 30MB（MHLWファイルは大きい場合がある）
-const ALLOWED_EXTENSIONS = new Set(['.xlsx', '.csv']);
+const ALLOWED_EXTENSIONS = new Set(['.xlsx', '.csv', '.xml', '.zip']);
 const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/octet-stream',
   'text/csv',
   'text/plain',
   'application/csv',
+  'application/xml',
+  'text/xml',
+  'application/zip',
+  'application/x-zip-compressed',
 ]);
 
 const upload = multer({
@@ -56,7 +63,7 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(ext) || !ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      cb(new Error('xlsx または csv ファイルのみアップロードできます'));
+      cb(new Error('xlsx / csv / xml / zip ファイルのみアップロードできます'));
       return;
     }
     cb(null, true);
@@ -304,6 +311,11 @@ router.post('/upload-packages', uploadSingleFile, async (req: AuthRequest, res: 
       if (ext === '.csv') {
         const csvContent = decodeCsvBuffer(file.buffer);
         parsedRows = parsePackageCsvData(csvContent);
+      } else if (ext === '.xml') {
+        const xmlContent = file.buffer.toString('utf-8');
+        parsedRows = parsePackageXmlData(xmlContent);
+      } else if (ext === '.zip') {
+        parsedRows = await parsePackageZipData(file.buffer);
       } else {
         const excelRows = await parseExcelBuffer(file.buffer);
         parsedRows = parsePackageExcelData(excelRows);
@@ -414,12 +426,15 @@ router.put('/detail/:yjCode', async (req: AuthRequest, res: Response) => {
 
 router.post('/auto-sync', async (req: AuthRequest, res: Response) => {
   try {
-    const result = await triggerManualAutoSync();
+    const sourceUrl = typeof req.body?.sourceUrl === 'string'
+      ? req.body.sourceUrl.trim()
+      : '';
+    const result = await triggerManualAutoSync({ sourceUrl: sourceUrl || null });
 
     if (result.triggered) {
       await writeLog('drug_master_sync', {
         pharmacyId: req.user!.id,
-        detail: '自動取得を手動トリガー',
+        detail: sourceUrl ? '自動取得を手動トリガー（sourceUrl指定）' : '自動取得を手動トリガー',
         ipAddress: getClientIp(req as Request),
       });
     }
@@ -438,16 +453,80 @@ router.get('/auto-sync/status', async (_req: AuthRequest, res: Response) => {
     const sourceUrl = process.env.DRUG_MASTER_SOURCE_URL || '';
     const autoSyncEnabled = process.env.DRUG_MASTER_AUTO_SYNC === 'true';
     const checkIntervalHours = Number(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS || 24);
+    const sourceHost = sourceUrl
+      ? (() => {
+          try {
+            return new URL(sourceUrl).hostname;
+          } catch {
+            return 'invalid-url';
+          }
+        })()
+      : '';
 
     res.json({
       enabled: autoSyncEnabled,
-      sourceUrl: sourceUrl ? `${sourceUrl.slice(0, 50)}...` : '',
+      sourceHost,
       hasSourceUrl: !!sourceUrl,
       checkIntervalHours,
+      supportsManualUrlOverride: true,
     });
   } catch (err) {
     console.error('Auto-sync status error:', err);
     res.status(500).json({ error: '設定状況の取得に失敗しました' });
+  }
+});
+
+// ── 包装単位データの自動取得トリガー ──
+
+router.post('/auto-sync/packages', async (req: AuthRequest, res: Response) => {
+  try {
+    const sourceUrl = typeof req.body?.sourceUrl === 'string'
+      ? req.body.sourceUrl.trim()
+      : '';
+    const result = await triggerManualPackageAutoSync({ sourceUrl: sourceUrl || null });
+
+    if (result.triggered) {
+      await writeLog('drug_master_package_upload', {
+        pharmacyId: req.user!.id,
+        detail: sourceUrl
+          ? '包装単位データ自動取得を手動トリガー（sourceUrl指定）'
+          : '包装単位データ自動取得を手動トリガー',
+        ipAddress: getClientIp(req as Request),
+      });
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('Package auto-sync trigger error:', err);
+    res.status(500).json({ error: '包装単位データ自動取得の開始に失敗しました' });
+  }
+});
+
+router.get('/auto-sync/packages/status', async (_req: AuthRequest, res: Response) => {
+  try {
+    const sourceUrl = process.env.DRUG_PACKAGE_SOURCE_URL || '';
+    const autoSyncEnabled = process.env.DRUG_PACKAGE_AUTO_SYNC === 'true';
+    const checkIntervalHours = Number(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS || 24);
+    const sourceHost = sourceUrl
+      ? (() => {
+          try {
+            return new URL(sourceUrl).hostname;
+          } catch {
+            return 'invalid-url';
+          }
+        })()
+      : '';
+
+    res.json({
+      enabled: autoSyncEnabled,
+      sourceHost,
+      hasSourceUrl: !!sourceUrl,
+      checkIntervalHours,
+      supportsManualUrlOverride: true,
+    });
+  } catch (err) {
+    console.error('Package auto-sync status error:', err);
+    res.status(500).json({ error: '包装単位データ自動取得設定の取得に失敗しました' });
   }
 });
 

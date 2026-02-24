@@ -14,6 +14,23 @@ interface Stats {
   totalExchangeValue: number;
 }
 
+interface Observability {
+  windowMinutes: number;
+  totalRequests: number;
+  totalErrors5xx: number;
+  errorRate5xx: number;
+  authFailures401: number;
+  forbidden403: number;
+  avgLatencyMs: number;
+  p95LatencyMs: number;
+  topSlowPaths: Array<{
+    path: string;
+    count: number;
+    avgLatencyMs: number;
+    p95LatencyMs: number;
+  }>;
+}
+
 interface PharmacyOption {
   id: number;
   name: string;
@@ -36,6 +53,7 @@ interface MessagesResponse {
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [observability, setObservability] = useState<Observability | null>(null);
   const [pharmacies, setPharmacies] = useState<PharmacyOption[]>([]);
   const [messages, setMessages] = useState<AdminMessage[]>([]);
   const [targetType, setTargetType] = useState<'all' | 'pharmacy'>('all');
@@ -48,17 +66,20 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState('');
 
   const fetchData = async () => {
-    const [statsResult, pharmacyResult, messagesResult] = await Promise.allSettled([
+    const [statsResult, observabilityResult, pharmacyResult, messagesResult] = await Promise.allSettled([
       api.get<Stats>('/admin/stats'),
+      api.get<Observability>('/admin/observability?minutes=60'),
       api.get<{ data: PharmacyOption[] }>('/admin/pharmacies/options'),
       api.get<MessagesResponse>('/admin/messages?page=1&limit=10'),
     ]);
 
     if (statsResult.status === 'fulfilled') setStats(statsResult.value);
+    if (observabilityResult.status === 'fulfilled') setObservability(observabilityResult.value);
     if (pharmacyResult.status === 'fulfilled') setPharmacies(pharmacyResult.value.data);
     if (messagesResult.status === 'fulfilled') setMessages(messagesResult.value.data);
 
-    const failures = [statsResult, pharmacyResult, messagesResult].filter(r => r.status === 'rejected');
+    const failures = [statsResult, observabilityResult, pharmacyResult, messagesResult]
+      .filter((r) => r.status === 'rejected');
     if (failures.length > 0) {
       setError('一部のデータの取得に失敗しました');
     }
@@ -158,8 +179,79 @@ export default function AdminDashboardPage() {
         </Col>
       </Row>
 
+      <Row className="g-3 mb-3">
+        <Col md={3}>
+          <Card className="text-center h-100">
+            <Card.Body>
+              <Card.Title className="display-6">{observability?.totalRequests ?? '-'}</Card.Title>
+              <Card.Text>60分リクエスト数</Card.Text>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="text-center h-100">
+            <Card.Body>
+              <Card.Title className="display-6">{observability?.p95LatencyMs ?? '-'}</Card.Title>
+              <Card.Text>p95応答時間 (ms)</Card.Text>
+              <div className="small text-muted">平均: {observability?.avgLatencyMs ?? '-'} ms</div>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="text-center h-100">
+            <Card.Body>
+              <Card.Title className="display-6">{observability?.errorRate5xx ?? '-'}</Card.Title>
+              <Card.Text>5xxエラー率 (%)</Card.Text>
+              <div className="small text-muted">件数: {observability?.totalErrors5xx ?? '-'}</div>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
+          <Card className="text-center h-100">
+            <Card.Body>
+              <Card.Title className="display-6">
+                {observability ? `${observability.authFailures401}/${observability.forbidden403}` : '-'}
+              </Card.Title>
+              <Card.Text>401/403 件数</Card.Text>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
       {message && <Alert variant="success" onClose={() => setMessage('')} dismissible>{message}</Alert>}
       {error && <Alert variant="danger" onClose={() => setError('')} dismissible>{error}</Alert>}
+
+      <Card className="mb-3">
+        <Card.Header>遅延上位エンドポイント（過去60分）</Card.Header>
+        <Card.Body>
+          {!observability || observability.topSlowPaths.length === 0 ? (
+            <div className="text-muted small">監視データがありません。</div>
+          ) : (
+            <div className="table-responsive">
+              <Table striped size="sm" className="mb-0">
+                <thead>
+                  <tr>
+                    <th>エンドポイント</th>
+                    <th>件数</th>
+                    <th>平均 (ms)</th>
+                    <th>p95 (ms)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {observability.topSlowPaths.map((item) => (
+                    <tr key={item.path}>
+                      <td className="small">{item.path}</td>
+                      <td>{item.count}</td>
+                      <td>{item.avgLatencyMs}</td>
+                      <td>{item.p95LatencyMs}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </Card.Body>
+      </Card>
 
       <Row className="g-3">
         <Col lg={5}>

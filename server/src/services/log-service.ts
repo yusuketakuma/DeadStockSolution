@@ -5,7 +5,6 @@ export type LogAction =
   | 'login'
   | 'login_failed'
   | 'admin_login'
-  | 'test_login'
   | 'register'
   | 'logout'
   | 'upload'

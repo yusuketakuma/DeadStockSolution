@@ -276,6 +276,103 @@ describe('getBusinessHoursStatus', () => {
     const status = getBusinessHoursStatus(hours, tuesday12pm);
     expect(status.isOpen).toBe(false);
   });
+
+  describe('special business hours', () => {
+    const weeklyHours = [
+      { dayOfWeek: 0, openTime: null, closeTime: null, isClosed: true },
+      { dayOfWeek: 1, openTime: '09:00', closeTime: '18:00', isClosed: false },
+      { dayOfWeek: 2, openTime: '09:00', closeTime: '18:00', isClosed: false },
+      { dayOfWeek: 3, openTime: '09:00', closeTime: '18:00', isClosed: false },
+      { dayOfWeek: 4, openTime: '09:00', closeTime: '18:00', isClosed: false },
+      { dayOfWeek: 5, openTime: '09:00', closeTime: '18:00', isClosed: false },
+      { dayOfWeek: 6, openTime: '10:00', closeTime: '15:00', isClosed: false },
+    ];
+
+    it('overrides weekly open hours with holiday closure', () => {
+      const specialHours = [
+        {
+          id: 1,
+          specialType: 'holiday_closed',
+          startDate: '2026-02-23',
+          endDate: '2026-02-23',
+          openTime: null,
+          closeTime: null,
+          isClosed: true,
+          is24Hours: false,
+        },
+      ];
+      const mondayNoon = new Date('2026-02-23T12:00:00');
+      const status = getBusinessHoursStatus(weeklyHours, specialHours, mondayNoon);
+      expect(status.isOpen).toBe(false);
+    });
+
+    it('overrides weekly closed day with temporary special opening', () => {
+      const specialHours = [
+        {
+          id: 2,
+          specialType: 'special_open',
+          startDate: '2026-02-22',
+          endDate: '2026-02-22',
+          openTime: '10:00',
+          closeTime: '14:00',
+          isClosed: false,
+          is24Hours: false,
+        },
+      ];
+      const sundayNoon = new Date('2026-02-22T12:00:00');
+      const status = getBusinessHoursStatus(weeklyHours, specialHours, sundayNoon);
+      expect(status.isOpen).toBe(true);
+      expect(status.todayHours).toEqual({ openTime: '10:00', closeTime: '14:00' });
+    });
+
+    it('prefers more specific date range when multiple special hours match', () => {
+      const specialHours = [
+        {
+          id: 10,
+          specialType: 'long_holiday_closed',
+          startDate: '2026-05-01',
+          endDate: '2026-05-07',
+          openTime: null,
+          closeTime: null,
+          isClosed: true,
+          is24Hours: false,
+        },
+        {
+          id: 11,
+          specialType: 'special_open',
+          startDate: '2026-05-03',
+          endDate: '2026-05-03',
+          openTime: '09:00',
+          closeTime: '12:00',
+          isClosed: false,
+          is24Hours: false,
+        },
+      ];
+      const duringGoldenWeek = new Date('2026-05-03T10:00:00');
+      const status = getBusinessHoursStatus(weeklyHours, specialHours, duringGoldenWeek);
+      expect(status.isOpen).toBe(true);
+      expect(status.todayHours).toEqual({ openTime: '09:00', closeTime: '12:00' });
+    });
+
+    it('supports overnight special hours from previous day', () => {
+      const specialHours = [
+        {
+          id: 20,
+          specialType: 'special_open',
+          startDate: '2026-02-23',
+          endDate: '2026-02-23',
+          openTime: '22:00',
+          closeTime: '03:00',
+          isClosed: false,
+          is24Hours: false,
+        },
+      ];
+      const tuesday1am = new Date('2026-02-24T01:00:00');
+      const status = getBusinessHoursStatus(weeklyHours, specialHours, tuesday1am);
+      expect(status.isOpen).toBe(true);
+      expect(status.todayHours).toEqual({ openTime: '22:00', closeTime: '03:00' });
+    });
+  });
 });
 
 describe('formatDayHours', () => {
