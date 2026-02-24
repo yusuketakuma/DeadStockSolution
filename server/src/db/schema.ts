@@ -9,7 +9,9 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const uploadTypeEnum = pgEnum('upload_type_enum', ['dead_stock', 'used_medication']);
 export const exchangeStatusEnum = pgEnum('exchange_status_enum', [
@@ -40,11 +42,14 @@ export const pharmacies = pgTable('pharmacies', {
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
-});
+}, (table) => ({
+  chkLatitude: check('chk_latitude', sql`${table.latitude} IS NULL OR (${table.latitude} >= -90 AND ${table.latitude} <= 90)`),
+  chkLongitude: check('chk_longitude', sql`${table.longitude} IS NULL OR (${table.longitude} >= -180 AND ${table.longitude} <= 180)`),
+}));
 
 export const uploads = pgTable('uploads', {
   id: serial('id').primaryKey(),
-  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   uploadType: uploadTypeEnum('upload_type').notNull(),
   originalFilename: text('original_filename').notNull(),
   columnMapping: text('column_mapping'),
@@ -57,8 +62,8 @@ export const uploads = pgTable('uploads', {
 
 export const deadStockItems = pgTable('dead_stock_items', {
   id: serial('id').primaryKey(),
-  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
-  uploadId: integer('upload_id').notNull().references(() => uploads.id),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  uploadId: integer('upload_id').notNull().references(() => uploads.id, { onDelete: 'cascade' }),
   drugCode: text('drug_code'),
   drugName: text('drug_name').notNull(),
   quantity: real('quantity').notNull(),
@@ -74,12 +79,14 @@ export const deadStockItems = pgTable('dead_stock_items', {
     .on(table.pharmacyId, table.isAvailable, table.createdAt),
   idxDeadStockAvailableName: index('idx_dead_stock_available_name')
     .on(table.isAvailable, table.drugName),
+  chkQuantityPositive: check('chk_dead_stock_quantity', sql`${table.quantity} > 0`),
+  chkYakkaUnitPriceNonNeg: check('chk_dead_stock_yakka_price', sql`${table.yakkaUnitPrice} IS NULL OR ${table.yakkaUnitPrice} >= 0`),
 }));
 
 export const usedMedicationItems = pgTable('used_medication_items', {
   id: serial('id').primaryKey(),
-  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
-  uploadId: integer('upload_id').notNull().references(() => uploads.id),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  uploadId: integer('upload_id').notNull().references(() => uploads.id, { onDelete: 'cascade' }),
   drugCode: text('drug_code'),
   drugName: text('drug_name').notNull(),
   monthlyUsage: real('monthly_usage'),
@@ -89,6 +96,7 @@ export const usedMedicationItems = pgTable('used_medication_items', {
 }, (table) => ({
   idxUsedMedicationPharmacyCreated: index('idx_used_medication_pharmacy_created')
     .on(table.pharmacyId, table.createdAt),
+  chkYakkaUnitPriceNonNeg: check('chk_used_med_yakka_price', sql`${table.yakkaUnitPrice} IS NULL OR ${table.yakkaUnitPrice} >= 0`),
 }));
 
 export const exchangeProposals = pgTable('exchange_proposals', {
@@ -112,7 +120,7 @@ export const exchangeProposals = pgTable('exchange_proposals', {
 
 export const exchangeProposalItems = pgTable('exchange_proposal_items', {
   id: serial('id').primaryKey(),
-  proposalId: integer('proposal_id').notNull().references(() => exchangeProposals.id),
+  proposalId: integer('proposal_id').notNull().references(() => exchangeProposals.id, { onDelete: 'cascade' }),
   deadStockItemId: integer('dead_stock_item_id').notNull().references(() => deadStockItems.id),
   fromPharmacyId: integer('from_pharmacy_id').notNull().references(() => pharmacies.id),
   toPharmacyId: integer('to_pharmacy_id').notNull().references(() => pharmacies.id),
@@ -120,6 +128,7 @@ export const exchangeProposalItems = pgTable('exchange_proposal_items', {
   yakkaValue: real('yakka_value'),
 }, (table) => ({
   idxExchangeItemsProposal: index('idx_exchange_items_proposal').on(table.proposalId),
+  chkQuantityPositive: check('chk_exchange_item_quantity', sql`${table.quantity} > 0`),
 }));
 
 export const exchangeHistory = pgTable('exchange_history', {
@@ -134,11 +143,13 @@ export const exchangeHistory = pgTable('exchange_history', {
     .on(table.pharmacyAId, table.completedAt),
   idxExchangeHistoryBCompleted: index('idx_exchange_history_b_completed')
     .on(table.pharmacyBId, table.completedAt),
+  idxExchangeHistoryStatus: index('idx_exchange_history_proposal')
+    .on(table.proposalId),
 }));
 
 export const columnMappingTemplates = pgTable('column_mapping_templates', {
   id: serial('id').primaryKey(),
-  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   uploadType: uploadTypeEnum('upload_type').notNull(),
   headerHash: text('header_hash').notNull(),
   mapping: text('mapping').notNull(),
@@ -164,17 +175,29 @@ export const adminMessages = pgTable('admin_messages', {
 
 export const adminMessageReads = pgTable('admin_message_reads', {
   id: serial('id').primaryKey(),
-  messageId: integer('message_id').notNull().references(() => adminMessages.id),
-  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
+  messageId: integer('message_id').notNull().references(() => adminMessages.id, { onDelete: 'cascade' }),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   readAt: timestamp('read_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   idxAdminMessageReadsUnique: uniqueIndex('idx_admin_message_reads_unique')
     .on(table.messageId, table.pharmacyId),
 }));
 
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  token: text('token').notNull(),
+  expiresAt: timestamp('expires_at', { mode: 'string' }).notNull(),
+  usedAt: timestamp('used_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxPasswordResetToken: uniqueIndex('idx_password_reset_token').on(table.token),
+  idxPasswordResetPharmacy: index('idx_password_reset_pharmacy').on(table.pharmacyId),
+}));
+
 export const activityLogs = pgTable('activity_logs', {
   id: serial('id').primaryKey(),
-  pharmacyId: integer('pharmacy_id').references(() => pharmacies.id),
+  pharmacyId: integer('pharmacy_id').references(() => pharmacies.id, { onDelete: 'set null' }),
   action: text('action').notNull(),
   detail: text('detail'),
   ipAddress: text('ip_address'),

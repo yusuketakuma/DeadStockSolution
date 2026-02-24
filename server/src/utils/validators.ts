@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { isValidPrefecture } from './prefectures';
 
 export interface ValidationError {
@@ -5,63 +6,70 @@ export interface ValidationError {
   message: string;
 }
 
+// Email: proper format with @ and domain
+const emailSchema = z.string()
+  .min(1, 'メールアドレスを入力してください')
+  .email('有効なメールアドレスを入力してください')
+  .max(254, 'メールアドレスが長すぎます');
+
+// Password: 8+ chars, at least one letter and one digit
+const passwordSchema = z.string()
+  .min(8, 'パスワードは8文字以上で入力してください')
+  .max(100, 'パスワードは100文字以下で入力してください')
+  .regex(/[a-zA-Z]/, 'パスワードにはアルファベットを含めてください')
+  .regex(/\d/, 'パスワードには数字を含めてください');
+
+// Phone / FAX: Japanese phone number patterns
+const phoneSchema = z.string()
+  .min(1, '電話番号を入力してください')
+  .regex(/^[\d\-ー－() ]{8,20}$/, '有効な電話番号を入力してください');
+
+const faxSchema = z.string()
+  .min(1, 'FAX番号を入力してください')
+  .regex(/^[\d\-ー－() ]{8,20}$/, '有効なFAX番号を入力してください');
+
+// Postal code: 7 digits (allow hyphens)
+const postalCodeSchema = z.string()
+  .min(1, '郵便番号を入力してください')
+  .refine((val) => {
+    const normalized = val.replace(/[-ー－\s]/g, '');
+    return /^\d{7}$/.test(normalized);
+  }, '郵便番号は7桁の数字で入力してください');
+
+const registrationSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  name: z.string().min(1, '薬局名を入力してください').max(100, '薬局名は100文字以下で入力してください'),
+  postalCode: postalCodeSchema,
+  address: z.string().min(1, '住所を入力してください').max(255, '住所は255文字以下で入力してください'),
+  phone: phoneSchema,
+  fax: faxSchema,
+  licenseNumber: z.string().min(1, '薬局開設許可番号を入力してください').max(50, '薬局開設許可番号が長すぎます'),
+  prefecture: z.string().min(1, '都道府県を選択してください').refine(
+    (val) => isValidPrefecture(val),
+    '有効な都道府県を選択してください'
+  ),
+});
+
+const loginSchema = z.object({
+  email: z.string().min(1, 'メールアドレスを入力してください'),
+  password: z.string().min(1, 'パスワードを入力してください'),
+});
+
+function zodToValidationErrors(result: z.SafeParseReturnType<unknown, unknown>): ValidationError[] {
+  if (result.success) return [];
+  return result.error.issues.map((issue) => ({
+    field: issue.path[0]?.toString() || 'unknown',
+    message: issue.message,
+  }));
+}
+
 export function validateRegistration(body: Record<string, unknown>): ValidationError[] {
-  const errors: ValidationError[] = [];
-
-  if (!body.email || typeof body.email !== 'string' || !body.email.includes('@')) {
-    errors.push({ field: 'email', message: '有効なメールアドレスを入力してください' });
-  }
-
-  if (!body.password || typeof body.password !== 'string' || (body.password as string).length < 8) {
-    errors.push({ field: 'password', message: 'パスワードは8文字以上で入力してください' });
-  }
-
-  if (!body.name || typeof body.name !== 'string' || (body.name as string).trim().length === 0) {
-    errors.push({ field: 'name', message: '薬局名を入力してください' });
-  }
-
-  if (!body.postalCode || typeof body.postalCode !== 'string') {
-    errors.push({ field: 'postalCode', message: '郵便番号を入力してください' });
-  } else {
-    const normalized = (body.postalCode as string).replace(/[-ー－\s]/g, '');
-    if (!/^\d{7}$/.test(normalized)) {
-      errors.push({ field: 'postalCode', message: '郵便番号は7桁の数字で入力してください' });
-    }
-  }
-
-  if (!body.address || typeof body.address !== 'string') {
-    errors.push({ field: 'address', message: '住所を入力してください' });
-  }
-
-  if (!body.phone || typeof body.phone !== 'string') {
-    errors.push({ field: 'phone', message: '電話番号を入力してください' });
-  }
-
-  if (!body.fax || typeof body.fax !== 'string') {
-    errors.push({ field: 'fax', message: 'FAX番号を入力してください' });
-  }
-
-  if (!body.licenseNumber || typeof body.licenseNumber !== 'string') {
-    errors.push({ field: 'licenseNumber', message: '薬局開設許可番号を入力してください' });
-  }
-
-  if (!body.prefecture || typeof body.prefecture !== 'string' || !isValidPrefecture(body.prefecture as string)) {
-    errors.push({ field: 'prefecture', message: '有効な都道府県を選択してください' });
-  }
-
-  return errors;
+  return zodToValidationErrors(registrationSchema.safeParse(body));
 }
 
 export function validateLogin(body: Record<string, unknown>): ValidationError[] {
-  const errors: ValidationError[] = [];
-
-  if (!body.email || typeof body.email !== 'string') {
-    errors.push({ field: 'email', message: 'メールアドレスを入力してください' });
-  }
-
-  if (!body.password || typeof body.password !== 'string') {
-    errors.push({ field: 'password', message: 'パスワードを入力してください' });
-  }
-
-  return errors;
+  return zodToValidationErrors(loginSchema.safeParse(body));
 }
+
+export { emailSchema, passwordSchema, registrationSchema, loginSchema };

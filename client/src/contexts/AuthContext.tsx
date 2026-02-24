@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client';
+import { setAuthExpiredHandler } from '../api/client';
 
 interface User {
   id: number;
@@ -49,6 +50,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refreshUser().finally(() => setLoading(false));
   }, [refreshUser]);
+
+  // Auto-logout when session expires
+  useEffect(() => {
+    setAuthExpiredHandler(() => {
+      setUser(null);
+    });
+    return () => setAuthExpiredHandler(() => {});
+  }, []);
 
   const login = async (email: string, password: string): Promise<User> => {
     const data = await api.post<User>('/auth/login', { email, password });

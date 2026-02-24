@@ -108,9 +108,13 @@ export default function LoginPage() {
             </Button>
           </Form>
 
+          <div className="text-center mt-2">
+            <Link to="/password-reset" className="text-muted small">パスワードを忘れた方</Link>
+          </div>
+
           {mode === 'user' && (
             <>
-              <div className="text-center mt-3">
+              <div className="text-center mt-2">
                 <Link to="/register">新規登録はこちら</Link>
               </div>
 

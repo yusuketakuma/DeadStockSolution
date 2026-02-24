@@ -17,7 +17,10 @@ export type LogAction =
   | 'account_deactivate'
   | 'admin_toggle_active'
   | 'admin_send_message'
-  | 'dead_stock_delete';
+  | 'dead_stock_delete'
+  | 'password_reset_request'
+  | 'password_reset_complete'
+  | 'password_reset_failed';
 
 export async function writeLog(
   action: LogAction,

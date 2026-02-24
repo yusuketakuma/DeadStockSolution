@@ -10,6 +10,7 @@ import { postalCodeToCoordinates } from '../utils/postal-code';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
 import { writeLog, getClientIp } from '../services/log-service';
+import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 
 const router = Router();
 const isTestAccountLoginEnabled = process.env.ENABLE_TEST_ACCOUNT_LOGIN !== 'false';
@@ -200,6 +201,63 @@ router.post('/test-login', loginLimiter, async (req: AuthRequest, res: Response)
   } catch (err) {
     console.error('Test login error:', err);
     res.status(500).json({ error: 'テストログインに失敗しました' });
+  }
+});
+
+router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!email) {
+      res.status(400).json({ error: 'メールアドレスを入力してください' });
+      return;
+    }
+
+    const result = await createPasswordResetToken(email);
+
+    // Always return success to prevent email enumeration
+    writeLog('password_reset_request', {
+      detail: `パスワードリセット要求: ${email} (${result ? '成功' : 'アカウント不明'})`,
+      ipAddress: getClientIp(req),
+    });
+
+    res.json({
+      message: 'パスワードリセットの手続きを受け付けました',
+      // In production, send email with token. For now, return token directly for dev/demo.
+      ...(process.env.NODE_ENV !== 'production' && result ? { token: result.token } : {}),
+    });
+  } catch (err) {
+    console.error('Password reset request error:', err);
+    res.status(500).json({ error: 'パスワードリセットに失敗しました' });
+  }
+});
+
+router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+
+    if (!token) {
+      res.status(400).json({ error: 'リセットトークンが必要です' });
+      return;
+    }
+
+    if (!newPassword || newPassword.length < 8 || newPassword.length > 100) {
+      res.status(400).json({ error: 'パスワードは8〜100文字で入力してください' });
+      return;
+    }
+
+    const success = await resetPasswordWithToken(token, newPassword);
+    if (!success) {
+      writeLog('password_reset_failed', { detail: 'リセットトークン無効または期限切れ', ipAddress: getClientIp(req) });
+      res.status(400).json({ error: 'リセットトークンが無効または期限切れです' });
+      return;
+    }
+
+    writeLog('password_reset_complete', { detail: 'パスワードリセット完了', ipAddress: getClientIp(req) });
+    res.json({ message: 'パスワードをリセットしました。新しいパスワードでログインしてください' });
+  } catch (err) {
+    console.error('Password reset confirm error:', err);
+    res.status(500).json({ error: 'パスワードリセットに失敗しました' });
   }
 });
 
