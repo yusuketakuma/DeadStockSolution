@@ -7,7 +7,7 @@ import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
-import { katakanaToHiragana, hiraganaToKatakana } from '../utils/kana-utils';
+import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 
 const router = Router();
 
@@ -110,15 +110,11 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
 
     let searchCondition;
     if (search) {
-      const hiragana = katakanaToHiragana(search);
-      const katakana = hiraganaToKatakana(search);
-      const likeConditions = [like(deadStockItems.drugName, `%${search}%`)];
-      if (hiragana !== search) {
-        likeConditions.push(like(deadStockItems.drugName, `%${hiragana}%`));
-      }
-      if (katakana !== search && katakana !== hiragana) {
-        likeConditions.push(like(deadStockItems.drugName, `%${katakana}%`));
-      }
+      const normalized = normalizeKana(search);
+      const hiragana = katakanaToHiragana(normalized);
+      const katakana = hiraganaToKatakana(normalized);
+      const likeTerms = [...new Set([normalized, hiragana, katakana])];
+      const likeConditions = likeTerms.map((term) => like(deadStockItems.drugName, `%${term}%`));
       searchCondition = likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
     }
 

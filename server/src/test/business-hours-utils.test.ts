@@ -184,7 +184,8 @@ describe('getBusinessHoursStatus', () => {
       const status = getBusinessHoursStatus(hours24, monday3am);
       expect(status.isOpen).toBe(true);
       expect(status.closingSoon).toBe(false);
-      expect(status.todayHours).toEqual({ openTime: '00:00', closeTime: '24:00' });
+      expect(status.is24Hours).toBe(true);
+      expect(status.todayHours).toBeNull();
     });
 
     it('is open at midnight for 24-hour day', () => {
@@ -211,6 +212,46 @@ describe('getBusinessHoursStatus', () => {
       const monday1159pm = new Date('2026-02-23T23:59:00');
       const status = getBusinessHoursStatus(hours24, monday1159pm);
       expect(status.closingSoon).toBe(false);
+    });
+  });
+
+  describe('mixed hours (24h, normal, closed)', () => {
+    const mixedHours = [
+      { dayOfWeek: 0, openTime: null, closeTime: null, isClosed: true, is24Hours: false },
+      { dayOfWeek: 1, openTime: null, closeTime: null, isClosed: false, is24Hours: true },
+      { dayOfWeek: 2, openTime: '09:00', closeTime: '18:00', isClosed: false, is24Hours: false },
+      { dayOfWeek: 3, openTime: null, closeTime: null, isClosed: true, is24Hours: false },
+      { dayOfWeek: 4, openTime: '09:00', closeTime: '18:00', isClosed: false, is24Hours: false },
+      { dayOfWeek: 5, openTime: '09:00', closeTime: '18:00', isClosed: false, is24Hours: false },
+      { dayOfWeek: 6, openTime: '10:00', closeTime: '15:00', isClosed: false, is24Hours: false },
+    ];
+
+    it('Monday (24h) is open at any time', () => {
+      const status = getBusinessHoursStatus(mixedHours, new Date('2026-02-23T03:00:00'));
+      expect(status.isOpen).toBe(true);
+      expect(status.is24Hours).toBe(true);
+    });
+
+    it('Tuesday (normal) is open during hours', () => {
+      const status = getBusinessHoursStatus(mixedHours, new Date('2026-02-24T12:00:00'));
+      expect(status.isOpen).toBe(true);
+      expect(status.is24Hours).toBe(false);
+      expect(status.todayHours).toEqual({ openTime: '09:00', closeTime: '18:00' });
+    });
+
+    it('Tuesday (normal) is closed outside hours', () => {
+      const status = getBusinessHoursStatus(mixedHours, new Date('2026-02-24T20:00:00'));
+      expect(status.isOpen).toBe(false);
+    });
+
+    it('Wednesday (closed) is closed', () => {
+      const status = getBusinessHoursStatus(mixedHours, new Date('2026-02-25T12:00:00'));
+      expect(status.isOpen).toBe(false);
+    });
+
+    it('Sunday (closed) is closed', () => {
+      const status = getBusinessHoursStatus(mixedHours, new Date('2026-02-22T12:00:00'));
+      expect(status.isOpen).toBe(false);
     });
   });
 

@@ -34,23 +34,23 @@ export function getBusinessHoursStatus(
 ): BusinessHoursStatus {
   if (hours.length === 0) {
     // No business hours set = assume always open
-    return { isOpen: true, closingSoon: false, todayHours: null };
+    return { isOpen: true, closingSoon: false, is24Hours: false, todayHours: null };
   }
 
   const dayOfWeek = now.getDay(); // 0=Sunday, 6=Saturday
   const todayEntry = hours.find((h) => h.dayOfWeek === dayOfWeek);
 
   if (!todayEntry || todayEntry.isClosed) {
-    return { isOpen: false, closingSoon: false, todayHours: null };
+    return { isOpen: false, closingSoon: false, is24Hours: false, todayHours: null };
   }
 
   // 24-hour pharmacy: always open, never closing soon
   if (todayEntry.is24Hours) {
-    return { isOpen: true, closingSoon: false, todayHours: { openTime: '00:00', closeTime: '24:00' } };
+    return { isOpen: true, closingSoon: false, is24Hours: true, todayHours: null };
   }
 
   if (!todayEntry.openTime || !todayEntry.closeTime) {
-    return { isOpen: false, closingSoon: false, todayHours: null };
+    return { isOpen: false, closingSoon: false, is24Hours: false, todayHours: null };
   }
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -81,6 +81,7 @@ export function getBusinessHoursStatus(
   return {
     isOpen,
     closingSoon,
+    is24Hours: false,
     todayHours: { openTime: todayEntry.openTime, closeTime: todayEntry.closeTime },
   };
 }

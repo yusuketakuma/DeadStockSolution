@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { Form, ListGroup } from 'react-bootstrap';
 import { api } from '../api/client';
 
@@ -18,6 +18,7 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const containerRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
 
   useEffect(() => {
     if (debounceRef.current) {
@@ -97,6 +98,8 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
     }
   };
 
+  const isExpanded = showSuggestions && suggestions.length > 0;
+
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <Form.Control
@@ -107,9 +110,17 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
         onFocus={() => {
           if (suggestions.length > 0) setShowSuggestions(true);
         }}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={isExpanded}
+        aria-controls={isExpanded ? listboxId : undefined}
+        aria-activedescendant={isExpanded && selectedIndex >= 0 ? `${listboxId}-${selectedIndex}` : undefined}
       />
-      {showSuggestions && suggestions.length > 0 && (
+      {isExpanded && (
         <ListGroup
+          id={listboxId}
+          role="listbox"
+          aria-label="検索候補"
           style={{
             position: 'absolute',
             top: '100%',
@@ -123,10 +134,13 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
         >
           {suggestions.map((s, idx) => (
             <ListGroup.Item
-              key={s}
+              key={`${idx}-${s}`}
+              id={`${listboxId}-${idx}`}
               action
               active={idx === selectedIndex}
               onClick={() => selectSuggestion(s)}
+              role="option"
+              aria-selected={idx === selectedIndex}
               style={{ cursor: 'pointer', fontSize: '0.9rem' }}
             >
               {s}

@@ -4,7 +4,7 @@ import { db } from '../config/database';
 import { deadStockItems, pharmacies } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { katakanaToHiragana, hiraganaToKatakana } from '../utils/kana-utils';
+import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 
 const router = Router();
 router.use(requireLogin);
@@ -24,23 +24,19 @@ function sanitizeQuery(value: unknown): string | undefined {
 // Drug name suggestions for incremental search
 router.get('/drugs', async (req: AuthRequest, res: Response) => {
   try {
-    const query = sanitizeQuery(req.query.q);
-    if (!query) {
+    const rawQuery = sanitizeQuery(req.query.q);
+    if (!rawQuery) {
       res.json([]);
       return;
     }
 
+    const query = normalizeKana(rawQuery);
     const hiragana = katakanaToHiragana(query);
     const katakana = hiraganaToKatakana(query);
 
     // Build OR conditions for original, hiragana, and katakana variants
-    const conditions = [like(deadStockItems.drugName, `%${query}%`)];
-    if (hiragana !== query) {
-      conditions.push(like(deadStockItems.drugName, `%${hiragana}%`));
-    }
-    if (katakana !== query && katakana !== hiragana) {
-      conditions.push(like(deadStockItems.drugName, `%${katakana}%`));
-    }
+    const likeTerms = new Set([query, hiragana, katakana]);
+    const conditions = [...likeTerms].map((term) => like(deadStockItems.drugName, `%${term}%`));
 
     const results = await db.selectDistinct({
       drugName: deadStockItems.drugName,
@@ -62,22 +58,18 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
 // Pharmacy name suggestions for incremental search
 router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
   try {
-    const query = sanitizeQuery(req.query.q);
-    if (!query) {
+    const rawQuery = sanitizeQuery(req.query.q);
+    if (!rawQuery) {
       res.json([]);
       return;
     }
 
+    const query = normalizeKana(rawQuery);
     const hiragana = katakanaToHiragana(query);
     const katakana = hiraganaToKatakana(query);
 
-    const conditions = [like(pharmacies.name, `%${query}%`)];
-    if (hiragana !== query) {
-      conditions.push(like(pharmacies.name, `%${hiragana}%`));
-    }
-    if (katakana !== query && katakana !== hiragana) {
-      conditions.push(like(pharmacies.name, `%${katakana}%`));
-    }
+    const likeTerms = new Set([query, hiragana, katakana]);
+    const conditions = [...likeTerms].map((term) => like(pharmacies.name, `%${term}%`));
 
     const results = await db.selectDistinct({
       name: pharmacies.name,

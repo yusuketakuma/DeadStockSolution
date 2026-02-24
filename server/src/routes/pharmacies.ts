@@ -8,7 +8,7 @@ import { haversineDistance } from '../utils/geo-utils';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
-import { katakanaToHiragana, hiraganaToKatakana } from '../utils/kana-utils';
+import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 
 const router = Router();
 router.use(requireLogin);
@@ -34,15 +34,11 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     const conditions = [eq(pharmacies.isActive, true)];
     if (search) {
-      const hiragana = katakanaToHiragana(search);
-      const katakana = hiraganaToKatakana(search);
-      const nameConditions = [like(pharmacies.name, `%${search}%`)];
-      if (hiragana !== search) {
-        nameConditions.push(like(pharmacies.name, `%${hiragana}%`));
-      }
-      if (katakana !== search && katakana !== hiragana) {
-        nameConditions.push(like(pharmacies.name, `%${katakana}%`));
-      }
+      const normalized = normalizeKana(search);
+      const hiragana = katakanaToHiragana(normalized);
+      const katakana = hiraganaToKatakana(normalized);
+      const likeTerms = [...new Set([normalized, hiragana, katakana])];
+      const nameConditions = likeTerms.map((term) => like(pharmacies.name, `%${term}%`));
       conditions.push(nameConditions.length === 1 ? nameConditions[0] : or(...nameConditions)!);
     }
     if (prefecture) {

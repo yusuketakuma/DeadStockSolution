@@ -3,6 +3,7 @@ import { Table, Form, Button, Badge, Row, Col, Alert } from 'react-bootstrap';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
 import SearchInput from '../components/SearchInput';
+import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -14,12 +15,6 @@ const PREFECTURES = [
   '徳島県', '香川県', '愛媛県', '高知県',
   '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
 ];
-
-interface BusinessHoursStatus {
-  isOpen: boolean;
-  closingSoon: boolean;
-  todayHours: { openTime: string; closeTime: string } | null;
-}
 
 interface Pharmacy {
   id: number;
@@ -35,24 +30,6 @@ interface Pharmacy {
 interface PharmaciesResponse {
   data: Pharmacy[];
   pagination: { page: number; totalPages: number; total: number };
-}
-
-function BusinessStatusBadge({ status }: { status?: BusinessHoursStatus }) {
-  if (!status) return <span className="text-muted small">-</span>;
-
-  if (status.closingSoon) {
-    return <Badge bg="warning" text="dark">まもなく営業終了</Badge>;
-  }
-  if (!status.isOpen) {
-    return <Badge bg="secondary">営業時間外</Badge>;
-  }
-  if (status.todayHours?.openTime === '00:00' && status.todayHours?.closeTime === '24:00') {
-    return <Badge bg="success">24時間営業</Badge>;
-  }
-  if (status.todayHours) {
-    return <Badge bg="success">{status.todayHours.openTime}〜{status.todayHours.closeTime}</Badge>;
-  }
-  return <span className="text-muted small">-</span>;
 }
 
 export default function PharmacyListPage() {
@@ -140,7 +117,7 @@ export default function PharmacyListPage() {
                   <td className="small">{p.address}</td>
                   <td>{p.phone}</td>
                   <td>{p.fax}</td>
-                  <td><BusinessStatusBadge status={p.businessStatus} /></td>
+                  <td><BusinessStatusBadge status={p.businessStatus} showHours fallback="dash" /></td>
                   <td>
                     {p.distance !== null ? (
                       <Badge bg="info">{p.distance}km</Badge>

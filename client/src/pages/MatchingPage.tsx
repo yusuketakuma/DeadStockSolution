@@ -3,6 +3,7 @@ import { Card, Button, Alert, Table, Badge, Spinner, Row, Col } from 'react-boot
 import { api } from '../api/client';
 import RequireUpload from '../components/RequireUpload';
 import DisclaimerBanner from '../components/DisclaimerBanner';
+import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -13,12 +14,6 @@ interface MatchItem {
   yakkaValue: number;
   expirationDate?: string | null;
   matchScore?: number;
-}
-
-interface BusinessHoursStatus {
-  isOpen: boolean;
-  closingSoon: boolean;
-  todayHours: { openTime: string; closeTime: string } | null;
 }
 
 interface MatchCandidate {
@@ -40,24 +35,6 @@ interface MatchCandidate {
 function formatPercent(value?: number): string {
   if (!value || Number.isNaN(value)) return '-';
   return `${Math.round(value)}%`;
-}
-
-function BusinessStatusBadge({ status }: { status?: BusinessHoursStatus }) {
-  if (!status) return null;
-
-  if (status.closingSoon) {
-    return <Badge bg="warning" text="dark">まもなく営業終了</Badge>;
-  }
-  if (!status.isOpen) {
-    return <Badge bg="secondary">営業時間外</Badge>;
-  }
-  if (status.todayHours?.openTime === '00:00' && status.todayHours?.closeTime === '24:00') {
-    return <Badge bg="success">24時間営業</Badge>;
-  }
-  if (status.todayHours) {
-    return <Badge bg="success">営業中 {status.todayHours.openTime}〜{status.todayHours.closeTime}</Badge>;
-  }
-  return null;
 }
 
 export default function MatchingPage() {
@@ -136,7 +113,7 @@ export default function MatchingPage() {
                 </div>
               </div>
               <div className="d-flex flex-wrap gap-2">
-                <BusinessStatusBadge status={candidate.businessStatus} />
+                <BusinessStatusBadge status={candidate.businessStatus} showHours />
                 <Badge bg="info">{candidate.distance}km</Badge>
                 <Badge bg="secondary">一致度 {formatPercent(candidate.matchRate)}</Badge>
                 <Badge bg="primary">総合 {candidate.score?.toFixed(1) ?? '-'}</Badge>

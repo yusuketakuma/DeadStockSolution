@@ -24,6 +24,7 @@ export interface PreviewResult {
 export interface BusinessHoursStatus {
   isOpen: boolean;
   closingSoon: boolean;
+  is24Hours: boolean;
   todayHours: { openTime: string; closeTime: string } | null;
 }
 
