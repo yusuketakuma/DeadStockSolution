@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, generateToken } from '../services/auth-se
 import { ensureTestAccount, getTestAccountByKey } from '../services/test-account-service';
 import { validateRegistration, validateLogin, passwordSchema } from '../utils/validators';
 import { postalCodeToCoordinates } from '../utils/postal-code';
+import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
 import { writeLog, getClientIp } from '../services/log-service';
@@ -63,7 +64,16 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     }
 
     const passwordHash = await hashPassword(password);
-    const coords = postalCodeToCoordinates(postalCode);
+
+    // 住所からジオコーディング（都道府県+住所で検索）
+    const fullAddress = `${prefecture}${address}`;
+    const coords = await geocodeAddress(fullAddress);
+    if (!coords) {
+      res.status(400).json({
+        errors: [{ field: 'address', message: '住所から位置情報を特定できませんでした。正しい住所を入力してください' }],
+      });
+      return;
+    }
 
     const result = await db.insert(pharmacies).values({
       email,
@@ -75,8 +85,8 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       fax,
       licenseNumber,
       prefecture,
-      latitude: coords?.lat ?? null,
-      longitude: coords?.lng ?? null,
+      latitude: coords.lat,
+      longitude: coords.lng,
     }).returning({ id: pharmacies.id });
 
     const pharmacyId = result[0].id;

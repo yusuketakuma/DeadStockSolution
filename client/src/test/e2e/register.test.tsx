@@ -46,7 +46,7 @@ describe('RegisterPage', () => {
     expect(screen.getByText(/薬局開設許可番号/)).toBeInTheDocument();
     expect(screen.getByText(/都道府県/)).toBeInTheDocument();
     expect(screen.getByText(/郵便番号/)).toBeInTheDocument();
-    expect(screen.getByText(/住所/)).toBeInTheDocument();
+    expect(screen.getByText((content, element) => element?.tagName === 'LABEL' && /住所/.test(content))).toBeInTheDocument();
     expect(screen.getByText(/電話番号/)).toBeInTheDocument();
     expect(screen.getByText(/FAX番号/)).toBeInTheDocument();
 
