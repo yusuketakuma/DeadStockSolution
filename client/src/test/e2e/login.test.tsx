@@ -182,7 +182,7 @@ describe('LoginPage', () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
-      if (url.includes('/api/auth/test-login')) {
+      if (url.includes('/api/auth/login')) {
         return new Response(JSON.stringify(mockUser), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -210,12 +210,13 @@ describe('LoginPage', () => {
     await user.click(screen.getByText('テスト薬局（東京）'));
 
     await waitFor(() => {
-      const testLoginCall = fetchMock.mock.calls.find(
-        (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/test-login')
+      const loginCall = fetchMock.mock.calls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/login')
       );
-      expect(testLoginCall).toBeTruthy();
-      const body = JSON.parse((testLoginCall![1] as RequestInit).body as string);
-      expect(body.key).toBe('tokyo');
+      expect(loginCall).toBeTruthy();
+      const body = JSON.parse((loginCall![1] as RequestInit).body as string);
+      expect(body.email).toBe('test@example.com');
+      expect(body.password).toBe('test1234');
     });
   });
 

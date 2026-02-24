@@ -1,12 +1,24 @@
 import 'dotenv/config';
 import app from './app';
 import { startDrugMasterScheduler, stopDrugMasterScheduler } from './services/drug-master-scheduler';
+import { seedTestAccounts } from './services/test-account-service';
 
 const PORT = Number(process.env.PORT) || 3001;
 const SHUTDOWN_TIMEOUT_MS = 10000;
+const shouldSeedTestAccounts = process.env.NODE_ENV !== 'production';
 
 const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+
+  if (shouldSeedTestAccounts) {
+    void seedTestAccounts()
+      .then((accounts) => {
+        console.log(`Test pharmacy accounts are ready (${accounts.length} accounts).`);
+      })
+      .catch((err) => {
+        console.error('Failed to seed test pharmacy accounts:', err);
+      });
+  }
 
   // 医薬品マスター自動同期スケジューラを開始
   startDrugMasterScheduler();

@@ -67,8 +67,14 @@ export function getAllTestAccounts(): TestAccountDefinition[] {
   return [...TEST_ACCOUNTS];
 }
 
-async function findExistingPharmacyId(account: TestAccountDefinition): Promise<number | null> {
-  const rows = await db.select({ id: pharmacies.id })
+async function findExistingPharmacy(account: TestAccountDefinition): Promise<EnsuredTestAccount | null> {
+  const rows = await db.select({
+    id: pharmacies.id,
+    email: pharmacies.email,
+    name: pharmacies.name,
+    prefecture: pharmacies.prefecture,
+    isAdmin: pharmacies.isAdmin,
+  })
     .from(pharmacies)
     .where(or(
       eq(pharmacies.email, account.email),
@@ -76,42 +82,27 @@ async function findExistingPharmacyId(account: TestAccountDefinition): Promise<n
     ))
     .limit(1);
 
-  return rows[0]?.id ?? null;
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const row = rows[0];
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    prefecture: row.prefecture,
+    isAdmin: row.isAdmin ?? false,
+  };
 }
 
 export async function ensureTestAccount(account: TestAccountDefinition): Promise<EnsuredTestAccount> {
-  const passwordHash = await hashPassword(account.password);
-  const existingId = await findExistingPharmacyId(account);
-
-  if (existingId) {
-    await db.update(pharmacies)
-      .set({
-        email: account.email,
-        passwordHash,
-        name: account.name,
-        postalCode: account.postalCode,
-        address: account.address,
-        phone: account.phone,
-        fax: account.fax,
-        licenseNumber: account.licenseNumber,
-        prefecture: account.prefecture,
-        latitude: account.latitude,
-        longitude: account.longitude,
-        isAdmin: false,
-        isActive: true,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(pharmacies.id, existingId));
-
-    return {
-      id: existingId,
-      email: account.email,
-      name: account.name,
-      prefecture: account.prefecture,
-      isAdmin: false,
-    };
+  const existing = await findExistingPharmacy(account);
+  if (existing) {
+    return existing;
   }
 
+  const passwordHash = await hashPassword(account.password);
   const [created] = await db.insert(pharmacies).values({
     email: account.email,
     passwordHash,
@@ -126,13 +117,27 @@ export async function ensureTestAccount(account: TestAccountDefinition): Promise
     longitude: account.longitude,
     isAdmin: false,
     isActive: true,
-  }).returning({ id: pharmacies.id });
+  }).returning({
+    id: pharmacies.id,
+    email: pharmacies.email,
+    name: pharmacies.name,
+    prefecture: pharmacies.prefecture,
+    isAdmin: pharmacies.isAdmin,
+  });
 
   return {
     id: created.id,
-    email: account.email,
-    name: account.name,
-    prefecture: account.prefecture,
-    isAdmin: false,
+    email: created.email,
+    name: created.name,
+    prefecture: created.prefecture,
+    isAdmin: created.isAdmin ?? false,
   };
+}
+
+export async function seedTestAccounts(): Promise<EnsuredTestAccount[]> {
+  const seededAccounts: EnsuredTestAccount[] = [];
+  for (const account of TEST_ACCOUNTS) {
+    seededAccounts.push(await ensureTestAccount(account));
+  }
+  return seededAccounts;
 }
