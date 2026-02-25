@@ -5,6 +5,7 @@ import { createClient, type Client } from '@libsql/client';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/vercel-postgres/migrator';
 import { db } from '../config/database';
+import { logger } from '../services/logger';
 import {
   pharmacies,
   uploads,
@@ -144,7 +145,7 @@ async function readLegacyTable(client: Client, tableName: string): Promise<Legac
   } catch (err) {
     const message = err instanceof Error ? err.message.toLowerCase() : '';
     if (message.includes('no such table')) {
-      console.warn(`[skip] legacy table "${tableName}" does not exist`);
+      logger.warn(`[skip] legacy table "${tableName}" does not exist`);
       return [];
     }
     throw err;
@@ -153,7 +154,7 @@ async function readLegacyTable(client: Client, tableName: string): Promise<Legac
 
 async function insertChunked<T>(tableName: string, rows: T[], inserter: (chunk: T[]) => Promise<void>): Promise<void> {
   if (rows.length === 0) {
-    console.log(`[ok] ${tableName}: 0 rows`);
+    logger.info(`[ok] ${tableName}: 0 rows`);
     return;
   }
 
@@ -161,7 +162,7 @@ async function insertChunked<T>(tableName: string, rows: T[], inserter: (chunk: 
     const chunk = rows.slice(i, i + CHUNK_SIZE);
     await inserter(chunk);
   }
-  console.log(`[ok] ${tableName}: ${rows.length} rows`);
+  logger.info(`[ok] ${tableName}: ${rows.length} rows`);
 }
 
 async function syncSequence(tableName: string): Promise<void> {
@@ -193,17 +194,17 @@ async function clearTargetData(): Promise<void> {
 }
 
 async function main() {
-  console.log('Running PostgreSQL schema migration...');
+  logger.info('Running PostgreSQL schema migration...');
   await migrate(db, { migrationsFolder: './drizzle' });
 
   const replaceMode = process.env.LEGACY_MIGRATION_MODE === 'replace';
   if (replaceMode) {
-    console.log('LEGACY_MIGRATION_MODE=replace detected. Target tables will be truncated first.');
+    logger.info('LEGACY_MIGRATION_MODE=replace detected. Target tables will be truncated first.');
     await clearTargetData();
   }
 
   const { url, authToken } = resolveLegacyUrl();
-  console.log(`Using legacy source: ${url.startsWith('file:') ? url : '[remote]'}`);
+  logger.info(`Using legacy source: ${url.startsWith('file:') ? url : '[remote]'}`);
 
   const legacy = createClient({ url, authToken });
 
@@ -371,11 +372,11 @@ async function main() {
     legacy.close();
   }
 
-  console.log('Legacy migration finished.');
+  logger.info('Legacy migration finished.');
   process.exit(0);
 }
 
 main().catch((err) => {
-  console.error('Legacy migration failed:', err);
+  logger.error('Legacy migration failed', { error: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });

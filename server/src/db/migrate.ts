@@ -1,15 +1,16 @@
 import 'dotenv/config';
 import { migrate } from 'drizzle-orm/vercel-postgres/migrator';
 import { db } from '../config/database';
+import { logger } from '../services/logger';
 
 async function main() {
-  console.log('Running migrations...');
+  logger.info('Running migrations...');
   await migrate(db, { migrationsFolder: './drizzle' });
-  console.log('Migrations complete.');
+  logger.info('Migrations complete.');
   process.exit(0);
 }
 
 main().catch((err) => {
-  console.error('Migration failed:', err);
+  logger.error('Migration failed', { error: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });

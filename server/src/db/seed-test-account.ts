@@ -1,19 +1,20 @@
 import 'dotenv/config';
 import { ensureTestAccount, getAllTestAccounts } from '../services/test-account-service';
+import { logger } from '../services/logger';
 
 async function seed() {
-  console.log('Seeding test accounts...');
+  logger.info('Seeding test accounts...');
 
   for (const account of getAllTestAccounts()) {
     const user = await ensureTestAccount(account);
-    console.log(`  [ok] ${user.email}`);
+    logger.info(`  [ok] ${user.email}`);
   }
 
-  console.log('Done.');
+  logger.info('Done.');
   process.exit(0);
 }
 
 seed().catch((err) => {
-  console.error('Seed failed:', err);
+  logger.error('Seed failed', { error: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });

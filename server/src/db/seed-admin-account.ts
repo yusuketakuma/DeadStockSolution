@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from './schema';
 import { hashPassword } from '../services/auth-service';
+import { logger } from '../services/logger';
 
 const ADMIN_LOGIN_ID = 'admin@admin.com';
 const LEGACY_ADMIN_LOGIN_ID = 'admin';
@@ -34,7 +35,7 @@ async function seedAdminAccount(): Promise<void> {
       })
       .where(eq(pharmacies.id, existing.id));
 
-    console.log(`Updated admin account: ${ADMIN_LOGIN_ID}`);
+    logger.info(`Updated admin account: ${ADMIN_LOGIN_ID}`);
     return;
   }
 
@@ -54,15 +55,15 @@ async function seedAdminAccount(): Promise<void> {
     isActive: true,
   });
 
-  console.log(`Created admin account: ${ADMIN_LOGIN_ID}`);
+  logger.info(`Created admin account: ${ADMIN_LOGIN_ID}`);
 }
 
 seedAdminAccount()
   .then(() => {
-    console.log('Done.');
+    logger.info('Done.');
     process.exit(0);
   })
   .catch((err) => {
-    console.error('Admin account seed failed:', err);
+    logger.error('Admin account seed failed', { error: err instanceof Error ? err.message : String(err) });
     process.exit(1);
   });
