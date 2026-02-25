@@ -3,19 +3,23 @@ set -eu
 
 START_DIR="$(pwd)"
 
-if [ -d client ]; then
-  npm run build --workspace=client
-  rm -rf "$START_DIR/dist"
-  cp -R client/dist "$START_DIR/dist"
-elif [ -f ../client/package.json ]; then
-  cd ../client
-  npm install
-  npm run build
-  rm -rf "$START_DIR/dist"
-  cp -R dist "$START_DIR/dist"
-elif [ -f package.json ] && grep -q '"name"[[:space:]]*:[[:space:]]*"client"' package.json; then
-  npm run build
+if [ -d "$START_DIR/client" ] && [ -d "$START_DIR/server" ]; then
+  ROOT_DIR="$START_DIR"
+elif [ -d "$START_DIR/../client" ] && [ -d "$START_DIR/../server" ]; then
+  ROOT_DIR="$(cd "$START_DIR/.." && pwd)"
 else
-  echo "client directory not found"
+  echo "workspace layout not found"
   exit 1
+fi
+
+CLIENT_DIR="$ROOT_DIR/client"
+
+(
+  cd "$CLIENT_DIR"
+  npm run build
+)
+
+if [ "$START_DIR" != "$CLIENT_DIR" ]; then
+  rm -rf "$START_DIR/dist"
+  cp -R "$CLIENT_DIR/dist" "$START_DIR/dist"
 fi

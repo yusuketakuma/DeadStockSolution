@@ -9,10 +9,23 @@
 ## 1) Multi-agent（必須）
 
 - 並列化できる作業は必ず sub-agent に分ける（例：調査/実装/検証）。
-- 役割の目安（Codexの built-in roles を使う）：
-  - explorer: 読み取り中心で、関連ファイル/影響範囲を特定して要点を返す
-  - worker: 実装と修正を進める
-  - monitor: 長いコマンドの待機/ポーリングと状況報告
+- この環境で利用可能な role を優先する（`spawn_agent` 実測）：
+  - implementer: 実装・調査の基本ロール（必要なら read-only 指示を明示）
+  - claude_implementer: 実装の代替ロール
+  - claude_reviewer: レビュー/監視の代替ロール
+- 2026-02-25 実測で利用不可だった role（指定しない）：
+  - default
+  - explorer
+  - worker
+  - verifier
+- 役割マッピング（この順で使う）：
+  - explorer 相当: `implementer` に read-only 調査を指示
+  - worker 相当: `implementer`（または `claude_implementer`）
+  - monitor 相当: `claude_reviewer`
+- `spawn_agent` 実行時は次のフォールバック順で再試行する：
+  1) `implementer`
+  2) `claude_implementer`
+  3) `claude_reviewer`
 - 1 agent = 1 仕事。まとめて投げない。
 - sub-agent の結果が揃うまで待ち、最後に統合して次アクションへ進む。
 
@@ -33,6 +46,6 @@
 ### 実行ルール（粘り方）
 - まず短いチェックリスト（3〜7項目）を作り、作業しながら更新する
 - 失敗したら原因を潰して再実行し、成功するまで繰り返す
-- 不確実な点は explorer を起動して裏取りしてから進む
+- 不確実な点は explorer 相当（`implementer` に read-only 指示）で裏取りしてから進む
 
 Codex は AGENTS.md を起動時に読み込み、階層的に結合します。

@@ -7,10 +7,11 @@ import { hashPassword, verifyPassword, generateToken, verifyToken } from '../ser
 import { validateRegistration, validateLogin, emailSchema, passwordSchema } from '../utils/validators';
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
-import { requireLogin } from '../middleware/auth';
+import { requireLogin, invalidateAuthUserCache } from '../middleware/auth';
 import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } from '../middleware/csrf';
 import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
+import { logger } from '../services/logger';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -29,6 +30,20 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'ログイン試行回数が多すぎます。しばらくしてから再試行してください' },
 });
+
+function extractUniqueViolationConstraint(err: unknown): string | null {
+  if (!err || typeof err !== 'object') return null;
+
+  const code = String((err as { code?: unknown }).code ?? '');
+  if (code !== '23505') return null;
+
+  const constraint = String((err as { constraint?: unknown }).constraint ?? '').toLowerCase();
+  if (constraint) return constraint;
+
+  const message = String((err as { message?: unknown }).message ?? '');
+  const matched = message.match(/unique constraint "([^"]+)"/i);
+  return matched?.[1]?.toLowerCase() ?? '';
+}
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
@@ -109,7 +124,23 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       prefecture,
     });
   } catch (err) {
-    console.error('Registration error:', err);
+    const uniqueConstraint = extractUniqueViolationConstraint(err);
+    if (uniqueConstraint !== null) {
+      if (uniqueConstraint.includes('license')) {
+        res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
+        return;
+      }
+      if (uniqueConstraint.includes('email')) {
+        res.status(409).json({ error: 'このメールアドレスは既に登録されています' });
+        return;
+      }
+      res.status(409).json({ error: 'この情報は既に登録されています' });
+      return;
+    }
+
+    logger.error('Registration error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '登録に失敗しました' });
   }
 });
@@ -153,6 +184,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       email: pharmacy.email,
       isAdmin: pharmacy.isAdmin ?? false,
     });
+    invalidateAuthUserCache(pharmacy.id);
 
     res.cookie('token', token, {
       httpOnly: true,
@@ -173,7 +205,9 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       isAdmin: pharmacy.isAdmin,
     });
   } catch (err) {
-    console.error('Login error:', err);
+    logger.error('Login error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: 'ログインに失敗しました' });
   }
 });
@@ -205,7 +239,9 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
       ...(EXPOSE_PASSWORD_RESET_TOKEN && result ? { token: result.token } : {}),
     });
   } catch (err) {
-    console.error('Password reset request error:', err);
+    logger.error('Password reset request error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: 'パスワードリセットに失敗しました' });
   }
 });
@@ -236,7 +272,9 @@ router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, re
     writeLog('password_reset_complete', { detail: 'パスワードリセット完了', ipAddress: getClientIp(req) });
     res.json({ message: 'パスワードをリセットしました。新しいパスワードでログインしてください' });
   } catch (err) {
-    console.error('Password reset confirm error:', err);
+    logger.error('Password reset confirm error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: 'パスワードリセットに失敗しました' });
   }
 });
@@ -255,6 +293,9 @@ router.post('/logout', (req: AuthRequest, res: Response) => {
 
   res.clearCookie('token');
   clearCsrfCookie(res);
+  if (pharmacyId !== null) {
+    invalidateAuthUserCache(pharmacyId);
+  }
   void writeLog('logout', {
     pharmacyId,
     detail: 'ログアウト',
@@ -293,7 +334,9 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
 
     res.json(rows[0]);
   } catch (err) {
-    console.error('Get me error:', err);
+    logger.error('Get me error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: 'ユーザー情報の取得に失敗しました' });
   }
 });

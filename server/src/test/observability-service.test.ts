@@ -61,4 +61,30 @@ describe('observability-service', () => {
     expect(snapshot.errorRate5xx).toBe(0);
     expect(snapshot.topSlowPaths).toHaveLength(0);
   });
+
+  it('retains only recent metrics within buffer limit', () => {
+    const now = Date.now();
+
+    recordRequestMetric({
+      timestamp: now - 1_000,
+      method: 'GET',
+      path: '/api/first',
+      status: 500,
+      durationMs: 10,
+    });
+
+    for (let i = 0; i < 20_000; i += 1) {
+      recordRequestMetric({
+        timestamp: now,
+        method: 'GET',
+        path: '/api/next',
+        status: 200,
+        durationMs: 5,
+      });
+    }
+
+    const snapshot = getObservabilitySnapshot(60);
+    expect(snapshot.totalRequests).toBe(20_000);
+    expect(snapshot.totalErrors5xx).toBe(0);
+  });
 });

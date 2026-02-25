@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import SearchInput from '../components/SearchInput';
 import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
+import ConfirmActionModal from '../components/ConfirmActionModal';
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -57,6 +58,8 @@ export default function PharmacyListPage() {
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
   const [blockedIds, setBlockedIds] = useState<Set<number>>(new Set());
   const [message, setMessage] = useState('');
+  const [pendingBlockId, setPendingBlockId] = useState<number | null>(null);
+  const [blockSubmitting, setBlockSubmitting] = useState(false);
 
   const fetchRelationships = useCallback(async () => {
     try {
@@ -110,8 +113,8 @@ export default function PharmacyListPage() {
       if (blockedIds.has(pharmacyId)) {
         await api.delete(`/pharmacies/${pharmacyId}/block`);
       } else {
-        if (!confirm('この薬局をブロックしますか？\nブロックするとマッチング候補に表示されなくなります。')) return;
-        await api.post(`/pharmacies/${pharmacyId}/block`);
+        setPendingBlockId(pharmacyId);
+        return;
       }
       await fetchRelationships();
     } catch (err) {
@@ -119,9 +122,28 @@ export default function PharmacyListPage() {
     }
   };
 
+  const confirmBlock = async () => {
+    if (pendingBlockId === null) return;
+    setBlockSubmitting(true);
+    setMessage('');
+    try {
+      await api.post(`/pharmacies/${pendingBlockId}/block`);
+      await fetchRelationships();
+      setPendingBlockId(null);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'ブロック操作に失敗しました');
+    } finally {
+      setBlockSubmitting(false);
+    }
+  };
+
+  const pendingBlockPharmacy = pendingBlockId === null
+    ? null
+    : pharmacies.find((p) => p.id === pendingBlockId) ?? null;
+
   return (
     <div>
-      <h4 className="mb-3">登録薬局一覧</h4>
+      <h4 className="page-title mb-3">登録薬局一覧</h4>
 
       {message && <Alert variant="danger" dismissible onClose={() => setMessage('')}>{message}</Alert>}
 
@@ -170,7 +192,7 @@ export default function PharmacyListPage() {
                 <th>FAX</th>
                 <th>営業状況</th>
                 <th>距離</th>
-                <th style={{ minWidth: '120px' }}>操作</th>
+                <th className="table-col-actions">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -198,17 +220,19 @@ export default function PharmacyListPage() {
                           size="sm"
                           variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
                           title={favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り追加'}
+                          aria-label={favoriteIds.has(p.id) ? `${p.name}のお気に入りを解除` : `${p.name}をお気に入りに追加`}
                           onClick={() => toggleFavorite(p.id)}
                         >
-                          {favoriteIds.has(p.id) ? '\u2605' : '\u2606'}
+                          {favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り'}
                         </Button>
                         <Button
                           size="sm"
                           variant={blockedIds.has(p.id) ? 'dark' : 'outline-secondary'}
                           title={blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
+                          aria-label={blockedIds.has(p.id) ? `${p.name}のブロックを解除` : `${p.name}をブロック`}
                           onClick={() => toggleBlock(p.id)}
                         >
-                          {blockedIds.has(p.id) ? '\u2715' : '\u2298'}
+                          {blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
                         </Button>
                       </div>
                     ) : (
@@ -222,6 +246,19 @@ export default function PharmacyListPage() {
         </div>
       )}
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+
+      <ConfirmActionModal
+        show={pendingBlockId !== null}
+        title="薬局のブロック"
+        body={pendingBlockPharmacy
+          ? `「${pendingBlockPharmacy.name}」をブロックします。ブロックするとマッチング候補に表示されなくなります。`
+          : 'この薬局をブロックします。ブロックするとマッチング候補に表示されなくなります。'}
+        confirmLabel="ブロックする"
+        confirmVariant="danger"
+        onCancel={() => setPendingBlockId(null)}
+        onConfirm={confirmBlock}
+        pending={blockSubmitting}
+      />
     </div>
   );
 }

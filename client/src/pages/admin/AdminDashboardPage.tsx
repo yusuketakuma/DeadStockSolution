@@ -181,7 +181,7 @@ export default function AdminDashboardPage() {
         <Col md={4} xl={3}>
           <Card className="text-center h-100">
             <Card.Body>
-              <Card.Title className="h5">💊</Card.Title>
+              <Card.Title className="h5">マスター</Card.Title>
               <Card.Text>医薬品マスター</Card.Text>
               <Link to="/admin/drug-master" className="btn btn-sm btn-outline-primary mt-2">マスター管理</Link>
             </Card.Body>

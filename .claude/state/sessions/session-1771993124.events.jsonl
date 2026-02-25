@@ -1,0 +1,6 @@
+{"type":"session.start","ts":"2026-02-25T04:18:44Z","state":"initialized","data":{"cc_session_id":"7ba49331-5661-4402-b3a0-5f9bb2f56957"}}
+{"id":"event-000001","type":"session.resume","ts":"2026-02-25T04:18:44Z","state":"initialized"}
+{"id":"event-000002","type":"tool.bash","ts":"2026-02-25T04:20:20Z","state":"initialized","data":{"command":"cat /Users/yusuke/.claude/plugins/cache/claude-code-harness-marketplace/claude-code-harness/2.23.6/VERSION 2>/dev/null || echo "VERSION file not found""}}
+{"id":"event-000003","type":"tool.bash","ts":"2026-02-25T04:20:25Z","state":"initialized","data":{"command":"ls /Users/yusuke/.claude/plugins/cache/claude-code-harness-marketplace/claude-code-harness/2.23.6/skills/harness-update/"}}
+{"id":"event-000004","type":"tool.bash","ts":"2026-02-25T04:20:35Z","state":"initialized","data":{"command":"PLUGIN_ROOT="$HOME/.claude/plugins/cache/claude-code-harness-marketplace/claude-code-harness/2.23.6" && bash "$PLUGIN_ROOT/scripts/template-tracker.sh" check 2>/dev/null"}}
+{"id":"event-000005","type":"session.stop","ts":"2026-02-25T04:20:47Z","state":"stopped"}

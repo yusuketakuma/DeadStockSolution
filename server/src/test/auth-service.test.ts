@@ -1,7 +1,24 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { hashPassword, verifyPassword, generateToken, verifyToken } from '../services/auth-service';
 
 describe('auth-service', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalJwtSecret = process.env.JWT_SECRET;
+
+  afterEach(() => {
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+
+    if (originalJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = originalJwtSecret;
+    }
+  });
+
   describe('hashPassword / verifyPassword', () => {
     it('hashes and verifies a password', async () => {
       const password = 'TestPassword123';
@@ -49,6 +66,15 @@ describe('auth-service', () => {
       const token = generateToken({ id: 1, email: 'test@example.com', isAdmin: false });
       const tampered = token + 'x';
       expect(() => verifyToken(tampered)).toThrow();
+    });
+
+    it('throws when JWT_SECRET is missing outside test env', () => {
+      process.env.NODE_ENV = 'development';
+      delete process.env.JWT_SECRET;
+
+      expect(() => generateToken({ id: 1, email: 'test@example.com', isAdmin: false })).toThrow(
+        'JWT_SECRET environment variable is not set'
+      );
     });
   });
 });

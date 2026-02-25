@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, and, or, like, desc, inArray, notInArray } from 'drizzle-orm';
+import { eq, and, or, like, desc, inArray, notExists } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   deadStockItems,
@@ -47,7 +47,7 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
     });
   } catch (err) {
     logger.error('Dead stock list error:', { error: (err as Error).message });
-    res.status(500).json({ error: '不動在庫の取得に失敗しました' });
+    res.status(500).json({ error: 'デッドストックリストの取得に失敗しました' });
   }
 });
 
@@ -110,7 +110,7 @@ router.get('/used-medication', async (req: AuthRequest, res: Response) => {
     });
   } catch (err) {
     logger.error('Used medication list error:', { error: (err as Error).message });
-    res.status(500).json({ error: '使用薬剤の取得に失敗しました' });
+    res.status(500).json({ error: '医薬品使用量リストの取得に失敗しました' });
   }
 });
 
@@ -133,18 +133,15 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       searchCondition = likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
     }
 
-    // Exclude blocked pharmacies from browse results
-    const blockedRows = await db.select({ targetPharmacyId: pharmacyRelationships.targetPharmacyId })
-      .from(pharmacyRelationships)
-      .where(and(
-        eq(pharmacyRelationships.pharmacyId, req.user!.id),
-        eq(pharmacyRelationships.relationshipType, 'blocked'),
-      ));
-    const blockedIds = blockedRows.map((r) => r.targetPharmacyId);
-
-    const blockCondition = blockedIds.length > 0
-      ? notInArray(deadStockItems.pharmacyId, blockedIds)
-      : undefined;
+    const blockCondition = notExists(
+      db.select({ id: pharmacyRelationships.id })
+        .from(pharmacyRelationships)
+        .where(and(
+          eq(pharmacyRelationships.pharmacyId, req.user!.id),
+          eq(pharmacyRelationships.targetPharmacyId, deadStockItems.pharmacyId),
+          eq(pharmacyRelationships.relationshipType, 'blocked'),
+        ))
+    );
 
     const whereExpr = and(
       eq(deadStockItems.isAvailable, true),

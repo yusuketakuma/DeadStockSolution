@@ -2,9 +2,42 @@
 
 ## システム紹介
 
-DeadStockSolution は、薬局間の不動在庫交換を支援する業務システムです。  
+DeadStockSolution は、薬局間のデッドストック交換を支援する業務システムです。  
 在庫アップロード、マッチング、提案対応、通知、管理者向け運用機能を一つの画面で扱えるようにし、
 日々の在庫調整を効率化することを目的としています。
+
+## Codex サブエージェント運用メモ
+
+- この環境では `spawn_agent` の role に差異があります。
+- 2026-02-25 時点で動作確認できた role:
+  - `implementer`
+  - `claude_implementer`
+  - `claude_reviewer`
+- 2026-02-25 実測で利用不可だった role:
+  - `default`
+  - `explorer`
+  - `worker`
+  - `verifier`
+- `agent type is currently not available` が出る場合は、次の順で再試行してください。
+  1. `implementer`
+  2. `claude_implementer`
+  3. `claude_reviewer`
+
+## Performance Regression Guard
+
+- baseline 更新:
+
+```bash
+npm run test:perf:update:server
+```
+
+- baseline チェック:
+
+```bash
+npm run test:perf:server
+```
+
+- 許容差は相対+絶対の組み合わせで判定されます（baseline.json 内の `tolerances`）。
 
 ## Vercel Postgres移行手順
 
@@ -34,8 +67,9 @@ npm run db:migrate:legacy --workspace=server
 ## 環境変数（認証・テスト薬局）
 
 - `CORS_ORIGINS`: 許可するオリジンをカンマ区切りで指定（本番必須）
+- `JWT_SECRET`: JWT署名シークレット（`NODE_ENV=test` 以外では必須）
 - `ENABLE_TEST_PHARMACY_ACCOUNTS`: `true` のときのみテスト薬局シードを有効化（本番は `false` 推奨）
-- `TEST_ACCOUNT_PASSWORD`: テスト薬局の共通パスワード（8文字以上必須）
+- `TEST_ACCOUNT_PASSWORD`: テスト薬局の共通パスワード（8文字以上必須、`ENABLE_TEST_PHARMACY_ACCOUNTS=true` の場合は必須）
 - `EXPOSE_PASSWORD_RESET_TOKEN`: `true` のときのみパスワードリセットトークンをAPIレスポンスに含める（開発限定）
 - `TRUST_PROXY`: `true` または hop数（例: `1`）で `trust proxy` を有効化
 - `DRUG_MASTER_AUTO_SYNC`: `true` で医薬品マスター自動取得を有効化
@@ -46,6 +80,32 @@ npm run db:migrate:legacy --workspace=server
 - `DRUG_PACKAGE_CHECK_INTERVAL_HOURS`: 包装単位自動取得の確認間隔（時間）
 - `DRUG_PACKAGE_SOURCE_AUTHORIZATION`: 取得元に認証ヘッダーが必要な場合に指定（任意）
 - `DRUG_PACKAGE_SOURCE_COOKIE`: 取得元にCookieが必要な場合に指定（任意）
+- `SCHEDULER_OPTIMIZED_LOOP_ENABLED`: `true` で scheduler を timeout-chain モード（既定）で動作
+- `DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED`: 医薬品マスター scheduler の loop モード個別上書き（任意）
+- `DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED`: 包装単位 scheduler の loop モード個別上書き（任意）
+- `IMPORT_FAILURE_ALERT_ENABLED`: `true` で取込失敗アラート監視を有効化
+- `IMPORT_FAILURE_ALERT_INTERVAL_MINUTES`: 失敗件数を確認する間隔（分）
+- `IMPORT_FAILURE_ALERT_WINDOW_MINUTES`: 集計対象の直近時間幅（分）
+- `IMPORT_FAILURE_ALERT_THRESHOLD`: アラート発火の最小失敗件数
+- `IMPORT_FAILURE_ALERT_COOLDOWN_MINUTES`: 再通知までのクールダウン時間（分）
+- `IMPORT_FAILURE_ALERT_ACTIONS`: 監視対象アクション（カンマ区切り）
+- `IMPORT_FAILURE_ALERT_SCHEDULER_OPTIMIZED_LOOP_ENABLED`: 取込失敗アラート scheduler の loop モード個別上書き（任意）
+- `IMPORT_FAILURE_ALERT_WEBHOOK_URL`: 通知先Webhook URL（HTTPS推奨、未設定時はログ警告のみ）
+- `IMPORT_FAILURE_ALERT_WEBHOOK_TOKEN`: WebhookのBearerトークン（任意）
+- `IMPORT_FAILURE_ALERT_WEBHOOK_TIMEOUT_MS`: Webhook通知タイムアウト（ミリ秒）
+- `IMPORT_FAILURE_ALERT_OPENCLAW_AUTO_HANDOFF`: `true` で閾値超過時にOpenClawへ自動ハンドオフ
+- `IMPORT_FAILURE_ALERT_OPENCLAW_PHARMACY_ID`: 自動ハンドオフ時に `user_requests` を作成する薬局ID
+- `IMPORT_FAILURE_ALERT_OPENCLAW_DEDUP_MINUTES`: 自動ハンドオフの重複抑止時間（分）
+- `REQUEST_LOG_ERRORS_ONLY`: `true` で4xx/5xxのみ request ログ出力（既定）
+- `REQUEST_METRICS_ENABLED`: `false` で request メトリクス収集を停止
+- `LOGGER_LAZY_PAYLOAD_ENABLED`: `true` で logger payload 関数を必要時のみ評価（既定）
+- `OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS`: OpenClaw Webhook署名検証で許容する時刻ずれ（秒）
+- `OPENCLAW_LOG_CONTEXT_WINDOW_HOURS`: OpenClawへ渡すログ集計対象の時間幅（時間）
+- `OPENCLAW_LOG_CONTEXT_RECENT_FAILURE_LIMIT`: OpenClawへ渡す直近失敗ログ件数
+- `OPENCLAW_LOG_CONTEXT_RECENT_ACTIVITY_LIMIT`: OpenClawへ渡す薬局別アクティビティログ件数
+- `OPENCLAW_LOG_CONTEXT_DETAIL_MAX_LENGTH`: OpenClawへ渡すログ詳細文の最大文字数
+- OpenClaw Webhook受信時は `x-openclaw-signature` と `x-openclaw-timestamp` を利用したHMAC認証を必須化
+- HMAC認証は時刻ずれ検証に加え、同一署名の短時間リプレイも拒否します
 
 ## 包装単位マスター（公的ソース）
 
@@ -67,7 +127,6 @@ npm run db:migrate:legacy --workspace=server
 - デモアカウントを Preview で使う場合は、Vercel Environment Variables に以下を設定してください。
   - `ENABLE_TEST_PHARMACY_ACCOUNTS=true`
   - `TEST_ACCOUNT_PASSWORD`（クライアントの `VITE_TEST_ACCOUNT_PASSWORD` と同じ値）
-  - 互換のため、`VERCEL_ENV=preview` かつ `TEST_ACCOUNT_PASSWORD` 未設定時は `password123` を既定値として使用します。
 
 ### main DB を preview DB に同期する（Neon branch reset）
 

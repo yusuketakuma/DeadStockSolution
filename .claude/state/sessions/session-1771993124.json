@@ -1,0 +1,37 @@
+{
+  "session_id": "session-1771993124",
+  "parent_session_id": null,
+  "state": "stopped",
+  "started_at": "2026-02-25T04:18:44Z",
+  "updated_at": "2026-02-25T04:20:47Z",
+  "event_seq": 5,
+  "last_event_id": "event-000005",
+  "state_version": 1,
+  "cwd": "/Users/yusuke/DeadStockSolution",
+  "project_name": "DeadStockSolution",
+  "resumed_at": "2026-02-25T04:18:44Z",
+  "git": {
+    "branch": "review",
+    "uncommitted_changes": 107,
+    "last_commit": "03bb87c"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1771944007,
+    "wip_tasks": 0,
+    "todo_tasks": 0,
+    "pending_tasks": 0,
+    "completed_tasks": 0
+  },
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "prompt_seq": 1,
+  "intent": "literal",
+  "last_message_length": 264,
+  "last_message_hash": "65f74f4382bd3b1f",
+  "ended_at": "2026-02-25T04:20:47Z",
+  "duration_minutes": 542,
+  "memory_logged": true
+}

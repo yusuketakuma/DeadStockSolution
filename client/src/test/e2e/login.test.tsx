@@ -43,7 +43,7 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
-      expect(screen.getByText('薬局不動在庫交換システム')).toBeInTheDocument();
+      expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
     expect(screen.getByText('v2026.2.25')).toBeInTheDocument();
     // Tab navigation
@@ -220,12 +220,12 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
-      expect(screen.getByText('薬局不動在庫交換システム')).toBeInTheDocument();
+      expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
 
     const card = document.querySelector('.card') as HTMLDivElement | null;
     expect(card).toBeTruthy();
-    expect(card?.style.maxWidth).toBe('483px');
+    expect(card).toHaveClass('auth-card');
   });
 
   it('has link to registration page in user mode', async () => {

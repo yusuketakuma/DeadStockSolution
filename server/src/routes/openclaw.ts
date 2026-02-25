@@ -10,7 +10,7 @@ import {
   isImplementationBranchAllowed,
   isOpenClawStatus,
   isOpenClawWebhookConfigured,
-  verifyOpenClawWebhookSecret,
+  verifyOpenClawWebhookSignature,
   type OpenClawStatus,
 } from '../services/openclaw-service';
 import { parsePositiveInt } from '../utils/request-utils';
@@ -45,8 +45,15 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       return;
     }
 
-    const secret = req.header('x-openclaw-secret');
-    if (!verifyOpenClawWebhookSecret(secret)) {
+    const signature = req.header('x-openclaw-signature');
+    const timestamp = req.header('x-openclaw-timestamp');
+    const isAuthorized = verifyOpenClawWebhookSignature({
+      receivedSignature: signature,
+      receivedTimestamp: timestamp,
+      rawBody: req.rawBody,
+    });
+
+    if (!isAuthorized) {
       res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
       return;
     }

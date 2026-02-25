@@ -1,7 +1,7 @@
 # CLAUDE.md — DeadStockSolution
 
 ## Project Overview
-薬局向けデッドストック（不動在庫）管理システム。薬局間の在庫マッチングと厚生労働省の薬価基準データ連携を提供する。
+薬局向けデッドストック管理システム。薬局間の在庫マッチングと厚生労働省の薬価基準データ連携を提供する。
 
 ## Tech Stack
 - **Frontend**: React 18 + TypeScript + Vite + React Bootstrap
@@ -68,3 +68,6 @@ server/src/
 - Never commit `.env` files
 - Vercel serverless entry: `server/api/index.ts`
 - Excel/CSV parsing for MHLW pharmaceutical data integration
+- Sub-agent role compatibility (2026-02-25 actual):
+  - Available: `implementer`, `claude_implementer`, `claude_reviewer`
+  - Unavailable: `default`, `explorer`, `worker`, `verifier`

@@ -2,6 +2,7 @@ import { eq, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword } from './auth-service';
+import { logger } from './logger';
 
 interface TestAccountDefinition {
   email: string;
@@ -24,7 +25,6 @@ interface EnsuredTestAccount {
   isAdmin: boolean;
 }
 
-const DEFAULT_TEST_ACCOUNT_PASSWORD = 'password123';
 let ensureSeedPromise: Promise<void> | null = null;
 
 const TEST_ACCOUNTS: TestAccountDefinition[] = [
@@ -58,7 +58,9 @@ export function getAllTestAccounts(): TestAccountDefinition[] {
   return [...TEST_ACCOUNTS];
 }
 
-function resolveTestAccountPassword(): string {
+function resolveTestAccountPassword(options: { strict: true }): string;
+function resolveTestAccountPassword(options: { strict: false }): string | null;
+function resolveTestAccountPassword(options: { strict: boolean }): string | null {
   const configured = process.env.TEST_ACCOUNT_PASSWORD?.trim();
   if (configured) {
     if (configured.length < 8) {
@@ -67,11 +69,11 @@ function resolveTestAccountPassword(): string {
     return configured;
   }
 
-  if (process.env.VERCEL_ENV === 'preview') {
-    return DEFAULT_TEST_ACCOUNT_PASSWORD;
+  if (options.strict) {
+    throw new Error('TEST_ACCOUNT_PASSWORD is required');
   }
 
-  throw new Error('TEST_ACCOUNT_PASSWORD is required');
+  return null;
 }
 
 async function findExistingPharmacy(account: TestAccountDefinition): Promise<EnsuredTestAccount | null> {
@@ -104,7 +106,12 @@ async function findExistingPharmacy(account: TestAccountDefinition): Promise<Ens
 }
 
 export async function ensureTestAccount(account: TestAccountDefinition): Promise<EnsuredTestAccount> {
-  const passwordHash = await hashPassword(resolveTestAccountPassword());
+  const resolvedPassword = resolveTestAccountPassword({ strict: true });
+  const passwordHash = await hashPassword(resolvedPassword);
+  return upsertTestAccount(account, passwordHash);
+}
+
+async function upsertTestAccount(account: TestAccountDefinition, passwordHash: string): Promise<EnsuredTestAccount> {
   const existing = await findExistingPharmacy(account);
   if (existing) {
     await db.update(pharmacies)
@@ -167,9 +174,12 @@ export async function ensureTestAccount(account: TestAccountDefinition): Promise
 }
 
 export async function seedTestAccounts(): Promise<EnsuredTestAccount[]> {
+  const resolvedPassword = resolveTestAccountPassword({ strict: true });
+  const passwordHash = await hashPassword(resolvedPassword);
+
   const seededAccounts: EnsuredTestAccount[] = [];
   for (const account of TEST_ACCOUNTS) {
-    seededAccounts.push(await ensureTestAccount(account));
+    seededAccounts.push(await upsertTestAccount(account, passwordHash));
   }
   return seededAccounts;
 }
@@ -181,16 +191,25 @@ export function ensureTestAccountsSeededIfEnabled(): Promise<void> {
     return Promise.resolve();
   }
 
+  const resolvedPassword = resolveTestAccountPassword({ strict: false });
+  if (!resolvedPassword) {
+    logger.warn('Test pharmacy seed skipped: TEST_ACCOUNT_PASSWORD is not set');
+    return Promise.resolve();
+  }
+
   if (ensureSeedPromise) {
     return ensureSeedPromise;
   }
 
   ensureSeedPromise = seedTestAccounts()
     .then((accounts) => {
-      console.log(`Test pharmacy accounts are ready (${accounts.length} accounts).`);
+      logger.info('Test pharmacy accounts are ready', { count: accounts.length });
     })
     .catch((err) => {
-      console.error('Failed to seed test pharmacy accounts:', err);
+      logger.error('Failed to seed test pharmacy accounts', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      ensureSeedPromise = null;
     });
 
   return ensureSeedPromise;

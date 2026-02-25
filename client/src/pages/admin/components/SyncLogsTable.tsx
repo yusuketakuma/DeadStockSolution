@@ -45,12 +45,12 @@ export default function SyncLogsTable({ syncLogs }: SyncLogsTableProps) {
                     {log.status}
                   </Badge>
                 </td>
-                <td className="small text-truncate" style={{ maxWidth: 150 }}>{log.sourceDescription || '-'}</td>
+                <td className="small text-truncate sync-log-source">{log.sourceDescription || '-'}</td>
                 <td>{log.itemsProcessed}</td>
                 <td>{log.itemsAdded}</td>
                 <td>{log.itemsUpdated}</td>
                 <td>{log.itemsDeleted}</td>
-                <td className="small text-danger text-truncate" style={{ maxWidth: 200 }}>{log.errorMessage || '-'}</td>
+                <td className="small text-danger text-truncate sync-log-error">{log.errorMessage || '-'}</td>
               </tr>
             ))}
           </tbody>

@@ -1,8 +1,13 @@
 {
   "lsp": {
-    "available": false,
-    "plugins": "",
-    "available_by_ext": {},
+    "available": true,
+    "plugins": " typescript-lsp",
+    "available_by_ext": {
+      "ts": true,
+      "tsx": true,
+      "js": true,
+      "jsx": true
+    },
     "last_used_prompt_seq": 0,
     "last_used_tool_name": "",
     "used_since_last_prompt": false

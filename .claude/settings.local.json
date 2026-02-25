@@ -5,7 +5,9 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "Bash(claude plugin:*)",
-      "Bash(claude:*)"
+      "Bash(claude:*)",
+      "mcp__harness__harness_lsp_diagnostics",
+      "Bash(tail:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

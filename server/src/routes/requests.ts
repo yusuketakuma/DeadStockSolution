@@ -4,6 +4,7 @@ import { db } from '../config/database';
 import { userRequests } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { logger } from '../services/logger';
+import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
 import { AuthRequest } from '../types';
 
@@ -36,10 +37,23 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         createdAt: userRequests.createdAt,
       });
 
+    let handoffContext: Record<string, unknown> | undefined;
+    try {
+      const operationLogs = await buildOpenClawLogContext(req.user.id);
+      handoffContext = { operationLogs };
+    } catch (contextErr) {
+      logger.warn('OpenClaw context collection failed on request submit', {
+        requestId: created.id,
+        pharmacyId: req.user.id,
+        error: (contextErr as Error).message,
+      });
+    }
+
     const handoff = await handoffToOpenClaw({
       requestId: created.id,
       pharmacyId: req.user.id,
       requestText,
+      context: handoffContext,
     });
 
     let openclawStatus = created.openclawStatus;

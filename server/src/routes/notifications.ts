@@ -1,11 +1,12 @@
 import { Router, Response } from 'express';
-import { and, desc, eq, inArray, or } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { adminMessages, adminMessageReads, exchangeProposals } from '../db/schema';
 import { parsePositiveInt } from '../utils/request-utils';
 import { sanitizeInternalPath } from '../utils/path-utils';
+import { logger } from '../services/logger';
 
 type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message';
 
@@ -23,6 +24,8 @@ interface NoticeItem {
 }
 
 const PROPOSAL_RESPONSE_DEADLINE_HOURS = 72;
+const PROPOSAL_NOTICE_LIMIT = 50;
+const PROPOSAL_NOTICE_STATUSES = ['proposed', 'accepted_a', 'accepted_b', 'confirmed'] as const;
 
 function buildProposalDeadlineAt(proposedAt: string | null): string | null {
   if (!proposedAt) return null;
@@ -105,6 +108,30 @@ function proposalActionNotice(proposal: {
   return null;
 }
 
+function timestampSortValue(timestamp: string | null): number {
+  if (timestamp === null) return Number.NEGATIVE_INFINITY;
+  const value = Date.parse(timestamp);
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function mergeDedupSortByTimestamp<T extends { id: number }>(
+  branchA: T[],
+  branchB: T[],
+  getTimestamp: (row: T) => string | null,
+): T[] {
+  const deduped = new Map<number, T>();
+  for (const row of branchA) deduped.set(row.id, row);
+  for (const row of branchB) {
+    if (!deduped.has(row.id)) deduped.set(row.id, row);
+  }
+
+  return [...deduped.values()].sort((left, right) => {
+    const leftSort = timestampSortValue(getTimestamp(left));
+    const rightSort = timestampSortValue(getTimestamp(right));
+    return rightSort - leftSort || right.id - left.id;
+  });
+}
+
 const router = Router();
 router.use(requireLogin);
 
@@ -113,40 +140,64 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const pharmacyId = req.user!.id;
 
     const [proposalRows, messageRows] = await Promise.all([
-      db.select({
-        id: exchangeProposals.id,
-        pharmacyAId: exchangeProposals.pharmacyAId,
-        pharmacyBId: exchangeProposals.pharmacyBId,
-        status: exchangeProposals.status,
-        proposedAt: exchangeProposals.proposedAt,
-      })
-        .from(exchangeProposals)
-        .where(and(
-          or(
-            eq(exchangeProposals.pharmacyAId, pharmacyId),
-            eq(exchangeProposals.pharmacyBId, pharmacyId),
-          ),
-          inArray(exchangeProposals.status, ['proposed', 'accepted_a', 'accepted_b', 'confirmed']),
-        ))
-        .orderBy(desc(exchangeProposals.proposedAt))
-        .limit(50),
-      db.select({
-        id: adminMessages.id,
-        title: adminMessages.title,
-        body: adminMessages.body,
-        actionPath: adminMessages.actionPath,
-        createdAt: adminMessages.createdAt,
-      })
-        .from(adminMessages)
-        .where(or(
-          eq(adminMessages.targetType, 'all'),
-          and(
-            eq(adminMessages.targetType, 'pharmacy'),
-            eq(adminMessages.targetPharmacyId, pharmacyId),
-          ),
-        ))
-        .orderBy(desc(adminMessages.createdAt))
-        .limit(50),
+      (async () => {
+        const proposalSelect = {
+          id: exchangeProposals.id,
+          pharmacyAId: exchangeProposals.pharmacyAId,
+          pharmacyBId: exchangeProposals.pharmacyBId,
+          status: exchangeProposals.status,
+          proposedAt: exchangeProposals.proposedAt,
+        };
+        const [branchA, branchB] = await Promise.all([
+          db.select(proposalSelect)
+            .from(exchangeProposals)
+            .where(and(
+              eq(exchangeProposals.pharmacyAId, pharmacyId),
+              inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
+            ))
+            .orderBy(desc(exchangeProposals.proposedAt))
+            .limit(PROPOSAL_NOTICE_LIMIT),
+          db.select(proposalSelect)
+            .from(exchangeProposals)
+            .where(and(
+              eq(exchangeProposals.pharmacyBId, pharmacyId),
+              inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
+            ))
+            .orderBy(desc(exchangeProposals.proposedAt))
+            .limit(PROPOSAL_NOTICE_LIMIT),
+        ]);
+
+        return mergeDedupSortByTimestamp(branchA, branchB, (row) => row.proposedAt)
+          .slice(0, PROPOSAL_NOTICE_LIMIT);
+      })(),
+      (async () => {
+        const messageSelect = {
+          id: adminMessages.id,
+          title: adminMessages.title,
+          body: adminMessages.body,
+          actionPath: adminMessages.actionPath,
+          createdAt: adminMessages.createdAt,
+        };
+
+        const [targetAllMessages, targetPharmacyMessages] = await Promise.all([
+          db.select(messageSelect)
+            .from(adminMessages)
+            .where(eq(adminMessages.targetType, 'all'))
+            .orderBy(desc(adminMessages.createdAt), desc(adminMessages.id))
+            .limit(50),
+          db.select(messageSelect)
+            .from(adminMessages)
+            .where(and(
+              eq(adminMessages.targetType, 'pharmacy'),
+              eq(adminMessages.targetPharmacyId, pharmacyId),
+            ))
+            .orderBy(desc(adminMessages.createdAt), desc(adminMessages.id))
+            .limit(50),
+        ]);
+
+        return mergeDedupSortByTimestamp(targetAllMessages, targetPharmacyMessages, (row) => row.createdAt)
+          .slice(0, 50);
+      })(),
     ]);
 
     const messageIds = messageRows.map((message) => message.id);
@@ -205,7 +256,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Notifications fetch error:', err);
+    logger.error('Notifications fetch error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '通知の取得に失敗しました' });
   }
 });
@@ -249,7 +302,9 @@ router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
 
     res.json({ message: '既読にしました' });
   } catch (err) {
-    console.error('Notification read error:', err);
+    logger.error('Notification read error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '既読処理に失敗しました' });
   }
 });

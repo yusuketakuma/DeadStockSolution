@@ -18,6 +18,22 @@ _harness_version: "2.23.6"
   - `cc:DONE` → 完了
   - `cc:blocked` → 依存タスク待ち
 
+## Sub-agent Role Compatibility
+
+- `spawn_agent` で利用する role は次を優先:
+  - `implementer`
+  - `claude_implementer`
+  - `claude_reviewer`
+- 実測で利用不可（`agent type is currently not available`）:
+  - `default`
+  - `explorer`
+  - `worker`
+  - `verifier`
+- 失敗時のフォールバック順:
+  1. `implementer`
+  2. `claude_implementer`
+  3. `claude_reviewer`
+
 ## プロジェクト構造
 
 | パス | 内容 |

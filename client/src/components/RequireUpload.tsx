@@ -27,7 +27,7 @@ export default function RequireUpload({ children }: Props) {
   if (!uploaded) {
     return (
       <Alert variant="warning">
-        マッチング機能を利用するには、当月の使用薬剤Excelをアップロードする必要があります。
+        マッチング機能を利用するには、当月の医薬品使用量Excelをアップロードする必要があります。
         <Link to="/upload" className="alert-link ms-2">アップロードページへ</Link>
       </Alert>
     );

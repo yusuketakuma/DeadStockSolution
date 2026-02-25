@@ -3,7 +3,7 @@ import { Card, Table, Button, Alert, Badge, Row, Col, Spinner } from 'react-boot
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
-import DisclaimerBanner from '../components/DisclaimerBanner';
+import ConfirmActionModal from '../components/ConfirmActionModal';
 
 interface PharmacyInfo {
   id: number;
@@ -47,6 +47,8 @@ export default function ProposalDetailPage() {
   const [data, setData] = useState<ProposalDetail | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [pendingAction, setPendingAction] = useState<'accept' | 'reject' | 'complete' | null>(null);
+  const [actionSubmitting, setActionSubmitting] = useState(false);
 
   const fetchDetail = () => {
     api.get<ProposalDetail>(`/exchange/proposals/${id}`)
@@ -93,23 +95,31 @@ export default function ProposalDetailPage() {
   const canReject = isTentativePhase;
   const canComplete = isConfirmedPhase;
 
-  const handleAction = async (action: 'accept' | 'reject' | 'complete') => {
-    const confirmMsg = action === 'accept' ? '承認' : action === 'reject' ? '拒否' : '交換完了';
-    if (!confirm(`この仮マッチングを${confirmMsg}しますか？`)) return;
+  const handleAction = async () => {
+    if (!pendingAction) return;
     setError('');
     setMessage('');
+    setActionSubmitting(true);
     try {
-      const result = await api.post<{ message: string }>(`/exchange/proposals/${id}/${action}`);
+      const result = await api.post<{ message: string }>(`/exchange/proposals/${id}/${pendingAction}`);
       setMessage(result.message);
+      setPendingAction(null);
       fetchDetail();
     } catch (err) {
       setError(err instanceof Error ? err.message : '操作に失敗しました');
+    } finally {
+      setActionSubmitting(false);
     }
+  };
+
+  const actionLabelMap: Record<'accept' | 'reject' | 'complete', string> = {
+    accept: '承認',
+    reject: '拒否',
+    complete: '交換完了',
   };
 
   return (
     <div>
-      <DisclaimerBanner />
       <div className="d-flex justify-content-between align-items-center mb-3 mobile-card-header">
         <h4 className="page-title mb-0">マッチング #{proposal.id}</h4>
         <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank">
@@ -229,10 +239,23 @@ export default function ProposalDetailPage() {
       </Card>
 
       <div className="d-flex gap-2 mobile-stack">
-        {canAccept && <Button variant="success" onClick={() => handleAction('accept')}>仮マッチングを承認</Button>}
-        {canReject && <Button variant="danger" onClick={() => handleAction('reject')}>拒否する</Button>}
-        {canComplete && <Button variant="primary" onClick={() => handleAction('complete')}>交換完了</Button>}
+        {canAccept && <Button variant="success" onClick={() => setPendingAction('accept')}>仮マッチングを承認</Button>}
+        {canReject && <Button variant="danger" onClick={() => setPendingAction('reject')}>拒否する</Button>}
+        {canComplete && <Button variant="primary" onClick={() => setPendingAction('complete')}>交換完了</Button>}
       </div>
+
+      <ConfirmActionModal
+        show={pendingAction !== null}
+        title={`マッチングの${pendingAction ? actionLabelMap[pendingAction] : ''}`}
+        body={pendingAction
+          ? `このマッチングを${actionLabelMap[pendingAction]}してよろしいですか？`
+          : null}
+        confirmLabel={pendingAction ? actionLabelMap[pendingAction] : '実行'}
+        confirmVariant={pendingAction === 'reject' ? 'danger' : 'primary'}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={handleAction}
+        pending={actionSubmitting}
+      />
     </div>
   );
 }

@@ -13,11 +13,18 @@
     "build:server": "npm run build --workspace=server",
     "test": "npm run test --workspace=server && npm run test --workspace=client",
     "test:server": "npm run test --workspace=server",
+    "test:integration:server": "npm run test:integration --workspace=server",
+    "test:perf:server": "npm run test:perf --workspace=server",
+    "test:perf:update:server": "npm run test:perf:update --workspace=server",
     "test:client": "npm run test --workspace=client",
     "test:e2e": "npm run test --workspace=client",
+    "test:coverage": "npm run test:coverage --workspace=server && npm run test:coverage --workspace=client",
+    "test:coverage:server": "npm run test:coverage --workspace=server",
+    "test:coverage:client": "npm run test:coverage --workspace=client",
     "typecheck": "npm run typecheck --workspace=server && npm run typecheck --workspace=client",
     "typecheck:server": "npm run typecheck --workspace=server",
     "typecheck:client": "npm run typecheck --workspace=client",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
     "deploy:preview": "sh scripts/vercel-deploy-preview.sh",
     "deploy:prod": "sh scripts/vercel-deploy-prod.sh"
   }

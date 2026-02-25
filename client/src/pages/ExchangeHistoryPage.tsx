@@ -35,7 +35,7 @@ export default function ExchangeHistoryPage() {
 
   return (
     <div>
-      <h4 className="mb-3">交換履歴</h4>
+      <h4 className="page-title mb-3">交換履歴</h4>
       {items.length === 0 ? (
         <Alert variant="secondary">交換履歴はまだありません。</Alert>
       ) : (

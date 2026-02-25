@@ -6,13 +6,15 @@ const SALT_ROUNDS = 10;
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('JWT_SECRET environment variable is not set');
-    }
-    return 'dev-secret-do-not-use-in-production';
+  if (secret) {
+    return secret;
   }
-  return secret;
+
+  if (process.env.NODE_ENV === 'test') {
+    return 'test-secret-only';
+  }
+
+  throw new Error('JWT_SECRET environment variable is not set');
 }
 
 export async function hashPassword(password: string): Promise<string> {

@@ -32,8 +32,92 @@ import {
 import { triggerManualAutoSync } from '../services/drug-master-scheduler';
 import { triggerManualPackageAutoSync } from '../services/drug-package-scheduler';
 import { parseExcelBuffer } from '../services/upload-service';
+import { logger } from '../services/logger';
 
 const router = Router();
+type ParsedDrugMasterRows = ReturnType<typeof parseMhlwExcelData>;
+type ParsedPackageRows = ReturnType<typeof parsePackageExcelData>;
+type DrugMasterSyncSummary = {
+  itemsProcessed: number;
+  itemsAdded: number;
+  itemsUpdated: number;
+  itemsDeleted: number;
+};
+
+const EMPTY_SYNC_RESULT: DrugMasterSyncSummary = {
+  itemsProcessed: 0,
+  itemsAdded: 0,
+  itemsUpdated: 0,
+  itemsDeleted: 0,
+};
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function getErrorMessageOrFallback(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+function getUploadContext(req: AuthRequest): Record<string, unknown> {
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  const revisionDateRaw = req.body?.revisionDate;
+
+  return {
+    path: req.path,
+    pharmacyId: req.user?.id ?? null,
+    fileName: file?.originalname ?? null,
+    fileType: file?.mimetype ?? null,
+    fileSize: file?.size ?? null,
+    revisionDate: typeof revisionDateRaw === 'string' ? revisionDateRaw : null,
+  };
+}
+
+function sanitizeLogValue(value: unknown, maxLength: number = 160): string | null {
+  if (value === null || value === undefined) return null;
+  const str = String(value)
+    .replace(/\|/g, '/')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!str) return null;
+  return str.slice(0, maxLength);
+}
+
+function logImportFailure(
+  action: 'drug_master_sync' | 'drug_master_package_upload',
+  req: AuthRequest,
+  phase: string,
+  reason: string,
+  extra: Record<string, unknown> = {},
+): void {
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  const detailParts = [
+    '失敗',
+    `phase=${phase}`,
+    `reason=${reason}`,
+  ];
+
+  const fileName = sanitizeLogValue(file?.originalname, 120);
+  if (fileName) detailParts.push(`file=${fileName}`);
+
+  const revisionDate = sanitizeLogValue(req.body?.revisionDate, 40);
+  if (revisionDate) detailParts.push(`revisionDate=${revisionDate}`);
+
+  for (const [key, value] of Object.entries(extra)) {
+    const sanitized = sanitizeLogValue(value);
+    if (sanitized) {
+      detailParts.push(`${key}=${sanitized}`);
+    }
+  }
+
+  void writeLog(action, {
+    pharmacyId: req.user?.id ?? null,
+    detail: detailParts.join('|'),
+    ipAddress: getClientIp(req as Request),
+  });
+}
 
 router.use(requireLogin);
 router.use(requireAdmin);
@@ -78,6 +162,75 @@ function resolveIntervalHours(raw: string | undefined, fallback: number = 24): n
   return parsed;
 }
 
+function normalizeRevisionDate(raw: unknown): string {
+  if (typeof raw === 'string') {
+    return raw.trim();
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isRevisionDateFormat(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function resolveSourceHost(sourceUrl: string): string {
+  if (!sourceUrl) return '';
+  try {
+    return new URL(sourceUrl).hostname;
+  } catch {
+    return 'invalid-url';
+  }
+}
+
+function buildAutoSyncStatus(
+  sourceUrl: string,
+  autoSyncEnabled: boolean,
+  checkIntervalHours: number,
+): {
+  enabled: boolean;
+  sourceHost: string;
+  hasSourceUrl: boolean;
+  checkIntervalHours: number;
+  supportsManualUrlOverride: boolean;
+} {
+  return {
+    enabled: autoSyncEnabled,
+    sourceHost: resolveSourceHost(sourceUrl),
+    hasSourceUrl: !!sourceUrl,
+    checkIntervalHours,
+    supportsManualUrlOverride: true,
+  };
+}
+
+async function parseDrugMasterRows(file: Express.Multer.File, ext: string): Promise<ParsedDrugMasterRows> {
+  if (ext === '.csv') {
+    const csvContent = decodeCsvBuffer(file.buffer);
+    return parseMhlwCsvData(csvContent);
+  }
+  const excelRows = await parseExcelBuffer(file.buffer);
+  return parseMhlwExcelData(excelRows);
+}
+
+async function parsePackageRows(file: Express.Multer.File, ext: string): Promise<ParsedPackageRows> {
+  if (ext === '.csv') {
+    const csvContent = decodeCsvBuffer(file.buffer);
+    return parsePackageCsvData(csvContent);
+  }
+  if (ext === '.xml') {
+    const xmlContent = file.buffer.toString('utf-8');
+    return parsePackageXmlData(xmlContent);
+  }
+  if (ext === '.zip') {
+    return parsePackageZipData(file.buffer);
+  }
+  const excelRows = await parseExcelBuffer(file.buffer);
+  return parsePackageExcelData(excelRows);
+}
+
+async function completeSyncLogAsFailed(syncLogId: number, errorMessage: string): Promise<void> {
+  await completeSyncLog(syncLogId, 'failed', EMPTY_SYNC_RESULT, errorMessage);
+}
+
 function uploadSingleFile(req: Request, res: Response, next: NextFunction): void {
   upload.single('file')(req, res, (err: unknown) => {
     if (!err) {
@@ -107,7 +260,9 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
     const stats = await getDrugMasterStats();
     res.json(stats);
   } catch (err) {
-    console.error('Drug master stats error:', err);
+    logger.error('Drug master stats error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '統計情報の取得に失敗しました' });
   }
 });
@@ -194,7 +349,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('Drug master list error:', err);
+    logger.error('Drug master list error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '医薬品マスターの取得に失敗しました' });
   }
 });
@@ -217,7 +374,9 @@ router.get('/detail/:yjCode', async (req: AuthRequest, res: Response) => {
 
     res.json(detail);
   } catch (err) {
-    console.error('Drug master detail error:', err);
+    logger.error('Drug master detail error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '医薬品詳細の取得に失敗しました' });
   }
 });
@@ -225,6 +384,7 @@ router.get('/detail/:yjCode', async (req: AuthRequest, res: Response) => {
 // ── 薬価基準収載品目リスト同期（ファイルアップロード）──
 
 router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) => {
+  let syncFailureLogged = false;
   try {
     const file = (req as Request & { file?: Express.Multer.File }).file;
     if (!file) {
@@ -232,12 +392,11 @@ router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) =
       return;
     }
 
-    const revisionDate = typeof req.body.revisionDate === 'string'
-      ? req.body.revisionDate.trim()
-      : new Date().toISOString().slice(0, 10);
+    const revisionDate = normalizeRevisionDate(req.body.revisionDate);
 
     // バリデーション: 日付形式
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(revisionDate)) {
+    if (!isRevisionDateFormat(revisionDate)) {
+      logImportFailure('drug_master_sync', req, 'sync', 'invalid_revision_date', { revisionDate });
       res.status(400).json({ error: '改定日は YYYY-MM-DD 形式で指定してください' });
       return;
     }
@@ -247,26 +406,27 @@ router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) =
 
     // 同期ログ作成
     const syncLog = await createSyncLog('manual', file.originalname, userId);
-    const emptyResult = { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 };
 
-    let parsedRows;
+    let parsedRows: ParsedDrugMasterRows;
     try {
-      if (ext === '.csv') {
-        const csvContent = decodeCsvBuffer(file.buffer);
-        parsedRows = parseMhlwCsvData(csvContent);
-      } else {
-        const excelRows = await parseExcelBuffer(file.buffer);
-        parsedRows = parseMhlwExcelData(excelRows);
-      }
+      parsedRows = await parseDrugMasterRows(file, ext);
     } catch (parseErr) {
-      await completeSyncLog(syncLog.id, 'failed', emptyResult,
-        parseErr instanceof Error ? parseErr.message : 'パースエラー');
-      res.status(400).json({ error: parseErr instanceof Error ? parseErr.message : 'ファイルのパースに失敗しました' });
+      logImportFailure('drug_master_sync', req, 'sync', 'parse_failed', {
+        extension: ext,
+        syncLogId: syncLog.id,
+        error: getErrorMessage(parseErr),
+      });
+      await completeSyncLogAsFailed(syncLog.id, getErrorMessageOrFallback(parseErr, 'パースエラー'));
+      res.status(400).json({ error: getErrorMessageOrFallback(parseErr, 'ファイルのパースに失敗しました') });
       return;
     }
 
     if (parsedRows.length === 0) {
-      await completeSyncLog(syncLog.id, 'failed', emptyResult, '有効なデータ行が見つかりません');
+      logImportFailure('drug_master_sync', req, 'sync', 'empty_rows', {
+        extension: ext,
+        syncLogId: syncLog.id,
+      });
+      await completeSyncLogAsFailed(syncLog.id, '有効なデータ行が見つかりません');
       res.status(400).json({ error: '有効なデータ行が見つかりませんでした。ファイル形式を確認してください。' });
       return;
     }
@@ -288,15 +448,36 @@ router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) =
         syncLogId: syncLog.id,
       });
     } catch (syncErr) {
+      syncFailureLogged = true;
+      logger.error('Drug master sync failed', () => ({
+        ...getUploadContext(req),
+        extension: ext,
+        syncLogId: syncLog.id,
+        error: getErrorMessage(syncErr),
+        stack: syncErr instanceof Error ? syncErr.stack : undefined,
+      }));
+      logImportFailure('drug_master_sync', req, 'sync', 'sync_failed', {
+        extension: ext,
+        syncLogId: syncLog.id,
+        error: getErrorMessage(syncErr),
+      });
       // 同期失敗時もログを確実に閉じる
       try {
-        await completeSyncLog(syncLog.id, 'failed', emptyResult,
-          syncErr instanceof Error ? syncErr.message : '同期処理中にエラーが発生しました');
+        await completeSyncLogAsFailed(syncLog.id, getErrorMessageOrFallback(syncErr, '同期処理中にエラーが発生しました'));
       } catch { /* ログ更新失敗は無視 */ }
       throw syncErr;
     }
   } catch (err) {
-    console.error('Drug master sync error:', err);
+    if (!syncFailureLogged) {
+      logger.error('Drug master sync route error', () => ({
+        ...getUploadContext(req),
+        error: getErrorMessage(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      }));
+      logImportFailure('drug_master_sync', req, 'sync', 'unexpected_error', {
+        error: getErrorMessage(err),
+      });
+    }
     res.status(500).json({ error: '同期処理中にエラーが発生しました' });
   }
 });
@@ -312,27 +493,23 @@ router.post('/upload-packages', uploadSingleFile, async (req: AuthRequest, res: 
     }
 
     const ext = path.extname(file.originalname).toLowerCase();
-    let parsedRows;
+    let parsedRows: ParsedPackageRows;
 
     try {
-      if (ext === '.csv') {
-        const csvContent = decodeCsvBuffer(file.buffer);
-        parsedRows = parsePackageCsvData(csvContent);
-      } else if (ext === '.xml') {
-        const xmlContent = file.buffer.toString('utf-8');
-        parsedRows = parsePackageXmlData(xmlContent);
-      } else if (ext === '.zip') {
-        parsedRows = await parsePackageZipData(file.buffer);
-      } else {
-        const excelRows = await parseExcelBuffer(file.buffer);
-        parsedRows = parsePackageExcelData(excelRows);
-      }
+      parsedRows = await parsePackageRows(file, ext);
     } catch (parseErr) {
+      logImportFailure('drug_master_package_upload', req, 'upload_packages', 'parse_failed', {
+        extension: ext,
+        error: getErrorMessage(parseErr),
+      });
       res.status(400).json({ error: parseErr instanceof Error ? parseErr.message : 'ファイルのパースに失敗しました' });
       return;
     }
 
     if (parsedRows.length === 0) {
+      logImportFailure('drug_master_package_upload', req, 'upload_packages', 'empty_rows', {
+        extension: ext,
+      });
       res.status(400).json({ error: '有効なデータ行が見つかりませんでした。' });
       return;
     }
@@ -350,7 +527,14 @@ router.post('/upload-packages', uploadSingleFile, async (req: AuthRequest, res: 
       result,
     });
   } catch (err) {
-    console.error('Package upload error:', err);
+    logger.error('Drug package upload error', () => ({
+      ...getUploadContext(req),
+      error: getErrorMessage(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    }));
+    logImportFailure('drug_master_package_upload', req, 'upload_packages', 'unexpected_error', {
+      error: getErrorMessage(err),
+    });
     res.status(500).json({ error: '包装単位データの登録中にエラーが発生しました' });
   }
 });
@@ -362,7 +546,9 @@ router.get('/sync-logs', async (_req: AuthRequest, res: Response) => {
     const logs = await getSyncLogs(30);
     res.json({ data: logs });
   } catch (err) {
-    console.error('Sync logs error:', err);
+    logger.error('Sync logs error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '同期ログの取得に失敗しました' });
   }
 });
@@ -424,7 +610,9 @@ router.put('/detail/:yjCode', async (req: AuthRequest, res: Response) => {
 
     res.json(updated);
   } catch (err) {
-    console.error('Drug master update error:', err);
+    logger.error('Drug master update error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '医薬品の更新に失敗しました' });
   }
 });
@@ -448,7 +636,9 @@ router.post('/auto-sync', async (req: AuthRequest, res: Response) => {
 
     res.json(result);
   } catch (err) {
-    console.error('Auto-sync trigger error:', err);
+    logger.error('Auto-sync trigger error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '自動取得の開始に失敗しました' });
   }
 });
@@ -460,25 +650,12 @@ router.get('/auto-sync/status', async (_req: AuthRequest, res: Response) => {
     const sourceUrl = process.env.DRUG_MASTER_SOURCE_URL || '';
     const autoSyncEnabled = process.env.DRUG_MASTER_AUTO_SYNC === 'true';
     const checkIntervalHours = resolveIntervalHours(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS, 24);
-    const sourceHost = sourceUrl
-      ? (() => {
-          try {
-            return new URL(sourceUrl).hostname;
-          } catch {
-            return 'invalid-url';
-          }
-        })()
-      : '';
 
-    res.json({
-      enabled: autoSyncEnabled,
-      sourceHost,
-      hasSourceUrl: !!sourceUrl,
-      checkIntervalHours,
-      supportsManualUrlOverride: true,
-    });
+    res.json(buildAutoSyncStatus(sourceUrl, autoSyncEnabled, checkIntervalHours));
   } catch (err) {
-    console.error('Auto-sync status error:', err);
+    logger.error('Auto-sync status error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '設定状況の取得に失敗しました' });
   }
 });
@@ -504,7 +681,9 @@ router.post('/auto-sync/packages', async (req: AuthRequest, res: Response) => {
 
     res.json(result);
   } catch (err) {
-    console.error('Package auto-sync trigger error:', err);
+    logger.error('Package auto-sync trigger error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '包装単位データ自動取得の開始に失敗しました' });
   }
 });
@@ -514,25 +693,12 @@ router.get('/auto-sync/packages/status', async (_req: AuthRequest, res: Response
     const sourceUrl = process.env.DRUG_PACKAGE_SOURCE_URL || '';
     const autoSyncEnabled = process.env.DRUG_PACKAGE_AUTO_SYNC === 'true';
     const checkIntervalHours = resolveIntervalHours(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS, 24);
-    const sourceHost = sourceUrl
-      ? (() => {
-          try {
-            return new URL(sourceUrl).hostname;
-          } catch {
-            return 'invalid-url';
-          }
-        })()
-      : '';
 
-    res.json({
-      enabled: autoSyncEnabled,
-      sourceHost,
-      hasSourceUrl: !!sourceUrl,
-      checkIntervalHours,
-      supportsManualUrlOverride: true,
-    });
+    res.json(buildAutoSyncStatus(sourceUrl, autoSyncEnabled, checkIntervalHours));
   } catch (err) {
-    console.error('Package auto-sync status error:', err);
+    logger.error('Package auto-sync status error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: '包装単位データ自動取得設定の取得に失敗しました' });
   }
 });

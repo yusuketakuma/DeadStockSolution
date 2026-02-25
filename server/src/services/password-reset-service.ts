@@ -64,39 +64,38 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
   const now = new Date().toISOString();
   const tokenHash = hashToken(token);
 
-  const rows = await db.select({
-    id: passwordResetTokens.id,
-    pharmacyId: passwordResetTokens.pharmacyId,
-    expiresAt: passwordResetTokens.expiresAt,
-  })
-    .from(passwordResetTokens)
-    .where(and(
-      eq(passwordResetTokens.token, tokenHash),
-      isNull(passwordResetTokens.usedAt),
-      gt(passwordResetTokens.expiresAt, now),
-    ))
-    .limit(1);
-
-  if (rows.length === 0) {
-    return false;
-  }
-
-  const resetRecord = rows[0];
-  const passwordHash = await hashPassword(newPassword);
-
-  await db.transaction(async (tx) => {
-    // Invalidate ALL unused tokens for this user (not just the used one)
-    await tx.update(passwordResetTokens)
-      .set({ usedAt: new Date().toISOString() })
+  return db.transaction(async (tx) => {
+    // Atomically consume the provided token to prevent race-condition reuse.
+    const [consumed] = await tx.update(passwordResetTokens)
+      .set({ usedAt: now })
       .where(and(
-        eq(passwordResetTokens.pharmacyId, resetRecord.pharmacyId),
+        eq(passwordResetTokens.token, tokenHash),
+        isNull(passwordResetTokens.usedAt),
+        gt(passwordResetTokens.expiresAt, now),
+      ))
+      .returning({
+        pharmacyId: passwordResetTokens.pharmacyId,
+      });
+
+    if (!consumed) {
+      return false;
+    }
+
+    // Hash password only after token is confirmed valid (avoid CPU waste on invalid tokens).
+    const passwordHash = await hashPassword(newPassword);
+
+    // Invalidate ALL remaining unused tokens for this user.
+    await tx.update(passwordResetTokens)
+      .set({ usedAt: now })
+      .where(and(
+        eq(passwordResetTokens.pharmacyId, consumed.pharmacyId),
         isNull(passwordResetTokens.usedAt),
       ));
 
     await tx.update(pharmacies)
-      .set({ passwordHash, updatedAt: new Date().toISOString() })
-      .where(eq(pharmacies.id, resetRecord.pharmacyId));
-  });
+      .set({ passwordHash, updatedAt: now })
+      .where(eq(pharmacies.id, consumed.pharmacyId));
 
-  return true;
+    return true;
+  });
 }

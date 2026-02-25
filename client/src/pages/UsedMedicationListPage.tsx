@@ -35,12 +35,12 @@ export default function UsedMedicationListPage() {
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4>使用薬剤一覧 ({total}件)</h4>
+        <h4 className="page-title mb-0">医薬品使用量リスト ({total}件)</h4>
         <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
       </div>
 
       {items.length === 0 ? (
-        <Alert variant="secondary">使用薬剤データがありません。Excelファイルをアップロードしてください。</Alert>
+        <Alert variant="secondary">医薬品使用量データがありません。Excelファイルをアップロードしてください。</Alert>
       ) : (
         <div className="table-responsive">
           <Table striped hover size="sm">

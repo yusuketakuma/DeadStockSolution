@@ -1,7 +1,7 @@
 import path from 'path';
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
-import { eq, and, gte, desc } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { uploads, deadStockItems, usedMedicationItems, columnMappingTemplates } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
@@ -10,6 +10,8 @@ import { parseExcelBuffer, getPreviewRows } from '../services/upload-service';
 import { detectHeaderRow, suggestMapping, computeHeaderHash } from '../services/column-mapper';
 import { extractDeadStockRows, extractUsedMedicationRows } from '../services/data-extractor';
 import { enrichWithDrugMaster } from '../services/drug-master-enrichment';
+import { logger } from '../services/logger';
+import { writeLog, getClientIp } from '../services/log-service';
 
 const router = Router();
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
@@ -21,8 +23,73 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/octet-stream',
 ]);
+type UploadType = 'dead_stock' | 'used_medication';
+const VALID_UPLOAD_TYPES = new Set<UploadType>(['dead_stock', 'used_medication']);
 const DEAD_STOCK_FIELD_SET = new Set<string>(DEAD_STOCK_FIELDS);
 const USED_MEDICATION_FIELD_SET = new Set<string>(USED_MEDICATION_FIELDS);
+
+function getBaseContext(req: Request): Record<string, unknown> {
+  const authReq = req as AuthRequest;
+  const uploadTypeRaw = authReq.body?.uploadType;
+
+  return {
+    path: req.path,
+    pharmacyId: authReq.user?.id ?? null,
+    uploadType: typeof uploadTypeRaw === 'string' ? uploadTypeRaw : null,
+    fileName: authReq.file?.originalname ?? null,
+    fileType: authReq.file?.mimetype ?? null,
+    fileSize: authReq.file?.size ?? null,
+  };
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function sanitizeLogValue(value: unknown, maxLength: number = 160): string | null {
+  if (value === null || value === undefined) return null;
+  const str = String(value)
+    .replace(/\|/g, '/')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!str) return null;
+  return str.slice(0, maxLength);
+}
+
+function logUploadFailure(
+  req: Request,
+  phase: string,
+  reason: string,
+  extra: Record<string, unknown> = {},
+): void {
+  const authReq = req as AuthRequest;
+
+  const detailParts = [
+    '失敗',
+    `phase=${phase}`,
+    `reason=${reason}`,
+  ];
+
+  const uploadType = sanitizeLogValue(authReq.body?.uploadType, 40);
+  if (uploadType) detailParts.push(`uploadType=${uploadType}`);
+
+  const fileName = sanitizeLogValue(authReq.file?.originalname, 120);
+  if (fileName) detailParts.push(`file=${fileName}`);
+
+  for (const [key, value] of Object.entries(extra)) {
+    const sanitized = sanitizeLogValue(value);
+    if (sanitized) {
+      detailParts.push(`${key}=${sanitized}`);
+    }
+  }
+
+  void writeLog('upload', {
+    pharmacyId: authReq.user?.id ?? null,
+    detail: detailParts.join('|'),
+    ipAddress: getClientIp(authReq),
+  });
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -51,23 +118,28 @@ function uploadSingleFile(req: Request, res: Response, next: NextFunction): void
 
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
+        logUploadFailure(req, 'file_upload', 'file_too_large', { code: err.code });
         res.status(400).json({ error: `ファイルサイズは${MAX_UPLOAD_SIZE / (1024 * 1024)}MB以下にしてください` });
         return;
       }
+      logUploadFailure(req, 'file_upload', 'multer_error', { code: err.code, error: err.message });
       res.status(400).json({ error: 'アップロードに失敗しました' });
       return;
     }
 
     if (err instanceof Error) {
+      logUploadFailure(req, 'file_upload', 'file_filter_rejected', { error: err.message });
       res.status(400).json({ error: err.message });
       return;
     }
 
+    logger.warn('Upload rejected by unknown error', () => getBaseContext(req));
+    logUploadFailure(req, 'file_upload', 'unknown_upload_error');
     res.status(400).json({ error: 'アップロードに失敗しました' });
   });
 }
 
-function parseMapping(raw: unknown, uploadType: 'dead_stock' | 'used_medication'): ColumnMapping {
+function parseMapping(raw: unknown, uploadType: UploadType): ColumnMapping {
   if (typeof raw !== 'string') {
     throw new Error('mapping形式が不正です');
   }
@@ -122,6 +194,78 @@ function parseMapping(raw: unknown, uploadType: 'dead_stock' | 'used_medication'
   return sanitized;
 }
 
+function parseUploadType(raw: unknown): UploadType | null {
+  if (typeof raw !== 'string') return null;
+  return VALID_UPLOAD_TYPES.has(raw as UploadType) ? raw as UploadType : null;
+}
+
+function getUploadFileOrReject(req: AuthRequest, res: Response): Express.Multer.File | null {
+  if (!req.file) {
+    res.status(400).json({ error: 'ファイルが選択されていません' });
+    return null;
+  }
+  return req.file;
+}
+
+function getUploadTypeOrReject(req: AuthRequest, res: Response): UploadType | null {
+  const uploadType = parseUploadType(req.body.uploadType);
+  if (!uploadType) {
+    res.status(400).json({ error: 'アップロードタイプを指定してください' });
+    return null;
+  }
+  return uploadType;
+}
+
+async function parseExcelRowsOrReject(
+  req: AuthRequest,
+  res: Response,
+  phase: 'preview' | 'confirm',
+  fileBuffer: Buffer,
+): Promise<unknown[][] | null> {
+  try {
+    return await parseExcelBuffer(fileBuffer);
+  } catch (err) {
+    logUploadFailure(req, phase, 'parse_failed', { error: getErrorMessage(err) });
+    res.status(400).json({ error: 'ファイルの解析に失敗しました。xlsx形式を確認してください' });
+    return null;
+  }
+}
+
+function parseHeaderRowIndexOrReject(req: AuthRequest, res: Response): number | null {
+  const headerRowRaw = typeof req.body.headerRowIndex === 'string'
+    ? req.body.headerRowIndex.trim()
+    : '';
+  if (!/^\d+$/.test(headerRowRaw)) {
+    logUploadFailure(req, 'confirm', 'invalid_header_row_format', { headerRowIndex: headerRowRaw });
+    res.status(400).json({ error: 'ヘッダー行指定が不正です' });
+    return null;
+  }
+
+  const headerRowIndex = Number(headerRowRaw);
+  if (!Number.isSafeInteger(headerRowIndex)) {
+    logUploadFailure(req, 'confirm', 'invalid_header_row_value', { headerRowIndex });
+    res.status(400).json({ error: 'ヘッダー行指定が不正です' });
+    return null;
+  }
+
+  return headerRowIndex;
+}
+
+function resolveMappingFromTemplate(
+  savedMappingRaw: string | null | undefined,
+  headerRow: unknown[],
+  uploadType: UploadType,
+): ColumnMapping {
+  if (savedMappingRaw) {
+    try {
+      return parseMapping(savedMappingRaw, uploadType);
+    } catch {
+      // fallback
+    }
+  }
+  return suggestMapping(headerRow, uploadType);
+}
+
 router.use(requireLogin);
 
 // Upload status - check if current month uploads exist
@@ -131,50 +275,36 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
     const now = new Date();
     const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-    const [deadStockUploads, usedMedUploads, lastDeadStock, lastUsedMed] = await Promise.all([
-      db.select({ id: uploads.id, createdAt: uploads.createdAt })
-        .from(uploads)
-        .where(and(
-          eq(uploads.pharmacyId, pharmacyId),
-          eq(uploads.uploadType, 'dead_stock'),
-        ))
-        .orderBy(desc(uploads.createdAt))
-        .limit(1),
-      db.select({ id: uploads.id, createdAt: uploads.createdAt })
-        .from(uploads)
-        .where(and(
-          eq(uploads.pharmacyId, pharmacyId),
-          eq(uploads.uploadType, 'used_medication'),
-          gte(uploads.createdAt, firstOfMonth),
-        ))
-        .orderBy(desc(uploads.createdAt))
-        .limit(1),
-      db.select({ createdAt: uploads.createdAt })
-        .from(uploads)
-        .where(and(
-          eq(uploads.pharmacyId, pharmacyId),
-          eq(uploads.uploadType, 'dead_stock'),
-        ))
-        .orderBy(desc(uploads.createdAt))
-        .limit(1),
-      db.select({ createdAt: uploads.createdAt })
-        .from(uploads)
-        .where(and(
-          eq(uploads.pharmacyId, pharmacyId),
-          eq(uploads.uploadType, 'used_medication'),
-        ))
-        .orderBy(desc(uploads.createdAt))
-        .limit(1),
-    ]);
+    const lastUploadRows = await db.select({
+      uploadType: uploads.uploadType,
+      createdAt: sql<string | null>`max(${uploads.createdAt})`,
+    })
+      .from(uploads)
+      .where(and(
+        eq(uploads.pharmacyId, pharmacyId),
+        inArray(uploads.uploadType, ['dead_stock', 'used_medication']),
+      ))
+      .groupBy(uploads.uploadType);
+
+    let lastDeadStockDate: string | null = null;
+    let lastUsedMedDate: string | null = null;
+    for (const row of lastUploadRows) {
+      if (row.uploadType === 'dead_stock') lastDeadStockDate = row.createdAt;
+      if (row.uploadType === 'used_medication') lastUsedMedDate = row.createdAt;
+    }
 
     res.json({
-      deadStockUploaded: deadStockUploads.length > 0,
-      usedMedicationUploaded: usedMedUploads.length > 0,
-      lastDeadStockUpload: lastDeadStock[0]?.createdAt ?? null,
-      lastUsedMedicationUpload: lastUsedMed[0]?.createdAt ?? null,
+      deadStockUploaded: lastDeadStockDate !== null,
+      usedMedicationUploaded: lastUsedMedDate !== null && lastUsedMedDate >= firstOfMonth,
+      lastDeadStockUpload: lastDeadStockDate,
+      lastUsedMedicationUpload: lastUsedMedDate,
     });
   } catch (err) {
-    console.error('Upload status error:', err);
+    logger.error('Upload status error', () => ({
+      ...getBaseContext(req),
+      error: getErrorMessage(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    }));
     res.status(500).json({ error: 'ステータスの取得に失敗しました' });
   }
 });
@@ -182,26 +312,17 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
 // Preview: parse file and return headers + first 5 rows + suggested mapping
 router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response) => {
   try {
-    if (!req.file) {
-      res.status(400).json({ error: 'ファイルが選択されていません' });
-      return;
-    }
+    const uploadFile = getUploadFileOrReject(req, res);
+    if (!uploadFile) return;
 
-    const uploadType = req.body.uploadType as 'dead_stock' | 'used_medication';
-    if (!uploadType || !['dead_stock', 'used_medication'].includes(uploadType)) {
-      res.status(400).json({ error: 'アップロードタイプを指定してください' });
-      return;
-    }
+    const uploadType = getUploadTypeOrReject(req, res);
+    if (!uploadType) return;
 
-    let allRows: unknown[][];
-    try {
-      allRows = await parseExcelBuffer(req.file.buffer);
-    } catch {
-      res.status(400).json({ error: 'ファイルの解析に失敗しました。xlsx形式を確認してください' });
-      return;
-    }
+    const allRows = await parseExcelRowsOrReject(req, res, 'preview', uploadFile.buffer);
+    if (!allRows) return;
 
     if (allRows.length === 0) {
+      logUploadFailure(req, 'preview', 'empty_file');
       res.status(400).json({ error: 'ファイルにデータがありません' });
       return;
     }
@@ -221,16 +342,7 @@ router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response
       ))
       .limit(1);
 
-    let mapping;
-    if (savedTemplates.length > 0) {
-      try {
-        mapping = parseMapping(savedTemplates[0].mapping, uploadType);
-      } catch {
-        mapping = suggestMapping(headerRow, uploadType);
-      }
-    } else {
-      mapping = suggestMapping(headerRow, uploadType);
-    }
+    const mapping = resolveMappingFromTemplate(savedTemplates[0]?.mapping, headerRow, uploadType);
 
     res.json({
       headers: headerRow.map((h) => String(h || '')),
@@ -240,7 +352,12 @@ router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response
       hasSavedMapping: savedTemplates.length > 0,
     });
   } catch (err) {
-    console.error('Preview error:', err);
+    logger.error('Upload preview error', () => ({
+      ...getBaseContext(req),
+      error: getErrorMessage(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    }));
+    logUploadFailure(req, 'preview', 'unexpected_error', { error: getErrorMessage(err) });
     res.status(500).json({ error: 'ファイルの解析に失敗しました' });
   }
 });
@@ -248,48 +365,32 @@ router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response
 // Confirm: re-parse file with confirmed mapping, extract data, save to DB
 router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response) => {
   try {
-    if (!req.file) {
-      res.status(400).json({ error: 'ファイルが選択されていません' });
-      return;
-    }
-    const uploadFile = req.file;
+    const uploadFile = getUploadFileOrReject(req, res);
+    if (!uploadFile) return;
 
-    const uploadType = req.body.uploadType as 'dead_stock' | 'used_medication';
-    if (!uploadType || !['dead_stock', 'used_medication'].includes(uploadType)) {
-      res.status(400).json({ error: 'アップロードタイプを指定してください' });
-      return;
-    }
+    const uploadType = getUploadTypeOrReject(req, res);
+    if (!uploadType) return;
 
     let mapping: ColumnMapping;
     try {
       mapping = parseMapping(req.body.mapping, uploadType);
     } catch (err) {
+      logUploadFailure(req, 'confirm', 'invalid_mapping', { error: getErrorMessage(err) });
       res.status(400).json({ error: err instanceof Error ? err.message : 'mapping形式が不正です' });
       return;
     }
 
-    const headerRowRaw = typeof req.body.headerRowIndex === 'string'
-      ? req.body.headerRowIndex.trim()
-      : '';
-    if (!/^\d+$/.test(headerRowRaw)) {
-      res.status(400).json({ error: 'ヘッダー行指定が不正です' });
-      return;
-    }
-    const headerRowIndex = Number(headerRowRaw);
-    if (!Number.isSafeInteger(headerRowIndex)) {
-      res.status(400).json({ error: 'ヘッダー行指定が不正です' });
-      return;
-    }
+    const headerRowIndex = parseHeaderRowIndexOrReject(req, res);
+    if (headerRowIndex === null) return;
 
-    let allRows: unknown[][];
-    try {
-      allRows = await parseExcelBuffer(uploadFile.buffer);
-    } catch {
-      res.status(400).json({ error: 'ファイルの解析に失敗しました。xlsx形式を確認してください' });
-      return;
-    }
+    const allRows = await parseExcelRowsOrReject(req, res, 'confirm', uploadFile.buffer);
+    if (!allRows) return;
 
     if (headerRowIndex >= allRows.length) {
+      logUploadFailure(req, 'confirm', 'header_row_out_of_range', {
+        headerRowIndex,
+        rowCount: allRows.length,
+      });
       res.status(400).json({ error: 'ヘッダー行指定が不正です' });
       return;
     }
@@ -377,27 +478,21 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
         .set({ rowCount })
         .where(eq(uploads.id, uploadRecord.id));
 
-      const existingTemplate = await tx.select({ id: columnMappingTemplates.id })
-        .from(columnMappingTemplates)
-        .where(and(
-          eq(columnMappingTemplates.pharmacyId, pharmacyId),
-          eq(columnMappingTemplates.uploadType, uploadType),
-          eq(columnMappingTemplates.headerHash, headerHash),
-        ))
-        .limit(1);
-
-      if (existingTemplate.length > 0) {
-        await tx.update(columnMappingTemplates)
-          .set({ mapping: JSON.stringify(mapping) })
-          .where(eq(columnMappingTemplates.id, existingTemplate[0].id));
-      } else {
-        await tx.insert(columnMappingTemplates).values({
-          pharmacyId,
-          uploadType,
-          headerHash,
+      await tx.insert(columnMappingTemplates).values({
+        pharmacyId,
+        uploadType,
+        headerHash,
+        mapping: JSON.stringify(mapping),
+      }).onConflictDoUpdate({
+        target: [
+          columnMappingTemplates.pharmacyId,
+          columnMappingTemplates.uploadType,
+          columnMappingTemplates.headerHash,
+        ],
+        set: {
           mapping: JSON.stringify(mapping),
-        });
-      }
+        },
+      });
 
       return { uploadId: uploadRecord.id };
     });
@@ -408,7 +503,12 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
       rowCount,
     });
   } catch (err) {
-    console.error('Confirm error:', err);
+    logger.error('Upload confirm error', () => ({
+      ...getBaseContext(req),
+      error: getErrorMessage(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    }));
+    logUploadFailure(req, 'confirm', 'unexpected_error', { error: getErrorMessage(err) });
     res.status(500).json({ error: 'データの登録に失敗しました' });
   }
 });

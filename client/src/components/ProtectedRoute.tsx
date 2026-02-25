@@ -12,7 +12,7 @@ export default function ProtectedRoute({ children, adminOnly = false }: Props) {
 
   if (loading) {
     return (
-      <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '50vh' }}>
+      <Container className="d-flex justify-content-center align-items-center route-loading-min-height">
         <Spinner animation="border" variant="primary" />
       </Container>
     );

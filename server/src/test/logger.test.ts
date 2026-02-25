@@ -37,4 +37,14 @@ describe('logger', () => {
     const parsed = JSON.parse(output.trim());
     expect(parsed.level).toBe('warn');
   });
+
+  it('supports lazy payload callback', () => {
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    logger.info('lazy message', () => ({ lazy: true }));
+    expect(writeSpy).toHaveBeenCalledOnce();
+    const output = writeSpy.mock.calls[0][0] as string;
+    const parsed = JSON.parse(output.trim());
+    expect(parsed.msg).toBe('lazy message');
+    expect(parsed.lazy).toBe(true);
+  });
 });

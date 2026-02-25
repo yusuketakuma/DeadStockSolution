@@ -14,18 +14,13 @@ import {
 import { parseExcelBuffer } from './upload-service';
 import { logger } from './logger';
 import { validateExternalHttpsUrl } from '../utils/network-utils';
+import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
 
-function parseIntervalHours(raw: string | undefined, fallback: number): number {
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 24 * 30) {
-    return fallback;
-  }
-  return parsed;
-}
-
-const CHECK_INTERVAL_HOURS = parseIntervalHours(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS, 24);
+const CHECK_INTERVAL_HOURS = parseBoundedInt(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS, 24, 1, 24 * 30);
 const CHECK_INTERVAL_MS = CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
 const AUTO_SYNC_ENABLED = process.env.DRUG_PACKAGE_AUTO_SYNC === 'true';
+const SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'SCHEDULER_OPTIMIZED_LOOP_ENABLED';
+const DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED';
 const FETCH_TIMEOUT_MS = 120_000;
 const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024;
 
@@ -42,9 +37,14 @@ function buildSourceRequestHeaders(): Record<string, string> {
 
 let lastKnownETag: string | null = null;
 let lastKnownLastModified: string | null = null;
-let schedulerTimer: ReturnType<typeof setInterval> | null = null;
-let initialDelayTimer: ReturnType<typeof setTimeout> | null = null;
+let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
+let schedulerInterval: ReturnType<typeof setInterval> | null = null;
+let schedulerActive = false;
 let isRunning = false;
+
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 function getConfiguredSourceUrl(): string {
   return process.env.DRUG_PACKAGE_SOURCE_URL?.trim() || '';
@@ -56,6 +56,56 @@ function summarizeSourceUrl(sourceUrl: string): string {
   } catch {
     return sourceUrl.slice(0, 64);
   }
+}
+
+function updateKnownHeaders(headers: { etag: string | null; lastModified: string | null }): void {
+  if (headers.etag) lastKnownETag = headers.etag;
+  if (headers.lastModified) lastKnownLastModified = headers.lastModified;
+}
+
+function isOptimizedLoopEnabledForDrugPackageScheduler(): boolean {
+  const localFlag = process.env[DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV];
+  if (typeof localFlag === 'string' && localFlag.trim().length > 0) {
+    return parseBooleanFlag(localFlag, true);
+  }
+  return parseBooleanFlag(process.env[SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV], true);
+}
+
+async function parseDownloadedPackageRows(
+  sourceUrl: string,
+  contentType: string | null,
+  buffer: Buffer,
+) {
+  const isCsv = contentType?.includes('csv')
+    || contentType?.includes('text/plain')
+    || sourceUrl.endsWith('.csv');
+  const isXml = contentType?.includes('xml') || sourceUrl.endsWith('.xml');
+  const isZip = contentType?.includes('zip') || sourceUrl.endsWith('.zip');
+
+  if (isCsv) {
+    const csvContent = decodeCsvBuffer(buffer);
+    return parsePackageCsvData(csvContent);
+  }
+  if (isXml) {
+    const xmlContent = buffer.toString('utf-8');
+    return parsePackageXmlData(xmlContent);
+  }
+  if (isZip) {
+    return parsePackageZipData(buffer);
+  }
+
+  const excelRows = await parseExcelBuffer(buffer);
+  return parsePackageExcelData(excelRows);
+}
+
+function runPackageAutoSyncSafely(mode: 'initial' | 'scheduled' | 'manual', sourceUrl?: string): Promise<void> {
+  const task = sourceUrl ? runPackageAutoSyncWithSource(sourceUrl) : runPackageAutoSync();
+  return task.catch((err) => {
+    const suffix = mode === 'manual' ? 'manual trigger' : `${mode} run`;
+    logger.error(`Drug package auto-sync: ${suffix} failed`, {
+      error: formatError(err),
+    });
+  });
 }
 
 async function checkForUpdates(url: string): Promise<{
@@ -173,8 +223,7 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
 
     if (!updateCheck.hasUpdate) {
       logger.info('Drug package auto-sync: no updates detected');
-      if (updateCheck.etag) lastKnownETag = updateCheck.etag;
-      if (updateCheck.lastModified) lastKnownLastModified = updateCheck.lastModified;
+      updateKnownHeaders(updateCheck);
       return;
     }
 
@@ -185,25 +234,7 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
     const emptyResult = { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 };
 
     try {
-      let parsedRows;
-      const isCsv = contentType?.includes('csv') ||
-        contentType?.includes('text/plain') ||
-        sourceUrl.endsWith('.csv');
-      const isXml = contentType?.includes('xml') || sourceUrl.endsWith('.xml');
-      const isZip = contentType?.includes('zip') || sourceUrl.endsWith('.zip');
-
-      if (isCsv) {
-        const csvContent = decodeCsvBuffer(buffer);
-        parsedRows = parsePackageCsvData(csvContent);
-      } else if (isXml) {
-        const xmlContent = buffer.toString('utf-8');
-        parsedRows = parsePackageXmlData(xmlContent);
-      } else if (isZip) {
-        parsedRows = await parsePackageZipData(buffer);
-      } else {
-        const excelRows = await parseExcelBuffer(buffer);
-        parsedRows = parsePackageExcelData(excelRows);
-      }
+      const parsedRows = await parseDownloadedPackageRows(sourceUrl, contentType, buffer);
 
       if (parsedRows.length === 0) {
         await completeSyncLog(syncLog.id, 'failed', emptyResult, '有効な包装単位データが見つかりません');
@@ -219,8 +250,7 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
         itemsDeleted: 0,
       });
 
-      if (updateCheck.etag) lastKnownETag = updateCheck.etag;
-      if (updateCheck.lastModified) lastKnownLastModified = updateCheck.lastModified;
+      updateKnownHeaders(updateCheck);
 
       logger.info('Drug package auto-sync: completed successfully', {
         processed: parsedRows.length,
@@ -228,16 +258,87 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
         updated: result.updated,
       });
     } catch (syncErr) {
-      const errorMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+      const errorMsg = formatError(syncErr);
       await completeSyncLog(syncLog.id, 'failed', emptyResult, errorMsg);
       logger.error('Drug package auto-sync: sync failed', { error: errorMsg });
     }
   } catch (err) {
     logger.error('Drug package auto-sync: check/download failed', {
-      error: err instanceof Error ? err.message : String(err),
+      error: formatError(err),
     });
   } finally {
     isRunning = false;
+  }
+}
+
+function scheduleNextDrugPackageRun(delayMs: number, mode: 'initial' | 'scheduled'): void {
+  if (!schedulerActive) {
+    return;
+  }
+
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+  }
+
+  if (schedulerTimer) {
+    clearTimeout(schedulerTimer);
+    schedulerTimer = null;
+  }
+
+  schedulerTimer = setTimeout(() => {
+    schedulerTimer = null;
+    void runPackageAutoSyncSafely(mode).finally(() => {
+      if (!schedulerActive) {
+        return;
+      }
+      scheduleNextDrugPackageRun(CHECK_INTERVAL_MS, 'scheduled');
+    });
+  }, delayMs);
+
+  schedulerTimer.unref();
+}
+
+function startLegacyDrugPackageIntervalScheduler(): void {
+  if (!schedulerActive) {
+    return;
+  }
+
+  if (schedulerTimer) {
+    clearTimeout(schedulerTimer);
+    schedulerTimer = null;
+  }
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+  }
+
+  schedulerTimer = setTimeout(() => {
+    schedulerTimer = null;
+    if (!schedulerActive) {
+      return;
+    }
+    void runPackageAutoSyncSafely('initial');
+  }, Math.min(60_000, CHECK_INTERVAL_MS));
+  schedulerTimer.unref();
+
+  schedulerInterval = setInterval(() => {
+    if (!schedulerActive) {
+      return;
+    }
+    void runPackageAutoSyncSafely('scheduled');
+  }, CHECK_INTERVAL_MS);
+  schedulerInterval.unref();
+}
+
+function clearDrugPackageSchedulerHandles(): void {
+  if (schedulerTimer) {
+    clearTimeout(schedulerTimer);
+    schedulerTimer = null;
+  }
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
   }
 }
 
@@ -253,45 +354,31 @@ export function startDrugPackageScheduler(): void {
     return;
   }
 
-  if (schedulerTimer) {
+  if (schedulerActive) {
     logger.warn('Drug package auto-sync: scheduler already running');
     return;
   }
 
+  const optimizedLoopEnabled = isOptimizedLoopEnabledForDrugPackageScheduler();
   logger.info('Drug package auto-sync: starting scheduler', {
     intervalHours: CHECK_INTERVAL_HOURS,
     source: summarizeSourceUrl(sourceUrl),
+    loopMode: optimizedLoopEnabled ? 'timeout-chain' : 'legacy-interval',
   });
 
-  const initialDelay = 5 * 60 * 1000;
-  initialDelayTimer = setTimeout(() => {
-    initialDelayTimer = null;
-    runPackageAutoSync().catch((err) => {
-      logger.error('Drug package auto-sync: initial run failed', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-  }, initialDelay);
-
-  schedulerTimer = setInterval(() => {
-    runPackageAutoSync().catch((err) => {
-      logger.error('Drug package auto-sync: scheduled run failed', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-  }, CHECK_INTERVAL_MS);
-
-  schedulerTimer.unref();
+  schedulerActive = true;
+  if (optimizedLoopEnabled) {
+    scheduleNextDrugPackageRun(Math.min(60_000, CHECK_INTERVAL_MS), 'initial');
+    return;
+  }
+  startLegacyDrugPackageIntervalScheduler();
 }
 
 export function stopDrugPackageScheduler(): void {
-  if (initialDelayTimer) {
-    clearTimeout(initialDelayTimer);
-    initialDelayTimer = null;
-  }
-  if (schedulerTimer) {
-    clearInterval(schedulerTimer);
-    schedulerTimer = null;
+  const wasActive = schedulerActive || schedulerTimer !== null || schedulerInterval !== null;
+  schedulerActive = false;
+  clearDrugPackageSchedulerHandles();
+  if (wasActive) {
     logger.info('Drug package auto-sync: scheduler stopped');
   }
 }
@@ -320,11 +407,7 @@ export async function triggerManualPackageAutoSync(options?: { sourceUrl?: strin
     return { triggered: false, message: '包装単位同期が既に実行中です' };
   }
 
-  runPackageAutoSyncWithSource(sourceUrl).catch((err) => {
-    logger.error('Drug package manual trigger: failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  });
+  void runPackageAutoSyncSafely('manual', sourceUrl);
 
   return { triggered: true, message: '包装単位データの自動取得を開始しました。同期ログで進捗を確認してください。' };
 }

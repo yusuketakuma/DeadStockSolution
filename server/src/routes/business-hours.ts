@@ -53,6 +53,10 @@ function validateBusinessHours(hours: unknown): { valid: BusinessHourInput[] } |
       return { error: '曜日の値が不正です' };
     }
 
+    if (typeof isClosed !== 'boolean' || typeof is24Hours !== 'boolean') {
+      return { error: `${DAY_NAMES[dayOfWeek]}の営業フラグが不正です` };
+    }
+
     // Mutual exclusion: isClosed and is24Hours cannot both be true
     if (isClosed && is24Hours) {
       return { error: `${DAY_NAMES[dayOfWeek]}の定休日と24時間営業は同時に設定できません` };

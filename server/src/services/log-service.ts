@@ -1,5 +1,6 @@
 import { db } from '../config/database';
 import { activityLogs } from '../db/schema';
+import { logger } from './logger';
 
 export type LogAction =
   | 'login'
@@ -41,7 +42,10 @@ export async function writeLog(
     });
   } catch (err) {
     // Logging should never break the main flow
-    console.error('Failed to write activity log:', err);
+    logger.error('Failed to write activity log', {
+      action,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

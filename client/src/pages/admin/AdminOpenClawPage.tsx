@@ -132,12 +132,12 @@ export default function AdminOpenClawPage() {
           </div>
 
           <div className="d-flex gap-2 flex-wrap mb-3">
-            <Form.Select
-              size="sm"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-              style={{ maxWidth: 220 }}
-            >
+              <Form.Select
+                size="sm"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                className="filter-select-compact"
+              >
               <option value="all">すべての状態</option>
               <option value="pending_handoff">連携待ち</option>
               <option value="in_dialogue">対話中</option>
@@ -149,7 +149,7 @@ export default function AdminOpenClawPage() {
               placeholder="薬局名・要望内容で検索"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              style={{ minWidth: 240, maxWidth: 380 }}
+              className="filter-input-compact"
             />
           </div>
 

@@ -62,8 +62,8 @@ export default function LoginPage() {
   };
 
   return (
-    <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-      <Card style={{ width: '100%', maxWidth: '483px' }}>
+    <Container className="d-flex justify-content-center align-items-center auth-fullscreen">
+      <Card className="auth-card">
         <Card.Header className="p-0">
           <Nav
             variant="tabs"
@@ -84,7 +84,7 @@ export default function LoginPage() {
         </Card.Header>
         <Card.Body>
           <div className="login-title-wrap mb-4">
-            <h3 className="mb-0">薬局不動在庫交換システム</h3>
+            <h3 className="mb-0">薬局デッドストック交換システム</h3>
             <span className="login-title-version">{APP_VERSION}</span>
           </div>
           <h5 className="text-center mb-3">

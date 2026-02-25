@@ -193,7 +193,11 @@ export async function createProposal(
 
 export async function acceptProposal(proposalId: number, pharmacyId: number): Promise<string> {
   return db.transaction(async (tx) => {
-    const [proposal] = await tx.select()
+    const [proposal] = await tx.select({
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      pharmacyBId: exchangeProposals.pharmacyBId,
+      status: exchangeProposals.status,
+    })
       .from(exchangeProposals)
       .where(eq(exchangeProposals.id, proposalId))
       .limit(1);
@@ -239,7 +243,11 @@ export async function acceptProposal(proposalId: number, pharmacyId: number): Pr
 
 export async function rejectProposal(proposalId: number, pharmacyId: number): Promise<void> {
   return db.transaction(async (tx) => {
-    const [proposal] = await tx.select()
+    const [proposal] = await tx.select({
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      pharmacyBId: exchangeProposals.pharmacyBId,
+      status: exchangeProposals.status,
+    })
       .from(exchangeProposals)
       .where(eq(exchangeProposals.id, proposalId))
       .limit(1);
@@ -269,7 +277,13 @@ export async function rejectProposal(proposalId: number, pharmacyId: number): Pr
 
 export async function completeProposal(proposalId: number, pharmacyId: number): Promise<void> {
   await db.transaction(async (tx) => {
-    const [proposal] = await tx.select()
+    const [proposal] = await tx.select({
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      pharmacyBId: exchangeProposals.pharmacyBId,
+      status: exchangeProposals.status,
+      totalValueA: exchangeProposals.totalValueA,
+      totalValueB: exchangeProposals.totalValueB,
+    })
       .from(exchangeProposals)
       .where(eq(exchangeProposals.id, proposalId))
       .limit(1);
@@ -291,19 +305,33 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
       throw new Error('提案アイテムが存在しません');
     }
 
-    for (const item of items) {
-      const updated = await tx.update(deadStockItems)
-        .set({ isAvailable: false })
-        .where(and(
-          eq(deadStockItems.id, item.deadStockItemId),
-          eq(deadStockItems.pharmacyId, item.fromPharmacyId),
-          eq(deadStockItems.isAvailable, true),
-        ))
-        .returning({ id: deadStockItems.id });
+    const itemIds = [...new Set(items.map((item) => item.deadStockItemId))];
+    const stockRows = await tx.select({
+      id: deadStockItems.id,
+      pharmacyId: deadStockItems.pharmacyId,
+      isAvailable: deadStockItems.isAvailable,
+    })
+      .from(deadStockItems)
+      .where(inArray(deadStockItems.id, itemIds));
 
-      if (updated.length === 0) {
+    const stockMap = new Map(stockRows.map((row) => [row.id, row]));
+    for (const item of items) {
+      const stock = stockMap.get(item.deadStockItemId);
+      if (!stock || stock.pharmacyId !== item.fromPharmacyId || !stock.isAvailable) {
         throw new Error('在庫状態が変更されているため、交換を完了できません');
       }
+    }
+
+    const updatedStocks = await tx.update(deadStockItems)
+      .set({ isAvailable: false })
+      .where(and(
+        inArray(deadStockItems.id, itemIds),
+        eq(deadStockItems.isAvailable, true),
+      ))
+      .returning({ id: deadStockItems.id });
+
+    if (updatedStocks.length !== itemIds.length) {
+      throw new Error('在庫状態が変更されているため、交換を完了できません');
     }
 
     const completedAt = new Date().toISOString();
