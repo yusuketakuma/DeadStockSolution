@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import DashboardPage from '../../pages/DashboardPage';
 import Layout from '../../components/Layout';
 import { renderWithProviders, mockAdminUser, mockUser } from '../helpers';
@@ -327,8 +328,155 @@ describe('Layout with Sidebar navigation', () => {
     await waitFor(() => {
       expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
     });
-    expect(screen.getByText('v2026.2.25')).toBeInTheDocument();
+    const versionLabel = document.querySelector('.app-header-version');
+    expect(versionLabel).toBeTruthy();
+    expect(versionLabel?.textContent ?? '').toMatch(/^v.+/);
     expect(screen.getByRole('button', { name: '要望をあげる' })).toBeInTheDocument();
+  });
+
+  it('shows github updates popover and expandable history', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/updates/github')) {
+        return new Response(JSON.stringify({
+          repository: 'yusuketakuma/DeadStockSolution',
+          source: 'github_releases',
+          stale: false,
+          fetchedAt: '2026-02-25T00:00:00.000Z',
+          items: [
+            {
+              id: '2',
+              tag: 'v1.1.0',
+              title: 'Header update popup',
+              body: 'Added GitHub updates popover in header.',
+              url: 'https://github.com/yusuketakuma/DeadStockSolution/releases/tag/v1.1.0',
+              publishedAt: '2026-02-25T00:00:00.000Z',
+              prerelease: false,
+            },
+            {
+              id: '1',
+              tag: 'v1.0.0',
+              title: 'Initial release',
+              body: 'First public release.',
+              url: 'https://github.com/yusuketakuma/DeadStockSolution/releases/tag/v1.0.0',
+              publishedAt: '2026-02-20T00:00:00.000Z',
+              prerelease: false,
+            },
+          ],
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(
+      <Layout><div>Test Content</div></Layout>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
+    });
+
+    const updatesButton = screen.getByRole('button', { name: 'GitHub更新内容を表示' });
+    expect(within(updatesButton).getByTestId('updates-trigger-icon')).toBeInTheDocument();
+
+    await user.click(updatesButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('アップデート内容')).toBeInTheDocument();
+    });
+    expect(screen.getByText('v1.1.0')).toBeInTheDocument();
+    expect(screen.getByText('Header update popup')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '過去のアップデート履歴' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '過去のアップデート履歴を表示' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: '過去のアップデート履歴' })).toBeInTheDocument();
+    });
+    const historyRegion = screen.getByRole('region', { name: '過去のアップデート履歴' });
+    expect(within(historyRegion).getByText('v1.0.0')).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        (call) => typeof call[0] === 'string' && call[0].includes('/api/updates/github')
+      )
+    ).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'GitHub更新内容を表示' }));
+    await user.click(screen.getByRole('button', { name: 'GitHub更新内容を表示' }));
+
+    await waitFor(() => {
+      const updatesCalls = fetchMock.mock.calls.filter(
+        (call) => typeof call[0] === 'string' && call[0].includes('/api/updates/github')
+      ).length;
+      expect(updatesCalls).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('shows stale note when updates response is served from cache', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/updates/github')) {
+        return new Response(JSON.stringify({
+          repository: 'yusuketakuma/DeadStockSolution',
+          source: 'github_releases',
+          stale: true,
+          fetchedAt: '2026-02-25T00:00:00.000Z',
+          items: [
+            {
+              id: '1',
+              tag: 'v1.0.0',
+              title: 'Initial release',
+              body: 'First public release.',
+              url: 'https://github.com/yusuketakuma/DeadStockSolution/releases/tag/v1.0.0',
+              publishedAt: '2026-02-20T00:00:00.000Z',
+              prerelease: false,
+            },
+          ],
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(
+      <Layout><div>Test Content</div></Layout>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'GitHub更新内容を表示' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/キャッシュを表示しています/)).toBeInTheDocument();
+    });
   });
 
   it('renders mobile quick navigation rail in header', async () => {

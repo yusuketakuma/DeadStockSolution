@@ -1,10 +1,13 @@
 import crypto from 'crypto';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  consumeOpenClawWebhookReplay,
   getOpenClawImplementationBranch,
   handoffToOpenClaw,
   isImplementationBranchAllowed,
+  isOpenClawWebhookReplay,
   isOpenClawConnectorConfigured,
+  releaseOpenClawWebhookReplay,
   resetOpenClawWebhookReplayCacheForTests,
   verifyOpenClawWebhookSignature,
 } from '../services/openclaw-service';
@@ -170,7 +173,7 @@ describe('openclaw-service', () => {
     })).toBe(false);
   });
 
-  it('rejects replayed OpenClaw webhook signature', () => {
+  it('consumes and releases OpenClaw webhook replay key', () => {
     process.env.OPENCLAW_WEBHOOK_SECRET = 'webhook-secret';
     process.env.OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS = '300';
     const nowMs = Date.parse('2026-02-25T12:00:00.000Z');
@@ -190,6 +193,39 @@ describe('openclaw-service', () => {
       receivedTimestamp: String(timestamp),
       rawBody,
       nowMs: nowMs + 5_000,
+    })).toBe(true);
+
+    expect(consumeOpenClawWebhookReplay({
+      receivedSignature: signature,
+      receivedTimestamp: String(timestamp),
+      nowMs,
+    })).toBe(true);
+    expect(isOpenClawWebhookReplay({
+      receivedSignature: signature,
+      receivedTimestamp: String(timestamp),
+      nowMs: nowMs + 1_000,
+    })).toBe(true);
+
+    expect(consumeOpenClawWebhookReplay({
+      receivedSignature: signature,
+      receivedTimestamp: String(timestamp),
+      nowMs: nowMs + 5_000,
     })).toBe(false);
+
+    releaseOpenClawWebhookReplay({
+      receivedSignature: signature,
+      receivedTimestamp: String(timestamp),
+    });
+    expect(isOpenClawWebhookReplay({
+      receivedSignature: signature,
+      receivedTimestamp: String(timestamp),
+      nowMs: nowMs + 6_000,
+    })).toBe(false);
+
+    expect(consumeOpenClawWebhookReplay({
+      receivedSignature: signature,
+      receivedTimestamp: String(timestamp),
+      nowMs: nowMs + 6_000,
+    })).toBe(true);
   });
 });

@@ -45,7 +45,9 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
-    expect(screen.getByText('v2026.2.25')).toBeInTheDocument();
+    const versionLabel = document.querySelector('.login-title-version');
+    expect(versionLabel).toBeTruthy();
+    expect(versionLabel?.textContent ?? '').toMatch(/^v.+/);
     // Tab navigation
     expect(screen.getByText('薬局ログイン')).toBeInTheDocument();
     expect(screen.getByText('管理者ログイン')).toBeInTheDocument();

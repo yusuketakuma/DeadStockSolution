@@ -6,10 +6,13 @@ import { userRequests } from '../db/schema';
 import { logger } from '../services/logger';
 import {
   canTransitionOpenClawStatus,
+  consumeOpenClawWebhookReplay,
   getOpenClawImplementationBranch,
   isImplementationBranchAllowed,
+  isOpenClawWebhookReplay,
   isOpenClawStatus,
   isOpenClawWebhookConfigured,
+  releaseOpenClawWebhookReplay,
   verifyOpenClawWebhookSignature,
   type OpenClawStatus,
 } from '../services/openclaw-service';
@@ -58,6 +61,14 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       return;
     }
 
+    if (isOpenClawWebhookReplay({
+      receivedSignature: signature,
+      receivedTimestamp: timestamp,
+    })) {
+      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+      return;
+    }
+
     const requestId = parseRequestId(req.body.requestId);
     const statusRaw = req.body.status;
     if (!requestId || !isOpenClawStatus(statusRaw)) {
@@ -99,14 +110,31 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       return;
     }
 
-    await db.update(userRequests)
-      .set({
-        openclawStatus: status,
-        openclawThreadId: threadId ?? current.openclawThreadId,
-        openclawSummary: summary ?? current.openclawSummary,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(userRequests.id, requestId));
+    const replayAccepted = consumeOpenClawWebhookReplay({
+      receivedSignature: signature,
+      receivedTimestamp: timestamp,
+    });
+    if (!replayAccepted) {
+      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+      return;
+    }
+
+    try {
+      await db.update(userRequests)
+        .set({
+          openclawStatus: status,
+          openclawThreadId: threadId ?? current.openclawThreadId,
+          openclawSummary: summary ?? current.openclawSummary,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(userRequests.id, requestId));
+    } catch (err) {
+      releaseOpenClawWebhookReplay({
+        receivedSignature: signature,
+        receivedTimestamp: timestamp,
+      });
+      throw err;
+    }
 
     res.json({
       message: 'OpenClawコールバックを反映しました',

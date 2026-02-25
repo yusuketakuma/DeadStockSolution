@@ -128,7 +128,7 @@ function pruneWebhookReplayCache(nowMs: number): void {
 
 function isReplayRequest(signature: string, timestamp: string, nowMs: number): boolean {
   pruneWebhookReplayCache(nowMs);
-  const replayKey = `${timestamp}:${signature}`;
+  const replayKey = buildReplayKey(signature, timestamp);
   const existing = webhookReplayCache.get(replayKey);
   if (existing && existing > nowMs) {
     return true;
@@ -137,6 +137,10 @@ function isReplayRequest(signature: string, timestamp: string, nowMs: number): b
   const ttlMs = resolveWebhookMaxSkewSeconds() * 1000;
   webhookReplayCache.set(replayKey, nowMs + ttlMs);
   return false;
+}
+
+function buildReplayKey(signature: string, timestamp: string): string {
+  return `${timestamp}:${signature}`;
 }
 
 function normalizeStatus(value: unknown): OpenClawStatus {
@@ -218,11 +222,67 @@ export function verifyOpenClawWebhookSignature({
     return false;
   }
 
-  if (isReplayRequest(signature, timestampText, nowMs)) {
+  return true;
+}
+
+export function consumeOpenClawWebhookReplay({
+  receivedSignature,
+  receivedTimestamp,
+  nowMs = Date.now(),
+}: {
+  receivedSignature: string | undefined;
+  receivedTimestamp: string | undefined;
+  nowMs?: number;
+}): boolean {
+  if (!receivedSignature || !receivedTimestamp) {
     return false;
   }
+  const signature = normalizeSignature(receivedSignature);
+  const timestamp = receivedTimestamp.trim();
+  if (!signature || !timestamp) {
+    return false;
+  }
+  return !isReplayRequest(signature, timestamp, nowMs);
+}
 
-  return true;
+export function isOpenClawWebhookReplay({
+  receivedSignature,
+  receivedTimestamp,
+  nowMs = Date.now(),
+}: {
+  receivedSignature: string | undefined;
+  receivedTimestamp: string | undefined;
+  nowMs?: number;
+}): boolean {
+  if (!receivedSignature || !receivedTimestamp) {
+    return false;
+  }
+  const signature = normalizeSignature(receivedSignature);
+  const timestamp = receivedTimestamp.trim();
+  if (!signature || !timestamp) {
+    return false;
+  }
+  pruneWebhookReplayCache(nowMs);
+  const existing = webhookReplayCache.get(buildReplayKey(signature, timestamp));
+  return Boolean(existing && existing > nowMs);
+}
+
+export function releaseOpenClawWebhookReplay({
+  receivedSignature,
+  receivedTimestamp,
+}: {
+  receivedSignature: string | undefined;
+  receivedTimestamp: string | undefined;
+}): void {
+  if (!receivedSignature || !receivedTimestamp) {
+    return;
+  }
+  const signature = normalizeSignature(receivedSignature);
+  const timestamp = receivedTimestamp.trim();
+  if (!signature || !timestamp) {
+    return;
+  }
+  webhookReplayCache.delete(buildReplayKey(signature, timestamp));
 }
 
 export function resetOpenClawWebhookReplayCacheForTests(): void {

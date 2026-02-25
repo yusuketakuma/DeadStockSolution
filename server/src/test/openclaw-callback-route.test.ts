@@ -64,6 +64,16 @@ function createUpdateQuery() {
   return query;
 }
 
+function createFailingUpdateQuery(error: Error) {
+  const query = {
+    set: vi.fn(),
+    where: vi.fn(),
+  };
+  query.set.mockReturnValue(query);
+  query.where.mockRejectedValue(error);
+  return query;
+}
+
 function createSignature(secret: string, timestamp: number, rawBody: string): string {
   const digest = crypto.createHmac('sha256', secret)
     .update(`${timestamp}.${rawBody}`)
@@ -188,5 +198,52 @@ describe('openclaw callback route', () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(401);
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows retry when persistence fails before callback is applied', async () => {
+    const app = createApp();
+    const currentRow = [{
+      id: 12,
+      openclawStatus: 'pending_handoff',
+      openclawThreadId: null,
+      openclawSummary: null,
+    }];
+    const firstUpdateQuery = createFailingUpdateQuery(new Error('temporary database error'));
+    const secondUpdateQuery = createUpdateQuery();
+    mocks.db.select.mockImplementation(() => createSelectLimitQuery(currentRow));
+    mocks.db.update
+      .mockImplementationOnce(() => firstUpdateQuery)
+      .mockImplementationOnce(() => secondUpdateQuery);
+
+    const payload = {
+      requestId: 12,
+      status: 'in_dialogue',
+      threadId: 'thread-1',
+      summary: 'started',
+    };
+    const rawBody = JSON.stringify(payload);
+    const nowMs = Date.parse('2026-02-25T12:00:00.000Z');
+    const timestamp = Math.floor(nowMs / 1000);
+    const signature = createSignature('webhook-secret', timestamp, rawBody);
+    vi.useFakeTimers();
+    vi.setSystemTime(nowMs);
+
+    const first = await request(app)
+      .post('/api/openclaw/callback')
+      .set('x-openclaw-timestamp', String(timestamp))
+      .set('x-openclaw-signature', signature)
+      .send(payload);
+    const second = await request(app)
+      .post('/api/openclaw/callback')
+      .set('x-openclaw-timestamp', String(timestamp))
+      .set('x-openclaw-signature', signature)
+      .send(payload);
+
+    vi.useRealTimers();
+
+    expect(first.status).toBe(500);
+    expect(second.status).toBe(200);
+    expect(mocks.db.update).toHaveBeenCalledTimes(2);
   });
 });

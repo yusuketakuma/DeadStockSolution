@@ -26,6 +26,9 @@ interface EnsuredTestAccount {
 }
 
 let ensureSeedPromise: Promise<void> | null = null;
+let ensureSeedRetryTimer: NodeJS.Timeout | null = null;
+let ensureSeedRetryDelayMs = 15_000;
+const MAX_ENSURE_SEED_RETRY_DELAY_MS = 5 * 60 * 1000;
 
 const TEST_ACCOUNTS: TestAccountDefinition[] = [
   {
@@ -184,15 +187,43 @@ export async function seedTestAccounts(): Promise<EnsuredTestAccount[]> {
   return seededAccounts;
 }
 
+function resetEnsureSeedRetryState(): void {
+  ensureSeedRetryDelayMs = 15_000;
+  if (ensureSeedRetryTimer) {
+    clearTimeout(ensureSeedRetryTimer);
+    ensureSeedRetryTimer = null;
+  }
+}
+
+function scheduleEnsureSeedRetry(): void {
+  if (ensureSeedRetryTimer) {
+    return;
+  }
+
+  const delayMs = ensureSeedRetryDelayMs;
+  ensureSeedRetryTimer = setTimeout(() => {
+    ensureSeedRetryTimer = null;
+    void ensureTestAccountsSeededIfEnabled();
+  }, delayMs);
+  if (typeof ensureSeedRetryTimer.unref === 'function') {
+    ensureSeedRetryTimer.unref();
+  }
+
+  logger.warn('Test pharmacy seed retry scheduled', { delayMs });
+  ensureSeedRetryDelayMs = Math.min(ensureSeedRetryDelayMs * 2, MAX_ENSURE_SEED_RETRY_DELAY_MS);
+}
+
 export function ensureTestAccountsSeededIfEnabled(): Promise<void> {
   const enabledByEnv = process.env.ENABLE_TEST_PHARMACY_ACCOUNTS;
   const shouldSeedInPreview = enabledByEnv === undefined && process.env.VERCEL_ENV === 'preview';
   if (enabledByEnv !== 'true' && !shouldSeedInPreview) {
+    resetEnsureSeedRetryState();
     return Promise.resolve();
   }
 
   const resolvedPassword = resolveTestAccountPassword({ strict: false });
   if (!resolvedPassword) {
+    resetEnsureSeedRetryState();
     logger.warn('Test pharmacy seed skipped: TEST_ACCOUNT_PASSWORD is not set');
     return Promise.resolve();
   }
@@ -203,12 +234,16 @@ export function ensureTestAccountsSeededIfEnabled(): Promise<void> {
 
   ensureSeedPromise = seedTestAccounts()
     .then((accounts) => {
+      resetEnsureSeedRetryState();
       logger.info('Test pharmacy accounts are ready', { count: accounts.length });
     })
     .catch((err) => {
       logger.error('Failed to seed test pharmacy accounts', {
         error: err instanceof Error ? err.message : String(err),
       });
+      scheduleEnsureSeedRetry();
+    })
+    .finally(() => {
       ensureSeedPromise = null;
     });
 

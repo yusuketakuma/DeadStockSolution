@@ -40,6 +40,12 @@ body {
   gap: 0.5rem;
 }
 
+.app-header-brand-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .app-header-brand {
   display: inline-flex;
   align-items: baseline;
@@ -60,6 +66,163 @@ body {
   font-weight: 500;
   color: #dbeafe;
   letter-spacing: 0;
+}
+
+.app-header-updates-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  min-width: 1.6rem;
+  min-height: 1.6rem;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  border-radius: 999px;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.38), rgba(14, 165, 233, 0.38));
+  text-decoration: none;
+}
+
+.app-header-updates-trigger:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.92);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.62), rgba(14, 165, 233, 0.62));
+}
+
+.app-header-updates-trigger:focus-visible {
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.35);
+}
+
+.app-header-updates-trigger svg {
+  display: block;
+  width: 0.98rem;
+  height: 0.98rem;
+}
+
+.app-updates-popover {
+  --bs-popover-max-width: min(92vw, 440px);
+}
+
+.app-updates-popover .popover-header {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.app-updates-popover .popover-body {
+  font-size: 0.79rem;
+  line-height: 1.45;
+}
+
+.app-updates-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-updates-error-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.app-updates-error-text {
+  margin: 0;
+  color: #dc3545;
+}
+
+.app-updates-empty {
+  margin: 0;
+  color: #64748b;
+}
+
+.app-updates-stale-note {
+  margin: 0.42rem 0 0;
+  padding: 0.35rem 0.45rem;
+  border-radius: 0.4rem;
+  background: rgba(245, 158, 11, 0.14);
+  color: #92400e;
+  font-size: 0.72rem;
+}
+
+.app-updates-latest {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.app-updates-item-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  color: #0d6efd;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.app-updates-item-title:hover {
+  text-decoration: underline;
+}
+
+.app-updates-item-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(13, 110, 253, 0.12);
+  color: #0b5ed7;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.app-updates-item-body {
+  margin: 0.2rem 0 0;
+  color: #334155;
+}
+
+.app-updates-history {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.app-updates-history-toggle {
+  padding: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.app-updates-history-list {
+  margin-top: 0.45rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.app-updates-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.app-updates-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.app-updates-list-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .app-header-request-btn {
@@ -368,6 +531,11 @@ body {
   .app-header-request-btn {
     font-size: 0.68rem;
     padding: 0.24rem 0.5rem;
+  }
+
+  .app-header-updates-trigger {
+    width: 1.45rem;
+    height: 1.45rem;
   }
 
   .app-header-request-message {
