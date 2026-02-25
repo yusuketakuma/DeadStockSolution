@@ -254,20 +254,29 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         return mergeDedupSortByTimestamp(targetAllMessages, targetPharmacyMessages, (row) => row.createdAt)
           .slice(0, 50);
       })(),
-      db.select({
-        id: matchNotifications.id,
-        triggerPharmacyId: matchNotifications.triggerPharmacyId,
-        triggerUploadType: matchNotifications.triggerUploadType,
-        candidateCountBefore: matchNotifications.candidateCountBefore,
-        candidateCountAfter: matchNotifications.candidateCountAfter,
-        diffJson: matchNotifications.diffJson,
-        isRead: matchNotifications.isRead,
-        createdAt: matchNotifications.createdAt,
-      })
-        .from(matchNotifications)
-        .where(eq(matchNotifications.pharmacyId, pharmacyId))
-        .orderBy(desc(matchNotifications.createdAt), desc(matchNotifications.id))
-        .limit(MATCH_NOTICE_LIMIT),
+      (async () => {
+        try {
+          return await db.select({
+            id: matchNotifications.id,
+            triggerPharmacyId: matchNotifications.triggerPharmacyId,
+            triggerUploadType: matchNotifications.triggerUploadType,
+            candidateCountBefore: matchNotifications.candidateCountBefore,
+            candidateCountAfter: matchNotifications.candidateCountAfter,
+            diffJson: matchNotifications.diffJson,
+            isRead: matchNotifications.isRead,
+            createdAt: matchNotifications.createdAt,
+          })
+            .from(matchNotifications)
+            .where(eq(matchNotifications.pharmacyId, pharmacyId))
+            .orderBy(desc(matchNotifications.createdAt), desc(matchNotifications.id))
+            .limit(MATCH_NOTICE_LIMIT);
+        } catch (err) {
+          logger.warn('match_notifications query failed (table may not exist)', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return [];
+        }
+      })(),
     ]);
 
     const messageIds = messageRows.map((message) => message.id);
