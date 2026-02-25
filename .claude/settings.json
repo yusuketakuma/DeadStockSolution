@@ -1,17 +1,32 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_harness_template": "claude/settings.security.json.template",
-  "_harness_version": "2.23.6",
-  "language": "japanese",
   "permissions": {
     "allow": [
+      "Edit",
+      "Write",
       "Bash(npm test:*)",
+      "Bash(npm run test:*)",
       "Bash(npm run lint:*)",
       "Bash(npm run build:*)",
+      "Bash(npm run typecheck:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git stash:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(touch:*)",
+      "Bash(echo:*)",
+      "Bash(node:*)",
+      "Bash(tsc:*)",
+      "Bash(cd:*)"
     ],
     "deny": [
       "Bash(sudo:*)",
@@ -49,5 +64,11 @@
       "Bash(git rebase:*)",
       "Bash(git merge:*)"
     ]
+  },
+  "language": "japanese",
+  "_harness_template": "claude/settings.security.json.template",
+  "_harness_version": "2.25.0",
+  "enabledPlugins": {
+    "vercel@claude-plugins-official": true
   }
 }

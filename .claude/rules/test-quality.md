@@ -2,7 +2,7 @@
 description: テスト品質保護ルール - テスト改ざんを禁止し、正しい実装を促す
 paths: "**/*.{test,spec}.{ts,tsx,js,jsx,py}, **/test/**/*.*, **/tests/**/*.*, **/__tests__/**/*.*, .husky/**, .github/workflows/**"
 _harness_template: "rules/test-quality.md.template"
-_harness_version: "2.23.6"
+_harness_version: "2.25.0"
 ---
 
 # Test Quality Protection Rules
@@ -36,6 +36,33 @@ biome.json          # lint ルールを無効化しない
 .github/workflows/** # CI チェックをスキップしない
 ```
 
+### 3. 例外を設ける場合（必須手順）
+
+やむを得ず上記を変更する場合は、**必ず以下の形式で承認を得てから**実行：
+
+```markdown
+## テスト/設定変更の承認リクエスト
+
+### 理由
+[なぜこの変更が必要か具体的に説明]
+
+### 変更内容
+[変更の差分を表示]
+
+### 影響範囲
+- 影響を受けるテスト: [件数・名前]
+- 影響を受ける機能: [機能名]
+
+### 代替案の検討
+- [ ] 実装の修正で解決できないか確認した
+- [ ] 他の方法を検討した
+
+### 承認
+ユーザーの明示的な承認を待つ
+```
+
+---
+
 ## テスト失敗時の対応フロー
 
 ```
@@ -51,3 +78,37 @@ biome.json          # lint ルールを無効化しない
             ↓
         ユーザーに確認を求める（勝手に変更しない）
 ```
+
+---
+
+## 正しいテスト対応の例
+
+### 悪い例（改ざん）
+
+```typescript
+// テストが失敗したので skip にした
+it.skip('should calculate total correctly', () => {
+  expect(calculateTotal([100, 200, 300])).toBe(600);
+});
+```
+
+### 良い例（実装を修正）
+
+```typescript
+// テストは正しい。実装を修正した
+function calculateTotal(prices: number[]): number {
+  // 修正: reduce の初期値を 0 に設定
+  return prices.reduce((sum, price) => sum + price, 0);
+}
+```
+
+---
+
+## CI/CD 保護
+
+以下の変更は**絶対禁止**：
+
+- `continue-on-error: true` の追加
+- `if: always()` でテスト失敗を無視
+- `--force` フラグでチェックを迂回
+- テストカバレッジ閾値の引き下げ

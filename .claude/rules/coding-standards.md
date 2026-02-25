@@ -1,8 +1,8 @@
 ---
 description: コーディング規約（コードファイル編集時のみ適用）
-paths: "**/*.{ts,tsx,js,jsx}"
+paths: "**/*.{ts,tsx,js,jsx,py,rb,go,rs,java,kt,swift,c,cpp,h,hpp,cs,php}"
 _harness_template: "rules/coding-standards.md.template"
-_harness_version: "2.23.6"
+_harness_version: "2.25.0"
 ---
 
 # Coding Standards
@@ -20,15 +20,26 @@ _harness_version: "2.23.6"
 
 ## コードスタイル
 
-- 既存のコードスタイルに従う
-- 変更に必要な最小限の修正のみ
-- TypeScript strict モードを維持
-- React コンポーネントは関数コンポーネント + hooks
-- API クライアントは `client/src/api/client.ts` に集約
-- DB スキーマは `server/src/db/schema.ts` に集約
+- ✅ 既存のコードスタイルに従う
+- ✅ 変更に必要な最小限の修正のみ
+- ✅ TypeScript strict モードを維持
+- ✅ React コンポーネントは関数コンポーネント + hooks
+- ✅ API クライアントは `client/src/api/client.ts` に集約
+- ✅ DB スキーマは `server/src/db/schema.ts` に集約
+- ❌ 変更していないコードへの「改善」
+- ❌ 依頼されていないリファクタリング
+- ❌ 過剰なコメント追加
+
+## Pull Request
+
+- タイトル: 変更内容を簡潔に（50文字以内）
+- 説明: 「何を」「なぜ」を明記
+- テスト方法を必ず記載
+- 破壊的変更がある場合は明示
 
 ## エラーハンドリング
 
 - 境界（ユーザー入力、外部API）でのみバリデーション
 - サーバー側は zod でリクエストバリデーション
 - 内部コードは信頼する
+- 起こりえないシナリオのエラーハンドリングは不要

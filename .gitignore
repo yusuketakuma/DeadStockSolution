@@ -146,3 +146,10 @@ server/uploads/
 server/local.db
 data/
 *.db
+
+# Local npm cache/global (project-level)
+.npm-cache/
+.npm-global/
+
+# Claude Code harness
+.claude-code-harness/
