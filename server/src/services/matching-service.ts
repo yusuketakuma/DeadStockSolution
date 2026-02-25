@@ -1,10 +1,12 @@
-import { and, eq, exists, gte, inArray, ne, notExists } from 'drizzle-orm';
+import { and, eq, exists, gte, inArray, ne, notExists, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
   deadStockItems,
+  deadStockReservations,
   usedMedicationItems,
   uploads,
+  exchangeProposals,
   pharmacyBusinessHours,
   pharmacySpecialHours,
   pharmacyRelationships,
@@ -40,6 +42,25 @@ interface DeadStockRow {
   unit: string | null;
   yakkaUnitPrice: number | string | null;
   expirationDate: string | null;
+}
+
+const RESERVATION_ACTIVE_STATUSES = ['proposed', 'accepted_a', 'accepted_b', 'confirmed'] as const;
+
+function applyReservationsToStockRows(
+  rows: DeadStockRow[],
+  reservedByItemId: Map<number, number>,
+): DeadStockRow[] {
+  const adjusted: DeadStockRow[] = [];
+  for (const row of rows) {
+    const reservedQty = reservedByItemId.get(row.id) ?? 0;
+    const availableQty = roundTo2(Number(row.quantity) - reservedQty);
+    if (!Number.isFinite(availableQty) || availableQty <= 0) continue;
+    adjusted.push({
+      ...row,
+      quantity: availableQty,
+    });
+  }
+  return adjusted;
 }
 
 export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]> {
@@ -85,7 +106,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   }
 
   const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const firstOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   const favoriteRows = await db.select({
     targetPharmacyId: pharmacyRelationships.targetPharmacyId,
   })
@@ -169,6 +190,31 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       .orderBy(usedMedicationItems.id),
   ]);
 
+  const allDeadStockIds = [...new Set([...myDeadStock, ...allOtherDeadStock].map((row) => row.id))];
+  const reservationRows = allDeadStockIds.length > 0
+    ? await db.select({
+      deadStockItemId: deadStockReservations.deadStockItemId,
+      reservedQty: sql<number>`coalesce(sum(${deadStockReservations.reservedQuantity}), 0)`,
+    })
+      .from(deadStockReservations)
+      .innerJoin(exchangeProposals, eq(deadStockReservations.proposalId, exchangeProposals.id))
+      .where(and(
+        inArray(deadStockReservations.deadStockItemId, allDeadStockIds),
+        inArray(exchangeProposals.status, RESERVATION_ACTIVE_STATUSES),
+      ))
+      .groupBy(deadStockReservations.deadStockItemId)
+    : [];
+  const reservedByItemId = new Map<number, number>();
+  for (const row of reservationRows) {
+    reservedByItemId.set(row.deadStockItemId, Number(row.reservedQty ?? 0));
+  }
+
+  const adjustedMyDeadStock = applyReservationsToStockRows(myDeadStock, reservedByItemId);
+  if (adjustedMyDeadStock.length === 0) {
+    return [];
+  }
+  const adjustedOtherDeadStock = applyReservationsToStockRows(allOtherDeadStock, reservedByItemId);
+
   // Fetch business hours for all candidate pharmacies
   const [allBusinessHours, allSpecialHours] = await Promise.all([
     db.select({
@@ -211,11 +257,11 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     specialHoursByPharmacy.set(h.pharmacyId, list);
   }
 
-  const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(allOtherDeadStock);
+  const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(adjustedOtherDeadStock);
   const usedMedsByPharmacy = groupByPharmacy<UsedMedRow>(allOtherUsedMeds);
   const myUsedMedIndex = buildUsedMedIndex(myUsedMeds);
   const preparedDrugNameCache = new Map<string, PreparedDrugName>();
-  const preparedMyDeadStock = myDeadStock.map((stock) => {
+  const preparedMyDeadStock = adjustedMyDeadStock.map((stock) => {
     const cached = preparedDrugNameCache.get(stock.drugName);
     if (cached) return { stock, preparedDrugName: cached };
     const preparedDrugName = prepareDrugName(stock.drugName);

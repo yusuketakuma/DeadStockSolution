@@ -8,6 +8,7 @@ import { getPreviewRows } from '../services/upload-service';
 import { extractDeadStockRows, extractUsedMedicationRows } from '../services/data-extractor';
 import { enrichWithDrugMaster } from '../services/drug-master-enrichment';
 import { logger } from '../services/logger';
+import { triggerMatchingRefreshOnUpload } from '../services/matching-refresh-service';
 import {
   getBaseContext,
   getErrorMessage,
@@ -209,6 +210,11 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
         },
       });
 
+      await triggerMatchingRefreshOnUpload({
+        triggerPharmacyId: pharmacyId,
+        uploadType,
+      }, tx);
+
       return { uploadId: uploadRecord.id };
     });
 
@@ -224,7 +230,7 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
       stack: err instanceof Error ? err.stack : undefined,
     }));
     logUploadFailure(req, 'confirm', 'unexpected_error', { error: getErrorMessage(err) });
-    res.status(500).json({ error: 'データの登録に失敗しました' });
+    res.status(500).json({ error: 'データ登録またはマッチング更新に失敗しました' });
   }
 });
 

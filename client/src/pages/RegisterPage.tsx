@@ -68,7 +68,7 @@ export default function RegisterPage() {
           <h4 className="text-center mb-4">新規薬局登録</h4>
           {error && <Alert variant="danger">{error}</Alert>}
           <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-3" controlId="register-email">
               <Form.Label>メールアドレス <span className="text-danger">*</span></Form.Label>
               <Form.Control
                 type="email"
@@ -80,7 +80,7 @@ export default function RegisterPage() {
               <Form.Control.Feedback type="invalid">{getFieldError('email')}</Form.Control.Feedback>
             </Form.Group>
 
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-3" controlId="register-password">
               <Form.Label>パスワード <span className="text-danger">*</span></Form.Label>
               <Form.Control
                 type="password"
@@ -94,7 +94,7 @@ export default function RegisterPage() {
               {!getFieldError('password') && <Form.Text className="text-muted">8文字以上</Form.Text>}
             </Form.Group>
 
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-3" controlId="register-name">
               <Form.Label>薬局名 <span className="text-danger">*</span></Form.Label>
               <Form.Control
                 type="text"
@@ -106,7 +106,7 @@ export default function RegisterPage() {
               <Form.Control.Feedback type="invalid">{getFieldError('name')}</Form.Control.Feedback>
             </Form.Group>
 
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-3" controlId="register-license-number">
               <Form.Label>薬局開設許可番号 <span className="text-danger">*</span></Form.Label>
               <Form.Control
                 type="text"
@@ -120,7 +120,7 @@ export default function RegisterPage() {
 
             <Row>
               <Col md={6}>
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3" controlId="register-prefecture">
                   <Form.Label>都道府県 <span className="text-danger">*</span></Form.Label>
                   <Form.Select
                     value={form.prefecture}
@@ -137,7 +137,7 @@ export default function RegisterPage() {
                 </Form.Group>
               </Col>
               <Col md={6}>
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3" controlId="register-postal-code">
                   <Form.Label>郵便番号 <span className="text-danger">*</span></Form.Label>
                   <Form.Control
                     type="text"
@@ -152,7 +152,7 @@ export default function RegisterPage() {
               </Col>
             </Row>
 
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-3" controlId="register-address">
               <Form.Label>住所 <span className="text-danger">*</span></Form.Label>
               <Form.Control
                 type="text"
@@ -168,7 +168,7 @@ export default function RegisterPage() {
 
             <Row>
               <Col md={6}>
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3" controlId="register-phone">
                   <Form.Label>電話番号 <span className="text-danger">*</span></Form.Label>
                   <Form.Control
                     type="tel"
@@ -181,7 +181,7 @@ export default function RegisterPage() {
                 </Form.Group>
               </Col>
               <Col md={6}>
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3" controlId="register-fax">
                   <Form.Label>FAX番号 <span className="text-danger">*</span></Form.Label>
                   <Form.Control
                     type="tel"

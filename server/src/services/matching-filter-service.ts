@@ -1,4 +1,5 @@
 import { MatchItem } from '../types';
+import { roundTo2 } from './matching-score-service';
 
 export const MIN_EXCHANGE_VALUE = 10000;
 export const VALUE_TOLERANCE = 10;
@@ -9,10 +10,6 @@ export interface BalancedValueResult {
   balancedB: MatchItem[];
   totalA: number;
   totalB: number;
-}
-
-function roundTo2(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 export function balanceValues(itemsA: MatchItem[], itemsB: MatchItem[]): BalancedValueResult {

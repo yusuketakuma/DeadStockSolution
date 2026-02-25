@@ -1,0 +1,24 @@
+# Harness-specific Claude-mem configuration
+mode: code--ja
+
+# Auto-recording settings
+auto_record:
+  guardrail_activations: true
+  plans_updates: true
+  ssot_changes: true
+  review_results: true
+
+# Learning settings
+learning:
+  enabled: true
+  store_failures: true
+  store_solutions: true
+
+# Localization
+locale: ja
+
+# Memory paths
+paths:
+  observations: .claude/memory/observations.md
+  summaries: .claude/memory/summaries.md
+  decisions: .claude/memory/decisions.md

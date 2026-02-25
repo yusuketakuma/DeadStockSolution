@@ -16,7 +16,7 @@ interface QuickAction {
   label: string;
 }
 
-interface GitHubUpdateItem {
+export interface GitHubUpdateItem {
   id: string;
   tag: string;
   title: string;
@@ -26,7 +26,7 @@ interface GitHubUpdateItem {
   prerelease: boolean;
 }
 
-interface GitHubUpdatesResponse {
+export interface GitHubUpdatesResponse {
   repository: string;
   source: 'github_releases';
   stale: boolean;

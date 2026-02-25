@@ -89,7 +89,7 @@ export default function PasswordResetPage() {
 
           {step === 'request' && (
             <Form onSubmit={handleRequest}>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="password-reset-email">
                 <Form.Label>メールアドレス</Form.Label>
                 <Form.Control
                   type="email"
@@ -113,7 +113,7 @@ export default function PasswordResetPage() {
 
           {step === 'confirm' && (
             <Form onSubmit={handleConfirm}>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="password-reset-token">
                 <Form.Label>リセットトークン</Form.Label>
                 <Form.Control
                   type="text"
@@ -123,7 +123,7 @@ export default function PasswordResetPage() {
                   placeholder="メールに記載のトークン"
                 />
               </Form.Group>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="password-reset-new-password">
                 <Form.Label>新しいパスワード</Form.Label>
                 <Form.Control
                   type="password"
@@ -134,7 +134,7 @@ export default function PasswordResetPage() {
                   placeholder="英字+数字を含む8文字以上"
                 />
               </Form.Group>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="password-reset-confirm-password">
                 <Form.Label>新しいパスワード（確認）</Form.Label>
                 <Form.Control
                   type="password"

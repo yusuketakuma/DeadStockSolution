@@ -400,3 +400,72 @@ export const pharmacyRelationships = pgTable('pharmacy_relationships', {
     .on(table.pharmacyId, table.targetPharmacyId),
   chkNotSelfRelationship: check('chk_not_self_relationship', sql`${table.pharmacyId} != ${table.targetPharmacyId}`),
 }));
+
+// ── マッチング予約・通知 ─────────────────────────────────
+
+export const deadStockReservations = pgTable('dead_stock_reservations', {
+  id: serial('id').primaryKey(),
+  deadStockItemId: integer('dead_stock_item_id').notNull().references(() => deadStockItems.id, { onDelete: 'cascade' }),
+  proposalId: integer('proposal_id').notNull().references(() => exchangeProposals.id, { onDelete: 'cascade' }),
+  reservedQuantity: real('reserved_quantity').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxDeadStockReservationsItem: index('idx_dead_stock_reservations_item')
+    .on(table.deadStockItemId),
+  idxDeadStockReservationsProposal: index('idx_dead_stock_reservations_proposal')
+    .on(table.proposalId),
+  idxDeadStockReservationsUnique: uniqueIndex('idx_dead_stock_reservations_unique')
+    .on(table.proposalId, table.deadStockItemId),
+  chkDeadStockReservationQtyPositive: check('chk_dead_stock_reservation_qty', sql`${table.reservedQuantity} > 0`),
+}));
+
+export const matchCandidateSnapshots = pgTable('match_candidate_snapshots', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  candidateHash: text('candidate_hash').notNull(),
+  candidateCount: integer('candidate_count').notNull().default(0),
+  topCandidatesJson: text('top_candidates_json').notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxMatchSnapshotsPharmacyUnique: uniqueIndex('idx_match_snapshots_pharmacy_unique')
+    .on(table.pharmacyId),
+}));
+
+export const matchNotifications = pgTable('match_notifications', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  triggerPharmacyId: integer('trigger_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  triggerUploadType: uploadTypeEnum('trigger_upload_type').notNull(),
+  candidateCountBefore: integer('candidate_count_before').notNull().default(0),
+  candidateCountAfter: integer('candidate_count_after').notNull().default(0),
+  diffJson: text('diff_json').notNull(),
+  dedupeKey: text('dedupe_key').notNull(),
+  isRead: boolean('is_read').notNull().default(false),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxMatchNotificationsPharmacyCreated: index('idx_match_notifications_pharmacy_created')
+    .on(table.pharmacyId, table.createdAt),
+  idxMatchNotificationsUnread: index('idx_match_notifications_unread')
+    .on(table.pharmacyId, table.isRead, table.createdAt),
+  idxMatchNotificationsDedupe: uniqueIndex('idx_match_notifications_dedupe')
+    .on(table.pharmacyId, table.dedupeKey),
+}));
+
+export const matchingRefreshJobs = pgTable('matching_refresh_jobs', {
+  id: serial('id').primaryKey(),
+  triggerPharmacyId: integer('trigger_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  uploadType: uploadTypeEnum('upload_type').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  processingStartedAt: timestamp('processing_started_at', { mode: 'string' }),
+  nextRetryAt: timestamp('next_retry_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxMatchingRefreshJobsCreated: index('idx_matching_refresh_jobs_created')
+    .on(table.createdAt),
+  idxMatchingRefreshJobsTrigger: index('idx_matching_refresh_jobs_trigger')
+    .on(table.triggerPharmacyId, table.createdAt),
+  idxMatchingRefreshJobsReady: index('idx_matching_refresh_jobs_ready')
+    .on(table.attempts, table.nextRetryAt, table.processingStartedAt, table.createdAt),
+}));

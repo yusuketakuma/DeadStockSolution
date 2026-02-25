@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-02-25T04:24:54.213Z",
+  "updatedAt": "2026-02-25T12:35:26.468Z",
   "skills": {},
   "commands": {
     "harness-init": {
@@ -20,25 +20,41 @@
       "lastUsed": "2026-02-24T12:23:15.731Z"
     },
     "codex-review": {
-      "count": 3,
-      "lastUsed": "2026-02-25T04:24:54.213Z"
+      "count": 4,
+      "lastUsed": "2026-02-25T12:21:48.986Z"
     },
     "verify": {
       "count": 1,
       "lastUsed": "2026-02-25T04:21:25.400Z"
+    },
+    "breezing": {
+      "count": 3,
+      "lastUsed": "2026-02-25T11:54:57.015Z"
     }
   },
   "agents": {
     "Explore": {
-      "count": 4,
-      "lastUsed": "2026-02-24T12:25:12.261Z"
+      "count": 7,
+      "lastUsed": "2026-02-25T12:35:26.468Z"
+    },
+    "claude-code-harness:task-worker": {
+      "count": 3,
+      "lastUsed": "2026-02-25T11:57:18.697Z"
+    },
+    "claude-code-harness:code-reviewer": {
+      "count": 1,
+      "lastUsed": "2026-02-25T12:11:58.249Z"
+    },
+    "general-purpose": {
+      "count": 1,
+      "lastUsed": "2026-02-25T12:19:57.504Z"
     }
   },
   "hooks": {
     "session-init": {
-      "triggered": 6,
+      "triggered": 11,
       "blocked": 0,
-      "lastTriggered": "2026-02-25T04:24:39.431Z"
+      "lastTriggered": "2026-02-25T12:11:59.917Z"
     }
   }
 }

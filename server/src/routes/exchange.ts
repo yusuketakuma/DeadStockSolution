@@ -6,6 +6,7 @@ import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
 import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
+import { processPendingMatchingRefreshJobs } from '../services/matching-refresh-service';
 import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
@@ -53,6 +54,11 @@ function mergeDedupSortByTimestamp<T extends { id: number }>(
 // Find matching candidates
 router.post('/find', async (req: AuthRequest, res: Response) => {
   try {
+    await processPendingMatchingRefreshJobs().catch((err) => {
+      logger.warn('Processing pending matching refresh jobs failed before find', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
     const candidates = await findMatches(req.user!.id);
     res.json({ candidates });
   } catch (err) {

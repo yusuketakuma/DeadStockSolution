@@ -283,6 +283,130 @@ describe('DashboardPage', () => {
     });
   });
 
+  it('keeps showing notifications when upload status request fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/upload/status')) {
+        return new Response(JSON.stringify({ error: 'failed' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/notifications')) {
+        return new Response(JSON.stringify({
+          notices: [
+            {
+              id: 'match-10',
+              type: 'match_update',
+              title: '候補が更新されました',
+              body: '追加 1 / 除外 0',
+              actionPath: '/matching',
+              actionLabel: '候補を確認',
+              createdAt: '2026-02-25T12:00:00.000Z',
+              unread: true,
+              priority: 2,
+            },
+          ],
+          summary: { unreadMessages: 0, actionableRequests: 1, total: 1 },
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('候補が更新されました')).toBeInTheDocument();
+    });
+    expect(screen.getByText('アップロード状況の取得に失敗しました。')).toBeInTheDocument();
+  });
+
+  it('does not show empty notification state when notification fetch fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/upload/status')) {
+        return new Response(JSON.stringify({
+          deadStockUploaded: true,
+          usedMedicationUploaded: true,
+          lastDeadStockUpload: '2026-01-15T10:00:00Z',
+          lastUsedMedicationUpload: '2026-01-16T10:00:00Z',
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/notifications')) {
+        return new Response(JSON.stringify({ error: 'failed' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('通知の取得に失敗しました。')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('現在のお知らせはありません。')).not.toBeInTheDocument();
+  });
+
+  it('uses proposals as secondary action for match update next action', async () => {
+    mockAuthenticatedFetchWithDashboardData({
+      '/api/upload/status': {
+        deadStockUploaded: true,
+        usedMedicationUploaded: true,
+        lastDeadStockUpload: '2026-01-15T10:00:00Z',
+        lastUsedMedicationUpload: '2026-01-16T10:00:00Z',
+      },
+      '/api/notifications': {
+        notices: [
+          {
+            id: 'match-11',
+            type: 'match_update',
+            title: '候補更新',
+            body: '候補数 2件 → 3件',
+            actionPath: '/matching',
+            actionLabel: '候補を確認',
+            createdAt: '2026-02-25T12:00:00.000Z',
+            unread: true,
+            priority: 2,
+          },
+        ],
+        summary: { unreadMessages: 0, actionableRequests: 1, total: 1 },
+      },
+    });
+
+    renderWithProviders(<DashboardPage />);
+
+    const secondaryLink = await screen.findByRole('link', { name: 'マッチング一覧を確認' });
+    expect(secondaryLink).toHaveAttribute('href', '/proposals');
+  });
+
   it('shows matching as enabled when used medication is uploaded', async () => {
     mockAuthenticatedFetchWithDashboardData({
       '/api/upload/status': {

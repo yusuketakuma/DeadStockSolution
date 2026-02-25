@@ -1,5 +1,5 @@
 import { Card, Alert, Badge, ListGroup, Spinner } from 'react-bootstrap';
-import { Notice, NotificationsResponse, noticeVariant } from './types';
+import { Notice, NotificationsResponse, noticeTypeLabel, noticeVariant } from './types';
 
 interface Props {
   notifications: NotificationsResponse | null;
@@ -7,6 +7,7 @@ interface Props {
   dashboardError: string;
   onNoticeClick: (notice: Notice) => void;
   onRetry: () => void;
+  onRefresh: () => void;
 }
 
 export default function DashboardNotices({
@@ -15,17 +16,23 @@ export default function DashboardNotices({
   dashboardError,
   onNoticeClick,
   onRetry,
+  onRefresh,
 }: Props) {
   return (
     <Card className="mb-3">
       <Card.Header className="d-flex justify-content-between align-items-center">
         <span>お知らせ</span>
-        {notifications && (
-          <div className="d-flex gap-2 flex-wrap">
-            <Badge bg="danger">対応要: {notifications.summary.actionableRequests}</Badge>
-            <Badge bg="info">未読メッセージ: {notifications.summary.unreadMessages}</Badge>
-          </div>
-        )}
+        <div className="d-flex gap-2 flex-wrap align-items-center">
+          {notifications && (
+            <>
+              <Badge bg="danger">対応要: {notifications.summary.actionableRequests}</Badge>
+              <Badge bg="info">未読メッセージ: {notifications.summary.unreadMessages}</Badge>
+            </>
+          )}
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onRefresh}>
+            更新
+          </button>
+        </div>
       </Card.Header>
       <Card.Body>
         {dashboardError && (
@@ -44,7 +51,7 @@ export default function DashboardNotices({
           </div>
         )}
 
-        {!loadingNotifications && (!notifications || notifications.notices.length === 0) && (
+        {!loadingNotifications && !dashboardError && (!notifications || notifications.notices.length === 0) && (
           <div className="text-muted small">現在のお知らせはありません。</div>
         )}
 
@@ -60,7 +67,7 @@ export default function DashboardNotices({
                 <div>
                   <div className="d-flex align-items-center gap-2 mb-1">
                     <Badge bg={noticeVariant(notice.type)}>
-                      {notice.type === 'admin_message' ? '管理者メッセージ' : '交換通知'}
+                      {noticeTypeLabel(notice.type)}
                     </Badge>
                     {notice.unread && <Badge bg="warning" text="dark">未読</Badge>}
                   </div>

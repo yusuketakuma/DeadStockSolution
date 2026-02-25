@@ -21,6 +21,7 @@ const ENV_KEYS = [
   'GITHUB_UPDATES_LIMIT',
   'GITHUB_UPDATES_CACHE_TTL_SECONDS',
   'GITHUB_UPDATES_TIMEOUT_MS',
+  'GITHUB_UPDATES_RETRIES',
   'GITHUB_UPDATES_INCLUDE_PRERELEASE',
   'GITHUB_UPDATES_TOKEN',
 ] as const;
@@ -119,6 +120,7 @@ describe('github-updates-service', () => {
   it('serves stale cache with original fetchedAt when refresh fails', async () => {
     process.env.GITHUB_UPDATES_REPOSITORY = 'owner/repo';
     process.env.GITHUB_UPDATES_CACHE_TTL_SECONDS = '30';
+    process.env.GITHUB_UPDATES_RETRIES = '0';
 
     vi.useFakeTimers();
     const firstNow = new Date('2026-02-25T00:00:00.000Z');
@@ -182,5 +184,40 @@ describe('github-updates-service', () => {
       'Invalid GitHub repository config for updates. Falling back to default repository.',
       expect.objectContaining({ fallbackRepository: 'yusuketakuma/DeadStockSolution' })
     );
+  });
+
+  it('retries temporary 503 responses and succeeds', async () => {
+    process.env.GITHUB_UPDATES_REPOSITORY = 'owner/repo';
+    process.env.GITHUB_UPDATES_RETRIES = '2';
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        text: async () => 'temporary unavailable',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ([
+          {
+            id: 31,
+            tag_name: 'v3.1.0',
+            name: 'Recovered release',
+            body: 'retry success',
+            html_url: 'https://github.com/owner/repo/releases/tag/v3.1.0',
+            draft: false,
+            prerelease: false,
+            published_at: '2026-02-28T00:00:00.000Z',
+          },
+        ]),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await getGitHubUpdates();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.tag).toBe('v3.1.0');
   });
 });

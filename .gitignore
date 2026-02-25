@@ -153,3 +153,4 @@ data/
 
 # Claude Code harness
 .claude-code-harness/
+.vercel

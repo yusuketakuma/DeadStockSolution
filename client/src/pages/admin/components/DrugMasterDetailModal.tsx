@@ -1,40 +1,5 @@
 import { Badge, Col, Modal, Row, Table } from 'react-bootstrap';
-
-interface PackageItem {
-  id: number;
-  gs1Code: string | null;
-  janCode: string | null;
-  hotCode: string | null;
-  packageDescription: string | null;
-  packageQuantity: number | null;
-  packageUnit: string | null;
-  normalizedPackageLabel?: string | null;
-}
-
-interface PriceHistoryItem {
-  id: number;
-  previousPrice: number | null;
-  newPrice: number | null;
-  revisionDate: string;
-  revisionType: string;
-}
-
-interface DrugMasterDetail {
-  yjCode: string;
-  drugName: string;
-  genericName: string | null;
-  specification: string | null;
-  unit: string | null;
-  yakkaPrice: number;
-  manufacturer: string | null;
-  category: string | null;
-  isListed: boolean;
-  transitionDeadline: string | null;
-  therapeuticCategory: string | null;
-  deletedDate: string | null;
-  packages: PackageItem[];
-  priceHistory: PriceHistoryItem[];
-}
+import type { DrugMasterDetail } from './types';
 
 const REVISION_TYPE_LABELS: Record<string, string> = {
   price_revision: '薬価改定',

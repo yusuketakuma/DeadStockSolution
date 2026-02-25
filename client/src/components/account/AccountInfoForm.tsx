@@ -26,25 +26,25 @@ export default function AccountInfoForm({ account, form, loading, onSubmit, onCh
     <Card>
       <Card.Body>
         <Form onSubmit={onSubmit}>
-          <Form.Group className="mb-3">
+          <Form.Group className="mb-3" controlId="account-email">
             <Form.Label>メールアドレス</Form.Label>
             <Form.Control type="email" value={account.email} disabled />
             <Form.Text className="text-muted">メールアドレスは変更できません</Form.Text>
           </Form.Group>
 
-          <Form.Group className="mb-3">
+          <Form.Group className="mb-3" controlId="account-license-number">
             <Form.Label>薬局開設許可番号</Form.Label>
             <Form.Control type="text" value={account.licenseNumber} disabled />
           </Form.Group>
 
-          <Form.Group className="mb-3">
+          <Form.Group className="mb-3" controlId="account-name">
             <Form.Label>薬局名</Form.Label>
             <Form.Control type="text" value={form.name} onChange={onChange('name')} />
           </Form.Group>
 
           <Row>
             <Col md={6}>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="account-prefecture">
                 <Form.Label>都道府県</Form.Label>
                 <Form.Select value={form.prefecture} onChange={onChange('prefecture')}>
                   {PREFECTURES.map((pref) => (
@@ -54,27 +54,27 @@ export default function AccountInfoForm({ account, form, loading, onSubmit, onCh
               </Form.Group>
             </Col>
             <Col md={6}>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="account-postal-code">
                 <Form.Label>郵便番号</Form.Label>
                 <Form.Control type="text" value={form.postalCode} onChange={onChange('postalCode')} />
               </Form.Group>
             </Col>
           </Row>
 
-          <Form.Group className="mb-3">
+          <Form.Group className="mb-3" controlId="account-address">
             <Form.Label>住所</Form.Label>
             <Form.Control type="text" value={form.address} onChange={onChange('address')} />
           </Form.Group>
 
           <Row>
             <Col md={6}>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="account-phone">
                 <Form.Label>電話番号</Form.Label>
                 <Form.Control type="tel" value={form.phone} onChange={onChange('phone')} />
               </Form.Group>
             </Col>
             <Col md={6}>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="account-fax">
                 <Form.Label>FAX番号</Form.Label>
                 <Form.Control type="tel" value={form.fax} onChange={onChange('fax')} />
               </Form.Group>
@@ -85,13 +85,13 @@ export default function AccountInfoForm({ account, form, loading, onSubmit, onCh
           <h6>パスワード変更（変更する場合のみ入力）</h6>
           <Row>
             <Col md={6}>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="account-current-password">
                 <Form.Label>現在のパスワード</Form.Label>
                 <Form.Control type="password" value={form.currentPassword} onChange={onChange('currentPassword')} />
               </Form.Group>
             </Col>
             <Col md={6}>
-              <Form.Group className="mb-3">
+              <Form.Group className="mb-3" controlId="account-new-password">
                 <Form.Label>新しいパスワード</Form.Label>
                 <Form.Control type="password" value={form.newPassword} onChange={onChange('newPassword')} minLength={8} />
               </Form.Group>

@@ -44,6 +44,7 @@ export default function MatchingPage() {
   const [proposalSubmitting, setProposalSubmitting] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
+  const [proposalRetrySuggested, setProposalRetrySuggested] = useState(false);
   const [message, setMessage] = useState('');
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [candidateForProposal, setCandidateForProposal] = useState<MatchCandidate | null>(null);
@@ -52,6 +53,7 @@ export default function MatchingPage() {
     setLoading(true);
     setError('');
     setMessage('');
+    setProposalRetrySuggested(false);
     try {
       const data = await api.post<{ candidates: MatchCandidate[] }>('/exchange/find');
       setCandidates(data.candidates);
@@ -66,13 +68,20 @@ export default function MatchingPage() {
   const handleSendProposal = async () => {
     if (!candidateForProposal) return;
     setProposalSubmitting(true);
+    setProposalRetrySuggested(false);
     try {
       await api.post('/exchange/proposals', { candidate: candidateForProposal });
       setMessage(`${candidateForProposal.pharmacyName}との仮マッチングを開始しました。相手薬局の承認をお待ちください。`);
       setCandidates((prev) => prev.filter((c) => c.pharmacyId !== candidateForProposal.pharmacyId));
       setCandidateForProposal(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '仮マッチングの送信に失敗しました');
+      const messageText = err instanceof Error ? err.message : '仮マッチングの送信に失敗しました';
+      setError(messageText);
+      setProposalRetrySuggested(
+        messageText.includes('在庫')
+        || messageText.includes('数量')
+        || messageText.includes('利用可能')
+      );
     } finally {
       setProposalSubmitting(false);
     }
@@ -83,6 +92,14 @@ export default function MatchingPage() {
       <div>
         <h4 className="page-title mb-3">マッチング</h4>
         {error && <Alert variant="danger">{error}</Alert>}
+        {proposalRetrySuggested && (
+          <Alert variant="warning" className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <span className="small">在庫状態が更新された可能性があります。最新条件で再マッチングしてください。</span>
+            <Button size="sm" variant="outline-warning" onClick={handleSearch} disabled={loading}>
+              {loading ? '再実行中...' : '再マッチング'}
+            </Button>
+          </Alert>
+        )}
         {message && <Alert variant="success">{message}</Alert>}
 
         <Card className="mb-3">

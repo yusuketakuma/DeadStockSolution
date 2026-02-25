@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -7,49 +7,86 @@ import {
   NotificationsResponse,
   Notice,
   buildNextAction,
-  parseMessageId,
+  resolveNoticeReadEndpoint,
 } from '../components/dashboard/types';
 import DashboardNextAction from '../components/dashboard/DashboardNextAction';
 import DashboardNotices from '../components/dashboard/DashboardNotices';
 import DashboardStatusCards from '../components/dashboard/DashboardStatusCards';
+import { useAsyncResource } from '../hooks/useAsyncResource';
+
+interface DashboardData {
+  status: UploadStatus | null;
+  notifications: NotificationsResponse | null;
+  partialError: string;
+}
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [status, setStatus] = useState<UploadStatus | null>(null);
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [dashboardError, setDashboardError] = useState('');
-  const nextAction = buildNextAction(status, notifications);
 
-  const fetchDashboardData = async () => {
-    setLoadingNotifications(true);
-    setDashboardError('');
-    try {
-      const [statusData, noticesData] = await Promise.all([
-        api.get<UploadStatus>('/upload/status'),
-        api.get<NotificationsResponse>('/notifications'),
-      ]);
-      setStatus(statusData);
-      setNotifications(noticesData);
-    } catch (err) {
-      setDashboardError(err instanceof Error ? err.message : 'ダッシュボード情報の取得に失敗しました');
-    } finally {
-      setLoadingNotifications(false);
+  const fetchDashboardData = useCallback(async (_signal: AbortSignal) => {
+    const [nextStatus, nextNotifications] = await Promise.allSettled([
+      api.get<UploadStatus>('/upload/status'),
+      api.get<NotificationsResponse>('/notifications'),
+    ]);
+
+    if (nextStatus.status === 'rejected' && nextNotifications.status === 'rejected') {
+      throw new Error('ダッシュボードデータの取得に失敗しました');
     }
-  };
+
+    const errors: string[] = [];
+    if (nextStatus.status === 'rejected') {
+      errors.push('アップロード状況の取得に失敗しました。');
+    }
+    if (nextNotifications.status === 'rejected') {
+      errors.push('通知の取得に失敗しました。');
+    }
+
+    return {
+      status: nextStatus.status === 'fulfilled' ? nextStatus.value : null,
+      notifications: nextNotifications.status === 'fulfilled' ? nextNotifications.value : null,
+      partialError: errors.join(' ').trim(),
+    };
+  }, []);
+  const { data, loading, error, reload } = useAsyncResource<DashboardData>(fetchDashboardData);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    if (!data) return;
+    if (data.status) setStatus(data.status);
+    if (data.notifications) setNotifications(data.notifications);
+    setDashboardError(data.partialError);
+  }, [data]);
+
+  const nextAction = useMemo(() => buildNextAction(status, notifications), [status, notifications]);
 
   const handleNoticeClick = async (notice: Notice) => {
-    const messageId = parseMessageId(notice.id);
-    if (notice.type === 'admin_message' && notice.unread && messageId) {
+    const readEndpoint = resolveNoticeReadEndpoint(notice);
+    if (readEndpoint) {
       try {
-        await api.post(`/notifications/messages/${messageId}/read`);
-      } catch {
-        // ignore
+        await api.post(readEndpoint);
+        setNotifications((prev) => {
+          if (!prev) return prev;
+          const nextNotices = prev.notices.map((item) => (
+            item.id === notice.id ? { ...item, unread: false } : item
+          ));
+          return {
+            ...prev,
+            notices: nextNotices,
+            summary: {
+              ...prev.summary,
+              unreadMessages: nextNotices.filter((item) => item.type === 'admin_message' && item.unread).length,
+              actionableRequests: nextNotices.filter((item) =>
+                item.unread && (item.type === 'inbound_request' || item.type === 'status_update' || item.type === 'match_update')
+              ).length,
+            },
+          };
+        });
+        void reload();
+      } catch (err) {
+        console.error('Failed to mark notification as read', err);
       }
     }
 
@@ -58,22 +95,23 @@ export default function DashboardPage() {
       return;
     }
 
-    fetchDashboardData();
+    await reload();
   };
 
   return (
     <div>
       <h4 className="page-title mb-3">ダッシュボード</h4>
 
-      <DashboardNextAction nextAction={nextAction} />
-
       <DashboardNotices
         notifications={notifications}
-        loadingNotifications={loadingNotifications}
-        dashboardError={dashboardError}
+        loadingNotifications={loading}
+        dashboardError={error || dashboardError}
         onNoticeClick={handleNoticeClick}
-        onRetry={fetchDashboardData}
+        onRetry={() => { void reload(); }}
+        onRefresh={() => { void reload(); }}
       />
+
+      <DashboardNextAction nextAction={nextAction} />
 
       <DashboardStatusCards status={status} userName={user?.name} />
     </div>

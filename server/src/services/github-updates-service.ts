@@ -1,5 +1,6 @@
 import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
 import { logger } from './logger';
+import { FetchTimeoutError, fetchWithTimeout } from '../utils/http-utils';
 
 interface GitHubReleaseResponse {
   id: number;
@@ -43,6 +44,8 @@ const MIN_CACHE_TTL_SECONDS = 30;
 const MAX_CACHE_TTL_SECONDS = 3600;
 const MIN_TIMEOUT_MS = 1000;
 const MAX_TIMEOUT_MS = 20_000;
+const MIN_RETRIES = 0;
+const MAX_RETRIES = 3;
 const MAX_BODY_LENGTH = 2400;
 const MAX_ERROR_BODY_LENGTH = 320;
 
@@ -93,6 +96,10 @@ function includePrerelease(): boolean {
   return parseBooleanFlag(process.env.GITHUB_UPDATES_INCLUDE_PRERELEASE, false);
 }
 
+function resolveRetries(): number {
+  return parseBoundedInt(process.env.GITHUB_UPDATES_RETRIES, 1, MIN_RETRIES, MAX_RETRIES);
+}
+
 function normalizeBody(value: unknown): string {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
@@ -132,15 +139,16 @@ function parseRelease(item: unknown): GitHubUpdateItem | null {
 async function fetchGitHubReleaseUpdates(repository: string): Promise<GitHubUpdatesPayload> {
   const perPage = resolveLimit();
   const timeoutMs = resolveTimeoutMs();
+  const retries = resolveRetries();
   const includePrereleaseReleases = includePrerelease();
   const token = process.env.GITHUB_UPDATES_TOKEN?.trim();
   const url = `https://api.github.com/repos/${repository}/releases?per_page=${perPage}`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
+    const response = await fetchWithTimeout(url, {
+      timeoutMs,
+      retry: { retries },
+      redirect: 'manual',
       headers: {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
@@ -148,6 +156,10 @@ async function fetchGitHubReleaseUpdates(repository: string): Promise<GitHubUpda
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
+
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`GitHub API redirect response is not allowed: ${response.status}`);
+    }
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
@@ -176,12 +188,10 @@ async function fetchGitHubReleaseUpdates(repository: string): Promise<GitHubUpda
       items: releases,
     };
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
+    if (err instanceof FetchTimeoutError || (err instanceof DOMException && err.name === 'AbortError')) {
       throw new Error(`GitHub updates request timed out after ${timeoutMs}ms`);
     }
     throw err;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

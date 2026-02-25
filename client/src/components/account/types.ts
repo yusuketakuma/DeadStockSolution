@@ -35,6 +35,7 @@ export type SpecialType = 'holiday_closed' | 'long_holiday_closed' | 'temporary_
 
 export interface SpecialHourEntry {
   id?: number;
+  clientId?: string;
   specialType: SpecialType;
   startDate: string;
   endDate: string;

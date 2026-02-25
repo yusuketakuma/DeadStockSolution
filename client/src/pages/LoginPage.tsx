@@ -92,7 +92,7 @@ export default function LoginPage() {
           </h5>
           {error && <Alert variant="danger">{error}</Alert>}
           <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-3" controlId="login-email">
               <Form.Label>メールアドレス</Form.Label>
               <Form.Control
                 type="email"
@@ -101,7 +101,7 @@ export default function LoginPage() {
                 required
               />
             </Form.Group>
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-3" controlId="login-password">
               <Form.Label>パスワード</Form.Label>
               <Form.Control
                 type="password"

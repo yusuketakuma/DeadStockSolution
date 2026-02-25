@@ -22,5 +22,17 @@
     "last_seen": 1771993479,
     "pid": "63133",
     "status": "active"
+  },
+  "session-1772020490": {
+    "short_id": "session-1772",
+    "last_seen": 1772020640,
+    "pid": "32051",
+    "status": "active"
+  },
+  "session-1772021519": {
+    "short_id": "session-1772",
+    "last_seen": 1772021520,
+    "pid": "68385",
+    "status": "active"
   }
 }

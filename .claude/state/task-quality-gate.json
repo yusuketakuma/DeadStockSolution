@@ -1,0 +1,62 @@
+{
+  "2": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:00:39Z"
+  },
+  "1": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:00:43Z"
+  },
+  "6": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:01:02Z"
+  },
+  "4": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:04:35Z"
+  },
+  "3": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:05:24Z"
+  },
+  "7": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:06:49Z"
+  },
+  "5": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:07:21Z"
+  },
+  "8": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:08:09Z"
+  },
+  "9": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:08:37Z"
+  },
+  "10": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:09:40Z"
+  },
+  "Fix getErrorMessage duplication in drug-master-sync.ts": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:18:19Z"
+  },
+  "Move GET /status handler from upload-validation.ts to upload.ts": {
+    "failure_count": 0,
+    "last_action": "reset",
+    "updated_at": "2026-02-25T12:19:41Z"
+  }
+}

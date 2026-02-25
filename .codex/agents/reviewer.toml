@@ -1,0 +1,18 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "high"
+
+developer_instructions = """
+Reviewer（指摘修正専任）。
+
+手順:
+1) reports/review/prioritized-backlog.md を読む
+2) P1→P2→P3 の順で修正
+3) verifier を実行して typecheck/lint/tests を全て成功させる
+4) review_lens で再レビューし、P1=0 まで繰り返す
+
+終了禁止:
+- P1 が残っているのに完了扱いにしない。
+
+BLOCKED:
+外部要因で進めない場合のみ、必要情報を最小要求で列挙して orchestrator に返す。
+"""

@@ -1,5 +1,5 @@
 import { Nav, Button, Offcanvas } from 'react-bootstrap';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Props {
@@ -11,7 +11,7 @@ const NAV_GROUPS = [
   {
     title: '主要操作',
     items: [
-      { to: '/', label: 'ダッシュボード' },
+      { to: '/', label: 'ダッシュボード', end: true },
       { to: '/upload', label: 'アップロード' },
       { to: '/matching', label: 'マッチング' },
       { to: '/proposals', label: 'マッチング一覧' },
@@ -30,32 +30,42 @@ const NAV_GROUPS = [
 ];
 
 const ADMIN_ITEMS = [
-  { to: '/admin', label: '管理者ダッシュボード' },
+  { to: '/admin', label: '管理者ダッシュボード', end: true },
   { to: '/admin/openclaw', label: 'OpenClaw連携' },
   { to: '/admin/drug-master', label: '医薬品マスター' },
   { to: '/admin/logs', label: '操作ログ' },
 ];
 
+function SidebarLink({
+  to,
+  label,
+  onNavigate,
+  end = false,
+}: {
+  to: string;
+  label: string;
+  onNavigate?: () => void;
+  end?: boolean;
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }: { isActive: boolean }) => `sidebar-link nav-link${isActive ? ' active' : ''}`}
+      onClick={() => onNavigate?.()}
+    >
+      {label}
+    </NavLink>
+  );
+}
+
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
-  };
-
-  const handleNav = (to: string) => (e: React.MouseEvent) => {
-    e.preventDefault();
-    navigate(to);
-    onNavigate?.();
-  };
-
-  const isActive = (path: string) => {
-    if (path === '/') return location.pathname === '/';
-    if (path === '/admin') return location.pathname === '/admin';
-    return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
   return (
@@ -65,14 +75,13 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <div key={group.title} className="sidebar-group">
             <div className="sidebar-group-title">{group.title}</div>
             {group.items.map((item) => (
-              <Nav.Link
+              <SidebarLink
                 key={item.to}
-                href={item.to}
-                className={`sidebar-link${isActive(item.to) ? ' active' : ''}`}
-                onClick={handleNav(item.to)}
-              >
-                {item.label}
-              </Nav.Link>
+                to={item.to}
+                label={item.label}
+                onNavigate={onNavigate}
+                end={item.end}
+              />
             ))}
           </div>
         ))}
@@ -80,28 +89,21 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <div className="sidebar-group">
             <div className="sidebar-group-title">管理者</div>
             {ADMIN_ITEMS.map((item) => (
-              <Nav.Link
+              <SidebarLink
                 key={item.to}
-                href={item.to}
-                className={`sidebar-link${isActive(item.to) ? ' active' : ''}`}
-                onClick={handleNav(item.to)}
-              >
-                {item.label}
-              </Nav.Link>
+                to={item.to}
+                label={item.label}
+                onNavigate={onNavigate}
+                end={item.end}
+              />
             ))}
           </div>
         )}
       </Nav>
 
       <div className="sidebar-footer border-top p-3">
-        <Nav.Link
-          href="/account"
-          className="sidebar-link mb-2"
-          onClick={handleNav('/account')}
-        >
-          {user?.name}
-        </Nav.Link>
-        <Button variant="outline-secondary" size="sm" className="w-100" onClick={handleLogout}>
+        <SidebarLink to="/account" label={user?.name ?? 'アカウント'} onNavigate={onNavigate} />
+        <Button variant="outline-secondary" size="sm" className="w-100 mt-2" onClick={handleLogout}>
           ログアウト
         </Button>
       </div>
@@ -112,12 +114,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 export default function Sidebar({ isOpen, onClose }: Props) {
   return (
     <>
-      {/* PC: 常時表示サイドバー */}
       <aside className="sidebar-desktop d-none d-lg-flex">
         <SidebarContent />
       </aside>
 
-      {/* モバイル: Offcanvas */}
       <Offcanvas show={isOpen} onHide={onClose} className="sidebar-mobile d-lg-none" placement="start">
         <Offcanvas.Header closeButton>
           <Offcanvas.Title>メニュー</Offcanvas.Title>

@@ -1,0 +1,111 @@
+/* ===== Layout structure ===== */
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--header-height));
+  overflow-x: hidden;
+}
+
+.app-main .content-container {
+  flex: 1;
+}
+
+.app-footer {
+  background: #f8f9fa;
+}
+
+/* ===== Sidebar (PC) ===== */
+.sidebar-desktop {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--sidebar-bg);
+  min-height: calc(100vh - var(--header-height));
+  position: sticky;
+  top: var(--header-height);
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* ===== Sidebar links ===== */
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  color: var(--sidebar-text) !important;
+  font-size: 0.9rem;
+  border-radius: 0;
+  transition: background 0.15s;
+}
+
+.sidebar-link:hover {
+  background: var(--sidebar-hover-bg);
+  color: #fff !important;
+}
+
+.sidebar-link.active {
+  background: var(--sidebar-active-bg);
+  color: #fff !important;
+  font-weight: 600;
+  border-left: 3px solid #3b82f6;
+}
+
+.sidebar-group + .sidebar-group {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.sidebar-group-title {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.35rem 1rem 0.3rem;
+  text-transform: uppercase;
+}
+
+.sidebar-footer {
+  border-color: var(--sidebar-active-bg) !important;
+}
+
+.sidebar-footer .sidebar-link {
+  padding: 0.4rem 0;
+}
+
+/* ===== Sidebar (Mobile Offcanvas) ===== */
+.sidebar-mobile .offcanvas-body {
+  background: var(--sidebar-bg);
+}
+
+.sidebar-mobile .offcanvas-header {
+  background: var(--sidebar-bg);
+  color: #fff;
+  border-bottom: 1px solid var(--sidebar-active-bg);
+}
+
+.sidebar-mobile .offcanvas-header .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.sidebar-mobile .sidebar-footer .btn {
+  color: var(--sidebar-text);
+  border-color: var(--sidebar-text);
+}
+
+.sidebar-mobile .sidebar-footer .btn:hover {
+  color: #fff;
+  border-color: #fff;
+}
+

@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { Alert, Spinner } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -125,29 +125,29 @@ export default function AccountPage() {
     }
   };
 
-  const handleHoursChange = (dayOfWeek: number, field: 'openTime' | 'closeTime', value: string) => {
+  const handleHoursChange = useCallback((dayOfWeek: number, field: 'openTime' | 'closeTime', value: string) => {
     setBusinessHours((prev) =>
       prev.map((h) => h.dayOfWeek === dayOfWeek ? { ...h, [field]: value } : h),
     );
-  };
+  }, []);
 
-  const handleClosedChange = (dayOfWeek: number, isClosed: boolean) => {
+  const handleClosedChange = useCallback((dayOfWeek: number, isClosed: boolean) => {
     setBusinessHours((prev) =>
       prev.map((h) => h.dayOfWeek === dayOfWeek
         ? { ...h, isClosed, is24Hours: false, openTime: isClosed ? null : (h.openTime || '09:00'), closeTime: isClosed ? null : (h.closeTime || '18:00') }
         : h,
       ),
     );
-  };
+  }, []);
 
-  const handle24HoursChange = (dayOfWeek: number, is24Hours: boolean) => {
+  const handle24HoursChange = useCallback((dayOfWeek: number, is24Hours: boolean) => {
     setBusinessHours((prev) =>
       prev.map((h) => h.dayOfWeek === dayOfWeek
         ? { ...h, is24Hours, isClosed: false, openTime: is24Hours ? null : (h.openTime || '09:00'), closeTime: is24Hours ? null : (h.closeTime || '18:00') }
         : h,
       ),
     );
-  };
+  }, []);
 
   const handleHoursSave = async () => {
     setHoursError('');
@@ -195,29 +195,29 @@ export default function AccountPage() {
     }
   };
 
-  const handleHoursEditStart = () => {
+  const handleHoursEditStart = useCallback(() => {
     setHoursError('');
     setHoursMessage('');
     setHoursEditing(true);
-  };
+  }, []);
 
-  const handleHoursEditCancel = () => {
+  const handleHoursEditCancel = useCallback(() => {
     setBusinessHours(savedBusinessHours);
     setSpecialHours(savedSpecialHours);
     setHoursError('');
     setHoursMessage('');
     setHoursEditing(false);
-  };
+  }, [savedBusinessHours, savedSpecialHours]);
 
-  const handleAddSpecialHour = () => {
-    setSpecialHours((prev) => [...prev, createDefaultSpecialHour()]);
-  };
+  const handleAddSpecialHour = useCallback(() => {
+    setSpecialHours((prev) => [...prev, { ...createDefaultSpecialHour(), clientId: crypto.randomUUID() }]);
+  }, []);
 
-  const handleRemoveSpecialHour = (index: number) => {
+  const handleRemoveSpecialHour = useCallback((index: number) => {
     setSpecialHours((prev) => prev.filter((_, i) => i !== index));
-  };
+  }, []);
 
-  const handleSpecialTypeChange = (index: number, specialType: SpecialType) => {
+  const handleSpecialTypeChange = useCallback((index: number, specialType: SpecialType) => {
     setSpecialHours((prev) =>
       prev.map((entry, i) => {
         if (i !== index) return entry;
@@ -234,27 +234,27 @@ export default function AccountPage() {
         };
       }),
     );
-  };
+  }, []);
 
-  const handleSpecialDateChange = (index: number, field: 'startDate' | 'endDate', value: string) => {
+  const handleSpecialDateChange = useCallback((index: number, field: 'startDate' | 'endDate', value: string) => {
     setSpecialHours((prev) =>
       prev.map((entry, i) => (i === index ? { ...entry, [field]: value } : entry)),
     );
-  };
+  }, []);
 
-  const handleSpecialNoteChange = (index: number, value: string) => {
+  const handleSpecialNoteChange = useCallback((index: number, value: string) => {
     setSpecialHours((prev) =>
       prev.map((entry, i) => (i === index ? { ...entry, note: value || null } : entry)),
     );
-  };
+  }, []);
 
-  const handleSpecialHoursChange = (index: number, field: 'openTime' | 'closeTime', value: string) => {
+  const handleSpecialHoursChange = useCallback((index: number, field: 'openTime' | 'closeTime', value: string) => {
     setSpecialHours((prev) =>
       prev.map((entry, i) => (i === index ? { ...entry, [field]: value } : entry)),
     );
-  };
+  }, []);
 
-  const handleSpecialClosedChange = (index: number, isClosed: boolean) => {
+  const handleSpecialClosedChange = useCallback((index: number, isClosed: boolean) => {
     setSpecialHours((prev) =>
       prev.map((entry, i) => {
         if (i !== index) return entry;
@@ -267,9 +267,9 @@ export default function AccountPage() {
         };
       }),
     );
-  };
+  }, []);
 
-  const handleSpecial24HoursChange = (index: number, is24Hours: boolean) => {
+  const handleSpecial24HoursChange = useCallback((index: number, is24Hours: boolean) => {
     setSpecialHours((prev) =>
       prev.map((entry, i) => {
         if (i !== index) return entry;
@@ -282,7 +282,7 @@ export default function AccountPage() {
         };
       }),
     );
-  };
+  }, []);
 
   const handleWithdraw = () => {
     if (!withdrawPassword) {

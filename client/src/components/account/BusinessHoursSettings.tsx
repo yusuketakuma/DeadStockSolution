@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { Alert, Button, Card, Form, Spinner, Table } from 'react-bootstrap';
 import {
   BusinessHourEntry,
@@ -35,7 +36,7 @@ interface BusinessHoursSettingsProps {
   onSpecial24HoursChange: (index: number, is24Hours: boolean) => void;
 }
 
-export default function BusinessHoursSettings({
+function BusinessHoursSettings({
   businessHours,
   specialHours,
   hoursLoaded,
@@ -60,7 +61,10 @@ export default function BusinessHoursSettings({
   onSpecialClosedChange,
   onSpecial24HoursChange,
 }: BusinessHoursSettingsProps) {
-  const orderedBusinessHours = [...businessHours].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+  const orderedBusinessHours = useMemo(
+    () => [...businessHours].sort((a, b) => a.dayOfWeek - b.dayOfWeek),
+    [businessHours],
+  );
 
   return (
     <Card className="mt-3">
@@ -122,6 +126,7 @@ export default function BusinessHoursSettings({
                               checked={h.isClosed}
                               onChange={(e) => onClosedChange(h.dayOfWeek, e.target.checked)}
                               disabled={h.is24Hours}
+                              aria-label={`${DAY_NAMES[h.dayOfWeek]} 定休日`}
                             />
                           </td>
                           <td>
@@ -130,6 +135,7 @@ export default function BusinessHoursSettings({
                               checked={h.is24Hours}
                               onChange={(e) => on24HoursChange(h.dayOfWeek, e.target.checked)}
                               disabled={h.isClosed}
+                              aria-label={`${DAY_NAMES[h.dayOfWeek]} 24時間営業`}
                             />
                           </td>
                           <td>
@@ -140,6 +146,7 @@ export default function BusinessHoursSettings({
                               onChange={(e) => onHoursChange(h.dayOfWeek, 'openTime', e.target.value)}
                               disabled={h.isClosed || h.is24Hours}
                               className="time-input"
+                              aria-label={`${DAY_NAMES[h.dayOfWeek]} 開店時間`}
                             />
                           </td>
                           <td>
@@ -150,6 +157,7 @@ export default function BusinessHoursSettings({
                               onChange={(e) => onHoursChange(h.dayOfWeek, 'closeTime', e.target.value)}
                               disabled={h.isClosed || h.is24Hours}
                               className="time-input"
+                              aria-label={`${DAY_NAMES[h.dayOfWeek]} 閉店時間`}
                             />
                           </td>
                         </>
@@ -194,13 +202,14 @@ export default function BusinessHoursSettings({
                   )}
 
                   {specialHours.map((entry, index) => (
-                    <tr key={`${entry.id ?? 'new'}-${index}`}>
+                    <tr key={entry.id ?? entry.clientId ?? `new-${index}`}>
                       <td className="align-middle">
                         {hoursEditing ? (
                           <Form.Select
                             size="sm"
                             value={entry.specialType}
                             onChange={(e) => onSpecialTypeChange(index, e.target.value as SpecialType)}
+                            aria-label={`特例営業時間 ${index + 1} 種別`}
                           >
                             {Object.entries(SPECIAL_TYPE_LABELS).map(([value, label]) => (
                               <option key={value} value={value}>{label}</option>
@@ -218,12 +227,14 @@ export default function BusinessHoursSettings({
                               size="sm"
                               value={entry.startDate}
                               onChange={(e) => onSpecialDateChange(index, 'startDate', e.target.value)}
+                              aria-label={`特例営業時間 ${index + 1} 開始日`}
                             />
                             <Form.Control
                               type="date"
                               size="sm"
                               value={entry.endDate}
                               onChange={(e) => onSpecialDateChange(index, 'endDate', e.target.value)}
+                              aria-label={`特例営業時間 ${index + 1} 終了日`}
                             />
                           </div>
                         ) : (
@@ -246,6 +257,7 @@ export default function BusinessHoursSettings({
                                 checked={entry.isClosed}
                                 onChange={(e) => onSpecialClosedChange(index, e.target.checked)}
                                 disabled={entry.is24Hours}
+                                aria-label={`特例営業時間 ${index + 1} 休業`}
                               />
                               <Form.Check
                                 type="checkbox"
@@ -253,6 +265,7 @@ export default function BusinessHoursSettings({
                                 checked={entry.is24Hours}
                                 onChange={(e) => onSpecial24HoursChange(index, e.target.checked)}
                                 disabled={entry.isClosed}
+                                aria-label={`特例営業時間 ${index + 1} 24時間`}
                               />
                             </div>
                             <div className="d-flex gap-2">
@@ -263,6 +276,7 @@ export default function BusinessHoursSettings({
                                 onChange={(e) => onSpecialHoursChange(index, 'openTime', e.target.value)}
                                 disabled={entry.isClosed || entry.is24Hours}
                                 className="time-input"
+                                aria-label={`特例営業時間 ${index + 1} 開店時間`}
                               />
                               <Form.Control
                                 type="time"
@@ -271,6 +285,7 @@ export default function BusinessHoursSettings({
                                 onChange={(e) => onSpecialHoursChange(index, 'closeTime', e.target.value)}
                                 disabled={entry.isClosed || entry.is24Hours}
                                 className="time-input"
+                                aria-label={`特例営業時間 ${index + 1} 閉店時間`}
                               />
                             </div>
                           </div>
@@ -284,6 +299,7 @@ export default function BusinessHoursSettings({
                             value={entry.note || ''}
                             onChange={(e) => onSpecialNoteChange(index, e.target.value)}
                             maxLength={200}
+                            aria-label={`特例営業時間 ${index + 1} メモ`}
                           />
                         ) : (
                           <span className="small">{entry.note || '-'}</span>
@@ -326,3 +342,5 @@ export default function BusinessHoursSettings({
     </Card>
   );
 }
+
+export default memo(BusinessHoursSettings);

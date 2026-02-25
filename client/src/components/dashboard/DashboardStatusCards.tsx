@@ -64,12 +64,13 @@ export default function DashboardStatusCards({ status, userName }: Props) {
                   ? 'デッドストックリストの交換先を検索できます'
                   : '医薬品使用量リストのアップロードが必要です'}
               </Card.Text>
-              <Link
-                to="/matching"
-                className={`btn btn-sm ${status?.usedMedicationUploaded ? 'btn-primary' : 'btn-secondary disabled'}`}
-              >
-                マッチングを実行
-              </Link>
+              {status?.usedMedicationUploaded ? (
+                <Link to="/matching" className="btn btn-sm btn-primary">
+                  マッチングを実行
+                </Link>
+              ) : (
+                <span className="btn btn-sm btn-secondary disabled">マッチングを実行</span>
+              )}
             </Card.Body>
           </Card>
         </Col>

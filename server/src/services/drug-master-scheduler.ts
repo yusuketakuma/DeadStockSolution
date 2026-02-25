@@ -11,8 +11,11 @@ import {
 } from './drug-master-service';
 import { parseExcelBuffer } from './upload-service';
 import { logger } from './logger';
-import { validateExternalHttpsUrl } from '../utils/network-utils';
+import { createPinnedDnsAgent, validateExternalHttpsUrl } from '../utils/network-utils';
 import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
+import { downloadResponseBuffer, fetchWithTimeout } from '../utils/http-utils';
+
+type FetchDispatcher = NonNullable<RequestInit['dispatcher']>;
 
 // チェック間隔: デフォルト24時間（環境変数で変更可能）
 const CHECK_INTERVAL_HOURS = parseBoundedInt(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS, 24, 1, 24 * 30);
@@ -25,6 +28,7 @@ const DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'DRUG_MASTER_SCHEDULER_
 
 // HTTP タイムアウト
 const FETCH_TIMEOUT_MS = 120_000; // 2分（大きなファイルのため）
+const FETCH_RETRIES = parseBoundedInt(process.env.DRUG_MASTER_FETCH_RETRIES, 2, 0, 5);
 
 // ダウンロードサイズ上限
 const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024; // 100MB
@@ -101,23 +105,26 @@ function runAutoSyncSafely(mode: 'initial' | 'scheduled' | 'manual', sourceUrl?:
  * HEAD リクエストでサイトの更新を検知する
  * ETag または Last-Modified ヘッダーの変化で判定
  */
-async function checkForUpdates(url: string): Promise<{
+async function checkForUpdates(url: string, dispatcher: FetchDispatcher): Promise<{
   hasUpdate: boolean;
   etag: string | null;
   lastModified: string | null;
   contentType: string | null;
 }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30_000);
-
-  try {
-    const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
       method: 'HEAD',
-      signal: controller.signal,
+      timeoutMs: 30_000,
+      retry: { retries: FETCH_RETRIES },
+      redirect: 'manual',
+      dispatcher,
       headers: {
         'User-Agent': 'DeadStockSolution-DrugMasterSync/1.0',
       },
     });
+
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`Redirect response is not allowed for source URL: ${response.status}`);
+    }
 
     if (!response.ok) {
       throw new Error(`HEAD request failed: ${response.status} ${response.statusText}`);
@@ -162,47 +169,36 @@ async function checkForUpdates(url: string): Promise<{
     // ヘッダー情報がないか、初回で前回値があるケース
     // → 安全のため更新なしとする（手動同期を推奨）
     return { hasUpdate: etag !== lastKnownETag || lastModified !== lastKnownLastModified, etag, lastModified, contentType };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  
 }
 
 /**
  * ファイルをダウンロードしてバッファとして取得
  */
-async function downloadFile(url: string): Promise<{ buffer: Buffer; contentType: string | null }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
+async function downloadFile(url: string, dispatcher: FetchDispatcher): Promise<{ buffer: Buffer; contentType: string | null }> {
+  const response = await fetchWithTimeout(url, {
+      timeoutMs: FETCH_TIMEOUT_MS,
+      retry: { retries: FETCH_RETRIES },
+      redirect: 'manual',
+      dispatcher,
       headers: {
         'User-Agent': 'DeadStockSolution-DrugMasterSync/1.0',
       },
     });
+
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`Redirect response is not allowed for source URL: ${response.status}`);
+    }
 
     if (!response.ok) {
       throw new Error(`Download failed: ${response.status} ${response.statusText}`);
     }
 
     // サイズチェック（Content-Length がある場合）
-    const contentLength = response.headers.get('content-length');
-    if (contentLength && Number(contentLength) > MAX_DOWNLOAD_SIZE) {
-      throw new Error(`File too large: ${contentLength} bytes (max ${MAX_DOWNLOAD_SIZE})`);
-    }
-
     const contentType = response.headers.get('content-type');
-    const arrayBuffer = await response.arrayBuffer();
+    const buffer = await downloadResponseBuffer(response, MAX_DOWNLOAD_SIZE);
 
-    if (arrayBuffer.byteLength > MAX_DOWNLOAD_SIZE) {
-      throw new Error(`Downloaded file too large: ${arrayBuffer.byteLength} bytes (max ${MAX_DOWNLOAD_SIZE})`);
-    }
-
-    return { buffer: Buffer.from(arrayBuffer), contentType };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+    return { buffer, contentType };
 }
 
 /**
@@ -232,13 +228,16 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
     return;
   }
 
+  const pinnedAgent = createPinnedDnsAgent(validated.hostname ?? new URL(sourceUrl).hostname, validated.resolvedAddresses);
+  const pinnedDispatcher = pinnedAgent as unknown as FetchDispatcher;
+
   isRunning = true;
 
   try {
     logger.info('Drug master auto-sync: checking for updates', { source: summarizeSourceUrl(sourceUrl) });
 
     // 1. 更新チェック
-    const updateCheck = await checkForUpdates(sourceUrl);
+    const updateCheck = await checkForUpdates(sourceUrl, pinnedDispatcher);
 
     if (!updateCheck.hasUpdate) {
       logger.info('Drug master auto-sync: no updates detected');
@@ -249,7 +248,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
     logger.info('Drug master auto-sync: update detected, downloading file');
 
     // 2. ファイルダウンロード
-    const { buffer, contentType } = await downloadFile(sourceUrl);
+    const { buffer, contentType } = await downloadFile(sourceUrl, pinnedDispatcher);
 
     // 3. 同期ログ作成
     const syncLog = await createSyncLog('auto', `自動取得: ${summarizeSourceUrl(sourceUrl)}`, null);
@@ -293,6 +292,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
       error: formatError(err),
     });
   } finally {
+    await pinnedAgent.close().catch(() => undefined);
     isRunning = false;
   }
 }

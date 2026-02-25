@@ -70,5 +70,8 @@
   "_harness_version": "2.25.0",
   "enabledPlugins": {
     "vercel@claude-plugins-official": true
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }

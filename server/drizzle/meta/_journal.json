@@ -71,6 +71,27 @@
       "when": 1772006839988,
       "tag": "0009_perpetual_rogue",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1772064000000,
+      "tag": "0010_add_trgm_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1772100000000,
+      "tag": "0011_matching_reservations_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1772146200000,
+      "tag": "0012_matching_queue_hardening",
+      "breakpoints": true
     }
   ]
 }

@@ -3,12 +3,12 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { adminMessages, adminMessageReads, exchangeProposals } from '../db/schema';
+import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications, pharmacies } from '../db/schema';
 import { parsePositiveInt } from '../utils/request-utils';
 import { sanitizeInternalPath } from '../utils/path-utils';
 import { logger } from '../services/logger';
 
-type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message';
+type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update';
 
 interface NoticeItem {
   id: string;
@@ -26,6 +26,62 @@ interface NoticeItem {
 const PROPOSAL_RESPONSE_DEADLINE_HOURS = 72;
 const PROPOSAL_NOTICE_LIMIT = 50;
 const PROPOSAL_NOTICE_STATUSES = ['proposed', 'accepted_a', 'accepted_b', 'confirmed'] as const;
+const MATCH_NOTICE_LIMIT = 50;
+
+interface MatchDiffJson {
+  addedPharmacyIds?: unknown;
+  removedPharmacyIds?: unknown;
+  beforeCount?: unknown;
+  afterCount?: unknown;
+}
+
+function parseNumericList(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function parseMatchDiff(raw: string): { addedCount: number; removedCount: number } {
+  try {
+    const parsed = JSON.parse(raw) as MatchDiffJson;
+    const addedCount = parseNumericList(parsed.addedPharmacyIds).length;
+    const removedCount = parseNumericList(parsed.removedPharmacyIds).length;
+    return { addedCount, removedCount };
+  } catch {
+    return { addedCount: 0, removedCount: 0 };
+  }
+}
+
+function matchUpdateNotice(row: {
+  id: number;
+  triggerPharmacyId: number;
+  triggerUploadType: 'dead_stock' | 'used_medication';
+  candidateCountBefore: number;
+  candidateCountAfter: number;
+  diffJson: string;
+  createdAt: string | null;
+  isRead: boolean;
+}, currentPharmacyId: number, triggerPharmacyName: string | null): NoticeItem {
+  const uploadTypeLabel = row.triggerUploadType === 'dead_stock' ? 'デッドストック' : '使用量';
+  const triggerLabel = row.triggerPharmacyId === currentPharmacyId
+    ? '自薬局'
+    : (triggerPharmacyName ?? `薬局 #${row.triggerPharmacyId}`);
+  const { addedCount, removedCount } = parseMatchDiff(row.diffJson);
+
+  return {
+    id: `match-${row.id}`,
+    type: 'match_update',
+    title: `${triggerLabel}の${uploadTypeLabel}更新で候補が更新されました`,
+    body: `候補数 ${row.candidateCountBefore}件 → ${row.candidateCountAfter}件（追加 ${addedCount} / 除外 ${removedCount}）`,
+    actionPath: '/matching',
+    actionLabel: '候補を確認',
+    createdAt: row.createdAt,
+    deadlineAt: null,
+    unread: !row.isRead,
+    priority: row.isRead ? 4 : 2,
+  };
+}
 
 function buildProposalDeadlineAt(proposedAt: string | null): string | null {
   if (!proposedAt) return null;
@@ -139,7 +195,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const pharmacyId = req.user!.id;
 
-    const [proposalRows, messageRows] = await Promise.all([
+    const [proposalRows, messageRows, matchRows] = await Promise.all([
       (async () => {
         const proposalSelect = {
           id: exchangeProposals.id,
@@ -198,6 +254,20 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         return mergeDedupSortByTimestamp(targetAllMessages, targetPharmacyMessages, (row) => row.createdAt)
           .slice(0, 50);
       })(),
+      db.select({
+        id: matchNotifications.id,
+        triggerPharmacyId: matchNotifications.triggerPharmacyId,
+        triggerUploadType: matchNotifications.triggerUploadType,
+        candidateCountBefore: matchNotifications.candidateCountBefore,
+        candidateCountAfter: matchNotifications.candidateCountAfter,
+        diffJson: matchNotifications.diffJson,
+        isRead: matchNotifications.isRead,
+        createdAt: matchNotifications.createdAt,
+      })
+        .from(matchNotifications)
+        .where(eq(matchNotifications.pharmacyId, pharmacyId))
+        .orderBy(desc(matchNotifications.createdAt), desc(matchNotifications.id))
+        .limit(MATCH_NOTICE_LIMIT),
     ]);
 
     const messageIds = messageRows.map((message) => message.id);
@@ -235,6 +305,24 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       });
     }
 
+    const triggerPharmacyIds = [...new Set(matchRows.map((row) => row.triggerPharmacyId))];
+    const triggerPharmacyRows = triggerPharmacyIds.length > 0
+      ? await db.select({
+        id: pharmacies.id,
+        name: pharmacies.name,
+      })
+        .from(pharmacies)
+        .where(inArray(pharmacies.id, triggerPharmacyIds))
+      : [];
+    const triggerPharmacyNameById = new Map(triggerPharmacyRows.map((row) => [row.id, row.name]));
+    for (const row of matchRows) {
+      notices.push(matchUpdateNotice(
+        row,
+        pharmacyId,
+        triggerPharmacyNameById.get(row.triggerPharmacyId) ?? null,
+      ));
+    }
+
     notices.sort((a, b) => {
       if (a.priority !== b.priority) return a.priority - b.priority;
       const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -244,7 +332,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     const unreadMessages = notices.filter((item) => item.type === 'admin_message' && item.unread).length;
     const actionableRequests = notices.filter((item) =>
-      item.type === 'inbound_request' || item.type === 'status_update'
+      item.unread && (item.type === 'inbound_request' || item.type === 'status_update' || item.type === 'match_update')
     ).length;
 
     res.json({
@@ -303,6 +391,45 @@ router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
     res.json({ message: '既読にしました' });
   } catch (err) {
     logger.error('Notification read error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ error: '既読処理に失敗しました' });
+  }
+});
+
+router.post('/matches/:id/read', async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+
+    const pharmacyId = req.user!.id;
+    const [matchNotice] = await db.select({
+      id: matchNotifications.id,
+      pharmacyId: matchNotifications.pharmacyId,
+    })
+      .from(matchNotifications)
+      .where(eq(matchNotifications.id, id))
+      .limit(1);
+
+    if (!matchNotice) {
+      res.status(404).json({ error: '通知が見つかりません' });
+      return;
+    }
+    if (matchNotice.pharmacyId !== pharmacyId) {
+      res.status(403).json({ error: 'アクセス権限がありません' });
+      return;
+    }
+
+    await db.update(matchNotifications)
+      .set({ isRead: true })
+      .where(eq(matchNotifications.id, id));
+
+    res.json({ message: '既読にしました' });
+  } catch (err) {
+    logger.error('Match notification read error', {
       error: err instanceof Error ? err.message : String(err),
     });
     res.status(500).json({ error: '既読処理に失敗しました' });

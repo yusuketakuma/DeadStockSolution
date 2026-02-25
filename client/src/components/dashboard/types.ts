@@ -7,7 +7,7 @@ export interface UploadStatus {
 
 export interface Notice {
   id: string;
-  type: 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message';
+  type: 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update';
   title: string;
   body: string;
   actionPath: string;
@@ -109,8 +109,15 @@ export function formatDeadline(deadlineMs: number): string {
 export function noticeVariant(type: Notice['type']): string {
   if (type === 'inbound_request') return 'danger';
   if (type === 'status_update') return 'warning';
+  if (type === 'match_update') return 'primary';
   if (type === 'admin_message') return 'info';
   return 'secondary';
+}
+
+export function noticeTypeLabel(type: Notice['type']): string {
+  if (type === 'admin_message') return '管理者メッセージ';
+  if (type === 'match_update') return '候補更新';
+  return '交換通知';
 }
 
 export function buildNextAction(
@@ -196,6 +203,18 @@ export function buildNextAction(
     };
   }
 
+  if (topUnreadNotice?.type === 'match_update') {
+    return {
+      title: '交換候補の更新を確認',
+      description: '他薬局の更新により候補が変化しています。最新候補を確認してください。',
+      primaryLabel: topUnreadNotice.actionLabel || '候補を確認',
+      primaryPath: topUnreadNotice.actionPath || '/matching',
+      secondaryLabel: 'マッチング一覧を確認',
+      secondaryPath: '/proposals',
+      badge: 'primary',
+    };
+  }
+
   if ((notifications?.summary.actionableRequests ?? 0) > 0) {
     return {
       title: '届いている提案に対応',
@@ -224,4 +243,27 @@ export function parseMessageId(noticeId: string): number | null {
   const id = Number(noticeId.replace('message-', ''));
   if (!Number.isInteger(id) || id <= 0) return null;
   return id;
+}
+
+export function parseMatchNotificationId(noticeId: string): number | null {
+  if (!noticeId.startsWith('match-')) return null;
+  const id = Number(noticeId.replace('match-', ''));
+  if (!Number.isInteger(id) || id <= 0) return null;
+  return id;
+}
+
+export function resolveNoticeReadEndpoint(notice: Notice): string | null {
+  if (!notice.unread) return null;
+
+  if (notice.type === 'admin_message') {
+    const messageId = parseMessageId(notice.id);
+    return messageId ? `/notifications/messages/${messageId}/read` : null;
+  }
+
+  if (notice.type === 'match_update') {
+    const matchId = parseMatchNotificationId(notice.id);
+    return matchId ? `/notifications/matches/${matchId}/read` : null;
+  }
+
+  return null;
 }

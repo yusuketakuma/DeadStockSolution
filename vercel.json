@@ -18,5 +18,11 @@
     "api/index.ts": {
       "includeFiles": "server/data/**"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/internal/matching-refresh/retry",
+      "schedule": "*/10 * * * *"
+    }
+  ]
 }

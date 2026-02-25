@@ -48,17 +48,21 @@ export async function syncDrugMaster(
     const existingMap = new Map(existingItems.map((item) => [item.yjCode, item]));
     const incomingCodes = new Set(parsedRows.map((r) => r.yjCode));
 
-    // バッチ処理: INSERT/UPDATE
+    // バッチ処理: INSERT/UPDATE を蓄積して一括実行
     for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
       const batch = parsedRows.slice(i, i + BATCH_SIZE);
+
+      type InsertDrugMasterRow = typeof drugMaster.$inferInsert;
+      type InsertPriceHistoryRow = typeof drugMasterPriceHistory.$inferInsert;
+      const toInsert: InsertDrugMasterRow[] = [];
+      const priceHistoryToInsert: InsertPriceHistoryRow[] = [];
 
       for (const row of batch) {
         const existing = existingMap.get(row.yjCode);
         result.itemsProcessed++;
 
         if (!existing) {
-          // 新規追加
-          await tx.insert(drugMaster).values({
+          toInsert.push({
             yjCode: row.yjCode,
             drugName: row.drugName,
             genericName: row.genericName,
@@ -74,7 +78,7 @@ export async function syncDrugMaster(
             updatedAt: now,
           });
 
-          await tx.insert(drugMasterPriceHistory).values({
+          priceHistoryToInsert.push({
             yjCode: row.yjCode,
             previousPrice: null,
             newPrice: String(row.yakkaPrice),
@@ -107,7 +111,7 @@ export async function syncDrugMaster(
             .where(eq(drugMaster.yjCode, row.yjCode));
 
           if (priceChanged) {
-            await tx.insert(drugMasterPriceHistory).values({
+            priceHistoryToInsert.push({
               yjCode: row.yjCode,
               previousPrice: existing.yakkaPrice,
               newPrice: String(row.yakkaPrice),
@@ -120,6 +124,14 @@ export async function syncDrugMaster(
         }
       }
 
+      // バッチ INSERT 一括実行
+      if (toInsert.length > 0) {
+        await tx.insert(drugMaster).values(toInsert);
+      }
+      if (priceHistoryToInsert.length > 0) {
+        await tx.insert(drugMasterPriceHistory).values(priceHistoryToInsert);
+      }
+
       // 同期ログを中間更新（トランザクション外からも見える進捗のためdbを使用）
       await db.update(drugMasterSyncLogs)
         .set({
@@ -130,26 +142,35 @@ export async function syncDrugMaster(
         .where(eq(drugMasterSyncLogs.id, syncLogId));
     }
 
-    // ファイルに含まれない既存品目で、まだ収載中のものを経過措置 or 削除扱いにする
+    // ファイルに含まれない既存品目を一括で経過措置 or 削除扱いにする
+    const delistingCodes: string[] = [];
+    const delistingPriceHistory: (typeof drugMasterPriceHistory.$inferInsert)[] = [];
     for (const [yjCode, existing] of existingMap) {
       if (!incomingCodes.has(yjCode) && existing.isListed) {
-        await tx.update(drugMaster)
-          .set({
-            isListed: false,
-            deletedDate: revisionDate,
-            updatedAt: now,
-          })
-          .where(eq(drugMaster.yjCode, yjCode));
-
-        await tx.insert(drugMasterPriceHistory).values({
+        delistingCodes.push(yjCode);
+        delistingPriceHistory.push({
           yjCode,
           previousPrice: existing.yakkaPrice,
           newPrice: null,
           revisionDate,
           revisionType: 'delisting',
         });
-
         result.itemsDeleted++;
+      }
+    }
+
+    if (delistingCodes.length > 0) {
+      // バッチで delisting UPDATE
+      for (let i = 0; i < delistingCodes.length; i += BATCH_SIZE) {
+        const codes = delistingCodes.slice(i, i + BATCH_SIZE);
+        await tx.update(drugMaster)
+          .set({ isListed: false, deletedDate: revisionDate, updatedAt: now })
+          .where(inArray(drugMaster.yjCode, codes));
+      }
+      // バッチで price history INSERT
+      for (let i = 0; i < delistingPriceHistory.length; i += BATCH_SIZE) {
+        const historyBatch = delistingPriceHistory.slice(i, i + BATCH_SIZE);
+        await tx.insert(drugMasterPriceHistory).values(historyBatch);
       }
     }
   });
@@ -248,65 +269,72 @@ export async function syncPackageData(
     addToBucket(pkg);
   }
 
-  for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
-    const batch = parsedRows.slice(i, i + BATCH_SIZE);
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
+      const batch = parsedRows.slice(i, i + BATCH_SIZE);
+      type InsertPackageRow = typeof drugMasterPackages.$inferInsert;
+      const toInsert: InsertPackageRow[] = [];
 
-    for (const row of batch) {
-      const drugMasterId = yjToId.get(row.yjCode);
-      if (!drugMasterId) continue; // 対応するマスターがなければスキップ
+      for (const row of batch) {
+        const drugMasterId = yjToId.get(row.yjCode);
+        if (!drugMasterId) continue;
 
-      // GS1コード or JANコード or HOTコードで既存チェック
-      const existingPkg = findExistingPackage(drugMasterId, row);
+        const existingPkg = findExistingPackage(drugMasterId, row);
 
-      if (existingPkg) {
-        const normalized = normalizePackageInfo({
-          packageDescription: row.packageDescription,
-          packageQuantity: row.packageQuantity,
-          packageUnit: row.packageUnit,
-        });
-        const nextValues = {
-          gs1Code: row.gs1Code ?? existingPkg.gs1Code,
-          janCode: row.janCode ?? existingPkg.janCode,
-          hotCode: row.hotCode ?? existingPkg.hotCode,
-          packageDescription: row.packageDescription ?? existingPkg.packageDescription,
-          packageQuantity: row.packageQuantity ?? existingPkg.packageQuantity,
-          packageUnit: row.packageUnit ?? existingPkg.packageUnit,
-          normalizedPackageLabel: normalized.normalizedPackageLabel ?? existingPkg.normalizedPackageLabel,
-          packageForm: normalized.packageForm ?? existingPkg.packageForm,
-          isLoosePackage: normalized.isLoosePackage,
-          updatedAt: new Date().toISOString(),
-        };
+        if (existingPkg) {
+          const normalized = normalizePackageInfo({
+            packageDescription: row.packageDescription,
+            packageQuantity: row.packageQuantity,
+            packageUnit: row.packageUnit,
+          });
+          const nextValues = {
+            gs1Code: row.gs1Code ?? existingPkg.gs1Code,
+            janCode: row.janCode ?? existingPkg.janCode,
+            hotCode: row.hotCode ?? existingPkg.hotCode,
+            packageDescription: row.packageDescription ?? existingPkg.packageDescription,
+            packageQuantity: row.packageQuantity ?? existingPkg.packageQuantity,
+            packageUnit: row.packageUnit ?? existingPkg.packageUnit,
+            normalizedPackageLabel: normalized.normalizedPackageLabel ?? existingPkg.normalizedPackageLabel,
+            packageForm: normalized.packageForm ?? existingPkg.packageForm,
+            isLoosePackage: normalized.isLoosePackage,
+            updatedAt: new Date().toISOString(),
+          };
 
-        await db.update(drugMasterPackages)
-          .set(nextValues)
-          .where(eq(drugMasterPackages.id, existingPkg.id));
+          await tx.update(drugMasterPackages)
+            .set(nextValues)
+            .where(eq(drugMasterPackages.id, existingPkg.id));
 
-        removeFromBucket(existingPkg);
-        const { updatedAt: _updatedAt, ...cacheValues } = nextValues;
-        addToBucket({
-          ...existingPkg,
-          ...cacheValues,
-        });
+          removeFromBucket(existingPkg);
+          const { updatedAt: _updatedAt, ...cacheValues } = nextValues;
+          addToBucket({ ...existingPkg, ...cacheValues });
 
-        updated++;
-      } else {
-        const normalized = normalizePackageInfo({
-          packageDescription: row.packageDescription,
-          packageQuantity: row.packageQuantity,
-          packageUnit: row.packageUnit,
-        });
-        const [created] = await db.insert(drugMasterPackages).values({
-          drugMasterId,
-          gs1Code: row.gs1Code,
-          janCode: row.janCode,
-          hotCode: row.hotCode,
-          packageDescription: row.packageDescription,
-          packageQuantity: row.packageQuantity,
-          packageUnit: row.packageUnit,
-          normalizedPackageLabel: normalized.normalizedPackageLabel,
-          packageForm: normalized.packageForm,
-          isLoosePackage: normalized.isLoosePackage,
-        }).returning({
+          updated++;
+        } else {
+          const normalized = normalizePackageInfo({
+            packageDescription: row.packageDescription,
+            packageQuantity: row.packageQuantity,
+            packageUnit: row.packageUnit,
+          });
+          toInsert.push({
+            drugMasterId,
+            gs1Code: row.gs1Code,
+            janCode: row.janCode,
+            hotCode: row.hotCode,
+            packageDescription: row.packageDescription,
+            packageQuantity: row.packageQuantity,
+            packageUnit: row.packageUnit,
+            normalizedPackageLabel: normalized.normalizedPackageLabel,
+            packageForm: normalized.packageForm,
+            isLoosePackage: normalized.isLoosePackage,
+          });
+
+          added++;
+        }
+      }
+
+      // バッチ INSERT 一括実行
+      if (toInsert.length > 0) {
+        const created = await tx.insert(drugMasterPackages).values(toInsert).returning({
           id: drugMasterPackages.id,
           drugMasterId: drugMasterPackages.drugMasterId,
           gs1Code: drugMasterPackages.gs1Code,
@@ -320,14 +348,12 @@ export async function syncPackageData(
           isLoosePackage: drugMasterPackages.isLoosePackage,
         });
 
-        if (created) {
-          addToBucket(created);
+        for (const pkg of created) {
+          addToBucket(pkg);
         }
-
-        added++;
       }
     }
-  }
+  });
 
   return { added, updated };
 }

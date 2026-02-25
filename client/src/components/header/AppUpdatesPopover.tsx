@@ -1,22 +1,5 @@
 import { Button, Collapse, OverlayTrigger, Popover, Spinner } from 'react-bootstrap';
-
-interface GitHubUpdateItem {
-  id: string;
-  tag: string;
-  title: string;
-  body: string;
-  url: string;
-  publishedAt: string | null;
-  prerelease: boolean;
-}
-
-interface GitHubUpdatesResponse {
-  repository: string;
-  source: 'github_releases';
-  stale: boolean;
-  fetchedAt: string;
-  items: GitHubUpdateItem[];
-}
+import type { GitHubUpdatesResponse } from '../Header';
 
 function formatUpdateDate(value: string | null): string {
   if (!value) return '日付不明';

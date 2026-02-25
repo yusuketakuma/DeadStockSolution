@@ -7,7 +7,11 @@ import { logger } from '../services/logger';
 
 const ADMIN_LOGIN_ID = 'admin@admin.com';
 const LEGACY_ADMIN_LOGIN_ID = 'admin';
-const ADMIN_PASSWORD = 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_SEED_PASSWORD ?? 'admin';
+
+if (!process.env.ADMIN_SEED_PASSWORD) {
+  logger.warn('ADMIN_SEED_PASSWORD is not set — using default password. Set it in production!');
+}
 
 async function findByEmail(email: string): Promise<{ id: number } | null> {
   const [row] = await db.select({

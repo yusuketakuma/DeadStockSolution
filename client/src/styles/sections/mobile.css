@@ -1,0 +1,116 @@
+/* ===== Mobile overrides ===== */
+@media (max-width: 991.98px) {
+  :root {
+    --header-height: 96px;
+  }
+
+  .app-header {
+    align-items: stretch;
+    gap: 0.4rem;
+    padding: 0.45rem 0.75rem;
+  }
+
+  .app-header-main {
+    min-height: 42px;
+  }
+
+  .app-header-brand {
+    font-size: 1rem;
+  }
+
+  .app-header-version {
+    font-size: 0.72rem;
+  }
+
+  .app-header-request-btn {
+    font-size: 0.68rem;
+    padding: 0.24rem 0.5rem;
+  }
+
+  .app-header-updates-trigger {
+    width: 1.45rem;
+    height: 1.45rem;
+  }
+
+  .app-header-request-message {
+    white-space: nowrap;
+  }
+
+  .app-header-quick-mobile {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .app-header-quick-mobile::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-header-quick-mobile .app-header-quick-link {
+    white-space: nowrap;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.55rem;
+  }
+
+  .app-main {
+    min-height: calc(100vh - var(--header-height));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .content-container {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+
+  .page-title {
+    font-size: 1.2rem;
+  }
+
+  .mobile-stack {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+
+  .mobile-stack .btn,
+  .mobile-stack a.btn {
+    width: 100%;
+  }
+
+  .mobile-card-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.5rem;
+  }
+
+  .mobile-table {
+    font-size: 0.78rem;
+    table-layout: fixed;
+  }
+
+  .mobile-hide {
+    display: none !important;
+  }
+
+  .time-input,
+  .form-max-360,
+  .filter-select-compact,
+  .filter-input-compact,
+  .sync-log-source,
+  .sync-log-error,
+  .agreement-sign-cell,
+  .agreement-date-cell,
+  .table-col-actions {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .upload-step-list li {
+    margin-bottom: 0.35rem;
+  }
+}

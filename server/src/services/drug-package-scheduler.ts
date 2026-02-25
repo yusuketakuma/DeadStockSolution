@@ -13,8 +13,11 @@ import {
 } from './drug-master-service';
 import { parseExcelBuffer } from './upload-service';
 import { logger } from './logger';
-import { validateExternalHttpsUrl } from '../utils/network-utils';
+import { createPinnedDnsAgent, validateExternalHttpsUrl } from '../utils/network-utils';
 import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
+import { downloadResponseBuffer, fetchWithTimeout } from '../utils/http-utils';
+
+type FetchDispatcher = NonNullable<RequestInit['dispatcher']>;
 
 const CHECK_INTERVAL_HOURS = parseBoundedInt(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS, 24, 1, 24 * 30);
 const CHECK_INTERVAL_MS = CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
@@ -23,6 +26,7 @@ const SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'SCHEDULER_OPTIMIZED_LOOP_ENABLED';
 const DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED';
 const FETCH_TIMEOUT_MS = 120_000;
 const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024;
+const FETCH_RETRIES = parseBoundedInt(process.env.DRUG_PACKAGE_FETCH_RETRIES, 2, 0, 5);
 
 function buildSourceRequestHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
@@ -108,20 +112,23 @@ function runPackageAutoSyncSafely(mode: 'initial' | 'scheduled' | 'manual', sour
   });
 }
 
-async function checkForUpdates(url: string): Promise<{
+async function checkForUpdates(url: string, dispatcher: FetchDispatcher): Promise<{
   hasUpdate: boolean;
   etag: string | null;
   lastModified: string | null;
 }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30_000);
-
-  try {
-    const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
       method: 'HEAD',
-      signal: controller.signal,
+      timeoutMs: 30_000,
+      retry: { retries: FETCH_RETRIES },
+      redirect: 'manual',
+      dispatcher,
       headers: buildSourceRequestHeaders(),
     });
+
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`Redirect response is not allowed for source URL: ${response.status}`);
+    }
 
     if (!response.ok) {
       throw new Error(`HEAD request failed: ${response.status} ${response.statusText}`);
@@ -155,40 +162,29 @@ async function checkForUpdates(url: string): Promise<{
     }
 
     return { hasUpdate: etag !== lastKnownETag || lastModified !== lastKnownLastModified, etag, lastModified };
-  } finally {
-    clearTimeout(timeoutId);
-  }
 }
 
-async function downloadFile(url: string): Promise<{ buffer: Buffer; contentType: string | null }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
+async function downloadFile(url: string, dispatcher: FetchDispatcher): Promise<{ buffer: Buffer; contentType: string | null }> {
+  const response = await fetchWithTimeout(url, {
+      timeoutMs: FETCH_TIMEOUT_MS,
+      retry: { retries: FETCH_RETRIES },
+      redirect: 'manual',
+      dispatcher,
       headers: buildSourceRequestHeaders(),
     });
+
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`Redirect response is not allowed for source URL: ${response.status}`);
+    }
 
     if (!response.ok) {
       throw new Error(`Download failed: ${response.status} ${response.statusText}`);
     }
 
-    const contentLength = response.headers.get('content-length');
-    if (contentLength && Number(contentLength) > MAX_DOWNLOAD_SIZE) {
-      throw new Error(`File too large: ${contentLength} bytes (max ${MAX_DOWNLOAD_SIZE})`);
-    }
-
     const contentType = response.headers.get('content-type');
-    const arrayBuffer = await response.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_DOWNLOAD_SIZE) {
-      throw new Error(`Downloaded file too large: ${arrayBuffer.byteLength} bytes (max ${MAX_DOWNLOAD_SIZE})`);
-    }
+    const buffer = await downloadResponseBuffer(response, MAX_DOWNLOAD_SIZE);
 
-    return { buffer: Buffer.from(arrayBuffer), contentType };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+    return { buffer, contentType };
 }
 
 async function runPackageAutoSync(): Promise<void> {
@@ -215,11 +211,14 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
     return;
   }
 
+  const pinnedAgent = createPinnedDnsAgent(validated.hostname ?? new URL(sourceUrl).hostname, validated.resolvedAddresses);
+  const pinnedDispatcher = pinnedAgent as unknown as FetchDispatcher;
+
   isRunning = true;
 
   try {
     logger.info('Drug package auto-sync: checking for updates', { source: summarizeSourceUrl(sourceUrl) });
-    const updateCheck = await checkForUpdates(sourceUrl);
+    const updateCheck = await checkForUpdates(sourceUrl, pinnedDispatcher);
 
     if (!updateCheck.hasUpdate) {
       logger.info('Drug package auto-sync: no updates detected');
@@ -228,7 +227,7 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
     }
 
     logger.info('Drug package auto-sync: update detected, downloading file');
-    const { buffer, contentType } = await downloadFile(sourceUrl);
+    const { buffer, contentType } = await downloadFile(sourceUrl, pinnedDispatcher);
 
     const syncLog = await createSyncLog('package_auto', `包装単位自動取得: ${summarizeSourceUrl(sourceUrl)}`, null);
     const emptyResult = { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 };
@@ -267,6 +266,7 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
       error: formatError(err),
     });
   } finally {
+    await pinnedAgent.close().catch(() => undefined);
     isRunning = false;
   }
 }

@@ -1,0 +1,41 @@
+# Allow common dev commands outside the sandbox.
+prefix_rule(
+    pattern = ["git"],
+    decision = "allow",
+    justification = "Git is allowed for repo operations.",
+    match = ["git status", "git diff", "git log --oneline -n 20"],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = ["pnpm"],
+    decision = "allow",
+    justification = "pnpm is allowed for builds/tests/lint in this repo.",
+    match = ["pnpm -v", "pnpm typecheck", "pnpm lint", "pnpm test"],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = ["node"],
+    decision = "allow",
+    justification = "Node tooling is allowed.",
+    match = ["node -v"],
+    not_match = [],
+)
+
+# Block obviously dangerous commands.
+prefix_rule(
+    pattern = ["sudo"],
+    decision = "forbidden",
+    justification = "sudo is never allowed.",
+    match = ["sudo whoami"],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = ["rm", "-rf", "/"],
+    decision = "forbidden",
+    justification = "Never delete system root.",
+    match = ["rm -rf /"],
+    not_match = ["rm -rf ./dist"],
+)

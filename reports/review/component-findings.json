@@ -1,0 +1,87 @@
+{
+  "review_date": "2026-02-26",
+  "review_type": "final_verification_after_reliability_test_improvements",
+  "scope": {
+    "baseline": "dc54f02fadd579784a778398f13e80dfa1737e89..HEAD",
+    "includes_working_tree": true,
+    "paths": [
+      "server/",
+      "client/",
+      "vercel.json"
+    ],
+    "reviewed_file_count": 103,
+    "focus": [
+      "security",
+      "correctness",
+      "reliability",
+      "performance",
+      "ux",
+      "maintainability",
+      "dx"
+    ]
+  },
+  "verification": {
+    "typecheck": {
+      "server": "pass",
+      "client": "pass"
+    },
+    "tests": {
+      "server": "pass (251 passed, 1 skipped)",
+      "client": "pass (75 passed)"
+    },
+    "build": {
+      "server": "pass",
+      "client": "pass"
+    }
+  },
+  "summary": {
+    "total_findings": 3,
+    "by_severity": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 3
+    },
+    "verdict": "P1=0"
+  },
+  "findings": [
+    {
+      "id": "RVW-2026-02-26-FINAL-VERIF-001",
+      "severity": "P2",
+      "category": "TestingGap/SecurityReliability",
+      "title": "DNS pinning dispatcher behavior lacks direct unit-level coverage",
+      "locations": [
+        "server/src/utils/network-utils.ts:239",
+        "server/src/services/drug-master-scheduler.ts:231",
+        "server/src/services/drug-package-scheduler.ts:214",
+        "server/src/test/network-utils.test.ts:15"
+      ],
+      "impact": "Pinned DNS protections are active, but missing direct agent behavior tests increases regression risk during refactors.",
+      "minimal_fix": "Add direct createPinnedDnsAgent tests (host mismatch/family/all lookup) and dispatcher wiring assertions in scheduler tests."
+    },
+    {
+      "id": "RVW-2026-02-26-FINAL-VERIF-002",
+      "severity": "P2",
+      "category": "TestingGap/Reliability",
+      "title": "Refresh worker retry and stale-claim reclaim flows are not comprehensively tested",
+      "locations": [
+        "server/src/services/matching-refresh-service.ts:169",
+        "server/src/test/matching-refresh-service.test.ts:72"
+      ],
+      "impact": "Queue retry/backoff edge cases could regress without fast signal.",
+      "minimal_fix": "Add tests for stale claim timeout reclaim, nextRetryAt progression, and max-attempt terminal handling."
+    },
+    {
+      "id": "RVW-2026-02-26-FINAL-VERIF-003",
+      "severity": "P2",
+      "category": "Reliability/AvailabilityTradeoff",
+      "title": "Upload confirm is coupled to refresh enqueue success",
+      "locations": [
+        "server/src/routes/upload-parser.ts:213",
+        "server/src/routes/upload-parser.ts:233",
+        "server/src/test/upload-route.test.ts:222"
+      ],
+      "impact": "Transient enqueue failure causes full upload failure, preserving consistency but reducing write availability.",
+      "minimal_fix": "Consider outbox or asynchronous retry design if business policy prefers accepting uploads during queue turbulence."
+    }
+  ]
+}

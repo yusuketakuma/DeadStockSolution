@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
     extractDeadStockRows: vi.fn(),
     extractUsedMedicationRows: vi.fn(),
     enrichWithDrugMaster: vi.fn(),
+    triggerMatchingRefreshOnUpload: vi.fn(),
     loggerWarn: vi.fn(),
     loggerError: vi.fn(),
     writeLog: vi.fn(),
@@ -62,6 +63,10 @@ vi.mock('../services/data-extractor', () => ({
 
 vi.mock('../services/drug-master-enrichment', () => ({
   enrichWithDrugMaster: mocks.enrichWithDrugMaster,
+}));
+
+vi.mock('../services/matching-refresh-service', () => ({
+  triggerMatchingRefreshOnUpload: mocks.triggerMatchingRefreshOnUpload,
 }));
 
 vi.mock('../services/logger', () => ({
@@ -152,6 +157,7 @@ describe('upload routes', () => {
       },
     ]);
     mocks.enrichWithDrugMaster.mockImplementation(async (rows: unknown[]) => rows);
+    mocks.triggerMatchingRefreshOnUpload.mockResolvedValue(undefined);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
 
     const selectLimitMock = vi.fn().mockResolvedValue([]);
@@ -211,6 +217,33 @@ describe('upload routes', () => {
     }));
     expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
     expect(mocks.extractDeadStockRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 500 when matching refresh enqueue fails during confirm', async () => {
+    const app = createApp();
+    mocks.triggerMatchingRefreshOnUpload.mockRejectedValueOnce(new Error('queue unavailable'));
+
+    const response = await request(app)
+      .post('/api/upload/confirm')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'データ登録またはマッチング更新に失敗しました' });
+    expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
   });
 
   it('returns upload status from a grouped upload query', async () => {

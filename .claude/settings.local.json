@@ -7,7 +7,11 @@
       "Bash(claude plugin:*)",
       "Bash(claude:*)",
       "mcp__harness__harness_lsp_diagnostics",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "Bash(git push:*)",
+      "Bash(find:*)",
+      "Bash(npm run:*)",
+      "mcp__harness__harness_lsp_references"
     ]
   },
   "enableAllProjectMcpServers": true,

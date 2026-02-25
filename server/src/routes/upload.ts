@@ -20,7 +20,7 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
   try {
     const pharmacyId = req.user!.id;
     const now = new Date();
-    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const firstOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 
     const lastUploadRows = await db.select({
       uploadType: uploads.uploadType,

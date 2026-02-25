@@ -19,6 +19,7 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [showMatchingHint, setShowMatchingHint] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -46,6 +47,7 @@ export default function UploadPage() {
     setPreview(null);
     setMessage('');
     setError('');
+    setShowMatchingHint(false);
   };
 
   const handlePreview = async (e: FormEvent) => {
@@ -82,7 +84,8 @@ export default function UploadPage() {
       formData.append('headerRowIndex', String(preview?.headerRowIndex ?? 0));
 
       const result = await api.upload<{ message: string; rowCount: number }>('/upload/confirm', formData);
-      setMessage(result.message);
+      setMessage(`${result.message} マッチング候補の再計算と通知更新が反映されます。`);
+      setShowMatchingHint(true);
       setPreview(null);
       setFile(null);
       if (fileRef.current) fileRef.current.value = '';
@@ -106,6 +109,11 @@ export default function UploadPage() {
       <h4 className="page-title mb-3">Excelアップロード</h4>
       {error && <Alert variant="danger">{error}</Alert>}
       {message && <Alert variant="success">{message}</Alert>}
+      {showMatchingHint && (
+        <Alert variant="info">
+          交換候補をすぐ確認する場合は「マッチング」ページで再実行してください。
+        </Alert>
+      )}
 
       <Card className="mb-3">
         <Card.Header>アップロード手順</Card.Header>

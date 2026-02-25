@@ -75,11 +75,14 @@ npm run db:migrate:legacy --workspace=server
 - `DRUG_MASTER_AUTO_SYNC`: `true` で医薬品マスター自動取得を有効化
 - `DRUG_MASTER_SOURCE_URL`: 医薬品マスター取得元URL（HTTPS）
 - `DRUG_MASTER_CHECK_INTERVAL_HOURS`: 自動取得の確認間隔（時間）
+- `DRUG_MASTER_FETCH_RETRIES`: 医薬品マスター取得時の一時障害に対する再試行回数（0-5）
 - `DRUG_PACKAGE_AUTO_SYNC`: `true` で包装単位マスター自動取得を有効化
 - `DRUG_PACKAGE_SOURCE_URL`: 包装単位取得元URL（HTTPS、CSV/XLSX/XML/ZIP）
 - `DRUG_PACKAGE_CHECK_INTERVAL_HOURS`: 包装単位自動取得の確認間隔（時間）
+- `DRUG_PACKAGE_FETCH_RETRIES`: 包装単位取得時の一時障害に対する再試行回数（0-5）
 - `DRUG_PACKAGE_SOURCE_AUTHORIZATION`: 取得元に認証ヘッダーが必要な場合に指定（任意）
 - `DRUG_PACKAGE_SOURCE_COOKIE`: 取得元にCookieが必要な場合に指定（任意）
+- `EXTERNAL_FETCH_ALLOWED_HOSTS`: 外部取込み先の許可ホスト（カンマ区切り、`*.example.com` 形式対応）
 - `SCHEDULER_OPTIMIZED_LOOP_ENABLED`: `true` で scheduler を timeout-chain モード（既定）で動作
 - `DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED`: 医薬品マスター scheduler の loop モード個別上書き（任意）
 - `DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED`: 包装単位 scheduler の loop モード個別上書き（任意）
@@ -104,6 +107,7 @@ npm run db:migrate:legacy --workspace=server
 - `OPENCLAW_LOG_CONTEXT_RECENT_FAILURE_LIMIT`: OpenClawへ渡す直近失敗ログ件数
 - `OPENCLAW_LOG_CONTEXT_RECENT_ACTIVITY_LIMIT`: OpenClawへ渡す薬局別アクティビティログ件数
 - `OPENCLAW_LOG_CONTEXT_DETAIL_MAX_LENGTH`: OpenClawへ渡すログ詳細文の最大文字数
+- `GITHUB_UPDATES_RETRIES`: GitHub release 取得失敗時の再試行回数（0-3）
 - OpenClaw Webhook受信時は `x-openclaw-signature` と `x-openclaw-timestamp` を利用したHMAC認証を必須化
 - HMAC認証は時刻ずれ検証に加え、同一署名の短時間リプレイも拒否します
 

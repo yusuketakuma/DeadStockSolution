@@ -1,10 +1,34 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { Agent } from 'undici';
 
 interface ExternalUrlValidationResult {
   ok: boolean;
   reason: string | null;
   hostname: string | null;
+  resolvedAddresses: string[];
+}
+
+function parseAllowedHostPatterns(raw: string | undefined): string[] {
+  return (raw ?? '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
+}
+
+function hostMatchesPattern(hostname: string, pattern: string): boolean {
+  if (pattern.startsWith('*.')) {
+    const suffix = pattern.slice(2);
+    return hostname.endsWith(`.${suffix}`);
+  }
+  return hostname === pattern;
+}
+
+function isHostnameAllowedByPolicy(hostname: string): boolean {
+  const patterns = parseAllowedHostPatterns(process.env.EXTERNAL_FETCH_ALLOWED_HOSTS);
+  if (patterns.length === 0) return true;
+  const lowerHostname = hostname.toLowerCase();
+  return patterns.some((pattern) => hostMatchesPattern(lowerHostname, pattern));
 }
 
 function isPrivateIpv4(ip: string): boolean {
@@ -144,26 +168,50 @@ export async function validateExternalHttpsUrl(url: string): Promise<ExternalUrl
   try {
     parsed = new URL(url);
   } catch {
-    return { ok: false, reason: 'URL形式が不正です', hostname: null };
+    return { ok: false, reason: 'URL形式が不正です', hostname: null, resolvedAddresses: [] };
   }
 
   if (parsed.protocol !== 'https:') {
-    return { ok: false, reason: 'HTTPSのみ許可されています', hostname: parsed.hostname };
+    return { ok: false, reason: 'HTTPSのみ許可されています', hostname: parsed.hostname, resolvedAddresses: [] };
   }
 
   if (isBlockedHostname(parsed.hostname)) {
-    return { ok: false, reason: 'ローカルドメインは許可されていません', hostname: parsed.hostname };
+    return {
+      ok: false,
+      reason: 'ローカルドメインは許可されていません',
+      hostname: parsed.hostname,
+      resolvedAddresses: [],
+    };
+  }
+
+  if (!isHostnameAllowedByPolicy(parsed.hostname)) {
+    return {
+      ok: false,
+      reason: '許可リストにないホストです',
+      hostname: parsed.hostname,
+      resolvedAddresses: [],
+    };
   }
 
   let addresses: string[];
   try {
     addresses = await resolveHostname(parsed.hostname);
   } catch {
-    return { ok: false, reason: 'ホスト名を解決できませんでした', hostname: parsed.hostname };
+    return {
+      ok: false,
+      reason: 'ホスト名を解決できませんでした',
+      hostname: parsed.hostname,
+      resolvedAddresses: [],
+    };
   }
 
   if (addresses.length === 0) {
-    return { ok: false, reason: 'ホスト名の解決結果が空です', hostname: parsed.hostname };
+    return {
+      ok: false,
+      reason: 'ホスト名の解決結果が空です',
+      hostname: parsed.hostname,
+      resolvedAddresses: [],
+    };
   }
 
   for (const address of addresses) {
@@ -172,10 +220,65 @@ export async function validateExternalHttpsUrl(url: string): Promise<ExternalUrl
         ok: false,
         reason: 'プライベート/ローカルIPへの接続は許可されていません',
         hostname: parsed.hostname,
+        resolvedAddresses: addresses,
       };
     }
   }
 
-  return { ok: true, reason: null, hostname: parsed.hostname };
+  return { ok: true, reason: null, hostname: parsed.hostname, resolvedAddresses: addresses };
 }
 
+export async function assertExternalHttpsUrlSafe(url: string): Promise<void> {
+  const result = await validateExternalHttpsUrl(url);
+  if (result.ok) return;
+  const reason = result.reason ?? 'URLの検証に失敗しました';
+  const hostname = result.hostname ? ` (${result.hostname})` : '';
+  throw new Error(`${reason}${hostname}`);
+}
+
+export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[]): Agent {
+  const normalizedHostname = hostname.toLowerCase();
+  const uniqueAddresses = [...new Set(allowedAddresses)];
+  if (uniqueAddresses.length === 0) {
+    throw new Error('DNS pinning requires at least one resolved address');
+  }
+  let nextAddressIndex = 0;
+
+  return new Agent({
+    connect: {
+      lookup: (lookupHostname: string, lookupOptions: { family?: number; all?: boolean } | undefined, callback: (...args: unknown[]) => void) => {
+        if (lookupHostname.toLowerCase() !== normalizedHostname) {
+          callback(new Error('Hostname changed during DNS-pinned request'));
+          return;
+        }
+
+        const family = lookupOptions?.family;
+        const filtered = uniqueAddresses.filter((address) => {
+          if (family === 4) return net.isIPv4(address);
+          if (family === 6) return net.isIPv6(address);
+          return true;
+        });
+
+        if (filtered.length === 0) {
+          callback(new Error('No pinned address available for requested IP family'));
+          return;
+        }
+
+        if (lookupOptions?.all) {
+          callback(
+            null,
+            filtered.map((address) => ({
+              address,
+              family: net.isIPv6(address) ? 6 : 4,
+            })),
+          );
+          return;
+        }
+
+        const address = filtered[nextAddressIndex % filtered.length];
+        nextAddressIndex += 1;
+        callback(null, address, net.isIPv6(address) ? 6 : 4);
+      },
+    } as any,
+  });
+}

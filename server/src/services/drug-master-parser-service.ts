@@ -373,12 +373,37 @@ export function parsePackageXmlData(xmlContent: string): ParsedPackageRow[] {
   return [...deduped.values()];
 }
 
+const MAX_ZIP_ENTRY_SIZE = 200 * 1024 * 1024; // 200MB per entry
+const MAX_ZIP_TOTAL_SIZE = 500 * 1024 * 1024; // 500MB total
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackageRow[]> {
   const zip = new AdmZip(buffer);
   const rows: ParsedPackageRow[] = [];
+  let totalSize = 0;
 
-  for (const entry of zip.getEntries()) {
+  const entries = zip.getEntries();
+  for (let idx = 0; idx < entries.length; idx++) {
+    const entry = entries[idx];
     if (entry.isDirectory) continue;
+
+    // パストラバーサル対策
+    if (entry.entryName.includes('..')) continue;
+
+    // サイズ制限チェック
+    if (entry.header.size > MAX_ZIP_ENTRY_SIZE) {
+      console.warn(`Skipping oversized ZIP entry: ${entry.entryName} (${entry.header.size} bytes)`);
+      continue;
+    }
+    totalSize += entry.header.size;
+    if (totalSize > MAX_ZIP_TOTAL_SIZE) {
+      console.warn(`ZIP total extracted size exceeds limit (${MAX_ZIP_TOTAL_SIZE} bytes), stopping`);
+      break;
+    }
+
     const lowerName = entry.entryName.toLowerCase();
     const entryBuffer = entry.getData();
 
@@ -391,8 +416,13 @@ export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackage
         const excelRows = await parseExcelBuffer(entryBuffer);
         rows.push(...parsePackageExcelData(excelRows));
       }
-    } catch {
-      // Skip invalid entry and continue parsing remaining files.
+    } catch (err) {
+      console.warn(`Failed to parse ZIP entry: ${entry.entryName}`, err instanceof Error ? err.message : err);
+    }
+
+    // エントリ処理間にイベントループを解放
+    if (idx % 5 === 4) {
+      await yieldToEventLoop();
     }
   }
 

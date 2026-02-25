@@ -1,9 +1,17 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { exchangeProposals, exchangeProposalItems, exchangeHistory, deadStockItems, pharmacies } from '../db/schema';
+import {
+  exchangeProposals,
+  exchangeProposalItems,
+  exchangeHistory,
+  deadStockItems,
+  pharmacies,
+  deadStockReservations,
+} from '../db/schema';
 
 const MIN_EXCHANGE_VALUE = 10000;
 const VALUE_TOLERANCE = 10;
+const RESERVATION_ACTIVE_STATUSES = ['proposed', 'accepted_a', 'accepted_b', 'confirmed'] as const;
 
 interface ProposalItemInput {
   deadStockItemId: number;
@@ -105,6 +113,19 @@ export async function createProposal(
     }
 
     const allIds = [...candidate.itemsFromA, ...candidate.itemsFromB].map((item) => item.deadStockItemId);
+    const sortedUniqueIds = [...new Set(allIds)].sort((a, b) => a - b);
+
+    if (sortedUniqueIds.length === 0) {
+      throw new Error('提案対象の在庫がありません');
+    }
+
+    await tx.execute(sql`
+      SELECT ${deadStockItems.id}
+      FROM ${deadStockItems}
+      WHERE ${inArray(deadStockItems.id, sortedUniqueIds)}
+      FOR UPDATE
+    `);
+
     const stockRows = await tx.select({
       id: deadStockItems.id,
       pharmacyId: deadStockItems.pharmacyId,
@@ -113,11 +134,29 @@ export async function createProposal(
       isAvailable: deadStockItems.isAvailable,
     })
       .from(deadStockItems)
-      .where(inArray(deadStockItems.id, allIds));
+      .where(inArray(deadStockItems.id, sortedUniqueIds));
 
     const stockMap = new Map<number, (typeof stockRows)[number]>();
     for (const row of stockRows) {
       stockMap.set(row.id, row);
+    }
+
+    const reservationRows = sortedUniqueIds.length > 0
+      ? await tx.select({
+        deadStockItemId: deadStockReservations.deadStockItemId,
+        reservedQty: sql<number>`coalesce(sum(${deadStockReservations.reservedQuantity}), 0)`,
+      })
+        .from(deadStockReservations)
+        .innerJoin(exchangeProposals, eq(deadStockReservations.proposalId, exchangeProposals.id))
+        .where(and(
+          inArray(deadStockReservations.deadStockItemId, sortedUniqueIds),
+          inArray(exchangeProposals.status, RESERVATION_ACTIVE_STATUSES),
+        ))
+        .groupBy(deadStockReservations.deadStockItemId)
+      : [];
+    const reservedByStockId = new Map<number, number>();
+    for (const row of reservationRows) {
+      reservedByStockId.set(row.deadStockItemId, Number(row.reservedQty ?? 0));
     }
 
     const validatedA: ValidatedProposalItem[] = candidate.itemsFromA.map((item) => {
@@ -125,7 +164,8 @@ export async function createProposal(
       if (!stock) throw new Error('提案対象の在庫が見つかりません');
       if (stock.pharmacyId !== pharmacyAId) throw new Error('自薬局の在庫のみ提案できます');
       if (!stock.isAvailable) throw new Error('提案対象の在庫が既に利用不可です');
-      if (item.quantity > stock.quantity) throw new Error('提案数量が在庫数を超えています');
+      const availableQty = Number(stock.quantity) - (reservedByStockId.get(item.deadStockItemId) ?? 0);
+      if (item.quantity > availableQty) throw new Error('提案数量が利用可能在庫数を超えています');
       const unitPrice = Number(stock.yakkaUnitPrice);
       if (!unitPrice || unitPrice <= 0) throw new Error('薬価が設定されていない在庫は提案できません');
 
@@ -143,7 +183,8 @@ export async function createProposal(
       if (!stock) throw new Error('提案対象の在庫が見つかりません');
       if (stock.pharmacyId !== candidate.pharmacyBId) throw new Error('交換先薬局の在庫のみ指定できます');
       if (!stock.isAvailable) throw new Error('提案対象の在庫が既に利用不可です');
-      if (item.quantity > stock.quantity) throw new Error('提案数量が在庫数を超えています');
+      const availableQty = Number(stock.quantity) - (reservedByStockId.get(item.deadStockItemId) ?? 0);
+      if (item.quantity > availableQty) throw new Error('提案数量が利用可能在庫数を超えています');
       const unitPrice = Number(stock.yakkaUnitPrice);
       if (!unitPrice || unitPrice <= 0) throw new Error('薬価が設定されていない在庫は提案できません');
 
@@ -185,6 +226,14 @@ export async function createProposal(
         quantity: item.quantity,
         yakkaValue: String(item.yakkaValue),
       }))
+    );
+
+    await tx.insert(deadStockReservations).values(
+      [...validatedA, ...validatedB].map((item) => ({
+        deadStockItemId: item.deadStockItemId,
+        proposalId: proposal.id,
+        reservedQuantity: item.quantity,
+      })),
     );
 
     return proposal.id;
@@ -272,6 +321,9 @@ export async function rejectProposal(proposalId: number, pharmacyId: number): Pr
     if (updated.length === 0) {
       throw new Error('状態が変更されたため、操作を完了できません。再読み込みしてください');
     }
+
+    await tx.delete(deadStockReservations)
+      .where(eq(deadStockReservations.proposalId, proposalId));
   });
 }
 
@@ -294,9 +346,28 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
     const isParty = proposal.pharmacyAId === pharmacyId || proposal.pharmacyBId === pharmacyId;
     if (!isParty) throw new Error('このマッチングにアクセスする権限がありません');
 
+    const completedAt = new Date().toISOString();
+    const [claimedProposal] = await tx.update(exchangeProposals)
+      .set({ status: 'completed', completedAt })
+      .where(and(
+        eq(exchangeProposals.id, proposalId),
+        eq(exchangeProposals.status, 'confirmed'),
+      ))
+      .returning({
+        pharmacyAId: exchangeProposals.pharmacyAId,
+        pharmacyBId: exchangeProposals.pharmacyBId,
+        totalValueA: exchangeProposals.totalValueA,
+        totalValueB: exchangeProposals.totalValueB,
+      });
+
+    if (!claimedProposal) {
+      throw new Error('状態が変更されたため、操作を完了できません。再読み込みしてください');
+    }
+
     const items = await tx.select({
       deadStockItemId: exchangeProposalItems.deadStockItemId,
       fromPharmacyId: exchangeProposalItems.fromPharmacyId,
+      quantity: exchangeProposalItems.quantity,
     })
       .from(exchangeProposalItems)
       .where(eq(exchangeProposalItems.proposalId, proposalId));
@@ -309,6 +380,7 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
     const stockRows = await tx.select({
       id: deadStockItems.id,
       pharmacyId: deadStockItems.pharmacyId,
+      quantity: deadStockItems.quantity,
       isAvailable: deadStockItems.isAvailable,
     })
       .from(deadStockItems)
@@ -320,32 +392,37 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
       if (!stock || stock.pharmacyId !== item.fromPharmacyId || !stock.isAvailable) {
         throw new Error('在庫状態が変更されているため、交換を完了できません');
       }
+      if (Number(stock.quantity) < Number(item.quantity)) {
+        throw new Error('在庫数量が不足しているため、交換を完了できません');
+      }
+    }
+    for (const item of items) {
+      const updated = await tx.update(deadStockItems)
+        .set({
+          quantity: sql`${deadStockItems.quantity} - ${item.quantity}`,
+          isAvailable: sql`CASE WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN false ELSE true END`,
+        })
+        .where(and(
+          eq(deadStockItems.id, item.deadStockItemId),
+          eq(deadStockItems.isAvailable, true),
+          sql`${deadStockItems.quantity} >= ${item.quantity}`,
+        ))
+        .returning({ id: deadStockItems.id });
+      if (updated.length === 0) {
+        throw new Error('在庫状態が変更されているため、交換を完了できません');
+      }
     }
 
-    const updatedStocks = await tx.update(deadStockItems)
-      .set({ isAvailable: false })
-      .where(and(
-        inArray(deadStockItems.id, itemIds),
-        eq(deadStockItems.isAvailable, true),
-      ))
-      .returning({ id: deadStockItems.id });
-
-    if (updatedStocks.length !== itemIds.length) {
-      throw new Error('在庫状態が変更されているため、交換を完了できません');
-    }
-
-    const completedAt = new Date().toISOString();
-    await tx.update(exchangeProposals)
-      .set({ status: 'completed', completedAt })
-      .where(eq(exchangeProposals.id, proposalId));
-
-    const totalValue = Number(proposal.totalValueA ?? 0) + Number(proposal.totalValueB ?? 0);
+    const totalValue = Number(claimedProposal.totalValueA ?? 0) + Number(claimedProposal.totalValueB ?? 0);
     await tx.insert(exchangeHistory).values({
       proposalId,
-      pharmacyAId: proposal.pharmacyAId,
-      pharmacyBId: proposal.pharmacyBId,
+      pharmacyAId: claimedProposal.pharmacyAId,
+      pharmacyBId: claimedProposal.pharmacyBId,
       totalValue: String(totalValue),
       completedAt,
     });
+
+    await tx.delete(deadStockReservations)
+      .where(eq(deadStockReservations.proposalId, proposalId));
   });
 }

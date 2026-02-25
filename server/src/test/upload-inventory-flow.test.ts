@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => {
     db,
     parseExcelBuffer: vi.fn(),
     enrichWithDrugMaster: vi.fn(),
+    triggerMatchingRefreshOnUpload: vi.fn(),
     writeLog: vi.fn(),
     getClientIp: vi.fn(),
   };
@@ -61,6 +62,10 @@ vi.mock('../services/upload-service', async (importOriginal) => {
 
 vi.mock('../services/drug-master-enrichment', () => ({
   enrichWithDrugMaster: mocks.enrichWithDrugMaster,
+}));
+
+vi.mock('../services/matching-refresh-service', () => ({
+  triggerMatchingRefreshOnUpload: mocks.triggerMatchingRefreshOnUpload,
 }));
 
 vi.mock('../services/logger', () => ({
@@ -268,6 +273,7 @@ describe('upload -> inventory flow', () => {
       ['2222222F2222', 'ロキソプロフェン錠60mg', 5, '錠'],
     ]);
     mocks.enrichWithDrugMaster.mockImplementation(async (rows: unknown[]) => rows);
+    mocks.triggerMatchingRefreshOnUpload.mockResolvedValue(undefined);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 

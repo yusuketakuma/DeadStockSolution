@@ -17,6 +17,7 @@ import businessHoursRoutes from './routes/business-hours';
 import searchRoutes from './routes/search';
 import drugMasterRoutes from './routes/drug-master';
 import updatesRoutes from './routes/updates';
+import internalMatchingRefreshRoutes from './routes/internal-matching-refresh';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { csrfProtection } from './middleware/csrf';
@@ -149,6 +150,7 @@ app.use('/api/business-hours', businessHoursRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/admin/drug-master', drugMasterRoutes);
 app.use('/api/updates', updatesRoutes);
+app.use('/api/internal/matching-refresh', internalMatchingRefreshRoutes);
 
 // Health check with DB connectivity
 app.get('/api/health', async (_req, res) => {

@@ -1,0 +1,109 @@
+/* ===== Content ===== */
+.content-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.mobile-table th {
+  white-space: nowrap;
+}
+
+.mobile-table td {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.page-title {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.login-title-wrap {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.login-title-version {
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.match-candidate-toggle {
+  border: none;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  padding: 0.75rem 1rem;
+}
+
+.match-candidate-toggle:hover {
+  background: rgba(13, 110, 253, 0.06);
+}
+
+.match-candidate-toggle:focus-visible {
+  outline: 2px solid #0d6efd;
+  outline-offset: -2px;
+}
+
+.time-input {
+  max-width: 140px;
+}
+
+.form-max-360 {
+  max-width: 360px;
+}
+
+.filter-select-compact {
+  max-width: 220px;
+}
+
+.filter-input-compact {
+  min-width: 240px;
+  max-width: 380px;
+}
+
+.sync-log-source {
+  max-width: 150px;
+}
+
+.sync-log-error {
+  max-width: 200px;
+}
+
+.agreement-sign-cell {
+  min-width: 180px;
+}
+
+.agreement-date-cell {
+  min-width: 130px;
+}
+
+.table-col-actions {
+  min-width: 120px;
+}
+
+.auth-fullscreen {
+  min-height: 100vh;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 483px;
+}
+
+.auth-card-sm {
+  width: 100%;
+  max-width: 420px;
+}
+
+.form-max-640 {
+  max-width: 640px;
+}
+
+.route-loading-min-height {
+  min-height: 50vh;
+}
+

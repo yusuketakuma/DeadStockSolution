@@ -11,52 +11,9 @@ import DrugMasterTable from './components/DrugMasterTable';
 import DrugMasterDetailModal from './components/DrugMasterDetailModal';
 import DrugMasterEditModal from './components/DrugMasterEditModal';
 
+import type { DrugMasterItem, DrugMasterDetail } from './components/types';
+
 // ── 型定義 ──────────────────────────────────────
-
-interface DrugMasterItem {
-  id: number;
-  yjCode: string;
-  drugName: string;
-  genericName: string | null;
-  specification: string | null;
-  unit: string | null;
-  yakkaPrice: number;
-  manufacturer: string | null;
-  category: string | null;
-  isListed: boolean;
-  transitionDeadline: string | null;
-  updatedAt: string | null;
-}
-
-interface DrugMasterDetail extends DrugMasterItem {
-  therapeuticCategory: string | null;
-  listedDate: string | null;
-  deletedDate: string | null;
-  packages: PackageItem[];
-  priceHistory: PriceHistoryItem[];
-}
-
-interface PackageItem {
-  id: number;
-  gs1Code: string | null;
-  janCode: string | null;
-  hotCode: string | null;
-  packageDescription: string | null;
-  packageQuantity: number | null;
-  packageUnit: string | null;
-  normalizedPackageLabel?: string | null;
-  packageForm?: string | null;
-  isLoosePackage?: boolean;
-}
-
-interface PriceHistoryItem {
-  id: number;
-  yjCode: string;
-  previousPrice: number | null;
-  newPrice: number | null;
-  revisionDate: string;
-  revisionType: string;
-}
 
 interface Stats {
   totalItems: number;
@@ -145,7 +102,7 @@ export default function AdminDrugMasterPage() {
     try {
       const data = await api.get<Stats>('/admin/drug-master/stats');
       setStats(data);
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to fetch stats', err); }
   };
 
   const fetchItems = async (p: number) => {
