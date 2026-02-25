@@ -21,6 +21,7 @@ import { triggerManualAutoSync } from '../services/drug-master-scheduler';
 import { triggerManualPackageAutoSync } from '../services/drug-package-scheduler';
 import { parseExcelBuffer } from '../services/upload-service';
 import { logger } from '../services/logger';
+import { getErrorMessage } from './admin-utils';
 
 const router = Router();
 type ParsedDrugMasterRows = ReturnType<typeof parseMhlwExcelData>;
@@ -38,11 +39,6 @@ const EMPTY_SYNC_RESULT: DrugMasterSyncSummary = {
   itemsUpdated: 0,
   itemsDeleted: 0,
 };
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
 
 function getErrorMessageOrFallback(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
