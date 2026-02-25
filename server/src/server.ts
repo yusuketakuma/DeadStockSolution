@@ -2,7 +2,8 @@ import 'dotenv/config';
 import app from './app';
 import { startDrugMasterScheduler, stopDrugMasterScheduler } from './services/drug-master-scheduler';
 import { startDrugPackageScheduler, stopDrugPackageScheduler } from './services/drug-package-scheduler';
-import { ensureTestAccountsSeededIfEnabled } from './services/test-account-service';
+import { startImportFailureAlertScheduler, stopImportFailureAlertScheduler } from './services/import-failure-alert-scheduler';
+import { logger } from './services/logger';
 
 function resolvePort(): number {
   const parsed = Number(process.env.PORT);
@@ -16,23 +17,24 @@ const PORT = resolvePort();
 const SHUTDOWN_TIMEOUT_MS = 10000;
 
 const server = app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  void ensureTestAccountsSeededIfEnabled();
+  logger.info('Server started', { port: PORT });
 
   // 医薬品マスター自動同期スケジューラを開始
   startDrugMasterScheduler();
   startDrugPackageScheduler();
+  startImportFailureAlertScheduler();
 });
 
 function gracefulShutdown(signal: NodeJS.Signals): void {
-  console.log(`Received ${signal}. Graceful shutdown started...`);
+  logger.info('Graceful shutdown started', { signal });
 
   // 医薬品マスター自動同期スケジューラを停止
   stopDrugMasterScheduler();
   stopDrugPackageScheduler();
+  stopImportFailureAlertScheduler();
 
   const forceCloseTimer = setTimeout(() => {
-    console.error('Graceful shutdown timed out. Forcing exit.');
+    logger.error('Graceful shutdown timed out. Forcing exit.');
     process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
   forceCloseTimer.unref();
@@ -40,11 +42,13 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
   server.close((err) => {
     clearTimeout(forceCloseTimer);
     if (err) {
-      console.error('Error during server close:', err);
+      logger.error('Error during server close', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       process.exit(1);
       return;
     }
-    console.log('Server stopped.');
+    logger.info('Server stopped');
     process.exit(0);
   });
 }
@@ -53,10 +57,15 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled rejection:', reason);
+  logger.error('Unhandled rejection', {
+    reason: reason instanceof Error ? reason.message : String(reason),
+  });
 });
 
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
+  logger.error('Uncaught exception', {
+    error: err instanceof Error ? err.message : String(err),
+    stack: err.stack,
+  });
   gracefulShutdown('SIGTERM');
 });

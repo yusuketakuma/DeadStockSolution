@@ -43,6 +43,34 @@
       "when": 1771937821698,
       "tag": "0005_complex_triathlon",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771945466347,
+      "tag": "0006_freezing_hellfire_club",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771970666573,
+      "tag": "0007_parched_warlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772003015730,
+      "tag": "0008_deep_green_goblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1772006839988,
+      "tag": "0009_perpetual_rogue",
+      "breakpoints": true
     }
   ]
 }

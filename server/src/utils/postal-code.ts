@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { logger } from '../services/logger';
 
 interface PostalGeocode {
   [postalCode: string]: { lat: number; lng: number };
@@ -15,7 +16,7 @@ function loadPostalData(): PostalGeocode {
     postalData = JSON.parse(raw);
     return postalData!;
   } catch {
-    console.warn('postal-geocode.json not found, geocoding will be unavailable');
+    logger.warn('postal-geocode.json not found, geocoding will be unavailable');
     postalData = {};
     return postalData;
   }

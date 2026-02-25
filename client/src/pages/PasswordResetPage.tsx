@@ -79,8 +79,8 @@ export default function PasswordResetPage() {
   };
 
   return (
-    <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-      <Card style={{ width: '100%', maxWidth: '420px' }}>
+    <Container className="d-flex justify-content-center align-items-center auth-fullscreen">
+      <Card className="auth-card-sm">
         <Card.Body>
           <h3 className="text-center mb-3">パスワードリセット</h3>
 

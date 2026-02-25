@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, inArray, or, desc } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { exchangeProposals, exchangeProposalItems, exchangeHistory, deadStockItems, pharmacies } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
@@ -24,6 +24,30 @@ function isProposalInputError(message: string): boolean {
     '交換金額',
     '数量',
   ].some((token) => message.includes(token));
+}
+
+function timestampSortValue(timestamp: string | null): number {
+  if (timestamp === null) return Number.NEGATIVE_INFINITY;
+  const value = Date.parse(timestamp);
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function mergeDedupSortByTimestamp<T extends { id: number }>(
+  branchA: T[],
+  branchB: T[],
+  getTimestamp: (row: T) => string | null,
+): T[] {
+  const deduped = new Map<number, T>();
+  for (const row of branchA) deduped.set(row.id, row);
+  for (const row of branchB) {
+    if (!deduped.has(row.id)) deduped.set(row.id, row);
+  }
+
+  return [...deduped.values()].sort((left, right) => {
+    const leftSort = timestampSortValue(getTimestamp(left));
+    const rightSort = timestampSortValue(getTimestamp(right));
+    return rightSort - leftSort || right.id - left.id;
+  });
 }
 
 // Find matching candidates
@@ -69,8 +93,8 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       maxLimit: 100,
     });
     const pharmacyId = req.user!.id;
-
-    const rows = await db.select({
+    const fetchSize = offset + limit;
+    const proposalSelect = {
       id: exchangeProposals.id,
       pharmacyAId: exchangeProposals.pharmacyAId,
       pharmacyBId: exchangeProposals.pharmacyBId,
@@ -79,15 +103,35 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       totalValueB: exchangeProposals.totalValueB,
       valueDifference: exchangeProposals.valueDifference,
       proposedAt: exchangeProposals.proposedAt,
-    })
-      .from(exchangeProposals)
-      .where(or(
-        eq(exchangeProposals.pharmacyAId, pharmacyId),
-        eq(exchangeProposals.pharmacyBId, pharmacyId),
-      ))
-      .orderBy(desc(exchangeProposals.proposedAt))
-      .limit(limit)
-      .offset(offset);
+    };
+
+    const [branchA, branchB, [countA], [countB], [countOverlap]] = await Promise.all([
+      db.select(proposalSelect)
+        .from(exchangeProposals)
+        .where(eq(exchangeProposals.pharmacyAId, pharmacyId))
+        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
+        .limit(fetchSize),
+      db.select(proposalSelect)
+        .from(exchangeProposals)
+        .where(eq(exchangeProposals.pharmacyBId, pharmacyId))
+        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
+        .limit(fetchSize),
+      db.select({ count: rowCount })
+        .from(exchangeProposals)
+        .where(eq(exchangeProposals.pharmacyAId, pharmacyId)),
+      db.select({ count: rowCount })
+        .from(exchangeProposals)
+        .where(eq(exchangeProposals.pharmacyBId, pharmacyId)),
+      db.select({ count: rowCount })
+        .from(exchangeProposals)
+        .where(and(
+          eq(exchangeProposals.pharmacyAId, pharmacyId),
+          eq(exchangeProposals.pharmacyBId, pharmacyId),
+        )),
+    ]);
+
+    const rows = mergeDedupSortByTimestamp(branchA, branchB, (row) => row.proposedAt)
+      .slice(offset, offset + limit);
 
     const pharmacyIds = [...new Set(rows.flatMap((row) => [row.pharmacyAId, row.pharmacyBId]))];
     const pharmacyRows = pharmacyIds.length > 0
@@ -103,16 +147,11 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
     }));
 
-    const [total] = await db.select({ count: rowCount })
-      .from(exchangeProposals)
-      .where(or(
-        eq(exchangeProposals.pharmacyAId, pharmacyId),
-        eq(exchangeProposals.pharmacyBId, pharmacyId),
-      ));
+    const totalCount = countA.count + countB.count - countOverlap.count;
 
     res.json({
       data: enriched,
-      pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
+      pagination: { page, limit, total: totalCount, totalPages: Math.ceil(totalCount / limit) },
     });
   } catch (err) {
     logger.error('List proposals error:', { error: (err as Error).message });
@@ -295,16 +334,35 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       maxLimit: 100,
     });
     const pharmacyId = req.user!.id;
+    const fetchSize = offset + limit;
 
-    const rows = await db.select()
-      .from(exchangeHistory)
-      .where(or(
-        eq(exchangeHistory.pharmacyAId, pharmacyId),
-        eq(exchangeHistory.pharmacyBId, pharmacyId),
-      ))
-      .orderBy(desc(exchangeHistory.completedAt))
-      .limit(limit)
-      .offset(offset);
+    const [branchA, branchB, [countA], [countB], [countOverlap]] = await Promise.all([
+      db.select()
+        .from(exchangeHistory)
+        .where(eq(exchangeHistory.pharmacyAId, pharmacyId))
+        .orderBy(desc(exchangeHistory.completedAt), desc(exchangeHistory.id))
+        .limit(fetchSize),
+      db.select()
+        .from(exchangeHistory)
+        .where(eq(exchangeHistory.pharmacyBId, pharmacyId))
+        .orderBy(desc(exchangeHistory.completedAt), desc(exchangeHistory.id))
+        .limit(fetchSize),
+      db.select({ count: rowCount })
+        .from(exchangeHistory)
+        .where(eq(exchangeHistory.pharmacyAId, pharmacyId)),
+      db.select({ count: rowCount })
+        .from(exchangeHistory)
+        .where(eq(exchangeHistory.pharmacyBId, pharmacyId)),
+      db.select({ count: rowCount })
+        .from(exchangeHistory)
+        .where(and(
+          eq(exchangeHistory.pharmacyAId, pharmacyId),
+          eq(exchangeHistory.pharmacyBId, pharmacyId),
+        )),
+    ]);
+
+    const rows = mergeDedupSortByTimestamp(branchA, branchB, (row) => row.completedAt)
+      .slice(offset, offset + limit);
 
     const pharmacyIds = [...new Set(rows.flatMap((row) => [row.pharmacyAId, row.pharmacyBId]))];
     const pharmacyRows = pharmacyIds.length > 0
@@ -320,16 +378,11 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
     }));
 
-    const [total] = await db.select({ count: rowCount })
-      .from(exchangeHistory)
-      .where(or(
-        eq(exchangeHistory.pharmacyAId, pharmacyId),
-        eq(exchangeHistory.pharmacyBId, pharmacyId),
-      ));
+    const totalCount = countA.count + countB.count - countOverlap.count;
 
     res.json({
       data: enriched,
-      pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
+      pagination: { page, limit, total: totalCount, totalPages: Math.ceil(totalCount / limit) },
     });
   } catch (err) {
     logger.error('Exchange history error:', { error: (err as Error).message });

@@ -3,6 +3,7 @@ import { Card, Form, Button, Alert, Row, Col, Table, Spinner } from 'react-boots
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import { useNavigate } from 'react-router-dom';
+import ConfirmActionModal from '../components/ConfirmActionModal';
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -176,6 +177,7 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawPassword, setWithdrawPassword] = useState('');
+  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
 
   // Business hours state
   const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
@@ -433,17 +435,16 @@ export default function AccountPage() {
     );
   };
 
-  const handleWithdraw = async () => {
+  const handleWithdraw = () => {
     if (!withdrawPassword) {
       setError('退会には現在のパスワードが必要です');
       return;
     }
+    setShowWithdrawConfirm(true);
+  };
 
-    const confirmed = confirm(
-      '退会するとアカウントが無効化され、現在のセッションは終了します。実行しますか？'
-    );
-    if (!confirmed) return;
-
+  const handleWithdrawConfirmed = async () => {
+    setShowWithdrawConfirm(false);
     setWithdrawing(true);
     setError('');
     setMessage('');
@@ -639,7 +640,7 @@ export default function AccountPage() {
                                   value={h.openTime || ''}
                                   onChange={(e) => handleHoursChange(h.dayOfWeek, 'openTime', e.target.value)}
                                   disabled={h.isClosed || h.is24Hours}
-                                  style={{ maxWidth: '140px' }}
+                                  className="time-input"
                                 />
                               </td>
                               <td>
@@ -649,7 +650,7 @@ export default function AccountPage() {
                                   value={h.closeTime || ''}
                                   onChange={(e) => handleHoursChange(h.dayOfWeek, 'closeTime', e.target.value)}
                                   disabled={h.isClosed || h.is24Hours}
-                                  style={{ maxWidth: '140px' }}
+                                  className="time-input"
                                 />
                               </td>
                             </>
@@ -762,7 +763,7 @@ export default function AccountPage() {
                                   value={entry.openTime || ''}
                                   onChange={(e) => handleSpecialHoursChange(index, 'openTime', e.target.value)}
                                   disabled={entry.isClosed || entry.is24Hours}
-                                  style={{ maxWidth: '140px' }}
+                                  className="time-input"
                                 />
                                 <Form.Control
                                   type="time"
@@ -770,7 +771,7 @@ export default function AccountPage() {
                                   value={entry.closeTime || ''}
                                   onChange={(e) => handleSpecialHoursChange(index, 'closeTime', e.target.value)}
                                   disabled={entry.isClosed || entry.is24Hours}
-                                  style={{ maxWidth: '140px' }}
+                                  className="time-input"
                                 />
                               </div>
                             </div>
@@ -831,7 +832,7 @@ export default function AccountPage() {
           <p className="small mb-3">
             退会するとアカウントは無効化され、ログインできなくなります。再利用する場合は管理者へお問い合わせください。
           </p>
-          <Form.Group className="mb-3" style={{ maxWidth: '360px' }}>
+          <Form.Group className="mb-3 form-max-360">
             <Form.Label>現在のパスワード</Form.Label>
             <Form.Control
               type="password"
@@ -850,6 +851,17 @@ export default function AccountPage() {
           </Button>
         </Card.Body>
       </Card>
+
+      <ConfirmActionModal
+        show={showWithdrawConfirm}
+        title="退会の確認"
+        body="退会するとアカウントは無効化され、現在のセッションは終了します。実行してよろしいですか？"
+        confirmLabel="退会する"
+        confirmVariant="danger"
+        onCancel={() => setShowWithdrawConfirm(false)}
+        onConfirm={handleWithdrawConfirmed}
+        pending={withdrawing}
+      />
     </div>
   );
 }

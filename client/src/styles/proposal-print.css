@@ -1,0 +1,156 @@
+.proposal-print-sheet {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 16px;
+  color: #111;
+  background: #fff;
+  font-family: 'Noto Sans JP', sans-serif;
+}
+
+.proposal-print-actions {
+  margin-bottom: 16px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.proposal-print-action-button {
+  padding: 8px 18px;
+  font-size: 14px;
+}
+
+.proposal-print-title {
+  text-align: center;
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.proposal-print-meta {
+  text-align: center;
+  margin: 0 0 12px;
+  color: #555;
+}
+
+.proposal-print-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.proposal-print-table th,
+.proposal-print-table td {
+  border: 1px solid #111;
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
+.proposal-print-table-head {
+  background-color: #efefef;
+}
+
+.proposal-print-table-md {
+  margin-bottom: 12px;
+}
+
+.proposal-print-table-lg {
+  margin-bottom: 14px;
+}
+
+.proposal-print-col-th {
+  width: 16%;
+}
+
+.proposal-print-col-td {
+  width: 34%;
+}
+
+.proposal-print-procedure-box {
+  border: 1px solid #111;
+  padding: 8px 10px;
+  margin-bottom: 14px;
+  background-color: #f8f8f8;
+}
+
+.proposal-print-procedure-list {
+  margin: 6px 0 0 18px;
+  padding: 0;
+}
+
+.proposal-print-pharmacy-grid {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.proposal-print-pharmacy-card {
+  flex: 1 1 320px;
+  border: 1px solid #bbb;
+  padding: 8px;
+}
+
+.proposal-print-pharmacy-detail {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.proposal-print-section-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.proposal-print-signature-col {
+  min-width: 200px;
+}
+
+.proposal-print-date-col {
+  min-width: 150px;
+}
+
+.proposal-print-note-box {
+  border: 1px solid #bbb;
+  background-color: #fffff0;
+  padding: 10px;
+}
+
+.proposal-print-note-text {
+  margin: 0;
+  font-size: 11px;
+  color: #555;
+}
+
+@media (max-width: 767.98px) {
+  .proposal-print-sheet {
+    padding: 10px;
+  }
+
+  .proposal-print-title {
+    font-size: 18px;
+  }
+
+  .proposal-print-meta {
+    font-size: 12px;
+  }
+}
+
+@media print {
+  body {
+    margin: 0;
+    color: #111;
+    background: #fff;
+    font-size: 11pt;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .proposal-print-sheet {
+    padding: 0;
+    max-width: none !important;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}

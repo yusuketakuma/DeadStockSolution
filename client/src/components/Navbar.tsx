@@ -17,15 +17,15 @@ export default function AppNavbar() {
     <BSNavbar bg="primary" variant="dark" expand="lg" className="mb-0">
       <Container fluid>
         <BSNavbar.Brand as={Link} to="/">
-          不動在庫交換
+          デッドストック交換
         </BSNavbar.Brand>
         <BSNavbar.Toggle aria-controls="main-nav" />
         <BSNavbar.Collapse id="main-nav">
           <Nav className="me-auto">
             <Nav.Link as={Link} to="/">ダッシュボード</Nav.Link>
             <Nav.Link as={Link} to="/upload">アップロード</Nav.Link>
-            <Nav.Link as={Link} to="/inventory/dead-stock">不動在庫</Nav.Link>
-            <Nav.Link as={Link} to="/inventory/used-medication">使用薬剤</Nav.Link>
+            <Nav.Link as={Link} to="/inventory/dead-stock">デッドストックリスト</Nav.Link>
+            <Nav.Link as={Link} to="/inventory/used-medication">医薬品使用量リスト</Nav.Link>
             <Nav.Link as={Link} to="/inventory/browse">在庫参照</Nav.Link>
             <Nav.Link as={Link} to="/matching">マッチング</Nav.Link>
             <Nav.Link as={Link} to="/proposals">マッチング一覧</Nav.Link>

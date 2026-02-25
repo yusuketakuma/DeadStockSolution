@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
-import { and, eq, inArray, desc, sql } from 'drizzle-orm';
+import rateLimit from 'express-rate-limit';
+import { and, eq, inArray, desc, sql, like } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -11,19 +12,21 @@ import {
   userRequests,
   activityLogs,
 } from '../db/schema';
-import { requireLogin, requireAdmin } from '../middleware/auth';
+import { requireLogin, requireAdmin, invalidateAuthUserCache } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { parsePagination, parsePositiveInt } from '../utils/request-utils';
+import { parsePagination, parsePositiveInt, normalizeSearchTerm, escapeLikeWildcards } from '../utils/request-utils';
 import { isSafeInternalPath, sanitizeInternalPath } from '../utils/path-utils';
 import { rowCount } from '../utils/db-utils';
 import { writeLog, getClientIp, type LogAction } from '../services/log-service';
 import { logger } from '../services/logger';
 import { getObservabilitySnapshot } from '../services/observability-service';
+import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
 import {
   getOpenClawImplementationBranch,
   handoffToOpenClaw,
   isOpenClawConnectorConfigured,
   isOpenClawWebhookConfigured,
+  type OpenClawHandoffResult,
 } from '../services/openclaw-service';
 
 const VALID_LOG_ACTIONS: LogAction[] = [
@@ -35,6 +38,14 @@ const VALID_LOG_ACTIONS: LogAction[] = [
 ];
 
 const router = Router();
+
+const adminWriteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: '管理系APIへのリクエストが多すぎます。しばらくして再試行してください' },
+});
 
 router.use(requireLogin);
 router.use(requireAdmin);
@@ -75,9 +86,184 @@ function parseIdOrBadRequest(res: Response, rawId: string | string[] | undefined
   return id;
 }
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 function handleAdminError(err: unknown, logContext: string, responseMessage: string, res: Response): void {
-  logger.error(logContext, { error: (err as Error).message });
+  logger.error(logContext, { error: getErrorMessage(err) });
   res.status(500).json({ error: responseMessage });
+}
+
+interface AdminLogFilters {
+  actionFilter?: LogAction;
+  failureOnly: boolean;
+  keyword?: string;
+}
+
+interface ActivityLogRow {
+  id: number;
+  pharmacyId: number | null;
+  action: string;
+  detail: string | null;
+  ipAddress: string | null;
+  createdAt: string | null;
+}
+
+type ActivityLogWhereClause = ReturnType<typeof and> | undefined;
+type AdminHandoffResponse = Pick<
+OpenClawHandoffResult,
+'accepted' | 'connectorConfigured' | 'implementationBranch' | 'status' | 'note'
+>;
+
+function parseAdminLogFilters(req: AuthRequest): AdminLogFilters {
+  const rawAction = typeof req.query.action === 'string' ? req.query.action.trim() : '';
+  const actionFilter = VALID_LOG_ACTIONS.includes(rawAction as LogAction)
+    ? rawAction as LogAction
+    : undefined;
+  const rawResult = typeof req.query.result === 'string' ? req.query.result.trim() : '';
+
+  return {
+    actionFilter,
+    failureOnly: rawResult === 'failure',
+    keyword: normalizeSearchTerm(req.query.keyword, 120),
+  };
+}
+
+function buildActivityLogWhereClause(
+  filters: AdminLogFilters,
+  options: { forceFailureOnly?: boolean } = {},
+): ActivityLogWhereClause {
+  const conditions: Array<ReturnType<typeof eq> | ReturnType<typeof like>> = [];
+  if (filters.actionFilter) {
+    conditions.push(eq(activityLogs.action, filters.actionFilter));
+  }
+  if (filters.keyword) {
+    conditions.push(like(activityLogs.detail, `%${escapeLikeWildcards(filters.keyword)}%`));
+  }
+  if (options.forceFailureOnly || filters.failureOnly) {
+    conditions.push(like(activityLogs.detail, '失敗|%'));
+  }
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+async function collectAdminHandoffContext(
+  pharmacyId: number,
+  requestId: number,
+): Promise<Record<string, unknown> | undefined> {
+  try {
+    const operationLogs = await buildOpenClawLogContext(pharmacyId);
+    return { operationLogs };
+  } catch (contextErr) {
+    logger.warn('OpenClaw context collection failed on admin handoff', {
+      requestId,
+      pharmacyId,
+      error: getErrorMessage(contextErr),
+    });
+    return undefined;
+  }
+}
+
+function buildAdminHandoffResponse(handoff: OpenClawHandoffResult): AdminHandoffResponse {
+  return {
+    accepted: handoff.accepted,
+    connectorConfigured: handoff.connectorConfigured,
+    implementationBranch: handoff.implementationBranch,
+    status: handoff.status,
+    note: handoff.note,
+  };
+}
+
+function sendAdminHandoffResponse(res: Response, handoff: OpenClawHandoffResult): void {
+  const handoffPayload = buildAdminHandoffResponse(handoff);
+  if (handoff.accepted) {
+    res.json({
+      message: 'OpenClawへ再連携しました',
+      handoff: handoffPayload,
+    });
+    return;
+  }
+
+  res.status(202).json({
+    message: 'OpenClaw連携は保留中です',
+    handoff: handoffPayload,
+  });
+}
+
+async function fetchActivityLogRows(
+  whereClause: ActivityLogWhereClause,
+  limit: number,
+  offset: number,
+): Promise<ActivityLogRow[]> {
+  return db.select({
+    id: activityLogs.id,
+    pharmacyId: activityLogs.pharmacyId,
+    action: activityLogs.action,
+    detail: activityLogs.detail,
+    ipAddress: activityLogs.ipAddress,
+    createdAt: activityLogs.createdAt,
+  })
+    .from(activityLogs)
+    .where(whereClause)
+    .orderBy(desc(activityLogs.createdAt))
+    .limit(limit)
+    .offset(offset);
+}
+
+async function mapActivityLogsWithPharmacyName(rows: ActivityLogRow[]): Promise<Array<ActivityLogRow & { pharmacyName: string | null }>> {
+  const pharmacyIds = [...new Set(rows.map((row) => row.pharmacyId).filter((id): id is number => id !== null))];
+  const pharmacyRows = pharmacyIds.length > 0
+    ? await db.select({ id: pharmacies.id, name: pharmacies.name })
+      .from(pharmacies)
+      .where(inArray(pharmacies.id, pharmacyIds))
+    : [];
+  const pharmacyMap = new Map(pharmacyRows.map((row) => [row.id, row.name]));
+
+  return rows.map((row) => ({
+    ...row,
+    pharmacyName: row.pharmacyId ? pharmacyMap.get(row.pharmacyId) ?? null : null,
+  }));
+}
+
+async function fetchFailureSummary(whereClause: ActivityLogWhereClause): Promise<{
+  failureTotal: number;
+  failureByAction: Record<string, number>;
+  failureByReason: Array<{ reason: string; count: number }>;
+}> {
+  const [failureTotal] = await db.select({ count: rowCount })
+    .from(activityLogs)
+    .where(whereClause);
+
+  const failureByActionRows = await db.select({
+    action: activityLogs.action,
+    count: rowCount,
+  })
+    .from(activityLogs)
+    .where(whereClause)
+    .groupBy(activityLogs.action);
+
+  const failureByAction = failureByActionRows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.action] = row.count;
+    return acc;
+  }, {});
+
+  const failureReasonExpr = sql<string>`coalesce(substring(${activityLogs.detail} from 'reason=([^|]+)'), 'unknown')`;
+  const failureByReason = await db.select({
+    reason: failureReasonExpr,
+    count: rowCount,
+  })
+    .from(activityLogs)
+    .where(whereClause)
+    .groupBy(failureReasonExpr)
+    .orderBy(sql`count(*)::int desc`)
+    .limit(10);
+
+  return {
+    failureTotal: failureTotal.count,
+    failureByAction,
+    failureByReason,
+  };
 }
 
 router.get('/stats', async (_req: AuthRequest, res: Response) => {
@@ -200,7 +386,7 @@ router.get('/pharmacies/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.put('/pharmacies/:id/toggle-active', async (req: AuthRequest, res: Response) => {
+router.put('/pharmacies/:id/toggle-active', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const id = parseIdOrBadRequest(res, req.params.id);
     if (!id) return;
@@ -220,6 +406,7 @@ router.put('/pharmacies/:id/toggle-active', async (req: AuthRequest, res: Respon
         updatedAt: new Date().toISOString(),
       })
       .where(eq(pharmacies.id, id));
+    invalidateAuthUserCache(id);
 
     writeLog('admin_toggle_active', {
       pharmacyId: req.user!.id,
@@ -323,7 +510,7 @@ router.get('/messages', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/messages', async (req: AuthRequest, res: Response) => {
+router.post('/messages', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const targetType = req.body.targetType as 'all' | 'pharmacy';
     const targetPharmacyIdRaw = req.body.targetPharmacyId;
@@ -428,7 +615,7 @@ router.get('/requests', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/requests/:id/handoff', async (req: AuthRequest, res: Response) => {
+router.post('/requests/:id/handoff', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const requestId = parseIdOrBadRequest(res, req.params.id);
     if (!requestId) return;
@@ -457,6 +644,7 @@ router.post('/requests/:id/handoff', async (req: AuthRequest, res: Response) => 
       requestId: requestRow.id,
       pharmacyId: requestRow.pharmacyId,
       requestText: requestRow.requestText,
+      context: await collectAdminHandoffContext(requestRow.pharmacyId, requestRow.id),
     });
 
     if (handoff.accepted) {
@@ -468,30 +656,9 @@ router.post('/requests/:id/handoff', async (req: AuthRequest, res: Response) => 
           updatedAt: new Date().toISOString(),
         })
         .where(eq(userRequests.id, requestRow.id));
-
-      res.json({
-        message: 'OpenClawへ再連携しました',
-        handoff: {
-          accepted: handoff.accepted,
-          connectorConfigured: handoff.connectorConfigured,
-          implementationBranch: handoff.implementationBranch,
-          status: handoff.status,
-          note: handoff.note,
-        },
-      });
-      return;
     }
 
-    res.status(202).json({
-      message: 'OpenClaw連携は保留中です',
-      handoff: {
-        accepted: handoff.accepted,
-        connectorConfigured: handoff.connectorConfigured,
-        implementationBranch: handoff.implementationBranch,
-        status: handoff.status,
-        note: handoff.note,
-      },
-    });
+    sendAdminHandoffResponse(res, handoff);
   } catch (err) {
     handleAdminError(err, 'Admin user request handoff error', '再連携に失敗しました', res);
   }
@@ -500,49 +667,31 @@ router.post('/requests/:id/handoff', async (req: AuthRequest, res: Response) => 
 router.get('/logs', async (req: AuthRequest, res: Response) => {
   try {
     const { page, limit, offset } = parseListPagination(req, 50);
+    const filters = parseAdminLogFilters(req);
+    const whereClause = buildActivityLogWhereClause(filters);
+    const failureWhereClause = buildActivityLogWhereClause(filters, { forceFailureOnly: true });
 
-    const rawAction = typeof req.query.action === 'string' ? req.query.action.trim() : '';
-    const actionFilter = VALID_LOG_ACTIONS.includes(rawAction as LogAction) ? rawAction : undefined;
-
-    const conditions = [];
-    if (actionFilter) {
-      conditions.push(eq(activityLogs.action, actionFilter));
-    }
-
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-    const rows = await db.select({
-      id: activityLogs.id,
-      pharmacyId: activityLogs.pharmacyId,
-      action: activityLogs.action,
-      detail: activityLogs.detail,
-      ipAddress: activityLogs.ipAddress,
-      createdAt: activityLogs.createdAt,
-    })
-      .from(activityLogs)
-      .where(whereClause)
-      .orderBy(desc(activityLogs.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    // Resolve pharmacy names
-    const pharmacyIds = [...new Set(rows.map((r) => r.pharmacyId).filter((id): id is number => id !== null))];
-    const pharmacyRows = pharmacyIds.length > 0
-      ? await db.select({ id: pharmacies.id, name: pharmacies.name })
-          .from(pharmacies)
-          .where(inArray(pharmacies.id, pharmacyIds))
-      : [];
-    const pharmacyMap = new Map(pharmacyRows.map((r) => [r.id, r.name]));
+    const rows = await fetchActivityLogRows(whereClause, limit, offset);
+    const mappedRows = await mapActivityLogsWithPharmacyName(rows);
 
     const [total] = await db.select({ count: rowCount })
       .from(activityLogs)
       .where(whereClause);
 
-    const mappedRows = rows.map((row) => ({
-      ...row,
-      pharmacyName: row.pharmacyId ? pharmacyMap.get(row.pharmacyId) ?? null : null,
-    }));
-    sendPaginated(res, mappedRows, page, limit, total.count);
+    const failureSummary = await fetchFailureSummary(failureWhereClause);
+
+    sendPaginated(res, mappedRows, page, limit, total.count, {
+      summary: {
+        failureTotal: failureSummary.failureTotal,
+        failureByAction: failureSummary.failureByAction,
+        failureByReason: failureSummary.failureByReason,
+      },
+      filters: {
+        action: filters.actionFilter ?? null,
+        result: filters.failureOnly ? 'failure' : 'all',
+        keyword: filters.keyword ?? null,
+      },
+    });
   } catch (err) {
     handleAdminError(err, 'Admin logs error', 'ログの取得に失敗しました', res);
   }

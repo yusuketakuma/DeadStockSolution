@@ -48,7 +48,7 @@ export default function AdminPharmaciesPage() {
 
   return (
     <div>
-      <h4 className="mb-3">薬局管理</h4>
+      <h4 className="page-title mb-3">薬局管理</h4>
       {message && <Alert variant="info" onClose={() => setMessage('')} dismissible>{message}</Alert>}
       <Table striped hover responsive>
         <thead>

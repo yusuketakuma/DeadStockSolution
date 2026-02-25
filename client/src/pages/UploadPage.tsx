@@ -111,7 +111,7 @@ export default function UploadPage() {
         <Card.Header>アップロード手順</Card.Header>
         <Card.Body>
           <ol className="mb-2 upload-step-list">
-            <li>アップロードタイプを選択します（不動在庫 / 使用薬剤）。</li>
+            <li>アップロードタイプを選択します（デッドストックリスト / 医薬品使用量リスト）。</li>
             <li><code>.xlsx</code> 形式のExcelファイルを選択します（最大10MB）。</li>
             <li>「プレビュー」を押してカラム自動判定を確認します。</li>
             <li>必要に応じてマッピングを修正し、「この設定でデータを登録」を押します。</li>
@@ -142,8 +142,8 @@ export default function UploadPage() {
                   setPreview(null);
                 }}
               >
-                <option value="dead_stock">不動在庫</option>
-                <option value="used_medication">使用薬剤</option>
+                <option value="dead_stock">デッドストックリスト</option>
+                <option value="used_medication">医薬品使用量リスト</option>
               </Form.Select>
             </Form.Group>
 

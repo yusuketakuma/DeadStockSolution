@@ -1,0 +1,34 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+model = "gpt-5.3-codex"
+review_model = "gpt-5.3-codex"
+model_provider = "openai"
+
+# 未完で止まらない運用に寄せる（対話で承認したい場合は on-request に）
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+# multi-agent は experimental のため、警告が出るのを抑制したい場合のみ
+suppress_unstable_features_warning = true
+
+[features]
+# Multi-agent workflows are experimental and must be explicitly enabled
+multi_agent = true
+
+[agents]
+# 公式キー：同時に開ける agent thread 上限
+max_threads = 8
+
+# 役割ヒント（追加ファイル不要・descriptionだけ）
+[agents.explorer]
+description = "Read-heavy investigation. Find relevant files/impact and summarize clearly."
+
+[agents.worker]
+description = "Implementation and fixes. Keep going until the task is complete and validated."
+
+[agents.monitor]
+description = "Wait/poll long-running commands and report status."
+
+[sandbox_workspace_write]
+# 依存取得などで必要になりやすいのでON（不要なら false に）
+network_access = true

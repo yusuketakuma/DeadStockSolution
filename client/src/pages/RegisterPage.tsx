@@ -62,7 +62,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <Container className="py-4" style={{ maxWidth: '640px' }}>
+    <Container className="py-4 form-max-640">
       <Card>
         <Card.Body>
           <h4 className="text-center mb-4">新規薬局登録</h4>

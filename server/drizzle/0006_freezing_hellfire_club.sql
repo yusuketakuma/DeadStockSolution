@@ -1,0 +1,2 @@
+DROP INDEX "idx_mapping_templates_pharmacy_type_hash";--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_mapping_templates_pharmacy_type_hash" ON "column_mapping_templates" USING btree ("pharmacy_id","upload_type","header_hash");

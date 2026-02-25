@@ -97,16 +97,21 @@ app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
 }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, _res, buf) => {
+    // rawBody is only required for OpenClaw webhook HMAC verification.
+    if (req.url?.startsWith('/api/openclaw/callback')) {
+      (req as Request).rawBody = buf.toString('utf8');
+    }
+  },
+}));
 app.use(cookieParser());
 
 // Request logging
 app.use(requestLogger);
 
-app.use('/api', async (_req, _res, next) => {
-  await ensureTestAccountsSeededIfEnabled();
-  next();
-});
+void ensureTestAccountsSeededIfEnabled();
 
 const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

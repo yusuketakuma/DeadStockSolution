@@ -1,0 +1,5 @@
+{"type":"session.start","ts":"2026-02-24T12:26:23Z","state":"initialized","data":{"cc_session_id":"09ec153e-ed95-45a9-bc93-5ad43dda7485"}}
+{"id":"event-000001","type":"session.resume","ts":"2026-02-24T12:26:23Z","state":"initialized"}
+{"id":"event-000002","type":"session.resume","ts":"2026-02-24T15:07:56Z","state":"initialized"}
+{"id":"event-000003","type":"session.resume","ts":"2026-02-24T21:53:42Z","state":"initialized"}
+{"id":"event-000004","type":"session.stop","ts":"2026-02-24T21:54:06Z","state":"stopped"}

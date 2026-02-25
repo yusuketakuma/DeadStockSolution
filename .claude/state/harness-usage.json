@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-02-24T12:26:23.218Z",
+  "updatedAt": "2026-02-25T04:24:54.213Z",
   "skills": {},
   "commands": {
     "harness-init": {
@@ -8,8 +8,8 @@
       "lastUsed": "2026-02-24T12:14:31.676Z"
     },
     "harness-update": {
-      "count": 1,
-      "lastUsed": "2026-02-24T12:16:23.454Z"
+      "count": 2,
+      "lastUsed": "2026-02-25T04:20:14.323Z"
     },
     "setup": {
       "count": 1,
@@ -18,6 +18,14 @@
     "sync-status": {
       "count": 1,
       "lastUsed": "2026-02-24T12:23:15.731Z"
+    },
+    "codex-review": {
+      "count": 3,
+      "lastUsed": "2026-02-25T04:24:54.213Z"
+    },
+    "verify": {
+      "count": 1,
+      "lastUsed": "2026-02-25T04:21:25.400Z"
     }
   },
   "agents": {
@@ -28,9 +36,9 @@
   },
   "hooks": {
     "session-init": {
-      "triggered": 2,
+      "triggered": 6,
       "blocked": 0,
-      "lastTriggered": "2026-02-24T12:26:23.218Z"
+      "lastTriggered": "2026-02-25T04:24:39.431Z"
     }
   }
 }

@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, ne } from 'drizzle-orm';
+import { and, eq, exists, gte, inArray, ne, notExists } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -56,10 +56,16 @@ interface UsedMedIndex {
   exactNames: Set<string>;
   names: UsedMedName[];
   tokenIndex: Map<string, number[]>;
+  lengthBuckets: Map<number, number[]>;
 }
 
 interface DrugMatchResult {
   score: number;
+}
+
+interface PreparedDrugName {
+  normalizedDrugName: string;
+  tokenSet: Set<string>;
 }
 
 interface BalancedValueResult {
@@ -88,6 +94,12 @@ function normalizeDrugName(name: string): string {
     .replace(/[0-9]+(?:\.[0-9]+)?(?:mg|ml|μg|mcg|g|％|%)/gi, '')
     .replace(/(錠|カプセル|散|シロップ|注射|外用|内服|点眼|軟膏)$/g, '')
     .trim();
+}
+
+function prepareDrugName(name: string): PreparedDrugName {
+  const normalizedDrugName = normalizeDrugName(name);
+  const tokenSet = normalizedDrugName ? createTokenSet(normalizedDrugName) : new Set<string>();
+  return { normalizedDrugName, tokenSet };
 }
 
 function createTokenSet(normalizedName: string): Set<string> {
@@ -157,6 +169,7 @@ function buildUsedMedIndex(rows: UsedMedRow[]): UsedMedIndex {
   const names: UsedMedName[] = [];
   const exactNames = new Set<string>();
   const tokenIndex = new Map<string, number[]>();
+  const lengthBuckets = new Map<number, number[]>();
 
   for (const row of rows) {
     const normalizedName = normalizeDrugName(row.drugName);
@@ -170,6 +183,13 @@ function buildUsedMedIndex(rows: UsedMedRow[]): UsedMedIndex {
       length: normalizedName.length,
     });
 
+    const lengthBucket = lengthBuckets.get(normalizedName.length);
+    if (lengthBucket) {
+      lengthBucket.push(index);
+    } else {
+      lengthBuckets.set(normalizedName.length, [index]);
+    }
+
     for (const token of tokenSet) {
       if (token.length < 2) continue;
       const list = tokenIndex.get(token);
@@ -181,7 +201,7 @@ function buildUsedMedIndex(rows: UsedMedRow[]): UsedMedIndex {
     }
   }
 
-  return { exactNames, names, tokenIndex };
+  return { exactNames, names, tokenIndex, lengthBuckets };
 }
 
 function collectCandidateIndices(
@@ -204,11 +224,14 @@ function collectCandidateIndices(
   // Ensure near-length alternatives are included when token hit is sparse.
   if (candidateIds.size > 0 && candidateIds.size < 25) {
     const targetLength = normalizedDrugName.length;
-    for (let i = 0; i < index.names.length; i++) {
-      if (Math.abs(index.names[i].length - targetLength) <= 2) {
-        candidateIds.add(i);
+    for (let length = Math.max(0, targetLength - 2); length <= targetLength + 2; length += 1) {
+      const nearLengthCandidates = index.lengthBuckets.get(length);
+      if (!nearLengthCandidates) continue;
+      for (const candidateIndex of nearLengthCandidates) {
+        candidateIds.add(candidateIndex);
         if (candidateIds.size >= 200) break;
       }
+      if (candidateIds.size >= 200) break;
     }
   }
 
@@ -220,13 +243,13 @@ function collectCandidateIndices(
 }
 
 function findBestDrugMatch(
-  drugName: string,
+  drugName: string | PreparedDrugName,
   index: UsedMedIndex,
   cache: Map<string, DrugMatchResult>
 ): DrugMatchResult {
-  const normalizedDrugName = normalizeDrugName(drugName);
+  const preparedDrugName = typeof drugName === 'string' ? prepareDrugName(drugName) : drugName;
+  const { normalizedDrugName, tokenSet } = preparedDrugName;
   if (!normalizedDrugName) return { score: 0 };
-  const tokenSet = createTokenSet(normalizedDrugName);
 
   const cached = cache.get(normalizedDrugName);
   if (cached) return cached;
@@ -239,15 +262,24 @@ function findBestDrugMatch(
 
   let bestScore = 0;
   const candidateIndices = collectCandidateIndices(normalizedDrugName, tokenSet, index);
-  const candidates = candidateIndices
-    ? candidateIndices.map((i) => index.names[i])
-    : index.names;
 
-  for (const name of candidates) {
-    const score = computeNameSimilarity(normalizedDrugName, tokenSet, name);
-    if (score > bestScore) {
-      bestScore = score;
-      if (bestScore >= 0.98) break;
+  if (candidateIndices) {
+    for (const candidateIndex of candidateIndices) {
+      const name = index.names[candidateIndex];
+      if (!name) continue;
+      const score = computeNameSimilarity(normalizedDrugName, tokenSet, name);
+      if (score > bestScore) {
+        bestScore = score;
+        if (bestScore >= 0.98) break;
+      }
+    }
+  } else {
+    for (const name of index.names) {
+      const score = computeNameSimilarity(normalizedDrugName, tokenSet, name);
+      if (score > bestScore) {
+        bestScore = score;
+        if (bestScore >= 0.98) break;
+      }
     }
   }
 
@@ -329,10 +361,20 @@ function balanceValues(itemsA: MatchItem[], itemsB: MatchItem[]): BalancedValueR
   let totalA = itemsA.reduce((sum, i) => sum + i.yakkaValue, 0);
   let totalB = itemsB.reduce((sum, i) => sum + i.yakkaValue, 0);
 
-  const adjustableA = [...itemsA].sort((a, b) => (b.yakkaUnitPrice || 0) - (a.yakkaUnitPrice || 0));
-  const adjustableB = [...itemsB].sort((a, b) => (b.yakkaUnitPrice || 0) - (a.yakkaUnitPrice || 0));
+  if (Math.abs(totalA - totalB) <= VALUE_TOLERANCE) {
+    return {
+      balancedA: itemsA.filter((item) => item.quantity > 0),
+      balancedB: itemsB.filter((item) => item.quantity > 0),
+      totalA: roundTo2(totalA),
+      totalB: roundTo2(totalB),
+    };
+  }
+
+  let balancedA = itemsA;
+  let balancedB = itemsB;
 
   if (totalA > totalB + VALUE_TOLERANCE) {
+    const adjustableA = [...itemsA].sort((a, b) => (b.yakkaUnitPrice || 0) - (a.yakkaUnitPrice || 0));
     let remaining = totalA - totalB;
     for (const item of adjustableA) {
       if (remaining <= VALUE_TOLERANCE) break;
@@ -350,7 +392,9 @@ function balanceValues(itemsA: MatchItem[], itemsB: MatchItem[]): BalancedValueR
       remaining -= actualReduction;
     }
     totalA = adjustableA.reduce((sum, i) => sum + i.yakkaValue, 0);
+    balancedA = adjustableA;
   } else if (totalB > totalA + VALUE_TOLERANCE) {
+    const adjustableB = [...itemsB].sort((a, b) => (b.yakkaUnitPrice || 0) - (a.yakkaUnitPrice || 0));
     let remaining = totalB - totalA;
     for (const item of adjustableB) {
       if (remaining <= VALUE_TOLERANCE) break;
@@ -368,11 +412,12 @@ function balanceValues(itemsA: MatchItem[], itemsB: MatchItem[]): BalancedValueR
       remaining -= actualReduction;
     }
     totalB = adjustableB.reduce((sum, i) => sum + i.yakkaValue, 0);
+    balancedB = adjustableB;
   }
 
   return {
-    balancedA: adjustableA.filter((item) => item.quantity > 0),
-    balancedB: adjustableB.filter((item) => item.quantity > 0),
+    balancedA: balancedA.filter((item) => item.quantity > 0),
+    balancedB: balancedB.filter((item) => item.quantity > 0),
     totalA: roundTo2(totalA),
     totalB: roundTo2(totalB),
   };
@@ -418,13 +463,15 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       .where(and(
         eq(deadStockItems.pharmacyId, pharmacyId),
         eq(deadStockItems.isAvailable, true),
-      )),
+      ))
+      .orderBy(deadStockItems.id),
     db.select({
       pharmacyId: usedMedicationItems.pharmacyId,
       drugName: usedMedicationItems.drugName,
     })
       .from(usedMedicationItems)
-      .where(eq(usedMedicationItems.pharmacyId, pharmacyId)),
+      .where(eq(usedMedicationItems.pharmacyId, pharmacyId))
+      .orderBy(usedMedicationItems.id),
   ]);
 
   if (myDeadStock.length === 0 || myUsedMeds.length === 0) {
@@ -433,37 +480,17 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
 
   const now = new Date();
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const otherPharmacyIdRows = await db.select({ pharmacyId: uploads.pharmacyId })
-    .from(uploads)
-    .where(and(
-      ne(uploads.pharmacyId, pharmacyId),
-      eq(uploads.uploadType, 'used_medication'),
-      gte(uploads.createdAt, firstOfMonth),
-    ));
-
-  const uniquePharmacyIds = [...new Set(otherPharmacyIdRows.map((row) => row.pharmacyId))];
-  if (uniquePharmacyIds.length === 0) return [];
-
-  // Load pharmacy relationships (favorites and blocked)
-  const relationships = await db.select({
+  const favoriteRows = await db.select({
     targetPharmacyId: pharmacyRelationships.targetPharmacyId,
-    relationshipType: pharmacyRelationships.relationshipType,
   })
     .from(pharmacyRelationships)
-    .where(eq(pharmacyRelationships.pharmacyId, pharmacyId));
+    .where(and(
+      eq(pharmacyRelationships.pharmacyId, pharmacyId),
+      eq(pharmacyRelationships.relationshipType, 'favorite'),
+    ));
+  const favoriteIds = new Set(favoriteRows.map((row) => row.targetPharmacyId));
 
-  const blockedIds = new Set(
-    relationships.filter((r) => r.relationshipType === 'blocked').map((r) => r.targetPharmacyId)
-  );
-  const favoriteIds = new Set(
-    relationships.filter((r) => r.relationshipType === 'favorite').map((r) => r.targetPharmacyId)
-  );
-
-  // Exclude blocked pharmacies from candidates
-  const filteredPharmacyIds = uniquePharmacyIds.filter((id) => !blockedIds.has(id));
-  if (filteredPharmacyIds.length === 0) return [];
-
-  const allOtherPharmacies = await db.select({
+  const viablePharmacies = await db.select({
     id: pharmacies.id,
     name: pharmacies.name,
     phone: pharmacies.phone,
@@ -473,13 +500,43 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   })
     .from(pharmacies)
     .where(and(
-      inArray(pharmacies.id, filteredPharmacyIds),
+      ne(pharmacies.id, pharmacyId),
       eq(pharmacies.isActive, true),
+      exists(
+        db.select({ id: uploads.id })
+          .from(uploads)
+          .where(and(
+            eq(uploads.pharmacyId, pharmacies.id),
+            eq(uploads.uploadType, 'used_medication'),
+            gte(uploads.createdAt, firstOfMonth),
+          ))
+      ),
+      notExists(
+        db.select({ id: pharmacyRelationships.id })
+          .from(pharmacyRelationships)
+          .where(and(
+            eq(pharmacyRelationships.pharmacyId, pharmacyId),
+            eq(pharmacyRelationships.targetPharmacyId, pharmacies.id),
+            eq(pharmacyRelationships.relationshipType, 'blocked'),
+          ))
+      ),
+      exists(
+        db.select({ id: deadStockItems.id })
+          .from(deadStockItems)
+          .where(and(
+            eq(deadStockItems.pharmacyId, pharmacies.id),
+            eq(deadStockItems.isAvailable, true),
+          ))
+      ),
+      exists(
+        db.select({ id: usedMedicationItems.id })
+          .from(usedMedicationItems)
+          .where(eq(usedMedicationItems.pharmacyId, pharmacies.id))
+      ),
     ));
 
-  if (allOtherPharmacies.length === 0) return [];
-
-  const activePharmacyIds = allOtherPharmacies.map((pharmacy) => pharmacy.id);
+  if (viablePharmacies.length === 0) return [];
+  const viablePharmacyIds = viablePharmacies.map((pharmacy) => pharmacy.id);
 
   const [allOtherDeadStock, allOtherUsedMeds] = await Promise.all([
     db.select({
@@ -493,15 +550,17 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     })
       .from(deadStockItems)
       .where(and(
-        inArray(deadStockItems.pharmacyId, activePharmacyIds),
+        inArray(deadStockItems.pharmacyId, viablePharmacyIds),
         eq(deadStockItems.isAvailable, true),
-      )),
+      ))
+      .orderBy(deadStockItems.id),
     db.select({
       pharmacyId: usedMedicationItems.pharmacyId,
       drugName: usedMedicationItems.drugName,
     })
       .from(usedMedicationItems)
-      .where(inArray(usedMedicationItems.pharmacyId, activePharmacyIds)),
+      .where(inArray(usedMedicationItems.pharmacyId, viablePharmacyIds))
+      .orderBy(usedMedicationItems.id),
   ]);
 
   // Fetch business hours for all candidate pharmacies
@@ -515,7 +574,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       is24Hours: pharmacyBusinessHours.is24Hours,
     })
       .from(pharmacyBusinessHours)
-      .where(inArray(pharmacyBusinessHours.pharmacyId, activePharmacyIds)),
+      .where(inArray(pharmacyBusinessHours.pharmacyId, viablePharmacyIds)),
     db.select({
       pharmacyId: pharmacySpecialHours.pharmacyId,
       id: pharmacySpecialHours.id,
@@ -530,7 +589,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       updatedAt: pharmacySpecialHours.updatedAt,
     })
       .from(pharmacySpecialHours)
-      .where(inArray(pharmacySpecialHours.pharmacyId, activePharmacyIds)),
+      .where(inArray(pharmacySpecialHours.pharmacyId, viablePharmacyIds)),
   ]);
 
   const businessHoursByPharmacy = new Map<number, typeof allBusinessHours>();
@@ -549,8 +608,16 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(allOtherDeadStock);
   const usedMedsByPharmacy = groupByPharmacy<UsedMedRow>(allOtherUsedMeds);
   const myUsedMedIndex = buildUsedMedIndex(myUsedMeds);
+  const preparedDrugNameCache = new Map<string, PreparedDrugName>();
+  const preparedMyDeadStock = myDeadStock.map((stock) => {
+    const cached = preparedDrugNameCache.get(stock.drugName);
+    if (cached) return { stock, preparedDrugName: cached };
+    const preparedDrugName = prepareDrugName(stock.drugName);
+    preparedDrugNameCache.set(stock.drugName, preparedDrugName);
+    return { stock, preparedDrugName };
+  });
 
-  const pharmaciesWithDistance = allOtherPharmacies
+  const pharmaciesWithDistance = viablePharmacies
     .map((pharmacy) => ({
       ...pharmacy,
       distance: (
@@ -562,7 +629,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
         ? haversineDistance(currentPharmacy.latitude, currentPharmacy.longitude, pharmacy.latitude, pharmacy.longitude)
         : 9999,
     }))
-    .sort((a, b) => a.distance - b.distance);
+    .sort((a, b) => a.distance - b.distance || a.id - b.id);
 
   const candidates: MatchCandidate[] = [];
 
@@ -576,11 +643,11 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     const theirToMyCache = new Map<string, DrugMatchResult>();
 
     const itemsFromA: MatchItem[] = [];
-    for (const stock of myDeadStock) {
+    for (const { stock, preparedDrugName } of preparedMyDeadStock) {
       const price = Number(stock.yakkaUnitPrice);
       if (!price || price <= 0) continue;
 
-      const match = findBestDrugMatch(stock.drugName, theirUsedMedIndex, myToTheirCache);
+      const match = findBestDrugMatch(preparedDrugName, theirUsedMedIndex, myToTheirCache);
       if (match.score < NAME_MATCH_THRESHOLD) continue;
 
       itemsFromA.push({
@@ -600,7 +667,12 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       const priceB = Number(stock.yakkaUnitPrice);
       if (!priceB || priceB <= 0) continue;
 
-      const match = findBestDrugMatch(stock.drugName, myUsedMedIndex, theirToMyCache);
+      const cachedPrepared = preparedDrugNameCache.get(stock.drugName);
+      const preparedDrugName = cachedPrepared ?? prepareDrugName(stock.drugName);
+      if (!cachedPrepared) {
+        preparedDrugNameCache.set(stock.drugName, preparedDrugName);
+      }
+      const match = findBestDrugMatch(preparedDrugName, myUsedMedIndex, theirToMyCache);
       if (match.score < NAME_MATCH_THRESHOLD) continue;
 
       itemsFromB.push({
@@ -653,6 +725,10 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   }
 
   return candidates
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.distance - b.distance)
+    .sort((a, b) => (
+      (b.score ?? 0) - (a.score ?? 0) ||
+      a.distance - b.distance ||
+      a.pharmacyId - b.pharmacyId
+    ))
     .slice(0, MAX_CANDIDATES);
 }

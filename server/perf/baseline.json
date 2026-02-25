@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "generatedAt": "2026-02-25T08:33:15.227Z",
+  "environment": {
+    "node": "v24.13.1",
+    "platform": "darwin"
+  },
+  "warmupRuns": 8,
+  "measuredRuns": 40,
+  "tolerances": {
+    "relative": 0.35,
+    "absoluteMs": {
+      "p50": 4,
+      "p95": 12
+    }
+  },
+  "metrics": {
+    "post_api_exchange_find": {
+      "p50Ms": 0.268,
+      "p95Ms": 0.404,
+      "samples": 40
+    },
+    "post_api_upload_preview": {
+      "p50Ms": 0.329,
+      "p95Ms": 0.44,
+      "samples": 40
+    },
+    "post_api_upload_confirm": {
+      "p50Ms": 0.312,
+      "p95Ms": 0.363,
+      "samples": 40
+    },
+    "get_api_inventory_browse": {
+      "p50Ms": 0.309,
+      "p95Ms": 0.342,
+      "samples": 40
+    },
+    "get_api_pharmacies_list": {
+      "p50Ms": 0.278,
+      "p95Ms": 0.346,
+      "samples": 40
+    },
+    "scheduler_import_failure_alert_check": {
+      "p50Ms": 0.003,
+      "p95Ms": 0.006,
+      "samples": 40
+    }
+  }
+}

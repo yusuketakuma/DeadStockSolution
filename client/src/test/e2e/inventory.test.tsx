@@ -71,7 +71,7 @@ describe('DeadStockListPage', () => {
     renderWithProviders(<DeadStockListPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('不動在庫一覧 (2件)')).toBeInTheDocument();
+      expect(screen.getByText('デッドストックリスト (2件)')).toBeInTheDocument();
     });
 
     expect(screen.getByText('アムロジピン錠5mg')).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('DeadStockListPage', () => {
     renderWithProviders(<DeadStockListPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/不動在庫データがありません/)).toBeInTheDocument();
+      expect(screen.getByText(/デッドストックデータがありません/)).toBeInTheDocument();
     });
   });
 
@@ -181,6 +181,7 @@ describe('DeadStockListPage', () => {
     });
 
     await user.click(screen.getByRole('button', { name: '削除' }));
+    await user.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
       const deleteCall = fetchMock.mock.calls.find(

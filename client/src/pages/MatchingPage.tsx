@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Card, Button, Alert, Table, Badge, Spinner, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
 import RequireUpload from '../components/RequireUpload';
-import DisclaimerBanner from '../components/DisclaimerBanner';
 import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
+import ConfirmActionModal from '../components/ConfirmActionModal';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -41,10 +41,12 @@ function formatPercent(value?: number): string {
 export default function MatchingPage() {
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
   const [loading, setLoading] = useState(false);
+  const [proposalSubmitting, setProposalSubmitting] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [candidateForProposal, setCandidateForProposal] = useState<MatchCandidate | null>(null);
 
   const handleSearch = async () => {
     setLoading(true);
@@ -61,21 +63,24 @@ export default function MatchingPage() {
     }
   };
 
-  const handleSendProposal = async (candidate: MatchCandidate) => {
-    if (!confirm(`${candidate.pharmacyName}と仮マッチングしますか？\n双方の承認後に確定となります。`)) return;
+  const handleSendProposal = async () => {
+    if (!candidateForProposal) return;
+    setProposalSubmitting(true);
     try {
-      await api.post('/exchange/proposals', { candidate });
-      setMessage(`${candidate.pharmacyName}との仮マッチングを開始しました。相手薬局の承認をお待ちください。`);
-      setCandidates((prev) => prev.filter((c) => c.pharmacyId !== candidate.pharmacyId));
+      await api.post('/exchange/proposals', { candidate: candidateForProposal });
+      setMessage(`${candidateForProposal.pharmacyName}との仮マッチングを開始しました。相手薬局の承認をお待ちください。`);
+      setCandidates((prev) => prev.filter((c) => c.pharmacyId !== candidateForProposal.pharmacyId));
+      setCandidateForProposal(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '仮マッチングの送信に失敗しました');
+    } finally {
+      setProposalSubmitting(false);
     }
   };
 
   return (
     <RequireUpload>
       <div>
-        <DisclaimerBanner />
         <h4 className="page-title mb-3">マッチング</h4>
         {error && <Alert variant="danger">{error}</Alert>}
         {message && <Alert variant="success">{message}</Alert>}
@@ -83,7 +88,7 @@ export default function MatchingPage() {
         <Card className="mb-3">
           <Card.Body>
             <p className="mb-2">
-              不動在庫と使用薬剤の一致度・距離・金額バランスをもとに、交換候補を優先順位付きで表示します。
+              デッドストックリストと医薬品使用量リストの一致度・距離・金額バランスをもとに、交換候補を優先順位付きで表示します。
             </p>
             <div className="small text-muted mb-3">
               条件: 双方1万円以上 / 差額10円以内
@@ -102,31 +107,35 @@ export default function MatchingPage() {
 
         {candidates.map((candidate, idx) => (
           <Card key={candidate.pharmacyId} className="mb-3">
-            <Card.Header
-              className="d-flex justify-content-between align-items-center mobile-card-header"
-              style={{ cursor: 'pointer' }}
-              onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
-            >
-              <div>
-                <strong>{candidate.pharmacyName}</strong>
-                {candidate.isFavorite && <Badge bg="warning" text="dark" className="ms-2">お気に入り</Badge>}
-                <div className="small text-muted">
-                  TEL: {candidate.pharmacyPhone || '-'} / FAX: {candidate.pharmacyFax || '-'}
-                </div>
-              </div>
-              <div className="d-flex flex-wrap gap-2">
-                <BusinessStatusBadge status={candidate.businessStatus} showHours />
-                <Badge bg="info">{candidate.distance}km</Badge>
-                <Badge bg="secondary">一致度 {formatPercent(candidate.matchRate)}</Badge>
-                <Badge bg="primary">総合 {candidate.score?.toFixed(1) ?? '-'}</Badge>
-                <Badge bg={candidate.valueDifference <= 10 ? 'success' : 'warning'}>
-                  差額 {candidate.valueDifference}円
-                </Badge>
-              </div>
+            <Card.Header className="p-0">
+              <button
+                type="button"
+                className="match-candidate-toggle w-100 d-flex justify-content-between align-items-center mobile-card-header"
+                onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
+                aria-expanded={expandedIdx === idx}
+                aria-controls={`candidate-panel-${candidate.pharmacyId}`}
+              >
+                <span>
+                  <strong>{candidate.pharmacyName}</strong>
+                  {candidate.isFavorite && <Badge bg="warning" text="dark" className="ms-2">お気に入り</Badge>}
+                  <span className="small text-muted d-block">
+                    TEL: {candidate.pharmacyPhone || '-'} / FAX: {candidate.pharmacyFax || '-'}
+                  </span>
+                </span>
+                <span className="d-flex flex-wrap gap-2">
+                  <BusinessStatusBadge status={candidate.businessStatus} showHours />
+                  <Badge bg="info">{candidate.distance}km</Badge>
+                  <Badge bg="secondary">一致度 {formatPercent(candidate.matchRate)}</Badge>
+                  <Badge bg="primary">総合 {candidate.score?.toFixed(1) ?? '-'}</Badge>
+                  <Badge bg={candidate.valueDifference <= 10 ? 'success' : 'warning'}>
+                    差額 {candidate.valueDifference}円
+                  </Badge>
+                </span>
+              </button>
             </Card.Header>
 
             {expandedIdx === idx && (
-              <Card.Body>
+              <Card.Body id={`candidate-panel-${candidate.pharmacyId}`}>
                 {candidate.businessStatus?.closingSoon && (
                   <Alert variant="warning" className="py-2 mb-3">
                     この薬局はまもなく営業終了です（本日 {candidate.businessStatus.todayHours?.closeTime} まで）
@@ -223,8 +232,8 @@ export default function MatchingPage() {
                           <tr>
                             <td>あなたの薬局</td>
                             <td>[ ] 同意  [ ] 条件付き同意  [ ] 不同意</td>
-                            <td style={{ minWidth: '180px' }}></td>
-                            <td style={{ minWidth: '130px' }}></td>
+                            <td className="agreement-sign-cell"></td>
+                            <td className="agreement-date-cell"></td>
                           </tr>
                           <tr>
                             <td>{candidate.pharmacyName}</td>
@@ -239,7 +248,7 @@ export default function MatchingPage() {
                 </Card>
 
                 <div className="d-flex gap-2 mobile-stack">
-                  <Button variant="success" onClick={() => handleSendProposal(candidate)}>
+                  <Button variant="success" onClick={() => setCandidateForProposal(candidate)}>
                     仮マッチングする
                   </Button>
                 </div>
@@ -247,6 +256,26 @@ export default function MatchingPage() {
             )}
           </Card>
         ))}
+
+        <ConfirmActionModal
+          show={candidateForProposal !== null}
+          title="仮マッチングの開始"
+          body={candidateForProposal ? (
+            <>
+              <div className="mb-2">以下の薬局との仮マッチングを開始します。</div>
+              <div className="small text-muted">
+                対象: {candidateForProposal.pharmacyName}
+                <br />
+                双方の承認後に確定します。
+              </div>
+            </>
+          ) : null}
+          confirmLabel="仮マッチングを開始"
+          confirmVariant="success"
+          onCancel={() => setCandidateForProposal(null)}
+          onConfirm={handleSendProposal}
+          pending={proposalSubmitting}
+        />
       </div>
     </RequireUpload>
   );

@@ -26,7 +26,9 @@ export interface ObservabilitySnapshot {
 }
 
 const MAX_METRICS = 20000;
-const metrics: RequestMetric[] = [];
+const metrics: Array<RequestMetric | undefined> = new Array(MAX_METRICS);
+let metricsCount = 0;
+let nextWriteIndex = 0;
 
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
@@ -39,36 +41,50 @@ function round(value: number): number {
 }
 
 export function recordRequestMetric(metric: RequestMetric): void {
-  metrics.push(metric);
-  if (metrics.length > MAX_METRICS) {
-    metrics.splice(0, metrics.length - MAX_METRICS);
+  metrics[nextWriteIndex] = metric;
+  nextWriteIndex = (nextWriteIndex + 1) % MAX_METRICS;
+  if (metricsCount < MAX_METRICS) {
+    metricsCount += 1;
   }
 }
 
 export function getObservabilitySnapshot(windowMinutesRaw: number = 60): ObservabilitySnapshot {
   const windowMinutes = Math.max(5, Math.min(1440, Math.floor(windowMinutesRaw)));
   const cutoff = Date.now() - windowMinutes * 60 * 1000;
-  const target = metrics.filter((metric) => metric.timestamp >= cutoff);
+  let totalRequests = 0;
+  let errors5xx = 0;
+  let authFailures401 = 0;
+  let forbidden403 = 0;
+  const durations: number[] = [];
+  const pathMap = new Map<string, number[]>();
 
-  const totalRequests = target.length;
-  const errors5xx = target.filter((metric) => metric.status >= 500).length;
-  const authFailures401 = target.filter((metric) => metric.status === 401).length;
-  const forbidden403 = target.filter((metric) => metric.status === 403).length;
+  const startIndex = metricsCount === MAX_METRICS ? nextWriteIndex : 0;
+  for (let offset = 0; offset < metricsCount; offset += 1) {
+    const idx = (startIndex + offset) % MAX_METRICS;
+    const metric = metrics[idx];
+    if (!metric || metric.timestamp < cutoff) continue;
 
-  const durations = target.map((metric) => metric.durationMs).sort((a, b) => a - b);
+    totalRequests += 1;
+    if (metric.status >= 500) errors5xx += 1;
+    if (metric.status === 401) authFailures401 += 1;
+    if (metric.status === 403) forbidden403 += 1;
+    durations.push(metric.durationMs);
+
+    const key = `${metric.method} ${metric.path}`;
+    const list = pathMap.get(key);
+    if (list) {
+      list.push(metric.durationMs);
+    } else {
+      pathMap.set(key, [metric.durationMs]);
+    }
+  }
+
+  durations.sort((a, b) => a - b);
   const avgLatencyMs = totalRequests === 0
     ? 0
     : round(durations.reduce((sum, value) => sum + value, 0) / totalRequests);
   const p95LatencyMs = round(percentile(durations, 95));
   const errorRate5xx = totalRequests === 0 ? 0 : round((errors5xx / totalRequests) * 100);
-
-  const pathMap = new Map<string, number[]>();
-  for (const metric of target) {
-    const key = `${metric.method} ${metric.path}`;
-    const list = pathMap.get(key) ?? [];
-    list.push(metric.durationMs);
-    pathMap.set(key, list);
-  }
 
   const topSlowPaths = [...pathMap.entries()]
     .map(([path, durationsMs]) => {
@@ -98,5 +114,7 @@ export function getObservabilitySnapshot(windowMinutesRaw: number = 60): Observa
 }
 
 export function resetObservabilityMetrics(): void {
-  metrics.length = 0;
+  metrics.fill(undefined);
+  metricsCount = 0;
+  nextWriteIndex = 0;
 }

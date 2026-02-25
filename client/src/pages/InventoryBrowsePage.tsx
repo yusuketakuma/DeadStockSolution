@@ -50,7 +50,7 @@ export default function InventoryBrowsePage() {
     <div>
       <h4 className="page-title mb-3">全薬局の在庫参照</h4>
 
-      <div className="mb-3 d-flex gap-2">
+      <div className="mb-3 d-flex gap-2 mobile-stack">
         <div className="flex-grow-1">
           <SearchInput
             placeholder="薬品名で検索（ひらがな・カタカナ対応）..."

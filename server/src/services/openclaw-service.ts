@@ -3,6 +3,9 @@ import crypto from 'crypto';
 export type OpenClawStatus = 'pending_handoff' | 'in_dialogue' | 'implementing' | 'completed';
 type OpenClawBaseUrlError = 'missing' | 'invalid' | 'insecure';
 const FIXED_IMPLEMENTATION_BRANCH = 'review';
+const DEFAULT_WEBHOOK_MAX_SKEW_SECONDS = 300;
+const WEBHOOK_SIGNATURE_PREFIX = 'sha256=';
+const webhookReplayCache = new Map<string, number>();
 
 const OPENCLAW_STATUS_ORDER: Record<OpenClawStatus, number> = {
   pending_handoff: 0,
@@ -24,6 +27,7 @@ export interface OpenClawHandoffInput {
   requestId: number;
   pharmacyId: number;
   requestText: string;
+  context?: Record<string, unknown>;
 }
 
 export interface OpenClawHandoffResult {
@@ -98,6 +102,43 @@ function readConfig(): OpenClawConfig {
   };
 }
 
+function resolveWebhookMaxSkewSeconds(): number {
+  const rawValue = Number(process.env.OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS ?? DEFAULT_WEBHOOK_MAX_SKEW_SECONDS);
+  if (!Number.isFinite(rawValue) || rawValue <= 0 || rawValue > 3600) {
+    return DEFAULT_WEBHOOK_MAX_SKEW_SECONDS;
+  }
+  return Math.floor(rawValue);
+}
+
+function normalizeSignature(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith(WEBHOOK_SIGNATURE_PREFIX)) {
+    return trimmed.slice(WEBHOOK_SIGNATURE_PREFIX.length).toLowerCase();
+  }
+  return trimmed.toLowerCase();
+}
+
+function pruneWebhookReplayCache(nowMs: number): void {
+  for (const [key, expiresAtMs] of webhookReplayCache.entries()) {
+    if (expiresAtMs <= nowMs) {
+      webhookReplayCache.delete(key);
+    }
+  }
+}
+
+function isReplayRequest(signature: string, timestamp: string, nowMs: number): boolean {
+  pruneWebhookReplayCache(nowMs);
+  const replayKey = `${timestamp}:${signature}`;
+  const existing = webhookReplayCache.get(replayKey);
+  if (existing && existing > nowMs) {
+    return true;
+  }
+
+  const ttlMs = resolveWebhookMaxSkewSeconds() * 1000;
+  webhookReplayCache.set(replayKey, nowMs + ttlMs);
+  return false;
+}
+
 function normalizeStatus(value: unknown): OpenClawStatus {
   if (value === 'in_dialogue' || value === 'implementing' || value === 'completed') {
     return value;
@@ -129,15 +170,63 @@ export function isOpenClawWebhookConfigured(): boolean {
   return Boolean(readConfig().webhookSecret);
 }
 
-export function verifyOpenClawWebhookSecret(receivedSecret: string | undefined): boolean {
-  const expected = readConfig().webhookSecret;
-  if (!expected) return false;
-  if (!receivedSecret) return false;
+export function verifyOpenClawWebhookSignature({
+  receivedSignature,
+  receivedTimestamp,
+  rawBody,
+  nowMs = Date.now(),
+}: {
+  receivedSignature: string | undefined;
+  receivedTimestamp: string | undefined;
+  rawBody: string | undefined;
+  nowMs?: number;
+}): boolean {
+  const expectedSecret = readConfig().webhookSecret;
+  if (!expectedSecret || !receivedSignature || !receivedTimestamp || typeof rawBody !== 'string') {
+    return false;
+  }
 
-  const expectedBuf = Buffer.from(expected, 'utf8');
-  const receivedBuf = Buffer.from(receivedSecret.trim(), 'utf8');
-  if (expectedBuf.length !== receivedBuf.length) return false;
-  return crypto.timingSafeEqual(expectedBuf, receivedBuf);
+  const timestampText = receivedTimestamp.trim();
+  const timestampSeconds = Number(timestampText);
+  if (!Number.isInteger(timestampSeconds) || timestampSeconds <= 0) {
+    return false;
+  }
+
+  const maxSkewSeconds = resolveWebhookMaxSkewSeconds();
+  const skewSeconds = Math.abs(Math.floor(nowMs / 1000) - timestampSeconds);
+  if (skewSeconds > maxSkewSeconds) {
+    return false;
+  }
+
+  const signature = normalizeSignature(receivedSignature);
+  if (!/^[a-f0-9]{64}$/.test(signature)) {
+    return false;
+  }
+
+  const signedPayload = `${timestampText}.${rawBody}`;
+  const expectedDigest = crypto.createHmac('sha256', expectedSecret)
+    .update(signedPayload)
+    .digest('hex')
+    .toLowerCase();
+
+  const expectedBuffer = Buffer.from(expectedDigest, 'utf8');
+  const receivedBuffer = Buffer.from(signature, 'utf8');
+  if (expectedBuffer.length !== receivedBuffer.length) {
+    return false;
+  }
+  if (!crypto.timingSafeEqual(expectedBuffer, receivedBuffer)) {
+    return false;
+  }
+
+  if (isReplayRequest(signature, timestampText, nowMs)) {
+    return false;
+  }
+
+  return true;
+}
+
+export function resetOpenClawWebhookReplayCacheForTests(): void {
+  webhookReplayCache.clear();
 }
 
 export function isImplementationBranchAllowed(branch: string | null | undefined): boolean {
@@ -166,21 +255,27 @@ export async function handoffToOpenClaw(input: OpenClawHandoffInput): Promise<Op
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const requestPayload: Record<string, unknown> = {
+      agentId: config.agentId,
+      requestId: input.requestId,
+      pharmacyId: input.pharmacyId,
+      requestText: input.requestText,
+      constraints: {
+        implementationBranch: config.implementationBranch,
+      },
+    };
+
+    if (input.context && Object.keys(input.context).length > 0) {
+      requestPayload.context = input.context;
+    }
+
     const response = await fetch(`${config.baseUrl}/v1/handoffs`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        agentId: config.agentId,
-        requestId: input.requestId,
-        pharmacyId: input.pharmacyId,
-        requestText: input.requestText,
-        constraints: {
-          implementationBranch: config.implementationBranch,
-        },
-      }),
+      body: JSON.stringify(requestPayload),
       signal: controller.signal,
     });
 

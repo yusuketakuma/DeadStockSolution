@@ -63,9 +63,9 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('不動在庫')).toBeInTheDocument();
+      expect(screen.getByText('デッドストックリスト')).toBeInTheDocument();
     });
-    expect(screen.getByText('使用薬剤')).toBeInTheDocument();
+    expect(screen.getByText('医薬品使用量リスト')).toBeInTheDocument();
     expect(screen.getByText('マッチング')).toBeInTheDocument();
   });
 
@@ -123,7 +123,7 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('次にやること')).toBeInTheDocument();
     });
-    expect(screen.getByText('使用薬剤をアップロード')).toBeInTheDocument();
+    expect(screen.getByText('医薬品使用量リストをアップロード')).toBeInTheDocument();
     expect(screen.getByText('アップロードへ進む')).toBeInTheDocument();
   });
 
@@ -295,7 +295,7 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('不動在庫の交換先を検索できます')).toBeInTheDocument();
+      expect(screen.getByText('デッドストックリストの交換先を検索できます')).toBeInTheDocument();
     });
   });
 });
@@ -405,8 +405,8 @@ describe('Layout with Sidebar navigation', () => {
       expect(screen.getByText('ダッシュボード')).toBeInTheDocument();
     });
     expect(screen.getAllByText('アップロード').length).toBeGreaterThan(0);
-    expect(screen.getByText('不動在庫')).toBeInTheDocument();
-    expect(screen.getByText('使用薬剤')).toBeInTheDocument();
+    expect(screen.getByText('デッドストックリスト')).toBeInTheDocument();
+    expect(screen.getByText('医薬品使用量リスト')).toBeInTheDocument();
     expect(screen.getByText('在庫参照')).toBeInTheDocument();
     expect(screen.getAllByText('マッチング').length).toBeGreaterThan(0);
     expect(screen.getByText('マッチング一覧')).toBeInTheDocument();

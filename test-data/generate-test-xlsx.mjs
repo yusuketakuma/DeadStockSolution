@@ -5,11 +5,11 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // =============================================
-// 不動在庫テストファイル
+// デッドストックリストテストファイル
 // =============================================
 async function generateDeadStock() {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('不動在庫');
+  const ws = wb.addWorksheet('デッドストックリスト');
 
   // ヘッダー行
   ws.addRow(['YJコード', 'GS1コード', '薬剤名', '数量', '包装単位', '薬価（円）', '使用期限', 'ロット番号']);
@@ -55,11 +55,11 @@ async function generateDeadStock() {
 }
 
 // =============================================
-// 使用薬剤テストファイル
+// 医薬品使用量リストテストファイル
 // =============================================
 async function generateUsedMedication() {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('使用薬剤');
+  const ws = wb.addWorksheet('医薬品使用量リスト');
 
   // ヘッダー行
   ws.addRow(['YJコード', 'GS1コード', '薬剤名', '数量', '包装単位', '使用期限', '薬価（円）', '調剤回数', '調剤数量']);
@@ -101,14 +101,14 @@ async function generateUsedMedication() {
 }
 
 // =============================================
-// 見出し行が2行目にあるケース（不動在庫）
+// 見出し行が2行目にあるケース（デッドストックリスト）
 // =============================================
 async function generateDeadStockWithMultiHeader() {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('不動在庫');
+  const ws = wb.addWorksheet('デッドストックリスト');
 
   // 1行目: タイトル行（ヘッダーではない）
-  ws.addRow(['不動在庫リスト', '', '', '', '', '', `出力日: ${new Date().toLocaleDateString('ja-JP')}`]);
+  ws.addRow(['デッドストックリスト', '', '', '', '', '', `出力日: ${new Date().toLocaleDateString('ja-JP')}`]);
   // 2行目: 実際のヘッダー
   ws.addRow(['YJコード', 'GS1コード', '薬剤名', '数量', '包装単位', '薬価（円）', '使用期限', 'ロット番号']);
   // データ行

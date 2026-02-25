@@ -12,23 +12,16 @@ import {
 import { parseExcelBuffer } from './upload-service';
 import { logger } from './logger';
 import { validateExternalHttpsUrl } from '../utils/network-utils';
-
-// ── 設定 ──────────────────────────────────────────
-
-function parseIntervalHours(raw: string | undefined, fallback: number): number {
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 24 * 30) {
-    return fallback;
-  }
-  return parsed;
-}
+import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
 
 // チェック間隔: デフォルト24時間（環境変数で変更可能）
-const CHECK_INTERVAL_HOURS = parseIntervalHours(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS, 24);
+const CHECK_INTERVAL_HOURS = parseBoundedInt(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS, 24, 1, 24 * 30);
 const CHECK_INTERVAL_MS = CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
 
 // 自動同期の有効/無効
 const AUTO_SYNC_ENABLED = process.env.DRUG_MASTER_AUTO_SYNC === 'true';
+const SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'SCHEDULER_OPTIMIZED_LOOP_ENABLED';
+const DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED';
 
 // HTTP タイムアウト
 const FETCH_TIMEOUT_MS = 120_000; // 2分（大きなファイルのため）
@@ -40,9 +33,14 @@ const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024; // 100MB
 
 let lastKnownETag: string | null = null;
 let lastKnownLastModified: string | null = null;
-let schedulerTimer: ReturnType<typeof setInterval> | null = null;
-let initialDelayTimer: ReturnType<typeof setTimeout> | null = null;
+let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
+let schedulerInterval: ReturnType<typeof setInterval> | null = null;
+let schedulerActive = false;
 let isRunning = false;
+
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 function getConfiguredSourceUrl(): string {
   return process.env.DRUG_MASTER_SOURCE_URL?.trim() || '';
@@ -55,6 +53,46 @@ function summarizeSourceUrl(sourceUrl: string): string {
   } catch {
     return sourceUrl.slice(0, 64);
   }
+}
+
+function updateKnownHeaders(headers: { etag: string | null; lastModified: string | null }): void {
+  if (headers.etag) lastKnownETag = headers.etag;
+  if (headers.lastModified) lastKnownLastModified = headers.lastModified;
+}
+
+function isOptimizedLoopEnabledForDrugMasterScheduler(): boolean {
+  const localFlag = process.env[DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV];
+  if (typeof localFlag === 'string' && localFlag.trim().length > 0) {
+    return parseBooleanFlag(localFlag, true);
+  }
+  return parseBooleanFlag(process.env[SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV], true);
+}
+
+async function parseDownloadedRows(
+  sourceUrl: string,
+  contentType: string | null,
+  buffer: Buffer,
+) {
+  const isCsv = contentType?.includes('csv')
+    || contentType?.includes('text/plain')
+    || sourceUrl.endsWith('.csv');
+  if (isCsv) {
+    const csvContent = decodeCsvBuffer(buffer);
+    return parseMhlwCsvData(csvContent);
+  }
+
+  const excelRows = await parseExcelBuffer(buffer);
+  return parseMhlwExcelData(excelRows);
+}
+
+function runAutoSyncSafely(mode: 'initial' | 'scheduled' | 'manual', sourceUrl?: string): Promise<void> {
+  const task = sourceUrl ? runAutoSyncWithSource(sourceUrl) : runAutoSync();
+  return task.catch((err) => {
+    const suffix = mode === 'manual' ? 'manual trigger' : `${mode} run`;
+    logger.error(`Drug master auto-sync: ${suffix} failed`, {
+      error: formatError(err),
+    });
+  });
 }
 
 // ── サイト更新検知 ──────────────────────────────────
@@ -204,9 +242,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
 
     if (!updateCheck.hasUpdate) {
       logger.info('Drug master auto-sync: no updates detected');
-      // ヘッダー情報を更新
-      if (updateCheck.etag) lastKnownETag = updateCheck.etag;
-      if (updateCheck.lastModified) lastKnownLastModified = updateCheck.lastModified;
+      updateKnownHeaders(updateCheck);
       return;
     }
 
@@ -220,19 +256,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
     const revisionDate = new Date().toISOString().slice(0, 10);
 
     try {
-      // 4. パース
-      let parsedRows;
-      const isCsv = contentType?.includes('csv') ||
-        contentType?.includes('text/plain') ||
-        sourceUrl.endsWith('.csv');
-
-      if (isCsv) {
-        const csvContent = decodeCsvBuffer(buffer);
-        parsedRows = parseMhlwCsvData(csvContent);
-      } else {
-        const excelRows = await parseExcelBuffer(buffer);
-        parsedRows = parseMhlwExcelData(excelRows);
-      }
+      const parsedRows = await parseDownloadedRows(sourceUrl, contentType, buffer);
 
       if (parsedRows.length === 0) {
         await completeSyncLog(syncLog.id, 'failed',
@@ -249,8 +273,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
       await completeSyncLog(syncLog.id, 'success', result);
 
       // 6. ヘッダー情報を更新（成功時のみ）
-      if (updateCheck.etag) lastKnownETag = updateCheck.etag;
-      if (updateCheck.lastModified) lastKnownLastModified = updateCheck.lastModified;
+      updateKnownHeaders(updateCheck);
 
       logger.info('Drug master auto-sync: completed successfully', {
         processed: result.itemsProcessed,
@@ -259,7 +282,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
         deleted: result.itemsDeleted,
       });
     } catch (syncErr) {
-      const errorMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+      const errorMsg = formatError(syncErr);
       await completeSyncLog(syncLog.id, 'failed',
         { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 },
         errorMsg);
@@ -267,7 +290,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
     }
   } catch (err) {
     logger.error('Drug master auto-sync: check/download failed', {
-      error: err instanceof Error ? err.message : String(err),
+      error: formatError(err),
     });
   } finally {
     isRunning = false;
@@ -275,6 +298,77 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
 }
 
 // ── スケジューラ制御 ─────────────────────────────────
+
+function scheduleNextDrugMasterRun(delayMs: number, mode: 'initial' | 'scheduled'): void {
+  if (!schedulerActive) {
+    return;
+  }
+
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+  }
+
+  if (schedulerTimer) {
+    clearTimeout(schedulerTimer);
+    schedulerTimer = null;
+  }
+
+  schedulerTimer = setTimeout(() => {
+    schedulerTimer = null;
+    void runAutoSyncSafely(mode).finally(() => {
+      if (!schedulerActive) {
+        return;
+      }
+      scheduleNextDrugMasterRun(CHECK_INTERVAL_MS, 'scheduled');
+    });
+  }, delayMs);
+
+  schedulerTimer.unref();
+}
+
+function startLegacyDrugMasterIntervalScheduler(): void {
+  if (!schedulerActive) {
+    return;
+  }
+
+  if (schedulerTimer) {
+    clearTimeout(schedulerTimer);
+    schedulerTimer = null;
+  }
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+  }
+
+  schedulerTimer = setTimeout(() => {
+    schedulerTimer = null;
+    if (!schedulerActive) {
+      return;
+    }
+    void runAutoSyncSafely('initial');
+  }, Math.min(60_000, CHECK_INTERVAL_MS));
+  schedulerTimer.unref();
+
+  schedulerInterval = setInterval(() => {
+    if (!schedulerActive) {
+      return;
+    }
+    void runAutoSyncSafely('scheduled');
+  }, CHECK_INTERVAL_MS);
+  schedulerInterval.unref();
+}
+
+function clearDrugMasterSchedulerHandles(): void {
+  if (schedulerTimer) {
+    clearTimeout(schedulerTimer);
+    schedulerTimer = null;
+  }
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+  }
+}
 
 /**
  * 自動同期スケジューラを開始する
@@ -292,51 +386,34 @@ export function startDrugMasterScheduler(): void {
     return;
   }
 
-  if (schedulerTimer) {
+  if (schedulerActive) {
     logger.warn('Drug master auto-sync: scheduler already running');
     return;
   }
 
+  const optimizedLoopEnabled = isOptimizedLoopEnabledForDrugMasterScheduler();
   logger.info('Drug master auto-sync: starting scheduler', {
     intervalHours: CHECK_INTERVAL_HOURS,
     source: summarizeSourceUrl(sourceUrl),
+    loopMode: optimizedLoopEnabled ? 'timeout-chain' : 'legacy-interval',
   });
 
-  // 起動後5分遅延で初回チェック（サーバー起動直後は避ける）
-  const initialDelay = 5 * 60 * 1000;
-  initialDelayTimer = setTimeout(() => {
-    initialDelayTimer = null;
-    runAutoSync().catch((err) => {
-      logger.error('Drug master auto-sync: initial run failed', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-  }, initialDelay);
-
-  // 定期実行
-  schedulerTimer = setInterval(() => {
-    runAutoSync().catch((err) => {
-      logger.error('Drug master auto-sync: scheduled run failed', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-  }, CHECK_INTERVAL_MS);
-
-  // graceful shutdown時にクリーンアップ
-  schedulerTimer.unref();
+  schedulerActive = true;
+  if (optimizedLoopEnabled) {
+    scheduleNextDrugMasterRun(Math.min(60_000, CHECK_INTERVAL_MS), 'initial');
+    return;
+  }
+  startLegacyDrugMasterIntervalScheduler();
 }
 
 /**
  * スケジューラを停止する
  */
 export function stopDrugMasterScheduler(): void {
-  if (initialDelayTimer) {
-    clearTimeout(initialDelayTimer);
-    initialDelayTimer = null;
-  }
-  if (schedulerTimer) {
-    clearInterval(schedulerTimer);
-    schedulerTimer = null;
+  const wasActive = schedulerActive || schedulerTimer !== null || schedulerInterval !== null;
+  schedulerActive = false;
+  clearDrugMasterSchedulerHandles();
+  if (wasActive) {
     logger.info('Drug master auto-sync: scheduler stopped');
   }
 }
@@ -369,11 +446,7 @@ export async function triggerManualAutoSync(options?: { sourceUrl?: string | nul
   }
 
   // バックグラウンドで実行（レスポンスは即時返す）
-  runAutoSyncWithSource(sourceUrl).catch((err) => {
-    logger.error('Drug master manual trigger: failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  });
+  void runAutoSyncSafely('manual', sourceUrl);
 
   return { triggered: true, message: '自動取得を開始しました。同期ログで進捗を確認してください。' };
 }

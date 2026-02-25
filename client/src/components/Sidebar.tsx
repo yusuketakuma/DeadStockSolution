@@ -11,29 +11,29 @@ const NAV_GROUPS = [
   {
     title: '主要操作',
     items: [
-      { to: '/', label: 'ダッシュボード', icon: '🏠' },
-      { to: '/upload', label: 'アップロード', icon: '📤' },
-      { to: '/matching', label: 'マッチング', icon: '🔄' },
-      { to: '/proposals', label: 'マッチング一覧', icon: '📋' },
-      { to: '/exchange-history', label: '交換履歴', icon: '📜' },
+      { to: '/', label: 'ダッシュボード' },
+      { to: '/upload', label: 'アップロード' },
+      { to: '/matching', label: 'マッチング' },
+      { to: '/proposals', label: 'マッチング一覧' },
+      { to: '/exchange-history', label: '交換履歴' },
     ],
   },
   {
     title: '在庫・参照',
     items: [
-      { to: '/inventory/dead-stock', label: '不動在庫', icon: '📦' },
-      { to: '/inventory/used-medication', label: '使用薬剤', icon: '💊' },
-      { to: '/inventory/browse', label: '在庫参照', icon: '🔍' },
-      { to: '/pharmacies', label: '薬局一覧', icon: '🏥' },
+      { to: '/inventory/dead-stock', label: 'デッドストックリスト' },
+      { to: '/inventory/used-medication', label: '医薬品使用量リスト' },
+      { to: '/inventory/browse', label: '在庫参照' },
+      { to: '/pharmacies', label: '薬局一覧' },
     ],
   },
 ];
 
 const ADMIN_ITEMS = [
-  { to: '/admin', label: '管理者ダッシュボード', icon: '⚙️' },
-  { to: '/admin/openclaw', label: 'OpenClaw連携', icon: '🤖' },
-  { to: '/admin/drug-master', label: '医薬品マスター', icon: '💊' },
-  { to: '/admin/logs', label: '操作ログ', icon: '📝' },
+  { to: '/admin', label: '管理者ダッシュボード' },
+  { to: '/admin/openclaw', label: 'OpenClaw連携' },
+  { to: '/admin/drug-master', label: '医薬品マスター' },
+  { to: '/admin/logs', label: '操作ログ' },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
@@ -71,7 +71,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 className={`sidebar-link${isActive(item.to) ? ' active' : ''}`}
                 onClick={handleNav(item.to)}
               >
-                <span className="sidebar-icon">{item.icon}</span>
                 {item.label}
               </Nav.Link>
             ))}
@@ -87,7 +86,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 className={`sidebar-link${isActive(item.to) ? ' active' : ''}`}
                 onClick={handleNav(item.to)}
               >
-                <span className="sidebar-icon">{item.icon}</span>
                 {item.label}
               </Nav.Link>
             ))}
@@ -101,7 +99,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           className="sidebar-link mb-2"
           onClick={handleNav('/account')}
         >
-          <span className="sidebar-icon">👤</span>
           {user?.name}
         </Nav.Link>
         <Button variant="outline-secondary" size="sm" className="w-100" onClick={handleLogout}>

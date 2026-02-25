@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import '../styles/proposal-print.css';
 
 interface PharmacyInfo {
   name: string;
@@ -36,18 +37,6 @@ interface PrintData {
   pharmacyB: PharmacyInfo | null;
 }
 
-const printStyles = `
-  body { margin: 0; color: #111; background: #fff; }
-  @media print {
-    body { font-size: 11pt; }
-    .no-print { display: none !important; }
-    .sheet { padding: 0; max-width: none !important; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #111; padding: 4px 6px; }
-  }
-  @page { size: A4 portrait; margin: 10mm; }
-`;
-
 function safePharmacy(pharmacy: PharmacyInfo | null) {
   return {
     name: pharmacy?.name || '未取得',
@@ -80,30 +69,28 @@ export default function ProposalPrintPage() {
   const itemsBtoA = items.filter((item) => item.fromPharmacyId === proposal.pharmacyBId);
 
   return (
-    <div className="sheet" style={{ maxWidth: '980px', margin: '0 auto', padding: '16px', fontFamily: '"Noto Sans JP", sans-serif' }}>
-      <style>{printStyles}</style>
-
-      <div className="no-print" style={{ marginBottom: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <button onClick={() => window.print()} style={{ padding: '8px 18px', fontSize: '14px' }}>
+    <div className="proposal-print-sheet">
+      <div className="proposal-print-actions no-print">
+        <button type="button" onClick={() => window.print()} className="proposal-print-action-button">
           印刷
         </button>
-        <button onClick={() => window.close()} style={{ padding: '8px 18px', fontSize: '14px' }}>
+        <button type="button" onClick={() => window.close()} className="proposal-print-action-button">
           閉じる
         </button>
       </div>
 
-      <h1 style={{ textAlign: 'center', marginBottom: '8px', fontSize: '22px' }}>医薬品交換様式（FAX確認用）</h1>
-      <p style={{ textAlign: 'center', marginTop: 0, color: '#555', marginBottom: '12px' }}>
+      <h1 className="proposal-print-title">医薬品交換様式（FAX確認用）</h1>
+      <p className="proposal-print-meta">
         マッチング番号: {proposal.id} / 開始日: {new Date(proposal.proposedAt).toLocaleDateString('ja-JP')}
       </p>
 
-      <table style={{ width: '100%', marginBottom: '12px', borderCollapse: 'collapse' }}>
+      <table className="proposal-print-table proposal-print-table-md">
         <tbody>
           <tr>
-            <th style={{ width: '16%' }}>送信元</th>
-            <td style={{ width: '34%' }}>{pharmacyA.name}</td>
-            <th style={{ width: '16%' }}>送信先</th>
-            <td style={{ width: '34%' }}>{pharmacyB.name}</td>
+            <th className="proposal-print-col-th">送信元</th>
+            <td className="proposal-print-col-td">{pharmacyA.name}</td>
+            <th className="proposal-print-col-th">送信先</th>
+            <td className="proposal-print-col-td">{pharmacyB.name}</td>
           </tr>
           <tr>
             <th>送信元FAX</th>
@@ -120,9 +107,9 @@ export default function ProposalPrintPage() {
         </tbody>
       </table>
 
-      <div style={{ border: '1px solid #111', padding: '8px 10px', marginBottom: '14px', backgroundColor: '#f8f8f8' }}>
+      <div className="proposal-print-procedure-box">
         <strong>交換手順（3フェーズ）</strong>
-        <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
+        <ol className="proposal-print-procedure-list">
           <li><strong>仮マッチング:</strong> 提案元薬局が本様式を印刷し、内容を確認したうえで同意欄を記入します。</li>
           <li>提案元薬局から相手薬局FAX宛に送信し、受信側薬局が同意欄を記入してFAX返信します。</li>
           <li><strong>確定:</strong> 双方がシステム上で「承認」を行い、仮マッチングが確定します。</li>
@@ -130,18 +117,18 @@ export default function ProposalPrintPage() {
         </ol>
       </div>
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 320px', border: '1px solid #bbb', padding: '8px' }}>
+      <div className="proposal-print-pharmacy-grid">
+        <div className="proposal-print-pharmacy-card">
           <strong>{pharmacyA.name}</strong>
-          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+          <div className="proposal-print-pharmacy-detail">
             住所: {pharmacyA.prefecture} {pharmacyA.address}<br />
             TEL: {pharmacyA.phone} / FAX: {pharmacyA.fax}<br />
             許可番号: {pharmacyA.licenseNumber}
           </div>
         </div>
-        <div style={{ flex: '1 1 320px', border: '1px solid #bbb', padding: '8px' }}>
+        <div className="proposal-print-pharmacy-card">
           <strong>{pharmacyB.name}</strong>
-          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+          <div className="proposal-print-pharmacy-detail">
             住所: {pharmacyB.prefecture} {pharmacyB.address}<br />
             TEL: {pharmacyB.phone} / FAX: {pharmacyB.fax}<br />
             許可番号: {pharmacyB.licenseNumber}
@@ -149,12 +136,12 @@ export default function ProposalPrintPage() {
         </div>
       </div>
 
-      <h2 style={{ margin: '0 0 6px', fontSize: '16px' }}>
+      <h2 className="proposal-print-section-title">
         {pharmacyA.name} → {pharmacyB.name}（合計: {proposal.totalValueA?.toLocaleString()}円）
       </h2>
-      <table style={{ width: '100%', marginBottom: '12px', borderCollapse: 'collapse' }}>
+      <table className="proposal-print-table proposal-print-table-md">
         <thead>
-          <tr style={{ backgroundColor: '#efefef' }}>
+          <tr className="proposal-print-table-head">
             <th>薬品名</th>
             <th>数量</th>
             <th>単位</th>
@@ -175,12 +162,12 @@ export default function ProposalPrintPage() {
         </tbody>
       </table>
 
-      <h2 style={{ margin: '0 0 6px', fontSize: '16px' }}>
+      <h2 className="proposal-print-section-title">
         {pharmacyB.name} → {pharmacyA.name}（合計: {proposal.totalValueB?.toLocaleString()}円）
       </h2>
-      <table style={{ width: '100%', marginBottom: '14px', borderCollapse: 'collapse' }}>
+      <table className="proposal-print-table proposal-print-table-lg">
         <thead>
-          <tr style={{ backgroundColor: '#efefef' }}>
+          <tr className="proposal-print-table-head">
             <th>薬品名</th>
             <th>数量</th>
             <th>単位</th>
@@ -201,10 +188,10 @@ export default function ProposalPrintPage() {
         </tbody>
       </table>
 
-      <h2 style={{ margin: '0 0 6px', fontSize: '16px' }}>双方同意欄</h2>
-      <table style={{ width: '100%', marginBottom: '14px', borderCollapse: 'collapse' }}>
+      <h2 className="proposal-print-section-title">双方同意欄</h2>
+      <table className="proposal-print-table proposal-print-table-lg">
         <thead>
-          <tr style={{ backgroundColor: '#efefef' }}>
+          <tr className="proposal-print-table-head">
             <th>薬局</th>
             <th>同意区分</th>
             <th>担当者署名/押印</th>
@@ -215,8 +202,8 @@ export default function ProposalPrintPage() {
           <tr>
             <td>{pharmacyA.name}</td>
             <td>[ ] 同意  [ ] 条件付き同意  [ ] 不同意</td>
-            <td style={{ minWidth: '200px' }}></td>
-            <td style={{ minWidth: '150px' }}>_____年_____月_____日</td>
+            <td className="proposal-print-signature-col"></td>
+            <td className="proposal-print-date-col">_____年_____月_____日</td>
           </tr>
           <tr>
             <td>{pharmacyB.name}</td>
@@ -227,8 +214,8 @@ export default function ProposalPrintPage() {
         </tbody>
       </table>
 
-      <div style={{ border: '1px solid #bbb', backgroundColor: '#fffff0', padding: '10px' }}>
-        <p style={{ margin: 0, fontSize: '11px', color: '#555' }}>
+      <div className="proposal-print-note-box">
+        <p className="proposal-print-note-text">
           本システムは業務補助ツールです。医薬品交換の最終判断と責任は当事者間にあります。
           配送・受渡しは各薬局で実施してください。
         </p>

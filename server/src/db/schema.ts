@@ -75,6 +75,9 @@ export const uploads = pgTable('uploads', {
 }, (table) => ({
   idxUploadsPharmacyTypeCreated: index('idx_uploads_pharmacy_type_created')
     .on(table.pharmacyId, table.uploadType, table.createdAt),
+  idxUploadsUsedMedicationRecentCandidates: index('idx_uploads_used_med_recent_candidates')
+    .on(table.createdAt, table.pharmacyId)
+    .where(sql`${table.uploadType} = 'used_medication'`),
 }));
 
 export const deadStockItems = pgTable('dead_stock_items', {
@@ -97,6 +100,11 @@ export const deadStockItems = pgTable('dead_stock_items', {
 }, (table) => ({
   idxDeadStockPharmacyAvailableCreated: index('idx_dead_stock_pharmacy_available_created')
     .on(table.pharmacyId, table.isAvailable, table.createdAt),
+  idxDeadStockPharmacyCreated: index('idx_dead_stock_pharmacy_created')
+    .on(table.pharmacyId, table.createdAt),
+  idxDeadStockAvailableCreated: index('idx_dead_stock_available_created')
+    .on(table.createdAt)
+    .where(sql`${table.isAvailable} = true`),
   idxDeadStockAvailableName: index('idx_dead_stock_available_name')
     .on(table.isAvailable, table.drugName),
   idxDeadStockDrugMasterId: index('idx_dead_stock_drug_master_id')
@@ -186,7 +194,7 @@ export const columnMappingTemplates = pgTable('column_mapping_templates', {
   mapping: text('mapping').notNull(),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
-  idxMappingTemplatesPharmacyTypeHash: index('idx_mapping_templates_pharmacy_type_hash')
+  idxMappingTemplatesPharmacyTypeHash: uniqueIndex('idx_mapping_templates_pharmacy_type_hash')
     .on(table.pharmacyId, table.uploadType, table.headerHash),
 }));
 
@@ -239,6 +247,9 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 }, (table) => ({
   idxPasswordResetToken: uniqueIndex('idx_password_reset_token').on(table.token),
   idxPasswordResetPharmacy: index('idx_password_reset_pharmacy').on(table.pharmacyId),
+  idxPasswordResetActiveTokens: index('idx_password_reset_active_tokens')
+    .on(table.pharmacyId, table.expiresAt)
+    .where(sql`${table.usedAt} IS NULL`),
 }));
 
 export const pharmacyBusinessHours = pgTable('pharmacy_business_hours', {
@@ -369,6 +380,9 @@ export const activityLogs = pgTable('activity_logs', {
     .on(table.pharmacyId, table.createdAt),
   idxActivityLogsAction: index('idx_activity_logs_action')
     .on(table.action, table.createdAt),
+  idxActivityLogsFailurePatternScan: index('idx_activity_logs_failure_pattern_scan')
+    .on(table.action, table.createdAt)
+    .where(sql`${table.detail} LIKE '失敗|%'`),
 }));
 
 // ── 薬局リレーション（お気に入り / ブロック）────────────────

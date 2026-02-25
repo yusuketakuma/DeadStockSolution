@@ -3,6 +3,7 @@ import { Table, Button, Alert } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
+import ConfirmActionModal from '../components/ConfirmActionModal';
 
 interface DeadStockItem {
   id: number;
@@ -29,6 +30,8 @@ export default function DeadStockListPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [message, setMessage] = useState('');
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchData = async (p: number) => {
     const data = await api.get<ListResponse>(`/inventory/dead-stock?page=${p}`);
@@ -39,27 +42,35 @@ export default function DeadStockListPage() {
 
   useEffect(() => { fetchData(page); }, [page]);
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('この不動在庫アイテムを削除しますか？')) return;
+  const handleDeleteConfirmed = async () => {
+    if (pendingDeleteId === null) return;
+    setDeleting(true);
     try {
-      await api.delete(`/inventory/dead-stock/${id}`);
+      await api.delete(`/inventory/dead-stock/${pendingDeleteId}`);
       setMessage('削除しました');
       fetchData(page);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'エラー');
+    } finally {
+      setDeleting(false);
+      setPendingDeleteId(null);
     }
   };
+
+  const pendingItem = pendingDeleteId === null
+    ? null
+    : items.find((item) => item.id === pendingDeleteId) ?? null;
 
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4>不動在庫一覧 ({total}件)</h4>
+        <h4 className="page-title mb-0">デッドストックリスト ({total}件)</h4>
         <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
       </div>
       {message && <Alert variant="info" onClose={() => setMessage('')} dismissible>{message}</Alert>}
 
       {items.length === 0 ? (
-        <Alert variant="secondary">不動在庫データがありません。Excelファイルをアップロードしてください。</Alert>
+        <Alert variant="secondary">デッドストックデータがありません。Excelファイルをアップロードしてください。</Alert>
       ) : (
         <div className="table-responsive">
           <Table striped hover size="sm">
@@ -90,7 +101,7 @@ export default function DeadStockListPage() {
                   <td>{item.expirationDate}</td>
                   <td className="small">{item.lotNumber}</td>
                   <td>
-                    <Button size="sm" variant="outline-danger" onClick={() => handleDelete(item.id)}>
+                    <Button size="sm" variant="outline-danger" onClick={() => setPendingDeleteId(item.id)}>
                       削除
                     </Button>
                   </td>
@@ -101,6 +112,19 @@ export default function DeadStockListPage() {
         </div>
       )}
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+
+      <ConfirmActionModal
+        show={pendingDeleteId !== null}
+        title="デッドストックデータの削除"
+        body={pendingItem
+          ? `「${pendingItem.drugName}」をデッドストックリストから削除します。よろしいですか？`
+          : 'このデッドストックデータを削除します。よろしいですか？'}
+        confirmLabel="削除する"
+        confirmVariant="danger"
+        onCancel={() => setPendingDeleteId(null)}
+        onConfirm={handleDeleteConfirmed}
+        pending={deleting}
+      />
     </div>
   );
 }

@@ -3,11 +3,12 @@ import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword, verifyPassword, generateToken } from '../services/auth-service';
-import { requireLogin } from '../middleware/auth';
+import { requireLogin, invalidateAuthUserCache } from '../middleware/auth';
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 import { clearCsrfCookie } from '../middleware/csrf';
 import { writeLog, getClientIp } from '../services/log-service';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -37,7 +38,9 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
 
     res.json(rows[0]);
   } catch (err) {
-    console.error('Get account error:', err);
+    logger.error('Get account error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: 'アカウント情報の取得に失敗しました' });
   }
 });
@@ -154,6 +157,7 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
     await db.update(pharmacies)
       .set(updates)
       .where(eq(pharmacies.id, req.user!.id));
+    invalidateAuthUserCache(req.user!.id);
 
     const [updatedPharmacy] = await db.select({
       id: pharmacies.id,
@@ -193,7 +197,9 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
 
     res.json({ message: 'アカウント情報を更新しました' });
   } catch (err) {
-    console.error('Update account error:', err);
+    logger.error('Update account error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: 'アカウント更新に失敗しました' });
   }
 });
@@ -227,6 +233,7 @@ router.delete('/', requireLogin, async (req: AuthRequest, res: Response) => {
     await db.update(pharmacies)
       .set({ isActive: false, updatedAt: new Date().toISOString() })
       .where(eq(pharmacies.id, req.user!.id));
+    invalidateAuthUserCache(req.user!.id);
 
     res.clearCookie('token');
     clearCsrfCookie(res);
@@ -237,7 +244,9 @@ router.delete('/', requireLogin, async (req: AuthRequest, res: Response) => {
     });
     res.json({ message: 'アカウントを無効化しました' });
   } catch (err) {
-    console.error('Delete account error:', err);
+    logger.error('Delete account error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: 'アカウント削除に失敗しました' });
   }
 });

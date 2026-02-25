@@ -3,7 +3,6 @@ import { Card, Row, Col, Alert, Badge, ListGroup, Spinner } from 'react-bootstra
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
-import DisclaimerBanner from '../components/DisclaimerBanner';
 
 interface UploadStatus {
   deadStockUploaded: boolean;
@@ -127,11 +126,11 @@ function buildNextAction(
 ): NextAction {
   if (!status?.deadStockUploaded) {
     return {
-      title: '不動在庫をアップロード',
-      description: 'まずは交換候補の母集団になる不動在庫データを登録してください。',
+      title: 'デッドストックリストをアップロード',
+      description: 'まずは交換候補の母集団になるデッドストックデータを登録してください。',
       primaryLabel: 'アップロードへ進む',
       primaryPath: '/upload',
-      secondaryLabel: '不動在庫一覧へ',
+      secondaryLabel: 'デッドストックリストへ',
       secondaryPath: '/inventory/dead-stock',
       badge: 'warning',
     };
@@ -139,11 +138,11 @@ function buildNextAction(
 
   if (!status.usedMedicationUploaded) {
     return {
-      title: '使用薬剤をアップロード',
-      description: '当月の使用薬剤が未登録です。登録後にマッチングを実行できます。',
+      title: '医薬品使用量リストをアップロード',
+      description: '当月の医薬品使用量が未登録です。登録後にマッチングを実行できます。',
       primaryLabel: 'アップロードへ進む',
       primaryPath: '/upload',
-      secondaryLabel: '使用薬剤一覧へ',
+      secondaryLabel: '医薬品使用量リストへ',
       secondaryPath: '/inventory/used-medication',
       badge: 'warning',
     };
@@ -239,10 +238,12 @@ export default function DashboardPage() {
   const [status, setStatus] = useState<UploadStatus | null>(null);
   const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [dashboardError, setDashboardError] = useState('');
   const nextAction = buildNextAction(status, notifications);
 
   const fetchDashboardData = async () => {
     setLoadingNotifications(true);
+    setDashboardError('');
     try {
       const [statusData, noticesData] = await Promise.all([
         api.get<UploadStatus>('/upload/status'),
@@ -250,8 +251,8 @@ export default function DashboardPage() {
       ]);
       setStatus(statusData);
       setNotifications(noticesData);
-    } catch {
-      // ignore UI blocking
+    } catch (err) {
+      setDashboardError(err instanceof Error ? err.message : 'ダッシュボード情報の取得に失敗しました');
     } finally {
       setLoadingNotifications(false);
     }
@@ -281,7 +282,6 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <DisclaimerBanner />
       <h4 className="page-title mb-3">ダッシュボード</h4>
 
       <Card className="mb-3">
@@ -317,6 +317,15 @@ export default function DashboardPage() {
           )}
         </Card.Header>
         <Card.Body>
+          {dashboardError && (
+            <Alert variant="warning" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <span className="small">{dashboardError}</span>
+              <button type="button" className="btn btn-sm btn-outline-warning" onClick={fetchDashboardData}>
+                再試行
+              </button>
+            </Alert>
+          )}
+
           {loadingNotifications && (
             <div className="d-flex align-items-center gap-2 text-muted small">
               <Spinner size="sm" />
@@ -352,8 +361,8 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
-                  <span className="btn btn-outline-primary btn-sm mt-1" aria-hidden="true">
-                    {notice.actionLabel}
+                  <span className="small text-primary fw-semibold mt-1">
+                    {notice.actionLabel} →
                   </span>
                 </ListGroup.Item>
               ))}
@@ -369,7 +378,7 @@ export default function DashboardPage() {
           <Card>
             <Card.Body>
               <div className="d-flex justify-content-between align-items-start">
-                <Card.Title className="mb-0">不動在庫</Card.Title>
+                <Card.Title className="mb-0">デッドストックリスト</Card.Title>
                 {status?.lastDeadStockUpload && (
                   <small className="text-muted">最終: {new Date(status.lastDeadStockUpload).toLocaleDateString('ja-JP')}</small>
                 )}
@@ -390,7 +399,7 @@ export default function DashboardPage() {
           <Card>
             <Card.Body>
               <div className="d-flex justify-content-between align-items-start">
-                <Card.Title className="mb-0">使用薬剤</Card.Title>
+                <Card.Title className="mb-0">医薬品使用量リスト</Card.Title>
                 {status?.lastUsedMedicationUpload && (
                   <small className="text-muted">最終: {new Date(status.lastUsedMedicationUpload).toLocaleDateString('ja-JP')}</small>
                 )}
@@ -413,8 +422,8 @@ export default function DashboardPage() {
               <Card.Title>マッチング</Card.Title>
               <Card.Text>
                 {status?.usedMedicationUploaded
-                  ? '不動在庫の交換先を検索できます'
-                  : '使用薬剤のアップロードが必要です'}
+                  ? 'デッドストックリストの交換先を検索できます'
+                  : '医薬品使用量リストのアップロードが必要です'}
               </Card.Text>
               <Link
                 to="/matching"
@@ -459,7 +468,7 @@ export default function DashboardPage() {
 
       {!status?.usedMedicationUploaded && (
         <Alert variant="info" className="mt-3">
-          マッチング機能を利用するには、当月の使用薬剤Excelをアップロードしてください。
+          マッチング機能を利用するには、当月の医薬品使用量Excelをアップロードしてください。
         </Alert>
       )}
     </div>

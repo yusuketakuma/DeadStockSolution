@@ -49,7 +49,7 @@ function AppRoutes() {
 
   if (loading) {
     return (
-      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
+      <div className="d-flex justify-content-center align-items-center auth-fullscreen">
         <div className="spinner-border text-primary" role="status">
           <span className="visually-hidden">読み込み中...</span>
         </div>

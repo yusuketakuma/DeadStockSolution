@@ -1,0 +1,2 @@
+CREATE INDEX "idx_dead_stock_pharmacy_created" ON "dead_stock_items" USING btree ("pharmacy_id","created_at");--> statement-breakpoint
+CREATE INDEX "idx_dead_stock_available_created" ON "dead_stock_items" USING btree ("created_at") WHERE "dead_stock_items"."is_available" = true;
