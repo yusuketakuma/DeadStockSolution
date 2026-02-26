@@ -92,6 +92,27 @@
       "when": 1772146200000,
       "tag": "0012_matching_queue_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1772150400000,
+      "tag": "0013_add_optimistic_lock_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1772154000000,
+      "tag": "0014_frontend_feature_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1772106017116,
+      "tag": "0015_yummy_carmella_unuscione",
+      "breakpoints": true
     }
   ]
 }

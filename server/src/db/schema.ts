@@ -41,6 +41,7 @@ export const specialBusinessHoursTypeEnum = pgEnum('special_business_hours_type_
   'temporary_closed',
   'special_open',
 ]);
+export const monthlyReportStatusEnum = pgEnum('monthly_report_status_enum', ['success', 'failed']);
 
 export const pharmacies = pgTable('pharmacies', {
   id: serial('id').primaryKey(),
@@ -57,6 +58,7 @@ export const pharmacies = pgTable('pharmacies', {
   longitude: real('longitude'),
   isAdmin: boolean('is_admin').default(false),
   isActive: boolean('is_active').default(true),
+  version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
@@ -94,6 +96,7 @@ export const deadStockItems = pgTable('dead_stock_items', {
   yakkaUnitPrice: numeric('yakka_unit_price', { precision: 12, scale: 2 }),
   yakkaTotal: numeric('yakka_total', { precision: 12, scale: 2 }),
   expirationDate: text('expiration_date'),
+  expirationDateIso: date('expiration_date_iso', { mode: 'string' }),
   lotNumber: text('lot_number'),
   isAvailable: boolean('is_available').default(true),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
@@ -107,6 +110,8 @@ export const deadStockItems = pgTable('dead_stock_items', {
     .where(sql`${table.isAvailable} = true`),
   idxDeadStockAvailableName: index('idx_dead_stock_available_name')
     .on(table.isAvailable, table.drugName),
+  idxDeadStockExpiryRisk: index('idx_dead_stock_expiry_risk')
+    .on(table.pharmacyId, table.isAvailable, table.expirationDateIso),
   idxDeadStockDrugMasterId: index('idx_dead_stock_drug_master_id')
     .on(table.drugMasterId),
   idxDeadStockDrugMasterPackageId: index('idx_dead_stock_drug_master_package_id')
@@ -186,6 +191,65 @@ export const exchangeHistory = pgTable('exchange_history', {
     .on(table.proposalId),
 }));
 
+export const proposalComments = pgTable('proposal_comments', {
+  id: serial('id').primaryKey(),
+  proposalId: integer('proposal_id').notNull().references(() => exchangeProposals.id, { onDelete: 'cascade' }),
+  authorPharmacyId: integer('author_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  body: text('body').notNull(),
+  isDeleted: boolean('is_deleted').notNull().default(false),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+  readByRecipient: boolean('read_by_recipient').notNull().default(false),
+}, (table) => ({
+  idxProposalCommentsProposalCreated: index('idx_proposal_comments_proposal_created')
+    .on(table.proposalId, table.createdAt),
+  idxProposalCommentsAuthor: index('idx_proposal_comments_author')
+    .on(table.authorPharmacyId, table.createdAt),
+}));
+
+export const exchangeFeedback = pgTable('exchange_feedback', {
+  id: serial('id').primaryKey(),
+  proposalId: integer('proposal_id').notNull().references(() => exchangeProposals.id, { onDelete: 'cascade' }),
+  fromPharmacyId: integer('from_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  toPharmacyId: integer('to_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  rating: integer('rating').notNull(),
+  comment: text('comment'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxExchangeFeedbackProposalFromUnique: uniqueIndex('idx_exchange_feedback_proposal_from_unique')
+    .on(table.proposalId, table.fromPharmacyId),
+  idxExchangeFeedbackTarget: index('idx_exchange_feedback_target')
+    .on(table.toPharmacyId, table.createdAt),
+  chkExchangeFeedbackRating: check('chk_exchange_feedback_rating', sql`${table.rating} >= 1 AND ${table.rating} <= 5`),
+}));
+
+export const pharmacyTrustScores = pgTable('pharmacy_trust_scores', {
+  pharmacyId: integer('pharmacy_id').primaryKey().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  trustScore: numeric('trust_score', { precision: 5, scale: 2 }).notNull().default('60.00'),
+  ratingCount: integer('rating_count').notNull().default(0),
+  positiveRate: numeric('positive_rate', { precision: 5, scale: 2 }).notNull().default('0.00'),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxTrustScoresUpdatedAt: index('idx_trust_scores_updated_at').on(table.updatedAt),
+}));
+
+export const monthlyReports = pgTable('monthly_reports', {
+  id: serial('id').primaryKey(),
+  year: integer('year').notNull(),
+  month: integer('month').notNull(),
+  status: monthlyReportStatusEnum('status').notNull().default('success'),
+  reportJson: text('report_json').notNull(),
+  generatedBy: integer('generated_by').references(() => pharmacies.id, { onDelete: 'set null' }),
+  generatedAt: timestamp('generated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxMonthlyReportsYearMonthUnique: uniqueIndex('idx_monthly_reports_year_month_unique')
+    .on(table.year, table.month),
+  idxMonthlyReportsGeneratedAt: index('idx_monthly_reports_generated_at')
+    .on(table.generatedAt),
+  chkMonthlyReportsMonthRange: check('chk_monthly_reports_month_range', sql`${table.month} >= 1 AND ${table.month} <= 12`),
+}));
+
 export const columnMappingTemplates = pgTable('column_mapping_templates', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
@@ -260,6 +324,7 @@ export const pharmacyBusinessHours = pgTable('pharmacy_business_hours', {
   closeTime: text('close_time'), // "18:00" format, null if closed
   isClosed: boolean('is_closed').default(false),
   is24Hours: boolean('is_24_hours').default(false),
+  version: integer('version').notNull().default(1),
 }, (table) => ({
   idxBusinessHoursPharmacy: index('idx_business_hours_pharmacy').on(table.pharmacyId),
   idxBusinessHoursPharmacyDay: uniqueIndex('idx_business_hours_pharmacy_day').on(table.pharmacyId, table.dayOfWeek),
@@ -277,6 +342,7 @@ export const pharmacySpecialHours = pgTable('pharmacy_special_hours', {
   isClosed: boolean('is_closed').notNull().default(true),
   is24Hours: boolean('is_24_hours').notNull().default(false),
   note: text('note'),
+  version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
@@ -468,4 +534,22 @@ export const matchingRefreshJobs = pgTable('matching_refresh_jobs', {
     .on(table.triggerPharmacyId, table.createdAt),
   idxMatchingRefreshJobsReady: index('idx_matching_refresh_jobs_ready')
     .on(table.attempts, table.nextRetryAt, table.processingStartedAt, table.createdAt),
+}));
+
+// ── 通知 ──────────────────────────────────────────────────
+
+export const notifications = pgTable('notifications', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  referenceType: text('reference_type'),
+  referenceId: integer('reference_id'),
+  isRead: boolean('is_read').notNull().default(false),
+  readAt: timestamp('read_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxNotificationsPharmacyUnread: index('idx_notifications_pharmacy_unread')
+    .on(table.pharmacyId, table.isRead, table.createdAt),
 }));
