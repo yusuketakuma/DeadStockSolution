@@ -650,8 +650,8 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
       type: 'new_comment',
       title: 'コメントが追加されました',
       message: body.length > 50 ? body.substring(0, 50) + '...' : body,
-      referenceType: 'comment',
-      referenceId: saved.id,
+      referenceType: 'proposal',
+      referenceId: proposalId,
     });
 
     res.status(201).json({ message: 'コメントを投稿しました', comment: saved });
