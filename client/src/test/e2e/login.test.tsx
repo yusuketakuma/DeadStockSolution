@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LoginPage from '../../pages/LoginPage';
@@ -36,11 +36,7 @@ function mockUnauthFetch() {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.stubEnv('VITE_TEST_ACCOUNT_PASSWORD', 'password123');
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
+    vi.stubEnv('VITE_DEMO_ACCOUNT_PASSWORD', 'password123');
   });
 
   it('renders the login form with tabs', async () => {
@@ -69,10 +65,10 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
-      expect(screen.getByText('デモアカウント（ワンクリック入力）')).toBeInTheDocument();
+      expect(screen.getByText('デモ薬局（ワンクリック入力）')).toBeInTheDocument();
     });
-    expect(screen.getByText('テスト薬局（東京）')).toBeInTheDocument();
-    expect(screen.getByText('テスト薬局2号店（大阪）')).toBeInTheDocument();
+    expect(screen.getByText('デモ薬局（東京）')).toBeInTheDocument();
+    expect(screen.getByText('デモ薬局（大阪）')).toBeInTheDocument();
   });
 
   it('switches to admin login tab', async () => {
@@ -94,7 +90,7 @@ describe('LoginPage', () => {
     expect(submitBtn).toBeTruthy();
     expect(submitBtn.textContent).toBe('管理者ログイン');
     // Test accounts and register link should NOT be visible
-    expect(screen.queryByText('デモアカウント（ワンクリック入力）')).not.toBeInTheDocument();
+    expect(screen.queryByText('デモ薬局（ワンクリック入力）')).not.toBeInTheDocument();
     expect(screen.queryByText('新規登録はこちら')).not.toBeInTheDocument();
     // Admin mode hint
     expect(screen.getByText('管理者アカウントでログインしてください。')).toBeInTheDocument();
@@ -183,7 +179,7 @@ describe('LoginPage', () => {
     });
   });
 
-  it('fills email and password when test account is selected', async () => {
+  it('fills email and password when demo pharmacy is selected', async () => {
     const user = userEvent.setup();
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -204,10 +200,10 @@ describe('LoginPage', () => {
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
-      expect(screen.getByText('テスト薬局（東京）')).toBeInTheDocument();
+      expect(screen.getByText('デモ薬局（東京）')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('テスト薬局（東京）'));
+    await user.click(screen.getByText('デモ薬局（東京）'));
 
     await waitFor(() => {
       expect(getInputByLabel('メールアドレス').value).toBe('test@example.com');
@@ -220,18 +216,31 @@ describe('LoginPage', () => {
     expect(loginCall).toBeFalsy();
   });
 
-  it('disables demo auto-fill when test account password env is missing', async () => {
-    vi.stubEnv('VITE_TEST_ACCOUNT_PASSWORD', '');
+  it('shows paste-only help text for demo pharmacy buttons', async () => {
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
-      expect(screen.getByText('デモアカウント（ワンクリック入力）')).toBeInTheDocument();
+      expect(screen.getByText('デモ薬局（ワンクリック入力）')).toBeInTheDocument();
     });
 
-    const demoButton = screen.getByRole('button', { name: 'テスト薬局（東京）' });
+    const demoButton = screen.getByRole('button', { name: 'デモ薬局（東京）' });
+    expect(demoButton).toBeEnabled();
+    expect(screen.getByText('ボタンはメールアドレスとパスワードを貼り付けるだけです（自動送信しません）。')).toBeInTheDocument();
+  });
+
+  it('disables one-click demo input when demo password env is missing', async () => {
+    vi.stubEnv('VITE_DEMO_ACCOUNT_PASSWORD', '');
+    mockUnauthFetch();
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByText('デモ薬局（ワンクリック入力）')).toBeInTheDocument();
+    });
+
+    const demoButton = screen.getByRole('button', { name: 'デモ薬局（東京）' });
     expect(demoButton).toBeDisabled();
-    expect(screen.getByText('デモ入力は環境変数の設定後に利用できます。')).toBeInTheDocument();
+    expect(screen.getByText('ワンクリック入力は VITE_DEMO_ACCOUNT_PASSWORD 設定後に利用できます。')).toBeInTheDocument();
   });
 
   it('renders login page key sections', async () => {

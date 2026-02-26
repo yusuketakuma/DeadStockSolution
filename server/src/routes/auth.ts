@@ -3,7 +3,14 @@ import rateLimit from 'express-rate-limit';
 import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
-import { hashPassword, verifyPassword, generateToken, verifyToken } from '../services/auth-service';
+import {
+  assertJwtSecretConfigured,
+  hashPassword,
+  verifyPassword,
+  generateToken,
+  verifyToken,
+  isJwtSecretMissingError,
+} from '../services/auth-service';
 import { validateRegistration, validateLogin, emailSchema, passwordSchema } from '../utils/validators';
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
@@ -35,6 +42,8 @@ const loginLimiter = rateLimit({
   message: { error: 'ログイン試行回数が多すぎます。しばらくしてから再試行してください' },
 });
 
+const AUTH_CONFIGURATION_ERROR_MESSAGE = '認証設定が未完了です。管理者に連絡してください';
+
 function extractUniqueViolationConstraint(err: unknown): string | null {
   if (!err || typeof err !== 'object') return null;
 
@@ -56,6 +65,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       res.status(400).json({ errors });
       return;
     }
+    assertJwtSecretConfigured();
 
     const { email, password, name, postalCode, address, phone, fax, licenseNumber, prefecture } = req.body;
 
@@ -128,6 +138,14 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       prefecture,
     });
   } catch (err) {
+    if (isJwtSecretMissingError(err)) {
+      logger.error('Registration configuration error', {
+        error: err.message,
+      });
+      res.status(503).json({ error: AUTH_CONFIGURATION_ERROR_MESSAGE });
+      return;
+    }
+
     const uniqueConstraint = extractUniqueViolationConstraint(err);
     if (uniqueConstraint !== null) {
       if (uniqueConstraint.includes('license')) {
@@ -156,6 +174,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       res.status(400).json({ errors });
       return;
     }
+    assertJwtSecretConfigured();
 
     const { email, password } = req.body;
 
@@ -209,6 +228,14 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       isAdmin: pharmacy.isAdmin,
     });
   } catch (err) {
+    if (isJwtSecretMissingError(err)) {
+      logger.error('Login configuration error', {
+        error: err.message,
+      });
+      res.status(503).json({ error: AUTH_CONFIGURATION_ERROR_MESSAGE });
+      return;
+    }
+
     logger.error('Login error', {
       error: err instanceof Error ? err.message : String(err),
     });

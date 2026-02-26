@@ -3,7 +3,7 @@ import { ensureTestAccount, getAllTestAccounts } from '../services/test-account-
 import { logger } from '../services/logger';
 
 async function seed() {
-  logger.info('Seeding test accounts...');
+  logger.info('Seeding demo pharmacy accounts...');
 
   for (const account of getAllTestAccounts()) {
     const user = await ensureTestAccount(account);
@@ -15,6 +15,6 @@ async function seed() {
 }
 
 seed().catch((err) => {
-  logger.error('Seed failed', { error: err instanceof Error ? err.message : String(err) });
+  logger.error('Demo account seed failed', { error: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });

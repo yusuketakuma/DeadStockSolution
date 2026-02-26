@@ -8,6 +8,14 @@ const mocks = vi.hoisted(() => ({
   resetPasswordWithToken: vi.fn(),
   writeLog: vi.fn(),
   getClientIp: vi.fn(() => '127.0.0.1'),
+  authService: {
+    assertJwtSecretConfigured: vi.fn(),
+    isJwtSecretMissingError: vi.fn((err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'),
+    hashPassword: vi.fn(),
+    verifyPassword: vi.fn(),
+    generateToken: vi.fn(),
+    verifyToken: vi.fn(),
+  },
   db: {
     select: vi.fn(),
     insert: vi.fn(),
@@ -37,6 +45,15 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
+vi.mock('../services/auth-service', () => ({
+  assertJwtSecretConfigured: mocks.authService.assertJwtSecretConfigured,
+  isJwtSecretMissingError: mocks.authService.isJwtSecretMissingError,
+  hashPassword: mocks.authService.hashPassword,
+  verifyPassword: mocks.authService.verifyPassword,
+  generateToken: mocks.authService.generateToken,
+  verifyToken: mocks.authService.verifyToken,
+}));
+
 async function createApp() {
   vi.resetModules();
   const app = express();
@@ -55,6 +72,9 @@ describe('auth routes', () => {
     vi.clearAllMocks();
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
+    mocks.authService.isJwtSecretMissingError.mockImplementation(
+      (err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'
+    );
   });
 
   afterEach(() => {
@@ -139,5 +159,45 @@ describe('auth routes', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ csrfToken: 'existing-token' });
     expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('returns 503 when JWT secret is not configured on login', async () => {
+    mocks.authService.assertJwtSecretConfigured.mockImplementation(() => {
+      throw new Error('JWT_SECRET environment variable is not set');
+    });
+    const app = await createApp();
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'password123' });
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: '認証設定が未完了です。管理者に連絡してください' });
+    expect(mocks.db.select).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 when JWT secret is not configured on register', async () => {
+    mocks.authService.assertJwtSecretConfigured.mockImplementation(() => {
+      throw new Error('JWT_SECRET environment variable is not set');
+    });
+    const app = await createApp();
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: 'demo@example.com',
+        password: 'Password123',
+        name: 'デモ薬局',
+        postalCode: '100-0001',
+        address: '千代田1-1',
+        phone: '03-1234-5678',
+        fax: '03-1234-5679',
+        licenseNumber: 'DEMO-999',
+        prefecture: '東京都',
+      });
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: '認証設定が未完了です。管理者に連絡してください' });
+    expect(mocks.db.select).not.toHaveBeenCalled();
   });
 });

@@ -64,12 +64,12 @@ npm run db:migrate:legacy --workspace=server
 
 `LEGACY_MIGRATION_MODE=replace` を設定すると、移行前にPostgres側テーブルを初期化します（既定は `append`）。
 
-## 環境変数（認証・テスト薬局）
+## 環境変数（認証・デモ薬局）
 
 - `CORS_ORIGINS`: 許可するオリジンをカンマ区切りで指定（本番必須）
 - `JWT_SECRET`: JWT署名シークレット（`NODE_ENV=test` 以外では必須）
-- `ENABLE_TEST_PHARMACY_ACCOUNTS`: `true` のときのみテスト薬局シードを有効化（本番は `false` 推奨）
-- `TEST_ACCOUNT_PASSWORD`: テスト薬局の共通パスワード（8文字以上必須、`ENABLE_TEST_PHARMACY_ACCOUNTS=true` の場合は必須）
+- `DEMO_ACCOUNT_PASSWORD`: デモ薬局2件の共通パスワード（8文字以上必須、`npm run db:seed --workspace=server` 実行時に使用）
+- `VITE_DEMO_ACCOUNT_PASSWORD`: ログイン画面のワンクリック入力で貼り付けるデモパスワード（`DEMO_ACCOUNT_PASSWORD` と同値を設定。未設定時はワンクリック入力を無効化）
 - `EXPOSE_PASSWORD_RESET_TOKEN`: `true` のときのみパスワードリセットトークンをAPIレスポンスに含める（開発限定）
 - `TRUST_PROXY`: `true` または hop数（例: `1`）で `trust proxy` を有効化
 - `DRUG_MASTER_AUTO_SYNC`: `true` で医薬品マスター自動取得を有効化
@@ -128,9 +128,9 @@ npm run db:migrate:legacy --workspace=server
   - `npm run deploy:preview`（`preview` ブランチのみ）
   - `npm run deploy:prod`（`main` ブランチのみ）
 - Neon連携時は `DRUG_PACKAGE_SOURCE_URL` などの環境変数を Vercel Project Settings に設定し、Preview環境で分離DBを利用してください。
-- デモアカウントを Preview で使う場合は、Vercel Environment Variables に以下を設定してください。
-  - `ENABLE_TEST_PHARMACY_ACCOUNTS=true`
-  - `TEST_ACCOUNT_PASSWORD`（クライアントの `VITE_TEST_ACCOUNT_PASSWORD` と同じ値）
+- デモ薬局2件を実DBへ登録する場合は、サーバー側で `DEMO_ACCOUNT_PASSWORD` を設定した上で以下を実行してください。
+  - `npm run db:seed --workspace=server`
+- ログイン画面のワンクリックボタンはメールアドレスとパスワードを入力欄へ貼り付けます（自動送信しません）。
 
 ### main DB を preview DB に同期する（Neon branch reset）
 

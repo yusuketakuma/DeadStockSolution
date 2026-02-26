@@ -9,11 +9,9 @@ import StatusAlert from '../components/ui/StatusAlert';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppField from '../components/ui/AppField';
 
-const DEFAULT_TEST_ACCOUNT_PASSWORD = 'password123';
-
 const TEST_ACCOUNTS = [
-  { label: 'テスト薬局（東京）', email: 'test@example.com' },
-  { label: 'テスト薬局2号店（大阪）', email: 'test2@example.com' },
+  { label: 'デモ薬局（東京）', email: 'test@example.com' },
+  { label: 'デモ薬局（大阪）', email: 'test2@example.com' },
 ];
 
 export default function LoginPage() {
@@ -24,7 +22,8 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'user' | 'admin'>('user');
   const { login, logout } = useAuth();
   const navigate = useNavigate();
-  const testAccountPassword = import.meta.env.VITE_TEST_ACCOUNT_PASSWORD?.trim() || DEFAULT_TEST_ACCOUNT_PASSWORD;
+  const demoAccountPassword = import.meta.env.VITE_DEMO_ACCOUNT_PASSWORD?.trim() ?? '';
+  const canUseDemoAutoFill = demoAccountPassword.length > 0;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -54,9 +53,12 @@ export default function LoginPage() {
   };
 
   const handleTestLogin = (account: { email: string }) => {
+    if (!canUseDemoAutoFill) {
+      return;
+    }
     setError('');
     setEmail(account.email);
-    setPassword(testAccountPassword);
+    setPassword(demoAccountPassword);
   };
 
   const switchMode = (newMode: 'user' | 'admin') => {
@@ -148,14 +150,14 @@ export default function LoginPage() {
               </div>
 
               <div className="dl-demo-box">
-                <p className="text-muted small text-center mb-2">デモアカウント（ワンクリック入力）</p>
+                <p className="text-muted small text-center mb-2">デモ薬局（ワンクリック入力）</p>
                 <div className="d-grid gap-2">
                   {TEST_ACCOUNTS.map((account) => (
                     <AppButton
                       key={account.email}
                       variant="outline-secondary"
                       size="sm"
-                      disabled={loading}
+                      disabled={loading || !canUseDemoAutoFill}
                       onClick={() => handleTestLogin(account)}
                     >
                       {account.label}
@@ -163,7 +165,9 @@ export default function LoginPage() {
                   ))}
                 </div>
                 <p className="text-muted small text-center mt-2 mb-0">
-                  ボタンを押すとメールアドレスとパスワードが入力されます。
+                  {canUseDemoAutoFill
+                    ? 'ボタンはメールアドレスとパスワードを貼り付けるだけです（自動送信しません）。'
+                    : 'ワンクリック入力は VITE_DEMO_ACCOUNT_PASSWORD 設定後に利用できます。'}
                 </p>
               </div>
             </>

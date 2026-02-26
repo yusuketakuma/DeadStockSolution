@@ -3,9 +3,10 @@ import jwt from 'jsonwebtoken';
 import { JwtPayload } from '../types';
 
 const SALT_ROUNDS = 10;
+export const JWT_SECRET_MISSING_ERROR_MESSAGE = 'JWT_SECRET environment variable is not set';
 
 function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
+  const secret = process.env.JWT_SECRET?.trim();
   if (secret) {
     return secret;
   }
@@ -14,7 +15,15 @@ function getJwtSecret(): string {
     return 'test-secret-only';
   }
 
-  throw new Error('JWT_SECRET environment variable is not set');
+  throw new Error(JWT_SECRET_MISSING_ERROR_MESSAGE);
+}
+
+export function assertJwtSecretConfigured(): void {
+  void getJwtSecret();
+}
+
+export function isJwtSecretMissingError(err: unknown): err is Error {
+  return err instanceof Error && err.message === JWT_SECRET_MISSING_ERROR_MESSAGE;
 }
 
 export async function hashPassword(password: string): Promise<string> {

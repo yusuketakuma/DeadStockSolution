@@ -9,7 +9,8 @@
 ## Secrets and Environment Variables
 
 - `JWT_SECRET` is required in all non-test environments.
-- `TEST_ACCOUNT_PASSWORD` is required when test pharmacy seeding is enabled.
+- `DEMO_ACCOUNT_PASSWORD` is required when demo pharmacy seeding is executed.
+- デモ運用時のみ `VITE_DEMO_ACCOUNT_PASSWORD` への公開を許可し、本番運用では設定しない。
 - OpenClaw webhook requests must be authenticated with HMAC signature headers:
   - `x-openclaw-signature`
   - `x-openclaw-timestamp`

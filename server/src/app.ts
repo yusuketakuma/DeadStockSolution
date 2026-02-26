@@ -25,7 +25,6 @@ import { csrfProtection } from './middleware/csrf';
 import { db } from './config/database';
 import { sql } from 'drizzle-orm';
 import { logger } from './services/logger';
-import { ensureTestAccountsSeededIfEnabled } from './services/test-account-service';
 
 const app = express();
 app.disable('x-powered-by');
@@ -113,8 +112,6 @@ app.use(cookieParser());
 
 // Request logging
 app.use(requestLogger);
-
-void ensureTestAccountsSeededIfEnabled();
 
 const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

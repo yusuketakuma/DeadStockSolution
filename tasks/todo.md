@@ -326,6 +326,31 @@
 
 ---
 
+## 追加タスク（デモワンクリックでパスワードも貼り付け）
+
+### 入力メタ（見積）
+- files_changed_est: 4
+- loc_delta_est: 70 (small)
+- tests_added: false
+- runtime_est_min: 8
+
+## 目標（Goal）
+- [x] ワンクリックでメールアドレスとパスワードを入力欄へ貼り付ける
+- [x] 自動送信は行わない仕様を維持する
+- [x] ドキュメント/テストを新仕様に一致させる
+
+## 実装（Implementation Sprint）
+- [x] `LoginPage` のワンクリック挙動を email+password 貼り付けへ変更
+- [x] ログイン画面E2Eテスト期待値を更新
+- [x] README/SECURITY の文言を新仕様へ更新
+
+## 一括検証（Verification）
+- [x] typecheck
+- [x] lint
+- [x] tests
+
+---
+
 ## 追加タスク（フロントエンド再強化: security/readability/stability/bug/perf/logic）
 
 ### 入力メタ（見積）
@@ -436,3 +461,46 @@
 - [x] Cycle 3: scan -> fix -> verify
 - [x] Cycle 4: scan -> fix -> verify
 - [x] Cycle 5: scan -> fix -> verify
+
+---
+
+## 追加タスク（認証ログイン 500/404 切り分けと修復）
+
+### 入力メタ（見積）
+- files_changed_est: 5
+- loc_delta_est: 180 (small)
+- tests_added: true
+- runtime_est_min: 12
+
+## 目標（Goal）
+- [x] `/api/auth/login` の 500 を再発防止する（設定不備時の明確化含む）
+- [x] `login` 404 の責務境界（クライアント実装 vs デプロイ設定）を切り分ける
+- [x] 検証ログ付きで typecheck/lint/tests を通す
+- [x] テスト環境依存を削減し、本番運用向けにデモ薬局2件のDBシード運用へ統一する
+
+## 設計/方針（Plan）
+- [x] 認証設定エラー（JWT_SECRET 未設定）を 500 ではなく判別可能な応答へ変更する
+- [x] ルート層での設定チェックを先行実行し、副作用（登録成功後の失敗など）を防止する
+- [x] JSON パース失敗を 500 扱いしないようグローバルエラーハンドラを改善する
+- [x] デモ口座シードを手動実行（`db:seed`）に寄せ、自動シード依存をアプリ起動経路から外す
+
+## 実装（Implementation Sprint）
+- [x] auth-service / auth route に設定ガードを追加
+- [x] error-handler を HTTP エラー優先で返すよう修正
+- [x] サーバーテストを追加・更新
+- [x] `tasks/lessons.md` に再発防止パターンを追記
+- [x] `app.ts` からテスト口座自動シード呼び出しを削除
+- [x] デモ口座シードスクリプトを追加し、環境変数を `DEMO_*` 系へ統一
+- [x] ログイン画面のワンクリック機能を「メール+パスワードを入力欄へ貼り付け（自動送信なし）」仕様として維持
+
+## 一括検証（Verification）
+- [x] typecheck
+- [x] lint
+- [x] tests
+
+## 広域レビュー（Review）
+- [x] 正確性
+- [x] セキュリティ
+- [x] 性能
+- [x] 保守性
+- [x] テスト/回帰

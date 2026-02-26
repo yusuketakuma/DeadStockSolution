@@ -2,7 +2,6 @@ import { eq, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword } from './auth-service';
-import { logger } from './logger';
 
 interface TestAccountDefinition {
   email: string;
@@ -25,32 +24,29 @@ interface EnsuredTestAccount {
   isAdmin: boolean;
 }
 
-let ensureSeedPromise: Promise<void> | null = null;
-let ensureSeedRetryTimer: NodeJS.Timeout | null = null;
-let ensureSeedRetryDelayMs = 15_000;
-const MAX_ENSURE_SEED_RETRY_DELAY_MS = 5 * 60 * 1000;
+const DEMO_ACCOUNT_PASSWORD_ENV = 'DEMO_ACCOUNT_PASSWORD';
 
 const TEST_ACCOUNTS: TestAccountDefinition[] = [
   {
     email: 'test@example.com',
-    name: 'テスト薬局',
+    name: 'デモ薬局（東京）',
     postalCode: '1000001',
     address: '東京都千代田区千代田1-1',
     phone: '03-1234-5678',
     fax: '03-1234-5679',
-    licenseNumber: 'TEST-001',
+    licenseNumber: 'DEMO-001',
     prefecture: '東京都',
     latitude: 35.6762,
     longitude: 139.6503,
   },
   {
     email: 'test2@example.com',
-    name: 'テスト薬局2号店',
+    name: 'デモ薬局（大阪）',
     postalCode: '5300001',
     address: '大阪府大阪市北区梅田1-1',
     phone: '06-1234-5678',
     fax: '06-1234-5679',
-    licenseNumber: 'TEST-002',
+    licenseNumber: 'DEMO-002',
     prefecture: '大阪府',
     latitude: 34.7024,
     longitude: 135.4959,
@@ -64,16 +60,16 @@ export function getAllTestAccounts(): TestAccountDefinition[] {
 function resolveTestAccountPassword(options: { strict: true }): string;
 function resolveTestAccountPassword(options: { strict: false }): string | null;
 function resolveTestAccountPassword(options: { strict: boolean }): string | null {
-  const configured = process.env.TEST_ACCOUNT_PASSWORD?.trim();
+  const configured = process.env[DEMO_ACCOUNT_PASSWORD_ENV]?.trim();
   if (configured) {
     if (configured.length < 8) {
-      throw new Error('TEST_ACCOUNT_PASSWORD must be at least 8 characters');
+      throw new Error(`${DEMO_ACCOUNT_PASSWORD_ENV} must be at least 8 characters`);
     }
     return configured;
   }
 
   if (options.strict) {
-    throw new Error('TEST_ACCOUNT_PASSWORD is required');
+    throw new Error(`${DEMO_ACCOUNT_PASSWORD_ENV} is required`);
   }
 
   return null;
@@ -185,67 +181,4 @@ export async function seedTestAccounts(): Promise<EnsuredTestAccount[]> {
     seededAccounts.push(await upsertTestAccount(account, passwordHash));
   }
   return seededAccounts;
-}
-
-function resetEnsureSeedRetryState(): void {
-  ensureSeedRetryDelayMs = 15_000;
-  if (ensureSeedRetryTimer) {
-    clearTimeout(ensureSeedRetryTimer);
-    ensureSeedRetryTimer = null;
-  }
-}
-
-function scheduleEnsureSeedRetry(): void {
-  if (ensureSeedRetryTimer) {
-    return;
-  }
-
-  const delayMs = ensureSeedRetryDelayMs;
-  ensureSeedRetryTimer = setTimeout(() => {
-    ensureSeedRetryTimer = null;
-    void ensureTestAccountsSeededIfEnabled();
-  }, delayMs);
-  if (typeof ensureSeedRetryTimer.unref === 'function') {
-    ensureSeedRetryTimer.unref();
-  }
-
-  logger.warn('Test pharmacy seed retry scheduled', { delayMs });
-  ensureSeedRetryDelayMs = Math.min(ensureSeedRetryDelayMs * 2, MAX_ENSURE_SEED_RETRY_DELAY_MS);
-}
-
-export function ensureTestAccountsSeededIfEnabled(): Promise<void> {
-  const enabledByEnv = process.env.ENABLE_TEST_PHARMACY_ACCOUNTS;
-  const shouldSeedInPreview = enabledByEnv === undefined && process.env.VERCEL_ENV === 'preview';
-  if (enabledByEnv !== 'true' && !shouldSeedInPreview) {
-    resetEnsureSeedRetryState();
-    return Promise.resolve();
-  }
-
-  const resolvedPassword = resolveTestAccountPassword({ strict: false });
-  if (!resolvedPassword) {
-    resetEnsureSeedRetryState();
-    logger.warn('Test pharmacy seed skipped: TEST_ACCOUNT_PASSWORD is not set');
-    return Promise.resolve();
-  }
-
-  if (ensureSeedPromise) {
-    return ensureSeedPromise;
-  }
-
-  ensureSeedPromise = seedTestAccounts()
-    .then((accounts) => {
-      resetEnsureSeedRetryState();
-      logger.info('Test pharmacy accounts are ready', { count: accounts.length });
-    })
-    .catch((err) => {
-      logger.error('Failed to seed test pharmacy accounts', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      scheduleEnsureSeedRetry();
-    })
-    .finally(() => {
-      ensureSeedPromise = null;
-    });
-
-  return ensureSeedPromise;
 }
