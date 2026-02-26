@@ -9,6 +9,8 @@ import StatusAlert from '../components/ui/StatusAlert';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppField from '../components/ui/AppField';
 
+const DEFAULT_TEST_ACCOUNT_PASSWORD = 'password123';
+
 const TEST_ACCOUNTS = [
   { label: 'テスト薬局（東京）', email: 'test@example.com' },
   { label: 'テスト薬局2号店（大阪）', email: 'test2@example.com' },
@@ -22,8 +24,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'user' | 'admin'>('user');
   const { login, logout } = useAuth();
   const navigate = useNavigate();
-  const testAccountPassword = import.meta.env.VITE_TEST_ACCOUNT_PASSWORD?.trim() ?? '';
-  const hasTestAccountPassword = testAccountPassword.length > 0;
+  const testAccountPassword = import.meta.env.VITE_TEST_ACCOUNT_PASSWORD?.trim() || DEFAULT_TEST_ACCOUNT_PASSWORD;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -54,10 +55,6 @@ export default function LoginPage() {
 
   const handleTestLogin = (account: { email: string }) => {
     setError('');
-    if (!hasTestAccountPassword) {
-      setError('デモアカウント用パスワードが未設定です。環境変数を確認してください。');
-      return;
-    }
     setEmail(account.email);
     setPassword(testAccountPassword);
   };
@@ -158,7 +155,7 @@ export default function LoginPage() {
                       key={account.email}
                       variant="outline-secondary"
                       size="sm"
-                      disabled={loading || !hasTestAccountPassword}
+                      disabled={loading}
                       onClick={() => handleTestLogin(account)}
                     >
                       {account.label}
@@ -166,9 +163,7 @@ export default function LoginPage() {
                   ))}
                 </div>
                 <p className="text-muted small text-center mt-2 mb-0">
-                  {hasTestAccountPassword
-                    ? 'ボタンを押すとメールアドレスとパスワードが入力されます。'
-                    : 'デモ入力は環境変数の設定後に利用できます。'}
+                  ボタンを押すとメールアドレスとパスワードが入力されます。
                 </p>
               </div>
             </>
