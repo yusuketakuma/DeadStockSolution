@@ -1,11 +1,14 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Button } from 'react-bootstrap';
-import { Link, useLocation } from 'react-router-dom';
+import { Badge } from 'react-bootstrap';
+import AppButton from './ui/AppButton';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { APP_VERSION } from '../constants/appVersion';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationContext';
 import AppUpdatesPopover from './header/AppUpdatesPopover';
 import RequestModal from './header/RequestModal';
+import { sanitizeInternalPath } from '../utils/navigation';
 
 interface Props {
   onToggleSidebar: () => void;
@@ -54,6 +57,8 @@ function isTrackablePath(pathname: string): boolean {
 
 export default function Header({ onToggleSidebar }: Props) {
   const { user } = useAuth();
+  const { unreadCount } = useNotifications();
+  const navigate = useNavigate();
   const location = useLocation();
   const [previousPath, setPreviousPath] = useState('');
   const [requestModalOpen, setRequestModalOpen] = useState(false);
@@ -70,15 +75,19 @@ export default function Header({ onToggleSidebar }: Props) {
   useEffect(() => {
     const nextPath = `${location.pathname}${location.search}${location.hash}`;
     if (!isTrackablePath(location.pathname)) return;
+    const safeNextPath = sanitizeInternalPath(nextPath, '');
+    if (!safeNextPath) return;
 
     const current = window.localStorage.getItem(PATH_TRACK_CURRENT_KEY) ?? '';
-    if (current && current !== nextPath) {
-      window.localStorage.setItem(PATH_TRACK_PREV_KEY, current);
+    const safeCurrent = sanitizeInternalPath(current, '');
+    if (safeCurrent && safeCurrent !== safeNextPath) {
+      window.localStorage.setItem(PATH_TRACK_PREV_KEY, safeCurrent);
     }
-    window.localStorage.setItem(PATH_TRACK_CURRENT_KEY, nextPath);
+    window.localStorage.setItem(PATH_TRACK_CURRENT_KEY, safeNextPath);
 
     const prev = window.localStorage.getItem(PATH_TRACK_PREV_KEY) ?? '';
-    setPreviousPath(prev && prev !== nextPath ? prev : '');
+    const safePrev = sanitizeInternalPath(prev, '');
+    setPreviousPath(safePrev && safePrev !== safeNextPath ? safePrev : '');
   }, [location.pathname, location.search, location.hash]);
 
   const quickActions = useMemo(() => {
@@ -151,7 +160,7 @@ export default function Header({ onToggleSidebar }: Props) {
   return (
     <header className="app-header">
       <div className="app-header-main">
-        <Button
+        <AppButton
           variant="link"
           className="sidebar-toggle d-lg-none text-white p-0 me-3"
           onClick={onToggleSidebar}
@@ -162,7 +171,7 @@ export default function Header({ onToggleSidebar }: Props) {
             <line x1="3" y1="12" x2="21" y2="12" />
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
-        </Button>
+        </AppButton>
         <div className="app-header-brand-group">
           <div className="app-header-brand-meta">
             <Link to="/" className="app-header-brand">
@@ -181,7 +190,7 @@ export default function Header({ onToggleSidebar }: Props) {
             />
           </div>
           {!user?.isAdmin && (
-            <Button
+            <AppButton
               type="button"
               variant="outline-light"
               size="sm"
@@ -189,7 +198,7 @@ export default function Header({ onToggleSidebar }: Props) {
               onClick={openRequestModal}
             >
               要望をあげる
-            </Button>
+            </AppButton>
           )}
         </div>
 
@@ -201,6 +210,18 @@ export default function Header({ onToggleSidebar }: Props) {
             <Link to={previousPath} className="app-header-quick-link app-header-quick-link-muted">
               前回の画面へ戻る
             </Link>
+          )}
+          {!user?.isAdmin && unreadCount > 0 && (
+            <Badge
+              bg="danger"
+              pill
+              className="me-2"
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate('/dashboard')}
+              title={`${unreadCount}件の未読通知`}
+            >
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </Badge>
           )}
           {quickActions.map((action) => (
             <Link key={action.to} to={action.to} className="app-header-quick-link">

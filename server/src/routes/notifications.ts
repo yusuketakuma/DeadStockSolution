@@ -3,12 +3,13 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications, pharmacies } from '../db/schema';
+import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications, pharmacies, notifications as notificationsTable } from '../db/schema';
 import { parsePositiveInt } from '../utils/request-utils';
 import { sanitizeInternalPath } from '../utils/path-utils';
 import { logger } from '../services/logger';
+import { getUnreadCount, markAsRead, markAllAsRead } from '../services/notification-service';
 
-type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update';
+type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update' | 'new_comment';
 
 interface NoticeItem {
   id: string;
@@ -188,6 +189,29 @@ function mergeDedupSortByTimestamp<T extends { id: number }>(
   });
 }
 
+function notificationToNotice(n: typeof notificationsTable.$inferSelect): NoticeItem {
+  const actionPaths: Record<string, string> = {
+    proposal: `/proposals/${n.referenceId}`,
+    match: '/matching',
+    comment: `/proposals/${n.referenceId}`,
+  };
+
+  const noticeType: NoticeType = n.type === 'new_comment' ? 'new_comment' : 'status_update';
+
+  return {
+    id: `notification-${n.id}`,
+    type: noticeType,
+    title: n.title,
+    body: n.message,
+    actionPath: actionPaths[n.referenceType ?? ''] ?? '/dashboard',
+    actionLabel: '確認する',
+    createdAt: n.createdAt,
+    deadlineAt: null,
+    unread: !n.isRead,
+    priority: n.isRead ? 5 : 3,
+  };
+}
+
 const router = Router();
 router.use(requireLogin);
 
@@ -279,6 +303,12 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       })(),
     ]);
 
+    const notificationRows = await db.select()
+      .from(notificationsTable)
+      .where(eq(notificationsTable.pharmacyId, pharmacyId))
+      .orderBy(desc(notificationsTable.createdAt))
+      .limit(50);
+
     const messageIds = messageRows.map((message) => message.id);
     const messageReadRows = messageIds.length > 0
       ? await db.select({ messageId: adminMessageReads.messageId })
@@ -330,6 +360,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         pharmacyId,
         triggerPharmacyNameById.get(row.triggerPharmacyId) ?? null,
       ));
+    }
+
+    for (const n of notificationRows) {
+      notices.push(notificationToNotice(n));
     }
 
     notices.sort((a, b) => {
@@ -444,5 +478,52 @@ router.post('/matches/:id/read', async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: '既読処理に失敗しました' });
   }
 });
+
+// GET /api/notifications/unread-count
+router.get('/unread-count', async (req: AuthRequest, res: Response) => {
+  try {
+    const pharmacyId = req.user!.id;
+    const unreadCount = await getUnreadCount(pharmacyId);
+    res.json({ unreadCount });
+  } catch (err) {
+    logger.error('Get unread count error', { error: (err as Error).message });
+    res.status(500).json({ error: '未読件数の取得に失敗しました' });
+  }
+});
+
+// PATCH /api/notifications/read-all (/:id/read より先に定義すること)
+const markAllReadHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const count = await markAllAsRead(req.user!.id);
+    res.json({ message: `${count}件を既読にしました`, count });
+  } catch (err) {
+    logger.error('Mark all as read error', { error: (err as Error).message });
+    res.status(500).json({ error: '一括既読更新に失敗しました' });
+  }
+};
+router.patch('/read-all', markAllReadHandler);
+router.post('/read-all', markAllReadHandler);
+
+// PATCH /api/notifications/:id/read
+const markReadHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const notificationId = parsePositiveInt(req.params.id);
+    if (!notificationId) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+    const success = await markAsRead(notificationId, req.user!.id);
+    if (!success) {
+      res.status(404).json({ error: '通知が見つかりません' });
+      return;
+    }
+    res.json({ message: '既読にしました' });
+  } catch (err) {
+    logger.error('Mark as read error', { error: (err as Error).message });
+    res.status(500).json({ error: '既読更新に失敗しました' });
+  }
+};
+router.patch('/:id/read', markReadHandler);
+router.post('/:id/read', markReadHandler);
 
 export default router;

@@ -1,15 +1,26 @@
 import { Router, Response } from 'express';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../config/database';
-import { exchangeProposals, exchangeProposalItems, exchangeHistory, deadStockItems, pharmacies } from '../db/schema';
+import {
+  exchangeProposals,
+  exchangeProposalItems,
+  exchangeHistory,
+  deadStockItems,
+  pharmacies,
+  exchangeFeedback,
+  proposalComments,
+} from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
+import { createNotification } from '../services/notification-service';
 import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
 import { processPendingMatchingRefreshJobs } from '../services/matching-refresh-service';
 import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
+import { getProposalPriority, sortByPriority } from '../services/proposal-priority-service';
+import { recalculateTrustScoreForPharmacy } from '../services/trust-score-service';
 
 const router = Router();
 router.use(requireLogin);
@@ -49,6 +60,29 @@ function mergeDedupSortByTimestamp<T extends { id: number }>(
     const rightSort = timestampSortValue(getTimestamp(right));
     return rightSort - leftSort || right.id - left.id;
   });
+}
+
+type BulkActionType = 'accept' | 'reject';
+
+function parseBulkAction(raw: unknown): BulkActionType | null {
+  if (raw === 'accept' || raw === 'reject') return raw;
+  return null;
+}
+
+function parseBulkIds(raw: unknown): number[] | null {
+  if (!Array.isArray(raw)) return null;
+  const normalized = raw
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  if (normalized.length === 0) return null;
+  return [...new Set(normalized)];
+}
+
+function proposalAccessibleByUser(
+  proposal: { pharmacyAId: number; pharmacyBId: number },
+  user: { id: number; isAdmin: boolean },
+): boolean {
+  return user.isAdmin || proposal.pharmacyAId === user.id || proposal.pharmacyBId === user.id;
 }
 
 // Find matching candidates
@@ -91,15 +125,82 @@ router.post('/proposals', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Bulk accept/reject proposals
+router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) => {
+  try {
+    const action = parseBulkAction(req.body?.action);
+    const ids = parseBulkIds(req.body?.ids);
+
+    if (!action || !ids) {
+      res.status(400).json({ error: 'action と ids を正しく指定してください' });
+      return;
+    }
+    if (ids.length > 50) {
+      res.status(400).json({ error: '一括操作は最大50件までです' });
+      return;
+    }
+
+    const actorId = req.user!.id;
+    const results: Array<{
+      id: number;
+      ok: boolean;
+      status?: string;
+      message?: string;
+      error?: string;
+    }> = [];
+
+    for (const id of ids) {
+      try {
+        if (action === 'accept') {
+          const nextStatus = await acceptProposal(id, actorId);
+          results.push({
+            id,
+            ok: true,
+            status: nextStatus,
+            message: nextStatus === 'confirmed'
+              ? '仮マッチングが確定しました'
+              : '承認しました（相手薬局の承認待ち）',
+          });
+        } else {
+          await rejectProposal(id, actorId);
+          results.push({
+            id,
+            ok: true,
+            status: 'rejected',
+            message: '拒否しました',
+          });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '操作に失敗しました';
+        results.push({ id, ok: false, error: message });
+      }
+    }
+
+    const successCount = results.filter((row) => row.ok).length;
+    res.json({
+      action,
+      results,
+      summary: {
+        total: ids.length,
+        success: successCount,
+        failed: ids.length - successCount,
+      },
+    });
+  } catch (err) {
+    logger.error('Bulk proposal action error', { error: (err as Error).message });
+    res.status(500).json({ error: '一括操作に失敗しました' });
+  }
+});
+
 // List my proposals
 router.get('/proposals', async (req: AuthRequest, res: Response) => {
   try {
+    const sort = typeof req.query.sort === 'string' ? req.query.sort : 'recent';
     const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
       defaultLimit: 20,
       maxLimit: 100,
     });
     const pharmacyId = req.user!.id;
-    const fetchSize = offset + limit;
     const proposalSelect = {
       id: exchangeProposals.id,
       pharmacyAId: exchangeProposals.pharmacyAId,
@@ -111,33 +212,32 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       proposedAt: exchangeProposals.proposedAt,
     };
 
-    const [branchA, branchB, [countA], [countB], [countOverlap]] = await Promise.all([
-      db.select(proposalSelect)
-        .from(exchangeProposals)
-        .where(eq(exchangeProposals.pharmacyAId, pharmacyId))
-        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
-        .limit(fetchSize),
-      db.select(proposalSelect)
-        .from(exchangeProposals)
-        .where(eq(exchangeProposals.pharmacyBId, pharmacyId))
-        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
-        .limit(fetchSize),
-      db.select({ count: rowCount })
-        .from(exchangeProposals)
-        .where(eq(exchangeProposals.pharmacyAId, pharmacyId)),
-      db.select({ count: rowCount })
-        .from(exchangeProposals)
-        .where(eq(exchangeProposals.pharmacyBId, pharmacyId)),
-      db.select({ count: rowCount })
-        .from(exchangeProposals)
-        .where(and(
-          eq(exchangeProposals.pharmacyAId, pharmacyId),
-          eq(exchangeProposals.pharmacyBId, pharmacyId),
-        )),
-    ]);
-
-    const rows = mergeDedupSortByTimestamp(branchA, branchB, (row) => row.proposedAt)
-      .slice(offset, offset + limit);
+    const ownershipFilter = or(
+      eq(exchangeProposals.pharmacyAId, pharmacyId),
+      eq(exchangeProposals.pharmacyBId, pharmacyId),
+    );
+    const [rows, totalCount] = sort === 'priority'
+      ? await (async () => {
+        const allRows = await db.select(proposalSelect)
+          .from(exchangeProposals)
+          .where(ownershipFilter)
+          .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id));
+        return [allRows, allRows.length] as const;
+      })()
+      : await (async () => {
+        const [pagedRows, [countRow]] = await Promise.all([
+          db.select(proposalSelect)
+            .from(exchangeProposals)
+            .where(ownershipFilter)
+            .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
+            .limit(limit)
+            .offset(offset),
+          db.select({ count: rowCount })
+            .from(exchangeProposals)
+            .where(ownershipFilter),
+        ]);
+        return [pagedRows, countRow.count] as const;
+      })();
 
     const pharmacyIds = [...new Set(rows.flatMap((row) => [row.pharmacyAId, row.pharmacyBId]))];
     const pharmacyRows = pharmacyIds.length > 0
@@ -147,13 +247,28 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       : [];
     const pharmacyMap = new Map(pharmacyRows.map((row) => [row.id, row.name]));
 
-    const enriched = rows.map((row) => ({
-      ...row,
-      pharmacyAName: pharmacyMap.get(row.pharmacyAId) ?? '',
-      pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
-    }));
+    const prioritized = rows.map((row) => {
+      const priority = getProposalPriority({
+        id: row.id,
+        pharmacyAId: row.pharmacyAId,
+        pharmacyBId: row.pharmacyBId,
+        status: row.status,
+        proposedAt: row.proposedAt,
+      }, pharmacyId);
 
-    const totalCount = countA.count + countB.count - countOverlap.count;
+      return {
+        ...row,
+        pharmacyAName: pharmacyMap.get(row.pharmacyAId) ?? '',
+        pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
+        priorityScore: priority.priorityScore,
+        priorityReasons: priority.priorityReasons,
+        deadlineAt: priority.deadlineAt,
+      };
+    });
+
+    const enriched = sort === 'priority'
+      ? sortByPriority(prioritized).slice(offset, offset + limit)
+      : prioritized;
 
     res.json({
       data: enriched,
@@ -329,6 +444,336 @@ router.post('/proposals/:id/complete', async (req: AuthRequest, res: Response) =
     res.json({ message: '交換を完了しました' });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : '完了処理に失敗しました' });
+  }
+});
+
+// Submit exchange feedback (participants only, completed proposals only)
+router.post('/proposals/:id/feedback', async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parsePositiveInt(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+
+    const rating = Number(req.body?.rating);
+    const commentRaw = typeof req.body?.comment === 'string' ? req.body.comment : '';
+    const comment = commentRaw.trim();
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      res.status(400).json({ error: '評価は1〜5で入力してください' });
+      return;
+    }
+    if (comment.length > 300) {
+      res.status(400).json({ error: 'コメントは300文字以内で入力してください' });
+      return;
+    }
+
+    const [proposal] = await db.select({
+      id: exchangeProposals.id,
+      status: exchangeProposals.status,
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      pharmacyBId: exchangeProposals.pharmacyBId,
+    })
+      .from(exchangeProposals)
+      .where(eq(exchangeProposals.id, id))
+      .limit(1);
+
+    if (!proposal) {
+      res.status(404).json({ error: 'マッチングが見つかりません' });
+      return;
+    }
+    if (proposal.status !== 'completed') {
+      res.status(400).json({ error: '完了済みマッチングのみ評価できます' });
+      return;
+    }
+
+    const actorId = req.user!.id;
+    const isA = proposal.pharmacyAId === actorId;
+    const isB = proposal.pharmacyBId === actorId;
+    if (!isA && !isB) {
+      res.status(403).json({ error: 'このマッチングにアクセスする権限がありません' });
+      return;
+    }
+
+    const targetPharmacyId = isA ? proposal.pharmacyBId : proposal.pharmacyAId;
+    const now = new Date().toISOString();
+
+    await db.insert(exchangeFeedback).values({
+      proposalId: proposal.id,
+      fromPharmacyId: actorId,
+      toPharmacyId: targetPharmacyId,
+      rating,
+      comment: comment.length > 0 ? comment : null,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [exchangeFeedback.proposalId, exchangeFeedback.fromPharmacyId],
+      set: {
+        rating,
+        comment: comment.length > 0 ? comment : null,
+        updatedAt: now,
+      },
+    });
+
+    await recalculateTrustScoreForPharmacy(targetPharmacyId);
+
+    res.status(201).json({ message: '取引評価を登録しました' });
+  } catch (err) {
+    logger.error('Proposal feedback error', { error: (err as Error).message });
+    res.status(500).json({ error: '取引評価の登録に失敗しました' });
+  }
+});
+
+// Proposal comments
+router.get('/proposals/:id/comments', async (req: AuthRequest, res: Response) => {
+  try {
+    const proposalId = parsePositiveInt(req.params.id);
+    if (!proposalId) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+
+    const [proposal] = await db.select({
+      id: exchangeProposals.id,
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      pharmacyBId: exchangeProposals.pharmacyBId,
+    })
+      .from(exchangeProposals)
+      .where(eq(exchangeProposals.id, proposalId))
+      .limit(1);
+
+    if (!proposal) {
+      res.status(404).json({ error: 'マッチングが見つかりません' });
+      return;
+    }
+
+    const viewer = { id: req.user!.id, isAdmin: Boolean(req.user?.isAdmin) };
+    if (!proposalAccessibleByUser(proposal, viewer)) {
+      res.status(403).json({ error: 'アクセス権限がありません' });
+      return;
+    }
+
+    const rows = await db.select({
+      id: proposalComments.id,
+      proposalId: proposalComments.proposalId,
+      authorPharmacyId: proposalComments.authorPharmacyId,
+      authorName: pharmacies.name,
+      body: proposalComments.body,
+      isDeleted: proposalComments.isDeleted,
+      createdAt: proposalComments.createdAt,
+      updatedAt: proposalComments.updatedAt,
+    })
+      .from(proposalComments)
+      .innerJoin(pharmacies, eq(proposalComments.authorPharmacyId, pharmacies.id))
+      .where(eq(proposalComments.proposalId, proposalId))
+      .orderBy(asc(proposalComments.createdAt), asc(proposalComments.id));
+
+    res.json({
+      data: rows.map((row) => ({
+        ...row,
+        body: row.isDeleted ? '（削除済み）' : row.body,
+      })),
+    });
+  } catch (err) {
+    logger.error('List proposal comments error', { error: (err as Error).message });
+    res.status(500).json({ error: 'コメント一覧の取得に失敗しました' });
+  }
+});
+
+router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) => {
+  try {
+    const proposalId = parsePositiveInt(req.params.id);
+    if (!proposalId) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+
+    const [proposal] = await db.select({
+      id: exchangeProposals.id,
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      pharmacyBId: exchangeProposals.pharmacyBId,
+    })
+      .from(exchangeProposals)
+      .where(eq(exchangeProposals.id, proposalId))
+      .limit(1);
+
+    if (!proposal) {
+      res.status(404).json({ error: 'マッチングが見つかりません' });
+      return;
+    }
+
+    if (req.user?.isAdmin) {
+      res.status(403).json({ error: '管理者はコメントを投稿できません' });
+      return;
+    }
+
+    const isParty = proposal.pharmacyAId === req.user!.id || proposal.pharmacyBId === req.user!.id;
+    if (!isParty) {
+      res.status(403).json({ error: 'アクセス権限がありません' });
+      return;
+    }
+
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+    if (!body) {
+      res.status(400).json({ error: 'コメント本文を入力してください' });
+      return;
+    }
+    if (body.length > 1000) {
+      res.status(400).json({ error: 'コメントは1000文字以内で入力してください' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const [saved] = await db.insert(proposalComments).values({
+      proposalId,
+      authorPharmacyId: req.user!.id,
+      body,
+      isDeleted: false,
+      createdAt: now,
+      updatedAt: now,
+    }).returning({
+      id: proposalComments.id,
+      proposalId: proposalComments.proposalId,
+      authorPharmacyId: proposalComments.authorPharmacyId,
+      body: proposalComments.body,
+      isDeleted: proposalComments.isDeleted,
+      createdAt: proposalComments.createdAt,
+      updatedAt: proposalComments.updatedAt,
+    });
+
+    const recipientId = proposal.pharmacyAId === req.user!.id
+      ? proposal.pharmacyBId
+      : proposal.pharmacyAId;
+
+    void createNotification({
+      pharmacyId: recipientId,
+      type: 'new_comment',
+      title: 'コメントが追加されました',
+      message: body.length > 50 ? body.substring(0, 50) + '...' : body,
+      referenceType: 'comment',
+      referenceId: saved.id,
+    });
+
+    res.status(201).json({ message: 'コメントを投稿しました', comment: saved });
+  } catch (err) {
+    logger.error('Create proposal comment error', { error: (err as Error).message });
+    res.status(500).json({ error: 'コメント投稿に失敗しました' });
+  }
+});
+
+router.patch('/proposals/:id/comments/:commentId', async (req: AuthRequest, res: Response) => {
+  try {
+    const proposalId = parsePositiveInt(req.params.id);
+    const commentId = parsePositiveInt(req.params.commentId);
+    if (!proposalId || !commentId) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+
+    if (req.user?.isAdmin) {
+      res.status(403).json({ error: '管理者はコメントを編集できません' });
+      return;
+    }
+
+    const [current] = await db.select({
+      id: proposalComments.id,
+      proposalId: proposalComments.proposalId,
+      authorPharmacyId: proposalComments.authorPharmacyId,
+      isDeleted: proposalComments.isDeleted,
+    })
+      .from(proposalComments)
+      .where(and(
+        eq(proposalComments.id, commentId),
+        eq(proposalComments.proposalId, proposalId),
+      ))
+      .limit(1);
+
+    if (!current) {
+      res.status(404).json({ error: 'コメントが見つかりません' });
+      return;
+    }
+    if (current.authorPharmacyId !== req.user!.id) {
+      res.status(403).json({ error: '自分のコメントのみ編集できます' });
+      return;
+    }
+    if (current.isDeleted) {
+      res.status(400).json({ error: '削除済みコメントは編集できません' });
+      return;
+    }
+
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+    if (!body) {
+      res.status(400).json({ error: 'コメント本文を入力してください' });
+      return;
+    }
+    if (body.length > 1000) {
+      res.status(400).json({ error: 'コメントは1000文字以内で入力してください' });
+      return;
+    }
+
+    await db.update(proposalComments)
+      .set({ body, updatedAt: new Date().toISOString() })
+      .where(eq(proposalComments.id, commentId));
+
+    res.json({ message: 'コメントを更新しました' });
+  } catch (err) {
+    logger.error('Update proposal comment error', { error: (err as Error).message });
+    res.status(500).json({ error: 'コメント更新に失敗しました' });
+  }
+});
+
+router.delete('/proposals/:id/comments/:commentId', async (req: AuthRequest, res: Response) => {
+  try {
+    const proposalId = parsePositiveInt(req.params.id);
+    const commentId = parsePositiveInt(req.params.commentId);
+    if (!proposalId || !commentId) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+
+    if (req.user?.isAdmin) {
+      res.status(403).json({ error: '管理者はコメントを削除できません' });
+      return;
+    }
+
+    const [current] = await db.select({
+      id: proposalComments.id,
+      proposalId: proposalComments.proposalId,
+      authorPharmacyId: proposalComments.authorPharmacyId,
+      isDeleted: proposalComments.isDeleted,
+    })
+      .from(proposalComments)
+      .where(and(
+        eq(proposalComments.id, commentId),
+        eq(proposalComments.proposalId, proposalId),
+      ))
+      .limit(1);
+
+    if (!current) {
+      res.status(404).json({ error: 'コメントが見つかりません' });
+      return;
+    }
+    if (current.authorPharmacyId !== req.user!.id) {
+      res.status(403).json({ error: '自分のコメントのみ削除できます' });
+      return;
+    }
+    if (current.isDeleted) {
+      res.status(400).json({ error: '既に削除済みです' });
+      return;
+    }
+
+    await db.update(proposalComments)
+      .set({
+        isDeleted: true,
+        body: '',
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(proposalComments.id, commentId));
+
+    res.json({ message: 'コメントを削除しました' });
+  } catch (err) {
+    logger.error('Delete proposal comment error', { error: (err as Error).message });
+    res.status(500).json({ error: 'コメント削除に失敗しました' });
   }
 });
 

@@ -1,3 +1,5 @@
+import { sanitizeInternalPath } from '../../utils/navigation';
+
 export interface UploadStatus {
   deadStockUploaded: boolean;
   usedMedicationUploaded: boolean;
@@ -7,7 +9,7 @@ export interface UploadStatus {
 
 export interface Notice {
   id: string;
-  type: 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update';
+  type: 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update' | 'new_comment';
   title: string;
   body: string;
   actionPath: string;
@@ -111,12 +113,14 @@ export function noticeVariant(type: Notice['type']): string {
   if (type === 'status_update') return 'warning';
   if (type === 'match_update') return 'primary';
   if (type === 'admin_message') return 'info';
+  if (type === 'new_comment') return 'success';
   return 'secondary';
 }
 
 export function noticeTypeLabel(type: Notice['type']): string {
   if (type === 'admin_message') return '管理者メッセージ';
   if (type === 'match_update') return '候補更新';
+  if (type === 'new_comment') return 'コメント';
   return '交換通知';
 }
 
@@ -155,7 +159,7 @@ export function buildNextAction(
       title: '優先度の高い未読メッセージを確認',
       description: '管理者から未読メッセージがあります。優先度の高い内容から確認してください。',
       primaryLabel: topUnreadNotice.actionLabel || '内容を確認',
-      primaryPath: topUnreadNotice.actionPath || '/',
+      primaryPath: sanitizeInternalPath(topUnreadNotice.actionPath, '/'),
       secondaryLabel: 'マッチング一覧を確認',
       secondaryPath: '/proposals',
       badge: 'primary',
@@ -163,7 +167,7 @@ export function buildNextAction(
   }
 
   if (topUnreadNotice && (topUnreadNotice.type === 'inbound_request' || topUnreadNotice.type === 'status_update')) {
-    const primaryPath = topUnreadNotice.actionPath || '/proposals';
+    const primaryPath = sanitizeInternalPath(topUnreadNotice.actionPath, '/proposals');
     const primaryLabel = topUnreadNotice.actionLabel || 'マッチング一覧を確認';
     const deadlineMs = proposalDeadlineMs(topUnreadNotice);
     if (deadlineMs !== null) {
@@ -203,12 +207,24 @@ export function buildNextAction(
     };
   }
 
+  if (topUnreadNotice?.type === 'new_comment') {
+    return {
+      title: '新しいコメントを確認',
+      description: '提案にコメントが追加されました。確認してください。',
+      primaryLabel: topUnreadNotice.actionLabel || 'コメントを確認',
+      primaryPath: sanitizeInternalPath(topUnreadNotice.actionPath, '/proposals'),
+      secondaryLabel: 'マッチング一覧を確認',
+      secondaryPath: '/proposals',
+      badge: 'primary',
+    };
+  }
+
   if (topUnreadNotice?.type === 'match_update') {
     return {
       title: '交換候補の更新を確認',
       description: '他薬局の更新により候補が変化しています。最新候補を確認してください。',
       primaryLabel: topUnreadNotice.actionLabel || '候補を確認',
-      primaryPath: topUnreadNotice.actionPath || '/matching',
+      primaryPath: sanitizeInternalPath(topUnreadNotice.actionPath, '/matching'),
       secondaryLabel: 'マッチング一覧を確認',
       secondaryPath: '/proposals',
       badge: 'primary',
@@ -252,6 +268,13 @@ export function parseMatchNotificationId(noticeId: string): number | null {
   return id;
 }
 
+export function parseNotificationId(noticeId: string): number | null {
+  if (!noticeId.startsWith('notification-')) return null;
+  const id = Number(noticeId.replace('notification-', ''));
+  if (!Number.isInteger(id) || id <= 0) return null;
+  return id;
+}
+
 export function resolveNoticeReadEndpoint(notice: Notice): string | null {
   if (!notice.unread) return null;
 
@@ -263,6 +286,11 @@ export function resolveNoticeReadEndpoint(notice: Notice): string | null {
   if (notice.type === 'match_update') {
     const matchId = parseMatchNotificationId(notice.id);
     return matchId ? `/notifications/matches/${matchId}/read` : null;
+  }
+
+  if (notice.type === 'new_comment') {
+    const notifId = parseNotificationId(notice.id);
+    return notifId ? `/notifications/${notifId}/read` : null;
   }
 
   return null;

@@ -1,4 +1,8 @@
-import { Card, Alert, Badge, ListGroup, Spinner } from 'react-bootstrap';
+import { Badge, ListGroup } from 'react-bootstrap';
+import AppAlert from '../ui/AppAlert';
+import AppButton from '../ui/AppButton';
+import AppCard from '../ui/AppCard';
+import InlineLoader from '../ui/InlineLoader';
 import { Notice, NotificationsResponse, noticeTypeLabel, noticeVariant } from './types';
 
 interface Props {
@@ -19,8 +23,8 @@ export default function DashboardNotices({
   onRefresh,
 }: Props) {
   return (
-    <Card className="mb-3">
-      <Card.Header className="d-flex justify-content-between align-items-center">
+    <AppCard className="mb-3">
+      <AppCard.Header className="d-flex justify-content-between align-items-center">
         <span>お知らせ</span>
         <div className="d-flex gap-2 flex-wrap align-items-center">
           {notifications && (
@@ -29,26 +33,23 @@ export default function DashboardNotices({
               <Badge bg="info">未読メッセージ: {notifications.summary.unreadMessages}</Badge>
             </>
           )}
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onRefresh}>
+          <AppButton size="sm" variant="outline-secondary" onClick={onRefresh} disabled={loadingNotifications}>
             更新
-          </button>
+          </AppButton>
         </div>
-      </Card.Header>
-      <Card.Body>
+      </AppCard.Header>
+      <AppCard.Body>
         {dashboardError && (
-          <Alert variant="warning" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <AppAlert variant="warning" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
             <span className="small">{dashboardError}</span>
-            <button type="button" className="btn btn-sm btn-outline-warning" onClick={onRetry}>
+            <AppButton size="sm" variant="outline-warning" onClick={onRetry} disabled={loadingNotifications}>
               再試行
-            </button>
-          </Alert>
+            </AppButton>
+          </AppAlert>
         )}
 
         {loadingNotifications && (
-          <div className="d-flex align-items-center gap-2 text-muted small">
-            <Spinner size="sm" />
-            通知を読み込み中...
-          </div>
+          <InlineLoader text="通知を読み込み中..." className="text-muted small" />
         )}
 
         {!loadingNotifications && !dashboardError && (!notifications || notifications.notices.length === 0) && (
@@ -86,7 +87,7 @@ export default function DashboardNotices({
             ))}
           </ListGroup>
         )}
-      </Card.Body>
-    </Card>
+      </AppCard.Body>
+    </AppCard>
   );
 }

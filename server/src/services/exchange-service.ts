@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   exchangeProposals,
@@ -7,7 +7,9 @@ import {
   deadStockItems,
   pharmacies,
   deadStockReservations,
+  pharmacyRelationships,
 } from '../db/schema';
+import { createNotification } from './notification-service';
 
 const MIN_EXCHANGE_VALUE = 10000;
 const VALUE_TOLERANCE = 10;
@@ -110,6 +112,27 @@ export async function createProposal(
 
     if (!pharmacyB || !pharmacyB.isActive) {
       throw new Error('交換先薬局が見つからないか、無効です');
+    }
+
+    const [blockedRelationship] = await tx.select({ id: pharmacyRelationships.id })
+      .from(pharmacyRelationships)
+      .where(and(
+        eq(pharmacyRelationships.relationshipType, 'blocked'),
+        or(
+          and(
+            eq(pharmacyRelationships.pharmacyId, pharmacyAId),
+            eq(pharmacyRelationships.targetPharmacyId, candidate.pharmacyBId),
+          ),
+          and(
+            eq(pharmacyRelationships.pharmacyId, candidate.pharmacyBId),
+            eq(pharmacyRelationships.targetPharmacyId, pharmacyAId),
+          ),
+        ),
+      ))
+      .limit(1);
+
+    if (blockedRelationship) {
+      throw new Error('ブロック中の薬局には提案できません');
     }
 
     const allIds = [...candidate.itemsFromA, ...candidate.itemsFromB].map((item) => item.deadStockItemId);
@@ -236,6 +259,15 @@ export async function createProposal(
       })),
     );
 
+    void createNotification({
+      pharmacyId: candidate.pharmacyBId,
+      type: 'proposal_received',
+      title: '交換提案が届きました',
+      message: `新しい交換提案（${validatedA.length + validatedB.length}品目）`,
+      referenceType: 'proposal',
+      referenceId: proposal.id,
+    });
+
     return proposal.id;
   });
 }
@@ -286,6 +318,19 @@ export async function acceptProposal(proposalId: number, pharmacyId: number): Pr
       throw new Error('状態が変更されたため、操作を完了できません。再読み込みしてください');
     }
 
+    const otherPartyId = proposal.pharmacyAId === pharmacyId
+      ? proposal.pharmacyBId
+      : proposal.pharmacyAId;
+
+    void createNotification({
+      pharmacyId: otherPartyId,
+      type: 'proposal_status_changed',
+      title: '交換提案のステータスが更新されました',
+      message: `提案が${newStatus === 'confirmed' ? '確定' : '承認'}されました`,
+      referenceType: 'proposal',
+      referenceId: proposalId,
+    });
+
     return newStatus;
   });
 }
@@ -324,6 +369,19 @@ export async function rejectProposal(proposalId: number, pharmacyId: number): Pr
 
     await tx.delete(deadStockReservations)
       .where(eq(deadStockReservations.proposalId, proposalId));
+
+    const rejectOtherPartyId = proposal.pharmacyAId === pharmacyId
+      ? proposal.pharmacyBId
+      : proposal.pharmacyAId;
+
+    void createNotification({
+      pharmacyId: rejectOtherPartyId,
+      type: 'proposal_status_changed',
+      title: '交換提案が却下されました',
+      message: '相手薬局が提案を却下しました',
+      referenceType: 'proposal',
+      referenceId: proposalId,
+    });
   });
 }
 

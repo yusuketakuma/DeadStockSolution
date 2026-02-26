@@ -32,6 +32,118 @@
 
 ---
 
+## Sprint: システム堅牢化・運用機能強化
+
+> **目的**: 複数ログイン時のデータ整合性、編集データの消失防止、管理者向けバックアップ機能を追加
+
+### Phase 1: 同一アカウント複数ログイン — データ整合性対策 [feature:security]
+
+現状JWTステートレス方式で複数ログインは既に可能。競合編集時のデータ破壊を防止する。
+
+- [x] T011: Optimistic Locking 基盤追加 `cc:DONE` (2026-02-26)
+  - `pharmacies`, `pharmacyBusinessHours`, `pharmacySpecialHours` に `version` カラム追加
+- [x] T012: サーバー側 Optimistic Locking 実装 `cc:DONE` (2026-02-26)
+  - account.ts, business-hours.ts に version チェック + 409 Conflict 返却
+- [x] T013: フロントエンド競合ハンドリング `cc:DONE` (2026-02-26)
+  - ConflictAlert コンポーネント + isConflictError ヘルパー + AccountPage 統合
+- [x] T014: テスト `cc:DONE` (2026-02-26)
+  - optimistic-locking.test.ts: 11テスト（アカウント6 + 営業時間5）
+
+### Phase 2: 編集途中データ リアルタイム保存 [feature]
+
+全フォームに localStorage ベースの自動保存を追加。ページ離脱・リロード時のデータ消失を防止。
+
+- [x] T015: useAutoSave カスタムフック作成 `cc:DONE` (2026-02-26)
+  - `client/src/hooks/useAutoSave.ts` — debounce 1秒, enabled オプション, savingStatus 3状態
+- [x] T016: AccountInfoForm にリアルタイム保存適用 `cc:DONE` (2026-02-26)
+  - パスワード除外の AccountDraftData 型 + DraftRestoreAlert 統合
+- [x] T017: BusinessHoursSettings にリアルタイム保存適用 `cc:DONE` (2026-02-26)
+  - 通常+特別営業時間の両方を保存対象、編集モード中のみ有効
+- [x] T018: DrugMasterEditModal にリアルタイム保存適用 `cc:DONE` (2026-02-26)
+  - formId に yjCode 含む、モーダル閉じる時に自動クリア
+- [x] T019: UploadPage 設定にリアルタイム保存適用 `cc:DONE` (2026-02-26)
+  - カラムマッピング + アップロードタイプを保存対象
+- [x] T020: テスト `cc:DONE` (2026-02-26)
+  - useAutoSave.test.ts: 12テスト（初期状態、debounce、復元、クリア、独立性、壊れたJSON等）
+
+### Phase 3: データベースバックアップ機能（管理者メニュー）[feature:security] [P]
+
+JSON + CSV 両形式でのエクスポート。管理画面からワンクリックでダウンロード。
+
+- [x] T021: バックアップ API 設計・実装 `cc:DONE` (2026-02-26)
+  - admin-backup.ts: GET /tables + POST /export、レート制限 5回/15分
+- [x] T022: JSON エクスポートサービス `cc:DONE` (2026-02-26)
+  - backup-service.ts: 23テーブル全対応、メタデータ付き、adm-zip 圧縮
+  - passwordHash/token をエクスポートから除外（セキュリティ）
+- [x] T023: CSV エクスポートサービス `cc:DONE` (2026-02-26)
+  - 80+カラムの日本語マッピング、BOM付きUTF-8、自作CSVエスケープ
+- [x] T024: 管理画面 バックアップページ UI `cc:DONE` (2026-02-26)
+  - AdminBackupPage.tsx + Sidebar メニュー追加 + ルート /admin/backup
+- [x] T025: テスト + アクティビティログ `cc:DONE` (2026-02-26)
+  - backup-service.test.ts: 34テスト、activity_logs に backup_export 記録
+  - バックアップ実行を `activity_logs` に記録
+  - 大量データ時のメモリ考慮（ストリーミング検証）
+
+### 優先度マトリクス
+
+| 機能 | 優先度 | 理由 |
+|------|--------|------|
+| Phase 1: Optimistic Locking | **Required** | 複数ログイン時のデータ破壊防止（安全性） |
+| Phase 2: リアルタイム保存 | **Required** | ユーザー体験の基本品質（データ消失防止） |
+| Phase 3: DB バックアップ | **Recommended** | 運用上重要だが Phase 1-2 より後でも可 |
+
+### 工数目安（参考）
+
+| Phase | タスク数 | 規模感 |
+|-------|---------|--------|
+| Phase 1 | 4 | 小〜中（スキーマ変更 + API修正 + フロント対応） |
+| Phase 2 | 6 | 中（共通フック + 4画面適用 + テスト） |
+| Phase 3 | 5 | 中〜大（新規 API + サービス + UI ページ） |
+
+> **Note**: Phase 1 と Phase 3 は並列実行可能。Phase 2 は Phase 1 完了後が望ましい（version を保存対象に含めるため）。
+
+---
+
+## Sprint: 統合通知センター
+
+> **設計書**: [notification-center-design.md](docs/plans/2026-02-26-notification-center-design.md)
+> **実装計画**: [notification-center-plan.md](docs/plans/2026-02-26-notification-center-plan.md)
+
+### Phase 1: バックエンド基盤
+
+- [x] T026: notifications テーブル + readByRecipient カラム追加 `cc:DONE` (2026-02-26)
+  - schema.ts に notifications テーブル定義、proposalComments に readByRecipient カラム追加
+  - マイグレーション生成済み (0015)
+- [x] T027: notification-service.ts を作成（TDD） `cc:DONE` (2026-02-26)
+  - createNotification, getUnreadCount, getNotifications, markAsRead, markAllAsRead — 6テストPASS
+- [x] T028: 通知 API エンドポイント追加 `cc:DONE` (2026-02-26)
+  - GET /unread-count, PATCH /:id/read, PATCH /read-all — 4テストPASS
+- [x] T029: 既存サービスに通知生成を追加 `cc:DONE` (2026-02-26)
+  - exchange-service.ts + exchange.ts にベストエフォート通知生成追加
+
+### Phase 2: バックエンド統合
+
+- [x] T030: GET /api/notifications に notifications テーブルを統合 `cc:DONE` (2026-02-26)
+  - notificationToNotice() ヘルパーで統合、summary に未読件数加算
+
+### Phase 3: フロントエンド
+
+- [x] T031: NotificationContext + ポーリング `cc:DONE` (2026-02-26)
+  - 30秒間隔ポーリング、visibilitychange 連携
+- [x] T032: ヘッダー通知バッジ `cc:DONE` (2026-02-26)
+  - Badge コンポーネント、99+ 表示、ダッシュボード遷移
+- [x] T033: ダッシュボード通知タイプ拡張 `cc:DONE` (2026-02-26)
+  - new_comment タイプ追加、parseNotificationId ヘルパー
+- [x] T034: ダッシュボードとポーリングの連携 `cc:DONE` (2026-02-26)
+  - handleNoticeClick 内で refreshCount 呼び出し
+
+### Phase 4: 検証
+
+- [x] T035: 全体テスト & ビルド確認 `cc:DONE` (2026-02-26)
+  - サーバー: 320 passed / クライアント: 114 passed / ビルド: 成功
+
+---
+
 ## 📦 アーカイブ
 
 > 完了済みスプリントは `.claude/memory/archive/` に移動済み

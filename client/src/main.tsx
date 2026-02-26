@@ -6,6 +6,7 @@ import './styles/sections/header.css';
 import './styles/sections/layout-sidebar.css';
 import './styles/sections/content.css';
 import './styles/sections/mobile.css';
+import './styles/design-language.css';
 import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
