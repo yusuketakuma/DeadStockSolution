@@ -1,18 +1,16 @@
-import { Suspense, type ReactElement } from 'react';
+import { Suspense, useEffect, type ReactElement } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
+import AppScreen from './components/ui/AppScreen';
+import PageLoader from './components/ui/PageLoader';
 import { ROUTE_META, type RouteMeta } from './routes/route-config';
+import { DESIGN_PRESET_STORAGE_KEY, isDesignPresetId } from './design/genericDesignPresets';
 
 function RouteLoadingFallback() {
-  return (
-    <div className="d-flex justify-content-center align-items-center py-5">
-      <div className="spinner-border text-primary" role="status">
-        <span className="visually-hidden">読み込み中...</span>
-      </div>
-    </div>
-  );
+  return <PageLoader />;
 }
 
 function withRouteSuspense(element: ReactElement): ReactElement {
@@ -33,7 +31,15 @@ function renderRouteElement(route: RouteMeta, authenticated: boolean): ReactElem
     return <Screen />;
   }
 
-  const protectedContent = route.useLayout ? <Layout><Screen /></Layout> : <Screen />;
+  const protectedContent = route.useLayout
+    ? <Layout><Screen /></Layout>
+    : (
+      <div className="app-theme">
+        <AppScreen>
+          <Screen />
+        </AppScreen>
+      </div>
+    );
   return <ProtectedRoute adminOnly={route.adminOnly}>{protectedContent}</ProtectedRoute>;
 }
 
@@ -41,13 +47,7 @@ function AppRoutes() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center auth-fullscreen">
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">読み込み中...</span>
-        </div>
-      </div>
-    );
+    return <PageLoader fullHeight />;
   }
 
   return (
@@ -65,9 +65,19 @@ function AppRoutes() {
 }
 
 export default function App() {
+  useEffect(() => {
+    document.body.classList.add('app-theme-root');
+    const stored = window.localStorage.getItem(DESIGN_PRESET_STORAGE_KEY);
+    const preset = isDesignPresetId(stored) ? stored : 'clinical-calm';
+    document.body.setAttribute('data-design-preset', preset);
+    return () => document.body.classList.remove('app-theme-root');
+  }, []);
+
   return (
     <AuthProvider>
-      <AppRoutes />
+      <NotificationProvider>
+        <AppRoutes />
+      </NotificationProvider>
     </AuthProvider>
   );
 }

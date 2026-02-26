@@ -1,5 +1,15 @@
 import { memo, useMemo } from 'react';
-import { Alert, Button, Card, Form, Spinner, Table } from 'react-bootstrap';
+import AppTable from '../ui/AppTable';
+import AppButton from '../ui/AppButton';
+import AppAlert from '../ui/AppAlert';
+import { Form } from 'react-bootstrap';
+import InlineLoader from '../ui/InlineLoader';
+import AppSelect from '../ui/AppSelect';
+import LoadingButton from '../ui/LoadingButton';
+import AppDataPanel from '../ui/AppDataPanel';
+import AppControl from '../ui/AppControl';
+import AppMobileDataCard from '../ui/AppMobileDataCard';
+import AppResponsiveSwitch from '../ui/AppResponsiveSwitch';
 import {
   BusinessHourEntry,
   DAY_NAMES,
@@ -67,18 +77,16 @@ function BusinessHoursSettings({
   );
 
   return (
-    <Card className="mt-3">
-      <Card.Header>営業時間設定</Card.Header>
-      <Card.Body>
+    <AppDataPanel title="営業時間設定" className="mt-3">
         {hoursMessage && (
-          <Alert variant="success" onClose={() => onHoursMessage('')} dismissible>
+          <AppAlert variant="success" onClose={() => onHoursMessage('')} dismissible>
             {hoursMessage}
-          </Alert>
+          </AppAlert>
         )}
         {hoursError && (
-          <Alert variant="danger" onClose={() => onHoursError('')} dismissible>
+          <AppAlert variant="danger" onClose={() => onHoursError('')} dismissible>
             {hoursError}
-          </Alert>
+          </AppAlert>
         )}
 
         <p className="small text-muted mb-3">
@@ -89,257 +97,453 @@ function BusinessHoursSettings({
         </p>
 
         {!hoursLoaded && (
-          <div className="d-flex align-items-center gap-2 text-muted small">
-            <Spinner size="sm" />
-            営業時間を読み込み中...
-          </div>
+          <InlineLoader text="営業時間を読み込み中..." className="text-muted small" />
         )}
 
         {hoursLoaded && (
           <>
-            <div className="table-responsive">
-              <Table size="sm" className="mb-3">
-                <thead className="table-light">
-                  <tr>
-                    <th>曜日</th>
-                    {hoursEditing ? (
-                      <>
-                        <th>定休日</th>
-                        <th>24時間</th>
-                        <th>開店時間</th>
-                        <th>閉店時間</th>
-                      </>
-                    ) : (
-                      <th>営業時間</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
+            <AppResponsiveSwitch
+              desktop={() => (
+                <div className="table-responsive">
+                  <AppTable size="sm" className="mb-3">
+                    <thead className="table-light">
+                      <tr>
+                        <th>曜日</th>
+                        {hoursEditing ? (
+                          <>
+                            <th>定休日</th>
+                            <th>24時間</th>
+                            <th>開店時間</th>
+                            <th>閉店時間</th>
+                          </>
+                        ) : (
+                          <th>営業時間</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orderedBusinessHours.map((h) => (
+                        <tr key={h.dayOfWeek}>
+                          <td className="align-middle fw-medium">{DAY_NAMES[h.dayOfWeek]}</td>
+                          {hoursEditing ? (
+                            <>
+                              <td>
+                                <Form.Check
+                                  type="checkbox"
+                                  checked={h.isClosed}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onClosedChange(h.dayOfWeek, e.target.checked)}
+                                  disabled={h.is24Hours}
+                                  aria-label={`${DAY_NAMES[h.dayOfWeek]} 定休日`}
+                                />
+                              </td>
+                              <td>
+                                <Form.Check
+                                  type="checkbox"
+                                  checked={h.is24Hours}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => on24HoursChange(h.dayOfWeek, e.target.checked)}
+                                  disabled={h.isClosed}
+                                  aria-label={`${DAY_NAMES[h.dayOfWeek]} 24時間営業`}
+                                />
+                              </td>
+                              <td>
+                                <AppControl
+                                  type="time"
+                                  size="sm"
+                                  value={h.openTime || ''}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onHoursChange(h.dayOfWeek, 'openTime', e.target.value)}
+                                  disabled={h.isClosed || h.is24Hours}
+                                  className="time-input"
+                                  aria-label={`${DAY_NAMES[h.dayOfWeek]} 開店時間`}
+                                />
+                              </td>
+                              <td>
+                                <AppControl
+                                  type="time"
+                                  size="sm"
+                                  value={h.closeTime || ''}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onHoursChange(h.dayOfWeek, 'closeTime', e.target.value)}
+                                  disabled={h.isClosed || h.is24Hours}
+                                  className="time-input"
+                                  aria-label={`${DAY_NAMES[h.dayOfWeek]} 閉店時間`}
+                                />
+                              </td>
+                            </>
+                          ) : (
+                            <td className="align-middle">{formatHours(h)}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </AppTable>
+                </div>
+              )}
+              mobile={() => (
+                <div className="dl-mobile-data-list mb-3">
                   {orderedBusinessHours.map((h) => (
-                    <tr key={h.dayOfWeek}>
-                      <td className="align-middle fw-medium">{DAY_NAMES[h.dayOfWeek]}</td>
-                      {hoursEditing ? (
-                        <>
-                          <td>
+                    <AppMobileDataCard
+                      key={h.dayOfWeek}
+                      title={DAY_NAMES[h.dayOfWeek]}
+                      fields={hoursEditing ? [
+                        {
+                          label: '定休日',
+                          value: (
                             <Form.Check
                               type="checkbox"
                               checked={h.isClosed}
-                              onChange={(e) => onClosedChange(h.dayOfWeek, e.target.checked)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onClosedChange(h.dayOfWeek, e.target.checked)}
                               disabled={h.is24Hours}
                               aria-label={`${DAY_NAMES[h.dayOfWeek]} 定休日`}
                             />
-                          </td>
-                          <td>
+                          ),
+                        },
+                        {
+                          label: '24時間',
+                          value: (
                             <Form.Check
                               type="checkbox"
                               checked={h.is24Hours}
-                              onChange={(e) => on24HoursChange(h.dayOfWeek, e.target.checked)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => on24HoursChange(h.dayOfWeek, e.target.checked)}
                               disabled={h.isClosed}
                               aria-label={`${DAY_NAMES[h.dayOfWeek]} 24時間営業`}
                             />
-                          </td>
-                          <td>
-                            <Form.Control
+                          ),
+                        },
+                        {
+                          label: '開店時間',
+                          value: (
+                            <AppControl
                               type="time"
                               size="sm"
                               value={h.openTime || ''}
-                              onChange={(e) => onHoursChange(h.dayOfWeek, 'openTime', e.target.value)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onHoursChange(h.dayOfWeek, 'openTime', e.target.value)}
                               disabled={h.isClosed || h.is24Hours}
                               className="time-input"
                               aria-label={`${DAY_NAMES[h.dayOfWeek]} 開店時間`}
                             />
-                          </td>
-                          <td>
-                            <Form.Control
+                          ),
+                        },
+                        {
+                          label: '閉店時間',
+                          value: (
+                            <AppControl
                               type="time"
                               size="sm"
                               value={h.closeTime || ''}
-                              onChange={(e) => onHoursChange(h.dayOfWeek, 'closeTime', e.target.value)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onHoursChange(h.dayOfWeek, 'closeTime', e.target.value)}
                               disabled={h.isClosed || h.is24Hours}
                               className="time-input"
                               aria-label={`${DAY_NAMES[h.dayOfWeek]} 閉店時間`}
                             />
-                          </td>
-                        </>
-                      ) : (
-                        <td className="align-middle">{formatHours(h)}</td>
-                      )}
-                    </tr>
+                          ),
+                        },
+                      ] : [
+                        { label: '営業時間', value: formatHours(h) },
+                      ]}
+                    />
                   ))}
-                </tbody>
-              </Table>
-            </div>
+                </div>
+              )}
+            />
 
             <hr className="my-3" />
 
             <div className="d-flex justify-content-between align-items-center mb-2">
               <h6 className="mb-0">特例営業時間（祝日・大型連休・臨時休業）</h6>
               {hoursEditing && (
-                <Button variant="outline-primary" size="sm" onClick={onAddSpecialHour}>
+                <AppButton variant="outline-primary" size="sm" onClick={onAddSpecialHour}>
                   特例を追加
-                </Button>
+                </AppButton>
               )}
             </div>
 
-            <div className="table-responsive">
-              <Table size="sm" className="mb-3">
-                <thead className="table-light">
-                  <tr>
-                    <th>種別</th>
-                    <th>期間</th>
-                    <th>営業時間</th>
-                    <th>メモ</th>
-                    {hoursEditing && <th>操作</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {specialHours.length === 0 && (
-                    <tr>
-                      <td colSpan={hoursEditing ? 5 : 4} className="text-muted small">
-                        特例営業時間は未登録です。
-                      </td>
-                    </tr>
-                  )}
+            <AppResponsiveSwitch
+              desktop={() => (
+                <div className="table-responsive">
+                  <AppTable size="sm" className="mb-3">
+                    <thead className="table-light">
+                      <tr>
+                        <th>種別</th>
+                        <th>期間</th>
+                        <th>営業時間</th>
+                        <th>メモ</th>
+                        {hoursEditing && <th>操作</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {specialHours.length === 0 && (
+                        <tr>
+                          <td colSpan={hoursEditing ? 5 : 4} className="text-muted small">
+                            特例営業時間は未登録です。
+                          </td>
+                        </tr>
+                      )}
 
-                  {specialHours.map((entry, index) => (
-                    <tr key={entry.id ?? entry.clientId ?? `new-${index}`}>
-                      <td className="align-middle">
-                        {hoursEditing ? (
-                          <Form.Select
-                            size="sm"
-                            value={entry.specialType}
-                            onChange={(e) => onSpecialTypeChange(index, e.target.value as SpecialType)}
-                            aria-label={`特例営業時間 ${index + 1} 種別`}
-                          >
-                            {Object.entries(SPECIAL_TYPE_LABELS).map(([value, label]) => (
-                              <option key={value} value={value}>{label}</option>
-                            ))}
-                          </Form.Select>
-                        ) : (
-                          SPECIAL_TYPE_LABELS[entry.specialType]
-                        )}
-                      </td>
-                      <td className="align-middle">
-                        {hoursEditing ? (
-                          <div className="d-flex flex-column gap-1">
-                            <Form.Control
-                              type="date"
-                              size="sm"
-                              value={entry.startDate}
-                              onChange={(e) => onSpecialDateChange(index, 'startDate', e.target.value)}
-                              aria-label={`特例営業時間 ${index + 1} 開始日`}
-                            />
-                            <Form.Control
-                              type="date"
-                              size="sm"
-                              value={entry.endDate}
-                              onChange={(e) => onSpecialDateChange(index, 'endDate', e.target.value)}
-                              aria-label={`特例営業時間 ${index + 1} 終了日`}
-                            />
-                          </div>
-                        ) : (
-                          entry.startDate === entry.endDate
-                            ? entry.startDate
-                            : `${entry.startDate} 〜 ${entry.endDate}`
-                        )}
-                      </td>
-                      <td className="align-middle">
-                        {!hoursEditing ? (
-                          formatSpecialHours(entry)
-                        ) : entry.specialType !== 'special_open' ? (
-                          <span className="text-muted small">休業</span>
-                        ) : (
-                          <div className="d-flex flex-column gap-1">
-                            <div className="d-flex gap-3">
-                              <Form.Check
-                                type="checkbox"
-                                label="休業"
-                                checked={entry.isClosed}
-                                onChange={(e) => onSpecialClosedChange(index, e.target.checked)}
-                                disabled={entry.is24Hours}
-                                aria-label={`特例営業時間 ${index + 1} 休業`}
-                              />
-                              <Form.Check
-                                type="checkbox"
-                                label="24時間"
-                                checked={entry.is24Hours}
-                                onChange={(e) => onSpecial24HoursChange(index, e.target.checked)}
-                                disabled={entry.isClosed}
-                                aria-label={`特例営業時間 ${index + 1} 24時間`}
-                              />
-                            </div>
-                            <div className="d-flex gap-2">
-                              <Form.Control
-                                type="time"
+                      {specialHours.map((entry, index) => (
+                        <tr key={entry.id ?? entry.clientId ?? `new-${index}`}>
+                          <td className="align-middle">
+                            {hoursEditing ? (
+                              <AppSelect
                                 size="sm"
-                                value={entry.openTime || ''}
-                                onChange={(e) => onSpecialHoursChange(index, 'openTime', e.target.value)}
-                                disabled={entry.isClosed || entry.is24Hours}
-                                className="time-input"
-                                aria-label={`特例営業時間 ${index + 1} 開店時間`}
+                                value={entry.specialType}
+                                ariaLabel={`特例営業時間 ${index + 1} 種別`}
+                                onChange={(value) => onSpecialTypeChange(index, value as SpecialType)}
+                                options={Object.entries(SPECIAL_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
                               />
-                              <Form.Control
-                                type="time"
+                            ) : (
+                              SPECIAL_TYPE_LABELS[entry.specialType]
+                            )}
+                          </td>
+                          <td className="align-middle">
+                            {hoursEditing ? (
+                              <div className="d-flex flex-column gap-1">
+                                <AppControl
+                                  type="date"
+                                  size="sm"
+                                  value={entry.startDate}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialDateChange(index, 'startDate', e.target.value)}
+                                  aria-label={`特例営業時間 ${index + 1} 開始日`}
+                                />
+                                <AppControl
+                                  type="date"
+                                  size="sm"
+                                  value={entry.endDate}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialDateChange(index, 'endDate', e.target.value)}
+                                  aria-label={`特例営業時間 ${index + 1} 終了日`}
+                                />
+                              </div>
+                            ) : (
+                              entry.startDate === entry.endDate
+                                ? entry.startDate
+                                : `${entry.startDate} 〜 ${entry.endDate}`
+                            )}
+                          </td>
+                          <td className="align-middle">
+                            {!hoursEditing ? (
+                              formatSpecialHours(entry)
+                            ) : entry.specialType !== 'special_open' ? (
+                              <span className="text-muted small">休業</span>
+                            ) : (
+                              <div className="d-flex flex-column gap-1">
+                                <div className="d-flex gap-3">
+                                  <Form.Check
+                                    type="checkbox"
+                                    label="休業"
+                                    checked={entry.isClosed}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialClosedChange(index, e.target.checked)}
+                                    disabled={entry.is24Hours}
+                                    aria-label={`特例営業時間 ${index + 1} 休業`}
+                                  />
+                                  <Form.Check
+                                    type="checkbox"
+                                    label="24時間"
+                                    checked={entry.is24Hours}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecial24HoursChange(index, e.target.checked)}
+                                    disabled={entry.isClosed}
+                                    aria-label={`特例営業時間 ${index + 1} 24時間`}
+                                  />
+                                </div>
+                                <div className="d-flex gap-2">
+                                  <AppControl
+                                    type="time"
+                                    size="sm"
+                                    value={entry.openTime || ''}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialHoursChange(index, 'openTime', e.target.value)}
+                                    disabled={entry.isClosed || entry.is24Hours}
+                                    className="time-input"
+                                    aria-label={`特例営業時間 ${index + 1} 開店時間`}
+                                  />
+                                  <AppControl
+                                    type="time"
+                                    size="sm"
+                                    value={entry.closeTime || ''}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialHoursChange(index, 'closeTime', e.target.value)}
+                                    disabled={entry.isClosed || entry.is24Hours}
+                                    className="time-input"
+                                    aria-label={`特例営業時間 ${index + 1} 閉店時間`}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="align-middle">
+                            {hoursEditing ? (
+                              <AppControl
                                 size="sm"
-                                value={entry.closeTime || ''}
-                                onChange={(e) => onSpecialHoursChange(index, 'closeTime', e.target.value)}
-                                disabled={entry.isClosed || entry.is24Hours}
-                                className="time-input"
-                                aria-label={`特例営業時間 ${index + 1} 閉店時間`}
+                                placeholder="任意メモ"
+                                value={entry.note || ''}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialNoteChange(index, e.target.value)}
+                                maxLength={200}
+                                aria-label={`特例営業時間 ${index + 1} メモ`}
                               />
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                      <td className="align-middle">
-                        {hoursEditing ? (
-                          <Form.Control
-                            size="sm"
-                            placeholder="任意メモ"
-                            value={entry.note || ''}
-                            onChange={(e) => onSpecialNoteChange(index, e.target.value)}
-                            maxLength={200}
-                            aria-label={`特例営業時間 ${index + 1} メモ`}
-                          />
-                        ) : (
-                          <span className="small">{entry.note || '-'}</span>
-                        )}
-                      </td>
-                      {hoursEditing && (
-                        <td className="align-middle">
-                          <Button
+                            ) : (
+                              <span className="small">{entry.note || '-'}</span>
+                            )}
+                          </td>
+                          {hoursEditing && (
+                            <td className="align-middle">
+                              <AppButton
+                                variant="outline-danger"
+                                size="sm"
+                                onClick={() => onRemoveSpecialHour(index)}
+                              >
+                                削除
+                              </AppButton>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </AppTable>
+                </div>
+              )}
+              mobile={() => (
+                <div className="dl-mobile-data-list mb-3">
+                  {specialHours.length === 0 ? (
+                    <div className="text-muted small">特例営業時間は未登録です。</div>
+                  ) : (
+                    specialHours.map((entry, index) => (
+                      <AppMobileDataCard
+                        key={entry.id ?? entry.clientId ?? `new-mobile-${index}`}
+                        title={`特例 ${index + 1}`}
+                        subtitle={SPECIAL_TYPE_LABELS[entry.specialType]}
+                        fields={[
+                          {
+                            label: '種別',
+                            value: hoursEditing ? (
+                              <AppSelect
+                                size="sm"
+                                value={entry.specialType}
+                                ariaLabel={`特例営業時間 ${index + 1} 種別`}
+                                onChange={(value) => onSpecialTypeChange(index, value as SpecialType)}
+                                options={Object.entries(SPECIAL_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+                              />
+                            ) : (
+                              SPECIAL_TYPE_LABELS[entry.specialType]
+                            ),
+                          },
+                          {
+                            label: '期間',
+                            value: hoursEditing ? (
+                              <div className="d-flex flex-column gap-1">
+                                <AppControl
+                                  type="date"
+                                  size="sm"
+                                  value={entry.startDate}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialDateChange(index, 'startDate', e.target.value)}
+                                  aria-label={`特例営業時間 ${index + 1} 開始日`}
+                                />
+                                <AppControl
+                                  type="date"
+                                  size="sm"
+                                  value={entry.endDate}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialDateChange(index, 'endDate', e.target.value)}
+                                  aria-label={`特例営業時間 ${index + 1} 終了日`}
+                                />
+                              </div>
+                            ) : (
+                              entry.startDate === entry.endDate
+                                ? entry.startDate
+                                : `${entry.startDate} 〜 ${entry.endDate}`
+                            ),
+                          },
+                          {
+                            label: '営業時間',
+                            value: !hoursEditing ? (
+                              formatSpecialHours(entry)
+                            ) : entry.specialType !== 'special_open' ? (
+                              <span className="text-muted small">休業</span>
+                            ) : (
+                              <div className="d-flex flex-column gap-1">
+                                <div className="d-flex gap-3">
+                                  <Form.Check
+                                    type="checkbox"
+                                    label="休業"
+                                    checked={entry.isClosed}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialClosedChange(index, e.target.checked)}
+                                    disabled={entry.is24Hours}
+                                    aria-label={`特例営業時間 ${index + 1} 休業`}
+                                  />
+                                  <Form.Check
+                                    type="checkbox"
+                                    label="24時間"
+                                    checked={entry.is24Hours}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecial24HoursChange(index, e.target.checked)}
+                                    disabled={entry.isClosed}
+                                    aria-label={`特例営業時間 ${index + 1} 24時間`}
+                                  />
+                                </div>
+                                <div className="d-flex gap-2">
+                                  <AppControl
+                                    type="time"
+                                    size="sm"
+                                    value={entry.openTime || ''}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialHoursChange(index, 'openTime', e.target.value)}
+                                    disabled={entry.isClosed || entry.is24Hours}
+                                    className="time-input"
+                                    aria-label={`特例営業時間 ${index + 1} 開店時間`}
+                                  />
+                                  <AppControl
+                                    type="time"
+                                    size="sm"
+                                    value={entry.closeTime || ''}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialHoursChange(index, 'closeTime', e.target.value)}
+                                    disabled={entry.isClosed || entry.is24Hours}
+                                    className="time-input"
+                                    aria-label={`特例営業時間 ${index + 1} 閉店時間`}
+                                  />
+                                </div>
+                              </div>
+                            ),
+                          },
+                          {
+                            label: 'メモ',
+                            value: hoursEditing ? (
+                              <AppControl
+                                size="sm"
+                                placeholder="任意メモ"
+                                value={entry.note || ''}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSpecialNoteChange(index, e.target.value)}
+                                maxLength={200}
+                                aria-label={`特例営業時間 ${index + 1} メモ`}
+                              />
+                            ) : (
+                              <span className="small">{entry.note || '-'}</span>
+                            ),
+                          },
+                        ]}
+                        actions={hoursEditing ? (
+                          <AppButton
                             variant="outline-danger"
                             size="sm"
                             onClick={() => onRemoveSpecialHour(index)}
                           >
                             削除
-                          </Button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
+                          </AppButton>
+                        ) : undefined}
+                      />
+                    ))
+                  )}
+                </div>
+              )}
+            />
 
             {!hoursEditing ? (
-              <Button variant="outline-primary" onClick={onHoursEditStart}>
+              <AppButton variant="outline-primary" onClick={onHoursEditStart}>
                 営業時間を編集
-              </Button>
+              </AppButton>
             ) : (
               <div className="d-flex gap-2">
-                <Button variant="primary" onClick={onHoursSave} disabled={hoursSaving}>
-                  {hoursSaving ? '保存中...' : '営業時間を保存'}
-                </Button>
-                <Button variant="outline-secondary" onClick={onHoursEditCancel} disabled={hoursSaving}>
+                <LoadingButton variant="primary" onClick={onHoursSave} loading={hoursSaving} loadingLabel="保存中...">
+                  営業時間を保存
+                </LoadingButton>
+                <AppButton variant="outline-secondary" onClick={onHoursEditCancel} disabled={hoursSaving}>
                   キャンセル
-                </Button>
+                </AppButton>
               </div>
             )}
           </>
         )}
-      </Card.Body>
-    </Card>
+    </AppDataPanel>
   );
 }
 

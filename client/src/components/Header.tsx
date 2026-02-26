@@ -217,7 +217,7 @@ export default function Header({ onToggleSidebar }: Props) {
               pill
               className="me-2"
               style={{ cursor: 'pointer' }}
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/')}
               title={`${unreadCount}件の未読通知`}
             >
               {unreadCount > 99 ? '99+' : unreadCount}

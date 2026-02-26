@@ -288,7 +288,12 @@ export function resolveNoticeReadEndpoint(notice: Notice): string | null {
     return matchId ? `/notifications/matches/${matchId}/read` : null;
   }
 
-  if (notice.type === 'new_comment') {
+  if (
+    notice.type === 'inbound_request'
+    || notice.type === 'outbound_request'
+    || notice.type === 'status_update'
+    || notice.type === 'new_comment'
+  ) {
     const notifId = parseNotificationId(notice.id);
     return notifId ? `/notifications/${notifId}/read` : null;
   }

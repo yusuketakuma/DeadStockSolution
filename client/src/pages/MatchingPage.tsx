@@ -1,9 +1,16 @@
 import { useState } from 'react';
-import { Card, Button, Alert, Table, Badge, Spinner, Row, Col } from 'react-bootstrap';
+import AppTable from '../components/ui/AppTable';
+import AppButton from '../components/ui/AppButton';
+import AppAlert from '../components/ui/AppAlert';
+import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
 import RequireUpload from '../components/RequireUpload';
 import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
 import ConfirmActionModal from '../components/ConfirmActionModal';
+import LoadingButton from '../components/ui/LoadingButton';
+import AppCard from '../components/ui/AppCard';
+import AppMobileDataCard from '../components/ui/AppMobileDataCard';
+import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -34,7 +41,7 @@ interface MatchCandidate {
 }
 
 function formatPercent(value?: number): string {
-  if (!value || Number.isNaN(value)) return '-';
+  if (value === undefined || value === null || Number.isNaN(value)) return '-';
   return `${Math.round(value)}%`;
 }
 
@@ -91,42 +98,43 @@ export default function MatchingPage() {
     <RequireUpload>
       <div>
         <h4 className="page-title mb-3">マッチング</h4>
-        {error && <Alert variant="danger">{error}</Alert>}
+        {error && <AppAlert variant="danger">{error}</AppAlert>}
         {proposalRetrySuggested && (
-          <Alert variant="warning" className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+          <AppAlert variant="warning" className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
             <span className="small">在庫状態が更新された可能性があります。最新条件で再マッチングしてください。</span>
-            <Button size="sm" variant="outline-warning" onClick={handleSearch} disabled={loading}>
-              {loading ? '再実行中...' : '再マッチング'}
-            </Button>
-          </Alert>
+            <LoadingButton size="sm" variant="outline-warning" onClick={handleSearch} loading={loading} loadingLabel="再実行中...">
+              再マッチング
+            </LoadingButton>
+          </AppAlert>
         )}
-        {message && <Alert variant="success">{message}</Alert>}
+        {message && <AppAlert variant="success">{message}</AppAlert>}
 
-        <Card className="mb-3">
-          <Card.Body>
+        <AppCard className="mb-3">
+          <AppCard.Body>
             <p className="mb-2">
               デッドストックリストと医薬品使用量リストの一致度・距離・金額バランスをもとに、交換候補を優先順位付きで表示します。
             </p>
             <div className="small text-muted mb-3">
               条件: 双方1万円以上 / 差額10円以内
             </div>
-            <Button onClick={handleSearch} disabled={loading} variant="primary">
-              {loading ? <><Spinner size="sm" className="me-1" /> マッチング中...</> : 'マッチングを実行'}
-            </Button>
-          </Card.Body>
-        </Card>
+            <LoadingButton onClick={handleSearch} variant="primary" loading={loading} loadingLabel="マッチング中...">
+              マッチングを実行
+            </LoadingButton>
+          </AppCard.Body>
+        </AppCard>
 
         {searched && candidates.length === 0 && !loading && (
-          <Alert variant="info">
+          <AppAlert variant="info">
             交換候補が見つかりませんでした。アップロード内容を更新後、再実行してください。
-          </Alert>
+          </AppAlert>
         )}
 
         {candidates.map((candidate, idx) => (
-          <Card key={candidate.pharmacyId} className="mb-3">
-            <Card.Header className="p-0">
-              <button
+            <AppCard key={candidate.pharmacyId} className="mb-3">
+            <AppCard.Header className="p-0">
+              <AppButton
                 type="button"
+                variant="link"
                 className="match-candidate-toggle w-100 d-flex justify-content-between align-items-center mobile-card-header"
                 onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
                 aria-expanded={expandedIdx === idx}
@@ -148,86 +156,130 @@ export default function MatchingPage() {
                     差額 {candidate.valueDifference}円
                   </Badge>
                 </span>
-              </button>
-            </Card.Header>
+              </AppButton>
+            </AppCard.Header>
 
             {expandedIdx === idx && (
-              <Card.Body id={`candidate-panel-${candidate.pharmacyId}`}>
+              <AppCard.Body id={`candidate-panel-${candidate.pharmacyId}`}>
                 {candidate.businessStatus?.closingSoon && (
-                  <Alert variant="warning" className="py-2 mb-3">
+                  <AppAlert variant="warning" className="py-2 mb-3">
                     この薬局はまもなく営業終了です（本日 {candidate.businessStatus.todayHours?.closeTime} まで）
-                  </Alert>
+                  </AppAlert>
                 )}
                 <Row className="g-3 mb-3">
-                  <Col md={6}>
+                  <Col lg={6}>
                     <h6>あなた → {candidate.pharmacyName} ({candidate.totalValueA.toLocaleString()}円)</h6>
-                    <div className="table-responsive">
-                      <Table size="sm" striped className="mb-0 mobile-table">
-                        <thead>
-                          <tr>
-                            <th>薬品名</th>
-                            <th>数量</th>
-                            <th>単位</th>
-                            <th className="mobile-hide">使用期限</th>
-                            <th>薬価(単価)</th>
-                            <th>薬価(合計)</th>
-                            <th>一致度</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <AppResponsiveSwitch
+                      desktop={() => (
+                        <div className="table-responsive">
+                          <AppTable size="sm" striped className="mb-0 mobile-table">
+                            <thead>
+                              <tr>
+                                <th>薬品名</th>
+                                <th>数量</th>
+                                <th>単位</th>
+                                <th>使用期限</th>
+                                <th>薬価(単価)</th>
+                                <th>薬価(合計)</th>
+                                <th>一致度</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {candidate.itemsFromA.map((item, itemIdx) => (
+                                <tr key={itemIdx}>
+                                  <td>{item.drugName}</td>
+                                  <td>{item.quantity}</td>
+                                  <td>{item.unit || '-'}</td>
+                                  <td>{item.expirationDate || '-'}</td>
+                                  <td>{item.yakkaUnitPrice.toLocaleString()}</td>
+                                  <td>{item.yakkaValue.toLocaleString()}</td>
+                                  <td>{formatPercent((item.matchScore ?? 0) * 100)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </AppTable>
+                        </div>
+                      )}
+                      mobile={() => (
+                        <div className="dl-mobile-data-list">
                           {candidate.itemsFromA.map((item, itemIdx) => (
-                            <tr key={itemIdx}>
-                              <td>{item.drugName}</td>
-                              <td>{item.quantity}</td>
-                              <td>{item.unit || '-'}</td>
-                              <td className="mobile-hide">{item.expirationDate || '-'}</td>
-                              <td>{item.yakkaUnitPrice.toLocaleString()}</td>
-                              <td>{item.yakkaValue.toLocaleString()}</td>
-                              <td>{formatPercent((item.matchScore ?? 0) * 100)}</td>
-                            </tr>
+                            <AppMobileDataCard
+                              key={`${candidate.pharmacyId}-a-${itemIdx}`}
+                              title={item.drugName}
+                              fields={[
+                                { label: '数量', value: item.quantity },
+                                { label: '単位', value: item.unit || '-' },
+                                { label: '使用期限', value: item.expirationDate || '-' },
+                                { label: '薬価(単価)', value: item.yakkaUnitPrice.toLocaleString() },
+                                { label: '薬価(合計)', value: item.yakkaValue.toLocaleString() },
+                                { label: '一致度', value: formatPercent((item.matchScore ?? 0) * 100) },
+                              ]}
+                            />
                           ))}
-                        </tbody>
-                      </Table>
-                    </div>
+                        </div>
+                      )}
+                    />
                   </Col>
-                  <Col md={6}>
+                  <Col lg={6}>
                     <h6>{candidate.pharmacyName} → あなた ({candidate.totalValueB.toLocaleString()}円)</h6>
-                    <div className="table-responsive">
-                      <Table size="sm" striped className="mb-0 mobile-table">
-                        <thead>
-                          <tr>
-                            <th>薬品名</th>
-                            <th>数量</th>
-                            <th>単位</th>
-                            <th className="mobile-hide">使用期限</th>
-                            <th>薬価(単価)</th>
-                            <th>薬価(合計)</th>
-                            <th>一致度</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <AppResponsiveSwitch
+                      desktop={() => (
+                        <div className="table-responsive">
+                          <AppTable size="sm" striped className="mb-0 mobile-table">
+                            <thead>
+                              <tr>
+                                <th>薬品名</th>
+                                <th>数量</th>
+                                <th>単位</th>
+                                <th>使用期限</th>
+                                <th>薬価(単価)</th>
+                                <th>薬価(合計)</th>
+                                <th>一致度</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {candidate.itemsFromB.map((item, itemIdx) => (
+                                <tr key={itemIdx}>
+                                  <td>{item.drugName}</td>
+                                  <td>{item.quantity}</td>
+                                  <td>{item.unit || '-'}</td>
+                                  <td>{item.expirationDate || '-'}</td>
+                                  <td>{item.yakkaUnitPrice.toLocaleString()}</td>
+                                  <td>{item.yakkaValue.toLocaleString()}</td>
+                                  <td>{formatPercent((item.matchScore ?? 0) * 100)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </AppTable>
+                        </div>
+                      )}
+                      mobile={() => (
+                        <div className="dl-mobile-data-list">
                           {candidate.itemsFromB.map((item, itemIdx) => (
-                            <tr key={itemIdx}>
-                              <td>{item.drugName}</td>
-                              <td>{item.quantity}</td>
-                              <td>{item.unit || '-'}</td>
-                              <td className="mobile-hide">{item.expirationDate || '-'}</td>
-                              <td>{item.yakkaUnitPrice.toLocaleString()}</td>
-                              <td>{item.yakkaValue.toLocaleString()}</td>
-                              <td>{formatPercent((item.matchScore ?? 0) * 100)}</td>
-                            </tr>
+                            <AppMobileDataCard
+                              key={`${candidate.pharmacyId}-b-${itemIdx}`}
+                              title={item.drugName}
+                              fields={[
+                                { label: '数量', value: item.quantity },
+                                { label: '単位', value: item.unit || '-' },
+                                { label: '使用期限', value: item.expirationDate || '-' },
+                                { label: '薬価(単価)', value: item.yakkaUnitPrice.toLocaleString() },
+                                { label: '薬価(合計)', value: item.yakkaValue.toLocaleString() },
+                                { label: '一致度', value: formatPercent((item.matchScore ?? 0) * 100) },
+                              ]}
+                            />
                           ))}
-                        </tbody>
-                      </Table>
-                    </div>
+                        </div>
+                      )}
+                    />
                   </Col>
                 </Row>
 
-                <Card className="mb-3">
-                  <Card.Header className="py-2">
+                <AppCard className="mb-3">
+                  <AppCard.Header className="py-2">
                     交換様式（FAX送信用）
-                  </Card.Header>
-                  <Card.Body className="small">
+                  </AppCard.Header>
+                  <AppCard.Body className="small">
                     <ol className="mb-3">
                       <li>「仮マッチングする」ボタンで仮マッチングを開始します。</li>
                       <li>本内容を印刷し、提案元薬局が同意欄に記入・押印後、相手薬局のFAXへ送信します（送信先: {candidate.pharmacyFax || '相手薬局に確認'}）。</li>
@@ -235,43 +287,67 @@ export default function MatchingPage() {
                       <li>双方がシステム上で「承認」すると仮マッチングが確定となります。</li>
                       <li>受け渡し完了後に「交換完了」を実行します。</li>
                     </ol>
-                    <div className="table-responsive">
-                      <Table bordered size="sm" className="mb-0 mobile-table">
-                        <thead>
-                          <tr>
-                            <th>薬局</th>
-                            <th>同意区分</th>
-                            <th>担当者署名/押印</th>
-                            <th>確認日</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>あなたの薬局</td>
-                            <td>[ ] 同意  [ ] 条件付き同意  [ ] 不同意</td>
-                            <td className="agreement-sign-cell"></td>
-                            <td className="agreement-date-cell"></td>
-                          </tr>
-                          <tr>
-                            <td>{candidate.pharmacyName}</td>
-                            <td>[ ] 同意  [ ] 条件付き同意  [ ] 不同意</td>
-                            <td></td>
-                            <td></td>
-                          </tr>
-                        </tbody>
-                      </Table>
-                    </div>
-                  </Card.Body>
-                </Card>
+                    <AppResponsiveSwitch
+                      desktop={() => (
+                        <div className="table-responsive">
+                          <AppTable bordered size="sm" className="mb-0 mobile-table">
+                            <thead>
+                              <tr>
+                                <th>薬局</th>
+                                <th>同意区分</th>
+                                <th>担当者署名/押印</th>
+                                <th>確認日</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td>あなたの薬局</td>
+                                <td>[ ] 同意  [ ] 条件付き同意  [ ] 不同意</td>
+                                <td className="agreement-sign-cell"></td>
+                                <td className="agreement-date-cell"></td>
+                              </tr>
+                              <tr>
+                                <td>{candidate.pharmacyName}</td>
+                                <td>[ ] 同意  [ ] 条件付き同意  [ ] 不同意</td>
+                                <td></td>
+                                <td></td>
+                              </tr>
+                            </tbody>
+                          </AppTable>
+                        </div>
+                      )}
+                      mobile={() => (
+                        <div className="dl-mobile-data-list">
+                          <AppMobileDataCard
+                            title="あなたの薬局"
+                            fields={[
+                              { label: '同意区分', value: '[ ] 同意  [ ] 条件付き同意  [ ] 不同意' },
+                              { label: '担当者署名/押印', value: '記入欄' },
+                              { label: '確認日', value: '記入欄' },
+                            ]}
+                          />
+                          <AppMobileDataCard
+                            title={candidate.pharmacyName}
+                            fields={[
+                              { label: '同意区分', value: '[ ] 同意  [ ] 条件付き同意  [ ] 不同意' },
+                              { label: '担当者署名/押印', value: '記入欄' },
+                              { label: '確認日', value: '記入欄' },
+                            ]}
+                          />
+                        </div>
+                      )}
+                    />
+                  </AppCard.Body>
+                </AppCard>
 
                 <div className="d-flex gap-2 mobile-stack">
-                  <Button variant="success" onClick={() => setCandidateForProposal(candidate)}>
+                  <LoadingButton variant="success" onClick={() => setCandidateForProposal(candidate)} loading={proposalSubmitting} loadingLabel="提案中...">
                     仮マッチングする
-                  </Button>
+                  </LoadingButton>
                 </div>
-              </Card.Body>
+              </AppCard.Body>
             )}
-          </Card>
+          </AppCard>
         ))}
 
         <ConfirmActionModal

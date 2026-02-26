@@ -1,4 +1,3 @@
-/// <reference types="vitest" />
 import { vi } from 'vitest';
 import React from 'react';
 import { render, type RenderOptions } from '@testing-library/react';

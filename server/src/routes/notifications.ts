@@ -7,7 +7,7 @@ import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications
 import { parsePositiveInt } from '../utils/request-utils';
 import { sanitizeInternalPath } from '../utils/path-utils';
 import { logger } from '../services/logger';
-import { getUnreadCount, markAsRead, markAllAsRead } from '../services/notification-service';
+import { getDashboardUnreadCount, markAsRead, markAllDashboardAsRead } from '../services/notification-service';
 
 type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update' | 'new_comment';
 
@@ -27,6 +27,7 @@ interface NoticeItem {
 const PROPOSAL_RESPONSE_DEADLINE_HOURS = 72;
 const PROPOSAL_NOTICE_LIMIT = 50;
 const PROPOSAL_NOTICE_STATUSES = ['proposed', 'accepted_a', 'accepted_b', 'confirmed'] as const;
+const PROPOSAL_EVENT_NOTIFICATION_TYPES = new Set(['proposal_received', 'proposal_status_changed']);
 const MATCH_NOTICE_LIMIT = 50;
 
 interface MatchDiffJson {
@@ -34,6 +35,14 @@ interface MatchDiffJson {
   removedPharmacyIds?: unknown;
   beforeCount?: unknown;
   afterCount?: unknown;
+}
+
+interface PostgresErrorLike {
+  code?: string;
+}
+
+function isUndefinedTableError(err: unknown): err is PostgresErrorLike {
+  return typeof err === 'object' && err !== null && (err as PostgresErrorLike).code === '42P01';
 }
 
 function parseNumericList(raw: unknown): number[] {
@@ -98,66 +107,73 @@ function proposalActionNotice(proposal: {
   pharmacyBId: number;
   status: string;
   proposedAt: string | null;
-}, currentPharmacyId: number): NoticeItem | null {
+}, currentPharmacyId: number, linkedNotification?: {
+  id: number;
+  isRead: boolean;
+  createdAt: string | null;
+}): NoticeItem | null {
   const isA = proposal.pharmacyAId === currentPharmacyId;
   const actionPath = `/proposals/${proposal.id}`;
   const deadlineAt = buildProposalDeadlineAt(proposal.proposedAt);
+  const linkedId = linkedNotification ? `notification-${linkedNotification.id}` : null;
+  const linkedCreatedAt = linkedNotification?.createdAt ?? proposal.proposedAt;
+  const linkedUnread = linkedNotification ? !linkedNotification.isRead : true;
 
   if (proposal.status === 'proposed') {
     if (isA) {
       return {
-        id: `proposal-${proposal.id}-outbound`,
+        id: linkedId ?? `proposal-${proposal.id}-outbound`,
         type: 'outbound_request',
         title: '仮マッチングを送信済みです',
         body: `マッチング #${proposal.id} の相手薬局承認待ちです。`,
         actionPath,
         actionLabel: '詳細へ',
-        createdAt: proposal.proposedAt,
+        createdAt: linkedCreatedAt,
         deadlineAt,
-        unread: true,
+        unread: linkedNotification ? linkedUnread : false,
         priority: 3,
       };
     }
     return {
-      id: `proposal-${proposal.id}-inbound`,
+      id: linkedId ?? `proposal-${proposal.id}-inbound`,
       type: 'inbound_request',
       title: '仮マッチングが届いています',
       body: `マッチング #${proposal.id} を確認し、承認または拒否してください。`,
       actionPath,
       actionLabel: '承認/拒否を行う',
-      createdAt: proposal.proposedAt,
+      createdAt: linkedCreatedAt,
       deadlineAt,
-      unread: true,
+      unread: linkedUnread,
       priority: 1,
     };
   }
 
   if ((proposal.status === 'accepted_a' && !isA) || (proposal.status === 'accepted_b' && isA)) {
     return {
-      id: `proposal-${proposal.id}-pending-my-approval`,
+      id: linkedId ?? `proposal-${proposal.id}-pending-my-approval`,
       type: 'inbound_request',
       title: '相手承認済みの仮マッチングがあります',
       body: `マッチング #${proposal.id} はあなたの承認待ちです。`,
       actionPath,
       actionLabel: '承認する',
-      createdAt: proposal.proposedAt,
+      createdAt: linkedCreatedAt,
       deadlineAt,
-      unread: true,
+      unread: linkedUnread,
       priority: 1,
     };
   }
 
   if (proposal.status === 'confirmed') {
     return {
-      id: `proposal-${proposal.id}-confirmed`,
+      id: linkedId ?? `proposal-${proposal.id}-confirmed`,
       type: 'status_update',
       title: 'マッチングが確定しました',
       body: `マッチング #${proposal.id} の受け渡し後、交換完了を実行してください。`,
       actionPath,
       actionLabel: '交換完了へ進む',
-      createdAt: proposal.proposedAt,
+      createdAt: linkedCreatedAt,
       deadlineAt: null,
-      unread: true,
+      unread: linkedUnread,
       priority: 2,
     };
   }
@@ -189,21 +205,33 @@ function mergeDedupSortByTimestamp<T extends { id: number }>(
   });
 }
 
-function notificationToNotice(n: typeof notificationsTable.$inferSelect): NoticeItem {
-  const actionPaths: Record<string, string> = {
-    proposal: `/proposals/${n.referenceId}`,
-    match: '/matching',
-    comment: `/proposals/${n.referenceId}`,
-  };
+function resolveNotificationType(type: string): NoticeType | null {
+  if (type === 'new_comment') return 'new_comment';
+  if (type === 'proposal_received' || type === 'proposal_status_changed') return 'status_update';
+  return null;
+}
 
-  const noticeType: NoticeType = n.type === 'new_comment' ? 'new_comment' : 'status_update';
+function resolveNotificationActionPath(referenceType: string | null, referenceId: number | null): string {
+  if (referenceType === 'match') return '/matching';
+  if ((referenceType === 'proposal' || referenceType === 'comment') && referenceId) {
+    return `/proposals/${referenceId}`;
+  }
+  return '/';
+}
+
+function notificationToNotice(n: typeof notificationsTable.$inferSelect): NoticeItem | null {
+  const noticeType = resolveNotificationType(n.type);
+  if (!noticeType) {
+    logger.warn('Unsupported notification type skipped', { type: n.type, id: n.id });
+    return null;
+  }
 
   return {
     id: `notification-${n.id}`,
     type: noticeType,
     title: n.title,
     body: n.message,
-    actionPath: actionPaths[n.referenceType ?? ''] ?? '/dashboard',
+    actionPath: resolveNotificationActionPath(n.referenceType, n.referenceId),
     actionLabel: '確認する',
     createdAt: n.createdAt,
     deadlineAt: null,
@@ -295,6 +323,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
             .orderBy(desc(matchNotifications.createdAt), desc(matchNotifications.id))
             .limit(MATCH_NOTICE_LIMIT);
         } catch (err) {
+          if (!isUndefinedTableError(err)) {
+            throw err;
+          }
           logger.warn('match_notifications query failed (table may not exist)', {
             error: err instanceof Error ? err.message : String(err),
           });
@@ -306,8 +337,25 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const notificationRows = await db.select()
       .from(notificationsTable)
       .where(eq(notificationsTable.pharmacyId, pharmacyId))
-      .orderBy(desc(notificationsTable.createdAt))
+      .orderBy(desc(notificationsTable.createdAt), desc(notificationsTable.id))
       .limit(50);
+
+    const latestProposalNotificationById = new Map<number, {
+      id: number;
+      isRead: boolean;
+      createdAt: string | null;
+    }>();
+    for (const row of notificationRows) {
+      if (row.referenceType !== 'proposal') continue;
+      if (!PROPOSAL_EVENT_NOTIFICATION_TYPES.has(row.type)) continue;
+      if (!row.referenceId || row.referenceId <= 0) continue;
+      if (latestProposalNotificationById.has(row.referenceId)) continue;
+      latestProposalNotificationById.set(row.referenceId, {
+        id: row.id,
+        isRead: row.isRead,
+        createdAt: row.createdAt,
+      });
+    }
 
     const messageIds = messageRows.map((message) => message.id);
     const messageReadRows = messageIds.length > 0
@@ -321,10 +369,15 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const readMessageIdSet = new Set(messageReadRows.map((row) => row.messageId));
 
     const notices: NoticeItem[] = [];
+    const mappedProposalReferenceIds = new Set<number>();
 
     for (const proposal of proposalRows) {
-      const item = proposalActionNotice(proposal, pharmacyId);
+      const linkedNotification = latestProposalNotificationById.get(proposal.id);
+      const item = proposalActionNotice(proposal, pharmacyId, linkedNotification);
       if (item) notices.push(item);
+      if (item && linkedNotification) {
+        mappedProposalReferenceIds.add(proposal.id);
+      }
     }
 
     for (const message of messageRows) {
@@ -363,13 +416,22 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     }
 
     for (const n of notificationRows) {
-      notices.push(notificationToNotice(n));
+      if (
+        n.referenceType === 'proposal'
+        && PROPOSAL_EVENT_NOTIFICATION_TYPES.has(n.type)
+        && n.referenceId
+        && mappedProposalReferenceIds.has(n.referenceId)
+      ) {
+        continue;
+      }
+      const notice = notificationToNotice(n);
+      if (notice) notices.push(notice);
     }
 
     notices.sort((a, b) => {
       if (a.priority !== b.priority) return a.priority - b.priority;
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const aTime = timestampSortValue(a.createdAt);
+      const bTime = timestampSortValue(b.createdAt);
       return bTime - aTime;
     });
 
@@ -420,7 +482,7 @@ router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
 
     const isTarget = message.targetType === 'all' || message.targetPharmacyId === pharmacyId;
     if (!isTarget) {
-      res.status(403).json({ error: 'アクセス権限がありません' });
+      res.status(404).json({ error: 'メッセージが見つかりません' });
       return;
     }
 
@@ -462,7 +524,7 @@ router.post('/matches/:id/read', async (req: AuthRequest, res: Response) => {
       return;
     }
     if (matchNotice.pharmacyId !== pharmacyId) {
-      res.status(403).json({ error: 'アクセス権限がありません' });
+      res.status(404).json({ error: '通知が見つかりません' });
       return;
     }
 
@@ -483,7 +545,7 @@ router.post('/matches/:id/read', async (req: AuthRequest, res: Response) => {
 router.get('/unread-count', async (req: AuthRequest, res: Response) => {
   try {
     const pharmacyId = req.user!.id;
-    const unreadCount = await getUnreadCount(pharmacyId);
+    const unreadCount = await getDashboardUnreadCount(pharmacyId);
     res.json({ unreadCount });
   } catch (err) {
     logger.error('Get unread count error', { error: (err as Error).message });
@@ -494,7 +556,7 @@ router.get('/unread-count', async (req: AuthRequest, res: Response) => {
 // PATCH /api/notifications/read-all (/:id/read より先に定義すること)
 const markAllReadHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const count = await markAllAsRead(req.user!.id);
+    const count = await markAllDashboardAsRead(req.user!.id);
     res.json({ message: `${count}件を既読にしました`, count });
   } catch (err) {
     logger.error('Mark all as read error', { error: (err as Error).message });

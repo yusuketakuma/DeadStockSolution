@@ -1,8 +1,14 @@
-import { useState, useEffect } from 'react';
-import { Table, Alert } from 'react-bootstrap';
+import AppTable from '../components/ui/AppTable';
+import AppAlert from '../components/ui/AppAlert';
+import AppButton from '../components/ui/AppButton';
+import AppEmptyState from '../components/ui/AppEmptyState';
+import AppMobileDataCard from '../components/ui/AppMobileDataCard';
+import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
+import InlineLoader from '../components/ui/InlineLoader';
+import { usePaginatedList } from '../hooks/usePaginatedList';
 
 interface HistoryItem {
   id: number;
@@ -20,52 +26,98 @@ interface HistoryResponse {
   pagination: { page: number; totalPages: number; total: number };
 }
 
+function formatYen(value: number | null | undefined) {
+  return value === null || value === undefined ? '-' : `${value.toLocaleString()}円`;
+}
+
 export default function ExchangeHistoryPage() {
   const { user } = useAuth();
-  const [items, setItems] = useState<HistoryItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-
-  useEffect(() => {
-    api.get<HistoryResponse>(`/exchange/history?page=${page}`).then((data) => {
-      setItems(data.data);
-      setTotalPages(data.pagination.totalPages);
-    });
-  }, [page]);
+  const {
+    items,
+    page,
+    setPage,
+    totalPages,
+    loading,
+    error,
+    retry,
+  } = usePaginatedList<HistoryItem, HistoryResponse>((targetPage, signal) =>
+    api.get<HistoryResponse>(`/exchange/history?page=${targetPage}`, { signal }),
+    { errorMessage: '交換履歴の取得に失敗しました' },
+  );
 
   return (
     <div>
       <h4 className="page-title mb-3">交換履歴</h4>
-      {items.length === 0 ? (
-        <Alert variant="secondary">交換履歴はまだありません。</Alert>
+      {error && (
+        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <span>{error}</span>
+          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
+            再試行
+          </AppButton>
+        </AppAlert>
+      )}
+      {loading ? (
+        <InlineLoader text="交換履歴を読み込み中..." className="text-muted small" />
+      ) : error ? null : items.length === 0 ? (
+        <AppEmptyState
+          title="交換履歴はまだありません"
+          description="交換完了した履歴がここに表示されます。"
+          actionLabel="マッチング一覧へ"
+          actionTo="/proposals"
+        />
       ) : (
-        <div className="table-responsive">
-          <Table striped hover>
-            <thead className="table-light">
-              <tr>
-                <th>ID</th>
-                <th>相手薬局</th>
-                <th>合計薬価</th>
-                <th>完了日</th>
-              </tr>
-            </thead>
-            <tbody>
+        <AppResponsiveSwitch
+          desktop={() => (
+            <div className="table-responsive">
+              <AppTable striped hover>
+                <thead className="table-light">
+                  <tr>
+                    <th>ID</th>
+                    <th>相手薬局</th>
+                    <th>合計薬価</th>
+                    <th>完了日</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => {
+                    const isA = item.pharmacyAId === user?.id;
+                    const otherName = isA ? item.pharmacyBName : item.pharmacyAName;
+
+                    return (
+                      <tr key={item.id}>
+                        <td>{item.id}</td>
+                        <td>{otherName}</td>
+                        <td>{formatYen(item.totalValue)}</td>
+                        <td>{item.completedAt ? new Date(item.completedAt).toLocaleDateString('ja-JP') : ''}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </AppTable>
+            </div>
+          )}
+          mobile={() => (
+            <div className="dl-mobile-data-list">
               {items.map((item) => {
                 const isA = item.pharmacyAId === user?.id;
                 const otherName = isA ? item.pharmacyBName : item.pharmacyAName;
 
                 return (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{otherName}</td>
-                    <td>{item.totalValue?.toLocaleString()}円</td>
-                    <td>{item.completedAt ? new Date(item.completedAt).toLocaleDateString('ja-JP') : ''}</td>
-                  </tr>
+                  <AppMobileDataCard
+                    key={item.id}
+                    title={`履歴 #${item.id}`}
+                    subtitle={otherName}
+                    fields={[
+                      { label: '提案ID', value: item.proposalId },
+                      { label: '合計薬価', value: formatYen(item.totalValue) },
+                      { label: '完了日', value: item.completedAt ? new Date(item.completedAt).toLocaleDateString('ja-JP') : '-' },
+                    ]}
+                  />
                 );
               })}
-            </tbody>
-          </Table>
-        </div>
+            </div>
+          )}
+        />
       )}
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
     </div>

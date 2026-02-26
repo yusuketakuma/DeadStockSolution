@@ -1,8 +1,25 @@
 import { useState, FormEvent } from 'react';
-import { Container, Card, Form, Button, Alert, Row, Col } from 'react-bootstrap';
+import { Row, Col } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ApiError, type FieldError } from '../api/client';
+import AuthPageLayout from '../components/ui/AuthPageLayout';
+import StatusAlert from '../components/ui/StatusAlert';
+import AppSelect from '../components/ui/AppSelect';
+import LoadingButton from '../components/ui/LoadingButton';
+import AppField from '../components/ui/AppField';
+
+interface RegisterForm {
+  email: string;
+  password: string;
+  name: string;
+  postalCode: string;
+  address: string;
+  phone: string;
+  fax: string;
+  licenseNumber: string;
+  prefecture: string;
+}
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -16,7 +33,7 @@ const PREFECTURES = [
 ];
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<RegisterForm>({
     email: '', password: '', name: '', postalCode: '', address: '',
     phone: '', fax: '', licenseNumber: '', prefecture: '',
   });
@@ -27,9 +44,8 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  const handleChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setForm((prev) => ({ ...prev, [field]: e.target.value }));
-    // 入力時にそのフィールドのエラーをクリア
+  const handleChange = (field: keyof RegisterForm, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
     setFieldErrors((prev) => prev.filter((fe) => fe.field !== field));
   };
 
@@ -62,156 +78,179 @@ export default function RegisterPage() {
   };
 
   return (
-    <Container className="py-4 form-max-640">
-      <Card>
-        <Card.Body>
-          <h4 className="text-center mb-4">新規薬局登録</h4>
-          {error && <Alert variant="danger">{error}</Alert>}
-          <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3" controlId="register-email">
-              <Form.Label>メールアドレス <span className="text-danger">*</span></Form.Label>
-              <Form.Control
-                type="email"
-                value={form.email}
-                onChange={handleChange('email')}
-                required
-                isInvalid={!!getFieldError('email')}
-              />
-              <Form.Control.Feedback type="invalid">{getFieldError('email')}</Form.Control.Feedback>
-            </Form.Group>
-
-            <Form.Group className="mb-3" controlId="register-password">
-              <Form.Label>パスワード <span className="text-danger">*</span></Form.Label>
-              <Form.Control
-                type="password"
-                value={form.password}
-                onChange={handleChange('password')}
-                required
-                minLength={8}
-                isInvalid={!!getFieldError('password')}
-              />
-              <Form.Control.Feedback type="invalid">{getFieldError('password')}</Form.Control.Feedback>
-              {!getFieldError('password') && <Form.Text className="text-muted">8文字以上</Form.Text>}
-            </Form.Group>
-
-            <Form.Group className="mb-3" controlId="register-name">
-              <Form.Label>薬局名 <span className="text-danger">*</span></Form.Label>
-              <Form.Control
-                type="text"
-                value={form.name}
-                onChange={handleChange('name')}
-                required
-                isInvalid={!!getFieldError('name')}
-              />
-              <Form.Control.Feedback type="invalid">{getFieldError('name')}</Form.Control.Feedback>
-            </Form.Group>
-
-            <Form.Group className="mb-3" controlId="register-license-number">
-              <Form.Label>薬局開設許可番号 <span className="text-danger">*</span></Form.Label>
-              <Form.Control
-                type="text"
-                value={form.licenseNumber}
-                onChange={handleChange('licenseNumber')}
-                required
-                isInvalid={!!getFieldError('licenseNumber')}
-              />
-              <Form.Control.Feedback type="invalid">{getFieldError('licenseNumber')}</Form.Control.Feedback>
-            </Form.Group>
-
-            <Row>
-              <Col md={6}>
-                <Form.Group className="mb-3" controlId="register-prefecture">
-                  <Form.Label>都道府県 <span className="text-danger">*</span></Form.Label>
-                  <Form.Select
-                    value={form.prefecture}
-                    onChange={handleChange('prefecture')}
-                    required
-                    isInvalid={!!getFieldError('prefecture')}
-                  >
-                    <option value="">選択してください</option>
-                    {PREFECTURES.map((pref) => (
-                      <option key={pref} value={pref}>{pref}</option>
-                    ))}
-                  </Form.Select>
-                  <Form.Control.Feedback type="invalid">{getFieldError('prefecture')}</Form.Control.Feedback>
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3" controlId="register-postal-code">
-                  <Form.Label>郵便番号 <span className="text-danger">*</span></Form.Label>
-                  <Form.Control
-                    type="text"
-                    value={form.postalCode}
-                    onChange={handleChange('postalCode')}
-                    placeholder="1234567"
-                    required
-                    isInvalid={!!getFieldError('postalCode')}
-                  />
-                  <Form.Control.Feedback type="invalid">{getFieldError('postalCode')}</Form.Control.Feedback>
-                </Form.Group>
-              </Col>
-            </Row>
-
-            <Form.Group className="mb-3" controlId="register-address">
-              <Form.Label>住所 <span className="text-danger">*</span></Form.Label>
-              <Form.Control
-                type="text"
-                value={form.address}
-                onChange={handleChange('address')}
-                required
-                isInvalid={!!getFieldError('address')}
-                placeholder="市区町村以降の住所"
-              />
-              <Form.Control.Feedback type="invalid">{getFieldError('address')}</Form.Control.Feedback>
-              {!getFieldError('address') && <Form.Text className="text-muted">位置情報の特定に使用します。正確な住所を入力してください</Form.Text>}
-            </Form.Group>
-
-            <Row>
-              <Col md={6}>
-                <Form.Group className="mb-3" controlId="register-phone">
-                  <Form.Label>電話番号 <span className="text-danger">*</span></Form.Label>
-                  <Form.Control
-                    type="tel"
-                    value={form.phone}
-                    onChange={handleChange('phone')}
-                    required
-                    isInvalid={!!getFieldError('phone')}
-                  />
-                  <Form.Control.Feedback type="invalid">{getFieldError('phone')}</Form.Control.Feedback>
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3" controlId="register-fax">
-                  <Form.Label>FAX番号 <span className="text-danger">*</span></Form.Label>
-                  <Form.Control
-                    type="tel"
-                    value={form.fax}
-                    onChange={handleChange('fax')}
-                    required
-                    isInvalid={!!getFieldError('fax')}
-                  />
-                  <Form.Control.Feedback type="invalid">{getFieldError('fax')}</Form.Control.Feedback>
-                </Form.Group>
-              </Col>
-            </Row>
-
-            <Form.Check
-              type="checkbox"
+    <AuthPageLayout
+      footerNote="登録情報は薬局運用の識別に使用されます。最新情報を維持してください。"
+      main={(
+        <>
+          <h1 className="h4 text-center mb-2">新規薬局登録</h1>
+          <p className="dl-lead text-center">登録後はすぐに在庫交換機能をご利用いただけます。</p>
+          {error && <StatusAlert variant="danger" message={error} />}
+          <form onSubmit={handleSubmit}>
+            <AppField
               className="mb-3"
-              label="本システムはあくまで業務補助ツールであり、医薬品の交換に関する一切の責任を負わないことに同意します"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
+              controlId="register-email"
+              label="メールアドレス *"
+              type="email"
+              value={form.email}
+              onChange={(value) => handleChange('email', value)}
+              required
+              isInvalid={!!getFieldError('email')}
+              errorText={getFieldError('email')}
             />
 
-            <Button type="submit" variant="primary" className="w-100" disabled={loading || !agreed}>
-              {loading ? '登録中...' : '登録'}
-            </Button>
-          </Form>
-          <div className="text-center mt-3">
+            <AppField
+              className="mb-3"
+              controlId="register-password"
+              label="パスワード *"
+              type="password"
+              value={form.password}
+              onChange={(value) => handleChange('password', value)}
+              required
+              minLength={8}
+              isInvalid={!!getFieldError('password')}
+              errorText={getFieldError('password')}
+              helpText={!getFieldError('password') ? '8文字以上' : undefined}
+            />
+
+            <AppField
+              className="mb-3"
+              controlId="register-name"
+              label="薬局名 *"
+              type="text"
+              value={form.name}
+              onChange={(value) => handleChange('name', value)}
+              required
+              isInvalid={!!getFieldError('name')}
+              errorText={getFieldError('name')}
+            />
+
+            <AppField
+              className="mb-3"
+              controlId="register-license-number"
+              label="薬局開設許可番号 *"
+              type="text"
+              value={form.licenseNumber}
+              onChange={(value) => handleChange('licenseNumber', value)}
+              required
+              isInvalid={!!getFieldError('licenseNumber')}
+              errorText={getFieldError('licenseNumber')}
+            />
+
+            <Row>
+              <Col md={6}>
+                <AppSelect
+                  className="mb-3"
+                  controlId="register-prefecture"
+                  label="都道府県 *"
+                  value={form.prefecture}
+                  onChange={(value) => {
+                    handleChange('prefecture', value);
+                  }}
+                  required
+                  isInvalid={!!getFieldError('prefecture')}
+                  errorText={getFieldError('prefecture')}
+                  placeholder="選択してください"
+                  options={PREFECTURES.map((pref) => ({ value: pref, label: pref }))}
+                />
+              </Col>
+              <Col md={6}>
+                <AppField
+                  className="mb-3"
+                  controlId="register-postal-code"
+                  label="郵便番号 *"
+                  type="text"
+                  value={form.postalCode}
+                  onChange={(value) => handleChange('postalCode', value)}
+                  placeholder="1234567"
+                  required
+                  isInvalid={!!getFieldError('postalCode')}
+                  errorText={getFieldError('postalCode')}
+                />
+              </Col>
+            </Row>
+
+            <AppField
+              className="mb-3"
+              controlId="register-address"
+              label="住所 *"
+              type="text"
+              value={form.address}
+              onChange={(value) => handleChange('address', value)}
+              required
+              isInvalid={!!getFieldError('address')}
+              errorText={getFieldError('address')}
+              placeholder="市区町村以降の住所"
+              helpText={!getFieldError('address') ? '位置情報の特定に使用します。正確な住所を入力してください' : undefined}
+            />
+
+            <Row>
+              <Col md={6}>
+                <AppField
+                  className="mb-3"
+                  controlId="register-phone"
+                  label="電話番号 *"
+                  type="tel"
+                  value={form.phone}
+                  onChange={(value) => handleChange('phone', value)}
+                  required
+                  isInvalid={!!getFieldError('phone')}
+                  errorText={getFieldError('phone')}
+                />
+              </Col>
+              <Col md={6}>
+                <AppField
+                  className="mb-3"
+                  controlId="register-fax"
+                  label="FAX番号 *"
+                  type="tel"
+                  value={form.fax}
+                  onChange={(value) => handleChange('fax', value)}
+                  required
+                  isInvalid={!!getFieldError('fax')}
+                  errorText={getFieldError('fax')}
+                />
+              </Col>
+            </Row>
+
+            <div className="form-check mb-3">
+              <input
+                type="checkbox"
+                className="form-check-input"
+                id="register-agreed"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+              />
+              <label className="form-check-label" htmlFor="register-agreed">
+                本システムはあくまで業務補助ツールであり、医薬品の交換に関する一切の責任を負わないことに同意します
+              </label>
+            </div>
+
+            <LoadingButton
+              type="submit"
+              variant="primary"
+              className="w-100"
+              disabled={!agreed}
+              loading={loading}
+              loadingLabel="登録中..."
+            >
+              登録
+            </LoadingButton>
+          </form>
+          <div className="dl-link-row">
             <Link to="/login">ログインはこちら</Link>
           </div>
-        </Card.Body>
-      </Card>
-    </Container>
+        </>
+      )}
+      aside={(
+        <section aria-label="登録時の留意事項">
+          <h2 className="h6 mb-3">登録時の留意事項</h2>
+          <ul className="dl-trust-list">
+            <li>住所は位置情報推定に使われるため、省略せず入力してください。</li>
+            <li>許可番号は照合のため正確な表記で入力してください。</li>
+            <li>パスワードは8文字以上で、他システムと使い回さないでください。</li>
+          </ul>
+        </section>
+      )}
+    />
   );
 }

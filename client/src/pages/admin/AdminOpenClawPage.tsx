@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, Card, Form, Table } from 'react-bootstrap';
+import AppTable from '../../components/ui/AppTable';
+import AppAlert from '../../components/ui/AppAlert';
+import { Badge } from 'react-bootstrap';
+import AppCard from '../../components/ui/AppCard';
 import { api } from '../../api/client';
+import AppSelect from '../../components/ui/AppSelect';
+import InlineLoader from '../../components/ui/InlineLoader';
+import LoadingButton from '../../components/ui/LoadingButton';
+import AppControl from '../../components/ui/AppControl';
+import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
+import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 
 interface UserRequestItem {
   id: number;
@@ -112,12 +121,12 @@ export default function AdminOpenClawPage() {
     <div>
       <h4 className="page-title mb-3">OpenClaw連携</h4>
 
-      {message && <Alert variant="success" onClose={() => setMessage('')} dismissible>{message}</Alert>}
-      {error && <Alert variant="danger" onClose={() => setError('')} dismissible>{error}</Alert>}
+      {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
+      {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
-      <Card>
-        <Card.Header>要望一覧（管理者専用）</Card.Header>
-        <Card.Body>
+      <AppCard>
+        <AppCard.Header>要望一覧（管理者専用）</AppCard.Header>
+        <AppCard.Body>
           <div className="small text-muted mb-2">
             Connector: {connectorMeta?.configured ? '接続済み' : '未接続'} /
             Webhook: {connectorMeta?.webhookConfigured ? '設定済み' : '未設定'} /
@@ -132,83 +141,126 @@ export default function AdminOpenClawPage() {
           </div>
 
           <div className="d-flex gap-2 flex-wrap mb-3">
-              <Form.Select
-                size="sm"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-                className="filter-select-compact"
-              >
-              <option value="all">すべての状態</option>
-              <option value="pending_handoff">連携待ち</option>
-              <option value="in_dialogue">対話中</option>
-              <option value="implementing">実装中</option>
-              <option value="completed">完了</option>
-            </Form.Select>
-            <Form.Control
+            <AppSelect
+              size="sm"
+              value={statusFilter}
+              ariaLabel="OpenClaw状態で絞り込み"
+              onChange={(value) => setStatusFilter(value as typeof statusFilter)}
+              className="filter-select-compact"
+              options={[
+                { value: 'all', label: 'すべての状態' },
+                { value: 'pending_handoff', label: '連携待ち' },
+                { value: 'in_dialogue', label: '対話中' },
+                { value: 'implementing', label: '実装中' },
+                { value: 'completed', label: '完了' },
+              ]}
+            />
+            <AppControl
               size="sm"
               placeholder="薬局名・要望内容で検索"
               value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
               className="filter-input-compact"
             />
           </div>
 
           {loading ? (
-            <div className="text-muted small">読み込み中...</div>
+            <InlineLoader text="読み込み中..." className="text-muted small" />
           ) : filteredRequests.length === 0 ? (
             <div className="text-muted small">
               {requests.length === 0 ? '受信した要望はまだありません。' : '条件に一致する要望はありません。'}
             </div>
           ) : (
-            <div className="table-responsive">
-              <Table striped size="sm" className="mobile-table mb-0">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>薬局</th>
-                    <th>要望内容</th>
-                    <th>OpenClaw状態</th>
-                    <th>受付日時</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <AppResponsiveSwitch
+              desktop={() => (
+                <div className="table-responsive">
+                  <AppTable striped size="sm" className="mobile-table mb-0">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>薬局</th>
+                        <th>要望内容</th>
+                        <th>OpenClaw状態</th>
+                        <th>受付日時</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRequests.map((item) => {
+                        const status = openclawStatusMeta(item.openclawStatus);
+                        return (
+                          <tr key={item.id}>
+                            <td>{item.id}</td>
+                            <td>{item.pharmacyName} (ID: {item.pharmacyId})</td>
+                            <td className="small">
+                              <div>{item.requestText}</div>
+                              {item.openclawSummary && <div className="text-muted mt-1">要約: {item.openclawSummary}</div>}
+                              {item.openclawThreadId && <div className="text-muted mt-1">Thread: {item.openclawThreadId}</div>}
+                            </td>
+                            <td><Badge bg={status.bg}>{status.label}</Badge></td>
+                            <td>{item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : '-'}</td>
+                            <td>
+                              {item.openclawStatus === 'pending_handoff' ? (
+                                <LoadingButton
+                                  size="sm"
+                                  variant="outline-primary"
+                                  disabled={handoffingRequestId !== null && handoffingRequestId !== item.id}
+                                  onClick={() => handleRetryHandoff(item.id)}
+                                  loading={handoffingRequestId === item.id}
+                                  loadingLabel="再連携中..."
+                                >
+                                  再連携
+                                </LoadingButton>
+                              ) : (
+                                <span className="text-muted small">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </AppTable>
+                </div>
+              )}
+              mobile={() => (
+                <div className="dl-mobile-data-list">
                   {filteredRequests.map((item) => {
                     const status = openclawStatusMeta(item.openclawStatus);
                     return (
-                      <tr key={item.id}>
-                        <td>{item.id}</td>
-                        <td>{item.pharmacyName} (ID: {item.pharmacyId})</td>
-                        <td className="small">
-                          <div>{item.requestText}</div>
-                          {item.openclawSummary && <div className="text-muted mt-1">要約: {item.openclawSummary}</div>}
-                          {item.openclawThreadId && <div className="text-muted mt-1">Thread: {item.openclawThreadId}</div>}
-                        </td>
-                        <td><Badge bg={status.bg}>{status.label}</Badge></td>
-                        <td>{item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : '-'}</td>
-                        <td>
-                          {item.openclawStatus === 'pending_handoff' ? (
-                            <Button
-                              size="sm"
-                              variant="outline-primary"
-                              disabled={handoffingRequestId === item.id}
-                              onClick={() => handleRetryHandoff(item.id)}
-                            >
-                              {handoffingRequestId === item.id ? '再連携中...' : '再連携'}
-                            </Button>
-                          ) : (
-                            <span className="text-muted small">-</span>
-                          )}
-                        </td>
-                      </tr>
+                      <AppMobileDataCard
+                        key={item.id}
+                        title={`${item.pharmacyName} (ID: ${item.pharmacyId})`}
+                        subtitle={`要望ID: ${item.id}`}
+                        badges={<Badge bg={status.bg}>{status.label}</Badge>}
+                        fields={[
+                          { label: '要望内容', value: item.requestText },
+                          { label: '要約', value: item.openclawSummary || '-' },
+                          { label: 'Thread', value: item.openclawThreadId || '-' },
+                          { label: '受付日時', value: item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : '-' },
+                        ]}
+                        actions={item.openclawStatus === 'pending_handoff' ? (
+                          <LoadingButton
+                            size="sm"
+                            variant="outline-primary"
+                            disabled={handoffingRequestId !== null && handoffingRequestId !== item.id}
+                            onClick={() => handleRetryHandoff(item.id)}
+                            loading={handoffingRequestId === item.id}
+                            loadingLabel="再連携中..."
+                          >
+                            再連携
+                          </LoadingButton>
+                        ) : (
+                          <span className="text-muted small">操作不要</span>
+                        )}
+                      />
                     );
                   })}
-                </tbody>
-              </Table>
-            </div>
+                </div>
+              )}
+            />
           )}
-        </Card.Body>
-      </Card>
+        </AppCard.Body>
+      </AppCard>
     </div>
   );
 }

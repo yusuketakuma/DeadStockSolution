@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Alert, Container, Spinner } from 'react-bootstrap';
+import AppAlert from './ui/AppAlert';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
+import PageLoader from './ui/PageLoader';
 
 interface Props {
   children: React.ReactNode;
@@ -17,19 +18,15 @@ export default function RequireUpload({ children }: Props) {
   }, []);
 
   if (uploaded === null) {
-    return (
-      <Container className="d-flex justify-content-center py-5">
-        <Spinner animation="border" variant="primary" />
-      </Container>
-    );
+    return <PageLoader />;
   }
 
   if (!uploaded) {
     return (
-      <Alert variant="warning">
+      <AppAlert variant="warning">
         マッチング機能を利用するには、当月の医薬品使用量Excelをアップロードする必要があります。
         <Link to="/upload" className="alert-link ms-2">アップロードページへ</Link>
-      </Alert>
+      </AppAlert>
     );
   }
 

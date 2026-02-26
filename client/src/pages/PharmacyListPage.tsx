@@ -1,11 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Form, Button, Badge, Row, Col, Alert } from 'react-bootstrap';
+import AppTable from '../components/ui/AppTable';
+import AppButton from '../components/ui/AppButton';
+import AppAlert from '../components/ui/AppAlert';
+import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import SearchInput from '../components/SearchInput';
 import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
 import ConfirmActionModal from '../components/ConfirmActionModal';
+import AppSelect from '../components/ui/AppSelect';
+import AppEmptyState from '../components/ui/AppEmptyState';
+import InlineLoader from '../components/ui/InlineLoader';
+import AppMobileDataCard from '../components/ui/AppMobileDataCard';
+import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -58,6 +66,7 @@ export default function PharmacyListPage() {
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
   const [blockedIds, setBlockedIds] = useState<Set<number>>(new Set());
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
   const [pendingBlockId, setPendingBlockId] = useState<number | null>(null);
   const [blockSubmitting, setBlockSubmitting] = useState(false);
 
@@ -71,7 +80,9 @@ export default function PharmacyListPage() {
     }
   }, []);
 
-  const fetchData = async (p: number) => {
+  const fetchData = useCallback(async (p: number) => {
+    setLoading(true);
+    setMessage('');
     try {
       const params = new URLSearchParams({ page: String(p) });
       if (search) params.set('search', search);
@@ -82,10 +93,12 @@ export default function PharmacyListPage() {
       setTotalPages(data.pagination.totalPages);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : '薬局一覧の取得に失敗しました');
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [search, prefecture, sortBy]);
 
-  useEffect(() => { fetchData(page); }, [page, search, prefecture, sortBy]);
+  useEffect(() => { void fetchData(page); }, [page, fetchData]);
   useEffect(() => { fetchRelationships(); }, [fetchRelationships]);
 
   const handleSearch = (q: string) => {
@@ -145,7 +158,7 @@ export default function PharmacyListPage() {
     <div>
       <h4 className="page-title mb-3">登録薬局一覧</h4>
 
-      {message && <Alert variant="danger" dismissible onClose={() => setMessage('')}>{message}</Alert>}
+      {message && <AppAlert variant="danger" dismissible onClose={() => setMessage('')}>{message}</AppAlert>}
 
       <Row className="mb-3 g-2">
         <Col md={5}>
@@ -159,91 +172,155 @@ export default function PharmacyListPage() {
                 suggestUrl="/search/pharmacies"
               />
             </div>
-            <Button variant="primary" onClick={() => handleSearch(searchInput)}>検索</Button>
+            <AppButton variant="primary" onClick={() => handleSearch(searchInput)}>検索</AppButton>
           </div>
         </Col>
         <Col md={4}>
-          <Form.Select value={prefecture} onChange={(e) => { setPrefecture(e.target.value); setPage(1); }}>
-            <option value="">全都道府県</option>
-            {PREFECTURES.map((pref) => (
-              <option key={pref} value={pref}>{pref}</option>
-            ))}
-          </Form.Select>
+          <AppSelect
+            value={prefecture}
+            ariaLabel="都道府県で絞り込み"
+            onChange={(value) => { setPrefecture(value); setPage(1); }}
+            placeholder="全都道府県"
+            options={PREFECTURES.map((pref) => ({ value: pref, label: pref }))}
+          />
         </Col>
         <Col md={3}>
-          <Form.Select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1); }}>
-            <option value="">登録順</option>
-            <option value="distance">距離が近い順</option>
-          </Form.Select>
+          <AppSelect
+            value={sortBy}
+            ariaLabel="並び順"
+            onChange={(value) => { setSortBy(value); setPage(1); }}
+            options={[
+              { value: '', label: '登録順' },
+              { value: 'distance', label: '距離が近い順' },
+            ]}
+          />
         </Col>
       </Row>
 
-      {pharmacies.length === 0 ? (
-        <Alert variant="secondary">薬局が見つかりません。</Alert>
+      {loading ? (
+        <InlineLoader text="薬局一覧を読み込み中..." className="text-muted small" />
+      ) : pharmacies.length === 0 ? (
+        <AppEmptyState
+          title={search ? `「${search}」に一致する薬局が見つかりません` : '薬局が見つかりません'}
+          description={search ? '検索条件を変更して再度お試しください。' : undefined}
+        />
       ) : (
-        <div className="table-responsive">
-          <Table striped hover>
-            <thead className="table-light">
-              <tr>
-                <th>薬局名</th>
-                <th>都道府県</th>
-                <th>住所</th>
-                <th>電話</th>
-                <th>FAX</th>
-                <th>営業状況</th>
-                <th>距離</th>
-                <th className="table-col-actions">操作</th>
-              </tr>
-            </thead>
-            <tbody>
+        <AppResponsiveSwitch
+          desktop={() => (
+            <div className="table-responsive">
+              <AppTable striped hover>
+                <thead className="table-light">
+                  <tr>
+                    <th>薬局名</th>
+                    <th>都道府県</th>
+                    <th>住所</th>
+                    <th>電話</th>
+                    <th>FAX</th>
+                    <th>営業状況</th>
+                    <th>距離</th>
+                    <th className="table-col-actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pharmacies.map((p) => (
+                    <tr key={p.id} className={blockedIds.has(p.id) ? 'table-secondary' : ''}>
+                      <td>
+                        {p.name}
+                        {favoriteIds.has(p.id) && <Badge bg="warning" className="ms-1" text="dark">お気に入り</Badge>}
+                        {blockedIds.has(p.id) && <Badge bg="dark" className="ms-1">ブロック</Badge>}
+                      </td>
+                      <td>{p.prefecture}</td>
+                      <td className="small">{p.address}</td>
+                      <td>{p.phone}</td>
+                      <td>{p.fax}</td>
+                      <td><BusinessStatusBadge status={p.businessStatus} showHours fallback="dash" /></td>
+                      <td>
+                        {p.distance !== null ? (
+                          <Badge bg="info">{p.distance}km</Badge>
+                        ) : '-'}
+                      </td>
+                      <td>
+                        {p.id !== user?.id ? (
+                          <div className="d-flex gap-1">
+                            <AppButton
+                              size="sm"
+                              variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
+                              title={favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り追加'}
+                              aria-label={favoriteIds.has(p.id) ? `${p.name}のお気に入りを解除` : `${p.name}をお気に入りに追加`}
+                              onClick={() => toggleFavorite(p.id)}
+                            >
+                              {favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り'}
+                            </AppButton>
+                            <AppButton
+                              size="sm"
+                              variant={blockedIds.has(p.id) ? 'dark' : 'outline-secondary'}
+                              title={blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
+                              aria-label={blockedIds.has(p.id) ? `${p.name}のブロックを解除` : `${p.name}をブロック`}
+                              onClick={() => toggleBlock(p.id)}
+                            >
+                              {blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
+                            </AppButton>
+                          </div>
+                        ) : (
+                          <span className="text-muted small">自分</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </AppTable>
+            </div>
+          )}
+          mobile={() => (
+            <div className="dl-mobile-data-list">
               {pharmacies.map((p) => (
-                <tr key={p.id} className={blockedIds.has(p.id) ? 'table-secondary' : ''}>
-                  <td>
-                    {p.name}
-                    {favoriteIds.has(p.id) && <Badge bg="warning" className="ms-1" text="dark">お気に入り</Badge>}
-                    {blockedIds.has(p.id) && <Badge bg="dark" className="ms-1">ブロック</Badge>}
-                  </td>
-                  <td>{p.prefecture}</td>
-                  <td className="small">{p.address}</td>
-                  <td>{p.phone}</td>
-                  <td>{p.fax}</td>
-                  <td><BusinessStatusBadge status={p.businessStatus} showHours fallback="dash" /></td>
-                  <td>
-                    {p.distance !== null ? (
-                      <Badge bg="info">{p.distance}km</Badge>
-                    ) : '-'}
-                  </td>
-                  <td>
-                    {p.id !== user?.id ? (
-                      <div className="d-flex gap-1">
-                        <Button
-                          size="sm"
-                          variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
-                          title={favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り追加'}
-                          aria-label={favoriteIds.has(p.id) ? `${p.name}のお気に入りを解除` : `${p.name}をお気に入りに追加`}
-                          onClick={() => toggleFavorite(p.id)}
-                        >
-                          {favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={blockedIds.has(p.id) ? 'dark' : 'outline-secondary'}
-                          title={blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
-                          aria-label={blockedIds.has(p.id) ? `${p.name}のブロックを解除` : `${p.name}をブロック`}
-                          onClick={() => toggleBlock(p.id)}
-                        >
-                          {blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="text-muted small">自分</span>
-                    )}
-                  </td>
-                </tr>
+                <AppMobileDataCard
+                  key={p.id}
+                  className={blockedIds.has(p.id) ? 'border-secondary-subtle bg-light' : undefined}
+                  title={p.name}
+                  subtitle={p.prefecture}
+                  badges={(
+                    <>
+                      {favoriteIds.has(p.id) && <Badge bg="warning" text="dark">お気に入り</Badge>}
+                      {blockedIds.has(p.id) && <Badge bg="dark">ブロック</Badge>}
+                      {p.distance !== null ? <Badge bg="info">{p.distance}km</Badge> : null}
+                    </>
+                  )}
+                  fields={[
+                    { label: '住所', value: p.address },
+                    { label: '電話', value: p.phone },
+                    { label: 'FAX', value: p.fax },
+                    { label: '営業状況', value: <BusinessStatusBadge status={p.businessStatus} showHours fallback="dash" /> },
+                  ]}
+                  actions={p.id !== user?.id ? (
+                    <>
+                      <AppButton
+                        size="sm"
+                        variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
+                        title={favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り追加'}
+                        aria-label={favoriteIds.has(p.id) ? `${p.name}のお気に入りを解除` : `${p.name}をお気に入りに追加`}
+                        onClick={() => toggleFavorite(p.id)}
+                      >
+                        {favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り'}
+                      </AppButton>
+                      <AppButton
+                        size="sm"
+                        variant={blockedIds.has(p.id) ? 'dark' : 'outline-secondary'}
+                        title={blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
+                        aria-label={blockedIds.has(p.id) ? `${p.name}のブロックを解除` : `${p.name}をブロック`}
+                        onClick={() => toggleBlock(p.id)}
+                      >
+                        {blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
+                      </AppButton>
+                    </>
+                  ) : (
+                    <span className="text-muted small">自分の薬局です</span>
+                  )}
+                />
               ))}
-            </tbody>
-          </Table>
-        </div>
+            </div>
+          )}
+        />
       )}
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 

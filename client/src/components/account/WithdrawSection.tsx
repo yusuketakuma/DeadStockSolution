@@ -1,4 +1,7 @@
-import { Button, Card, Form } from 'react-bootstrap';
+import { Form } from 'react-bootstrap';
+import AppCard from '../ui/AppCard';
+import LoadingButton from '../ui/LoadingButton';
+import AppControl from '../ui/AppControl';
 
 interface WithdrawSectionProps {
   withdrawPassword: string;
@@ -9,30 +12,32 @@ interface WithdrawSectionProps {
 
 export default function WithdrawSection({ withdrawPassword, withdrawing, onPasswordChange, onWithdraw }: WithdrawSectionProps) {
   return (
-    <Card className="mt-3 border-danger">
-      <Card.Header className="bg-danger-subtle text-danger-emphasis">退会</Card.Header>
-      <Card.Body>
+    <AppCard className="mt-3 border-danger">
+      <AppCard.Header className="bg-danger-subtle text-danger-emphasis">退会</AppCard.Header>
+      <AppCard.Body>
         <p className="small mb-3">
           退会するとアカウントは無効化され、ログインできなくなります。再利用する場合は管理者へお問い合わせください。
         </p>
         <Form.Group className="mb-3 form-max-360">
           <Form.Label>現在のパスワード</Form.Label>
-          <Form.Control
+          <AppControl
             type="password"
             value={withdrawPassword}
-            onChange={(e) => onPasswordChange(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onPasswordChange(e.target.value)}
             autoComplete="current-password"
           />
           <Form.Text className="text-muted">本人確認のため必須です</Form.Text>
         </Form.Group>
-        <Button
+        <LoadingButton
           variant="outline-danger"
           onClick={onWithdraw}
-          disabled={withdrawing || !withdrawPassword}
+          disabled={!withdrawPassword}
+          loading={withdrawing}
+          loadingLabel="処理中..."
         >
-          {withdrawing ? '処理中...' : '退会する'}
-        </Button>
-      </Card.Body>
-    </Card>
+          退会する
+        </LoadingButton>
+      </AppCard.Body>
+    </AppCard>
   );
 }

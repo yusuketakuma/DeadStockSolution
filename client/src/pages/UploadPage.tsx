@@ -1,7 +1,15 @@
-import { useState, useRef, FormEvent } from 'react';
-import { Card, Form, Button, Alert, ProgressBar } from 'react-bootstrap';
+import { useState, useRef, useCallback, FormEvent, useEffect } from 'react';
+import AppAlert from '../components/ui/AppAlert';
+import { Form, ProgressBar } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import DraftRestoreAlert from '../components/DraftRestoreAlert';
+import { useAutoSave } from '../hooks/useAutoSave';
+import AppSelect from '../components/ui/AppSelect';
+import LoadingButton from '../components/ui/LoadingButton';
+import AppControl from '../components/ui/AppControl';
+import AppCard from '../components/ui/AppCard';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PreviewResponse {
   headers: string[];
@@ -11,7 +19,22 @@ interface PreviewResponse {
   hasSavedMapping: boolean;
 }
 
+interface DiffSummary {
+  inserted: number;
+  updated: number;
+  deactivated: number;
+  unchanged: number;
+  totalIncoming: number;
+}
+
+/** カラムマッピング設定の自動保存対象 */
+interface MappingDraftData {
+  mapping: Record<string, string | null>;
+  uploadType: 'dead_stock' | 'used_medication';
+}
+
 export default function UploadPage() {
+  const { user } = useAuth();
   const [uploadType, setUploadType] = useState<'dead_stock' | 'used_medication'>('dead_stock');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
@@ -20,8 +43,33 @@ export default function UploadPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [showMatchingHint, setShowMatchingHint] = useState(false);
+  const [applyMode, setApplyMode] = useState<'replace' | 'diff'>('replace');
+  const [deleteMissing, setDeleteMissing] = useState(false);
+  const [diffSummary, setDiffSummary] = useState<DiffSummary | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const navigateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uploadRequestAbortRef = useRef<AbortController | null>(null);
   const navigate = useNavigate();
+
+  // カラムマッピング設定の自動保存
+  const mappingDraftData: MappingDraftData = { mapping, uploadType };
+  const mappingAutoSave = useAutoSave<MappingDraftData>('upload-mapping', mappingDraftData, {
+    userId: user?.id,
+    enabled: Object.keys(mapping).length > 0,
+  });
+
+  const handleMappingDraftRestore = useCallback(() => {
+    const draft = mappingAutoSave.restoreDraft();
+    if (draft) {
+      setMapping(draft.mapping);
+      setUploadType(draft.uploadType);
+    }
+    mappingAutoSave.clearDraft();
+  }, [mappingAutoSave]);
+
+  const handleMappingDraftDiscard = useCallback(() => {
+    mappingAutoSave.clearDraft();
+  }, [mappingAutoSave]);
 
   const fieldLabels: Record<string, string> = {
     drug_code: 'YJコード / GS1コード',
@@ -36,23 +84,35 @@ export default function UploadPage() {
 
   const requiredFields: Record<string, Set<string>> = {
     dead_stock: new Set(['drug_code', 'drug_name', 'quantity', 'unit', 'expiration_date']),
-    used_medication: new Set(['drug_code', 'drug_name', 'quantity', 'unit', 'expiration_date', 'monthly_usage']),
+    used_medication: new Set(['drug_name', 'monthly_usage']),
   };
 
   const isRequired = (field: string) => requiredFields[uploadType]?.has(field) ?? false;
+  const missingRequiredFields = Array.from(requiredFields[uploadType] ?? []).filter((field) => !mapping[field]);
+  const hasAllRequiredMappings = missingRequiredFields.length === 0;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    uploadRequestAbortRef.current?.abort();
+    uploadRequestAbortRef.current = null;
+    setLoading(false);
     const selected = e.target.files?.[0] || null;
     setFile(selected);
     setPreview(null);
     setMessage('');
     setError('');
     setShowMatchingHint(false);
+    setApplyMode('replace');
+    setDeleteMissing(false);
+    setDiffSummary(null);
   };
 
   const handlePreview = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) return;
+
+    uploadRequestAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadRequestAbortRef.current = controller;
 
     setLoading(true);
     setError('');
@@ -61,18 +121,35 @@ export default function UploadPage() {
       formData.append('file', file);
       formData.append('uploadType', uploadType);
 
-      const data = await api.upload<PreviewResponse>('/upload/preview', formData);
+      const data = await api.upload<PreviewResponse>('/upload/preview', formData, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setPreview(data);
       setMapping(data.suggestedMapping);
+      setDiffSummary(null);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : 'プレビューに失敗しました');
     } finally {
-      setLoading(false);
+      if (uploadRequestAbortRef.current === controller) {
+        uploadRequestAbortRef.current = null;
+      }
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   };
 
   const handleConfirm = async () => {
     if (!file) return;
+    if (!hasAllRequiredMappings) {
+      const labels = missingRequiredFields.map((field) => fieldLabels[field] || field);
+      setError(`必須項目が未割り当てです: ${labels.join('、')}`);
+      return;
+    }
+
+    uploadRequestAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadRequestAbortRef.current = controller;
 
     setLoading(true);
     setError('');
@@ -82,21 +159,80 @@ export default function UploadPage() {
       formData.append('uploadType', uploadType);
       formData.append('mapping', JSON.stringify(mapping));
       formData.append('headerRowIndex', String(preview?.headerRowIndex ?? 0));
+      formData.append('applyMode', applyMode);
+      formData.append('deleteMissing', String(deleteMissing));
 
-      const result = await api.upload<{ message: string; rowCount: number }>('/upload/confirm', formData);
+      const result = await api.upload<{ message: string; rowCount: number; diffSummary?: DiffSummary }>(
+        '/upload/confirm',
+        formData,
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
       setMessage(`${result.message} マッチング候補の再計算と通知更新が反映されます。`);
+      setDiffSummary(result.diffSummary ?? null);
       setShowMatchingHint(true);
       setPreview(null);
       setFile(null);
+      mappingAutoSave.clearDraft();
       if (fileRef.current) fileRef.current.value = '';
 
-      setTimeout(() => {
+      if (navigateTimerRef.current !== null) {
+        clearTimeout(navigateTimerRef.current);
+      }
+      navigateTimerRef.current = setTimeout(() => {
+        navigateTimerRef.current = null;
         navigate(uploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
       }, 1200);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : '登録に失敗しました');
     } finally {
-      setLoading(false);
+      if (uploadRequestAbortRef.current === controller) {
+        uploadRequestAbortRef.current = null;
+      }
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleDiffPreview = async () => {
+    if (!file || !preview) return;
+    if (applyMode !== 'diff') return;
+    if (!hasAllRequiredMappings) {
+      const labels = missingRequiredFields.map((field) => fieldLabels[field] || field);
+      setError(`必須項目が未割り当てです: ${labels.join('、')}`);
+      return;
+    }
+
+    uploadRequestAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadRequestAbortRef.current = controller;
+
+    setLoading(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('uploadType', uploadType);
+      formData.append('mapping', JSON.stringify(mapping));
+      formData.append('headerRowIndex', String(preview.headerRowIndex));
+      formData.append('applyMode', 'diff');
+      formData.append('deleteMissing', String(deleteMissing));
+
+      const result = await api.upload<{ summary: DiffSummary }>('/upload/diff-preview', formData, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setDiffSummary(result.summary);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      setError(err instanceof Error ? err.message : '差分プレビューに失敗しました');
+    } finally {
+      if (uploadRequestAbortRef.current === controller) {
+        uploadRequestAbortRef.current = null;
+      }
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   };
 
@@ -104,20 +240,37 @@ export default function UploadPage() {
     setMapping((prev) => ({ ...prev, [field]: value === '' ? null : value }));
   };
 
+  useEffect(() => () => {
+    if (navigateTimerRef.current !== null) {
+      clearTimeout(navigateTimerRef.current);
+      navigateTimerRef.current = null;
+    }
+    uploadRequestAbortRef.current?.abort();
+    uploadRequestAbortRef.current = null;
+  }, []);
+
   return (
     <div>
       <h4 className="page-title mb-3">Excelアップロード</h4>
-      {error && <Alert variant="danger">{error}</Alert>}
-      {message && <Alert variant="success">{message}</Alert>}
+      {error && <AppAlert variant="danger">{error}</AppAlert>}
+      {message && <AppAlert variant="success">{message}</AppAlert>}
       {showMatchingHint && (
-        <Alert variant="info">
+        <AppAlert variant="info">
           交換候補をすぐ確認する場合は「マッチング」ページで再実行してください。
-        </Alert>
+        </AppAlert>
       )}
 
-      <Card className="mb-3">
-        <Card.Header>アップロード手順</Card.Header>
-        <Card.Body>
+      {mappingAutoSave.hasDraft && !preview && (
+        <DraftRestoreAlert
+          draftTimestamp={mappingAutoSave.draftTimestamp}
+          onRestore={handleMappingDraftRestore}
+          onDiscard={handleMappingDraftDiscard}
+        />
+      )}
+
+      <AppCard className="mb-3">
+        <AppCard.Header>アップロード手順</AppCard.Header>
+        <AppCard.Body>
           <ol className="mb-2 upload-step-list">
             <li>アップロードタイプを選択します（デッドストックリスト / 医薬品使用量リスト）。</li>
             <li><code>.xlsx</code> 形式のExcelファイルを選択します（最大10MB）。</li>
@@ -129,35 +282,38 @@ export default function UploadPage() {
             {uploadType === 'dead_stock' ? (
               <div className="text-danger">YJコード / GS1コード、薬剤名、数量、包装単位、期限</div>
             ) : (
-              <div className="text-danger">YJコード / GS1コード、薬剤名、数量、包装単位、期限、調剤回数、調剤数量</div>
+              <div className="text-danger">薬剤名、月間使用量</div>
             )}
           </div>
           <div className="small text-muted mt-1">
             見出し行が複数ある場合は、プレビュー結果を見て割当を調整してください。
           </div>
-        </Card.Body>
-      </Card>
+        </AppCard.Body>
+      </AppCard>
 
-      <Card className="mb-3">
-        <Card.Body>
+      <AppCard className="mb-3">
+        <AppCard.Body>
           <Form onSubmit={handlePreview}>
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-3" controlId="upload-type">
               <Form.Label>アップロードタイプ</Form.Label>
-              <Form.Select
+              <AppSelect
+                controlId="upload-type"
                 value={uploadType}
-                onChange={(e) => {
-                  setUploadType(e.target.value as typeof uploadType);
+                ariaLabel="アップロードタイプ"
+                onChange={(value) => {
+                  setUploadType(value as typeof uploadType);
                   setPreview(null);
                 }}
-              >
-                <option value="dead_stock">デッドストックリスト</option>
-                <option value="used_medication">医薬品使用量リスト</option>
-              </Form.Select>
+                options={[
+                  { value: 'dead_stock', label: 'デッドストックリスト' },
+                  { value: 'used_medication', label: '医薬品使用量リスト' },
+                ]}
+              />
             </Form.Group>
 
             <Form.Group className="mb-3">
               <Form.Label>Excelファイル (.xlsx)</Form.Label>
-              <Form.Control
+              <AppControl
                 type="file"
                 accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={handleFileChange}
@@ -165,22 +321,22 @@ export default function UploadPage() {
               />
             </Form.Group>
 
-            <Button type="submit" variant="primary" disabled={!file || loading}>
-              {loading ? 'プレビュー中...' : 'プレビュー'}
-            </Button>
+            <LoadingButton type="submit" variant="primary" disabled={!file} loading={loading} loadingLabel="プレビュー中...">
+              プレビュー
+            </LoadingButton>
           </Form>
-        </Card.Body>
-      </Card>
+        </AppCard.Body>
+      </AppCard>
 
       {loading && <ProgressBar animated now={100} className="mb-3" />}
 
       {preview && (
-        <Card className="mb-3">
-          <Card.Header>
+        <AppCard className="mb-3">
+          <AppCard.Header>
             カラムマッピング
             {preview.hasSavedMapping && <small className="text-muted ms-2">（前回のマッピングを適用）</small>}
-          </Card.Header>
-          <Card.Body>
+          </AppCard.Header>
+          <AppCard.Body>
             <p className="text-muted small">各カラムに対応するフィールドを選択してください。薬品名は必須です。</p>
 
             <div className="table-responsive mb-3">
@@ -208,35 +364,94 @@ export default function UploadPage() {
             <div className="d-flex flex-column gap-2">
               {Object.entries(mapping).map(([field, colIdx]) => (
                 <div key={field}>
-                  <Form.Label className={`small mb-1${isRequired(field) ? ' text-danger fw-semibold' : ''}`}>
+                  <Form.Label htmlFor={`upload-mapping-${field}`} className={`small mb-1${isRequired(field) ? ' text-danger fw-semibold' : ''}`}>
                     {fieldLabels[field] || field}
                     {isRequired(field) && <span> *</span>}
                   </Form.Label>
-                  <Form.Select
+                  <AppSelect
+                    controlId={`upload-mapping-${field}`}
                     size="sm"
                     value={colIdx ?? ''}
-                    onChange={(e) => handleMappingChange(field, e.target.value)}
-                  >
-                    <option value="">（未選択）</option>
-                    {preview.headers.map((header, headerIdx) => (
-                      <option key={headerIdx} value={String(headerIdx)}>{header || `列${headerIdx + 1}`}</option>
-                    ))}
-                  </Form.Select>
+                    ariaLabel={`${fieldLabels[field] || field} の割り当て`}
+                    onChange={(value) => handleMappingChange(field, value)}
+                    placeholder="（未選択）"
+                    options={preview.headers.map((header, headerIdx) => ({
+                      value: String(headerIdx),
+                      label: header || `列${headerIdx + 1}`,
+                    }))}
+                  />
                 </div>
               ))}
             </div>
 
+            <hr />
+
+            <Form.Group className="mb-2" controlId="upload-apply-mode">
+              <Form.Label>反映方式</Form.Label>
+              <AppSelect
+                controlId="upload-apply-mode"
+                value={applyMode}
+                ariaLabel="反映方式"
+                onChange={(value) => {
+                  setApplyMode(value as 'replace' | 'diff');
+                  setDiffSummary(null);
+                }}
+                options={[
+                  { value: 'replace', label: '置換（既定）' },
+                  { value: 'diff', label: '差分反映' },
+                ]}
+              />
+              <div className="small text-muted mt-1">既定は置換です。差分反映は明示的に選択した場合のみ有効です。</div>
+            </Form.Group>
+
+            {applyMode === 'diff' && (
+              <Form.Group className="mb-2">
+                <Form.Check
+                  id="upload-delete-missing"
+                  type="checkbox"
+                  label="差分に存在しない既存データを無効化/削除する"
+                  checked={deleteMissing}
+                  onChange={(e) => setDeleteMissing(e.currentTarget.checked)}
+                />
+                <div className="mt-2">
+                  <LoadingButton
+                    variant="outline-secondary"
+                    size="sm"
+                    onClick={handleDiffPreview}
+                    loading={loading}
+                    loadingLabel="差分比較中..."
+                    disabled={!hasAllRequiredMappings}
+                  >
+                    差分プレビューを更新
+                  </LoadingButton>
+                </div>
+              </Form.Group>
+            )}
+
+            {applyMode === 'diff' && diffSummary && (
+              <AppAlert variant="info" className="small">
+                追加: {diffSummary.inserted}件 / 更新: {diffSummary.updated}件 / 無効化・削除: {diffSummary.deactivated}件 / 変更なし: {diffSummary.unchanged}件
+              </AppAlert>
+            )}
+
             <div className="mt-3 mobile-stack">
-              <Button
+              <LoadingButton
                 variant="success"
                 onClick={handleConfirm}
-                disabled={loading || !mapping.drug_name}
+                disabled={!hasAllRequiredMappings}
+                loading={loading}
+                loadingLabel="登録中..."
               >
-                {loading ? '登録中...' : 'この設定でデータを登録'}
-              </Button>
+                この設定でデータを登録
+              </LoadingButton>
+              {!hasAllRequiredMappings && (
+                <div className="small text-danger mt-2">
+                  必須項目が未割り当てです。赤字項目をすべて選択してください。
+                </div>
+              )}
             </div>
-          </Card.Body>
-        </Card>
+          </AppCard.Body>
+        </AppCard>
       )}
     </div>
   );

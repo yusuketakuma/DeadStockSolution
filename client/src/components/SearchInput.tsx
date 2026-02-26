@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useId } from 'react';
-import { Form, ListGroup } from 'react-bootstrap';
+import { ListGroup } from 'react-bootstrap';
 import { api } from '../api/client';
+import AppControl from './ui/AppControl';
 
 interface SearchInputProps {
   placeholder: string;
@@ -17,6 +18,7 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const requestAbortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
 
@@ -26,6 +28,8 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
     }
 
     if (!value.trim()) {
+      requestAbortRef.current?.abort();
+      requestAbortRef.current = null;
       setSuggestions([]);
       setShowSuggestions(false);
       return;
@@ -34,14 +38,21 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
     let cancelled = false;
 
     debounceRef.current = setTimeout(async () => {
+      requestAbortRef.current?.abort();
+      const controller = new AbortController();
+      requestAbortRef.current = controller;
       try {
-        const results = await api.get<string[]>(`${suggestUrl}?q=${encodeURIComponent(value)}`);
+        const results = await api.get<string[]>(
+          `${suggestUrl}?q=${encodeURIComponent(value)}`,
+          { signal: controller.signal },
+        );
         if (!cancelled) {
           setSuggestions(results);
           setShowSuggestions(results.length > 0);
           setSelectedIndex(-1);
         }
       } catch {
+        if (controller.signal.aborted) return;
         if (!cancelled) {
           setSuggestions([]);
         }
@@ -53,6 +64,8 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
+      requestAbortRef.current?.abort();
+      requestAbortRef.current = null;
     };
   }, [value, suggestUrl]);
 
@@ -109,10 +122,10 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
-      <Form.Control
+      <AppControl
         placeholder={placeholder}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         onFocus={() => {
           if (suggestions.length > 0) setShowSuggestions(true);

@@ -1,4 +1,8 @@
-import { Card, Row, Col, Badge, Form, Button, Spinner } from 'react-bootstrap';
+import { Row, Col, Badge, Form } from 'react-bootstrap';
+import AppCard from '../../../components/ui/AppCard';
+import InlineLoader from '../../../components/ui/InlineLoader';
+import LoadingButton from '../../../components/ui/LoadingButton';
+import AppControl from '../../../components/ui/AppControl';
 
 interface AutoSyncStatus {
   enabled: boolean;
@@ -23,9 +27,9 @@ export default function AutoSyncStatusCard({
   onAutoSyncTrigger,
 }: AutoSyncStatusCardProps) {
   return (
-    <Card className="mb-3">
-      <Card.Header>厚生労働省サイトからの自動取得</Card.Header>
-      <Card.Body>
+    <AppCard className="mb-3">
+      <AppCard.Header>厚生労働省サイトからの自動取得</AppCard.Header>
+      <AppCard.Body>
         {autoSyncStatus ? (
           <>
             <Row className="mb-2">
@@ -54,11 +58,11 @@ export default function AutoSyncStatusCard({
             <Row className="mb-2">
               <Col sm={3} className="text-muted small">手動URL指定</Col>
               <Col sm={9}>
-                <Form.Control
+                <AppControl
                   size="sm"
                   placeholder="https://..."
                   value={manualSourceUrl}
-                  onChange={(e) => onManualSourceUrlChange(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onManualSourceUrlChange(e.target.value)}
                 />
                 <Form.Text className="text-muted">
                   DRUG_MASTER_SOURCE_URL未設定時でも、HTTPS URLを指定して手動実行できます。
@@ -66,14 +70,16 @@ export default function AutoSyncStatusCard({
               </Col>
             </Row>
             <hr className="my-2" />
-            <Button
+            <LoadingButton
               size="sm"
               variant="outline-primary"
               onClick={onAutoSyncTrigger}
-              disabled={autoSyncTriggering || (!autoSyncStatus.hasSourceUrl && !manualSourceUrl.trim())}
+              disabled={!autoSyncStatus.hasSourceUrl && !manualSourceUrl.trim()}
+              loading={autoSyncTriggering}
+              loadingLabel="確認中..."
             >
-              {autoSyncTriggering ? <><Spinner size="sm" className="me-1" />確認中...</> : '今すぐ更新を確認・取得'}
-            </Button>
+              今すぐ更新を確認・取得
+            </LoadingButton>
             {!autoSyncStatus.hasSourceUrl && (
               <Form.Text className="d-block mt-1 text-muted">
                 環境変数 DRUG_MASTER_SOURCE_URL を設定してください。
@@ -86,9 +92,9 @@ export default function AutoSyncStatusCard({
             )}
           </>
         ) : (
-          <Spinner size="sm" />
+          <InlineLoader text="読み込み中..." />
         )}
-      </Card.Body>
-    </Card>
+      </AppCard.Body>
+    </AppCard>
   );
 }

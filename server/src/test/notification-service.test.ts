@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
     insert: vi.fn(),
     select: vi.fn(),
     update: vi.fn(),
+    execute: vi.fn(),
+    transaction: vi.fn(),
   },
 }));
 
@@ -14,7 +16,9 @@ vi.mock('../config/database', () => ({
 
 vi.mock('drizzle-orm', () => ({
   and: vi.fn((...args: unknown[]) => ({ _and: args })),
+  or: vi.fn((...args: unknown[]) => ({ _or: args })),
   eq: vi.fn((a: unknown, b: unknown) => ({ _eq: [a, b] })),
+  isNull: vi.fn((arg: unknown) => ({ _isNull: arg })),
   desc: vi.fn((col: unknown) => ({ _desc: col })),
   count: vi.fn(() => ({ _count: true })),
   sql: vi.fn(() => ({})),
@@ -22,9 +26,11 @@ vi.mock('drizzle-orm', () => ({
 
 import {
   createNotification,
+  getDashboardUnreadCount,
   getUnreadCount,
   markAsRead,
   markAllAsRead,
+  markAllDashboardAsRead,
 } from '../services/notification-service';
 
 function createInsertChain(result: unknown) {
@@ -58,9 +64,23 @@ function createSelectCountChain(result: unknown) {
   const chain = {
     from: vi.fn(),
     where: vi.fn(),
+    leftJoin: vi.fn(),
   };
   chain.from.mockReturnValue(chain);
+  chain.leftJoin.mockReturnValue(chain);
   chain.where.mockResolvedValue(result);
+  return chain;
+}
+
+function createSelectCountRejectChain(error: unknown) {
+  const chain = {
+    from: vi.fn(),
+    where: vi.fn(),
+    leftJoin: vi.fn(),
+  };
+  chain.from.mockReturnValue(chain);
+  chain.leftJoin.mockReturnValue(chain);
+  chain.where.mockRejectedValue(error);
   return chain;
 }
 
@@ -76,9 +96,31 @@ function createUpdateChain(result: unknown) {
   return chain;
 }
 
+function createUpdateWithoutReturningChain() {
+  const chain = {
+    set: vi.fn(),
+    where: vi.fn(),
+  };
+  chain.set.mockReturnValue(chain);
+  chain.where.mockResolvedValue(undefined);
+  return chain;
+}
+
+function createExecuteResult(rows: unknown[]) {
+  return { rows };
+}
+
+function createTxWithExecuteRows(...rowsList: unknown[][]) {
+  const execute = vi.fn();
+  for (const rows of rowsList) {
+    execute.mockResolvedValueOnce(createExecuteResult(rows));
+  }
+  return { execute };
+}
+
 describe('notification-service', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe('createNotification', () => {
@@ -158,12 +200,76 @@ describe('notification-service', () => {
 
   describe('markAllAsRead', () => {
     it('marks all unread notifications as read', async () => {
-      const chain = createUpdateChain([{ id: 1 }, { id: 2 }]);
-      mocks.db.update.mockReturnValue(chain);
+      mocks.db.execute.mockResolvedValue(createExecuteResult([{ count: 2 }]));
 
       const result = await markAllAsRead(10);
 
       expect(result).toBe(2);
+      expect(mocks.db.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns 0 when no unread rows are updated', async () => {
+      mocks.db.execute.mockResolvedValue(createExecuteResult([{ count: 0 }]));
+
+      const result = await markAllAsRead(10);
+
+      expect(result).toBe(0);
+      expect(mocks.db.execute).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getDashboardUnreadCount', () => {
+    it('aggregates unread counts across notification sources', async () => {
+      mocks.db.select
+        .mockImplementationOnce(() => createSelectCountChain([{ count: 1 }]))
+        .mockImplementationOnce(() => createSelectCountChain([{ value: 5 }]))
+        .mockImplementationOnce(() => createSelectCountChain([{ count: 2 }]));
+
+      const result = await getDashboardUnreadCount(10);
+
+      expect(result).toBe(8);
+      expect(mocks.db.select).toHaveBeenCalledTimes(3);
+    });
+
+    it('falls back to 0 when match_notifications table is missing', async () => {
+      const missingTableError = Object.assign(new Error('relation "match_notifications" does not exist'), {
+        code: '42P01',
+      });
+
+      mocks.db.select
+        .mockImplementationOnce(() => createSelectCountRejectChain(missingTableError))
+        .mockImplementationOnce(() => createSelectCountChain([{ value: 4 }]))
+        .mockImplementationOnce(() => createSelectCountChain([{ count: 3 }]));
+
+      const result = await getDashboardUnreadCount(10);
+
+      expect(result).toBe(7);
+      expect(mocks.db.select).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('markAllDashboardAsRead', () => {
+    it('updates all notification buckets in a single transaction', async () => {
+      const tx = createTxWithExecuteRows(
+        [{ count: 2 }],
+        [{ count: 1 }],
+        [{ count: 3 }],
+      );
+      mocks.db.transaction.mockImplementation(async (callback: (trx: typeof tx) => Promise<number>) => callback(tx));
+
+      const result = await markAllDashboardAsRead(10);
+
+      expect(result).toBe(6);
+      expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
+      expect(tx.execute).toHaveBeenCalledTimes(3);
+    });
+
+    it('propagates transaction errors', async () => {
+      const tx = createTxWithExecuteRows([{ count: 1 }], [{ count: 1 }]);
+      tx.execute.mockRejectedValueOnce(new Error('db failed'));
+      mocks.db.transaction.mockImplementation(async (callback: (trx: typeof tx) => Promise<number>) => callback(tx));
+
+      await expect(markAllDashboardAsRead(10)).rejects.toThrow('db failed');
     });
   });
 });

@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Spinner, Container } from 'react-bootstrap';
+import PageLoader from './ui/PageLoader';
 
 interface Props {
   children: React.ReactNode;
@@ -11,11 +11,7 @@ export default function ProtectedRoute({ children, adminOnly = false }: Props) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <Container className="d-flex justify-content-center align-items-center route-loading-min-height">
-        <Spinner animation="border" variant="primary" />
-      </Container>
-    );
+    return <PageLoader minHeightClassName="route-loading-min-height" />;
   }
 
   if (!user) {

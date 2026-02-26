@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import AppAlert from '../components/ui/AppAlert';
+import AppButton from '../components/ui/AppButton';
+import PageLoader from '../components/ui/PageLoader';
 import '../styles/proposal-print.css';
 
 interface PharmacyInfo {
@@ -52,15 +55,39 @@ export default function ProposalPrintPage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<PrintData | null>(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    api.get<PrintData>(`/exchange/proposals/${id}/print`)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : '印刷データの取得に失敗しました'));
+  const fetchPrintData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const printData = await api.get<PrintData>(`/exchange/proposals/${id}/print`);
+      setData(printData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '印刷データの取得に失敗しました');
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
-  if (error) return <div className="p-3">{error}</div>;
-  if (!data) return <div className="p-3">読み込み中...</div>;
+  useEffect(() => {
+    void fetchPrintData();
+  }, [fetchPrintData]);
+
+  if (loading && !data) return <PageLoader />;
+  if (error && !data) {
+    return (
+      <div className="p-3">
+        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <span>{error}</span>
+          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchPrintData()}>
+            再試行
+          </AppButton>
+        </AppAlert>
+      </div>
+    );
+  }
+  if (!data) return <PageLoader />;
 
   const { proposal, items } = data;
   const pharmacyA = safePharmacy(data.pharmacyA);
@@ -71,12 +98,12 @@ export default function ProposalPrintPage() {
   return (
     <div className="proposal-print-sheet">
       <div className="proposal-print-actions no-print">
-        <button type="button" onClick={() => window.print()} className="proposal-print-action-button">
+        <AppButton type="button" onClick={() => window.print()} className="proposal-print-action-button">
           印刷
-        </button>
-        <button type="button" onClick={() => window.close()} className="proposal-print-action-button">
+        </AppButton>
+        <AppButton type="button" onClick={() => window.close()} className="proposal-print-action-button">
           閉じる
-        </button>
+        </AppButton>
       </div>
 
       <h1 className="proposal-print-title">医薬品交換様式（FAX確認用）</h1>

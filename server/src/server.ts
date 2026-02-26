@@ -3,6 +3,7 @@ import app from './app';
 import { startDrugMasterScheduler, stopDrugMasterScheduler } from './services/drug-master-scheduler';
 import { startDrugPackageScheduler, stopDrugPackageScheduler } from './services/drug-package-scheduler';
 import { startImportFailureAlertScheduler, stopImportFailureAlertScheduler } from './services/import-failure-alert-scheduler';
+import { startMonthlyReportScheduler, stopMonthlyReportScheduler } from './services/monthly-report-scheduler';
 import { logger } from './services/logger';
 
 function resolvePort(): number {
@@ -23,6 +24,7 @@ const server = app.listen(PORT, () => {
   startDrugMasterScheduler();
   startDrugPackageScheduler();
   startImportFailureAlertScheduler();
+  startMonthlyReportScheduler();
 });
 
 function gracefulShutdown(signal: NodeJS.Signals): void {
@@ -32,6 +34,7 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
   stopDrugMasterScheduler();
   stopDrugPackageScheduler();
   stopImportFailureAlertScheduler();
+  stopMonthlyReportScheduler();
 
   const forceCloseTimer = setTimeout(() => {
     logger.error('Graceful shutdown timed out. Forcing exit.');

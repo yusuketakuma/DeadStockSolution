@@ -1,12 +1,17 @@
-import { useState, useEffect, useCallback, FormEvent } from 'react';
-import { Alert, Spinner } from 'react-bootstrap';
+import { useState, useEffect, useCallback, FormEvent, useMemo, useRef } from 'react';
+import AppAlert from '../components/ui/AppAlert';
+import AppButton from '../components/ui/AppButton';
 import { useAuth } from '../contexts/AuthContext';
-import { api } from '../api/client';
+import { api, isConflictError } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import ConfirmActionModal from '../components/ConfirmActionModal';
+import ConflictAlert from '../components/ConflictAlert';
+import DraftRestoreAlert from '../components/DraftRestoreAlert';
 import AccountInfoForm, { AccountFormState } from '../components/account/AccountInfoForm';
 import BusinessHoursSettings from '../components/account/BusinessHoursSettings';
 import WithdrawSection from '../components/account/WithdrawSection';
+import { useAutoSave } from '../hooks/useAutoSave';
+import InlineLoader from '../components/ui/InlineLoader';
 import {
   AccountData,
   BusinessHourEntry,
@@ -19,9 +24,26 @@ import {
   normalizeSpecialHours,
 } from '../components/account/types';
 
+/** アカウント情報フォームの自動保存対象（パスワードは除外） */
+interface AccountDraftData {
+  name: string;
+  postalCode: string;
+  address: string;
+  phone: string;
+  fax: string;
+  prefecture: string;
+}
+
+/** 営業時間の自動保存対象 */
+interface BusinessHoursDraftData {
+  businessHours: BusinessHourEntry[];
+  specialHours: SpecialHourEntry[];
+}
+
 export default function AccountPage() {
-  const { refreshUser, logout } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
+  const initialLoadAbortRef = useRef<AbortController | null>(null);
   const [form, setForm] = useState<AccountFormState>({
     name: '', postalCode: '', address: '', phone: '', fax: '', prefecture: '',
     currentPassword: '', newPassword: '',
@@ -34,96 +56,213 @@ export default function AccountPage() {
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawPassword, setWithdrawPassword] = useState('');
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  // 楽観的ロック競合フラグ
+  const [accountConflict, setAccountConflict] = useState(false);
+  const [hoursConflict, setHoursConflict] = useState(false);
 
   // Business hours state
   const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
   const [savedBusinessHours, setSavedBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
   const [specialHours, setSpecialHours] = useState<SpecialHourEntry[]>([]);
   const [savedSpecialHours, setSavedSpecialHours] = useState<SpecialHourEntry[]>([]);
+  const [hoursVersion, setHoursVersion] = useState(1);
   const [hoursLoaded, setHoursLoaded] = useState(false);
   const [hoursEditing, setHoursEditing] = useState(false);
   const [hoursSaving, setHoursSaving] = useState(false);
   const [hoursMessage, setHoursMessage] = useState('');
   const [hoursError, setHoursError] = useState('');
 
-  useEffect(() => {
-    let mounted = true;
+  // パスワードを除外した自動保存対象データ
+  const accountDraftData = useMemo<AccountDraftData>(() => ({
+    name: form.name,
+    postalCode: form.postalCode,
+    address: form.address,
+    phone: form.phone,
+    fax: form.fax,
+    prefecture: form.prefecture,
+  }), [form.name, form.postalCode, form.address, form.phone, form.fax, form.prefecture]);
 
-    const loadAccount = async () => {
-      try {
-        const data = await api.get<AccountData>('/account');
-        if (!mounted) return;
-        setAccount(data);
-        setForm((prev) => ({
-          ...prev,
-          name: data.name,
-          postalCode: data.postalCode,
-          address: data.address,
-          phone: data.phone,
-          fax: data.fax,
-          prefecture: data.prefecture,
-        }));
-      } catch {
-        if (!mounted) return;
-        setError('アカウント情報の取得に失敗しました');
-      } finally {
-        if (!mounted) return;
+  const accountAutoSave = useAutoSave<AccountDraftData>('account-info', accountDraftData, {
+    userId: user?.id,
+    enabled: accountLoaded,
+  });
+
+  // 営業時間の自動保存対象データ
+  const hoursDraftData = useMemo<BusinessHoursDraftData>(() => ({
+    businessHours,
+    specialHours,
+  }), [businessHours, specialHours]);
+
+  const hoursAutoSave = useAutoSave<BusinessHoursDraftData>('business-hours', hoursDraftData, {
+    userId: user?.id,
+    enabled: hoursLoaded && hoursEditing,
+  });
+
+  // アカウント情報の下書き復元
+  const handleAccountDraftRestore = useCallback(() => {
+    const draft = accountAutoSave.restoreDraft();
+    if (draft) {
+      setForm((prev) => ({
+        ...prev,
+        name: draft.name,
+        postalCode: draft.postalCode,
+        address: draft.address,
+        phone: draft.phone,
+        fax: draft.fax,
+        prefecture: draft.prefecture,
+      }));
+    }
+    accountAutoSave.clearDraft();
+  }, [accountAutoSave]);
+
+  const handleAccountDraftDiscard = useCallback(() => {
+    accountAutoSave.clearDraft();
+  }, [accountAutoSave]);
+
+  // 営業時間の下書き復元
+  const handleHoursDraftRestore = useCallback(() => {
+    const draft = hoursAutoSave.restoreDraft();
+    if (draft) {
+      setBusinessHours(draft.businessHours);
+      setSpecialHours(draft.specialHours);
+      setHoursEditing(true);
+    }
+    hoursAutoSave.clearDraft();
+  }, [hoursAutoSave]);
+
+  const handleHoursDraftDiscard = useCallback(() => {
+    hoursAutoSave.clearDraft();
+  }, [hoursAutoSave]);
+
+  const loadAccount = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const data = await api.get<AccountData>('/account', { signal });
+      if (signal?.aborted) return;
+      setAccount(data);
+      setForm((prev) => ({
+        ...prev,
+        name: data.name,
+        postalCode: data.postalCode,
+        address: data.address,
+        phone: data.phone,
+        fax: data.fax,
+        prefecture: data.prefecture,
+      }));
+      setAccountConflict(false);
+    } catch {
+      if (signal?.aborted) return;
+      setError('アカウント情報の取得に失敗しました');
+    } finally {
+      if (!signal?.aborted) {
         setAccountLoaded(true);
       }
-    };
-
-    const loadBusinessHours = async () => {
-      try {
-        const data = await api.get<BusinessHourSettingsResponse>('/business-hours/settings');
-        if (!mounted) return;
-        const normalizedWeekly = normalizeBusinessHours(data.hours ?? []);
-        const normalizedSpecial = normalizeSpecialHours(data.specialHours ?? []);
-        setBusinessHours(normalizedWeekly);
-        setSavedBusinessHours(normalizedWeekly);
-        setSpecialHours(normalizedSpecial);
-        setSavedSpecialHours(normalizedSpecial);
-      } catch (err) {
-        if (!mounted) return;
-        const defaults = createDefaultHours();
-        setBusinessHours(defaults);
-        setSavedBusinessHours(defaults);
-        setSpecialHours([]);
-        setSavedSpecialHours([]);
-        setHoursError(err instanceof Error ? err.message : '営業時間の取得に失敗しました');
-      } finally {
-        if (!mounted) return;
-        setHoursLoaded(true);
-      }
-    };
-
-    void loadAccount();
-    void loadBusinessHours();
-
-    return () => {
-      mounted = false;
-    };
+    }
   }, []);
 
-  const handleChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setForm((prev) => ({ ...prev, [field]: e.target.value }));
-  };
+  const loadBusinessHours = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const data = await api.get<BusinessHourSettingsResponse>('/business-hours/settings', { signal });
+      if (signal?.aborted) return;
+      const normalizedWeekly = normalizeBusinessHours(data.hours ?? []);
+      const normalizedSpecial = normalizeSpecialHours(data.specialHours ?? []);
+      setBusinessHours(normalizedWeekly);
+      setSavedBusinessHours(normalizedWeekly);
+      setSpecialHours(normalizedSpecial);
+      setSavedSpecialHours(normalizedSpecial);
+      setHoursVersion(data.version ?? 1);
+      setHoursConflict(false);
+    } catch (err) {
+      if (signal?.aborted) return;
+      const defaults = createDefaultHours();
+      setBusinessHours(defaults);
+      setSavedBusinessHours(defaults);
+      setSpecialHours([]);
+      setSavedSpecialHours([]);
+      setHoursError(err instanceof Error ? err.message : '営業時間の取得に失敗しました');
+    } finally {
+      if (!signal?.aborted) {
+        setHoursLoaded(true);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    initialLoadAbortRef.current?.abort();
+    const controller = new AbortController();
+    initialLoadAbortRef.current = controller;
+    void Promise.all([loadAccount(controller.signal), loadBusinessHours(controller.signal)]);
+    return () => {
+      controller.abort();
+      if (initialLoadAbortRef.current === controller) {
+        initialLoadAbortRef.current = null;
+      }
+    };
+  }, [loadAccount, loadBusinessHours]);
+
+  const handleChange = useCallback((field: keyof AccountFormState, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setMessage('');
+    setAccountConflict(false);
     setLoading(true);
     try {
-      await api.put('/account', form);
+      const result = await api.put<{ message: string; version: number }>('/account', {
+        ...form,
+        version: account?.version,
+      });
       setMessage('アカウント情報を更新しました');
       setForm((prev) => ({ ...prev, currentPassword: '', newPassword: '' }));
+      accountAutoSave.clearDraft();
+      // version を更新
+      if (result.version && account) {
+        setAccount({ ...account, ...form, version: result.version });
+      }
       refreshUser();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '更新に失敗しました');
+      if (isConflictError(err)) {
+        setAccountConflict(true);
+        // 最新データでアカウント状態を更新
+        const latestData = err.data.latestData as AccountData | undefined;
+        if (latestData) {
+          setAccount(latestData);
+          setForm((prev) => ({
+            ...prev,
+            name: latestData.name,
+            postalCode: latestData.postalCode,
+            address: latestData.address,
+            phone: latestData.phone,
+            fax: latestData.fax,
+            prefecture: latestData.prefecture,
+            currentPassword: '',
+            newPassword: '',
+          }));
+        }
+      } else {
+        setError(err instanceof Error ? err.message : '更新に失敗しました');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const handleReloadAccount = useCallback(async () => {
+    setAccountConflict(false);
+    setError('');
+    setMessage('');
+    await loadAccount();
+  }, [loadAccount]);
+
+  const handleReloadBusinessHours = useCallback(async () => {
+    setHoursConflict(false);
+    setHoursError('');
+    setHoursMessage('');
+    setHoursEditing(false);
+    await loadBusinessHours();
+  }, [loadBusinessHours]);
 
   const handleHoursChange = useCallback((dayOfWeek: number, field: 'openTime' | 'closeTime', value: string) => {
     setBusinessHours((prev) =>
@@ -152,6 +291,7 @@ export default function AccountPage() {
   const handleHoursSave = async () => {
     setHoursError('');
     setHoursMessage('');
+    setHoursConflict(false);
 
     const invalidDateRange = specialHours.find((entry) => entry.startDate > entry.endDate);
     if (invalidDateRange) {
@@ -181,15 +321,40 @@ export default function AccountPage() {
         is24Hours: entry.is24Hours,
         note: entry.note?.trim() || null,
       }));
-      await api.put('/business-hours', { hours: businessHours, specialHours: payloadSpecialHours });
+      const result = await api.put<{ message: string; version: number }>('/business-hours', {
+        hours: businessHours,
+        specialHours: payloadSpecialHours,
+        version: hoursVersion,
+      });
       const normalizedSpecial = normalizeSpecialHours(specialHours);
       setSpecialHours(normalizedSpecial);
       setSavedBusinessHours(businessHours);
       setSavedSpecialHours(normalizedSpecial);
       setHoursEditing(false);
+      hoursAutoSave.clearDraft();
       setHoursMessage('営業時間を更新しました');
+      // version を更新
+      if (result.version) {
+        setHoursVersion(result.version);
+      }
     } catch (err) {
-      setHoursError(err instanceof Error ? err.message : '営業時間の更新に失敗しました');
+      if (isConflictError(err)) {
+        setHoursConflict(true);
+        // 最新データで営業時間状態を更新
+        const latestData = err.data.latestData as BusinessHourSettingsResponse | undefined;
+        if (latestData) {
+          const normalizedWeekly = normalizeBusinessHours(latestData.hours ?? []);
+          const normalizedSpecial = normalizeSpecialHours(latestData.specialHours ?? []);
+          setBusinessHours(normalizedWeekly);
+          setSavedBusinessHours(normalizedWeekly);
+          setSpecialHours(normalizedSpecial);
+          setSavedSpecialHours(normalizedSpecial);
+          setHoursVersion(latestData.version ?? 1);
+          setHoursEditing(false);
+        }
+      } else {
+        setHoursError(err instanceof Error ? err.message : '営業時間の更新に失敗しました');
+      }
     } finally {
       setHoursSaving(false);
     }
@@ -198,6 +363,7 @@ export default function AccountPage() {
   const handleHoursEditStart = useCallback(() => {
     setHoursError('');
     setHoursMessage('');
+    setHoursConflict(false);
     setHoursEditing(true);
   }, []);
 
@@ -206,6 +372,7 @@ export default function AccountPage() {
     setSpecialHours(savedSpecialHours);
     setHoursError('');
     setHoursMessage('');
+    setHoursConflict(false);
     setHoursEditing(false);
   }, [savedBusinessHours, savedSpecialHours]);
 
@@ -311,10 +478,7 @@ export default function AccountPage() {
 
   if (!accountLoaded) {
     return (
-      <div className="d-flex align-items-center gap-2 text-muted small">
-        <Spinner size="sm" />
-        アカウント情報を読み込み中...
-      </div>
+      <InlineLoader text="アカウント情報を読み込み中..." className="text-muted small" />
     );
   }
 
@@ -322,10 +486,10 @@ export default function AccountPage() {
     return (
       <div>
         <h4 className="page-title mb-3">薬局登録情報の編集</h4>
-        {error && <Alert variant="danger">{error}</Alert>}
-        <button className="btn btn-outline-secondary" onClick={() => window.location.reload()}>
+        {error && <AppAlert variant="danger">{error}</AppAlert>}
+        <AppButton variant="outline-secondary" onClick={() => void loadAccount()}>
           再読み込み
-        </button>
+        </AppButton>
       </div>
     );
   }
@@ -333,8 +497,23 @@ export default function AccountPage() {
   return (
     <div>
       <h4 className="page-title mb-3">薬局登録情報の編集</h4>
-      {message && <Alert variant="success" onClose={() => setMessage('')} dismissible>{message}</Alert>}
-      {error && <Alert variant="danger" onClose={() => setError('')} dismissible>{error}</Alert>}
+      {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
+      {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
+
+      <ConflictAlert
+        show={accountConflict}
+        onReload={handleReloadAccount}
+        onDismiss={() => setAccountConflict(false)}
+        message="他のデバイスまたはタブでアカウント情報が更新されました。最新のデータを読み込みました。内容を確認してから再度保存してください。"
+      />
+
+      {accountAutoSave.hasDraft && (
+        <DraftRestoreAlert
+          draftTimestamp={accountAutoSave.draftTimestamp}
+          onRestore={handleAccountDraftRestore}
+          onDiscard={handleAccountDraftDiscard}
+        />
+      )}
 
       <AccountInfoForm
         account={account}
@@ -343,6 +522,21 @@ export default function AccountPage() {
         onSubmit={handleSubmit}
         onChange={handleChange}
       />
+
+      <ConflictAlert
+        show={hoursConflict}
+        onReload={handleReloadBusinessHours}
+        onDismiss={() => setHoursConflict(false)}
+        message="他のデバイスまたはタブで営業時間が更新されました。最新のデータを読み込みました。内容を確認してから再度保存してください。"
+      />
+
+      {hoursAutoSave.hasDraft && (
+        <DraftRestoreAlert
+          draftTimestamp={hoursAutoSave.draftTimestamp}
+          onRestore={handleHoursDraftRestore}
+          onDiscard={handleHoursDraftDiscard}
+        />
+      )}
 
       <BusinessHoursSettings
         businessHours={businessHours}

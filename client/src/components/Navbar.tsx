@@ -1,4 +1,5 @@
-import { Navbar as BSNavbar, Nav, Container, Button } from 'react-bootstrap';
+import { Navbar as BSNavbar, Nav, Container } from 'react-bootstrap';
+import AppButton from './ui/AppButton';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -37,9 +38,9 @@ export default function AppNavbar() {
           </Nav>
           <Nav className="align-items-lg-center">
             <Nav.Link as={Link} to="/account">{user.name}</Nav.Link>
-            <Button variant="outline-light" size="sm" className="mt-2 mt-lg-0 ms-lg-2" onClick={handleLogout}>
+            <AppButton variant="outline-light" size="sm" className="mt-2 mt-lg-0 ms-lg-2" onClick={handleLogout}>
               ログアウト
-            </Button>
+            </AppButton>
           </Nav>
         </BSNavbar.Collapse>
       </Container>

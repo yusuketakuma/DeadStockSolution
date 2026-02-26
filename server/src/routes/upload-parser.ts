@@ -10,6 +10,12 @@ import { enrichWithDrugMaster } from '../services/drug-master-enrichment';
 import { logger } from '../services/logger';
 import { triggerMatchingRefreshOnUpload } from '../services/matching-refresh-service';
 import {
+  applyDeadStockDiff,
+  applyUsedMedicationDiff,
+  previewDeadStockDiff,
+  previewUsedMedicationDiff,
+} from '../services/upload-diff-service';
+import {
   getBaseContext,
   getErrorMessage,
   logUploadFailure,
@@ -24,6 +30,19 @@ import {
 } from './upload-validation';
 
 const router = Router();
+
+type ApplyMode = 'replace' | 'diff';
+
+function parseApplyMode(raw: unknown): ApplyMode {
+  if (raw === 'diff') return 'diff';
+  return 'replace';
+}
+
+function parseDeleteMissing(raw: unknown): boolean {
+  if (typeof raw === 'boolean') return raw;
+  if (typeof raw === 'string') return raw === 'true' || raw === '1';
+  return false;
+}
 
 // Preview: parse file and return headers + first 5 rows + suggested mapping
 router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response) => {
@@ -78,6 +97,77 @@ router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response
   }
 });
 
+// Diff preview: compare incoming rows with current rows without writing DB.
+router.post('/diff-preview', uploadSingleFile, async (req: AuthRequest, res: Response) => {
+  try {
+    const uploadFile = getUploadFileOrReject(req, res);
+    if (!uploadFile) return;
+
+    const uploadType = getUploadTypeOrReject(req, res);
+    if (!uploadType) return;
+
+    const applyMode = parseApplyMode(req.body.applyMode);
+    if (applyMode !== 'diff') {
+      res.status(400).json({ error: '差分プレビューは applyMode=diff のときのみ利用できます' });
+      return;
+    }
+
+    let mapping;
+    try {
+      mapping = parseMapping(req.body.mapping, uploadType);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'mapping形式が不正です' });
+      return;
+    }
+
+    const headerRowIndex = parseHeaderRowIndexOrReject(req, res);
+    if (headerRowIndex === null) return;
+
+    const allRows = await parseExcelRowsOrReject(req, res, 'preview', uploadFile.buffer);
+    if (!allRows) return;
+    if (headerRowIndex >= allRows.length) {
+      res.status(400).json({ error: 'ヘッダー行指定が不正です' });
+      return;
+    }
+
+    const dataStartIndex = headerRowIndex + 1;
+    const deleteMissing = parseDeleteMissing(req.body.deleteMissing);
+    const pharmacyId = req.user!.id;
+
+    const deadStockExtracted = uploadType === 'dead_stock'
+      ? extractDeadStockRows(allRows, mapping, dataStartIndex)
+      : null;
+    const usedMedicationExtracted = uploadType === 'used_medication'
+      ? extractUsedMedicationRows(allRows, mapping, dataStartIndex)
+      : null;
+
+    const enrichedDeadStock = deadStockExtracted
+      ? await enrichWithDrugMaster(deadStockExtracted, 'dead_stock')
+      : null;
+    const enrichedUsedMedication = usedMedicationExtracted
+      ? await enrichWithDrugMaster(usedMedicationExtracted, 'used_medication')
+      : null;
+
+    const summary = uploadType === 'dead_stock'
+      ? await previewDeadStockDiff(pharmacyId, (enrichedDeadStock ?? deadStockExtracted) ?? [], { deleteMissing })
+      : await previewUsedMedicationDiff(pharmacyId, (enrichedUsedMedication ?? usedMedicationExtracted) ?? [], { deleteMissing });
+
+    res.json({
+      applyMode: 'diff',
+      uploadType,
+      deleteMissing,
+      summary,
+    });
+  } catch (err) {
+    logger.error('Upload diff preview error', () => ({
+      ...getBaseContext(req),
+      error: getErrorMessage(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    }));
+    res.status(500).json({ error: '差分プレビューの生成に失敗しました' });
+  }
+});
+
 // Confirm: re-parse file with confirmed mapping, extract data, save to DB
 router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response) => {
   try {
@@ -115,6 +205,8 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
     const dataStartIndex = headerRowIndex + 1;
 
     const pharmacyId = req.user!.id;
+    const applyMode = parseApplyMode(req.body.applyMode);
+    const deleteMissing = parseDeleteMissing(req.body.deleteMissing);
     const headerHash = computeHeaderHash(headerRow);
     const deadStockExtracted = uploadType === 'dead_stock'
       ? extractDeadStockRows(allRows, mapping, dataStartIndex)
@@ -132,7 +224,7 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
       ? await enrichWithDrugMaster(usedMedicationExtracted, 'used_medication')
       : null;
 
-    const { uploadId } = await db.transaction(async (tx) => {
+    const { uploadId, diffSummary } = await db.transaction(async (tx) => {
       const [uploadRecord] = await tx.insert(uploads).values({
         pharmacyId,
         uploadType,
@@ -141,52 +233,72 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
         rowCount: 0,
       }).returning({ id: uploads.id });
 
+      let diffSummary: {
+        inserted: number;
+        updated: number;
+        deactivated: number;
+        unchanged: number;
+        totalIncoming: number;
+      } | null = null;
+
       if (uploadType === 'dead_stock') {
-        await tx.delete(deadStockItems).where(eq(deadStockItems.pharmacyId, pharmacyId));
+        const sourceRows = (enrichedDeadStock ?? deadStockExtracted) ?? [];
+        if (applyMode === 'replace') {
+          await tx.delete(deadStockItems).where(eq(deadStockItems.pharmacyId, pharmacyId));
+          if (sourceRows.length > 0) {
+            const insertRows = sourceRows.map((item) => {
+              const expirationDateIso = typeof item.expirationDate === 'string'
+                ? item.expirationDate.replace(/\//g, '-').trim()
+                : '';
+              return {
+                pharmacyId,
+                uploadId: uploadRecord.id,
+                drugCode: item.drugCode,
+                drugName: item.drugName,
+                drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
+                drugMasterPackageId: ('drugMasterPackageId' in item ? (item as { drugMasterPackageId?: number }).drugMasterPackageId : undefined) ?? null,
+                packageLabel: ('packageLabel' in item ? (item as { packageLabel?: string | null }).packageLabel : undefined) ?? null,
+                quantity: item.quantity,
+                unit: item.unit,
+                yakkaUnitPrice: item.yakkaUnitPrice != null ? String(item.yakkaUnitPrice) : null,
+                yakkaTotal: item.yakkaTotal != null ? String(item.yakkaTotal) : null,
+                expirationDate: item.expirationDate,
+                expirationDateIso: /^\d{4}-\d{2}-\d{2}$/.test(expirationDateIso) ? expirationDateIso : null,
+                lotNumber: item.lotNumber,
+              };
+            });
 
-        const sourceRows = enrichedDeadStock ?? deadStockExtracted;
-        if (sourceRows && sourceRows.length > 0) {
-          const insertRows = sourceRows.map((item) => ({
-            pharmacyId,
-            uploadId: uploadRecord.id,
-            drugCode: item.drugCode,
-            drugName: item.drugName,
-            drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
-            drugMasterPackageId: ('drugMasterPackageId' in item ? (item as { drugMasterPackageId?: number }).drugMasterPackageId : undefined) ?? null,
-            packageLabel: ('packageLabel' in item ? (item as { packageLabel?: string | null }).packageLabel : undefined) ?? null,
-            quantity: item.quantity,
-            unit: item.unit,
-            yakkaUnitPrice: item.yakkaUnitPrice != null ? String(item.yakkaUnitPrice) : null,
-            yakkaTotal: item.yakkaTotal != null ? String(item.yakkaTotal) : null,
-            expirationDate: item.expirationDate,
-            lotNumber: item.lotNumber,
-          }));
-
-          for (let i = 0; i < insertRows.length; i += INSERT_BATCH_SIZE) {
-            await tx.insert(deadStockItems).values(insertRows.slice(i, i + INSERT_BATCH_SIZE));
+            for (let i = 0; i < insertRows.length; i += INSERT_BATCH_SIZE) {
+              await tx.insert(deadStockItems).values(insertRows.slice(i, i + INSERT_BATCH_SIZE));
+            }
           }
+        } else {
+          diffSummary = await applyDeadStockDiff(tx, pharmacyId, uploadRecord.id, sourceRows, { deleteMissing });
         }
       } else {
-        await tx.delete(usedMedicationItems).where(eq(usedMedicationItems.pharmacyId, pharmacyId));
+        const sourceRows = (enrichedUsedMedication ?? usedMedicationExtracted) ?? [];
+        if (applyMode === 'replace') {
+          await tx.delete(usedMedicationItems).where(eq(usedMedicationItems.pharmacyId, pharmacyId));
+          if (sourceRows.length > 0) {
+            const insertRows = sourceRows.map((item) => ({
+              pharmacyId,
+              uploadId: uploadRecord.id,
+              drugCode: item.drugCode,
+              drugName: item.drugName,
+              drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
+              drugMasterPackageId: ('drugMasterPackageId' in item ? (item as { drugMasterPackageId?: number }).drugMasterPackageId : undefined) ?? null,
+              packageLabel: ('packageLabel' in item ? (item as { packageLabel?: string | null }).packageLabel : undefined) ?? null,
+              monthlyUsage: item.monthlyUsage,
+              unit: item.unit,
+              yakkaUnitPrice: item.yakkaUnitPrice != null ? String(item.yakkaUnitPrice) : null,
+            }));
 
-        const sourceRows = enrichedUsedMedication ?? usedMedicationExtracted;
-        if (sourceRows && sourceRows.length > 0) {
-          const insertRows = sourceRows.map((item) => ({
-            pharmacyId,
-            uploadId: uploadRecord.id,
-            drugCode: item.drugCode,
-            drugName: item.drugName,
-            drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
-            drugMasterPackageId: ('drugMasterPackageId' in item ? (item as { drugMasterPackageId?: number }).drugMasterPackageId : undefined) ?? null,
-            packageLabel: ('packageLabel' in item ? (item as { packageLabel?: string | null }).packageLabel : undefined) ?? null,
-            monthlyUsage: item.monthlyUsage,
-            unit: item.unit,
-            yakkaUnitPrice: item.yakkaUnitPrice != null ? String(item.yakkaUnitPrice) : null,
-          }));
-
-          for (let i = 0; i < insertRows.length; i += INSERT_BATCH_SIZE) {
-            await tx.insert(usedMedicationItems).values(insertRows.slice(i, i + INSERT_BATCH_SIZE));
+            for (let i = 0; i < insertRows.length; i += INSERT_BATCH_SIZE) {
+              await tx.insert(usedMedicationItems).values(insertRows.slice(i, i + INSERT_BATCH_SIZE));
+            }
           }
+        } else {
+          diffSummary = await applyUsedMedicationDiff(tx, pharmacyId, uploadRecord.id, sourceRows, { deleteMissing });
         }
       }
 
@@ -215,13 +327,16 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
         uploadType,
       }, tx);
 
-      return { uploadId: uploadRecord.id };
+      return { uploadId: uploadRecord.id, diffSummary };
     });
 
     res.json({
       message: `${rowCount}件のデータを登録しました`,
       uploadId,
       rowCount,
+      applyMode,
+      deleteMissing: applyMode === 'diff' ? deleteMissing : undefined,
+      diffSummary: applyMode === 'diff' ? diffSummary : undefined,
     });
   } catch (err) {
     logger.error('Upload confirm error', () => ({

@@ -70,8 +70,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    await api.post('/auth/logout');
-    setUser(null);
+    try {
+      await api.post('/auth/logout');
+    } catch (err) {
+      console.warn('Logout request failed, clearing local auth state only', err);
+    } finally {
+      // ローカル状態は必ず破棄して fail-open logout を防ぐ
+      setUser(null);
+    }
   };
 
   return (

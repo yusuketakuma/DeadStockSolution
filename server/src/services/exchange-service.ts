@@ -10,6 +10,7 @@ import {
   pharmacyRelationships,
 } from '../db/schema';
 import { createNotification } from './notification-service';
+import { logger } from './logger';
 
 const MIN_EXCHANGE_VALUE = 10000;
 const VALUE_TOLERANCE = 10;
@@ -30,6 +31,19 @@ interface ParsedCandidate {
   pharmacyBId: number;
   itemsFromA: ProposalItemInput[];
   itemsFromB: ProposalItemInput[];
+}
+
+type NotificationInput = Parameters<typeof createNotification>[0];
+
+async function createNotificationSafely(input: NotificationInput): Promise<void> {
+  const created = await createNotification(input);
+  if (created) return;
+  logger.warn('Proposal notification could not be persisted', {
+    pharmacyId: input.pharmacyId,
+    type: input.type,
+    referenceType: input.referenceType ?? null,
+    referenceId: input.referenceId ?? null,
+  });
 }
 
 function roundTo2(value: number): number {
@@ -259,7 +273,7 @@ export async function createProposal(
       })),
     );
 
-    void createNotification({
+    await createNotificationSafely({
       pharmacyId: candidate.pharmacyBId,
       type: 'proposal_received',
       title: '交換提案が届きました',
@@ -322,7 +336,7 @@ export async function acceptProposal(proposalId: number, pharmacyId: number): Pr
       ? proposal.pharmacyBId
       : proposal.pharmacyAId;
 
-    void createNotification({
+    await createNotificationSafely({
       pharmacyId: otherPartyId,
       type: 'proposal_status_changed',
       title: '交換提案のステータスが更新されました',
@@ -374,7 +388,7 @@ export async function rejectProposal(proposalId: number, pharmacyId: number): Pr
       ? proposal.pharmacyBId
       : proposal.pharmacyAId;
 
-    void createNotification({
+    await createNotificationSafely({
       pharmacyId: rejectOtherPartyId,
       type: 'proposal_status_changed',
       title: '交換提案が却下されました',

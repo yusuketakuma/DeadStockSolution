@@ -15,6 +15,10 @@ import { logger } from '../services/logger';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
+if (process.env.NODE_ENV === 'production' && EXPOSE_PASSWORD_RESET_TOKEN) {
+  throw new Error('EXPOSE_PASSWORD_RESET_TOKEN=true は本番環境では許可されていません');
+}
+const SHOULD_EXPOSE_PASSWORD_RESET_TOKEN = process.env.NODE_ENV !== 'production' && EXPOSE_PASSWORD_RESET_TOKEN;
 const registerLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -236,7 +240,7 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
     res.json({
       message: 'パスワードリセットの手続きを受け付けました',
       // Token exposure should be explicitly enabled only in secured dev/test environments.
-      ...(EXPOSE_PASSWORD_RESET_TOKEN && result ? { token: result.token } : {}),
+      ...(SHOULD_EXPOSE_PASSWORD_RESET_TOKEN && result ? { token: result.token } : {}),
     });
   } catch (err) {
     logger.error('Password reset request error', {

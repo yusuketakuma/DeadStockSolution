@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, FormEvent } from 'react';
-import { Alert, Col, Row } from 'react-bootstrap';
+import { useState, useEffect, useRef, FormEvent, useCallback } from 'react';
+import AppAlert from '../../components/ui/AppAlert';
+import { Col, Row } from 'react-bootstrap';
 import { api, apiUpload } from '../../api/client';
 import DrugMasterSyncCard from './components/DrugMasterSyncCard';
 import PackageUploadCard from './components/PackageUploadCard';
@@ -80,6 +81,8 @@ export default function AdminDrugMasterPage() {
   const [packageAutoSyncStatus, setPackageAutoSyncStatus] = useState<AutoSyncStatus | null>(null);
   const [packageAutoSyncTriggering, setPackageAutoSyncTriggering] = useState(false);
   const [packageManualSourceUrl, setPackageManualSourceUrl] = useState('');
+  const autoSyncRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const packageAutoSyncRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 同期ログ
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -105,7 +108,7 @@ export default function AdminDrugMasterPage() {
     } catch (err) { console.error('Failed to fetch stats', err); }
   };
 
-  const fetchItems = async (p: number) => {
+  const fetchItems = useCallback(async (p: number) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(p), limit: '30' });
@@ -122,7 +125,7 @@ export default function AdminDrugMasterPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [search, statusFilter, categoryFilter]);
 
   const fetchSyncLogs = async () => {
     try {
@@ -153,7 +156,14 @@ export default function AdminDrugMasterPage() {
       });
       if (result.triggered) {
         setMessage(result.message);
-        setTimeout(() => { fetchSyncLogs(); fetchStats(); }, 5000);
+        if (autoSyncRefreshTimerRef.current !== null) {
+          clearTimeout(autoSyncRefreshTimerRef.current);
+        }
+        autoSyncRefreshTimerRef.current = setTimeout(() => {
+          autoSyncRefreshTimerRef.current = null;
+          fetchSyncLogs();
+          fetchStats();
+        }, 5000);
       } else {
         setSyncError(result.message);
       }
@@ -172,7 +182,13 @@ export default function AdminDrugMasterPage() {
       });
       if (result.triggered) {
         setMessage(result.message);
-        setTimeout(() => { fetchSyncLogs(); }, 5000);
+        if (packageAutoSyncRefreshTimerRef.current !== null) {
+          clearTimeout(packageAutoSyncRefreshTimerRef.current);
+        }
+        packageAutoSyncRefreshTimerRef.current = setTimeout(() => {
+          packageAutoSyncRefreshTimerRef.current = null;
+          fetchSyncLogs();
+        }, 5000);
       } else {
         setSyncError(result.message);
       }
@@ -190,9 +206,20 @@ export default function AdminDrugMasterPage() {
     fetchPackageAutoSyncStatus();
   }, []);
 
+  useEffect(() => () => {
+    if (autoSyncRefreshTimerRef.current !== null) {
+      clearTimeout(autoSyncRefreshTimerRef.current);
+      autoSyncRefreshTimerRef.current = null;
+    }
+    if (packageAutoSyncRefreshTimerRef.current !== null) {
+      clearTimeout(packageAutoSyncRefreshTimerRef.current);
+      packageAutoSyncRefreshTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     fetchItems(page);
-  }, [page, search, statusFilter, categoryFilter]);
+  }, [page, fetchItems]);
 
   const handleSearch = (e: FormEvent) => {
     e.preventDefault();
@@ -313,8 +340,8 @@ export default function AdminDrugMasterPage() {
     <div>
       <h4 className="page-title mb-3">医薬品マスター管理</h4>
 
-      {message && <Alert variant="success" onClose={() => setMessage('')} dismissible>{message}</Alert>}
-      {error && <Alert variant="danger" onClose={() => setError('')} dismissible>{error}</Alert>}
+      {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
+      {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
       <DrugMasterStatsCards stats={stats} />
 

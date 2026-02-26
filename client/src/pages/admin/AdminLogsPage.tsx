@@ -1,7 +1,16 @@
-import { useState, useEffect } from 'react';
-import { Table, Alert, Badge, Form, Row, Col, Card } from 'react-bootstrap';
+import { useState, useEffect, useCallback } from 'react';
+import AppTable from '../../components/ui/AppTable';
+import AppAlert from '../../components/ui/AppAlert';
+import AppButton from '../../components/ui/AppButton';
+import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
+import AppSelect from '../../components/ui/AppSelect';
+import AppControl from '../../components/ui/AppControl';
+import AppCard from '../../components/ui/AppCard';
+import InlineLoader from '../../components/ui/InlineLoader';
+import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
+import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 
 interface LogEntry {
   id: number;
@@ -99,24 +108,34 @@ export default function AdminLogsPage() {
   const [failureTotal, setFailureTotal] = useState(0);
   const [failureByAction, setFailureByAction] = useState<Record<string, number>>({});
   const [failureByReason, setFailureByReason] = useState<Array<{ reason: string; count: number }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const fetchData = async (p: number) => {
+  const fetchData = useCallback(async (p: number) => {
+    setLoading(true);
+    setError('');
     const params = new URLSearchParams({ page: String(p), limit: '50' });
     if (actionFilter) params.set('action', actionFilter);
     if (resultFilter === 'failure') params.set('result', 'failure');
     if (keyword.trim()) params.set('keyword', keyword.trim());
-    const data = await api.get<LogsResponse>(`/admin/logs?${params}`);
-    setLogs(data.data);
-    setTotalPages(data.pagination.totalPages);
-    setTotal(data.pagination.total);
-    setFailureTotal(data.summary?.failureTotal ?? 0);
-    setFailureByAction(data.summary?.failureByAction ?? {});
-    setFailureByReason(data.summary?.failureByReason ?? []);
-  };
+    try {
+      const data = await api.get<LogsResponse>(`/admin/logs?${params}`);
+      setLogs(data.data);
+      setTotalPages(data.pagination.totalPages);
+      setTotal(data.pagination.total);
+      setFailureTotal(data.summary?.failureTotal ?? 0);
+      setFailureByAction(data.summary?.failureByAction ?? {});
+      setFailureByReason(data.summary?.failureByReason ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ログデータの取得に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  }, [actionFilter, resultFilter, keyword]);
 
   useEffect(() => {
-    fetchData(page);
-  }, [page, actionFilter, resultFilter, keyword]);
+    void fetchData(page);
+  }, [page, fetchData]);
 
   const getActionBadge = (action: string) => {
     const info = ACTION_LABELS[action];
@@ -139,35 +158,43 @@ export default function AdminLogsPage() {
   return (
     <div>
       <h4 className="page-title mb-3">操作ログ ({total}件)</h4>
+      {error && (
+        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <span>{error}</span>
+          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchData(page)}>
+            再試行
+          </AppButton>
+        </AppAlert>
+      )}
 
       <Row className="g-2 mb-3">
         <Col md={4}>
-          <Form.Select
+          <AppSelect
             value={actionFilter}
-            onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
-          >
-            {ACTION_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </Form.Select>
+            ariaLabel="アクションで絞り込み"
+            onChange={(value) => { setActionFilter(value); setPage(1); }}
+            options={ACTION_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+          />
         </Col>
         <Col md={3}>
-          <Form.Select
+          <AppSelect
             value={resultFilter}
-            onChange={(e) => {
-              setResultFilter(e.target.value === 'failure' ? 'failure' : 'all');
+            ariaLabel="結果で絞り込み"
+            onChange={(value) => {
+              setResultFilter(value === 'failure' ? 'failure' : 'all');
               setPage(1);
             }}
-          >
-            <option value="all">全ての結果</option>
-            <option value="failure">失敗のみ</option>
-          </Form.Select>
+            options={[
+              { value: 'all', label: '全ての結果' },
+              { value: 'failure', label: '失敗のみ' },
+            ]}
+          />
         </Col>
         <Col md={5}>
-          <Form.Control
+          <AppControl
             placeholder="詳細検索（例: parse_failed / file=xxx.xlsx）"
             value={keyword}
-            onChange={(e) => {
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               setKeyword(e.target.value);
               setPage(1);
             }}
@@ -177,34 +204,34 @@ export default function AdminLogsPage() {
 
       <Row className="g-2 mb-3">
         <Col md={3}>
-          <Card body className="h-100">
+          <AppCard body className="h-100">
             <div className="small text-muted">失敗ログ（フィルタ適用後）</div>
             <div className="fs-4 fw-semibold">{failureTotal}</div>
-          </Card>
+          </AppCard>
         </Col>
         <Col md={3}>
-          <Card body className="h-100">
+          <AppCard body className="h-100">
             <div className="small text-muted">アップロード失敗</div>
             <div className="fs-4 fw-semibold">{failureByAction.upload ?? 0}</div>
-          </Card>
+          </AppCard>
         </Col>
         <Col md={3}>
-          <Card body className="h-100">
+          <AppCard body className="h-100">
             <div className="small text-muted">医薬品マスター同期失敗</div>
             <div className="fs-4 fw-semibold">{failureByAction.drug_master_sync ?? 0}</div>
-          </Card>
+          </AppCard>
         </Col>
         <Col md={3}>
-          <Card body className="h-100">
+          <AppCard body className="h-100">
             <div className="small text-muted">包装単位取込失敗</div>
             <div className="fs-4 fw-semibold">{failureByAction.drug_master_package_upload ?? 0}</div>
-          </Card>
+          </AppCard>
         </Col>
       </Row>
 
-      <Card className="mb-3">
-        <Card.Body>
-          <Card.Title className="h6 mb-2">失敗理由ランキング（上位10件）</Card.Title>
+      <AppCard className="mb-3">
+        <AppCard.Body>
+          <AppCard.Title className="h6 mb-2">失敗理由ランキング（上位10件）</AppCard.Title>
           {failureByReason.length === 0 ? (
             <div className="small text-muted">失敗ログがありません。</div>
           ) : (
@@ -219,49 +246,84 @@ export default function AdminLogsPage() {
               ))}
             </div>
           )}
-        </Card.Body>
-      </Card>
+        </AppCard.Body>
+      </AppCard>
 
-      {logs.length === 0 ? (
-        <Alert variant="secondary">ログデータがありません。</Alert>
+      {loading ? (
+        <InlineLoader text="操作ログを読み込み中..." className="text-muted small mb-3" />
+      ) : logs.length === 0 ? (
+        <AppAlert variant="secondary">ログデータがありません。</AppAlert>
       ) : (
-        <div className="table-responsive">
-          <Table striped hover size="sm" className="mobile-table">
-            <thead className="table-light">
-              <tr>
-                <th>ID</th>
-                <th>日時</th>
-                <th>アクション</th>
-                <th>薬局</th>
-                <th>詳細</th>
-                <th>IPアドレス</th>
-              </tr>
-            </thead>
-            <tbody>
+        <AppResponsiveSwitch
+          desktop={() => (
+            <div className="table-responsive">
+              <AppTable striped hover size="sm" className="mobile-table">
+                <thead className="table-light">
+                  <tr>
+                    <th>ID</th>
+                    <th>日時</th>
+                    <th>アクション</th>
+                    <th>薬局</th>
+                    <th>詳細</th>
+                    <th>IPアドレス</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.map((log) => (
+                    <tr key={log.id}>
+                      <td>{log.id}</td>
+                      <td className="small">
+                        {log.createdAt ? new Date(log.createdAt).toLocaleString('ja-JP') : '-'}
+                      </td>
+                      <td className="d-flex align-items-center gap-1">
+                        {getActionBadge(log.action)}
+                        {log.detail?.startsWith('失敗|') && <Badge bg="danger">失敗</Badge>}
+                      </td>
+                      <td>
+                        {log.pharmacyName
+                          ? `${log.pharmacyName} (ID:${log.pharmacyId})`
+                          : log.pharmacyId
+                            ? `ID:${log.pharmacyId}`
+                            : '-'}
+                      </td>
+                      <td className="small">{formatDetail(log.detail)}</td>
+                      <td className="small text-muted">{log.ipAddress ?? '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </AppTable>
+            </div>
+          )}
+          mobile={() => (
+            <div className="dl-mobile-data-list">
               {logs.map((log) => (
-                <tr key={log.id}>
-                  <td>{log.id}</td>
-                  <td className="small">
-                    {log.createdAt ? new Date(log.createdAt).toLocaleString('ja-JP') : '-'}
-                  </td>
-                  <td className="d-flex align-items-center gap-1">
-                    {getActionBadge(log.action)}
-                    {log.detail?.startsWith('失敗|') && <Badge bg="danger">失敗</Badge>}
-                  </td>
-                  <td>
-                    {log.pharmacyName
-                      ? `${log.pharmacyName} (ID:${log.pharmacyId})`
-                      : log.pharmacyId
-                        ? `ID:${log.pharmacyId}`
-                        : '-'}
-                  </td>
-                  <td className="small">{formatDetail(log.detail)}</td>
-                  <td className="small text-muted">{log.ipAddress ?? '-'}</td>
-                </tr>
+                <AppMobileDataCard
+                  key={log.id}
+                  title={`ログ #${log.id}`}
+                  subtitle={log.createdAt ? new Date(log.createdAt).toLocaleString('ja-JP') : '-'}
+                  badges={(
+                    <>
+                      {getActionBadge(log.action)}
+                      {log.detail?.startsWith('失敗|') && <Badge bg="danger">失敗</Badge>}
+                    </>
+                  )}
+                  fields={[
+                    {
+                      label: '薬局',
+                      value: log.pharmacyName
+                        ? `${log.pharmacyName} (ID:${log.pharmacyId})`
+                        : log.pharmacyId
+                          ? `ID:${log.pharmacyId}`
+                          : '-',
+                    },
+                    { label: '詳細', value: formatDetail(log.detail) },
+                    { label: 'IPアドレス', value: log.ipAddress ?? '-' },
+                  ]}
+                />
               ))}
-            </tbody>
-          </Table>
-        </div>
+            </div>
+          )}
+        />
       )}
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
     </div>

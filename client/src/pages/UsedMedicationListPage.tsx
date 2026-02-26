@@ -1,8 +1,14 @@
-import { useState, useEffect } from 'react';
-import { Table, Alert } from 'react-bootstrap';
+import AppTable from '../components/ui/AppTable';
+import AppAlert from '../components/ui/AppAlert';
+import AppButton from '../components/ui/AppButton';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
+import AppEmptyState from '../components/ui/AppEmptyState';
+import InlineLoader from '../components/ui/InlineLoader';
+import AppMobileDataCard from '../components/ui/AppMobileDataCard';
+import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
+import { usePaginatedList } from '../hooks/usePaginatedList';
 
 interface UsedMedicationItem {
   id: number;
@@ -19,18 +25,21 @@ interface ListResponse {
 }
 
 export default function UsedMedicationListPage() {
-  const [items, setItems] = useState<UsedMedicationItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
+  const {
+    items,
+    page,
+    setPage,
+    totalPages,
+    pagination,
+    loading,
+    error,
+    retry,
+  } = usePaginatedList<UsedMedicationItem, ListResponse>((targetPage, signal) =>
+    api.get<ListResponse>(`/inventory/used-medication?page=${targetPage}`, { signal }),
+    { errorMessage: '医薬品使用量一覧の取得に失敗しました' },
+  );
 
-  useEffect(() => {
-    api.get<ListResponse>(`/inventory/used-medication?page=${page}`).then((data) => {
-      setItems(data.data);
-      setTotalPages(data.pagination.totalPages);
-      setTotal(data.pagination.total);
-    });
-  }, [page]);
+  const total = pagination?.total ?? 0;
 
   return (
     <div>
@@ -39,33 +48,69 @@ export default function UsedMedicationListPage() {
         <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
       </div>
 
-      {items.length === 0 ? (
-        <Alert variant="secondary">医薬品使用量データがありません。Excelファイルをアップロードしてください。</Alert>
+      {error && (
+        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <span>{error}</span>
+          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
+            再試行
+          </AppButton>
+        </AppAlert>
+      )}
+
+      {loading ? (
+        <InlineLoader text="医薬品使用量一覧を読み込み中..." className="text-muted small" />
+      ) : error ? null : items.length === 0 ? (
+        <AppEmptyState
+          title="医薬品使用量データがありません"
+          description="Excelファイルをアップロードすると一覧に表示されます。"
+          actionLabel="アップロードへ進む"
+          actionTo="/upload"
+        />
       ) : (
-        <div className="table-responsive">
-          <Table striped hover size="sm">
-            <thead className="table-light">
-              <tr>
-                <th>薬品名</th>
-                <th>コード</th>
-                <th>月間使用量</th>
-                <th>単位</th>
-                <th>薬価(単価)</th>
-              </tr>
-            </thead>
-            <tbody>
+        <AppResponsiveSwitch
+          desktop={() => (
+            <div className="table-responsive">
+              <AppTable striped hover size="sm">
+                <thead className="table-light">
+                  <tr>
+                    <th>薬品名</th>
+                    <th>コード</th>
+                    <th>月間使用量</th>
+                    <th>単位</th>
+                    <th>薬価(単価)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.drugName}</td>
+                      <td className="small text-muted">{item.drugCode}</td>
+                      <td>{item.monthlyUsage}</td>
+                      <td>{item.unit}</td>
+                      <td>{item.yakkaUnitPrice?.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </AppTable>
+            </div>
+          )}
+          mobile={() => (
+            <div className="dl-mobile-data-list">
               {items.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.drugName}</td>
-                  <td className="small text-muted">{item.drugCode}</td>
-                  <td>{item.monthlyUsage}</td>
-                  <td>{item.unit}</td>
-                  <td>{item.yakkaUnitPrice?.toLocaleString()}</td>
-                </tr>
+                <AppMobileDataCard
+                  key={item.id}
+                  title={item.drugName}
+                  subtitle={item.drugCode || '-'}
+                  fields={[
+                    { label: '月間使用量', value: item.monthlyUsage ?? '-' },
+                    { label: '単位', value: item.unit || '-' },
+                    { label: '薬価(単価)', value: item.yakkaUnitPrice?.toLocaleString() ?? '-' },
+                  ]}
+                />
               ))}
-            </tbody>
-          </Table>
-        </div>
+            </div>
+          )}
+        />
       )}
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
     </div>

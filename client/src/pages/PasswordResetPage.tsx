@@ -1,7 +1,11 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { Container, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
+import AppButton from '../components/ui/AppButton';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
+import AuthPageLayout from '../components/ui/AuthPageLayout';
+import StatusAlert from '../components/ui/StatusAlert';
+import LoadingButton from '../components/ui/LoadingButton';
+import AppField from '../components/ui/AppField';
 
 export default function PasswordResetPage() {
   const [searchParams] = useSearchParams();
@@ -28,13 +32,8 @@ export default function PasswordResetPage() {
     setSuccess('');
     setLoading(true);
     try {
-      const data = await api.post<{ message: string; token?: string }>('/auth/password-reset/request', { email });
+      const data = await api.post<{ message: string }>('/auth/password-reset/request', { email });
       setSuccess(data.message);
-      if (data.token) {
-        setToken(data.token);
-        setStep('confirm');
-        setSuccess('リセットトークンが発行されました。新しいパスワードを入力してください。');
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'リクエストに失敗しました');
     } finally {
@@ -79,87 +78,120 @@ export default function PasswordResetPage() {
   };
 
   return (
-    <Container className="d-flex justify-content-center align-items-center auth-fullscreen">
-      <Card className="auth-card-sm">
-        <Card.Body>
-          <h3 className="text-center mb-3">パスワードリセット</h3>
+    <AuthPageLayout
+      footerNote="本人確認のため、リセットトークンは第三者に共有しないでください。"
+      main={(
+        <>
+          <h1 className="h4 text-center mb-2">パスワードリセット</h1>
+          <p className="dl-lead text-center">登録メールアドレス宛のトークンで再設定できます。</p>
 
-          {error && <Alert variant="danger">{error}</Alert>}
-          {success && <Alert variant="success">{success}</Alert>}
+          {error && <StatusAlert variant="danger" message={error} />}
+          {success && <StatusAlert variant="success" message={success} />}
 
           {step === 'request' && (
-            <Form onSubmit={handleRequest}>
-              <Form.Group className="mb-3" controlId="password-reset-email">
-                <Form.Label>メールアドレス</Form.Label>
-                <Form.Control
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="登録済みのメールアドレス"
-                />
-              </Form.Group>
-              <Button type="submit" variant="primary" className="w-100" disabled={loading}>
-                {loading ? <Spinner size="sm" animation="border" /> : 'リセットリンクを送信'}
-              </Button>
-              <div className="text-center mt-3">
+            <form onSubmit={handleRequest}>
+              <AppField
+                className="mb-3"
+                controlId="password-reset-email"
+                label="メールアドレス"
+                type="email"
+                value={email}
+                onChange={(value) => setEmail(value)}
+                autoComplete="email"
+                inputMode="email"
+                enterKeyHint="send"
+                required
+                placeholder="登録済みのメールアドレス"
+              />
+              <LoadingButton
+                type="submit"
+                variant="primary"
+                className="w-100"
+                loading={loading}
+                loadingLabel="送信中..."
+              >
+                リセットリンクを送信
+              </LoadingButton>
+              <div className="dl-link-row">
                 <span className="text-muted small me-2">トークンをお持ちの場合</span>
-                <Button variant="link" size="sm" onClick={() => setStep('confirm')}>
+                <AppButton variant="link" size="sm" onClick={() => setStep('confirm')}>
                   パスワード再設定へ
-                </Button>
+                </AppButton>
               </div>
-            </Form>
+            </form>
           )}
 
           {step === 'confirm' && (
-            <Form onSubmit={handleConfirm}>
-              <Form.Group className="mb-3" controlId="password-reset-token">
-                <Form.Label>リセットトークン</Form.Label>
-                <Form.Control
-                  type="text"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  required
-                  placeholder="メールに記載のトークン"
-                />
-              </Form.Group>
-              <Form.Group className="mb-3" controlId="password-reset-new-password">
-                <Form.Label>新しいパスワード</Form.Label>
-                <Form.Control
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  placeholder="英字+数字を含む8文字以上"
-                />
-              </Form.Group>
-              <Form.Group className="mb-3" controlId="password-reset-confirm-password">
-                <Form.Label>新しいパスワード（確認）</Form.Label>
-                <Form.Control
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={8}
-                />
-              </Form.Group>
-              <Button type="submit" variant="primary" className="w-100" disabled={loading}>
-                {loading ? <Spinner size="sm" animation="border" /> : 'パスワードを再設定'}
-              </Button>
-              <div className="text-center mt-3">
-                <Button variant="link" size="sm" onClick={() => { setStep('request'); setError(''); setSuccess(''); }}>
+            <form onSubmit={handleConfirm}>
+              <AppField
+                className="mb-3"
+                controlId="password-reset-token"
+                label="リセットトークン"
+                type="text"
+                value={token}
+                onChange={(value) => setToken(value)}
+                autoComplete="one-time-code"
+                enterKeyHint="next"
+                required
+                placeholder="メールに記載のトークン"
+              />
+              <AppField
+                className="mb-3"
+                controlId="password-reset-new-password"
+                label="新しいパスワード"
+                type="password"
+                value={newPassword}
+                onChange={(value) => setNewPassword(value)}
+                autoComplete="new-password"
+                enterKeyHint="next"
+                required
+                minLength={8}
+                placeholder="英字+数字を含む8文字以上"
+              />
+              <AppField
+                className="mb-3"
+                controlId="password-reset-confirm-password"
+                label="新しいパスワード（確認）"
+                type="password"
+                value={confirmPassword}
+                onChange={(value) => setConfirmPassword(value)}
+                autoComplete="new-password"
+                enterKeyHint="done"
+                required
+                minLength={8}
+              />
+              <LoadingButton
+                type="submit"
+                variant="primary"
+                className="w-100"
+                loading={loading}
+                loadingLabel="再設定中..."
+              >
+                パスワードを再設定
+              </LoadingButton>
+              <div className="dl-link-row">
+                <AppButton variant="link" size="sm" onClick={() => { setStep('request'); setError(''); setSuccess(''); }}>
                   メールアドレス入力に戻る
-                </Button>
+                </AppButton>
               </div>
-            </Form>
+            </form>
           )}
 
-          <div className="text-center mt-3">
+          <div className="dl-link-row">
             <Link to="/login">ログインに戻る</Link>
           </div>
-        </Card.Body>
-      </Card>
-    </Container>
+        </>
+      )}
+      aside={(
+        <section aria-label="再設定時の注意">
+          <h2 className="h6 mb-3">再設定時の注意</h2>
+          <ul className="dl-trust-list">
+            <li>トークンは短時間で失効します。受信後は早めに再設定してください。</li>
+            <li>英字と数字を含む推測されにくいパスワードを設定してください。</li>
+            <li>再設定後、他端末でのログイン状態を確認してください。</li>
+          </ul>
+        </section>
+      )}
+    />
   );
 }

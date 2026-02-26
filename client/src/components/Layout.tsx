@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
+import AppScreen from './ui/AppScreen';
 
 interface Props {
   children: React.ReactNode;
@@ -10,13 +11,14 @@ export default function Layout({ children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="app-layout">
+    <div className="app-layout app-theme">
+      <a href="#app-main-content" className="dl-skip-link">メインコンテンツへスキップ</a>
       <Header onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />
       <div className="app-body">
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="app-main">
+        <main id="app-main-content" className="app-main" tabIndex={-1}>
           <div className="content-container py-3 px-3">
-            {children}
+            <AppScreen>{children}</AppScreen>
           </div>
           <footer className="app-footer border-top py-2 px-3">
             <small className="text-muted">

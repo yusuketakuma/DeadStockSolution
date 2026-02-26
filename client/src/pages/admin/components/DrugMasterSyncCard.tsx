@@ -1,5 +1,9 @@
 import type { Ref, RefObject } from 'react';
-import { Card, Form, Alert, Button, Spinner } from 'react-bootstrap';
+import AppAlert from '../../../components/ui/AppAlert';
+import { Form } from 'react-bootstrap';
+import AppCard from '../../../components/ui/AppCard';
+import LoadingButton from '../../../components/ui/LoadingButton';
+import AppControl from '../../../components/ui/AppControl';
 
 interface DrugMasterSyncCardProps {
   revisionDate: string;
@@ -21,30 +25,30 @@ export default function DrugMasterSyncCard({
   onSync,
 }: DrugMasterSyncCardProps) {
   return (
-    <Card>
-      <Card.Header>薬価基準収載品目リストから同期</Card.Header>
-      <Card.Body>
+    <AppCard>
+      <AppCard.Header>薬価基準収載品目リストから同期</AppCard.Header>
+      <AppCard.Body>
         <Form.Group className="mb-2">
           <Form.Label className="small">改定日</Form.Label>
-          <Form.Control
+          <AppControl
             type="date"
             value={revisionDate}
-            onChange={(e) => onRevisionDateChange(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onRevisionDateChange(e.target.value)}
           />
         </Form.Group>
         <Form.Group className="mb-2">
           <Form.Label className="small">ファイル（xlsx / csv）</Form.Label>
-          <Form.Control type="file" ref={syncFileRef as Ref<HTMLInputElement>} accept=".xlsx,.csv" />
+          <AppControl type="file" ref={syncFileRef as Ref<HTMLInputElement>} accept=".xlsx,.csv" />
         </Form.Group>
-        {syncResult && <Alert variant="success" className="py-1 small">{syncResult}</Alert>}
-        {syncError && <Alert variant="danger" className="py-1 small">{syncError}</Alert>}
-        <Button size="sm" onClick={onSync} disabled={syncing}>
-          {syncing ? <><Spinner size="sm" className="me-1" />同期中...</> : '同期実行'}
-        </Button>
+        {syncResult && <AppAlert variant="success" className="py-1 small">{syncResult}</AppAlert>}
+        {syncError && <AppAlert variant="danger" className="py-1 small">{syncError}</AppAlert>}
+        <LoadingButton size="sm" onClick={onSync} loading={syncing} loadingLabel="同期中...">
+          同期実行
+        </LoadingButton>
         <Form.Text className="d-block mt-1 text-muted">
           厚生労働省の薬価基準収載品目リスト（Excel/CSV）をアップロードしてください。
         </Form.Text>
-      </Card.Body>
-    </Card>
+      </AppCard.Body>
+    </AppCard>
   );
 }

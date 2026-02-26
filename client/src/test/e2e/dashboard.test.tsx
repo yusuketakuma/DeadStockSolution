@@ -44,6 +44,7 @@ function mockAuthenticatedFetchWithDashboardData(overrides: Record<string, unkno
 describe('DashboardPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    window.localStorage.clear();
   });
 
   it('renders dashboard with user greeting', async () => {
@@ -124,7 +125,7 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('次にやること')).toBeInTheDocument();
     });
-    expect(screen.getByText('医薬品使用量リストをアップロード')).toBeInTheDocument();
+    expect(screen.getByText(/(医薬品使用量|デッドストック)リストをアップロード/)).toBeInTheDocument();
     expect(screen.getByText('アップロードへ進む')).toBeInTheDocument();
   });
 
@@ -407,6 +408,38 @@ describe('DashboardPage', () => {
     expect(secondaryLink).toHaveAttribute('href', '/proposals');
   });
 
+  it('falls back to safe internal path when next action contains unsafe notice path', async () => {
+    mockAuthenticatedFetchWithDashboardData({
+      '/api/upload/status': {
+        deadStockUploaded: true,
+        usedMedicationUploaded: true,
+        lastDeadStockUpload: '2026-01-15T10:00:00Z',
+        lastUsedMedicationUpload: '2026-01-16T10:00:00Z',
+      },
+      '/api/notifications': {
+        notices: [
+          {
+            id: 'proposal-unsafe-1',
+            type: 'inbound_request',
+            title: '不正な導線テスト',
+            body: '外部URLに誘導しようとする通知',
+            actionPath: '//evil.example/phish',
+            actionLabel: '確認',
+            createdAt: '2026-02-20T12:00:00.000Z',
+            unread: true,
+            priority: 1,
+          },
+        ],
+        summary: { unreadMessages: 0, actionableRequests: 1, total: 1 },
+      },
+    });
+
+    renderWithProviders(<DashboardPage />);
+
+    const safeActionLink = await screen.findByRole('link', { name: '確認' });
+    expect(safeActionLink).toHaveAttribute('href', '/proposals');
+  });
+
   it('shows matching as enabled when used medication is uploaded', async () => {
     mockAuthenticatedFetchWithDashboardData({
       '/api/upload/status': {
@@ -428,6 +461,7 @@ describe('DashboardPage', () => {
 describe('Layout with Sidebar navigation', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    window.localStorage.clear();
   });
 
   it('renders the header with app name', async () => {
@@ -456,6 +490,34 @@ describe('Layout with Sidebar navigation', () => {
     expect(versionLabel).toBeTruthy();
     expect(versionLabel?.textContent ?? '').toMatch(/^v.+/);
     expect(screen.getByRole('button', { name: '要望をあげる' })).toBeInTheDocument();
+  });
+
+  it('does not render previous-path link when stored path is unsafe', async () => {
+    window.localStorage.setItem('dss.previousPath', '//evil.example/phish');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(
+      <Layout><div>Test Content</div></Layout>,
+      { route: '/matching' },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('前回の画面へ戻る')).not.toBeInTheDocument();
   });
 
   it('shows github updates popover and expandable history', async () => {
@@ -548,6 +610,74 @@ describe('Layout with Sidebar navigation', () => {
       ).length;
       expect(updatesCalls).toBeGreaterThanOrEqual(2);
     });
+  });
+
+  it('blocks unsafe update links outside github release pages', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/updates/github')) {
+        return new Response(JSON.stringify({
+          repository: 'yusuketakuma/DeadStockSolution',
+          source: 'github_releases',
+          stale: false,
+          fetchedAt: '2026-02-25T00:00:00.000Z',
+          items: [
+            {
+              id: 'safe-1',
+              tag: 'v1.1.0',
+              title: 'Safe release',
+              body: 'safe body',
+              url: 'https://github.com/yusuketakuma/DeadStockSolution/releases/tag/v1.1.0',
+              publishedAt: '2026-02-25T00:00:00.000Z',
+              prerelease: false,
+            },
+            {
+              id: 'bad-1',
+              tag: 'v1.0.9',
+              title: 'Suspicious release',
+              body: 'bad body',
+              url: 'https://evil.example/phish',
+              publishedAt: '2026-02-24T00:00:00.000Z',
+              prerelease: false,
+            },
+          ],
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(
+      <Layout><div>Test Content</div></Layout>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'GitHub更新内容を表示' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/一部のリンク表示を無効化しました/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('link', { name: /Safe release/ })).toHaveAttribute(
+      'href',
+      'https://github.com/yusuketakuma/DeadStockSolution/releases/tag/v1.1.0',
+    );
+    expect(screen.queryByRole('link', { name: /Suspicious release/ })).not.toBeInTheDocument();
   });
 
   it('shows stale note when updates response is served from cache', async () => {

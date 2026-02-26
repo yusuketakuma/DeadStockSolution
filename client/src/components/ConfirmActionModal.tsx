@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
-import { Button, Modal } from 'react-bootstrap';
+import AppButton from './ui/AppButton';
+import AppModalShell from './ui/AppModalShell';
+import LoadingButton from './ui/LoadingButton';
 
 interface ConfirmActionModalProps {
   show: boolean;
@@ -26,20 +28,32 @@ export default function ConfirmActionModal({
   pending = false,
   confirmDisabled = false,
 }: ConfirmActionModalProps) {
+  const footer = (
+    <>
+      <AppButton variant="outline-secondary" onClick={onCancel} disabled={pending}>
+        {cancelLabel}
+      </AppButton>
+      <LoadingButton
+        variant={confirmVariant}
+        onClick={onConfirm}
+        loading={pending}
+        loadingLabel="処理中..."
+        disabled={confirmDisabled}
+      >
+        {confirmLabel}
+      </LoadingButton>
+    </>
+  );
+
   return (
-    <Modal show={show} onHide={pending ? undefined : onCancel} centered>
-      <Modal.Header closeButton={!pending}>
-        <Modal.Title>{title}</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>{body}</Modal.Body>
-      <Modal.Footer>
-        <Button variant="outline-secondary" onClick={onCancel} disabled={pending}>
-          {cancelLabel}
-        </Button>
-        <Button variant={confirmVariant} onClick={onConfirm} disabled={pending || confirmDisabled}>
-          {pending ? '処理中...' : confirmLabel}
-        </Button>
-      </Modal.Footer>
-    </Modal>
+    <AppModalShell
+      show={show}
+      title={title}
+      onHide={pending ? undefined : onCancel}
+      closeButton={!pending}
+      footer={footer}
+    >
+      {body}
+    </AppModalShell>
   );
 }

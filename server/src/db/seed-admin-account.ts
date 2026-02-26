@@ -7,11 +7,15 @@ import { logger } from '../services/logger';
 
 const ADMIN_LOGIN_ID = 'admin@admin.com';
 const LEGACY_ADMIN_LOGIN_ID = 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_SEED_PASSWORD ?? 'admin';
-
-if (!process.env.ADMIN_SEED_PASSWORD) {
-  logger.warn('ADMIN_SEED_PASSWORD is not set — using default password. Set it in production!');
+function requireAdminSeedPassword(): string {
+  const password = process.env.ADMIN_SEED_PASSWORD?.trim();
+  if (!password) {
+    logger.error('ADMIN_SEED_PASSWORD is not set. Refusing to seed admin account without explicit password.');
+    process.exit(1);
+  }
+  return password;
 }
+const ADMIN_PASSWORD = requireAdminSeedPassword();
 
 async function findByEmail(email: string): Promise<{ id: number } | null> {
   const [row] = await db.select({

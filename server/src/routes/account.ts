@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { hashPassword, verifyPassword, generateToken } from '../services/auth-service';
@@ -25,6 +25,7 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
       licenseNumber: pharmacies.licenseNumber,
       prefecture: pharmacies.prefecture,
       isAdmin: pharmacies.isAdmin,
+      version: pharmacies.version,
       createdAt: pharmacies.createdAt,
     })
       .from(pharmacies)
@@ -47,7 +48,13 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
 
 router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, postalCode, address, phone, fax, prefecture, currentPassword, newPassword } = req.body;
+    const { name, postalCode, address, phone, fax, prefecture, currentPassword, newPassword, version } = req.body;
+
+    // version バリデーション
+    if (version === undefined || version === null || typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version > 2_147_483_647) {
+      res.status(400).json({ error: 'バージョン情報が不正です' });
+      return;
+    }
 
     const updates: Record<string, unknown> = {};
 
@@ -153,21 +160,49 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
     }
 
     updates.updatedAt = new Date().toISOString();
+    // version をインクリメント
+    updates.version = sql`${pharmacies.version} + 1`;
 
-    await db.update(pharmacies)
+    // 楽観的ロック: id と version の両方が一致する場合のみ更新
+    const updateResult = await db.update(pharmacies)
       .set(updates)
-      .where(eq(pharmacies.id, req.user!.id));
-    invalidateAuthUserCache(req.user!.id);
+      .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, version)))
+      .returning({
+        id: pharmacies.id,
+        email: pharmacies.email,
+        isAdmin: pharmacies.isAdmin,
+        isActive: pharmacies.isActive,
+        version: pharmacies.version,
+      });
 
-    const [updatedPharmacy] = await db.select({
-      id: pharmacies.id,
-      email: pharmacies.email,
-      isAdmin: pharmacies.isAdmin,
-      isActive: pharmacies.isActive,
-    })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, req.user!.id))
-      .limit(1);
+    // 更新行数 0 = 楽観的ロック競合
+    if (updateResult.length === 0) {
+      // 最新データを取得して 409 レスポンスに含める
+      const latestRows = await db.select({
+        id: pharmacies.id,
+        email: pharmacies.email,
+        name: pharmacies.name,
+        postalCode: pharmacies.postalCode,
+        address: pharmacies.address,
+        phone: pharmacies.phone,
+        fax: pharmacies.fax,
+        licenseNumber: pharmacies.licenseNumber,
+        prefecture: pharmacies.prefecture,
+        version: pharmacies.version,
+      })
+        .from(pharmacies)
+        .where(eq(pharmacies.id, req.user!.id))
+        .limit(1);
+
+      res.status(409).json({
+        error: '他のデバイスまたはタブで更新されています。最新データを確認してください',
+        latestData: latestRows[0] ?? null,
+      });
+      return;
+    }
+
+    const updatedPharmacy = updateResult[0];
+    invalidateAuthUserCache(req.user!.id);
 
     if (!updatedPharmacy || !updatedPharmacy.isActive) {
       res.clearCookie('token');
@@ -195,7 +230,7 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       ipAddress: getClientIp(req),
     });
 
-    res.json({ message: 'アカウント情報を更新しました' });
+    res.json({ message: 'アカウント情報を更新しました', version: updatedPharmacy.version });
   } catch (err) {
     logger.error('Update account error', {
       error: err instanceof Error ? err.message : String(err),

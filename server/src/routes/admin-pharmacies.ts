@@ -8,6 +8,7 @@ import {
   exchangeHistory,
   adminMessages,
   userRequests,
+  proposalComments,
 } from '../db/schema';
 import { invalidateAuthUserCache } from '../middleware/auth';
 import { AuthRequest } from '../types';
@@ -200,6 +201,46 @@ router.get('/exchanges', async (req: AuthRequest, res: Response) => {
     sendPaginated(res, rows, page, limit, total.count);
   } catch (err) {
     handleAdminError(err, 'Admin exchanges error', '交換一覧の取得に失敗しました', res);
+  }
+});
+
+router.get('/exchanges/:proposalId/comments', async (req: AuthRequest, res: Response) => {
+  try {
+    const proposalId = parseIdOrBadRequest(res, req.params.proposalId);
+    if (!proposalId) return;
+
+    const proposalRows = await db.select({ id: exchangeProposals.id })
+      .from(exchangeProposals)
+      .where(eq(exchangeProposals.id, proposalId))
+      .limit(1);
+    if (proposalRows.length === 0) {
+      res.status(404).json({ error: 'マッチングが見つかりません' });
+      return;
+    }
+
+    const rows = await db.select({
+      id: proposalComments.id,
+      proposalId: proposalComments.proposalId,
+      authorPharmacyId: proposalComments.authorPharmacyId,
+      authorName: pharmacies.name,
+      body: proposalComments.body,
+      isDeleted: proposalComments.isDeleted,
+      createdAt: proposalComments.createdAt,
+      updatedAt: proposalComments.updatedAt,
+    })
+      .from(proposalComments)
+      .innerJoin(pharmacies, eq(proposalComments.authorPharmacyId, pharmacies.id))
+      .where(eq(proposalComments.proposalId, proposalId))
+      .orderBy(desc(proposalComments.createdAt), desc(proposalComments.id));
+
+    res.json({
+      data: rows.map((row) => ({
+        ...row,
+        body: row.isDeleted ? '（削除済み）' : row.body,
+      })),
+    });
+  } catch (err) {
+    handleAdminError(err, 'Admin exchange comments error', '交渉メモの取得に失敗しました', res);
   }
 });
 

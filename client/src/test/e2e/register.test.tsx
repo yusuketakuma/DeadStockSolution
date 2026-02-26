@@ -41,7 +41,7 @@ describe('RegisterPage', () => {
 
     // Check labels exist
     expect(screen.getByText(/メールアドレス/)).toBeInTheDocument();
-    expect(screen.getByText(/パスワード/)).toBeInTheDocument();
+    expect(screen.getByText((content, element) => element?.tagName === 'LABEL' && /パスワード/.test(content))).toBeInTheDocument();
     expect(screen.getByText(/薬局名/)).toBeInTheDocument();
     expect(screen.getByText(/薬局開設許可番号/)).toBeInTheDocument();
     expect(screen.getByText(/都道府県/)).toBeInTheDocument();

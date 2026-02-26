@@ -538,6 +538,12 @@ export const matchingRefreshJobs = pgTable('matching_refresh_jobs', {
 
 // ── 通知 ──────────────────────────────────────────────────
 
+export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment'] as const;
+export type NotificationType = (typeof notificationTypeValues)[number];
+
+export const notificationReferenceTypeValues = ['proposal', 'match', 'comment'] as const;
+export type NotificationReferenceType = (typeof notificationReferenceTypeValues)[number];
+
 export const notifications = pgTable('notifications', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),

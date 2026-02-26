@@ -13,6 +13,7 @@ interface ApiOptions {
   body?: unknown;
   headers?: Record<string, string>;
   timeout?: number;
+  signal?: AbortSignal;
 }
 
 export interface FieldError {
@@ -78,18 +79,37 @@ async function ensureCsrfToken(timeout: number): Promise<string> {
   return csrfTokenPromise;
 }
 
-async function fetchWithTimeout(url: string, config: RequestInit, timeout: number): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  config: RequestInit,
+  timeout: number,
+  externalSignal?: AbortSignal,
+): Promise<Response> {
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+  }
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   try {
     return await fetch(url, { ...config, signal: controller.signal });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
+      if (externalSignal?.aborted) {
+        throw new ApiError(0, 'リクエストがキャンセルされました');
+      }
       throw new ApiError(0, 'リクエストがタイムアウトしました');
     }
     throw new ApiError(0, 'ネットワークエラーが発生しました');
   } finally {
     clearTimeout(timeoutId);
+    if (externalSignal) {
+      externalSignal.removeEventListener('abort', onExternalAbort);
+    }
   }
 }
 
@@ -107,7 +127,13 @@ async function parseSuccessResponse<T>(response: Response): Promise<T> {
 }
 
 async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
-  const { method = 'GET', body, headers = {}, timeout = REQUEST_TIMEOUT_MS } = options;
+  const {
+    method = 'GET',
+    body,
+    headers = {},
+    timeout = REQUEST_TIMEOUT_MS,
+    signal,
+  } = options;
   const shouldUseCsrf = requiresCsrf(method, path);
 
   const config: RequestInit = {
@@ -128,7 +154,7 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
     (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
   }
 
-  const doRequest = () => fetchWithTimeout(`${API_BASE}${path}`, config, timeout);
+  const doRequest = () => fetchWithTimeout(`${API_BASE}${path}`, config, timeout, signal);
   let response = await doRequest();
 
   if (!response.ok && shouldUseCsrf && response.status === 403) {
@@ -150,7 +176,12 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
   return parseSuccessResponse<T>(response);
 }
 
-export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+interface UploadOptions {
+  signal?: AbortSignal;
+}
+
+export async function apiUpload<T>(path: string, formData: FormData, options: UploadOptions = {}): Promise<T> {
+  const { signal } = options;
   const config: RequestInit = {
     method: 'POST',
     credentials: 'include',
@@ -162,12 +193,12 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
     (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
   }
 
-  let response = await fetchWithTimeout(`${API_BASE}${path}`, config, 60000);
+  let response = await fetchWithTimeout(`${API_BASE}${path}`, config, 60000, signal);
   if (!response.ok && response.status === 403 && requiresCsrf('POST', path)) {
     csrfTokenCache = null;
     const csrfToken = await ensureCsrfToken(60000);
     (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
-    response = await fetchWithTimeout(`${API_BASE}${path}`, config, 60000);
+    response = await fetchWithTimeout(`${API_BASE}${path}`, config, 60000, signal);
   }
 
   if (!response.ok) {
@@ -183,11 +214,37 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
 }
 
 export const api = {
-  get: <T>(path: string) => apiRequest<T>(path),
-  post: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'POST', body }),
-  put: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'PUT', body }),
-  delete: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'DELETE', body }),
+  get: <T>(path: string, options: Pick<ApiOptions, 'timeout' | 'signal'> = {}) =>
+    apiRequest<T>(path, options),
+  post: <T>(
+    path: string,
+    body?: unknown,
+    options: Pick<ApiOptions, 'headers' | 'timeout' | 'signal'> = {},
+  ) => apiRequest<T>(path, { method: 'POST', body, ...options }),
+  put: <T>(
+    path: string,
+    body?: unknown,
+    options: Pick<ApiOptions, 'headers' | 'timeout' | 'signal'> = {},
+  ) => apiRequest<T>(path, { method: 'PUT', body, ...options }),
+  patch: <T>(
+    path: string,
+    body?: unknown,
+    options: Pick<ApiOptions, 'headers' | 'timeout' | 'signal'> = {},
+  ) => apiRequest<T>(path, { method: 'PATCH', body, ...options }),
+  delete: <T>(
+    path: string,
+    body?: unknown,
+    options: Pick<ApiOptions, 'headers' | 'timeout' | 'signal'> = {},
+  ) => apiRequest<T>(path, { method: 'DELETE', body, ...options }),
   upload: apiUpload,
 };
+
+/**
+ * 409 Conflict エラーかどうかを判定する。
+ * 楽観的ロック競合時に使用。
+ */
+export function isConflictError(err: unknown): err is ApiError & { data: { latestData: unknown } } {
+  return err instanceof ApiError && err.status === 409 && err.data != null && typeof err.data === 'object' && 'latestData' in err.data;
+}
 
 export { ApiError };

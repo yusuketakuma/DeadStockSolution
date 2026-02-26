@@ -17,10 +17,25 @@ import { rowCount } from '../utils/db-utils';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 import { logger } from '../services/logger';
 import { writeLog, getClientIp } from '../services/log-service';
+import { getPharmacyRiskDetail } from '../services/expiry-risk-service';
 
 const router = Router();
 
 router.use(requireLogin);
+
+// My dead stock expiry risk summary
+router.get('/dead-stock/risk', async (req: AuthRequest, res: Response) => {
+  try {
+    const detail = await getPharmacyRiskDetail(req.user!.id);
+    res.json(detail);
+  } catch (err) {
+    logger.error('Dead stock risk summary error:', { error: (err as Error).message });
+    const message = err instanceof Error && err.message.includes('見つかりません')
+      ? err.message
+      : '期限切れリスク集計の取得に失敗しました';
+    res.status(message.includes('見つかりません') ? 404 : 500).json({ error: message });
+  }
+});
 
 // My dead stock list
 router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
@@ -137,14 +152,23 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       db.select({ id: pharmacyRelationships.id })
         .from(pharmacyRelationships)
         .where(and(
-          eq(pharmacyRelationships.pharmacyId, req.user!.id),
-          eq(pharmacyRelationships.targetPharmacyId, deadStockItems.pharmacyId),
           eq(pharmacyRelationships.relationshipType, 'blocked'),
+          or(
+            and(
+              eq(pharmacyRelationships.pharmacyId, req.user!.id),
+              eq(pharmacyRelationships.targetPharmacyId, deadStockItems.pharmacyId),
+            ),
+            and(
+              eq(pharmacyRelationships.pharmacyId, deadStockItems.pharmacyId),
+              eq(pharmacyRelationships.targetPharmacyId, req.user!.id),
+            ),
+          ),
         ))
     );
 
     const whereExpr = and(
       eq(deadStockItems.isAvailable, true),
+      eq(pharmacies.isActive, true),
       searchCondition,
       blockCondition,
     );
@@ -224,6 +248,7 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
 
     const [total] = await db.select({ count: rowCount })
       .from(deadStockItems)
+      .innerJoin(pharmacies, eq(deadStockItems.pharmacyId, pharmacies.id))
       .where(whereExpr);
 
     res.json({

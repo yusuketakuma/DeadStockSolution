@@ -18,22 +18,24 @@ export default function Pagination({ currentPage, totalPages, onPageChange }: Pr
   }
 
   return (
-    <BSPagination className="justify-content-center">
-      <BSPagination.First onClick={() => onPageChange(1)} disabled={currentPage === 1} />
-      <BSPagination.Prev onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} />
+    <BSPagination className="justify-content-center" aria-label="ページネーション">
+      <BSPagination.First aria-label="最初のページへ" onClick={() => onPageChange(1)} disabled={currentPage === 1} />
+      <BSPagination.Prev aria-label="前のページへ" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} />
       {start > 1 && <BSPagination.Ellipsis disabled />}
       {pages.map((page) => (
         <BSPagination.Item
           key={page}
           active={page === currentPage}
+          aria-current={page === currentPage ? 'page' : undefined}
+          aria-label={page === currentPage ? `現在のページ ${page}` : `ページ ${page}`}
           onClick={() => onPageChange(page)}
         >
           {page}
         </BSPagination.Item>
       ))}
       {end < totalPages && <BSPagination.Ellipsis disabled />}
-      <BSPagination.Next onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} />
-      <BSPagination.Last onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} />
+      <BSPagination.Next aria-label="次のページへ" onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} />
+      <BSPagination.Last aria-label="最後のページへ" onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} />
     </BSPagination>
   );
 }

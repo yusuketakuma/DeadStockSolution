@@ -9,9 +9,19 @@ import { renderWithProviders, mockUser } from '../helpers';
 function createMockFetch(routes: Record<string, unknown>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
+    const requestUrl = new URL(url, 'http://localhost');
+    const requestPath = requestUrl.pathname;
+    const requestPathWithQuery = `${requestUrl.pathname}${requestUrl.search}`;
 
     for (const [path, data] of Object.entries(routes)) {
-      if (url.includes(path)) {
+      const routeUrl = new URL(path, 'http://localhost');
+      const routePath = routeUrl.pathname;
+      const routePathWithQuery = `${routeUrl.pathname}${routeUrl.search}`;
+      const matches = routeUrl.search
+        ? requestPathWithQuery === routePathWithQuery
+        : requestPath === routePath;
+
+      if (matches) {
         return new Response(JSON.stringify(data), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -19,8 +29,8 @@ function createMockFetch(routes: Record<string, unknown>) {
       }
     }
 
-    return new Response(JSON.stringify({}), {
-      status: 200,
+    return new Response(JSON.stringify({ error: `Mock route not found: ${requestPathWithQuery}` }), {
+      status: 404,
       headers: { 'Content-Type': 'application/json' },
     });
   });
@@ -29,9 +39,27 @@ function createMockFetch(routes: Record<string, unknown>) {
   return fetchMock;
 }
 
+function setMatchMedia(matches: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
 describe('ProposalsPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    setMatchMedia(false);
   });
 
   it('renders the proposals page with title', async () => {
@@ -62,7 +90,7 @@ describe('ProposalsPage', () => {
     renderWithProviders(<ProposalsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('マッチング履歴はまだありません。')).toBeInTheDocument();
+      expect(screen.getByText('マッチング履歴はまだありません')).toBeInTheDocument();
     });
   });
 
@@ -185,11 +213,37 @@ describe('ProposalsPage', () => {
     expect(screen.getByText('ステータス')).toBeInTheDocument();
     expect(screen.getByText('開始日')).toBeInTheDocument();
   });
+
+  it('renders mobile data cards on mobile viewport', async () => {
+    setMatchMedia(true);
+    createMockFetch({
+      '/api/auth/me': mockUser,
+      '/api/exchange/proposals': {
+        data: [{
+          id: 1,
+          pharmacyAId: 1, pharmacyBId: 2,
+          pharmacyAName: 'テスト薬局', pharmacyBName: '大阪薬局',
+          status: 'proposed',
+          totalValueA: 5000, totalValueB: 4500, valueDifference: 500,
+          proposedAt: '2026-01-20T10:00:00Z',
+        }],
+        pagination: { page: 1, totalPages: 1, total: 1 },
+      },
+    });
+
+    renderWithProviders(<ProposalsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('マッチング #1')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('columnheader', { name: '相手薬局' })).not.toBeInTheDocument();
+  });
 });
 
 describe('PharmacyListPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    setMatchMedia(false);
   });
 
   it('renders the pharmacy list page with title', async () => {
@@ -220,7 +274,7 @@ describe('PharmacyListPage', () => {
     renderWithProviders(<PharmacyListPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('薬局が見つかりません。')).toBeInTheDocument();
+      expect(screen.getByText('薬局が見つかりません')).toBeInTheDocument();
     });
   });
 
@@ -370,11 +424,42 @@ describe('PharmacyListPage', () => {
     expect(screen.getByText('FAX')).toBeInTheDocument();
     expect(screen.getByText('距離')).toBeInTheDocument();
   });
+
+  it('renders mobile pharmacy cards on mobile viewport', async () => {
+    setMatchMedia(true);
+    createMockFetch({
+      '/api/auth/me': mockUser,
+      '/api/pharmacies/relationships': {
+        favorites: [],
+        blocked: [],
+      },
+      '/api/pharmacies': {
+        data: [{
+          id: 2,
+          name: '大阪薬局',
+          prefecture: '大阪府',
+          address: '大阪市中央区1-1',
+          phone: '06-1234-5678',
+          fax: '06-1234-5679',
+          distance: 450,
+        }],
+        pagination: { page: 1, totalPages: 1, total: 1 },
+      },
+    });
+
+    renderWithProviders(<PharmacyListPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('営業状況')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('columnheader', { name: '都道府県' })).not.toBeInTheDocument();
+  });
 });
 
 describe('ExchangeHistoryPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    setMatchMedia(false);
   });
 
   it('renders the exchange history page', async () => {
@@ -391,6 +476,33 @@ describe('ExchangeHistoryPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 4 })).toHaveTextContent('交換履歴');
     });
-    expect(screen.getByText('交換履歴はまだありません。')).toBeInTheDocument();
+    expect(screen.getByText('交換履歴はまだありません')).toBeInTheDocument();
+  });
+
+  it('renders mobile history cards on mobile viewport', async () => {
+    setMatchMedia(true);
+    createMockFetch({
+      '/api/auth/me': mockUser,
+      '/api/exchange/history': {
+        data: [{
+          id: 1,
+          proposalId: 12,
+          pharmacyAId: 1,
+          pharmacyBId: 2,
+          pharmacyAName: 'テスト薬局',
+          pharmacyBName: '大阪薬局',
+          totalValue: 12000,
+          completedAt: '2026-02-10T10:00:00Z',
+        }],
+        pagination: { page: 1, totalPages: 1, total: 1 },
+      },
+    });
+
+    renderWithProviders(<ExchangeHistoryPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('履歴 #1')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('columnheader', { name: '相手薬局' })).not.toBeInTheDocument();
   });
 });

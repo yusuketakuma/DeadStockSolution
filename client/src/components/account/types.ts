@@ -21,6 +21,7 @@ export interface AccountData {
   fax: string;
   licenseNumber: string;
   prefecture: string;
+  version: number;
 }
 
 export interface BusinessHourEntry {
@@ -49,6 +50,7 @@ export interface SpecialHourEntry {
 export interface BusinessHourSettingsResponse {
   hours: BusinessHourEntry[];
   specialHours: SpecialHourEntry[];
+  version: number;
 }
 
 export const SPECIAL_TYPE_LABELS: Record<SpecialType, string> = {

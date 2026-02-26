@@ -1,4 +1,5 @@
-import { Card, Col, Row } from 'react-bootstrap';
+import { Col, Row } from 'react-bootstrap';
+import AppKpiCard from '../../../components/ui/AppKpiCard';
 
 interface Stats {
   totalItems: number;
@@ -16,46 +17,22 @@ export default function DrugMasterStatsCards({ stats }: DrugMasterStatsCardsProp
   return (
     <Row className="g-3 mb-3">
       <Col md={4} xl>
-        <Card className="text-center h-100">
-          <Card.Body>
-            <Card.Title className="display-6">{stats?.totalItems?.toLocaleString() ?? '-'}</Card.Title>
-            <Card.Text className="text-muted small">総品目数</Card.Text>
-          </Card.Body>
-        </Card>
+        <AppKpiCard value={stats?.totalItems?.toLocaleString() ?? '-'} label="総品目数" />
       </Col>
       <Col md={4} xl>
-        <Card className="text-center h-100">
-          <Card.Body>
-            <Card.Title className="display-6">{stats?.listedItems?.toLocaleString() ?? '-'}</Card.Title>
-            <Card.Text className="text-muted small">収載中</Card.Text>
-          </Card.Body>
-        </Card>
+        <AppKpiCard value={stats?.listedItems?.toLocaleString() ?? '-'} label="収載中" />
       </Col>
       <Col md={4} xl>
-        <Card className="text-center h-100">
-          <Card.Body>
-            <Card.Title className="display-6">{stats?.transitionItems?.toLocaleString() ?? '-'}</Card.Title>
-            <Card.Text className="text-muted small">経過措置中</Card.Text>
-          </Card.Body>
-        </Card>
+        <AppKpiCard value={stats?.transitionItems?.toLocaleString() ?? '-'} label="経過措置中" />
       </Col>
       <Col md={4} xl>
-        <Card className="text-center h-100">
-          <Card.Body>
-            <Card.Title className="display-6">{stats?.delistedItems?.toLocaleString() ?? '-'}</Card.Title>
-            <Card.Text className="text-muted small">削除済</Card.Text>
-          </Card.Body>
-        </Card>
+        <AppKpiCard value={stats?.delistedItems?.toLocaleString() ?? '-'} label="削除済" />
       </Col>
       <Col md={4} xl>
-        <Card className="text-center h-100">
-          <Card.Body>
-            <div className="small">
-              {stats?.lastSyncAt ? new Date(stats.lastSyncAt).toLocaleString('ja-JP') : '未実行'}
-            </div>
-            <Card.Text className="text-muted small">最終同期</Card.Text>
-          </Card.Body>
-        </Card>
+        <AppKpiCard
+          value={stats?.lastSyncAt ? new Date(stats.lastSyncAt).toLocaleString('ja-JP') : '未実行'}
+          label="最終同期"
+        />
       </Col>
     </Row>
   );

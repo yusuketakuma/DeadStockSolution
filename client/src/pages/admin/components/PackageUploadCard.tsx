@@ -1,5 +1,9 @@
 import type { Ref, RefObject } from 'react';
-import { Card, Form, Button, Spinner, Badge } from 'react-bootstrap';
+import { Form, Badge } from 'react-bootstrap';
+import InlineLoader from '../../../components/ui/InlineLoader';
+import LoadingButton from '../../../components/ui/LoadingButton';
+import AppControl from '../../../components/ui/AppControl';
+import AppCard from '../../../components/ui/AppCard';
 
 interface AutoSyncStatus {
   enabled: boolean;
@@ -30,16 +34,16 @@ export default function PackageUploadCard({
   onPackageAutoSyncTrigger,
 }: PackageUploadCardProps) {
   return (
-    <Card>
-      <Card.Header>包装単位データ登録（GS1/JAN/HOTコード）</Card.Header>
-      <Card.Body>
+    <AppCard>
+      <AppCard.Header>包装単位データ登録（GS1/JAN/HOTコード）</AppCard.Header>
+      <AppCard.Body>
         <Form.Group className="mb-2">
           <Form.Label className="small">ファイル（xlsx / csv / xml / zip）</Form.Label>
-          <Form.Control type="file" ref={pkgFileRef as Ref<HTMLInputElement>} accept=".xlsx,.csv,.xml,.zip" />
+          <AppControl type="file" ref={pkgFileRef as Ref<HTMLInputElement>} accept=".xlsx,.csv,.xml,.zip" />
         </Form.Group>
-        <Button size="sm" onClick={onPackageUpload} disabled={pkgUploading}>
-          {pkgUploading ? <><Spinner size="sm" className="me-1" />登録中...</> : '登録実行'}
-        </Button>
+        <LoadingButton size="sm" onClick={onPackageUpload} loading={pkgUploading} loadingLabel="登録中...">
+          登録実行
+        </LoadingButton>
         <Form.Text className="d-block mt-1 text-muted">
           GS1コード・JANコード・HOTコードを含む包装単位データを登録します（PMDA XML / ZIPにも対応）。
         </Form.Text>
@@ -67,21 +71,23 @@ export default function PackageUploadCard({
               )}
             </div>
             <Form.Group className="mb-2">
-              <Form.Control
+              <AppControl
                 size="sm"
                 placeholder="https://... (手動実行時のURL)"
                 value={packageManualSourceUrl}
-                onChange={(e) => onPackageManualSourceUrlChange(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onPackageManualSourceUrlChange(e.target.value)}
               />
             </Form.Group>
-            <Button
+            <LoadingButton
               size="sm"
               variant="outline-primary"
               onClick={onPackageAutoSyncTrigger}
-              disabled={packageAutoSyncTriggering || (!packageAutoSyncStatus.hasSourceUrl && !packageManualSourceUrl.trim())}
+              disabled={!packageAutoSyncStatus.hasSourceUrl && !packageManualSourceUrl.trim()}
+              loading={packageAutoSyncTriggering}
+              loadingLabel="確認中..."
             >
-              {packageAutoSyncTriggering ? <><Spinner size="sm" className="me-1" />確認中...</> : '包装単位データを今すぐ取得'}
-            </Button>
+              包装単位データを今すぐ取得
+            </LoadingButton>
             {!packageAutoSyncStatus.hasSourceUrl && (
               <Form.Text className="d-block mt-1 text-muted">
                 環境変数 DRUG_PACKAGE_SOURCE_URL を設定してください。
@@ -89,9 +95,9 @@ export default function PackageUploadCard({
             )}
           </>
         ) : (
-          <Spinner size="sm" />
+          <InlineLoader text="読み込み中..." />
         )}
-      </Card.Body>
-    </Card>
+      </AppCard.Body>
+    </AppCard>
   );
 }

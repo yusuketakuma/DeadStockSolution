@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
-import { and, asc, desc, eq, inArray, or } from 'drizzle-orm';
+import rateLimit from 'express-rate-limit';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   exchangeProposals,
@@ -19,11 +20,15 @@ import { processPendingMatchingRefreshJobs } from '../services/matching-refresh-
 import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
-import { getProposalPriority, sortByPriority } from '../services/proposal-priority-service';
+import { getProposalPriority } from '../services/proposal-priority-service';
 import { recalculateTrustScoreForPharmacy } from '../services/trust-score-service';
 
 const router = Router();
 router.use(requireLogin);
+
+const COMMENT_POST_MIN_INTERVAL_MS = 10_000;
+const COMMENT_DUPLICATE_WINDOW_MS = 5 * 60 * 1000;
+const CREATE_PROPOSAL_CLIENT_ERROR = '候補データが無効です。候補を再取得して再試行してください';
 
 function isProposalInputError(message: string): boolean {
   return [
@@ -38,29 +43,12 @@ function isProposalInputError(message: string): boolean {
   ].some((token) => message.includes(token));
 }
 
-function timestampSortValue(timestamp: string | null): number {
-  if (timestamp === null) return Number.NEGATIVE_INFINITY;
-  const value = Date.parse(timestamp);
-  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
-}
-
-function mergeDedupSortByTimestamp<T extends { id: number }>(
-  branchA: T[],
-  branchB: T[],
-  getTimestamp: (row: T) => string | null,
-): T[] {
-  const deduped = new Map<number, T>();
-  for (const row of branchA) deduped.set(row.id, row);
-  for (const row of branchB) {
-    if (!deduped.has(row.id)) deduped.set(row.id, row);
-  }
-
-  return [...deduped.values()].sort((left, right) => {
-    const leftSort = timestampSortValue(getTimestamp(left));
-    const rightSort = timestampSortValue(getTimestamp(right));
-    return rightSort - leftSort || right.id - left.id;
-  });
-}
+const findLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 type BulkActionType = 'accept' | 'reject';
 
@@ -78,15 +66,35 @@ function parseBulkIds(raw: unknown): number[] | null {
   return [...new Set(normalized)];
 }
 
-function proposalAccessibleByUser(
-  proposal: { pharmacyAId: number; pharmacyBId: number },
-  user: { id: number; isAdmin: boolean },
-): boolean {
-  return user.isAdmin || proposal.pharmacyAId === user.id || proposal.pharmacyBId === user.id;
+function sanitizeBulkActionErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : '';
+  const hiddenDetailTokens = [
+    '見つかりません',
+    'アクセス権限',
+    '承認できる状態',
+    '拒否できる状態',
+    '状態が変更された',
+    '完了できません',
+  ];
+  if (hiddenDetailTokens.some((token) => message.includes(token))) {
+    return '対象を処理できませんでした';
+  }
+  return '操作に失敗しました';
+}
+
+function sanitizeProposalActionError(err: unknown): { status: number; message: string } {
+  const message = err instanceof Error ? err.message : '';
+  if (message.includes('見つかりません') || message.includes('アクセス権限')) {
+    return { status: 404, message: 'マッチングが見つかりません' };
+  }
+  if (message.includes('状態が変更された')) {
+    return { status: 409, message: '状態が変更されたため、再読み込みして再試行してください' };
+  }
+  return { status: 400, message: '操作に失敗しました' };
 }
 
 // Find matching candidates
-router.post('/find', async (req: AuthRequest, res: Response) => {
+router.post('/find', findLimiter, async (req: AuthRequest, res: Response) => {
   try {
     await processPendingMatchingRefreshJobs().catch((err) => {
       logger.warn('Processing pending matching refresh jobs failed before find', {
@@ -118,7 +126,11 @@ router.post('/proposals', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     logger.error('Create proposal error:', { error: (err as Error).message });
     if (err instanceof Error && isProposalInputError(err.message)) {
-      res.status(400).json({ error: err.message });
+      logger.warn('Create proposal rejected due to invalid candidate payload', {
+        pharmacyId: req.user!.id,
+        reason: err.message,
+      });
+      res.status(400).json({ error: CREATE_PROPOSAL_CLIENT_ERROR });
       return;
     }
     res.status(500).json({ error: '仮マッチングの作成に失敗しました' });
@@ -171,8 +183,13 @@ router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) =>
           });
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : '操作に失敗しました';
-        results.push({ id, ok: false, error: message });
+        logger.warn('Bulk proposal action item failed', {
+          proposalId: id,
+          action,
+          actorId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        results.push({ id, ok: false, error: sanitizeBulkActionErrorMessage(err) });
       }
     }
 
@@ -216,28 +233,59 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       eq(exchangeProposals.pharmacyAId, pharmacyId),
       eq(exchangeProposals.pharmacyBId, pharmacyId),
     );
-    const [rows, totalCount] = sort === 'priority'
-      ? await (async () => {
-        const allRows = await db.select(proposalSelect)
-          .from(exchangeProposals)
-          .where(ownershipFilter)
-          .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id));
-        return [allRows, allRows.length] as const;
-      })()
-      : await (async () => {
-        const [pagedRows, [countRow]] = await Promise.all([
-          db.select(proposalSelect)
-            .from(exchangeProposals)
-            .where(ownershipFilter)
-            .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
-            .limit(limit)
-            .offset(offset),
-          db.select({ count: rowCount })
-            .from(exchangeProposals)
-            .where(ownershipFilter),
-        ]);
-        return [pagedRows, countRow.count] as const;
-      })();
+    const inboundWaitingExpr = sql<boolean>`(
+      (${exchangeProposals.status} = 'proposed' AND ${exchangeProposals.pharmacyBId} = ${pharmacyId})
+      OR (${exchangeProposals.status} = 'accepted_a' AND ${exchangeProposals.pharmacyBId} = ${pharmacyId})
+      OR (${exchangeProposals.status} = 'accepted_b' AND ${exchangeProposals.pharmacyAId} = ${pharmacyId})
+    )`;
+    const deadlineAtExpr = sql`(${exchangeProposals.proposedAt} + interval '72 hours')`;
+    const priorityScoreExpr = sql<number>`(
+      CASE
+        WHEN ${exchangeProposals.status} = 'confirmed' THEN 70
+        WHEN ${inboundWaitingExpr} THEN 85
+        WHEN ${exchangeProposals.status} = 'proposed' AND ${exchangeProposals.pharmacyAId} = ${pharmacyId} THEN 45
+        WHEN ${exchangeProposals.status} IN ('accepted_a', 'accepted_b') THEN 55
+        WHEN ${exchangeProposals.status} = 'completed' THEN 10
+        WHEN ${exchangeProposals.status} IN ('rejected', 'cancelled') THEN 5
+        ELSE 0
+      END
+      +
+      CASE
+        WHEN ${inboundWaitingExpr} AND ${exchangeProposals.proposedAt} IS NOT NULL THEN
+          CASE
+            WHEN ${deadlineAtExpr} <= now() THEN 20
+            WHEN ${deadlineAtExpr} <= (now() + interval '24 hours') THEN 12
+            WHEN ${deadlineAtExpr} <= (now() + interval '48 hours') THEN 6
+            ELSE 0
+          END
+        ELSE 0
+      END
+    )`;
+    const deadlineGroupExpr = sql<number>`CASE WHEN ${inboundWaitingExpr} THEN 0 ELSE 1 END`;
+    const inboundDeadlineSortExpr = sql`CASE WHEN ${inboundWaitingExpr} THEN ${deadlineAtExpr} ELSE NULL END`;
+
+    const [rows, [countRow]] = await Promise.all([
+      db.select(proposalSelect)
+        .from(exchangeProposals)
+        .where(ownershipFilter)
+        .orderBy(
+          ...(sort === 'priority'
+            ? [
+              desc(priorityScoreExpr),
+              asc(deadlineGroupExpr),
+              asc(inboundDeadlineSortExpr),
+            ]
+            : []),
+          desc(exchangeProposals.proposedAt),
+          desc(exchangeProposals.id),
+        )
+        .limit(limit)
+        .offset(offset),
+      db.select({ count: rowCount })
+        .from(exchangeProposals)
+        .where(ownershipFilter),
+    ]);
+    const totalCount = countRow.count;
 
     const pharmacyIds = [...new Set(rows.flatMap((row) => [row.pharmacyAId, row.pharmacyBId]))];
     const pharmacyRows = pharmacyIds.length > 0
@@ -266,9 +314,7 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       };
     });
 
-    const enriched = sort === 'priority'
-      ? sortByPriority(prioritized).slice(offset, offset + limit)
-      : prioritized;
+    const enriched = prioritized;
 
     res.json({
       data: enriched,
@@ -292,16 +338,17 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
 
     const [proposal] = await db.select()
       .from(exchangeProposals)
-      .where(eq(exchangeProposals.id, id))
+      .where(and(
+        eq(exchangeProposals.id, id),
+        or(
+          eq(exchangeProposals.pharmacyAId, pharmacyId),
+          eq(exchangeProposals.pharmacyBId, pharmacyId),
+        ),
+      ))
       .limit(1);
 
     if (!proposal) {
       res.status(404).json({ error: 'マッチングが見つかりません' });
-      return;
-    }
-
-    if (proposal.pharmacyAId !== pharmacyId && proposal.pharmacyBId !== pharmacyId) {
-      res.status(403).json({ error: 'アクセス権限がありません' });
       return;
     }
 
@@ -358,13 +405,16 @@ router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
 
     const [proposal] = await db.select()
       .from(exchangeProposals)
-      .where(eq(exchangeProposals.id, id))
+      .where(and(
+        eq(exchangeProposals.id, id),
+        or(
+          eq(exchangeProposals.pharmacyAId, pharmacyId),
+          eq(exchangeProposals.pharmacyBId, pharmacyId),
+        ),
+      ))
       .limit(1);
 
     if (!proposal) { res.status(404).json({ error: '提案が見つかりません' }); return; }
-    if (proposal.pharmacyAId !== pharmacyId && proposal.pharmacyBId !== pharmacyId) {
-      res.status(403).json({ error: 'アクセス権限がありません' }); return;
-    }
 
     const items = await db.select({
       id: exchangeProposalItems.id,
@@ -413,7 +463,8 @@ router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => 
     const msg = newStatus === 'confirmed' ? '仮マッチングが確定しました' : '仮マッチングを承認しました（相手薬局の承認待ち）';
     res.json({ message: msg, status: newStatus });
   } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : '承認に失敗しました' });
+    const failure = sanitizeProposalActionError(err);
+    res.status(failure.status).json({ error: failure.message });
   }
 });
 
@@ -428,7 +479,8 @@ router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => 
     await rejectProposal(id, req.user!.id);
     res.json({ message: '仮マッチングを拒否しました' });
   } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : '拒否に失敗しました' });
+    const failure = sanitizeProposalActionError(err);
+    res.status(failure.status).json({ error: failure.message });
   }
 });
 
@@ -443,7 +495,8 @@ router.post('/proposals/:id/complete', async (req: AuthRequest, res: Response) =
     await completeProposal(id, req.user!.id);
     res.json({ message: '交換を完了しました' });
   } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : '完了処理に失敗しました' });
+    const failure = sanitizeProposalActionError(err);
+    res.status(failure.status).json({ error: failure.message });
   }
 });
 
@@ -475,7 +528,13 @@ router.post('/proposals/:id/feedback', async (req: AuthRequest, res: Response) =
       pharmacyBId: exchangeProposals.pharmacyBId,
     })
       .from(exchangeProposals)
-      .where(eq(exchangeProposals.id, id))
+      .where(and(
+        eq(exchangeProposals.id, id),
+        or(
+          eq(exchangeProposals.pharmacyAId, req.user!.id),
+          eq(exchangeProposals.pharmacyBId, req.user!.id),
+        ),
+      ))
       .limit(1);
 
     if (!proposal) {
@@ -489,11 +548,6 @@ router.post('/proposals/:id/feedback', async (req: AuthRequest, res: Response) =
 
     const actorId = req.user!.id;
     const isA = proposal.pharmacyAId === actorId;
-    const isB = proposal.pharmacyBId === actorId;
-    if (!isA && !isB) {
-      res.status(403).json({ error: 'このマッチングにアクセスする権限がありません' });
-      return;
-    }
 
     const targetPharmacyId = isA ? proposal.pharmacyBId : proposal.pharmacyAId;
     const now = new Date().toISOString();
@@ -532,6 +586,10 @@ router.get('/proposals/:id/comments', async (req: AuthRequest, res: Response) =>
       res.status(400).json({ error: '不正なIDです' });
       return;
     }
+    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
+      defaultLimit: 50,
+      maxLimit: 200,
+    });
 
     const [proposal] = await db.select({
       id: exchangeProposals.id,
@@ -539,7 +597,13 @@ router.get('/proposals/:id/comments', async (req: AuthRequest, res: Response) =>
       pharmacyBId: exchangeProposals.pharmacyBId,
     })
       .from(exchangeProposals)
-      .where(eq(exchangeProposals.id, proposalId))
+      .where(and(
+        eq(exchangeProposals.id, proposalId),
+        or(
+          eq(exchangeProposals.pharmacyAId, req.user!.id),
+          eq(exchangeProposals.pharmacyBId, req.user!.id),
+        ),
+      ))
       .limit(1);
 
     if (!proposal) {
@@ -547,32 +611,39 @@ router.get('/proposals/:id/comments', async (req: AuthRequest, res: Response) =>
       return;
     }
 
-    const viewer = { id: req.user!.id, isAdmin: Boolean(req.user?.isAdmin) };
-    if (!proposalAccessibleByUser(proposal, viewer)) {
-      res.status(403).json({ error: 'アクセス権限がありません' });
-      return;
-    }
-
-    const rows = await db.select({
-      id: proposalComments.id,
-      proposalId: proposalComments.proposalId,
-      authorPharmacyId: proposalComments.authorPharmacyId,
-      authorName: pharmacies.name,
-      body: proposalComments.body,
-      isDeleted: proposalComments.isDeleted,
-      createdAt: proposalComments.createdAt,
-      updatedAt: proposalComments.updatedAt,
-    })
-      .from(proposalComments)
-      .innerJoin(pharmacies, eq(proposalComments.authorPharmacyId, pharmacies.id))
-      .where(eq(proposalComments.proposalId, proposalId))
-      .orderBy(asc(proposalComments.createdAt), asc(proposalComments.id));
+    const [rows, [countRow]] = await Promise.all([
+      db.select({
+        id: proposalComments.id,
+        proposalId: proposalComments.proposalId,
+        authorPharmacyId: proposalComments.authorPharmacyId,
+        authorName: pharmacies.name,
+        body: proposalComments.body,
+        isDeleted: proposalComments.isDeleted,
+        createdAt: proposalComments.createdAt,
+        updatedAt: proposalComments.updatedAt,
+      })
+        .from(proposalComments)
+        .innerJoin(pharmacies, eq(proposalComments.authorPharmacyId, pharmacies.id))
+        .where(eq(proposalComments.proposalId, proposalId))
+        .orderBy(asc(proposalComments.createdAt), asc(proposalComments.id))
+        .limit(limit)
+        .offset(offset),
+      db.select({ count: rowCount })
+        .from(proposalComments)
+        .where(eq(proposalComments.proposalId, proposalId)),
+    ]);
 
     res.json({
       data: rows.map((row) => ({
         ...row,
         body: row.isDeleted ? '（削除済み）' : row.body,
       })),
+      pagination: {
+        page,
+        limit,
+        total: countRow.count,
+        totalPages: Math.ceil(countRow.count / limit),
+      },
     });
   } catch (err) {
     logger.error('List proposal comments error', { error: (err as Error).message });
@@ -594,7 +665,13 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
       pharmacyBId: exchangeProposals.pharmacyBId,
     })
       .from(exchangeProposals)
-      .where(eq(exchangeProposals.id, proposalId))
+      .where(and(
+        eq(exchangeProposals.id, proposalId),
+        or(
+          eq(exchangeProposals.pharmacyAId, req.user!.id),
+          eq(exchangeProposals.pharmacyBId, req.user!.id),
+        ),
+      ))
       .limit(1);
 
     if (!proposal) {
@@ -604,12 +681,6 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
 
     if (req.user?.isAdmin) {
       res.status(403).json({ error: '管理者はコメントを投稿できません' });
-      return;
-    }
-
-    const isParty = proposal.pharmacyAId === req.user!.id || proposal.pharmacyBId === req.user!.id;
-    if (!isParty) {
-      res.status(403).json({ error: 'アクセス権限がありません' });
       return;
     }
 
@@ -623,29 +694,60 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
       return;
     }
 
-    const now = new Date().toISOString();
-    const [saved] = await db.insert(proposalComments).values({
-      proposalId,
-      authorPharmacyId: req.user!.id,
-      body,
-      isDeleted: false,
-      createdAt: now,
-      updatedAt: now,
-    }).returning({
-      id: proposalComments.id,
-      proposalId: proposalComments.proposalId,
-      authorPharmacyId: proposalComments.authorPharmacyId,
-      body: proposalComments.body,
-      isDeleted: proposalComments.isDeleted,
-      createdAt: proposalComments.createdAt,
-      updatedAt: proposalComments.updatedAt,
+    const saved = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${proposalId}, ${req.user!.id})`);
+      const [latestOwnComment] = await tx.select({
+        body: proposalComments.body,
+        createdAt: proposalComments.createdAt,
+      })
+        .from(proposalComments)
+        .where(and(
+          eq(proposalComments.proposalId, proposalId),
+          eq(proposalComments.authorPharmacyId, req.user!.id),
+          eq(proposalComments.isDeleted, false),
+        ))
+        .orderBy(desc(proposalComments.createdAt), desc(proposalComments.id))
+        .limit(1);
+
+      if (latestOwnComment?.createdAt) {
+        const latestPostedAtMs = Date.parse(latestOwnComment.createdAt);
+        if (Number.isFinite(latestPostedAtMs)) {
+          const elapsedMs = Date.now() - latestPostedAtMs;
+          if (elapsedMs < COMMENT_POST_MIN_INTERVAL_MS) {
+            throw new Error('RATE_LIMIT_SHORT_INTERVAL');
+          }
+          if (latestOwnComment.body.trim() === body && elapsedMs < COMMENT_DUPLICATE_WINDOW_MS) {
+            throw new Error('RATE_LIMIT_DUPLICATE_BODY');
+          }
+        }
+      }
+
+      const now = new Date().toISOString();
+      const [inserted] = await tx.insert(proposalComments).values({
+        proposalId,
+        authorPharmacyId: req.user!.id,
+        body,
+        isDeleted: false,
+        createdAt: now,
+        updatedAt: now,
+      }).returning({
+        id: proposalComments.id,
+        proposalId: proposalComments.proposalId,
+        authorPharmacyId: proposalComments.authorPharmacyId,
+        body: proposalComments.body,
+        isDeleted: proposalComments.isDeleted,
+        createdAt: proposalComments.createdAt,
+        updatedAt: proposalComments.updatedAt,
+      });
+      if (!inserted) throw new Error('COMMENT_INSERT_FAILED');
+      return inserted;
     });
 
     const recipientId = proposal.pharmacyAId === req.user!.id
       ? proposal.pharmacyBId
       : proposal.pharmacyAId;
 
-    void createNotification({
+    const notificationResult = await createNotification({
       pharmacyId: recipientId,
       type: 'new_comment',
       title: 'コメントが追加されました',
@@ -653,9 +755,24 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
       referenceType: 'proposal',
       referenceId: proposalId,
     });
+    if (!notificationResult) {
+      logger.warn('Proposal comment notification could not be persisted', {
+        proposalId,
+        recipientId,
+      });
+    }
 
     res.status(201).json({ message: 'コメントを投稿しました', comment: saved });
   } catch (err) {
+    if (err instanceof Error && err.message === 'RATE_LIMIT_SHORT_INTERVAL') {
+      res.setHeader('Retry-After', String(Math.ceil(COMMENT_POST_MIN_INTERVAL_MS / 1000)));
+      res.status(429).json({ error: '短時間での連続投稿はできません。少し待ってから投稿してください。' });
+      return;
+    }
+    if (err instanceof Error && err.message === 'RATE_LIMIT_DUPLICATE_BODY') {
+      res.status(429).json({ error: '同じ内容の連続投稿はできません。' });
+      return;
+    }
     logger.error('Create proposal comment error', { error: (err as Error).message });
     res.status(500).json({ error: 'コメント投稿に失敗しました' });
   }
@@ -678,22 +795,18 @@ router.patch('/proposals/:id/comments/:commentId', async (req: AuthRequest, res:
     const [current] = await db.select({
       id: proposalComments.id,
       proposalId: proposalComments.proposalId,
-      authorPharmacyId: proposalComments.authorPharmacyId,
       isDeleted: proposalComments.isDeleted,
     })
       .from(proposalComments)
       .where(and(
         eq(proposalComments.id, commentId),
         eq(proposalComments.proposalId, proposalId),
+        eq(proposalComments.authorPharmacyId, req.user!.id),
       ))
       .limit(1);
 
     if (!current) {
       res.status(404).json({ error: 'コメントが見つかりません' });
-      return;
-    }
-    if (current.authorPharmacyId !== req.user!.id) {
-      res.status(403).json({ error: '自分のコメントのみ編集できます' });
       return;
     }
     if (current.isDeleted) {
@@ -739,22 +852,18 @@ router.delete('/proposals/:id/comments/:commentId', async (req: AuthRequest, res
     const [current] = await db.select({
       id: proposalComments.id,
       proposalId: proposalComments.proposalId,
-      authorPharmacyId: proposalComments.authorPharmacyId,
       isDeleted: proposalComments.isDeleted,
     })
       .from(proposalComments)
       .where(and(
         eq(proposalComments.id, commentId),
         eq(proposalComments.proposalId, proposalId),
+        eq(proposalComments.authorPharmacyId, req.user!.id),
       ))
       .limit(1);
 
     if (!current) {
       res.status(404).json({ error: 'コメントが見つかりません' });
-      return;
-    }
-    if (current.authorPharmacyId !== req.user!.id) {
-      res.status(403).json({ error: '自分のコメントのみ削除できます' });
       return;
     }
     if (current.isDeleted) {
@@ -783,37 +892,25 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
     const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
       defaultLimit: 20,
       maxLimit: 100,
+      maxPage: 200,
     });
     const pharmacyId = req.user!.id;
-    const fetchSize = offset + limit;
+    const ownershipFilter = or(
+      eq(exchangeHistory.pharmacyAId, pharmacyId),
+      eq(exchangeHistory.pharmacyBId, pharmacyId),
+    );
 
-    const [branchA, branchB, [countA], [countB], [countOverlap]] = await Promise.all([
+    const [rows, [countRow]] = await Promise.all([
       db.select()
         .from(exchangeHistory)
-        .where(eq(exchangeHistory.pharmacyAId, pharmacyId))
+        .where(ownershipFilter)
         .orderBy(desc(exchangeHistory.completedAt), desc(exchangeHistory.id))
-        .limit(fetchSize),
-      db.select()
-        .from(exchangeHistory)
-        .where(eq(exchangeHistory.pharmacyBId, pharmacyId))
-        .orderBy(desc(exchangeHistory.completedAt), desc(exchangeHistory.id))
-        .limit(fetchSize),
+        .limit(limit)
+        .offset(offset),
       db.select({ count: rowCount })
         .from(exchangeHistory)
-        .where(eq(exchangeHistory.pharmacyAId, pharmacyId)),
-      db.select({ count: rowCount })
-        .from(exchangeHistory)
-        .where(eq(exchangeHistory.pharmacyBId, pharmacyId)),
-      db.select({ count: rowCount })
-        .from(exchangeHistory)
-        .where(and(
-          eq(exchangeHistory.pharmacyAId, pharmacyId),
-          eq(exchangeHistory.pharmacyBId, pharmacyId),
-        )),
+        .where(ownershipFilter),
     ]);
-
-    const rows = mergeDedupSortByTimestamp(branchA, branchB, (row) => row.completedAt)
-      .slice(offset, offset + limit);
 
     const pharmacyIds = [...new Set(rows.flatMap((row) => [row.pharmacyAId, row.pharmacyBId]))];
     const pharmacyRows = pharmacyIds.length > 0
@@ -829,7 +926,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
     }));
 
-    const totalCount = countA.count + countB.count - countOverlap.count;
+    const totalCount = countRow.count;
 
     res.json({
       data: enriched,

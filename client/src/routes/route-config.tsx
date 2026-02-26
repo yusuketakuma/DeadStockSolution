@@ -19,6 +19,8 @@ const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage'
 const AdminPharmaciesPage = lazy(() => import('../pages/admin/AdminPharmaciesPage'));
 const AdminExchangesPage = lazy(() => import('../pages/admin/AdminExchangesPage'));
 const AdminLogsPage = lazy(() => import('../pages/admin/AdminLogsPage'));
+const AdminRiskPage = lazy(() => import('../pages/admin/AdminRiskPage'));
+const AdminMonthlyReportsPage = lazy(() => import('../pages/admin/AdminMonthlyReportsPage'));
 const AdminDrugMasterPage = lazy(() => import('../pages/admin/AdminDrugMasterPage'));
 const AdminOpenClawPage = lazy(() => import('../pages/admin/AdminOpenClawPage'));
 
@@ -64,6 +66,8 @@ export const ROUTE_META: RouteMeta[] = [
   { path: '/pharmacies', access: 'protected', useLayout: true, component: PharmacyListPage },
 
   { path: '/admin', access: 'protected', adminOnly: true, useLayout: true, component: AdminDashboardPage },
+  { path: '/admin/risk', access: 'protected', adminOnly: true, useLayout: true, component: AdminRiskPage },
+  { path: '/admin/reports', access: 'protected', adminOnly: true, useLayout: true, component: AdminMonthlyReportsPage },
   { path: '/admin/pharmacies', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmaciesPage },
   { path: '/admin/exchanges', access: 'protected', adminOnly: true, useLayout: true, component: AdminExchangesPage },
   { path: '/admin/logs', access: 'protected', adminOnly: true, useLayout: true, component: AdminLogsPage },

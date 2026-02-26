@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LoginPage from '../../pages/LoginPage';
@@ -36,6 +36,11 @@ function mockUnauthFetch() {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.stubEnv('VITE_TEST_ACCOUNT_PASSWORD', 'password123');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('renders the login form with tabs', async () => {
@@ -45,14 +50,12 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
-    const versionLabel = document.querySelector('.login-title-version');
-    expect(versionLabel).toBeTruthy();
-    expect(versionLabel?.textContent ?? '').toMatch(/^v.+/);
+    expect(screen.getByText(/^v.+/)).toBeInTheDocument();
     // Tab navigation
     expect(screen.getByText('薬局ログイン')).toBeInTheDocument();
     expect(screen.getByText('管理者ログイン')).toBeInTheDocument();
     // Default tab is user login
-    expect(screen.getByRole('heading', { level: 5 })).toHaveTextContent('ログイン');
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
     expect(screen.getByText('メールアドレス')).toBeInTheDocument();
     expect(screen.getByText('パスワード')).toBeInTheDocument();
     expect(getInputByLabel('メールアドレス')).toHaveAttribute('type', 'email');
@@ -84,7 +87,7 @@ describe('LoginPage', () => {
     await user.click(screen.getByText('管理者ログイン'));
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 5 })).toHaveTextContent('管理者ログイン');
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('管理者ログイン');
     });
     // Admin tab shows admin login submit button
     const submitBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
@@ -217,7 +220,21 @@ describe('LoginPage', () => {
     expect(loginCall).toBeFalsy();
   });
 
-  it('uses wider login card width', async () => {
+  it('disables demo auto-fill when test account password env is missing', async () => {
+    vi.stubEnv('VITE_TEST_ACCOUNT_PASSWORD', '');
+    mockUnauthFetch();
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByText('デモアカウント（ワンクリック入力）')).toBeInTheDocument();
+    });
+
+    const demoButton = screen.getByRole('button', { name: 'テスト薬局（東京）' });
+    expect(demoButton).toBeDisabled();
+    expect(screen.getByText('デモ入力は環境変数の設定後に利用できます。')).toBeInTheDocument();
+  });
+
+  it('renders login page key sections', async () => {
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
 
@@ -225,9 +242,8 @@ describe('LoginPage', () => {
       expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
 
-    const card = document.querySelector('.card') as HTMLDivElement | null;
-    expect(card).toBeTruthy();
-    expect(card).toHaveClass('auth-card');
+    expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'ログイン' })).toBeInTheDocument();
   });
 
   it('has link to registration page in user mode', async () => {
@@ -241,12 +257,12 @@ describe('LoginPage', () => {
     });
   });
 
-  it('displays disclaimer in the card footer', async () => {
+  it('displays footer operation note', async () => {
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
-      expect(screen.getByText(/本システムは業務補助ツールであり/)).toBeInTheDocument();
+      expect(screen.getByText(/本システムは業務補助ツールです/)).toBeInTheDocument();
     });
   });
 

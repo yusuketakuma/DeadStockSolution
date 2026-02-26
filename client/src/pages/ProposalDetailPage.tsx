@@ -1,9 +1,19 @@
-import { useState, useEffect } from 'react';
-import { Card, Table, Button, Alert, Badge, Row, Col, Spinner } from 'react-bootstrap';
+import { useState, useEffect, useCallback } from 'react';
+import AppTable from '../components/ui/AppTable';
+import AppButton from '../components/ui/AppButton';
+import AppAlert from '../components/ui/AppAlert';
+import { Badge, Row, Col } from 'react-bootstrap';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import ConfirmActionModal from '../components/ConfirmActionModal';
+import PageLoader from '../components/ui/PageLoader';
+import AppDataPanel from '../components/ui/AppDataPanel';
+import AppMobileDataCard from '../components/ui/AppMobileDataCard';
+import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
+import AppField from '../components/ui/AppField';
+import AppSelect from '../components/ui/AppSelect';
+import LoadingButton from '../components/ui/LoadingButton';
 
 interface PharmacyInfo {
   id: number;
@@ -41,24 +51,80 @@ interface ProposalDetail {
   pharmacyB: PharmacyInfo;
 }
 
+interface ProposalComment {
+  id: number;
+  authorPharmacyId: number;
+  authorName: string;
+  body: string;
+  isDeleted: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export default function ProposalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const [data, setData] = useState<ProposalDetail | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [pendingAction, setPendingAction] = useState<'accept' | 'reject' | 'complete' | null>(null);
   const [actionSubmitting, setActionSubmitting] = useState(false);
+  const [comments, setComments] = useState<ProposalComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentBody, setCommentBody] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentBody, setEditingCommentBody] = useState('');
+  const [commentUpdatingId, setCommentUpdatingId] = useState<number | null>(null);
+  const [commentDeletingId, setCommentDeletingId] = useState<number | null>(null);
+  const [feedbackRating, setFeedbackRating] = useState('5');
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
 
-  const fetchDetail = () => {
-    api.get<ProposalDetail>(`/exchange/proposals/${id}`)
-      .then(setData)
-      .catch((err) => setError(err.message));
-  };
+  const fetchDetail = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const detail = await api.get<ProposalDetail>(`/exchange/proposals/${id}`);
+      setData(detail);
+    } catch (err) {
+      setData(null);
+      setError(err instanceof Error ? err.message : 'マッチング詳細の取得に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
-  useEffect(() => { fetchDetail(); }, [id]);
+  const fetchComments = useCallback(async () => {
+    if (!id) return;
+    setCommentsLoading(true);
+    try {
+      const result = await api.get<{ data: ProposalComment[] }>(`/exchange/proposals/${id}/comments`);
+      setComments(result.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'コメント一覧の取得に失敗しました');
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [id]);
 
-  if (!data) return error ? <Alert variant="danger">{error}</Alert> : <div className="text-center my-4"><Spinner animation="border" /></div>;
+  useEffect(() => {
+    void fetchDetail();
+    void fetchComments();
+  }, [fetchDetail, fetchComments]);
+
+  if (loading && !data) return <PageLoader />;
+  if (!data) {
+    return (
+      <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <span>{error || 'マッチング詳細を取得できませんでした。'}</span>
+        <AppButton size="sm" variant="outline-danger" onClick={() => void fetchDetail()}>
+          再試行
+        </AppButton>
+      </AppAlert>
+    );
+  }
 
   const { proposal, items, pharmacyA, pharmacyB } = data;
   const isA = proposal.pharmacyAId === user?.id;
@@ -104,11 +170,103 @@ export default function ProposalDetailPage() {
       const result = await api.post<{ message: string }>(`/exchange/proposals/${id}/${pendingAction}`);
       setMessage(result.message);
       setPendingAction(null);
-      fetchDetail();
+      await fetchDetail();
+      await fetchComments();
     } catch (err) {
       setError(err instanceof Error ? err.message : '操作に失敗しました');
     } finally {
       setActionSubmitting(false);
+    }
+  };
+
+  const handleCreateComment = async () => {
+    if (!commentBody.trim()) {
+      setError('コメント本文を入力してください');
+      return;
+    }
+    setCommentSubmitting(true);
+    setError('');
+    try {
+      await api.post(`/exchange/proposals/${id}/comments`, { body: commentBody.trim() });
+      setCommentBody('');
+      setMessage('コメントを投稿しました');
+      await fetchComments();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'コメント投稿に失敗しました');
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
+
+  const handleStartEditComment = (comment: ProposalComment) => {
+    setError('');
+    setMessage('');
+    setEditingCommentId(comment.id);
+    setEditingCommentBody(comment.body);
+  };
+
+  const handleCancelEditComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentBody('');
+  };
+
+  const handleUpdateComment = async (commentId: number) => {
+    const nextBody = editingCommentBody.trim();
+    if (!nextBody) {
+      setError('コメント本文を入力してください');
+      return;
+    }
+    setCommentUpdatingId(commentId);
+    setError('');
+    try {
+      await api.patch(`/exchange/proposals/${id}/comments/${commentId}`, { body: nextBody });
+      setMessage('コメントを更新しました');
+      setEditingCommentId(null);
+      setEditingCommentBody('');
+      await fetchComments();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'コメント更新に失敗しました');
+    } finally {
+      setCommentUpdatingId(null);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!window.confirm('このコメントを削除してよろしいですか？')) {
+      return;
+    }
+    setCommentDeletingId(commentId);
+    setError('');
+    try {
+      await api.delete(`/exchange/proposals/${id}/comments/${commentId}`);
+      setMessage('コメントを削除しました');
+      if (editingCommentId === commentId) {
+        setEditingCommentId(null);
+        setEditingCommentBody('');
+      }
+      await fetchComments();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'コメント削除に失敗しました');
+    } finally {
+      setCommentDeletingId(null);
+    }
+  };
+
+  const handleSubmitFeedback = async () => {
+    setFeedbackSubmitting(true);
+    setError('');
+    try {
+      const rating = Number(feedbackRating);
+      await api.post(`/exchange/proposals/${id}/feedback`, {
+        rating,
+        comment: feedbackComment.trim() || null,
+      });
+      setMessage('取引評価を登録しました');
+      setFeedbackComment('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '取引評価の登録に失敗しました');
+    } finally {
+      setFeedbackSubmitting(false);
     }
   };
 
@@ -122,17 +280,16 @@ export default function ProposalDetailPage() {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3 mobile-card-header">
         <h4 className="page-title mb-0">マッチング #{proposal.id}</h4>
-        <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank">
+        <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
           印刷用ページ
         </Link>
       </div>
 
-      {error && <Alert variant="danger">{error}</Alert>}
-      {message && <Alert variant="success">{message}</Alert>}
+      {error && <AppAlert variant="danger">{error}</AppAlert>}
+      {message && <AppAlert variant="success">{message}</AppAlert>}
 
       {/* 3-phase progress indicator */}
-      <Card className="mb-3">
-        <Card.Body className="py-2">
+      <AppDataPanel className="mb-3" bodyClassName="py-2">
           <div className="d-flex align-items-center justify-content-between small">
             {[
               { label: '仮マッチング', phase: 1 },
@@ -159,90 +316,259 @@ export default function ProposalDetailPage() {
           <div className="text-center mt-1 small text-muted">
             現在のステータス: <Badge bg={isTerminalPhase ? 'danger' : isCompletedPhase ? 'secondary' : isConfirmedPhase ? 'success' : 'warning'}>{statusLabel}</Badge>
           </div>
-        </Card.Body>
-      </Card>
+      </AppDataPanel>
 
       <Row className="g-3 mb-3">
         <Col md={6}>
-          <Card>
-            <Card.Header>{pharmacyA.name} (A)</Card.Header>
-            <Card.Body className="small">
+          <AppDataPanel title={`${pharmacyA.name} (A)`} bodyClassName="small">
               <p>{pharmacyA.prefecture} {pharmacyA.address}</p>
               <p>TEL: {pharmacyA.phone} / FAX: {pharmacyA.fax}</p>
-            </Card.Body>
-          </Card>
+          </AppDataPanel>
         </Col>
         <Col md={6}>
-          <Card>
-            <Card.Header>{pharmacyB.name} (B)</Card.Header>
-            <Card.Body className="small">
+          <AppDataPanel title={`${pharmacyB.name} (B)`} bodyClassName="small">
               <p>{pharmacyB.prefecture} {pharmacyB.address}</p>
               <p>TEL: {pharmacyB.phone} / FAX: {pharmacyB.fax}</p>
-            </Card.Body>
-          </Card>
+          </AppDataPanel>
         </Col>
       </Row>
 
-      <Card className="mb-3">
-        <Card.Header>交換手順（3フェーズ）</Card.Header>
-        <Card.Body className="small">
+      <AppDataPanel title="交換手順（3フェーズ）" className="mb-3" bodyClassName="small">
           <ol className="mb-0">
             <li><strong>仮マッチング:</strong> 印刷用ページから交換様式を印刷し、提案元が署名/押印後に相手先FAXへ送信します。</li>
             <li><strong>双方承認:</strong> 受信側は同意欄を記入してFAX返信し、双方がシステム上で「承認」します。</li>
             <li><strong>確定→完了:</strong> 双方承認で確定となります。受け渡し完了後に「交換完了」を実行します。</li>
           </ol>
-        </Card.Body>
-      </Card>
+      </AppDataPanel>
 
-      <Card className="mb-3">
-        <Card.Header>
-          <strong>{pharmacyA.name}</strong> → <strong>{pharmacyB.name}</strong>
-          <Badge bg="primary" className="ms-2">{proposal.totalValueA?.toLocaleString()}円</Badge>
-        </Card.Header>
-        <Card.Body>
-          <div className="table-responsive">
-            <Table size="sm" striped className="mobile-table">
-              <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
-              <tbody>
+      <AppDataPanel
+        className="mb-3"
+        title={<><strong>{pharmacyA.name}</strong> → <strong>{pharmacyB.name}</strong></>}
+        actions={<Badge bg="primary">{proposal.totalValueA?.toLocaleString()}円</Badge>}
+      >
+          <AppResponsiveSwitch
+            desktop={() => (
+              <div className="table-responsive">
+                <AppTable size="sm" striped className="mobile-table">
+                  <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
+                  <tbody>
+                    {itemsAtoB.map((item) => (
+                      <tr key={item.id}>
+                        <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
+                        <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </AppTable>
+              </div>
+            )}
+            mobile={() => (
+              <div className="dl-mobile-data-list">
                 {itemsAtoB.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
-                    <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
-                  </tr>
+                  <AppMobileDataCard
+                    key={item.id}
+                    title={item.drugName}
+                    fields={[
+                      { label: '数量', value: item.quantity },
+                      { label: '単位', value: item.unit || '-' },
+                      { label: '薬価(単価)', value: item.yakkaUnitPrice?.toLocaleString() ?? '-' },
+                      { label: '薬価(合計)', value: item.yakkaValue?.toLocaleString() ?? '-' },
+                    ]}
+                  />
                 ))}
-              </tbody>
-            </Table>
-          </div>
-        </Card.Body>
-      </Card>
+              </div>
+            )}
+          />
+      </AppDataPanel>
 
-      <Card className="mb-3">
-        <Card.Header>
-          <strong>{pharmacyB.name}</strong> → <strong>{pharmacyA.name}</strong>
-          <Badge bg="primary" className="ms-2">{proposal.totalValueB?.toLocaleString()}円</Badge>
-        </Card.Header>
-        <Card.Body>
-          <div className="table-responsive">
-            <Table size="sm" striped className="mobile-table">
-              <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
-              <tbody>
+      <AppDataPanel
+        className="mb-3"
+        title={<><strong>{pharmacyB.name}</strong> → <strong>{pharmacyA.name}</strong></>}
+        actions={<Badge bg="primary">{proposal.totalValueB?.toLocaleString()}円</Badge>}
+      >
+          <AppResponsiveSwitch
+            desktop={() => (
+              <div className="table-responsive">
+                <AppTable size="sm" striped className="mobile-table">
+                  <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
+                  <tbody>
+                    {itemsBtoA.map((item) => (
+                      <tr key={item.id}>
+                        <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
+                        <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </AppTable>
+              </div>
+            )}
+            mobile={() => (
+              <div className="dl-mobile-data-list">
                 {itemsBtoA.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
-                    <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
-                  </tr>
+                  <AppMobileDataCard
+                    key={item.id}
+                    title={item.drugName}
+                    fields={[
+                      { label: '数量', value: item.quantity },
+                      { label: '単位', value: item.unit || '-' },
+                      { label: '薬価(単価)', value: item.yakkaUnitPrice?.toLocaleString() ?? '-' },
+                      { label: '薬価(合計)', value: item.yakkaValue?.toLocaleString() ?? '-' },
+                    ]}
+                  />
                 ))}
-              </tbody>
-            </Table>
-          </div>
-        </Card.Body>
-      </Card>
+              </div>
+            )}
+          />
+      </AppDataPanel>
 
       <div className="d-flex gap-2 mobile-stack">
-        {canAccept && <Button variant="success" onClick={() => setPendingAction('accept')}>仮マッチングを承認</Button>}
-        {canReject && <Button variant="danger" onClick={() => setPendingAction('reject')}>拒否する</Button>}
-        {canComplete && <Button variant="primary" onClick={() => setPendingAction('complete')}>交換完了</Button>}
+        {canAccept && <AppButton variant="success" onClick={() => setPendingAction('accept')}>仮マッチングを承認</AppButton>}
+        {canReject && <AppButton variant="danger" onClick={() => setPendingAction('reject')}>拒否する</AppButton>}
+        {canComplete && <AppButton variant="primary" onClick={() => setPendingAction('complete')}>交換完了</AppButton>}
       </div>
+
+      {isCompletedPhase && !user?.isAdmin && (
+        <AppDataPanel title="取引評価" className="mt-3">
+          <div className="row g-2 align-items-end">
+            <div className="col-md-2">
+              <AppSelect
+                controlId="proposal-feedback-rating"
+                value={feedbackRating}
+                ariaLabel="評価"
+                onChange={setFeedbackRating}
+                options={[
+                  { value: '5', label: '5' },
+                  { value: '4', label: '4' },
+                  { value: '3', label: '3' },
+                  { value: '2', label: '2' },
+                  { value: '1', label: '1' },
+                ]}
+              />
+            </div>
+            <div className="col-md-7">
+              <AppField
+                controlId="proposal-feedback-comment"
+                label="コメント（任意）"
+                as="textarea"
+                rows={2}
+                maxLength={300}
+                value={feedbackComment}
+                onChange={setFeedbackComment}
+              />
+            </div>
+            <div className="col-md-3">
+              <LoadingButton
+                onClick={handleSubmitFeedback}
+                loading={feedbackSubmitting}
+                loadingLabel="登録中..."
+                className="w-100"
+              >
+                評価を登録
+              </LoadingButton>
+            </div>
+          </div>
+        </AppDataPanel>
+      )}
+
+      <AppDataPanel title="交渉メモ / コメント" className="mt-3">
+        {commentsLoading ? (
+          <div className="small text-muted">コメントを読み込み中...</div>
+        ) : comments.length === 0 ? (
+          <div className="small text-muted">コメントはまだありません。</div>
+        ) : (
+          <div className="d-flex flex-column gap-2 mb-3">
+            {comments.map((comment) => (
+              <div key={comment.id} className="border rounded p-2">
+                <div className="small text-muted">
+                  {comment.authorName} / {comment.createdAt ? new Date(comment.createdAt).toLocaleString('ja-JP') : '-'}
+                </div>
+                {editingCommentId === comment.id ? (
+                  <div className="mt-2 d-flex flex-column gap-2">
+                    <AppField
+                      controlId={`proposal-comment-edit-${comment.id}`}
+                      label="コメント編集"
+                      as="textarea"
+                      rows={3}
+                      maxLength={1000}
+                      value={editingCommentBody}
+                      onChange={setEditingCommentBody}
+                    />
+                    <div className="d-flex gap-2">
+                      <LoadingButton
+                        variant="primary"
+                        onClick={() => void handleUpdateComment(comment.id)}
+                        loading={commentUpdatingId === comment.id}
+                        loadingLabel="更新中..."
+                        disabled={!editingCommentBody.trim()}
+                      >
+                        保存
+                      </LoadingButton>
+                      <AppButton
+                        variant="outline-secondary"
+                        onClick={handleCancelEditComment}
+                        disabled={commentUpdatingId === comment.id}
+                      >
+                        キャンセル
+                      </AppButton>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div>{comment.body}</div>
+                    {comment.updatedAt && comment.createdAt && comment.updatedAt !== comment.createdAt && (
+                      <div className="small text-muted">編集済み</div>
+                    )}
+                  </div>
+                )}
+                {!user?.isAdmin && comment.authorPharmacyId === user?.id && !comment.isDeleted && editingCommentId !== comment.id && (
+                  <div className="d-flex gap-2 mt-2">
+                    <AppButton
+                      size="sm"
+                      variant="outline-primary"
+                      onClick={() => handleStartEditComment(comment)}
+                      disabled={commentDeletingId === comment.id}
+                    >
+                      編集
+                    </AppButton>
+                    <LoadingButton
+                      size="sm"
+                      variant="outline-danger"
+                      onClick={() => void handleDeleteComment(comment.id)}
+                      loading={commentDeletingId === comment.id}
+                      loadingLabel="削除中..."
+                    >
+                      削除
+                    </LoadingButton>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!user?.isAdmin && (
+          <div className="d-flex flex-column gap-2">
+            <AppField
+              controlId="proposal-comment-body"
+              label="新規コメント"
+              as="textarea"
+              rows={3}
+              maxLength={1000}
+              value={commentBody}
+              onChange={setCommentBody}
+            />
+            <LoadingButton
+              variant="outline-primary"
+              onClick={handleCreateComment}
+              loading={commentSubmitting}
+              loadingLabel="投稿中..."
+              disabled={!commentBody.trim()}
+            >
+              コメントを投稿
+            </LoadingButton>
+          </div>
+        )}
+      </AppDataPanel>
 
       <ConfirmActionModal
         show={pendingAction !== null}

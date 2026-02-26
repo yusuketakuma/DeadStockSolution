@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacyBusinessHours, pharmacySpecialHours } from '../db/schema';
+import { pharmacies, pharmacyBusinessHours, pharmacySpecialHours } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { logger } from '../services/logger';
@@ -198,6 +198,56 @@ function validateSpecialBusinessHours(
   return { valid: validated, provided: true };
 }
 
+/**
+ * 指定薬局の営業時間設定（週次 + 特例 + version）を取得する共通関数。
+ * GET /settings と PUT / の 409 conflict レスポンスの両方で使用する。
+ * NOTE: version は pharmacies テーブルの version を共用しており、
+ * アカウント情報更新でも version がインクリメントされるため、
+ * 営業時間以外の変更でも 409 が発生しうる（意図的な設計）。
+ */
+async function fetchBusinessHourSettings(pharmacyId: number) {
+  const [hours, specialHoursRows, pharmacyRows] = await Promise.all([
+    db.select({
+      dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+      openTime: pharmacyBusinessHours.openTime,
+      closeTime: pharmacyBusinessHours.closeTime,
+      isClosed: pharmacyBusinessHours.isClosed,
+      is24Hours: pharmacyBusinessHours.is24Hours,
+    })
+      .from(pharmacyBusinessHours)
+      .where(eq(pharmacyBusinessHours.pharmacyId, pharmacyId))
+      .orderBy(pharmacyBusinessHours.dayOfWeek),
+    db.select({
+      id: pharmacySpecialHours.id,
+      specialType: pharmacySpecialHours.specialType,
+      startDate: pharmacySpecialHours.startDate,
+      endDate: pharmacySpecialHours.endDate,
+      openTime: pharmacySpecialHours.openTime,
+      closeTime: pharmacySpecialHours.closeTime,
+      isClosed: pharmacySpecialHours.isClosed,
+      is24Hours: pharmacySpecialHours.is24Hours,
+      note: pharmacySpecialHours.note,
+    })
+      .from(pharmacySpecialHours)
+      .where(eq(pharmacySpecialHours.pharmacyId, pharmacyId))
+      .orderBy(pharmacySpecialHours.startDate, pharmacySpecialHours.endDate, pharmacySpecialHours.id),
+    db.select({ version: pharmacies.version })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, pharmacyId))
+      .limit(1),
+  ]);
+
+  if (pharmacyRows.length === 0) {
+    throw new Error('薬局が見つかりません');
+  }
+
+  return {
+    hours,
+    specialHours: specialHoursRows,
+    version: pharmacyRows[0].version,
+  };
+}
+
 // Get current pharmacy's business hours
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
@@ -222,37 +272,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // Get current pharmacy's weekly + special business hours
 router.get('/settings', async (req: AuthRequest, res: Response) => {
   try {
-    const [hours, specialHours] = await Promise.all([
-      db.select({
-        dayOfWeek: pharmacyBusinessHours.dayOfWeek,
-        openTime: pharmacyBusinessHours.openTime,
-        closeTime: pharmacyBusinessHours.closeTime,
-        isClosed: pharmacyBusinessHours.isClosed,
-        is24Hours: pharmacyBusinessHours.is24Hours,
-      })
-        .from(pharmacyBusinessHours)
-        .where(eq(pharmacyBusinessHours.pharmacyId, req.user!.id))
-        .orderBy(pharmacyBusinessHours.dayOfWeek),
-      db.select({
-        id: pharmacySpecialHours.id,
-        specialType: pharmacySpecialHours.specialType,
-        startDate: pharmacySpecialHours.startDate,
-        endDate: pharmacySpecialHours.endDate,
-        openTime: pharmacySpecialHours.openTime,
-        closeTime: pharmacySpecialHours.closeTime,
-        isClosed: pharmacySpecialHours.isClosed,
-        is24Hours: pharmacySpecialHours.is24Hours,
-        note: pharmacySpecialHours.note,
-      })
-        .from(pharmacySpecialHours)
-        .where(eq(pharmacySpecialHours.pharmacyId, req.user!.id))
-        .orderBy(pharmacySpecialHours.startDate, pharmacySpecialHours.endDate, pharmacySpecialHours.id),
-    ]);
-
-    res.json({
-      hours,
-      specialHours,
-    });
+    const data = await fetchBusinessHourSettings(req.user!.id);
+    res.json(data);
   } catch (err) {
     logger.error('Get business hour settings error:', { error: (err as Error).message });
     res.status(500).json({ error: '営業時間設定の取得に失敗しました' });
@@ -274,8 +295,28 @@ router.put('/', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    // Atomic: delete + insert within a transaction
-    await db.transaction(async (tx) => {
+    // version バリデーション
+    const version = req.body.version;
+    if (version === undefined || version === null || typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version > 2_147_483_647) {
+      res.status(400).json({ error: 'バージョン情報が不正です' });
+      return;
+    }
+
+    // 楽観的ロック付きトランザクション
+    const result = await db.transaction(async (tx) => {
+      // pharmacies テーブルの version をチェック＆インクリメント
+      const versionUpdate = await tx.update(pharmacies)
+        .set({
+          version: sql`${pharmacies.version} + 1`,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, version)))
+        .returning({ version: pharmacies.version });
+
+      if (versionUpdate.length === 0) {
+        return { conflict: true as const };
+      }
+
       await tx.delete(pharmacyBusinessHours)
         .where(eq(pharmacyBusinessHours.pharmacyId, req.user!.id));
 
@@ -311,9 +352,22 @@ router.put('/', async (req: AuthRequest, res: Response) => {
           );
         }
       }
+
+      return { conflict: false as const, newVersion: versionUpdate[0].version };
     });
 
-    res.json({ message: '営業時間を更新しました' });
+    if (result.conflict) {
+      // 最新の営業時間データを取得して 409 レスポンスに含める
+      const latestData = await fetchBusinessHourSettings(req.user!.id);
+
+      res.status(409).json({
+        error: '他のデバイスまたはタブで更新されています。最新データを確認してください',
+        latestData,
+      });
+      return;
+    }
+
+    res.json({ message: '営業時間を更新しました', version: result.newVersion });
   } catch (err) {
     logger.error('Update business hours error:', { error: (err as Error).message });
     res.status(500).json({ error: '営業時間の更新に失敗しました' });

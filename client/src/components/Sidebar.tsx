@@ -1,4 +1,5 @@
-import { Nav, Button, Offcanvas } from 'react-bootstrap';
+import { Nav, Offcanvas } from 'react-bootstrap';
+import AppButton from './ui/AppButton';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -31,6 +32,10 @@ const NAV_GROUPS = [
 
 const ADMIN_ITEMS = [
   { to: '/admin', label: '管理者ダッシュボード', end: true },
+  { to: '/admin/risk', label: '期限リスク分析' },
+  { to: '/admin/reports', label: '月次レポート' },
+  { to: '/admin/exchanges', label: '交換履歴' },
+  { to: '/admin/pharmacies', label: '薬局管理' },
   { to: '/admin/openclaw', label: 'OpenClaw連携' },
   { to: '/admin/drug-master', label: '医薬品マスター' },
   { to: '/admin/logs', label: '操作ログ' },
@@ -103,9 +108,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="sidebar-footer border-top p-3">
         <SidebarLink to="/account" label={user?.name ?? 'アカウント'} onNavigate={onNavigate} />
-        <Button variant="outline-secondary" size="sm" className="w-100 mt-2" onClick={handleLogout}>
+        <AppButton variant="outline-secondary" size="sm" className="w-100 mt-2" onClick={handleLogout}>
           ログアウト
-        </Button>
+        </AppButton>
       </div>
     </div>
   );

@@ -1,6 +1,10 @@
 import { FormEvent } from 'react';
-import { Card, Form, Button, Row, Col } from 'react-bootstrap';
+import { Row, Col } from 'react-bootstrap';
 import { AccountData, PREFECTURES } from './types';
+import AppSelect from '../ui/AppSelect';
+import LoadingButton from '../ui/LoadingButton';
+import AppField from '../ui/AppField';
+import AppDataPanel from '../ui/AppDataPanel';
 
 export interface AccountFormState {
   name: string;
@@ -18,66 +22,93 @@ interface AccountInfoFormProps {
   form: AccountFormState;
   loading: boolean;
   onSubmit: (e: FormEvent) => void;
-  onChange: (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
+  onChange: (field: keyof AccountFormState, value: string) => void;
 }
 
 export default function AccountInfoForm({ account, form, loading, onSubmit, onChange }: AccountInfoFormProps) {
   return (
-    <Card>
-      <Card.Body>
-        <Form onSubmit={onSubmit}>
-          <Form.Group className="mb-3" controlId="account-email">
-            <Form.Label>メールアドレス</Form.Label>
-            <Form.Control type="email" value={account.email} disabled />
-            <Form.Text className="text-muted">メールアドレスは変更できません</Form.Text>
-          </Form.Group>
+    <AppDataPanel>
+        <form onSubmit={onSubmit}>
+          <AppField
+            className="mb-3"
+            controlId="account-email"
+            label="メールアドレス"
+            type="email"
+            value={account.email}
+            disabled
+            helpText="メールアドレスは変更できません"
+          />
 
-          <Form.Group className="mb-3" controlId="account-license-number">
-            <Form.Label>薬局開設許可番号</Form.Label>
-            <Form.Control type="text" value={account.licenseNumber} disabled />
-          </Form.Group>
+          <AppField
+            className="mb-3"
+            controlId="account-license-number"
+            label="薬局開設許可番号"
+            type="text"
+            value={account.licenseNumber}
+            disabled
+          />
 
-          <Form.Group className="mb-3" controlId="account-name">
-            <Form.Label>薬局名</Form.Label>
-            <Form.Control type="text" value={form.name} onChange={onChange('name')} />
-          </Form.Group>
+          <AppField
+            className="mb-3"
+            controlId="account-name"
+            label="薬局名"
+            type="text"
+            value={form.name}
+            onChange={(value) => onChange('name', value)}
+          />
 
           <Row>
             <Col md={6}>
-              <Form.Group className="mb-3" controlId="account-prefecture">
-                <Form.Label>都道府県</Form.Label>
-                <Form.Select value={form.prefecture} onChange={onChange('prefecture')}>
-                  {PREFECTURES.map((pref) => (
-                    <option key={pref} value={pref}>{pref}</option>
-                  ))}
-                </Form.Select>
-              </Form.Group>
+              <AppSelect
+                className="mb-3"
+                controlId="account-prefecture"
+                label="都道府県"
+                value={form.prefecture}
+                onChange={(value) => onChange('prefecture', value)}
+                options={PREFECTURES.map((pref) => ({ value: pref, label: pref }))}
+              />
             </Col>
             <Col md={6}>
-              <Form.Group className="mb-3" controlId="account-postal-code">
-                <Form.Label>郵便番号</Form.Label>
-                <Form.Control type="text" value={form.postalCode} onChange={onChange('postalCode')} />
-              </Form.Group>
+              <AppField
+                className="mb-3"
+                controlId="account-postal-code"
+                label="郵便番号"
+                type="text"
+                value={form.postalCode}
+                onChange={(value) => onChange('postalCode', value)}
+              />
             </Col>
           </Row>
 
-          <Form.Group className="mb-3" controlId="account-address">
-            <Form.Label>住所</Form.Label>
-            <Form.Control type="text" value={form.address} onChange={onChange('address')} />
-          </Form.Group>
+          <AppField
+            className="mb-3"
+            controlId="account-address"
+            label="住所"
+            type="text"
+            value={form.address}
+            onChange={(value) => onChange('address', value)}
+          />
 
           <Row>
             <Col md={6}>
-              <Form.Group className="mb-3" controlId="account-phone">
-                <Form.Label>電話番号</Form.Label>
-                <Form.Control type="tel" value={form.phone} onChange={onChange('phone')} />
-              </Form.Group>
+              <AppField
+                className="mb-3"
+                controlId="account-phone"
+                label="電話番号"
+                type="tel"
+                value={form.phone}
+                onChange={(value) => onChange('phone', value)}
+              />
             </Col>
             <Col md={6}>
-              <Form.Group className="mb-3" controlId="account-fax">
-                <Form.Label>FAX番号</Form.Label>
-                <Form.Control type="tel" value={form.fax} onChange={onChange('fax')} />
-              </Form.Group>
+              <AppField
+                className="mb-3"
+                controlId="account-fax"
+                label="FAX番号"
+                type="tel"
+                value={form.fax}
+                onChange={(value) => onChange('fax', value)}
+              />
             </Col>
           </Row>
 
@@ -85,24 +116,32 @@ export default function AccountInfoForm({ account, form, loading, onSubmit, onCh
           <h6>パスワード変更（変更する場合のみ入力）</h6>
           <Row>
             <Col md={6}>
-              <Form.Group className="mb-3" controlId="account-current-password">
-                <Form.Label>現在のパスワード</Form.Label>
-                <Form.Control type="password" value={form.currentPassword} onChange={onChange('currentPassword')} />
-              </Form.Group>
+              <AppField
+                className="mb-3"
+                controlId="account-current-password"
+                label="現在のパスワード"
+                type="password"
+                value={form.currentPassword}
+                onChange={(value) => onChange('currentPassword', value)}
+              />
             </Col>
             <Col md={6}>
-              <Form.Group className="mb-3" controlId="account-new-password">
-                <Form.Label>新しいパスワード</Form.Label>
-                <Form.Control type="password" value={form.newPassword} onChange={onChange('newPassword')} minLength={8} />
-              </Form.Group>
+              <AppField
+                className="mb-3"
+                controlId="account-new-password"
+                label="新しいパスワード"
+                type="password"
+                value={form.newPassword}
+                onChange={(value) => onChange('newPassword', value)}
+                minLength={8}
+              />
             </Col>
           </Row>
 
-          <Button type="submit" variant="primary" disabled={loading}>
-            {loading ? '更新中...' : '更新'}
-          </Button>
-        </Form>
-      </Card.Body>
-    </Card>
+          <LoadingButton type="submit" variant="primary" loading={loading} loadingLabel="更新中...">
+            更新
+          </LoadingButton>
+        </form>
+    </AppDataPanel>
   );
 }

@@ -9,6 +9,8 @@
     "dev:server": "npm run dev --workspace=server",
     "dev:client": "npm run dev --workspace=client",
     "clean": "npm run clean --workspace=server && npm run clean --workspace=client",
+    "lint": "npm run lint --workspace=server && npm run lint --workspace=client",
+    "lint:fix": "npm run lint:fix --workspace=server && npm run lint:fix --workspace=client",
     "build:client": "npm run build --workspace=client",
     "build:server": "npm run build --workspace=server",
     "test": "npm run test --workspace=server && npm run test --workspace=client",
@@ -27,5 +29,13 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "deploy:preview": "sh scripts/vercel-deploy-preview.sh",
     "deploy:prod": "sh scripts/vercel-deploy-prod.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.4.0",
+    "typescript-eslint": "^8.46.3"
   }
 }
