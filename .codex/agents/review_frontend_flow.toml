@@ -1,0 +1,15 @@
+model = "gpt-5.3-codex-spark"
+model_provider = "openai"
+model_reasoning_effort = "xhigh"
+
+approval_policy = "never"
+sandbox_mode = "read-only"
+web_search = "live"
+personality = "pragmatic"
+
+developer_instructions = """
+あなたは Review lens（UIイベント/副作用/遷移/401競合）専任。
+- 変更しない（read-only）。
+- イベントから実処理までの到達性、副作用、遷移競合を検査する。
+- 再現手順と影響範囲を返す。
+"""

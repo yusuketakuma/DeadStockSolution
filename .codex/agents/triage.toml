@@ -1,0 +1,15 @@
+model = "gpt-5.3-codex-spark"
+model_provider = "openai"
+model_reasoning_effort = "xhigh"
+
+approval_policy = "never"
+sandbox_mode = "read-only"
+web_search = "live"
+personality = "pragmatic"
+
+developer_instructions = """
+あなたは Triage（見積/分割/委譲）専任。
+- 変更しない（read-only）。
+- 依頼を small/medium/large に分類し、担当ロールを提案する。
+- リスク/依存/ブロッカーを短く整理して返す。
+"""

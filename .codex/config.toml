@@ -1,133 +1,173 @@
-# =========================================
+# =========================
 # Root keys（必ず先頭）
-# =========================================
+# =========================
 model = "gpt-5.3-codex"
 review_model = "gpt-5.3-codex"
 model_provider = "openai"
 
-model_reasoning_effort = "medium"
-# model_reasoning_summary = "auto"
+# 司令塔（デフォルト/Orchestrator）を最強に
+model_reasoning_effort = "xhigh"
 
+# 非対話で止めない
 approval_policy = "never"
-sandbox_mode = "workspace-write"
 
+# デフォルトをフルアクセス（正式名：danger-full-access）
+# ※サンドボックス無効化。隔離環境前提で運用推奨。
+sandbox_mode = "danger-full-access"
+
+# Web検索は積極利用（full access 系では live が基本になる）
 web_search = "live"
 personality = "pragmatic"
 
 suppress_unstable_features_warning = true
-
-# AGENTS.md 読み込み上限（既定 32KiB）
 project_doc_max_bytes = 65536
 
-cli_auth_credentials_store = "auto"
-mcp_oauth_credentials_store = "auto"
+# =========================
+# Multi-agents（常時32）
+# =========================
+[agents]
+max_threads = 32
+max_depth = 1
 
-agents.max_threads = 8
+# =========================
+# Agent roles（細分化）
+# =========================
+[agents.default]
+description = """
+Orchestrator（指示役）。
+- triage/scope/doc を並列で走らせて計画確定
+- 実装はまとめて（途中レビュー禁止）
+- 最後に verifier → review_*（多観点並列）→ fixer → verifier の順でゲート
+- 未完成で終了禁止（DONE/BLOCKEDのみ）
+"""
 
+[agents.goal_setter]
+description = "Goal setter（deep）: repo理解→目標/実装計画/検証計画（read-only）"
+config_file = "agents/goal_setter.toml"
 
-# =========================================
-# Features（公式キーのみ）
-# =========================================
+[agents.triage]
+description = "Triage（spark）: 見積/分割/委譲を厳密化（read-only）"
+config_file = "agents/triage.toml"
+
+[agents.scope_mapper]
+description = "Scope mapper（spark）: 影響範囲を抽出（read-only）"
+config_file = "agents/scope_mapper.toml"
+
+[agents.doc_researcher]
+description = "Doc/Web researcher（spark）: 公式一次情報→設定キー化（read-only）"
+config_file = "agents/doc_researcher.toml"
+
+[agents.worker_light]
+description = "Worker light（spark）: 小改修専任（<=250LOC & <=4 files）"
+config_file = "agents/worker_light.toml"
+
+[agents.worker_heavy]
+description = "Worker heavy（codex）: 横断変更/高リスク領域/難所"
+config_file = "agents/worker_heavy.toml"
+
+[agents.test_writer]
+description = "Test writer（spark）: 追加/更新テスト"
+config_file = "agents/test_writer.toml"
+
+[agents.verifier]
+description = "Verifier（spark）: typecheck→lint→tests の一括検証"
+config_file = "agents/verifier.toml"
+
+[agents.review_correctness]
+description = "Review lens（spark）: correctness/edge cases"
+config_file = "agents/review_correctness.toml"
+
+[agents.review_frontend_flow]
+description = "Review lens（spark）: UIイベント/副作用/遷移/401競合"
+config_file = "agents/review_frontend_flow.toml"
+
+[agents.review_authz]
+description = "Review lens（spark）: AuthZ/ownership fail-open"
+config_file = "agents/review_authz.toml"
+
+[agents.review_injection]
+description = "Review lens（spark）: SQL/CSV/HTML 注入面"
+config_file = "agents/review_injection.toml"
+
+[agents.review_secrets]
+description = "Review lens（spark）: secrets露出"
+config_file = "agents/review_secrets.toml"
+
+[agents.review_perf]
+description = "Review lens（spark）: perf/query/render/IO"
+config_file = "agents/review_perf.toml"
+
+[agents.review_dx]
+description = "Review lens（spark）: maintainability/DX"
+config_file = "agents/review_dx.toml"
+
+[agents.review_ci]
+description = "Review lens（spark）: CI/CD/workflows"
+config_file = "agents/review_ci.toml"
+
+[agents.review_security]
+description = "Security deep（codex）: 重大な攻撃面の最終監査（read-only）"
+config_file = "agents/review_security.toml"
+
+[agents.fixer]
+description = "Fixer（spark）: 指摘を実装修正→再検証"
+config_file = "agents/fixer.toml"
+
+[agents.monitor]
+description = "Monitor（spark）: wait/poll/進捗要約のみ"
+config_file = "agents/monitor.toml"
+
+# =========================
+# Features（Appsは無効）
+# =========================
 [features]
-collaboration_modes = true       # /plan 等（既定ONだが明示）
-multi_agent = true               # spawn_agent 等（既定OFF）
-request_rule = false             # removed flag: keep disabled for compatibility
-runtime_metrics = true
+collaboration_modes = true
+multi_agent = true
+child_agents_md = true
 
 shell_tool = true
 unified_exec = true
 shell_snapshot = true
-
-apps = false                     # temporary mitigation for codex_apps handshake failure
-apps_mcp_gateway = true
-search_tool = false              # removed flag: keep disabled for compatibility
-
 apply_patch_freeform = false
+
+# Appsは完全OFF（app系トラブルを根絶）
+apps = false
+apps_mcp_gateway = false
+search_tool = false
+
+request_rule = true
 personality = true
-powershell_utf8 = true           # macでも害なし（Windows配慮）
+remote_models = false
+runtime_metrics = true
+powershell_utf8 = true
+use_linux_sandbox_bwrap = false
 
-
-# =========================================
-# Workspace-write sandbox options
-# =========================================
+# =========================
+# Sandbox（workspace-write の残骸：将来 profile で戻す用に残してOK）
+# =========================
 [sandbox_workspace_write]
 network_access = true
 
-
-# =========================================
-# Skills（各スキルフォルダを明示）
-# =========================================
-[[skills.config]]
-path = ".agents/skills/repo-hygiene"
-enabled = true
-
-
-# =========================================
-# Notice
-# =========================================
+# =========================
+# Notice（フルアクセス警告を一度認知した扱い）
+# =========================
 [notice]
 hide_full_access_warning = true
 hide_rate_limit_model_nudge = true
 
-[notice.model_migrations]
-"gpt-5.2" = "gpt-5.2-codex"
-
-
-# =========================================
-# Agents（役割→個別レイヤ）
-# =========================================
-[agents.default]
-description = "Orchestrator. Plan-first, implement-all-first, then verify, then review+fix until P1=0. Never exit unfinished."
-config_file = "agents/default.toml"
-
-[agents.goal_setter]
-description = "Writes detailed spec + checklist plan into tasks/todo.md."
-config_file = "agents/goal_setter.toml"
-
-[agents.explorer]
-description = "Parallel exploration, impact map, web research. One task per run."
-config_file = "agents/explorer.toml"
-
-[agents.worker]
-description = "Heavy implementation (tests, risky areas)."
-config_file = "agents/worker.toml"
-
-[agents.spark_worker]
-description = "Light implementation for small diffs; speed-first; no cross-cutting refactors."
-config_file = "agents/spark_worker.toml"
-
-[agents.verifier]
-description = "Runs typecheck -> lint -> tests; fixes failures; NO review."
-config_file = "agents/verifier.toml"
-
-[agents.review_lens]
-description = "Multi-lens review across implemented and related areas; outputs prioritized findings."
-config_file = "agents/review_lens.toml"
-
-[agents.reviewer]
-description = "Fix findings by severity; re-verify; re-review until P1=0 (or BLOCKED)."
-config_file = "agents/reviewer.toml"
-
-
-# =========================================
-# MCP servers
-# =========================================
+# =========================
+# MCP servers（必要なら維持）
+# =========================
 [mcp_servers.context7]
 command = "npx"
 args = ["-y", "@upstash/context7-mcp"]
 startup_timeout_sec = 60
-tool_timeout_sec = 60
 
 [mcp_servers.serena]
 command = "uvx"
 args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]
 startup_timeout_sec = 120
-tool_timeout_sec = 120
 
 [mcp_servers.ultracite]
 url = "https://docs.ultracite.ai/mcp"
 startup_timeout_sec = 60
-tool_timeout_sec = 60
-
-[projects.'/Users/yusuke/DeadStockSolution']
-trust_level = "trusted"

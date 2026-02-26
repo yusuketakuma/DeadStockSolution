@@ -1,105 +1,100 @@
-# Codex Operating Contract (Repo)
+# Codex Operating Agreement (Repo)
 
-このリポジトリのCodex運用は「未完成で終了しない」を最優先とする。
-外部の自動ループ（再実行ドライバ）は使わない。1回の実行内で完了ゲートまで到達する。
-
----
-
-## 0) 退出条件（END_STATE）
-最終的な終了状態は必ず次のどちらかだけ。
-
-- END_STATE=DONE
-  - 受入条件を満たし、検証ゲートとレビューゲートが“証拠付き”で通過している
-- END_STATE=BLOCKED
-  - 外部要因で完遂不能（認証/権限/秘密情報/環境差/ネットワーク制限など）
-  - 何が足りないかを「最小の要求」で列挙し、これ以上進めないことを明示
-
-禁止：
-- “次にやること”だけ書いて終わる
-- 一部だけ終えた状態で DONE を宣言する
-- 検証せずに完了扱いにする
+## 最優先ルール
+- **指示された内容を未完成で終了することを禁止**（Done条件を満たすまで"完了"と言わない）
+- 途中で状況が悪化したら **即停止→再計画（re-plan）**。惰性で押し切らない
+- **実装→一括検証→最後にレビュー**（レビューが毎回割り込んで効率を落とすのを禁止）
 
 ---
 
-## 1) Workflow Orchestration
+## Workflow Orchestration
 
-### 1. Plan Node Default（既定）
-- 非自明タスク（3+ステップ or 設計判断あり）は必ず plan から入る。
-  - 対話CLIなら /plan を使う
-  - 非対話実行でも tasks/todo.md に「詳細仕様+手順+検証」を必ず書いてから実装する
-- 想定外（失敗連鎖/影響範囲爆発/仕様矛盾/セキュリティ懸念）が出たら、
-  その場で停止して re-plan。押し切らない。
-- plan は「作る前」だけでなく「検証（type/lint/test）手順」にも適用する。
-- 仕様は詳細に。曖昧さを残さない。
+### 1. Plan Node Default
+- 3ステップ以上/設計判断がある作業は必ず plan
+- 仕様が曖昧なら先に「詳細仕様」を書き、曖昧さを消してから着手
+- 検証手順も plan に含める（作って終わり禁止）
 
-### 2. Subagent Strategy
-- サブエージェントを積極利用して、メイン文脈を汚さない。
-- 調査/探索/並列分析/インターネット検索は基本サブエージェントへ。
-- 1サブエージェント=1タスク（責務を絞る）。
+### 2. Subagent Strategy（マルチエージェント）
+- サブエージェントを積極利用して並列化（調査/探索/分割実装/レビュー）
+- **サブエージェントは1タスク1スレッド**で焦点を絞る
+- 親（メイン）は指示・統合・最終品質責任に集中
 
-### 3. Self-Improvement（学習サイクル）
-- ユーザーからの訂正/指摘が入ったら必ず tasks/lessons.md に追記する。
-- 再発防止ルールを明文化し、以後“強制ルール”として適用する。
-- セッション開始時に lessons を読み、今回関連するルールを先に有効化する。
+> 注：マルチエージェント機能は `spawn_agent / send_input / resume_agent / wait / close_agent` が有効化される前提。 [oai_citation:7‡OpenAI Developers](https://developers.openai.com/codex/config-reference/)
+> またサブエージェントは承認が非対話になる前提で、承認が必要な操作は失敗し得るため、**承認を要しそうな操作はメインが担当**する（または最初から許可済みの範囲で実行する）。 [oai_citation:8‡OpenAI Developers](https://developers.openai.com/codex/multi-agent/)
+
+### 3. Self-Improvement（再発防止）
+- ユーザーから修正指摘が入ったら `tasks/lessons.md` にパターンを追記
+- 同じ事故を繰り返さないためのルール化を行う
 
 ### 4. Verification Before Done
-- 動く証拠なしに完了扱いにしない。
-- 変更前後の差分が重要なら再現手順と挙動差を示す。
-- 自問：「Staff engineer が承認するか？」
-- テスト/ログ/型/lint/実行結果で正しさを証明する。
+- Doneと言う前に必ず動作証明（コマンド/ログ/差分根拠）
+- "スタッフエンジニアが承認できるか？"を自問する
 
-### 5. Demand Elegance（Balanced）
-- 非自明な変更は「よりエレガントな道」を必ず検討する。
-- hacky なら最適解に置換する。
-- ただし単純な修正は過剰設計しない。
+### 5. Demand Elegance（バランス）
+- 非自明な変更は「よりエレガントにできないか？」を一度検討
+- ただし単純修正は過剰設計しない
 
 ### 6. Autonomous Bug Fixing
-- バグ報告が来たら質問で止めずに修正を完遂する。
-- ログ/エラー/失敗テストを根拠に特定して解消する。
+- バグ報告は"直す"が先。手取り足取りを要求しない
+- 失敗ログ/落ちたテスト→原因→修正→再実行まで自走
 
 ---
 
-## 2) Task Management（単一ソース）
-- tasks/todo.md : 計画・実装・検証・レビュー結果の集約（チェックボックス）
-- tasks/lessons.md : 失敗パターンと防止ルール（追記型）
+## タスク遂行の順序（固定）
 
-必須：
-1) Plan First: tasks/todo.md にチェック可能な計画を書く
-2) Verify Plan: 実装前に計画を自己点検（曖昧さ/手戻り要因潰し）
-3) Track Progress: 進捗はチェックで可視化
-4) Explain Changes: 段階ごとに要約
-5) Document Results: Review/Verification の結果を tasks/todo.md に残す
-6) Capture Lessons: 訂正が入ったら lessons へ必ず追記
+### Phase A: 目標設定（Goal Setter）
+1) コードベース理解（必要に応じてWeb検索も使う）  
+2) 目標を自動設定し、`tasks/todo.md` にチェックリスト化  
+3) 実装の分割と担当（下の委譲ルールに従う）
 
----
+### Phase B: 実装（Implementation Sprint）
+- **レビューは禁止**（このPhaseでは /review を呼ばない）
+- 指示された項目を"全部"実装し切る
+- 進捗は `tasks/todo.md` のチェックで可視化
 
-## 3) フェーズ順（レビュー割り込み禁止は継続）
-レビューが実装中に割り込むと効率が落ちるため、順番を固定する。
+### Phase C: 一括検証（Verification）
+- typecheck → lint → tests（必要なら build）を**まとめて**実施
+- 失敗したら修正して再実行（合格するまで続行）
 
-Phase 0: Preflight
-- lessons を読む
-- todo を作る（なければ）
-
-Phase 1: Plan/Spec（plan）
-- 詳細仕様と検証計画を tasks/todo.md に書く
-
-Phase 2: Implementation Sprint（レビュー禁止）
-- todo の実装項目を“全部”終える
-- このフェーズでは review_lens を起動しない
-
-Phase 3: Verification Gate（型→lint→test）
-- typecheck → lint → tests の順に通す（失敗は最小修正で潰して再実行）
-
-Phase 4: Review Gate（多観点レビュー→指摘修正→再検証）
-- review_lens で「実装箇所 + 関連箇所」まで広くレビュー
-- 指摘を severity 順に修正
-- 再検証（Phase 3）を通してから再レビュー
-- P1 が 0 になるまで Phase 4 を繰り返す（ただし外部要因で進行不能なら BLOCKED）
+### Phase D: 広域レビュー & 自動修正（Review + Fix）
+- 実装箇所だけでなく **関連箇所まで広く**レビュー（依存元/依存先/境界/設定/CI）
+- 観点は最低：正確性/セキュリティ/性能/保守性/UX(DX)/テスト/運用
+- 指摘をもとに自動修正 → Phase C に戻って再検証 → もう一度レビュー
+- P1/P2 が残る限り Done にしない
 
 ---
 
-## 4) DONE の定義（証拠付き）
-- tasks/todo.md の実装チェックが全て完了
-- 検証結果（typecheck/lint/tests）が tasks/todo.md に記録され、全て成功
-- review_lens の最終結果で P1=0
-- 以上を満たしたときだけ END_STATE=DONE を宣言する
+## 委譲ルール（ブレ防止の形式化）
+
+### 入力メタ（各タスクで見積もる）
+- `files_changed_est`: 変更ファイル数見込み
+- `loc_delta_est`: 追加/変更行数見込み（数値固定）
+  - small: **<= 250**
+  - medium: **<= 800**
+  - large: **> 800**
+- `tests_added`: テスト追加の要否（true/false）
+- `runtime_est_min`: コマンド実行時間見込み（分）
+
+### 役割割当
+- **explorer（探索）**へ委譲：
+  - 公式仕様/エラー原因調査/影響範囲探索
+  - `files_changed_est = 0` が基本（変更しない）
+- **worker_light（軽実装）**へ委譲：
+  - `files_changed_est <= 4` かつ `loc_delta_est <= 250`
+  - `tests_added = false` または軽微
+  - `runtime_est_min <= 5`
+- **worker_heavy（重実装）**へ委譲：
+  - `loc_delta_est > 250` または `files_changed_est > 4`
+  - `tests_added = true` または横断変更
+  - `runtime_est_min > 5`
+- **メイン（指示役）**が担当：
+  - 方針決定/統合/最終レビューゲート
+  - 承認が絡みそうな操作、危険度が高い変更
+
+---
+
+## Done条件（強制）
+- `tasks/todo.md` のチェックが全て完了
+- 検証（typecheck/lint/tests）が合格
+- 広域レビューで P1/P2 がゼロ
+- 変更理由・影響範囲・戻し方が説明できる

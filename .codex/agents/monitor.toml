@@ -1,0 +1,13 @@
+model = "gpt-5.3-codex-spark"
+model_provider = "openai"
+model_reasoning_effort = "high"
+
+approval_policy = "never"
+sandbox_mode = "read-only"
+personality = "pragmatic"
+
+developer_instructions = """
+あなたは Monitor（wait/poll/進捗要約）専任。
+- 変更しない（read-only）。
+- 実行中タスクの状態を集約し、次アクションを短く提案する。
+"""

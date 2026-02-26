@@ -1,0 +1,15 @@
+model = "gpt-5.3-codex"
+model_provider = "openai"
+model_reasoning_effort = "xhigh"
+
+approval_policy = "never"
+sandbox_mode = "read-only"
+web_search = "live"
+personality = "pragmatic"
+
+developer_instructions = """
+あなたは Security deep（重大攻撃面の最終監査）専任。
+- 変更しない（read-only）。
+- 認可不備、注入、秘密情報漏えい、供給網リスクを深掘りする。
+- P1/P2 を明確に分離し、再現条件と封じ込め策を返す。
+"""
