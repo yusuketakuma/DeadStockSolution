@@ -133,6 +133,10 @@ function createApp() {
 describe('pharmacies routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.db.select.mockReset();
+    mocks.db.insert.mockReset();
+    mocks.db.delete.mockReset();
+    mocks.loggerError.mockReset();
     mocks.getBusinessHoursStatus.mockReturnValue({ isOpen: true, statusText: '営業中' });
     mocks.haversineDistance.mockReturnValue(12.34);
   });
@@ -140,6 +144,7 @@ describe('pharmacies routes', () => {
   it('returns paginated pharmacies with business status', async () => {
     const app = createApp();
     mocks.db.select
+      .mockImplementationOnce(() => createLimitQuery([{ latitude: 35.0, longitude: 139.0 }]))
       .mockImplementationOnce(() => createWhereQuery([{ count: 1 }]))
       .mockImplementationOnce(() => createOffsetQuery([
         {
@@ -165,6 +170,7 @@ describe('pharmacies routes', () => {
     expect(response.body.data).toHaveLength(1);
     expect(response.body.data[0]).toEqual(expect.objectContaining({
       id: 2,
+      distance: 12.3,
       businessStatus: { isOpen: true, statusText: '営業中' },
     }));
     expect(response.body.pagination).toEqual({

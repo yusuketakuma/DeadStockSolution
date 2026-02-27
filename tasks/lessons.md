@@ -75,3 +75,7 @@
   - Why it matters:
   - How to detect:
   - How to fix:
+- Pattern: 営業時間未設定の業務ルールを暫定実装（常時営業扱い）で解釈し、表示仕様と乖離した
+  - What happened: 薬局一覧で営業時間データ未設定時に「営業中」を表示してしまい、要件「未設定表示」に合わなかった
+  - Root cause: `getBusinessHoursStatus` の内部既定値（未設定=開店）を、そのままUI表示仕様に流用した
+  - New rule to prevent it: ステータス計算ロジックの既定値とUI表示仕様を分離し、「未設定」「営業時間外」など業務上の表示要件を明示条件で固定する

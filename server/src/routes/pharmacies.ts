@@ -24,15 +24,13 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const prefecture = normalizeSearchTerm(req.query.prefecture, 20);
     const sortBy = req.query.sortBy === 'distance' ? 'distance' : undefined;
 
-    const [currentPharmacy] = sortBy === 'distance'
-      ? await db.select({
-        latitude: pharmacies.latitude,
-        longitude: pharmacies.longitude,
-      })
-        .from(pharmacies)
-        .where(eq(pharmacies.id, req.user!.id))
-        .limit(1)
-      : [null];
+    const [currentPharmacy] = await db.select({
+      latitude: pharmacies.latitude,
+      longitude: pharmacies.longitude,
+    })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, req.user!.id))
+      .limit(1);
 
     const conditions = [eq(pharmacies.isActive, true)];
     if (search) {

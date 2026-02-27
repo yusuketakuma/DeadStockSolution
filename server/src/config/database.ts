@@ -1,5 +1,9 @@
-import { sql } from '@vercel/postgres';
+import { createPool } from '@vercel/postgres';
 import { drizzle } from 'drizzle-orm/vercel-postgres';
 import * as schema from '../db/schema';
+import { resolveDatabaseUrls } from './database-url';
 
-export const db = drizzle(sql, { schema });
+const { pooledUrl } = resolveDatabaseUrls();
+const pool = createPool({ connectionString: pooledUrl });
+
+export const db = drizzle(pool, { schema });

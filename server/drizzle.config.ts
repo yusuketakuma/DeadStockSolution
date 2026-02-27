@@ -1,12 +1,13 @@
 import { defineConfig } from 'drizzle-kit';
+import { resolveDatabaseUrls } from './src/config/database-url';
+
+const { nonPoolingUrl } = resolveDatabaseUrls(process.env);
 
 export default defineConfig({
   schema: './src/db/schema.ts',
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.POSTGRES_URL_NON_POOLING
-      ?? process.env.POSTGRES_URL
-      ?? 'postgres://postgres:postgres@localhost:5432/postgres',
+    url: nonPoolingUrl,
   },
 });

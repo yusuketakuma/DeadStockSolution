@@ -18,6 +18,15 @@ export default function BusinessStatusBadge({ status, showHours = false, fallbac
     return fallback === 'dash' ? <span className="text-muted small">-</span> : null;
   }
 
+  const isUnconfigured = status.isOpen
+    && !status.closingSoon
+    && !status.is24Hours
+    && status.todayHours === null;
+
+  if (isUnconfigured) {
+    return <Badge bg="secondary">未設定</Badge>;
+  }
+
   if (status.isOpen && status.closingSoon) {
     return <Badge bg="warning" text="dark">まもなく営業終了</Badge>;
   }

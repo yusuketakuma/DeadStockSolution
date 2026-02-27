@@ -1222,3 +1222,86 @@
   - `server/src/config/test-pharmacy-demo-accounts.ts` を削除し、固定テストデータがランタイムに混入しない構成へ変更。
   - 管理者編集画面でテストアカウント表示用パスワードを編集可能化し、更新API側で整合性（テストアカウント時必須）を検証。
   - パスワード再設定/本人パスワード変更時、テストアカウントなら `test_account_password` も同期更新するようにし、一覧表示との不整合を防止。
+
+## 2026-02-27 薬局一覧の営業・距離表示不具合修正 + preview/production DB統一設定
+
+### Context
+- Prompt: 薬局一覧の営業・距離が表示されていない問題を修復。データベースをpreviewとproduction環境で統一し、設定を見直して変更
+- Scope:
+  - `client/src/components/BusinessStatusBadge.tsx`
+  - `server/src/routes/pharmacies.ts`
+  - `server/src/config/database.ts` / `server/drizzle.config.ts`
+  - Vercel/DB運用設定（README / env example / workflow）
+
+### Goals / Definition of Done
+- [x] 薬局一覧で営業ステータスが未設定営業時間でも欠落せず表示される
+- [x] 薬局一覧で距離ソート未指定時でも距離が返却・表示される
+- [x] preview/productionで同一DBを利用できる共通接続設定を追加し、既存設定との後方互換を維持する
+- [x] typecheck/lint/test/build を通す
+
+### Implementation checklist
+- [x] A. 営業ステータス表示ロジックの欠落ケースを修正
+- [x] B. 薬局一覧APIの距離算出を常時返却に修正し、テストを更新
+- [x] C. DB接続設定を見直し、preview/prod統一用の環境変数優先ロジックを追加
+- [x] D. README / `.env.example` / workflow 設定を更新
+- [x] E. 検証（typecheck/lint/test/build）を実行
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/pharmacies-route.test.ts src/test/database-url-config.test.ts
+- [x] npm run test --workspace=client -- src/components/__tests__/BusinessStatusBadge.test.tsx
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - `BusinessStatusBadge` を修正し、営業時間未設定で `isOpen=true` の場合も「営業中」を表示するようにした。
+  - `GET /api/pharmacies` は通常ソートでも距離を返すようにしつつ、DB側の重い距離演算は `sortBy=distance` 時のみに限定して負荷を抑えた。
+  - DB接続は `POSTGRES_URL_UNIFIED` / `POSTGRES_URL_NON_POOLING_UNIFIED` を最優先で解決し、preview環境では `POSTGRES_URL_PRODUCTION` 系の上書きを許可。
+  - 非プーリングURLの解決順を補正し、previewで `POSTGRES_URL_PRODUCTION` のみ指定時でも接続先が分岐しないようにした（P1修正）。
+  - `NODE_ENV=production` または `VERCEL_ENV` がある環境でDB URL未設定時は即エラー停止（fail-closed）するよう改善。
+  - multi-perspective review（security/correctness/quality/perf/ux/ops）を実施し、P1=0を確認。
+
+## 2026-02-28 営業時間表示仕様の修正（未設定表示）+ Vercel DB統一設定の実施
+
+### Context
+- Prompt: 1を実施（preview/production DB統一設定）。営業時間は「設定ありなら営業時間内/外、未設定なら未設定表示」。テスト有無に依存しない
+- Scope:
+  - Vercel project env (`POSTGRES_URL_UNIFIED` / `POSTGRES_URL_NON_POOLING_UNIFIED`)
+  - `client/src/components/BusinessStatusBadge.tsx`
+  - `client/src/components/__tests__/BusinessStatusBadge.test.tsx`
+
+### Goals / Definition of Done
+- [x] Vercel Preview/Productionで同一DB接続設定が有効化される
+- [x] 営業時間未設定の薬局は `未設定` 表示になる
+- [x] 営業時間設定済みの薬局は営業時間内/外を表示する
+- [x] typecheck/lint/test/build を通す
+
+### Implementation checklist
+- [x] A. Vercel環境変数を確認し、共通DB URLをPreview/Productionへ適用
+- [x] B. `BusinessStatusBadge` の表示分岐を仕様に合わせて更新
+- [x] C. コンポーネントテストを更新
+- [x] D. 検証（typecheck/lint/test/build）
+
+### Verification
+- [x] `npx vercel env ls production`
+- [x] `npx vercel env ls preview`
+- [x] `npx vercel env pull /tmp/deadstock-vercel/.env.production.updated --environment=production --yes`
+- [x] `npx vercel env pull /tmp/deadstock-vercel/.env.preview.updated --environment=preview --git-branch=preview --yes`
+- [x] `POSTGRES_URL_UNIFIED` / `POSTGRES_URL_NON_POOLING_UNIFIED` が preview/prod 同値であることを確認
+- [x] npm run test --workspace=client -- src/components/__tests__/BusinessStatusBadge.test.tsx
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - Vercelへ `POSTGRES_URL_UNIFIED` と `POSTGRES_URL_NON_POOLING_UNIFIED` を追加し、ProductionとPreview（`preview` branch override）で同一DB URLに統一。
+  - `BusinessStatusBadge` は営業時間未設定パターン（`isOpen=true`, `is24Hours=false`, `todayHours=null`, `closingSoon=false`）を `未設定` 表示へ変更。
+  - 営業時間設定済みのケースは従来どおり `営業中` / `営業時間外` / `24時間営業` を表示。

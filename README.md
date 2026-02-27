@@ -41,7 +41,7 @@ npm run test:perf:server
 
 ## Vercel Postgres移行手順
 
-1. `server/.env` に `POSTGRES_URL`（必要なら `POSTGRES_URL_NON_POOLING`）を設定
+1. `server/.env` にDB接続URLを設定（推奨: `POSTGRES_URL_UNIFIED` / `POSTGRES_URL_NON_POOLING_UNIFIED`）
 2. スキーマを作成
 
 ```powershell
@@ -68,6 +68,11 @@ npm run db:migrate:legacy --workspace=server
 
 - `CORS_ORIGINS`: 許可するオリジンをカンマ区切りで指定（本番必須）
 - `JWT_SECRET`: JWT署名シークレット（`NODE_ENV=test` 以外では必須。32文字以上かつ既知の弱い値は不可）
+- `POSTGRES_URL_UNIFIED`: preview / production を同一DBへ統一する場合の共通接続URL（最優先）
+- `POSTGRES_URL_NON_POOLING_UNIFIED`: マイグレーション用の非プーリング共通URL（任意、未設定時は `POSTGRES_URL_UNIFIED`）
+- `POSTGRES_URL_PRODUCTION`: preview環境だけ本番DBへ寄せる場合の接続URL（`VERCEL_ENV=preview` 時のみ参照）
+- `POSTGRES_URL_NON_POOLING_PRODUCTION`: 上記の非プーリング版（任意）
+- `NODE_ENV=production` または `VERCEL_ENV` 設定環境では、上記いずれかのPostgres URL未設定時にアプリは起動エラーで停止（fail-closed）
 - `VITE_API_BASE_URL`: クライアントのAPIベースURL（未設定時は同一オリジンの `/api`）
 - `EXPOSE_PASSWORD_RESET_TOKEN`: `true` のときのみパスワードリセットトークンをAPIレスポンスに含める（開発限定）
 - `TRUST_PROXY`: `true` または hop数（例: `1`）で `trust proxy` を有効化
@@ -127,9 +132,10 @@ npm run db:migrate:legacy --workspace=server
 - CLI実行時の誤爆防止として、以下スクリプトはブランチを強制チェックします。
   - `npm run deploy:preview`（`preview` ブランチのみ）
   - `npm run deploy:prod`（`main` ブランチのみ）
-- Neon連携時は `DRUG_PACKAGE_SOURCE_URL` などの環境変数を Vercel Project Settings に設定し、Preview環境で分離DBを利用してください。
+- preview / production でDBを統一する場合は、Vercel Project Settings の両環境で同じ `POSTGRES_URL_UNIFIED`（必要なら `POSTGRES_URL_NON_POOLING_UNIFIED`）を設定します。
+- 既存運用で preview 環境だけ本番DBへ寄せる場合は、preview側に `POSTGRES_URL_PRODUCTION`（必要なら `POSTGRES_URL_NON_POOLING_PRODUCTION`）を設定します。
 
-### main DB を preview DB に同期する（Neon branch reset）
+### 分離DBを使う場合のみ: main DB を preview DB に同期する（Neon branch reset）
 
 - リポジトリには `/.github/workflows/neon-sync-preview.yml` を追加しています。
 - `preview` ブランチへ push（または `workflow_dispatch`）すると、Neon の preview ブランチを親ブランチ最新状態にリセットします。
