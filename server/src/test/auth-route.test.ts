@@ -378,6 +378,59 @@ describe('auth routes', () => {
     expect(selectChain.limit).toHaveBeenCalledWith(5);
   });
 
+  it('returns distinct passwords for the 5 fixed test pharmacy accounts', async () => {
+    const selectChain = createSelectChain([
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都' },
+      { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道' },
+      { id: 3, name: 'テスト薬局大阪店', email: 'test-osaka@example.com', prefecture: '大阪府' },
+      { id: 4, name: 'テスト薬局福岡店', email: 'test-fukuoka@example.com', prefecture: '福岡県' },
+      { id: 5, name: 'テスト薬局那覇店', email: 'test-naha@example.com', prefecture: '沖縄県' },
+    ]);
+    mocks.db.select.mockReturnValue(selectChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies');
+
+    expect(res.status).toBe(200);
+    expect(res.body.accounts).toEqual([
+      {
+        id: 1,
+        name: 'テスト薬局東京店',
+        email: 'test-tokyo@example.com',
+        prefecture: '東京都',
+        password: 'TokyoDemo!2026',
+      },
+      {
+        id: 2,
+        name: 'テスト薬局札幌店',
+        email: 'test-sapporo@example.com',
+        prefecture: '北海道',
+        password: 'SapporoDemo!2026',
+      },
+      {
+        id: 3,
+        name: 'テスト薬局大阪店',
+        email: 'test-osaka@example.com',
+        prefecture: '大阪府',
+        password: 'OsakaDemo!2026',
+      },
+      {
+        id: 4,
+        name: 'テスト薬局福岡店',
+        email: 'test-fukuoka@example.com',
+        prefecture: '福岡県',
+        password: 'FukuokaDemo!2026',
+      },
+      {
+        id: 5,
+        name: 'テスト薬局那覇店',
+        email: 'test-naha@example.com',
+        prefecture: '沖縄県',
+        password: 'NahaDemo!2026',
+      },
+    ]);
+  });
+
   it('uses configured test account password in preview response', async () => {
     process.env.TEST_ACCOUNT_PASSWORD = 'DemoPass!999';
     const selectChain = createSelectChain([

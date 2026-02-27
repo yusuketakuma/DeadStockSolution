@@ -239,7 +239,8 @@ export default function LoginPage() {
                           <th scope="col">ID</th>
                           <th scope="col">薬局名</th>
                           <th scope="col">都道府県</th>
-                          <th scope="col">メールアドレス</th>
+                          <th scope="col">ログインID</th>
+                          <th scope="col">パスワード</th>
                           <th scope="col" className="text-end">操作</th>
                         </tr>
                       </thead>
@@ -250,13 +251,14 @@ export default function LoginPage() {
                             <td>{pharmacy.name}</td>
                             <td>{pharmacy.prefecture}</td>
                             <td className="dl-test-pharmacy-email">{pharmacy.email}</td>
+                            <td><code>{pharmacy.password}</code></td>
                             <td className="text-end">
                               <button
                                 type="button"
                                 className="btn btn-primary btn-sm"
                                 onClick={() => applyTestPharmacy(pharmacy)}
                               >
-                                このメールアドレスを入力
+                                このID/パスワードを入力
                               </button>
                             </td>
                           </tr>
@@ -274,7 +276,8 @@ export default function LoginPage() {
                         subtitle={`ID: ${pharmacy.id}`}
                         fields={[
                           { label: '都道府県', value: pharmacy.prefecture },
-                          { label: 'メール', value: <span className="dl-test-pharmacy-email">{pharmacy.email}</span> },
+                          { label: 'ログインID', value: <span className="dl-test-pharmacy-email">{pharmacy.email}</span> },
+                          { label: 'パスワード', value: <code>{pharmacy.password}</code> },
                         ]}
                         actions={(
                           <button
@@ -282,7 +285,7 @@ export default function LoginPage() {
                             className="btn btn-primary btn-sm"
                             onClick={() => applyTestPharmacy(pharmacy)}
                           >
-                            このメールアドレスを入力
+                            このID/パスワードを入力
                           </button>
                         )}
                       />

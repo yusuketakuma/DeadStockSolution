@@ -1,5 +1,70 @@
 # tasks/todo.md
 
+## 2026-02-27 テスト薬局5件の個別ID/パスワード化 + DB反映 + 認証確認
+
+### Context
+- Prompt: テスト薬局5件のID/パスワードを全件異なる値に変更し、DB登録。ワンクリック表示とログイン認証を確認
+- Scope:
+  - `server/src/routes/auth.ts`（一覧APIのパスワード返却）
+  - `client/src/pages/LoginPage.tsx`（モーダル表示）
+  - `server/src/db/seed-test-pharmacy-accounts.ts`（DB反映）
+
+### Goals / Definition of Done
+- [x] 5件すべて異なるログイン情報（ID/パスワード）で表示される
+- [x] DBに5件の個別パスワード（ハッシュ）が登録される
+- [x] 5件すべてでログイン認証が成功する
+- [x] IDが `1,2,3,4,5` へ再設定される
+
+### Implementation checklist
+- [x] A. テスト薬局5件の固定資格情報を共通設定として追加
+- [x] B. `test-pharmacies` APIがアカウントごとのパスワードを返すよう更新
+- [x] C. ログイン画面モーダルにID/パスワード表示を追加
+- [x] D. DBシードスクリプト追加・実行で5件へ反映
+- [x] E. 一覧API確認 + 5件ログイン認証確認
+- [x] F. ID `1..5` 固定化シードへ更新し再実行
+
+### Verification
+- [x] npm run db:seed-test-pharmacies --workspace=server
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/login.test.tsx
+- [x] npm run typecheck
+- [x] `GET /api/auth/test-pharmacies` 実行結果: `count=5`, `uniquePasswordCount=5`
+- [x] 5件ログイン検証（強い `JWT_SECRET` 一時指定）: 全件 `status=200`
+- [x] DB直接確認: `pharmacies` のIDが `1..5` で各テスト薬局へ再割当済み
+
+### Result
+- Status: DONE
+- Notes:
+  - テスト薬局5件に個別パスワードを定義し、`/api/auth/test-pharmacies` でアカウントごとに返却するよう更新。
+  - DBシードを「非デモ薬局が0件の場合のみ `TRUNCATE ... CASCADE` で再投入」方式へ更新し、IDを `1..5` に固定化。
+  - DBシードで5件の `password_hash` を個別パスワードへ更新し、ログイン認証が全件成功することを確認。
+  - ログイン画面モーダルにログインID/パスワードを表示し、ワンクリックでフォームへ反映されることをE2Eテストで確認。
+
+## 2026-02-27 テスト薬局5件がログイン一覧に出ない不具合修正
+
+### Context
+- Prompt: テスト薬局5件がログイン画面の登録済みテスト薬局一覧に出てこない
+- Scope:
+  - `server/src/routes/auth.ts` の `GET /api/auth/test-pharmacies` 絞り込み条件
+
+### Goals / Definition of Done
+- [x] `TEST_PHARMACY_EMAILS` 設定有無に関わらず、テスト薬局判定パターンに一致するデータが一覧候補になる
+- [x] 回帰テストが通る
+
+### Implementation checklist
+- [x] A. `test-pharmacies` フィルタ条件を「許可リスト OR テスト薬局パターン」に変更
+- [x] B. auth ルートテストを実行
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run typecheck --workspace=server
+
+### Result
+- Status: DONE
+- Notes:
+  - `GET /api/auth/test-pharmacies` は `TEST_PHARMACY_EMAILS` が設定されていても、メール許可リスト一致に加えてテスト薬局パターン（`name`/`email`）一致を候補に含めるよう修正。
+  - これにより、環境変数が過去設定（2件）のままでも、テスト薬局5件が一覧候補から除外されにくくなった。
+
 ## 2026-02-27 UI/UX是正（レビュー→修正 10サイクル）
 
 ### Context

@@ -20,6 +20,7 @@ import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } f
 import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
+import { TEST_PHARMACY_PASSWORD_BY_EMAIL } from '../config/test-pharmacy-demo-accounts';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -99,12 +100,28 @@ function parseTestPharmacyEmails(): string[] {
     .filter((value) => value.length > 0);
 }
 
+function buildTestPharmacyPatternCondition() {
+  return or(
+    ilike(pharmacies.email, '%test%'),
+    ilike(pharmacies.name, '%テスト薬局%'),
+    ilike(pharmacies.name, '%テスト%'),
+  );
+}
+
 function resolveTestAccountPassword(): string {
   const envPassword = (process.env.TEST_ACCOUNT_PASSWORD ?? process.env.DEMO_ACCOUNT_PASSWORD ?? '').trim();
   if (envPassword.length > 0) {
     return envPassword;
   }
   return DEFAULT_TEST_ACCOUNT_PASSWORD;
+}
+
+function resolveTestPharmacyPasswordByEmail(email: string): string {
+  const fixedPassword = TEST_PHARMACY_PASSWORD_BY_EMAIL.get(email.trim().toLowerCase());
+  if (fixedPassword) {
+    return fixedPassword;
+  }
+  return resolveTestAccountPassword();
 }
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
@@ -441,12 +458,13 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
       eq(pharmacies.isAdmin, false),
       eq(pharmacies.isActive, true),
     );
+    const patternCondition = buildTestPharmacyPatternCondition();
     const filterCondition = previewEmails.length > 0
-      ? and(baseCondition, inArray(pharmacies.email, previewEmails))
-      : and(baseCondition, or(
-        ilike(pharmacies.email, '%test%'),
-        ilike(pharmacies.name, '%テスト%'),
-      ));
+      ? and(baseCondition, or(
+        patternCondition,
+        inArray(pharmacies.email, previewEmails),
+      ))
+      : and(baseCondition, patternCondition);
 
     const rows = await db.select({
       id: pharmacies.id,
@@ -459,11 +477,10 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
       .orderBy(asc(pharmacies.id))
       .limit(TEST_PHARMACY_PREVIEW_LIMIT);
 
-    const password = resolveTestAccountPassword();
     res.json({
       accounts: rows.map((row) => ({
         ...row,
-        password,
+        password: resolveTestPharmacyPasswordByEmail(row.email),
       })),
     });
   } catch (err) {

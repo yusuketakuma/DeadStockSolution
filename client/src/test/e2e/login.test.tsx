@@ -231,14 +231,14 @@ describe('LoginPage', () => {
           name: 'テスト薬局A',
           email: 'test-a@example.com',
           prefecture: '東京都',
-          password: 'password123',
+          password: 'TokyoDemo!2026',
         },
         {
           id: 2,
           name: 'テスト薬局B',
           email: 'test-b@example.com',
           prefecture: '大阪府',
-          password: 'password123',
+          password: 'OsakaDemo!2026',
         },
       ],
     });
@@ -255,14 +255,16 @@ describe('LoginPage', () => {
     });
     expect(screen.getByText('テスト薬局A')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局B')).toBeInTheDocument();
+    expect(screen.getByText('TokyoDemo!2026')).toBeInTheDocument();
+    expect(screen.getByText('OsakaDemo!2026')).toBeInTheDocument();
     expect(document.querySelector('.dl-test-pharmacy-modal table')).not.toBeNull();
     expect(document.querySelector('.dl-mobile-data-card')).toBeNull();
 
-    const applyButtons = screen.getAllByRole('button', { name: 'このメールアドレスを入力' });
+    const applyButtons = screen.getAllByRole('button', { name: 'このID/パスワードを入力' });
     await user.click(applyButtons[0]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('test-a@example.com');
-    expect(getInputByLabel('パスワード')).toHaveValue('password123');
+    expect(getInputByLabel('パスワード')).toHaveValue('TokyoDemo!2026');
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
   });
 
@@ -276,14 +278,14 @@ describe('LoginPage', () => {
           name: 'テスト薬局モバイルA',
           email: 'mobile-a@example.com',
           prefecture: '愛知県',
-          password: 'password123',
+          password: 'MobileA!2026',
         },
         {
           id: 12,
           name: 'テスト薬局モバイルB',
           email: 'mobile-b@example.com',
           prefecture: '福岡県',
-          password: 'password123',
+          password: 'MobileB!2026',
         },
       ],
     });
@@ -299,14 +301,16 @@ describe('LoginPage', () => {
       expect(screen.getByText('テスト薬局モバイルA')).toBeInTheDocument();
       expect(screen.getByText('テスト薬局モバイルB')).toBeInTheDocument();
     });
+    expect(screen.getByText('MobileA!2026')).toBeInTheDocument();
+    expect(screen.getByText('MobileB!2026')).toBeInTheDocument();
     expect(document.querySelector('.dl-mobile-data-card')).not.toBeNull();
     expect(document.querySelector('.dl-test-pharmacy-modal table')).toBeNull();
 
-    const applyButtons = screen.getAllByRole('button', { name: 'このメールアドレスを入力' });
+    const applyButtons = screen.getAllByRole('button', { name: 'このID/パスワードを入力' });
     await user.click(applyButtons[1]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('mobile-b@example.com');
-    expect(getInputByLabel('パスワード')).toHaveValue('password123');
+    expect(getInputByLabel('パスワード')).toHaveValue('MobileB!2026');
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
   });
 

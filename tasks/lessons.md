@@ -25,6 +25,18 @@
   - What happened: 編集機能要件で管理者向け実装に寄せた後、ユーザー向け自店舗編集も同時に必要という補足が発生した
   - Root cause: 権限要件を「管理者のみ」または「ユーザーのみ」で早期に固定し、ロール別マトリクス（admin/all, user/self）で確認しなかった
   - New rule to prevent it: 編集機能は実装前に「ロール x 対象範囲（all/self）」の表を確定し、API/画面/導線をロール別に分離して設計する
+- Pattern: デモ一覧APIで環境変数フィルタを優先しすぎ、要件変更後に表示件数が意図より減った
+  - What happened: `TEST_PHARMACY_EMAILS` が設定されていると strict allowlist になり、ログイン画面のテスト薬局5件が表示されなかった
+  - Root cause: 環境変数を「追加条件」でなく「唯一条件」として実装したため、運用時の古い設定が新要件を潰した
+  - New rule to prevent it: デモ/プレビュー向けフィルタは allowlist と default pattern を OR 結合し、過去設定が新要件を阻害しない設計にする
+- Pattern: デモアカウント要件で「全件同一パスワード」の実装を維持し、個別資格情報要件に追従できていなかった
+  - What happened: ログイン画面で5件表示していてもパスワードが共通値だったため、要件「5件で異なるID/パスワード」を満たしていなかった
+  - Root cause: デモ機能の初期要件（共通パスワード）を固定前提にして、後続の運用要件変更を設計へ反映しきれていなかった
+  - New rule to prevent it: デモアカウントは「表示情報」と「実認証情報」を同一ソース（共通設定 + DBシード）で管理し、要件変更時にAPI/UI/DBを同時更新する
+- Pattern: テスト薬局IDの再採番を単純更新で行おうとして外部キー制約に失敗した
+  - What happened: `pharmacies.id` を update で 1..5 に寄せる処理が FK 制約で失敗した
+  - Root cause: 参照先テーブルが存在する状態でPK更新しても `ON UPDATE NO ACTION` のため成立しない点を見落とした
+  - New rule to prevent it: ID固定が必要なシードは「非対象データの存在チェック」→「安全条件下で truncate + reseed」方式を採用し、PK update 依存を避ける
 
 ## Project-specific gotchas
 - Item:
