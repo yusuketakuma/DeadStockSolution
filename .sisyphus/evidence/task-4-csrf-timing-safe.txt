@@ -1,0 +1,54 @@
+TASK 4: CSRF Token Timing-Safe Comparison
+==========================================
+
+OBJECTIVE:
+Replace `csrfCookie !== csrfHeader` with `crypto.timingSafeEqual()` at line 69 of server/src/middleware/csrf.ts
+
+CHANGES MADE:
+=============
+
+1. Added timingSafeCompare() helper function (lines 22-29):
+   - Converts both strings to UTF-8 buffers
+   - Checks buffer length equality first (fail-fast for different lengths)
+   - Uses crypto.timingSafeEqual() for constant-time comparison
+   - Returns boolean result
+
+2. Updated line 77 (formerly line 69):
+   - OLD: if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader)
+   - NEW: if (!csrfCookie || !csrfHeader || !timingSafeCompare(csrfCookie, csrfHeader))
+
+VERIFICATION:
+=============
+
+✓ Grep verification - old comparison removed:
+  $ grep -n "csrfCookie !== csrfHeader" server/src/middleware/csrf.ts
+  (no output - pattern not found)
+
+✓ Grep verification - new function in place:
+  $ grep -n "timingSafeCompare" server/src/middleware/csrf.ts
+  22:function timingSafeCompare(a: string, b: string): boolean {
+  77:  if (!csrfCookie || !csrfHeader || !timingSafeCompare(csrfCookie, csrfHeader)) {
+
+✓ Test Results:
+  - csrf.test.ts: 5 tests PASSED
+  - All 379 tests PASSED (57 test files)
+  - No skipped or failed tests
+
+✓ Type Checking:
+  - npm run typecheck:server: PASSED (0 errors)
+
+SECURITY IMPACT:
+================
+- Defense-in-depth: CSRF token comparison is now timing-safe
+- Prevents timing attacks that could leak token information
+- Follows pattern from openclaw-service.ts:221 (verified)
+- Empty string check still happens first (no buffer allocation for empty tokens)
+
+PATTERN REFERENCE:
+==================
+Implementation matches openclaw-service.ts:221 pattern:
+- Length check before timingSafeEqual()
+- UTF-8 buffer conversion
+- Constant-time comparison
+
+STATUS: ✓ COMPLETE
