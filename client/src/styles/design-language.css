@@ -160,14 +160,6 @@ body[data-design-preset='high-legibility'] {
   margin-top: 0.25rem;
 }
 
-.dl-demo-box {
-  margin-top: 1rem;
-  border: 1px dashed var(--dl-border);
-  border-radius: var(--dl-radius-md);
-  padding: 0.75rem;
-  background: #fbfdff;
-}
-
 .dl-auth-footer {
   border-top: 1px solid var(--dl-border);
   padding: 0.75rem 1rem 0.9rem;

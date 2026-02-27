@@ -326,6 +326,34 @@
 
 ---
 
+## 追加タスク（デモ要素排除）
+
+### 入力メタ（見積）
+- files_changed_est: 11
+- loc_delta_est: 260 (medium)
+- tests_added: false（既存テストの整理）
+- runtime_est_min: 10
+
+## 目標（Goal）
+- [x] ログイン画面からデモ/ワンクリック導線を削除する
+- [x] デモ専用環境変数・seedスクリプト・ドキュメント記載を削除する
+- [x] 関連テストを通常ログイン導線に合わせて更新する
+
+## 実装（Implementation Sprint）
+- [x] `LoginPage` からデモUI・デモ環境変数参照を削除
+- [x] `login.test.tsx` のデモ関連ケースを削除
+- [x] `client/src/vite-env.d.ts` から `VITE_DEMO_ACCOUNT_PASSWORD` を削除
+- [x] `server/package.json` から `db:seed`（デモseed）を削除
+- [x] `server/src/db/seed-demo-account.ts` と `server/src/services/test-account-service.ts` を削除
+- [x] `README.md` / `SECURITY.md` / `server/.env.example` のデモ記述を削除
+
+## 一括検証（Verification）
+- [x] typecheck
+- [x] lint
+- [x] tests
+
+---
+
 ## 追加タスク（残タスク実行: セッション失効 + 性能改善）
 
 ## 目標（Goal）

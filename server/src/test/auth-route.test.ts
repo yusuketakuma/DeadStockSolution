@@ -200,14 +200,14 @@ describe('auth routes', () => {
     const res = await request(app)
       .post('/api/auth/register')
       .send({
-        email: 'demo@example.com',
+        email: 'pharmacy@example.com',
         password: 'Password123',
-        name: 'デモ薬局',
+        name: '中央薬局',
         postalCode: '100-0001',
         address: '千代田1-1',
         phone: '03-1234-5678',
         fax: '03-1234-5679',
-        licenseNumber: 'DEMO-999',
+        licenseNumber: 'PHARM-999',
         prefecture: '東京都',
       });
 
@@ -222,7 +222,7 @@ describe('auth routes', () => {
     const selectChain = createSelectChain([{
       id: 10,
       email: 'test@example.com',
-      name: 'デモ薬局（東京）',
+      name: '中央薬局',
       prefecture: '東京都',
       isAdmin: false,
       isActive: true,
@@ -239,7 +239,7 @@ describe('auth routes', () => {
     expect(res.body).toEqual({
       id: 10,
       email: 'test@example.com',
-      name: 'デモ薬局（東京）',
+      name: '中央薬局',
       prefecture: '東京都',
       isAdmin: false,
     });

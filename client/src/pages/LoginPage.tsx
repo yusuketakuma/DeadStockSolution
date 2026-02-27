@@ -1,5 +1,4 @@
 import { useState, FormEvent } from 'react';
-import AppButton from '../components/ui/AppButton';
 import { Nav } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,11 +8,6 @@ import StatusAlert from '../components/ui/StatusAlert';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppField from '../components/ui/AppField';
 
-const TEST_ACCOUNTS = [
-  { label: 'デモ薬局（東京）', email: 'test@example.com' },
-  { label: 'デモ薬局（大阪）', email: 'test2@example.com' },
-];
-
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,12 +16,6 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'user' | 'admin'>('user');
   const { login, logout } = useAuth();
   const navigate = useNavigate();
-  const demoAccountPassword = (
-    import.meta.env.VITE_DEMO_ACCOUNT_PASSWORD?.trim()
-    ?? import.meta.env.VITE_TEST_ACCOUNT_PASSWORD?.trim()
-    ?? ''
-  );
-  const canUseDemoAutoFill = demoAccountPassword.length > 0;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -54,15 +42,6 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleTestLogin = (account: { email: string }) => {
-    if (!canUseDemoAutoFill) {
-      return;
-    }
-    setError('');
-    setEmail(account.email);
-    setPassword(demoAccountPassword);
   };
 
   const switchMode = (newMode: 'user' | 'admin') => {
@@ -151,28 +130,6 @@ export default function LoginPage() {
             <>
               <div className="dl-link-row">
                 <Link to="/register">新規登録はこちら</Link>
-              </div>
-
-              <div className="dl-demo-box">
-                <p className="text-muted small text-center mb-2">デモ薬局（ワンクリック入力）</p>
-                <div className="d-grid gap-2">
-                  {TEST_ACCOUNTS.map((account) => (
-                    <AppButton
-                      key={account.email}
-                      variant="outline-secondary"
-                      size="sm"
-                      disabled={loading || !canUseDemoAutoFill}
-                      onClick={() => handleTestLogin(account)}
-                    >
-                      {account.label}
-                    </AppButton>
-                  ))}
-                </div>
-                <p className="text-muted small text-center mt-2 mb-0">
-                  {canUseDemoAutoFill
-                    ? 'ボタンはメールアドレスとパスワードを貼り付けるだけです（自動送信しません）。'
-                    : 'ワンクリック入力は VITE_DEMO_ACCOUNT_PASSWORD 設定後に利用できます。'}
-                </p>
               </div>
             </>
           )}

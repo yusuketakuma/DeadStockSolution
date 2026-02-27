@@ -36,7 +36,6 @@ function mockUnauthFetch() {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.stubEnv('VITE_DEMO_ACCOUNT_PASSWORD', 'password123');
   });
 
   it('renders the login form with tabs', async () => {
@@ -60,17 +59,6 @@ describe('LoginPage', () => {
     expect(screen.getByText('新規登録はこちら')).toBeInTheDocument();
   });
 
-  it('renders test account login buttons in user mode', async () => {
-    mockUnauthFetch();
-    renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      expect(screen.getByText('デモ薬局（ワンクリック入力）')).toBeInTheDocument();
-    });
-    expect(screen.getByText('デモ薬局（東京）')).toBeInTheDocument();
-    expect(screen.getByText('デモ薬局（大阪）')).toBeInTheDocument();
-  });
-
   it('switches to admin login tab', async () => {
     const user = userEvent.setup();
     mockUnauthFetch();
@@ -89,8 +77,7 @@ describe('LoginPage', () => {
     const submitBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
     expect(submitBtn).toBeTruthy();
     expect(submitBtn.textContent).toBe('管理者ログイン');
-    // Test accounts and register link should NOT be visible
-    expect(screen.queryByText('デモ薬局（ワンクリック入力）')).not.toBeInTheDocument();
+    // Register link should NOT be visible in admin mode
     expect(screen.queryByText('新規登録はこちら')).not.toBeInTheDocument();
     // Admin mode hint
     expect(screen.getByText('管理者アカウントでログインしてください。')).toBeInTheDocument();
@@ -177,122 +164,6 @@ describe('LoginPage', () => {
       expect(body.email).toBe('test@example.com');
       expect(body.password).toBe('password123');
     });
-  });
-
-  it('fills email and password when demo pharmacy is selected', async () => {
-    const user = userEvent.setup();
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      if (url.includes('/api/auth/me')) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify({}), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      expect(screen.getByText('デモ薬局（東京）')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText('デモ薬局（東京）'));
-
-    await waitFor(() => {
-      expect(getInputByLabel('メールアドレス').value).toBe('test@example.com');
-      expect(getInputByLabel('パスワード').value).toBe('password123');
-    });
-
-    const loginCall = fetchMock.mock.calls.find(
-      (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/login')
-    );
-    expect(loginCall).toBeFalsy();
-  });
-
-  it('submits login after one-click demo paste', async () => {
-    const user = userEvent.setup();
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      if (url.includes('/api/auth/login')) {
-        return new Response(JSON.stringify(mockUser), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/auth/me')) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify({}), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      expect(screen.getByText('デモ薬局（東京）')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText('デモ薬局（東京）'));
-
-    const loginCallsBeforeSubmit = fetchMock.mock.calls.filter(
-      (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/login')
-    );
-    expect(loginCallsBeforeSubmit).toHaveLength(0);
-
-    await user.click(screen.getByRole('button', { name: 'ログイン' }));
-
-    await waitFor(() => {
-      const loginCalls = fetchMock.mock.calls.filter(
-        (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/login')
-      );
-      expect(loginCalls).toHaveLength(1);
-      const body = JSON.parse((loginCalls[0][1] as RequestInit).body as string);
-      expect(body).toEqual({
-        email: 'test@example.com',
-        password: 'password123',
-      });
-    });
-  });
-
-  it('shows paste-only help text for demo pharmacy buttons', async () => {
-    mockUnauthFetch();
-    renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      expect(screen.getByText('デモ薬局（ワンクリック入力）')).toBeInTheDocument();
-    });
-
-    const demoButton = screen.getByRole('button', { name: 'デモ薬局（東京）' });
-    expect(demoButton).toBeEnabled();
-    expect(screen.getByText('ボタンはメールアドレスとパスワードを貼り付けるだけです（自動送信しません）。')).toBeInTheDocument();
-  });
-
-  it('disables one-click demo input when demo password env is missing', async () => {
-    vi.stubEnv('VITE_DEMO_ACCOUNT_PASSWORD', '');
-    mockUnauthFetch();
-    renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      expect(screen.getByText('デモ薬局（ワンクリック入力）')).toBeInTheDocument();
-    });
-
-    const demoButton = screen.getByRole('button', { name: 'デモ薬局（東京）' });
-    expect(demoButton).toBeDisabled();
-    expect(screen.getByText('ワンクリック入力は VITE_DEMO_ACCOUNT_PASSWORD 設定後に利用できます。')).toBeInTheDocument();
   });
 
   it('renders login page key sections', async () => {
