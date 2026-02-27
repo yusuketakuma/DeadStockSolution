@@ -89,3 +89,72 @@
 ### Perf Test Stability
 - Perf regression suite can hit route-level limiter due repeated `/api/exchange/find` benchmark calls
 - Mocking `express-rate-limit` as pass-through inside `performance-regression.test.ts` stabilizes benchmark execution and removes non-performance 429 noise
+
+## [2026-02-28] Task 8: Composite DB Indexes
+
+### Index Design Pattern
+- Drizzle ORM index syntax: `index('idx_name').on(table.col1, table.col2, ...)`
+- Column order matters: leftmost columns are most selective for query filtering
+- Composite indexes support prefix matching (e.g., index on (A, B, C) helps queries filtering on A, A+B, or A+B+C)
+
+### Indexes Added
+1. `dead_stock_items`: (pharmacy_id, is_available, drug_name)
+   - Supports pharmacy-specific available inventory lookups by drug name
+   - Complements existing `idx_dead_stock_pharmacy_available_created` (different sort order)
+   - Does NOT duplicate existing indexes (verified against 7 existing indexes)
+
+2. `used_medication_items`: (pharmacy_id, drug_name)
+   - Supports pharmacy-specific usage lookups by drug name
+   - Complements existing `idx_used_medication_pharmacy_created` (different sort order)
+   - Does NOT duplicate existing indexes (verified against 3 existing indexes)
+
+### Migration Generation
+- `npm run db:generate --workspace=server` creates migration file automatically
+- Drizzle compares schema.ts against drizzle/meta/ snapshots
+- Generated SQL uses PostgreSQL btree algorithm (default)
+- Migration file: `drizzle/0018_tricky_gauntlet.sql`
+
+### Verification
+- All 379 tests pass (1 skipped)
+- TypeScript: 0 errors
+- No schema changes (columns, types, constraints unchanged)
+- No existing indexes modified or deleted
+- Commit: `perf(db): add composite indexes for pharmacy+drug_name queries`
+
+## [2026-02-28] Task 9: Tests for Split Route Modules
+
+### Mock Query Patterns
+- `createFromQuery`: For `db.select({count}).from(table)` where `.from()` is terminal (no `.where()`) — common in count queries
+- `createPaginatedQuery`: For full paginated chains (from → orderBy → limit → offset resolves)
+- `createJoinOrderByQuery`: For queries with innerJoin + where + orderBy terminal — used by admin exchange comments
+- `createLimitQuery`: For existence checks (from → where → limit resolves)
+- `createWhereQuery`: For queries where `.where()` is terminal (from → where resolves)
+- Key insight: The terminal method in a Drizzle query chain is the one that resolves the promise — mock that with `.mockResolvedValue()`
+
+### Test Coverage
+- 56 new tests across 2 files (379 → 435 total)
+- exchange-subroutes.test.ts: status (accept/reject/complete), feedback, history, comments (GET + POST)
+- admin-pharmacies-subroutes.test.ts: list (options/pharmacies/history/messages/requests), detail (CRUD/business-hours/toggle), actions (exchanges/comments/messages/handoff)
+- Coverage improved: Lines 56.67%, Statements 54.96%, Functions 63.48%, Branches 45.23%
+
+### Pattern: Admin Auth Mock
+- Admin routes need both `requireLogin` and `requireAdmin` mocked
+- Auth mock sets `isAdmin: true` for admin route tests vs `isAdmin: false` for exchange route tests
+- Rate limiter must be mocked as pass-through: `vi.mock('express-rate-limit', () => ({ default: () => (req, res, next) => next() }))`
+
+### Pattern: Drizzle ORM Mock
+- All drizzle-orm exports must be mocked even if not all are used by the specific route under test
+- The aggregator imports all sub-routers, so all their drizzle-orm dependencies must be available
+- Transaction mock needs to provide tx object with execute/select/insert methods for comment POST testing
+
+## [2026-02-28] Multi-angle Review Fix Pass
+
+### Security hardening follow-up
+- Internal cron endpoints should avoid returning raw validation text even when protected by bearer secret
+- `server/src/routes/internal-monthly-reports.ts` now returns fixed 400 text (`年月パラメータが不正です`) instead of propagating thrown detail
+- Keep operator observability in logs, not in HTTP payloads; this preserves debuggability without leaking parser internals
+
+### Regression-test guardrails
+- Added route test file for internal monthly report endpoint: auth failure, sanitized validation failure, and success path
+- Added production-mode test in error-handler suite to lock behavior that 4xx details are hidden in production
+- Security behavior changes should always ship with explicit tests so future refactors cannot silently revert them
