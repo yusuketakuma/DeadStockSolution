@@ -9,6 +9,7 @@ import { AuthRequest } from '../types';
 import { clearCsrfCookie } from '../middleware/csrf';
 import { writeLog, getClientIp } from '../services/log-service';
 import { logger } from '../services/logger';
+import { emailSchema } from '../utils/validators';
 
 const router = Router();
 
@@ -48,7 +49,19 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
 
 router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, postalCode, address, phone, fax, prefecture, currentPassword, newPassword, version } = req.body;
+    const {
+      email,
+      name,
+      postalCode,
+      address,
+      phone,
+      fax,
+      prefecture,
+      licenseNumber,
+      currentPassword,
+      newPassword,
+      version,
+    } = req.body;
 
     // version バリデーション
     if (version === undefined || version === null || typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version > 2_147_483_647) {
@@ -57,6 +70,20 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
     }
 
     const updates: Record<string, unknown> = {};
+
+    if (email !== undefined) {
+      if (typeof email !== 'string') {
+        res.status(400).json({ error: 'メールアドレスが不正です' });
+        return;
+      }
+      const normalizedEmail = email.trim().toLowerCase();
+      const parsedEmail = emailSchema.safeParse(normalizedEmail);
+      if (!parsedEmail.success) {
+        res.status(400).json({ error: parsedEmail.error.issues[0]?.message ?? 'メールアドレスが不正です' });
+        return;
+      }
+      updates.email = normalizedEmail;
+    }
 
     if (name !== undefined) {
       if (typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 100) {
@@ -128,6 +155,38 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
         return;
       }
       updates.prefecture = prefecture.trim();
+    }
+
+    if (licenseNumber !== undefined) {
+      if (typeof licenseNumber !== 'string' || licenseNumber.trim().length === 0 || licenseNumber.trim().length > 50) {
+        res.status(400).json({ error: '薬局開設許可番号が不正です' });
+        return;
+      }
+      updates.licenseNumber = licenseNumber.trim();
+    }
+
+    if (updates.email !== undefined) {
+      const existingEmailRows = await db.select({ id: pharmacies.id })
+        .from(pharmacies)
+        .where(eq(pharmacies.email, updates.email as string))
+        .limit(1);
+
+      if (existingEmailRows.length > 0 && existingEmailRows[0].id !== req.user!.id) {
+        res.status(409).json({ error: 'このメールアドレスは既に登録されています' });
+        return;
+      }
+    }
+
+    if (updates.licenseNumber !== undefined) {
+      const existingLicenseRows = await db.select({ id: pharmacies.id })
+        .from(pharmacies)
+        .where(eq(pharmacies.licenseNumber, updates.licenseNumber as string))
+        .limit(1);
+
+      if (existingLicenseRows.length > 0 && existingLicenseRows[0].id !== req.user!.id) {
+        res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
+        return;
+      }
     }
 
     if (newPassword !== undefined && newPassword !== '') {

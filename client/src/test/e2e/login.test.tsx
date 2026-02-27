@@ -22,6 +22,7 @@ interface TestPharmacyPreview {
   name: string;
   email: string;
   prefecture: string;
+  password: string;
 }
 
 function setMatchMedia(matches: boolean) {
@@ -225,8 +226,20 @@ describe('LoginPage', () => {
     const user = userEvent.setup();
     mockUnauthFetch({
       testPharmacies: [
-        { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
-        { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+        {
+          id: 1,
+          name: 'テスト薬局A',
+          email: 'test-a@example.com',
+          prefecture: '東京都',
+          password: 'password123',
+        },
+        {
+          id: 2,
+          name: 'テスト薬局B',
+          email: 'test-b@example.com',
+          prefecture: '大阪府',
+          password: 'password123',
+        },
       ],
     });
     renderWithProviders(<LoginPage />, { route: '/login' });
@@ -249,7 +262,7 @@ describe('LoginPage', () => {
     await user.click(applyButtons[0]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('test-a@example.com');
-    expect(getInputByLabel('パスワード')).toHaveValue('');
+    expect(getInputByLabel('パスワード')).toHaveValue('password123');
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
   });
 
@@ -258,8 +271,20 @@ describe('LoginPage', () => {
     setMatchMedia(true);
     mockUnauthFetch({
       testPharmacies: [
-        { id: 11, name: 'テスト薬局モバイルA', email: 'mobile-a@example.com', prefecture: '愛知県' },
-        { id: 12, name: 'テスト薬局モバイルB', email: 'mobile-b@example.com', prefecture: '福岡県' },
+        {
+          id: 11,
+          name: 'テスト薬局モバイルA',
+          email: 'mobile-a@example.com',
+          prefecture: '愛知県',
+          password: 'password123',
+        },
+        {
+          id: 12,
+          name: 'テスト薬局モバイルB',
+          email: 'mobile-b@example.com',
+          prefecture: '福岡県',
+          password: 'password123',
+        },
       ],
     });
     renderWithProviders(<LoginPage />, { route: '/login' });
@@ -281,7 +306,7 @@ describe('LoginPage', () => {
     await user.click(applyButtons[1]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('mobile-b@example.com');
-    expect(getInputByLabel('パスワード')).toHaveValue('');
+    expect(getInputByLabel('パスワード')).toHaveValue('password123');
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
   });
 

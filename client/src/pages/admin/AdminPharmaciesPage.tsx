@@ -6,6 +6,7 @@ import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import { Badge } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import InlineLoader from '../../components/ui/InlineLoader';
@@ -149,14 +150,22 @@ export default function AdminPharmaciesPage() {
                       </Badge>
                     </td>
                     <td>
-                      <AppButton
-                        size="sm"
-                        variant={p.isActive ? 'outline-warning' : 'outline-success'}
-                        onClick={() => void toggleActive(p.id)}
-                        disabled={updatingId === p.id}
-                      >
-                        {updatingId === p.id ? '更新中...' : p.isActive ? '無効にする' : '有効にする'}
-                      </AppButton>
+                      <div className="d-flex gap-2">
+                        <Link
+                          to={`/admin/pharmacies/${p.id}/edit`}
+                          className="btn btn-outline-primary btn-sm"
+                        >
+                          編集
+                        </Link>
+                        <AppButton
+                          size="sm"
+                          variant={p.isActive ? 'outline-warning' : 'outline-success'}
+                          onClick={() => void toggleActive(p.id)}
+                          disabled={updatingId === p.id}
+                        >
+                          {updatingId === p.id ? '更新中...' : p.isActive ? '無効にする' : '有効にする'}
+                        </AppButton>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -187,14 +196,22 @@ export default function AdminPharmaciesPage() {
                     { label: '評価件数', value: p.ratingCount ?? 0 },
                   ]}
                   actions={(
-                    <AppButton
-                      size="sm"
-                      variant={p.isActive ? 'outline-warning' : 'outline-success'}
-                      onClick={() => void toggleActive(p.id)}
-                      disabled={updatingId === p.id}
-                    >
-                      {updatingId === p.id ? '更新中...' : p.isActive ? '無効にする' : '有効にする'}
-                    </AppButton>
+                    <div className="d-flex gap-2">
+                      <Link
+                        to={`/admin/pharmacies/${p.id}/edit`}
+                        className="btn btn-outline-primary btn-sm"
+                      >
+                        編集
+                      </Link>
+                      <AppButton
+                        size="sm"
+                        variant={p.isActive ? 'outline-warning' : 'outline-success'}
+                        onClick={() => void toggleActive(p.id)}
+                        disabled={updatingId === p.id}
+                      >
+                        {updatingId === p.id ? '更新中...' : p.isActive ? '無効にする' : '有効にする'}
+                      </AppButton>
+                    </div>
                   )}
                 />
               ))}

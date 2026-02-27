@@ -25,9 +25,11 @@ interface BusinessHoursSettingsProps {
   specialHours: SpecialHourEntry[];
   hoursLoaded: boolean;
   hoursEditing: boolean;
+  hoursEditable?: boolean;
   hoursSaving: boolean;
   hoursMessage: string;
   hoursError: string;
+  onRetryLoad?: () => void;
   onHoursMessage: (msg: string) => void;
   onHoursError: (err: string) => void;
   onHoursChange: (dayOfWeek: number, field: 'openTime' | 'closeTime', value: string) => void;
@@ -51,9 +53,11 @@ function BusinessHoursSettings({
   specialHours,
   hoursLoaded,
   hoursEditing,
+  hoursEditable = true,
   hoursSaving,
   hoursMessage,
   hoursError,
+  onRetryLoad,
   onHoursMessage,
   onHoursError,
   onHoursChange,
@@ -75,6 +79,7 @@ function BusinessHoursSettings({
     () => [...businessHours].sort((a, b) => a.dayOfWeek - b.dayOfWeek),
     [businessHours],
   );
+  const canEditHours = hoursEditable && orderedBusinessHours.length > 0;
 
   return (
     <AppDataPanel title="営業時間設定" className="mt-3">
@@ -86,6 +91,16 @@ function BusinessHoursSettings({
         {hoursError && (
           <AppAlert variant="danger" onClose={() => onHoursError('')} dismissible>
             {hoursError}
+          </AppAlert>
+        )}
+        {hoursLoaded && !hoursEditable && (
+          <AppAlert variant="warning" className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <span>営業時間データを取得できていないため、編集は無効です。</span>
+            {onRetryLoad && (
+              <AppButton size="sm" variant="outline-warning" onClick={onRetryLoad}>
+                再読み込み
+              </AppButton>
+            )}
           </AppAlert>
         )}
 
@@ -122,6 +137,13 @@ function BusinessHoursSettings({
                       </tr>
                     </thead>
                     <tbody>
+                      {orderedBusinessHours.length === 0 && (
+                        <tr>
+                          <td colSpan={hoursEditing ? 5 : 2} className="text-muted small">
+                            営業時間データがありません。{onRetryLoad ? '再読み込みしてください。' : ''}
+                          </td>
+                        </tr>
+                      )}
                       {orderedBusinessHours.map((h) => (
                         <tr key={h.dayOfWeek}>
                           <td className="align-middle fw-medium">{DAY_NAMES[h.dayOfWeek]}</td>
@@ -179,75 +201,86 @@ function BusinessHoursSettings({
               )}
               mobile={() => (
                 <div className="dl-mobile-data-list mb-3">
-                  {orderedBusinessHours.map((h) => (
-                    <AppMobileDataCard
-                      key={h.dayOfWeek}
-                      title={DAY_NAMES[h.dayOfWeek]}
-                      fields={hoursEditing ? [
-                        {
-                          label: '定休日',
-                          value: (
-                            <Form.Check
-                              type="checkbox"
-                              checked={h.isClosed}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onClosedChange(h.dayOfWeek, e.target.checked)}
-                              disabled={h.is24Hours}
-                              aria-label={`${DAY_NAMES[h.dayOfWeek]} 定休日`}
-                            />
-                          ),
-                        },
-                        {
-                          label: '24時間',
-                          value: (
-                            <Form.Check
-                              type="checkbox"
-                              checked={h.is24Hours}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => on24HoursChange(h.dayOfWeek, e.target.checked)}
-                              disabled={h.isClosed}
-                              aria-label={`${DAY_NAMES[h.dayOfWeek]} 24時間営業`}
-                            />
-                          ),
-                        },
-                        {
-                          label: '開店時間',
-                          value: (
-                            <AppControl
-                              type="time"
-                              size="sm"
-                              value={h.openTime || ''}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onHoursChange(h.dayOfWeek, 'openTime', e.target.value)}
-                              disabled={h.isClosed || h.is24Hours}
-                              className="time-input"
-                              aria-label={`${DAY_NAMES[h.dayOfWeek]} 開店時間`}
-                            />
-                          ),
-                        },
-                        {
-                          label: '閉店時間',
-                          value: (
-                            <AppControl
-                              type="time"
-                              size="sm"
-                              value={h.closeTime || ''}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onHoursChange(h.dayOfWeek, 'closeTime', e.target.value)}
-                              disabled={h.isClosed || h.is24Hours}
-                              className="time-input"
-                              aria-label={`${DAY_NAMES[h.dayOfWeek]} 閉店時間`}
-                            />
-                          ),
-                        },
-                      ] : [
-                        { label: '営業時間', value: formatHours(h) },
-                      ]}
-                    />
-                  ))}
+                  {orderedBusinessHours.length === 0 ? (
+                    <div className="text-muted small d-flex flex-wrap justify-content-between align-items-center gap-2">
+                      <span>営業時間データがありません。</span>
+                      {onRetryLoad && (
+                        <AppButton size="sm" variant="outline-secondary" onClick={onRetryLoad}>
+                          再読み込み
+                        </AppButton>
+                      )}
+                    </div>
+                  ) : (
+                    orderedBusinessHours.map((h) => (
+                      <AppMobileDataCard
+                        key={h.dayOfWeek}
+                        title={DAY_NAMES[h.dayOfWeek]}
+                        fields={hoursEditing ? [
+                          {
+                            label: '定休日',
+                            value: (
+                              <Form.Check
+                                type="checkbox"
+                                checked={h.isClosed}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onClosedChange(h.dayOfWeek, e.target.checked)}
+                                disabled={h.is24Hours}
+                                aria-label={`${DAY_NAMES[h.dayOfWeek]} 定休日`}
+                              />
+                            ),
+                          },
+                          {
+                            label: '24時間',
+                            value: (
+                              <Form.Check
+                                type="checkbox"
+                                checked={h.is24Hours}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => on24HoursChange(h.dayOfWeek, e.target.checked)}
+                                disabled={h.isClosed}
+                                aria-label={`${DAY_NAMES[h.dayOfWeek]} 24時間営業`}
+                              />
+                            ),
+                          },
+                          {
+                            label: '開店時間',
+                            value: (
+                              <AppControl
+                                type="time"
+                                size="sm"
+                                value={h.openTime || ''}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onHoursChange(h.dayOfWeek, 'openTime', e.target.value)}
+                                disabled={h.isClosed || h.is24Hours}
+                                className="time-input"
+                                aria-label={`${DAY_NAMES[h.dayOfWeek]} 開店時間`}
+                              />
+                            ),
+                          },
+                          {
+                            label: '閉店時間',
+                            value: (
+                              <AppControl
+                                type="time"
+                                size="sm"
+                                value={h.closeTime || ''}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onHoursChange(h.dayOfWeek, 'closeTime', e.target.value)}
+                                disabled={h.isClosed || h.is24Hours}
+                                className="time-input"
+                                aria-label={`${DAY_NAMES[h.dayOfWeek]} 閉店時間`}
+                              />
+                            ),
+                          },
+                        ] : [
+                          { label: '営業時間', value: formatHours(h) },
+                        ]}
+                      />
+                    ))
+                  )}
                 </div>
               )}
             />
 
             <hr className="my-3" />
 
-            <div className="d-flex justify-content-between align-items-center mb-2">
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
               <h6 className="mb-0">特例営業時間（祝日・大型連休・臨時休業）</h6>
               {hoursEditing && (
                 <AppButton variant="outline-primary" size="sm" onClick={onAddSpecialHour}>
@@ -528,12 +561,18 @@ function BusinessHoursSettings({
             />
 
             {!hoursEditing ? (
-              <AppButton variant="outline-primary" onClick={onHoursEditStart}>
+              <AppButton variant="outline-primary" onClick={onHoursEditStart} disabled={!canEditHours}>
                 営業時間を編集
               </AppButton>
             ) : (
-              <div className="d-flex gap-2">
-                <LoadingButton variant="primary" onClick={onHoursSave} loading={hoursSaving} loadingLabel="保存中...">
+              <div className="d-flex gap-2 flex-wrap mobile-stack">
+                <LoadingButton
+                  variant="primary"
+                  onClick={onHoursSave}
+                  loading={hoursSaving}
+                  loadingLabel="保存中..."
+                  disabled={!hoursEditable}
+                >
                   営業時間を保存
                 </LoadingButton>
                 <AppButton variant="outline-secondary" onClick={onHoursEditCancel} disabled={hoursSaving}>

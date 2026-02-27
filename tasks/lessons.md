@@ -17,6 +17,14 @@
   - What happened: `ENABLE_TEST_PHARMACY_PREVIEW=true` を明示しないと `GET /api/auth/test-pharmacies` が無効化され、Vercel上で404になった
   - Root cause: デプロイ先の実行環境（Preview/Productionともに `NODE_ENV=production`）を設計時に織り込めていなかった
   - New rule to prevent it: 「本番でも見せるデモ機能」はデフォルト有効で設計し、無効化は `...=false` の明示指定方式に統一する
+- Pattern: デモアカウント選択UIで「メール自動入力」までで止まり、パスワード同時入力要件を満たせていなかった
+  - What happened: テスト薬局選択時にメールのみセットし、ユーザーから「パスワードもセットでペースト」の追加入力が発生した
+  - Root cause: デモログイン導線のゴール（選択後に即ログイン可能状態）を操作完了基準として定義していなかった
+  - New rule to prevent it: 認証補助UIは「選択後に送信可能な最終フォーム状態」をDoDに含め、メール/パスワード両方を明示チェックする
+- Pattern: 「誰が編集できるか」の権限境界を単独ロールで解釈し、管理者/ユーザー両要件の同時満足を初手で設計できなかった
+  - What happened: 編集機能要件で管理者向け実装に寄せた後、ユーザー向け自店舗編集も同時に必要という補足が発生した
+  - Root cause: 権限要件を「管理者のみ」または「ユーザーのみ」で早期に固定し、ロール別マトリクス（admin/all, user/self）で確認しなかった
+  - New rule to prevent it: 編集機能は実装前に「ロール x 対象範囲（all/self）」の表を確定し、API/画面/導線をロール別に分離して設計する
 
 ## Project-specific gotchas
 - Item:

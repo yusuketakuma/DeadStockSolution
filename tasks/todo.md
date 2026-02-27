@@ -1,5 +1,205 @@
 # tasks/todo.md
 
+## 2026-02-27 UI/UX是正（レビュー→修正 10サイクル）
+
+### Context
+- Prompt: UIUXに関するレビュー指摘をすべて修正し、レビュー→修正を10サイクル実施
+- Scope:
+  - ユーザー自店舗編集（`/account`）UI
+  - 管理者全薬局編集（`/admin/pharmacies/:id/edit`）UI
+  - 営業時間編集コンポーネント（PC/モバイル）
+
+### Goals / Definition of Done
+- [x] 既報のUI/UX指摘（重大度 High/Medium/Low）を全件解消する
+- [x] レビュー→修正を10サイクル実施し、各サイクル結果を記録する
+- [x] typecheck/lint/test/build を通す
+
+### 10-cycle checklist
+- [x] Cycle 1: 営業時間取得失敗時の誤上書きリスクを除去
+- [x] Cycle 2: モバイル保存/キャンセル操作のレイアウト改善
+- [x] Cycle 3: 管理者の有効/無効操作を一覧・詳細で一貫化
+- [x] Cycle 4: フォーム入力支援（inputMode/autoComplete）を追加
+- [x] Cycle 5: 画面遷移時の編集中データ保護を追加
+- [x] Cycle 6: 無変更保存の抑止とボタン状態最適化
+- [x] Cycle 7: 時刻入力の即時バリデーション強化
+- [x] Cycle 8: エラー時の再試行導線を明確化
+- [x] Cycle 9: モバイル表示密度と可読性の微調整
+- [x] Cycle 10: 最終レビュー（security/correctness/quality/perf/ux/ops）でP1=0確認
+
+### Cycle notes
+- Cycle 1:
+  - `BusinessHoursSettings` に `hoursEditable` / `onRetryLoad` を追加し、取得失敗時は編集ボタンを無効化
+  - `AccountPage` / `AdminPharmacyEditPage` で取得失敗時の編集・保存をブロック
+- Cycle 2:
+  - 営業時間の保存操作コンテナへ `mobile-stack` を適用し、モバイルで縦積みに統一
+- Cycle 3:
+  - 管理者詳細画面の「有効/無効」を即時反映API (`toggle-active`) に統一
+  - 一覧画面と同じ操作モデルに揃え、基本情報保存への依存を解消
+- Cycle 4:
+  - `AccountInfoForm` に `autoComplete` / `inputMode` / placeholder を追加（email/postal/address/tel/password）
+- Cycle 5:
+  - 管理者詳細画面で未保存変更がある場合の離脱確認（戻る遷移・ブラウザ離脱）を追加
+- Cycle 6:
+  - アカウント更新ボタンを「差分あり時のみ有効」に変更
+- Cycle 7:
+  - 通常営業時間の保存前バリデーション（open/close未入力・同値）を追加
+- Cycle 8:
+  - 営業時間データ空状態の明示と再読み込み導線をPC/モバイル双方に追加
+- Cycle 9:
+  - 特例営業時間ヘッダーをモバイルで折り返し可能化（見切れ防止）
+- Cycle 10:
+  - security/correctness/quality/perf/ux/ops 観点で最終確認し P1=0 を確認
+
+### Verification（最後にまとめて）
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - 既報の High/Medium/Low 指摘を反映し、モバイル/PCの導線と保存安全性を是正
+  - 10サイクルのレビュー→修正を完了し、最終検証コマンドを全通過
+
+## 2026-02-27 薬局情報編集権限の整理（管理者=全体 / ユーザー=自店舗）
+
+### Context
+- Prompt: 管理者→全薬局情報の閲覧と編集。ユーザー→ログイン中の自店舗情報の閲覧と編集
+- Scope:
+  - 管理者向け薬局編集APIと編集画面導線
+  - 自店舗編集API/UI（メール・許可番号含む）の更新
+  - 営業時間（週次/特例）編集保存の両権限対応
+
+### Goals / Definition of Done
+- [x] 管理者が任意薬局の基本情報と営業時間を閲覧/編集保存できる
+- [x] ユーザーが自店舗の基本情報と営業時間を閲覧/編集保存できる
+- [x] 型チェック・lint・テスト・ビルドが通る
+
+### Implementation checklist
+- [x] A. `account` ルートを拡張し自店舗のメール/許可番号更新を許可
+- [x] B. `admin-pharmacies` ルートに基本情報更新APIを追加
+- [x] C. `admin-pharmacies` ルートに営業時間取得/更新APIを追加
+- [x] D. 管理画面に薬局編集ページを追加し一覧から遷移可能にする
+- [x] E. 検証（typecheck/lint/test/build）を実行
+
+### Verification（最後にまとめて）
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - 管理者向けに `GET/PUT /api/admin/pharmacies/:id` および `GET/PUT /api/admin/pharmacies/:id/business-hours...` を追加し、全薬局の基本情報/営業時間を編集可能化。
+  - 管理画面に `/admin/pharmacies/:id/edit` を追加し、一覧から編集画面へ遷移できるようにした。
+  - ユーザー向け `PUT /api/account` とアカウント編集UIを拡張し、自店舗のメールアドレス・薬局開設許可番号も編集保存可能にした。
+
+## 2026-02-27 管理者向け薬局編集（営業時間含む）機能追加
+
+### Context
+- Prompt: データベースの編集機能として、テスト薬局を含む薬局情報（営業時間など）を編集保存できるように更新
+- Scope:
+  - `server/src/routes/admin-pharmacies.ts` の編集API追加
+  - `client/src/pages/admin` の編集UI追加
+  - ルーティング更新
+- Assumptions:
+  - 管理者のみが利用する機能
+  - 基本情報と営業時間を管理画面で編集/保存可能にする
+
+### Goals / Definition of Done
+- [x] 管理者が薬局の基本情報（名称・連絡先・住所・メール・許可番号等）を編集保存できる
+- [x] 管理者が薬局の週次/特例営業時間を編集保存できる
+- [x] 変更後に型チェック・lint・テスト・ビルドが通る
+
+### Implementation checklist
+- [x] A. 管理者向け薬局更新API（基本情報）を追加
+- [x] B. 管理者向け営業時間取得/更新APIを追加
+- [x] C. 管理画面に薬局編集ページを追加し保存UIを実装
+- [x] D. 一覧画面から編集ページへ遷移導線を追加
+- [x] E. 検証（typecheck/lint/test/build）を実行
+
+## 2026-02-27 テスト薬局5件へ更新（DB登録 + 参照確認）
+
+### Context
+- Prompt: テスト薬局名を5件へ変更し、最寄り駅住所/郵便番号でDB登録。電話番号はランダム。DB参照確認まで実施
+- Scope:
+  - `server/src/routes/auth.ts` の取得件数上限
+  - 実DB（`pharmacies`）のテスト薬局データ更新
+  - 参照確認（DB直接 + API）
+- Assumptions:
+  - デモ用テスト薬局は5件表示を想定
+  - 既存運用への影響を減らすため既存IDを可能な限り流用
+
+### Goals / Definition of Done
+- [x] 指定5名称のテスト薬局がDBに存在する
+- [x] 各薬局に駅住所ベースの郵便番号/住所が登録される
+- [x] `GET /api/auth/test-pharmacies` でDB由来の5件が取得できる
+
+### Implementation checklist
+- [x] A. テスト薬局表示上限を5件へ調整
+- [x] B. 5件の薬局データをDBへ反映（update/upsert）
+- [x] C. DB直接クエリで登録結果を確認
+- [x] D. API応答でDB参照結果を確認
+- [x] E. 関連テストを更新・実行
+
+### Verification（最後にまとめて）
+- [x] DB直接確認: `pharmacies` から test/テスト条件で5件抽出
+- [x] API確認: `GET /api/auth/test-pharmacies` が status 200 で5件返却
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - テスト薬局を以下5件へ更新: 東京店 / 札幌店 / 大阪店 / 福岡店 / 那覇店。
+  - 東京店（東京駅）、札幌店（札幌駅）、大阪店（大阪駅）、福岡店（博多駅）、那覇店（那覇空港駅）の住所・郵便番号を登録。
+  - `server/src/routes/auth.ts` の `TEST_PHARMACY_PREVIEW_LIMIT` を 5 に変更し、`/api/auth/test-pharmacies` でDB由来の5件取得を確認。
+
+## 2026-02-27 テスト薬局選択でパスワードも自動入力
+
+### Context
+- Prompt: パスワードもセットでペーストするようにしてください。デモなのでセキュリティリスクはありません。
+- Scope:
+  - `server/src/routes/auth.ts` のテスト薬局レスポンス項目拡張（password）
+  - `client/src/pages/LoginPage.tsx` の選択反映処理を email+password 同時入力へ変更
+  - 関連テスト更新（server/client）
+- Assumptions:
+  - デモアカウントは共通パスワード運用
+  - 共通パスワードは環境変数 `TEST_ACCOUNT_PASSWORD` または `DEMO_ACCOUNT_PASSWORD` で上書き可能
+
+### Goals / Definition of Done
+- [x] テスト薬局APIが `password` を返す
+- [x] テスト薬局選択時にメール/パスワードが同時入力される（PC/モバイル共通）
+- [x] 関連テストと検証コマンドが通る
+
+### Implementation checklist
+- [x] A. auth route にデモパスワード解決ロジックを追加しレスポンスへ含める
+- [x] B. LoginPage の型/反映処理/説明文を更新
+- [x] C. server route test / client login e2e test を更新
+- [x] D. 検証（typecheck/lint/test/build）を実行
+
+### Verification（最後にまとめて）
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/login.test.tsx
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - `GET /api/auth/test-pharmacies` のレスポンスに `password` を追加し、`TEST_ACCOUNT_PASSWORD` / `DEMO_ACCOUNT_PASSWORD` で上書き可能にした（未設定時は `password123`）。
+  - ログイン画面でテスト薬局選択時に `email` と `password` を同時セットするよう更新し、PC/モバイル共通で動作をテストで担保。
+
 ## 2026-02-27 本番環境でテスト薬局表示機能を有効化
 
 ### Context
@@ -682,3 +882,25 @@
   - `matching-service.ts` の `findMatches` を 318行 → 251行 → 最終的に 387行ファイル（ヘルパー3関数追加）に整理。
   - `fetchViablePharmacies`（51行）、`fetchReservationMap`（17行）、`buildMatchItems`（25行）を抽出。
   - 全検証（typecheck/lint/test/build）成功。P1 指摘なし。
+
+## 2026-02-27 Full verification rerun (latest working tree)
+
+### Context
+- Prompt: Re-run full verification on latest working tree in `/Users/yusuke/DeadStockSolution`
+- Scope: typecheck / lint / test / build:server / build:client
+
+### Verification checklist
+- [ ] npm run typecheck
+- [ ] npm run lint
+- [ ] npm test
+- [ ] npm run build:server
+- [ ] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - `npm run typecheck` 成功
+  - `npm run lint` 成功
+  - `npm test` 成功（失敗なし）
+  - `npm run build:server` 成功
+  - `npm run build:client` 成功

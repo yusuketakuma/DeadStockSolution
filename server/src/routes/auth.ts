@@ -46,7 +46,8 @@ const loginLimiter = rateLimit({
 const AUTH_CONFIGURATION_ERROR_MESSAGE = '認証設定が未完了です。管理者に連絡してください';
 const PASSWORD_RESET_MIN_RESPONSE_MS = process.env.NODE_ENV === 'test' ? 0 : 180;
 const PASSWORD_RESET_RESPONSE_JITTER_MS = process.env.NODE_ENV === 'test' ? 0 : 120;
-const TEST_PHARMACY_PREVIEW_LIMIT = 2;
+const TEST_PHARMACY_PREVIEW_LIMIT = 5;
+const DEFAULT_TEST_ACCOUNT_PASSWORD = 'password123';
 const testPharmacyPreviewLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -96,6 +97,14 @@ function parseTestPharmacyEmails(): string[] {
     .split(',')
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
+}
+
+function resolveTestAccountPassword(): string {
+  const envPassword = (process.env.TEST_ACCOUNT_PASSWORD ?? process.env.DEMO_ACCOUNT_PASSWORD ?? '').trim();
+  if (envPassword.length > 0) {
+    return envPassword;
+  }
+  return DEFAULT_TEST_ACCOUNT_PASSWORD;
 }
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
@@ -450,7 +459,13 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
       .orderBy(asc(pharmacies.id))
       .limit(TEST_PHARMACY_PREVIEW_LIMIT);
 
-    res.json({ accounts: rows });
+    const password = resolveTestAccountPassword();
+    res.json({
+      accounts: rows.map((row) => ({
+        ...row,
+        password,
+      })),
+    });
   } catch (err) {
     logger.error('Get test pharmacies error', {
       error: err instanceof Error ? err.message : String(err),

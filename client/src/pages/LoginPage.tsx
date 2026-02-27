@@ -20,6 +20,7 @@ interface TestPharmacyPreview {
   name: string;
   email: string;
   prefecture: string;
+  password: string;
 }
 
 interface TestPharmacyResponse {
@@ -32,7 +33,8 @@ function isTestPharmacyPreview(value: unknown): value is TestPharmacyPreview {
   return typeof candidate.id === 'number'
     && typeof candidate.name === 'string'
     && typeof candidate.email === 'string'
-    && typeof candidate.prefecture === 'string';
+    && typeof candidate.prefecture === 'string'
+    && typeof candidate.password === 'string';
 }
 
 function parseTestPharmacyAccounts(payload: unknown): TestPharmacyPreview[] {
@@ -108,7 +110,7 @@ export default function LoginPage() {
     setMode('user');
     setError('');
     setEmail(pharmacy.email);
-    setPassword('');
+    setPassword(pharmacy.password);
     setShowTestPharmacyModal(false);
   };
 
@@ -212,7 +214,7 @@ export default function LoginPage() {
               {testPharmacyLoading ? '読込中...' : '登録済みテスト薬局を表示'}
             </button>
             <p className="dl-demo-hint">
-              DB登録済みのテスト薬局を表示します。選択するとメールアドレス欄へ反映されます。
+              DB登録済みのテスト薬局を表示します。選択するとメールアドレス/パスワード欄へ反映されます。
             </p>
           </section>
 

@@ -84,12 +84,16 @@ describe('auth routes', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalExposePasswordResetToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN;
   const originalEnableTestPharmacyPreview = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+  const originalTestAccountPassword = process.env.TEST_ACCOUNT_PASSWORD;
+  const originalDemoAccountPassword = process.env.DEMO_ACCOUNT_PASSWORD;
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
     delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    delete process.env.TEST_ACCOUNT_PASSWORD;
+    delete process.env.DEMO_ACCOUNT_PASSWORD;
     mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
     mocks.authService.isJwtSecretMissingError.mockImplementation(
       (err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'
@@ -112,6 +116,18 @@ describe('auth routes', () => {
       delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
     } else {
       process.env.ENABLE_TEST_PHARMACY_PREVIEW = originalEnableTestPharmacyPreview;
+    }
+
+    if (originalTestAccountPassword === undefined) {
+      delete process.env.TEST_ACCOUNT_PASSWORD;
+    } else {
+      process.env.TEST_ACCOUNT_PASSWORD = originalTestAccountPassword;
+    }
+
+    if (originalDemoAccountPassword === undefined) {
+      delete process.env.DEMO_ACCOUNT_PASSWORD;
+    } else {
+      process.env.DEMO_ACCOUNT_PASSWORD = originalDemoAccountPassword;
     }
   });
 
@@ -311,8 +327,12 @@ describe('auth routes', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       accounts: [
-        { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
-        { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+        {
+          id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都', password: 'password123',
+        },
+        {
+          id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府', password: 'password123',
+        },
       ],
     });
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
@@ -343,14 +363,42 @@ describe('auth routes', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       accounts: [
-        { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
-        { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+        {
+          id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都', password: 'password123',
+        },
+        {
+          id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府', password: 'password123',
+        },
       ],
     });
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
     expect(selectChain.from).toHaveBeenCalledTimes(1);
     expect(selectChain.where).toHaveBeenCalledTimes(1);
     expect(selectChain.orderBy).toHaveBeenCalledTimes(1);
-    expect(selectChain.limit).toHaveBeenCalledWith(2);
+    expect(selectChain.limit).toHaveBeenCalledWith(5);
+  });
+
+  it('uses configured test account password in preview response', async () => {
+    process.env.TEST_ACCOUNT_PASSWORD = 'DemoPass!999';
+    const selectChain = createSelectChain([
+      { id: 7, name: 'デモ薬局', email: 'demo@example.com', prefecture: '福岡県' },
+    ]);
+    mocks.db.select.mockReturnValue(selectChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      accounts: [
+        {
+          id: 7,
+          name: 'デモ薬局',
+          email: 'demo@example.com',
+          prefecture: '福岡県',
+          password: 'DemoPass!999',
+        },
+      ],
+    });
   });
 });

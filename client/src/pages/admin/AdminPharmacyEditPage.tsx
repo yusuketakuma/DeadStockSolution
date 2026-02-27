@@ -1,68 +1,68 @@
-import { useState, useEffect, useCallback, FormEvent, useMemo, useRef } from 'react';
-import AppAlert from '../components/ui/AppAlert';
-import AppButton from '../components/ui/AppButton';
-import { useAuth } from '../contexts/AuthContext';
-import { api, isConflictError } from '../api/client';
-import { useNavigate } from 'react-router-dom';
-import ConfirmActionModal from '../components/ConfirmActionModal';
-import ConflictAlert from '../components/ConflictAlert';
-import DraftRestoreAlert from '../components/DraftRestoreAlert';
-import AccountInfoForm, { AccountFormState } from '../components/account/AccountInfoForm';
-import BusinessHoursSettings from '../components/account/BusinessHoursSettings';
-import WithdrawSection from '../components/account/WithdrawSection';
-import { useAutoSave } from '../hooks/useAutoSave';
-import InlineLoader from '../components/ui/InlineLoader';
+import { useState, useEffect, useCallback, FormEvent, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Badge } from 'react-bootstrap';
+import AppAlert from '../../components/ui/AppAlert';
+import AppButton from '../../components/ui/AppButton';
+import AppDataPanel from '../../components/ui/AppDataPanel';
+import ConflictAlert from '../../components/ConflictAlert';
+import InlineLoader from '../../components/ui/InlineLoader';
+import AccountInfoForm, { AccountFormState } from '../../components/account/AccountInfoForm';
+import BusinessHoursSettings from '../../components/account/BusinessHoursSettings';
+import { api, isConflictError } from '../../api/client';
 import {
-  AccountData,
   BusinessHourEntry,
   BusinessHourSettingsResponse,
-  SpecialHourEntry,
-  SpecialType,
   createDefaultHours,
   createDefaultSpecialHour,
   normalizeBusinessHours,
   normalizeSpecialHours,
-} from '../components/account/types';
+  SpecialHourEntry,
+  SpecialType,
+} from '../../components/account/types';
 
-/** アカウント情報フォームの自動保存対象（パスワードは除外） */
-interface AccountDraftData {
+interface AdminPharmacyData {
+  id: number;
   email: string;
   name: string;
   postalCode: string;
   address: string;
   phone: string;
   fax: string;
-  prefecture: string;
   licenseNumber: string;
+  prefecture: string;
+  isActive: boolean;
+  isAdmin: boolean;
+  version: number;
+  createdAt: string | null;
 }
 
-/** 営業時間の自動保存対象 */
-interface BusinessHoursDraftData {
-  businessHours: BusinessHourEntry[];
-  specialHours: SpecialHourEntry[];
-}
-
-export default function AccountPage() {
-  const { user, refreshUser, logout } = useAuth();
+export default function AdminPharmacyEditPage() {
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const initialLoadAbortRef = useRef<AbortController | null>(null);
+  const pharmacyId = Number(id);
+  const hasValidId = Number.isInteger(pharmacyId) && pharmacyId > 0;
+
+  const [pharmacy, setPharmacy] = useState<AdminPharmacyData | null>(null);
+  const [pharmacyLoaded, setPharmacyLoaded] = useState(false);
   const [form, setForm] = useState<AccountFormState>({
-    email: '', name: '', postalCode: '', address: '', phone: '', fax: '', prefecture: '', licenseNumber: '',
-    currentPassword: '', newPassword: '',
+    email: '',
+    name: '',
+    postalCode: '',
+    address: '',
+    phone: '',
+    fax: '',
+    prefecture: '',
+    licenseNumber: '',
+    currentPassword: '',
+    newPassword: '',
   });
-  const [account, setAccount] = useState<AccountData | null>(null);
-  const [accountLoaded, setAccountLoaded] = useState(false);
+
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [withdrawing, setWithdrawing] = useState(false);
-  const [withdrawPassword, setWithdrawPassword] = useState('');
-  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
-  // 楽観的ロック競合フラグ
+  const [activeUpdating, setActiveUpdating] = useState(false);
   const [accountConflict, setAccountConflict] = useState(false);
-  const [hoursConflict, setHoursConflict] = useState(false);
 
-  // Business hours state
   const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
   const [savedBusinessHours, setSavedBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
   const [specialHours, setSpecialHours] = useState<SpecialHourEntry[]>([]);
@@ -75,103 +75,36 @@ export default function AccountPage() {
   const [hoursSaving, setHoursSaving] = useState(false);
   const [hoursMessage, setHoursMessage] = useState('');
   const [hoursError, setHoursError] = useState('');
+  const [hoursConflict, setHoursConflict] = useState(false);
 
   const isAccountDirty = useMemo(() => {
-    if (!account) return false;
-    return form.email !== account.email
-      || form.name !== account.name
-      || form.postalCode !== account.postalCode
-      || form.address !== account.address
-      || form.phone !== account.phone
-      || form.fax !== account.fax
-      || form.prefecture !== account.prefecture
-      || form.licenseNumber !== account.licenseNumber
-      || form.currentPassword.length > 0
-      || form.newPassword.length > 0;
-  }, [account, form]);
+    if (!pharmacy) return false;
+    return form.email !== pharmacy.email
+      || form.name !== pharmacy.name
+      || form.postalCode !== pharmacy.postalCode
+      || form.address !== pharmacy.address
+      || form.phone !== pharmacy.phone
+      || form.fax !== pharmacy.fax
+      || form.prefecture !== pharmacy.prefecture
+      || form.licenseNumber !== pharmacy.licenseNumber;
+  }, [form, pharmacy]);
 
-  // パスワードを除外した自動保存対象データ
-  const accountDraftData = useMemo<AccountDraftData>(() => ({
-    email: form.email,
-    name: form.name,
-    postalCode: form.postalCode,
-    address: form.address,
-    phone: form.phone,
-    fax: form.fax,
-    prefecture: form.prefecture,
-    licenseNumber: form.licenseNumber,
-  }), [
-    form.email,
-    form.name,
-    form.postalCode,
-    form.address,
-    form.phone,
-    form.fax,
-    form.prefecture,
-    form.licenseNumber,
-  ]);
+  const isHoursDirty = useMemo(() => {
+    if (!hoursEditing) return false;
+    return JSON.stringify(businessHours) !== JSON.stringify(savedBusinessHours)
+      || JSON.stringify(specialHours) !== JSON.stringify(savedSpecialHours);
+  }, [businessHours, savedBusinessHours, specialHours, savedSpecialHours, hoursEditing]);
 
-  const accountAutoSave = useAutoSave<AccountDraftData>('account-info', accountDraftData, {
-    userId: user?.id,
-    enabled: accountLoaded,
-  });
+  const hasUnsavedChanges = isAccountDirty || isHoursDirty;
 
-  // 営業時間の自動保存対象データ
-  const hoursDraftData = useMemo<BusinessHoursDraftData>(() => ({
-    businessHours,
-    specialHours,
-  }), [businessHours, specialHours]);
-
-  const hoursAutoSave = useAutoSave<BusinessHoursDraftData>('business-hours', hoursDraftData, {
-    userId: user?.id,
-    enabled: hoursLoaded && hoursEditing,
-  });
-
-  // アカウント情報の下書き復元
-  const handleAccountDraftRestore = useCallback(() => {
-    const draft = accountAutoSave.restoreDraft();
-    if (draft) {
-      setForm((prev) => ({
-        ...prev,
-        email: draft.email ?? prev.email,
-        name: draft.name,
-        postalCode: draft.postalCode,
-        address: draft.address,
-        phone: draft.phone,
-        fax: draft.fax,
-        prefecture: draft.prefecture,
-        licenseNumber: draft.licenseNumber ?? prev.licenseNumber,
-      }));
-    }
-    accountAutoSave.clearDraft();
-  }, [accountAutoSave]);
-
-  const handleAccountDraftDiscard = useCallback(() => {
-    accountAutoSave.clearDraft();
-  }, [accountAutoSave]);
-
-  // 営業時間の下書き復元
-  const handleHoursDraftRestore = useCallback(() => {
-    const draft = hoursAutoSave.restoreDraft();
-    if (draft) {
-      setBusinessHours(draft.businessHours);
-      setSpecialHours(draft.specialHours);
-      setHoursEditing(true);
-    }
-    hoursAutoSave.clearDraft();
-  }, [hoursAutoSave]);
-
-  const handleHoursDraftDiscard = useCallback(() => {
-    hoursAutoSave.clearDraft();
-  }, [hoursAutoSave]);
-
-  const loadAccount = useCallback(async (signal?: AbortSignal) => {
+  const loadPharmacy = useCallback(async (signal?: AbortSignal) => {
+    if (!hasValidId) return;
     try {
-      const data = await api.get<AccountData>('/account', { signal });
+      const data = await api.get<AdminPharmacyData>(`/admin/pharmacies/${pharmacyId}`, { signal });
       if (signal?.aborted) return;
-      setAccount(data);
-      setForm((prev) => ({
-        ...prev,
+
+      setPharmacy(data);
+      setForm({
         email: data.email,
         name: data.name,
         postalCode: data.postalCode,
@@ -180,21 +113,24 @@ export default function AccountPage() {
         fax: data.fax,
         prefecture: data.prefecture,
         licenseNumber: data.licenseNumber,
-      }));
+        currentPassword: '',
+        newPassword: '',
+      });
       setAccountConflict(false);
-    } catch {
+    } catch (err) {
       if (signal?.aborted) return;
-      setError('アカウント情報の取得に失敗しました');
+      setError(err instanceof Error ? err.message : '薬局情報の取得に失敗しました');
     } finally {
       if (!signal?.aborted) {
-        setAccountLoaded(true);
+        setPharmacyLoaded(true);
       }
     }
-  }, []);
+  }, [hasValidId, pharmacyId]);
 
   const loadBusinessHours = useCallback(async (signal?: AbortSignal) => {
+    if (!hasValidId) return;
     try {
-      const data = await api.get<BusinessHourSettingsResponse>('/business-hours/settings', { signal });
+      const data = await api.get<BusinessHourSettingsResponse>(`/admin/pharmacies/${pharmacyId}/business-hours/settings`, { signal });
       if (signal?.aborted) return;
       const normalizedWeekly = normalizeBusinessHours(data.hours ?? []);
       const normalizedSpecial = normalizeSpecialHours(data.specialHours ?? []);
@@ -223,20 +159,29 @@ export default function AccountPage() {
         setHoursLoaded(true);
       }
     }
-  }, [hoursHasRemoteData]);
+  }, [hasValidId, pharmacyId, hoursHasRemoteData]);
 
   useEffect(() => {
-    initialLoadAbortRef.current?.abort();
     const controller = new AbortController();
-    initialLoadAbortRef.current = controller;
-    void Promise.all([loadAccount(controller.signal), loadBusinessHours(controller.signal)]);
-    return () => {
-      controller.abort();
-      if (initialLoadAbortRef.current === controller) {
-        initialLoadAbortRef.current = null;
-      }
+    if (hasValidId) {
+      void Promise.all([loadPharmacy(controller.signal), loadBusinessHours(controller.signal)]);
+    } else {
+      setError('薬局IDが不正です');
+      setPharmacyLoaded(true);
+      setHoursLoaded(true);
+    }
+    return () => controller.abort();
+  }, [hasValidId, loadPharmacy, loadBusinessHours]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
     };
-  }, [loadAccount, loadBusinessHours]);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   const handleChange = useCallback((field: keyof AccountFormState, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -244,32 +189,44 @@ export default function AccountPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!hasValidId || !pharmacy) return;
     setError('');
     setMessage('');
     setAccountConflict(false);
     setLoading(true);
     try {
-      const result = await api.put<{ message: string; version: number }>('/account', {
-        ...form,
-        version: account?.version,
+      const result = await api.put<{ message: string; version: number }>(`/admin/pharmacies/${pharmacyId}`, {
+        email: form.email,
+        name: form.name,
+        postalCode: form.postalCode,
+        address: form.address,
+        phone: form.phone,
+        fax: form.fax,
+        prefecture: form.prefecture,
+        licenseNumber: form.licenseNumber,
+        version: pharmacy.version,
       });
-      setMessage('アカウント情報を更新しました');
+      setMessage('薬局情報を更新しました');
       setForm((prev) => ({ ...prev, currentPassword: '', newPassword: '' }));
-      accountAutoSave.clearDraft();
-      // version を更新
-      if (result.version && account) {
-        setAccount({ ...account, ...form, version: result.version });
-      }
-      refreshUser();
+      setPharmacy((prev) => (prev ? {
+        ...prev,
+        email: form.email,
+        name: form.name,
+        postalCode: form.postalCode,
+        address: form.address,
+        phone: form.phone,
+        fax: form.fax,
+        prefecture: form.prefecture,
+        licenseNumber: form.licenseNumber,
+        version: result.version,
+      } : prev));
     } catch (err) {
       if (isConflictError(err)) {
         setAccountConflict(true);
-        // 最新データでアカウント状態を更新
-        const latestData = err.data.latestData as AccountData | undefined;
+        const latestData = err.data.latestData as AdminPharmacyData | undefined;
         if (latestData) {
-          setAccount(latestData);
-          setForm((prev) => ({
-            ...prev,
+          setPharmacy(latestData);
+          setForm({
             email: latestData.email,
             name: latestData.name,
             postalCode: latestData.postalCode,
@@ -280,10 +237,10 @@ export default function AccountPage() {
             licenseNumber: latestData.licenseNumber,
             currentPassword: '',
             newPassword: '',
-          }));
+          });
         }
       } else {
-        setError(err instanceof Error ? err.message : '更新に失敗しました');
+        setError(err instanceof Error ? err.message : '薬局情報の更新に失敗しました');
       }
     } finally {
       setLoading(false);
@@ -294,8 +251,8 @@ export default function AccountPage() {
     setAccountConflict(false);
     setError('');
     setMessage('');
-    await loadAccount();
-  }, [loadAccount]);
+    await loadPharmacy();
+  }, [loadPharmacy]);
 
   const handleReloadBusinessHours = useCallback(async () => {
     setHoursConflict(false);
@@ -306,6 +263,29 @@ export default function AccountPage() {
     await loadBusinessHours();
   }, [loadBusinessHours]);
 
+  const handleToggleActive = async () => {
+    if (!hasValidId || !pharmacy) return;
+    setError('');
+    setMessage('');
+    setActiveUpdating(true);
+    try {
+      const result = await api.put<{ message: string }>(`/admin/pharmacies/${pharmacyId}/toggle-active`);
+      setMessage(result.message);
+      setPharmacy((prev) => (prev ? { ...prev, isActive: !prev.isActive } : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '状態変更に失敗しました');
+    } finally {
+      setActiveUpdating(false);
+    }
+  };
+
+  const navigateToList = useCallback(() => {
+    if (hasUnsavedChanges && !window.confirm('未保存の変更があります。保存せずに一覧へ戻りますか？')) {
+      return;
+    }
+    navigate('/admin/pharmacies');
+  }, [hasUnsavedChanges, navigate]);
+
   const handleHoursChange = useCallback((dayOfWeek: number, field: 'openTime' | 'closeTime', value: string) => {
     setBusinessHours((prev) =>
       prev.map((h) => h.dayOfWeek === dayOfWeek ? { ...h, [field]: value } : h),
@@ -315,22 +295,33 @@ export default function AccountPage() {
   const handleClosedChange = useCallback((dayOfWeek: number, isClosed: boolean) => {
     setBusinessHours((prev) =>
       prev.map((h) => h.dayOfWeek === dayOfWeek
-        ? { ...h, isClosed, is24Hours: false, openTime: isClosed ? null : (h.openTime || '09:00'), closeTime: isClosed ? null : (h.closeTime || '18:00') }
-        : h,
-      ),
+        ? {
+          ...h,
+          isClosed,
+          is24Hours: false,
+          openTime: isClosed ? null : (h.openTime || '09:00'),
+          closeTime: isClosed ? null : (h.closeTime || '18:00'),
+        }
+        : h),
     );
   }, []);
 
   const handle24HoursChange = useCallback((dayOfWeek: number, is24Hours: boolean) => {
     setBusinessHours((prev) =>
       prev.map((h) => h.dayOfWeek === dayOfWeek
-        ? { ...h, is24Hours, isClosed: false, openTime: is24Hours ? null : (h.openTime || '09:00'), closeTime: is24Hours ? null : (h.closeTime || '18:00') }
-        : h,
-      ),
+        ? {
+          ...h,
+          is24Hours,
+          isClosed: false,
+          openTime: is24Hours ? null : (h.openTime || '09:00'),
+          closeTime: is24Hours ? null : (h.closeTime || '18:00'),
+        }
+        : h),
     );
   }, []);
 
   const handleHoursSave = async () => {
+    if (!hasValidId) return;
     if (hoursLoadFailed || !hoursHasRemoteData) {
       setHoursError('営業時間データを取得できていないため保存できません。再読み込みしてください。');
       return;
@@ -376,7 +367,7 @@ export default function AccountPage() {
         is24Hours: entry.is24Hours,
         note: entry.note?.trim() || null,
       }));
-      const result = await api.put<{ message: string; version: number }>('/business-hours', {
+      const result = await api.put<{ message: string; version: number }>(`/admin/pharmacies/${pharmacyId}/business-hours`, {
         hours: businessHours,
         specialHours: payloadSpecialHours,
         version: hoursVersion,
@@ -386,16 +377,14 @@ export default function AccountPage() {
       setSavedBusinessHours(businessHours);
       setSavedSpecialHours(normalizedSpecial);
       setHoursEditing(false);
-      hoursAutoSave.clearDraft();
       setHoursMessage('営業時間を更新しました');
-      // version を更新
       if (result.version) {
         setHoursVersion(result.version);
+        setPharmacy((prev) => (prev ? { ...prev, version: result.version } : prev));
       }
     } catch (err) {
       if (isConflictError(err)) {
         setHoursConflict(true);
-        // 最新データで営業時間状態を更新
         const latestData = err.data.latestData as BusinessHourSettingsResponse | undefined;
         if (latestData) {
           const normalizedWeekly = normalizeBusinessHours(latestData.hours ?? []);
@@ -405,6 +394,7 @@ export default function AccountPage() {
           setSpecialHours(normalizedSpecial);
           setSavedSpecialHours(normalizedSpecial);
           setHoursVersion(latestData.version ?? 1);
+          setPharmacy((prev) => (prev ? { ...prev, version: latestData.version ?? prev.version } : prev));
           setHoursEditing(false);
         }
       } else {
@@ -510,69 +500,67 @@ export default function AccountPage() {
     );
   }, []);
 
-  const handleWithdraw = () => {
-    if (!withdrawPassword) {
-      setError('退会には現在のパスワードが必要です');
-      return;
-    }
-    setShowWithdrawConfirm(true);
-  };
-
-  const handleWithdrawConfirmed = async () => {
-    setShowWithdrawConfirm(false);
-    setWithdrawing(true);
-    setError('');
-    setMessage('');
-    try {
-      await api.delete<{ message: string }>('/account', { currentPassword: withdrawPassword });
-      setWithdrawPassword('');
-      await logout();
-      navigate('/login');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '退会処理に失敗しました');
-    } finally {
-      setWithdrawing(false);
-    }
-  };
-
-  if (!accountLoaded) {
-    return (
-      <InlineLoader text="アカウント情報を読み込み中..." className="text-muted small" />
-    );
+  if (!pharmacyLoaded) {
+    return <InlineLoader text="薬局情報を読み込み中..." className="text-muted small" />;
   }
 
-  if (!account) {
+  if (!pharmacy || !hasValidId) {
     return (
       <div>
-        <h4 className="page-title mb-3">薬局登録情報の編集</h4>
+        <h4 className="page-title mb-3">薬局情報編集</h4>
         {error && <AppAlert variant="danger">{error}</AppAlert>}
-        <AppButton variant="outline-secondary" onClick={() => void loadAccount()}>
-          再読み込み
-        </AppButton>
+        <div className="d-flex gap-2">
+          <AppButton variant="outline-secondary" onClick={navigateToList}>一覧へ戻る</AppButton>
+          <AppButton variant="outline-primary" onClick={() => void loadPharmacy()}>再読み込み</AppButton>
+        </div>
       </div>
     );
   }
 
   return (
     <div>
-      <h4 className="page-title mb-3">薬局登録情報の編集</h4>
+      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h4 className="page-title mb-0">薬局情報編集（ID: {pharmacy.id}）</h4>
+        <AppButton size="sm" variant="outline-secondary" onClick={navigateToList}>
+          一覧へ戻る
+        </AppButton>
+      </div>
+
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
+
+      <AppDataPanel className="mb-3">
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          <span>アカウント種別:</span>
+          <Badge bg={pharmacy.isAdmin ? 'danger' : 'secondary'}>
+            {pharmacy.isAdmin ? '管理者' : '薬局ユーザー'}
+          </Badge>
+          <Badge bg={pharmacy.isActive ? 'success' : 'secondary'}>
+            {pharmacy.isActive ? '有効' : '無効'}
+          </Badge>
+        </div>
+        <div className="d-flex flex-wrap align-items-center gap-2 mt-2">
+          <AppButton
+            size="sm"
+            variant={pharmacy.isActive ? 'outline-warning' : 'outline-success'}
+            onClick={() => void handleToggleActive()}
+            disabled={activeUpdating}
+          >
+            {activeUpdating ? '更新中...' : pharmacy.isActive ? '無効にする' : '有効にする'}
+          </AppButton>
+          <span className="text-muted small">この操作は即時反映されます</span>
+        </div>
+        <div className="text-muted small mt-2">
+          登録日: {pharmacy.createdAt ? new Date(pharmacy.createdAt).toLocaleString('ja-JP') : '-'}
+        </div>
+      </AppDataPanel>
 
       <ConflictAlert
         show={accountConflict}
         onReload={handleReloadAccount}
         onDismiss={() => setAccountConflict(false)}
-        message="他のデバイスまたはタブでアカウント情報が更新されました。最新のデータを読み込みました。内容を確認してから再度保存してください。"
+        message="他の操作で薬局情報が更新されました。最新データを読み込みました。内容確認後に再保存してください。"
       />
-
-      {accountAutoSave.hasDraft && (
-        <DraftRestoreAlert
-          draftTimestamp={accountAutoSave.draftTimestamp}
-          onRestore={handleAccountDraftRestore}
-          onDiscard={handleAccountDraftDiscard}
-        />
-      )}
 
       <AccountInfoForm
         form={form}
@@ -580,22 +568,15 @@ export default function AccountPage() {
         submitDisabled={!isAccountDirty}
         onSubmit={handleSubmit}
         onChange={handleChange}
+        showPasswordSection={false}
       />
 
       <ConflictAlert
         show={hoursConflict}
         onReload={handleReloadBusinessHours}
         onDismiss={() => setHoursConflict(false)}
-        message="他のデバイスまたはタブで営業時間が更新されました。最新のデータを読み込みました。内容を確認してから再度保存してください。"
+        message="他の操作で営業時間が更新されました。最新データを読み込みました。内容確認後に再保存してください。"
       />
-
-      {hoursAutoSave.hasDraft && (
-        <DraftRestoreAlert
-          draftTimestamp={hoursAutoSave.draftTimestamp}
-          onRestore={handleHoursDraftRestore}
-          onDiscard={handleHoursDraftDiscard}
-        />
-      )}
 
       <BusinessHoursSettings
         businessHours={businessHours}
@@ -623,24 +604,6 @@ export default function AccountPage() {
         onSpecialHoursChange={handleSpecialHoursChange}
         onSpecialClosedChange={handleSpecialClosedChange}
         onSpecial24HoursChange={handleSpecial24HoursChange}
-      />
-
-      <WithdrawSection
-        withdrawPassword={withdrawPassword}
-        withdrawing={withdrawing}
-        onPasswordChange={setWithdrawPassword}
-        onWithdraw={handleWithdraw}
-      />
-
-      <ConfirmActionModal
-        show={showWithdrawConfirm}
-        title="退会の確認"
-        body="退会するとアカウントは無効化され、現在のセッションは終了します。実行してよろしいですか？"
-        confirmLabel="退会する"
-        confirmVariant="danger"
-        onCancel={() => setShowWithdrawConfirm(false)}
-        onConfirm={handleWithdrawConfirmed}
-        pending={withdrawing}
       />
     </div>
   );

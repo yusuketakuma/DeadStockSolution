@@ -15,7 +15,7 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const SPECIAL_TYPES = ['holiday_closed', 'long_holiday_closed', 'temporary_closed', 'special_open'] as const;
 type SpecialType = typeof SPECIAL_TYPES[number];
 
-interface BusinessHourInput {
+export interface BusinessHourInput {
   dayOfWeek: number;
   openTime: string | null;
   closeTime: string | null;
@@ -23,7 +23,7 @@ interface BusinessHourInput {
   is24Hours: boolean;
 }
 
-interface SpecialHourInput {
+export interface SpecialHourInput {
   specialType: SpecialType;
   startDate: string;
   endDate: string;
@@ -34,7 +34,7 @@ interface SpecialHourInput {
   note: string | null;
 }
 
-function validateBusinessHours(hours: unknown): { valid: BusinessHourInput[] } | { error: string } {
+export function validateBusinessHours(hours: unknown): { valid: BusinessHourInput[] } | { error: string } {
   if (!Array.isArray(hours)) {
     return { error: '営業時間は配列で指定してください' };
   }
@@ -103,7 +103,7 @@ function isValidDateString(value: string): boolean {
   return date.toISOString().startsWith(value);
 }
 
-function validateSpecialBusinessHours(
+export function validateSpecialBusinessHours(
   specialHours: unknown,
 ): { valid: SpecialHourInput[]; provided: boolean } | { error: string } {
   if (specialHours === undefined) {
@@ -205,7 +205,7 @@ function validateSpecialBusinessHours(
  * アカウント情報更新でも version がインクリメントされるため、
  * 営業時間以外の変更でも 409 が発生しうる（意図的な設計）。
  */
-async function fetchBusinessHourSettings(pharmacyId: number) {
+export async function fetchBusinessHourSettings(pharmacyId: number) {
   const [hours, specialHoursRows, pharmacyRows] = await Promise.all([
     db.select({
       dayOfWeek: pharmacyBusinessHours.dayOfWeek,
