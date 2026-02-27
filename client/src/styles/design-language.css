@@ -389,6 +389,9 @@ body[data-design-preset='high-legibility'] .app-theme {
 .app-theme .btn,
 .app-theme .dropdown-toggle {
   min-height: var(--dl-control-min-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .app-theme :is(button, [role='button'], a, input, select, textarea):focus-visible {

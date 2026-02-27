@@ -269,3 +269,25 @@
 - （必要に応じて追記）
 
 ---
+
+## セッション: 2026-02-27T15:59:53Z
+
+- session_id: `session-1772192914`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-02-27T11:48:34Z`
+- ended_at: `2026-02-27T15:59:53Z`
+- duration_minutes: 791
+- changes: 1
+- commits: 12
+
+### 変更ファイル
+- `.claude/launch.json`
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
