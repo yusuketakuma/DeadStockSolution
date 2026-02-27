@@ -57,6 +57,18 @@
   - What happened: 判定ロジックが固定メール/ID中心だったため、DB上の薬局属性として一貫管理できなかった
   - Root cause: 「アカウント種別」をテーブル列で正規化せず、ルート内条件で表現していた
   - New rule to prevent it: 種別判定はDB列（例: `is_test_account`）で一次管理し、APIロジックはその列を唯一の判定基準にする
+- Pattern: 新列追加直後にpreview DBへマイグレーションが未反映で、列参照クエリが500化した
+  - What happened: `is_test_account` 追加後、preview環境で `GET /api/auth/test-pharmacies` が連続500になった
+  - Root cause: スキーマ変更のデプロイとDBマイグレーション適用タイミングがずれ、後方互換経路が不足していた
+  - New rule to prevent it: 新列に依存する読み取り経路は、少なくとも移行期間中 `undefined_column(42703)` フォールバックを実装し、preview/prodの遅延適用でも停止しない設計にする
+- Pattern: テスト実データ更新後に旧フィクスチャ名（テスト薬局A/B）が残り、要件との整合が崩れた
+  - What happened: 実運用の5件名称へ更新済みなのに、テストコードに A/B 名称・メール参照が残存していた
+  - Root cause: データ更新時に「設定値・シード・UI・テスト fixture」の横断置換チェックが不足していた
+  - New rule to prevent it: テストアカウント情報を更新したら、`rg` で名称/メールの旧値を全検索し、0件確認をDoDに含める
+- Pattern: テストアカウントの実体をコード定数で保持し続け、DB実態との乖離で運用障害を招いた
+  - What happened: `test-pharmacy-demo-accounts.ts` の固定配列/固定パスワード依存が残り、DB変更やマイグレーション遅延時に `/api/auth/test-pharmacies` の整合が崩れた
+  - Root cause: 「表示用資格情報」をDB正規データではなくアプリ設定値として扱っていた
+  - New rule to prevent it: テストアカウントを含む運用データは必ずDBを一次ソースにし、ルート層で固定データを持たない。必要な公開用値（例: demo表示パスワード）は列追加してDB管理する
 
 ## Project-specific gotchas
 - Item:

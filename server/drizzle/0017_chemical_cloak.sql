@@ -1,0 +1,1 @@
+ALTER TABLE "pharmacies" ADD COLUMN "test_account_password" text;

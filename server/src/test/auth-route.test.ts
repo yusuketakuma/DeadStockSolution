@@ -84,12 +84,29 @@ function createSelectChain(rows: unknown[]) {
   return chain;
 }
 
+function createRejectedSelectChain(error: Error & { code?: string }) {
+  const rejected = Promise.reject(error);
+  rejected.catch(() => undefined);
+  const chain = {
+    from: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+    limit: vi.fn(),
+    then: rejected.then.bind(rejected),
+    catch: rejected.catch.bind(rejected),
+    finally: rejected.finally.bind(rejected),
+  };
+  chain.from.mockReturnValue(chain);
+  chain.where.mockReturnValue(chain);
+  chain.orderBy.mockReturnValue(chain);
+  chain.limit.mockReturnValue(chain);
+  return chain;
+}
+
 describe('auth routes', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalExposePasswordResetToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN;
   const originalEnableTestPharmacyPreview = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-  const originalTestAccountPassword = process.env.TEST_ACCOUNT_PASSWORD;
-  const originalDemoAccountPassword = process.env.DEMO_ACCOUNT_PASSWORD;
   const originalVitest = process.env.VITEST;
 
   beforeEach(() => {
@@ -97,8 +114,6 @@ describe('auth routes', () => {
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
     delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-    delete process.env.TEST_ACCOUNT_PASSWORD;
-    delete process.env.DEMO_ACCOUNT_PASSWORD;
     mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
     mocks.authService.isJwtSecretMissingError.mockImplementation(
       (err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'
@@ -121,18 +136,6 @@ describe('auth routes', () => {
       delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
     } else {
       process.env.ENABLE_TEST_PHARMACY_PREVIEW = originalEnableTestPharmacyPreview;
-    }
-
-    if (originalTestAccountPassword === undefined) {
-      delete process.env.TEST_ACCOUNT_PASSWORD;
-    } else {
-      process.env.TEST_ACCOUNT_PASSWORD = originalTestAccountPassword;
-    }
-
-    if (originalDemoAccountPassword === undefined) {
-      delete process.env.DEMO_ACCOUNT_PASSWORD;
-    } else {
-      process.env.DEMO_ACCOUNT_PASSWORD = originalDemoAccountPassword;
     }
 
     if (originalVitest === undefined) {
@@ -327,8 +330,8 @@ describe('auth routes', () => {
     process.env.NODE_ENV = 'production';
     delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
     const selectChain = createSelectChain([
-      { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
-      { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+      { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
     ]);
     mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();
@@ -339,38 +342,13 @@ describe('auth routes', () => {
     expect(res.body).toEqual({
       accounts: [
         {
-          id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都', password: 'password123',
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
         },
         {
-          id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府', password: 'password123',
+          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026',
         },
       ],
     });
-    expect(mocks.db.select).toHaveBeenCalledTimes(1);
-  });
-
-  it('continues preview response when production auto-sync fails', async () => {
-    process.env.NODE_ENV = 'production';
-    delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-    delete process.env.VITEST;
-    mocks.authService.hashPassword.mockResolvedValue('hashed-password');
-    mocks.db.insert.mockReturnValue({
-      values: vi.fn().mockReturnValue({
-        onConflictDoUpdate: vi.fn().mockRejectedValue(new Error('read-only transaction')),
-      }),
-    });
-    const selectChain = createSelectChain([
-      { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
-      { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
-    ]);
-    mocks.db.select.mockReturnValue(selectChain);
-    const app = await createApp();
-
-    const res = await request(app).get('/api/auth/test-pharmacies');
-
-    expect(res.status).toBe(200);
-    expect(res.body.accounts).toHaveLength(2);
-    expect(mocks.db.insert).toHaveBeenCalledTimes(1);
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
@@ -388,8 +366,8 @@ describe('auth routes', () => {
 
   it('returns test pharmacy previews from database', async () => {
     const selectChain = createSelectChain([
-      { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
-      { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+      { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
     ]);
     mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();
@@ -400,10 +378,10 @@ describe('auth routes', () => {
     expect(res.body).toEqual({
       accounts: [
         {
-          id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都', password: 'password123',
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
         },
         {
-          id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府', password: 'password123',
+          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026',
         },
       ],
     });
@@ -414,13 +392,29 @@ describe('auth routes', () => {
     expect(selectChain.limit).not.toHaveBeenCalled();
   });
 
-  it('returns distinct passwords for the 5 fixed test pharmacy accounts', async () => {
+  it('returns 503 when test pharmacy columns are missing', async () => {
+    process.env.NODE_ENV = 'production';
+    const missingColumnError = Object.assign(new Error('column "is_test_account" does not exist'), { code: '42703' });
+    const missingColumnChain = createRejectedSelectChain(missingColumnError);
+    mocks.db.select
+      .mockImplementationOnce(() => missingColumnChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies');
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+    expect(missingColumnChain.where).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns distinct passwords for DB test pharmacy accounts', async () => {
     const selectChain = createSelectChain([
-      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都' },
-      { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道' },
-      { id: 3, name: 'テスト薬局大阪店', email: 'test-osaka@example.com', prefecture: '大阪府' },
-      { id: 4, name: 'テスト薬局福岡店', email: 'test-fukuoka@example.com', prefecture: '福岡県' },
-      { id: 5, name: 'テスト薬局那覇店', email: 'test-naha@example.com', prefecture: '沖縄県' },
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+      { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
+      { id: 3, name: 'テスト薬局大阪店', email: 'test-osaka@example.com', prefecture: '大阪府', password: 'OsakaDemo!2026' },
+      { id: 4, name: 'テスト薬局福岡店', email: 'test-fukuoka@example.com', prefecture: '福岡県', password: 'FukuokaDemo!2026' },
+      { id: 5, name: 'テスト薬局那覇店', email: 'test-naha@example.com', prefecture: '沖縄県', password: 'NahaDemo!2026' },
     ]);
     mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();
@@ -467,10 +461,9 @@ describe('auth routes', () => {
     ]);
   });
 
-  it('uses configured test account password in preview response', async () => {
-    process.env.TEST_ACCOUNT_PASSWORD = 'DemoPass!999';
+  it('uses DB password value in preview response', async () => {
     const selectChain = createSelectChain([
-      { id: 7, name: 'デモ薬局', email: 'demo@example.com', prefecture: '福岡県' },
+      { id: 7, name: 'デモ薬局', email: 'demo@example.com', prefecture: '福岡県', password: 'DemoPass!999' },
     ]);
     mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();

@@ -120,6 +120,10 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
 
     // Hash password only after token is confirmed valid (avoid CPU waste on invalid tokens).
     const passwordHash = await hashPassword(newPassword);
+    const [targetPharmacy] = await tx.select({ isTestAccount: pharmacies.isTestAccount })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, consumed.pharmacyId))
+      .limit(1);
 
     // Invalidate ALL remaining unused tokens for this user.
     await tx.update(passwordResetTokens)
@@ -130,7 +134,11 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
       ));
 
     await tx.update(pharmacies)
-      .set({ passwordHash, updatedAt: now })
+      .set({
+        passwordHash,
+        updatedAt: now,
+        ...(targetPharmacy?.isTestAccount ? { testAccountPassword: newPassword } : {}),
+      })
       .where(eq(pharmacies.id, consumed.pharmacyId));
 
     return { success: true, pharmacyId: consumed.pharmacyId };

@@ -1118,7 +1118,107 @@
 ### Result
 - Status: DONE
 - Notes:
-  - `server/drizzle/0016_add_is_test_account_flag.sql` を追加し、`pharmacies.is_test_account` 列の追加と既存5件（固定メール）の `true` 更新を実施。
+  - `server/drizzle/0016_add_is_test_account_flag.sql` で `pharmacies.is_test_account` 列を追加。
   - `/api/auth/test-pharmacies` は `is_test_account=true` の薬局をテストアカウントとして返却するロジックに変更。
   - デモ同期（`syncDemoAccountsToDatabase`）とシード（`seed-test-pharmacy-accounts.ts`）で `isTestAccount: true` を永続化。
   - 管理画面（一覧/編集）で `isTestAccount` を表示・更新可能にし、編集画面にスイッチを追加。
+
+## 2026-02-28 previewで `is_test_account` 未反映時の500復旧（後方互換）
+
+### Context
+- Prompt: Vercel previewで `/api/auth/test-pharmacies` が500（`is_test_account` を使うクエリ失敗）
+- Scope:
+  - `server/src/routes/auth.ts`
+  - `server/src/test/auth-route.test.ts`
+
+### Goals / Definition of Done
+- [x] `is_test_account` 列が未存在でも `/api/auth/test-pharmacies` が500にならない
+- [x] auto-syncが旧スキーマでもデモ5件を投入できる
+- [x] `/auth/me` も列未存在時に後方互換レスポンスで継続できる
+- [x] 回帰テスト / typecheck / lint が通る
+
+### Implementation checklist
+- [x] A. `is_test_account` 未存在（42703）を判定するヘルパーを追加
+- [x] B. `test-pharmacies` を flag query → legacy query（email/id）へフォールバック
+- [x] C. demo auto-sync を flag upsert → legacy upsert へフォールバック
+- [x] D. `/auth/me` の列参照も legacy fallback を追加
+- [x] E. auth route テストに fallback ケースを追加
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run typecheck --workspace=server
+- [x] npm run lint --workspace=server
+
+### Result
+- Status: DONE
+- Notes:
+  - preview DBのマイグレーション遅延時でも `test-pharmacies` が利用可能になるよう、列未存在時の互換ロジックを追加。
+  - 互換ロジックは `is_test_account` が使える環境では自動的に新ロジックへ戻る。
+
+## 2026-02-28 テスト薬局A/B参照の全廃（実在5件へ統一）
+
+### Context
+- Prompt: テスト薬局Aとテスト薬局Bは存在しないため、全ファイルを修正
+- Scope:
+  - server/client のテストデータと期待値
+  - 文字列・メール参照（`テスト薬局A/B`, `test-a@example.com`, `test-b@example.com`）
+
+### Goals / Definition of Done
+- [x] `テスト薬局A/B` と `test-a/test-b` 参照がリポジトリから消えている
+- [x] 実在するテスト薬局（東京店/札幌店/大阪店/福岡店/那覇店）へ置換されている
+- [x] 変更したテストがすべて通る
+
+### Implementation checklist
+- [x] A. `client/src/test/e2e/login.test.tsx` のモック/期待値を東京店・札幌店へ変更
+- [x] B. `client/src/test/e2e/routes-meta.test.tsx` の薬局名を東京店・大阪店へ変更
+- [x] C. `server/src/test/auth-route.test.ts` のA/B参照を東京店・札幌店へ変更
+- [x] D. 全体検索で残存参照がないことを確認
+
+### Verification
+- [x] `rg -n "テスト薬局A|テスト薬局B|test-a@example.com|test-b@example.com" -S .`（残存なし）
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/login.test.tsx src/test/e2e/routes-meta.test.tsx
+
+### Result
+- Status: DONE
+- Notes:
+  - A/B由来の名称・メール参照を実在5件に統一し、期待値も同時更新した。
+
+## 2026-02-28 DBを唯一ソース化（コード側テストデータ撤去）
+
+### Context
+- Prompt: データベースを唯一のデータとし、コード側にテストデータを持たない
+- Scope:
+  - `server/src/routes/auth.ts` の固定テストアカウント依存除去
+  - `pharmacies` のテストアカウント表示用パスワード列追加
+  - 管理者UI/APIでテストアカウントパスワードを編集可能化
+  - 固定テストデータ設定ファイル/シードの撤去または非依存化
+
+### Goals / Definition of Done
+- [x] `/api/auth/test-pharmacies` がDB列のみを根拠に返却する
+- [x] ランタイムコードが固定テスト薬局リスト/固定パスワードMapに依存しない
+- [x] 管理者がDB上のテストアカウント情報（フラグ/表示用パスワード）を編集できる
+- [x] 主要テストと型/lintが通る
+
+### Implementation checklist
+- [x] A. schema+migrationで `test_account_password` 列を追加
+- [x] B. auth route の固定設定依存を削除し、DB列参照へ変更
+- [x] C. admin API/UI に `testAccountPassword` 編集を追加
+- [x] D. 固定テストデータ定義ファイルの依存を除去
+- [x] E. 検証（server/client関連テスト + typecheck/lint）
+
+### Verification
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - `server/drizzle/0017_chemical_cloak.sql` で `pharmacies.test_account_password` を追加し、テストアカウント表示用パスワードをDB管理へ移行。
+  - `GET /api/auth/test-pharmacies` は `is_test_account=true AND test_account_password IS NOT NULL` のDB条件のみで返却し、固定デモ配列依存を削除。
+  - `server/src/config/test-pharmacy-demo-accounts.ts` を削除し、固定テストデータがランタイムに混入しない構成へ変更。
+  - 管理者編集画面でテストアカウント表示用パスワードを編集可能化し、更新API側で整合性（テストアカウント時必須）を検証。
+  - パスワード再設定/本人パスワード変更時、テストアカウントなら `test_account_password` も同期更新するようにし、一覧表示との不整合を防止。

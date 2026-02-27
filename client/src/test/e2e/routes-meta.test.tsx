@@ -50,7 +50,7 @@ function createPrintPayload() {
       },
     ],
     pharmacyA: {
-      name: 'テスト薬局A',
+      name: 'テスト薬局東京店',
       phone: '03-0000-0001',
       fax: '03-0000-0002',
       address: '千代田1-1-1',
@@ -58,7 +58,7 @@ function createPrintPayload() {
       licenseNumber: 'A-123',
     },
     pharmacyB: {
-      name: 'テスト薬局B',
+      name: 'テスト薬局大阪店',
       phone: '06-0000-0001',
       fax: '06-0000-0002',
       address: '北区1-1-1',

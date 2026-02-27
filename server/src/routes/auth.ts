@@ -20,7 +20,6 @@ import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } f
 import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
-import { TEST_PHARMACY_DEMO_ACCOUNTS, TEST_PHARMACY_PASSWORD_BY_EMAIL } from '../config/test-pharmacy-demo-accounts';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -47,7 +46,6 @@ const loginLimiter = rateLimit({
 const AUTH_CONFIGURATION_ERROR_MESSAGE = '認証設定が未完了です。管理者に連絡してください';
 const PASSWORD_RESET_MIN_RESPONSE_MS = process.env.NODE_ENV === 'test' ? 0 : 180;
 const PASSWORD_RESET_RESPONSE_JITTER_MS = process.env.NODE_ENV === 'test' ? 0 : 120;
-const DEFAULT_TEST_ACCOUNT_PASSWORD = 'password123';
 const testPharmacyPreviewLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -92,87 +90,28 @@ function isTestPharmacyPreviewEnabled(): boolean {
   return process.env.ENABLE_TEST_PHARMACY_PREVIEW !== 'false';
 }
 
-function resolveTestAccountPassword(): string {
-  const envPassword = (process.env.TEST_ACCOUNT_PASSWORD ?? process.env.DEMO_ACCOUNT_PASSWORD ?? '').trim();
-  if (envPassword.length > 0) {
-    return envPassword;
+function extractErrorCode(err: unknown): string | null {
+  if (!err || typeof err !== 'object') return null;
+  const code = (err as { code?: unknown }).code;
+  if (typeof code === 'string' && code.trim().length > 0) {
+    return code;
   }
-  return DEFAULT_TEST_ACCOUNT_PASSWORD;
+  return extractErrorCode((err as { cause?: unknown }).cause);
 }
 
-function resolveTestPharmacyPasswordByEmail(email: string): string {
-  const fixedPassword = TEST_PHARMACY_PASSWORD_BY_EMAIL.get(email.trim().toLowerCase());
-  if (fixedPassword) {
-    return fixedPassword;
+function includesIsTestAccountToken(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const message = String((err as { message?: unknown }).message ?? '').toLowerCase();
+  if (message.includes('is_test_account') || message.includes('test_account_password')) {
+    return true;
   }
-  return resolveTestAccountPassword();
+  return includesIsTestAccountToken((err as { cause?: unknown }).cause);
 }
 
-function shouldAutoSyncDemoAccounts(): boolean {
-  return !process.env.VITEST
-    && process.env.NODE_ENV !== 'test'
-    && process.env.AUTO_SYNC_TEST_PHARMACIES !== 'false';
+function isMissingTestPharmacyColumnError(err: unknown): boolean {
+  return extractErrorCode(err) === '42703' || includesIsTestAccountToken(err);
 }
-
-let demoAccountsSynced = false;
-
-async function syncDemoAccountsToDatabase(): Promise<void> {
-  const now = new Date().toISOString();
-  for (const account of TEST_PHARMACY_DEMO_ACCOUNTS) {
-    const passwordHash = await hashPassword(account.password);
-    await db.insert(pharmacies).values({
-      email: account.email,
-      passwordHash,
-      name: account.name,
-      postalCode: account.postalCode,
-      address: account.address,
-      phone: account.phone,
-      fax: account.fax,
-      licenseNumber: account.licenseNumber,
-      prefecture: account.prefecture,
-      latitude: account.latitude,
-      longitude: account.longitude,
-      isAdmin: false,
-      isActive: true,
-      isTestAccount: true,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: pharmacies.email,
-      set: {
-        passwordHash,
-        name: account.name,
-        postalCode: account.postalCode,
-        address: account.address,
-        phone: account.phone,
-        fax: account.fax,
-        licenseNumber: account.licenseNumber,
-        prefecture: account.prefecture,
-        latitude: account.latitude,
-        longitude: account.longitude,
-        isAdmin: false,
-        isActive: true,
-        isTestAccount: true,
-        updatedAt: now,
-      },
-    });
-  }
-}
-
-async function ensureDemoAccountsSynced(): Promise<void> {
-  if (!shouldAutoSyncDemoAccounts() || demoAccountsSynced) {
-    return;
-  }
-  try {
-    await syncDemoAccountsToDatabase();
-    demoAccountsSynced = true;
-  } catch (err) {
-    // Never break preview response because optional auto-sync failed in runtime env.
-    demoAccountsSynced = true;
-    logger.warn('Auto sync for test pharmacy demo accounts failed; continuing without sync', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
+let isTestAccountColumnAvailable: boolean | null = null;
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
@@ -466,22 +405,89 @@ router.get('/csrf-token', (req: AuthRequest, res: Response) => {
 
 router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
   try {
-    const rows = await db.select({
-      id: pharmacies.id,
-      email: pharmacies.email,
-      name: pharmacies.name,
-      postalCode: pharmacies.postalCode,
-      address: pharmacies.address,
-      phone: pharmacies.phone,
-      fax: pharmacies.fax,
-      licenseNumber: pharmacies.licenseNumber,
-      prefecture: pharmacies.prefecture,
-      isAdmin: pharmacies.isAdmin,
-      isTestAccount: pharmacies.isTestAccount,
-    })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, req.user!.id))
-      .limit(1);
+    let rows: Array<{
+      id: number;
+      email: string;
+      name: string;
+      postalCode: string;
+      address: string;
+      phone: string;
+      fax: string;
+      licenseNumber: string;
+      prefecture: string;
+      isAdmin: boolean | null;
+      isTestAccount: boolean;
+    }>;
+
+    if (isTestAccountColumnAvailable === false) {
+      const legacyRows = await db.select({
+        id: pharmacies.id,
+        email: pharmacies.email,
+        name: pharmacies.name,
+        postalCode: pharmacies.postalCode,
+        address: pharmacies.address,
+        phone: pharmacies.phone,
+        fax: pharmacies.fax,
+        licenseNumber: pharmacies.licenseNumber,
+        prefecture: pharmacies.prefecture,
+        isAdmin: pharmacies.isAdmin,
+      })
+        .from(pharmacies)
+        .where(eq(pharmacies.id, req.user!.id))
+        .limit(1);
+
+      rows = legacyRows.map((row) => ({
+        ...row,
+        isTestAccount: false,
+      }));
+    } else {
+      try {
+        rows = await db.select({
+          id: pharmacies.id,
+          email: pharmacies.email,
+          name: pharmacies.name,
+          postalCode: pharmacies.postalCode,
+          address: pharmacies.address,
+          phone: pharmacies.phone,
+          fax: pharmacies.fax,
+          licenseNumber: pharmacies.licenseNumber,
+          prefecture: pharmacies.prefecture,
+          isAdmin: pharmacies.isAdmin,
+          isTestAccount: pharmacies.isTestAccount,
+        })
+          .from(pharmacies)
+          .where(eq(pharmacies.id, req.user!.id))
+          .limit(1);
+        isTestAccountColumnAvailable = true;
+      } catch (err) {
+        if (!isMissingTestPharmacyColumnError(err)) {
+          throw err;
+        }
+        isTestAccountColumnAvailable = false;
+        logger.warn('is_test_account column is not available yet; fallback to legacy /auth/me response', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        const legacyRows = await db.select({
+          id: pharmacies.id,
+          email: pharmacies.email,
+          name: pharmacies.name,
+          postalCode: pharmacies.postalCode,
+          address: pharmacies.address,
+          phone: pharmacies.phone,
+          fax: pharmacies.fax,
+          licenseNumber: pharmacies.licenseNumber,
+          prefecture: pharmacies.prefecture,
+          isAdmin: pharmacies.isAdmin,
+        })
+          .from(pharmacies)
+          .where(eq(pharmacies.id, req.user!.id))
+          .limit(1);
+        rows = legacyRows.map((row) => ({
+          ...row,
+          isTestAccount: false,
+        }));
+      }
+    }
 
     if (rows.length === 0) {
       res.status(404).json({ error: 'ユーザーが見つかりません' });
@@ -503,24 +509,45 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
       res.status(404).json({ error: 'テスト薬局情報は利用できません' });
       return;
     }
+    if (isTestAccountColumnAvailable === false) {
+      res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
+      return;
+    }
 
-    await ensureDemoAccountsSynced();
-    const baseCondition = eq(pharmacies.isTestAccount, true);
-
-    const rows = await db.select({
-      id: pharmacies.id,
-      name: pharmacies.name,
-      email: pharmacies.email,
-      prefecture: pharmacies.prefecture,
-    })
-      .from(pharmacies)
-      .where(baseCondition)
-      .orderBy(asc(pharmacies.id));
+    const rows = await (async () => {
+      try {
+        const currentRows = await db.select({
+          id: pharmacies.id,
+          name: pharmacies.name,
+          email: pharmacies.email,
+          prefecture: pharmacies.prefecture,
+          password: pharmacies.testAccountPassword,
+        })
+          .from(pharmacies)
+          .where(eq(pharmacies.isTestAccount, true))
+          .orderBy(asc(pharmacies.id));
+        isTestAccountColumnAvailable = true;
+        return currentRows;
+      } catch (err) {
+        if (!isMissingTestPharmacyColumnError(err)) {
+          throw err;
+        }
+        isTestAccountColumnAvailable = false;
+        logger.warn('test pharmacy columns are not available yet', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
+        return null;
+      }
+    })();
+    if (!rows) {
+      return;
+    }
 
     res.json({
       accounts: rows.map((row) => ({
         ...row,
-        password: resolveTestPharmacyPasswordByEmail(row.email),
+        password: row.password ?? '',
       })),
     });
   } catch (err) {

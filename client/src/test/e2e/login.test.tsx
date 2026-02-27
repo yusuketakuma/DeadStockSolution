@@ -228,17 +228,17 @@ describe('LoginPage', () => {
       testPharmacies: [
         {
           id: 1,
-          name: 'テスト薬局A',
-          email: 'test-a@example.com',
+          name: 'テスト薬局東京店',
+          email: 'test-tokyo@example.com',
           prefecture: '東京都',
           password: 'TokyoDemo!2026',
         },
         {
           id: 2,
-          name: 'テスト薬局B',
-          email: 'test-b@example.com',
-          prefecture: '大阪府',
-          password: 'OsakaDemo!2026',
+          name: 'テスト薬局札幌店',
+          email: 'test-sapporo@example.com',
+          prefecture: '北海道',
+          password: 'SapporoDemo!2026',
         },
       ],
     });
@@ -253,17 +253,17 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByText('登録済みテスト薬局')).toBeInTheDocument();
     });
-    expect(screen.getByText('テスト薬局A')).toBeInTheDocument();
-    expect(screen.getByText('テスト薬局B')).toBeInTheDocument();
+    expect(screen.getByText('テスト薬局東京店')).toBeInTheDocument();
+    expect(screen.getByText('テスト薬局札幌店')).toBeInTheDocument();
     expect(screen.getByText('TokyoDemo!2026')).toBeInTheDocument();
-    expect(screen.getByText('OsakaDemo!2026')).toBeInTheDocument();
+    expect(screen.getByText('SapporoDemo!2026')).toBeInTheDocument();
     expect(document.querySelector('.dl-test-pharmacy-modal table')).not.toBeNull();
     expect(document.querySelector('.dl-mobile-data-card')).toBeNull();
 
     const applyButtons = screen.getAllByRole('button', { name: 'このID/パスワードを入力' });
     await user.click(applyButtons[0]);
 
-    expect(getInputByLabel('メールアドレス')).toHaveValue('test-a@example.com');
+    expect(getInputByLabel('メールアドレス')).toHaveValue('test-tokyo@example.com');
     expect(getInputByLabel('パスワード')).toHaveValue('TokyoDemo!2026');
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
   });

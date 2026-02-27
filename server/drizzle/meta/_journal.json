@@ -120,6 +120,13 @@
       "when": 1772203700343,
       "tag": "0016_add_is_test_account_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1772205233609,
+      "tag": "0017_chemical_cloak",
+      "breakpoints": true
     }
   ]
 }

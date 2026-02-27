@@ -4,6 +4,7 @@ import { Badge, Form } from 'react-bootstrap';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
 import AppDataPanel from '../../components/ui/AppDataPanel';
+import AppField from '../../components/ui/AppField';
 import ConflictAlert from '../../components/ConflictAlert';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AccountInfoForm, { AccountFormState } from '../../components/account/AccountInfoForm';
@@ -33,6 +34,7 @@ interface AdminPharmacyData {
   isActive: boolean;
   isAdmin: boolean;
   isTestAccount: boolean;
+  testAccountPassword: string | null;
   version: number;
   createdAt: string | null;
 }
@@ -63,6 +65,7 @@ export default function AdminPharmacyEditPage() {
   const [loading, setLoading] = useState(false);
   const [activeUpdating, setActiveUpdating] = useState(false);
   const [isTestAccount, setIsTestAccount] = useState(false);
+  const [testAccountPassword, setTestAccountPassword] = useState('');
   const [accountConflict, setAccountConflict] = useState(false);
 
   const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
@@ -89,8 +92,9 @@ export default function AdminPharmacyEditPage() {
       || form.fax !== pharmacy.fax
       || form.prefecture !== pharmacy.prefecture
       || form.licenseNumber !== pharmacy.licenseNumber
-      || isTestAccount !== pharmacy.isTestAccount;
-  }, [form, isTestAccount, pharmacy]);
+      || isTestAccount !== pharmacy.isTestAccount
+      || (isTestAccount && testAccountPassword !== (pharmacy.testAccountPassword ?? ''));
+  }, [form, isTestAccount, pharmacy, testAccountPassword]);
 
   const isHoursDirty = useMemo(() => {
     if (!hoursEditing) return false;
@@ -108,6 +112,7 @@ export default function AdminPharmacyEditPage() {
 
       setPharmacy(data);
       setIsTestAccount(Boolean(data.isTestAccount));
+      setTestAccountPassword(data.testAccountPassword ?? '');
       setForm({
         email: data.email,
         name: data.name,
@@ -209,6 +214,7 @@ export default function AdminPharmacyEditPage() {
         prefecture: form.prefecture,
         licenseNumber: form.licenseNumber,
         isTestAccount,
+        testAccountPassword: isTestAccount ? testAccountPassword : null,
         version: pharmacy.version,
       });
       setMessage('薬局情報を更新しました');
@@ -224,6 +230,7 @@ export default function AdminPharmacyEditPage() {
         prefecture: form.prefecture,
         licenseNumber: form.licenseNumber,
         isTestAccount,
+        testAccountPassword: isTestAccount ? testAccountPassword : null,
         version: result.version,
       } : prev));
     } catch (err) {
@@ -245,6 +252,7 @@ export default function AdminPharmacyEditPage() {
             newPassword: '',
           });
           setIsTestAccount(Boolean(latestData.isTestAccount));
+          setTestAccountPassword(latestData.testAccountPassword ?? '');
         }
       } else {
         setError(err instanceof Error ? err.message : '薬局情報の更新に失敗しました');
@@ -564,8 +572,26 @@ export default function AdminPharmacyEditPage() {
           id="admin-pharmacy-test-account-flag"
           label="テストアカウントとして扱う"
           checked={isTestAccount}
-          onChange={(event) => setIsTestAccount(event.currentTarget.checked)}
+          onChange={(event) => {
+            const checked = event.currentTarget.checked;
+            setIsTestAccount(checked);
+            if (!checked) {
+              setTestAccountPassword('');
+            }
+          }}
         />
+        {isTestAccount && (
+          <AppField
+            className="mt-3"
+            controlId="admin-pharmacy-test-account-password"
+            label="テストアカウント表示用パスワード"
+            type="text"
+            value={testAccountPassword}
+            onChange={setTestAccountPassword}
+            required
+            helpText="ログイン画面の「登録済みテスト薬局」に表示する値です。"
+          />
+        )}
         <div className="text-muted small mt-2">
           登録日: {pharmacy.createdAt ? new Date(pharmacy.createdAt).toLocaleString('ja-JP') : '-'}
         </div>

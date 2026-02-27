@@ -198,6 +198,7 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
       prefecture,
       isActive,
       isTestAccount,
+      testAccountPassword,
       version,
     } = req.body as Record<string, unknown>;
 
@@ -210,6 +211,8 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
       id: pharmacies.id,
       address: pharmacies.address,
       prefecture: pharmacies.prefecture,
+      isTestAccount: pharmacies.isTestAccount,
+      testAccountPassword: pharmacies.testAccountPassword,
     })
       .from(pharmacies)
       .where(eq(pharmacies.id, id))
@@ -313,6 +316,21 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
       updates.isTestAccount = isTestAccount;
     }
 
+    if (testAccountPassword !== undefined) {
+      if (typeof testAccountPassword !== 'string') {
+        res.status(400).json({ error: 'テストアカウントの表示用パスワードが不正です' });
+        return;
+      }
+      const normalizedTestAccountPassword = testAccountPassword.trim();
+      if (normalizedTestAccountPassword.length > 100) {
+        res.status(400).json({ error: 'テストアカウントの表示用パスワードは100文字以内で入力してください' });
+        return;
+      }
+      updates.testAccountPassword = normalizedTestAccountPassword.length === 0
+        ? null
+        : normalizedTestAccountPassword;
+    }
+
     if (updates.email !== undefined) {
       const existingEmailRows = await db.select({ id: pharmacies.id })
         .from(pharmacies)
@@ -348,6 +366,22 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
       }
       updates.latitude = coords.lat;
       updates.longitude = coords.lng;
+    }
+
+    const current = existingRows[0];
+    const nextIsTestAccount = typeof updates.isTestAccount === 'boolean'
+      ? updates.isTestAccount
+      : current.isTestAccount;
+    const nextTestAccountPassword = updates.testAccountPassword !== undefined
+      ? updates.testAccountPassword
+      : current.testAccountPassword;
+    if (nextIsTestAccount) {
+      if (typeof nextTestAccountPassword !== 'string' || nextTestAccountPassword.trim().length === 0) {
+        res.status(400).json({ error: 'テストアカウントには表示用パスワードを設定してください' });
+        return;
+      }
+    } else {
+      updates.testAccountPassword = null;
     }
 
     updates.updatedAt = new Date().toISOString();

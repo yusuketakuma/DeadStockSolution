@@ -61,6 +61,7 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       licenseNumber,
       currentPassword,
       newPassword,
+      testAccountPassword,
       version,
     } = req.body;
 
@@ -69,6 +70,22 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       res.status(400).json({ error: 'バージョン情報が不正です' });
       return;
     }
+
+    const accountRows = await db.select({
+      id: pharmacies.id,
+      address: pharmacies.address,
+      prefecture: pharmacies.prefecture,
+      isTestAccount: pharmacies.isTestAccount,
+      testAccountPassword: pharmacies.testAccountPassword,
+    })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, req.user!.id))
+      .limit(1);
+    if (accountRows.length === 0) {
+      res.status(404).json({ error: 'アカウントが見つかりません' });
+      return;
+    }
+    const currentAccount = accountRows[0];
 
     const updates: Record<string, unknown> = {};
 
@@ -117,13 +134,8 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
 
     // 住所または都道府県が変更された場合、再ジオコーディング
     if (address !== undefined || prefecture !== undefined) {
-      const currentRows = await db.select({ address: pharmacies.address, prefecture: pharmacies.prefecture })
-        .from(pharmacies)
-        .where(eq(pharmacies.id, req.user!.id))
-        .limit(1);
-      const current = currentRows[0];
-      const newPrefecture = (updates.prefecture as string) ?? current.prefecture;
-      const newAddress = (updates.address as string) ?? current.address;
+      const newPrefecture = (updates.prefecture as string) ?? currentAccount.prefecture;
+      const newAddress = (updates.address as string) ?? currentAccount.address;
       const fullAddress = `${newPrefecture}${newAddress}`;
       const coords = await geocodeAddress(fullAddress);
       if (!coords) {
@@ -164,6 +176,23 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
         return;
       }
       updates.licenseNumber = licenseNumber.trim();
+    }
+
+    if (testAccountPassword !== undefined) {
+      if (!currentAccount.isTestAccount) {
+        res.status(400).json({ error: 'テストアカウントではないため表示用パスワードは設定できません' });
+        return;
+      }
+      if (typeof testAccountPassword !== 'string') {
+        res.status(400).json({ error: 'テストアカウントの表示用パスワードが不正です' });
+        return;
+      }
+      const normalizedTestAccountPassword = testAccountPassword.trim();
+      if (normalizedTestAccountPassword.length === 0 || normalizedTestAccountPassword.length > 100) {
+        res.status(400).json({ error: 'テストアカウントの表示用パスワードは1〜100文字で入力してください' });
+        return;
+      }
+      updates.testAccountPassword = normalizedTestAccountPassword;
     }
 
     if (updates.email !== undefined) {
@@ -217,6 +246,19 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       }
 
       updates.passwordHash = await hashPassword(newPassword);
+      if (currentAccount.isTestAccount) {
+        updates.testAccountPassword = newPassword;
+      }
+    }
+
+    if (currentAccount.isTestAccount) {
+      const nextTestAccountPassword = updates.testAccountPassword !== undefined
+        ? updates.testAccountPassword
+        : currentAccount.testAccountPassword;
+      if (typeof nextTestAccountPassword !== 'string' || nextTestAccountPassword.trim().length === 0) {
+        res.status(400).json({ error: 'テストアカウントには表示用パスワードの設定が必要です' });
+        return;
+      }
     }
 
     updates.updatedAt = new Date().toISOString();
