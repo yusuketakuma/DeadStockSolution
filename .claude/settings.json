@@ -1,5 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "permissions": {
     "allow": [
       "Edit",
@@ -65,13 +68,11 @@
       "Bash(git merge:*)"
     ]
   },
+  "enabledPlugins": {
+    "vercel@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true
+  },
   "language": "japanese",
   "_harness_template": "claude/settings.security.json.template",
-  "_harness_version": "2.25.0",
-  "enabledPlugins": {
-    "vercel@claude-plugins-official": true
-  },
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  }
+  "_harness_version": "2.25.0"
 }

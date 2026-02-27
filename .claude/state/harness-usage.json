@@ -1,7 +1,12 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-02-25T12:35:26.468Z",
-  "skills": {},
+  "updatedAt": "2026-02-26T13:56:03.848Z",
+  "skills": {
+    "parallel-workflows": {
+      "count": 1,
+      "lastUsed": "2026-02-25T22:07:05.325Z"
+    }
+  },
   "commands": {
     "harness-init": {
       "count": 1,
@@ -20,41 +25,57 @@
       "lastUsed": "2026-02-24T12:23:15.731Z"
     },
     "codex-review": {
-      "count": 4,
-      "lastUsed": "2026-02-25T12:21:48.986Z"
+      "count": 6,
+      "lastUsed": "2026-02-26T12:10:34.260Z"
     },
     "verify": {
       "count": 1,
       "lastUsed": "2026-02-25T04:21:25.400Z"
     },
     "breezing": {
-      "count": 3,
-      "lastUsed": "2026-02-25T11:54:57.015Z"
+      "count": 4,
+      "lastUsed": "2026-02-26T11:15:14.972Z"
+    },
+    "plan-with-agent": {
+      "count": 1,
+      "lastUsed": "2026-02-25T16:58:21.226Z"
+    },
+    "work": {
+      "count": 1,
+      "lastUsed": "2026-02-25T22:05:53.341Z"
+    },
+    "harness-review": {
+      "count": 1,
+      "lastUsed": "2026-02-26T04:16:08.273Z"
+    },
+    "release-har": {
+      "count": 1,
+      "lastUsed": "2026-02-26T13:56:03.848Z"
     }
   },
   "agents": {
     "Explore": {
-      "count": 7,
-      "lastUsed": "2026-02-25T12:35:26.468Z"
+      "count": 10,
+      "lastUsed": "2026-02-25T17:00:59.232Z"
     },
     "claude-code-harness:task-worker": {
-      "count": 3,
-      "lastUsed": "2026-02-25T11:57:18.697Z"
+      "count": 5,
+      "lastUsed": "2026-02-26T11:48:23.964Z"
     },
     "claude-code-harness:code-reviewer": {
-      "count": 1,
-      "lastUsed": "2026-02-25T12:11:58.249Z"
+      "count": 5,
+      "lastUsed": "2026-02-26T11:48:36.815Z"
     },
     "general-purpose": {
-      "count": 1,
-      "lastUsed": "2026-02-25T12:19:57.504Z"
+      "count": 4,
+      "lastUsed": "2026-02-25T22:08:59.810Z"
     }
   },
   "hooks": {
     "session-init": {
-      "triggered": 11,
+      "triggered": 21,
       "blocked": 0,
-      "lastTriggered": "2026-02-25T12:11:59.917Z"
+      "lastTriggered": "2026-02-26T13:55:18.696Z"
     }
   }
 }

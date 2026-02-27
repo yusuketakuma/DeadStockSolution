@@ -2,7 +2,7 @@
 description: Solo ワークフロールール
 alwaysApply: true
 _harness_template: "rules/workflow.md.template"
-_harness_version: "2.23.6"
+_harness_version: "2.25.0"
 ---
 
 # Solo Workflow Rules

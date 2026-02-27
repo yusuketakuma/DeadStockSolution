@@ -1,22 +1,10 @@
 {
-  "session_id": "breezing-1772019100",
-  "started_at": "2026-02-25T20:35:00Z",
+  "session_id": "breezing-notification-center",
+  "started_at": "2026-02-26T12:00:00Z",
+  "completed_at": "2026-02-26T12:10:00Z",
   "impl_mode": "standard",
-  "task_range": "all",
-  "options": {
-    "parallel": 3,
-    "no_discuss": false
-  },
-  "team": {
-    "team_name": "breezing-refactor",
-    "implementer_count": 3,
-    "reviewer_count": 1,
-    "model": "sonnet"
-  },
-  "review": {
-    "retake_count": 0,
-    "max_retakes": 3
-  },
+  "task_range": "T027-T035",
   "phase": "C",
-  "status": "completed"
+  "status": "completed",
+  "commit": "1cf5119"
 }

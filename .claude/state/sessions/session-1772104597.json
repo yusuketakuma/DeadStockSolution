@@ -1,0 +1,61 @@
+{
+  "session_id": "session-1772104597",
+  "parent_session_id": null,
+  "state": "stopped",
+  "started_at": "2026-02-26T11:16:37Z",
+  "updated_at": "2026-02-26T11:48:44Z",
+  "event_seq": 14,
+  "last_event_id": "event-000014",
+  "state_version": 1,
+  "cwd": "/Users/yusuke/DeadStockSolution",
+  "project_name": "DeadStockSolution",
+  "resumed_at": "2026-02-26T11:48:37Z",
+  "git": {
+    "branch": "preview",
+    "uncommitted_changes": 184,
+    "last_commit": "9be8932"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1772106368,
+    "wip_tasks": 0,
+    "todo_tasks": 9,
+    "pending_tasks": 0,
+    "completed_tasks": 0
+  },
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "changes_this_session": [
+    {
+      "file": ".claude/state/breezing-active.json",
+      "action": "Write",
+      "timestamp": "2026-02-26T11:46:12Z",
+      "important": false
+    },
+    {
+      "file": ".claude/state/breezing-active.json",
+      "action": "Write",
+      "timestamp": "2026-02-26T11:47:50Z",
+      "important": false
+    },
+    {
+      "file": ".claude/state/breezing-role-impl-1.json",
+      "action": "Write",
+      "timestamp": "2026-02-26T11:48:33Z",
+      "important": false
+    },
+    {
+      "file": ".claude/state/breezing-role-impl-2.json",
+      "action": "Write",
+      "timestamp": "2026-02-26T11:48:35Z",
+      "important": false
+    }
+  ],
+  "last_message_length": 346,
+  "last_message_hash": "c252b66c8e06edce",
+  "ended_at": "2026-02-26T11:48:44Z",
+  "duration_minutes": 572,
+  "memory_logged": true
+}

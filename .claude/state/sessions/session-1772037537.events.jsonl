@@ -1,0 +1,9 @@
+{"type":"session.start","ts":"2026-02-25T16:38:57Z","state":"initialized","data":{"cc_session_id":"bf896cd0-936f-4be8-aff6-e4ba56f04926"}}
+{"id":"event-000001","type":"session.resume","ts":"2026-02-25T16:38:57Z","state":"initialized"}
+{"id":"event-000002","type":"tool.bash","ts":"2026-02-25T16:39:13Z","state":"initialized","data":{"command":"which opencode 2>/dev/null || echo "not in PATH""}}
+{"id":"event-000003","type":"tool.bash","ts":"2026-02-25T16:39:17Z","state":"initialized","data":{"command":"brew list --formula 2>/dev/null | grep -i opencode; brew list --cask 2>/dev/null | grep -i opencode; echo "---done---""}}
+{"id":"event-000004","type":"tool.bash","ts":"2026-02-25T16:39:19Z","state":"initialized","data":{"command":"npm list -g 2>/dev/null | grep -i opencode; echo "---done---""}}
+{"id":"event-000005","type":"tool.bash","ts":"2026-02-25T16:39:25Z","state":"initialized","data":{"command":"ls -la ~/.config/opencode 2>/dev/null; echo "---"; ls -la ~/.local/share/opencode 2>/dev/null; echo "---"; ls -la ~/.opencode* 2>/dev/null; echo "---done---""}}
+{"id":"event-000006","type":"tool.bash","ts":"2026-02-25T16:39:26Z","state":"initialized","data":{"command":"grep -r "opencode" ~/.zshrc ~/.bashrc ~/.zprofile ~/.bash_profile 2>/dev/null; echo "---done---""}}
+{"id":"event-000007","type":"tool.bash","ts":"2026-02-25T16:39:39Z","state":"initialized","data":{"command":"brew uninstall opencode"}}
+{"id":"event-000008","type":"session.stop","ts":"2026-02-25T16:39:50Z","state":"stopped"}

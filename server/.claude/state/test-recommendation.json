@@ -1,0 +1,7 @@
+{
+  "timestamp": "2026-02-26T12:06:05Z",
+  "changed_file": "/Users/yusuke/DeadStockSolution/client/src/components/dashboard/types.ts",
+  "test_command": "npm test",
+  "related_test": "",
+  "recommendation": "テストの実行を推奨します"
+}

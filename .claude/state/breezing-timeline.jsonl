@@ -18,3 +18,13 @@
 {"event":"teammate_idle","teammate":"reviewer","team":"breezing-refactor","timestamp":"2026-02-25T12:15:04Z"}
 {"event":"task_completed","teammate":"1","task_id":"Fix getErrorMessage duplication in drug-master-sync.ts","subject":"Remove local getErrorMessage from drug-master-sync.ts and import from admin-utils.ts instead. Also n","description":"","timestamp":"2026-02-25T12:18:19Z"}
 {"event":"task_completed","teammate":"2","task_id":"Move GET /status handler from upload-validation.ts to upload.ts","subject":"The GET /status route handler doesn't belong in a file named \"validation\". Move it to upload.ts (the","description":"","timestamp":"2026-02-25T12:19:41Z"}
+{"event":"teammate_idle","teammate":"reviewer","team":"breezing-notif","timestamp":"2026-02-26T11:50:13Z"}
+{"event":"task_completed","teammate":"impl-1","task_id":"5","subject":"T031: NotificationContext + ポーリング","description":"NotificationContext.tsx を新規作成し、main.tsx に Provider を追加する。\\n\\n機能:\\n- unreadCount 状態管理\\n- 30秒間隔で /api/noti","timestamp":"2026-02-26T12:02:55Z"}
+{"event":"task_completed","teammate":"impl-1","task_id":"6","subject":"T032: ヘッダー通知バッジ","description":"Header.tsx に useNotifications() フックを使って未読バッジを追加する。\\n\\n- unreadCount > 0 の時のみ Badge を表示\\n- 99+ 表示対応\\n- クリ","timestamp":"2026-02-26T12:04:01Z"}
+{"event":"task_completed","teammate":"impl-2","task_id":"7","subject":"T033: ダッシュボード通知タイプ拡張","description":"types.ts と DashboardNotices.tsx を修正して new_comment タイプをサポートする。\\n\\n変更内容:\\n1. Notice.type に 'new_comment' ","timestamp":"2026-02-26T12:06:28Z"}
+{"event":"task_completed","teammate":"impl-2","task_id":"8","subject":"T034: ダッシュボードとポーリングの連携","description":"DashboardPage.tsx に useNotifications() を統合し、通知クリック時にヘッダーバッジも即座に更新されるようにする。\\n\\n変更内容:\\n- import { useNoti","timestamp":"2026-02-26T12:07:37Z"}
+{"event":"task_completed","teammate":"impl-2","task_id":"9","subject":"T035: 全体テスト & ビルド確認","description":"全テスト・型チェック・ビルドが通ることを確認する。\\n\\n実行コマンド:\\n1. npm run test:server — サーバーテスト全件\\n2. npm run test:client — クライアン","timestamp":"2026-02-26T12:08:05Z"}
+{"event":"teammate_idle","teammate":"impl-2","team":"breezing-notif","timestamp":"2026-02-26T12:08:22Z"}
+{"event":"teammate_idle","teammate":"impl-2","team":"breezing-notif","timestamp":"2026-02-26T12:08:39Z"}
+{"event":"teammate_idle","teammate":"impl-1","team":"breezing-notif","timestamp":"2026-02-26T12:08:54Z"}
+{"event":"teammate_idle","teammate":"impl-1","team":"breezing-notif","timestamp":"2026-02-26T12:09:23Z"}

@@ -1,0 +1,5 @@
+{"type":"session.start","ts":"2026-02-26T13:55:18Z","state":"initialized","data":{"cc_session_id":"c9b2f5d9-0377-41e8-8651-a8b08e9d3c75"}}
+{"id":"event-000001","type":"session.resume","ts":"2026-02-26T13:55:18Z","state":"initialized"}
+{"id":"event-000002","type":"tool.bash","ts":"2026-02-26T13:56:29Z","state":"initialized","data":{"command":"git branch --show-current"}}
+{"id":"event-000003","type":"tool.bash","ts":"2026-02-26T13:56:33Z","state":"initialized","data":{"command":"git push origin preview"}}
+{"id":"event-000004","type":"session.stop","ts":"2026-02-26T13:56:36Z","state":"stopped"}
