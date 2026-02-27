@@ -1,10 +1,14 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-02-27T15:59:12.994Z",
+  "updatedAt": "2026-02-27T16:36:44.068Z",
   "skills": {
     "parallel-workflows": {
       "count": 1,
       "lastUsed": "2026-02-25T22:07:05.325Z"
+    },
+    "troubleshoot": {
+      "count": 1,
+      "lastUsed": "2026-02-27T16:36:44.067Z"
     }
   },
   "commands": {

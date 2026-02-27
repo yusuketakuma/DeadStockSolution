@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-02-26T14:16:32Z",
-  "trigger_command": "git commit -m \"$(cat <<'EOF'\\nchore: update project config, docs, and tooling settings\\n\\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\\nEOF\\n)\" && git push origin preview",
+  "timestamp": "2026-02-27T16:53:05Z",
+  "trigger_command": "git push origin preview",
   "status": "completed",
   "conclusion": "failure"
 }

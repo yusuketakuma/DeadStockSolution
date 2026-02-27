@@ -19,7 +19,10 @@
       "Bash(cd:*)",
       "Bash(cd /Users/yusuke/DeadStockSolution && git worktree remove .claude/worktrees/agent-a443c767 --force 2>&1 && git worktree remove .claude/worktrees/agent-abed550e --force 2>&1 && git worktree remove .claude/worktrees/agent-af911e76 --force 2>&1)",
       "Skill(impl)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Skill(claude-code-harness:troubleshoot)",
+      "Bash(gh api:*)",
+      "Bash(vercel env:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

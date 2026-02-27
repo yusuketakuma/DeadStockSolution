@@ -3,3 +3,9 @@
 {"signal":"ci_failure_detected","timestamp":"2026-02-26T14:00:53Z","conclusion":"failure","trigger_command":"git push origin preview"}
 {"signal":"ci_failure_detected","timestamp":"2026-02-26T14:10:13Z","conclusion":"failure","trigger_command":"git add client/src/pages/LoginPage.tsx && git commit -m \"$(cat <<'EOF'\\nfix: restore default test account password fallback for one-click login\\n\\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\\nEOF\\n)\" && git push origin preview"}
 {"signal":"ci_failure_detected","timestamp":"2026-02-26T14:16:32Z","conclusion":"failure","trigger_command":"git commit -m \"$(cat <<'EOF'\\nchore: update project config, docs, and tooling settings\\n\\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\\nEOF\\n)\" && git push origin preview"}
+{"signal":"ci_failure_detected","timestamp":"2026-02-27T16:34:36Z","conclusion":"failure","trigger_command":"git push origin preview --force-with-lease"}
+{"signal":"ci_failure_detected","timestamp":"2026-02-27T16:39:32Z","conclusion":"failure","trigger_command":"git push origin preview"}
+{"signal":"ci_failure_detected","timestamp":"2026-02-27T16:42:41Z","conclusion":"failure","trigger_command":"git checkout main && git merge preview --no-edit && git push origin main"}
+{"signal":"ci_failure_detected","timestamp":"2026-02-27T16:52:37Z","conclusion":"failure","trigger_command":"git push origin --delete review"}
+{"signal":"ci_failure_detected","timestamp":"2026-02-27T16:52:42Z","conclusion":"failure","trigger_command":"git push origin main preview"}
+{"signal":"ci_failure_detected","timestamp":"2026-02-27T16:53:05Z","conclusion":"failure","trigger_command":"git push origin preview"}
