@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import {
@@ -134,6 +134,7 @@ async function syncDemoAccountsToDatabase(): Promise<void> {
       longitude: account.longitude,
       isAdmin: false,
       isActive: true,
+      isTestAccount: true,
       updatedAt: now,
     }).onConflictDoUpdate({
       target: pharmacies.email,
@@ -150,6 +151,7 @@ async function syncDemoAccountsToDatabase(): Promise<void> {
         longitude: account.longitude,
         isAdmin: false,
         isActive: true,
+        isTestAccount: true,
         updatedAt: now,
       },
     });
@@ -160,8 +162,16 @@ async function ensureDemoAccountsSynced(): Promise<void> {
   if (!shouldAutoSyncDemoAccounts() || demoAccountsSynced) {
     return;
   }
-  await syncDemoAccountsToDatabase();
-  demoAccountsSynced = true;
+  try {
+    await syncDemoAccountsToDatabase();
+    demoAccountsSynced = true;
+  } catch (err) {
+    // Never break preview response because optional auto-sync failed in runtime env.
+    demoAccountsSynced = true;
+    logger.warn('Auto sync for test pharmacy demo accounts failed; continuing without sync', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
@@ -467,6 +477,7 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
       licenseNumber: pharmacies.licenseNumber,
       prefecture: pharmacies.prefecture,
       isAdmin: pharmacies.isAdmin,
+      isTestAccount: pharmacies.isTestAccount,
     })
       .from(pharmacies)
       .where(eq(pharmacies.id, req.user!.id))
@@ -494,16 +505,7 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
     }
 
     await ensureDemoAccountsSynced();
-    const demoEmails = TEST_PHARMACY_DEMO_ACCOUNTS.map((account) => account.email);
-    if (demoEmails.length === 0) {
-      res.json({ accounts: [] });
-      return;
-    }
-    const baseCondition = and(
-      eq(pharmacies.isAdmin, false),
-      eq(pharmacies.isActive, true),
-      inArray(pharmacies.email, demoEmails),
-    );
+    const baseCondition = eq(pharmacies.isTestAccount, true);
 
     const rows = await db.select({
       id: pharmacies.id,
@@ -513,8 +515,7 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
     })
       .from(pharmacies)
       .where(baseCondition)
-      .orderBy(asc(pharmacies.id))
-      .limit(demoEmails.length);
+      .orderBy(asc(pharmacies.id));
 
     res.json({
       accounts: rows.map((row) => ({

@@ -20,6 +20,7 @@ interface Pharmacy {
   fax: string;
   isActive: boolean;
   isAdmin: boolean;
+  isTestAccount: boolean;
   createdAt: string;
   trustScore?: number;
   ratingCount?: number;
@@ -136,7 +137,13 @@ export default function AdminPharmaciesPage() {
                 {pharmacies.map((p) => (
                   <tr key={p.id}>
                     <td>{p.id}</td>
-                    <td>{p.name} {p.isAdmin && <Badge bg="danger">Admin</Badge>}</td>
+                    <td>
+                      {p.name}
+                      {' '}
+                      {p.isAdmin && <Badge bg="danger">Admin</Badge>}
+                      {' '}
+                      {p.isTestAccount && <Badge bg="warning" text="dark">テスト</Badge>}
+                    </td>
                     <td>{p.email}</td>
                     <td>{p.prefecture}</td>
                     <td>{p.phone}</td>
@@ -182,6 +189,7 @@ export default function AdminPharmaciesPage() {
                   badges={(
                     <>
                       {p.isAdmin && <Badge bg="danger">Admin</Badge>}
+                      {p.isTestAccount && <Badge bg="warning" text="dark">テスト</Badge>}
                       <Badge bg={p.isActive ? 'success' : 'secondary'}>
                         {p.isActive ? '有効' : '無効'}
                       </Badge>

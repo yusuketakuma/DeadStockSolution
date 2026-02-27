@@ -45,6 +45,18 @@
   - What happened: テストアカウント件数に応じて表示件数を変える要件に対し、API側の `limit(5)` が残っていた
   - Root cause: 表示対象の真実源（`TEST_PHARMACY_DEMO_ACCOUNTS`）と取得上限の連動を設計時に固定化していた
   - New rule to prevent it: デモ一覧の上限値は設定配列長やDB件数などの動的ソースに必ず紐付け、固定数値を直書きしない
+- Pattern: デモ一覧APIで「自動同期失敗」を例外伝播し、本番で500を返してしまった
+  - What happened: `/api/auth/test-pharmacies` で auto-sync が失敗すると、一覧取得まで到達せず 500 が返却された
+  - Root cause: 非本質機能（補助的な自動同期）を必須処理として扱い、fail-open 設計が不足していた
+  - New rule to prevent it: 読み取りAPI内の補助同期処理は必ず try/catch で fail-open 化し、同期失敗時でも主機能（一覧取得）を継続させる
+- Pattern: テスト薬局一覧の抽出条件を `isActive` などに依存し、登録済み5件が取りこぼされた
+  - What happened: デモアカウントは登録済みでも、状態フラグ差異で一覧に5件出ないケースが発生した
+  - Root cause: デモ一覧の主キー条件（固定ID/メール）よりも運用状態フラグを優先しすぎた
+  - New rule to prevent it: デモ一覧は固定識別子（ID/メール）中心で抽出し、補助的な状態条件で表示件数を欠損させない
+- Pattern: テストアカウント判定を設定リスト依存で持ち続け、運用データとの整合が崩れやすかった
+  - What happened: 判定ロジックが固定メール/ID中心だったため、DB上の薬局属性として一貫管理できなかった
+  - Root cause: 「アカウント種別」をテーブル列で正規化せず、ルート内条件で表現していた
+  - New rule to prevent it: 種別判定はDB列（例: `is_test_account`）で一次管理し、APIロジックはその列を唯一の判定基準にする
 
 ## Project-specific gotchas
 - Item:

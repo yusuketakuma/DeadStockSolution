@@ -26,6 +26,7 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
       licenseNumber: pharmacies.licenseNumber,
       prefecture: pharmacies.prefecture,
       isAdmin: pharmacies.isAdmin,
+      isTestAccount: pharmacies.isTestAccount,
       version: pharmacies.version,
       createdAt: pharmacies.createdAt,
     })

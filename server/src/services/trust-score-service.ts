@@ -142,6 +142,7 @@ export async function listTrustScores(page: number, limit: number): Promise<{ da
   fax: string;
   isActive: boolean;
   isAdmin: boolean;
+  isTestAccount: boolean;
   createdAt: string | null;
   trustScore: number;
   ratingCount: number;
@@ -161,6 +162,7 @@ export async function listTrustScores(page: number, limit: number): Promise<{ da
       fax: pharmacies.fax,
       isActive: pharmacies.isActive,
       isAdmin: pharmacies.isAdmin,
+      isTestAccount: pharmacies.isTestAccount,
       createdAt: pharmacies.createdAt,
       trustScore: pharmacyTrustScores.trustScore,
       ratingCount: pharmacyTrustScores.ratingCount,
@@ -179,6 +181,7 @@ export async function listTrustScores(page: number, limit: number): Promise<{ da
       ...row,
       isActive: Boolean(row.isActive),
       isAdmin: Boolean(row.isAdmin),
+      isTestAccount: Boolean(row.isTestAccount),
       trustScore: Number(row.trustScore ?? 60),
       ratingCount: Number(row.ratingCount ?? 0),
       positiveRate: Number(row.positiveRate ?? 0),

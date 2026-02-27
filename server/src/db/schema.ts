@@ -58,6 +58,7 @@ export const pharmacies = pgTable('pharmacies', {
   longitude: real('longitude'),
   isAdmin: boolean('is_admin').default(false),
   isActive: boolean('is_active').default(true),
+  isTestAccount: boolean('is_test_account').notNull().default(false),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),

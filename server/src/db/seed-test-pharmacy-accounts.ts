@@ -56,6 +56,7 @@ async function seedTestPharmacyAccounts(): Promise<void> {
         longitude: account.longitude,
         isAdmin: false,
         isActive: true,
+        isTestAccount: true,
         updatedAt: now,
       });
 

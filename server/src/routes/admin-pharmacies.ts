@@ -103,6 +103,7 @@ router.get('/pharmacies/options', async (_req: AuthRequest, res: Response) => {
       id: pharmacies.id,
       name: pharmacies.name,
       isActive: pharmacies.isActive,
+      isTestAccount: pharmacies.isTestAccount,
     })
       .from(pharmacies)
       .orderBy(desc(pharmacies.createdAt));
@@ -128,6 +129,7 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       fax: pharmacies.fax,
       isActive: pharmacies.isActive,
       isAdmin: pharmacies.isAdmin,
+      isTestAccount: pharmacies.isTestAccount,
       createdAt: pharmacies.createdAt,
     })
       .from(pharmacies)
@@ -195,6 +197,7 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
       licenseNumber,
       prefecture,
       isActive,
+      isTestAccount,
       version,
     } = req.body as Record<string, unknown>;
 
@@ -300,6 +303,14 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
         return;
       }
       updates.isActive = isActive;
+    }
+
+    if (isTestAccount !== undefined) {
+      if (typeof isTestAccount !== 'boolean') {
+        res.status(400).json({ error: 'テストアカウントフラグが不正です' });
+        return;
+      }
+      updates.isTestAccount = isTestAccount;
     }
 
     if (updates.email !== undefined) {

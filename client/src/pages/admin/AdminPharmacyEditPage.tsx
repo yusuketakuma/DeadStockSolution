@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, FormEvent, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Badge } from 'react-bootstrap';
+import { Badge, Form } from 'react-bootstrap';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
 import AppDataPanel from '../../components/ui/AppDataPanel';
@@ -32,6 +32,7 @@ interface AdminPharmacyData {
   prefecture: string;
   isActive: boolean;
   isAdmin: boolean;
+  isTestAccount: boolean;
   version: number;
   createdAt: string | null;
 }
@@ -61,6 +62,7 @@ export default function AdminPharmacyEditPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeUpdating, setActiveUpdating] = useState(false);
+  const [isTestAccount, setIsTestAccount] = useState(false);
   const [accountConflict, setAccountConflict] = useState(false);
 
   const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
@@ -86,8 +88,9 @@ export default function AdminPharmacyEditPage() {
       || form.phone !== pharmacy.phone
       || form.fax !== pharmacy.fax
       || form.prefecture !== pharmacy.prefecture
-      || form.licenseNumber !== pharmacy.licenseNumber;
-  }, [form, pharmacy]);
+      || form.licenseNumber !== pharmacy.licenseNumber
+      || isTestAccount !== pharmacy.isTestAccount;
+  }, [form, isTestAccount, pharmacy]);
 
   const isHoursDirty = useMemo(() => {
     if (!hoursEditing) return false;
@@ -104,6 +107,7 @@ export default function AdminPharmacyEditPage() {
       if (signal?.aborted) return;
 
       setPharmacy(data);
+      setIsTestAccount(Boolean(data.isTestAccount));
       setForm({
         email: data.email,
         name: data.name,
@@ -204,6 +208,7 @@ export default function AdminPharmacyEditPage() {
         fax: form.fax,
         prefecture: form.prefecture,
         licenseNumber: form.licenseNumber,
+        isTestAccount,
         version: pharmacy.version,
       });
       setMessage('薬局情報を更新しました');
@@ -218,6 +223,7 @@ export default function AdminPharmacyEditPage() {
         fax: form.fax,
         prefecture: form.prefecture,
         licenseNumber: form.licenseNumber,
+        isTestAccount,
         version: result.version,
       } : prev));
     } catch (err) {
@@ -238,6 +244,7 @@ export default function AdminPharmacyEditPage() {
             currentPassword: '',
             newPassword: '',
           });
+          setIsTestAccount(Boolean(latestData.isTestAccount));
         }
       } else {
         setError(err instanceof Error ? err.message : '薬局情報の更新に失敗しました');
@@ -538,6 +545,7 @@ export default function AdminPharmacyEditPage() {
           <Badge bg={pharmacy.isActive ? 'success' : 'secondary'}>
             {pharmacy.isActive ? '有効' : '無効'}
           </Badge>
+          {isTestAccount && <Badge bg="warning" text="dark">テストアカウント</Badge>}
         </div>
         <div className="d-flex flex-wrap align-items-center gap-2 mt-2">
           <AppButton
@@ -550,6 +558,14 @@ export default function AdminPharmacyEditPage() {
           </AppButton>
           <span className="text-muted small">この操作は即時反映されます</span>
         </div>
+        <Form.Check
+          className="mt-3"
+          type="switch"
+          id="admin-pharmacy-test-account-flag"
+          label="テストアカウントとして扱う"
+          checked={isTestAccount}
+          onChange={(event) => setIsTestAccount(event.currentTarget.checked)}
+        />
         <div className="text-muted small mt-2">
           登録日: {pharmacy.createdAt ? new Date(pharmacy.createdAt).toLocaleString('ja-JP') : '-'}
         </div>

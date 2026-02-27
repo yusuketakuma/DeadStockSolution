@@ -2,7 +2,6 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TEST_PHARMACY_DEMO_ACCOUNTS } from '../config/test-pharmacy-demo-accounts';
 
 const mocks = vi.hoisted(() => ({
   createPasswordResetToken: vi.fn(),
@@ -68,11 +67,15 @@ async function createApp() {
 }
 
 function createSelectChain(rows: unknown[]) {
+  const resolved = Promise.resolve(rows);
   const chain = {
     from: vi.fn(),
     where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
+    then: resolved.then.bind(resolved),
+    catch: resolved.catch.bind(resolved),
+    finally: resolved.finally.bind(resolved),
   };
   chain.from.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
@@ -87,6 +90,7 @@ describe('auth routes', () => {
   const originalEnableTestPharmacyPreview = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
   const originalTestAccountPassword = process.env.TEST_ACCOUNT_PASSWORD;
   const originalDemoAccountPassword = process.env.DEMO_ACCOUNT_PASSWORD;
+  const originalVitest = process.env.VITEST;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -129,6 +133,12 @@ describe('auth routes', () => {
       delete process.env.DEMO_ACCOUNT_PASSWORD;
     } else {
       process.env.DEMO_ACCOUNT_PASSWORD = originalDemoAccountPassword;
+    }
+
+    if (originalVitest === undefined) {
+      delete process.env.VITEST;
+    } else {
+      process.env.VITEST = originalVitest;
     }
   });
 
@@ -339,6 +349,31 @@ describe('auth routes', () => {
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
+  it('continues preview response when production auto-sync fails', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    delete process.env.VITEST;
+    mocks.authService.hashPassword.mockResolvedValue('hashed-password');
+    mocks.db.insert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockRejectedValue(new Error('read-only transaction')),
+      }),
+    });
+    const selectChain = createSelectChain([
+      { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
+      { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+    ]);
+    mocks.db.select.mockReturnValue(selectChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies');
+
+    expect(res.status).toBe(200);
+    expect(res.body.accounts).toHaveLength(2);
+    expect(mocks.db.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+  });
+
   it('disables test pharmacy preview endpoint when explicitly configured off', async () => {
     process.env.NODE_ENV = 'production';
     process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'false';
@@ -376,7 +411,7 @@ describe('auth routes', () => {
     expect(selectChain.from).toHaveBeenCalledTimes(1);
     expect(selectChain.where).toHaveBeenCalledTimes(1);
     expect(selectChain.orderBy).toHaveBeenCalledTimes(1);
-    expect(selectChain.limit).toHaveBeenCalledWith(TEST_PHARMACY_DEMO_ACCOUNTS.length);
+    expect(selectChain.limit).not.toHaveBeenCalled();
   });
 
   it('returns distinct passwords for the 5 fixed test pharmacy accounts', async () => {

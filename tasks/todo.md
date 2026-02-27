@@ -1027,3 +1027,98 @@
   - `GET /api/auth/test-pharmacies` の固定上限 `5` を廃止し、`TEST_PHARMACY_DEMO_ACCOUNTS.length` を上限に使用するよう変更。
   - デモアカウント設定が0件の場合は `accounts: []` を返すガードを追加。
   - auth routeテストの期待値を固定 `5` から `TEST_PHARMACY_DEMO_ACCOUNTS.length` 参照へ変更し、回帰確認済み。
+
+## 2026-02-27 本番 `/api/auth/test-pharmacies` 500 修正（自動同期 fail-open）
+
+### Context
+- Prompt: `GET /api/auth/test-pharmacies` が本番で500
+- Scope:
+  - `server/src/routes/auth.ts`
+  - `server/src/test/auth-route.test.ts`
+
+### Goals / Definition of Done
+- [x] 自動同期が失敗しても `/api/auth/test-pharmacies` が500にならずレスポンスを返す
+- [x] 回帰テストで fail-open の挙動を担保する
+- [x] server auth-route test / typecheck / lint が通る
+
+### Implementation checklist
+- [x] A. `ensureDemoAccountsSynced` を try/catch で fail-open 化
+- [x] B. 同期失敗時でも一覧APIが200を返すテストを追加
+- [x] C. 検証実行（auth-route test + server typecheck/lint）
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run typecheck --workspace=server
+- [x] npm run lint --workspace=server
+
+### Result
+- Status: DONE
+- Notes:
+  - `ensureDemoAccountsSynced` を fail-open 化し、同期失敗時は警告ログを残して一覧取得処理を継続するよう変更。
+  - 本番相当 (`NODE_ENV=production`) かつ `VITEST` 無効で自動同期が失敗しても `GET /api/auth/test-pharmacies` が200を返す回帰テストを追加。
+
+## 2026-02-27 テストアカウント5件の一覧取りこぼし修正
+
+### Context
+- Prompt: テストアカウントは5件登録しているはず
+- Scope:
+  - `server/src/routes/auth.ts` の `GET /api/auth/test-pharmacies` 抽出条件
+
+### Goals / Definition of Done
+- [x] 登録済み5件が抽出条件で取りこぼされにくいようにする
+- [x] 回帰テスト / typecheck / lint が通る
+
+### Implementation checklist
+- [x] A. 抽出条件を「固定メール or 固定ID」の OR 条件へ調整
+- [x] B. 検証実行（auth-route test + server typecheck/lint）
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run typecheck --workspace=server
+- [x] npm run lint --workspace=server
+
+### Result
+- Status: DONE
+- Notes:
+  - `test-pharmacies` の抽出条件を `email in fixed list OR id in [1..5]` に変更し、状態フラグ差異による取りこぼしを緩和。
+
+## 2026-02-27 薬局情報にテストアカウントフラグ追加（5件適用）
+
+### Context
+- Prompt: 薬局情報に「テストアカウント」フラグを追加し、フラグ判定でテストアカウント扱いに変更。DB列追加と既存5件へ反映
+- Scope:
+  - DBスキーマ / マイグレーション
+  - `server/src/routes/auth.ts`（テスト薬局判定）
+  - 管理者向け薬局情報API/UI（フラグ表示・編集）
+  - テスト薬局シード/同期処理
+
+### Goals / Definition of Done
+- [x] `pharmacies` に `is_test_account` 列を追加し運用可能にする
+- [x] テスト薬局判定ロジックが `is_test_account=true` 基準で動作する
+- [x] 既存5件のテスト薬局に `is_test_account=true` が付与される
+- [x] 管理画面の薬局情報でフラグを閲覧・編集できる
+- [x] 関連テスト / typecheck / lint が通る
+
+### Implementation checklist
+- [x] A. schema と migration を追加（既存5件 true 更新SQL含む）
+- [x] B. auth ルートとシード/同期をフラグ基準に変更
+- [x] C. admin API/UI に `isTestAccount` 追加（一覧/詳細/更新）
+- [x] D. 検証実行（server test/typecheck/lint + client typecheck）
+
+### Verification
+- [x] npm run db:migrate --workspace=server
+- [x] DB確認（tsx one-liner）: `is_test_account=true` の5件（ID 1..5）を確認
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/login.test.tsx
+- [x] npm run typecheck --workspace=server
+- [x] npm run lint --workspace=server
+- [x] npm run typecheck --workspace=client
+- [x] npm run lint --workspace=client
+
+### Result
+- Status: DONE
+- Notes:
+  - `server/drizzle/0016_add_is_test_account_flag.sql` を追加し、`pharmacies.is_test_account` 列の追加と既存5件（固定メール）の `true` 更新を実施。
+  - `/api/auth/test-pharmacies` は `is_test_account=true` の薬局をテストアカウントとして返却するロジックに変更。
+  - デモ同期（`syncDemoAccountsToDatabase`）とシード（`seed-test-pharmacy-accounts.ts`）で `isTestAccount: true` を永続化。
+  - 管理画面（一覧/編集）で `isTestAccount` を表示・更新可能にし、編集画面にスイッチを追加。
