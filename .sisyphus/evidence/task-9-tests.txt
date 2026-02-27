@@ -1,0 +1,32 @@
+Task 9: Add tests for split route modules
+==========================================
+
+## Files Created
+- server/src/test/exchange-subroutes.test.ts (643 lines, 35 tests)
+  - exchange-status: accept (5 tests), reject (2 tests), complete (2 tests)
+  - exchange-feedback: valid/invalid rating, comment length, 404, 400, 500 (7 tests)
+  - exchange-history: paginated, empty, error (3 tests)
+  - exchange-comments GET: paginated, deleted mask, 400, 404, 500 (5 tests)
+  - exchange-comments POST: empty body, too long, 404, 201 success, 429 rate limit, 500 (6 tests)
+
+- server/src/test/admin-pharmacies-subroutes.test.ts (611 lines, 21 tests)
+  - admin-pharmacies-list: options, pharmacies, history, messages, requests (5 tests)
+  - admin-pharmacies-detail: detail, 404, 400, biz-hours settings, 404, PUT version, PUT 404, PUT name, toggle-active, toggle-404 (10 tests)
+  - admin-pharmacies-actions: exchanges, comments, deleted mask, 404, messages 201/400s, pharmacy target (6 tests)
+
+## Test Results
+- Total: 435 passed, 1 skipped (59 test files)
+- New: 56 tests added (379 existing → 435)
+- No it.skip, xit, xdescribe in new files
+- No @ts-ignore or as any in new files
+
+## Coverage Results
+- Statements: 54.96% (threshold ≥48%) ✓
+- Branches: 45.23% (threshold ≥42%) ✓
+- Functions: 63.48% (threshold ≥56%) ✓
+- Lines: 56.67% (threshold ≥49%) ✓
+
+## Verification Commands
+cd /Users/yusuke/DeadStockSolution-refactor
+npm run test:server       → 435 passed, 1 skipped
+npm run test:coverage:server → All thresholds maintained
