@@ -67,9 +67,10 @@ npm run db:migrate:legacy --workspace=server
 ## 環境変数（認証・デモ薬局）
 
 - `CORS_ORIGINS`: 許可するオリジンをカンマ区切りで指定（本番必須）
-- `JWT_SECRET`: JWT署名シークレット（`NODE_ENV=test` 以外では必須）
+- `JWT_SECRET`: JWT署名シークレット（`NODE_ENV=test` 以外では必須。32文字以上かつ既知の弱い値は不可）
 - `DEMO_ACCOUNT_PASSWORD`: デモ薬局2件の共通パスワード（8文字以上必須、`npm run db:seed --workspace=server` 実行時に使用）
 - `VITE_DEMO_ACCOUNT_PASSWORD`: ログイン画面のワンクリック入力で貼り付けるデモパスワード（`DEMO_ACCOUNT_PASSWORD` と同値を設定。未設定時はワンクリック入力を無効化）
+- `VITE_API_BASE_URL`: クライアントのAPIベースURL（未設定時は同一オリジンの `/api`）
 - `EXPOSE_PASSWORD_RESET_TOKEN`: `true` のときのみパスワードリセットトークンをAPIレスポンスに含める（開発限定）
 - `TRUST_PROXY`: `true` または hop数（例: `1`）で `trust proxy` を有効化
 - `DRUG_MASTER_AUTO_SYNC`: `true` で医薬品マスター自動取得を有効化
@@ -82,7 +83,7 @@ npm run db:migrate:legacy --workspace=server
 - `DRUG_PACKAGE_FETCH_RETRIES`: 包装単位取得時の一時障害に対する再試行回数（0-5）
 - `DRUG_PACKAGE_SOURCE_AUTHORIZATION`: 取得元に認証ヘッダーが必要な場合に指定（任意）
 - `DRUG_PACKAGE_SOURCE_COOKIE`: 取得元にCookieが必要な場合に指定（任意）
-- `EXTERNAL_FETCH_ALLOWED_HOSTS`: 外部取込み先の許可ホスト（カンマ区切り、`*.example.com` 形式対応）
+- `EXTERNAL_FETCH_ALLOWED_HOSTS`: 外部取込み先の許可ホスト（カンマ区切り、`*.example.com` 形式対応。`NODE_ENV=production` では未設定時に外部取得を拒否）
 - `SCHEDULER_OPTIMIZED_LOOP_ENABLED`: `true` で scheduler を timeout-chain モード（既定）で動作
 - `DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED`: 医薬品マスター scheduler の loop モード個別上書き（任意）
 - `DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED`: 包装単位 scheduler の loop モード個別上書き（任意）
@@ -107,6 +108,7 @@ npm run db:migrate:legacy --workspace=server
 - `OPENCLAW_LOG_CONTEXT_RECENT_FAILURE_LIMIT`: OpenClawへ渡す直近失敗ログ件数
 - `OPENCLAW_LOG_CONTEXT_RECENT_ACTIVITY_LIMIT`: OpenClawへ渡す薬局別アクティビティログ件数
 - `OPENCLAW_LOG_CONTEXT_DETAIL_MAX_LENGTH`: OpenClawへ渡すログ詳細文の最大文字数
+- `GITHUB_UPDATES_REPOSITORY`: 更新情報表示で参照するGitHubリポジトリ（`owner/repo`）。本番では必須
 - `GITHUB_UPDATES_RETRIES`: GitHub release 取得失敗時の再試行回数（0-3）
 - OpenClaw Webhook受信時は `x-openclaw-signature` と `x-openclaw-timestamp` を利用したHMAC認証を必須化
 - HMAC認証は時刻ずれ検証に加え、同一署名の短時間リプレイも拒否します

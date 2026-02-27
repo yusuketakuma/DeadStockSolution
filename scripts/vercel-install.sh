@@ -12,7 +12,7 @@ else
   exit 1
 fi
 
-# Install each package in isolation to avoid workspace-wide omit=dev side effects.
-# This keeps client devDependencies available for Vite build while omitting server devDependencies.
-npm install --prefix "$ROOT_DIR/client" --package-lock=false --no-audit --no-fund
-npm install --prefix "$ROOT_DIR/server" --omit=dev --package-lock=false --no-audit --no-fund
+# Deterministic workspace installs from lockfile.
+# Client keeps devDependencies for Vite build; server omits dev dependencies.
+npm ci --prefix "$ROOT_DIR" --workspace=client --include-workspace-root=false --no-audit --no-fund
+npm ci --prefix "$ROOT_DIR" --workspace=server --include-workspace-root=false --omit=dev --no-audit --no-fund

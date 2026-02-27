@@ -1,4 +1,7 @@
-const API_BASE = '/api';
+const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
+const API_BASE = configuredApiBase
+  ? configuredApiBase.replace(/\/+$/, '')
+  : '/api';
 const REQUEST_TIMEOUT_MS = 30000;
 const CSRF_EXEMPT_PATHS = [
   '/auth/login',

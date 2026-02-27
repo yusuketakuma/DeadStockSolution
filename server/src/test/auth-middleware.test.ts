@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   verifyToken: vi.fn(),
+  deriveSessionVersion: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -13,6 +14,7 @@ vi.mock('../config/database', () => ({
 
 vi.mock('../services/auth-service', () => ({
   verifyToken: mocks.verifyToken,
+  deriveSessionVersion: mocks.deriveSessionVersion,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -70,12 +72,19 @@ describe('auth middleware cache', () => {
   });
 
   it('reuses cached auth user for subsequent requests', async () => {
-    mocks.verifyToken.mockReturnValue({ id: 10, email: 'cache@example.com', isAdmin: false });
+    mocks.verifyToken.mockReturnValue({
+      id: 10,
+      email: 'cache@example.com',
+      isAdmin: false,
+      sessionVersion: 'session-v1',
+    });
+    mocks.deriveSessionVersion.mockReturnValue('session-v1');
     mocks.select.mockImplementation(() => createSelectQuery([{
       id: 10,
       email: 'cache@example.com',
       isAdmin: false,
       isActive: true,
+      passwordHash: 'hashed',
     }]));
 
     const reqA = { cookies: { token: 'token-a' } } as { cookies: { token: string }; user?: unknown };
@@ -94,12 +103,19 @@ describe('auth middleware cache', () => {
   });
 
   it('queries DB again after cache invalidation', async () => {
-    mocks.verifyToken.mockReturnValue({ id: 11, email: 'invalidate@example.com', isAdmin: false });
+    mocks.verifyToken.mockReturnValue({
+      id: 11,
+      email: 'invalidate@example.com',
+      isAdmin: false,
+      sessionVersion: 'session-v2',
+    });
+    mocks.deriveSessionVersion.mockReturnValue('session-v2');
     mocks.select.mockImplementation(() => createSelectQuery([{
       id: 11,
       email: 'invalidate@example.com',
       isAdmin: false,
       isActive: true,
+      passwordHash: 'hashed',
     }]));
 
     const req = { cookies: { token: 'token-b' } } as { cookies: { token: string }; user?: unknown };
@@ -112,5 +128,31 @@ describe('auth middleware cache', () => {
 
     expect(next).toHaveBeenCalledTimes(2);
     expect(mocks.select).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects token when session version does not match current password', async () => {
+    mocks.verifyToken.mockReturnValue({
+      id: 12,
+      email: 'mismatch@example.com',
+      isAdmin: false,
+      sessionVersion: 'old-session',
+    });
+    mocks.deriveSessionVersion.mockReturnValue('new-session');
+    mocks.select.mockImplementation(() => createSelectQuery([{
+      id: 12,
+      email: 'mismatch@example.com',
+      isAdmin: false,
+      isActive: true,
+      passwordHash: 'hashed',
+    }]));
+
+    const req = { cookies: { token: 'token-c' } } as { cookies: { token: string }; user?: unknown };
+    const res = createRes();
+    const next = vi.fn();
+
+    await requireLogin(req as never, res as never, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
   });
 });

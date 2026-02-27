@@ -16,6 +16,7 @@ vi.mock('../services/logger', () => ({
 import { getGitHubUpdates, resetGitHubUpdatesCacheForTests } from '../services/github-updates-service';
 
 const ENV_KEYS = [
+  'NODE_ENV',
   'GITHUB_UPDATES_REPOSITORY',
   'GITHUB_REPOSITORY',
   'GITHUB_UPDATES_LIMIT',
@@ -184,6 +185,14 @@ describe('github-updates-service', () => {
       'Invalid GitHub repository config for updates. Falling back to default repository.',
       expect.objectContaining({ fallbackRepository: 'yusuketakuma/DeadStockSolution' })
     );
+  });
+
+  it('requires explicit repository in production when not configured', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.GITHUB_UPDATES_REPOSITORY;
+    delete process.env.GITHUB_REPOSITORY;
+
+    await expect(getGitHubUpdates()).rejects.toThrow('GITHUB_UPDATES_REPOSITORY is required in production');
   });
 
   it('retries temporary 503 responses and succeeds', async () => {

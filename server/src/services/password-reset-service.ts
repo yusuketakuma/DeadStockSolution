@@ -15,6 +15,11 @@ export function generateResetToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
+export interface PasswordResetResult {
+  success: boolean;
+  pharmacyId: number;
+}
+
 export async function createPasswordResetToken(email: string): Promise<{ token: string; pharmacyName: string } | null> {
   const rows = await db.select({ id: pharmacies.id, name: pharmacies.name, isActive: pharmacies.isActive })
     .from(pharmacies)
@@ -60,7 +65,7 @@ export async function createPasswordResetToken(email: string): Promise<{ token: 
   return { token, pharmacyName: rows[0].name };
 }
 
-export async function resetPasswordWithToken(token: string, newPassword: string): Promise<boolean> {
+export async function resetPasswordWithToken(token: string, newPassword: string): Promise<PasswordResetResult> {
   const now = new Date().toISOString();
   const tokenHash = hashToken(token);
 
@@ -78,7 +83,7 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
       });
 
     if (!consumed) {
-      return false;
+      return { success: false, pharmacyId: 0 };
     }
 
     // Hash password only after token is confirmed valid (avoid CPU waste on invalid tokens).
@@ -96,6 +101,6 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
       .set({ passwordHash, updatedAt: now })
       .where(eq(pharmacies.id, consumed.pharmacyId));
 
-    return true;
+    return { success: true, pharmacyId: consumed.pharmacyId };
   });
 }

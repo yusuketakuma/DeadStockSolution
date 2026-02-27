@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
-import { hashPassword, verifyPassword, generateToken } from '../services/auth-service';
+import { deriveSessionVersion, hashPassword, verifyPassword, generateToken } from '../services/auth-service';
 import { requireLogin, invalidateAuthUserCache } from '../middleware/auth';
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
@@ -172,6 +172,7 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
         email: pharmacies.email,
         isAdmin: pharmacies.isAdmin,
         isActive: pharmacies.isActive,
+        passwordHash: pharmacies.passwordHash,
         version: pharmacies.version,
       });
 
@@ -215,6 +216,7 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       id: updatedPharmacy.id,
       email: updatedPharmacy.email,
       isAdmin: updatedPharmacy.isAdmin ?? false,
+      sessionVersion: deriveSessionVersion(updatedPharmacy.passwordHash),
     });
 
     res.cookie('token', token, {

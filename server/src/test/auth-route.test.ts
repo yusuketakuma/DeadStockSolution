@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     isJwtSecretMissingError: vi.fn((err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'),
     hashPassword: vi.fn(),
     verifyPassword: vi.fn(),
+    deriveSessionVersion: vi.fn(() => 'session-v1'),
     generateToken: vi.fn(),
     verifyToken: vi.fn(),
   },
@@ -50,6 +51,7 @@ vi.mock('../services/auth-service', () => ({
   isJwtSecretMissingError: mocks.authService.isJwtSecretMissingError,
   hashPassword: mocks.authService.hashPassword,
   verifyPassword: mocks.authService.verifyPassword,
+  deriveSessionVersion: mocks.authService.deriveSessionVersion,
   generateToken: mocks.authService.generateToken,
   verifyToken: mocks.authService.verifyToken,
 }));
@@ -64,6 +66,18 @@ async function createApp() {
   return app;
 }
 
+function createSelectChain(rows: unknown[]) {
+  const chain = {
+    from: vi.fn(),
+    where: vi.fn(),
+    limit: vi.fn(),
+  };
+  chain.from.mockReturnValue(chain);
+  chain.where.mockReturnValue(chain);
+  chain.limit.mockResolvedValue(rows);
+  return chain;
+}
+
 describe('auth routes', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalExposePasswordResetToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN;
@@ -72,6 +86,7 @@ describe('auth routes', () => {
     vi.clearAllMocks();
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
+    mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
     mocks.authService.isJwtSecretMissingError.mockImplementation(
       (err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'
     );
@@ -199,5 +214,68 @@ describe('auth routes', () => {
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: '認証設定が未完了です。管理者に連絡してください' });
     expect(mocks.db.select).not.toHaveBeenCalled();
+  });
+
+  it('logs in via auth route with database lookup', async () => {
+    mocks.authService.verifyPassword.mockResolvedValue(true);
+    mocks.authService.generateToken.mockReturnValue('demo-token');
+    const selectChain = createSelectChain([{
+      id: 10,
+      email: 'test@example.com',
+      name: 'デモ薬局（東京）',
+      prefecture: '東京都',
+      isAdmin: false,
+      isActive: true,
+      passwordHash: 'hashed-password',
+    }]);
+    mocks.db.select.mockReturnValue(selectChain);
+    const app = await createApp();
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'password123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      id: 10,
+      email: 'test@example.com',
+      name: 'デモ薬局（東京）',
+      prefecture: '東京都',
+      isAdmin: false,
+    });
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+    expect(selectChain.from).toHaveBeenCalledTimes(1);
+    expect(selectChain.where).toHaveBeenCalledTimes(1);
+    expect(selectChain.limit).toHaveBeenCalledWith(1);
+    expect(mocks.authService.verifyPassword).toHaveBeenCalledWith('password123', 'hashed-password');
+    expect(mocks.authService.assertJwtSecretConfigured).toHaveBeenCalledTimes(1);
+    expect(res.headers['set-cookie']).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('token=demo-token'),
+        expect.stringContaining('csrfToken='),
+      ])
+    );
+  });
+
+  it('rejects inactive account on login', async () => {
+    const selectChain = createSelectChain([{
+      id: 11,
+      email: 'test@example.com',
+      name: '停止薬局',
+      prefecture: '東京都',
+      isAdmin: false,
+      isActive: false,
+      passwordHash: 'hashed-password',
+    }]);
+    mocks.db.select.mockReturnValue(selectChain);
+    const app = await createApp();
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'test@example.com', password: 'password123' });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'このアカウントは無効になっています' });
+    expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 });

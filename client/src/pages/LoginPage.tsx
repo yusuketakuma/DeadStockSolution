@@ -22,7 +22,11 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'user' | 'admin'>('user');
   const { login, logout } = useAuth();
   const navigate = useNavigate();
-  const demoAccountPassword = import.meta.env.VITE_DEMO_ACCOUNT_PASSWORD?.trim() ?? '';
+  const demoAccountPassword = (
+    import.meta.env.VITE_DEMO_ACCOUNT_PASSWORD?.trim()
+    ?? import.meta.env.VITE_TEST_ACCOUNT_PASSWORD?.trim()
+    ?? ''
+  );
   const canUseDemoAutoFill = demoAccountPassword.length > 0;
 
   const handleSubmit = async (e: FormEvent) => {

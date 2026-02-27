@@ -193,12 +193,14 @@ describe('upload-diff-service', () => {
     });
     expect(spies.insert).toHaveBeenCalledTimes(1);
     expect(spies.update).toHaveBeenCalledTimes(2);
-    expect(spies.insertValues.mock.calls[0][0]).toEqual(expect.objectContaining({
-      pharmacyId: 10,
-      uploadId: 55,
-      expirationDateIso: '2026-05-20',
-      isAvailable: true,
-    }));
+    expect(spies.insertValues.mock.calls[0][0]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        pharmacyId: 10,
+        uploadId: 55,
+        expirationDateIso: '2026-05-20',
+        isAvailable: true,
+      }),
+    ]));
   });
 
   it('calculates and applies used medication diffs', async () => {

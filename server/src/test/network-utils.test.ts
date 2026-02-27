@@ -11,6 +11,7 @@ vi.mock('node:dns/promises', () => ({
 import { assertExternalHttpsUrlSafe, validateExternalHttpsUrl } from '../utils/network-utils';
 
 const ORIGINAL_ALLOWED_HOSTS = process.env.EXTERNAL_FETCH_ALLOWED_HOSTS;
+const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
 describe('network-utils validateExternalHttpsUrl', () => {
   afterEach(() => {
@@ -19,10 +20,17 @@ describe('network-utils validateExternalHttpsUrl', () => {
     } else {
       delete process.env.EXTERNAL_FETCH_ALLOWED_HOSTS;
     }
+
+    if (typeof ORIGINAL_NODE_ENV === 'string') {
+      process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    } else {
+      delete process.env.NODE_ENV;
+    }
     dnsLookupMock.mockReset();
   });
 
-  it('allows public https host when allowlist is not configured', async () => {
+  it('allows public https host when allowlist is not configured outside production', async () => {
+    process.env.NODE_ENV = 'development';
     delete process.env.EXTERNAL_FETCH_ALLOWED_HOSTS;
     dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34' }]);
 
@@ -30,6 +38,17 @@ describe('network-utils validateExternalHttpsUrl', () => {
 
     expect(result.ok).toBe(true);
     expect(result.hostname).toBe('example.com');
+  });
+
+  it('rejects host when allowlist is not configured in production', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.EXTERNAL_FETCH_ALLOWED_HOSTS;
+    dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34' }]);
+
+    const result = await validateExternalHttpsUrl('https://example.com/file.csv');
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('許可リスト');
   });
 
   it('rejects host not included in allowlist', async () => {

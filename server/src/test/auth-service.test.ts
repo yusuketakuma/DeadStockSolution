@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect } from 'vitest';
-import { hashPassword, verifyPassword, generateToken, verifyToken } from '../services/auth-service';
+import { deriveSessionVersion, hashPassword, verifyPassword, generateToken, verifyToken } from '../services/auth-service';
 
 describe('auth-service', () => {
   const originalNodeEnv = process.env.NODE_ENV;
@@ -75,6 +75,31 @@ describe('auth-service', () => {
       expect(() => generateToken({ id: 1, email: 'test@example.com', isAdmin: false })).toThrow(
         'JWT_SECRET environment variable is not set'
       );
+    });
+
+    it('throws when JWT_SECRET is weak outside test env', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.JWT_SECRET = 'change-this';
+
+      expect(() => generateToken({
+        id: 1,
+        email: 'test@example.com',
+        isAdmin: false,
+        sessionVersion: 'session-v1',
+      })).toThrow('JWT_SECRET is too weak');
+    });
+
+    it('derives deterministic session version from password hash', () => {
+      process.env.NODE_ENV = 'development';
+      process.env.JWT_SECRET = '0123456789abcdef0123456789abcdef';
+
+      const v1 = deriveSessionVersion('hashed-password-a');
+      const v2 = deriveSessionVersion('hashed-password-a');
+      const v3 = deriveSessionVersion('hashed-password-b');
+
+      expect(v1).toHaveLength(32);
+      expect(v1).toBe(v2);
+      expect(v1).not.toBe(v3);
     });
   });
 });

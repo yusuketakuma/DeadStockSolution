@@ -213,6 +213,23 @@ export async function applyDeadStockDiff(
   let updated = 0;
   let unchanged = 0;
   const seenExistingIds = new Set<number>();
+  const insertRows: Array<{
+    pharmacyId: number;
+    uploadId: number;
+    drugCode: string | null;
+    drugName: string;
+    drugMasterId: number | null;
+    drugMasterPackageId: number | null;
+    packageLabel: string | null;
+    quantity: number;
+    unit: string | null;
+    yakkaUnitPrice: string | null;
+    yakkaTotal: string | null;
+    expirationDate: string | null;
+    expirationDateIso: string | null;
+    lotNumber: string | null;
+    isAvailable: boolean;
+  }> = [];
 
   for (const item of incoming) {
     const normalizedDate = normalizeDate(item.expirationDate);
@@ -226,7 +243,7 @@ export async function applyDeadStockDiff(
     const current = existingByKey.get(key);
 
     if (!current) {
-      await tx.insert(deadStockItems).values({
+      insertRows.push({
         pharmacyId,
         uploadId,
         drugCode: item.drugCode,
@@ -284,6 +301,9 @@ export async function applyDeadStockDiff(
       ));
 
     updated += 1;
+  }
+  if (insertRows.length > 0) {
+    await tx.insert(deadStockItems).values(insertRows);
   }
 
   let deactivated = 0;
@@ -408,13 +428,25 @@ export async function applyUsedMedicationDiff(
   let updated = 0;
   let unchanged = 0;
   const seenExistingIds = new Set<number>();
+  const insertRows: Array<{
+    pharmacyId: number;
+    uploadId: number;
+    drugCode: string | null;
+    drugName: string;
+    drugMasterId: number | null;
+    drugMasterPackageId: number | null;
+    packageLabel: string | null;
+    monthlyUsage: number | null;
+    unit: string | null;
+    yakkaUnitPrice: string | null;
+  }> = [];
 
   for (const item of incoming) {
     const key = usedMedicationKey(item);
     const current = existingByKey.get(key);
 
     if (!current) {
-      await tx.insert(usedMedicationItems).values({
+      insertRows.push({
         pharmacyId,
         uploadId,
         drugCode: item.drugCode,
@@ -456,6 +488,9 @@ export async function applyUsedMedicationDiff(
       ));
 
     updated += 1;
+  }
+  if (insertRows.length > 0) {
+    await tx.insert(usedMedicationItems).values(insertRows);
   }
 
   let deactivated = 0;

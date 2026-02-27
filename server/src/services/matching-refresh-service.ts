@@ -4,8 +4,9 @@ import { pharmacies, deadStockItems, matchingRefreshJobs, usedMedicationItems, u
 import { findMatches } from './matching-service';
 import { logger } from './logger';
 import { saveMatchSnapshotAndNotifyOnChange } from './matching-snapshot-service';
+import { parseBooleanFlag } from '../utils/number-utils';
 
-const AUTO_RECOMPUTE_ENABLED = process.env.MATCHING_AUTO_RECOMPUTE_ENABLED !== 'false';
+const AUTO_RECOMPUTE_ENABLED = parseBooleanFlag(process.env.MATCHING_AUTO_RECOMPUTE_ENABLED, true);
 const MAX_JOB_ATTEMPTS = 5;
 const RETRY_BATCH_SIZE = 3;
 const JOB_STALE_TIMEOUT_MS = 15 * 60 * 1000;

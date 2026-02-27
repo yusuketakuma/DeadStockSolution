@@ -26,7 +26,9 @@ function hostMatchesPattern(hostname: string, pattern: string): boolean {
 
 function isHostnameAllowedByPolicy(hostname: string): boolean {
   const patterns = parseAllowedHostPatterns(process.env.EXTERNAL_FETCH_ALLOWED_HOSTS);
-  if (patterns.length === 0) return true;
+  if (patterns.length === 0) {
+    return process.env.NODE_ENV !== 'production';
+  }
   const lowerHostname = hostname.toLowerCase();
   return patterns.some((pattern) => hostMatchesPattern(lowerHostname, pattern));
 }

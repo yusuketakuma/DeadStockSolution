@@ -326,6 +326,31 @@
 
 ---
 
+## 追加タスク（残タスク実行: セッション失効 + 性能改善）
+
+## 目標（Goal）
+- [x] パスワード変更/リセット後に旧JWTセッションを無効化する
+- [x] ログイン500の trust proxy 修正を維持しつつ回帰防止する
+- [x] アップロード差分適用の逐次INSERTをバッチ化してDB往復を削減する
+- [x] 全体検証（typecheck/lint/tests）を再通過させる
+
+## 実装（Implementation Sprint）
+- [x] JWTに `sessionVersion`（パスワードハッシュ由来HMAC）を付与
+- [x] 認証ミドルウェアで `sessionVersion` をDB値と照合
+- [x] パスワードリセット完了時に auth cache を明示invalid化
+- [x] `MATCHING_AUTO_RECOMPUTE_ENABLED` の真偽値解釈を厳密化
+- [x] `EXTERNAL_FETCH_ALLOWED_HOSTS` 未設定時の本番fail-openを防止
+- [x] upload diffのINSERTを dead_stock / used_medication ともにバッチ化
+- [x] client API base URLを `VITE_API_BASE_URL` で上書き可能化
+- [x] `VITE_DEMO_ACCOUNT_PASSWORD` 優先 + 旧 `VITE_TEST_ACCOUNT_PASSWORD` 互換
+
+## 一括検証（Verification）
+- [x] typecheck
+- [x] lint
+- [x] tests
+
+---
+
 ## 追加タスク（デモワンクリックでパスワードも貼り付け）
 
 ### 入力メタ（見積）
@@ -343,6 +368,29 @@
 - [x] `LoginPage` のワンクリック挙動を email+password 貼り付けへ変更
 - [x] ログイン画面E2Eテスト期待値を更新
 - [x] README/SECURITY の文言を新仕様へ更新
+
+## 一括検証（Verification）
+- [x] typecheck
+- [x] lint
+- [x] tests
+
+---
+
+## 追加タスク（デモワンクリック→DB認証ログイン導線テスト）
+
+### 入力メタ（見積）
+- files_changed_est: 2
+- loc_delta_est: 90 (small)
+- tests_added: true
+- runtime_est_min: 8
+
+## 目標（Goal）
+- [x] ワンクリック入力後にログイン送信まで進むクライアントテストを追加する
+- [x] `/api/auth/login` の DB 参照ログイン経路をサーバーテストで保証する
+
+## 実装（Implementation Sprint）
+- [x] LoginPage E2E に「ワンクリック→送信→/api/auth/login body検証」を追加
+- [x] auth route test に「DB select→verifyPassword→cookie発行」検証を追加
 
 ## 一括検証（Verification）
 - [x] typecheck

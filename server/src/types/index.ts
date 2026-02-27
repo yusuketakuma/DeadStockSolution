@@ -4,10 +4,17 @@ export interface JwtPayload {
   id: number;
   email: string;
   isAdmin: boolean;
+  sessionVersion?: string;
+}
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  isAdmin: boolean;
 }
 
 export interface AuthRequest extends Request {
-  user?: JwtPayload;
+  user?: AuthUser;
 }
 
 export interface ColumnMapping {

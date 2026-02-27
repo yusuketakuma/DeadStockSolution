@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   geocodeAddress: vi.fn(() => ({ lat: 35.6762, lng: 139.6503 })),
   hashPassword: vi.fn(() => Promise.resolve('hashed_password')),
   verifyPassword: vi.fn(() => Promise.resolve(true)),
+  deriveSessionVersion: vi.fn(() => 'session-v1'),
   generateToken: vi.fn(() => 'mock-token'),
   invalidateAuthUserCache: vi.fn(),
 }));
@@ -47,6 +48,7 @@ vi.mock('../services/geocode-service', () => ({
 vi.mock('../services/auth-service', () => ({
   hashPassword: mocks.hashPassword,
   verifyPassword: mocks.verifyPassword,
+  deriveSessionVersion: mocks.deriveSessionVersion,
   generateToken: mocks.generateToken,
   verifyToken: vi.fn(),
 }));

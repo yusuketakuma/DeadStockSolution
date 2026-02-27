@@ -25,31 +25,43 @@ import { csrfProtection } from './middleware/csrf';
 import { db } from './config/database';
 import { sql } from 'drizzle-orm';
 import { logger } from './services/logger';
+import { resolveTrustProxySetting } from './utils/trust-proxy';
 
 const app = express();
 app.disable('x-powered-by');
-
-const trustProxyRaw = process.env.TRUST_PROXY?.trim();
-if (trustProxyRaw === 'true') {
-  app.set('trust proxy', 1);
-} else if (trustProxyRaw === 'false' || trustProxyRaw === undefined || trustProxyRaw === '') {
-  app.set('trust proxy', false);
-} else if (/^\d+$/.test(trustProxyRaw)) {
-  app.set('trust proxy', Number(trustProxyRaw));
-}
+app.set('trust proxy', resolveTrustProxySetting());
 
 function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/\/$/, '');
 }
 
+function extractHostname(value: string): string | null {
+  const candidate = value.split(',')[0]?.trim();
+  if (!candidate) return null;
+
+  try {
+    const normalized = candidate.includes('://')
+      ? candidate
+      : `http://${candidate}`;
+    return new URL(normalized).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 function isSameHostOrigin(origin: string, req: Request): boolean {
   try {
-    const originHost = new URL(origin).host;
+    const originHost = new URL(origin).hostname.toLowerCase();
     const forwardedHost = req.headers['x-forwarded-host'];
-    const requestHost = Array.isArray(forwardedHost)
+    const requestHostRaw = Array.isArray(forwardedHost)
       ? forwardedHost[0]
       : forwardedHost ?? req.headers.host;
 
+    if (!requestHostRaw) {
+      return false;
+    }
+
+    const requestHost = extractHostname(requestHostRaw);
     if (!requestHost) {
       return false;
     }

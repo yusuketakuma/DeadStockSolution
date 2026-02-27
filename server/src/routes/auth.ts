@@ -9,6 +9,7 @@ import {
   verifyPassword,
   generateToken,
   verifyToken,
+  deriveSessionVersion,
   isJwtSecretMissingError,
 } from '../services/auth-service';
 import { validateRegistration, validateLogin, emailSchema, passwordSchema } from '../utils/validators';
@@ -119,7 +120,12 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
 
     const pharmacyId = result[0].id;
 
-    const token = generateToken({ id: pharmacyId, email, isAdmin: false });
+    const token = generateToken({
+      id: pharmacyId,
+      email,
+      isAdmin: false,
+      sessionVersion: deriveSessionVersion(passwordHash),
+    });
 
     res.cookie('token', token, {
       httpOnly: true,
@@ -206,6 +212,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       id: pharmacy.id,
       email: pharmacy.email,
       isAdmin: pharmacy.isAdmin ?? false,
+      sessionVersion: deriveSessionVersion(pharmacy.passwordHash),
     });
     invalidateAuthUserCache(pharmacy.id);
 
@@ -293,12 +300,13 @@ router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, re
       return;
     }
 
-    const success = await resetPasswordWithToken(token, newPassword);
-    if (!success) {
+    const resetResult = await resetPasswordWithToken(token, newPassword);
+    if (!resetResult.success) {
       writeLog('password_reset_failed', { detail: 'リセットトークン無効または期限切れ', ipAddress: getClientIp(req) });
       res.status(400).json({ error: 'リセットトークンが無効または期限切れです' });
       return;
     }
+    invalidateAuthUserCache(resetResult.pharmacyId);
 
     writeLog('password_reset_complete', { detail: 'パスワードリセット完了', ipAddress: getClientIp(req) });
     res.json({ message: 'パスワードをリセットしました。新しいパスワードでログインしてください' });
