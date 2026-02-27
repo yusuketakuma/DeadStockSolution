@@ -46,7 +46,7 @@ router.get('/run', async (req, res: Response) => {
     res.json({ message: 'ok', year, month });
   } catch (err) {
     if (err instanceof Error && err.message.includes('不正')) {
-      res.status(400).json({ error: err.message });
+      res.status(400).json({ error: '年月パラメータが不正です' });
       return;
     }
 

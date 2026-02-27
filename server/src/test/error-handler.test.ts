@@ -55,6 +55,15 @@ describe('error-handler', () => {
     expect(res.body).toEqual({ error: 'not found' });
   });
 
+  it('hides 4xx details in production', async () => {
+    process.env.NODE_ENV = 'production';
+    const app = createApp();
+    const res = await request(app).get('/http-error');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'リクエストに失敗しました' });
+  });
+
   it('hides 500 details in production', async () => {
     process.env.NODE_ENV = 'production';
     const app = createApp();
