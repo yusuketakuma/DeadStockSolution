@@ -19,6 +19,14 @@ function isSafeMethod(method: string): boolean {
 function isExemptPath(path: string): boolean {
   return EXEMPT_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
+function timingSafeCompare(a: string, b: string): boolean {
+  const aBuffer = Buffer.from(a, 'utf8');
+  const bBuffer = Buffer.from(b, 'utf8');
+  if (aBuffer.length !== bBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(aBuffer, bBuffer);
+}
 
 export function generateCsrfToken(): string {
   return crypto.randomBytes(32).toString('hex');
@@ -66,7 +74,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     ? req.cookies[CSRF_COOKIE_NAME]
     : '';
   const csrfHeader = req.header(CSRF_HEADER_NAME) ?? '';
-  if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
+  if (!csrfCookie || !csrfHeader || !timingSafeCompare(csrfCookie, csrfHeader)) {
     res.status(403).json({ error: 'CSRFトークンが無効です。再読み込みしてください' });
     return;
   }
