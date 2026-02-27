@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, ilike, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import {
@@ -533,18 +533,51 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
     }
 
     const rows = await (async () => {
+      const getRowsFromFlag = () => db.select({
+        id: pharmacies.id,
+        name: pharmacies.name,
+        email: pharmacies.email,
+        prefecture: pharmacies.prefecture,
+        password: pharmacies.testAccountPassword,
+      })
+        .from(pharmacies)
+        .where(eq(pharmacies.isTestAccount, true))
+        .orderBy(asc(pharmacies.id));
+
+      const getRowsFromDbPattern = () => db.select({
+        id: pharmacies.id,
+        name: pharmacies.name,
+        email: pharmacies.email,
+        prefecture: pharmacies.prefecture,
+        password: pharmacies.testAccountPassword,
+      })
+        .from(pharmacies)
+        .where(or(
+          ilike(pharmacies.name, 'テスト薬局%'),
+          ilike(pharmacies.email, 'test-%'),
+          ilike(pharmacies.email, 'demo-%'),
+        ))
+        .orderBy(asc(pharmacies.id));
+
       try {
-        const currentRows = await db.select({
-          id: pharmacies.id,
-          name: pharmacies.name,
-          email: pharmacies.email,
-          prefecture: pharmacies.prefecture,
-          password: pharmacies.testAccountPassword,
-        })
-          .from(pharmacies)
-          .where(eq(pharmacies.isTestAccount, true))
-          .orderBy(asc(pharmacies.id));
+        const currentRows = await getRowsFromFlag();
         isTestAccountColumnAvailable = true;
+        if (currentRows.length > 0) {
+          return currentRows;
+        }
+
+        const fallbackRows = await getRowsFromDbPattern();
+        if (fallbackRows.length > 0) {
+          // DB内の既存テスト薬局データを優先してフラグ補正する（固定データは使わない）。
+          const fallbackIds = fallbackRows.map((row) => row.id);
+          await db.update(pharmacies)
+            .set({
+              isTestAccount: true,
+              updatedAt: new Date().toISOString(),
+            })
+            .where(or(...fallbackIds.map((id) => eq(pharmacies.id, id))));
+          return fallbackRows;
+        }
         return currentRows;
       } catch (err) {
         if (!isMissingTestPharmacyColumnError(err)) {
@@ -559,16 +592,7 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
           res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
           return null;
         }
-        const healedRows = await db.select({
-          id: pharmacies.id,
-          name: pharmacies.name,
-          email: pharmacies.email,
-          prefecture: pharmacies.prefecture,
-          password: pharmacies.testAccountPassword,
-        })
-          .from(pharmacies)
-          .where(eq(pharmacies.isTestAccount, true))
-          .orderBy(asc(pharmacies.id));
+        const healedRows = await getRowsFromFlag();
         isTestAccountColumnAvailable = true;
         return healedRows;
       }
