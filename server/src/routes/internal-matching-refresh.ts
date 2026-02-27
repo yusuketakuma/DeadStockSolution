@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { processPendingMatchingRefreshJobs } from '../services/matching-refresh-service';
 import { logger } from '../services/logger';
 
@@ -11,7 +12,12 @@ function resolveCronSecret(): string | null {
 
 function isAuthorizedCron(reqAuthHeader: string | undefined, secret: string): boolean {
   const expected = `Bearer ${secret}`;
-  return reqAuthHeader === expected;
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  const receivedBuffer = Buffer.from(reqAuthHeader || '', 'utf8');
+  if (expectedBuffer.length !== receivedBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(expectedBuffer, receivedBuffer);
 }
 
 router.get('/retry', async (req, res: Response) => {

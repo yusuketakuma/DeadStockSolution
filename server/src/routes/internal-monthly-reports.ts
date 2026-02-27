@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { logger } from '../services/logger';
 import { triggerManualMonthlyReport } from '../services/monthly-report-scheduler';
 import { resolveDefaultTargetMonth, validateYearMonth } from '../services/monthly-report-service';
@@ -11,7 +12,13 @@ function resolveCronSecret(): string | null {
 }
 
 function isAuthorizedCron(reqAuthHeader: string | undefined, secret: string): boolean {
-  return reqAuthHeader === `Bearer ${secret}`;
+  const expected = `Bearer ${secret}`;
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  const receivedBuffer = Buffer.from(reqAuthHeader || '', 'utf8');
+  if (expectedBuffer.length !== receivedBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(expectedBuffer, receivedBuffer);
 }
 
 router.get('/run', async (req, res: Response) => {
