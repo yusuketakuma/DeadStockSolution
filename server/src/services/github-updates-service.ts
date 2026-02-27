@@ -54,16 +54,10 @@ let updatesCache: CachedGitHubUpdates | null = null;
 function normalizeRepository(raw: string | undefined): string {
   const candidate = raw?.trim();
   if (!candidate) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('GITHUB_UPDATES_REPOSITORY is required in production');
-    }
     return DEFAULT_REPOSITORY;
   }
   if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(candidate)) {
     return candidate;
-  }
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Invalid GITHUB_UPDATES_REPOSITORY format');
   }
   logger.warn('Invalid GitHub repository config for updates. Falling back to default repository.', {
     configuredRepository: candidate,

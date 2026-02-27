@@ -187,12 +187,29 @@ describe('github-updates-service', () => {
     );
   });
 
-  it('requires explicit repository in production when not configured', async () => {
+  it('falls back to default repository in production when not configured', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.GITHUB_UPDATES_REPOSITORY;
     delete process.env.GITHUB_REPOSITORY;
 
-    await expect(getGitHubUpdates()).rejects.toThrow('GITHUB_UPDATES_REPOSITORY is required in production');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{
+        id: 99,
+        tag_name: 'v0.0.1',
+        name: 'Initial',
+        body: 'init',
+        html_url: 'https://github.com/yusuketakuma/DeadStockSolution/releases/tag/v0.0.1',
+        draft: false,
+        prerelease: false,
+        published_at: '2026-02-25T00:00:00.000Z',
+      }],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getGitHubUpdates();
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/repos/yusuketakuma/DeadStockSolution/releases');
   });
 
   it('retries temporary 503 responses and succeeds', async () => {
