@@ -37,6 +37,14 @@
   - What happened: `pharmacies.id` を update で 1..5 に寄せる処理が FK 制約で失敗した
   - Root cause: 参照先テーブルが存在する状態でPK更新しても `ON UPDATE NO ACTION` のため成立しない点を見落とした
   - New rule to prevent it: ID固定が必要なシードは「非対象データの存在チェック」→「安全条件下で truncate + reseed」方式を採用し、PK update 依存を避ける
+- Pattern: デモ一覧の抽出条件を汎用パターンに依存し、環境差分で5件固定表示が崩れた
+  - What happened: 本番で登録済みテスト薬局一覧が5件にならないケースが発生した
+  - Root cause: `name/email LIKE` などの曖昧条件と `isActive` 条件だけでは、運用データ差分で対象が不足/混入する
+  - New rule to prevent it: 固定表示が要件のデモ一覧は「固定キー（メール等）の明示条件 + 必要に応じた自動同期」で決定論的に返す
+- Pattern: デモ一覧の表示件数を定数 `5` に固定し、テストアカウント数変更時に追従できなかった
+  - What happened: テストアカウント件数に応じて表示件数を変える要件に対し、API側の `limit(5)` が残っていた
+  - Root cause: 表示対象の真実源（`TEST_PHARMACY_DEMO_ACCOUNTS`）と取得上限の連動を設計時に固定化していた
+  - New rule to prevent it: デモ一覧の上限値は設定配列長やDB件数などの動的ソースに必ず紐付け、固定数値を直書きしない
 
 ## Project-specific gotchas
 - Item:

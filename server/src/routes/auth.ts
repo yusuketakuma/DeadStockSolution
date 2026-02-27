@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { and, asc, eq, ilike, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import {
@@ -20,7 +20,7 @@ import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } f
 import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
-import { TEST_PHARMACY_PASSWORD_BY_EMAIL } from '../config/test-pharmacy-demo-accounts';
+import { TEST_PHARMACY_DEMO_ACCOUNTS, TEST_PHARMACY_PASSWORD_BY_EMAIL } from '../config/test-pharmacy-demo-accounts';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -47,7 +47,6 @@ const loginLimiter = rateLimit({
 const AUTH_CONFIGURATION_ERROR_MESSAGE = '認証設定が未完了です。管理者に連絡してください';
 const PASSWORD_RESET_MIN_RESPONSE_MS = process.env.NODE_ENV === 'test' ? 0 : 180;
 const PASSWORD_RESET_RESPONSE_JITTER_MS = process.env.NODE_ENV === 'test' ? 0 : 120;
-const TEST_PHARMACY_PREVIEW_LIMIT = 5;
 const DEFAULT_TEST_ACCOUNT_PASSWORD = 'password123';
 const testPharmacyPreviewLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -93,21 +92,6 @@ function isTestPharmacyPreviewEnabled(): boolean {
   return process.env.ENABLE_TEST_PHARMACY_PREVIEW !== 'false';
 }
 
-function parseTestPharmacyEmails(): string[] {
-  return (process.env.TEST_PHARMACY_EMAILS ?? '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-}
-
-function buildTestPharmacyPatternCondition() {
-  return or(
-    ilike(pharmacies.email, '%test%'),
-    ilike(pharmacies.name, '%テスト薬局%'),
-    ilike(pharmacies.name, '%テスト%'),
-  );
-}
-
 function resolveTestAccountPassword(): string {
   const envPassword = (process.env.TEST_ACCOUNT_PASSWORD ?? process.env.DEMO_ACCOUNT_PASSWORD ?? '').trim();
   if (envPassword.length > 0) {
@@ -122,6 +106,62 @@ function resolveTestPharmacyPasswordByEmail(email: string): string {
     return fixedPassword;
   }
   return resolveTestAccountPassword();
+}
+
+function shouldAutoSyncDemoAccounts(): boolean {
+  return !process.env.VITEST
+    && process.env.NODE_ENV !== 'test'
+    && process.env.AUTO_SYNC_TEST_PHARMACIES !== 'false';
+}
+
+let demoAccountsSynced = false;
+
+async function syncDemoAccountsToDatabase(): Promise<void> {
+  const now = new Date().toISOString();
+  for (const account of TEST_PHARMACY_DEMO_ACCOUNTS) {
+    const passwordHash = await hashPassword(account.password);
+    await db.insert(pharmacies).values({
+      email: account.email,
+      passwordHash,
+      name: account.name,
+      postalCode: account.postalCode,
+      address: account.address,
+      phone: account.phone,
+      fax: account.fax,
+      licenseNumber: account.licenseNumber,
+      prefecture: account.prefecture,
+      latitude: account.latitude,
+      longitude: account.longitude,
+      isAdmin: false,
+      isActive: true,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: pharmacies.email,
+      set: {
+        passwordHash,
+        name: account.name,
+        postalCode: account.postalCode,
+        address: account.address,
+        phone: account.phone,
+        fax: account.fax,
+        licenseNumber: account.licenseNumber,
+        prefecture: account.prefecture,
+        latitude: account.latitude,
+        longitude: account.longitude,
+        isAdmin: false,
+        isActive: true,
+        updatedAt: now,
+      },
+    });
+  }
+}
+
+async function ensureDemoAccountsSynced(): Promise<void> {
+  if (!shouldAutoSyncDemoAccounts() || demoAccountsSynced) {
+    return;
+  }
+  await syncDemoAccountsToDatabase();
+  demoAccountsSynced = true;
 }
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
@@ -453,18 +493,17 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
       return;
     }
 
-    const previewEmails = parseTestPharmacyEmails();
+    await ensureDemoAccountsSynced();
+    const demoEmails = TEST_PHARMACY_DEMO_ACCOUNTS.map((account) => account.email);
+    if (demoEmails.length === 0) {
+      res.json({ accounts: [] });
+      return;
+    }
     const baseCondition = and(
       eq(pharmacies.isAdmin, false),
       eq(pharmacies.isActive, true),
+      inArray(pharmacies.email, demoEmails),
     );
-    const patternCondition = buildTestPharmacyPatternCondition();
-    const filterCondition = previewEmails.length > 0
-      ? and(baseCondition, or(
-        patternCondition,
-        inArray(pharmacies.email, previewEmails),
-      ))
-      : and(baseCondition, patternCondition);
 
     const rows = await db.select({
       id: pharmacies.id,
@@ -473,9 +512,9 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
       prefecture: pharmacies.prefecture,
     })
       .from(pharmacies)
-      .where(filterCondition)
+      .where(baseCondition)
       .orderBy(asc(pharmacies.id))
-      .limit(TEST_PHARMACY_PREVIEW_LIMIT);
+      .limit(demoEmails.length);
 
     res.json({
       accounts: rows.map((row) => ({

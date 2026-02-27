@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TEST_PHARMACY_DEMO_ACCOUNTS } from '../config/test-pharmacy-demo-accounts';
 
 const mocks = vi.hoisted(() => ({
   createPasswordResetToken: vi.fn(),
@@ -375,7 +376,7 @@ describe('auth routes', () => {
     expect(selectChain.from).toHaveBeenCalledTimes(1);
     expect(selectChain.where).toHaveBeenCalledTimes(1);
     expect(selectChain.orderBy).toHaveBeenCalledTimes(1);
-    expect(selectChain.limit).toHaveBeenCalledWith(5);
+    expect(selectChain.limit).toHaveBeenCalledWith(TEST_PHARMACY_DEMO_ACCOUNTS.length);
   });
 
   it('returns distinct passwords for the 5 fixed test pharmacy accounts', async () => {

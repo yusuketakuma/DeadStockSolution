@@ -1,5 +1,34 @@
 # tasks/todo.md
 
+## 2026-02-27 本番で登録済みテスト薬局が5件表示されない不具合修正
+
+### Context
+- Prompt: 登録済みテスト薬局に5件のテスト薬局が表示されていない
+- Scope:
+  - `server/src/routes/auth.ts` の `GET /api/auth/test-pharmacies`
+
+### Goals / Definition of Done
+- [x] テスト薬局一覧APIが固定5件（設定済みデモメール）を対象に返却する
+- [x] 本番環境で初回アクセス時に5件デモアカウントを自動同期できる
+- [x] auth route / login e2e / lint / typecheck が通る
+
+### Implementation checklist
+- [x] A. 一覧フィルタを固定5件メール条件へ変更
+- [x] B. 本番向け自動同期（初回1回）を追加
+- [x] C. 検証コマンド実行
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/login.test.tsx
+- [x] npm run typecheck --workspace=server
+- [x] npm run lint --workspace=server
+
+### Result
+- Status: DONE
+- Notes:
+  - `test-pharmacies` は `TEST_PHARMACY_DEMO_ACCOUNTS` のメール5件を返却対象に固定。
+  - `AUTO_SYNC_TEST_PHARMACIES !== 'false'` かつ test 実行環境以外では、初回アクセス時にデモ5件をDBへ自動同期（個別パスワード/active=true）。
+
 ## 2026-02-27 テスト薬局5件の個別ID/パスワード化 + DB反映 + 認証確認
 
 ### Context
@@ -969,3 +998,32 @@
   - `npm test` 成功（失敗なし）
   - `npm run build:server` 成功
   - `npm run build:client` 成功
+
+## 2026-02-27 テストアカウント数に応じた表示件数の可変化
+
+### Context
+- Prompt: テストアカウント数に応じて表示件数を変える
+- Scope:
+  - `server/src/routes/auth.ts` の `GET /api/auth/test-pharmacies`
+  - `server/src/test/auth-route.test.ts`
+
+### Goals / Definition of Done
+- [x] テスト薬局一覧APIが固定値に依存せず、現在のテストアカウント数に追従して返却する
+- [x] 既存の回帰テストが通る
+
+### Implementation checklist
+- [x] A. 固定件数定数を削除し、件数上限を動的化（または不要化）
+- [x] B. auth routeテストの期待値を固定 `5` 依存から外す
+- [x] C. 検証実行（auth-route test + server typecheck/lint）
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run typecheck --workspace=server
+- [x] npm run lint --workspace=server
+
+### Result
+- Status: DONE
+- Notes:
+  - `GET /api/auth/test-pharmacies` の固定上限 `5` を廃止し、`TEST_PHARMACY_DEMO_ACCOUNTS.length` を上限に使用するよう変更。
+  - デモアカウント設定が0件の場合は `accounts: []` を返すガードを追加。
+  - auth routeテストの期待値を固定 `5` から `TEST_PHARMACY_DEMO_ACCOUNTS.length` 参照へ変更し、回帰確認済み。
