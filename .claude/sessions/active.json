@@ -1,28 +1,4 @@
 {
-  "session-1772037537": {
-    "short_id": "session-1772",
-    "last_seen": 1772037537,
-    "pid": "90226",
-    "status": "active"
-  },
-  "session-1772038380": {
-    "short_id": "session-1772",
-    "last_seen": 1772038380,
-    "pid": "97651",
-    "status": "active"
-  },
-  "session-1772079258": {
-    "short_id": "session-1772",
-    "last_seen": 1772079288,
-    "pid": "68154",
-    "status": "active"
-  },
-  "session-1772104487": {
-    "short_id": "session-1772",
-    "last_seen": 1772104487,
-    "pid": "70249",
-    "status": "active"
-  },
   "session-1772104597": {
     "short_id": "session-1772",
     "last_seen": 1772106517,
@@ -33,6 +9,12 @@
     "short_id": "session-1772",
     "last_seen": 1772114118,
     "pid": "38689",
+    "status": "active"
+  },
+  "session-1772192914": {
+    "short_id": "session-1772",
+    "last_seen": 1772192914,
+    "pid": "68458",
     "status": "active"
   }
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   db: {
@@ -16,21 +16,11 @@ import {
   previewDeadStockDiff,
   previewUsedMedicationDiff,
 } from '../services/upload-diff-service';
-
-function createWhereQuery(result: unknown) {
-  const query = {
-    from: vi.fn(),
-    where: vi.fn(),
-  };
-  query.from.mockReturnValue(query);
-  query.where.mockResolvedValue(result);
-  return query;
-}
+import { createSelectWhereChain, createWhereQuery } from './helpers/mock-builders';
+import { setupVitestMocks } from './helpers/setup';
 
 function createTxMock(existingRows: unknown[]) {
-  const selectWhere = vi.fn().mockResolvedValue(existingRows);
-  const selectFrom = vi.fn().mockReturnValue({ where: selectWhere });
-  const select = vi.fn().mockReturnValue({ from: selectFrom });
+  const { select, selectFrom, selectWhere } = createSelectWhereChain(existingRows);
 
   const insertValues = vi.fn().mockResolvedValue(undefined);
   const insert = vi.fn().mockReturnValue({ values: insertValues });
@@ -65,9 +55,7 @@ function createTxMock(existingRows: unknown[]) {
 }
 
 describe('upload-diff-service', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  setupVitestMocks();
 
   it('calculates dead stock preview summary with insert/update/deactivate', async () => {
     mocks.db.select.mockImplementationOnce(() => createWhereQuery([
@@ -294,5 +282,178 @@ describe('upload-diff-service', () => {
     expect(spies.insert).toHaveBeenCalledTimes(1);
     expect(spies.update).toHaveBeenCalledTimes(1);
     expect(spies.txDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('splits bulk inserts into multiple batches when input size exceeds batch limit', async () => {
+    const { tx, spies } = createTxMock([]);
+    const incoming = Array.from({ length: 501 }, (_, index) => ({
+      drugCode: `U${String(index + 1).padStart(4, '0')}`,
+      drugName: `薬${index + 1}`,
+      monthlyUsage: 10,
+      unit: '錠',
+      yakkaUnitPrice: 12,
+    }));
+
+    const applied = await applyUsedMedicationDiff(tx, 7, 66, incoming, { deleteMissing: false });
+
+    expect(applied).toEqual({
+      inserted: 501,
+      updated: 0,
+      deactivated: 0,
+      unchanged: 0,
+      totalIncoming: 501,
+    });
+    expect(spies.insert).toHaveBeenCalledTimes(2);
+    expect(spies.insertValues).toHaveBeenCalledTimes(2);
+  });
+
+  it('deduplicates duplicate dead stock rows before applying inserts', async () => {
+    const { tx, spies } = createTxMock([]);
+
+    const result = await applyDeadStockDiff(tx, 10, 55, [
+      {
+        drugCode: 'D001',
+        drugName: '薬D',
+        quantity: 5,
+        unit: '錠',
+        yakkaUnitPrice: 10,
+        yakkaTotal: 50,
+        expirationDate: '2026-03-31',
+        lotNumber: 'LOT-D',
+      },
+      {
+        drugCode: 'D001',
+        drugName: '薬D',
+        quantity: 6,
+        unit: '錠',
+        yakkaUnitPrice: 10,
+        yakkaTotal: 60,
+        expirationDate: '2026-03-31',
+        lotNumber: 'LOT-D',
+      },
+    ], { deleteMissing: false });
+
+    expect(result).toEqual({
+      inserted: 1,
+      updated: 0,
+      deactivated: 0,
+      unchanged: 0,
+      totalIncoming: 1,
+    });
+    expect(spies.insert).toHaveBeenCalledTimes(1);
+    const insertedRows = spies.insertValues.mock.calls[0][0] as Array<{ quantity: number }>;
+    expect(insertedRows).toHaveLength(1);
+    expect(insertedRows[0].quantity).toBe(6);
+  });
+
+  it('deduplicates duplicate used medication rows in preview', async () => {
+    mocks.db.select.mockImplementationOnce(() => createWhereQuery([]));
+
+    const result = await previewUsedMedicationDiff(7, [
+      {
+        drugCode: 'U999',
+        drugName: '薬Z',
+        monthlyUsage: 10,
+        unit: '錠',
+        yakkaUnitPrice: 12,
+      },
+      {
+        drugCode: 'U999',
+        drugName: '薬Z',
+        monthlyUsage: 10,
+        unit: '錠',
+        yakkaUnitPrice: 12,
+      },
+    ], { deleteMissing: false });
+
+    expect(result).toEqual({
+      inserted: 1,
+      updated: 0,
+      deactivated: 0,
+      unchanged: 0,
+      totalIncoming: 1,
+    });
+  });
+
+  it('treats drug master link updates as changed in dead stock diff', async () => {
+    const { tx } = createTxMock([
+      {
+        id: 1,
+        drugCode: 'L001',
+        drugName: '薬L',
+        drugMasterId: null,
+        drugMasterPackageId: null,
+        packageLabel: null,
+        quantity: 10,
+        unit: '錠',
+        yakkaUnitPrice: '10',
+        yakkaTotal: '100',
+        expirationDate: '2026-04-30',
+        expirationDateIso: '2026-04-30',
+        lotNumber: 'LOT-L',
+        isAvailable: true,
+      },
+    ]);
+
+    const result = await applyDeadStockDiff(tx, 10, 55, [
+      {
+        drugCode: 'L001',
+        drugName: '薬L',
+        drugMasterId: 101,
+        drugMasterPackageId: 202,
+        packageLabel: '10錠PTP',
+        quantity: 10,
+        unit: '錠',
+        yakkaUnitPrice: 10,
+        yakkaTotal: 100,
+        expirationDate: '2026-04-30',
+        lotNumber: 'LOT-L',
+      },
+    ], { deleteMissing: false });
+
+    expect(result).toEqual({
+      inserted: 0,
+      updated: 1,
+      deactivated: 0,
+      unchanged: 0,
+      totalIncoming: 1,
+    });
+  });
+
+  it('treats drug master link updates as changed in used medication diff', async () => {
+    const { tx } = createTxMock([
+      {
+        id: 1,
+        drugCode: 'M001',
+        drugName: '薬M',
+        drugMasterId: null,
+        drugMasterPackageId: null,
+        packageLabel: null,
+        unit: '錠',
+        monthlyUsage: 100,
+        yakkaUnitPrice: '20',
+      },
+    ]);
+
+    const result = await applyUsedMedicationDiff(tx, 7, 66, [
+      {
+        drugCode: 'M001',
+        drugName: '薬M',
+        drugMasterId: 11,
+        drugMasterPackageId: 12,
+        packageLabel: '100錠',
+        monthlyUsage: 100,
+        unit: '錠',
+        yakkaUnitPrice: 20,
+      },
+    ], { deleteMissing: false });
+
+    expect(result).toEqual({
+      inserted: 0,
+      updated: 1,
+      deactivated: 0,
+      unchanged: 0,
+      totalIncoming: 1,
+    });
   });
 });

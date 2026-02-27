@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAsyncState } from '../hooks/useAsyncState';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
@@ -47,12 +48,10 @@ function formatPercent(value?: number): string {
 
 export default function MatchingPage() {
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
   const [proposalSubmitting, setProposalSubmitting] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [error, setError] = useState('');
   const [proposalRetrySuggested, setProposalRetrySuggested] = useState(false);
-  const [message, setMessage] = useState('');
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [candidateForProposal, setCandidateForProposal] = useState<MatchCandidate | null>(null);
 

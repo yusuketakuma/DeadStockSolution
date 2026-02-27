@@ -1,3 +1,4 @@
+import type { LookupAddress } from 'node:dns';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { Agent } from 'undici';
@@ -245,42 +246,39 @@ export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[
     throw new Error('DNS pinning requires at least one resolved address');
   }
   let nextAddressIndex = 0;
+  const lookup: net.LookupFunction = (lookupHostname, lookupOptions, callback) => {
+    if (lookupHostname.toLowerCase() !== normalizedHostname) {
+      callback(new Error('Hostname changed during DNS-pinned request'), '');
+      return;
+    }
+
+    const family = lookupOptions?.family;
+    const filtered = uniqueAddresses.filter((address) => {
+      if (family === 4) return net.isIPv4(address);
+      if (family === 6) return net.isIPv6(address);
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      callback(new Error('No pinned address available for requested IP family'), '');
+      return;
+    }
+
+    if (lookupOptions?.all) {
+      const addresses: LookupAddress[] = filtered.map((address) => ({
+        address,
+        family: net.isIPv6(address) ? 6 : 4,
+      }));
+      callback(null, addresses);
+      return;
+    }
+
+    const address = filtered[nextAddressIndex % filtered.length];
+    nextAddressIndex += 1;
+    callback(null, address, net.isIPv6(address) ? 6 : 4);
+  };
 
   return new Agent({
-    connect: {
-      lookup: (lookupHostname: string, lookupOptions: { family?: number; all?: boolean } | undefined, callback: (...args: unknown[]) => void) => {
-        if (lookupHostname.toLowerCase() !== normalizedHostname) {
-          callback(new Error('Hostname changed during DNS-pinned request'));
-          return;
-        }
-
-        const family = lookupOptions?.family;
-        const filtered = uniqueAddresses.filter((address) => {
-          if (family === 4) return net.isIPv4(address);
-          if (family === 6) return net.isIPv6(address);
-          return true;
-        });
-
-        if (filtered.length === 0) {
-          callback(new Error('No pinned address available for requested IP family'));
-          return;
-        }
-
-        if (lookupOptions?.all) {
-          callback(
-            null,
-            filtered.map((address) => ({
-              address,
-              family: net.isIPv6(address) ? 6 : 4,
-            })),
-          );
-          return;
-        }
-
-        const address = filtered[nextAddressIndex % filtered.length];
-        nextAddressIndex += 1;
-        callback(null, address, net.isIPv6(address) ? 6 : 4);
-      },
-    } as any,
+    connect: { lookup },
   });
 }

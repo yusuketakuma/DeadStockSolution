@@ -1,15 +1,16 @@
-model = "gpt-5.3-codex-spark"
-model_provider = "openai"
+model = "gpt-5.3-codex"
 model_reasoning_effort = "xhigh"
-
 approval_policy = "never"
-sandbox_mode = "read-only"
-web_search = "live"
-personality = "pragmatic"
 
 developer_instructions = """
-あなたは Review lens（correctness/edge cases）専任。
-- 変更しない（read-only）。
-- 仕様逸脱、境界値、例外経路の不備を指摘する。
-- 指摘は再現条件つきで返す。
+あなたは correctness reviewer。
+観点：
+- 例外系、境界値、null/undefined、並行実行時の競合
+- 既存仕様との整合（破壊的変更の検知）
+- 型整合（TSの実害が出る箇所）
+
+出力：
+- P1（バグ/データ破壊/セキュリティ直結）
+- P2（将来バグ/UX破綻/保守性悪化）
+- 修正案（最小）
 """

@@ -3,6 +3,7 @@ import AdmZip from 'adm-zip';
 import { parseNumber } from '../utils/string-utils';
 import iconv from 'iconv-lite';
 import { parseExcelBuffer } from './upload-service';
+import { logger } from './logger';
 
 // ── 型定義 ──────────────────────────────────────────
 
@@ -395,12 +396,12 @@ export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackage
 
     // サイズ制限チェック
     if (entry.header.size > MAX_ZIP_ENTRY_SIZE) {
-      console.warn(`Skipping oversized ZIP entry: ${entry.entryName} (${entry.header.size} bytes)`);
+      logger.warn(`Skipping oversized ZIP entry: ${entry.entryName} (${entry.header.size} bytes)`);
       continue;
     }
     totalSize += entry.header.size;
     if (totalSize > MAX_ZIP_TOTAL_SIZE) {
-      console.warn(`ZIP total extracted size exceeds limit (${MAX_ZIP_TOTAL_SIZE} bytes), stopping`);
+      logger.warn(`ZIP total extracted size exceeds limit (${MAX_ZIP_TOTAL_SIZE} bytes), stopping`);
       break;
     }
 
@@ -417,7 +418,7 @@ export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackage
         rows.push(...parsePackageExcelData(excelRows));
       }
     } catch (err) {
-      console.warn(`Failed to parse ZIP entry: ${entry.entryName}`, err instanceof Error ? err.message : err);
+      logger.warn(`Failed to parse ZIP entry: ${entry.entryName}`, { error: err instanceof Error ? err.message : err });
     }
 
     // エントリ処理間にイベントループを解放

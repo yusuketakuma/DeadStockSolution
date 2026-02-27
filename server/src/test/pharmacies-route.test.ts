@@ -53,6 +53,7 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 import pharmaciesRouter from '../routes/pharmacies';
+import { eq } from 'drizzle-orm';
 
 function createWhereQuery(result: unknown) {
   const query = {
@@ -249,6 +250,9 @@ describe('pharmacies routes', () => {
     const success = await request(app).get('/api/pharmacies/2');
     expect(success.status).toBe(200);
     expect(success.body).toEqual(expect.objectContaining({ id: 2, name: '詳細薬局' }));
+
+    const eqMock = vi.mocked(eq);
+    expect(eqMock).toHaveBeenCalledWith(expect.anything(), true);
   });
 
   it('handles favorite add/remove flows', async () => {

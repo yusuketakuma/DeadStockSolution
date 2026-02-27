@@ -1,33 +1,24 @@
-# Repo-scoped Codex Settings（0.105.0+）
+# .codex/README.md
 
-このリポジトリは `.codex/config.toml` を同梱します。
-Codex は project-scoped config を **trusted** なプロジェクトでのみ読み込みます。  
-（各開発者の `~/.codex/config.toml` には trust 設定だけ入れる運用が最小です）
+このリポジトリは Codex CLI の project-scoped config を使う。
 
-## 重要：trust設定（各自のHOME側）
-例（パスは各自の絶対パスに置換）：
+## どこに何を置くか
+- .codex/config.toml: プロジェクト設定（共有）
+- .codex/agents/*.toml: マルチエージェント役割
+- codex/rules/*.rules: フルアクセス運用の最低限ガードレール（共有）
+- AGENTS.md: リポジトリ規律（共有）
+- tasks/*.md: Plan/学習ログ（共有）
 
-```toml
-# ~/.codex/config.toml（最小例）
-[projects."/ABS/PATH/TO/REPO"]
-trust_level = "trusted"
-```
+## 設定の優先順位
+Codex は project-scoped `.codex/config.toml` を user config より優先して読む（ただしプロジェクトが trusted の時だけ）。
 
-## このrepoが提供するもの
-- マルチエージェント（multi_agent）をON
-- Web検索（live）をON
-- Apps（/apps）をON（必要時のみ MCP gateway を使用）
-- 役割別エージェント設定（goal_setter / explorer / worker_heavy / worker_light / reviewer）
-- 「実装→一括検証→最後にレビュー」をAGENTSで強制
+## Web search
+フルアクセス時は live がデフォルトだが、`.codex/config.toml` で `web_search="live"` を明示している。
 
-## Appsが落ちる/403になる場合（過去障害対策）
-- Appsは `[features].apps` で有効化されます（旧 connectors は廃止）。
-- `apps_mcp_gateway` は環境依存で不安定になることがあります。
-  Cloudflare系（403/HTML返却）なら `true`、JSON decode エラーなら `false` を推奨します。
+## apps
+apps は無効。過去の codex_apps 起動失敗や403系を踏まない設計。
+必要になった時だけ features.apps を true にして別途チューニングする。
 
-それでも `codex_apps` が起動しない場合：
-- 認証状態を確認：`codex login status`
-- 必要なら再ログイン：`codex login`（ブラウザ） or `codex login --device-auth`
-- APIキー運用へ切替も可：`printenv OPENAI_API_KEY | codex login --with-api-key`
-
-（CLIの login サブコマンド仕様は公式参照）
+## 注意
+approval_policy=never + danger-full-access は"止まらない"代わりに事故が致命傷になる。
+codex/rules/default.rules で禁じ手を封じる。

@@ -245,7 +245,10 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
       fax: pharmacies.fax,
     })
       .from(pharmacies)
-      .where(eq(pharmacies.id, id))
+      .where(and(
+        eq(pharmacies.id, id),
+        eq(pharmacies.isActive, true),
+      ))
       .limit(1);
 
     if (!pharmacy) {

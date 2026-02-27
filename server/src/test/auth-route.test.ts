@@ -123,7 +123,7 @@ describe('auth routes', () => {
     expect(mocks.createPasswordResetToken).toHaveBeenCalledWith('test@example.com');
   });
 
-  it('exposes password reset token when explicitly enabled in non-production', async () => {
+  it('exposes password reset token when explicitly enabled in test environment', async () => {
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'true';
     const app = await createApp();
@@ -143,11 +143,18 @@ describe('auth routes', () => {
     });
   });
 
-  it('fails fast when token exposure is enabled in production', async () => {
+  it('fails fast when token exposure is enabled outside test environment', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'true';
+
+    await expect(createApp()).rejects.toThrow('EXPOSE_PASSWORD_RESET_TOKEN=true は test 環境でのみ許可されています');
+  });
+
+  it('fails fast in production when token exposure is enabled', async () => {
     process.env.NODE_ENV = 'production';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'true';
 
-    await expect(createApp()).rejects.toThrow('EXPOSE_PASSWORD_RESET_TOKEN=true は本番環境では許可されていません');
+    await expect(createApp()).rejects.toThrow('EXPOSE_PASSWORD_RESET_TOKEN=true は test 環境でのみ許可されています');
   });
 
   it('issues csrf token and cookie', async () => {

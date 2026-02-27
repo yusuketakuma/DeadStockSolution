@@ -10,6 +10,7 @@ import LoadingButton from '../components/ui/LoadingButton';
 import AppControl from '../components/ui/AppControl';
 import AppCard from '../components/ui/AppCard';
 import { useAuth } from '../contexts/AuthContext';
+import { useAsyncState } from '../hooks/useAsyncState';
 
 interface PreviewResponse {
   headers: string[];
@@ -39,9 +40,7 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
   const [showMatchingHint, setShowMatchingHint] = useState(false);
   const [applyMode, setApplyMode] = useState<'replace' | 'diff'>('replace');
   const [deleteMissing, setDeleteMissing] = useState(false);

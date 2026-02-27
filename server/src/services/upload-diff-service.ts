@@ -1,6 +1,18 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, type InferInsertModel } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, usedMedicationItems } from '../db/schema';
+import {
+  buildExistingByKey,
+  deadStockKey,
+  dedupeIncomingByKey,
+  equalNullableNumber,
+  normalizeDate,
+  normalizeNullableNumber,
+  normalizeString,
+  usedMedicationKey,
+} from '../utils/upload-diff-utils';
+
+const DIFF_INSERT_BATCH_SIZE = 500;
 
 interface DeadStockDiffInput {
   drugCode: string | null;
@@ -27,6 +39,43 @@ interface UsedMedicationDiffInput {
   yakkaUnitPrice: number | null;
 }
 
+type PreparedDeadStockDiffInput = DeadStockDiffInput & { normalizedDate: string | null };
+
+interface DeadStockComparableRow {
+  drugMasterId: number | null;
+  drugMasterPackageId: number | null;
+  packageLabel: string | null;
+  quantity: number | string | null;
+  yakkaUnitPrice: number | string | null;
+  yakkaTotal: number | string | null;
+  unit: string | null;
+  lotNumber: string | null;
+  expirationDate: string | null;
+  expirationDateIso: string | null;
+  isAvailable: boolean | null;
+}
+
+interface UsedMedicationComparableRow {
+  drugMasterId: number | null;
+  drugMasterPackageId: number | null;
+  packageLabel: string | null;
+  monthlyUsage: number | string | null;
+  yakkaUnitPrice: number | string | null;
+}
+
+interface DeadStockExistingRow extends DeadStockComparableRow {
+  id: number;
+  drugCode: string | null;
+  drugName: string;
+}
+
+interface UsedMedicationExistingRow extends UsedMedicationComparableRow {
+  id: number;
+  drugCode: string | null;
+  drugName: string;
+  unit: string | null;
+}
+
 export interface DiffSummary {
   inserted: number;
   updated: number;
@@ -39,55 +88,228 @@ export interface ApplyDiffOptions {
   deleteMissing: boolean;
 }
 
-function normalizeString(value: string | null | undefined): string {
-  return (value ?? '').trim();
+type UploadDiffTx = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete'>;
+type UploadDiffReader = Pick<typeof db, 'select'>;
+type DeadStockInsertRow = InferInsertModel<typeof deadStockItems>;
+type UsedMedicationInsertRow = InferInsertModel<typeof usedMedicationItems>;
+
+async function insertDeadStockInBatches(tx: UploadDiffTx, rows: DeadStockInsertRow[]): Promise<void> {
+  for (let i = 0; i < rows.length; i += DIFF_INSERT_BATCH_SIZE) {
+    const batch = rows.slice(i, i + DIFF_INSERT_BATCH_SIZE);
+    await tx.insert(deadStockItems).values(batch);
+  }
 }
 
-function normalizeNullableNumber(value: number | null | undefined): number | null {
-  if (value === null || value === undefined || Number.isNaN(value)) return null;
-  return Math.round(Number(value) * 1000) / 1000;
+async function insertUsedMedicationInBatches(tx: UploadDiffTx, rows: UsedMedicationInsertRow[]): Promise<void> {
+  for (let i = 0; i < rows.length; i += DIFF_INSERT_BATCH_SIZE) {
+    const batch = rows.slice(i, i + DIFF_INSERT_BATCH_SIZE);
+    await tx.insert(usedMedicationItems).values(batch);
+  }
 }
 
-function normalizeDate(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const normalized = value.replace(/\//g, '-').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
-  return normalized;
+function prepareDeadStockIncoming(incoming: DeadStockDiffInput[]): PreparedDeadStockDiffInput[] {
+  const deduped = new Map<string, PreparedDeadStockDiffInput>();
+  for (const item of incoming) {
+    const normalizedDate = normalizeDate(item.expirationDate);
+    const key = deadStockKey({
+      drugCode: item.drugCode,
+      drugName: item.drugName,
+      unit: item.unit,
+      expirationDate: normalizedDate,
+      lotNumber: item.lotNumber,
+    });
+    deduped.set(key, { ...item, normalizedDate });
+  }
+  return [...deduped.values()];
 }
 
-function deadStockKey(item: {
-  drugCode: string | null;
-  drugName: string;
-  unit: string | null;
-  expirationDate: string | null;
-  lotNumber: string | null;
-}): string {
-  return [
-    normalizeString(item.drugCode),
-    normalizeString(item.drugName),
-    normalizeString(item.unit),
-    normalizeString(item.expirationDate),
-    normalizeString(item.lotNumber),
-  ].join('|');
+function hasDeadStockRowChanged(current: DeadStockComparableRow, item: PreparedDeadStockDiffInput): boolean {
+  return (
+    (current.drugMasterId ?? null) !== (item.drugMasterId ?? null) ||
+    (current.drugMasterPackageId ?? null) !== (item.drugMasterPackageId ?? null) ||
+    normalizeString(current.packageLabel) !== normalizeString(item.packageLabel) ||
+    !equalNullableNumber(current.quantity, normalizeNullableNumber(item.quantity)) ||
+    !equalNullableNumber(current.yakkaUnitPrice, normalizeNullableNumber(item.yakkaUnitPrice)) ||
+    !equalNullableNumber(current.yakkaTotal, normalizeNullableNumber(item.yakkaTotal)) ||
+    normalizeString(current.unit) !== normalizeString(item.unit) ||
+    normalizeString(current.lotNumber) !== normalizeString(item.lotNumber) ||
+    normalizeString(current.expirationDateIso ?? current.expirationDate) !== normalizeString(item.normalizedDate) ||
+    current.isAvailable !== true
+  );
 }
 
-function usedMedicationKey(item: {
-  drugCode: string | null;
-  drugName: string;
-  unit: string | null;
-}): string {
-  return [
-    normalizeString(item.drugCode),
-    normalizeString(item.drugName),
-    normalizeString(item.unit),
-  ].join('|');
+function hasUsedMedicationRowChanged(current: UsedMedicationComparableRow, item: UsedMedicationDiffInput): boolean {
+  return (
+    (current.drugMasterId ?? null) !== (item.drugMasterId ?? null) ||
+    (current.drugMasterPackageId ?? null) !== (item.drugMasterPackageId ?? null) ||
+    normalizeString(current.packageLabel) !== normalizeString(item.packageLabel) ||
+    !equalNullableNumber(current.monthlyUsage, normalizeNullableNumber(item.monthlyUsage)) ||
+    !equalNullableNumber(current.yakkaUnitPrice, normalizeNullableNumber(item.yakkaUnitPrice))
+  );
 }
 
-function equalNullableNumber(a: number | string | null, b: number | null): boolean {
-  const left = a === null ? null : Number(a);
-  const right = b === null ? null : Number(b);
-  if (left === null || right === null) return left === right;
-  return Math.abs(left - right) < 0.0001;
+async function selectDeadStockExisting(
+  reader: UploadDiffReader,
+  pharmacyId: number,
+): Promise<DeadStockExistingRow[]> {
+  return reader.select({
+    id: deadStockItems.id,
+    drugCode: deadStockItems.drugCode,
+    drugName: deadStockItems.drugName,
+    drugMasterId: deadStockItems.drugMasterId,
+    drugMasterPackageId: deadStockItems.drugMasterPackageId,
+    packageLabel: deadStockItems.packageLabel,
+    quantity: deadStockItems.quantity,
+    unit: deadStockItems.unit,
+    yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
+    yakkaTotal: deadStockItems.yakkaTotal,
+    expirationDate: deadStockItems.expirationDate,
+    expirationDateIso: deadStockItems.expirationDateIso,
+    lotNumber: deadStockItems.lotNumber,
+    isAvailable: deadStockItems.isAvailable,
+  })
+    .from(deadStockItems)
+    .where(eq(deadStockItems.pharmacyId, pharmacyId));
+}
+
+async function selectUsedMedicationExisting(
+  reader: UploadDiffReader,
+  pharmacyId: number,
+): Promise<UsedMedicationExistingRow[]> {
+  return reader.select({
+    id: usedMedicationItems.id,
+    drugCode: usedMedicationItems.drugCode,
+    drugName: usedMedicationItems.drugName,
+    drugMasterId: usedMedicationItems.drugMasterId,
+    drugMasterPackageId: usedMedicationItems.drugMasterPackageId,
+    packageLabel: usedMedicationItems.packageLabel,
+    unit: usedMedicationItems.unit,
+    monthlyUsage: usedMedicationItems.monthlyUsage,
+    yakkaUnitPrice: usedMedicationItems.yakkaUnitPrice,
+  })
+    .from(usedMedicationItems)
+    .where(eq(usedMedicationItems.pharmacyId, pharmacyId));
+}
+
+interface DeadStockDiffPlan {
+  insertedItems: PreparedDeadStockDiffInput[];
+  updatedPairs: Array<{ current: DeadStockExistingRow; item: PreparedDeadStockDiffInput }>;
+  unchanged: number;
+  seenExistingIds: Set<number>;
+}
+
+function analyzeDeadStockDiff(
+  existing: DeadStockExistingRow[],
+  dedupedIncoming: PreparedDeadStockDiffInput[],
+): DeadStockDiffPlan {
+  const existingByKey = buildExistingByKey(existing, (row) => deadStockKey({
+    drugCode: row.drugCode,
+    drugName: row.drugName,
+    unit: row.unit,
+    expirationDate: row.expirationDateIso ?? row.expirationDate,
+    lotNumber: row.lotNumber,
+  }));
+
+  const insertedItems: PreparedDeadStockDiffInput[] = [];
+  const updatedPairs: Array<{ current: DeadStockExistingRow; item: PreparedDeadStockDiffInput }> = [];
+  let unchanged = 0;
+  const seenExistingIds = new Set<number>();
+
+  for (const item of dedupedIncoming) {
+    const key = deadStockKey({
+      drugCode: item.drugCode,
+      drugName: item.drugName,
+      unit: item.unit,
+      expirationDate: item.normalizedDate,
+      lotNumber: item.lotNumber,
+    });
+
+    const current = existingByKey.get(key);
+    if (!current) {
+      insertedItems.push(item);
+      continue;
+    }
+
+    seenExistingIds.add(current.id);
+    if (hasDeadStockRowChanged(current, item)) {
+      updatedPairs.push({ current, item });
+      continue;
+    }
+
+    unchanged += 1;
+  }
+
+  return {
+    insertedItems,
+    updatedPairs,
+    unchanged,
+    seenExistingIds,
+  };
+}
+
+function collectDeadStockDeactivateIds(
+  existing: DeadStockExistingRow[],
+  seenExistingIds: Set<number>,
+): number[] {
+  return existing
+    .filter((row) => row.isAvailable && !seenExistingIds.has(row.id))
+    .map((row) => row.id);
+}
+
+interface UsedMedicationDiffPlan {
+  insertedItems: UsedMedicationDiffInput[];
+  updatedPairs: Array<{ current: UsedMedicationExistingRow; item: UsedMedicationDiffInput }>;
+  unchanged: number;
+  seenExistingIds: Set<number>;
+}
+
+function analyzeUsedMedicationDiff(
+  existing: UsedMedicationExistingRow[],
+  dedupedIncoming: UsedMedicationDiffInput[],
+): UsedMedicationDiffPlan {
+  const existingByKey = buildExistingByKey(existing, (row) => usedMedicationKey({
+    drugCode: row.drugCode,
+    drugName: row.drugName,
+    unit: row.unit,
+  }));
+
+  const insertedItems: UsedMedicationDiffInput[] = [];
+  const updatedPairs: Array<{ current: UsedMedicationExistingRow; item: UsedMedicationDiffInput }> = [];
+  let unchanged = 0;
+  const seenExistingIds = new Set<number>();
+
+  for (const item of dedupedIncoming) {
+    const key = usedMedicationKey(item);
+    const current = existingByKey.get(key);
+    if (!current) {
+      insertedItems.push(item);
+      continue;
+    }
+
+    seenExistingIds.add(current.id);
+    if (hasUsedMedicationRowChanged(current, item)) {
+      updatedPairs.push({ current, item });
+      continue;
+    }
+
+    unchanged += 1;
+  }
+
+  return {
+    insertedItems,
+    updatedPairs,
+    unchanged,
+    seenExistingIds,
+  };
+}
+
+function collectUsedMedicationDeleteIds(
+  existing: UsedMedicationExistingRow[],
+  seenExistingIds: Set<number>,
+): number[] {
+  return existing
+    .filter((row) => !seenExistingIds.has(row.id))
+    .map((row) => row.id);
 }
 
 export async function previewDeadStockDiff(
@@ -95,191 +317,52 @@ export async function previewDeadStockDiff(
   incoming: DeadStockDiffInput[],
   options: ApplyDiffOptions,
 ): Promise<DiffSummary> {
-  const existing = await db.select({
-    id: deadStockItems.id,
-    drugCode: deadStockItems.drugCode,
-    drugName: deadStockItems.drugName,
-    quantity: deadStockItems.quantity,
-    unit: deadStockItems.unit,
-    yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-    yakkaTotal: deadStockItems.yakkaTotal,
-    expirationDate: deadStockItems.expirationDate,
-    expirationDateIso: deadStockItems.expirationDateIso,
-    lotNumber: deadStockItems.lotNumber,
-    isAvailable: deadStockItems.isAvailable,
-  })
-    .from(deadStockItems)
-    .where(eq(deadStockItems.pharmacyId, pharmacyId));
-
-  const existingByKey = new Map<string, (typeof existing)[number]>();
-  for (const row of existing) {
-    const key = deadStockKey({
-      drugCode: row.drugCode,
-      drugName: row.drugName,
-      unit: row.unit,
-      expirationDate: row.expirationDateIso ?? row.expirationDate,
-      lotNumber: row.lotNumber,
-    });
-    if (!existingByKey.has(key)) existingByKey.set(key, row);
-  }
-
-  let inserted = 0;
-  let updated = 0;
-  let unchanged = 0;
-  const seenExistingIds = new Set<number>();
-
-  for (const item of incoming) {
-    const normalizedDate = normalizeDate(item.expirationDate);
-    const key = deadStockKey({
-      drugCode: item.drugCode,
-      drugName: item.drugName,
-      unit: item.unit,
-      expirationDate: normalizedDate,
-      lotNumber: item.lotNumber,
-    });
-    const current = existingByKey.get(key);
-    if (!current) {
-      inserted += 1;
-      continue;
-    }
-
-    seenExistingIds.add(current.id);
-
-    const changed =
-      !equalNullableNumber(current.quantity, normalizeNullableNumber(item.quantity)) ||
-      !equalNullableNumber(current.yakkaUnitPrice, normalizeNullableNumber(item.yakkaUnitPrice)) ||
-      !equalNullableNumber(current.yakkaTotal, normalizeNullableNumber(item.yakkaTotal)) ||
-      normalizeString(current.unit) !== normalizeString(item.unit) ||
-      normalizeString(current.lotNumber) !== normalizeString(item.lotNumber) ||
-      normalizeString(current.expirationDateIso ?? current.expirationDate) !== normalizeString(normalizedDate) ||
-      current.isAvailable !== true;
-
-    if (changed) {
-      updated += 1;
-    } else {
-      unchanged += 1;
-    }
-  }
+  const dedupedIncoming = prepareDeadStockIncoming(incoming);
+  const existing = await selectDeadStockExisting(db, pharmacyId);
+  const diffPlan = analyzeDeadStockDiff(existing, dedupedIncoming);
 
   const deactivated = options.deleteMissing
-    ? existing.filter((row) => row.isAvailable && !seenExistingIds.has(row.id)).length
+    ? collectDeadStockDeactivateIds(existing, diffPlan.seenExistingIds).length
     : 0;
 
   return {
-    inserted,
-    updated,
+    inserted: diffPlan.insertedItems.length,
+    updated: diffPlan.updatedPairs.length,
     deactivated,
-    unchanged,
-    totalIncoming: incoming.length,
+    unchanged: diffPlan.unchanged,
+    totalIncoming: dedupedIncoming.length,
   };
 }
 
 export async function applyDeadStockDiff(
-  tx: any,
+  tx: UploadDiffTx,
   pharmacyId: number,
   uploadId: number,
   incoming: DeadStockDiffInput[],
   options: ApplyDiffOptions,
 ): Promise<DiffSummary> {
-  const existing = await tx.select({
-    id: deadStockItems.id,
-    drugCode: deadStockItems.drugCode,
-    drugName: deadStockItems.drugName,
-    quantity: deadStockItems.quantity,
-    unit: deadStockItems.unit,
-    yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-    yakkaTotal: deadStockItems.yakkaTotal,
-    expirationDate: deadStockItems.expirationDate,
-    expirationDateIso: deadStockItems.expirationDateIso,
-    lotNumber: deadStockItems.lotNumber,
-    isAvailable: deadStockItems.isAvailable,
-  })
-    .from(deadStockItems)
-    .where(eq(deadStockItems.pharmacyId, pharmacyId));
+  const dedupedIncoming = prepareDeadStockIncoming(incoming);
+  const existing = await selectDeadStockExisting(tx, pharmacyId);
+  const diffPlan = analyzeDeadStockDiff(existing, dedupedIncoming);
+  const insertRows: DeadStockInsertRow[] = diffPlan.insertedItems.map((item) => ({
+    pharmacyId,
+    uploadId,
+    drugCode: item.drugCode,
+    drugName: item.drugName,
+    drugMasterId: item.drugMasterId ?? null,
+    drugMasterPackageId: item.drugMasterPackageId ?? null,
+    packageLabel: item.packageLabel ?? null,
+    quantity: item.quantity,
+    unit: item.unit,
+    yakkaUnitPrice: item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null,
+    yakkaTotal: item.yakkaTotal !== null ? String(item.yakkaTotal) : null,
+    expirationDate: item.expirationDate,
+    expirationDateIso: item.normalizedDate,
+    lotNumber: item.lotNumber,
+    isAvailable: true,
+  }));
 
-  const existingByKey = new Map<string, (typeof existing)[number]>();
-  for (const row of existing) {
-    const key = deadStockKey({
-      drugCode: row.drugCode,
-      drugName: row.drugName,
-      unit: row.unit,
-      expirationDate: row.expirationDateIso ?? row.expirationDate,
-      lotNumber: row.lotNumber,
-    });
-    if (!existingByKey.has(key)) existingByKey.set(key, row);
-  }
-
-  let inserted = 0;
-  let updated = 0;
-  let unchanged = 0;
-  const seenExistingIds = new Set<number>();
-  const insertRows: Array<{
-    pharmacyId: number;
-    uploadId: number;
-    drugCode: string | null;
-    drugName: string;
-    drugMasterId: number | null;
-    drugMasterPackageId: number | null;
-    packageLabel: string | null;
-    quantity: number;
-    unit: string | null;
-    yakkaUnitPrice: string | null;
-    yakkaTotal: string | null;
-    expirationDate: string | null;
-    expirationDateIso: string | null;
-    lotNumber: string | null;
-    isAvailable: boolean;
-  }> = [];
-
-  for (const item of incoming) {
-    const normalizedDate = normalizeDate(item.expirationDate);
-    const key = deadStockKey({
-      drugCode: item.drugCode,
-      drugName: item.drugName,
-      unit: item.unit,
-      expirationDate: normalizedDate,
-      lotNumber: item.lotNumber,
-    });
-    const current = existingByKey.get(key);
-
-    if (!current) {
-      insertRows.push({
-        pharmacyId,
-        uploadId,
-        drugCode: item.drugCode,
-        drugName: item.drugName,
-        drugMasterId: item.drugMasterId ?? null,
-        drugMasterPackageId: item.drugMasterPackageId ?? null,
-        packageLabel: item.packageLabel ?? null,
-        quantity: item.quantity,
-        unit: item.unit,
-        yakkaUnitPrice: item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null,
-        yakkaTotal: item.yakkaTotal !== null ? String(item.yakkaTotal) : null,
-        expirationDate: item.expirationDate,
-        expirationDateIso: normalizedDate,
-        lotNumber: item.lotNumber,
-        isAvailable: true,
-      });
-      inserted += 1;
-      continue;
-    }
-
-    seenExistingIds.add(current.id);
-
-    const changed =
-      !equalNullableNumber(current.quantity, normalizeNullableNumber(item.quantity)) ||
-      !equalNullableNumber(current.yakkaUnitPrice, normalizeNullableNumber(item.yakkaUnitPrice)) ||
-      !equalNullableNumber(current.yakkaTotal, normalizeNullableNumber(item.yakkaTotal)) ||
-      normalizeString(current.unit) !== normalizeString(item.unit) ||
-      normalizeString(current.lotNumber) !== normalizeString(item.lotNumber) ||
-      normalizeString(current.expirationDateIso ?? current.expirationDate) !== normalizeString(normalizedDate) ||
-      current.isAvailable !== true;
-
-    if (!changed) {
-      unchanged += 1;
-      continue;
-    }
-
+  for (const { current, item } of diffPlan.updatedPairs) {
     await tx.update(deadStockItems)
       .set({
         uploadId,
@@ -291,7 +374,7 @@ export async function applyDeadStockDiff(
         yakkaUnitPrice: item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null,
         yakkaTotal: item.yakkaTotal !== null ? String(item.yakkaTotal) : null,
         expirationDate: item.expirationDate,
-        expirationDateIso: normalizedDate,
+        expirationDateIso: item.normalizedDate,
         lotNumber: item.lotNumber,
         isAvailable: true,
       })
@@ -299,18 +382,15 @@ export async function applyDeadStockDiff(
         eq(deadStockItems.id, current.id),
         eq(deadStockItems.pharmacyId, pharmacyId),
       ));
-
-    updated += 1;
   }
+
   if (insertRows.length > 0) {
-    await tx.insert(deadStockItems).values(insertRows);
+    await insertDeadStockInBatches(tx, insertRows);
   }
 
   let deactivated = 0;
   if (options.deleteMissing) {
-    const toDeactivateIds = existing
-      .filter((row: { id: number; isAvailable: boolean | null }) => row.isAvailable && !seenExistingIds.has(row.id))
-      .map((row: { id: number }) => row.id);
+    const toDeactivateIds = collectDeadStockDeactivateIds(existing, diffPlan.seenExistingIds);
 
     if (toDeactivateIds.length > 0) {
       await tx.update(deadStockItems)
@@ -324,11 +404,11 @@ export async function applyDeadStockDiff(
   }
 
   return {
-    inserted,
-    updated,
+    inserted: diffPlan.insertedItems.length,
+    updated: diffPlan.updatedPairs.length,
     deactivated,
-    unchanged,
-    totalIncoming: incoming.length,
+    unchanged: diffPlan.unchanged,
+    totalIncoming: dedupedIncoming.length,
   };
 }
 
@@ -337,141 +417,47 @@ export async function previewUsedMedicationDiff(
   incoming: UsedMedicationDiffInput[],
   options: ApplyDiffOptions,
 ): Promise<DiffSummary> {
-  const existing = await db.select({
-    id: usedMedicationItems.id,
-    drugCode: usedMedicationItems.drugCode,
-    drugName: usedMedicationItems.drugName,
-    unit: usedMedicationItems.unit,
-    monthlyUsage: usedMedicationItems.monthlyUsage,
-    yakkaUnitPrice: usedMedicationItems.yakkaUnitPrice,
-  })
-    .from(usedMedicationItems)
-    .where(eq(usedMedicationItems.pharmacyId, pharmacyId));
-
-  const existingByKey = new Map<string, (typeof existing)[number]>();
-  for (const row of existing) {
-    const key = usedMedicationKey({
-      drugCode: row.drugCode,
-      drugName: row.drugName,
-      unit: row.unit,
-    });
-    if (!existingByKey.has(key)) existingByKey.set(key, row);
-  }
-
-  let inserted = 0;
-  let updated = 0;
-  let unchanged = 0;
-  const seenExistingIds = new Set<number>();
-
-  for (const item of incoming) {
-    const key = usedMedicationKey(item);
-    const current = existingByKey.get(key);
-    if (!current) {
-      inserted += 1;
-      continue;
-    }
-
-    seenExistingIds.add(current.id);
-    const changed =
-      !equalNullableNumber(current.monthlyUsage, normalizeNullableNumber(item.monthlyUsage)) ||
-      !equalNullableNumber(current.yakkaUnitPrice, normalizeNullableNumber(item.yakkaUnitPrice));
-
-    if (changed) {
-      updated += 1;
-    } else {
-      unchanged += 1;
-    }
-  }
+  const dedupedIncoming = dedupeIncomingByKey(incoming, usedMedicationKey);
+  const existing = await selectUsedMedicationExisting(db, pharmacyId);
+  const diffPlan = analyzeUsedMedicationDiff(existing, dedupedIncoming);
 
   const deactivated = options.deleteMissing
-    ? existing.filter((row) => !seenExistingIds.has(row.id)).length
+    ? collectUsedMedicationDeleteIds(existing, diffPlan.seenExistingIds).length
     : 0;
 
   return {
-    inserted,
-    updated,
+    inserted: diffPlan.insertedItems.length,
+    updated: diffPlan.updatedPairs.length,
     deactivated,
-    unchanged,
-    totalIncoming: incoming.length,
+    unchanged: diffPlan.unchanged,
+    totalIncoming: dedupedIncoming.length,
   };
 }
 
 export async function applyUsedMedicationDiff(
-  tx: any,
+  tx: UploadDiffTx,
   pharmacyId: number,
   uploadId: number,
   incoming: UsedMedicationDiffInput[],
   options: ApplyDiffOptions,
 ): Promise<DiffSummary> {
-  const existing = await tx.select({
-    id: usedMedicationItems.id,
-    drugCode: usedMedicationItems.drugCode,
-    drugName: usedMedicationItems.drugName,
-    unit: usedMedicationItems.unit,
-    monthlyUsage: usedMedicationItems.monthlyUsage,
-    yakkaUnitPrice: usedMedicationItems.yakkaUnitPrice,
-  })
-    .from(usedMedicationItems)
-    .where(eq(usedMedicationItems.pharmacyId, pharmacyId));
+  const dedupedIncoming = dedupeIncomingByKey(incoming, usedMedicationKey);
+  const existing = await selectUsedMedicationExisting(tx, pharmacyId);
+  const diffPlan = analyzeUsedMedicationDiff(existing, dedupedIncoming);
+  const insertRows: UsedMedicationInsertRow[] = diffPlan.insertedItems.map((item) => ({
+    pharmacyId,
+    uploadId,
+    drugCode: item.drugCode,
+    drugName: item.drugName,
+    drugMasterId: item.drugMasterId ?? null,
+    drugMasterPackageId: item.drugMasterPackageId ?? null,
+    packageLabel: item.packageLabel ?? null,
+    monthlyUsage: item.monthlyUsage,
+    unit: item.unit,
+    yakkaUnitPrice: item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null,
+  }));
 
-  const existingByKey = new Map<string, (typeof existing)[number]>();
-  for (const row of existing) {
-    const key = usedMedicationKey({
-      drugCode: row.drugCode,
-      drugName: row.drugName,
-      unit: row.unit,
-    });
-    if (!existingByKey.has(key)) existingByKey.set(key, row);
-  }
-
-  let inserted = 0;
-  let updated = 0;
-  let unchanged = 0;
-  const seenExistingIds = new Set<number>();
-  const insertRows: Array<{
-    pharmacyId: number;
-    uploadId: number;
-    drugCode: string | null;
-    drugName: string;
-    drugMasterId: number | null;
-    drugMasterPackageId: number | null;
-    packageLabel: string | null;
-    monthlyUsage: number | null;
-    unit: string | null;
-    yakkaUnitPrice: string | null;
-  }> = [];
-
-  for (const item of incoming) {
-    const key = usedMedicationKey(item);
-    const current = existingByKey.get(key);
-
-    if (!current) {
-      insertRows.push({
-        pharmacyId,
-        uploadId,
-        drugCode: item.drugCode,
-        drugName: item.drugName,
-        drugMasterId: item.drugMasterId ?? null,
-        drugMasterPackageId: item.drugMasterPackageId ?? null,
-        packageLabel: item.packageLabel ?? null,
-        monthlyUsage: item.monthlyUsage,
-        unit: item.unit,
-        yakkaUnitPrice: item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null,
-      });
-      inserted += 1;
-      continue;
-    }
-
-    seenExistingIds.add(current.id);
-    const changed =
-      !equalNullableNumber(current.monthlyUsage, normalizeNullableNumber(item.monthlyUsage)) ||
-      !equalNullableNumber(current.yakkaUnitPrice, normalizeNullableNumber(item.yakkaUnitPrice));
-
-    if (!changed) {
-      unchanged += 1;
-      continue;
-    }
-
+  for (const { current, item } of diffPlan.updatedPairs) {
     await tx.update(usedMedicationItems)
       .set({
         uploadId,
@@ -486,18 +472,15 @@ export async function applyUsedMedicationDiff(
         eq(usedMedicationItems.id, current.id),
         eq(usedMedicationItems.pharmacyId, pharmacyId),
       ));
-
-    updated += 1;
   }
+
   if (insertRows.length > 0) {
-    await tx.insert(usedMedicationItems).values(insertRows);
+    await insertUsedMedicationInBatches(tx, insertRows);
   }
 
   let deactivated = 0;
   if (options.deleteMissing) {
-    const toDeleteIds = existing
-      .filter((row: { id: number }) => !seenExistingIds.has(row.id))
-      .map((row: { id: number }) => row.id);
+    const toDeleteIds = collectUsedMedicationDeleteIds(existing, diffPlan.seenExistingIds);
 
     if (toDeleteIds.length > 0) {
       await tx.delete(usedMedicationItems)
@@ -510,10 +493,10 @@ export async function applyUsedMedicationDiff(
   }
 
   return {
-    inserted,
-    updated,
+    inserted: diffPlan.insertedItems.length,
+    updated: diffPlan.updatedPairs.length,
     deactivated,
-    unchanged,
-    totalIncoming: incoming.length,
+    unchanged: diffPlan.unchanged,
+    totalIncoming: dedupedIncoming.length,
   };
 }

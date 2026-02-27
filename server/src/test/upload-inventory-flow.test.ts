@@ -2,6 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { columnMappingTemplates, deadStockItems, uploads, usedMedicationItems } from '../db/schema';
+import { setupVitestMocks } from './helpers/setup';
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -262,8 +263,9 @@ function setupDbMock() {
 }
 
 describe('upload -> inventory flow', () => {
+  setupVitestMocks();
+
   beforeEach(() => {
-    vi.clearAllMocks();
     mocks.reset();
     setupDbMock();
 
@@ -294,6 +296,7 @@ describe('upload -> inventory flow', () => {
       .post('/api/upload/confirm')
       .field('uploadType', 'dead_stock')
       .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
       .field('mapping', JSON.stringify({
         drug_code: '0',
         drug_name: '1',
@@ -340,6 +343,7 @@ describe('upload -> inventory flow', () => {
       .post('/api/upload/confirm')
       .field('uploadType', 'used_medication')
       .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
       .field('mapping', JSON.stringify({
         drug_code: '0',
         drug_name: '1',
@@ -381,6 +385,7 @@ describe('upload -> inventory flow', () => {
       .post('/api/upload/confirm')
       .field('uploadType', 'dead_stock')
       .field('headerRowIndex', 'invalid')
+      .field('applyMode', 'replace')
       .field('mapping', JSON.stringify({
         drug_code: '0',
         drug_name: '1',

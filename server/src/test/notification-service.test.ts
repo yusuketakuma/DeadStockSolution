@@ -32,6 +32,7 @@ import {
   markAllAsRead,
   markAllDashboardAsRead,
 } from '../services/notification-service';
+import { sql } from 'drizzle-orm';
 
 function createInsertChain(result: unknown) {
   const chain = {
@@ -252,6 +253,7 @@ describe('notification-service', () => {
     it('updates all notification buckets in a single transaction', async () => {
       const tx = createTxWithExecuteRows(
         [{ count: 2 }],
+        [{ exists: true }],
         [{ count: 1 }],
         [{ count: 3 }],
       );
@@ -261,7 +263,31 @@ describe('notification-service', () => {
 
       expect(result).toBe(6);
       expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
+      expect(tx.execute).toHaveBeenCalledTimes(4);
+
+      const sqlMock = vi.mocked(sql);
+      const adminInsertTemplate = sqlMock.mock.calls[3]?.[0];
+      const adminInsertQuery = Array.from(adminInsertTemplate as TemplateStringsArray).join('');
+      expect(adminInsertQuery).toContain('ON CONFLICT (message_id, pharmacy_id) DO NOTHING');
+    });
+
+    it('skips match notification update when table is missing', async () => {
+      const tx = createTxWithExecuteRows(
+        [{ count: 2 }],
+        [{ exists: false }],
+        [{ count: 3 }],
+      );
+      mocks.db.transaction.mockImplementation(async (callback: (trx: typeof tx) => Promise<number>) => callback(tx));
+
+      const result = await markAllDashboardAsRead(10);
+
+      expect(result).toBe(5);
       expect(tx.execute).toHaveBeenCalledTimes(3);
+
+      const sqlMock = vi.mocked(sql);
+      const existsTemplate = sqlMock.mock.calls[1]?.[0];
+      const existsQuery = Array.from(existsTemplate as TemplateStringsArray).join('');
+      expect(existsQuery).toContain("to_regclass('public.match_notifications')");
     });
 
     it('propagates transaction errors', async () => {

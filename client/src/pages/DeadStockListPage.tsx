@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
@@ -10,6 +10,7 @@ import AppEmptyState from '../components/ui/AppEmptyState';
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
+import { useAsyncState } from '../hooks/useAsyncState';
 
 interface DeadStockItem {
   id: number;
@@ -35,13 +36,11 @@ export default function DeadStockListPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchData = async (p: number) => {
+  const fetchData = useCallback(async (p: number) => {
     setLoading(true);
     setError('');
     try {
@@ -54,9 +53,9 @@ export default function DeadStockListPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setLoading, setError]);
 
-  useEffect(() => { void fetchData(page); }, [page]);
+  useEffect(() => { void fetchData(page); }, [page, fetchData]);
 
   const handleDeleteConfirmed = async () => {
     if (pendingDeleteId === null) return;

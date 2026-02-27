@@ -24,8 +24,30 @@ interface PostgresErrorLike {
   code?: string;
 }
 
+type NotificationSqlExecutor = Pick<typeof db, 'execute'>;
+
 function isUndefinedTableError(err: unknown): err is PostgresErrorLike {
   return typeof err === 'object' && err !== null && (err as PostgresErrorLike).code === '42P01';
+}
+
+function toBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') return ['t', 'true', '1'].includes(value.toLowerCase());
+  return false;
+}
+
+async function markNotificationsAsRead(executor: NotificationSqlExecutor, pharmacyId: number): Promise<number> {
+  const updatedRows = await executor.execute<{ count: number }>(sql`
+    WITH updated AS (
+      UPDATE notifications
+      SET is_read = true, read_at = now()
+      WHERE pharmacy_id = ${pharmacyId} AND is_read = false
+      RETURNING 1
+    )
+    SELECT COUNT(*)::int AS count FROM updated
+  `);
+  return Number(updatedRows.rows[0]?.count ?? 0);
 }
 
 export async function createNotification(
@@ -134,39 +156,29 @@ export async function markAsRead(
 }
 
 export async function markAllAsRead(pharmacyId: number): Promise<number> {
-  const updatedRows = await db.execute<{ count: number }>(sql`
-    WITH updated AS (
-      UPDATE notifications
-      SET is_read = true, read_at = now()
-      WHERE pharmacy_id = ${pharmacyId} AND is_read = false
-      RETURNING 1
-    )
-    SELECT COUNT(*)::int AS count FROM updated
-  `);
-  return Number(updatedRows.rows[0]?.count ?? 0);
+  return markNotificationsAsRead(db, pharmacyId);
 }
 
 export async function markAllDashboardAsRead(pharmacyId: number): Promise<number> {
   return db.transaction(async (tx) => {
-    const notificationUpdateRows = await tx.execute<{ count: number }>(sql`
-      WITH updated AS (
-        UPDATE notifications
-        SET is_read = true, read_at = now()
-        WHERE pharmacy_id = ${pharmacyId} AND is_read = false
-        RETURNING 1
-      )
-      SELECT COUNT(*)::int AS count FROM updated
-    `);
+    const notificationCount = await markNotificationsAsRead(tx, pharmacyId);
 
-    const matchUpdateRows = await tx.execute<{ count: number }>(sql`
-      WITH updated AS (
-        UPDATE match_notifications
-        SET is_read = true
-        WHERE pharmacy_id = ${pharmacyId} AND is_read = false
-        RETURNING 1
-      )
-      SELECT COUNT(*)::int AS count FROM updated
+    const matchTableExistsRows = await tx.execute<{ exists: boolean | string | number }>(sql`
+      SELECT to_regclass('public.match_notifications') IS NOT NULL AS exists
     `);
+    const hasMatchNotificationsTable = toBoolean(matchTableExistsRows.rows[0]?.exists);
+
+    const matchUpdateRows = hasMatchNotificationsTable
+      ? await tx.execute<{ count: number }>(sql`
+        WITH updated AS (
+          UPDATE match_notifications
+          SET is_read = true
+          WHERE pharmacy_id = ${pharmacyId} AND is_read = false
+          RETURNING 1
+        )
+        SELECT COUNT(*)::int AS count FROM updated
+      `)
+      : { rows: [{ count: 0 }] };
 
     const insertedAdminReadRows = await tx.execute<{ count: number }>(sql`
       WITH inserted AS (
@@ -180,12 +192,12 @@ export async function markAllDashboardAsRead(pharmacyId: number): Promise<number
           OR (m.target_type = 'pharmacy' AND m.target_pharmacy_id = ${pharmacyId})
         )
           AND reads.message_id IS NULL
+        ON CONFLICT (message_id, pharmacy_id) DO NOTHING
         RETURNING 1
       )
       SELECT COUNT(*)::int AS count FROM inserted
     `);
 
-    const notificationCount = Number(notificationUpdateRows.rows[0]?.count ?? 0);
     const matchUpdateCount = Number(matchUpdateRows.rows[0]?.count ?? 0);
     const adminMessageReadCount = Number(insertedAdminReadRows.rows[0]?.count ?? 0);
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useAsyncState } from '../hooks/useAsyncState';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
@@ -65,9 +66,7 @@ export default function ProposalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const [data, setData] = useState<ProposalDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
   const [pendingAction, setPendingAction] = useState<'accept' | 'reject' | 'complete' | null>(null);
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const [comments, setComments] = useState<ProposalComment[]>([]);
@@ -94,7 +93,7 @@ export default function ProposalDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, setLoading, setError]);
 
   const fetchComments = useCallback(async () => {
     if (!id) return;
@@ -107,7 +106,7 @@ export default function ProposalDetailPage() {
     } finally {
       setCommentsLoading(false);
     }
-  }, [id]);
+  }, [id, setError]);
 
   useEffect(() => {
     void fetchDetail();

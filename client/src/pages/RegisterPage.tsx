@@ -8,6 +8,7 @@ import StatusAlert from '../components/ui/StatusAlert';
 import AppSelect from '../components/ui/AppSelect';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppField from '../components/ui/AppField';
+import { useAsyncState } from '../hooks/useAsyncState';
 
 interface RegisterForm {
   email: string;
@@ -38,9 +39,8 @@ export default function RegisterPage() {
     phone: '', fax: '', licenseNumber: '', prefecture: '',
   });
   const [agreed, setAgreed] = useState(false);
-  const [error, setError] = useState('');
+  const { loading, setLoading, error, setError } = useAsyncState();
   const [fieldErrors, setFieldErrors] = useState<FieldError[]>([]);
-  const [loading, setLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 

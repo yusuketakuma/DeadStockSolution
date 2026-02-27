@@ -1,3 +1,6 @@
+# .codex/config.toml
+# Codex CLI 0.106.0 tuned: multi-agent heavy, web live, apps off, 32 threads.
+
 # =========================
 # Root keys（必ず先頭）
 # =========================
@@ -5,169 +8,138 @@ model = "gpt-5.3-codex"
 review_model = "gpt-5.3-codex"
 model_provider = "openai"
 
-# 司令塔（デフォルト/Orchestrator）を最強に
+# 司令塔（このセッション）の推論強度
 model_reasoning_effort = "xhigh"
 
-# 非対話で止めない
+# 非対話運用（承認で止めない）
 approval_policy = "never"
 
-# デフォルトをフルアクセス（正式名：danger-full-access）
-# ※サンドボックス無効化。隔離環境前提で運用推奨。
+# デフォルトはフルアクセス（要リスク理解）
 sandbox_mode = "danger-full-access"
 
-# Web検索は積極利用（full access 系では live が基本になる）
+# Web search: full access時はliveがデフォルトだが明示してブレを潰す
 web_search = "live"
+
+# 出力トーン（短く実務寄り）
 personality = "pragmatic"
 
-suppress_unstable_features_warning = true
-project_doc_max_bytes = 65536
+# AGENTS.md の読み込み上限（デフォルト32KiBを維持＝遅延/肥大化回避）
+project_doc_max_bytes = 32768
 
 # =========================
-# Multi-agents（常時32）
-# =========================
-[agents]
-max_threads = 32
-max_depth = 1
-
-# =========================
-# Agent roles（細分化）
-# =========================
-[agents.default]
-description = """
-Orchestrator（指示役）。
-- triage/scope/doc を並列で走らせて計画確定
-- 実装はまとめて（途中レビュー禁止）
-- 最後に verifier → review_*（多観点並列）→ fixer → verifier の順でゲート
-- 未完成で終了禁止（DONE/BLOCKEDのみ）
-"""
-
-[agents.goal_setter]
-description = "Goal setter（deep）: repo理解→目標/実装計画/検証計画（read-only）"
-config_file = "agents/goal_setter.toml"
-
-[agents.triage]
-description = "Triage（spark）: 見積/分割/委譲を厳密化（read-only）"
-config_file = "agents/triage.toml"
-
-[agents.scope_mapper]
-description = "Scope mapper（spark）: 影響範囲を抽出（read-only）"
-config_file = "agents/scope_mapper.toml"
-
-[agents.doc_researcher]
-description = "Doc/Web researcher（spark）: 公式一次情報→設定キー化（read-only）"
-config_file = "agents/doc_researcher.toml"
-
-[agents.worker_light]
-description = "Worker light（spark）: 小改修専任（<=250LOC & <=4 files）"
-config_file = "agents/worker_light.toml"
-
-[agents.worker_heavy]
-description = "Worker heavy（codex）: 横断変更/高リスク領域/難所"
-config_file = "agents/worker_heavy.toml"
-
-[agents.test_writer]
-description = "Test writer（spark）: 追加/更新テスト"
-config_file = "agents/test_writer.toml"
-
-[agents.verifier]
-description = "Verifier（spark）: typecheck→lint→tests の一括検証"
-config_file = "agents/verifier.toml"
-
-[agents.review_correctness]
-description = "Review lens（spark）: correctness/edge cases"
-config_file = "agents/review_correctness.toml"
-
-[agents.review_frontend_flow]
-description = "Review lens（spark）: UIイベント/副作用/遷移/401競合"
-config_file = "agents/review_frontend_flow.toml"
-
-[agents.review_authz]
-description = "Review lens（spark）: AuthZ/ownership fail-open"
-config_file = "agents/review_authz.toml"
-
-[agents.review_injection]
-description = "Review lens（spark）: SQL/CSV/HTML 注入面"
-config_file = "agents/review_injection.toml"
-
-[agents.review_secrets]
-description = "Review lens（spark）: secrets露出"
-config_file = "agents/review_secrets.toml"
-
-[agents.review_perf]
-description = "Review lens（spark）: perf/query/render/IO"
-config_file = "agents/review_perf.toml"
-
-[agents.review_dx]
-description = "Review lens（spark）: maintainability/DX"
-config_file = "agents/review_dx.toml"
-
-[agents.review_ci]
-description = "Review lens（spark）: CI/CD/workflows"
-config_file = "agents/review_ci.toml"
-
-[agents.review_security]
-description = "Security deep（codex）: 重大な攻撃面の最終監査（read-only）"
-config_file = "agents/review_security.toml"
-
-[agents.fixer]
-description = "Fixer（spark）: 指摘を実装修正→再検証"
-config_file = "agents/fixer.toml"
-
-[agents.monitor]
-description = "Monitor（spark）: wait/poll/進捗要約のみ"
-config_file = "agents/monitor.toml"
-
-# =========================
-# Features（Appsは無効）
-# =========================
-[features]
-collaboration_modes = true
-multi_agent = true
-child_agents_md = true
-
-shell_tool = true
-unified_exec = true
-shell_snapshot = true
-apply_patch_freeform = false
-
-# Appsは完全OFF（app系トラブルを根絶）
-apps = false
-apps_mcp_gateway = false
-search_tool = false
-
-request_rule = true
-personality = true
-remote_models = false
-runtime_metrics = true
-powershell_utf8 = true
-use_linux_sandbox_bwrap = false
-
-# =========================
-# Sandbox（workspace-write の残骸：将来 profile で戻す用に残してOK）
-# =========================
-[sandbox_workspace_write]
-network_access = true
-
-# =========================
-# Notice（フルアクセス警告を一度認知した扱い）
+# Notice
 # =========================
 [notice]
 hide_full_access_warning = true
 hide_rate_limit_model_nudge = true
+# under-development featureの警告を抑制
+suppress_unstable_features_warning = true
 
 # =========================
-# MCP servers（必要なら維持）
+# Features（0.106.0時点の主要フラグ）
 # =========================
-[mcp_servers.context7]
-command = "npx"
-args = ["-y", "@upstash/context7-mcp"]
-startup_timeout_sec = 60
+[features]
+# 重要：collab は deprecated → multi_agent を使う
+multi_agent = true
 
-[mcp_servers.serena]
-command = "uvx"
-args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]
-startup_timeout_sec = 120
+# collaboration modes（Plan/Default等）を維持
+collaboration_modes = true
 
-[mcp_servers.ultracite]
-url = "https://docs.ultracite.ai/mcp"
-startup_timeout_sec = 60
+# Smart approvals / rule提案（prompt自体はneverでも、rules運用の補助に使う）
+request_rule = true
+
+# 実行系（速度寄り）
+shell_tool = true
+unified_exec = true
+shell_snapshot = true
+
+# 使わない（必要時だけオンに）
+apply_patch_freeform = false
+
+# apps/connectors 系は無効（過去のcodex_apps事故面の回避）
+apps = false
+apps_mcp_gateway = false
+search_tool = false
+
+# 任意：観測（速度/コスト調整に使う）
+runtime_metrics = true
+
+# =========================
+# Multi-agents
+# =========================
+[agents]
+# ユーザー要件：常に32
+max_threads = 32
+# ネストは浅く（暴走/複雑化を防ぐ）
+max_depth = 1
+
+# ---- Agent roster（役割細分化）----
+[agents.goal_setter]
+description = "Goal setter. Quickly understand codebase + prompt, derive goals/acceptance criteria. No implementation."
+config_file = "agents/goal_setter.toml"
+
+[agents.triage]
+description = "Triage + delegation. Convert goals into work packets, choose worker types with numeric thresholds, run parallel spawn orchestration plan."
+config_file = "agents/triage.toml"
+
+[agents.explorer]
+description = "Codebase explorer. Fast repo mapping (entrypoints, deps, ownership), read-only mindset."
+config_file = "agents/explorer.toml"
+
+[agents.doc_researcher]
+description = "Web researcher. Aggressively uses web_search for external docs/security notes; returns actionable citations."
+config_file = "agents/doc_researcher.toml"
+
+[agents.worker_light]
+description = "Light implementer (codex-spark). Scope: <=250 LOC delta AND <=4 files AND tests not required or minimal."
+config_file = "agents/worker_light.toml"
+
+[agents.worker_heavy]
+description = "Heavy implementer (gpt-5.3-codex). Scope: >250 LOC delta OR >4 files OR tests required OR security-sensitive change."
+config_file = "agents/worker_heavy.toml"
+
+[agents.test_writer]
+description = "Test author (codex-spark). Adds/updates tests for implemented changes; aims for fast deterministic coverage."
+config_file = "agents/test_writer.toml"
+
+[agents.verifier]
+description = "Verifier (codex-spark). Runs typecheck/lint/tests/build, reports failures + exact fix targets. Minimal noise."
+config_file = "agents/verifier.toml"
+
+# ---- Multi-lens reviewers（最後にまとめて走らせる）----
+[agents.review_security]
+description = "Security reviewer (gpt-5.3-codex). AuthZ, injection, secrets, token exposure, unsafe defaults."
+config_file = "agents/review_security.toml"
+
+[agents.review_correctness]
+description = "Correctness reviewer (gpt-5.3-codex). Edge cases, invariants, error handling, backwards compatibility."
+config_file = "agents/review_correctness.toml"
+
+[agents.review_quality]
+description = "Quality reviewer (codex-spark). Types, maintainability, readability, API shape, duplication."
+config_file = "agents/review_quality.toml"
+
+[agents.review_performance]
+description = "Performance reviewer (codex-spark). DB/query patterns, bundle size, caching, hot paths."
+config_file = "agents/review_performance.toml"
+
+[agents.review_ux]
+description = "UX reviewer (codex-spark). UI flow, copy, a11y, empty/error states."
+config_file = "agents/review_ux.toml"
+
+[agents.review_ops]
+description = "Ops reviewer (codex-spark). CI workflows, scripts, deploy configs, observability."
+config_file = "agents/review_ops.toml"
+
+# ---- Fixers（レビュー指摘の反映担当）----
+[agents.fixer_light]
+description = "Light fixer (codex-spark). Apply small fixes (<=250 LOC delta, <=4 files)."
+config_file = "agents/fixer_light.toml"
+
+[agents.fixer_heavy]
+description = "Heavy fixer (gpt-5.3-codex). Apply cross-cutting/security fixes safely; may touch many files."
+config_file = "agents/fixer_heavy.toml"
+
+[agents.release_manager]
+description = "Release manager (codex-spark). Final cleanup: docs/tasks updated, done criteria met, no unfinished work."
+config_file = "agents/release_manager.toml"

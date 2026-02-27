@@ -1,10 +1,4 @@
 {
-  "lastCheckedPluginVersion": "2.23.6",
-  "files": {
-    ".claude/settings.local.json": {
-      "templateVersion": "unknown",
-      "fileHash": "6ca83147188b12e53a006b7f9af6c5c914ea6d5fd960ec48cc127f36fb9af2dd",
-      "recordedAt": "2026-02-24T12:14:15Z"
-    }
-  }
+  "lastCheckedPluginVersion": "2.25.0",
+  "files": {}
 }

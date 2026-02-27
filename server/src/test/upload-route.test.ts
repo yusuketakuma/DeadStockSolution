@@ -1,6 +1,8 @@
 import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createSelectLimitChain } from './helpers/mock-builders';
+import { setupVitestMocks } from './helpers/setup';
 
 const mocks = vi.hoisted(() => {
   const db = {
@@ -18,6 +20,10 @@ const mocks = vi.hoisted(() => {
     extractDeadStockRows: vi.fn(),
     extractUsedMedicationRows: vi.fn(),
     enrichWithDrugMaster: vi.fn(),
+    previewDeadStockDiff: vi.fn(),
+    previewUsedMedicationDiff: vi.fn(),
+    applyDeadStockDiff: vi.fn(),
+    applyUsedMedicationDiff: vi.fn(),
     triggerMatchingRefreshOnUpload: vi.fn(),
     loggerWarn: vi.fn(),
     loggerError: vi.fn(),
@@ -63,6 +69,13 @@ vi.mock('../services/data-extractor', () => ({
 
 vi.mock('../services/drug-master-enrichment', () => ({
   enrichWithDrugMaster: mocks.enrichWithDrugMaster,
+}));
+
+vi.mock('../services/upload-diff-service', () => ({
+  previewDeadStockDiff: mocks.previewDeadStockDiff,
+  previewUsedMedicationDiff: mocks.previewUsedMedicationDiff,
+  applyDeadStockDiff: mocks.applyDeadStockDiff,
+  applyUsedMedicationDiff: mocks.applyUsedMedicationDiff,
 }));
 
 vi.mock('../services/matching-refresh-service', () => ({
@@ -111,8 +124,9 @@ function createApp() {
 }
 
 describe('upload routes', () => {
+  setupVitestMocks();
+
   beforeEach(() => {
-    vi.clearAllMocks();
 
     mocks.parseExcelBuffer.mockResolvedValue([
       ['YJコード', '薬剤名', '数量'],
@@ -157,13 +171,39 @@ describe('upload routes', () => {
       },
     ]);
     mocks.enrichWithDrugMaster.mockImplementation(async (rows: unknown[]) => rows);
+    mocks.previewDeadStockDiff.mockResolvedValue({
+      inserted: 1,
+      updated: 0,
+      deactivated: 0,
+      unchanged: 0,
+      totalIncoming: 1,
+    });
+    mocks.previewUsedMedicationDiff.mockResolvedValue({
+      inserted: 1,
+      updated: 0,
+      deactivated: 0,
+      unchanged: 0,
+      totalIncoming: 1,
+    });
+    mocks.applyDeadStockDiff.mockResolvedValue({
+      inserted: 1,
+      updated: 0,
+      deactivated: 0,
+      unchanged: 0,
+      totalIncoming: 1,
+    });
+    mocks.applyUsedMedicationDiff.mockResolvedValue({
+      inserted: 1,
+      updated: 0,
+      deactivated: 0,
+      unchanged: 0,
+      totalIncoming: 1,
+    });
     mocks.triggerMatchingRefreshOnUpload.mockResolvedValue(undefined);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
 
-    const selectLimitMock = vi.fn().mockResolvedValue([]);
-    const selectWhereMock = vi.fn(() => ({ limit: selectLimitMock }));
-    const selectFromMock = vi.fn(() => ({ where: selectWhereMock }));
-    mocks.db.select.mockImplementation(() => ({ from: selectFromMock }));
+    const { selectFrom } = createSelectLimitChain([]);
+    mocks.db.select.mockImplementation(() => ({ from: selectFrom }));
 
     const txMock = createTxMock(101);
     mocks.db.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(txMock));
@@ -189,7 +229,7 @@ describe('upload routes', () => {
     expect(mocks.parseExcelBuffer).toHaveBeenCalledTimes(1);
   });
 
-  it('stores extracted rows on confirm', async () => {
+  it('stores extracted rows on confirm (defaults applyMode=replace)', async () => {
     const app = createApp();
 
     const response = await request(app)
@@ -214,9 +254,116 @@ describe('upload routes', () => {
     expect(response.body).toEqual(expect.objectContaining({
       uploadId: 101,
       rowCount: 2,
+      applyMode: 'replace',
     }));
     expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
     expect(mocks.extractDeadStockRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns bad request when applyMode is invalid on confirm', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/upload/confirm')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'invalid')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'applyMode は replace か diff を指定してください' });
+    expect(mocks.db.transaction).not.toHaveBeenCalled();
+    expect(mocks.parseExcelBuffer).not.toHaveBeenCalled();
+  });
+
+  it('returns diff preview summary when applyMode=diff', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/upload/diff-preview')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'diff')
+      .field('deleteMissing', 'true')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      applyMode: 'diff',
+      uploadType: 'dead_stock',
+      deleteMissing: true,
+      summary: {
+        inserted: 1,
+        updated: 0,
+        deactivated: 0,
+        unchanged: 0,
+        totalIncoming: 1,
+      },
+    });
+    expect(mocks.previewDeadStockDiff).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores diff summary on confirm when applyMode=diff', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/upload/confirm')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'diff')
+      .field('deleteMissing', 'false')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      applyMode: 'diff',
+      rowCount: 1,
+      message: '1件のデータを登録しました',
+      diffSummary: {
+        inserted: 1,
+        updated: 0,
+        deactivated: 0,
+        unchanged: 0,
+        totalIncoming: 1,
+      },
+    }));
+    expect(mocks.applyDeadStockDiff).toHaveBeenCalledTimes(1);
   });
 
   it('returns 500 when matching refresh enqueue fails during confirm', async () => {
@@ -227,6 +374,7 @@ describe('upload routes', () => {
       .post('/api/upload/confirm')
       .field('uploadType', 'dead_stock')
       .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
       .field('mapping', JSON.stringify({
         drug_code: '0',
         drug_name: '1',

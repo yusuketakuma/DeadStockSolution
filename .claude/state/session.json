@@ -1,19 +1,19 @@
 {
-  "session_id": "session-1772114118",
+  "session_id": "session-1772192914",
   "parent_session_id": null,
-  "state": "stopped",
-  "started_at": "2026-02-26T13:55:18Z",
-  "updated_at": "2026-02-26T14:16:22Z",
-  "event_seq": 24,
-  "last_event_id": "event-000024",
+  "state": "initialized",
+  "started_at": "2026-02-27T11:48:34Z",
+  "updated_at": "2026-02-27T11:48:34Z",
+  "event_seq": 1,
+  "last_event_id": "event-000001",
   "state_version": 1,
   "cwd": "/Users/yusuke/DeadStockSolution",
   "project_name": "DeadStockSolution",
-  "resumed_at": "2026-02-26T13:55:18Z",
+  "resumed_at": "2026-02-27T11:48:34Z",
   "git": {
     "branch": "preview",
-    "uncommitted_changes": 194,
-    "last_commit": "eecac05"
+    "uncommitted_changes": 59,
+    "last_commit": "d45a4b5"
   },
   "plans": {
     "exists": true,
@@ -26,38 +26,5 @@
   "orchestration": {
     "max_state_retries": 3,
     "retry_backoff_seconds": 10
-  },
-  "prompt_seq": 9,
-  "intent": "literal",
-  "last_message_length": 56,
-  "last_message_hash": "4e6ae1961abb730e",
-  "ended_at": "2026-02-26T13:56:36Z",
-  "duration_minutes": 541,
-  "memory_logged": true,
-  "changes_this_session": [
-    {
-      "file": "client/src/pages/LoginPage.tsx",
-      "action": "Edit",
-      "timestamp": "2026-02-26T14:09:29Z",
-      "important": false
-    },
-    {
-      "file": "client/src/pages/LoginPage.tsx",
-      "action": "Edit",
-      "timestamp": "2026-02-26T14:09:36Z",
-      "important": false
-    },
-    {
-      "file": "client/src/pages/LoginPage.tsx",
-      "action": "Edit",
-      "timestamp": "2026-02-26T14:09:41Z",
-      "important": false
-    },
-    {
-      "file": "client/src/pages/LoginPage.tsx",
-      "action": "Edit",
-      "timestamp": "2026-02-26T14:09:56Z",
-      "important": false
-    }
-  ]
+  }
 }

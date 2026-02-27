@@ -1,6 +1,6 @@
 ---
 _harness_template: rules/skill-hierarchy.md
-_harness_version: 2.25.0
+_harness_version: 2.6.1
 ---
 
 # Skill の階層構造ガイドライン

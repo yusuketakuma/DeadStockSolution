@@ -22,11 +22,33 @@ export interface SyncResult {
 
 const BATCH_SIZE = 500;
 
+function assertNoDuplicateYjCodes(parsedRows: ParsedDrugRow[]): ParsedDrugRow[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+
+  for (const row of parsedRows) {
+    if (seen.has(row.yjCode)) {
+      duplicates.add(row.yjCode);
+      continue;
+    }
+    seen.add(row.yjCode);
+  }
+
+  if (duplicates.size > 0) {
+    const duplicateSamples = [...duplicates].slice(0, 10);
+    throw new Error(`YJコードが重複しています: ${duplicateSamples.join(', ')}`);
+  }
+
+  return parsedRows;
+}
+
 export async function syncDrugMaster(
   parsedRows: ParsedDrugRow[],
   syncLogId: number,
   revisionDate: string,
 ): Promise<SyncResult> {
+  const normalizedRows = assertNoDuplicateYjCodes(parsedRows);
+
   const result: SyncResult = {
     itemsProcessed: 0,
     itemsAdded: 0,
@@ -41,16 +63,26 @@ export async function syncDrugMaster(
     const existingItems = await tx.select({
       id: drugMaster.id,
       yjCode: drugMaster.yjCode,
+      drugName: drugMaster.drugName,
+      genericName: drugMaster.genericName,
+      specification: drugMaster.specification,
+      unit: drugMaster.unit,
       yakkaPrice: drugMaster.yakkaPrice,
+      manufacturer: drugMaster.manufacturer,
+      category: drugMaster.category,
+      therapeuticCategory: drugMaster.therapeuticCategory,
       isListed: drugMaster.isListed,
+      listedDate: drugMaster.listedDate,
+      transitionDeadline: drugMaster.transitionDeadline,
+      deletedDate: drugMaster.deletedDate,
     }).from(drugMaster);
 
     const existingMap = new Map(existingItems.map((item) => [item.yjCode, item]));
-    const incomingCodes = new Set(parsedRows.map((r) => r.yjCode));
+    const incomingCodes = new Set(normalizedRows.map((r) => r.yjCode));
 
     // バッチ処理: INSERT/UPDATE を蓄積して一括実行
-    for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
-      const batch = parsedRows.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < normalizedRows.length; i += BATCH_SIZE) {
+      const batch = normalizedRows.slice(i, i + BATCH_SIZE);
 
       type InsertDrugMasterRow = typeof drugMaster.$inferInsert;
       type InsertPriceHistoryRow = typeof drugMasterPriceHistory.$inferInsert;
@@ -91,36 +123,50 @@ export async function syncDrugMaster(
           // 既存品目の更新チェック（float精度を考慮）
           const priceChanged = Math.abs(Number(existing.yakkaPrice) - row.yakkaPrice) > 0.001;
           const wasDelisted = !existing.isListed;
+          const metadataChanged =
+            existing.drugName !== row.drugName ||
+            existing.genericName !== row.genericName ||
+            existing.specification !== row.specification ||
+            existing.unit !== row.unit ||
+            existing.manufacturer !== row.manufacturer ||
+            existing.category !== row.category ||
+            existing.therapeuticCategory !== row.therapeuticCategory ||
+            existing.listedDate !== row.listedDate ||
+            existing.transitionDeadline !== row.transitionDeadline ||
+            existing.deletedDate !== null;
+          const shouldUpdate = priceChanged || wasDelisted || metadataChanged;
 
-          await tx.update(drugMaster)
-            .set({
-              drugName: row.drugName,
-              genericName: row.genericName,
-              specification: row.specification,
-              unit: row.unit,
-              yakkaPrice: String(row.yakkaPrice),
-              manufacturer: row.manufacturer,
-              category: row.category,
-              therapeuticCategory: row.therapeuticCategory,
-              isListed: true,
-              listedDate: row.listedDate,
-              transitionDeadline: row.transitionDeadline,
-              deletedDate: null,
-              updatedAt: now,
-            })
-            .where(eq(drugMaster.yjCode, row.yjCode));
+          if (shouldUpdate) {
+            await tx.update(drugMaster)
+              .set({
+                drugName: row.drugName,
+                genericName: row.genericName,
+                specification: row.specification,
+                unit: row.unit,
+                yakkaPrice: String(row.yakkaPrice),
+                manufacturer: row.manufacturer,
+                category: row.category,
+                therapeuticCategory: row.therapeuticCategory,
+                isListed: true,
+                listedDate: row.listedDate,
+                transitionDeadline: row.transitionDeadline,
+                deletedDate: null,
+                updatedAt: now,
+              })
+              .where(eq(drugMaster.yjCode, row.yjCode));
 
-          if (priceChanged) {
-            priceHistoryToInsert.push({
-              yjCode: row.yjCode,
-              previousPrice: existing.yakkaPrice,
-              newPrice: String(row.yakkaPrice),
-              revisionDate,
-              revisionType: wasDelisted ? 'new_listing' : 'price_revision',
-            });
+            if (priceChanged) {
+              priceHistoryToInsert.push({
+                yjCode: row.yjCode,
+                previousPrice: existing.yakkaPrice,
+                newPrice: String(row.yakkaPrice),
+                revisionDate,
+                revisionType: wasDelisted ? 'new_listing' : 'price_revision',
+              });
+            }
+
+            result.itemsUpdated++;
           }
-
-          result.itemsUpdated++;
         }
       }
 
@@ -132,14 +178,6 @@ export async function syncDrugMaster(
         await tx.insert(drugMasterPriceHistory).values(priceHistoryToInsert);
       }
 
-      // 同期ログを中間更新（トランザクション外からも見える進捗のためdbを使用）
-      await db.update(drugMasterSyncLogs)
-        .set({
-          itemsProcessed: result.itemsProcessed,
-          itemsAdded: result.itemsAdded,
-          itemsUpdated: result.itemsUpdated,
-        })
-        .where(eq(drugMasterSyncLogs.id, syncLogId));
     }
 
     // ファイルに含まれない既存品目を一括で経過措置 or 削除扱いにする
@@ -173,6 +211,15 @@ export async function syncDrugMaster(
         await tx.insert(drugMasterPriceHistory).values(historyBatch);
       }
     }
+
+    await tx.update(drugMasterSyncLogs)
+      .set({
+        itemsProcessed: result.itemsProcessed,
+        itemsAdded: result.itemsAdded,
+        itemsUpdated: result.itemsUpdated,
+        itemsDeleted: result.itemsDeleted,
+      })
+      .where(eq(drugMasterSyncLogs.id, syncLogId));
   });
 
   return result;

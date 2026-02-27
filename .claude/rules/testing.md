@@ -2,7 +2,7 @@
 description: テストファイル作成・編集時のルール
 paths: "**/*.{test,spec}.{ts,tsx,js,jsx}, **/test/**/*.*, **/tests/**/*.*, **/__tests__/**/*.*"
 _harness_template: "rules/testing.md.template"
-_harness_version: "2.25.0"
+_harness_version: "2.5.27"
 ---
 
 # Testing Rules
@@ -50,7 +50,7 @@ describe('機能名', () => {
 
 ## 禁止事項
 
-- 実装の内部詳細に依存したテスト
-- 外部サービスへの実際の接続（モックを使用）
-- テスト間の状態共有
-- `any` や `// @ts-ignore` でのテスト回避
+- ❌ 実装の内部詳細に依存したテスト
+- ❌ 外部サービスへの実際の接続（モックを使用）
+- ❌ テスト間の状態共有
+- ❌ `any` や `// @ts-ignore` でのテスト回避

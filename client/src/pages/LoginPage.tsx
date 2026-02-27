@@ -1,4 +1,5 @@
 import { useState, FormEvent } from 'react';
+import { useAsyncState } from '../hooks/useAsyncState';
 import { Nav } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,8 +12,7 @@ import AppField from '../components/ui/AppField';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { loading, setLoading, error, setError } = useAsyncState();
   const [mode, setMode] = useState<'user' | 'admin'>('user');
   const { login, logout } = useAuth();
   const navigate = useNavigate();
@@ -127,11 +127,9 @@ export default function LoginPage() {
           </div>
 
           {mode === 'user' && (
-            <>
-              <div className="dl-link-row">
-                <Link to="/register">新規登録はこちら</Link>
-              </div>
-            </>
+            <div className="dl-link-row">
+              <Link to="/register">新規登録はこちら</Link>
+            </div>
           )}
 
           {mode === 'admin' && (

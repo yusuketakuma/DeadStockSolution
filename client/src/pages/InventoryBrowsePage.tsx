@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
@@ -10,6 +10,7 @@ import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/Bus
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
+import { useAsyncState } from '../hooks/useAsyncState';
 
 interface BrowseItem {
   id: number;
@@ -36,10 +37,9 @@ export default function InventoryBrowsePage() {
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const { loading, setLoading, error, setError } = useAsyncState();
 
-  const fetchData = async (p: number, q: string) => {
+  const fetchData = useCallback(async (p: number, q: string) => {
     setLoading(true);
     setError('');
     const params = new URLSearchParams({ page: String(p) });
@@ -53,9 +53,9 @@ export default function InventoryBrowsePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setLoading, setError, setItems, setTotalPages]);
 
-  useEffect(() => { fetchData(page, search); }, [page, search]);
+  useEffect(() => { void fetchData(page, search); }, [page, search, fetchData]);
 
   const handleSearch = (q: string) => {
     setPage(1);

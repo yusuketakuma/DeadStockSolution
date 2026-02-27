@@ -23,10 +23,10 @@ import { logger } from '../services/logger';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
-if (process.env.NODE_ENV === 'production' && EXPOSE_PASSWORD_RESET_TOKEN) {
-  throw new Error('EXPOSE_PASSWORD_RESET_TOKEN=true は本番環境では許可されていません');
+if (process.env.NODE_ENV !== 'test' && EXPOSE_PASSWORD_RESET_TOKEN) {
+  throw new Error('EXPOSE_PASSWORD_RESET_TOKEN=true は test 環境でのみ許可されています');
 }
-const SHOULD_EXPOSE_PASSWORD_RESET_TOKEN = process.env.NODE_ENV !== 'production' && EXPOSE_PASSWORD_RESET_TOKEN;
+const SHOULD_EXPOSE_PASSWORD_RESET_TOKEN = process.env.NODE_ENV === 'test' && EXPOSE_PASSWORD_RESET_TOKEN;
 const registerLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -44,6 +44,26 @@ const loginLimiter = rateLimit({
 });
 
 const AUTH_CONFIGURATION_ERROR_MESSAGE = '認証設定が未完了です。管理者に連絡してください';
+const PASSWORD_RESET_MIN_RESPONSE_MS = process.env.NODE_ENV === 'test' ? 0 : 180;
+const PASSWORD_RESET_RESPONSE_JITTER_MS = process.env.NODE_ENV === 'test' ? 0 : 120;
+
+function handleAuthConfigurationError(context: string, err: unknown, res: Response): boolean {
+  if (!isJwtSecretMissingError(err)) {
+    return false;
+  }
+
+  logger.error(`${context} configuration error`, {
+    error: err.message,
+  });
+  res.status(503).json({ error: AUTH_CONFIGURATION_ERROR_MESSAGE });
+  return true;
+}
+
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 function extractUniqueViolationConstraint(err: unknown): string | null {
   if (!err || typeof err !== 'object') return null;
@@ -144,11 +164,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       prefecture,
     });
   } catch (err) {
-    if (isJwtSecretMissingError(err)) {
-      logger.error('Registration configuration error', {
-        error: err.message,
-      });
-      res.status(503).json({ error: AUTH_CONFIGURATION_ERROR_MESSAGE });
+    if (handleAuthConfigurationError('Registration', err, res)) {
       return;
     }
 
@@ -235,11 +251,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       isAdmin: pharmacy.isAdmin,
     });
   } catch (err) {
-    if (isJwtSecretMissingError(err)) {
-      logger.error('Login configuration error', {
-        error: err.message,
-      });
-      res.status(503).json({ error: AUTH_CONFIGURATION_ERROR_MESSAGE });
+    if (handleAuthConfigurationError('Login', err, res)) {
       return;
     }
 
@@ -252,6 +264,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
 
 router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, res: Response) => {
   try {
+    const requestStartedAt = Date.now();
     const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
     if (!email) {
       res.status(400).json({ error: 'メールアドレスを入力してください' });
@@ -264,6 +277,14 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
     }
 
     const result = await createPasswordResetToken(email);
+    const targetMs = PASSWORD_RESET_MIN_RESPONSE_MS
+      + (PASSWORD_RESET_RESPONSE_JITTER_MS > 0
+        ? Math.floor(Math.random() * (PASSWORD_RESET_RESPONSE_JITTER_MS + 1))
+        : 0);
+    const elapsedMs = Date.now() - requestStartedAt;
+    if (elapsedMs < targetMs) {
+      await waitMs(targetMs - elapsedMs);
+    }
 
     // Always return success to prevent email enumeration
     writeLog('password_reset_request', {

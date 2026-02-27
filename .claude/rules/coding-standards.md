@@ -2,7 +2,7 @@
 description: コーディング規約（コードファイル編集時のみ適用）
 paths: "**/*.{ts,tsx,js,jsx,py,rb,go,rs,java,kt,swift,c,cpp,h,hpp,cs,php}"
 _harness_template: "rules/coding-standards.md.template"
-_harness_version: "2.25.0"
+_harness_version: "2.5.27"
 ---
 
 # Coding Standards
@@ -11,7 +11,7 @@ _harness_version: "2.25.0"
 
 | Prefix | 用途 | 例 |
 |--------|------|-----|
-| `feat:` | 新機能 | `feat: 医薬品マスター検索を追加` |
+| `feat:` | 新機能 | `feat: ユーザー認証を追加` |
 | `fix:` | バグ修正 | `fix: ログインエラーを修正` |
 | `docs:` | ドキュメント | `docs: README を更新` |
 | `refactor:` | リファクタリング | `refactor: 認証ロジックを整理` |
@@ -22,10 +22,6 @@ _harness_version: "2.25.0"
 
 - ✅ 既存のコードスタイルに従う
 - ✅ 変更に必要な最小限の修正のみ
-- ✅ TypeScript strict モードを維持
-- ✅ React コンポーネントは関数コンポーネント + hooks
-- ✅ API クライアントは `client/src/api/client.ts` に集約
-- ✅ DB スキーマは `server/src/db/schema.ts` に集約
 - ❌ 変更していないコードへの「改善」
 - ❌ 依頼されていないリファクタリング
 - ❌ 過剰なコメント追加
@@ -40,6 +36,5 @@ _harness_version: "2.25.0"
 ## エラーハンドリング
 
 - 境界（ユーザー入力、外部API）でのみバリデーション
-- サーバー側は zod でリクエストバリデーション
 - 内部コードは信頼する
 - 起こりえないシナリオのエラーハンドリングは不要

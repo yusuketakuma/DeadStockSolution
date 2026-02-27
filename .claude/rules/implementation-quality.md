@@ -90,7 +90,7 @@ async function fetchUser(id: string): Promise<User | null> {
 実装が難しい場合は、**正直に報告**してください：
 
 ```markdown
-## 実装の相談
+## 🤔 実装の相談
 
 ### 状況
 [何を実装しようとしているか]

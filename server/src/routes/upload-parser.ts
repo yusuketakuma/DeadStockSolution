@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, type InferInsertModel } from 'drizzle-orm';
 import { db } from '../config/database';
 import { uploads, deadStockItems, usedMedicationItems, columnMappingTemplates } from '../db/schema';
 import { AuthRequest } from '../types';
@@ -33,15 +33,105 @@ const router = Router();
 
 type ApplyMode = 'replace' | 'diff';
 
-function parseApplyMode(raw: unknown): ApplyMode {
+type DeadStockInsertRow = InferInsertModel<typeof deadStockItems>;
+type UsedMedicationInsertRow = InferInsertModel<typeof usedMedicationItems>;
+type DrugMasterLinkFields = Pick<DeadStockInsertRow, 'drugMasterId' | 'drugMasterPackageId' | 'packageLabel'>;
+
+interface DeadStockInsertSource extends DrugMasterLinkFields {
+  drugCode: string | null;
+  drugName: string;
+  quantity: number;
+  unit: string | null;
+  yakkaUnitPrice: number | null;
+  yakkaTotal: number | null;
+  expirationDate: string | null;
+  lotNumber: string | null;
+}
+
+interface UsedMedicationInsertSource extends DrugMasterLinkFields {
+  drugCode: string | null;
+  drugName: string;
+  monthlyUsage: number | null;
+  unit: string | null;
+  yakkaUnitPrice: number | null;
+}
+
+function parseApplyMode(raw: unknown): ApplyMode | null {
+  if (raw === undefined || raw === null || raw === '') return 'replace';
+  if (raw === 'replace') return 'replace';
   if (raw === 'diff') return 'diff';
-  return 'replace';
+  return null;
 }
 
 function parseDeleteMissing(raw: unknown): boolean {
   if (typeof raw === 'boolean') return raw;
   if (typeof raw === 'string') return raw === 'true' || raw === '1';
   return false;
+}
+
+function toNumericText(value: number | null): string | null {
+  return value !== null ? String(value) : null;
+}
+
+function normalizeExpirationDateIso(expirationDate: string | null): string | null {
+  if (typeof expirationDate !== 'string') return null;
+  const normalized = expirationDate.replace(/\//g, '-').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+}
+
+function extractDrugMasterLinkFields(item: DrugMasterLinkFields): DrugMasterLinkFields {
+  return {
+    drugMasterId: item.drugMasterId ?? null,
+    drugMasterPackageId: item.drugMasterPackageId ?? null,
+    packageLabel: item.packageLabel ?? null,
+  };
+}
+
+function toDeadStockInsertRow(
+  pharmacyId: number,
+  uploadId: number,
+  item: DeadStockInsertSource,
+): DeadStockInsertRow {
+  return {
+    pharmacyId,
+    uploadId,
+    drugCode: item.drugCode,
+    drugName: item.drugName,
+    ...extractDrugMasterLinkFields(item),
+    quantity: item.quantity,
+    unit: item.unit,
+    yakkaUnitPrice: toNumericText(item.yakkaUnitPrice),
+    yakkaTotal: toNumericText(item.yakkaTotal),
+    expirationDate: item.expirationDate,
+    expirationDateIso: normalizeExpirationDateIso(item.expirationDate),
+    lotNumber: item.lotNumber,
+  };
+}
+
+function toUsedMedicationInsertRow(
+  pharmacyId: number,
+  uploadId: number,
+  item: UsedMedicationInsertSource,
+): UsedMedicationInsertRow {
+  return {
+    pharmacyId,
+    uploadId,
+    drugCode: item.drugCode,
+    drugName: item.drugName,
+    ...extractDrugMasterLinkFields(item),
+    monthlyUsage: item.monthlyUsage,
+    unit: item.unit,
+    yakkaUnitPrice: toNumericText(item.yakkaUnitPrice),
+  };
+}
+
+async function insertInBatches(
+  totalCount: number,
+  insertBatch: (start: number, end: number) => Promise<unknown>,
+): Promise<void> {
+  for (let i = 0; i < totalCount; i += INSERT_BATCH_SIZE) {
+    await insertBatch(i, i + INSERT_BATCH_SIZE);
+  }
 }
 
 // Preview: parse file and return headers + first 5 rows + suggested mapping
@@ -107,6 +197,11 @@ router.post('/diff-preview', uploadSingleFile, async (req: AuthRequest, res: Res
     if (!uploadType) return;
 
     const applyMode = parseApplyMode(req.body.applyMode);
+    if (!applyMode) {
+      res.status(400).json({ error: 'applyMode は replace か diff を指定してください' });
+      return;
+    }
+
     if (applyMode !== 'diff') {
       res.status(400).json({ error: '差分プレビューは applyMode=diff のときのみ利用できます' });
       return;
@@ -177,6 +272,15 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
     const uploadType = getUploadTypeOrReject(req, res);
     if (!uploadType) return;
 
+    const applyMode = parseApplyMode(req.body.applyMode);
+    if (!applyMode) {
+      logUploadFailure(req, 'confirm', 'invalid_apply_mode', {
+        applyMode: String(req.body.applyMode ?? ''),
+      });
+      res.status(400).json({ error: 'applyMode は replace か diff を指定してください' });
+      return;
+    }
+
     let mapping;
     try {
       mapping = parseMapping(req.body.mapping, uploadType);
@@ -205,7 +309,6 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
     const dataStartIndex = headerRowIndex + 1;
 
     const pharmacyId = req.user!.id;
-    const applyMode = parseApplyMode(req.body.applyMode);
     const deleteMissing = parseDeleteMissing(req.body.deleteMissing);
     const headerHash = computeHeaderHash(headerRow);
     const deadStockExtracted = uploadType === 'dead_stock'
@@ -214,7 +317,7 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
     const usedMedicationExtracted = uploadType === 'used_medication'
       ? extractUsedMedicationRows(allRows, mapping, dataStartIndex)
       : null;
-    const rowCount = deadStockExtracted?.length ?? usedMedicationExtracted?.length ?? 0;
+    const parsedRowCount = deadStockExtracted?.length ?? usedMedicationExtracted?.length ?? 0;
 
     // 医薬品マスターから薬価・情報を自動補完
     const enrichedDeadStock = deadStockExtracted
@@ -224,7 +327,7 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
       ? await enrichWithDrugMaster(usedMedicationExtracted, 'used_medication')
       : null;
 
-    const { uploadId, diffSummary } = await db.transaction(async (tx) => {
+    const { uploadId, diffSummary, rowCount } = await db.transaction(async (tx) => {
       const [uploadRecord] = await tx.insert(uploads).values({
         pharmacyId,
         uploadType,
@@ -246,31 +349,13 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
         if (applyMode === 'replace') {
           await tx.delete(deadStockItems).where(eq(deadStockItems.pharmacyId, pharmacyId));
           if (sourceRows.length > 0) {
-            const insertRows = sourceRows.map((item) => {
-              const expirationDateIso = typeof item.expirationDate === 'string'
-                ? item.expirationDate.replace(/\//g, '-').trim()
-                : '';
-              return {
-                pharmacyId,
-                uploadId: uploadRecord.id,
-                drugCode: item.drugCode,
-                drugName: item.drugName,
-                drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
-                drugMasterPackageId: ('drugMasterPackageId' in item ? (item as { drugMasterPackageId?: number }).drugMasterPackageId : undefined) ?? null,
-                packageLabel: ('packageLabel' in item ? (item as { packageLabel?: string | null }).packageLabel : undefined) ?? null,
-                quantity: item.quantity,
-                unit: item.unit,
-                yakkaUnitPrice: item.yakkaUnitPrice != null ? String(item.yakkaUnitPrice) : null,
-                yakkaTotal: item.yakkaTotal != null ? String(item.yakkaTotal) : null,
-                expirationDate: item.expirationDate,
-                expirationDateIso: /^\d{4}-\d{2}-\d{2}$/.test(expirationDateIso) ? expirationDateIso : null,
-                lotNumber: item.lotNumber,
-              };
-            });
+            const insertRows = sourceRows.map((item) =>
+              toDeadStockInsertRow(pharmacyId, uploadRecord.id, item)
+            );
 
-            for (let i = 0; i < insertRows.length; i += INSERT_BATCH_SIZE) {
-              await tx.insert(deadStockItems).values(insertRows.slice(i, i + INSERT_BATCH_SIZE));
-            }
+            await insertInBatches(insertRows.length, async (start, end) =>
+              tx.insert(deadStockItems).values(insertRows.slice(start, end))
+            );
           }
         } else {
           diffSummary = await applyDeadStockDiff(tx, pharmacyId, uploadRecord.id, sourceRows, { deleteMissing });
@@ -280,30 +365,25 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
         if (applyMode === 'replace') {
           await tx.delete(usedMedicationItems).where(eq(usedMedicationItems.pharmacyId, pharmacyId));
           if (sourceRows.length > 0) {
-            const insertRows = sourceRows.map((item) => ({
-              pharmacyId,
-              uploadId: uploadRecord.id,
-              drugCode: item.drugCode,
-              drugName: item.drugName,
-              drugMasterId: ('drugMasterId' in item ? (item as { drugMasterId?: number }).drugMasterId : undefined) ?? null,
-              drugMasterPackageId: ('drugMasterPackageId' in item ? (item as { drugMasterPackageId?: number }).drugMasterPackageId : undefined) ?? null,
-              packageLabel: ('packageLabel' in item ? (item as { packageLabel?: string | null }).packageLabel : undefined) ?? null,
-              monthlyUsage: item.monthlyUsage,
-              unit: item.unit,
-              yakkaUnitPrice: item.yakkaUnitPrice != null ? String(item.yakkaUnitPrice) : null,
-            }));
+            const insertRows = sourceRows.map((item) =>
+              toUsedMedicationInsertRow(pharmacyId, uploadRecord.id, item)
+            );
 
-            for (let i = 0; i < insertRows.length; i += INSERT_BATCH_SIZE) {
-              await tx.insert(usedMedicationItems).values(insertRows.slice(i, i + INSERT_BATCH_SIZE));
-            }
+            await insertInBatches(insertRows.length, async (start, end) =>
+              tx.insert(usedMedicationItems).values(insertRows.slice(start, end))
+            );
           }
         } else {
           diffSummary = await applyUsedMedicationDiff(tx, pharmacyId, uploadRecord.id, sourceRows, { deleteMissing });
         }
       }
 
+      const persistedRowCount = applyMode === 'diff'
+        ? diffSummary?.totalIncoming ?? parsedRowCount
+        : parsedRowCount;
+
       await tx.update(uploads)
-        .set({ rowCount })
+        .set({ rowCount: persistedRowCount })
         .where(eq(uploads.id, uploadRecord.id));
 
       await tx.insert(columnMappingTemplates).values({
@@ -327,7 +407,7 @@ router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response
         uploadType,
       }, tx);
 
-      return { uploadId: uploadRecord.id, diffSummary };
+      return { uploadId: uploadRecord.id, diffSummary, rowCount: persistedRowCount };
     });
 
     res.json({

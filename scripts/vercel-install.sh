@@ -12,7 +12,7 @@ else
   exit 1
 fi
 
-# Deterministic workspace installs from lockfile.
-# Client keeps devDependencies for Vite build; server omits dev dependencies.
-npm ci --prefix "$ROOT_DIR" --workspace=client --include-workspace-root=false --no-audit --no-fund
-npm ci --prefix "$ROOT_DIR" --workspace=server --include-workspace-root=false --omit=dev --no-audit --no-fund
+# Deterministic workspace install from lockfile.
+# Install only client dependencies here, and force devDependencies even under
+# NODE_ENV=production so the client build toolchain (tsc/vite) is available.
+npm ci --prefix "$ROOT_DIR" --workspace=client --include=dev --include-workspace-root=false --no-audit --no-fund
