@@ -137,16 +137,16 @@ ALTER TABLE "exchange_proposals" ADD CONSTRAINT "exchange_proposals_pharmacy_b_i
 ALTER TABLE "uploads" ADD CONSTRAINT "uploads_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "used_medication_items" ADD CONSTRAINT "used_medication_items_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "used_medication_items" ADD CONSTRAINT "used_medication_items_upload_id_uploads_id_fk" FOREIGN KEY ("upload_id") REFERENCES "public"."uploads"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_admin_message_reads_unique" ON "admin_message_reads" USING btree ("message_id","pharmacy_id");--> statement-breakpoint
-CREATE INDEX "idx_admin_messages_target" ON "admin_messages" USING btree ("target_type","target_pharmacy_id","created_at");--> statement-breakpoint
-CREATE INDEX "idx_mapping_templates_pharmacy_type_hash" ON "column_mapping_templates" USING btree ("pharmacy_id","upload_type","header_hash");--> statement-breakpoint
-CREATE INDEX "idx_dead_stock_pharmacy_available_created" ON "dead_stock_items" USING btree ("pharmacy_id","is_available","created_at");--> statement-breakpoint
-CREATE INDEX "idx_dead_stock_available_name" ON "dead_stock_items" USING btree ("is_available","drug_name");--> statement-breakpoint
-CREATE INDEX "idx_exchange_history_a_completed" ON "exchange_history" USING btree ("pharmacy_a_id","completed_at");--> statement-breakpoint
-CREATE INDEX "idx_exchange_history_b_completed" ON "exchange_history" USING btree ("pharmacy_b_id","completed_at");--> statement-breakpoint
-CREATE INDEX "idx_exchange_items_proposal" ON "exchange_proposal_items" USING btree ("proposal_id");--> statement-breakpoint
-CREATE INDEX "idx_exchange_proposals_a_proposed" ON "exchange_proposals" USING btree ("pharmacy_a_id","proposed_at");--> statement-breakpoint
-CREATE INDEX "idx_exchange_proposals_b_proposed" ON "exchange_proposals" USING btree ("pharmacy_b_id","proposed_at");--> statement-breakpoint
-CREATE INDEX "idx_exchange_proposals_status_proposed" ON "exchange_proposals" USING btree ("status","proposed_at");--> statement-breakpoint
-CREATE INDEX "idx_uploads_pharmacy_type_created" ON "uploads" USING btree ("pharmacy_id","upload_type","created_at");--> statement-breakpoint
-CREATE INDEX "idx_used_medication_pharmacy_created" ON "used_medication_items" USING btree ("pharmacy_id","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_admin_message_reads_unique" ON "admin_message_reads" USING btree ("message_id","pharmacy_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_admin_messages_target" ON "admin_messages" USING btree ("target_type","target_pharmacy_id","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_mapping_templates_pharmacy_type_hash" ON "column_mapping_templates" USING btree ("pharmacy_id","upload_type","header_hash");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_dead_stock_pharmacy_available_created" ON "dead_stock_items" USING btree ("pharmacy_id","is_available","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_dead_stock_available_name" ON "dead_stock_items" USING btree ("is_available","drug_name");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_exchange_history_a_completed" ON "exchange_history" USING btree ("pharmacy_a_id","completed_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_exchange_history_b_completed" ON "exchange_history" USING btree ("pharmacy_b_id","completed_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_exchange_items_proposal" ON "exchange_proposal_items" USING btree ("proposal_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_exchange_proposals_a_proposed" ON "exchange_proposals" USING btree ("pharmacy_a_id","proposed_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_exchange_proposals_b_proposed" ON "exchange_proposals" USING btree ("pharmacy_b_id","proposed_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_exchange_proposals_status_proposed" ON "exchange_proposals" USING btree ("status","proposed_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_uploads_pharmacy_type_created" ON "uploads" USING btree ("pharmacy_id","upload_type","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_used_medication_pharmacy_created" ON "used_medication_items" USING btree ("pharmacy_id","created_at");

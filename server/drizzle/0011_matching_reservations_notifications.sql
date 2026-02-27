@@ -7,15 +7,33 @@ CREATE TABLE IF NOT EXISTS "dead_stock_reservations" (
   CONSTRAINT "chk_dead_stock_reservation_qty" CHECK ("dead_stock_reservations"."reserved_quantity" > 0)
 );
 --> statement-breakpoint
-ALTER TABLE "dead_stock_reservations"
-  ADD CONSTRAINT "dead_stock_reservations_dead_stock_item_id_dead_stock_items_id_fk"
-  FOREIGN KEY ("dead_stock_item_id") REFERENCES "public"."dead_stock_items"("id")
-  ON DELETE cascade ON UPDATE no action;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'dead_stock_reservations_dead_stock_item_id_dead_stock_items_id_fk'
+  ) THEN
+    ALTER TABLE "dead_stock_reservations"
+      ADD CONSTRAINT "dead_stock_reservations_dead_stock_item_id_dead_stock_items_id_fk"
+      FOREIGN KEY ("dead_stock_item_id") REFERENCES "public"."dead_stock_items"("id")
+      ON DELETE cascade ON UPDATE no action;
+  END IF;
+END
+$$;
 --> statement-breakpoint
-ALTER TABLE "dead_stock_reservations"
-  ADD CONSTRAINT "dead_stock_reservations_proposal_id_exchange_proposals_id_fk"
-  FOREIGN KEY ("proposal_id") REFERENCES "public"."exchange_proposals"("id")
-  ON DELETE cascade ON UPDATE no action;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'dead_stock_reservations_proposal_id_exchange_proposals_id_fk'
+  ) THEN
+    ALTER TABLE "dead_stock_reservations"
+      ADD CONSTRAINT "dead_stock_reservations_proposal_id_exchange_proposals_id_fk"
+      FOREIGN KEY ("proposal_id") REFERENCES "public"."exchange_proposals"("id")
+      ON DELETE cascade ON UPDATE no action;
+  END IF;
+END
+$$;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_dead_stock_reservations_item" ON "dead_stock_reservations" ("dead_stock_item_id");
 --> statement-breakpoint
@@ -44,10 +62,19 @@ CREATE TABLE IF NOT EXISTS "match_candidate_snapshots" (
   "updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-ALTER TABLE "match_candidate_snapshots"
-  ADD CONSTRAINT "match_candidate_snapshots_pharmacy_id_pharmacies_id_fk"
-  FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id")
-  ON DELETE cascade ON UPDATE no action;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'match_candidate_snapshots_pharmacy_id_pharmacies_id_fk'
+  ) THEN
+    ALTER TABLE "match_candidate_snapshots"
+      ADD CONSTRAINT "match_candidate_snapshots_pharmacy_id_pharmacies_id_fk"
+      FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id")
+      ON DELETE cascade ON UPDATE no action;
+  END IF;
+END
+$$;
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_match_snapshots_pharmacy_unique" ON "match_candidate_snapshots" ("pharmacy_id");
 --> statement-breakpoint
@@ -64,15 +91,33 @@ CREATE TABLE IF NOT EXISTS "match_notifications" (
   "created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-ALTER TABLE "match_notifications"
-  ADD CONSTRAINT "match_notifications_pharmacy_id_pharmacies_id_fk"
-  FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id")
-  ON DELETE cascade ON UPDATE no action;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'match_notifications_pharmacy_id_pharmacies_id_fk'
+  ) THEN
+    ALTER TABLE "match_notifications"
+      ADD CONSTRAINT "match_notifications_pharmacy_id_pharmacies_id_fk"
+      FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id")
+      ON DELETE cascade ON UPDATE no action;
+  END IF;
+END
+$$;
 --> statement-breakpoint
-ALTER TABLE "match_notifications"
-  ADD CONSTRAINT "match_notifications_trigger_pharmacy_id_pharmacies_id_fk"
-  FOREIGN KEY ("trigger_pharmacy_id") REFERENCES "public"."pharmacies"("id")
-  ON DELETE cascade ON UPDATE no action;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'match_notifications_trigger_pharmacy_id_pharmacies_id_fk'
+  ) THEN
+    ALTER TABLE "match_notifications"
+      ADD CONSTRAINT "match_notifications_trigger_pharmacy_id_pharmacies_id_fk"
+      FOREIGN KEY ("trigger_pharmacy_id") REFERENCES "public"."pharmacies"("id")
+      ON DELETE cascade ON UPDATE no action;
+  END IF;
+END
+$$;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_match_notifications_pharmacy_created" ON "match_notifications" ("pharmacy_id", "created_at");
 --> statement-breakpoint
@@ -89,10 +134,19 @@ CREATE TABLE IF NOT EXISTS "matching_refresh_jobs" (
   "updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-ALTER TABLE "matching_refresh_jobs"
-  ADD CONSTRAINT "matching_refresh_jobs_trigger_pharmacy_id_pharmacies_id_fk"
-  FOREIGN KEY ("trigger_pharmacy_id") REFERENCES "public"."pharmacies"("id")
-  ON DELETE cascade ON UPDATE no action;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'matching_refresh_jobs_trigger_pharmacy_id_pharmacies_id_fk'
+  ) THEN
+    ALTER TABLE "matching_refresh_jobs"
+      ADD CONSTRAINT "matching_refresh_jobs_trigger_pharmacy_id_pharmacies_id_fk"
+      FOREIGN KEY ("trigger_pharmacy_id") REFERENCES "public"."pharmacies"("id")
+      ON DELETE cascade ON UPDATE no action;
+  END IF;
+END
+$$;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_matching_refresh_jobs_created" ON "matching_refresh_jobs" ("created_at");
 --> statement-breakpoint

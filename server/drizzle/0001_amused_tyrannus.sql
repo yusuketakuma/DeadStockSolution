@@ -113,23 +113,23 @@ ALTER TABLE "drug_master_packages" ADD CONSTRAINT "drug_master_packages_drug_mas
 ALTER TABLE "drug_master_sync_logs" ADD CONSTRAINT "drug_master_sync_logs_triggered_by_pharmacies_id_fk" FOREIGN KEY ("triggered_by") REFERENCES "public"."pharmacies"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "pharmacy_business_hours" ADD CONSTRAINT "pharmacy_business_hours_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_activity_logs_created_at" ON "activity_logs" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "idx_activity_logs_pharmacy_created" ON "activity_logs" USING btree ("pharmacy_id","created_at");--> statement-breakpoint
-CREATE INDEX "idx_activity_logs_action" ON "activity_logs" USING btree ("action","created_at");--> statement-breakpoint
-CREATE INDEX "idx_drug_master_name" ON "drug_master" USING btree ("drug_name");--> statement-breakpoint
-CREATE INDEX "idx_drug_master_generic_name" ON "drug_master" USING btree ("generic_name");--> statement-breakpoint
-CREATE INDEX "idx_drug_master_listed_name" ON "drug_master" USING btree ("is_listed","drug_name");--> statement-breakpoint
-CREATE INDEX "idx_drug_packages_drug_master_id" ON "drug_master_packages" USING btree ("drug_master_id");--> statement-breakpoint
-CREATE INDEX "idx_drug_packages_gs1" ON "drug_master_packages" USING btree ("gs1_code");--> statement-breakpoint
-CREATE INDEX "idx_drug_packages_jan" ON "drug_master_packages" USING btree ("jan_code");--> statement-breakpoint
-CREATE INDEX "idx_drug_packages_hot" ON "drug_master_packages" USING btree ("hot_code");--> statement-breakpoint
-CREATE INDEX "idx_price_history_yj_code" ON "drug_master_price_history" USING btree ("yj_code");--> statement-breakpoint
-CREATE INDEX "idx_price_history_date" ON "drug_master_price_history" USING btree ("revision_date");--> statement-breakpoint
-CREATE INDEX "idx_sync_logs_started_at" ON "drug_master_sync_logs" USING btree ("started_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_password_reset_token" ON "password_reset_tokens" USING btree ("token");--> statement-breakpoint
-CREATE INDEX "idx_password_reset_pharmacy" ON "password_reset_tokens" USING btree ("pharmacy_id");--> statement-breakpoint
-CREATE INDEX "idx_business_hours_pharmacy" ON "pharmacy_business_hours" USING btree ("pharmacy_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_business_hours_pharmacy_day" ON "pharmacy_business_hours" USING btree ("pharmacy_id","day_of_week");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_activity_logs_created_at" ON "activity_logs" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_activity_logs_pharmacy_created" ON "activity_logs" USING btree ("pharmacy_id","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_activity_logs_action" ON "activity_logs" USING btree ("action","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_drug_master_name" ON "drug_master" USING btree ("drug_name");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_drug_master_generic_name" ON "drug_master" USING btree ("generic_name");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_drug_master_listed_name" ON "drug_master" USING btree ("is_listed","drug_name");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_drug_packages_drug_master_id" ON "drug_master_packages" USING btree ("drug_master_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_drug_packages_gs1" ON "drug_master_packages" USING btree ("gs1_code");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_drug_packages_jan" ON "drug_master_packages" USING btree ("jan_code");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_drug_packages_hot" ON "drug_master_packages" USING btree ("hot_code");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_price_history_yj_code" ON "drug_master_price_history" USING btree ("yj_code");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_price_history_date" ON "drug_master_price_history" USING btree ("revision_date");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_sync_logs_started_at" ON "drug_master_sync_logs" USING btree ("started_at");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_password_reset_token" ON "password_reset_tokens" USING btree ("token");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_password_reset_pharmacy" ON "password_reset_tokens" USING btree ("pharmacy_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_business_hours_pharmacy" ON "pharmacy_business_hours" USING btree ("pharmacy_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_business_hours_pharmacy_day" ON "pharmacy_business_hours" USING btree ("pharmacy_id","day_of_week");--> statement-breakpoint
 ALTER TABLE "admin_message_reads" ADD CONSTRAINT "admin_message_reads_message_id_admin_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."admin_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "admin_message_reads" ADD CONSTRAINT "admin_message_reads_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "column_mapping_templates" ADD CONSTRAINT "column_mapping_templates_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -139,9 +139,9 @@ ALTER TABLE "exchange_proposal_items" ADD CONSTRAINT "exchange_proposal_items_pr
 ALTER TABLE "uploads" ADD CONSTRAINT "uploads_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "used_medication_items" ADD CONSTRAINT "used_medication_items_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "used_medication_items" ADD CONSTRAINT "used_medication_items_upload_id_uploads_id_fk" FOREIGN KEY ("upload_id") REFERENCES "public"."uploads"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_dead_stock_drug_master_id" ON "dead_stock_items" USING btree ("drug_master_id");--> statement-breakpoint
-CREATE INDEX "idx_exchange_history_proposal" ON "exchange_history" USING btree ("proposal_id");--> statement-breakpoint
-CREATE INDEX "idx_used_med_drug_master_id" ON "used_medication_items" USING btree ("drug_master_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_dead_stock_drug_master_id" ON "dead_stock_items" USING btree ("drug_master_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_exchange_history_proposal" ON "exchange_history" USING btree ("proposal_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_used_med_drug_master_id" ON "used_medication_items" USING btree ("drug_master_id");--> statement-breakpoint
 ALTER TABLE "dead_stock_items" ADD CONSTRAINT "chk_dead_stock_quantity" CHECK ("dead_stock_items"."quantity" > 0);--> statement-breakpoint
 ALTER TABLE "dead_stock_items" ADD CONSTRAINT "chk_dead_stock_yakka_price" CHECK ("dead_stock_items"."yakka_unit_price" IS NULL OR "dead_stock_items"."yakka_unit_price" >= 0);--> statement-breakpoint
 ALTER TABLE "exchange_proposal_items" ADD CONSTRAINT "chk_exchange_item_quantity" CHECK ("exchange_proposal_items"."quantity" > 0);--> statement-breakpoint

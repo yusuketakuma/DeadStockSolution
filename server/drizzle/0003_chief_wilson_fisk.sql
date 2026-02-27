@@ -17,4 +17,4 @@ CREATE TABLE "pharmacy_special_hours" (
 );
 --> statement-breakpoint
 ALTER TABLE "pharmacy_special_hours" ADD CONSTRAINT "pharmacy_special_hours_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_special_hours_pharmacy_date" ON "pharmacy_special_hours" USING btree ("pharmacy_id","start_date","end_date");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_special_hours_pharmacy_date" ON "pharmacy_special_hours" USING btree ("pharmacy_id","start_date","end_date");--> statement-breakpoint
