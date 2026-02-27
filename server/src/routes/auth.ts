@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import {
@@ -112,6 +112,24 @@ function isMissingTestPharmacyColumnError(err: unknown): boolean {
   return extractErrorCode(err) === '42703' || includesIsTestAccountToken(err);
 }
 let isTestAccountColumnAvailable: boolean | null = null;
+let testPharmacyColumnsEnsured = false;
+
+async function ensureTestPharmacyColumns(): Promise<boolean> {
+  if (testPharmacyColumnsEnsured) {
+    return true;
+  }
+  try {
+    await db.execute(sql`ALTER TABLE "pharmacies" ADD COLUMN IF NOT EXISTS "is_test_account" boolean DEFAULT false NOT NULL`);
+    await db.execute(sql`ALTER TABLE "pharmacies" ADD COLUMN IF NOT EXISTS "test_account_password" text`);
+    testPharmacyColumnsEnsured = true;
+    return true;
+  } catch (err) {
+    logger.error('Auto ensure test pharmacy columns failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
@@ -532,12 +550,27 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
         if (!isMissingTestPharmacyColumnError(err)) {
           throw err;
         }
-        isTestAccountColumnAvailable = false;
-        logger.warn('test pharmacy columns are not available yet', {
+        logger.warn('test pharmacy columns are missing; attempting auto-heal', {
           error: err instanceof Error ? err.message : String(err),
         });
-        res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
-        return null;
+        const ensured = await ensureTestPharmacyColumns();
+        if (!ensured) {
+          isTestAccountColumnAvailable = false;
+          res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
+          return null;
+        }
+        const healedRows = await db.select({
+          id: pharmacies.id,
+          name: pharmacies.name,
+          email: pharmacies.email,
+          prefecture: pharmacies.prefecture,
+          password: pharmacies.testAccountPassword,
+        })
+          .from(pharmacies)
+          .where(eq(pharmacies.isTestAccount, true))
+          .orderBy(asc(pharmacies.id));
+        isTestAccountColumnAvailable = true;
+        return healedRows;
       }
     })();
     if (!rows) {
