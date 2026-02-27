@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-02-27T16:38:57Z",
-  "changed_file": "server/src/test/github-updates-service.test.ts",
+  "timestamp": "2026-02-27T16:56:02Z",
+  "changed_file": "server/src/routes/pharmacies.ts",
   "test_command": "npm test",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"
