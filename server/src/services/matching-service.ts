@@ -167,6 +167,303 @@ function buildMatchItems(
   }
   return items;
 }
+
+function getFirstOfMonthIso(now: Date): string {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+}
+
+function buildBlockedPairSet(rows: Array<{ pharmacyId: number; targetPharmacyId: number }>): Set<string> {
+  const blockedPairs = new Set<string>();
+  for (const row of rows) {
+    blockedPairs.add(`${row.pharmacyId}:${row.targetPharmacyId}`);
+  }
+  return blockedPairs;
+}
+
+function isBlockedPair(blockedPairs: Set<string>, pharmacyAId: number, pharmacyBId: number): boolean {
+  return blockedPairs.has(`${pharmacyAId}:${pharmacyBId}`) || blockedPairs.has(`${pharmacyBId}:${pharmacyAId}`);
+}
+
+export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<number, MatchCandidate[]>> {
+  const sourcePharmacyIds = [...new Set(pharmacyIds)];
+  const matchesByPharmacy = new Map<number, MatchCandidate[]>();
+  if (sourcePharmacyIds.length === 0) return matchesByPharmacy;
+
+  const now = new Date();
+  const firstOfMonth = getFirstOfMonthIso(now);
+
+  const currentPharmacies = await db.select({
+    id: pharmacies.id,
+    name: pharmacies.name,
+    latitude: pharmacies.latitude,
+    longitude: pharmacies.longitude,
+  })
+    .from(pharmacies)
+    .where(inArray(pharmacies.id, sourcePharmacyIds));
+  const currentPharmacyById = new Map(currentPharmacies.map((pharmacy) => [pharmacy.id, pharmacy]));
+  const missingPharmacyId = sourcePharmacyIds.find((pharmacyId) => !currentPharmacyById.has(pharmacyId));
+  if (missingPharmacyId !== undefined) throw new Error('薬局が見つかりません');
+
+  const favoriteRows = await db.select({
+    pharmacyId: pharmacyRelationships.pharmacyId,
+    targetPharmacyId: pharmacyRelationships.targetPharmacyId,
+  })
+    .from(pharmacyRelationships)
+    .where(and(
+      inArray(pharmacyRelationships.pharmacyId, sourcePharmacyIds),
+      eq(pharmacyRelationships.relationshipType, 'favorite'),
+    ));
+
+  const favoriteIdsByPharmacy = new Map<number, Set<number>>();
+  for (const row of favoriteRows) {
+    const favorites = favoriteIdsByPharmacy.get(row.pharmacyId) ?? new Set<number>();
+    favorites.add(row.targetPharmacyId);
+    favoriteIdsByPharmacy.set(row.pharmacyId, favorites);
+  }
+
+  const viablePharmacyPool = await db.select({
+    id: pharmacies.id,
+    name: pharmacies.name,
+    phone: pharmacies.phone,
+    fax: pharmacies.fax,
+    latitude: pharmacies.latitude,
+    longitude: pharmacies.longitude,
+  })
+    .from(pharmacies)
+    .where(and(
+      eq(pharmacies.isActive, true),
+      exists(
+        db.select({ id: uploads.id })
+          .from(uploads)
+          .where(and(
+            eq(uploads.pharmacyId, pharmacies.id),
+            eq(uploads.uploadType, 'used_medication'),
+            gte(uploads.createdAt, firstOfMonth),
+          )),
+      ),
+      exists(
+        db.select({ id: deadStockItems.id })
+          .from(deadStockItems)
+          .where(and(
+            eq(deadStockItems.pharmacyId, pharmacies.id),
+            eq(deadStockItems.isAvailable, true),
+          )),
+      ),
+      exists(
+        db.select({ id: usedMedicationItems.id })
+          .from(usedMedicationItems)
+          .where(eq(usedMedicationItems.pharmacyId, pharmacies.id)),
+      ),
+    ));
+  const viablePharmacyPoolIds = viablePharmacyPool.map((pharmacy) => pharmacy.id);
+
+  const blockedRelationshipRows = sourcePharmacyIds.length > 0 && viablePharmacyPoolIds.length > 0
+    ? await db.select({
+      pharmacyId: pharmacyRelationships.pharmacyId,
+      targetPharmacyId: pharmacyRelationships.targetPharmacyId,
+    })
+      .from(pharmacyRelationships)
+      .where(and(
+        eq(pharmacyRelationships.relationshipType, 'blocked'),
+        or(
+          and(
+            inArray(pharmacyRelationships.pharmacyId, sourcePharmacyIds),
+            inArray(pharmacyRelationships.targetPharmacyId, viablePharmacyPoolIds),
+          ),
+          and(
+            inArray(pharmacyRelationships.pharmacyId, viablePharmacyPoolIds),
+            inArray(pharmacyRelationships.targetPharmacyId, sourcePharmacyIds),
+          ),
+        ),
+      ))
+    : [];
+  const blockedPairs = buildBlockedPairSet(blockedRelationshipRows);
+
+  const allRelevantPharmacyIds = [...new Set([...sourcePharmacyIds, ...viablePharmacyPoolIds])];
+  const [allDeadStockRows, allUsedMedRows] = await Promise.all([
+    db.select({
+      id: deadStockItems.id,
+      pharmacyId: deadStockItems.pharmacyId,
+      drugName: deadStockItems.drugName,
+      quantity: deadStockItems.quantity,
+      unit: deadStockItems.unit,
+      yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
+      expirationDate: deadStockItems.expirationDate,
+    })
+      .from(deadStockItems)
+      .where(and(
+        inArray(deadStockItems.pharmacyId, allRelevantPharmacyIds),
+        eq(deadStockItems.isAvailable, true),
+      ))
+      .orderBy(deadStockItems.id),
+    db.select({
+      pharmacyId: usedMedicationItems.pharmacyId,
+      drugName: usedMedicationItems.drugName,
+    })
+      .from(usedMedicationItems)
+      .where(inArray(usedMedicationItems.pharmacyId, allRelevantPharmacyIds))
+      .orderBy(usedMedicationItems.id),
+  ]);
+
+  const allDeadStockIds = [...new Set(allDeadStockRows.map((row) => row.id))];
+  const reservedByItemId = await fetchReservationMap(allDeadStockIds);
+
+  const adjustedAllDeadStock = applyReservationsToStockRows(allDeadStockRows, reservedByItemId);
+
+  const [allBusinessHours, allSpecialHours] = await Promise.all([
+    db.select({
+      pharmacyId: pharmacyBusinessHours.pharmacyId,
+      dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+      openTime: pharmacyBusinessHours.openTime,
+      closeTime: pharmacyBusinessHours.closeTime,
+      isClosed: pharmacyBusinessHours.isClosed,
+      is24Hours: pharmacyBusinessHours.is24Hours,
+    })
+      .from(pharmacyBusinessHours)
+      .where(inArray(pharmacyBusinessHours.pharmacyId, viablePharmacyPoolIds)),
+    db.select({
+      pharmacyId: pharmacySpecialHours.pharmacyId,
+      id: pharmacySpecialHours.id,
+      specialType: pharmacySpecialHours.specialType,
+      startDate: pharmacySpecialHours.startDate,
+      endDate: pharmacySpecialHours.endDate,
+      openTime: pharmacySpecialHours.openTime,
+      closeTime: pharmacySpecialHours.closeTime,
+      isClosed: pharmacySpecialHours.isClosed,
+      is24Hours: pharmacySpecialHours.is24Hours,
+      note: pharmacySpecialHours.note,
+      updatedAt: pharmacySpecialHours.updatedAt,
+    })
+      .from(pharmacySpecialHours)
+      .where(inArray(pharmacySpecialHours.pharmacyId, viablePharmacyPoolIds)),
+  ]);
+
+  const businessHoursByPharmacy = groupByPharmacy(allBusinessHours);
+  const specialHoursByPharmacy = groupByPharmacy(allSpecialHours);
+
+  const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(adjustedAllDeadStock);
+  const usedMedsByPharmacy = groupByPharmacy<UsedMedRow>(allUsedMedRows);
+
+  for (const sourcePharmacyId of sourcePharmacyIds) {
+    const currentPharmacy = currentPharmacyById.get(sourcePharmacyId);
+    if (!currentPharmacy) throw new Error('薬局が見つかりません');
+
+    const myDeadStock = deadStockByPharmacy.get(sourcePharmacyId) ?? [];
+    const myUsedMeds = usedMedsByPharmacy.get(sourcePharmacyId) ?? [];
+    if (myDeadStock.length === 0 || myUsedMeds.length === 0) {
+      matchesByPharmacy.set(sourcePharmacyId, []);
+      continue;
+    }
+
+    const viablePharmacies = viablePharmacyPool.filter((pharmacy) => (
+      pharmacy.id !== sourcePharmacyId &&
+      !isBlockedPair(blockedPairs, sourcePharmacyId, pharmacy.id)
+    ));
+
+    if (viablePharmacies.length === 0) {
+      matchesByPharmacy.set(sourcePharmacyId, []);
+      continue;
+    }
+
+    const myUsedMedIndex = buildUsedMedIndex(myUsedMeds);
+    const favoriteIds = favoriteIdsByPharmacy.get(sourcePharmacyId) ?? new Set<number>();
+    const preparedDrugNameCache = new Map<string, PreparedDrugName>();
+    const preparedMyDeadStock = myDeadStock.map((stock) => {
+      const cached = preparedDrugNameCache.get(stock.drugName);
+      if (cached) return { stock, preparedDrugName: cached };
+      const preparedDrugName = prepareDrugName(stock.drugName);
+      preparedDrugNameCache.set(stock.drugName, preparedDrugName);
+      return { stock, preparedDrugName };
+    });
+
+    const pharmaciesWithDistance = viablePharmacies
+      .map((pharmacy) => ({
+        ...pharmacy,
+        distance: (
+          currentPharmacy.latitude !== null &&
+          currentPharmacy.longitude !== null &&
+          pharmacy.latitude !== null &&
+          pharmacy.longitude !== null
+        )
+          ? haversineDistance(currentPharmacy.latitude, currentPharmacy.longitude, pharmacy.latitude, pharmacy.longitude)
+          : 9999,
+      }))
+      .sort((a, b) => a.distance - b.distance || a.id - b.id);
+
+    const candidates: MatchCandidate[] = [];
+
+    for (const otherPharmacy of pharmaciesWithDistance) {
+      const theirDeadStock = deadStockByPharmacy.get(otherPharmacy.id) ?? [];
+      const theirUsedMeds = usedMedsByPharmacy.get(otherPharmacy.id) ?? [];
+      if (theirDeadStock.length === 0 || theirUsedMeds.length === 0) continue;
+
+      const theirUsedMedIndex = buildUsedMedIndex(theirUsedMeds);
+      const myToTheirCache = new Map<string, DrugMatchResult>();
+      const theirToMyCache = new Map<string, DrugMatchResult>();
+
+      const itemsFromA = buildMatchItems(preparedMyDeadStock, theirUsedMedIndex, myToTheirCache);
+
+      const preparedTheirDeadStock = theirDeadStock.map((stock) => {
+        const cached = preparedDrugNameCache.get(stock.drugName);
+        if (cached) return { stock, preparedDrugName: cached };
+        const preparedDrugName = prepareDrugName(stock.drugName);
+        preparedDrugNameCache.set(stock.drugName, preparedDrugName);
+        return { stock, preparedDrugName };
+      });
+      const itemsFromB = buildMatchItems(preparedTheirDeadStock, myUsedMedIndex, theirToMyCache);
+
+      if (itemsFromA.length === 0 || itemsFromB.length === 0) continue;
+
+      const { balancedA, balancedB, totalA, totalB } = balanceValues(itemsFromA, itemsFromB);
+      if (balancedA.length === 0 || balancedB.length === 0) continue;
+
+      const minValue = Math.min(totalA, totalB);
+      if (minValue < MIN_EXCHANGE_VALUE) continue;
+
+      const diff = roundTo2(Math.abs(totalA - totalB));
+      if (diff > VALUE_TOLERANCE) continue;
+
+      const isFavorite = favoriteIds.has(otherPharmacy.id);
+      const score = calculateCandidateScore(totalA, totalB, diff, otherPharmacy.distance, balancedA, balancedB, isFavorite);
+      const matchRate = calculateMatchRate(balancedA, balancedB);
+
+      const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id) ?? [];
+      const pharmacySpecialHours = specialHoursByPharmacy.get(otherPharmacy.id) ?? [];
+      const businessStatus = getBusinessHoursStatus(pharmacyHours, pharmacySpecialHours, now);
+
+      candidates.push({
+        pharmacyId: otherPharmacy.id,
+        pharmacyName: otherPharmacy.name,
+        pharmacyPhone: otherPharmacy.phone,
+        pharmacyFax: otherPharmacy.fax,
+        distance: roundTo2(otherPharmacy.distance),
+        itemsFromA: balancedA,
+        itemsFromB: balancedB,
+        totalValueA: roundTo2(totalA),
+        totalValueB: roundTo2(totalB),
+        valueDifference: diff,
+        score,
+        matchRate,
+        businessStatus,
+        isFavorite,
+      });
+    }
+
+    matchesByPharmacy.set(
+      sourcePharmacyId,
+      candidates
+        .sort((a, b) => (
+          (b.score ?? 0) - (a.score ?? 0) ||
+          a.distance - b.distance ||
+          a.pharmacyId - b.pharmacyId
+        ))
+        .slice(0, MAX_CANDIDATES),
+    );
+  }
+
+  return matchesByPharmacy;
+}
+
 export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]> {
   const [currentPharmacy] = await db.select({
     id: pharmacies.id,
@@ -210,7 +507,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   }
 
   const now = new Date();
-  const firstOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  const firstOfMonth = getFirstOfMonthIso(now);
   const favoriteRows = await db.select({
     targetPharmacyId: pharmacyRelationships.targetPharmacyId,
   })
@@ -260,7 +557,6 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   }
   const adjustedOtherDeadStock = applyReservationsToStockRows(allOtherDeadStock, reservedByItemId);
 
-  // Fetch business hours for all candidate pharmacies
   const [allBusinessHours, allSpecialHours] = await Promise.all([
     db.select({
       pharmacyId: pharmacyBusinessHours.pharmacyId,

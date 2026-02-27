@@ -26,6 +26,7 @@ vi.mock('drizzle-orm', () => ({
 
 vi.mock('../services/matching-service', () => ({
   findMatches: vi.fn(),
+  findMatchesBatch: vi.fn(),
 }));
 
 vi.mock('../services/matching-snapshot-service', () => ({
@@ -105,4 +106,3 @@ describe('matching-refresh-service claim retry', () => {
     expect(mocks.db.update).not.toHaveBeenCalled();
   });
 });
-

@@ -1,0 +1,31 @@
+Task: Eliminate N+1 in matching refresh by batching findMatches calls
+Branch: refactor/security-readability-perf
+
+Changed files:
+- server/src/services/matching-service.ts
+- server/src/services/matching-refresh-service.ts
+- server/src/test/matching-refresh-service.test.ts
+- server/src/test/performance-regression.test.ts
+
+Implementation evidence:
+- Added `findMatchesBatch(pharmacyIds: number[])` in matching-service to prefetch shared datasets once and compute per-pharmacy candidates in memory.
+- `runSingleRefresh` now calls `findMatchesBatch(impactedIds)` once before loop and reads candidates from map per pharmacy.
+- Existing `findMatches(pharmacyId)` behavior preserved for non-batch callers.
+
+Verification evidence:
+- lsp_diagnostics clean:
+  - server/src/services/matching-service.ts
+  - server/src/services/matching-refresh-service.ts
+  - server/src/test/matching-refresh-service.test.ts
+  - server/src/test/performance-regression.test.ts
+
+- Command: npm run typecheck:server
+  - Result: PASS (0 errors)
+
+- Command: npm run test:server
+  - Result: PASS
+  - Totals: 379 passed, 1 skipped
+
+- Command: npm run test:perf:server
+  - Result: PASS
+  - Totals: 1 passed

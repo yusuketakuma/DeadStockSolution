@@ -124,6 +124,10 @@ const mockState = vi.hoisted(() => ({
   handoffImportFailureAlertToOpenClaw: vi.fn(),
 }));
 
+vi.mock('express-rate-limit', () => ({
+  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
 vi.mock('../middleware/auth', () => ({
   requireLogin: (
     req: { user?: { id: number; email: string; isAdmin: boolean } },

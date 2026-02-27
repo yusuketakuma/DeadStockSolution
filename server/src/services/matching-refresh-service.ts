@@ -1,7 +1,7 @@
 import { and, asc, eq, exists, gte, isNull, lt, lte, notInArray, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies, deadStockItems, matchingRefreshJobs, usedMedicationItems, uploads } from '../db/schema';
-import { findMatches } from './matching-service';
+import { findMatchesBatch } from './matching-service';
 import { logger } from './logger';
 import { saveMatchSnapshotAndNotifyOnChange } from './matching-snapshot-service';
 import { parseBooleanFlag } from '../utils/number-utils';
@@ -77,12 +77,13 @@ async function resolveImpactedPharmacyIds(triggerPharmacyId: number): Promise<nu
 
 async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_stock' | 'used_medication'): Promise<void> {
   const impactedIds = await resolveImpactedPharmacyIds(triggerPharmacyId);
+  const matchesByPharmacy = await findMatchesBatch(impactedIds);
   let changedCount = 0;
   const failedPharmacyIds: number[] = [];
 
   for (const pharmacyId of impactedIds) {
     try {
-      const candidates = await findMatches(pharmacyId);
+      const candidates = matchesByPharmacy.get(pharmacyId) ?? [];
       const result = await saveMatchSnapshotAndNotifyOnChange({
         pharmacyId,
         triggerPharmacyId,
