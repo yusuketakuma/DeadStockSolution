@@ -83,11 +83,13 @@ function createSelectChain(rows: unknown[]) {
 describe('auth routes', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalExposePasswordResetToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN;
+  const originalEnableTestPharmacyPreview = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
+    delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
     mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
     mocks.authService.isJwtSecretMissingError.mockImplementation(
       (err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'
@@ -102,9 +104,15 @@ describe('auth routes', () => {
     }
     if (originalExposePasswordResetToken === undefined) {
       delete process.env.EXPOSE_PASSWORD_RESET_TOKEN;
-      return;
+    } else {
+      process.env.EXPOSE_PASSWORD_RESET_TOKEN = originalExposePasswordResetToken;
     }
-    process.env.EXPOSE_PASSWORD_RESET_TOKEN = originalExposePasswordResetToken;
+
+    if (originalEnableTestPharmacyPreview === undefined) {
+      delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    } else {
+      process.env.ENABLE_TEST_PHARMACY_PREVIEW = originalEnableTestPharmacyPreview;
+    }
   });
 
   it('does not expose password reset token by default', async () => {
@@ -288,9 +296,31 @@ describe('auth routes', () => {
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('disables test pharmacy preview endpoint in production by default', async () => {
+  it('allows test pharmacy preview endpoint in production by default', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    const selectChain = createSelectChain([
+      { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
+      { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+    ]);
+    mocks.db.select.mockReturnValue(selectChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      accounts: [
+        { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
+        { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+      ],
+    });
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables test pharmacy preview endpoint when explicitly configured off', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'false';
     const app = await createApp();
 
     const res = await request(app).get('/api/auth/test-pharmacies');

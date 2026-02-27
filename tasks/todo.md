@@ -1,5 +1,38 @@
 # tasks/todo.md
 
+## 2026-02-27 本番環境でテスト薬局表示機能を有効化
+
+### Context
+- Prompt: 本番環境でもデモアカウント機能表示ができるようにして
+- Scope:
+  - `server/src/routes/auth.ts` の公開可否判定
+  - `server/src/test/auth-route.test.ts` の期待値更新
+- Assumptions:
+  - 本番でも表示機能を有効にする（必要なら環境変数で明示的に無効化可能）
+
+### Goals / Definition of Done
+- [x] 本番環境で `GET /api/auth/test-pharmacies` が既定で利用可能
+- [x] 明示的なフラグで無効化できる
+- [x] 検証（typecheck/lint/test/build）が通る
+
+### Implementation checklist
+- [x] A. `isTestPharmacyPreviewEnabled` の判定ロジックを変更
+- [x] B. auth route テストを更新
+
+### Verification（最後にまとめて）
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - `isTestPharmacyPreviewEnabled` を「`ENABLE_TEST_PHARMACY_PREVIEW=false` のときのみ無効」に変更し、本番既定で表示機能を有効化。
+  - `auth-route` テストを更新し、「本番既定有効」と「明示無効化時404」の両方を検証。
+
 ## 2026-02-27 認証フロー変更のセキュリティレビュー（auth/login）
 
 ### Context

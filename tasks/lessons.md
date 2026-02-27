@@ -13,6 +13,10 @@
   - What happened: ログイン画面に固定デモ資格情報ボタンを先に追加した後、ユーザー指定でDB登録済みテスト薬局表示へ再実装になった
   - Root cause: データソース要件（固定値かDB参照か）を初手で明示確認せず、実装を先行した
   - New rule to prevent it: 認証/アカウント表示系UIは最初に「データの真実源（DB/API/env固定値）」を確定し、未確定なら表示UIと取得APIを分離して差し替えコストを最小化する
+- Pattern: プレビュー環境で `NODE_ENV=production` になる前提を見落とし、デモ用APIが本番相当環境で404化した
+  - What happened: `ENABLE_TEST_PHARMACY_PREVIEW=true` を明示しないと `GET /api/auth/test-pharmacies` が無効化され、Vercel上で404になった
+  - Root cause: デプロイ先の実行環境（Preview/Productionともに `NODE_ENV=production`）を設計時に織り込めていなかった
+  - New rule to prevent it: 「本番でも見せるデモ機能」はデフォルト有効で設計し、無効化は `...=false` の明示指定方式に統一する
 
 ## Project-specific gotchas
 - Item:
