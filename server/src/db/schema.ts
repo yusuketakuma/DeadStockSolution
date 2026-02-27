@@ -118,6 +118,8 @@ export const deadStockItems = pgTable('dead_stock_items', {
     .on(table.drugMasterId),
   idxDeadStockDrugMasterPackageId: index('idx_dead_stock_drug_master_package_id')
     .on(table.drugMasterPackageId),
+  idxDeadStockPharmacyAvailableName: index('idx_dead_stock_pharmacy_available_name')
+    .on(table.pharmacyId, table.isAvailable, table.drugName),
   chkQuantityPositive: check('chk_dead_stock_quantity', sql`${table.quantity} > 0`),
   chkYakkaUnitPriceNonNeg: check('chk_dead_stock_yakka_price', sql`${table.yakkaUnitPrice} IS NULL OR ${table.yakkaUnitPrice} >= 0`),
 }));
@@ -142,6 +144,8 @@ export const usedMedicationItems = pgTable('used_medication_items', {
     .on(table.drugMasterId),
   idxUsedMedDrugMasterPackageId: index('idx_used_med_drug_master_package_id')
     .on(table.drugMasterPackageId),
+  idxUsedMedPharmacyName: index('idx_used_med_pharmacy_name')
+    .on(table.pharmacyId, table.drugName),
   chkYakkaUnitPriceNonNeg: check('chk_used_med_yakka_price', sql`${table.yakkaUnitPrice} IS NULL OR ${table.yakkaUnitPrice} >= 0`),
 }));
 

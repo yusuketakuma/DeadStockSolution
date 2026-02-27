@@ -127,6 +127,13 @@
       "when": 1772205233609,
       "tag": "0017_chemical_cloak",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1772233120967,
+      "tag": "0018_tricky_gauntlet",
+      "breakpoints": true
     }
   ]
 }

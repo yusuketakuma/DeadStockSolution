@@ -1,0 +1,2 @@
+CREATE INDEX "idx_dead_stock_pharmacy_available_name" ON "dead_stock_items" USING btree ("pharmacy_id","is_available","drug_name");--> statement-breakpoint
+CREATE INDEX "idx_used_med_pharmacy_name" ON "used_medication_items" USING btree ("pharmacy_id","drug_name");

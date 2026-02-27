@@ -1,0 +1,44 @@
+Task 6: Split admin-pharmacies.ts into focused sub-route modules
+=================================================================
+
+Date: 2026-02-28
+Branch: refactor/security-readability-perf
+
+## Files Changed
+- server/src/routes/admin-pharmacies.ts: 851 lines → 12 lines (aggregator)
+- server/src/routes/admin-pharmacies-list.ts: NEW (177 lines, 5 GET endpoints)
+- server/src/routes/admin-pharmacies-detail.ts: NEW (455 lines, 2 GET + 3 PUT endpoints)
+- server/src/routes/admin-pharmacies-actions.ts: NEW (262 lines, 2 GET + 2 POST endpoints)
+
+## Endpoint Distribution
+### admin-pharmacies-list.ts (read-only list endpoints)
+- GET /pharmacies/options
+- GET /pharmacies
+- GET /history
+- GET /messages
+- GET /requests
+
+### admin-pharmacies-detail.ts (single pharmacy CRUD)
+- GET /pharmacies/:id
+- GET /pharmacies/:id/business-hours/settings
+- PUT /pharmacies/:id (with adminWriteLimiter)
+- PUT /pharmacies/:id/business-hours (with adminWriteLimiter)
+- PUT /pharmacies/:id/toggle-active (with adminWriteLimiter)
+
+### admin-pharmacies-actions.ts (special operations)
+- GET /exchanges
+- GET /exchanges/:proposalId/comments
+- POST /messages (with adminWriteLimiter)
+- POST /requests/:id/handoff (with adminWriteLimiter)
+
+## Key Decisions
+- adminWriteLimiter defined locally in both detail.ts and actions.ts (no shared module needed)
+- isValidVersion helper placed in detail.ts (only consumer)
+- AdminHandoffResponse type + helpers placed in actions.ts (only consumer)
+- admin.ts NOT modified (already imports admin-pharmacies.ts which is now aggregator)
+- No auth middleware in sub-files (admin.ts handles requireLogin + requireAdmin)
+
+## Verification Results
+- typecheck:server: 0 errors ✓
+- test:server: 379 passed, 1 skipped ✓
+- build:server: success ✓

@@ -1,0 +1,32 @@
+Task 5: Split exchange.ts into focused sub-route modules
+=========================================================
+
+Date: 2026-02-28
+Commit: 585db34 refactor(routes): split exchange.ts into focused sub-route modules
+Branch: refactor/security-readability-perf
+
+## Files Created
+- server/src/routes/exchange-proposals.ts (435 lines) — POST /find, POST /proposals, POST /proposals/bulk-action, GET /proposals, GET /proposals/:id, GET /proposals/:id/print
+- server/src/routes/exchange-status.ts (69 lines) — POST /proposals/:id/accept, POST /proposals/:id/reject, POST /proposals/:id/complete
+- server/src/routes/exchange-comments.ts (329 lines) — GET/POST/PATCH/DELETE comments endpoints
+- server/src/routes/exchange-feedback.ts (94 lines) — POST /proposals/:id/feedback
+- server/src/routes/exchange-history.ts (68 lines) — GET /history
+
+## Aggregator
+- server/src/routes/exchange.ts reduced from 941 lines → 19 lines
+- Follows admin.ts aggregator pattern exactly
+- requireLogin applied once in aggregator, not in sub-files
+- app.ts NOT modified
+
+## Verification
+- typecheck:server → 0 errors ✓
+- test:server → 379 passed, 1 skipped ✓
+- build:server → success ✓
+
+## Helpers/Constants Placement
+- isProposalInputError, CREATE_PROPOSAL_CLIENT_ERROR, findLimiter, BulkActionType, parseBulkAction, parseBulkIds, sanitizeBulkActionErrorMessage → exchange-proposals.ts
+- sanitizeProposalActionError → exchange-status.ts
+- COMMENT_POST_MIN_INTERVAL_MS, COMMENT_DUPLICATE_WINDOW_MS → exchange-comments.ts
+
+## Change Stats
+- 6 files changed, 1001 insertions(+), 934 deletions(-)
