@@ -31,12 +31,26 @@ function resolveResponseMessage(err: HttpLikeError, status: number): string {
   return err.message || 'リクエストに失敗しました';
 }
 
+function resolveLogMessage(err: HttpLikeError, status: number): string {
+  if (status === 400 && err.type === 'entity.parse.failed') {
+    return 'Malformed JSON payload';
+  }
+  return err.message || 'Request failed';
+}
+
+function resolveLogStack(err: HttpLikeError, status: number): string | undefined {
+  if (status === 400 && err.type === 'entity.parse.failed') {
+    return undefined;
+  }
+  return err.stack;
+}
+
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   const httpErr = err as HttpLikeError;
   const status = resolveStatusCode(httpErr);
   logger.error('Unhandled error', {
-    error: err.message,
-    stack: err.stack,
+    error: resolveLogMessage(httpErr, status),
+    stack: resolveLogStack(httpErr, status),
     method: req.method,
     path: req.path,
     status,

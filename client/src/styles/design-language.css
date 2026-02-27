@@ -195,6 +195,34 @@ body[data-design-preset='high-legibility'] {
   font-size: 0.9rem;
 }
 
+.dl-demo-shortcuts {
+  margin-top: 1rem;
+  border: 1px dashed var(--dl-border);
+  border-radius: var(--dl-radius-md);
+  padding: 0.75rem;
+  background: #f7fbff;
+}
+
+.dl-demo-title {
+  font-size: 0.86rem;
+  margin: 0 0 0.5rem;
+  color: var(--dl-text-muted);
+}
+
+.dl-demo-hint {
+  margin: 0.55rem 0 0;
+  color: var(--dl-text-muted);
+  font-size: 0.8rem;
+}
+
+.dl-test-pharmacy-modal .table {
+  table-layout: fixed;
+}
+
+.dl-test-pharmacy-email {
+  word-break: break-all;
+}
+
 /* ===== App-wide Design Language (protected screens) ===== */
 .app-theme {
   --dl-app-bg: #f4f7fb;

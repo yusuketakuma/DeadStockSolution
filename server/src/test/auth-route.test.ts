@@ -70,10 +70,12 @@ function createSelectChain(rows: unknown[]) {
   const chain = {
     from: vi.fn(),
     where: vi.fn(),
+    orderBy: vi.fn(),
     limit: vi.fn(),
   };
   chain.from.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
+  chain.orderBy.mockReturnValue(chain);
   chain.limit.mockResolvedValue(rows);
   return chain;
 }
@@ -284,5 +286,41 @@ describe('auth routes', () => {
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'このアカウントは無効になっています' });
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
+  });
+
+  it('disables test pharmacy preview endpoint in production by default', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'テスト薬局情報は利用できません' });
+    expect(mocks.db.select).not.toHaveBeenCalled();
+  });
+
+  it('returns test pharmacy previews from database', async () => {
+    const selectChain = createSelectChain([
+      { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
+      { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+    ]);
+    mocks.db.select.mockReturnValue(selectChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      accounts: [
+        { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
+        { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+      ],
+    });
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+    expect(selectChain.from).toHaveBeenCalledTimes(1);
+    expect(selectChain.where).toHaveBeenCalledTimes(1);
+    expect(selectChain.orderBy).toHaveBeenCalledTimes(1);
+    expect(selectChain.limit).toHaveBeenCalledWith(2);
   });
 });

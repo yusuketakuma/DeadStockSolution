@@ -17,9 +17,40 @@ function getInputByLabel(labelText: string): HTMLInputElement {
   throw new Error(`Could not find input for label: ${labelText}`);
 }
 
-function mockUnauthFetch() {
+interface TestPharmacyPreview {
+  id: number;
+  name: string;
+  email: string;
+  prefecture: string;
+}
+
+function setMatchMedia(matches: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
+function mockUnauthFetch(options: { testPharmacies?: TestPharmacyPreview[] } = {}) {
+  const { testPharmacies = [] } = options;
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('/api/auth/test-pharmacies')) {
+      return new Response(JSON.stringify({ accounts: testPharmacies }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     if (url.includes('/api/auth/me')) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -36,6 +67,7 @@ function mockUnauthFetch() {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    setMatchMedia(false);
   });
 
   it('renders the login form with tabs', async () => {
@@ -187,6 +219,70 @@ describe('LoginPage', () => {
       expect(registerLink).toBeInTheDocument();
       expect(registerLink.closest('a')).toHaveAttribute('href', '/register');
     });
+  });
+
+  it('opens test pharmacy window and applies selected account in desktop view', async () => {
+    const user = userEvent.setup();
+    mockUnauthFetch({
+      testPharmacies: [
+        { id: 1, name: 'テスト薬局A', email: 'test-a@example.com', prefecture: '東京都' },
+        { id: 2, name: 'テスト薬局B', email: 'test-b@example.com', prefecture: '大阪府' },
+      ],
+    });
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '登録済みテスト薬局を表示' })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: '登録済みテスト薬局を表示' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('登録済みテスト薬局')).toBeInTheDocument();
+    });
+    expect(screen.getByText('テスト薬局A')).toBeInTheDocument();
+    expect(screen.getByText('テスト薬局B')).toBeInTheDocument();
+    expect(document.querySelector('.dl-test-pharmacy-modal table')).not.toBeNull();
+    expect(document.querySelector('.dl-mobile-data-card')).toBeNull();
+
+    const applyButtons = screen.getAllByRole('button', { name: 'このメールアドレスを入力' });
+    await user.click(applyButtons[0]);
+
+    expect(getInputByLabel('メールアドレス')).toHaveValue('test-a@example.com');
+    expect(getInputByLabel('パスワード')).toHaveValue('');
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
+  });
+
+  it('renders same selection feature in mobile view', async () => {
+    const user = userEvent.setup();
+    setMatchMedia(true);
+    mockUnauthFetch({
+      testPharmacies: [
+        { id: 11, name: 'テスト薬局モバイルA', email: 'mobile-a@example.com', prefecture: '愛知県' },
+        { id: 12, name: 'テスト薬局モバイルB', email: 'mobile-b@example.com', prefecture: '福岡県' },
+      ],
+    });
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '登録済みテスト薬局を表示' })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: '登録済みテスト薬局を表示' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('テスト薬局モバイルA')).toBeInTheDocument();
+      expect(screen.getByText('テスト薬局モバイルB')).toBeInTheDocument();
+    });
+    expect(document.querySelector('.dl-mobile-data-card')).not.toBeNull();
+    expect(document.querySelector('.dl-test-pharmacy-modal table')).toBeNull();
+
+    const applyButtons = screen.getAllByRole('button', { name: 'このメールアドレスを入力' });
+    await user.click(applyButtons[1]);
+
+    expect(getInputByLabel('メールアドレス')).toHaveValue('mobile-b@example.com');
+    expect(getInputByLabel('パスワード')).toHaveValue('');
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
   });
 
   it('displays footer operation note', async () => {

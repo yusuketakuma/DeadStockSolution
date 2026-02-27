@@ -3,17 +3,17 @@
   "parent_session_id": null,
   "state": "initialized",
   "started_at": "2026-02-27T11:48:34Z",
-  "updated_at": "2026-02-27T11:48:34Z",
-  "event_seq": 1,
-  "last_event_id": "event-000001",
+  "updated_at": "2026-02-27T11:56:25Z",
+  "event_seq": 2,
+  "last_event_id": "event-000002",
   "state_version": 1,
   "cwd": "/Users/yusuke/DeadStockSolution",
   "project_name": "DeadStockSolution",
-  "resumed_at": "2026-02-27T11:48:34Z",
+  "resumed_at": "2026-02-27T11:56:25Z",
   "git": {
     "branch": "preview",
-    "uncommitted_changes": 59,
-    "last_commit": "d45a4b5"
+    "uncommitted_changes": 0,
+    "last_commit": "2e0a78d"
   },
   "plans": {
     "exists": true,

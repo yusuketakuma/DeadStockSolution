@@ -1,5 +1,205 @@
 # tasks/todo.md
 
+## 2026-02-27 認証フロー変更のセキュリティレビュー（auth/login）
+
+### Context
+- Prompt: latest changes security review
+- Scope:
+  - `server/src/routes/auth.ts`
+  - `client/src/pages/LoginPage.tsx`
+  - `client/src/test/e2e/login.test.tsx`
+  - `server/src/test/auth-route.test.ts`
+  - 関連経路（`middleware/auth.ts`, `api/client.ts`, `contexts/AuthContext.tsx`, `app.ts`）
+
+### Goals / Definition of Done
+- [x] 変更点と関連経路の認可境界を確認
+- [x] 注入/秘密情報/セッション競合観点を確認
+- [x] P1/P2/P3 形式で指摘を整理
+- [x] 同型パターンの横展開用 `rg` 提案を準備
+
+### Implementation checklist
+- [x] A. 対象4ファイル差分確認
+- [x] B. 認可ミドルウェアとマウント境界確認
+- [x] C. APIクライアントの401/エラー伝播確認
+- [x] D. 同型ルート探索パターン抽出
+
+## 2026-02-27 テスト薬局2件のDB表示ボタン + モバイルUIレビュー
+
+### Context
+- Prompt: DB登録済みのテスト薬局2件をワンクリックでウィンドウ表示。モバイル版にも同機能。加えてモバイルUIレビュー
+- Scope:
+  - `server/src/routes/auth.ts` の取得API追加
+  - `client/src/pages/LoginPage.tsx` のUI変更（PC/モバイル）
+  - テスト更新（server route / client login e2e）
+- Assumptions:
+  - 「ウィンドウ」はログイン画面内のモーダル表示を指す
+  - DBの平文パスワードは保持されないため、表示情報はDB上の属性（id/name/email/prefecture）
+- BLOCKED条件:
+  - ローカルDBに対象データが存在しない場合は空状態表示で動作保証
+
+### Goals / Definition of Done
+- [x] テスト薬局2件を取得するAPIが実装される
+- [x] ログイン画面でワンクリック表示モーダルが使える
+- [x] モバイル表示でも同等機能が使える
+- [x] モバイルUIレビュー（機能同等/レンダリング）を報告できる
+- [x] typecheck/lint/test/build が通る
+
+### Implementation checklist
+- [x] A. auth routeにテスト薬局一覧APIを追加
+- [x] B. serverテストを追加
+- [x] C. LoginPageをモーダル表示フローへ変更
+- [x] D. PC/モバイル両表示（responsive）を実装
+- [x] E. client e2eテストを更新
+
+### Verification（最後にまとめて）
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/login.test.tsx
+- [x] npm test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Review（最後にまとめて多観点）
+- [x] security
+- [x] correctness
+- [x] quality
+- [x] performance
+- [x] ux
+- [x] ops
+
+### Result
+- Status: DONE
+- Notes:
+  - `server/src/routes/auth.ts` に `GET /api/auth/test-pharmacies` を追加。`isAdmin=false` / `isActive=true` に加え、`TEST_PHARMACY_EMAILS` 指定時は allowlist、未指定時は `test` / `テスト` を含むアカウントのみ対象化。
+  - 本番環境は `ENABLE_TEST_PHARMACY_PREVIEW=true` がない限り 404 で無効化し、公開データ露出リスクを抑止。
+  - ログイン画面は「登録済みテスト薬局を表示」ボタンでモーダルを開き、DB取得したテスト薬局情報（ID/薬局名/都道府県/メール）を表示。選択でメールアドレス欄へ反映。
+  - モバイルは `AppResponsiveSwitch` でカード表示へ切替し、PC版と同じ選択機能を提供。
+  - モバイルUIレビュー結果:
+    - 機能同等性: PC/モバイルともに同じAPI・同じ選択アクションを使用（差異なし）。
+    - レンダリング: デスクトップは表、モバイルはカードで表示崩れなし（`login.test.tsx` で両分岐を検証）。
+    - 追加修正: ボタン文言を「このメールアドレスを入力」に統一し、挙動との不一致を解消。
+
+## 2026-02-27 ログイン画面デモアカウント自動入力ボタン追加
+
+### Context
+- Prompt: ログインページ下部にデモアカウントID/パスワードをワンクリック入力するボタンを2つ追加
+- Scope:
+  - `client/src/pages/LoginPage.tsx` のUI追加
+  - 必要なスタイルとテスト更新
+- Assumptions:
+  - ログイン実行は既存の submit フロー（本番同様）を変更しない
+  - デモ資格情報は画面上で明示し、入力補助のみ行う（自動submitしない）
+- BLOCKED条件:
+  - 実運用デモ資格情報が未確定の場合は仮値で実装し別途差し替え
+
+### Goals / Definition of Done
+- [x] ログイン画面下部に2つのデモ入力ボタンが表示される
+- [x] クリックでID/パスワードが入力される
+- [x] 管理者デモボタンは管理者モードで入力される
+- [x] ログイン処理は既存フローのまま（submit時API呼び出し）
+- [x] typecheck/lint/test/build が通る
+
+### Implementation checklist
+- [x] A. LoginPageにデモアカウント定義と入力ハンドラを追加
+- [x] B. ボタンUI（下部配置・a11y属性）を追加
+- [x] C. 必要なスタイル追加
+- [x] D. e2eテスト追加/更新
+
+### Verification（最後にまとめて）
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test --workspace=client -- src/test/e2e/login.test.tsx
+- [x] npm test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Review（最後にまとめて多観点）
+- [x] security
+- [x] correctness
+- [x] quality
+- [x] performance
+- [x] ux
+- [x] ops
+
+### Result
+- Status: DONE
+- Notes:
+  - `client/src/pages/LoginPage.tsx` にデモ薬局/デモ管理者の2つの入力ショートカットを追加。クリックで `email/password` をセットし、管理者ショートカットは `mode=admin` へ切替。
+  - ログイン処理は既存 `handleSubmit` をそのまま維持し、API認証フロー（本番同様）は未変更。
+  - 追加改善として、環境変数が空文字の場合はフォールバック値を使用するようにし、`loading` 中はショートカットボタンを無効化。
+  - `client/src/test/e2e/login.test.tsx` にショートカット挙動のテスト2件を追加し、期待値は環境変数解決ロジックと揃えて環境差分に追従。
+  - 多観点レビューで露出リスク指摘があったが、ユーザー指示「デモアカウントなので露出してよい」により許容。露出以外の不具合リスク（空文字env/操作中上書き）を修正してP1=0で完了。
+
+## 2026-02-27 error-handler セキュリティレビュー
+
+### Context
+- Prompt: `server/src/middleware/error-handler.ts` の変更を security review
+- Scope:
+  - 該当差分（ログ挙動変更）
+  - 呼び出し元/隣接ログ基盤（`app.ts`, `services/logger.ts`, 関連テスト）
+  - 観点: logging behavior / data exposure
+
+### Goals / Definition of Done
+- [x] 対象差分のログ露出リスクを評価
+- [x] 関連経路（呼び出し元/同型ユーティリティ）を確認
+- [x] P1/P2/P3 形式でレビュー結果を提示
+
+### Implementation checklist
+- [x] A. `git diff -- server/src/middleware/error-handler.ts` で変更点確認
+- [x] B. `app.ts` の接続経路と `logger` 実装を確認
+- [x] C. 同型ログ出力パターンを `rg` で横断確認
+
+### Review
+- [x] security（logging behavior / data exposure）
+
+## 2026-02-27 上に出ているメッセージ解消
+
+### Context
+- Prompt: 上に出ているメッセージを解決して
+- Scope:
+  - ローカルで再現可能なエラー/警告メッセージの特定
+  - 根因修正と検証
+- Assumptions:
+  - メッセージ本文が省略されているため、現行リポジトリの検証で再現する
+- BLOCKED条件:
+  - ローカル再現不可かつ外部環境依存
+
+### Goals / Definition of Done
+- [x] 対象メッセージを特定できる
+- [x] 根因を修正できる
+- [x] typecheck/lint/test/build をまとめて通す
+- [x] 多観点レビューで P1=0
+
+### Implementation checklist
+- [x] A. エラーメッセージの再現手順を確立
+- [x] B. 最小変更で修正
+- [x] C. 必要なテスト/設定を更新
+
+### Verification（最後にまとめて）
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Review（最後にまとめて多観点）
+- [x] security
+- [x] correctness
+- [x] quality
+- [x] performance
+- [x] ux
+- [x] ops
+
+### Result
+- Status: DONE
+- Notes:
+  - `npm run test --workspace=server -- src/test/error-handler.test.ts` で `Unexpected end of JSON input` が 400 JSON parse error ログとして出ることを再現。
+  - `server/src/middleware/error-handler.ts` に `resolveLogMessage` / `resolveLogStack` を追加し、`entity.parse.failed` 時はログ文言を `Malformed JSON payload` へ正規化し stack を省略。
+  - 修正後に同テストを再実行し、対象メッセージの非表示化を確認。
+  - 最終検証（typecheck/lint/test/build）を再実行し全成功。
+  - 多観点レビューで P1 は 0。P2/P3 提案（`headersSent` ガード、4xxレスポンス正規化、エラーコード付与など）は今回スコープ外の設計改善として別タスク化候補。
+
 ## 2026-02-27 Vercel build failure (`tsc: command not found`)
 
 ### Context

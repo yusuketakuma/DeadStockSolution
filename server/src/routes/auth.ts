@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import {
@@ -46,6 +46,14 @@ const loginLimiter = rateLimit({
 const AUTH_CONFIGURATION_ERROR_MESSAGE = '認証設定が未完了です。管理者に連絡してください';
 const PASSWORD_RESET_MIN_RESPONSE_MS = process.env.NODE_ENV === 'test' ? 0 : 180;
 const PASSWORD_RESET_RESPONSE_JITTER_MS = process.env.NODE_ENV === 'test' ? 0 : 120;
+const TEST_PHARMACY_PREVIEW_LIMIT = 2;
+const testPharmacyPreviewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'テスト薬局情報の取得回数が多すぎます。しばらくしてから再試行してください' },
+});
 
 function handleAuthConfigurationError(context: string, err: unknown, res: Response): boolean {
   if (!isJwtSecretMissingError(err)) {
@@ -77,6 +85,20 @@ function extractUniqueViolationConstraint(err: unknown): string | null {
   const message = String((err as { message?: unknown }).message ?? '');
   const matched = message.match(/unique constraint "([^"]+)"/i);
   return matched?.[1]?.toLowerCase() ?? '';
+}
+
+function isTestPharmacyPreviewEnabled(): boolean {
+  if (process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+  return process.env.ENABLE_TEST_PHARMACY_PREVIEW === 'true';
+}
+
+function parseTestPharmacyEmails(): string[] {
+  return (process.env.TEST_PHARMACY_EMAILS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
 }
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
@@ -398,6 +420,45 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
       error: err instanceof Error ? err.message : String(err),
     });
     res.status(500).json({ error: 'ユーザー情報の取得に失敗しました' });
+  }
+});
+
+router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequest, res: Response) => {
+  try {
+    if (!isTestPharmacyPreviewEnabled()) {
+      res.status(404).json({ error: 'テスト薬局情報は利用できません' });
+      return;
+    }
+
+    const previewEmails = parseTestPharmacyEmails();
+    const baseCondition = and(
+      eq(pharmacies.isAdmin, false),
+      eq(pharmacies.isActive, true),
+    );
+    const filterCondition = previewEmails.length > 0
+      ? and(baseCondition, inArray(pharmacies.email, previewEmails))
+      : and(baseCondition, or(
+        ilike(pharmacies.email, '%test%'),
+        ilike(pharmacies.name, '%テスト%'),
+      ));
+
+    const rows = await db.select({
+      id: pharmacies.id,
+      name: pharmacies.name,
+      email: pharmacies.email,
+      prefecture: pharmacies.prefecture,
+    })
+      .from(pharmacies)
+      .where(filterCondition)
+      .orderBy(asc(pharmacies.id))
+      .limit(TEST_PHARMACY_PREVIEW_LIMIT);
+
+    res.json({ accounts: rows });
+  } catch (err) {
+    logger.error('Get test pharmacies error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ error: 'テスト薬局情報の取得に失敗しました' });
   }
 });
 

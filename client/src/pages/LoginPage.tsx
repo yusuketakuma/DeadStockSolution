@@ -3,17 +3,54 @@ import { useAsyncState } from '../hooks/useAsyncState';
 import { Nav } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../api/client';
 import { APP_VERSION } from '../constants/appVersion';
 import AuthPageLayout from '../components/ui/AuthPageLayout';
 import StatusAlert from '../components/ui/StatusAlert';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppField from '../components/ui/AppField';
+import AppModalShell from '../components/ui/AppModalShell';
+import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
+import AppMobileDataCard from '../components/ui/AppMobileDataCard';
+
+type LoginMode = 'user' | 'admin';
+
+interface TestPharmacyPreview {
+  id: number;
+  name: string;
+  email: string;
+  prefecture: string;
+}
+
+interface TestPharmacyResponse {
+  accounts?: unknown;
+}
+
+function isTestPharmacyPreview(value: unknown): value is TestPharmacyPreview {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.id === 'number'
+    && typeof candidate.name === 'string'
+    && typeof candidate.email === 'string'
+    && typeof candidate.prefecture === 'string';
+}
+
+function parseTestPharmacyAccounts(payload: unknown): TestPharmacyPreview[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const accounts = (payload as TestPharmacyResponse).accounts;
+  if (!Array.isArray(accounts)) return [];
+  return accounts.filter(isTestPharmacyPreview);
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { loading, setLoading, error, setError } = useAsyncState();
-  const [mode, setMode] = useState<'user' | 'admin'>('user');
+  const [mode, setMode] = useState<LoginMode>('user');
+  const [showTestPharmacyModal, setShowTestPharmacyModal] = useState(false);
+  const [testPharmacyLoading, setTestPharmacyLoading] = useState(false);
+  const [testPharmacyError, setTestPharmacyError] = useState('');
+  const [testPharmacies, setTestPharmacies] = useState<TestPharmacyPreview[]>([]);
   const { login, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -44,11 +81,35 @@ export default function LoginPage() {
     }
   };
 
-  const switchMode = (newMode: 'user' | 'admin') => {
+  const switchMode = (newMode: LoginMode) => {
     setMode(newMode);
     setError('');
     setEmail('');
     setPassword('');
+  };
+
+  const openTestPharmacyModal = async () => {
+    if (testPharmacyLoading) return;
+    setShowTestPharmacyModal(true);
+    setTestPharmacyLoading(true);
+    setTestPharmacyError('');
+    try {
+      const response = await api.get<TestPharmacyResponse>('/auth/test-pharmacies');
+      setTestPharmacies(parseTestPharmacyAccounts(response));
+    } catch (err) {
+      setTestPharmacies([]);
+      setTestPharmacyError(err instanceof Error ? err.message : 'テスト薬局情報の取得に失敗しました');
+    } finally {
+      setTestPharmacyLoading(false);
+    }
+  };
+
+  const applyTestPharmacy = (pharmacy: TestPharmacyPreview) => {
+    setMode('user');
+    setError('');
+    setEmail(pharmacy.email);
+    setPassword('');
+    setShowTestPharmacyModal(false);
   };
 
   return (
@@ -137,6 +198,98 @@ export default function LoginPage() {
               管理者アカウントでログインしてください。
             </div>
           )}
+
+          <section className="dl-demo-shortcuts" aria-label="テスト薬局情報">
+            <h3 className="dl-demo-title">テスト薬局情報</h3>
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm w-100"
+              onClick={() => {
+                void openTestPharmacyModal();
+              }}
+              disabled={loading || testPharmacyLoading}
+            >
+              {testPharmacyLoading ? '読込中...' : '登録済みテスト薬局を表示'}
+            </button>
+            <p className="dl-demo-hint">
+              DB登録済みのテスト薬局を表示します。選択するとメールアドレス欄へ反映されます。
+            </p>
+          </section>
+
+          <AppModalShell
+            show={showTestPharmacyModal}
+            onHide={() => setShowTestPharmacyModal(false)}
+            title="登録済みテスト薬局"
+            size="lg"
+          >
+            {testPharmacyLoading && <p className="text-center mb-0 py-3">テスト薬局情報を読み込み中です...</p>}
+            {testPharmacyError && <StatusAlert variant="danger" message={testPharmacyError} />}
+            {!testPharmacyLoading && !testPharmacyError && testPharmacies.length === 0 && (
+              <p className="text-muted mb-0">表示できるテスト薬局が見つかりませんでした。</p>
+            )}
+            {!testPharmacyLoading && !testPharmacyError && testPharmacies.length > 0 && (
+              <AppResponsiveSwitch
+                desktop={(
+                  <div className="dl-test-pharmacy-modal">
+                    <table className="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th scope="col">ID</th>
+                          <th scope="col">薬局名</th>
+                          <th scope="col">都道府県</th>
+                          <th scope="col">メールアドレス</th>
+                          <th scope="col" className="text-end">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {testPharmacies.map((pharmacy) => (
+                          <tr key={pharmacy.id}>
+                            <td>{pharmacy.id}</td>
+                            <td>{pharmacy.name}</td>
+                            <td>{pharmacy.prefecture}</td>
+                            <td className="dl-test-pharmacy-email">{pharmacy.email}</td>
+                            <td className="text-end">
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => applyTestPharmacy(pharmacy)}
+                              >
+                                このメールアドレスを入力
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                mobile={(
+                  <div className="dl-mobile-data-list">
+                    {testPharmacies.map((pharmacy) => (
+                      <AppMobileDataCard
+                        key={pharmacy.id}
+                        title={pharmacy.name}
+                        subtitle={`ID: ${pharmacy.id}`}
+                        fields={[
+                          { label: '都道府県', value: pharmacy.prefecture },
+                          { label: 'メール', value: <span className="dl-test-pharmacy-email">{pharmacy.email}</span> },
+                        ]}
+                        actions={(
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={() => applyTestPharmacy(pharmacy)}
+                          >
+                            このメールアドレスを入力
+                          </button>
+                        )}
+                      />
+                    ))}
+                  </div>
+                )}
+              />
+            )}
+          </AppModalShell>
         </>
       )}
       aside={(
