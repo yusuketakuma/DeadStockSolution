@@ -36,6 +36,14 @@ interface ProposalItem {
   yakkaUnitPrice: number | null;
 }
 
+interface ProposalTimelineEvent {
+  action: string;
+  label: string;
+  at: string | null;
+  actorPharmacyId: number | null;
+  actorName: string | null;
+}
+
 interface ProposalDetail {
   proposal: {
     id: number;
@@ -50,6 +58,7 @@ interface ProposalDetail {
   items: ProposalItem[];
   pharmacyA: PharmacyInfo;
   pharmacyB: PharmacyInfo;
+  timeline?: ProposalTimelineEvent[];
 }
 
 const commentTemplates = [
@@ -327,6 +336,22 @@ ${template}` : template);
           <div className="text-center mt-1 small text-muted">
             現在のステータス: <Badge bg={isTerminalPhase ? 'danger' : isCompletedPhase ? 'secondary' : isConfirmedPhase ? 'success' : 'warning'}>{statusLabel}</Badge>
           </div>
+      </AppDataPanel>
+
+      <AppDataPanel title="進行履歴" className="mb-3" bodyClassName="small">
+        {(data.timeline ?? []).length === 0 ? (
+          <div className="text-muted">履歴はまだありません。</div>
+        ) : (
+          <ul className="mb-0 ps-3">
+            {(data.timeline ?? []).map((event, idx) => (
+              <li key={`${event.action}-${event.at ?? 'na'}-${idx}`} className="mb-1">
+                <strong>{event.label}</strong>
+                {' '}— {event.actorName ?? '不明'}
+                {' '}({event.at ? new Date(event.at).toLocaleString('ja-JP') : '日時不明'})
+              </li>
+            ))}
+          </ul>
+        )}
       </AppDataPanel>
 
       <Row className="g-3 mb-3">

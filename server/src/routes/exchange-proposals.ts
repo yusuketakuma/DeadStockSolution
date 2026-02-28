@@ -7,6 +7,7 @@ import {
   exchangeProposalItems,
   deadStockItems,
   pharmacies,
+  activityLogs,
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
@@ -360,11 +361,50 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       }).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
     ]);
 
+    const actionRows = await db.select({
+      action: activityLogs.action,
+      detail: activityLogs.detail,
+      createdAt: activityLogs.createdAt,
+      actorPharmacyId: activityLogs.pharmacyId,
+      actorName: pharmacies.name,
+    })
+      .from(activityLogs)
+      .leftJoin(pharmacies, eq(activityLogs.pharmacyId, pharmacies.id))
+      .where(and(
+        inArray(activityLogs.action, ['proposal_accept', 'proposal_reject', 'proposal_complete', 'proposal_create']),
+        sql`${activityLogs.detail} LIKE ${`%proposalId=${id}%`}`,
+      ))
+      .orderBy(asc(activityLogs.createdAt), asc(activityLogs.id));
+
+    const timeline = [
+      {
+        action: 'proposal_created',
+        label: '仮マッチング作成',
+        at: proposal.proposedAt,
+        actorPharmacyId: proposal.pharmacyAId,
+        actorName: pharmA?.name ?? '提案元薬局',
+      },
+      ...actionRows.map((row) => ({
+        action: row.action,
+        label: row.action === 'proposal_accept'
+          ? '承認'
+          : row.action === 'proposal_reject'
+            ? '拒否'
+            : row.action === 'proposal_complete'
+              ? '交換完了'
+              : 'ステータス更新',
+        at: row.createdAt,
+        actorPharmacyId: row.actorPharmacyId,
+        actorName: row.actorName ?? '不明',
+      })),
+    ];
+
     res.json({
       proposal,
       items,
       pharmacyA: { id: proposal.pharmacyAId, ...pharmA },
       pharmacyB: { id: proposal.pharmacyBId, ...pharmB },
+      timeline,
     });
   } catch (err) {
     logger.error('Proposal detail error:', { error: (err as Error).message });

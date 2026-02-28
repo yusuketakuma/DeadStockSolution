@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { AuthRequest } from '../types';
 import { acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
 import { parsePositiveInt } from '../utils/request-utils';
+import { writeLog, getClientIp } from '../services/log-service';
 
 const router = Router();
 
@@ -26,6 +27,11 @@ router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => 
     }
     const newStatus = await acceptProposal(id, req.user!.id);
     const msg = newStatus === 'confirmed' ? '仮マッチングが確定しました' : '仮マッチングを承認しました（相手薬局の承認待ち）';
+    void writeLog('proposal_accept', {
+      pharmacyId: req.user!.id,
+      detail: `proposalId=${id}|status=${newStatus}`,
+      ipAddress: getClientIp(req),
+    });
     res.json({ message: msg, status: newStatus });
   } catch (err) {
     const failure = sanitizeProposalActionError(err);
@@ -42,6 +48,11 @@ router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => 
       return;
     }
     await rejectProposal(id, req.user!.id);
+    void writeLog('proposal_reject', {
+      pharmacyId: req.user!.id,
+      detail: `proposalId=${id}|status=rejected`,
+      ipAddress: getClientIp(req),
+    });
     res.json({ message: '仮マッチングを拒否しました' });
   } catch (err) {
     const failure = sanitizeProposalActionError(err);
@@ -58,6 +69,11 @@ router.post('/proposals/:id/complete', async (req: AuthRequest, res: Response) =
       return;
     }
     await completeProposal(id, req.user!.id);
+    void writeLog('proposal_complete', {
+      pharmacyId: req.user!.id,
+      detail: `proposalId=${id}|status=completed`,
+      ipAddress: getClientIp(req),
+    });
     res.json({ message: '交換を完了しました' });
   } catch (err) {
     const failure = sanitizeProposalActionError(err);
