@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-02-28
+
+### 🎯 What's Changed for You
+
+**提案タイムライン・アップロード確認ワークフロー・セキュリティ強化の大型アップデート**
+
+| Before | After |
+|--------|-------|
+| 提案の経緯が不明 | アクター・操作ごとのタイムライン表示で経緯が一目瞭然 |
+| アップロード即反映で誤操作リスク | 差分プレビュー→確認→反映の3ステップ確認ワークフロー |
+| エラーメッセージに内部情報が漏れる可能性 | 本番環境ではエラー詳細をサニタイズ、CSP/CSRF対策も強化 |
+| バージョン表示なし | タイトル横にアプリバージョンを常時表示 |
+
+### Added
+
+- **提案タイムライン**: 提案の状態遷移をアクター・操作・日時で時系列表示
+- **タイムラインフィルター**: 管理者向け全タイムライン閲覧・絞り込み機能
+- **アップロード確認ワークフロー**: 差分プレビュー→確認→反映の3ステップで誤操作を防止
+- **OpenClaw Gateway CLI モード**: OpenClaw コネクタにゲートウェイCLIモードを追加
+- **管理者アラートサマリ**: アップロード失敗・未処理ジョブの要約表示
+
+### Fixed
+
+- **バージョン表示**: ヘッダーとログイン画面のタイトル横にアプリバージョンを表示
+- **セキュリティ強化**: エラーメッセージのサニタイズ、CSP ヘッダー追加、CSRF/内部認証のタイミングセーフ比較
+- **テスト薬局プレビュー**: プレビュー環境でのデフォルト動作を復元
+- **テスト基盤改善**: Node 25+ 環境の localStorage 互換性修正
+
+### Changed
+
+- **コードリファクタリング**: exchange.ts と admin-pharmacies.ts をサブルートモジュールに分割
+- **パフォーマンス改善**: マッチングリフレッシュのN+1クエリ解消、複合インデックス追加
+- **ステータスラベル日本語化**: 提案の承認/拒否ステータスをユーザー視点の日本語表記に統一
+
 ## [0.0.3] - 2026-02-28
 
 ### 🎯 What's Changed for You
@@ -108,6 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview DB同期とテストアカウントパスワード更新
 - 本番環境でのCORS同一ホストオリジンチェック
 
+[0.0.4]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/yusuketakuma/DeadStockSolution/commits/v0.0.1
