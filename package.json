@@ -28,7 +28,8 @@
     "typecheck:client": "npm run typecheck --workspace=client",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "deploy:preview": "sh scripts/vercel-deploy-preview.sh",
-    "deploy:prod": "sh scripts/vercel-deploy-prod.sh"
+    "deploy:prod": "sh scripts/vercel-deploy-prod.sh",
+    "quality:gate": "bash scripts/quality-gate.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
