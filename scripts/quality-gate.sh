@@ -7,6 +7,8 @@ cd "$ROOT_DIR"
 BRANCH="${QUALITY_GATE_BRANCH:-preview}"
 REMOTE="${QUALITY_GATE_REMOTE:-origin}"
 SKIP_INSTALL="${QUALITY_GATE_SKIP_INSTALL:-0}"
+SKIP_SYNC="${QUALITY_GATE_SKIP_SYNC:-0}"
+ALLOW_DIRTY="${QUALITY_GATE_ALLOW_DIRTY:-0}"
 
 log() {
   printf '[quality-gate] %s\n' "$*"
@@ -26,16 +28,18 @@ run_step() {
   return 1
 }
 
-if ! git diff --quiet || ! git diff --cached --quiet; then
+if [ "$ALLOW_DIRTY" != "1" ] && { ! git diff --quiet || ! git diff --cached --quiet; }; then
   log "working tree is dirty. Commit/stash first."
   git status --short
   exit 2
 fi
 
-log "sync branch ${BRANCH}"
-git fetch "$REMOTE" "$BRANCH"
-git checkout "$BRANCH"
-git pull --ff-only "$REMOTE" "$BRANCH"
+if [ "$SKIP_SYNC" != "1" ]; then
+  log "sync branch ${BRANCH}"
+  git fetch "$REMOTE" "$BRANCH"
+  git checkout "$BRANCH"
+  git pull --ff-only "$REMOTE" "$BRANCH"
+fi
 
 if [ "$SKIP_INSTALL" != "1" ]; then
   log "npm ci"

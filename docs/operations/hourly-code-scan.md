@@ -20,6 +20,12 @@ npm run quality:gate
 5. `npm run test`
 6. 差分がある場合のみコミット & push
 
+失敗時に手修正を入れて再検証する場合は、以下で再実行する。
+
+```bash
+QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 npm run quality:gate
+```
+
 ## 報告フォーマット（提案）
 
 毎回この順で報告する。
