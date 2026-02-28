@@ -2,8 +2,11 @@
 
 ## 目的
 
-`preview` ブランチを1時間ごとに自動スキャンし、
-安全に自動修正できる内容（主に lint 自動修正）をコミットして継続的に健全性を維持する。
+`preview` ブランチを1時間ごとに自動スキャンし、以下3点に集中して改善する。
+
+1. セキュリティ向上
+2. コード可読性向上
+3. システム動作速度改善
 
 ## 実行コマンド
 
@@ -11,39 +14,38 @@
 npm run quality:gate
 ```
 
-内部で次を実行する。
+定期タスクでは `quality:gate` を基盤に、追加でセキュリティ確認を実施する。
+
+- `npm run audit:prod`
+
+## 定期タスクの標準フロー
 
 1. `date '+%Y-%m-%d %H:%M:%S %Z'`（開始時刻記録）
-2. `git fetch / checkout / pull --ff-only`
-3. `npm ci`
-4. `npm run lint:fix`
-5. `npm run typecheck`
-6. `npm run test`
+2. `git status --porcelain`（開始前にクリーン確認）
+3. `git fetch / checkout / pull --ff-only`
+4. `npm run quality:gate`
+5. （必要時のみ）
+   `QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 npm run quality:gate`
+6. `npm run audit:prod`
 7. `date '+%Y-%m-%d %H:%M:%S %Z'`（終了時刻記録）
-8. 差分がある場合のみコミット & push
+8. `git status --porcelain`（終了後に差分確認）
+9. 差分がある場合のみコミット & push
 
-失敗時に手修正を入れて再検証する場合は、以下で再実行する。
-
-```bash
-QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 npm run quality:gate
-```
-
-## 報告フォーマット（提案）
+## 報告フォーマット（固定）
 
 毎回この順で報告する。
 
 1. 変更点
 2. 実行日時
-3. 実行内容（実行コマンド）
-4. テスト結果
-5. 課題
-6. 次アクション
-7. コミットID
+3. 重点テーマ結果（セキュリティ/可読性/速度）
+4. 実行内容（実行コマンド）
+5. テスト結果
+6. 課題
+7. 次アクション
+8. コミットID
 
 ※ 報告は必ず1つの吹き出し（単一メッセージ）にまとめる。分割送信は禁止。
 ※ 実行日時は JST で開始時刻/終了時刻を記載する。
-
-※ 失敗時に再検証した場合は、`QUALITY_GATE_ALLOW_DIRTY=1 ... npm run quality:gate` の実行有無と回数も `実行内容` に必ず記載する。
 
 ### テンプレート
 
@@ -55,19 +57,27 @@ QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 
 - 開始: YYYY-MM-DD HH:mm:ss JST
 - 終了: YYYY-MM-DD HH:mm:ss JST
 
+重点テーマ結果:
+- セキュリティ: ...
+- 可読性: ...
+- 速度: ...
+
 実行内容:
-- npm run quality:gate（実行回数: 1回）
+- npm run quality:gate（実行回数: n回）
 - 実行コマンド（要約）:
   - git fetch origin preview && git checkout preview && git pull --ff-only origin preview
   - npm ci --no-audit --no-fund
   - npm run lint:fix
   - npm run typecheck
   - npm run test
+  - npm run audit:prod
+- 再検証コマンド（QUALITY_GATE_ALLOW_DIRTY=1 ...）使用: あり/なし（回数: n回）
 
 テスト結果:
 - lint:fix: pass/fail
 - typecheck: pass/fail
 - test: pass/fail
+- audit:prod: pass/fail（high/critical の有無）
 
 課題:
 - ...（なければ「なし」）
@@ -85,7 +95,7 @@ QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 
 - テスト未通過の状態では自動コミットしない
 - コミットは必ず `preview` に対して実施
 - コミットメッセージは機械処理しやすい prefix を使う
-  - `chore(auto-scan): ...`
+  - `fix(auto-scan): ...`
 
 ## 参考（インターネット）
 
