@@ -13,12 +13,14 @@ npm run quality:gate
 
 内部で次を実行する。
 
-1. `git fetch / checkout / pull --ff-only`
-2. `npm ci`
-3. `npm run lint:fix`
-4. `npm run typecheck`
-5. `npm run test`
-6. 差分がある場合のみコミット & push
+1. `date '+%Y-%m-%d %H:%M:%S %Z'`（開始時刻記録）
+2. `git fetch / checkout / pull --ff-only`
+3. `npm ci`
+4. `npm run lint:fix`
+5. `npm run typecheck`
+6. `npm run test`
+7. `date '+%Y-%m-%d %H:%M:%S %Z'`（終了時刻記録）
+8. 差分がある場合のみコミット & push
 
 失敗時に手修正を入れて再検証する場合は、以下で再実行する。
 
@@ -31,13 +33,15 @@ QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 
 毎回この順で報告する。
 
 1. 変更点
-2. 実行内容（実行コマンド）
-3. テスト結果
-4. 課題
-5. 次アクション
-6. コミットID
+2. 実行日時
+3. 実行内容（実行コマンド）
+4. テスト結果
+5. 課題
+6. 次アクション
+7. コミットID
 
 ※ 報告は必ず1つの吹き出し（単一メッセージ）にまとめる。分割送信は禁止。
+※ 実行日時は JST で開始時刻/終了時刻を記載する。
 
 ※ 失敗時に再検証した場合は、`QUALITY_GATE_ALLOW_DIRTY=1 ... npm run quality:gate` の実行有無と回数も `実行内容` に必ず記載する。
 
@@ -46,6 +50,10 @@ QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 
 ```text
 変更点:
 - ...
+
+実行日時:
+- 開始: YYYY-MM-DD HH:mm:ss JST
+- 終了: YYYY-MM-DD HH:mm:ss JST
 
 実行内容:
 - npm run quality:gate（実行回数: 1回）
