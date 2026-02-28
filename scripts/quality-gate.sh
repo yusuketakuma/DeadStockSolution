@@ -62,7 +62,7 @@ if git diff --quiet && git diff --cached --quiet; then
 fi
 
 stamp="$(date '+%Y-%m-%d %H:%M %Z')"
-commit_msg="chore(auto-scan): apply safe autofix (${stamp})"
+commit_msg="fix(auto-scan): apply safe autofix (${stamp})"
 
 git add -A
 git commit -m "$commit_msg"
