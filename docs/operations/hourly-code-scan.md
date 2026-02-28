@@ -31,16 +31,28 @@ QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 
 毎回この順で報告する。
 
 1. 変更点
-2. テスト結果
-3. 課題
-4. 次アクション
-5. コミットID
+2. 実行内容（実行コマンド）
+3. テスト結果
+4. 課題
+5. 次アクション
+6. コミットID
+
+※ 失敗時に再検証した場合は、`QUALITY_GATE_ALLOW_DIRTY=1 ... npm run quality:gate` の実行有無と回数も `実行内容` に必ず記載する。
 
 ### テンプレート
 
 ```text
 変更点:
 - ...
+
+実行内容:
+- npm run quality:gate（実行回数: 1回）
+- 実行コマンド（要約）:
+  - git fetch origin preview && git checkout preview && git pull --ff-only origin preview
+  - npm ci --no-audit --no-fund
+  - npm run lint:fix
+  - npm run typecheck
+  - npm run test
 
 テスト結果:
 - lint:fix: pass/fail
