@@ -95,6 +95,7 @@ export default function ProposalDetailPage() {
   const [feedbackRating, setFeedbackRating] = useState('5');
   const [feedbackComment, setFeedbackComment] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'decision'>('all');
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -290,6 +291,12 @@ export default function ProposalDetailPage() {
 ${template}` : template);
   };
 
+  const filteredTimeline = (data.timeline ?? []).filter((event) => (
+    timelineFilter === 'all'
+      ? true
+      : ['proposal_accept', 'proposal_reject', 'proposal_complete'].includes(event.action)
+  ));
+
   const actionLabelMap: Record<'accept' | 'reject' | 'complete', string> = {
     accept: '承認',
     reject: '拒否',
@@ -339,11 +346,23 @@ ${template}` : template);
       </AppDataPanel>
 
       <AppDataPanel title="進行履歴" className="mb-3" bodyClassName="small">
-        {(data.timeline ?? []).length === 0 ? (
-          <div className="text-muted">履歴はまだありません。</div>
+        <div className="mb-2" style={{ maxWidth: 280 }}>
+          <AppSelect
+            controlId="proposal-timeline-filter"
+            value={timelineFilter}
+            ariaLabel="進行履歴フィルタ"
+            onChange={(value) => setTimelineFilter(value as 'all' | 'decision')}
+            options={[
+              { value: 'all', label: 'すべて表示' },
+              { value: 'decision', label: '承認/拒否/完了のみ' },
+            ]}
+          />
+        </div>
+        {filteredTimeline.length === 0 ? (
+          <div className="text-muted">表示できる履歴はありません。</div>
         ) : (
           <ul className="mb-0 ps-3">
-            {(data.timeline ?? []).map((event, idx) => (
+            {filteredTimeline.map((event, idx) => (
               <li key={`${event.action}-${event.at ?? 'na'}-${idx}`} className="mb-1">
                 <strong>{event.label}</strong>
                 {' '}— {event.actorName ?? '不明'}

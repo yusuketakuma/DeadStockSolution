@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
-import rateLimit from 'express-rate-limit';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, asc, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -8,6 +7,7 @@ import {
   adminMessages,
   userRequests,
   proposalComments,
+  activityLogs,
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { parsePositiveInt } from '../utils/request-utils';
@@ -20,15 +20,8 @@ import {
   handoffToOpenClaw,
   type OpenClawHandoffResult,
 } from '../services/openclaw-service';
+import { adminWriteLimiter } from './admin-write-limiter';
 import { sendPaginated, parseListPagination, parseIdOrBadRequest, getErrorMessage, handleAdminError } from './admin-utils';
-
-const adminWriteLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: '管理系APIへのリクエストが多すぎます。しばらくして再試行してください' },
-});
 
 type AdminHandoffResponse = Pick<
   OpenClawHandoffResult,
@@ -135,6 +128,75 @@ router.get('/exchanges/:proposalId/comments', async (req: AuthRequest, res: Resp
     });
   } catch (err) {
     handleAdminError(err, 'Admin exchange comments error', '交渉メモの取得に失敗しました', res);
+  }
+});
+
+
+router.get('/exchanges/:proposalId/timeline', async (req: AuthRequest, res: Response) => {
+  try {
+    const proposalId = parseIdOrBadRequest(res, req.params.proposalId);
+    if (!proposalId) return;
+
+    const [proposal] = await db.select({
+      id: exchangeProposals.id,
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      proposedAt: exchangeProposals.proposedAt,
+    })
+      .from(exchangeProposals)
+      .where(eq(exchangeProposals.id, proposalId))
+      .limit(1);
+
+    if (!proposal) {
+      res.status(404).json({ error: 'マッチングが見つかりません' });
+      return;
+    }
+
+    const [proposalCreator] = await db.select({ name: pharmacies.name })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, proposal.pharmacyAId))
+      .limit(1);
+
+    const rows = await db.select({
+      action: activityLogs.action,
+      detail: activityLogs.detail,
+      createdAt: activityLogs.createdAt,
+      actorPharmacyId: activityLogs.pharmacyId,
+      actorName: pharmacies.name,
+    })
+      .from(activityLogs)
+      .leftJoin(pharmacies, eq(activityLogs.pharmacyId, pharmacies.id))
+      .where(and(
+        inArray(activityLogs.action, ['proposal_accept', 'proposal_reject', 'proposal_complete', 'proposal_create']),
+        sql`${activityLogs.detail} LIKE ${`%proposalId=${proposalId}%`}`,
+      ))
+      .orderBy(asc(activityLogs.createdAt), asc(activityLogs.id));
+
+    res.json({
+      data: [
+        {
+          action: 'proposal_created',
+          label: '仮マッチング作成',
+          at: proposal.proposedAt,
+          actorPharmacyId: proposal.pharmacyAId,
+          actorName: proposalCreator?.name ?? '提案元薬局',
+        },
+        ...rows.map((row) => ({
+          action: row.action,
+          label: row.action === 'proposal_accept'
+            ? '承認'
+            : row.action === 'proposal_reject'
+              ? '拒否'
+              : row.action === 'proposal_complete'
+                ? '交換完了'
+                : 'ステータス更新',
+          at: row.createdAt,
+          actorPharmacyId: row.actorPharmacyId,
+          actorName: row.actorName ?? '不明',
+        })),
+      ],
+    });
+  } catch (err) {
+    handleAdminError(err, 'Admin exchange timeline error', '進行履歴の取得に失敗しました', res);
   }
 });
 

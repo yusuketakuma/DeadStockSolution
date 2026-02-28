@@ -27,6 +27,14 @@ interface HistoryResponse {
   pagination: { page: number; totalPages: number; total: number };
 }
 
+interface ProposalTimelineEvent {
+  action: string;
+  label: string;
+  at: string | null;
+  actorPharmacyId: number | null;
+  actorName: string | null;
+}
+
 interface ProposalComment {
   id: number;
   authorName: string;
@@ -49,6 +57,9 @@ export default function AdminExchangesPage() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [comments, setComments] = useState<ProposalComment[]>([]);
   const [commentsError, setCommentsError] = useState('');
+  const [timeline, setTimeline] = useState<ProposalTimelineEvent[]>([]);
+  const [timelineError, setTimelineError] = useState('');
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'decision'>('all');
 
   const fetchData = async (targetPage: number) => {
     setLoading(true);
@@ -73,12 +84,21 @@ export default function AdminExchangesPage() {
     setCommentModalOpen(true);
     setCommentsLoading(true);
     setCommentsError('');
+    setTimelineError('');
+    setTimelineFilter('all');
     try {
-      const result = await api.get<{ data: ProposalComment[] }>(`/admin/exchanges/${proposalId}/comments`);
-      setComments(result.data);
+      const [commentResult, timelineResult] = await Promise.all([
+        api.get<{ data: ProposalComment[] }>(`/admin/exchanges/${proposalId}/comments`),
+        api.get<{ data: ProposalTimelineEvent[] }>(`/admin/exchanges/${proposalId}/timeline`),
+      ]);
+      setComments(commentResult.data);
+      setTimeline(timelineResult.data);
     } catch (err) {
       setComments([]);
-      setCommentsError(err instanceof Error ? err.message : '交渉メモの取得に失敗しました');
+      setTimeline([]);
+      const msg = err instanceof Error ? err.message : '提案関連情報の取得に失敗しました';
+      setCommentsError(msg);
+      setTimelineError(msg);
     } finally {
       setCommentsLoading(false);
     }
@@ -173,22 +193,54 @@ export default function AdminExchangesPage() {
         title={`交渉メモ（提案ID: ${selectedProposalId ?? '-'}）`}
         size="lg"
       >
-        {commentsError && <AppAlert variant="danger">{commentsError}</AppAlert>}
+        {(commentsError || timelineError) && <AppAlert variant="danger">{commentsError || timelineError}</AppAlert>}
         {commentsLoading ? (
           <InlineLoader text="交渉メモを読み込み中..." className="text-muted small" />
-        ) : comments.length === 0 ? (
-          <div className="small text-muted">交渉メモはありません。</div>
         ) : (
-          <div className="d-flex flex-column gap-2">
-            {comments.map((comment) => (
-              <div key={comment.id} className="border rounded p-2">
-                <div className="small text-muted">
-                  {comment.authorName} / {comment.createdAt ? new Date(comment.createdAt).toLocaleString('ja-JP') : '-'}
-                </div>
-                <div>{comment.body}</div>
+          <>
+            <div className="mb-3 p-2 border rounded">
+              <div className="fw-semibold mb-2">進行履歴</div>
+              <div className="mb-2" style={{ maxWidth: 280 }}>
+                <select
+                  className="form-select form-select-sm"
+                  aria-label="管理者向け進行履歴フィルタ"
+                  value={timelineFilter}
+                  onChange={(e) => setTimelineFilter(e.target.value as 'all' | 'decision')}
+                >
+                  <option value="all">すべて表示</option>
+                  <option value="decision">承認/拒否/完了のみ</option>
+                </select>
               </div>
-            ))}
-          </div>
+              {timeline.filter((event) => timelineFilter === 'all' || ['proposal_accept', 'proposal_reject', 'proposal_complete'].includes(event.action)).length === 0 ? (
+                <div className="small text-muted">履歴はありません。</div>
+              ) : (
+                <ul className="small mb-0 ps-3">
+                  {timeline
+                    .filter((event) => timelineFilter === 'all' || ['proposal_accept', 'proposal_reject', 'proposal_complete'].includes(event.action))
+                    .map((event, idx) => (
+                      <li key={`${event.action}-${event.at ?? 'na'}-${idx}`}>
+                        <strong>{event.label}</strong> — {event.actorName ?? '不明'} ({event.at ? new Date(event.at).toLocaleString('ja-JP') : '-'})
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+
+            {comments.length === 0 ? (
+              <div className="small text-muted">交渉メモはありません。</div>
+            ) : (
+              <div className="d-flex flex-column gap-2">
+                {comments.map((comment) => (
+                  <div key={comment.id} className="border rounded p-2">
+                    <div className="small text-muted">
+                      {comment.authorName} / {comment.createdAt ? new Date(comment.createdAt).toLocaleString('ja-JP') : '-'}
+                    </div>
+                    <div>{comment.body}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </AppModalShell>
     </div>
