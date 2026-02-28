@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, FormEvent, useEffect } from 'react';
 import AppAlert from '../components/ui/AppAlert';
 import { Form, ProgressBar } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, ApiError, isApiErrorCode } from '../api/client';
 import DraftRestoreAlert from '../components/DraftRestoreAlert';
 import { useAutoSave } from '../hooks/useAutoSave';
 import AppSelect from '../components/ui/AppSelect';
@@ -28,6 +28,84 @@ interface DiffSummary {
   totalIncoming: number;
 }
 
+interface UploadConfirmJobResult {
+  uploadId: number;
+  rowCount: number;
+  applyMode: 'replace' | 'diff';
+  deleteMissing?: boolean;
+  diffSummary?: DiffSummary;
+}
+
+interface UploadConfirmAsyncResponse {
+  message: string;
+  jobId: number;
+  status: 'pending' | 'processing';
+}
+
+interface UploadConfirmJobStatusResponse {
+  id: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  attempts: number;
+  lastError: string | null;
+  lastErrorCode?: string | null;
+  result: UploadConfirmJobResult | null;
+}
+
+const UPLOAD_CONFIRM_ENQUEUE_TIMEOUT_MS = 5 * 60 * 1000;
+const UPLOAD_JOB_POLL_INTERVAL_MS = import.meta.env.MODE === 'test' ? 20 : 1500;
+const UPLOAD_JOB_POLL_MAX_INTERVAL_MS = import.meta.env.MODE === 'test' ? 100 : 5000;
+const UPLOAD_JOB_MAX_POLL_WAIT_MS = import.meta.env.MODE === 'test' ? 3000 : 60 * 60 * 1000;
+const UPLOAD_JOB_POLL_TRANSIENT_RETRY_MAX = import.meta.env.MODE === 'test' ? 1 : 3;
+
+function resolveNextPollIntervalMs(elapsedMs: number, status: 'pending' | 'processing'): number {
+  if (status === 'processing') {
+    return Math.min(2500, UPLOAD_JOB_POLL_MAX_INTERVAL_MS);
+  }
+  if (elapsedMs >= 5 * 60 * 1000) {
+    return UPLOAD_JOB_POLL_MAX_INTERVAL_MS;
+  }
+  if (elapsedMs >= 60 * 1000) {
+    return Math.min(3000, UPLOAD_JOB_POLL_MAX_INTERVAL_MS);
+  }
+  return UPLOAD_JOB_POLL_INTERVAL_MS;
+}
+
+function resolveTransientPollRetryIntervalMs(retryCount: number): number {
+  if (import.meta.env.MODE === 'test') {
+    return Math.min(UPLOAD_JOB_POLL_MAX_INTERVAL_MS, 20 * (retryCount + 1));
+  }
+  const base = Math.min(UPLOAD_JOB_POLL_MAX_INTERVAL_MS, 1000 * (2 ** Math.max(0, retryCount - 1)));
+  const jitter = Math.floor(Math.random() * 300);
+  return Math.min(UPLOAD_JOB_POLL_MAX_INTERVAL_MS, base + jitter);
+}
+
+function isTransientUploadJobPollingError(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  if (err.status === 0) return true;
+  return err.status === 429 || (err.status >= 500 && err.status <= 599);
+}
+
+async function waitForNextPoll(signal: AbortSignal, intervalMs: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const onAbort = () => {
+      if (timer !== null) {
+        clearTimeout(timer);
+      }
+      signal.removeEventListener('abort', onAbort);
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+
+    timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, intervalMs);
+
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 /** カラムマッピング設定の自動保存対象 */
 interface MappingDraftData {
   mapping: Record<string, string | null>;
@@ -45,6 +123,10 @@ export default function UploadPage() {
   const [applyMode, setApplyMode] = useState<'replace' | 'diff'>('replace');
   const [deleteMissing, setDeleteMissing] = useState(false);
   const [diffSummary, setDiffSummary] = useState<DiffSummary | null>(null);
+  const [acknowledgeDeleteImpact, setAcknowledgeDeleteImpact] = useState(false);
+  const [uploadJobId, setUploadJobId] = useState<number | null>(null);
+  const [uploadJobStatus, setUploadJobStatus] = useState<'pending' | 'processing' | null>(null);
+  const [uploadJobAttempts, setUploadJobAttempts] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadRequestAbortRef = useRef<AbortController | null>(null);
@@ -89,6 +171,8 @@ export default function UploadPage() {
   const isRequired = (field: string) => requiredFields[uploadType]?.has(field) ?? false;
   const missingRequiredFields = Array.from(requiredFields[uploadType] ?? []).filter((field) => !mapping[field]);
   const hasAllRequiredMappings = missingRequiredFields.length === 0;
+  const requiresDeleteImpactAcknowledgement = applyMode === 'diff' && deleteMissing && (diffSummary?.deactivated ?? 0) > 0;
+  const canSubmit = hasAllRequiredMappings && (!requiresDeleteImpactAcknowledgement || acknowledgeDeleteImpact);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     uploadRequestAbortRef.current?.abort();
@@ -103,6 +187,10 @@ export default function UploadPage() {
     setApplyMode('replace');
     setDeleteMissing(false);
     setDiffSummary(null);
+    setAcknowledgeDeleteImpact(false);
+    setUploadJobId(null);
+    setUploadJobStatus(null);
+    setUploadJobAttempts(0);
   };
 
   const handlePreview = async (e: FormEvent) => {
@@ -149,26 +237,100 @@ export default function UploadPage() {
     uploadRequestAbortRef.current?.abort();
     const controller = new AbortController();
     uploadRequestAbortRef.current = controller;
+    const submittedUploadType = uploadType;
 
     setLoading(true);
     setError('');
+    setMessage('');
+    setShowMatchingHint(false);
+    setUploadJobId(null);
+    setUploadJobStatus(null);
+    setUploadJobAttempts(0);
+    let currentJobId: number | null = null;
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('uploadType', uploadType);
+      formData.append('uploadType', submittedUploadType);
       formData.append('mapping', JSON.stringify(mapping));
       formData.append('headerRowIndex', String(preview?.headerRowIndex ?? 0));
       formData.append('applyMode', applyMode);
       formData.append('deleteMissing', String(deleteMissing));
 
-      const result = await api.upload<{ message: string; rowCount: number; diffSummary?: DiffSummary }>(
-        '/upload/confirm',
+      const enqueueResult = await api.upload<UploadConfirmAsyncResponse>(
+        '/upload/confirm-async',
         formData,
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          timeout: UPLOAD_CONFIRM_ENQUEUE_TIMEOUT_MS,
+        },
       );
       if (controller.signal.aborted) return;
-      setMessage(`${result.message} マッチング候補の再計算と通知更新が反映されます。`);
-      setDiffSummary(result.diffSummary ?? null);
+
+      const { jobId } = enqueueResult;
+      currentJobId = jobId;
+      setUploadJobId(jobId);
+      setUploadJobStatus(enqueueResult.status);
+      setMessage(`${enqueueResult.message}（ジョブID: ${jobId}）`);
+
+      const pollingStartedAt = Date.now();
+      let completedResult: UploadConfirmJobResult | null = null;
+      let transientPollFailures = 0;
+
+      while (!controller.signal.aborted) {
+        let job: UploadConfirmJobStatusResponse;
+        try {
+          job = await api.get<UploadConfirmJobStatusResponse>(`/upload/jobs/${jobId}`, {
+            signal: controller.signal,
+            timeout: 30000,
+          });
+        } catch (pollErr) {
+          if (controller.signal.aborted) return;
+
+          if (
+            isTransientUploadJobPollingError(pollErr)
+            && transientPollFailures < UPLOAD_JOB_POLL_TRANSIENT_RETRY_MAX
+          ) {
+            transientPollFailures += 1;
+            const retryIntervalMs = resolveTransientPollRetryIntervalMs(transientPollFailures);
+            await waitForNextPoll(controller.signal, retryIntervalMs);
+            continue;
+          }
+
+          throw pollErr;
+        }
+
+        transientPollFailures = 0;
+        if (controller.signal.aborted) return;
+        setUploadJobAttempts(job.attempts);
+
+        if (job.status === 'completed') {
+          if (!job.result) {
+            throw new Error('アップロード処理結果の取得に失敗しました');
+          }
+          completedResult = job.result;
+          break;
+        }
+        if (job.status === 'failed') {
+          throw new Error(job.lastError || 'アップロード処理に失敗しました');
+        }
+
+        setUploadJobStatus(job.status);
+
+        if (Date.now() - pollingStartedAt > UPLOAD_JOB_MAX_POLL_WAIT_MS) {
+          throw new Error(`アップロード処理の待機時間が長くなっています（ジョブID: ${jobId}）。時間をおいて再確認してください。`);
+        }
+
+        const elapsedMs = Date.now() - pollingStartedAt;
+        const intervalMs = resolveNextPollIntervalMs(elapsedMs, job.status);
+        await waitForNextPoll(controller.signal, intervalMs);
+      }
+
+      if (controller.signal.aborted) return;
+      setUploadJobId(null);
+      setUploadJobStatus(null);
+      setUploadJobAttempts(0);
+      setMessage(`${completedResult?.rowCount ?? 0}件のデータを登録しました マッチング候補の再計算と通知更新が反映されます。`);
+      setDiffSummary(completedResult?.diffSummary ?? null);
       setShowMatchingHint(true);
       setPreview(null);
       setFile(null);
@@ -180,10 +342,27 @@ export default function UploadPage() {
       }
       navigateTimerRef.current = setTimeout(() => {
         navigateTimerRef.current = null;
-        navigate(uploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
+        navigate(submittedUploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
       }, 1200);
     } catch (err) {
       if (controller.signal.aborted) return;
+      if (isApiErrorCode(err, 'UPLOAD_CONFIRM_QUEUE_LIMIT')) {
+        setUploadJobId(null);
+        setUploadJobStatus(null);
+        setUploadJobAttempts(0);
+        setMessage('');
+        setError(err.message);
+        return;
+      }
+      if (err instanceof Error && err.message.includes('待機時間が長くなっています')) {
+        setError(err.message);
+        setMessage(`ジョブは継続中の可能性があります（ジョブID: ${currentJobId ?? '不明'}）。時間をおいて再確認してください。`);
+        return;
+      }
+      setUploadJobId(null);
+      setUploadJobStatus(null);
+      setUploadJobAttempts(0);
+      setMessage('');
       setError(err instanceof Error ? err.message : '登録に失敗しました');
     } finally {
       if (uploadRequestAbortRef.current === controller) {
@@ -258,6 +437,11 @@ export default function UploadPage() {
           交換候補をすぐ確認する場合は「マッチング」ページで再実行してください。
         </AppAlert>
       )}
+      {uploadJobId !== null && uploadJobStatus && (
+        <AppAlert variant="info">
+          非同期処理中です（ジョブID: {uploadJobId} / 状態: {uploadJobStatus === 'pending' ? '待機中' : '処理中'} / 試行回数: {uploadJobAttempts}）
+        </AppAlert>
+      )}
 
       {mappingAutoSave.hasDraft && !preview && (
         <DraftRestoreAlert
@@ -272,7 +456,7 @@ export default function UploadPage() {
         <AppCard.Body>
           <ol className="mb-2 upload-step-list">
             <li>アップロードタイプを選択します（デッドストックリスト / 医薬品使用量リスト）。</li>
-            <li><code>.xlsx</code> 形式のExcelファイルを選択します（最大10MB）。</li>
+            <li><code>.xlsx</code> 形式のExcelファイルを選択します（最大50MB）。</li>
             <li>「プレビュー」を押してカラム自動判定を確認します。</li>
             <li>必要に応じてマッピングを修正し、「この設定でデータを登録」を押します。</li>
           </ol>
@@ -299,6 +483,7 @@ export default function UploadPage() {
                 controlId="upload-type"
                 value={uploadType}
                 ariaLabel="アップロードタイプ"
+                disabled={loading}
                 onChange={(value) => {
                   setUploadType(value as typeof uploadType);
                   setPreview(null);
@@ -394,6 +579,7 @@ export default function UploadPage() {
                 onChange={(value) => {
                   setApplyMode(value as 'replace' | 'diff');
                   setDiffSummary(null);
+                  setAcknowledgeDeleteImpact(false);
                 }}
                 options={[
                   { value: 'replace', label: '置換（既定）' },
@@ -410,7 +596,10 @@ export default function UploadPage() {
                   type="checkbox"
                   label="差分に存在しない既存データを無効化/削除する"
                   checked={deleteMissing}
-                  onChange={(e) => setDeleteMissing(e.currentTarget.checked)}
+                  onChange={(e) => {
+                    setDeleteMissing(e.currentTarget.checked);
+                    setAcknowledgeDeleteImpact(false);
+                  }}
                 />
                 <div className="mt-2">
                   <LoadingButton
@@ -430,6 +619,7 @@ export default function UploadPage() {
             {applyMode === 'diff' && diffSummary && (
               <AppAlert variant="info" className="small">
                 追加: {diffSummary.inserted}件 / 更新: {diffSummary.updated}件 / 無効化・削除: {diffSummary.deactivated}件 / 変更なし: {diffSummary.unchanged}件
+                {' '}（取込総数: {diffSummary.totalIncoming}件）
               </AppAlert>
             )}
 
@@ -437,12 +627,23 @@ export default function UploadPage() {
               <LoadingButton
                 variant="success"
                 onClick={handleConfirm}
-                disabled={!hasAllRequiredMappings}
+                disabled={!canSubmit}
                 loading={loading}
                 loadingLabel="登録中..."
               >
                 この設定でデータを登録
               </LoadingButton>
+              {requiresDeleteImpactAcknowledgement && (
+                <div className="small text-warning mt-2">
+                  <Form.Check
+                    id="upload-delete-impact-ack"
+                    type="checkbox"
+                    label={`無効化・削除 ${diffSummary?.deactivated ?? 0} 件の影響を確認しました`}
+                    checked={acknowledgeDeleteImpact}
+                    onChange={(e) => setAcknowledgeDeleteImpact(e.currentTarget.checked)}
+                  />
+                </div>
+              )}
               {!hasAllRequiredMappings && (
                 <div className="small text-danger mt-2">
                   必須項目が未割り当てです。赤字項目をすべて選択してください。

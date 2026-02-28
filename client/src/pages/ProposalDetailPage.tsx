@@ -52,6 +52,12 @@ interface ProposalDetail {
   pharmacyB: PharmacyInfo;
 }
 
+const commentTemplates = [
+  '内容確認しました。問題なければこのまま進めます。',
+  '数量・期限を再確認したいので、対象明細の最新情報共有をお願いします。',
+  'FAX送信済みです。到着確認をお願いします。',
+];
+
 interface ProposalComment {
   id: number;
   authorPharmacyId: number;
@@ -267,6 +273,12 @@ export default function ProposalDetailPage() {
     } finally {
       setFeedbackSubmitting(false);
     }
+  };
+
+  const handleApplyCommentTemplate = (template: string) => {
+    const trimmed = commentBody.trim();
+    setCommentBody(trimmed ? `${trimmed}
+${template}` : template);
   };
 
   const actionLabelMap: Record<'accept' | 'reject' | 'complete', string> = {
@@ -547,6 +559,18 @@ export default function ProposalDetailPage() {
 
         {!user?.isAdmin && (
           <div className="d-flex flex-column gap-2">
+            <div className="d-flex gap-2 flex-wrap">
+              {commentTemplates.map((template, index) => (
+                <AppButton
+                  key={template}
+                  size="sm"
+                  variant="outline-secondary"
+                  onClick={() => handleApplyCommentTemplate(template)}
+                >
+                  定型文{index + 1}
+                </AppButton>
+              ))}
+            </div>
             <AppField
               controlId="proposal-comment-body"
               label="新規コメント"

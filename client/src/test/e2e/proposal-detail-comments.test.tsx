@@ -162,6 +162,27 @@ describe('ProposalDetailPage comment actions', () => {
     expect(screen.getByText('更新コメント')).toBeInTheDocument();
   });
 
+
+  it('applies a comment template to the editor', async () => {
+    const commentsState: ProposalCommentMock[] = [];
+    createProposalDetailFetch(commentsState);
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/proposals/:id" element={<ProposalDetailPage />} />
+      </Routes>,
+      { route: '/proposals/1' },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('交渉メモ / コメント')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: '定型文1' }));
+
+    expect((screen.getByLabelText('新規コメント') as HTMLTextAreaElement).value.length).toBeGreaterThan(0);
+  });
+
   it('allows deleting own comment', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const commentsState: ProposalCommentMock[] = [

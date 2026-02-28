@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -7,6 +7,9 @@ import {
   exchangeProposals,
   exchangeProposalItems,
   exchangeHistory,
+  uploadConfirmJobs,
+  notifications,
+  matchNotifications,
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { rowCount } from '../utils/db-utils';
@@ -54,6 +57,49 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
     });
   } catch (err) {
     handleAdminError(err, 'Admin stats error', '統計情報の取得に失敗しました', res);
+  }
+});
+
+
+router.get('/alerts', async (_req: AuthRequest, res: Response) => {
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const [
+      [failedUploadJobs],
+      [stalledUploadJobs],
+      [unreadNotificationsCount],
+      [unreadMatchNotificationsCount],
+      [pendingProposalsCount],
+    ] = await Promise.all([
+      db.select({ count: rowCount })
+        .from(uploadConfirmJobs)
+        .where(and(eq(uploadConfirmJobs.status, 'failed'), gte(uploadConfirmJobs.createdAt, since))),
+      db.select({ count: rowCount })
+        .from(uploadConfirmJobs)
+        .where(and(eq(uploadConfirmJobs.status, 'pending'), gte(uploadConfirmJobs.createdAt, since))),
+      db.select({ count: rowCount })
+        .from(notifications)
+        .where(eq(notifications.isRead, false)),
+      db.select({ count: rowCount })
+        .from(matchNotifications)
+        .where(eq(matchNotifications.isRead, false)),
+      db.select({ count: rowCount })
+        .from(exchangeProposals)
+        .where(and(
+          gte(exchangeProposals.proposedAt, since),
+          sql`${exchangeProposals.status} IN ('proposed', 'accepted_a', 'accepted_b')`,
+        )),
+    ]);
+
+    res.json({
+      failedUploadJobs24h: failedUploadJobs.count,
+      stalledUploadJobs24h: stalledUploadJobs.count,
+      unreadNotifications: unreadNotificationsCount.count + unreadMatchNotificationsCount.count,
+      pendingProposalActions24h: pendingProposalsCount.count,
+    });
+  } catch (err) {
+    handleAdminError(err, 'Admin alerts error', 'アラート集計の取得に失敗しました', res);
   }
 });
 

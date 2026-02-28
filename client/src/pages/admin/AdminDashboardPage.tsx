@@ -49,6 +49,13 @@ interface Observability {
   }>;
 }
 
+interface AlertsSummary {
+  failedUploadJobs24h: number;
+  stalledUploadJobs24h: number;
+  unreadNotifications: number;
+  pendingProposalActions24h: number;
+}
+
 interface PharmacyOption {
   id: number;
   name: string;
@@ -73,6 +80,7 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [riskOverview, setRiskOverview] = useState<RiskOverview | null>(null);
   const [observability, setObservability] = useState<Observability | null>(null);
+  const [alertsSummary, setAlertsSummary] = useState<AlertsSummary | null>(null);
   const [pharmacies, setPharmacies] = useState<PharmacyOption[]>([]);
   const [messages, setMessages] = useState<AdminMessage[]>([]);
   const [targetType, setTargetType] = useState<'all' | 'pharmacy'>('all');
@@ -88,10 +96,11 @@ export default function AdminDashboardPage() {
   const fetchData = async () => {
     setLoading(true);
     setError('');
-    const [statsResult, riskResult, observabilityResult, pharmacyResult, messagesResult] = await Promise.allSettled([
+    const [statsResult, riskResult, observabilityResult, alertsResult, pharmacyResult, messagesResult] = await Promise.allSettled([
       api.get<Stats>('/admin/stats'),
       api.get<RiskOverview>('/admin/risk/overview'),
       api.get<Observability>('/admin/observability?minutes=60'),
+      api.get<AlertsSummary>('/admin/alerts'),
       api.get<{ data: PharmacyOption[] }>('/admin/pharmacies/options'),
       api.get<MessagesResponse>('/admin/messages?page=1&limit=10'),
     ]);
@@ -99,10 +108,11 @@ export default function AdminDashboardPage() {
     if (statsResult.status === 'fulfilled') setStats(statsResult.value);
     if (riskResult.status === 'fulfilled') setRiskOverview(riskResult.value);
     if (observabilityResult.status === 'fulfilled') setObservability(observabilityResult.value);
+    if (alertsResult.status === 'fulfilled') setAlertsSummary(alertsResult.value);
     if (pharmacyResult.status === 'fulfilled') setPharmacies(pharmacyResult.value.data);
     if (messagesResult.status === 'fulfilled') setMessages(messagesResult.value.data);
 
-    const failures = [statsResult, riskResult, observabilityResult, pharmacyResult, messagesResult]
+    const failures = [statsResult, riskResult, observabilityResult, alertsResult, pharmacyResult, messagesResult]
       .filter((r) => r.status === 'rejected');
     if (failures.length > 0) {
       setError('一部のデータの取得に失敗しました');
@@ -213,6 +223,22 @@ export default function AdminDashboardPage() {
             label="平均リスクスコア"
             action={<Link to="/admin/risk" className="btn btn-sm btn-outline-danger">詳細を見る</Link>}
           />
+        </Col>
+      </Row>
+
+
+      <Row className="g-3 mb-3">
+        <Col md={3}>
+          <AppKpiCard value={alertsSummary?.failedUploadJobs24h ?? '-'} label="取込失敗ジョブ (24h)" />
+        </Col>
+        <Col md={3}>
+          <AppKpiCard value={alertsSummary?.stalledUploadJobs24h ?? '-'} label="取込保留ジョブ (24h)" />
+        </Col>
+        <Col md={3}>
+          <AppKpiCard value={alertsSummary?.unreadNotifications ?? '-'} label="未読通知" />
+        </Col>
+        <Col md={3}>
+          <AppKpiCard value={alertsSummary?.pendingProposalActions24h ?? '-'} label="要対応提案 (24h)" />
         </Col>
       </Row>
 
