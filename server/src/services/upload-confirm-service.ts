@@ -196,7 +196,7 @@ export async function runUploadConfirm(
           .orderBy(desc(uploads.requestedAt), desc(uploads.id))
           .limit(1);
         const latestUploadMs = toTimestampMs(latestUpload?.requestedAt ?? null);
-        if (latestUploadMs !== null && latestUploadMs > staleGuardMs) {
+        if (latestUploadMs !== null && latestUploadMs >= staleGuardMs) {
           throw new Error('[STALE_JOB_SKIPPED] より新しいアップロードが既に反映されているため、このジョブはスキップされました');
         }
       }

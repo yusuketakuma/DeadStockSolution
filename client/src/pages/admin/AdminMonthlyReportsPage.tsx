@@ -9,7 +9,7 @@ import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import InlineLoader from '../../components/ui/InlineLoader';
 import Pagination from '../../components/Pagination';
-import { api } from '../../api/client';
+import { api, buildApiUrl } from '../../api/client';
 
 interface MonthlyReportListItem {
   id: number;
@@ -156,8 +156,8 @@ export default function AdminMonthlyReportsPage() {
                       <td>{row.status === 'success' ? '成功' : '失敗'}</td>
                       <td>{row.generatedAt ? new Date(row.generatedAt).toLocaleString('ja-JP') : '-'}</td>
                       <td className="d-flex gap-2">
-                        <a className="btn btn-sm btn-outline-primary" href={`/api/admin/reports/monthly/${row.id}/download?format=json`}>JSON</a>
-                        <a className="btn btn-sm btn-outline-secondary" href={`/api/admin/reports/monthly/${row.id}/download?format=csv`}>CSV</a>
+                        <a className="btn btn-sm btn-outline-primary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=json`)}>JSON</a>
+                        <a className="btn btn-sm btn-outline-secondary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=csv`)}>CSV</a>
                       </td>
                     </tr>
                   ))}
@@ -178,8 +178,8 @@ export default function AdminMonthlyReportsPage() {
                   ]}
                   actions={(
                     <div className="d-flex gap-2">
-                      <a className="btn btn-sm btn-outline-primary" href={`/api/admin/reports/monthly/${row.id}/download?format=json`}>JSON</a>
-                      <a className="btn btn-sm btn-outline-secondary" href={`/api/admin/reports/monthly/${row.id}/download?format=csv`}>CSV</a>
+                      <a className="btn btn-sm btn-outline-primary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=json`)}>JSON</a>
+                      <a className="btn btn-sm btn-outline-secondary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=csv`)}>CSV</a>
                     </div>
                   )}
                 />

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-02-27T16:55:05.206Z",
+  "updatedAt": "2026-02-28T05:44:27.304Z",
   "skills": {
     "parallel-workflows": {
       "count": 1,
@@ -55,6 +55,10 @@
     "release-har": {
       "count": 1,
       "lastUsed": "2026-02-26T13:56:03.848Z"
+    },
+    "simplify": {
+      "count": 1,
+      "lastUsed": "2026-02-28T05:44:27.303Z"
     }
   },
   "agents": {
@@ -77,9 +81,9 @@
   },
   "hooks": {
     "session-init": {
-      "triggered": 24,
+      "triggered": 26,
       "blocked": 0,
-      "lastTriggered": "2026-02-27T15:59:12.993Z"
+      "lastTriggered": "2026-02-28T05:44:16.843Z"
     }
   }
 }

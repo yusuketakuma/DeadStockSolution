@@ -7,7 +7,7 @@ import { logger } from '../services/logger';
 import { writeLog, getClientIp } from '../services/log-service';
 import { parseExcelBuffer } from '../services/upload-service';
 
-export const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+export const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
 export const MAX_MAPPING_KEYS = 30;
 export const MAX_MAPPING_COLUMN_INDEX = 199;
 export const INSERT_BATCH_SIZE = 500;
@@ -218,7 +218,12 @@ export async function parseExcelRowsOrReject(
   try {
     return await parseExcelBuffer(fileBuffer);
   } catch (err) {
-    logUploadFailure(req, phase, 'parse_failed', { error: getErrorMessage(err) });
+    const reason = getErrorMessage(err);
+    logUploadFailure(req, phase, 'parse_failed', { error: reason });
+    if (reason.includes('上限')) {
+      res.status(400).json({ error: reason });
+      return null;
+    }
     res.status(400).json({ error: 'ファイルの解析に失敗しました。xlsx形式を確認してください' });
     return null;
   }
@@ -258,4 +263,3 @@ export function resolveMappingFromTemplate(
   }
   return suggestMapping(headerRow, uploadType);
 }
-

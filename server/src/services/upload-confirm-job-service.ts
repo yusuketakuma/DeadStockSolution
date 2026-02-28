@@ -22,6 +22,8 @@ const RETRY_BACKOFF_BASE_MS = 2 * 60 * 1000;
 const CLAIM_CONTENTION_RETRY_LIMIT = 3;
 const DEFAULT_MAX_ACTIVE_JOBS_PER_PHARMACY = 3;
 const DEFAULT_MAX_ACTIVE_JOBS_GLOBAL = 60;
+const UPLOAD_CONFIRM_QUEUE_LOCK_NAMESPACE = 9412;
+const UPLOAD_CONFIRM_QUEUE_GLOBAL_LOCK_KEY = 1;
 const DEFAULT_CLEANUP_RETENTION_DAYS = 7;
 const DEFAULT_CLEANUP_BATCH_SIZE = 200;
 const MAX_MAPPING_COLUMN_INDEX = 199;
@@ -623,6 +625,7 @@ export async function enqueueUploadConfirmJob(
   const encodedPayload = await encodeUploadJobFilePayload(params.fileBuffer);
 
   return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${UPLOAD_CONFIRM_QUEUE_LOCK_NAMESPACE}, ${UPLOAD_CONFIRM_QUEUE_GLOBAL_LOCK_KEY})`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${params.pharmacyId})`);
 
     const maxActiveJobs = getMaxActiveJobsPerPharmacy();

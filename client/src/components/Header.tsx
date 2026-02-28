@@ -3,7 +3,6 @@ import { Badge } from 'react-bootstrap';
 import AppButton from './ui/AppButton';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { APP_VERSION } from '../constants/appVersion';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import AppUpdatesPopover from './header/AppUpdatesPopover';
@@ -176,7 +175,6 @@ export default function Header({ onToggleSidebar }: Props) {
           <div className="app-header-brand-meta">
             <Link to="/" className="app-header-brand">
               <span>DeadStockSolution</span>
-              <span className="app-header-version">{APP_VERSION}</span>
             </Link>
             <AppUpdatesPopover
               updatesLoading={updatesLoading}

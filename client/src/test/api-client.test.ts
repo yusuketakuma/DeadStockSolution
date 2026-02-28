@@ -28,10 +28,12 @@ describe('api client', () => {
     await expect(api.delete('/resource/1')).resolves.toBeUndefined();
 
     expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: 'GET' }));
+    expect(((fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>)['Content-Type']).toBeUndefined();
     expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ a: 1 }),
     }));
+    expect(((fetchMock.mock.calls[1][1] as RequestInit).headers as Record<string, string>)['Content-Type']).toBe('application/json');
     expect(fetchMock.mock.calls[2][1]).toEqual(expect.objectContaining({
       method: 'PATCH',
       body: JSON.stringify({ b: 2 }),
@@ -45,6 +47,7 @@ describe('api client', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({
         error: 'validation failed',
+        code: 'VALIDATION_ERROR',
         errors: [{ field: 'email', message: 'invalid email' }],
       }, 422))
       .mockResolvedValueOnce(jsonResponse({ error: 'unauthorized' }, 401));
@@ -54,6 +57,7 @@ describe('api client', () => {
       name: 'ApiError',
       status: 422,
       message: 'validation failed',
+      code: 'VALIDATION_ERROR',
       fieldErrors: [{ field: 'email', message: 'invalid email' }],
     });
 

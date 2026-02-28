@@ -13,6 +13,8 @@ import {
 } from '../services/openclaw-service';
 
 const OPENCLAW_ENV_KEYS = [
+  'OPENCLAW_CONNECTOR_MODE',
+  'OPENCLAW_CLI_PATH',
   'OPENCLAW_BASE_URL',
   'OPENCLAW_API_KEY',
   'OPENCLAW_AGENT_ID',
@@ -77,6 +79,22 @@ describe('openclaw-service', () => {
 
   it('accepts HTTP only for localhost', () => {
     setConnectorEnv('http://localhost:9000');
+    expect(isOpenClawConnectorConfigured()).toBe(true);
+  });
+
+  it('requires OPENCLAW_CLI_PATH in gateway_cli mode', () => {
+    process.env.OPENCLAW_CONNECTOR_MODE = 'gateway_cli';
+    process.env.OPENCLAW_AGENT_ID = 'gateway-agent';
+    delete process.env.OPENCLAW_CLI_PATH;
+
+    expect(isOpenClawConnectorConfigured()).toBe(false);
+  });
+
+  it('accepts gateway_cli mode when both cli path and agent id are configured', () => {
+    process.env.OPENCLAW_CONNECTOR_MODE = 'gateway_cli';
+    process.env.OPENCLAW_CLI_PATH = '/usr/local/bin/openclaw';
+    process.env.OPENCLAW_AGENT_ID = 'gateway-agent';
+
     expect(isOpenClawConnectorConfigured()).toBe(true);
   });
 

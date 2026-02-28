@@ -171,7 +171,7 @@ describe('pharmacies routes', () => {
     expect(response.body.data[0]).toEqual(expect.objectContaining({
       id: 2,
       distance: 12.3,
-      businessStatus: { isOpen: true, statusText: '営業中' },
+      businessStatus: expect.objectContaining({ isOpen: true, isConfigured: true }),
     }));
     expect(response.body.pagination).toEqual({
       page: 1,

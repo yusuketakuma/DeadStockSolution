@@ -4,7 +4,6 @@ import { Nav } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
-import { APP_VERSION } from '../constants/appVersion';
 import AuthPageLayout from '../components/ui/AuthPageLayout';
 import StatusAlert from '../components/ui/StatusAlert';
 import LoadingButton from '../components/ui/LoadingButton';
@@ -96,7 +95,7 @@ export default function LoginPage() {
     setTestPharmacyLoading(true);
     setTestPharmacyError('');
     try {
-      const response = await api.get<TestPharmacyResponse>('/auth/test-pharmacies');
+      const response = await api.get<TestPharmacyResponse>('/auth/test-pharmacies?includePassword=1');
       setTestPharmacies(parseTestPharmacyAccounts(response));
     } catch (err) {
       setTestPharmacies([]);
@@ -121,7 +120,6 @@ export default function LoginPage() {
         <>
           <div className="dl-brand-row">
             <h1>薬局デッドストック交換システム</h1>
-            <span className="dl-version-chip">{APP_VERSION}</span>
           </div>
           <p className="dl-lead">薬局間在庫の調整を安全に進めるための業務ポータルです。</p>
 

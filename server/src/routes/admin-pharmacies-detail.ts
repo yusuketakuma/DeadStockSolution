@@ -1,5 +1,4 @@
 import { Router, Response } from 'express';
-import rateLimit from 'express-rate-limit';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
@@ -13,15 +12,8 @@ import { geocodeAddress } from '../services/geocode-service';
 import { writeLog, getClientIp } from '../services/log-service';
 import { emailSchema } from '../utils/validators';
 import { fetchBusinessHourSettings, validateBusinessHours, validateSpecialBusinessHours } from './business-hours';
+import { adminWriteLimiter } from './admin-write-limiter';
 import { parseIdOrBadRequest, handleAdminError } from './admin-utils';
-
-const adminWriteLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: '管理系APIへのリクエストが多すぎます。しばらくして再試行してください' },
-});
 
 function isValidVersion(value: unknown): value is number {
   return typeof value === 'number'

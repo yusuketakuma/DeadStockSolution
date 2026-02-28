@@ -1,7 +1,10 @@
 {
-  "active_plan": "inline-refactoring-2026-02-27",
-  "started_at": "2026-02-27T11:39:20.332Z",
-  "session_ids": ["ses_3611a98abffe7nX82O5yXLaGyP"],
-  "plan_name": "refactoring-2026-02-27",
-  "worktree_path": "/Users/yusuke/DeadStockSolution"
+  "active_plan": "/Users/yusuke/DeadStockSolution/.sisyphus/plans/refactoring.md",
+  "started_at": "2026-02-27T22:29:28.005Z",
+  "session_ids": [
+    "ses_35fd1ce96ffeUDlEcHQQ2Y71x3"
+  ],
+  "plan_name": "refactoring",
+  "worktree_path": "/Users/yusuke/DeadStockSolution-refactor",
+  "agent": "atlas"
 }

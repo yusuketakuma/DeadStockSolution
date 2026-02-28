@@ -11,6 +11,7 @@ describe('BusinessStatusBadge', () => {
           closingSoon: false,
           is24Hours: false,
           todayHours: null,
+          isConfigured: false,
         }}
         showHours
         fallback="dash"
@@ -31,12 +32,32 @@ describe('BusinessStatusBadge', () => {
             openTime: '09:00',
             closeTime: '18:00',
           },
+          isConfigured: true,
         }}
         showHours
       />,
     );
 
     expect(screen.getByText('営業中 09:00〜18:00')).toBeInTheDocument();
+  });
+
+  it('shows closed when configured pharmacy is outside business hours', () => {
+    render(
+      <BusinessStatusBadge
+        status={{
+          isOpen: false,
+          closingSoon: false,
+          is24Hours: false,
+          todayHours: {
+            openTime: '09:00',
+            closeTime: '18:00',
+          },
+          isConfigured: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText('営業時間外')).toBeInTheDocument();
   });
 
   it('shows dash when status is missing and fallback is dash', () => {

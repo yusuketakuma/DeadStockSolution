@@ -115,17 +115,6 @@ body[data-design-preset='high-legibility'] {
   margin: 0;
 }
 
-.dl-version-chip {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.72rem;
-  color: var(--dl-text-muted);
-  background: #edf3f8;
-  border: 1px solid var(--dl-border);
-  border-radius: 999px;
-  padding: 0.1rem 0.45rem;
-}
-
 .dl-lead {
   margin-top: 0.5rem;
   margin-bottom: 0.95rem;
@@ -291,6 +280,18 @@ body[data-design-preset='high-legibility'] .app-theme {
 
 .app-theme .content-container {
   max-width: 1240px;
+}
+
+@media (min-width: 992px) {
+  .app-theme .content-container {
+    max-width: min(1800px, calc(100vw - var(--sidebar-width) - 2rem));
+  }
+}
+
+@media (max-width: 991.98px) {
+  .app-theme .content-container {
+    max-width: 100%;
+  }
 }
 
 .dl-app-screen {

@@ -21,6 +21,20 @@ function createApp() {
     throw new Error('boom');
   });
 
+  app.get('/unsafe-code', (_req, _res, next) => {
+    const err = new Error('db detail') as Error & { status: number; code: string };
+    err.status = 400;
+    err.code = '42703';
+    next(err);
+  });
+
+  app.get('/safe-code', (_req, _res, next) => {
+    const err = new Error('queue full') as Error & { status: number; code: string };
+    err.status = 429;
+    err.code = 'UPLOAD_CONFIRM_QUEUE_LIMIT';
+    next(err);
+  });
+
   app.use(errorHandler);
   return app;
 }
@@ -44,7 +58,7 @@ describe('error-handler', () => {
       .send('{"broken":');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: 'リクエスト本文の形式が不正です' });
+    expect(res.body).toEqual({ error: 'リクエスト本文の形式が不正です', code: 'BAD_JSON_PAYLOAD' });
   });
 
   it('preserves explicit HTTP status errors', async () => {
@@ -52,7 +66,7 @@ describe('error-handler', () => {
     const res = await request(app).get('/http-error');
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'not found' });
+    expect(res.body).toEqual({ error: 'not found', code: 'HTTP_404' });
   });
 
   it('hides 4xx details in production', async () => {
@@ -61,7 +75,7 @@ describe('error-handler', () => {
     const res = await request(app).get('/http-error');
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'リクエストに失敗しました' });
+    expect(res.body).toEqual({ error: 'リクエストに失敗しました', code: 'HTTP_404' });
   });
 
   it('hides 500 details in production', async () => {
@@ -70,6 +84,22 @@ describe('error-handler', () => {
     const res = await request(app).get('/boom');
 
     expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: 'サーバーエラーが発生しました' });
+    expect(res.body).toEqual({ error: 'サーバーエラーが発生しました', code: 'INTERNAL_SERVER_ERROR' });
+  });
+
+  it('does not expose non-whitelisted internal error codes', async () => {
+    const app = createApp();
+    const res = await request(app).get('/unsafe-code');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'db detail', code: 'HTTP_400' });
+  });
+
+  it('keeps whitelisted application error codes', async () => {
+    const app = createApp();
+    const res = await request(app).get('/safe-code');
+
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual({ error: 'queue full', code: 'UPLOAD_CONFIRM_QUEUE_LIMIT' });
   });
 });

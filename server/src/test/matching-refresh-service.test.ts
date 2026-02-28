@@ -43,6 +43,8 @@ vi.mock('../services/logger', () => ({
 }));
 
 import { __testables } from '../services/matching-refresh-service';
+import { findMatches, findMatchesBatch } from '../services/matching-service';
+import { saveMatchSnapshotAndNotifyOnChange } from '../services/matching-snapshot-service';
 
 function createSelectQuery(result: unknown) {
   const query = {
@@ -67,6 +69,26 @@ function createUpdateQuery(result: unknown) {
   query.set.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.returning.mockResolvedValue(result);
+  return query;
+}
+
+function createWhereQuery(result: unknown) {
+  const query = {
+    from: vi.fn(),
+    where: vi.fn(),
+  };
+  query.from.mockReturnValue(query);
+  query.where.mockResolvedValue(result);
+  return query;
+}
+
+function createSubquery() {
+  const query = {
+    from: vi.fn(),
+    where: vi.fn(),
+  };
+  query.from.mockReturnValue(query);
+  query.where.mockReturnValue(query);
   return query;
 }
 
@@ -104,5 +126,51 @@ describe('matching-refresh-service claim retry', () => {
 
     expect(claimed).toBeNull();
     expect(mocks.db.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('matching-refresh-service runSingleRefresh', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('falls back to per-pharmacy matching when batch lookup fails', async () => {
+    const findMatchesMock = vi.mocked(findMatches);
+    const findMatchesBatchMock = vi.mocked(findMatchesBatch);
+    const saveSnapshotMock = vi.mocked(saveMatchSnapshotAndNotifyOnChange);
+
+    mocks.db.select.mockImplementation(() => createSubquery());
+    mocks.db.select.mockImplementationOnce(() => createWhereQuery([{ id: 1 }, { id: 2 }]));
+    findMatchesBatchMock.mockRejectedValueOnce(new Error('batch failed'));
+    findMatchesMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    saveSnapshotMock.mockResolvedValue({ changed: false, beforeCount: 0, afterCount: 0 });
+
+    await expect(__testables.runSingleRefresh(1, 'dead_stock')).resolves.toBeUndefined();
+
+    expect(findMatchesBatchMock).toHaveBeenCalledWith([1, 2]);
+    expect(findMatchesMock).toHaveBeenCalledTimes(2);
+    expect(findMatchesMock).toHaveBeenNthCalledWith(1, 1);
+    expect(findMatchesMock).toHaveBeenNthCalledWith(2, 2);
+    expect(saveSnapshotMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('splits impacted pharmacies into configured batch size chunks', async () => {
+    const findMatchesBatchMock = vi.mocked(findMatchesBatch);
+    const saveSnapshotMock = vi.mocked(saveMatchSnapshotAndNotifyOnChange);
+
+    const impactedRows = Array.from({ length: 205 }, (_value, index) => ({ id: index + 1 }));
+    mocks.db.select.mockImplementation(() => createSubquery());
+    mocks.db.select.mockImplementationOnce(() => createWhereQuery(impactedRows));
+    findMatchesBatchMock.mockImplementation(async (ids) => new Map(ids.map((id) => [id, []])));
+    saveSnapshotMock.mockResolvedValue({ changed: false, beforeCount: 0, afterCount: 0 });
+
+    await expect(__testables.runSingleRefresh(1, 'used_medication')).resolves.toBeUndefined();
+
+    expect(findMatchesBatchMock).toHaveBeenCalledTimes(2);
+    expect(findMatchesBatchMock).toHaveBeenNthCalledWith(1, impactedRows.slice(0, 200).map((row) => row.id));
+    expect(findMatchesBatchMock).toHaveBeenNthCalledWith(2, impactedRows.slice(200).map((row) => row.id));
+    expect(saveSnapshotMock).toHaveBeenCalledTimes(205);
   });
 });

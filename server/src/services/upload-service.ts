@@ -1,11 +1,21 @@
 import readXlsxFile from 'read-excel-file/node';
 import crypto from 'crypto';
 
-const MAX_UPLOAD_ROWS = 10000;
+const MAX_UPLOAD_ROWS = 100000;
 const MAX_UPLOAD_COLUMNS = 200;
-const CACHE_TTL_MS = 10 * 60 * 1000;
-const MAX_CACHE_ENTRIES = 30;
-const parsedExcelCache = new Map<string, { rows: unknown[][]; createdAt: number }>();
+const MAX_UPLOAD_CELLS = 3_000_000;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 6;
+const MAX_CACHE_TOTAL_BYTES = 32 * 1024 * 1024;
+const MAX_CACHEABLE_BUFFER_BYTES = 5 * 1024 * 1024;
+
+interface ParsedExcelCacheEntry {
+  rows: unknown[][];
+  createdAt: number;
+  sizeBytes: number;
+}
+
+const parsedExcelCache = new Map<string, ParsedExcelCacheEntry>();
 
 function buildCacheKey(buffer: Buffer): string {
   return crypto.createHash('sha256').update(buffer).digest('hex');
@@ -21,15 +31,34 @@ function pruneExpiredCache(): void {
 }
 
 function enforceCacheLimit(): void {
-  if (parsedExcelCache.size <= MAX_CACHE_ENTRIES) return;
-
-  const entries = [...parsedExcelCache.entries()]
-    .sort((a, b) => a[1].createdAt - b[1].createdAt);
-
-  const overflow = parsedExcelCache.size - MAX_CACHE_ENTRIES;
-  for (let i = 0; i < overflow; i++) {
-    parsedExcelCache.delete(entries[i][0]);
+  if (parsedExcelCache.size <= MAX_CACHE_ENTRIES) {
+    const totalSize = [...parsedExcelCache.values()].reduce((sum, entry) => sum + entry.sizeBytes, 0);
+    if (totalSize <= MAX_CACHE_TOTAL_BYTES) {
+      return;
+    }
   }
+
+  const entries = [...parsedExcelCache.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt);
+  let currentTotal = entries.reduce((sum, [, entry]) => sum + entry.sizeBytes, 0);
+
+  for (const [key, entry] of entries) {
+    const shouldTrimByEntries = parsedExcelCache.size > MAX_CACHE_ENTRIES;
+    const shouldTrimByTotalSize = currentTotal > MAX_CACHE_TOTAL_BYTES;
+    if (!shouldTrimByEntries && !shouldTrimByTotalSize) {
+      break;
+    }
+    parsedExcelCache.delete(key);
+    currentTotal -= entry.sizeBytes;
+  }
+}
+
+function cacheParsedRows(cacheKey: string, rows: unknown[][], sizeBytes: number): void {
+  parsedExcelCache.set(cacheKey, {
+    rows,
+    createdAt: Date.now(),
+    sizeBytes,
+  });
+  enforceCacheLimit();
 }
 
 function normalizeCellValue(value: unknown): unknown {
@@ -40,10 +69,13 @@ function normalizeCellValue(value: unknown): unknown {
 
 export async function parseExcelBuffer(buffer: Buffer): Promise<unknown[][]> {
   pruneExpiredCache();
-  const cacheKey = buildCacheKey(buffer);
-  const cached = parsedExcelCache.get(cacheKey);
-  if (cached) {
-    return cached.rows;
+  const isCacheableBuffer = buffer.length <= MAX_CACHEABLE_BUFFER_BYTES;
+  const cacheKey = isCacheableBuffer ? buildCacheKey(buffer) : null;
+  if (isCacheableBuffer) {
+    const cached = parsedExcelCache.get(cacheKey!);
+    if (cached) {
+      return cached.rows;
+    }
   }
 
   const rows = await readXlsxFile(buffer);
@@ -52,15 +84,21 @@ export async function parseExcelBuffer(buffer: Buffer): Promise<unknown[][]> {
     throw new Error(`行数が上限(${MAX_UPLOAD_ROWS})を超えています`);
   }
 
+  let totalCells = 0;
   const normalized = rows.map((row) => {
     if (row.length > MAX_UPLOAD_COLUMNS) {
       throw new Error(`列数が上限(${MAX_UPLOAD_COLUMNS})を超えています`);
     }
+    totalCells += row.length;
+    if (totalCells > MAX_UPLOAD_CELLS) {
+      throw new Error(`セル数が上限(${MAX_UPLOAD_CELLS})を超えています`);
+    }
     return row.map((cell) => normalizeCellValue(cell));
   });
 
-  parsedExcelCache.set(cacheKey, { rows: normalized, createdAt: Date.now() });
-  enforceCacheLimit();
+  if (isCacheableBuffer) {
+    cacheParsedRows(cacheKey!, normalized, buffer.length);
+  }
 
   return normalized;
 }

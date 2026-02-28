@@ -6,7 +6,6 @@ export type OpenClawStatus = 'pending_handoff' | 'in_dialogue' | 'implementing' 
 type OpenClawBaseUrlError = 'missing' | 'invalid' | 'insecure';
 type OpenClawConnectorMode = 'legacy_http' | 'gateway_cli';
 const FIXED_IMPLEMENTATION_BRANCH = 'review';
-const DEFAULT_OPENCLAW_CLI_PATH = '/Users/yusuke/.nvm/versions/node/v22.22.0/bin/openclaw';
 const execFileAsync = promisify(execFile);
 const DEFAULT_WEBHOOK_MAX_SKEW_SECONDS = 300;
 const WEBHOOK_SIGNATURE_PREFIX = 'sha256=';
@@ -111,7 +110,7 @@ function readConfig(): OpenClawConfig {
   const baseUrl = normalizeBaseUrl(process.env.OPENCLAW_BASE_URL ?? '');
   return {
     mode: resolveOpenClawConnectorMode(),
-    cliPath: (process.env.OPENCLAW_CLI_PATH ?? DEFAULT_OPENCLAW_CLI_PATH).trim() || DEFAULT_OPENCLAW_CLI_PATH,
+    cliPath: (process.env.OPENCLAW_CLI_PATH ?? '').trim(),
     baseUrl: baseUrl.value,
     baseUrlError: baseUrl.error,
     apiKey: (process.env.OPENCLAW_API_KEY ?? '').trim(),

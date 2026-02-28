@@ -177,8 +177,12 @@ export default function UploadPage() {
   const isRequired = (field: string) => requiredFields[uploadType]?.has(field) ?? false;
   const missingRequiredFields = Array.from(requiredFields[uploadType] ?? []).filter((field) => !mapping[field]);
   const hasAllRequiredMappings = missingRequiredFields.length === 0;
-  const requiresDeleteImpactAcknowledgement = applyMode === 'diff' && deleteMissing && (diffSummary?.deactivated ?? 0) > 0;
-  const canSubmit = hasAllRequiredMappings && (!requiresDeleteImpactAcknowledgement || acknowledgeDeleteImpact);
+  const requiresDiffPreviewRefresh = applyMode === 'diff' && deleteMissing;
+  const hasCurrentDiffPreview = !requiresDiffPreviewRefresh || diffSummary !== null;
+  const requiresDeleteImpactAcknowledgement = requiresDiffPreviewRefresh && (diffSummary?.deactivated ?? 0) > 0;
+  const canSubmit = hasAllRequiredMappings
+    && hasCurrentDiffPreview
+    && (!requiresDeleteImpactAcknowledgement || acknowledgeDeleteImpact);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     uploadRequestAbortRef.current?.abort();
@@ -217,6 +221,7 @@ export default function UploadPage() {
       setPreview(data);
       setMapping(data.suggestedMapping);
       setDiffSummary(null);
+      setAcknowledgeDeleteImpact(false);
     } catch (err) {
       if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : 'プレビューに失敗しました');
@@ -396,6 +401,7 @@ export default function UploadPage() {
       const result = await api.upload<{ summary: DiffSummary }>('/upload/diff-preview', formData, { signal: controller.signal });
       if (controller.signal.aborted) return;
       setDiffSummary(result.summary);
+      setAcknowledgeDeleteImpact(false);
     } catch (err) {
       if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : '差分プレビューに失敗しました');
@@ -411,6 +417,8 @@ export default function UploadPage() {
 
   const handleMappingChange = (field: string, value: string) => {
     setMapping((prev) => ({ ...prev, [field]: value === '' ? null : value }));
+    setDiffSummary(null);
+    setAcknowledgeDeleteImpact(false);
   };
 
   useEffect(() => () => {
@@ -593,6 +601,7 @@ export default function UploadPage() {
                   checked={deleteMissing}
                   onChange={(e) => {
                     setDeleteMissing(e.currentTarget.checked);
+                    setDiffSummary(null);
                     setAcknowledgeDeleteImpact(false);
                   }}
                 />
@@ -642,6 +651,11 @@ export default function UploadPage() {
               {!hasAllRequiredMappings && (
                 <div className="small text-danger mt-2">
                   必須項目が未割り当てです。赤字項目をすべて選択してください。
+                </div>
+              )}
+              {requiresDiffPreviewRefresh && !diffSummary && (
+                <div className="small text-warning mt-2">
+                  無効化・削除を有効にした場合は、送信前に「差分プレビューを更新」を実行してください。
                 </div>
               )}
             </div>

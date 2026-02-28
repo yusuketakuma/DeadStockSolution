@@ -1,5 +1,108 @@
 # tasks/todo.md
 
+## 2026-02-28 総合レビュー指摘の全件修正（第2弾）
+
+### Context
+- Prompt: すべて修正
+- Scope:
+  - 直前の総合レビューで残した P1/P2 指摘（パスワード公開仕様はユーザー承認により除外）
+
+### Goals / Definition of Done
+- [x] upload-confirm ジョブの二重処理リスクを解消する
+- [x] proposal timeline の誤マッチ検索を解消する
+- [x] async upload キューの global 上限競合を解消する
+- [x] UploadPage の差分プレビュー状態不整合を解消する
+- [x] AdminExchangesPage の片系障害時UX後退を解消する
+- [x] OpenClaw CLI パスの環境依存デフォルトを解消する
+- [x] cron 設定の重複定義リスクを解消する
+- [x] typecheck / lint / tests / build を通す
+
+### Implementation checklist
+- [x] A. `runUploadConfirm` の stale 判定を `>=` に修正し、回帰テストを追加
+- [x] B. timeline の `proposalId` 検索条件を区切り安全な条件へ修正
+- [x] C. `enqueueUploadConfirmJob` に global advisory lock を追加
+- [x] D. UploadPage の `diffSummary` / `acknowledgeDeleteImpact` リセットと送信ガードを追加
+- [x] E. AdminExchangesPage を `Promise.allSettled` 化し、セクション別エラー表示へ修正
+- [x] F. OpenClaw の `OPENCLAW_CLI_PATH` フォールバックを撤廃し、`.env.example` を更新
+- [x] G. `server/vercel.json` の cron 重複定義を整理
+- [x] H. まとめて検証（typecheck/lint/test/build）
+
+### Verification
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - `runUploadConfirm` の stale ガード比較を `>=` に変更し、同一ジョブ再取得時の二重反映を防止。
+  - 提案タイムラインの activity log 検索を `proposalId=<id>|` プレフィックス一致へ変更し、ID部分一致誤マッチを解消。
+  - async upload enqueue に global advisory lock を追加して、薬局跨ぎ同時投入時の global 上限競合を抑止。
+  - UploadPage でマッピング変更/削除設定変更後に `diffSummary` と確認チェックを無効化し、再プレビュー必須化。
+  - AdminExchangesPage は `Promise.allSettled` 化し、コメントとタイムラインを独立取得・独立エラー表示へ変更。
+  - OpenClaw CLI の環境依存デフォルトパスを撤廃し、`.env.example` も空値に統一。
+  - `server/vercel.json` から cron 定義を削除し、root `vercel.json` 側に集約して二重実行リスクを回避。
+
+## 2026-02-28 コミットレビュー指摘の全件修正
+
+### Context
+- Prompt: すべて修正
+- Scope:
+  - 直前レビューで挙がった P2/P3 指摘（サーバーAPIとテスト）
+
+### Goals / Definition of Done
+- [x] 管理系書き込みAPIのレート制限を分割前と同等の共有予算へ戻す
+- [x] matching refresh の障害分離後退を解消し、1件不整合で全体停止しない
+- [x] batch matching の過負荷リスクを緩和（分割実行）
+- [x] 指摘された未カバレッジ経路にテストを追加
+- [x] typecheck / lint / tests を通す
+
+### Implementation checklist
+- [x] A. admin write limiter を共通化
+- [x] B. `runSingleRefresh` に batch 失敗時のフォールバックを追加
+- [x] C. `findMatchesBatch` の処理をチャンク化して負荷上限を設ける
+- [x] D. `exchange-subroutes` 未カバー経路のテスト追加
+- [x] E. `admin-pharmacies-subroutes` 未カバー経路のテスト追加
+- [x] F. まとめて検証（typecheck/lint/test）
+
+### Verification
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm test
+
+### Result
+- Status: DONE
+- Notes:
+  - `adminWriteLimiter` を [server/src/routes/admin-write-limiter.ts](/Users/yusuke/DeadStockSolution/server/src/routes/admin-write-limiter.ts) に集約し、管理系書き込みAPIで共有。
+  - matching refresh はバッチ失敗時に薬局単位 `findMatches` フォールバックで継続し、`MATCHING_REFRESH_BATCH_SIZE`（既定200）で分割実行。
+  - `findMatchesBatch` は欠損薬局IDで例外を投げず空候補として処理。
+  - 未カバー経路のサブルートテスト（exchange/admin）を追加。
+
+## 2026-02-28 コミット履歴レビュー
+
+### Context
+- Prompt: コミット履歴を確認しレビュー
+- Scope:
+  - `git log` で確認できる最新コミット群（`origin/preview..HEAD`）
+
+### Review checklist
+- [x] A. 履歴を構造化してレビュー対象コミットを確定
+- [x] B. 各コミット差分を確認して不具合・リスクを抽出
+- [x] C. 重要度順にレビュー結果を整理（file/line付き）
+- [x] D. 結果を `tasks/todo.md` に記録
+
+### Verification
+- [x] `git log --oneline --decorate --graph`
+- [x] `git show <commit>`
+
+### Result
+- Status: DONE
+- Notes:
+  - 対象は `origin/preview..HEAD` の11コミット。
+  - P1はなし。P2を3件（admin write rate limit緩和、matching refreshの失敗隔離後退、batch matchingの負荷スパイク懸念）指摘。
+
 ## 2026-02-27 本番で登録済みテスト薬局が5件表示されない不具合修正
 
 ### Context
@@ -984,11 +1087,11 @@
 - Scope: typecheck / lint / test / build:server / build:client
 
 ### Verification checklist
-- [ ] npm run typecheck
-- [ ] npm run lint
-- [ ] npm test
-- [ ] npm run build:server
-- [ ] npm run build:client
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm test
+- [x] npm run build:server
+- [x] npm run build:client
 
 ### Result
 - Status: DONE
@@ -1217,6 +1320,15 @@
 ### Result
 - Status: DONE
 - Notes:
+  - ヘッダー/ログイン画面のバージョン表示を撤去し、`V2`ラベルの露出をなくした。
+  - 月次レポートDLリンクを`buildApiUrl`へ置換し、`/api`直書き依存を除去した。
+  - APIクライアントを改善し、GET/HEADで`Content-Type`を送らない・`ApiError.code`参照可能・CSRF判定を`/auth/csrf-token`特例のみへ整理した。
+  - `test-pharmacies`は本番で`ENABLE_TEST_PHARMACY_PREVIEW=true`時のみ有効化し、既定でパスワードを返さない（`includePassword=1`指定時のみ返却）運用へ変更した。
+  - アップロード上限を`50MB / 100,000行`へ拡張し、Excelパースキャッシュにエントリ数/総容量/対象サイズの制限を追加してメモリ安定性を向上した。
+
+### Result
+- Status: DONE
+- Notes:
   - `server/drizzle/0017_chemical_cloak.sql` で `pharmacies.test_account_password` を追加し、テストアカウント表示用パスワードをDB管理へ移行。
   - `GET /api/auth/test-pharmacies` は `is_test_account=true AND test_account_password IS NOT NULL` のDB条件のみで返却し、固定デモ配列依存を削除。
   - `server/src/config/test-pharmacy-demo-accounts.ts` を削除し、固定テストデータがランタイムに混入しない構成へ変更。
@@ -1305,3 +1417,448 @@
   - Vercelへ `POSTGRES_URL_UNIFIED` と `POSTGRES_URL_NON_POOLING_UNIFIED` を追加し、ProductionとPreview（`preview` branch override）で同一DB URLに統一。
   - `BusinessStatusBadge` は営業時間未設定パターン（`isOpen=true`, `is24Hours=false`, `todayHours=null`, `closingSoon=false`）を `未設定` 表示へ変更。
   - 営業時間設定済みのケースは従来どおり `営業中` / `営業時間外` / `24時間営業` を表示。
+
+## 2026-02-28 営業状態表示の誤判定修正（設定済みなのに未設定表示）
+
+### Context
+- Prompt: 営業状態が未設定表示になるが、現在時刻では営業時間外のはず。現在時刻取得可否も確認したい
+- Scope:
+  - `server/src/routes/pharmacies.ts`
+  - `server/src/routes/inventory.ts`
+  - `server/src/services/matching-service.ts`
+  - `server/src/types/index.ts`
+  - `client/src/components/BusinessStatusBadge.tsx`
+  - 関連テスト
+
+### Goals / Definition of Done
+- [x] 営業時間設定済み薬局は、現在時刻に応じて `営業中` / `営業時間外` が表示される
+- [x] 営業時間未設定薬局のみ `未設定` が表示される
+- [x] 現在時刻の取得経路を確認し、回答できる状態にする
+- [x] typecheck/lint/test/build が通る
+
+### Implementation checklist
+- [x] A. サーバー側レスポンスに営業時間設定済みフラグ（`isConfigured`）を付与
+- [x] B. クライアント表示を `isConfigured` ベースへ変更
+- [x] C. 既存テストの期待値更新と回帰確認
+- [x] D. 検証（typecheck/lint/test/build）
+
+### Verification
+- [x] `date '+%Y-%m-%d %H:%M:%S %Z'` -> `2026-02-28 02:32:49 JST`
+- [x] npm run test --workspace=server -- src/test/pharmacies-route.test.ts src/test/inventory-route.test.ts
+- [x] npm run test --workspace=client -- src/components/__tests__/BusinessStatusBadge.test.tsx
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - サーバーの `businessStatus` に `isConfigured` フラグを付与し、営業時間設定有無を明示的に返すようにした（pharmacies / inventory / matching）。
+  - `BusinessStatusBadge` の未設定判定を推測ロジックから `isConfigured === false` へ変更し、設定済み薬局の誤判定を防止。
+  - 現在時刻は `new Date()` を起点に取得され、営業時間判定は `Asia/Tokyo` 基準で計算されることを確認。
+
+## 2026-02-28 モニターサイズ連動の自動レイアウト調整
+
+### Context
+- Prompt: モニターサイズにあわせて画面サイズを自動調整したい
+- Scope:
+  - `client/src/styles/design-language.css`
+
+### Goals / Definition of Done
+- [x] デスクトップでモニター幅に応じてコンテンツ幅が自動拡張/縮小する
+- [x] モバイル幅では既存の全幅レイアウトを維持する
+- [x] ビルドが成功する
+
+### Implementation checklist
+- [x] A. `.app-theme .content-container` の `max-width` を動的計算へ変更
+- [x] B. デスクトップ/モバイルのメディアクエリを明示
+- [x] C. client buildで確認
+
+### Verification
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - `@media (min-width: 992px)` で `max-width: min(1800px, calc(100vw - var(--sidebar-width) - 2rem))` を適用し、モニター幅に連動してコンテンツ幅が自動調整されるようにした。
+  - `@media (max-width: 991.98px)` では `max-width: 100%` を維持し、モバイル表示を崩さないようにした。
+
+## 2026-02-28 現行全面刷新（第1弾）: バージョン表示撤去・API連携安定化・大容量アップロード耐性
+
+### Context
+- Prompt: Implement the plan（`V2`表記なしで現行を完全アップデート刷新）
+- Scope:
+  - `client/src/components/Header.tsx`
+  - `client/src/pages/LoginPage.tsx`
+  - `client/src/pages/admin/AdminMonthlyReportsPage.tsx`
+  - `client/src/api/client.ts`
+  - `client/src/styles/**`
+  - `client/src/test/**`
+  - `server/src/routes/auth.ts`
+  - `server/src/routes/upload-validation.ts`
+  - `server/src/services/upload-service.ts`
+  - `server/src/test/auth-route.test.ts`
+
+### Goals / Definition of Done
+- [x] 画面上のバージョン表示（`v*`）を撤去
+- [x] FEの`/api`直書きダウンロードリンクをAPIベースURL経由へ統一
+- [x] APIクライアントでGET/HEADに`Content-Type`を送らない
+- [x] APIエラー`code`を`ApiError`で参照可能にする
+- [x] CSRF除外パスの重複依存を削減（クライアント側は`/auth/csrf-token`のみ特例）
+- [x] テスト薬局プレビューの保護を強化（本番は明示有効化のみ）
+- [x] Excelアップロード上限を`50MB / 100,000行`へ拡張
+- [x] Excelパースキャッシュを容量制御化しメモリ安定性を改善
+- [x] typecheck/lint/test/build が通る
+
+### Implementation checklist
+- [x] A. Header/Loginのバージョン表示削除と関連テスト更新
+- [x] B. Monthly report downloadリンクを`buildApiUrl`へ変更
+- [x] C. API clientのheader/CSRF/ApiError改善
+- [x] D. test-pharmaciesの本番有効化条件とパスワード返却制御追加
+- [x] E. upload validation/serviceの上限・キャッシュ制御改善
+- [x] F. 検証（typecheck/lint/test/build）
+
+### Verification
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+## 2026-02-28 現行全面刷新（第2弾）: 非同期アップロードジョブ基盤（DBキュー）導入
+
+### Context
+- Prompt: 次に進む
+- Scope:
+  - `server/src/db/schema.ts`
+  - `server/drizzle/0019_upload_confirm_jobs.sql`
+  - `server/src/services/upload-confirm-service.ts`
+  - `server/src/services/upload-confirm-job-service.ts`
+  - `server/src/routes/upload-parser.ts`
+  - `server/src/routes/internal-upload-jobs.ts`
+  - `server/src/app.ts`
+  - `vercel.json`, `server/vercel.json`
+  - `server/src/test/upload-route.test.ts`
+
+### Goals / Definition of Done
+- [x] 非同期アップロードジョブテーブルを追加
+- [x] upload confirm処理をサービス化し、同期/非同期で共通化
+- [x] `POST /api/upload/confirm-async` を追加
+- [x] `GET /api/upload/jobs/:jobId` を追加
+- [x] cron retry向け `GET /api/internal/upload-jobs/retry` を追加
+- [x] Vercel cron設定を追加
+- [x] 既存同期`/confirm`互換を維持
+- [x] typecheck/lint/test/build が通る
+
+### Implementation checklist
+- [x] A. schema+migration 追加（`upload_confirm_jobs`）
+- [x] B. confirm本体ロジックを `upload-confirm-service` へ抽出
+- [x] C. job enqueue/claim/retry処理を `upload-confirm-job-service` へ実装
+- [x] D. upload routesへ async confirm と job status API を追加
+- [x] E. internal route + app mount + vercel cron を追加
+- [x] F. upload route tests を更新・追加
+- [x] G. 全体検証
+
+### Verification
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - 既存同期 `POST /api/upload/confirm` のレスポンス仕様は維持したまま、内部実装を共通サービスへ移行。
+  - 新規 `POST /api/upload/confirm-async` はジョブIDを返し、即時処理を試行しつつ未処理はDBキューへ残す。
+  - 新規 `GET /api/upload/jobs/:jobId` でジョブ状態（pending/processing/completed/failed）と結果JSONを取得可能。
+  - `GET /api/internal/upload-jobs/retry`（Bearer secret必須）で保留ジョブ再処理を実行可能。
+  - Vercel cronに `/api/internal/upload-jobs/retry` を追加し、10分ごと再処理を有効化。
+
+## 2026-02-28 現行全面刷新（第3弾）: 非同期アップロード運用強化（FE連携 + キュー安定化）
+
+### Context
+- Prompt: 次に進む
+- Scope:
+  - `client/src/pages/UploadPage.tsx`
+  - `client/src/api/client.ts`
+  - `client/src/test/e2e/upload-page.test.tsx`
+  - `server/src/services/upload-confirm-job-service.ts`
+  - `server/src/routes/upload-parser.ts`
+  - `server/src/routes/internal-upload-jobs.ts`
+  - `server/src/test/upload-route.test.ts`
+  - `server/src/test/internal-upload-jobs-route.test.ts`
+
+### Goals / Definition of Done
+- [x] フロントのアップロード確定処理を非同期ジョブAPI（`/confirm-async` + `/jobs/:id`）へ統合
+- [x] 大容量アップロード時のネットワーク待ちに耐えるため upload timeout を拡張可能化
+- [x] 薬局単位のアップロードジョブ過積載を抑止（キュー上限）
+- [x] 完了/失敗ジョブの定期クリーンアップを追加し、蓄積による劣化を抑止
+- [x] 既存同期互換を維持しつつ、エラー応答（429含む）を明確化
+- [x] typecheck/lint/test/build が通る
+
+### Implementation checklist
+- [x] A. `UploadPage` を async confirm + polling に更新
+- [x] B. API client の `api.upload` に timeout オプション追加
+- [x] C. upload confirm job service に queue limit / cleanup 機能追加
+- [x] D. upload parser route で queue limit エラーを 429 応答
+- [x] E. internal upload jobs route で retry + cleanup を実行
+- [x] F. client/server テストを更新・追加
+- [x] G. 全体検証（typecheck/lint/test/build）
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/upload-route.test.ts src/test/internal-upload-jobs-route.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/upload-page.test.tsx src/test/api-client.test.ts
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - `UploadPage` の登録フローを `POST /api/upload/confirm-async` + `GET /api/upload/jobs/:id` ポーリングへ切替し、待機中/処理中ステータスを画面表示。
+  - ポーリング失敗時はジョブ表示状態/受付メッセージをクリアし、処理中の `uploadType` 変更を無効化して誤遷移を防止。
+  - `api.upload` に `timeout` オプションを追加し、50MB級アップロードのネットワーク待機に対応。
+  - `upload-confirm-job-service` に薬局単位 advisory lock を用いた原子的な上限判定+投入（既定3件）を導入し、過積載時は `UPLOAD_CONFIRM_QUEUE_LIMIT` を返すよう実装。
+  - stale `processing` ジョブを再取得可能にし、入力起因エラーは非再試行で即 `failed` へ遷移するよう再試行制御を改善。
+  - `cleanupUploadConfirmJobs` を追加し、`/api/internal/upload-jobs/retry` 実行時に完了/失敗ジョブの古いレコードを同時クリーンアップ。`limit`/`cleanupLimit` クエリで処理件数を調整可能にした。
+  - `UPLOAD_CONFIRM_PROCESS_ON_ENQUEUE=true` の場合のみ即時処理を起動し、既定は cron ワーカー運用へ。upload jobs cron は毎分実行へ更新。
+  - ルートテスト/クライアントE2Eを更新し、429応答・非同期完了フロー・internal route の認証/実行を回帰担保。
+
+## 2026-02-28 Security review: upload async flow (targeted files + related paths)
+
+### Context
+- Prompt: Review recent changes for security issues
+- Scope:
+  - `client/src/pages/UploadPage.tsx`
+  - `client/src/api/client.ts`
+  - `server/src/services/upload-confirm-job-service.ts`
+  - `server/src/routes/upload-parser.ts`
+  - `server/src/routes/internal-upload-jobs.ts`
+  - Related paths (callers / sibling utilities / auth middleware)
+
+### Review checklist
+- [x] A. 対象5ファイルの差分と現状実装を確認
+- [x] B. 認可・権限境界（fail-open / unknown resource）を確認
+- [x] C. 注入・情報露出・秘密情報ログを確認
+- [x] D. abuse risk / DoS（queue, polling, retry, timeout）を確認
+- [x] E. 関連経路（呼び出し元・同型モジュール）を spot-check
+- [x] F. Severity順で具体的 findings を整理（file:line）
+
+### Verification
+- [x] コード読解ベースレビュー（必要箇所を `rg` / `sed` で参照）
+- [x] findings の再現条件をコード上で確認
+
+### Result
+- Status: DONE
+- Notes:
+  - Concrete findings: P1 1件 / P2 1件 / P3 1件。
+  - 主因は upload async queue の非原子上限制御と、失敗理由のそのまま返却。
+
+## 2026-02-28 Security re-review: upload async flow (P1 only, updated files)
+
+### Context
+- Prompt: Re-review only updated files for remaining P1 security issues after fixes
+- Scope:
+  - `server/src/services/upload-confirm-job-service.ts`
+  - `server/src/routes/upload-parser.ts`
+  - `server/src/routes/internal-upload-jobs.ts`
+  - `client/src/pages/UploadPage.tsx`
+  - Related paths (caller/adjacent auth flow for these files only)
+
+### Review checklist
+- [x] A. 対象4ファイルの現状実装を確認
+- [x] B. 認可・権限境界（fail-open / unknown resource）を再確認
+- [x] C. 注入・秘密情報露出・セッション競合を再確認
+- [x] D. 関連経路（呼び出し元/隣接）を最小範囲で spot-check
+- [x] E. P1のみを判定して報告
+
+### Result
+- Status: DONE
+- Notes:
+  - P1観点（認可破綻 / 重大注入 / 秘密情報露出 / セッション破綻）で再確認し、対象差分および隣接経路で追加のP1は未検出。
+
+## 2026-02-28 現行全面刷新（第4弾）: 非同期アップロード運用の堅牢化（エラー秘匿 + ポーリング最適化 + 観測性）
+
+### Context
+- Prompt: 続きを実行
+- Scope:
+  - `server/src/routes/upload-parser.ts`
+  - `server/src/routes/internal-upload-jobs.ts`
+  - `client/src/pages/UploadPage.tsx`
+  - `client/src/test/e2e/upload-page.test.tsx`
+  - `server/src/test/upload-route.test.ts`
+  - `server/src/test/internal-upload-jobs-route.test.ts`
+
+### Goals / Definition of Done
+- [x] ジョブ失敗時に内部エラー詳細をクライアントへ露出しない
+- [x] UploadPage のジョブポーリングを状況に応じたバックオフへ最適化
+- [x] internal upload jobs cron の成功ログを構造化出力
+- [x] 追加変更の回帰テストを更新
+- [x] typecheck/lint/test/build が通る
+
+### Implementation checklist
+- [x] A. job status API の `lastError` をサニタイズ（必要なら code 付与）
+- [x] B. UploadPage の polling interval を適応制御へ変更
+- [x] C. internal upload jobs route に成功ログを追加
+- [x] D. server/client テスト更新
+- [x] E. 全体検証
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/upload-route.test.ts src/test/internal-upload-jobs-route.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/upload-page.test.tsx src/test/api-client.test.ts
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - `GET /api/upload/jobs/:jobId` は失敗時の `lastError` をユーザー向け文言へ変換し、`lastErrorCode` を返すように変更（内部例外文言の直接露出を抑止）。
+  - `UploadPage` はポーリング待機を固定値から適応バックオフ（pendingの経過時間に応じて1.5s→3s→5s）へ変更し、失敗時は受付メッセージ/進行表示をクリアするよう改善。
+  - `internal-upload-jobs` cron は成功時に `processed/cleaned/processLimit/cleanupLimit` を構造化ログ出力。
+  - 追加テストとして、失敗ジョブのサニタイズ応答・upload jobs route のクエリ上限・UploadPageの失敗時表示を回帰担保した。
+
+## 2026-02-28 現行全面刷新（第5弾）: 非同期アップロード最終安定化（競合防止 + メモリ圧縮 + 運用設定）
+
+### Context
+- Prompt: 続きを実行。残タスクを全て完了させて
+- Scope:
+  - `server/src/services/upload-confirm-job-service.ts`
+  - `server/src/services/upload-confirm-service.ts`
+  - `server/src/routes/upload-parser.ts`
+  - `server/src/middleware/error-handler.ts`
+  - `server/src/services/upload-diff-service.ts`
+  - `server/src/db/schema.ts`
+  - `server/drizzle/0020_uploads_requested_at.sql`
+  - `server/drizzle/meta/_journal.json`
+  - `client/src/pages/UploadPage.tsx`
+  - `server/.env.example`
+  - `vercel.json`
+  - `server/vercel.json`
+  - `server/src/test/upload-route.test.ts`
+  - `server/src/test/upload-inventory-flow.test.ts`
+  - `server/src/test/error-handler.test.ts`
+  - `server/src/test/upload-diff-service.test.ts`
+  - `client/src/test/e2e/upload-page.test.tsx`
+
+### Goals / Definition of Done
+- [x] 同一薬局・同一種別の古い非同期ジョブが新しい確定結果を上書きしない
+- [x] 非同期ジョブのファイル保持を圧縮化し、完了/終端失敗時に生データを保持しない
+- [x] upload job retry 判定を構造化し、解析系エラーの無駄リトライを止める
+- [x] diff適用の更新処理をバッチ化し、大量更新時のSQL往復を削減する
+- [x] UploadPage のジョブポーリングで一時的な通信失敗を自動リトライできる
+- [x] error-handler が任意の内部 `err.code` をクライアントへ露出しない
+- [x] monthly report cron と関連env例を整備する
+- [x] typecheck/lint/test/build が通る
+
+### Implementation checklist
+- [x] A. upload confirm job service: stale job skip / payload compression / terminal payload clear / retry classification改善
+- [x] B. upload parser route: job error code解決をprefix対応へ拡張
+- [x] C. upload diff service: 更新系の一括バッチUPDATE導入
+- [x] D. UploadPage: poll transient error retry + backoff追加
+- [x] E. error-handler: 公開エラーコードの許可制化
+- [x] F. cron/env設定: monthly report cron追加・env example追記
+- [x] G. server/client テスト更新
+- [x] H. 全体検証（typecheck/lint/test/build）
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/upload-route.test.ts src/test/upload-inventory-flow.test.ts src/test/upload-diff-service.test.ts src/test/error-handler.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/upload-page.test.tsx
+- [x] npm run typecheck
+- [x] npm run lint
+- [x] npm run test
+- [x] npm run build:server
+- [x] npm run build:client
+
+### Result
+- Status: DONE
+- Notes:
+  - 非同期ジョブのファイル保存を `gzip + base64` へ変更し、`completed/terminal failed` 時は payload を即クリアするようにした（DB肥大化/露出リスクを低減）。
+  - 同期/非同期の上書き競合を防ぐため、`runUploadConfirm` に薬局+種別の advisory lock を導入し、`uploads.requested_at`（要求時刻）基準で stale 判定を実装。
+  - stale判定の誤判定回避のため `uploads.requested_at` を追加し、前方互換マイグレーション `0020_uploads_requested_at.sql` と Drizzle journal 追記を実施。
+  - upload diff の更新処理を `UPDATE ... FROM (VALUES ...)` バッチ方式へ変更し、大量更新時のSQL往復を削減。
+  - UploadPage はジョブ状態取得の一時失敗（timeout/5xx/429）を自動リトライするよう改善し、長時間待機時のメッセージも改善。
+  - `error-handler` は公開エラーコードを許可制にし、内部 `err.code` の漏えいを抑止。
+  - `monthly reports` cron を root/server の Vercel 設定へ追加し、関連 env (`UPLOAD_JOBS_CRON_SECRET`, `MONTHLY_REPORT_CRON_SECRET`, `MONTHLY_REPORT_SCHEDULER_ENABLED`, `UPLOAD_CONFIRM_MAX_ACTIVE_JOBS_GLOBAL`) を `.env.example` に追記。
+  - 最終の再レビュー（security/correctness/performance）で P1 残件なしを確認。
+
+## 2026-02-28 次期開発計画（機能改善・機能追加 / 項目4除外）
+
+### Context
+- Prompt: 再度つぎのかいはつけいかくをたてて
+- Constraint:
+  - 以前提示した改善候補のうち「4. オブジェクトストレージ移行」は今回スコープ外
+  - 既存機能互換を維持しつつ、可用性・性能・安定性を優先
+  - データ変換・移行はダウンタイムゼロ（expand/dual-write/backfill/contract）
+
+### Scope（実装対象）
+- [ ] 1. アップロードジョブ管理画面（履歴/再実行/キャンセル/状態可視化）
+- [ ] 2. 行単位エラー診断 + 部分成功モード（valid行のみ反映）
+- [ ] 3. 重複登録防止（冪等化: file hash + pharmacy + uploadType）
+- [ ] 5. マッチングルールエンジン化（管理画面から重み調整）
+- [ ] 6. 期限切迫・過剰在庫の予兆通知
+- [ ] 7. 監査ログ強化（誰が何を変更したか）
+- [ ] 8. API契約テスト（OpenAPI）導入
+
+### Goal / Definition of Done
+- [ ] 主要ユーザー操作（アップロード・マッチング・通知）が可視化/追跡可能
+- [ ] 大量データ投入時に「全失敗」ではなく、行単位で復旧可能
+- [ ] 二重取り込み/再実行による重複登録を抑止
+- [ ] ルール変更をコード改修なしで運用調整可能
+- [ ] 予兆通知で在庫滞留/期限切迫を先回り検知
+- [ ] 監査ログで変更責任を追跡可能
+- [ ] OpenAPI契約テストがCIで常時実行
+- [ ] 各フェーズで typecheck/lint/test/build と P1=0 を維持
+
+### Phase Plan
+- [ ] Phase 1（運用可視化 + 安全性の土台）
+  - [ ] A1. Upload Jobs API拡張（一覧/詳細/再実行/キャンセル/再取得）
+  - [ ] A2. 管理画面 `AdminUploadJobsPage` 追加（検索/絞り込み/再試行）
+  - [ ] A3. 冪等キー（`idempotency_key`）導入と重複検知レスポンス標準化
+  - [ ] A4. 監査ログイベント拡張（upload/job/admin action）
+
+- [ ] Phase 2（データ品質・復旧性）
+  - [ ] B1. 行単位バリデーション結果モデル追加（error row report）
+  - [ ] B2. `applyMode=partial` 実装（valid rowsのみ反映）
+  - [ ] B3. エラーレポートDL（CSV/JSON）とUI表示
+  - [ ] B4. 失敗パターン集計（頻出カラム不備/型不一致の可視化）
+
+- [ ] Phase 3（最適化・提案精度）
+  - [ ] C1. マッチングルール設定テーブル追加（重み/閾値/距離係数）
+  - [ ] C2. ルール反映サービス化（Feature Flagで段階切替）
+  - [ ] C3. 予兆通知ジョブ追加（期限切迫・滞留・変動）
+  - [ ] C4. ダッシュボード導線（対応アクションへ1クリック遷移）
+
+- [ ] Phase 4（契約保証と回帰抑止）
+  - [ ] D1. OpenAPI仕様生成/固定（server routes基準）
+  - [ ] D2. API契約テスト導入（主要エンドポイント）
+  - [ ] D3. CI組み込み（契約破壊変更をfail-fast）
+  - [ ] D4. Runbook更新（ゼロダウンタイム手順・ロールバック）
+
+### Zero-Downtime Migration Policy（全フェーズ共通）
+- [ ] Expand: 追加カラム/追加テーブルのみ先行デプロイ（既存読取維持）
+- [ ] Dual-write: 新旧モデルへ並行書き込み（読みは旧優先）
+- [ ] Backfill: バックグラウンドで段階移行（進捗メトリクス出力）
+- [ ] Switch-read: 検証後に読取を新モデルへ切替（Flag管理）
+- [ ] Contract: 旧カラム削除は十分な観測期間後に実施
+
+### Verification Gate（各Phase完了時）
+- [ ] `npm run typecheck`
+- [ ] `npm run lint`
+- [ ] `npm run test`
+- [ ] `npm run build:server`
+- [ ] `npm run build:client`
+- [ ] multi-perspective review（security/correctness/quality/perf/ux/ops）で P1=0
+
+### Deliverable Order（推奨）
+- [ ] Sprint 1: Phase 1（A1-A4）
+- [ ] Sprint 2: Phase 2（B1-B4）
+- [ ] Sprint 3: Phase 3（C1-C4）
+- [ ] Sprint 4: Phase 4（D1-D4）

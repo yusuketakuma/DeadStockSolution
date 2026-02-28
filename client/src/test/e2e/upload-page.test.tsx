@@ -375,3 +375,78 @@ it('requires acknowledgement when diff deleteMissing deactivates existing record
   await userEvent.click(screen.getByLabelText('無効化・削除 3 件の影響を確認しました'));
   expect(submitButton).toBeEnabled();
 });
+
+it('invalidates diff preview when mapping is changed after preview', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse(mockUser);
+    }
+    if (url.includes('/api/upload/preview')) {
+      return jsonResponse({
+        headers: ['コード', '薬剤名', '数量', '単位', '期限'],
+        rows: [['111', '薬A', '10', '錠', '2026-03-31']],
+        suggestedMapping: {
+          drug_code: '0',
+          drug_name: '1',
+          quantity: '2',
+          unit: '3',
+          yakka_unit_price: null,
+          expiration_date: '4',
+          lot_number: null,
+        },
+        headerRowIndex: 0,
+        hasSavedMapping: false,
+      });
+    }
+    if (url.includes('/api/upload/diff-preview')) {
+      return jsonResponse({
+        summary: {
+          inserted: 1,
+          updated: 0,
+          deactivated: 2,
+          unchanged: 0,
+          totalIncoming: 3,
+        },
+      });
+    }
+    return jsonResponse({ error: 'Not found' }, 404);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWithProviders(<UploadPage />);
+  await waitFor(() => {
+    expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
+  });
+
+  const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement | null;
+  expect(fileInput).not.toBeNull();
+  if (!fileInput) throw new Error('file input not found');
+
+  const file = new File(['dummy-xlsx-content'], 'dead-stock.xlsx', {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  await userEvent.upload(fileInput, file);
+  await userEvent.click(screen.getByRole('button', { name: 'プレビュー' }));
+
+  await waitFor(() => {
+    expect(screen.getByText('フィールド割り当て')).toBeInTheDocument();
+  });
+
+  await userEvent.selectOptions(screen.getByLabelText('反映方式'), 'diff');
+  await userEvent.click(screen.getByLabelText('差分に存在しない既存データを無効化/削除する'));
+  await userEvent.click(screen.getByRole('button', { name: '差分プレビューを更新' }));
+
+  await waitFor(() => {
+    expect(screen.getByText(/無効化・削除: 2件/)).toBeInTheDocument();
+  });
+
+  await userEvent.click(screen.getByLabelText('無効化・削除 2 件の影響を確認しました'));
+  expect(screen.getByRole('button', { name: 'この設定でデータを登録' })).toBeEnabled();
+
+  await userEvent.selectOptions(screen.getByLabelText('薬剤名 の割り当て'), '0');
+
+  expect(screen.getByRole('button', { name: 'この設定でデータを登録' })).toBeDisabled();
+  expect(screen.getByText('無効化・削除を有効にした場合は、送信前に「差分プレビューを更新」を実行してください。')).toBeInTheDocument();
+  expect(screen.queryByText(/無効化・削除: 2件/)).not.toBeInTheDocument();
+});

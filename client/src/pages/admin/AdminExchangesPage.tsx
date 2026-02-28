@@ -95,25 +95,29 @@ export default function AdminExchangesPage() {
     setSelectedProposalId(proposalId);
     setCommentModalOpen(true);
     setCommentsLoading(true);
+    setComments([]);
+    setTimeline([]);
     setCommentsError('');
     setTimelineError('');
     setTimelineFilter('all');
-    try {
-      const [commentResult, timelineResult] = await Promise.all([
-        api.get<{ data: ProposalComment[] }>(`/admin/exchanges/${proposalId}/comments`),
-        api.get<{ data: ProposalTimelineEvent[] }>(`/admin/exchanges/${proposalId}/timeline`),
-      ]);
-      setComments(commentResult.data);
-      setTimeline(timelineResult.data);
-    } catch (err) {
-      setComments([]);
-      setTimeline([]);
-      const msg = err instanceof Error ? err.message : '提案関連情報の取得に失敗しました';
-      setCommentsError(msg);
-      setTimelineError(msg);
-    } finally {
-      setCommentsLoading(false);
+    const [commentResult, timelineResult] = await Promise.allSettled([
+      api.get<{ data: ProposalComment[] }>(`/admin/exchanges/${proposalId}/comments`),
+      api.get<{ data: ProposalTimelineEvent[] }>(`/admin/exchanges/${proposalId}/timeline`),
+    ]);
+
+    if (commentResult.status === 'fulfilled') {
+      setComments(commentResult.value.data);
+    } else {
+      setCommentsError(commentResult.reason instanceof Error ? commentResult.reason.message : '交渉メモの取得に失敗しました');
     }
+
+    if (timelineResult.status === 'fulfilled') {
+      setTimeline(timelineResult.value.data);
+    } else {
+      setTimelineError(timelineResult.reason instanceof Error ? timelineResult.reason.message : '進行履歴の取得に失敗しました');
+    }
+
+    setCommentsLoading(false);
   };
 
   return (
@@ -205,13 +209,13 @@ export default function AdminExchangesPage() {
         title={`交渉メモ（提案ID: ${selectedProposalId ?? '-'}）`}
         size="lg"
       >
-        {(commentsError || timelineError) && <AppAlert variant="danger">{commentsError || timelineError}</AppAlert>}
         {commentsLoading ? (
           <InlineLoader text="交渉メモを読み込み中..." className="text-muted small" />
         ) : (
           <>
             <div className="mb-3 p-2 border rounded">
               <div className="fw-semibold mb-2">進行履歴</div>
+              {timelineError && <AppAlert variant="warning" className="small py-2">{timelineError}</AppAlert>}
               <div className="mb-2" style={{ maxWidth: 280 }}>
                 <select
                   className="form-select form-select-sm"
@@ -242,9 +246,10 @@ export default function AdminExchangesPage() {
               )}
             </div>
 
-            {comments.length === 0 ? (
+            {commentsError && <AppAlert variant="warning" className="small py-2">{commentsError}</AppAlert>}
+            {!commentsError && comments.length === 0 ? (
               <div className="small text-muted">交渉メモはありません。</div>
-            ) : (
+            ) : !commentsError ? (
               <div className="d-flex flex-column gap-2">
                 {comments.map((comment) => (
                   <div key={comment.id} className="border rounded p-2">
@@ -255,7 +260,7 @@ export default function AdminExchangesPage() {
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </>
         )}
       </AppModalShell>

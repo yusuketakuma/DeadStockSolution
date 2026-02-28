@@ -17,6 +17,7 @@ import { sql } from 'drizzle-orm';
 
 export const pharmacyRelationshipTypeEnum = pgEnum('pharmacy_relationship_type_enum', ['favorite', 'blocked']);
 export const uploadTypeEnum = pgEnum('upload_type_enum', ['dead_stock', 'used_medication']);
+export const uploadJobStatusEnum = pgEnum('upload_job_status_enum', ['pending', 'processing', 'completed', 'failed']);
 export const exchangeStatusEnum = pgEnum('exchange_status_enum', [
   'proposed',
   'accepted_a',
@@ -75,6 +76,7 @@ export const uploads = pgTable('uploads', {
   originalFilename: text('original_filename').notNull(),
   columnMapping: text('column_mapping'),
   rowCount: integer('row_count'),
+  requestedAt: timestamp('requested_at', { mode: 'string' }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   idxUploadsPharmacyTypeCreated: index('idx_uploads_pharmacy_type_created')
@@ -540,6 +542,34 @@ export const matchingRefreshJobs = pgTable('matching_refresh_jobs', {
     .on(table.triggerPharmacyId, table.createdAt),
   idxMatchingRefreshJobsReady: index('idx_matching_refresh_jobs_ready')
     .on(table.attempts, table.nextRetryAt, table.processingStartedAt, table.createdAt),
+}));
+
+export const uploadConfirmJobs = pgTable('upload_confirm_jobs', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  uploadType: uploadTypeEnum('upload_type').notNull(),
+  originalFilename: text('original_filename').notNull(),
+  headerRowIndex: integer('header_row_index').notNull(),
+  mappingJson: text('mapping_json').notNull(),
+  applyMode: text('apply_mode').notNull().default('replace'),
+  deleteMissing: boolean('delete_missing').notNull().default(false),
+  fileBase64: text('file_base64').notNull(),
+  status: uploadJobStatusEnum('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  resultJson: text('result_json'),
+  processingStartedAt: timestamp('processing_started_at', { mode: 'string' }),
+  nextRetryAt: timestamp('next_retry_at', { mode: 'string' }),
+  completedAt: timestamp('completed_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxUploadConfirmJobsPharmacyCreated: index('idx_upload_confirm_jobs_pharmacy_created')
+    .on(table.pharmacyId, table.createdAt),
+  idxUploadConfirmJobsReady: index('idx_upload_confirm_jobs_ready')
+    .on(table.status, table.attempts, table.nextRetryAt, table.processingStartedAt, table.createdAt),
+  chkUploadConfirmJobsApplyMode: check('chk_upload_confirm_jobs_apply_mode', sql`${table.applyMode} IN ('replace', 'diff')`),
+  chkUploadConfirmJobsAttemptsNonNegative: check('chk_upload_confirm_jobs_attempts_non_negative', sql`${table.attempts} >= 0`),
 }));
 
 // ── 通知 ──────────────────────────────────────────────────

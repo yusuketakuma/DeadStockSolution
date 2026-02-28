@@ -425,6 +425,98 @@ describe('admin pharmacies detail routes', () => {
     expect(response.body).toEqual({ error: '薬局名は1〜100文字で入力してください' });
   });
 
+  it('PUT /pharmacies/:id/business-hours updates hours and returns new version', async () => {
+    const app = createApp();
+    mocks.validateBusinessHours.mockReturnValue({
+      valid: [{
+        dayOfWeek: 1,
+        openTime: '09:00',
+        closeTime: '18:00',
+        isClosed: false,
+        is24Hours: false,
+      }],
+    });
+    mocks.validateSpecialBusinessHours.mockReturnValue({ provided: false, valid: [] });
+    mocks.db.select.mockImplementationOnce(() => createLimitQuery([{ id: 5 }]));
+    mocks.db.transaction.mockImplementationOnce(async (callback: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ version: 2 }]),
+            }),
+          }),
+        }),
+        delete: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockResolvedValue(undefined),
+        }),
+      };
+      return callback(tx);
+    });
+
+    const response = await request(app)
+      .put('/api/admin/pharmacies/5/business-hours')
+      .send({
+        version: 1,
+        hours: [{ dayOfWeek: 1, openTime: '09:00', closeTime: '18:00', isClosed: false, is24Hours: false }],
+        specialHours: [],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ message: '営業時間を更新しました', version: 2 });
+  });
+
+  it('PUT /pharmacies/:id/business-hours returns 409 when concurrent update detected', async () => {
+    const app = createApp();
+    mocks.validateBusinessHours.mockReturnValue({
+      valid: [{
+        dayOfWeek: 1,
+        openTime: '09:00',
+        closeTime: '18:00',
+        isClosed: false,
+        is24Hours: false,
+      }],
+    });
+    mocks.validateSpecialBusinessHours.mockReturnValue({ provided: false, valid: [] });
+    mocks.db.select.mockImplementationOnce(() => createLimitQuery([{ id: 5 }]));
+    mocks.db.transaction.mockImplementationOnce(async (callback: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+        }),
+        delete: vi.fn(),
+        insert: vi.fn(),
+      };
+      return callback(tx);
+    });
+    mocks.fetchBusinessHourSettings.mockResolvedValue({
+      version: 3,
+      hours: [],
+      specialHours: [],
+    });
+
+    const response = await request(app)
+      .put('/api/admin/pharmacies/5/business-hours')
+      .send({ version: 1, hours: [], specialHours: [] });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: '他のデバイスまたはタブで更新されています。最新データを確認してください',
+      latestData: {
+        version: 3,
+        hours: [],
+        specialHours: [],
+      },
+    });
+  });
+
   it('PUT /pharmacies/:id/toggle-active toggles active state', async () => {
     const app = createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([{ isActive: true }]));
@@ -607,5 +699,45 @@ describe('admin pharmacies actions routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: '送信先薬局IDが不正です' });
+  });
+
+  it('POST /requests/:id/handoff re-handoffs request and updates state when accepted', async () => {
+    const app = createApp();
+    const requestRow = {
+      id: 12,
+      pharmacyId: 5,
+      requestText: '再連携テスト',
+      openclawStatus: 'pending',
+    };
+
+    mocks.db.select.mockImplementationOnce(() => createLimitQuery([requestRow]));
+    mocks.buildOpenClawLogContext.mockResolvedValue([{ type: 'log' }]);
+    mocks.handoffToOpenClaw.mockResolvedValue({
+      accepted: true,
+      connectorConfigured: true,
+      implementationBranch: 'feature/openclaw',
+      status: 'in_progress',
+      note: null,
+      threadId: 'thread-1',
+      summary: 'accepted',
+    });
+    mocks.db.update.mockImplementationOnce(() => createUpdateQuery());
+
+    const response = await request(app)
+      .post('/api/admin/requests/12/handoff');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      message: 'OpenClawへ再連携しました',
+      handoff: {
+        accepted: true,
+        connectorConfigured: true,
+        implementationBranch: 'feature/openclaw',
+        status: 'in_progress',
+        note: null,
+      },
+    });
+    expect(mocks.handoffToOpenClaw).toHaveBeenCalledTimes(1);
+    expect(mocks.db.update).toHaveBeenCalledTimes(1);
   });
 });

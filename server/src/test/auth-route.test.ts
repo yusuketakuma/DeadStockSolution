@@ -326,9 +326,21 @@ describe('auth routes', () => {
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('allows test pharmacy preview endpoint in production by default', async () => {
+  it('disables test pharmacy preview endpoint in production by default', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'テスト薬局情報は利用できません' });
+    expect(mocks.db.select).not.toHaveBeenCalled();
+  });
+
+  it('allows test pharmacy preview endpoint in production when explicitly enabled', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'true';
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
       { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
@@ -336,7 +348,7 @@ describe('auth routes', () => {
     mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();
 
-    const res = await request(app).get('/api/auth/test-pharmacies');
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -364,7 +376,7 @@ describe('auth routes', () => {
     expect(mocks.db.select).not.toHaveBeenCalled();
   });
 
-  it('returns test pharmacy previews from database', async () => {
+  it('returns test pharmacy previews from database without password by default', async () => {
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
       { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
@@ -378,10 +390,10 @@ describe('auth routes', () => {
     expect(res.body).toEqual({
       accounts: [
         {
-          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: '',
         },
         {
-          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026',
+          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: '',
         },
       ],
     });
@@ -394,13 +406,14 @@ describe('auth routes', () => {
 
   it('returns 503 when test pharmacy columns are missing', async () => {
     process.env.NODE_ENV = 'production';
+    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'true';
     const missingColumnError = Object.assign(new Error('column "is_test_account" does not exist'), { code: '42703' });
     const missingColumnChain = createRejectedSelectChain(missingColumnError);
     mocks.db.select
       .mockImplementationOnce(() => missingColumnChain);
     const app = await createApp();
 
-    const res = await request(app).get('/api/auth/test-pharmacies');
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
@@ -419,7 +432,7 @@ describe('auth routes', () => {
     mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();
 
-    const res = await request(app).get('/api/auth/test-pharmacies');
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
     expect(res.body.accounts).toEqual([
@@ -468,7 +481,7 @@ describe('auth routes', () => {
     mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();
 
-    const res = await request(app).get('/api/auth/test-pharmacies');
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({

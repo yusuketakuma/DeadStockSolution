@@ -61,13 +61,6 @@ body {
   color: #e2e8f0;
 }
 
-.app-header-version {
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: #dbeafe;
-  letter-spacing: 0;
-}
-
 .app-header-updates-trigger {
   display: inline-flex;
   align-items: center;
@@ -283,4 +276,3 @@ body {
 .sidebar-toggle:focus {
   box-shadow: none;
 }
-

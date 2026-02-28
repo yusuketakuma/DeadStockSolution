@@ -167,7 +167,7 @@ router.get('/exchanges/:proposalId/timeline', async (req: AuthRequest, res: Resp
       .leftJoin(pharmacies, eq(activityLogs.pharmacyId, pharmacies.id))
       .where(and(
         inArray(activityLogs.action, ['proposal_accept', 'proposal_reject', 'proposal_complete', 'proposal_create']),
-        sql`${activityLogs.detail} LIKE ${`%proposalId=${proposalId}%`}`,
+        sql`${activityLogs.detail} LIKE ${`proposalId=${proposalId}|%`}`,
       ))
       .orderBy(asc(activityLogs.createdAt), asc(activityLogs.id));
 

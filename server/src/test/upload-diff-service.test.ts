@@ -28,6 +28,7 @@ function createTxMock(existingRows: unknown[]) {
   const updateWhere = vi.fn().mockResolvedValue(undefined);
   const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
   const update = vi.fn().mockReturnValue({ set: updateSet });
+  const execute = vi.fn().mockResolvedValue(undefined);
 
   const deleteWhere = vi.fn().mockResolvedValue(undefined);
   const txDelete = vi.fn().mockReturnValue({ where: deleteWhere });
@@ -37,6 +38,7 @@ function createTxMock(existingRows: unknown[]) {
       select,
       insert,
       update,
+      execute,
       delete: txDelete,
     },
     spies: {
@@ -48,6 +50,7 @@ function createTxMock(existingRows: unknown[]) {
       update,
       updateSet,
       updateWhere,
+      execute,
       txDelete,
       deleteWhere,
     },
@@ -180,7 +183,8 @@ describe('upload-diff-service', () => {
       totalIncoming: 2,
     });
     expect(spies.insert).toHaveBeenCalledTimes(1);
-    expect(spies.update).toHaveBeenCalledTimes(2);
+    expect(spies.execute).toHaveBeenCalledTimes(1);
+    expect(spies.update).toHaveBeenCalledTimes(1);
     expect(spies.insertValues.mock.calls[0][0]).toEqual(expect.arrayContaining([
       expect.objectContaining({
         pharmacyId: 10,
@@ -280,7 +284,8 @@ describe('upload-diff-service', () => {
       totalIncoming: 2,
     });
     expect(spies.insert).toHaveBeenCalledTimes(1);
-    expect(spies.update).toHaveBeenCalledTimes(1);
+    expect(spies.execute).toHaveBeenCalledTimes(1);
+    expect(spies.update).toHaveBeenCalledTimes(0);
     expect(spies.txDelete).toHaveBeenCalledTimes(1);
   });
 

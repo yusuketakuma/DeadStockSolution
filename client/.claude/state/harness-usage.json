@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-02-28T06:11:31.939Z",
+  "skills": {
+    "impl": {
+      "count": 1,
+      "lastUsed": "2026-02-28T06:11:31.938Z"
+    }
+  },
+  "commands": {
+    "batch": {
+      "count": 1,
+      "lastUsed": "2026-02-28T05:55:46.230Z"
+    },
+    "breezing": {
+      "count": 1,
+      "lastUsed": "2026-02-28T05:56:31.391Z"
+    }
+  },
+  "agents": {},
+  "hooks": {
+    "session-init": {
+      "triggered": 6,
+      "blocked": 0,
+      "lastTriggered": "2026-02-28T06:11:19.876Z"
+    }
+  }
+}

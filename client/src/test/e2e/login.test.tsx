@@ -78,7 +78,7 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
-    expect(screen.getByText(/^v.+/)).toBeInTheDocument();
+    expect(document.querySelector('.dl-version-chip')).toBeNull();
     // Tab navigation
     expect(screen.getByText('薬局ログイン')).toBeInTheDocument();
     expect(screen.getByText('管理者ログイン')).toBeInTheDocument();

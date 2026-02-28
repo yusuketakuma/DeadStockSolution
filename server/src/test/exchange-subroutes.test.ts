@@ -120,6 +120,18 @@ function createWhereQuery(rows: unknown[]) {
   return query;
 }
 
+function createJoinWhereQuery(rows: unknown[]) {
+  const query = {
+    from: vi.fn(),
+    innerJoin: vi.fn(),
+    where: vi.fn(),
+  };
+  query.from.mockReturnValue(query);
+  query.innerJoin.mockReturnValue(query);
+  query.where.mockResolvedValue(rows);
+  return query;
+}
+
 function createInsertQuery(inserted: unknown) {
   const query = {
     values: vi.fn(),
@@ -129,6 +141,16 @@ function createInsertQuery(inserted: unknown) {
   query.values.mockReturnValue(query);
   query.returning.mockResolvedValue([inserted]);
   query.onConflictDoUpdate.mockResolvedValue(undefined);
+  return query;
+}
+
+function createUpdateQuery(result: unknown = undefined) {
+  const query = {
+    set: vi.fn(),
+    where: vi.fn(),
+  };
+  query.set.mockReturnValue(query);
+  query.where.mockResolvedValue(result);
   return query;
 }
 
@@ -242,6 +264,35 @@ describe('exchange sub-routes: status', () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: '操作に失敗しました' });
+  });
+
+  it('POST /proposals/bulk-action returns summary and item errors', async () => {
+    const app = createApp();
+    mocks.acceptProposal
+      .mockResolvedValueOnce('confirmed')
+      .mockRejectedValueOnce(new Error('アクセス権限がありません'));
+
+    const response = await request(app)
+      .post('/api/exchange/proposals/bulk-action')
+      .send({ action: 'accept', ids: [10, 11] });
+
+    expect(response.status).toBe(200);
+    expect(response.body.summary).toEqual({ total: 2, success: 1, failed: 1 });
+    expect(response.body.results).toEqual([
+      expect.objectContaining({ id: 10, ok: true, status: 'confirmed' }),
+      expect.objectContaining({ id: 11, ok: false, error: '対象を処理できませんでした' }),
+    ]);
+  });
+
+  it('POST /proposals/bulk-action returns 400 for invalid payload', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/exchange/proposals/bulk-action')
+      .send({ action: 'invalid', ids: [] });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'action と ids を正しく指定してください' });
   });
 });
 
@@ -638,5 +689,80 @@ describe('exchange sub-routes: comments POST', () => {
 
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ error: 'コメント投稿に失敗しました' });
+  });
+});
+
+describe('exchange sub-routes: proposals print', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('GET /proposals/:id/print returns print payload', async () => {
+    const app = createApp();
+    const proposal = { id: 8, pharmacyAId: 2, pharmacyBId: 3 };
+    const items = [{ id: 50, drugName: '薬A', quantity: 2 }];
+    const pharmA = { name: '薬局A', phone: '03-0000-0001', fax: null, address: '東京都', prefecture: '東京都', licenseNumber: 'A-1' };
+    const pharmB = { name: '薬局B', phone: '03-0000-0002', fax: null, address: '神奈川県', prefecture: '神奈川県', licenseNumber: 'B-1' };
+
+    mocks.db.select
+      .mockImplementationOnce(() => createLimitQuery([proposal]))
+      .mockImplementationOnce(() => createJoinWhereQuery(items))
+      .mockImplementationOnce(() => createLimitQuery([pharmA]))
+      .mockImplementationOnce(() => createLimitQuery([pharmB]));
+
+    const response = await request(app)
+      .get('/api/exchange/proposals/8/print');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      proposal,
+      items,
+      pharmacyA: pharmA,
+      pharmacyB: pharmB,
+    });
+  });
+
+  it('GET /proposals/:id/print returns 404 when proposal not found', async () => {
+    const app = createApp();
+    mocks.db.select.mockImplementationOnce(() => createLimitQuery([]));
+
+    const response = await request(app)
+      .get('/api/exchange/proposals/999/print');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: '提案が見つかりません' });
+  });
+});
+
+describe('exchange sub-routes: comments mutation', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('PATCH /proposals/:id/comments/:commentId updates own comment', async () => {
+    const app = createApp();
+    mocks.db.select.mockImplementationOnce(() => createLimitQuery([{ id: 20, proposalId: 1, isDeleted: false }]));
+    mocks.db.update.mockImplementationOnce(() => createUpdateQuery());
+
+    const response = await request(app)
+      .patch('/api/exchange/proposals/1/comments/20')
+      .send({ body: '更新コメント' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ message: 'コメントを更新しました' });
+    expect(mocks.db.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('DELETE /proposals/:id/comments/:commentId soft-deletes own comment', async () => {
+    const app = createApp();
+    mocks.db.select.mockImplementationOnce(() => createLimitQuery([{ id: 20, proposalId: 1, isDeleted: false }]));
+    mocks.db.update.mockImplementationOnce(() => createUpdateQuery());
+
+    const response = await request(app)
+      .delete('/api/exchange/proposals/1/comments/20');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ message: 'コメントを削除しました' });
+    expect(mocks.db.update).toHaveBeenCalledTimes(1);
   });
 });

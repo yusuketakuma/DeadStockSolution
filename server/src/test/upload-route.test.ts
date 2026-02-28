@@ -24,7 +24,11 @@ const mocks = vi.hoisted(() => {
     previewUsedMedicationDiff: vi.fn(),
     applyDeadStockDiff: vi.fn(),
     applyUsedMedicationDiff: vi.fn(),
-    triggerMatchingRefreshOnUpload: vi.fn(),
+    runUploadConfirm: vi.fn(),
+    enqueueUploadConfirmJob: vi.fn(),
+    isUploadConfirmQueueLimitError: vi.fn(),
+    processUploadConfirmJobById: vi.fn(),
+    getUploadConfirmJobForPharmacy: vi.fn(),
     loggerWarn: vi.fn(),
     loggerError: vi.fn(),
     writeLog: vi.fn(),
@@ -78,8 +82,15 @@ vi.mock('../services/upload-diff-service', () => ({
   applyUsedMedicationDiff: mocks.applyUsedMedicationDiff,
 }));
 
-vi.mock('../services/matching-refresh-service', () => ({
-  triggerMatchingRefreshOnUpload: mocks.triggerMatchingRefreshOnUpload,
+vi.mock('../services/upload-confirm-service', () => ({
+  runUploadConfirm: mocks.runUploadConfirm,
+}));
+
+vi.mock('../services/upload-confirm-job-service', () => ({
+  enqueueUploadConfirmJob: mocks.enqueueUploadConfirmJob,
+  isUploadConfirmQueueLimitError: mocks.isUploadConfirmQueueLimitError,
+  processUploadConfirmJobById: mocks.processUploadConfirmJobById,
+  getUploadConfirmJobForPharmacy: mocks.getUploadConfirmJobForPharmacy,
 }));
 
 vi.mock('../services/logger', () => ({
@@ -127,6 +138,7 @@ describe('upload routes', () => {
   setupVitestMocks();
 
   beforeEach(() => {
+    delete process.env.UPLOAD_CONFIRM_PROCESS_ON_ENQUEUE;
 
     mocks.parseExcelBuffer.mockResolvedValue([
       ['YJコード', '薬剤名', '数量'],
@@ -192,14 +204,22 @@ describe('upload routes', () => {
       unchanged: 0,
       totalIncoming: 1,
     });
-    mocks.applyUsedMedicationDiff.mockResolvedValue({
-      inserted: 1,
-      updated: 0,
-      deactivated: 0,
-      unchanged: 0,
-      totalIncoming: 1,
+    mocks.runUploadConfirm.mockResolvedValue({
+      uploadId: 101,
+      rowCount: 2,
+      diffSummary: null,
     });
-    mocks.triggerMatchingRefreshOnUpload.mockResolvedValue(undefined);
+    mocks.enqueueUploadConfirmJob.mockResolvedValue(9001);
+    mocks.isUploadConfirmQueueLimitError.mockImplementation(
+      (error: unknown) => Boolean(
+        error
+        && typeof error === 'object'
+        && 'code' in error
+        && (error as { code?: unknown }).code === 'UPLOAD_CONFIRM_QUEUE_LIMIT',
+      ),
+    );
+    mocks.processUploadConfirmJobById.mockResolvedValue(true);
+    mocks.getUploadConfirmJobForPharmacy.mockResolvedValue(null);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
 
     const { selectFrom } = createSelectLimitChain([]);
@@ -256,8 +276,7 @@ describe('upload routes', () => {
       rowCount: 2,
       applyMode: 'replace',
     }));
-    expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
-    expect(mocks.extractDeadStockRows).toHaveBeenCalledTimes(1);
+    expect(mocks.runUploadConfirm).toHaveBeenCalledTimes(1);
   });
 
   it('returns bad request when applyMode is invalid on confirm', async () => {
@@ -329,6 +348,17 @@ describe('upload routes', () => {
 
   it('stores diff summary on confirm when applyMode=diff', async () => {
     const app = createApp();
+    mocks.runUploadConfirm.mockResolvedValueOnce({
+      uploadId: 101,
+      rowCount: 1,
+      diffSummary: {
+        inserted: 1,
+        updated: 0,
+        deactivated: 0,
+        unchanged: 0,
+        totalIncoming: 1,
+      },
+    });
 
     const response = await request(app)
       .post('/api/upload/confirm')
@@ -363,12 +393,12 @@ describe('upload routes', () => {
         totalIncoming: 1,
       },
     }));
-    expect(mocks.applyDeadStockDiff).toHaveBeenCalledTimes(1);
+    expect(mocks.runUploadConfirm).toHaveBeenCalledTimes(1);
   });
 
   it('returns 500 when matching refresh enqueue fails during confirm', async () => {
     const app = createApp();
-    mocks.triggerMatchingRefreshOnUpload.mockRejectedValueOnce(new Error('queue unavailable'));
+    mocks.runUploadConfirm.mockRejectedValueOnce(new Error('queue unavailable'));
 
     const response = await request(app)
       .post('/api/upload/confirm')
@@ -391,7 +421,227 @@ describe('upload routes', () => {
 
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ error: 'データ登録またはマッチング更新に失敗しました' });
-    expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.runUploadConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 409 when stale upload is skipped during confirm', async () => {
+    const app = createApp();
+    mocks.runUploadConfirm.mockRejectedValueOnce(
+      new Error('[STALE_JOB_SKIPPED] より新しいアップロードが既に反映されています'),
+    );
+
+    const response = await request(app)
+      .post('/api/upload/confirm')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: 'より新しいアップロードが既に反映されています。最新データで再度実行してください。',
+      code: 'STALE_JOB_SKIPPED',
+    });
+    expect(mocks.runUploadConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('enqueues async confirm job', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/upload/confirm-async')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(202);
+    expect(response.body).toEqual({
+      message: 'アップロード処理を受け付けました',
+      jobId: 9001,
+      status: 'pending',
+    });
+    expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledTimes(1);
+    expect(mocks.processUploadConfirmJobById).not.toHaveBeenCalled();
+  });
+
+  it('triggers immediate async confirm job processing when enabled by env', async () => {
+    process.env.UPLOAD_CONFIRM_PROCESS_ON_ENQUEUE = 'true';
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/upload/confirm-async')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(202);
+    expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledTimes(1);
+    expect(mocks.processUploadConfirmJobById).toHaveBeenCalledWith(9001);
+  });
+
+  it('returns 429 when async queue is full', async () => {
+    const app = createApp();
+    mocks.enqueueUploadConfirmJob.mockRejectedValueOnce(Object.assign(
+      new Error('現在アップロード処理が混み合っています'),
+      {
+        code: 'UPLOAD_CONFIRM_QUEUE_LIMIT',
+        limit: 3,
+        activeJobs: 3,
+      },
+    ));
+
+    const response = await request(app)
+      .post('/api/upload/confirm-async')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(429);
+    expect(response.body).toEqual({
+      error: '現在アップロード処理が混み合っています',
+      code: 'UPLOAD_CONFIRM_QUEUE_LIMIT',
+      limit: 3,
+      activeJobs: 3,
+    });
+    expect(mocks.processUploadConfirmJobById).not.toHaveBeenCalled();
+  });
+
+  it('returns async job status for owner pharmacy', async () => {
+    const app = createApp();
+    mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
+      id: 9001,
+      status: 'completed',
+      attempts: 1,
+      lastError: null,
+      resultJson: JSON.stringify({ uploadId: 101, rowCount: 2, applyMode: 'replace' }),
+      createdAt: '2026-02-28T00:00:00.000Z',
+      updatedAt: '2026-02-28T00:01:00.000Z',
+      completedAt: '2026-02-28T00:01:00.000Z',
+    });
+
+    const response = await request(app).get('/api/upload/jobs/9001');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      id: 9001,
+      status: 'completed',
+      attempts: 1,
+      lastError: null,
+      lastErrorCode: null,
+      result: { uploadId: 101, rowCount: 2, applyMode: 'replace' },
+      createdAt: '2026-02-28T00:00:00.000Z',
+      updatedAt: '2026-02-28T00:01:00.000Z',
+      completedAt: '2026-02-28T00:01:00.000Z',
+    });
+  });
+
+  it('sanitizes async failed job error details', async () => {
+    const app = createApp();
+    mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
+      id: 9002,
+      status: 'failed',
+      attempts: 1,
+      lastError: 'ジョブ内のmapping JSONが不正です: stack detail...',
+      resultJson: null,
+      createdAt: '2026-02-28T00:00:00.000Z',
+      updatedAt: '2026-02-28T00:01:00.000Z',
+      completedAt: '2026-02-28T00:01:00.000Z',
+    });
+
+    const response = await request(app).get('/api/upload/jobs/9002');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      id: 9002,
+      status: 'failed',
+      attempts: 1,
+      lastError: 'カラム割り当ての設定が不正です。設定を見直して再実行してください。',
+      lastErrorCode: 'MAPPING_INVALID',
+      result: null,
+      createdAt: '2026-02-28T00:00:00.000Z',
+      updatedAt: '2026-02-28T00:01:00.000Z',
+      completedAt: '2026-02-28T00:01:00.000Z',
+    });
+  });
+
+  it('maps prefixed stale job error code to public message', async () => {
+    const app = createApp();
+    mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
+      id: 9003,
+      status: 'failed',
+      attempts: 1,
+      lastError: '[STALE_JOB_SKIPPED] より新しいアップロードが既に反映されているため、このジョブはスキップされました',
+      resultJson: null,
+      createdAt: '2026-02-28T00:00:00.000Z',
+      updatedAt: '2026-02-28T00:01:00.000Z',
+      completedAt: '2026-02-28T00:01:00.000Z',
+    });
+
+    const response = await request(app).get('/api/upload/jobs/9003');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      id: 9003,
+      status: 'failed',
+      attempts: 1,
+      lastError: 'より新しいアップロードが既に反映されているため、この処理はスキップされました。',
+      lastErrorCode: 'STALE_JOB_SKIPPED',
+      result: null,
+      createdAt: '2026-02-28T00:00:00.000Z',
+      updatedAt: '2026-02-28T00:01:00.000Z',
+      completedAt: '2026-02-28T00:01:00.000Z',
+    });
   });
 
   it('returns upload status from a grouped upload query', async () => {

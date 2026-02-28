@@ -372,7 +372,7 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       .leftJoin(pharmacies, eq(activityLogs.pharmacyId, pharmacies.id))
       .where(and(
         inArray(activityLogs.action, ['proposal_accept', 'proposal_reject', 'proposal_complete', 'proposal_create']),
-        sql`${activityLogs.detail} LIKE ${`%proposalId=${id}%`}`,
+        sql`${activityLogs.detail} LIKE ${`proposalId=${id}|%`}`,
       ))
       .orderBy(asc(activityLogs.createdAt), asc(activityLogs.id));
 

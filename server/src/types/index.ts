@@ -33,6 +33,7 @@ export interface BusinessHoursStatus {
   closingSoon: boolean;
   is24Hours: boolean;
   todayHours: { openTime: string; closeTime: string } | null;
+  isConfigured?: boolean;
 }
 
 export interface MatchCandidate {

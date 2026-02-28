@@ -201,8 +201,15 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
     .from(pharmacies)
     .where(inArray(pharmacies.id, sourcePharmacyIds));
   const currentPharmacyById = new Map(currentPharmacies.map((pharmacy) => [pharmacy.id, pharmacy]));
-  const missingPharmacyId = sourcePharmacyIds.find((pharmacyId) => !currentPharmacyById.has(pharmacyId));
-  if (missingPharmacyId !== undefined) throw new Error('薬局が見つかりません');
+  const existingSourcePharmacyIds: number[] = [];
+  for (const pharmacyId of sourcePharmacyIds) {
+    if (currentPharmacyById.has(pharmacyId)) {
+      existingSourcePharmacyIds.push(pharmacyId);
+    } else {
+      matchesByPharmacy.set(pharmacyId, []);
+    }
+  }
+  if (existingSourcePharmacyIds.length === 0) return matchesByPharmacy;
 
   const favoriteRows = await db.select({
     pharmacyId: pharmacyRelationships.pharmacyId,
@@ -210,7 +217,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
   })
     .from(pharmacyRelationships)
     .where(and(
-      inArray(pharmacyRelationships.pharmacyId, sourcePharmacyIds),
+      inArray(pharmacyRelationships.pharmacyId, existingSourcePharmacyIds),
       eq(pharmacyRelationships.relationshipType, 'favorite'),
     ));
 
@@ -257,7 +264,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
     ));
   const viablePharmacyPoolIds = viablePharmacyPool.map((pharmacy) => pharmacy.id);
 
-  const blockedRelationshipRows = sourcePharmacyIds.length > 0 && viablePharmacyPoolIds.length > 0
+  const blockedRelationshipRows = existingSourcePharmacyIds.length > 0 && viablePharmacyPoolIds.length > 0
     ? await db.select({
       pharmacyId: pharmacyRelationships.pharmacyId,
       targetPharmacyId: pharmacyRelationships.targetPharmacyId,
@@ -267,19 +274,19 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
         eq(pharmacyRelationships.relationshipType, 'blocked'),
         or(
           and(
-            inArray(pharmacyRelationships.pharmacyId, sourcePharmacyIds),
+            inArray(pharmacyRelationships.pharmacyId, existingSourcePharmacyIds),
             inArray(pharmacyRelationships.targetPharmacyId, viablePharmacyPoolIds),
           ),
           and(
             inArray(pharmacyRelationships.pharmacyId, viablePharmacyPoolIds),
-            inArray(pharmacyRelationships.targetPharmacyId, sourcePharmacyIds),
+            inArray(pharmacyRelationships.targetPharmacyId, existingSourcePharmacyIds),
           ),
         ),
       ))
     : [];
   const blockedPairs = buildBlockedPairSet(blockedRelationshipRows);
 
-  const allRelevantPharmacyIds = [...new Set([...sourcePharmacyIds, ...viablePharmacyPoolIds])];
+  const allRelevantPharmacyIds = [...new Set([...existingSourcePharmacyIds, ...viablePharmacyPoolIds])];
   const [allDeadStockRows, allUsedMedRows] = await Promise.all([
     db.select({
       id: deadStockItems.id,
@@ -344,7 +351,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
   const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(adjustedAllDeadStock);
   const usedMedsByPharmacy = groupByPharmacy<UsedMedRow>(allUsedMedRows);
 
-  for (const sourcePharmacyId of sourcePharmacyIds) {
+  for (const sourcePharmacyId of existingSourcePharmacyIds) {
     const currentPharmacy = currentPharmacyById.get(sourcePharmacyId);
     if (!currentPharmacy) throw new Error('薬局が見つかりません');
 
@@ -653,7 +660,10 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
 
     const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id) ?? [];
     const pharmacySpecialHours = specialHoursByPharmacy.get(otherPharmacy.id) ?? [];
-    const businessStatus = getBusinessHoursStatus(pharmacyHours, pharmacySpecialHours, now);
+    const businessStatus = {
+      ...getBusinessHoursStatus(pharmacyHours, pharmacySpecialHours, now),
+      isConfigured: pharmacyHours.length > 0 || pharmacySpecialHours.length > 0,
+    };
 
     candidates.push({
       pharmacyId: otherPharmacy.id,

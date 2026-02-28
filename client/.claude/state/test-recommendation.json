@@ -1,0 +1,7 @@
+{
+  "timestamp": "2026-02-28T06:31:25Z",
+  "changed_file": "/Users/yusuke/DeadStockSolution/server/src/routes/auth.ts",
+  "test_command": "npm test",
+  "related_test": "",
+  "recommendation": "テストの実行を推奨します"
+}

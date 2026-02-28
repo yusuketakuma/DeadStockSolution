@@ -168,6 +168,30 @@ function setupDbMock() {
 
   mocks.db.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
     const tx = {
+      execute: vi.fn().mockResolvedValue(undefined),
+      select: (_shape?: Record<string, unknown>) => ({
+        from: (table: unknown) => {
+          if (table === uploads) {
+            return {
+              where: () => ({
+                orderBy: () => ({
+                  limit: async (n: number) => {
+                    if (n <= 0) return [];
+                    const sorted = [...mocks.state.uploads]
+                      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+                    return sorted.slice(0, n);
+                  },
+                }),
+              }),
+            };
+          }
+          return {
+            where: () => ({
+              limit: async () => [],
+            }),
+          };
+        },
+      }),
       insert: (table: unknown) => {
         if (table === uploads) {
           return {
