@@ -1,11 +1,26 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../services/logger';
 
+export function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+export function handleRouteError(err: unknown, logContext: string, responseMessage: string, res: Response): void {
+  logger.error(logContext, { error: getErrorMessage(err) });
+  res.status(500).json({ error: responseMessage });
+}
+
 interface HttpLikeError extends Error {
   status?: number;
   statusCode?: number;
   type?: string;
+  code?: string;
 }
+
+const PUBLIC_ERROR_CODES = new Set<string>([
+  'UPLOAD_CONFIRM_QUEUE_LIMIT',
+]);
 
 function resolveStatusCode(err: HttpLikeError): number {
   const candidates = [err.status, err.statusCode];
@@ -47,6 +62,19 @@ function resolveLogStack(err: HttpLikeError, status: number): string | undefined
   return err.stack;
 }
 
+function resolveResponseCode(err: HttpLikeError, status: number): string {
+  if (typeof err.code === 'string' && PUBLIC_ERROR_CODES.has(err.code)) {
+    return err.code;
+  }
+  if (status === 400 && err.type === 'entity.parse.failed') {
+    return 'BAD_JSON_PAYLOAD';
+  }
+  if (status >= 500) {
+    return 'INTERNAL_SERVER_ERROR';
+  }
+  return `HTTP_${status}`;
+}
+
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   const httpErr = err as HttpLikeError;
   const status = resolveStatusCode(httpErr);
@@ -59,5 +87,6 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
   });
   res.status(status).json({
     error: resolveResponseMessage(httpErr, status),
+    code: resolveResponseCode(httpErr, status),
   });
 }

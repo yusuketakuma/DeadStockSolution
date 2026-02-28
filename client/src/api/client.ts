@@ -3,13 +3,6 @@ const API_BASE = configuredApiBase
   ? configuredApiBase.replace(/\/+$/, '')
   : '/api';
 const REQUEST_TIMEOUT_MS = 30000;
-const CSRF_EXEMPT_PATHS = [
-  '/auth/login',
-  '/auth/register',
-  '/auth/password-reset/request',
-  '/auth/password-reset/confirm',
-  '/auth/csrf-token',
-];
 
 interface ApiOptions {
   method?: string;
@@ -25,10 +18,14 @@ export interface FieldError {
 }
 
 class ApiError extends Error {
+  public code?: string;
   public fieldErrors?: FieldError[];
   constructor(public status: number, message: string, public data?: unknown) {
     super(message);
     this.name = 'ApiError';
+    if (data && typeof data === 'object' && 'code' in data && typeof (data as Record<string, unknown>).code === 'string') {
+      this.code = (data as Record<string, string>).code;
+    }
     if (data && typeof data === 'object' && 'errors' in data && Array.isArray((data as Record<string, unknown>).errors)) {
       this.fieldErrors = (data as Record<string, unknown>).errors as FieldError[];
     }
@@ -51,7 +48,7 @@ function requiresCsrf(method: string, path: string): boolean {
   const upperMethod = method.toUpperCase();
   const isSafeMethod = upperMethod === 'GET' || upperMethod === 'HEAD' || upperMethod === 'OPTIONS';
   if (isSafeMethod) return false;
-  return !CSRF_EXEMPT_PATHS.some((prefix) => path.startsWith(prefix));
+  return path !== '/auth/csrf-token';
 }
 
 async function requestCsrfToken(timeout: number): Promise<string> {
@@ -142,13 +139,13 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
   const config: RequestInit = {
     method,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
+    headers: { ...headers },
   };
 
   if (body !== undefined) {
+    if (!(config.headers as Record<string, string>)['Content-Type']) {
+      (config.headers as Record<string, string>)['Content-Type'] = 'application/json';
+    }
     config.body = JSON.stringify(body);
   }
 
@@ -181,10 +178,14 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
 
 interface UploadOptions {
   signal?: AbortSignal;
+  timeout?: number;
 }
 
 export async function apiUpload<T>(path: string, formData: FormData, options: UploadOptions = {}): Promise<T> {
-  const { signal } = options;
+  const {
+    signal,
+    timeout = 60000,
+  } = options;
   const config: RequestInit = {
     method: 'POST',
     credentials: 'include',
@@ -192,16 +193,16 @@ export async function apiUpload<T>(path: string, formData: FormData, options: Up
     body: formData,
   };
   if (requiresCsrf('POST', path)) {
-    const csrfToken = await ensureCsrfToken(60000);
+    const csrfToken = await ensureCsrfToken(timeout);
     (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
   }
 
-  let response = await fetchWithTimeout(`${API_BASE}${path}`, config, 60000, signal);
+  let response = await fetchWithTimeout(`${API_BASE}${path}`, config, timeout, signal);
   if (!response.ok && response.status === 403 && requiresCsrf('POST', path)) {
     csrfTokenCache = null;
-    const csrfToken = await ensureCsrfToken(60000);
+    const csrfToken = await ensureCsrfToken(timeout);
     (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
-    response = await fetchWithTimeout(`${API_BASE}${path}`, config, 60000, signal);
+    response = await fetchWithTimeout(`${API_BASE}${path}`, config, timeout, signal);
   }
 
   if (!response.ok) {
@@ -214,6 +215,11 @@ export async function apiUpload<T>(path: string, formData: FormData, options: Up
   }
 
   return parseSuccessResponse<T>(response);
+}
+
+export function buildApiUrl(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE}${normalizedPath}`;
 }
 
 export const api = {
@@ -248,6 +254,10 @@ export const api = {
  */
 export function isConflictError(err: unknown): err is ApiError & { data: { latestData: unknown } } {
   return err instanceof ApiError && err.status === 409 && err.data != null && typeof err.data === 'object' && 'latestData' in err.data;
+}
+
+export function isApiErrorCode(err: unknown, code: string): err is ApiError {
+  return err instanceof ApiError && err.code === code;
 }
 
 export { ApiError };

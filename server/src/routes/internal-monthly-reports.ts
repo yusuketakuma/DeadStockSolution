@@ -1,30 +1,15 @@
 import { Router, Response } from 'express';
-import { timingSafeEqual } from 'crypto';
 import { logger } from '../services/logger';
 import { triggerManualMonthlyReport } from '../services/monthly-report-scheduler';
 import { resolveDefaultTargetMonth, validateYearMonth } from '../services/monthly-report-service';
+import { isAuthorizedCron, resolveCronSecret } from './internal-cron-auth';
 
 const router = Router();
-
-function resolveCronSecret(): string | null {
-  const secret = process.env.MONTHLY_REPORT_CRON_SECRET?.trim() || process.env.CRON_SECRET?.trim();
-  return secret && secret.length > 0 ? secret : null;
-}
-
-function isAuthorizedCron(reqAuthHeader: string | undefined, secret: string): boolean {
-  const expected = `Bearer ${secret}`;
-  const expectedBuffer = Buffer.from(expected, 'utf8');
-  const receivedBuffer = Buffer.from(reqAuthHeader || '', 'utf8');
-  if (expectedBuffer.length !== receivedBuffer.length) {
-    return false;
-  }
-  return timingSafeEqual(expectedBuffer, receivedBuffer);
-}
 
 router.get('/run', async (req, res: Response) => {
   try {
     const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
-    const secret = resolveCronSecret();
+    const secret = resolveCronSecret('MONTHLY_REPORT_CRON_SECRET');
 
     if (!secret) {
       logger.error('Monthly report cron secret is not configured');

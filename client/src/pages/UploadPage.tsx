@@ -51,6 +51,14 @@ interface UploadConfirmJobStatusResponse {
   result: UploadConfirmJobResult | null;
 }
 
+interface UploadJobState {
+  jobId: number | null;
+  status: 'pending' | 'processing' | null;
+  attempts: number;
+}
+
+const UPLOAD_JOB_INITIAL_STATE: UploadJobState = { jobId: null, status: null, attempts: 0 };
+
 const UPLOAD_CONFIRM_ENQUEUE_TIMEOUT_MS = 5 * 60 * 1000;
 const UPLOAD_JOB_POLL_INTERVAL_MS = import.meta.env.MODE === 'test' ? 20 : 1500;
 const UPLOAD_JOB_POLL_MAX_INTERVAL_MS = import.meta.env.MODE === 'test' ? 100 : 5000;
@@ -124,9 +132,7 @@ export default function UploadPage() {
   const [deleteMissing, setDeleteMissing] = useState(false);
   const [diffSummary, setDiffSummary] = useState<DiffSummary | null>(null);
   const [acknowledgeDeleteImpact, setAcknowledgeDeleteImpact] = useState(false);
-  const [uploadJobId, setUploadJobId] = useState<number | null>(null);
-  const [uploadJobStatus, setUploadJobStatus] = useState<'pending' | 'processing' | null>(null);
-  const [uploadJobAttempts, setUploadJobAttempts] = useState(0);
+  const [uploadJob, setUploadJob] = useState<UploadJobState>(UPLOAD_JOB_INITIAL_STATE);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadRequestAbortRef = useRef<AbortController | null>(null);
@@ -188,9 +194,7 @@ export default function UploadPage() {
     setDeleteMissing(false);
     setDiffSummary(null);
     setAcknowledgeDeleteImpact(false);
-    setUploadJobId(null);
-    setUploadJobStatus(null);
-    setUploadJobAttempts(0);
+    setUploadJob(UPLOAD_JOB_INITIAL_STATE);
   };
 
   const handlePreview = async (e: FormEvent) => {
@@ -243,9 +247,7 @@ export default function UploadPage() {
     setError('');
     setMessage('');
     setShowMatchingHint(false);
-    setUploadJobId(null);
-    setUploadJobStatus(null);
-    setUploadJobAttempts(0);
+    setUploadJob(UPLOAD_JOB_INITIAL_STATE);
     let currentJobId: number | null = null;
     try {
       const formData = new FormData();
@@ -268,8 +270,7 @@ export default function UploadPage() {
 
       const { jobId } = enqueueResult;
       currentJobId = jobId;
-      setUploadJobId(jobId);
-      setUploadJobStatus(enqueueResult.status);
+      setUploadJob({ jobId, status: enqueueResult.status, attempts: 0 });
       setMessage(`${enqueueResult.message}（ジョブID: ${jobId}）`);
 
       const pollingStartedAt = Date.now();
@@ -301,7 +302,7 @@ export default function UploadPage() {
 
         transientPollFailures = 0;
         if (controller.signal.aborted) return;
-        setUploadJobAttempts(job.attempts);
+        setUploadJob((prev) => ({ ...prev, attempts: job.attempts }));
 
         if (job.status === 'completed') {
           if (!job.result) {
@@ -314,21 +315,19 @@ export default function UploadPage() {
           throw new Error(job.lastError || 'アップロード処理に失敗しました');
         }
 
-        setUploadJobStatus(job.status);
+        setUploadJob((prev) => ({ ...prev, status: job.status as 'pending' | 'processing' }));
 
-        if (Date.now() - pollingStartedAt > UPLOAD_JOB_MAX_POLL_WAIT_MS) {
+        const elapsedMs = Date.now() - pollingStartedAt;
+        if (elapsedMs > UPLOAD_JOB_MAX_POLL_WAIT_MS) {
           throw new Error(`アップロード処理の待機時間が長くなっています（ジョブID: ${jobId}）。時間をおいて再確認してください。`);
         }
 
-        const elapsedMs = Date.now() - pollingStartedAt;
         const intervalMs = resolveNextPollIntervalMs(elapsedMs, job.status);
         await waitForNextPoll(controller.signal, intervalMs);
       }
 
       if (controller.signal.aborted) return;
-      setUploadJobId(null);
-      setUploadJobStatus(null);
-      setUploadJobAttempts(0);
+      setUploadJob(UPLOAD_JOB_INITIAL_STATE);
       setMessage(`${completedResult?.rowCount ?? 0}件のデータを登録しました マッチング候補の再計算と通知更新が反映されます。`);
       setDiffSummary(completedResult?.diffSummary ?? null);
       setShowMatchingHint(true);
@@ -347,9 +346,7 @@ export default function UploadPage() {
     } catch (err) {
       if (controller.signal.aborted) return;
       if (isApiErrorCode(err, 'UPLOAD_CONFIRM_QUEUE_LIMIT')) {
-        setUploadJobId(null);
-        setUploadJobStatus(null);
-        setUploadJobAttempts(0);
+        setUploadJob(UPLOAD_JOB_INITIAL_STATE);
         setMessage('');
         setError(err.message);
         return;
@@ -359,9 +356,7 @@ export default function UploadPage() {
         setMessage(`ジョブは継続中の可能性があります（ジョブID: ${currentJobId ?? '不明'}）。時間をおいて再確認してください。`);
         return;
       }
-      setUploadJobId(null);
-      setUploadJobStatus(null);
-      setUploadJobAttempts(0);
+      setUploadJob(UPLOAD_JOB_INITIAL_STATE);
       setMessage('');
       setError(err instanceof Error ? err.message : '登録に失敗しました');
     } finally {
@@ -437,9 +432,9 @@ export default function UploadPage() {
           交換候補をすぐ確認する場合は「マッチング」ページで再実行してください。
         </AppAlert>
       )}
-      {uploadJobId !== null && uploadJobStatus && (
+      {uploadJob.jobId !== null && uploadJob.status && (
         <AppAlert variant="info">
-          非同期処理中です（ジョブID: {uploadJobId} / 状態: {uploadJobStatus === 'pending' ? '待機中' : '処理中'} / 試行回数: {uploadJobAttempts}）
+          非同期処理中です（ジョブID: {uploadJob.jobId} / 状態: {uploadJob.status === 'pending' ? '待機中' : '処理中'} / 試行回数: {uploadJob.attempts}）
         </AppAlert>
       )}
 

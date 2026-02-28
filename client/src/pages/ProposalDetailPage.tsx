@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAsyncState } from '../hooks/useAsyncState';
-import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
@@ -10,11 +9,10 @@ import { api } from '../api/client';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageLoader from '../components/ui/PageLoader';
 import AppDataPanel from '../components/ui/AppDataPanel';
-import AppMobileDataCard from '../components/ui/AppMobileDataCard';
-import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import AppField from '../components/ui/AppField';
 import AppSelect from '../components/ui/AppSelect';
 import LoadingButton from '../components/ui/LoadingButton';
+import ProposalItemsPanel from '../components/ProposalItemsPanel';
 
 interface PharmacyInfo {
   id: number;
@@ -417,85 +415,19 @@ ${template}` : template);
           </ol>
       </AppDataPanel>
 
-      <AppDataPanel
-        className="mb-3"
-        title={<><strong>{pharmacyA.name}</strong> → <strong>{pharmacyB.name}</strong></>}
-        actions={<Badge bg="primary">{proposal.totalValueA?.toLocaleString()}円</Badge>}
-      >
-          <AppResponsiveSwitch
-            desktop={() => (
-              <div className="table-responsive">
-                <AppTable size="sm" striped className="mobile-table">
-                  <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
-                  <tbody>
-                    {itemsAtoB.map((item) => (
-                      <tr key={item.id}>
-                        <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
-                        <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </AppTable>
-              </div>
-            )}
-            mobile={() => (
-              <div className="dl-mobile-data-list">
-                {itemsAtoB.map((item) => (
-                  <AppMobileDataCard
-                    key={item.id}
-                    title={item.drugName}
-                    fields={[
-                      { label: '数量', value: item.quantity },
-                      { label: '単位', value: item.unit || '-' },
-                      { label: '薬価(単価)', value: item.yakkaUnitPrice?.toLocaleString() ?? '-' },
-                      { label: '薬価(合計)', value: item.yakkaValue?.toLocaleString() ?? '-' },
-                    ]}
-                  />
-                ))}
-              </div>
-            )}
-          />
-      </AppDataPanel>
+      <ProposalItemsPanel
+        items={itemsAtoB}
+        fromName={pharmacyA.name}
+        toName={pharmacyB.name}
+        totalValue={proposal.totalValueA}
+      />
 
-      <AppDataPanel
-        className="mb-3"
-        title={<><strong>{pharmacyB.name}</strong> → <strong>{pharmacyA.name}</strong></>}
-        actions={<Badge bg="primary">{proposal.totalValueB?.toLocaleString()}円</Badge>}
-      >
-          <AppResponsiveSwitch
-            desktop={() => (
-              <div className="table-responsive">
-                <AppTable size="sm" striped className="mobile-table">
-                  <thead><tr><th>薬品名</th><th>数量</th><th>単位</th><th>薬価(単価)</th><th>薬価(合計)</th></tr></thead>
-                  <tbody>
-                    {itemsBtoA.map((item) => (
-                      <tr key={item.id}>
-                        <td>{item.drugName}</td><td>{item.quantity}</td><td>{item.unit}</td>
-                        <td>{item.yakkaUnitPrice?.toLocaleString()}</td><td>{item.yakkaValue?.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </AppTable>
-              </div>
-            )}
-            mobile={() => (
-              <div className="dl-mobile-data-list">
-                {itemsBtoA.map((item) => (
-                  <AppMobileDataCard
-                    key={item.id}
-                    title={item.drugName}
-                    fields={[
-                      { label: '数量', value: item.quantity },
-                      { label: '単位', value: item.unit || '-' },
-                      { label: '薬価(単価)', value: item.yakkaUnitPrice?.toLocaleString() ?? '-' },
-                      { label: '薬価(合計)', value: item.yakkaValue?.toLocaleString() ?? '-' },
-                    ]}
-                  />
-                ))}
-              </div>
-            )}
-          />
-      </AppDataPanel>
+      <ProposalItemsPanel
+        items={itemsBtoA}
+        fromName={pharmacyB.name}
+        toName={pharmacyA.name}
+        totalValue={proposal.totalValueB}
+      />
 
       <div className="d-flex gap-2 mobile-stack">
         {canAccept && <AppButton variant="success" onClick={() => setPendingAction('accept')}>仮マッチングを承認</AppButton>}

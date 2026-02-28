@@ -10,6 +10,7 @@ import {
   pharmacyRelationships,
 } from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
+import { groupBy } from '../utils/array-utils';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination, escapeLikeWildcards } from '../utils/request-utils';
@@ -225,25 +226,16 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       ])
       : [[], []];
 
-    const hoursByPharmacy = new Map<number, typeof allHours>();
-    for (const h of allHours) {
-      const list = hoursByPharmacy.get(h.pharmacyId) ?? [];
-      list.push(h);
-      hoursByPharmacy.set(h.pharmacyId, list);
-    }
-    const specialHoursByPharmacy = new Map<number, typeof allSpecialHours>();
-    for (const h of allSpecialHours) {
-      const list = specialHoursByPharmacy.get(h.pharmacyId) ?? [];
-      list.push(h);
-      specialHoursByPharmacy.set(h.pharmacyId, list);
-    }
+    const hoursByPharmacy = groupBy(allHours, (h) => h.pharmacyId);
+    const specialHoursByPharmacy = groupBy(allSpecialHours, (h) => h.pharmacyId);
 
     const now = new Date();
     const enrichedItems = items.map(({ pharmacyId, ...item }) => {
       const hours = hoursByPharmacy.get(pharmacyId) ?? [];
       const specialHours = specialHoursByPharmacy.get(pharmacyId) ?? [];
       const status = getBusinessHoursStatus(hours, specialHours, now);
-      return { ...item, businessStatus: status };
+      const isConfigured = hours.length > 0 || specialHours.length > 0;
+      return { ...item, businessStatus: { ...status, isConfigured } };
     });
 
     const [total] = await db.select({ count: rowCount })

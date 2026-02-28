@@ -20,6 +20,7 @@ import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } f
 import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
+import { handleRouteError } from '../middleware/error-handler';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -87,7 +88,11 @@ function extractUniqueViolationConstraint(err: unknown): string | null {
 }
 
 function isTestPharmacyPreviewEnabled(): boolean {
-  return process.env.ENABLE_TEST_PHARMACY_PREVIEW !== 'false';
+  const raw = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+  if (process.env.NODE_ENV === 'production') {
+    return raw === 'true';
+  }
+  return raw !== 'false';
 }
 
 function extractErrorCode(err: unknown): string | null {
@@ -234,10 +239,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       return;
     }
 
-    logger.error('Registration error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: '登録に失敗しました' });
+    handleRouteError(err, 'Registration error', '登録に失敗しました', res);
   }
 });
 
@@ -307,10 +309,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    logger.error('Login error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: 'ログインに失敗しました' });
+    handleRouteError(err, 'Login error', 'ログインに失敗しました', res);
   }
 });
 
@@ -350,10 +349,7 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
       ...(SHOULD_EXPOSE_PASSWORD_RESET_TOKEN && result ? { token: result.token } : {}),
     });
   } catch (err) {
-    logger.error('Password reset request error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: 'パスワードリセットに失敗しました' });
+    handleRouteError(err, 'Password reset request error', 'パスワードリセットに失敗しました', res);
   }
 });
 
@@ -384,10 +380,7 @@ router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, re
     writeLog('password_reset_complete', { detail: 'パスワードリセット完了', ipAddress: getClientIp(req) });
     res.json({ message: 'パスワードをリセットしました。新しいパスワードでログインしてください' });
   } catch (err) {
-    logger.error('Password reset confirm error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: 'パスワードリセットに失敗しました' });
+    handleRouteError(err, 'Password reset confirm error', 'パスワードリセットに失敗しました', res);
   }
 });
 
@@ -514,19 +507,19 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
 
     res.json(rows[0]);
   } catch (err) {
-    logger.error('Get me error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: 'ユーザー情報の取得に失敗しました' });
+    handleRouteError(err, 'Get me error', 'ユーザー情報の取得に失敗しました', res);
   }
 });
 
-router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequest, res: Response) => {
+router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthRequest, res: Response) => {
   try {
     if (!isTestPharmacyPreviewEnabled()) {
       res.status(404).json({ error: 'テスト薬局情報は利用できません' });
       return;
     }
+
+    const includePasswordRaw = req.query.includePassword;
+    const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
 
     const rows = await (async () => {
       const getRowsFromFlag = () => db.select({
@@ -570,17 +563,18 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (_req: AuthRequ
       return;
     }
 
+    res.setHeader('Cache-Control', 'no-store');
     res.json({
       accounts: rows.map((row) => ({
-        ...row,
-        password: row.password ?? '',
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        prefecture: row.prefecture,
+        password: includePassword ? (row.password ?? '') : '',
       })),
     });
   } catch (err) {
-    logger.error('Get test pharmacies error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: 'テスト薬局情報の取得に失敗しました' });
+    handleRouteError(err, 'Get test pharmacies error', 'テスト薬局情報の取得に失敗しました', res);
   }
 });
 

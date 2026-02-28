@@ -3,6 +3,7 @@ import { and, eq, or, like, desc, inArray, asc, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies, pharmacyBusinessHours, pharmacySpecialHours, pharmacyRelationships } from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
+import { groupBy } from '../utils/array-utils';
 import { requireLogin } from '../middleware/auth';
 import { haversineDistance } from '../utils/geo-utils';
 import { AuthRequest } from '../types';
@@ -128,10 +129,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       return { ...row, distance };
     });
 
-    const pagedRows = withDistance;
-
     // Fetch business hours for all pharmacies in the page result
-    const pharmacyIds = pagedRows.map((r) => r.id);
+    const pharmacyIds = withDistance.map((r) => r.id);
     const [allHours, allSpecialHours] = pharmacyIds.length > 0
       ? await Promise.all([
         db.select({
@@ -162,28 +161,19 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       ])
       : [[], []];
 
-    const hoursByPharmacy = new Map<number, typeof allHours>();
-    for (const h of allHours) {
-      const list = hoursByPharmacy.get(h.pharmacyId) ?? [];
-      list.push(h);
-      hoursByPharmacy.set(h.pharmacyId, list);
-    }
-    const specialHoursByPharmacy = new Map<number, typeof allSpecialHours>();
-    for (const h of allSpecialHours) {
-      const list = specialHoursByPharmacy.get(h.pharmacyId) ?? [];
-      list.push(h);
-      specialHoursByPharmacy.set(h.pharmacyId, list);
-    }
+    const hoursByPharmacy = groupBy(allHours, (h) => h.pharmacyId);
+    const specialHoursByPharmacy = groupBy(allSpecialHours, (h) => h.pharmacyId);
 
     const now = new Date();
-    const enrichedWithHours = pagedRows.map((row) => {
+    const enrichedWithHours = withDistance.map((row) => {
       const hours = hoursByPharmacy.get(row.id) ?? [];
       const specialHours = specialHoursByPharmacy.get(row.id) ?? [];
       const status = getBusinessHoursStatus(hours, specialHours, now);
+      const isConfigured = hours.length > 0 || specialHours.length > 0;
       return {
         ...row,
         businessHours: hours.map(({ pharmacyId: _, ...rest }) => rest),
-        businessStatus: status,
+        businessStatus: { ...status, isConfigured },
       };
     });
 

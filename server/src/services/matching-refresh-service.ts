@@ -1,10 +1,12 @@
 import { and, asc, eq, exists, gte, isNull, lt, lte, notInArray, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies, deadStockItems, matchingRefreshJobs, usedMedicationItems, uploads } from '../db/schema';
-import { findMatchesBatch } from './matching-service';
+import { splitIntoChunks } from '../utils/array-utils';
+import { getNextRetryIso, getStaleBeforeIso } from '../utils/job-retry-utils';
+import { parseBooleanFlag } from '../utils/number-utils';
+import { findMatches, findMatchesBatch } from './matching-service';
 import { logger } from './logger';
 import { saveMatchSnapshotAndNotifyOnChange } from './matching-snapshot-service';
-import { parseBooleanFlag } from '../utils/number-utils';
 
 const AUTO_RECOMPUTE_ENABLED = parseBooleanFlag(process.env.MATCHING_AUTO_RECOMPUTE_ENABLED, true);
 const MAX_JOB_ATTEMPTS = 5;
@@ -12,6 +14,7 @@ const RETRY_BATCH_SIZE = 3;
 const JOB_STALE_TIMEOUT_MS = 15 * 60 * 1000;
 const RETRY_BACKOFF_BASE_MS = 2 * 60 * 1000;
 const CLAIM_CONTENTION_RETRY_LIMIT = 3;
+const REFRESH_MATCH_BATCH_SIZE = resolveRefreshMatchBatchSize(process.env.MATCHING_REFRESH_BATCH_SIZE);
 
 interface RefreshJob {
   id: number;
@@ -24,19 +27,17 @@ interface JobInsertExecutor {
   insert: typeof db.insert;
 }
 
+function resolveRefreshMatchBatchSize(value: string | undefined): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return 200;
+  }
+  return parsed;
+}
+
 function getCurrentMonthStartIso(): string {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-}
-
-function getStaleBeforeIso(): string {
-  return new Date(Date.now() - JOB_STALE_TIMEOUT_MS).toISOString();
-}
-
-function getNextRetryIso(nextAttempts: number): string | null {
-  if (nextAttempts >= MAX_JOB_ATTEMPTS) return null;
-  const backoffMs = RETRY_BACKOFF_BASE_MS * Math.max(1, nextAttempts);
-  return new Date(Date.now() + backoffMs).toISOString();
 }
 
 async function resolveImpactedPharmacyIds(triggerPharmacyId: number): Promise<number[]> {
@@ -77,28 +78,43 @@ async function resolveImpactedPharmacyIds(triggerPharmacyId: number): Promise<nu
 
 async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_stock' | 'used_medication'): Promise<void> {
   const impactedIds = await resolveImpactedPharmacyIds(triggerPharmacyId);
-  const matchesByPharmacy = await findMatchesBatch(impactedIds);
   let changedCount = 0;
   const failedPharmacyIds: number[] = [];
 
-  for (const pharmacyId of impactedIds) {
+  for (const pharmacyIdChunk of splitIntoChunks(impactedIds, REFRESH_MATCH_BATCH_SIZE)) {
+    let matchesByPharmacy: Map<number, Awaited<ReturnType<typeof findMatches>>> | null = null;
     try {
-      const candidates = matchesByPharmacy.get(pharmacyId) ?? [];
-      const result = await saveMatchSnapshotAndNotifyOnChange({
-        pharmacyId,
-        triggerPharmacyId,
-        triggerUploadType: uploadType,
-        candidates,
-      });
-      if (result.changed) changedCount += 1;
-    } catch (err) {
-      failedPharmacyIds.push(pharmacyId);
-      logger.error('Matching auto refresh failed for pharmacy', {
-        pharmacyId,
+      matchesByPharmacy = await findMatchesBatch(pharmacyIdChunk);
+    } catch (batchErr) {
+      logger.warn('Matching auto refresh batch lookup failed. Falling back to per-pharmacy matching', {
         triggerPharmacyId,
         uploadType,
-        error: err instanceof Error ? err.message : String(err),
+        impactedCount: pharmacyIdChunk.length,
+        error: batchErr instanceof Error ? batchErr.message : String(batchErr),
       });
+    }
+
+    for (const pharmacyId of pharmacyIdChunk) {
+      try {
+        const candidates = matchesByPharmacy && matchesByPharmacy.has(pharmacyId)
+          ? matchesByPharmacy.get(pharmacyId) ?? []
+          : await findMatches(pharmacyId);
+        const result = await saveMatchSnapshotAndNotifyOnChange({
+          pharmacyId,
+          triggerPharmacyId,
+          triggerUploadType: uploadType,
+          candidates,
+        });
+        if (result.changed) changedCount += 1;
+      } catch (err) {
+        failedPharmacyIds.push(pharmacyId);
+        logger.error('Matching auto refresh failed for pharmacy', {
+          pharmacyId,
+          triggerPharmacyId,
+          uploadType,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
@@ -117,7 +133,7 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
 async function claimNextRefreshJob(excludedJobIds: number[] = []): Promise<RefreshJob | null> {
   for (let attempt = 0; attempt < CLAIM_CONTENTION_RETRY_LIMIT; attempt += 1) {
     const nowIso = new Date().toISOString();
-    const staleBeforeIso = getStaleBeforeIso();
+    const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
 
     const conditions = [
       lt(matchingRefreshJobs.attempts, MAX_JOB_ATTEMPTS),
@@ -183,7 +199,7 @@ async function processOneRefreshJob(job: RefreshJob): Promise<boolean> {
         attempts: nextAttempts,
         lastError: errorMessage,
         processingStartedAt: null,
-        nextRetryAt: getNextRetryIso(nextAttempts),
+        nextRetryAt: getNextRetryIso(nextAttempts, MAX_JOB_ATTEMPTS, RETRY_BACKOFF_BASE_MS),
         updatedAt: nowIso,
       })
       .where(eq(matchingRefreshJobs.id, job.id));
@@ -253,4 +269,6 @@ export async function triggerMatchingRefreshOnUpload(params: {
 
 export const __testables = {
   claimNextRefreshJob,
+  runSingleRefresh,
+  splitIntoChunks,
 };

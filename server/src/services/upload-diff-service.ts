@@ -1,6 +1,7 @@
-import { and, eq, inArray, type InferInsertModel } from 'drizzle-orm';
+import { and, eq, inArray, sql, type InferInsertModel } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, usedMedicationItems } from '../db/schema';
+import { splitIntoChunks } from '../utils/array-utils';
 import {
   buildExistingByKey,
   deadStockKey,
@@ -13,6 +14,7 @@ import {
 } from '../utils/upload-diff-utils';
 
 const DIFF_INSERT_BATCH_SIZE = 500;
+const DIFF_UPDATE_BATCH_SIZE = 250;
 
 interface DeadStockDiffInput {
   drugCode: string | null;
@@ -88,7 +90,7 @@ export interface ApplyDiffOptions {
   deleteMissing: boolean;
 }
 
-type UploadDiffTx = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete'>;
+type UploadDiffTx = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete' | 'execute'>;
 type UploadDiffReader = Pick<typeof db, 'select'>;
 type DeadStockInsertRow = InferInsertModel<typeof deadStockItems>;
 type UsedMedicationInsertRow = InferInsertModel<typeof usedMedicationItems>;
@@ -104,6 +106,115 @@ async function insertUsedMedicationInBatches(tx: UploadDiffTx, rows: UsedMedicat
   for (let i = 0; i < rows.length; i += DIFF_INSERT_BATCH_SIZE) {
     const batch = rows.slice(i, i + DIFF_INSERT_BATCH_SIZE);
     await tx.insert(usedMedicationItems).values(batch);
+  }
+}
+
+async function updateDeadStockInBatches(
+  tx: UploadDiffTx,
+  pharmacyId: number,
+  uploadId: number,
+  updatedPairs: Array<{ current: DeadStockExistingRow; item: PreparedDeadStockDiffInput }>,
+): Promise<void> {
+  const batches = splitIntoChunks(updatedPairs, DIFF_UPDATE_BATCH_SIZE);
+  for (const batch of batches) {
+    const updateRowsSql = sql.join(batch.map(({ current, item }) => sql`(
+      ${current.id},
+      ${uploadId},
+      ${item.drugMasterId ?? null},
+      ${item.drugMasterPackageId ?? null},
+      ${item.packageLabel ?? null},
+      ${item.quantity},
+      ${item.unit},
+      ${item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null},
+      ${item.yakkaTotal !== null ? String(item.yakkaTotal) : null},
+      ${item.expirationDate},
+      ${item.normalizedDate},
+      ${item.lotNumber}
+    )`), sql`, `);
+
+    await tx.execute(sql`
+      WITH updates (
+        id,
+        upload_id,
+        drug_master_id,
+        drug_master_package_id,
+        package_label,
+        quantity,
+        unit,
+        yakka_unit_price,
+        yakka_total,
+        expiration_date,
+        expiration_date_iso,
+        lot_number
+      ) AS (
+        VALUES ${updateRowsSql}
+      )
+      UPDATE dead_stock_items AS target
+      SET
+        upload_id = updates.upload_id,
+        drug_master_id = updates.drug_master_id,
+        drug_master_package_id = updates.drug_master_package_id,
+        package_label = updates.package_label,
+        quantity = updates.quantity,
+        unit = updates.unit,
+        yakka_unit_price = updates.yakka_unit_price,
+        yakka_total = updates.yakka_total,
+        expiration_date = updates.expiration_date,
+        expiration_date_iso = updates.expiration_date_iso,
+        lot_number = updates.lot_number,
+        is_available = true
+      FROM updates
+      WHERE target.id = updates.id
+        AND target.pharmacy_id = ${pharmacyId}
+    `);
+  }
+}
+
+async function updateUsedMedicationInBatches(
+  tx: UploadDiffTx,
+  pharmacyId: number,
+  uploadId: number,
+  updatedPairs: Array<{ current: UsedMedicationExistingRow; item: UsedMedicationDiffInput }>,
+): Promise<void> {
+  const batches = splitIntoChunks(updatedPairs, DIFF_UPDATE_BATCH_SIZE);
+  for (const batch of batches) {
+    const updateRowsSql = sql.join(batch.map(({ current, item }) => sql`(
+      ${current.id},
+      ${uploadId},
+      ${item.drugMasterId ?? null},
+      ${item.drugMasterPackageId ?? null},
+      ${item.packageLabel ?? null},
+      ${item.monthlyUsage},
+      ${item.unit},
+      ${item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null}
+    )`), sql`, `);
+
+    await tx.execute(sql`
+      WITH updates (
+        id,
+        upload_id,
+        drug_master_id,
+        drug_master_package_id,
+        package_label,
+        monthly_usage,
+        unit,
+        yakka_unit_price
+      ) AS (
+        VALUES ${updateRowsSql}
+      )
+      UPDATE used_medication_items AS target
+      SET
+        upload_id = updates.upload_id,
+        drug_master_id = updates.drug_master_id,
+        drug_master_package_id = updates.drug_master_package_id,
+        package_label = updates.package_label,
+        monthly_usage = updates.monthly_usage,
+        unit = updates.unit,
+        yakka_unit_price = updates.yakka_unit_price
+      FROM updates
+      WHERE target.id = updates.id
+        AND target.pharmacy_id = ${pharmacyId}
+    `);
   }
 }
 
@@ -362,26 +473,8 @@ export async function applyDeadStockDiff(
     isAvailable: true,
   }));
 
-  for (const { current, item } of diffPlan.updatedPairs) {
-    await tx.update(deadStockItems)
-      .set({
-        uploadId,
-        drugMasterId: item.drugMasterId ?? null,
-        drugMasterPackageId: item.drugMasterPackageId ?? null,
-        packageLabel: item.packageLabel ?? null,
-        quantity: item.quantity,
-        unit: item.unit,
-        yakkaUnitPrice: item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null,
-        yakkaTotal: item.yakkaTotal !== null ? String(item.yakkaTotal) : null,
-        expirationDate: item.expirationDate,
-        expirationDateIso: item.normalizedDate,
-        lotNumber: item.lotNumber,
-        isAvailable: true,
-      })
-      .where(and(
-        eq(deadStockItems.id, current.id),
-        eq(deadStockItems.pharmacyId, pharmacyId),
-      ));
+  if (diffPlan.updatedPairs.length > 0) {
+    await updateDeadStockInBatches(tx, pharmacyId, uploadId, diffPlan.updatedPairs);
   }
 
   if (insertRows.length > 0) {
@@ -457,21 +550,8 @@ export async function applyUsedMedicationDiff(
     yakkaUnitPrice: item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null,
   }));
 
-  for (const { current, item } of diffPlan.updatedPairs) {
-    await tx.update(usedMedicationItems)
-      .set({
-        uploadId,
-        drugMasterId: item.drugMasterId ?? null,
-        drugMasterPackageId: item.drugMasterPackageId ?? null,
-        packageLabel: item.packageLabel ?? null,
-        monthlyUsage: item.monthlyUsage,
-        unit: item.unit,
-        yakkaUnitPrice: item.yakkaUnitPrice !== null ? String(item.yakkaUnitPrice) : null,
-      })
-      .where(and(
-        eq(usedMedicationItems.id, current.id),
-        eq(usedMedicationItems.pharmacyId, pharmacyId),
-      ));
+  if (diffPlan.updatedPairs.length > 0) {
+    await updateUsedMedicationInBatches(tx, pharmacyId, uploadId, diffPlan.updatedPairs);
   }
 
   if (insertRows.length > 0) {

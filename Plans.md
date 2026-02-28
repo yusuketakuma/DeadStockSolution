@@ -144,6 +144,26 @@ JSON + CSV 両形式でのエクスポート。管理画面からワンクリッ
 
 ---
 
+## Sprint: コード簡素化リファクタリング（/simplify 残タスク）
+
+> **背景**: `/simplify` レビューで検出された改善項目のうち、影響範囲が大きく自動修正を見送った5件
+
+### Phase 1: UIリファクタリング [refactor] [P]
+- [x] T036: ProposalDetailPage のA→B/B→Aパネル共通化 `cc:DONE` (2026-02-28)
+  - ProposalItemsPanel.tsx 新規作成、ProposalDetailPage.tsx の重複パネルを統合
+- [x] T037: UploadPage のジョブ状態3点を統合オブジェクト化 `cc:DONE` (2026-02-28)
+  - uploadJobId/uploadJobStatus/uploadJobAttempts → UploadJobState 統合オブジェクト化、6箇所のリセット一括化
+
+### Phase 2: サーバーロジック整理 [refactor] [P]
+- [x] T039: pharmacies/inventory の Map構築ループ共通化 `cc:DONE` (2026-02-28)
+  - array-utils.ts に groupBy<T, K>() 追加、pharmacies.ts + inventory.ts 計4箇所置換
+
+### Phase 3: エラー処理構造化 [refactor]
+- [x] T040: エラー分類ロジックの構造化 `cc:DONE` (2026-02-28)
+  - error-handler.ts に getErrorMessage + handleRouteError 追加、auth.ts 6箇所統一
+
+---
+
 ## 📦 アーカイブ
 
 > 完了済みスプリントは `.claude/memory/archive/` に移動済み
