@@ -4,6 +4,8 @@
 
 `preview` ブランチを1時間ごとに自動スキャンし、以下3点に集中して改善する。
 
+※ 補足: 定期ジョブは Codex CLI の手動実行ではなく、OpenClaw の `cron`（`sessionTarget: isolated`）からサブエージェント実行されます。
+
 1. セキュリティ向上
 2. コード可読性向上
 3. システム動作速度改善
@@ -27,9 +29,15 @@ npm run quality:gate
 5. （必要時のみ）
    `QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 npm run quality:gate`
 6. `npm run audit:prod`
-7. `date '+%Y-%m-%d %H:%M:%S %Z'`（終了時刻記録）
-8. `git status --porcelain`（終了後に差分確認）
-9. 差分がある場合のみコミット & push
+7. **レビュー（サブエージェント）**:
+   - 生成差分がある場合、以下観点でレビュー:
+     - セキュリティ: 認証/認可/入力検証/シークレット取り扱い
+     - 可読性: 命名・責務分離・副作用の局在化
+     - 速度: ループ、DBアクセス、外部API呼び出し数の増悪
+   - 問題ありと判断した場合は「課題」に明記し、コミットは保留
+8. `date '+%Y-%m-%d %H:%M:%S %Z'`（終了時刻記録）
+9. `git status --porcelain`（終了後に差分確認）
+10. 差分がある場合のみコミット & push
 
 ## 報告フォーマット（固定）
 
