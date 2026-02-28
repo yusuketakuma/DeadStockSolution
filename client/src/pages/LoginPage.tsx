@@ -11,6 +11,7 @@ import AppField from '../components/ui/AppField';
 import AppModalShell from '../components/ui/AppModalShell';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
+import { APP_VERSION } from '../constants/appVersion';
 
 type LoginMode = 'user' | 'admin';
 
@@ -120,6 +121,7 @@ export default function LoginPage() {
         <>
           <div className="dl-brand-row">
             <h1>薬局デッドストック交換システム</h1>
+            <span className="dl-version-chip">{APP_VERSION}</span>
           </div>
           <p className="dl-lead">薬局間在庫の調整を安全に進めるための業務ポータルです。</p>
 

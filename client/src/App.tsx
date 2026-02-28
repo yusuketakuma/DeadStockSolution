@@ -67,7 +67,8 @@ function AppRoutes() {
 export default function App() {
   useEffect(() => {
     document.body.classList.add('app-theme-root');
-    const stored = window.localStorage.getItem(DESIGN_PRESET_STORAGE_KEY);
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem(DESIGN_PRESET_STORAGE_KEY); } catch { /* SSR/test */ }
     const preset = isDesignPresetId(stored) ? stored : 'clinical-calm';
     document.body.setAttribute('data-design-preset', preset);
     return () => document.body.classList.remove('app-theme-root');

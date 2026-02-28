@@ -61,6 +61,13 @@ body {
   color: #e2e8f0;
 }
 
+.app-header-version {
+  font-size: 0.62rem;
+  font-weight: 600;
+  opacity: 0.72;
+  letter-spacing: 0.01em;
+}
+
 .app-header-updates-trigger {
   display: inline-flex;
   align-items: center;

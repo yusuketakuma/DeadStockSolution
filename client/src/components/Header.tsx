@@ -8,6 +8,7 @@ import { useNotifications } from '../contexts/NotificationContext';
 import AppUpdatesPopover from './header/AppUpdatesPopover';
 import RequestModal from './header/RequestModal';
 import { sanitizeInternalPath } from '../utils/navigation';
+import { APP_VERSION } from '../constants/appVersion';
 
 interface Props {
   onToggleSidebar: () => void;
@@ -175,6 +176,7 @@ export default function Header({ onToggleSidebar }: Props) {
           <div className="app-header-brand-meta">
             <Link to="/" className="app-header-brand">
               <span>DeadStockSolution</span>
+              <span className="app-header-version">{APP_VERSION}</span>
             </Link>
             <AppUpdatesPopover
               updatesLoading={updatesLoading}

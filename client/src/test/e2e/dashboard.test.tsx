@@ -486,7 +486,7 @@ describe('Layout with Sidebar navigation', () => {
     await waitFor(() => {
       expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
     });
-    expect(document.querySelector('.app-header-version')).toBeNull();
+    expect(document.querySelector('.app-header-version')).not.toBeNull();
     expect(screen.getByRole('button', { name: '要望をあげる' })).toBeInTheDocument();
   });
 

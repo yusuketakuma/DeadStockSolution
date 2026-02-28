@@ -9,6 +9,24 @@ afterEach(() => {
 // Mock window.confirm
 vi.stubGlobal('confirm', vi.fn(() => true));
 
+// Ensure localStorage works in jsdom (Node 22+ built-in localStorage can conflict)
+if (typeof window.localStorage === 'undefined' || typeof window.localStorage.getItem !== 'function') {
+  const store = new Map<string, string>();
+  const storageMock: Storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => { store.set(key, String(value)); },
+    removeItem: (key: string) => { store.delete(key); },
+    clear: () => { store.clear(); },
+    get length() { return store.size; },
+    key: (index: number) => [...store.keys()][index] ?? null,
+  };
+  Object.defineProperty(window, 'localStorage', { value: storageMock, writable: true });
+}
+
+afterEach(() => {
+  try { window.localStorage.clear(); } catch { /* ignore */ }
+});
+
 // Mock window.matchMedia (required by react-bootstrap Offcanvas)
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
