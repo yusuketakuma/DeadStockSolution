@@ -376,6 +376,7 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       ))
       .orderBy(asc(activityLogs.createdAt), asc(activityLogs.id));
 
+    let previousStatus: string = 'proposed';
     const timeline = [
       {
         action: 'proposal_created',
@@ -383,20 +384,35 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
         at: proposal.proposedAt,
         actorPharmacyId: proposal.pharmacyAId,
         actorName: pharmA?.name ?? '提案元薬局',
+        statusFrom: null,
+        statusTo: 'proposed',
       },
-      ...actionRows.map((row) => ({
-        action: row.action,
-        label: row.action === 'proposal_accept'
-          ? '承認'
+      ...actionRows.map((row) => {
+        const nextStatus = row.action === 'proposal_accept'
+          ? (row.detail?.match(/status=([^|]+)/)?.[1] ?? 'accepted')
           : row.action === 'proposal_reject'
-            ? '拒否'
+            ? 'rejected'
             : row.action === 'proposal_complete'
-              ? '交換完了'
-              : 'ステータス更新',
-        at: row.createdAt,
-        actorPharmacyId: row.actorPharmacyId,
-        actorName: row.actorName ?? '不明',
-      })),
+              ? 'completed'
+              : null;
+        const event = {
+          action: row.action,
+          label: row.action === 'proposal_accept'
+            ? '承認'
+            : row.action === 'proposal_reject'
+              ? '拒否'
+              : row.action === 'proposal_complete'
+                ? '交換完了'
+                : 'ステータス更新',
+          at: row.createdAt,
+          actorPharmacyId: row.actorPharmacyId,
+          actorName: row.actorName ?? '不明',
+          statusFrom: nextStatus ? previousStatus : null,
+          statusTo: nextStatus,
+        };
+        if (nextStatus) previousStatus = nextStatus;
+        return event;
+      }),
     ];
 
     res.json({

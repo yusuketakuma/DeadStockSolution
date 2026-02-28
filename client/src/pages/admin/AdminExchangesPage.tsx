@@ -33,6 +33,8 @@ interface ProposalTimelineEvent {
   at: string | null;
   actorPharmacyId: number | null;
   actorName: string | null;
+  statusFrom?: string | null;
+  statusTo?: string | null;
 }
 
 interface ProposalComment {
@@ -219,7 +221,11 @@ export default function AdminExchangesPage() {
                     .filter((event) => timelineFilter === 'all' || ['proposal_accept', 'proposal_reject', 'proposal_complete'].includes(event.action))
                     .map((event, idx) => (
                       <li key={`${event.action}-${event.at ?? 'na'}-${idx}`}>
-                        <strong>{event.label}</strong> — {event.actorName ?? '不明'} ({event.at ? new Date(event.at).toLocaleString('ja-JP') : '-'})
+                        <strong>{event.label}</strong> — {event.actorName ?? '不明'}
+                        {event.statusFrom && event.statusTo && (
+                          <span className="text-muted"> [{event.statusFrom} → {event.statusTo}]</span>
+                        )}
+                        {' '}({event.at ? new Date(event.at).toLocaleString('ja-JP') : '-'})
                       </li>
                     ))}
                 </ul>

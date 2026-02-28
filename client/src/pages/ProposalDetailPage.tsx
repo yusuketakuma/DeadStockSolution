@@ -42,6 +42,8 @@ interface ProposalTimelineEvent {
   at: string | null;
   actorPharmacyId: number | null;
   actorName: string | null;
+  statusFrom?: string | null;
+  statusTo?: string | null;
 }
 
 interface ProposalDetail {
@@ -366,6 +368,9 @@ ${template}` : template);
               <li key={`${event.action}-${event.at ?? 'na'}-${idx}`} className="mb-1">
                 <strong>{event.label}</strong>
                 {' '}— {event.actorName ?? '不明'}
+                {event.statusFrom && event.statusTo && (
+                  <span className="text-muted"> [{event.statusFrom} → {event.statusTo}]</span>
+                )}
                 {' '}({event.at ? new Date(event.at).toLocaleString('ja-JP') : '日時不明'})
               </li>
             ))}
