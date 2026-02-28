@@ -1,5 +1,33 @@
 # tasks/todo.md
 
+## 2026-02-28 テスト薬局情報「利用できません」回帰修正
+
+### Context
+- Prompt: テスト薬局情報は利用できませんとエラーがでます。該当部分を0.0.3の時の実装に戻してください
+- Scope:
+  - `server/src/routes/auth.ts` のテスト薬局プレビュー有効判定
+  - 関連テスト（`server/src/test/auth-route.test.ts`）
+
+### Goals / Definition of Done
+- [x] `ENABLE_TEST_PHARMACY_PREVIEW` の既定挙動を `v0.0.3` と同じに戻す
+- [x] `production` 既定で `/api/auth/test-pharmacies` が利用可能であることをテストで保証
+- [x] 関連テストを通す
+
+### Implementation checklist
+- [x] A. `isTestPharmacyPreviewEnabled` を `v0.0.3` 相当（`!== 'false'`）へ戻す
+- [x] B. `auth-route` テストを `v0.0.3` 挙動へ更新
+- [x] C. サーバー/クライアントのログイン関連テスト実行
+
+### Verification
+- [x] npm run test --workspace=server -- src/test/auth-route.test.ts
+- [x] npm run test --workspace=client -- src/test/e2e/login.test.tsx
+
+### Result
+- Status: DONE
+- Notes:
+  - `ENABLE_TEST_PHARMACY_PREVIEW` 未設定時でもテスト薬局情報を提供する `v0.0.3` 挙動へ復帰。
+  - 明示的に `ENABLE_TEST_PHARMACY_PREVIEW=false` の場合のみ無効化されることを維持。
+
 ## 2026-02-28 総合レビュー指摘の全件修正（第2弾）
 
 ### Context

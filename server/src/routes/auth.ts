@@ -88,11 +88,7 @@ function extractUniqueViolationConstraint(err: unknown): string | null {
 }
 
 function isTestPharmacyPreviewEnabled(): boolean {
-  const raw = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-  if (process.env.NODE_ENV === 'production') {
-    return raw === 'true';
-  }
-  return raw !== 'false';
+  return process.env.ENABLE_TEST_PHARMACY_PREVIEW !== 'false';
 }
 
 function extractErrorCode(err: unknown): string | null {

@@ -5,6 +5,10 @@
   - What happened:
   - Root cause:
   - New rule to prevent it:
+- Pattern: テスト薬局プレビューの既定有効仕様を変更し、`テスト薬局情報は利用できません` の回帰を発生させた
+  - What happened: `ENABLE_TEST_PHARMACY_PREVIEW` 未設定かつ `NODE_ENV=production` で `/api/auth/test-pharmacies` を無効化してしまい、ログイン画面でテスト薬局情報が取得できなくなった
+  - Root cause: `v0.0.3` 既定仕様（`false` 明示時のみ無効）より厳しい条件へ変更した際に、運用要件との互換性確認が不足していた
+  - New rule to prevent it: 既存運用で使われるフラグのデフォルト挙動は、明示要件なしで強化方向へ変更しない。変更する場合は既存環境（未設定時）での挙動を先にテスト化してから実装する
 - Pattern: テスト薬局パスワード公開仕様を毎回セキュリティ指摘として再提起してしまう
   - What happened: 今日の総合レビューでも、ユーザーが許容済みのテスト薬局パスワード公開仕様（`/api/auth/test-pharmacies?includePassword=1`）を再びP1で指摘した
   - Root cause: プロジェクト固有の「受容済みリスク」をレビュー除外ルールとして固定せず、一般的なセキュリティ基準を毎回優先してしまった
