@@ -73,6 +73,12 @@ const statusLabelMap: Record<string, string> = {
   cancelled: 'キャンセル',
 };
 
+function toViewerStatusLabel(status: string, isViewerA: boolean): string {
+  if (status === 'accepted_a') return isViewerA ? 'あなた承認済み' : '相手承認済み';
+  if (status === 'accepted_b') return isViewerA ? '相手承認済み' : 'あなた承認済み';
+  return statusLabelMap[status] ?? status;
+}
+
 const commentTemplates = [
   '内容確認しました。問題なければこのまま進めます。',
   '数量・期限を再確認したいので、対象明細の最新情報共有をお願いします。',
@@ -379,7 +385,7 @@ ${template}` : template);
                 <strong>{event.label}</strong>
                 {' '}— {event.actorName ?? '不明'}
                 {event.statusFrom && event.statusTo && (
-                  <span className="text-muted"> [{statusLabelMap[event.statusFrom] ?? event.statusFrom} → {statusLabelMap[event.statusTo] ?? event.statusTo}]</span>
+                  <span className="text-muted"> [{toViewerStatusLabel(event.statusFrom, isA)} → {toViewerStatusLabel(event.statusTo, isA)}]</span>
                 )}
                 {' '}({event.at ? new Date(event.at).toLocaleString('ja-JP') : '日時不明'})
               </li>
