@@ -63,6 +63,16 @@ interface ProposalDetail {
   timeline?: ProposalTimelineEvent[];
 }
 
+const statusLabelMap: Record<string, string> = {
+  proposed: '仮マッチング中',
+  accepted_a: 'A側承認済み',
+  accepted_b: 'B側承認済み',
+  confirmed: '確定',
+  rejected: '拒否',
+  completed: '交換完了',
+  cancelled: 'キャンセル',
+};
+
 const commentTemplates = [
   '内容確認しました。問題なければこのまま進めます。',
   '数量・期限を再確認したいので、対象明細の最新情報共有をお願いします。',
@@ -369,7 +379,7 @@ ${template}` : template);
                 <strong>{event.label}</strong>
                 {' '}— {event.actorName ?? '不明'}
                 {event.statusFrom && event.statusTo && (
-                  <span className="text-muted"> [{event.statusFrom} → {event.statusTo}]</span>
+                  <span className="text-muted"> [{statusLabelMap[event.statusFrom] ?? event.statusFrom} → {statusLabelMap[event.statusTo] ?? event.statusTo}]</span>
                 )}
                 {' '}({event.at ? new Date(event.at).toLocaleString('ja-JP') : '日時不明'})
               </li>

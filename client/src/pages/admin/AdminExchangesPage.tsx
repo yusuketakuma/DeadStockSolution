@@ -44,6 +44,16 @@ interface ProposalComment {
   createdAt: string | null;
 }
 
+const statusLabelMap: Record<string, string> = {
+  proposed: '仮マッチング中',
+  accepted_a: 'A側承認済み',
+  accepted_b: 'B側承認済み',
+  confirmed: '確定',
+  rejected: '拒否',
+  completed: '交換完了',
+  cancelled: 'キャンセル',
+};
+
 function formatYen(value: number | null | undefined) {
   return value === null || value === undefined ? '-' : `${value.toLocaleString()}円`;
 }
@@ -223,7 +233,7 @@ export default function AdminExchangesPage() {
                       <li key={`${event.action}-${event.at ?? 'na'}-${idx}`}>
                         <strong>{event.label}</strong> — {event.actorName ?? '不明'}
                         {event.statusFrom && event.statusTo && (
-                          <span className="text-muted"> [{event.statusFrom} → {event.statusTo}]</span>
+                          <span className="text-muted"> [{statusLabelMap[event.statusFrom] ?? event.statusFrom} → {statusLabelMap[event.statusTo] ?? event.statusTo}]</span>
                         )}
                         {' '}({event.at ? new Date(event.at).toLocaleString('ja-JP') : '-'})
                       </li>
