@@ -1,8 +1,13 @@
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 export type OpenClawStatus = 'pending_handoff' | 'in_dialogue' | 'implementing' | 'completed';
 type OpenClawBaseUrlError = 'missing' | 'invalid' | 'insecure';
+type OpenClawConnectorMode = 'legacy_http' | 'gateway_cli';
 const FIXED_IMPLEMENTATION_BRANCH = 'review';
+const DEFAULT_OPENCLAW_CLI_PATH = '/Users/yusuke/.nvm/versions/node/v22.22.0/bin/openclaw';
+const execFileAsync = promisify(execFile);
 const DEFAULT_WEBHOOK_MAX_SKEW_SECONDS = 300;
 const WEBHOOK_SIGNATURE_PREFIX = 'sha256=';
 const webhookReplayCache = new Map<string, number>();
@@ -15,6 +20,8 @@ const OPENCLAW_STATUS_ORDER: Record<OpenClawStatus, number> = {
 };
 
 interface OpenClawConfig {
+  mode: OpenClawConnectorMode;
+  cliPath: string;
   baseUrl: string;
   baseUrlError: OpenClawBaseUrlError | null;
   apiKey: string;
@@ -81,6 +88,9 @@ function normalizeBaseUrl(baseUrlRaw: string): { value: string; error: OpenClawB
 }
 
 function connectorNotReadyMessage(config: OpenClawConfig): string {
+  if (config.mode === 'gateway_cli') {
+    return 'OpenClaw CLIコネクター未接続。OPENCLAW_CLI_PATH と OPENCLAW_AGENT_ID を確認してください。';
+  }
   if (config.baseUrlError === 'insecure') {
     return 'OPENCLAW_BASE_URL はHTTPSを使用してください（localhostのみHTTP許可）。';
   }
@@ -90,9 +100,18 @@ function connectorNotReadyMessage(config: OpenClawConfig): string {
   return 'OpenClawコネクター未接続。接続後に再連携してください。';
 }
 
+
+function resolveOpenClawConnectorMode(): OpenClawConnectorMode {
+  const rawMode = (process.env.OPENCLAW_CONNECTOR_MODE ?? '').trim().toLowerCase();
+  if (rawMode === 'gateway_cli') return 'gateway_cli';
+  return 'legacy_http';
+}
+
 function readConfig(): OpenClawConfig {
   const baseUrl = normalizeBaseUrl(process.env.OPENCLAW_BASE_URL ?? '');
   return {
+    mode: resolveOpenClawConnectorMode(),
+    cliPath: (process.env.OPENCLAW_CLI_PATH ?? DEFAULT_OPENCLAW_CLI_PATH).trim() || DEFAULT_OPENCLAW_CLI_PATH,
     baseUrl: baseUrl.value,
     baseUrlError: baseUrl.error,
     apiKey: (process.env.OPENCLAW_API_KEY ?? '').trim(),
@@ -167,6 +186,9 @@ export function getOpenClawImplementationBranch(): string {
 
 export function isOpenClawConnectorConfigured(): boolean {
   const config = readConfig();
+  if (config.mode === 'gateway_cli') {
+    return Boolean(config.cliPath && config.agentId);
+  }
   return Boolean(config.baseUrl && config.apiKey && config.agentId);
 }
 
@@ -294,9 +316,91 @@ export function isImplementationBranchAllowed(branch: string | null | undefined)
   return branch.trim() === getOpenClawImplementationBranch();
 }
 
+
+interface OpenClawCliAgentResponse {
+  status?: unknown;
+  result?: {
+    payloads?: Array<{ text?: unknown }>;
+    meta?: {
+      agentMeta?: { sessionId?: unknown };
+    };
+  };
+}
+
+function extractSummaryFromCli(payload: OpenClawCliAgentResponse, fallbackStdout: string): string | null {
+  const text = payload.result?.payloads?.find((entry) => typeof entry?.text === 'string' && entry.text.trim().length > 0)?.text;
+  if (typeof text === 'string' && text.trim().length > 0) {
+    return text.trim().slice(0, 4000);
+  }
+  const trimmed = fallbackStdout.trim();
+  return trimmed ? trimmed.slice(0, 4000) : null;
+}
+
+async function handoffViaGatewayCli(config: OpenClawConfig, input: OpenClawHandoffInput): Promise<OpenClawHandoffResult> {
+  const timeoutSecondsRaw = Number(process.env.OPENCLAW_TIMEOUT_SECONDS ?? 120);
+  const timeoutSeconds = Number.isFinite(timeoutSecondsRaw) && timeoutSecondsRaw > 0 ? Math.floor(timeoutSecondsRaw) : 120;
+  const message = [
+    'あなたはDeadStockSolutionのOpenClaw連携エージェントです。',
+    `要望ID: ${input.requestId}`,
+    `薬局ID: ${input.pharmacyId}`,
+    `要望: ${input.requestText}`,
+    '次の形式で短く返答してください: 1) 受領確認 2) 初動方針 3) 次アクション',
+  ].join('\n');
+
+  const args = [
+    'agent',
+    '--agent', config.agentId,
+    '--message', message,
+    '--thinking', 'low',
+    '--timeout', String(timeoutSeconds),
+    '--json',
+  ];
+
+  try {
+    const { stdout } = await execFileAsync(config.cliPath, args, {
+      timeout: timeoutSeconds * 1000 + 3000,
+      maxBuffer: 2 * 1024 * 1024,
+      env: process.env,
+    });
+
+    let payload: OpenClawCliAgentResponse = {};
+    try {
+      payload = JSON.parse(stdout) as OpenClawCliAgentResponse;
+    } catch {
+      payload = {};
+    }
+
+    const summary = extractSummaryFromCli(payload, stdout);
+    const sessionIdRaw = payload.result?.meta?.agentMeta?.sessionId;
+    const threadId = typeof sessionIdRaw === 'string' && sessionIdRaw.trim().length > 0 ? sessionIdRaw.trim() : null;
+
+    return {
+      accepted: true,
+      connectorConfigured: true,
+      implementationBranch: config.implementationBranch,
+      status: 'in_dialogue',
+      threadId,
+      summary,
+      note: 'OpenClaw Gateway CLI へ連携しました。',
+    };
+  } catch {
+    return {
+      accepted: false,
+      connectorConfigured: true,
+      implementationBranch: config.implementationBranch,
+      status: 'pending_handoff',
+      threadId: null,
+      summary: null,
+      note: 'OpenClaw Gateway CLI 連携に失敗しました。',
+    };
+  }
+}
+
 export async function handoffToOpenClaw(input: OpenClawHandoffInput): Promise<OpenClawHandoffResult> {
   const config = readConfig();
-  const connectorConfigured = Boolean(config.baseUrl && config.apiKey && config.agentId);
+  const connectorConfigured = config.mode === 'gateway_cli'
+    ? Boolean(config.cliPath && config.agentId)
+    : Boolean(config.baseUrl && config.apiKey && config.agentId);
   if (!connectorConfigured) {
     return {
       accepted: false,
@@ -307,6 +411,10 @@ export async function handoffToOpenClaw(input: OpenClawHandoffInput): Promise<Op
       summary: null,
       note: connectorNotReadyMessage(config),
     };
+  }
+
+  if (config.mode === 'gateway_cli') {
+    return handoffViaGatewayCli(config, input);
   }
 
   const timeoutMsRaw = Number(process.env.OPENCLAW_TIMEOUT_MS ?? 10000);
