@@ -37,6 +37,8 @@ QUALITY_GATE_ALLOW_DIRTY=1 QUALITY_GATE_SKIP_SYNC=1 QUALITY_GATE_SKIP_INSTALL=1 
 5. 次アクション
 6. コミットID
 
+※ 報告は必ず1つの吹き出し（単一メッセージ）にまとめる。分割送信は禁止。
+
 ※ 失敗時に再検証した場合は、`QUALITY_GATE_ALLOW_DIRTY=1 ... npm run quality:gate` の実行有無と回数も `実行内容` に必ず記載する。
 
 ### テンプレート
