@@ -24,6 +24,7 @@ import internalUploadJobsRoutes from './routes/internal-upload-jobs';
 import internalMonitoringRoutes from './routes/internal-monitoring';
 import internalPredictiveAlertsRoutes from './routes/internal-predictive-alerts';
 import internalVercelDeployEventsRoutes from './routes/internal-vercel-deploy-events';
+import timelineRoutes from './routes/timeline';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { csrfProtection } from './middleware/csrf';
@@ -185,6 +186,7 @@ app.use('/api/internal/upload-jobs', internalUploadJobsRoutes);
 app.use('/api/internal/monitoring', internalMonitoringRoutes);
 app.use('/api/internal/predictive-alerts', internalPredictiveAlertsRoutes);
 app.use('/api/internal/vercel', internalVercelDeployEventsRoutes);
+app.use('/api/timeline', timelineRoutes);
 
 // Health check with DB connectivity
 app.get('/api/health', async (_req, res) => {

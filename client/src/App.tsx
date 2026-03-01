@@ -2,6 +2,7 @@ import { Suspense, useEffect, type ReactElement } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { TimelineProvider } from './contexts/TimelineContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppScreen from './components/ui/AppScreen';
@@ -77,7 +78,9 @@ export default function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
-        <AppRoutes />
+        <TimelineProvider>
+          <AppRoutes />
+        </TimelineProvider>
       </NotificationProvider>
     </AuthProvider>
   );

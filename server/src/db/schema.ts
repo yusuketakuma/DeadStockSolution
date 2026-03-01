@@ -68,6 +68,7 @@ export const pharmacies = pgTable('pharmacies', {
   isTestAccount: boolean('is_test_account').notNull().default(false),
   testAccountPassword: text('test_account_password'),
   version: integer('version').notNull().default(1),
+  lastTimelineViewedAt: timestamp('last_timeline_viewed_at', { mode: 'string' }),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({

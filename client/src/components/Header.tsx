@@ -4,7 +4,7 @@ import AppButton from './ui/AppButton';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
-import { useNotifications } from '../contexts/NotificationContext';
+import { useTimeline } from '../contexts/TimelineContext';
 import AppUpdatesPopover from './header/AppUpdatesPopover';
 import RequestModal from './header/RequestModal';
 import { sanitizeInternalPath } from '../utils/navigation';
@@ -57,7 +57,7 @@ function isTrackablePath(pathname: string): boolean {
 
 export default function Header({ onToggleSidebar }: Props) {
   const { user } = useAuth();
-  const { unreadCount } = useNotifications();
+  const { unreadCount } = useTimeline();
   const navigate = useNavigate();
   const location = useLocation();
   const [previousPath, setPreviousPath] = useState('');

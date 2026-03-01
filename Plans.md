@@ -164,6 +164,59 @@ JSON + CSV 両形式でのエクスポート。管理画面からワンクリッ
 
 ---
 
+## Sprint: ログイン→ダッシュボード表示パフォーマンス改善
+
+> **目的**: ログインからダッシュボード表示まで約7秒かかる問題を解消（目標: 2-3秒以内）
+
+### Phase 1: API・フロントエンド最適化 [performance]
+- [x] T041: `/notifications` クエリ完全並列化 `cc:DONE` (2026-03-01)
+  - 直列6+クエリを2段階の `Promise.all` に再構成（全クエリ並列 + 後処理の messageReads/triggerNames 並列化）
+- [x] T042: `/inventory/dead-stock/risk` にユーザー向けメモリキャッシュ追加 `cc:DONE` (2026-03-01)
+  - TTL 30秒のメモリキャッシュ (`userRiskCache`) を `getPharmacyRiskDetail` に追加
+- [x] T043: AuthContext 二重取得の除去 `cc:DONE` (2026-03-01)
+  - `skipNextRefreshRef` でlogin直後の不要な GET /auth/me をスキップ
+- [x] T044: NotificationContext の初回取得をダッシュボードデータと統合 `cc:DONE` (2026-03-01)
+  - `/notifications` レスポンスの summary から直接 unreadCount を設定、`setUnreadCount` を公開
+
+---
+
+## Sprint: 統合タイムライン機能
+
+> **設計書**: [.sisyphus/plans/timeline-feature.md](.sisyphus/plans/timeline-feature.md)
+> **目的**: ダッシュボードの通知欄を統合タイムラインに進化。朝開いたら全部わかる体験を実現
+
+### Phase 1: サーバー基盤 (Wave 1) [feature] [P]
+- [x] T045: Schema + 型定義 `cc:DONE` (2026-03-01)
+  - `pharmacies.lastTimelineViewedAt` カラム追加 + `server/src/types/timeline.ts` にTimelineEvent共通型 + migration 0028 生成
+- [x] T046: 優先度エンジン `cc:DONE` (2026-03-01)
+  - `timeline-priority-engine.ts` Critical/High/Medium/Low 4段階ルール（Pure Function, TDD）25テスト PASS
+- [x] T047: Aggregator Helpers `cc:DONE` (2026-03-01) depends:T045
+  - `timeline-aggregators.ts` 9テーブル別fetcher関数群（TDD）28テスト PASS
+
+### Phase 2: サーバーAPI (Wave 2) [feature]
+- [x] T048: タイムラインサービス `cc:DONE` (2026-03-01) depends:T045,T046,T047
+  - `timeline-service.ts` getTimeline/getTimelineUnreadCount/markTimelineViewed/getSmartDigest（TDD）8テスト PASS
+- [x] T049: タイムラインAPIルート `cc:DONE` (2026-03-01) depends:T048
+  - GET /api/timeline, GET /api/timeline/unread-count, PATCH /api/timeline/mark-viewed, GET /api/timeline/digest + 9テスト PASS
+
+### Phase 3: フロントエンドコンポーネント (Wave 3) [feature] [P]
+- [x] T050: TimelineEventCard `cc:DONE` (2026-03-01)
+  - `TimelineEventCard.tsx` ソース別ラベル+優先度バッジ+未読スタイル+相対時間 11テスト PASS
+- [x] T051: SmartDigest `cc:DONE` (2026-03-01) depends:T046
+  - `SmartDigest.tsx` Critical/Highイベント最大5件表示+空状態+ローディング 7テスト PASS
+- [x] T052: DashboardTimeline `cc:DONE` (2026-03-01) depends:T048,T050
+  - `DashboardTimeline.tsx` フィルタ+ページネーション+エラー/空状態 9テスト PASS
+
+### Phase 4: 統合 (Wave 4) [feature]
+- [x] T053: TimelineContext `cc:DONE` (2026-03-01) depends:T049
+  - `TimelineContext.tsx` 60sポーリング+visibilitychange+フィルタ+ページネーション、NotificationContext後方互換維持
+- [x] T054: ダッシュボード統合 `cc:DONE` (2026-03-01) depends:T050,T051,T052,T053
+  - DashboardPage にSmartDigest+DashboardTimeline統合、旧DashboardNotices+NextAction置換、157テスト PASS
+- [x] T055: ヘッダーバッジ統合 `cc:DONE` (2026-03-01) depends:T053
+  - Header.tsx のuseNotifications→useTimeline切替、タイムライン未読数をバッジ表示
+
+---
+
 ## 📦 アーカイブ
 
 > 完了済みスプリントは `.claude/memory/archive/` に移動済み

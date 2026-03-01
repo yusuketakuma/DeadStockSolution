@@ -3,6 +3,8 @@ import React from 'react';
 import { render, type RenderOptions } from '@testing-library/react';
 import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom';
 import { AuthProvider } from '../contexts/AuthContext';
+import { NotificationProvider } from '../contexts/NotificationContext';
+import { TimelineProvider } from '../contexts/TimelineContext';
 
 interface WrapperOptions {
   route?: string;
@@ -20,7 +22,11 @@ function createWrapper(options: WrapperOptions = {}) {
     return (
       <MemoryRouter initialEntries={[route]} {...mergedRouterProps}>
         <AuthProvider>
-          {children}
+          <NotificationProvider>
+            <TimelineProvider>
+              {children}
+            </TimelineProvider>
+          </NotificationProvider>
         </AuthProvider>
       </MemoryRouter>
     );
