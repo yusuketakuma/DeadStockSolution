@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, pharmacyRegistrationReviews } from '../db/schema';
+import { pharmacies, pharmacyRegistrationReviews, userRequests } from '../db/schema';
 import {
   assertJwtSecretConfigured,
   hashPassword,
@@ -251,7 +251,28 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
         prefecture,
         latitude: coords.lat,
         longitude: coords.lng,
+        isActive: false,
+        verificationStatus: 'pending_verification',
       }).returning({ id: pharmacies.id });
+
+      // Insert verification request into user_requests for OpenClaw verification
+      const [verificationRequest] = await tx.insert(userRequests).values({
+        pharmacyId: createdPharmacy.id,
+        requestText: JSON.stringify({
+          type: 'pharmacy_verification',
+          pharmacyName: name,
+          postalCode: normalizedPostalCode,
+          prefecture,
+          address,
+          licenseNumber,
+          instruction: '薬局機能情報提供制度APIで検索し、薬局名と開設許可番号の一致を確認してください',
+        }),
+      }).returning({ id: userRequests.id });
+
+      // Link verification request to pharmacy
+      await tx.update(pharmacies)
+        .set({ verificationRequestId: verificationRequest.id })
+        .where(eq(pharmacies.id, createdPharmacy.id));
 
       await tx.update(pharmacyRegistrationReviews)
         .set({
@@ -285,28 +306,16 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
 
     const pharmacyId = registrationResult.pharmacyId;
 
-    const token = generateToken({
-      id: pharmacyId,
-      email,
-      isAdmin: false,
-      sessionVersion: deriveSessionVersion(passwordHash),
+    writeLog('register', {
+      pharmacyId,
+      detail: `新規登録（審査待ち）: ${name}`,
+      ipAddress: registrationIp,
     });
-
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000,
-    });
-    setCsrfCookie(res, generateCsrfToken());
-
-    writeLog('register', { pharmacyId, detail: `新規登録: ${name}`, ipAddress: registrationIp });
 
     res.status(201).json({
-      id: pharmacyId,
-      email,
-      name,
-      prefecture,
+      message: '登録申請を受け付けました。審査完了後にメールでお知らせします。',
+      verificationStatus: 'pending_verification',
+      pharmacyId,
     });
   } catch (err) {
     if (handleAuthConfigurationError('Registration', err, res)) {
