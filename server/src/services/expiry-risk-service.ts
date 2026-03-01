@@ -82,6 +82,10 @@ interface AdminRiskSnapshot {
 
 let adminRiskSnapshotCache: { expiresAt: number; value: AdminRiskSnapshot } | null = null;
 
+// ユーザー向けリスク詳細キャッシュ (pharmacyId → cached)
+const USER_RISK_CACHE_TTL_MS = 30_000;
+const userRiskCache = new Map<number, { expiresAt: number; value: PharmacyRiskDetail }>();
+
 function resolveAdminRiskCacheTtlMs(value: string | undefined): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -281,6 +285,11 @@ async function loadAdminRiskSnapshot(forceRefresh: boolean = false): Promise<Adm
 }
 
 export async function getPharmacyRiskDetail(pharmacyId: number): Promise<PharmacyRiskDetail> {
+  const cached = userRiskCache.get(pharmacyId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
   const [pharmacy] = await db.select({
     id: pharmacies.id,
     name: pharmacies.name,
@@ -312,7 +321,7 @@ export async function getPharmacyRiskDetail(pharmacyId: number): Promise<Pharmac
   const todayUtc = getTodayUtc();
   const { summary, items } = aggregatePharmacyRisk(rows, pharmacy.id, pharmacy.name, todayUtc);
 
-  return {
+  const result: PharmacyRiskDetail = {
     pharmacyId,
     totalItems: summary.totalItems,
     riskScore: summary.riskScore,
@@ -320,6 +329,10 @@ export async function getPharmacyRiskDetail(pharmacyId: number): Promise<Pharmac
     topRiskItems: sortRiskItems(items).slice(0, 20),
     computedAt: new Date().toISOString(),
   };
+
+  userRiskCache.set(pharmacyId, { expiresAt: Date.now() + USER_RISK_CACHE_TTL_MS, value: result });
+
+  return result;
 }
 
 export async function getAdminRiskOverview(): Promise<AdminRiskOverview> {

@@ -39,8 +39,13 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const skipNextRefreshRef = React.useRef(false);
 
   const refreshUser = useCallback(async () => {
+    if (skipNextRefreshRef.current) {
+      skipNextRefreshRef.current = false;
+      return;
+    }
     try {
       const data = await api.get<User>('/auth/me');
       setUser(data);
@@ -63,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<User> => {
     const data = await api.post<User>('/auth/login', { email, password });
+    skipNextRefreshRef.current = true;
     setUser(data);
     return data;
   };

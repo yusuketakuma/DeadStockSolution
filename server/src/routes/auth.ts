@@ -116,6 +116,13 @@ function isMissingTestPharmacyColumnError(err: unknown): boolean {
 let isTestAccountColumnAvailable: boolean | null = null;
 let testPharmacyColumnsEnsured = false;
 
+// テスト薬局リストのメモリキャッシュ（cold start 時の DB往復を回避）
+const TEST_PHARMACY_CACHE_TTL_MS = 60_000;
+let testPharmacyCache: {
+  expiresAt: number;
+  rows: Array<{ id: number; name: string; email: string; prefecture: string; password: string | null }>;
+} | null = null;
+
 async function ensureTestPharmacyColumns(): Promise<boolean> {
   if (testPharmacyColumnsEnsured) {
     return true;
@@ -602,6 +609,26 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
     const includePasswordRaw = req.query.includePassword;
     const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
 
+    // キャッシュが有効ならDBアクセスをスキップ
+    if (testPharmacyCache && testPharmacyCache.expiresAt > Date.now()) {
+      const cached = testPharmacyCache.rows;
+      if (cached.length === 0) {
+        res.status(404).json({ error: 'テスト薬局がDBに登録されていません（5件登録を確認してください）' });
+        return;
+      }
+      res.setHeader('Cache-Control', 'private, max-age=60');
+      res.json({
+        accounts: cached.map((row) => ({
+          id: row.id,
+          name: row.name,
+          email: row.email,
+          prefecture: row.prefecture,
+          password: includePassword ? (row.password ?? '') : '',
+        })),
+      });
+      return;
+    }
+
     const rows = await (async () => {
       const getRowsFromFlag = () => db.select({
         id: pharmacies.id,
@@ -639,12 +666,16 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
     if (!rows) {
       return;
     }
+
+    // 結果をキャッシュ（テスト薬局データはほぼ変わらない）
+    testPharmacyCache = { expiresAt: Date.now() + TEST_PHARMACY_CACHE_TTL_MS, rows };
+
     if (rows.length === 0) {
       res.status(404).json({ error: 'テスト薬局がDBに登録されていません（5件登録を確認してください）' });
       return;
     }
 
-    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Cache-Control', 'private, max-age=60');
     res.json({
       accounts: rows.map((row) => ({
         id: row.id,

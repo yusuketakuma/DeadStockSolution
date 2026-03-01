@@ -5,11 +5,13 @@ import { useAuth } from './AuthContext';
 interface NotificationContextValue {
   unreadCount: number;
   refreshCount: () => Promise<void>;
+  setUnreadCount: (count: number) => void;
 }
 
 const NotificationContext = createContext<NotificationContextValue>({
   unreadCount: 0,
   refreshCount: async () => {},
+  setUnreadCount: () => {},
 });
 
 const POLL_INTERVAL_MS = 60_000;
@@ -62,7 +64,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [user, fetchCount]);
 
   return (
-    <NotificationContext.Provider value={{ unreadCount, refreshCount: fetchCount }}>
+    <NotificationContext.Provider value={{ unreadCount, refreshCount: fetchCount, setUnreadCount }}>
       {children}
     </NotificationContext.Provider>
   );
