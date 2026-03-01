@@ -1,4 +1,5 @@
 import { Badge, Button, ListGroup } from 'react-bootstrap';
+import AppCard from '../ui/AppCard';
 import InlineLoader from '../ui/InlineLoader';
 import TimelineEventCard from './TimelineEventCard';
 import type { TimelineEvent, TimelinePriority } from '../../types/timeline';
@@ -39,10 +40,10 @@ export default function DashboardTimeline({
   className,
 }: DashboardTimelineProps) {
   return (
-    <div className={`d-flex flex-column ${className ?? ''}`} style={{ minHeight: 0 }}>
-      <div className="flex-shrink-0">
+    <AppCard className={`d-flex flex-column ${className ?? ''}`} style={{ minHeight: 0 }}>
+      <AppCard.Header className="flex-shrink-0 py-2 px-3">
         <div className="d-flex justify-content-between align-items-center mb-1">
-          <span className="fw-semibold">タイムライン</span>
+          <span className="fw-semibold small">タイムライン</span>
           <div className="d-flex gap-2 align-items-center">
             {total > 0 && <Badge bg="secondary">{total}件</Badge>}
             <Button size="sm" variant="outline-secondary" onClick={onRefresh} disabled={loading}>
@@ -51,7 +52,7 @@ export default function DashboardTimeline({
           </div>
         </div>
 
-        <div className="d-flex gap-1 flex-wrap mb-1">
+        <div className="d-flex gap-1 flex-wrap">
           {PRIORITY_FILTERS.map(({ label, value }) => (
             <Button
               key={label}
@@ -65,7 +66,7 @@ export default function DashboardTimeline({
         </div>
 
         {error && (
-          <div className="text-danger small mb-1">
+          <div className="text-danger small mt-1">
             {error}
             <Button size="sm" variant="outline-danger" className="ms-2" onClick={onRefresh}>
               再試行
@@ -73,12 +74,12 @@ export default function DashboardTimeline({
           </div>
         )}
 
-        {loading && <InlineLoader text="読み込み中..." className="text-muted small" />}
-      </div>
+        {loading && <InlineLoader text="読み込み中..." className="text-muted small mt-1" />}
+      </AppCard.Header>
 
-      <div className="flex-grow-1" style={{ overflowY: 'auto', minHeight: 0 }}>
+      <AppCard.Body className="flex-grow-1 p-0" style={{ overflowY: 'auto', minHeight: 0 }}>
         {!loading && events.length === 0 && !error && (
-          <div className="text-muted small">タイムラインにイベントはありません</div>
+          <div className="text-muted small px-3 py-3 text-center">タイムラインにイベントはありません</div>
         )}
 
         {events.length > 0 && (
@@ -90,13 +91,13 @@ export default function DashboardTimeline({
         )}
 
         {hasMore && (
-          <div className="text-center mt-1">
+          <div className="text-center py-2">
             <Button size="sm" variant="outline-secondary" onClick={onLoadMore} disabled={loading}>
               もっと見る
             </Button>
           </div>
         )}
-      </div>
-    </div>
+      </AppCard.Body>
+    </AppCard>
   );
 }
