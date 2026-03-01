@@ -7,6 +7,7 @@ import {
   pharmacySpecialHours,
 } from '../db/schema';
 import { invalidateAuthUserCache } from '../middleware/auth';
+import { processVerificationCallback } from '../services/pharmacy-verification-callback-service';
 import { AuthRequest } from '../types';
 import { geocodeAddress } from '../services/geocode-service';
 import { writeLog, getClientIp } from '../services/log-service';
@@ -440,6 +441,37 @@ router.put('/pharmacies/:id/toggle-active', adminWriteLimiter, async (req: AuthR
     res.json({ message: `薬局を${rows[0].isActive ? '無効' : '有効'}にしました` });
   } catch (err) {
     handleAdminError(err, 'Admin toggle active error', '状態変更に失敗しました', res);
+  }
+});
+
+router.post('/pharmacies/:id/verify', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parseIdOrBadRequest(res, req.params.id);
+    if (!id) return;
+
+    const { approved, reason } = req.body;
+    if (typeof approved !== 'boolean') {
+      res.status(400).json({ error: 'approved (boolean) を指定してください' });
+      return;
+    }
+
+    const result = await processVerificationCallback({
+      pharmacyId: id,
+      requestId: 0, // manual verification
+      approved,
+      reason: reason || (approved ? '管理者による手動承認' : '管理者による手動却下'),
+    });
+
+    invalidateAuthUserCache(id);
+    void writeLog('admin_verify_pharmacy', {
+      pharmacyId: req.user!.id,
+      detail: `管理者が薬局ID:${id}を${approved ? '承認' : '却下'}`,
+      ipAddress: getClientIp(req),
+    });
+
+    res.json(result);
+  } catch (err) {
+    handleAdminError(err, 'Admin pharmacy verify error', '審査処理に失敗しました', res);
   }
 });
 
