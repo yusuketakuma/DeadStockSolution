@@ -23,7 +23,8 @@ export type LogAction =
   | 'password_reset_failed'
   | 'drug_master_sync'
   | 'drug_master_package_upload'
-  | 'drug_master_edit';
+  | 'drug_master_edit'
+  | 'admin_verify_pharmacy';
 
 export async function writeLog(
   action: LogAction,
