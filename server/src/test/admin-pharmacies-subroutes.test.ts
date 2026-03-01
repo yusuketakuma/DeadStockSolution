@@ -767,7 +767,7 @@ describe('admin pharmacies actions routes', () => {
       id: 12,
       pharmacyId: 5,
       requestText: '再連携テスト',
-      openclawStatus: 'pending',
+      openclawStatus: 'pending_handoff',
     };
 
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([requestRow]));
@@ -776,7 +776,7 @@ describe('admin pharmacies actions routes', () => {
       accepted: true,
       connectorConfigured: true,
       implementationBranch: 'feature/openclaw',
-      status: 'in_progress',
+      status: 'in_dialogue',
       note: null,
       threadId: 'thread-1',
       summary: 'accepted',
@@ -793,7 +793,7 @@ describe('admin pharmacies actions routes', () => {
         accepted: true,
         connectorConfigured: true,
         implementationBranch: 'feature/openclaw',
-        status: 'in_progress',
+        status: 'in_dialogue',
         note: null,
       },
     });

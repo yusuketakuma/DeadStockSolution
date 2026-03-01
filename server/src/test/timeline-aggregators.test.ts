@@ -246,6 +246,7 @@ describe('fetchCommentEvents', () => {
         const fn = vi.fn();
         return fn;
       })(),
+      update: vi.fn(),
     };
 
     chain.select.mockReturnValue(chain);

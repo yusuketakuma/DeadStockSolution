@@ -275,7 +275,7 @@ describe('admin routes', () => {
       id: 12,
       pharmacyId: 10,
       requestText: '在庫一覧のCSV出力を改善してほしい',
-      openclawStatus: 'pending',
+      openclawStatus: 'pending_handoff',
     }];
     const updateQuery = createUpdateQuery();
 
@@ -286,7 +286,7 @@ describe('admin routes', () => {
       accepted: true,
       connectorConfigured: true,
       implementationBranch: 'feature/openclaw',
-      status: 'in_progress',
+      status: 'in_dialogue',
       note: 'handoff queued',
       threadId: 'thread-12',
       summary: 'openclaw started',
@@ -300,7 +300,7 @@ describe('admin routes', () => {
       message: 'OpenClawへ再連携しました',
       handoff: expect.objectContaining({
         accepted: true,
-        status: 'in_progress',
+        status: 'in_dialogue',
       }),
     }));
     expect(mocks.handoffToOpenClaw).toHaveBeenCalledWith(expect.objectContaining({
@@ -310,7 +310,7 @@ describe('admin routes', () => {
     }));
     expect(mocks.db.update).toHaveBeenCalledTimes(1);
     expect(updateQuery.set).toHaveBeenCalledWith(expect.objectContaining({
-      openclawStatus: 'in_progress',
+      openclawStatus: 'in_dialogue',
       openclawThreadId: 'thread-12',
       openclawSummary: 'openclaw started',
       updatedAt: expect.any(String),
@@ -323,7 +323,7 @@ describe('admin routes', () => {
       id: 13,
       pharmacyId: 20,
       requestText: 'ランキング画面を追加してほしい',
-      openclawStatus: 'pending',
+      openclawStatus: 'pending_handoff',
     }];
 
     mocks.db.select.mockImplementationOnce(() => createLimitQuery(requestRow));
@@ -332,7 +332,7 @@ describe('admin routes', () => {
       accepted: false,
       connectorConfigured: false,
       implementationBranch: 'feature/openclaw',
-      status: 'pending',
+      status: 'pending_handoff',
       note: 'connector not configured',
     });
 
@@ -344,7 +344,7 @@ describe('admin routes', () => {
       message: 'OpenClaw連携は保留中です',
       handoff: expect.objectContaining({
         accepted: false,
-        status: 'pending',
+        status: 'pending_handoff',
       }),
     }));
     expect(mocks.handoffToOpenClaw).toHaveBeenCalledWith(expect.objectContaining({
@@ -402,6 +402,24 @@ describe('admin routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: '完了済み要望は再連携できません' });
+    expect(mocks.handoffToOpenClaw).not.toHaveBeenCalled();
+    expect(mocks.db.update).not.toHaveBeenCalled();
+  });
+
+  it('returns bad request when request status is not pending_handoff', async () => {
+    const app = createApp();
+    mocks.db.select.mockImplementationOnce(() => createLimitQuery([{
+      id: 45,
+      pharmacyId: 10,
+      requestText: '既存要望',
+      openclawStatus: 'implementing',
+    }]));
+
+    const response = await request(app)
+      .post('/api/admin/requests/45/handoff');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: '連携待ちの要望のみ再連携できます' });
     expect(mocks.handoffToOpenClaw).not.toHaveBeenCalled();
     expect(mocks.db.update).not.toHaveBeenCalled();
   });
