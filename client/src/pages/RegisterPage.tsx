@@ -68,7 +68,8 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register(form);
-      navigate('/');
+      navigate(`/verification-pending?email=${encodeURIComponent(form.email)}`);
+      return;
     } catch (err) {
       if (err instanceof ApiError && err.fieldErrors && err.fieldErrors.length > 0) {
         setFieldErrors(err.fieldErrors);

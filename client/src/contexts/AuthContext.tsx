@@ -74,8 +74,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (data: RegisterData) => {
-    const result = await api.post<User>('/auth/register', data);
-    setUser(result);
+    await api.post('/auth/register', data);
+    // 審査制のためトークンは返されない。setUser は呼ばない。
   };
 
   const logout = async () => {
