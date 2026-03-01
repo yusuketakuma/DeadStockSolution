@@ -84,7 +84,10 @@ function stripTrailingSlash(url: string): string {
 
 function isLocalhostHost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
-  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+  return normalized === 'localhost'
+    || normalized === '127.0.0.1'
+    || normalized === '::1'
+    || normalized === '[::1]';
 }
 
 function normalizeBaseUrl(baseUrlRaw: string): { value: string; error: OpenClawBaseUrlError | null } {
