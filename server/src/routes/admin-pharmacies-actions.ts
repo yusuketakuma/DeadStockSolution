@@ -270,6 +270,11 @@ router.post('/requests/:id/handoff', adminWriteLimiter, async (req: AuthRequest,
       return;
     }
 
+    if (requestRow.openclawStatus !== 'pending_handoff') {
+      res.status(400).json({ error: '連携待ちの要望のみ再連携できます' });
+      return;
+    }
+
     const handoff = await handoffToOpenClaw({
       requestId: requestRow.id,
       pharmacyId: requestRow.pharmacyId,

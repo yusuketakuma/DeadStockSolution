@@ -15,7 +15,7 @@ function makeEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
   return {
     id: 'evt-1',
     source: 'notification',
-    type: 'info',
+    type: 'request_update',
     title: 'テストイベント',
     body: 'テスト本文',
     timestamp: '2026-03-01T00:00:00Z',

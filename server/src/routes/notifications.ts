@@ -7,6 +7,7 @@ import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications
 import { parsePositiveInt } from '../utils/request-utils';
 import { sanitizeInternalPath } from '../utils/path-utils';
 import { logger } from '../services/logger';
+import { decodeCursor, encodeCursor } from '../utils/cursor-pagination';
 import {
   getDashboardUnreadCount,
   invalidateDashboardUnreadCache,
@@ -36,6 +37,13 @@ const PROPOSAL_NOTICE_LIMIT = SOURCE_NOTICE_FETCH_LIMIT;
 const PROPOSAL_NOTICE_STATUSES = ['proposed', 'accepted_a', 'accepted_b', 'confirmed'] as const;
 const PROPOSAL_EVENT_NOTIFICATION_TYPES = new Set(['proposal_received', 'proposal_status_changed']);
 const MATCH_NOTICE_LIMIT = SOURCE_NOTICE_FETCH_LIMIT;
+const MAX_NOTICE_PAGE_LIMIT = 50;
+
+interface NoticeCursor {
+  id: string;
+  priority: number;
+  createdAt: string | null;
+}
 
 interface MatchDiffJson {
   addedPharmacyIds?: unknown;
@@ -194,6 +202,23 @@ function timestampSortValue(timestamp: string | null): number {
   return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
 }
 
+function compareNoticeOrder(a: NoticeItem, b: NoticeItem): number {
+  if (a.priority !== b.priority) return a.priority - b.priority;
+  const aTime = timestampSortValue(a.createdAt);
+  const bTime = timestampSortValue(b.createdAt);
+  if (aTime !== bTime) return bTime - aTime;
+  return a.id.localeCompare(b.id);
+}
+
+function parseNoticeCursor(raw: unknown): NoticeCursor | null {
+  const cursor = decodeCursor<NoticeCursor>(raw);
+  if (!cursor) return null;
+  if (typeof cursor.id !== 'string' || cursor.id.length === 0) return null;
+  if (!Number.isInteger(cursor.priority) || cursor.priority < 0) return null;
+  if (cursor.createdAt !== null && typeof cursor.createdAt !== 'string') return null;
+  return cursor;
+}
+
 function mergeDedupSortByTimestamp<T extends { id: number }>(
   branchA: T[],
   branchB: T[],
@@ -254,6 +279,8 @@ router.use(requireLogin);
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const pharmacyId = req.user!.id;
+    const limit = Math.min(parsePositiveInt(req.query.limit) ?? NOTICE_RESULT_LIMIT, MAX_NOTICE_PAGE_LIMIT);
+    const cursor = parseNoticeCursor(req.query.cursor);
 
     const proposalSelect = {
       id: exchangeProposals.id,
@@ -429,12 +456,35 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       if (notice) notices.push(notice);
     }
 
-    notices.sort((a, b) => {
-      if (a.priority !== b.priority) return a.priority - b.priority;
-      const aTime = timestampSortValue(a.createdAt);
-      const bTime = timestampSortValue(b.createdAt);
-      return bTime - aTime;
-    });
+    notices.sort(compareNoticeOrder);
+
+    const startIndex = (() => {
+      if (!cursor) return 0;
+      const exactIndex = notices.findIndex((notice) => notice.id === cursor.id);
+      if (exactIndex >= 0) return exactIndex + 1;
+
+      const cursorTime = timestampSortValue(cursor.createdAt);
+      const fallback = notices.findIndex((notice) => {
+        if (notice.priority > cursor.priority) return true;
+        if (notice.priority < cursor.priority) return false;
+
+        const noticeTime = timestampSortValue(notice.createdAt);
+        if (noticeTime < cursorTime) return true;
+        if (noticeTime > cursorTime) return false;
+        return notice.id.localeCompare(cursor.id) > 0;
+      });
+      return fallback >= 0 ? fallback : notices.length;
+    })();
+    const pagedNotices = notices.slice(startIndex, startIndex + limit);
+    const hasMore = startIndex + limit < notices.length;
+    const lastNotice = pagedNotices[pagedNotices.length - 1];
+    const nextCursor = hasMore && lastNotice
+      ? encodeCursor<NoticeCursor>({
+          id: lastNotice.id,
+          priority: lastNotice.priority,
+          createdAt: lastNotice.createdAt,
+        })
+      : null;
 
     const unreadMessages = notices.filter((item) => item.type === 'admin_message' && item.unread).length;
     const actionableRequests = notices.filter((item) =>
@@ -442,11 +492,16 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     ).length;
 
     res.json({
-      notices: notices.slice(0, NOTICE_RESULT_LIMIT),
+      notices: pagedNotices,
       summary: {
         unreadMessages,
         actionableRequests,
         total: notices.length,
+      },
+      pagination: {
+        limit,
+        hasMore,
+        nextCursor,
       },
     });
   } catch (err) {

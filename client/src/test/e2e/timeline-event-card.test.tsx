@@ -7,7 +7,7 @@ function makeEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
   return {
     id: 'evt-1',
     source: 'notification',
-    type: 'info',
+    type: 'request_update',
     title: 'テストタイトル',
     body: 'テスト本文',
     timestamp: new Date().toISOString(),

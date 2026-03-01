@@ -13,14 +13,10 @@ import AppField from '../components/ui/AppField';
 import AppSelect from '../components/ui/AppSelect';
 import LoadingButton from '../components/ui/LoadingButton';
 import ProposalItemsPanel from '../components/ProposalItemsPanel';
-import {
-  filterProposalTimelineEvents,
-  PROPOSAL_TIMELINE_FILTER_OPTIONS,
-  type ProposalTimelineEvent,
-  type ProposalTimelineFilter,
-} from '../utils/proposal-timeline';
+import type { ProposalTimelineEvent } from '../utils/proposal-timeline';
 import { toViewerProposalStatusLabel } from '../utils/proposal-status';
 import { formatDateTimeJa } from '../utils/formatters';
+import ProposalTimeline from '../components/timeline/ProposalTimeline';
 
 interface PharmacyInfo {
   id: number;
@@ -94,7 +90,6 @@ export default function ProposalDetailPage() {
   const [feedbackRating, setFeedbackRating] = useState('5');
   const [feedbackComment, setFeedbackComment] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
-  const [timelineFilter, setTimelineFilter] = useState<ProposalTimelineFilter>('all');
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -299,8 +294,6 @@ export default function ProposalDetailPage() {
 ${template}` : template);
   };
 
-  const filteredTimeline = filterProposalTimelineEvents(data.timeline ?? [], timelineFilter);
-
   const actionLabelMap: Record<'accept' | 'reject' | 'complete', string> = {
     accept: '承認',
     reject: '拒否',
@@ -351,31 +344,12 @@ ${template}` : template);
 
       <section id="proposal-timeline" style={{ scrollMarginTop: 96 }}>
         <AppDataPanel title="進行履歴" className="mb-3" bodyClassName="small">
-          <div className="mb-2" style={{ maxWidth: 280 }}>
-            <AppSelect
-              controlId="proposal-timeline-filter"
-              value={timelineFilter}
-              ariaLabel="進行履歴フィルタ"
-              onChange={(value) => setTimelineFilter(value as ProposalTimelineFilter)}
-              options={PROPOSAL_TIMELINE_FILTER_OPTIONS}
-            />
-          </div>
-          {filteredTimeline.length === 0 ? (
-            <div className="text-muted">表示できる履歴はありません。</div>
-          ) : (
-            <ul className="mb-0 ps-3">
-              {filteredTimeline.map((event, idx) => (
-                <li key={`${event.action}-${event.at ?? 'na'}-${idx}`} className="mb-1">
-                  <strong>{event.label}</strong>
-                  {' '}— {event.actorName ?? '不明'}
-                  {event.statusFrom && event.statusTo && (
-                    <span className="text-muted"> [{toViewerProposalStatusLabel(event.statusFrom, isA)} → {toViewerProposalStatusLabel(event.statusTo, isA)}]</span>
-                  )}
-                  {' '}({formatDateTimeJa(event.at, '日時不明')})
-                </li>
-              ))}
-            </ul>
-          )}
+          <ProposalTimeline
+            events={data.timeline ?? []}
+            statusLabelFormatter={(status) => toViewerProposalStatusLabel(status, isA)}
+            emptyMessage="表示できる履歴はありません。"
+            filterAriaLabel="進行履歴フィルタ"
+          />
         </AppDataPanel>
       </section>
 

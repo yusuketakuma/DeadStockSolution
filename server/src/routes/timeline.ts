@@ -2,38 +2,110 @@ import { Router } from 'express';
 import { requireLogin } from '../middleware/auth';
 import { db } from '../config/database';
 import { AuthRequest } from '../types';
-import { parsePagination } from '../utils/request-utils';
+import { parsePositiveInt } from '../utils/request-utils';
 import {
   getTimeline,
   getTimelineUnreadCount,
   markTimelineViewed,
   getSmartDigest,
 } from '../services/timeline-service';
-import type { TimelinePriority } from '../types/timeline';
+import type { TimelineCursor, TimelinePriority } from '../types/timeline';
 import { handleRouteError } from '../middleware/error-handler';
+import { decodeCursor } from '../utils/cursor-pagination';
 
 const router = Router();
 
 const VALID_PRIORITIES = new Set<string>(['critical', 'high', 'medium', 'low']);
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 50;
+
+function parseTimelineCursor(raw: unknown): TimelineCursor | null | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
+
+  const cursor = decodeCursor<TimelineCursor>(raw);
+  if (!cursor) return null;
+  if (typeof cursor.id !== 'string' || cursor.id.length === 0) return null;
+  if (typeof cursor.timestamp !== 'string' || !Number.isFinite(Date.parse(cursor.timestamp))) return null;
+  return cursor;
+}
+
+function parseTimelinePriority(raw: unknown): TimelinePriority | undefined {
+  if (typeof raw !== 'string') return undefined;
+  return VALID_PRIORITIES.has(raw) ? (raw as TimelinePriority) : undefined;
+}
+
+function parseTimelineLimit(raw: unknown): number {
+  const parsedLimit = parsePositiveInt(raw);
+  return Math.min(parsedLimit ?? DEFAULT_LIMIT, MAX_LIMIT);
+}
 
 // GET /api/timeline
-// query: page, limit, priority (optional filter), since (optional ISO date)
-// Response: { events: TimelineEvent[], total: number, page: number, limit: number, hasMore: boolean }
+// query: cursor, limit, priority (optional filter), since (optional ISO date)
+// Response: { events: TimelineEvent[], total: number, hasMore: boolean, nextCursor: string | null, ... }
 router.get('/', requireLogin, async (req, res) => {
   try {
     const authReq = req as AuthRequest;
     const pharmacyId = authReq.user!.id;
-    const { page, limit } = parsePagination(req.query.page, req.query.limit, { defaultLimit: 20, maxLimit: 50 });
-    const priorityParam = req.query.priority;
-    const priority = typeof priorityParam === 'string' && VALID_PRIORITIES.has(priorityParam)
-      ? (priorityParam as TimelinePriority)
-      : undefined;
+    const limit = parseTimelineLimit(req.query.limit);
+    const priority = parseTimelinePriority(req.query.priority);
     const since = typeof req.query.since === 'string' ? req.query.since : undefined;
+    const cursor = parseTimelineCursor(req.query.cursor);
+    if (cursor === null) {
+      res.status(400).json({ error: 'cursorが不正です' });
+      return;
+    }
 
-    const result = await getTimeline(db, pharmacyId, { page, limit, priority, since });
-    res.json({ ...result, page, limit });
+    const result = await getTimeline(db, pharmacyId, { cursor, limit, priority, since });
+
+    res.json({
+      ...result,
+      limit,
+      pagination: {
+        mode: 'cursor',
+        limit,
+        hasMore: result.hasMore,
+        nextCursor: result.nextCursor ?? null,
+      },
+    });
   } catch (err) {
     handleRouteError(err, 'タイムライン取得エラー', 'タイムラインの取得に失敗しました', res);
+  }
+});
+
+// GET /api/timeline/bootstrap
+// query: limit, priority (optional), since (optional)
+// Response: { timeline, digest, unreadCount }
+router.get('/bootstrap', requireLogin, async (req, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const pharmacyId = authReq.user!.id;
+    const limit = parseTimelineLimit(req.query.limit);
+    const priority = parseTimelinePriority(req.query.priority);
+    const since = typeof req.query.since === 'string' ? req.query.since : undefined;
+
+    const [timeline, digestEvents, unreadCount] = await Promise.all([
+      getTimeline(db, pharmacyId, { limit, priority, since, cursor: undefined }),
+      getSmartDigest(db, pharmacyId),
+      getTimelineUnreadCount(db, pharmacyId),
+    ]);
+
+    res.json({
+      timeline: {
+        ...timeline,
+        limit,
+        pagination: {
+          mode: 'cursor',
+          limit,
+          hasMore: timeline.hasMore,
+          nextCursor: timeline.nextCursor ?? null,
+        },
+      },
+      digest: { events: digestEvents },
+      unreadCount,
+    });
+  } catch (err) {
+    handleRouteError(err, 'タイムライン初期データ取得エラー', 'タイムライン初期データの取得に失敗しました', res);
   }
 });
 

@@ -222,6 +222,28 @@ JSON + CSV 両形式でのエクスポート。管理画面からワンクリッ
 
 ---
 
+## Sprint: タイムライン品質改善（/simplify 残項目）
+
+> **背景**: `/simplify` レビューで検出された5項目のうち、最初の修正パスでスキップした改善項目
+
+### Phase 1: サーバー型安全性・コード重複解消 [refactor] [P]
+- [x] T057: countUnread 共通ヘルパー抽出 `cc:DONE` (2026-03-01) [P]
+  - `countUnreadByIsReadFlag()` ジェネリックヘルパー抽出、notifications/matchNotifications 2関数を統合
+- [x] T058: TimelineEventType ランタイムバリデーション `cc:DONE` (2026-03-01) [P]
+  - `TIMELINE_EVENT_TYPES` Set + `toTimelineEventType()` バリデーション関数、aggregators 3箇所置換、5テスト追加
+
+### Phase 2: サーバーパフォーマンス最適化 [performance]
+- [x] T059: COUNT クエリ統合（10→1 round trip） `cc:DONE` (2026-03-01) depends:T057
+  - `countAllUnread()` 単一 SQL サブクエリで9テーブル集計、10 round trips → 1 に削減、3テスト追加
+- [x] T060: total カウント精度修正 `cc:DONE` (2026-03-01) depends:T059
+  - priority フィルタあり時は perTableLimit なしで正確な total/hasMore、なし時は近似値維持、2テスト追加
+
+### Phase 3: フロントエンド最適化 [performance] [P]
+- [x] T061: 双方ポーリング統合 `cc:DONE` (2026-03-01) [P]
+  - NotificationContext を TimelineContext に委譲、独自ポーリング削除、プロバイダー順序調整、3テスト追加
+
+---
+
 ## 📦 アーカイブ
 
 > 完了済みスプリントは `.claude/memory/archive/` に移動済み

@@ -97,6 +97,7 @@ describe('timeline routes', () => {
       events: sampleEvents,
       total: 1,
       hasMore: false,
+      nextCursor: null,
     });
 
     const response = await request(app).get('/api/timeline');
@@ -106,13 +107,19 @@ describe('timeline routes', () => {
       events: sampleEvents,
       total: 1,
       hasMore: false,
-      page: 1,
+      nextCursor: null,
       limit: 20,
+      pagination: {
+        mode: 'cursor',
+        limit: 20,
+        hasMore: false,
+        nextCursor: null,
+      },
     });
     expect(mocks.getTimeline).toHaveBeenCalledWith(
       {},
       1,
-      { page: 1, limit: 20, priority: undefined, since: undefined },
+      { cursor: undefined, limit: 20, priority: undefined, since: undefined },
     );
   });
 
@@ -128,6 +135,7 @@ describe('timeline routes', () => {
       events: criticalEvents,
       total: 1,
       hasMore: false,
+      nextCursor: null,
     });
 
     const response = await request(app).get('/api/timeline?priority=critical');
@@ -138,7 +146,7 @@ describe('timeline routes', () => {
     expect(mocks.getTimeline).toHaveBeenCalledWith(
       {},
       1,
-      expect.objectContaining({ priority: 'critical' }),
+      expect.objectContaining({ priority: 'critical', cursor: undefined }),
     );
   });
 
@@ -148,6 +156,7 @@ describe('timeline routes', () => {
       events: sampleEvents,
       total: 1,
       hasMore: false,
+      nextCursor: null,
     });
 
     const response = await request(app).get('/api/timeline?priority=invalid');
@@ -156,7 +165,7 @@ describe('timeline routes', () => {
     expect(mocks.getTimeline).toHaveBeenCalledWith(
       {},
       1,
-      expect.objectContaining({ priority: undefined }),
+      expect.objectContaining({ priority: undefined, cursor: undefined }),
     );
   });
 
@@ -193,6 +202,46 @@ describe('timeline routes', () => {
     expect(mocks.getSmartDigest).toHaveBeenCalledWith({}, 1);
   });
 
+  it('GET /api/timeline/bootstrap — 初期データをまとめて返す', async () => {
+    const app = createApp();
+    mocks.getTimeline.mockResolvedValue({
+      events: sampleEvents,
+      total: 1,
+      hasMore: false,
+      nextCursor: null,
+    });
+    mocks.getSmartDigest.mockResolvedValue(sampleEvents);
+    mocks.getTimelineUnreadCount.mockResolvedValue(7);
+
+    const response = await request(app).get('/api/timeline/bootstrap').query({ limit: 10 });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      timeline: {
+        events: sampleEvents,
+        total: 1,
+        hasMore: false,
+        nextCursor: null,
+        limit: 10,
+        pagination: {
+          mode: 'cursor',
+          limit: 10,
+          hasMore: false,
+          nextCursor: null,
+        },
+      },
+      digest: { events: sampleEvents },
+      unreadCount: 7,
+    });
+    expect(mocks.getTimeline).toHaveBeenCalledWith(
+      {},
+      1,
+      { limit: 10, priority: undefined, since: undefined, cursor: undefined },
+    );
+    expect(mocks.getSmartDigest).toHaveBeenCalledWith({}, 1);
+    expect(mocks.getTimelineUnreadCount).toHaveBeenCalledWith({}, 1);
+  });
+
   it('GET /api/timeline — サービスエラー時に 500 を返す', async () => {
     const app = createApp();
     mocks.getTimeline.mockRejectedValue(new Error('DB接続エラー'));
@@ -209,6 +258,7 @@ describe('timeline routes', () => {
       events: [],
       total: 0,
       hasMore: false,
+      nextCursor: null,
     });
 
     const response = await request(app).get('/api/timeline?since=2026-01-01T00:00:00.000Z');
@@ -217,7 +267,53 @@ describe('timeline routes', () => {
     expect(mocks.getTimeline).toHaveBeenCalledWith(
       {},
       1,
-      expect.objectContaining({ since: '2026-01-01T00:00:00.000Z' }),
+      expect.objectContaining({ since: '2026-01-01T00:00:00.000Z', cursor: undefined }),
     );
+  });
+
+  it('GET /api/timeline?cursor=... — cursor パラメータが渡される', async () => {
+    const app = createApp();
+    const cursor = Buffer.from(JSON.stringify({
+      timestamp: '2026-03-01T10:00:00.000Z',
+      id: 'notification_1',
+    }), 'utf-8').toString('base64url');
+
+    mocks.getTimeline.mockResolvedValue({
+      events: [],
+      total: 10,
+      hasMore: true,
+      nextCursor: 'next-cursor',
+    });
+
+    const response = await request(app).get('/api/timeline').query({ cursor, limit: 10 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.pagination).toEqual({
+      mode: 'cursor',
+      limit: 10,
+      hasMore: true,
+      nextCursor: 'next-cursor',
+    });
+    expect(mocks.getTimeline).toHaveBeenCalledWith(
+      {},
+      1,
+      expect.objectContaining({
+        limit: 10,
+        cursor: {
+          timestamp: '2026-03-01T10:00:00.000Z',
+          id: 'notification_1',
+        },
+      }),
+    );
+  });
+
+  it('GET /api/timeline?cursor=invalid — 不正な cursor は 400 を返す', async () => {
+    const app = createApp();
+
+    const response = await request(app).get('/api/timeline').query({ cursor: 'invalid' });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'cursorが不正です' });
+    expect(mocks.getTimeline).not.toHaveBeenCalled();
   });
 });

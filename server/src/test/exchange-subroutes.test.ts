@@ -65,6 +65,7 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => ({})),
   eq: vi.fn(() => ({})),
   or: vi.fn(() => ({})),
+  lt: vi.fn(() => ({})),
   asc: vi.fn(() => ({})),
   desc: vi.fn(() => ({})),
   inArray: vi.fn(() => ({})),
@@ -453,6 +454,55 @@ describe('exchange sub-routes: history', () => {
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual([]);
     expect(response.body.pagination.total).toBe(0);
+  });
+
+  it('GET /history supports cursor pagination', async () => {
+    const app = createApp();
+    const cursorPayload = Buffer.from(JSON.stringify({
+      completedAt: '2026-02-01T00:00:00.000Z',
+      id: 99,
+    }), 'utf-8').toString('base64url');
+
+    const historyRows = [
+      { id: 10, pharmacyAId: 2, pharmacyBId: 3, completedAt: '2026-01-31T00:00:00.000Z' },
+      { id: 9, pharmacyAId: 2, pharmacyBId: 4, completedAt: '2026-01-30T00:00:00.000Z' },
+      { id: 8, pharmacyAId: 2, pharmacyBId: 5, completedAt: '2026-01-29T00:00:00.000Z' },
+    ];
+
+    mocks.db.select
+      .mockImplementationOnce(() => createPaginatedQuery(historyRows))
+      .mockImplementationOnce(() => createWhereQuery([
+        { id: 2, name: '自薬局' },
+        { id: 3, name: '相手A' },
+        { id: 4, name: '相手B' },
+      ]));
+
+    const response = await request(app)
+      .get('/api/exchange/history')
+      .query({ cursor: cursorPayload, limit: 2 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(2);
+    expect(response.body.pagination).toEqual(expect.objectContaining({
+      mode: 'cursor',
+      hasMore: true,
+      limit: 2,
+    }));
+    expect(typeof response.body.pagination.nextCursor).toBe('string');
+    expect(response.body.pagination.total).toBeUndefined();
+    expect(response.body.pagination.totalPages).toBeUndefined();
+  });
+
+  it('GET /history returns 400 for invalid cursor', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .get('/api/exchange/history')
+      .query({ cursor: 'invalid', limit: 2 });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'cursorが不正です' });
+    expect(mocks.db.select).not.toHaveBeenCalled();
   });
 
   it('GET /history returns 500 on DB error', async () => {
