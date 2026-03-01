@@ -86,7 +86,7 @@ export async function countUnreadMatchNotifications(
   );
 }
 
-/** proposalComments: readByRecipient=false AND authorPharmacyId != pharmacyId AND isDeleted=false + lastViewed */
+/** proposalComments: 参加中提案のみ + readByRecipient=false OR createdAt > lastViewed */
 export async function countUnreadComments(
   db: DbClient,
   pharmacyId: number,
@@ -95,6 +95,10 @@ export async function countUnreadComments(
   const baseConditions = [
     eq(proposalComments.isDeleted, false),
     ne(proposalComments.authorPharmacyId, pharmacyId),
+    or(
+      eq(exchangeProposals.pharmacyAId, pharmacyId),
+      eq(exchangeProposals.pharmacyBId, pharmacyId),
+    ),
   ];
 
   if (lastViewed) {
@@ -108,6 +112,7 @@ export async function countUnreadComments(
   const rows = await db
     .select({ count: rowCount })
     .from(proposalComments)
+    .innerJoin(exchangeProposals, eq(proposalComments.proposalId, exchangeProposals.id))
     .where(and(...baseConditions));
   return rows[0]?.count ?? 0;
 }
@@ -274,12 +279,17 @@ export async function countAllUnread(
           WHERE pharmacy_a_id = ${pharmacyId} OR pharmacy_b_id = ${pharmacyId}
         ), 0)
         + COALESCE((
-          SELECT count(*)::int FROM proposal_comments
-          WHERE is_deleted = false
-            AND author_pharmacy_id != ${pharmacyId}
-            AND (read_by_recipient = false OR (
+          SELECT count(*)::int FROM proposal_comments pc
+          WHERE pc.is_deleted = false
+            AND pc.author_pharmacy_id != ${pharmacyId}
+            AND EXISTS (
+              SELECT 1 FROM exchange_proposals ep
+              WHERE ep.id = pc.proposal_id
+                AND (ep.pharmacy_a_id = ${pharmacyId} OR ep.pharmacy_b_id = ${pharmacyId})
+            )
+            AND (pc.read_by_recipient = false OR (
               ${pharmacies.lastTimelineViewedAt} IS NOT NULL
-              AND created_at > ${pharmacies.lastTimelineViewedAt}
+              AND pc.created_at > ${pharmacies.lastTimelineViewedAt}
             ))
         ), 0)
         + COALESCE((
