@@ -27,6 +27,7 @@ interface Pharmacy {
   trustScore?: number;
   ratingCount?: number;
   positiveRate?: number;
+  verificationStatus?: string;
 }
 
 interface PharmaciesResponse {
@@ -125,6 +126,7 @@ export default function AdminPharmaciesPage() {
                   <th>登録日</th>
                   <th>信頼スコア</th>
                   <th>評価件数</th>
+                  <th>審査</th>
                   <th>状態</th>
                   <th>操作</th>
                 </tr>
@@ -147,6 +149,12 @@ export default function AdminPharmaciesPage() {
                     <td>{formatDateJa(p.createdAt)}</td>
                     <td>{(p.trustScore ?? 60).toFixed(1)}</td>
                     <td>{formatNumberJa(p.ratingCount ?? 0)}</td>
+                    <td>
+                      {p.verificationStatus === 'verified' && <Badge bg="success">承認済み</Badge>}
+                      {p.verificationStatus === 'pending_verification' && <Badge bg="warning" text="dark">審査中</Badge>}
+                      {p.verificationStatus === 'rejected' && <Badge bg="danger">却下</Badge>}
+                      {(p.verificationStatus === 'unverified' || !p.verificationStatus) && <Badge bg="secondary">未検証</Badge>}
+                    </td>
                     <td>
                       <Badge bg={p.isActive ? 'success' : 'secondary'}>
                         {p.isActive ? '有効' : '無効'}
@@ -186,6 +194,10 @@ export default function AdminPharmaciesPage() {
                     <>
                       {p.isAdmin && <Badge bg="danger">Admin</Badge>}
                       {p.isTestAccount && <Badge bg="warning" text="dark">テスト</Badge>}
+                      {p.verificationStatus === 'verified' && <Badge bg="success">承認済み</Badge>}
+                      {p.verificationStatus === 'pending_verification' && <Badge bg="warning" text="dark">審査中</Badge>}
+                      {p.verificationStatus === 'rejected' && <Badge bg="danger">却下</Badge>}
+                      {(p.verificationStatus === 'unverified' || !p.verificationStatus) && <Badge bg="secondary">未検証</Badge>}
                       <Badge bg={p.isActive ? 'success' : 'secondary'}>
                         {p.isActive ? '有効' : '無効'}
                       </Badge>

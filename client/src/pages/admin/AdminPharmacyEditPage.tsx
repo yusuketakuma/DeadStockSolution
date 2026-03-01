@@ -38,6 +38,7 @@ interface AdminPharmacyData {
   testAccountPassword: string | null;
   version: number;
   createdAt: string | null;
+  verificationStatus?: string;
 }
 
 export default function AdminPharmacyEditPage() {
@@ -68,6 +69,7 @@ export default function AdminPharmacyEditPage() {
   const [isTestAccount, setIsTestAccount] = useState(false);
   const [testAccountPassword, setTestAccountPassword] = useState('');
   const [accountConflict, setAccountConflict] = useState(false);
+  const [verifyLoading, setVerifyLoading] = useState(false);
 
   const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
   const [savedBusinessHours, setSavedBusinessHours] = useState<BusinessHourEntry[]>(createDefaultHours());
@@ -292,6 +294,23 @@ export default function AdminPharmacyEditPage() {
       setError(err instanceof Error ? err.message : '状態変更に失敗しました');
     } finally {
       setActiveUpdating(false);
+    }
+  };
+
+  const handleVerify = async (approved: boolean, reason?: string) => {
+    setVerifyLoading(true);
+    try {
+      await api.post(`/admin/pharmacies/${pharmacyId}/verify`, {
+        approved,
+        reason: reason || undefined,
+      });
+      const updated = await api.get<AdminPharmacyData>(`/admin/pharmacies/${pharmacyId}`);
+      setPharmacy(updated);
+      setMessage(approved ? '薬局を承認しました' : '薬局を却下しました');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '審査処理に失敗しました');
+    } finally {
+      setVerifyLoading(false);
     }
   };
 
@@ -544,6 +563,35 @@ export default function AdminPharmacyEditPage() {
 
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
+
+      {pharmacy && pharmacy.verificationStatus === 'pending_verification' && (
+        <AppAlert variant="warning" className="mb-3">
+          <div className="d-flex align-items-center justify-content-between">
+            <span>この薬局は審査中です</span>
+            <div className="d-flex gap-2">
+              <AppButton
+                size="sm"
+                variant="success"
+                onClick={() => void handleVerify(true)}
+                disabled={verifyLoading}
+              >
+                承認
+              </AppButton>
+              <AppButton
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  const reason = window.prompt('却下理由を入力してください:');
+                  if (reason !== null) void handleVerify(false, reason);
+                }}
+                disabled={verifyLoading}
+              >
+                却下
+              </AppButton>
+            </div>
+          </div>
+        </AppAlert>
+      )}
 
       <AppDataPanel className="mb-3">
         <div className="d-flex flex-wrap align-items-center gap-2">
