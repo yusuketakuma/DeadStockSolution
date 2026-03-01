@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     insert: vi.fn(),
     transaction: vi.fn(),
   },
+  loggerWarn: vi.fn(),
   loggerError: vi.fn(),
   processVerificationCallback: vi.fn(),
   invalidateAuthUserCache: vi.fn(),
@@ -23,7 +24,7 @@ vi.mock('../services/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
-    warn: vi.fn(),
+    warn: mocks.loggerWarn,
     error: mocks.loggerError,
   },
 }));
@@ -414,5 +415,100 @@ describe('openclaw callback route', () => {
       reason: 'ok',
     });
     expect(mocks.invalidateAuthUserCache).toHaveBeenCalledWith(9);
+  });
+
+  it('skips verification callback parsing for plain-text request payloads', async () => {
+    const app = createApp();
+    const currentRow = [{
+      id: 41,
+      pharmacyId: 4,
+      requestText: '在庫CSV出力',
+      openclawStatus: 'implementing',
+      openclawThreadId: 'thread-41',
+      openclawSummary: null,
+    }];
+    const updateQuery = createUpdateQuery();
+    const insertQuery = createInsertQuery();
+
+    mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
+    mocks.db.update.mockImplementationOnce(() => updateQuery);
+    mocks.db.insert.mockImplementationOnce(() => insertQuery);
+
+    const payload = {
+      requestId: 41,
+      status: 'completed',
+      summary: '通常の完了通知',
+      threadId: 'thread-41',
+      implementationBranch: 'review',
+    };
+    const rawBody = JSON.stringify(payload);
+    const nowMs = Date.parse('2026-02-25T12:00:00.000Z');
+    const timestamp = Math.floor(nowMs / 1000);
+    vi.useFakeTimers();
+    vi.setSystemTime(nowMs);
+
+    const res = await request(app)
+      .post('/api/openclaw/callback')
+      .set('x-openclaw-timestamp', String(timestamp))
+      .set('x-openclaw-signature', createSignature('webhook-secret', timestamp, rawBody))
+      .send(payload);
+
+    vi.useRealTimers();
+
+    expect(res.status).toBe(200);
+    expect(mocks.processVerificationCallback).not.toHaveBeenCalled();
+    expect(mocks.invalidateAuthUserCache).not.toHaveBeenCalled();
+    expect(mocks.loggerError).not.toHaveBeenCalled();
+  });
+
+  it('skips verification callback when summary payload is invalid', async () => {
+    const app = createApp();
+    const currentRow = [{
+      id: 51,
+      pharmacyId: 5,
+      requestText: JSON.stringify({ type: 'pharmacy_reverification' }),
+      openclawStatus: 'implementing',
+      openclawThreadId: 'thread-51',
+      openclawSummary: null,
+    }];
+    const updateQuery = createUpdateQuery();
+    const insertQuery = createInsertQuery();
+
+    mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
+    mocks.db.update.mockImplementationOnce(() => updateQuery);
+    mocks.db.insert.mockImplementationOnce(() => insertQuery);
+
+    const payload = {
+      requestId: 51,
+      status: 'completed',
+      summary: JSON.stringify({ reason: 'approved flag is missing' }),
+      threadId: 'thread-51',
+      implementationBranch: 'review',
+    };
+    const rawBody = JSON.stringify(payload);
+    const nowMs = Date.parse('2026-02-25T12:00:00.000Z');
+    const timestamp = Math.floor(nowMs / 1000);
+    vi.useFakeTimers();
+    vi.setSystemTime(nowMs);
+
+    const res = await request(app)
+      .post('/api/openclaw/callback')
+      .set('x-openclaw-timestamp', String(timestamp))
+      .set('x-openclaw-signature', createSignature('webhook-secret', timestamp, rawBody))
+      .send(payload);
+
+    vi.useRealTimers();
+
+    expect(res.status).toBe(200);
+    expect(mocks.processVerificationCallback).not.toHaveBeenCalled();
+    expect(mocks.invalidateAuthUserCache).not.toHaveBeenCalled();
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      'Skipped pharmacy verification callback due to invalid summary payload',
+      expect.objectContaining({
+        requestId: 51,
+        pharmacyId: 5,
+        summaryProvided: true,
+      }),
+    );
   });
 });

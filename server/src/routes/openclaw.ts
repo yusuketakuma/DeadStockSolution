@@ -44,6 +44,27 @@ function normalizeText(value: unknown, maxLength: number): string | null {
   return trimmed.slice(0, maxLength);
 }
 
+function parseJsonObject(rawValue: string | null | undefined): Record<string, unknown> | null {
+  if (typeof rawValue !== 'string') {
+    return null;
+  }
+
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 router.post('/callback', callbackLimiter, async (req, res: Response) => {
   try {
     if (!isOpenClawWebhookConfigured()) {
@@ -178,17 +199,25 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
     // Process pharmacy verification callback if applicable
     if (status === 'completed') {
       try {
-        const requestContent = JSON.parse(current.requestText ?? '{}');
-        if (isVerificationRequestType(requestContent.type)) {
-          const verificationData = JSON.parse(summary ?? '{}');
-          const callbackResult = await processVerificationCallback({
-            pharmacyId: current.pharmacyId,
-            requestId,
-            approved: verificationData.approved === true,
-            reason: verificationData.reason || '',
-          });
-          if (callbackResult.applied) {
-            invalidateAuthUserCache(current.pharmacyId);
+        const requestContent = parseJsonObject(current.requestText);
+        if (requestContent && isVerificationRequestType(requestContent.type)) {
+          const verificationData = parseJsonObject(summary);
+          if (!verificationData || typeof verificationData.approved !== 'boolean') {
+            logger.warn('Skipped pharmacy verification callback due to invalid summary payload', {
+              requestId,
+              pharmacyId: current.pharmacyId,
+              summaryProvided: Boolean(summary),
+            });
+          } else {
+            const callbackResult = await processVerificationCallback({
+              pharmacyId: current.pharmacyId,
+              requestId,
+              approved: verificationData.approved,
+              reason: typeof verificationData.reason === 'string' ? verificationData.reason : '',
+            });
+            if (callbackResult.applied) {
+              invalidateAuthUserCache(current.pharmacyId);
+            }
           }
         }
       } catch (verificationErr) {
