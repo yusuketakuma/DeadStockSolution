@@ -3,7 +3,7 @@ import { useAsyncState } from '../hooks/useAsyncState';
 import { Nav } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { api } from '../api/client';
+import { api, ApiError } from '../api/client';
 import AuthPageLayout from '../components/ui/AuthPageLayout';
 import AppAlert from '../components/ui/AppAlert';
 import LoadingButton from '../components/ui/LoadingButton';
@@ -77,6 +77,17 @@ export default function LoginPage() {
         navigate('/');
       }
     } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        const data = err.data as { verificationStatus?: string } | undefined;
+        if (data?.verificationStatus === 'pending_verification') {
+          navigate(`/verification-pending?email=${encodeURIComponent(email)}`);
+          return;
+        }
+        if (data?.verificationStatus === 'rejected') {
+          setError('アカウント申請が却下されました。詳細はメールをご確認ください。');
+          return;
+        }
+      }
       setError(err instanceof Error ? err.message : 'ログインに失敗しました');
     } finally {
       setLoading(false);
