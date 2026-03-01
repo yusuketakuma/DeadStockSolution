@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,15 +45,11 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const {
-    events: rawEvents, total, hasMore, loading: timelineLoading, error: timelineError,
-    digestEvents: rawDigestEvents, digestLoading,
+    events, total, hasMore, loading: timelineLoading, error: timelineError,
+    digestEvents, digestLoading,
     selectedPriority, setSelectedPriority,
     refreshTimeline, loadMore, markViewed,
   } = useTimeline();
-  const events = rawEvents ?? [];
-  const digestEvents = rawDigestEvents ?? [];
-  const [status, setStatus] = useState<UploadStatus | null>(null);
-  const [risk, setRisk] = useState<PharmacyRisk | null>(null);
 
   const fetchStatusAndRisk = useCallback(async (_signal: AbortSignal) => {
     const [nextStatus, nextRisk] = await Promise.allSettled([
@@ -81,11 +77,8 @@ export default function DashboardPage() {
   }, []);
 
   const { data, error } = useAsyncResource<StatusAndRiskData>(fetchStatusAndRisk);
-
-  if (data) {
-    if (data.status && data.status !== status) setStatus(data.status);
-    if (data.risk && isValidRisk(data.risk) && data.risk !== risk) setRisk(data.risk);
-  }
+  const status = data?.status ?? null;
+  const risk = data?.risk ?? null;
 
   const handleEventClick = useCallback((event: TimelineEvent) => {
     if (event.actionPath) {
@@ -93,6 +86,10 @@ export default function DashboardPage() {
     }
     void markViewed();
   }, [navigate, markViewed]);
+
+  const handleDigestActionPath = useCallback((path: string) => {
+    navigate(path);
+  }, [navigate]);
 
   return (
     <div className="dashboard-viewport">
@@ -107,8 +104,10 @@ export default function DashboardPage() {
         <Col lg={7}>
           <SmartDigest
             events={digestEvents}
+            status={status}
             loading={digestLoading}
             onEventClick={handleEventClick}
+            onActionPathClick={handleDigestActionPath}
             className="h-100"
           />
         </Col>

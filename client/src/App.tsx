@@ -77,11 +77,11 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <NotificationProvider>
-        <TimelineProvider>
+      <TimelineProvider>
+        <NotificationProvider>
           <AppRoutes />
-        </TimelineProvider>
-      </NotificationProvider>
+        </NotificationProvider>
+      </TimelineProvider>
     </AuthProvider>
   );
 }

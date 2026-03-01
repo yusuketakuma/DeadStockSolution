@@ -114,6 +114,31 @@ function mockFetchForRoutes(user: typeof mockUser | null, route: string) {
       });
     }
 
+    if (url.includes('/api/timeline/unread-count')) {
+      return new Response(JSON.stringify({ unreadCount: 0 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/api/timeline/bootstrap')) {
+      return new Response(JSON.stringify({
+        timeline: { events: [], total: 0, hasMore: false, nextCursor: null, limit: 20 },
+        digest: { events: [] },
+        unreadCount: 0,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/api/timeline')) {
+      return new Response(JSON.stringify({ events: [], total: 0, hasMore: false, nextCursor: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({}), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },

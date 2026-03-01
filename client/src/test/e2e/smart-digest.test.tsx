@@ -3,12 +3,13 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import SmartDigest from '../../components/timeline/SmartDigest';
 import type { TimelineEvent } from '../../types/timeline';
+import type { UploadStatus } from '../../components/dashboard/types';
 
 function makeEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
   return {
     id: 'evt-1',
     source: 'notification',
-    type: 'test',
+    type: 'request_update',
     title: 'テストイベント',
     body: '本文',
     timestamp: '2026-03-01T00:00:00Z',
@@ -20,9 +21,16 @@ function makeEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
 }
 
 function renderDigest(props: Partial<Parameters<typeof SmartDigest>[0]> = {}) {
+  const defaultStatus: UploadStatus = {
+    deadStockUploaded: true,
+    usedMedicationUploaded: true,
+    lastDeadStockUpload: '2026-03-01T00:00:00Z',
+    lastUsedMedicationUpload: '2026-03-01T00:00:00Z',
+  };
+
   return render(
     <MemoryRouter>
-      <SmartDigest events={[]} loading={false} {...props} />
+      <SmartDigest events={[]} status={defaultStatus} loading={false} {...props} />
     </MemoryRouter>
   );
 }
@@ -44,10 +52,10 @@ describe('SmartDigest', () => {
     expect(screen.getByText('重要テスト案件')).toBeInTheDocument();
   });
 
-  it('空状態メッセージを表示する', () => {
+  it('イベントがない場合はマッチング誘導を表示する', () => {
     renderDigest({ events: [] });
 
-    expect(screen.getByText('対応が必要なタスクはありません')).toBeInTheDocument();
+    expect(screen.getByText('マッチングを実行')).toBeInTheDocument();
   });
 
   it('ローディング状態を表示する', () => {
@@ -61,7 +69,7 @@ describe('SmartDigest', () => {
     const event = makeEvent({ title: 'クリックテスト' });
     renderDigest({ events: [event], onEventClick });
 
-    fireEvent.click(screen.getByText('確認する →'));
+    fireEvent.click(screen.getByText('今すぐ確認 →'));
 
     expect(onEventClick).toHaveBeenCalledOnce();
     expect(onEventClick).toHaveBeenCalledWith(event);
@@ -84,8 +92,20 @@ describe('SmartDigest', () => {
     );
     renderDigest({ events });
 
-    // 「確認する →」リンクの数が5件以下であることを確認
-    const actionLinks = screen.getAllByText('確認する →');
+    const actionLinks = screen.getAllByText('今すぐ確認 →');
     expect(actionLinks).toHaveLength(5);
+  });
+
+  it('未アップロード時はアップロード誘導を優先表示する', () => {
+    const status: UploadStatus = {
+      deadStockUploaded: false,
+      usedMedicationUploaded: false,
+      lastDeadStockUpload: null,
+      lastUsedMedicationUpload: null,
+    };
+    renderDigest({ status, events: [] });
+
+    expect(screen.getByText('デッドストックリストをアップロード')).toBeInTheDocument();
+    expect(screen.getByText('アップロードへ進む →')).toBeInTheDocument();
   });
 });

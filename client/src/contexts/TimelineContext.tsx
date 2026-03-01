@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { timelineApi } from '../api/timeline';
+import { usePolledFetch } from '../hooks/usePolledFetch';
 import type { TimelineEvent, TimelinePriority } from '../types/timeline';
 
 interface TimelineContextValue {
@@ -18,9 +19,8 @@ interface TimelineContextValue {
   // 未読数
   unreadCount: number;
 
-  // フィルタ・ページネーション
+  // フィルタ
   selectedPriority: TimelinePriority | null;
-  page: number;
 
   // アクション
   refreshTimeline: () => Promise<void>;
@@ -40,7 +40,6 @@ const TimelineContext = createContext<TimelineContextValue>({
   digestLoading: false,
   unreadCount: 0,
   selectedPriority: null,
-  page: 1,
   refreshTimeline: async () => {},
   refreshUnreadCount: async () => {},
   markViewed: async () => {},
@@ -48,8 +47,6 @@ const TimelineContext = createContext<TimelineContextValue>({
   loadMore: async () => {},
 });
 
-const POLL_INTERVAL_MS = 60_000;
-const MIN_FETCH_INTERVAL_MS = 5_000;
 const PAGE_LIMIT = 20;
 
 export function TimelineProvider({ children }: { children: ReactNode }) {
@@ -60,7 +57,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selectedPriority, setSelectedPriority] = useState<TimelinePriority | null>(null);
 
   const [digestEvents, setDigestEvents] = useState<TimelineEvent[]>([]);
@@ -68,11 +65,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastFetchAtRef = useRef(0);
-
   const fetchTimeline = useCallback(async (
-    targetPage: number,
+    cursor: string | undefined,
     priority: TimelinePriority | null,
     append: boolean,
   ) => {
@@ -81,9 +75,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setError('');
     try {
       const params: Parameters<typeof timelineApi.getTimeline>[0] = {
-        page: targetPage,
         limit: PAGE_LIMIT,
       };
+      if (cursor) params.cursor = cursor;
       if (priority) params.priority = priority;
 
       const data = await timelineApi.getTimeline(params);
@@ -91,9 +85,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         setEvents((prev) => [...prev, ...data.events]);
       } else {
         setEvents(data.events);
+        setTotal(data.total);
       }
-      setTotal(data.total);
       setHasMore(data.hasMore);
+      setNextCursor(data.nextCursor ?? data.pagination?.nextCursor ?? null);
     } catch {
       setError('タイムラインの取得に失敗しました');
     } finally {
@@ -101,24 +96,34 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  const fetchDigest = useCallback(async () => {
+  const fetchBootstrap = useCallback(async (priority: TimelinePriority | null) => {
     if (!user) return;
+    setLoading(true);
     setDigestLoading(true);
+    setError('');
     try {
-      const data = await timelineApi.getDigest();
-      setDigestEvents(data.events);
+      const params: Parameters<typeof timelineApi.getBootstrap>[0] = {
+        limit: PAGE_LIMIT,
+      };
+      if (priority) params.priority = priority;
+
+      const data = await timelineApi.getBootstrap(params);
+      setEvents(data.timeline.events);
+      setTotal(data.timeline.total);
+      setHasMore(data.timeline.hasMore);
+      setNextCursor(data.timeline.nextCursor ?? data.timeline.pagination?.nextCursor ?? null);
+      setDigestEvents(data.digest.events);
+      setUnreadCount(data.unreadCount);
     } catch {
-      // ベストエフォート
+      setError('タイムラインの取得に失敗しました');
     } finally {
+      setLoading(false);
       setDigestLoading(false);
     }
   }, [user]);
 
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
-    const now = Date.now();
-    if (now - lastFetchAtRef.current < MIN_FETCH_INTERVAL_MS) return;
-    lastFetchAtRef.current = now;
     try {
       const data = await timelineApi.getUnreadCount();
       setUnreadCount(data.unreadCount);
@@ -128,13 +133,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const refreshTimeline = useCallback(async () => {
-    setPage(1);
-    await Promise.all([
-      fetchTimeline(1, selectedPriority, false),
-      fetchDigest(),
-      fetchUnreadCount(),
-    ]);
-  }, [fetchTimeline, fetchDigest, fetchUnreadCount, selectedPriority]);
+    setNextCursor(null);
+    await fetchBootstrap(selectedPriority);
+  }, [fetchBootstrap, selectedPriority]);
 
   const markViewed = useCallback(async () => {
     if (!user) return;
@@ -147,19 +148,21 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const loadMore = useCallback(async () => {
-    const nextPage = page + 1;
-    setPage(nextPage);
-    await fetchTimeline(nextPage, selectedPriority, true);
-  }, [page, fetchTimeline, selectedPriority]);
+    if (!user || !hasMore || !nextCursor) return;
+    await fetchTimeline(nextCursor, selectedPriority, true);
+  }, [user, hasMore, nextCursor, fetchTimeline, selectedPriority]);
 
   const handlePriorityChange = useCallback((priority: TimelinePriority | null) => {
     setSelectedPriority(priority);
-    setPage(1);
+    setNextCursor(null);
     setEvents([]);
-    void fetchTimeline(1, priority, false);
-  }, [fetchTimeline]);
+    void fetchBootstrap(priority);
+  }, [fetchBootstrap]);
 
-  // 初回フェッチ + ポーリング
+  // ポーリング（スロットル込み）
+  usePolledFetch(fetchUnreadCount, { enabled: !!user });
+
+  // 初回フェッチ + ログアウト時リセット（user 変更時のみ発火）
   useEffect(() => {
     if (!user) {
       setEvents([]);
@@ -168,48 +171,37 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       setTotal(0);
       setHasMore(false);
       setError('');
+      setNextCursor(null);
       return;
     }
 
     void refreshTimeline();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
-    timerRef.current = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchUnreadCount();
-      }
-    }, POLL_INTERVAL_MS);
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        void fetchUnreadCount();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [user, refreshTimeline, fetchUnreadCount]);
+  const value = useMemo<TimelineContextValue>(() => ({
+    events,
+    total,
+    hasMore,
+    loading,
+    error,
+    digestEvents,
+    digestLoading,
+    unreadCount,
+    selectedPriority,
+    refreshTimeline,
+    refreshUnreadCount: fetchUnreadCount,
+    markViewed,
+    setSelectedPriority: handlePriorityChange,
+    loadMore,
+  }), [
+    events, total, hasMore, loading, error,
+    digestEvents, digestLoading, unreadCount, selectedPriority,
+    refreshTimeline, fetchUnreadCount, markViewed, handlePriorityChange, loadMore,
+  ]);
 
   return (
-    <TimelineContext.Provider value={{
-      events,
-      total,
-      hasMore,
-      loading,
-      error,
-      digestEvents,
-      digestLoading,
-      unreadCount,
-      selectedPriority,
-      page,
-      refreshTimeline,
-      refreshUnreadCount: fetchUnreadCount,
-      markViewed,
-      setSelectedPriority: handlePriorityChange,
-      loadMore,
-    }}>
+    <TimelineContext.Provider value={value}>
       {children}
     </TimelineContext.Provider>
   );

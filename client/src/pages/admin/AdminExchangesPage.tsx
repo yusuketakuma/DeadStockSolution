@@ -13,12 +13,8 @@ import AppModalShell from '../../components/ui/AppModalShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa, formatYen } from '../../utils/formatters';
 import { proposalStatusLabel } from '../../utils/proposal-status';
-import {
-  filterProposalTimelineEvents,
-  PROPOSAL_TIMELINE_FILTER_OPTIONS,
-  type ProposalTimelineEvent,
-  type ProposalTimelineFilter,
-} from '../../utils/proposal-timeline';
+import type { ProposalTimelineEvent } from '../../utils/proposal-timeline';
+import ProposalTimeline from '../../components/timeline/ProposalTimeline';
 
 interface ExchangeHistoryItem {
   id: number;
@@ -63,7 +59,6 @@ export default function AdminExchangesPage() {
   const [commentsError, setCommentsError] = useState('');
   const [timeline, setTimeline] = useState<ProposalTimelineEvent[]>([]);
   const [timelineError, setTimelineError] = useState('');
-  const [timelineFilter, setTimelineFilter] = useState<ProposalTimelineFilter>('all');
 
   const openComments = async (proposalId: number) => {
     setSelectedProposalId(proposalId);
@@ -73,7 +68,6 @@ export default function AdminExchangesPage() {
     setTimeline([]);
     setCommentsError('');
     setTimelineError('');
-    setTimelineFilter('all');
     const [commentResult, timelineResult] = await Promise.allSettled([
       api.get<{ data: ProposalComment[] }>(`/admin/exchanges/${proposalId}/comments`),
       api.get<{ data: ProposalTimelineEvent[] }>(`/admin/exchanges/${proposalId}/timeline`),
@@ -93,8 +87,6 @@ export default function AdminExchangesPage() {
 
     setCommentsLoading(false);
   };
-
-  const filteredTimeline = filterProposalTimelineEvents(timeline, timelineFilter);
 
   return (
     <div>
@@ -192,33 +184,12 @@ export default function AdminExchangesPage() {
             <div className="mb-3 p-2 border rounded">
               <div className="fw-semibold mb-2">進行履歴</div>
               {timelineError && <AppAlert variant="warning" className="small py-2">{timelineError}</AppAlert>}
-              <div className="mb-2" style={{ maxWidth: 280 }}>
-                <select
-                  className="form-select form-select-sm"
-                  aria-label="管理者向け進行履歴フィルタ"
-                  value={timelineFilter}
-                  onChange={(e) => setTimelineFilter(e.target.value as ProposalTimelineFilter)}
-                >
-                  {PROPOSAL_TIMELINE_FILTER_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </div>
-              {filteredTimeline.length === 0 ? (
-                <div className="small text-muted">履歴はありません。</div>
-              ) : (
-                <ul className="small mb-0 ps-3">
-                  {filteredTimeline.map((event, idx) => (
-                      <li key={`${event.action}-${event.at ?? 'na'}-${idx}`}>
-                        <strong>{event.label}</strong> — {event.actorName ?? '不明'}
-                        {event.statusFrom && event.statusTo && (
-                          <span className="text-muted"> [{proposalStatusLabel(event.statusFrom)} → {proposalStatusLabel(event.statusTo)}]</span>
-                        )}
-                        {' '}({formatDateTimeJa(event.at)})
-                      </li>
-                  ))}
-                </ul>
-              )}
+              <ProposalTimeline
+                events={timeline}
+                statusLabelFormatter={proposalStatusLabel}
+                filterAriaLabel="管理者向け進行履歴フィルタ"
+                emptyMessage="履歴はありません。"
+              />
             </div>
 
             {commentsError && <AppAlert variant="warning" className="small py-2">{commentsError}</AppAlert>}

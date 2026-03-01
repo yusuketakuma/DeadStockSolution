@@ -11,11 +11,7 @@ import {
   exchangeHistory,
   deadStockItems,
 } from '../db/schema';
-import { type RawTimelineEvent } from '../types/timeline';
-
-// Drizzle ORM のクエリビルダー型（db.select() が返すオブジェクト）
- 
-type DbClient = { select: (...args: any[]) => any };
+import { type DbClient, type RawTimelineEvent, toTimelineEventType } from '../types/timeline';
 
 // ── マッピング関数（テスト可能な純粋関数として分離） ──────
 
@@ -39,7 +35,7 @@ export function mapNotificationToEvent(row: {
   return {
     id: `notification_${row.id}`,
     source: 'notification',
-    type: row.type,
+    type: toTimelineEventType(row.type),
     title: row.title,
     body: row.message,
     timestamp: row.createdAt ?? new Date().toISOString(),
@@ -95,7 +91,7 @@ export function mapProposalToEvent(
   return {
     id: `proposal_${row.id}`,
     source: 'proposal',
-    type: `proposal_${row.status}`,
+    type: toTimelineEventType(`proposal_${row.status}`),
     title: `仮マッチング（${roleLabel}）: ${row.status}`,
     body: `マッチング #${row.id} のステータスは「${row.status}」です。`,
     timestamp: row.proposedAt ?? new Date().toISOString(),
@@ -174,7 +170,7 @@ export function mapUploadToEvent(row: {
   return {
     id: `upload_${row.id}`,
     source: 'upload',
-    type: `upload_${row.uploadType}`,
+    type: toTimelineEventType(`upload_${row.uploadType}`),
     title: `${typeLabel}データをアップロードしました`,
     body: `ファイル: ${row.originalFilename}`,
     timestamp: row.createdAt ?? new Date().toISOString(),
@@ -267,19 +263,34 @@ export function mapExpiryRiskToEvent(row: {
   };
 }
 
+/** 期限リスク判定用の日付範囲（今日〜3日後）を返す */
+export function getExpiryDateRange(): { todayStr: string; threeDaysLaterStr: string } {
+  const today = new Date();
+  const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
+  return {
+    todayStr: today.toISOString().split('T')[0],
+    threeDaysLaterStr: threeDaysLater.toISOString().split('T')[0],
+  };
+}
+
 // ── fetcher 関数 ────────────────────────────────────────
 
 export async function fetchNotificationEvents(
   db: DbClient,
   pharmacyId: number,
   since?: string,
+  limit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [eq(notificationsTable.pharmacyId, pharmacyId)];
   if (since) {
     conditions.push(gte(notificationsTable.createdAt, since));
   }
+  if (before) {
+    conditions.push(lte(notificationsTable.createdAt, before));
+  }
 
-  const rows = await db
+  let query = db
     .select({
       id: notificationsTable.id,
       type: notificationsTable.type,
@@ -293,7 +304,9 @@ export async function fetchNotificationEvents(
     .from(notificationsTable)
     .where(and(...conditions))
     .orderBy(desc(notificationsTable.createdAt));
+  if (limit) query = query.limit(limit);
 
+  const rows = await query;
   return rows.map(mapNotificationToEvent);
 }
 
@@ -301,13 +314,18 @@ export async function fetchMatchEvents(
   db: DbClient,
   pharmacyId: number,
   since?: string,
+  limit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [eq(matchNotifications.pharmacyId, pharmacyId)];
   if (since) {
     conditions.push(gte(matchNotifications.createdAt, since));
   }
+  if (before) {
+    conditions.push(lte(matchNotifications.createdAt, before));
+  }
 
-  const rows = await db
+  let query = db
     .select({
       id: matchNotifications.id,
       candidateCountBefore: matchNotifications.candidateCountBefore,
@@ -318,7 +336,9 @@ export async function fetchMatchEvents(
     .from(matchNotifications)
     .where(and(...conditions))
     .orderBy(desc(matchNotifications.createdAt));
+  if (limit) query = query.limit(limit);
 
+  const rows = await query;
   return rows.map(mapMatchNotificationToEvent);
 }
 
@@ -326,17 +346,23 @@ export async function fetchProposalEvents(
   db: DbClient,
   pharmacyId: number,
   since?: string,
+  limit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
-  const baseCondition = or(
+  const conditions = [
     eq(exchangeProposals.pharmacyAId, pharmacyId),
     eq(exchangeProposals.pharmacyBId, pharmacyId),
-  );
+  ];
+  const ownershipCondition = or(...conditions);
+  const whereConditions = [ownershipCondition];
+  if (since) {
+    whereConditions.push(gte(exchangeProposals.proposedAt, since));
+  }
+  if (before) {
+    whereConditions.push(lte(exchangeProposals.proposedAt, before));
+  }
 
-  const conditions = since
-    ? and(baseCondition, gte(exchangeProposals.proposedAt, since))
-    : baseCondition;
-
-  const rows = await db
+  let query = db
     .select({
       id: exchangeProposals.id,
       pharmacyAId: exchangeProposals.pharmacyAId,
@@ -345,9 +371,11 @@ export async function fetchProposalEvents(
       proposedAt: exchangeProposals.proposedAt,
     })
     .from(exchangeProposals)
-    .where(conditions)
+    .where(and(...whereConditions))
     .orderBy(desc(exchangeProposals.proposedAt));
+  if (limit) query = query.limit(limit);
 
+  const rows = await query;
   return rows.map((row: typeof rows[number]) => mapProposalToEvent(row, pharmacyId));
 }
 
@@ -355,6 +383,8 @@ export async function fetchCommentEvents(
   db: DbClient,
   pharmacyId: number,
   since?: string,
+  limit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [
     eq(proposalComments.isDeleted, false),
@@ -364,16 +394,17 @@ export async function fetchCommentEvents(
       eq(exchangeProposals.pharmacyBId, pharmacyId),
     ),
   ];
-
   if (since) {
     conditions.push(gte(proposalComments.createdAt, since));
   }
+  if (before) {
+    conditions.push(lte(proposalComments.createdAt, before));
+  }
 
-  const rows = await db
+  let query = db
     .select({
       id: proposalComments.id,
       proposalId: proposalComments.proposalId,
-      authorPharmacyId: proposalComments.authorPharmacyId,
       body: proposalComments.body,
       readByRecipient: proposalComments.readByRecipient,
       createdAt: proposalComments.createdAt,
@@ -385,7 +416,9 @@ export async function fetchCommentEvents(
     )
     .where(and(...conditions))
     .orderBy(desc(proposalComments.createdAt));
+  if (limit) query = query.limit(limit);
 
+  const rows = await query;
   return rows.map(mapCommentToEvent);
 }
 
@@ -393,13 +426,18 @@ export async function fetchFeedbackEvents(
   db: DbClient,
   pharmacyId: number,
   since?: string,
+  limit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [eq(exchangeFeedback.toPharmacyId, pharmacyId)];
   if (since) {
     conditions.push(gte(exchangeFeedback.createdAt, since));
   }
+  if (before) {
+    conditions.push(lte(exchangeFeedback.createdAt, before));
+  }
 
-  const rows = await db
+  let query = db
     .select({
       id: exchangeFeedback.id,
       proposalId: exchangeFeedback.proposalId,
@@ -410,7 +448,9 @@ export async function fetchFeedbackEvents(
     .from(exchangeFeedback)
     .where(and(...conditions))
     .orderBy(desc(exchangeFeedback.createdAt));
+  if (limit) query = query.limit(limit);
 
+  const rows = await query;
   return rows.map(mapFeedbackToEvent);
 }
 
@@ -418,13 +458,18 @@ export async function fetchUploadEvents(
   db: DbClient,
   pharmacyId: number,
   since?: string,
+  limit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [eq(uploads.pharmacyId, pharmacyId)];
   if (since) {
     conditions.push(gte(uploads.createdAt, since));
   }
+  if (before) {
+    conditions.push(lte(uploads.createdAt, before));
+  }
 
-  const rows = await db
+  let query = db
     .select({
       id: uploads.id,
       uploadType: uploads.uploadType,
@@ -434,7 +479,9 @@ export async function fetchUploadEvents(
     .from(uploads)
     .where(and(...conditions))
     .orderBy(desc(uploads.createdAt));
+  if (limit) query = query.limit(limit);
 
+  const rows = await query;
   return rows.map(mapUploadToEvent);
 }
 
@@ -442,8 +489,11 @@ export async function fetchAdminMessageEvents(
   db: DbClient,
   pharmacyId: number,
   since?: string,
+  limit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
   const sinceCondition = since ? gte(adminMessages.createdAt, since) : undefined;
+  const beforeCondition = before ? lte(adminMessages.createdAt, before) : undefined;
 
   const messageSelect = {
     id: adminMessages.id,
@@ -452,34 +502,37 @@ export async function fetchAdminMessageEvents(
     createdAt: adminMessages.createdAt,
   };
 
-  // 全体向け + 自薬局向けを並列取得
-  const [allMessages, pharmacyMessages] = await Promise.all([
-    db
-      .select(messageSelect)
-      .from(adminMessages)
-      .where(
-        sinceCondition
-          ? and(eq(adminMessages.targetType, 'all'), sinceCondition)
-          : eq(adminMessages.targetType, 'all'),
-      )
-      .orderBy(desc(adminMessages.createdAt)),
-    db
-      .select(messageSelect)
-      .from(adminMessages)
-      .where(
-        sinceCondition
-          ? and(
-              eq(adminMessages.targetType, 'pharmacy'),
-              eq(adminMessages.targetPharmacyId, pharmacyId),
-              sinceCondition,
-            )
-          : and(
-              eq(adminMessages.targetType, 'pharmacy'),
-              eq(adminMessages.targetPharmacyId, pharmacyId),
-            ),
-      )
-      .orderBy(desc(adminMessages.createdAt)),
-  ]);
+  // 全体向け + 自薬局向けを並列取得（limit は各サブクエリで半分ずつ割り当て）
+  const subLimit = limit ? Math.ceil(limit / 2) : undefined;
+
+  let allQuery = db
+    .select(messageSelect)
+    .from(adminMessages)
+    .where(
+      and(
+        eq(adminMessages.targetType, 'all'),
+        ...(sinceCondition ? [sinceCondition] : []),
+        ...(beforeCondition ? [beforeCondition] : []),
+      ),
+    )
+    .orderBy(desc(adminMessages.createdAt));
+  if (subLimit) allQuery = allQuery.limit(subLimit);
+
+  let pharmacyQuery = db
+    .select(messageSelect)
+    .from(adminMessages)
+    .where(
+      and(
+        eq(adminMessages.targetType, 'pharmacy'),
+        eq(adminMessages.targetPharmacyId, pharmacyId),
+        ...(sinceCondition ? [sinceCondition] : []),
+        ...(beforeCondition ? [beforeCondition] : []),
+      ),
+    )
+    .orderBy(desc(adminMessages.createdAt));
+  if (subLimit) pharmacyQuery = pharmacyQuery.limit(subLimit);
+
+  const [allMessages, pharmacyMessages] = await Promise.all([allQuery, pharmacyQuery]);
 
   // 重複排除してマージ
   const seen = new Set<number>();
@@ -519,17 +572,22 @@ export async function fetchExchangeHistoryEvents(
   db: DbClient,
   pharmacyId: number,
   since?: string,
+  limit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
-  const baseCondition = or(
+  const ownershipCondition = or(
     eq(exchangeHistory.pharmacyAId, pharmacyId),
     eq(exchangeHistory.pharmacyBId, pharmacyId),
   );
+  const conditions = [ownershipCondition];
+  if (since) {
+    conditions.push(gte(exchangeHistory.completedAt, since));
+  }
+  if (before) {
+    conditions.push(lte(exchangeHistory.completedAt, before));
+  }
 
-  const conditions = since
-    ? and(baseCondition, gte(exchangeHistory.completedAt, since))
-    : baseCondition;
-
-  const rows = await db
+  let query = db
     .select({
       id: exchangeHistory.id,
       proposalId: exchangeHistory.proposalId,
@@ -539,23 +597,35 @@ export async function fetchExchangeHistoryEvents(
       completedAt: exchangeHistory.completedAt,
     })
     .from(exchangeHistory)
-    .where(conditions)
+    .where(and(...conditions))
     .orderBy(desc(exchangeHistory.completedAt));
+  if (limit) query = query.limit(limit);
 
+  const rows = await query;
   return rows.map((row: typeof rows[number]) => mapExchangeHistoryToEvent(row, pharmacyId));
 }
 
 export async function fetchExpiryRiskEvents(
   db: DbClient,
   pharmacyId: number,
+  limit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
   // 今日から3日以内に期限が切れる在庫を取得
-  const today = new Date();
-  const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
-  const todayStr = today.toISOString().split('T')[0];
-  const threeDaysLaterStr = threeDaysLater.toISOString().split('T')[0];
+  const { todayStr, threeDaysLaterStr } = getExpiryDateRange();
 
-  const rows = await db
+  const conditions = [
+    eq(deadStockItems.pharmacyId, pharmacyId),
+    eq(deadStockItems.isAvailable, true),
+    isNotNull(deadStockItems.expirationDateIso),
+    gte(deadStockItems.expirationDateIso, todayStr),
+    lte(deadStockItems.expirationDateIso, threeDaysLaterStr),
+  ];
+  if (before) {
+    conditions.push(lte(deadStockItems.createdAt, before));
+  }
+
+  let query = db
     .select({
       id: deadStockItems.id,
       drugName: deadStockItems.drugName,
@@ -564,16 +634,10 @@ export async function fetchExpiryRiskEvents(
       createdAt: deadStockItems.createdAt,
     })
     .from(deadStockItems)
-    .where(
-      and(
-        eq(deadStockItems.pharmacyId, pharmacyId),
-        eq(deadStockItems.isAvailable, true),
-        isNotNull(deadStockItems.expirationDateIso),
-        gte(deadStockItems.expirationDateIso, todayStr),
-        lte(deadStockItems.expirationDateIso, threeDaysLaterStr),
-      ),
-    )
+    .where(and(...conditions))
     .orderBy(deadStockItems.expirationDateIso);
+  if (limit) query = query.limit(limit);
 
+  const rows = await query;
   return rows.map(mapExpiryRiskToEvent);
 }

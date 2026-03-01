@@ -8,12 +8,17 @@ import { renderWithProviders, mockAdminUser, mockUser } from '../helpers';
 const emptyTimeline = {
   events: [],
   total: 0,
-  page: 1,
   limit: 20,
   hasMore: false,
+  nextCursor: null,
 };
 
 const emptyDigest = { events: [] };
+const emptyBootstrap = {
+  timeline: emptyTimeline,
+  digest: emptyDigest,
+  unreadCount: 0,
+};
 
 function mockAuthenticatedFetchWithDashboardData(overrides: Record<string, unknown> = {}) {
   const defaults: Record<string, unknown> = {
@@ -24,9 +29,8 @@ function mockAuthenticatedFetchWithDashboardData(overrides: Record<string, unkno
       lastDeadStockUpload: '2026-01-15T10:00:00Z',
       lastUsedMedicationUpload: null,
     },
-    '/api/timeline/digest': emptyDigest,
+    '/api/timeline/bootstrap': emptyBootstrap,
     '/api/timeline/unread-count': { unreadCount: 0 },
-    '/api/timeline': emptyTimeline,
     ...overrides,
   };
 
@@ -136,12 +140,12 @@ describe('DashboardPage', () => {
     });
   });
 
-  it('shows empty SmartDigest message when no digest events', async () => {
+  it('shows upload guidance when digest events are empty and monthly upload is missing', async () => {
     mockAuthenticatedFetchWithDashboardData();
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('対応が必要なタスクはありません')).toBeInTheDocument();
+      expect(screen.getByText('医薬品使用量リストをアップロード')).toBeInTheDocument();
     });
   });
 
@@ -156,20 +160,24 @@ describe('DashboardPage', () => {
 
   it('shows digest events from timeline API', async () => {
     mockAuthenticatedFetchWithDashboardData({
-      '/api/timeline/digest': {
-        events: [
-          {
-            id: 'evt-1',
-            source: 'notification',
-            type: 'inbound_request',
-            title: '交換提案が届いています',
-            body: 'テスト薬局2号店から交換提案',
-            timestamp: '2026-01-20T10:00:00Z',
-            priority: 'critical',
-            isRead: false,
-            actionPath: '/proposals/1',
-          },
-        ],
+      '/api/timeline/bootstrap': {
+        timeline: emptyTimeline,
+        digest: {
+          events: [
+            {
+              id: 'evt-1',
+              source: 'notification',
+              type: 'inbound_request',
+              title: '交換提案が届いています',
+              body: 'テスト薬局2号店から交換提案',
+              timestamp: '2026-01-20T10:00:00Z',
+              priority: 'critical',
+              isRead: false,
+              actionPath: '/proposals/1',
+            },
+          ],
+        },
+        unreadCount: 0,
       },
     });
     renderWithProviders(<DashboardPage />);
@@ -182,24 +190,28 @@ describe('DashboardPage', () => {
 
   it('shows timeline events from timeline API', async () => {
     mockAuthenticatedFetchWithDashboardData({
-      '/api/timeline': {
-        events: [
-          {
-            id: 'evt-2',
-            source: 'match',
-            type: 'match_update',
-            title: '候補が更新されました',
-            body: '追加 1 / 除外 0',
-            timestamp: '2026-02-25T12:00:00.000Z',
-            priority: 'medium',
-            isRead: false,
-            actionPath: '/matching',
-          },
-        ],
-        total: 1,
-        page: 1,
-        limit: 20,
-        hasMore: false,
+      '/api/timeline/bootstrap': {
+        timeline: {
+          events: [
+            {
+              id: 'evt-2',
+              source: 'match',
+              type: 'match_update',
+              title: '候補が更新されました',
+              body: '追加 1 / 除外 0',
+              timestamp: '2026-02-25T12:00:00.000Z',
+              priority: 'medium',
+              isRead: false,
+              actionPath: '/matching',
+            },
+          ],
+          total: 1,
+          limit: 20,
+          hasMore: false,
+          nextCursor: null,
+        },
+        digest: emptyDigest,
+        unreadCount: 0,
       },
     });
     renderWithProviders(<DashboardPage />);
@@ -224,8 +236,8 @@ describe('DashboardPage', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      if (url.includes('/api/timeline/digest')) {
-        return new Response(JSON.stringify(emptyDigest), {
+      if (url.includes('/api/timeline/bootstrap')) {
+        return new Response(JSON.stringify(emptyBootstrap), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });

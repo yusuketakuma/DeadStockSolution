@@ -208,4 +208,75 @@ describe('notifications routes GET /', () => {
       total: 1,
     }));
   });
+
+  it('supports cursor pagination for notices', async () => {
+    const app = createApp();
+    const cursor = Buffer.from(JSON.stringify({
+      id: 'notification-12',
+      priority: 3,
+      createdAt: '2026-02-26T02:00:00.000Z',
+    }), 'utf-8').toString('base64url');
+
+    const notificationRows = [
+      {
+        id: 13,
+        pharmacyId: 1,
+        type: 'proposal_status_changed',
+        title: 'ステータス更新3',
+        message: 'message3',
+        referenceType: 'proposal',
+        referenceId: 3,
+        isRead: false,
+        readAt: null,
+        createdAt: '2026-02-26T03:00:00.000Z',
+      },
+      {
+        id: 12,
+        pharmacyId: 1,
+        type: 'proposal_status_changed',
+        title: 'ステータス更新2',
+        message: 'message2',
+        referenceType: 'proposal',
+        referenceId: 2,
+        isRead: false,
+        readAt: null,
+        createdAt: '2026-02-26T02:00:00.000Z',
+      },
+      {
+        id: 11,
+        pharmacyId: 1,
+        type: 'proposal_status_changed',
+        title: 'ステータス更新1',
+        message: 'message1',
+        referenceType: 'proposal',
+        referenceId: 1,
+        isRead: false,
+        readAt: null,
+        createdAt: '2026-02-26T01:00:00.000Z',
+      },
+    ];
+
+    mocks.db.select
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery(notificationRows));
+
+    const response = await request(app)
+      .get('/api/notifications')
+      .query({ cursor, limit: 2 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.notices).toHaveLength(1);
+    expect(response.body.notices[0]).toEqual(expect.objectContaining({
+      id: 'notification-11',
+    }));
+    expect(response.body.pagination).toEqual(expect.objectContaining({
+      limit: 2,
+      hasMore: false,
+      nextCursor: null,
+    }));
+  });
 });

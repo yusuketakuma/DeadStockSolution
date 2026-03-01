@@ -7,7 +7,7 @@ function makeEvent(overrides: Partial<RawTimelineEvent>): RawTimelineEvent {
   return {
     id: 'test_1',
     source: 'notification',
-    type: 'generic',
+    type: 'request_update',
     title: 'テストイベント',
     body: 'テスト本文',
     timestamp: '2026-03-01T10:00:00.000Z',
@@ -24,19 +24,19 @@ describe('timeline-priority-engine', () => {
   // Critical priority
   // ============================================================
   describe('Critical: confirmed提案の取引完了待ち', () => {
-    it('source=proposal, type=confirmed, completedAt=null の場合はcritical', () => {
+    it('source=proposal, type=proposal_confirmed, completedAt=null の場合はcritical', () => {
       const event = makeEvent({
         source: 'proposal',
-        type: 'confirmed',
+        type: 'proposal_confirmed',
         metadata: { completedAt: null },
       });
       expect(assignPriority(event, NOW)).toBe('critical');
     });
 
-    it('source=proposal, type=confirmed でも completedAt が設定されていれば critical にならない', () => {
+    it('source=proposal, type=proposal_confirmed でも completedAt が設定されていれば critical にならない', () => {
       const event = makeEvent({
         source: 'proposal',
-        type: 'confirmed',
+        type: 'proposal_confirmed',
         metadata: { completedAt: '2026-03-01T10:00:00.000Z' },
       });
       expect(assignPriority(event, NOW)).not.toBe('critical');
@@ -47,7 +47,7 @@ describe('timeline-priority-engine', () => {
     it('source=expiry_risk の場合はcritical', () => {
       const event = makeEvent({
         source: 'expiry_risk',
-        type: 'expiry_alert',
+        type: 'near_expiry',
       });
       expect(assignPriority(event, NOW)).toBe('critical');
     });
@@ -55,7 +55,7 @@ describe('timeline-priority-engine', () => {
     it('source が expiry_risk でない場合はcritical にならない', () => {
       const event = makeEvent({
         source: 'notification',
-        type: 'expiry_alert',
+        type: 'near_expiry',
       });
       expect(assignPriority(event, NOW)).not.toBe('critical');
     });
@@ -95,29 +95,29 @@ describe('timeline-priority-engine', () => {
   });
 
   describe('High: 受信提案の承認/拒否待ち', () => {
-    it('source=proposal, type=proposed, isInbound=true の場合はhigh', () => {
+    it('source=proposal, type=proposal_proposed, isRequester=false の場合はhigh', () => {
       const event = makeEvent({
         source: 'proposal',
-        type: 'proposed',
-        metadata: { isInbound: true },
+        type: 'proposal_proposed',
+        metadata: { isRequester: false },
       });
       expect(assignPriority(event, NOW)).toBe('high');
     });
 
-    it('source=proposal, type=proposed でも isInbound=false なら high にならない', () => {
+    it('source=proposal, type=proposal_proposed でも isRequester=true なら high にならない', () => {
       const event = makeEvent({
         source: 'proposal',
-        type: 'proposed',
-        metadata: { isInbound: false },
+        type: 'proposal_proposed',
+        metadata: { isRequester: true },
       });
       expect(assignPriority(event, NOW)).not.toBe('high');
     });
 
-    it('旧仕様の isRequester=false でも受信として扱う', () => {
+    it('source=proposal, type=proposal_proposed, isInbound=true の旧metadataでもhigh', () => {
       const event = makeEvent({
         source: 'proposal',
-        type: 'proposed',
-        metadata: { isRequester: false },
+        type: 'proposal_proposed',
+        metadata: { isInbound: true },
       });
       expect(assignPriority(event, NOW)).toBe('high');
     });
@@ -156,7 +156,7 @@ describe('timeline-priority-engine', () => {
     it('source=notification でも type が proposal_status_changed でなければ medium にならない（該当しない場合）', () => {
       const event = makeEvent({
         source: 'notification',
-        type: 'other_notification',
+        type: 'request_update',
       });
       // デフォルトはlow
       expect(assignPriority(event, NOW)).toBe('low');
@@ -187,7 +187,7 @@ describe('timeline-priority-engine', () => {
     it('source=upload の場合はmedium', () => {
       const event = makeEvent({
         source: 'upload',
-        type: 'upload_complete',
+        type: 'upload_dead_stock',
       });
       expect(assignPriority(event, NOW)).toBe('medium');
     });
@@ -195,7 +195,7 @@ describe('timeline-priority-engine', () => {
     it('source=upload は常にmedium', () => {
       const event = makeEvent({
         source: 'upload',
-        type: 'any_upload_type',
+        type: 'upload_used_medication',
       });
       expect(assignPriority(event, NOW)).toBe('medium');
     });
@@ -208,7 +208,7 @@ describe('timeline-priority-engine', () => {
     it('source=admin_message の場合はlow', () => {
       const event = makeEvent({
         source: 'admin_message',
-        type: 'info',
+        type: 'admin_message',
       });
       expect(assignPriority(event, NOW)).toBe('low');
     });
@@ -216,7 +216,7 @@ describe('timeline-priority-engine', () => {
     it('source=admin_message は常にlow', () => {
       const event = makeEvent({
         source: 'admin_message',
-        type: 'announcement',
+        type: 'admin_message',
         isRead: false,
       });
       expect(assignPriority(event, NOW)).toBe('low');
@@ -227,7 +227,7 @@ describe('timeline-priority-engine', () => {
     it('source=exchange_history の場合はlow', () => {
       const event = makeEvent({
         source: 'exchange_history',
-        type: 'completed',
+        type: 'exchange_completed',
       });
       expect(assignPriority(event, NOW)).toBe('low');
     });
@@ -235,7 +235,7 @@ describe('timeline-priority-engine', () => {
     it('source=exchange_history は常にlow', () => {
       const event = makeEvent({
         source: 'exchange_history',
-        type: 'archived',
+        type: 'exchange_completed',
       });
       expect(assignPriority(event, NOW)).toBe('low');
     });
@@ -245,7 +245,7 @@ describe('timeline-priority-engine', () => {
     it('source=activity の場合はlow（デフォルト）', () => {
       const event = makeEvent({
         source: 'activity',
-        type: 'logged',
+        type: 'request_update',
       });
       expect(assignPriority(event, NOW)).toBe('low');
     });
@@ -253,7 +253,7 @@ describe('timeline-priority-engine', () => {
     it('source=feedback の場合はlow（デフォルト）', () => {
       const event = makeEvent({
         source: 'feedback',
-        type: 'submitted',
+        type: 'exchange_feedback',
       });
       expect(assignPriority(event, NOW)).toBe('low');
     });
@@ -275,7 +275,7 @@ describe('timeline-priority-engine', () => {
       // 現在時刻をデフォルト引数として使用する場合の smoke test
       const event = makeEvent({
         source: 'admin_message',
-        type: 'info',
+        type: 'admin_message',
       });
       // now を省略 → デフォルト引数 new Date() が使われる
       expect(assignPriority(event)).toBe('low');

@@ -6,7 +6,14 @@
 
 import { eq } from 'drizzle-orm';
 import { pharmacies } from '../db/schema';
-import type { TimelineEvent, TimelinePriority, TimelineResponse, RawTimelineEvent } from '../types/timeline';
+import type {
+  TimelineEvent,
+  TimelinePriority,
+  TimelineResponse,
+  RawTimelineEvent,
+  DbClient,
+  TimelineCursor,
+} from '../types/timeline';
 import {
   fetchNotificationEvents,
   fetchMatchEvents,
@@ -19,22 +26,54 @@ import {
   fetchExpiryRiskEvents,
 } from './timeline-aggregators';
 import { assignPriority } from './timeline-priority-engine';
-
-// aggregators.ts と同じ緩い型定義。テスト時のモック注入を可能にする。
- 
-type DbClient = { select: (...args: any[]) => any; update: (...args: any[]) => any };
+import { countAllUnread } from './timeline-unread-counts';
+import { encodeCursor } from '../utils/cursor-pagination';
 
 export interface TimelineQueryOptions {
-  page?: number;
   limit?: number;
   priority?: TimelinePriority;
   since?: string;
+  cursor?: TimelineCursor | null;
 }
 
 // デフォルト値定数
-const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
+const DIGEST_PER_TABLE_LIMIT = 100;
+const CURSOR_FETCH_FACTOR = 4;
+const CURSOR_PER_TABLE_LIMIT_MAX = 200;
+
+interface TimelineSortable {
+  timestamp: string;
+  id: string;
+}
+
+function timestampSortValue(timestamp: string): number {
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+}
+
+/**
+ * Timeline の並び順:
+ * 1) timestamp DESC
+ * 2) id ASC (同時刻時の決定論的 tie-break)
+ */
+function compareTimelineOrder(a: TimelineSortable, b: TimelineSortable): number {
+  const left = timestampSortValue(a.timestamp);
+  const right = timestampSortValue(b.timestamp);
+  if (left !== right) return right - left;
+  return a.id.localeCompare(b.id);
+}
+
+function buildCursorFromEvent(event: TimelineSortable): TimelineCursor {
+  return { timestamp: event.timestamp, id: event.id };
+}
+
+function buildNextCursor(events: TimelineEvent[], hasMore: boolean): string | null {
+  if (!hasMore || events.length === 0) return null;
+  const tail = events[events.length - 1];
+  return encodeCursor(buildCursorFromEvent(tail));
+}
 
 /**
  * RawTimelineEvent に優先度を付与して TimelineEvent に変換する。
@@ -53,17 +92,19 @@ async function fetchAllEvents(
   db: DbClient,
   pharmacyId: number,
   since?: string,
+  perTableLimit?: number,
+  before?: string,
 ): Promise<RawTimelineEvent[]> {
   const results = await Promise.all([
-    fetchNotificationEvents(db, pharmacyId, since),
-    fetchMatchEvents(db, pharmacyId, since),
-    fetchProposalEvents(db, pharmacyId, since),
-    fetchCommentEvents(db, pharmacyId, since),
-    fetchFeedbackEvents(db, pharmacyId, since),
-    fetchUploadEvents(db, pharmacyId, since),
-    fetchAdminMessageEvents(db, pharmacyId, since),
-    fetchExchangeHistoryEvents(db, pharmacyId, since),
-    fetchExpiryRiskEvents(db, pharmacyId),
+    fetchNotificationEvents(db, pharmacyId, since, perTableLimit, before),
+    fetchMatchEvents(db, pharmacyId, since, perTableLimit, before),
+    fetchProposalEvents(db, pharmacyId, since, perTableLimit, before),
+    fetchCommentEvents(db, pharmacyId, since, perTableLimit, before),
+    fetchFeedbackEvents(db, pharmacyId, since, perTableLimit, before),
+    fetchUploadEvents(db, pharmacyId, since, perTableLimit, before),
+    fetchAdminMessageEvents(db, pharmacyId, since, perTableLimit, before),
+    fetchExchangeHistoryEvents(db, pharmacyId, since, perTableLimit, before),
+    fetchExpiryRiskEvents(db, pharmacyId, perTableLimit, before),
   ]);
 
   return results.flat();
@@ -75,21 +116,24 @@ async function fetchAllEvents(
  * - 全9 fetcher を Promise.all() で並列実行
  * - 優先度付与、timestamp 降順ソート
  * - priority フィルタ（任意）
- * - offset-based ページネーション
+ * - cursor-based ページネーション
  */
 export async function getTimeline(
   db: DbClient,
   pharmacyId: number,
   options?: TimelineQueryOptions,
 ): Promise<TimelineResponse> {
-  const page = Math.max(1, options?.page ?? DEFAULT_PAGE);
   const limit = Math.min(Math.max(1, options?.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
-  const offset = (page - 1) * limit;
   const priority = options?.priority;
   const since = options?.since;
+  const cursor = options?.cursor ?? null;
+  const cursorBefore = cursor?.timestamp;
+  const perTableLimit = cursor
+    ? Math.min(Math.max(limit * CURSOR_FETCH_FACTOR, limit + 1), CURSOR_PER_TABLE_LIMIT_MAX)
+    : undefined;
 
   const now = new Date();
-  const rawEvents = await fetchAllEvents(db, pharmacyId, since);
+  const rawEvents = await fetchAllEvents(db, pharmacyId, since, perTableLimit, cursorBefore);
 
   // 優先度付与
   let enriched = rawEvents.map((raw) => enrichEvent(raw, now));
@@ -100,48 +144,34 @@ export async function getTimeline(
   }
 
   // timestamp 降順ソート
-  enriched.sort((a, b) => {
-    const tA = new Date(a.timestamp).getTime();
-    const tB = new Date(b.timestamp).getTime();
-    return tB - tA;
-  });
+  enriched.sort(compareTimelineOrder);
 
   const total = enriched.length;
-  const events = enriched.slice(offset, offset + limit);
-  const hasMore = offset + limit < total;
+  const filteredForCursor = cursor
+    ? enriched.filter((event) => compareTimelineOrder(event, cursor) > 0)
+    : enriched;
 
-  return { events, total, hasMore };
+  const hasMore = filteredForCursor.length > limit;
+  const events = filteredForCursor.slice(0, limit);
+
+  return {
+    events,
+    total,
+    hasMore,
+    nextCursor: buildNextCursor(events, hasMore),
+  };
 }
 
 /**
  * 未読数取得
  *
- * - pharmacies.lastTimelineViewedAt を取得
- * - lastTimelineViewedAt より新しい OR isRead=false のイベントを数える
+ * 全テーブルの COUNT を単一 SQL で集計する（1 round trip）。
  */
 export async function getTimelineUnreadCount(
   db: DbClient,
   pharmacyId: number,
 ): Promise<number> {
-  const rows = await db
-    .select({ lastTimelineViewedAt: pharmacies.lastTimelineViewedAt })
-    .from(pharmacies)
-    .where(eq(pharmacies.id, pharmacyId));
-
-  const lastViewed = rows[0]?.lastTimelineViewedAt ?? null;
-
-  const rawEvents = await fetchAllEvents(db, pharmacyId);
-
-  let unreadCount = 0;
-  for (const event of rawEvents) {
-    if (!event.isRead) {
-      unreadCount++;
-    } else if (lastViewed !== null && event.timestamp > lastViewed) {
-      unreadCount++;
-    }
-  }
-
-  return unreadCount;
+  return countAllUnread(db, pharmacyId);
 }
 
 /**
@@ -169,7 +199,7 @@ export async function getSmartDigest(
   pharmacyId: number,
 ): Promise<TimelineEvent[]> {
   const now = new Date();
-  const rawEvents = await fetchAllEvents(db, pharmacyId);
+  const rawEvents = await fetchAllEvents(db, pharmacyId, undefined, DIGEST_PER_TABLE_LIMIT);
 
   const enriched = rawEvents.map((raw) => enrichEvent(raw, now));
 
@@ -177,11 +207,7 @@ export async function getSmartDigest(
     (e) => e.priority === 'critical' || e.priority === 'high',
   );
 
-  highPriority.sort((a, b) => {
-    const tA = new Date(a.timestamp).getTime();
-    const tB = new Date(b.timestamp).getTime();
-    return tB - tA;
-  });
+  highPriority.sort(compareTimelineOrder);
 
   return highPriority.slice(0, 5);
 }

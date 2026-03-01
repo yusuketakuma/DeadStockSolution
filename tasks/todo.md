@@ -47,3 +47,57 @@
 - [x] 1) パフォーマンスインデックス作成を `CREATE INDEX CONCURRENTLY` ベースに切り替え、マイグレーション時の書き込みブロッキングを回避する
 - [x] 2) matching refresh の常駐スケジューラを導入し、cron専用運用に依存しない構成へ変更する
 - [x] 3) 関連テスト更新と `typecheck/lint/test/build` を再実行し、全体整合性を確認する
+
+## レビュー指摘修正 (2026-03-01)
+- [x] 1) タイムライン優先度判定の proposal metadata ミスマッチ（`isInbound` / `isRequester`）を解消する
+- [x] 2) `timeline-priority-engine` テストを実データ形（`isRequester`）に合わせる
+- [x] 3) `getTimeline` の `total/hasMore` を近似値ではなく厳密値で返す
+- [x] 4) 変更影響のあるテストと `typecheck/build` を実行して検証する
+
+## レビュー指摘修正フォローアップ (2026-03-01)
+- [x] 1) `timeline-service` の timestamp ソートを ISO 文字列依存から脱却し、Date ベースで比較する
+- [x] 2) 変更後に `typecheck/lint/対象テスト/build` を再実行して検証する
+
+## 実装状況スキャンと次機能抽出 (2026-03-01)
+- [x] 1) `Plans.md` / `tasks/todo.md` / Git履歴 を照合して本日の進捗を整理する
+- [x] 2) クライアント/サーバー主要ファイルを走査し、計画と実装のズレを特定する
+- [x] 3) ドキュメント（ロードマップ/設計）と現コードを突き合わせ、次に実装すべき候補を優先度付けする
+
+## 全提案機能の一括実装 + 同時リファクタリング (2026-03-01)
+- [x] 1) 提案詳細/管理者交換画面の進行履歴を共通 `ProposalTimeline` コンポーネントへ統合し、縦型ビジュアルタイムライン化する
+- [x] 2) `SmartDigest` を次アクション提案型UIへ拡張し、未アップロード誘導・高優先イベント誘導を統合する
+- [x] 3) 通知API・交換履歴APIにカーソルページネーションを追加し、既存ページング互換を維持したまま拡張する
+- [x] 4) 共通UI部品 `AppActionBar` / `AppDataTable` を追加し、対象ページの重複UIロジックを削減する
+- [x] 5) 変更に合わせてテストを更新し、`typecheck -> lint -> test -> build` を通す
+- [x] 6) security / correctness / quality / perf / ux / ops 観点の最終セルフレビューを実施し、必要修正を反映する
+
+## 継続実装: タイムラインカーソル化 + 同時リファクタ (2026-03-01)
+- [x] 1) `GET /api/timeline` を cursor pagination 専用APIへ置き換える（page/limit 互換は削除）
+- [x] 2) timeline service を cursor 専用へ整理し、並び順の決定論性（timestamp + id tie-break）を強化する
+- [x] 3) client の timeline API/型/Context を cursor 対応へ更新し、「もっと見る」を次カーソルで継続取得する
+- [x] 4) server/client テストを更新し、cursor モードの契約（正常系/不正cursor）を検証する
+- [x] 5) `typecheck -> lint -> test -> build:server -> build:client` を実行する
+- [x] 6) security / correctness / quality / perf / ux / ops のセルフレビューを行い、必要修正を反映する
+
+## Timeline cursor-only changes: full verification (2026-03-01)
+- [x] 1) npm run typecheck
+- [x] 2) npm run lint
+- [x] 3) npm run test
+- [x] 4) npm run build:server
+- [x] 5) npm run build:client
+
+## コード実行速度改善アップデート検討 (2026-03-01)
+- [x] 1) ホットパス再確認（timeline / notifications / exchange-history / dashboard初回ロード）
+- [x] 2) ボトルネック候補の抽出（DBクエリ回数・in-memory merge/sort・HTTP往復数）
+- [x] 3) 影響度×工数で優先度付け（Quick Win / 中期 / 構造改善）
+- [x] 4) Quick Win実装A: `/api/exchange/history` cursor時の不要な `COUNT(*)` を削除
+- [x] 5) Quick Win実装B: `/api/timeline/unread-count` の `last_timeline_viewed_at` 参照を外側クエリ再利用へ変更（重複サブクエリ削減）
+- [x] 6) 中期実装A: timeline取得の `fetchAllEvents` 全件mergeを cursor-aware 取得へ刷新
+- [x] 7) 中期実装B: dashboard向け timeline bootstrap API（events + digest + unread）でHTTP往復を削減
+
+## Performance updates 後のフル検証 (2026-03-01)
+- [x] 1) npm run typecheck
+- [x] 2) npm run lint
+- [x] 3) npm run test
+- [x] 4) npm run build:server
+- [x] 5) npm run build:client

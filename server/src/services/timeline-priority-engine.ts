@@ -24,7 +24,7 @@ export function assignPriority(event: RawTimelineEvent, now: Date = new Date()):
   // confirmed 提案の取引完了待ち
   if (
     event.source === 'proposal' &&
-    event.type === 'confirmed' &&
+    event.type === 'proposal_confirmed' &&
     (event.metadata?.completedAt === null || event.metadata?.completedAt === undefined)
   ) {
     return 'critical';
@@ -52,8 +52,11 @@ export function assignPriority(event: RawTimelineEvent, now: Date = new Date()):
   // 受信提案の承認/拒否待ち
   if (
     event.source === 'proposal' &&
-    event.type === 'proposed' &&
-    (event.metadata?.isInbound === true || event.metadata?.isRequester === false)
+    event.type === 'proposal_proposed' &&
+    (
+      event.metadata?.isRequester === false ||
+      event.metadata?.isInbound === true
+    )
   ) {
     return 'high';
   }

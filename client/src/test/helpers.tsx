@@ -22,11 +22,11 @@ function createWrapper(options: WrapperOptions = {}) {
     return (
       <MemoryRouter initialEntries={[route]} {...mergedRouterProps}>
         <AuthProvider>
-          <NotificationProvider>
-            <TimelineProvider>
+          <TimelineProvider>
+            <NotificationProvider>
               {children}
-            </TimelineProvider>
-          </NotificationProvider>
+            </NotificationProvider>
+          </TimelineProvider>
         </AuthProvider>
       </MemoryRouter>
     );
