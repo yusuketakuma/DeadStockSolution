@@ -1,13 +1,12 @@
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { Badge, Row, Col } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
 import { useTimeline } from '../contexts/TimelineContext';
 import { api } from '../api/client';
 import type { UploadStatus } from '../components/dashboard/types';
-import DashboardStatusCards from '../components/dashboard/DashboardStatusCards';
 import { useAsyncResource } from '../hooks/useAsyncResource';
 import AppDataPanel from '../components/ui/AppDataPanel';
-import AppKpiCard from '../components/ui/AppKpiCard';
 import SmartDigest from '../components/timeline/SmartDigest';
 import DashboardTimeline from '../components/timeline/DashboardTimeline';
 import type { TimelineEvent } from '../types/timeline';
@@ -83,7 +82,6 @@ export default function DashboardPage() {
 
   const { data, error } = useAsyncResource<StatusAndRiskData>(fetchStatusAndRisk);
 
-  // data が更新されたら state に反映
   if (data) {
     if (data.status && data.status !== status) setStatus(data.status);
     if (data.risk && isValidRisk(data.risk) && data.risk !== risk) setRisk(data.risk);
@@ -97,15 +95,89 @@ export default function DashboardPage() {
   }, [navigate, markViewed]);
 
   return (
-    <div>
-      <h4 className="page-title mb-3">ダッシュボード</h4>
+    <div className="dashboard-viewport">
+      {/* Title row */}
+      <div className="d-flex align-items-center justify-content-between mb-2 flex-shrink-0">
+        <h4 className="page-title mb-0">ダッシュボード</h4>
+        <small className="text-muted">ようこそ、{user?.name} さん</small>
+      </div>
 
-      <SmartDigest
-        events={digestEvents}
-        loading={digestLoading}
-        onEventClick={handleEventClick}
-      />
+      {/* Top row: SmartDigest (left) + Risk & Status (right) */}
+      <Row className="g-2 mb-2 flex-shrink-0">
+        <Col lg={7}>
+          <SmartDigest
+            events={digestEvents}
+            loading={digestLoading}
+            onEventClick={handleEventClick}
+            className="h-100"
+          />
+        </Col>
+        <Col lg={5} className="d-flex flex-column gap-2">
+          {/* Risk KPIs */}
+          <AppDataPanel title="期限切れリスク（自薬局）" className="flex-shrink-0">
+            {risk ? (
+              <Row className="g-2 text-center">
+                <Col xs={3}>
+                  <div className="fw-bold fs-5">{risk.riskScore.toFixed(1)}</div>
+                  <div className="small text-muted">リスクスコア</div>
+                </Col>
+                <Col xs={3}>
+                  <div className="fw-bold fs-5">{risk.bucketCounts.expired}</div>
+                  <div className="small text-muted">期限切れ</div>
+                </Col>
+                <Col xs={3}>
+                  <div className="fw-bold fs-5">{risk.bucketCounts.within30}</div>
+                  <div className="small text-muted">30日以内</div>
+                </Col>
+                <Col xs={3}>
+                  <div className="fw-bold fs-5">{risk.totalItems}</div>
+                  <div className="small text-muted">在庫数</div>
+                </Col>
+              </Row>
+            ) : (
+              <div className="small text-muted">期限リスクデータはまだありません。</div>
+            )}
+          </AppDataPanel>
 
+          {/* Compact status strip */}
+          <div className="small flex-shrink-0">
+            <Row className="g-2 mb-1">
+              <Col xs={4}>
+                <div className="fw-semibold">デッドストックリスト</div>
+                {status?.deadStockUploaded
+                  ? <Badge bg="success">アップロード済み</Badge>
+                  : <Badge bg="secondary">未アップロード</Badge>}
+              </Col>
+              <Col xs={4}>
+                <div className="fw-semibold">医薬品使用量リスト</div>
+                {status?.usedMedicationUploaded
+                  ? <Badge bg="success">当月アップロード済み</Badge>
+                  : <Badge bg="warning" text="dark">当月未アップロード</Badge>}
+              </Col>
+              <Col xs={4}>
+                <div className="fw-semibold">マッチング</div>
+                {status?.usedMedicationUploaded
+                  ? <span className="text-success">デッドストックリストの交換先を検索できます</span>
+                  : <span className="text-muted">医薬品使用量リストのアップロードが必要です</span>}
+              </Col>
+            </Row>
+            <div className="d-flex gap-1 flex-wrap">
+              <Link to="/upload" className="btn btn-outline-primary btn-sm py-0">アップロード</Link>
+              <Link to="/matching" className="btn btn-outline-primary btn-sm py-0">マッチングを実行</Link>
+              <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm py-0">在庫参照</Link>
+              <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">マッチング状況</Link>
+              <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm py-0">交換履歴</Link>
+            </div>
+            {!status?.usedMedicationUploaded && (
+              <div className="text-info mt-1">
+                マッチング機能を利用するには、当月の医薬品使用量Excelをアップロードしてください。
+              </div>
+            )}
+          </div>
+        </Col>
+      </Row>
+
+      {/* Timeline: fills remaining viewport space */}
       <DashboardTimeline
         events={events}
         loading={timelineLoading}
@@ -117,30 +189,8 @@ export default function DashboardPage() {
         onLoadMore={loadMore}
         onEventClick={handleEventClick}
         onRefresh={refreshTimeline}
+        className="flex-grow-1"
       />
-
-      <AppDataPanel title="期限切れリスク（自薬局）" className="mb-3">
-        {risk ? (
-          <div className="row g-3">
-            <div className="col-md-3">
-              <AppKpiCard value={risk.riskScore.toFixed(1)} label="リスクスコア" />
-            </div>
-            <div className="col-md-3">
-              <AppKpiCard value={risk.bucketCounts.expired} label="期限切れ件数" />
-            </div>
-            <div className="col-md-3">
-              <AppKpiCard value={risk.bucketCounts.within30} label="30日以内件数" />
-            </div>
-            <div className="col-md-3">
-              <AppKpiCard value={risk.totalItems} label="対象在庫件数" />
-            </div>
-          </div>
-        ) : (
-          <div className="small text-muted">期限リスクデータはまだありません。</div>
-        )}
-      </AppDataPanel>
-
-      <DashboardStatusCards status={status} userName={user?.name} />
     </div>
   );
 }

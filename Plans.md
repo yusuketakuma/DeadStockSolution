@@ -215,6 +215,11 @@ JSON + CSV 両形式でのエクスポート。管理画面からワンクリッ
 - [x] T055: ヘッダーバッジ統合 `cc:DONE` (2026-03-01) depends:T053
   - Header.tsx のuseNotifications→useTimeline切替、タイムライン未読数をバッジ表示
 
+### Phase 5: UI調整 [ui]
+- [x] T056: ダッシュボードPC画面ビューポートフィット `cc:DONE` (2026-03-01)
+  - PC(≥992px)でスクロールなしの全画面表示。2カラムトップ(SmartDigest+リスク/ステータス) + タイムライン(flex-grow内部スクロール)
+  - StatusCards→コンパクトストリップ化、DashboardTimeline flex対応、24テスト PASS
+
 ---
 
 ## 📦 アーカイブ

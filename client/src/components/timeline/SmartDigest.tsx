@@ -9,6 +9,7 @@ interface SmartDigestProps {
   events: TimelineEvent[];
   loading: boolean;
   onEventClick?: (event: TimelineEvent) => void;
+  className?: string;
 }
 
 function PriorityBadge({ priority }: { priority: TimelineEvent['priority'] }) {
@@ -22,11 +23,11 @@ function PriorityBadge({ priority }: { priority: TimelineEvent['priority'] }) {
   );
 }
 
-export default function SmartDigest({ events, loading, onEventClick }: SmartDigestProps) {
+export default function SmartDigest({ events, loading, onEventClick, className }: SmartDigestProps) {
   const displayEvents = events.slice(0, MAX_ITEMS);
 
   return (
-    <AppCard className="mb-3">
+    <AppCard className={className ?? 'mb-3'}>
       <AppCard.Header className="d-flex align-items-center justify-content-between py-2 px-3">
         <span className="fw-semibold small">今日のアクション</span>
         {!loading && (

@@ -101,3 +101,13 @@
 .route-loading-min-height {
   min-height: 50vh;
 }
+
+/* Dashboard viewport-fit layout (PC only) */
+@media (min-width: 992px) {
+  .dashboard-viewport {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--header-height) - 4.5rem);
+    overflow: hidden;
+  }
+}
