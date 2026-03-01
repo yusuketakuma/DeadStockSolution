@@ -17,15 +17,14 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
 
   const url = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(query)}`;
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
 
+  try {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { 'Accept': 'application/json' },
     });
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       logger.warn('Geocoding API returned non-OK status', { status: response.status, address: query });
@@ -61,5 +60,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
       });
     }
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
