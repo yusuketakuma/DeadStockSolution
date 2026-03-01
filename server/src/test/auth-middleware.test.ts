@@ -155,4 +155,92 @@ describe('auth middleware cache', () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
   });
+
+  it('rejects pending_verification accounts with 403', async () => {
+    mocks.verifyToken.mockReturnValue({
+      id: 20,
+      email: 'pending@example.com',
+      isAdmin: false,
+      sessionVersion: 'session-v1',
+    });
+    mocks.deriveSessionVersion.mockReturnValue('session-v1');
+    mocks.select.mockImplementation(() => createSelectQuery([{
+      id: 20,
+      email: 'pending@example.com',
+      isAdmin: false,
+      isActive: true,
+      passwordHash: 'hashed',
+      verificationStatus: 'pending_verification',
+      rejectionReason: null,
+    }]));
+
+    const req = { cookies: { token: 'token-pending' } } as { cookies: { token: string }; user?: unknown };
+    const res = createRes();
+    const next = vi.fn();
+
+    await requireLogin(req as never, res as never, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      verificationStatus: 'pending_verification',
+    }));
+  });
+
+  it('rejects rejected accounts with 403', async () => {
+    mocks.verifyToken.mockReturnValue({
+      id: 21,
+      email: 'rejected@example.com',
+      isAdmin: false,
+      sessionVersion: 'session-v1',
+    });
+    mocks.deriveSessionVersion.mockReturnValue('session-v1');
+    mocks.select.mockImplementation(() => createSelectQuery([{
+      id: 21,
+      email: 'rejected@example.com',
+      isAdmin: false,
+      isActive: false,
+      passwordHash: 'hashed',
+      verificationStatus: 'rejected',
+      rejectionReason: '情報不一致',
+    }]));
+
+    const req = { cookies: { token: 'token-rejected' } } as { cookies: { token: string }; user?: unknown };
+    const res = createRes();
+    const next = vi.fn();
+
+    await requireLogin(req as never, res as never, next);
+
+    expect(next).not.toHaveBeenCalled();
+    // rejected accounts have isActive=false, so they get 401 from the isActive check
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('allows verified accounts to pass through', async () => {
+    mocks.verifyToken.mockReturnValue({
+      id: 22,
+      email: 'verified@example.com',
+      isAdmin: false,
+      sessionVersion: 'session-v1',
+    });
+    mocks.deriveSessionVersion.mockReturnValue('session-v1');
+    mocks.select.mockImplementation(() => createSelectQuery([{
+      id: 22,
+      email: 'verified@example.com',
+      isAdmin: false,
+      isActive: true,
+      passwordHash: 'hashed',
+      verificationStatus: 'verified',
+      rejectionReason: null,
+    }]));
+
+    const req = { cookies: { token: 'token-verified' } } as { cookies: { token: string }; user?: unknown };
+    const res = createRes();
+    const next = vi.fn();
+
+    await requireLogin(req as never, res as never, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
 });

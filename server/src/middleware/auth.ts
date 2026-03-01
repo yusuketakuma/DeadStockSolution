@@ -11,6 +11,8 @@ interface CachedAuthUser {
   isAdmin: boolean;
   isActive: boolean;
   sessionVersion: string;
+  verificationStatus: string;
+  rejectionReason: string | null;
   expiresAt: number;
 }
 
@@ -59,7 +61,7 @@ function enforceAuthUserCacheLimit(): void {
   }
 }
 
-function cacheAuthUser(user: { id: number; email: string; isAdmin: boolean; isActive: boolean; sessionVersion: string }): void {
+function cacheAuthUser(user: { id: number; email: string; isAdmin: boolean; isActive: boolean; sessionVersion: string; verificationStatus: string; rejectionReason: string | null }): void {
   if (!isAuthUserCacheEnabled()) return;
   authUserCacheWrites += 1;
   if (authUserCacheWrites % CACHE_SWEEP_INTERVAL_WRITES === 0) {
@@ -108,6 +110,21 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
         res.status(401).json({ error: 'アカウントが無効です。再度ログインしてください' });
         return;
       }
+      if (cached.verificationStatus === 'pending_verification') {
+        res.status(403).json({
+          error: 'アカウントは現在審査中です。審査完了後にログインできます。',
+          verificationStatus: 'pending_verification',
+        });
+        return;
+      }
+      if (cached.verificationStatus === 'rejected') {
+        res.status(403).json({
+          error: 'アカウント申請が却下されました。詳細はメールをご確認ください。',
+          verificationStatus: 'rejected',
+          rejectionReason: cached.rejectionReason,
+        });
+        return;
+      }
       req.user = {
         id: cached.id,
         email: cached.email,
@@ -123,6 +140,8 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
       isAdmin: pharmacies.isAdmin,
       isActive: pharmacies.isActive,
       passwordHash: pharmacies.passwordHash,
+      verificationStatus: pharmacies.verificationStatus,
+      rejectionReason: pharmacies.rejectionReason,
     })
       .from(pharmacies)
       .where(eq(pharmacies.id, payload.id))
@@ -130,6 +149,21 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
 
     if (rows.length === 0 || !rows[0].isActive) {
       res.status(401).json({ error: 'アカウントが無効です。再度ログインしてください' });
+      return;
+    }
+    if (rows[0].verificationStatus === 'pending_verification') {
+      res.status(403).json({
+        error: 'アカウントは現在審査中です。審査完了後にログインできます。',
+        verificationStatus: 'pending_verification',
+      });
+      return;
+    }
+    if (rows[0].verificationStatus === 'rejected') {
+      res.status(403).json({
+        error: 'アカウント申請が却下されました。詳細はメールをご確認ください。',
+        verificationStatus: 'rejected',
+        rejectionReason: rows[0].rejectionReason,
+      });
       return;
     }
     const sessionVersion = deriveSessionVersion(rows[0].passwordHash);
@@ -144,6 +178,8 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
       isAdmin: rows[0].isAdmin ?? false,
       isActive: rows[0].isActive,
       sessionVersion,
+      verificationStatus: rows[0].verificationStatus,
+      rejectionReason: rows[0].rejectionReason,
     });
 
     req.user = {
