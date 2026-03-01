@@ -180,3 +180,8 @@
 - [x] 5) 削除した `/api/upload/confirm` の互換エンドポイントを復元（内部は async enqueue へ委譲）する
 - [x] 6) server/client の不足テスト（statistics, api client, route meta, upload互換）を追加する
 - [x] 7) `typecheck -> lint -> test` を実行して回帰がないことを確認する
+
+## README更新: 機能と解決課題の明文化 (2026-03-01)
+- [x] 1) README 冒頭に「どの問題を解決するシステムか」を追加する
+- [x] 2) 主要機能を利用価値ベースで整理して追記する
+- [x] 3) 導入効果（業務上の改善ポイント）を簡潔に追記する
