@@ -11,8 +11,10 @@ const mocks = vi.hoisted(() => ({
   },
   acceptProposal: vi.fn(),
   rejectProposal: vi.fn(),
+  completeProposal: vi.fn(),
   recalculateTrustScoreForPharmacy: vi.fn(),
   createNotification: vi.fn(),
+  writeLog: vi.fn(),
   loggerError: vi.fn(),
   loggerWarn: vi.fn(),
 }));
@@ -32,6 +34,7 @@ vi.mock('../services/exchange-service', () => ({
   createProposal: vi.fn(),
   acceptProposal: mocks.acceptProposal,
   rejectProposal: mocks.rejectProposal,
+  completeProposal: mocks.completeProposal,
 }));
 
 vi.mock('../services/matching-service', () => ({
@@ -48,6 +51,11 @@ vi.mock('../services/trust-score-service', () => ({
 
 vi.mock('../services/notification-service', () => ({
   createNotification: mocks.createNotification,
+}));
+
+vi.mock('../services/log-service', () => ({
+  writeLog: mocks.writeLog,
+  getClientIp: vi.fn(() => '127.0.0.1'),
 }));
 
 vi.mock('../services/logger', () => ({
@@ -152,6 +160,73 @@ function createUpdateQuery(result: unknown = undefined) {
   query.where.mockResolvedValue(result);
   return query;
 }
+
+describe('exchange sub-routes: single proposal actions', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('POST /proposals/:id/accept returns 200 with confirmed status', async () => {
+    const app = createApp();
+    mocks.acceptProposal.mockResolvedValue('confirmed');
+
+    const response = await request(app)
+      .post('/api/exchange/proposals/5/accept');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      message: '仮マッチングが確定しました',
+      status: 'confirmed',
+    });
+    expect(mocks.acceptProposal).toHaveBeenCalledWith(5, 2);
+  });
+
+  it('POST /proposals/:id/reject returns 200', async () => {
+    const app = createApp();
+    mocks.rejectProposal.mockResolvedValue(undefined);
+
+    const response = await request(app)
+      .post('/api/exchange/proposals/7/reject');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ message: '仮マッチングを拒否しました' });
+    expect(mocks.rejectProposal).toHaveBeenCalledWith(7, 2);
+  });
+
+  it('POST /proposals/:id/complete returns 200', async () => {
+    const app = createApp();
+    mocks.completeProposal.mockResolvedValue(undefined);
+
+    const response = await request(app)
+      .post('/api/exchange/proposals/8/complete');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ message: '交換を完了しました' });
+    expect(mocks.completeProposal).toHaveBeenCalledWith(8, 2);
+  });
+
+  it('POST /proposals/:id/accept returns 404 for not found', async () => {
+    const app = createApp();
+    mocks.acceptProposal.mockRejectedValue(new Error('見つかりません'));
+
+    const response = await request(app)
+      .post('/api/exchange/proposals/999/accept');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'マッチングが見つかりません' });
+  });
+
+  it('POST /proposals/:id/accept returns 409 on stale state', async () => {
+    const app = createApp();
+    mocks.acceptProposal.mockRejectedValue(new Error('状態が変更された'));
+
+    const response = await request(app)
+      .post('/api/exchange/proposals/5/accept');
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: '状態が変更されたため、再読み込みして再試行してください' });
+  });
+});
 
 describe('exchange sub-routes: bulk action', () => {
   beforeEach(() => {

@@ -17,6 +17,7 @@ const NAV_GROUPS = [
       { to: '/matching', label: 'マッチング' },
       { to: '/proposals', label: 'マッチング一覧' },
       { to: '/exchange-history', label: '交換履歴' },
+      { to: '/statistics', label: '統計' },
     ],
   },
   {

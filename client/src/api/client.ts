@@ -113,9 +113,16 @@ async function fetchWithTimeout(
   }
 }
 
+export function hasVerificationStatusPayload(data: unknown): data is { verificationStatus: string } {
+  return data != null
+    && typeof data === 'object'
+    && 'verificationStatus' in data
+    && typeof (data as { verificationStatus?: unknown }).verificationStatus === 'string';
+}
+
 async function isVerification403(response: Response): Promise<boolean> {
   const body = await response.clone().json().catch(() => ({}));
-  return 'verificationStatus' in body;
+  return hasVerificationStatusPayload(body);
 }
 
 async function parseSuccessResponse<T>(response: Response): Promise<T> {
@@ -270,7 +277,7 @@ export function isApiErrorCode(err: unknown, code: string): err is ApiError {
 }
 
 export function isVerificationStatusError(err: unknown): err is ApiError & { data: { verificationStatus: string } } {
-  return err instanceof ApiError && err.status === 403 && err.data != null && typeof err.data === 'object' && 'verificationStatus' in err.data;
+  return err instanceof ApiError && err.status === 403 && hasVerificationStatusPayload(err.data);
 }
 
 export function isPartialSuccessError(err: unknown): err is ApiError & { data: { partialSuccess: true; version?: number } } {

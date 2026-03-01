@@ -372,9 +372,13 @@ router.post('/diff-preview', uploadSingleFile, async (req: AuthRequest, res: Res
   }
 });
 
-// Confirm (async): enqueue background upload processing job.
-router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Response) => {
+async function handleConfirmAsyncEnqueue(
+  req: AuthRequest,
+  res: Response,
+  routeKind: 'confirm' | 'confirm_async',
+): Promise<void> {
   const confirmRequestedAt = new Date().toISOString();
+  const failureContext = routeKind === 'confirm' ? 'confirm_legacy' : 'confirm_async';
   try {
     const uploadFile = getUploadFileOrReject(req, res);
     if (!uploadFile) return;
@@ -384,7 +388,7 @@ router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Re
 
     const applyMode = parseApplyMode(req.body.applyMode);
     if (!applyMode) {
-      logUploadFailure(req, 'confirm_async', 'invalid_apply_mode', {
+      logUploadFailure(req, failureContext, 'invalid_apply_mode', {
         applyMode: String(req.body.applyMode ?? ''),
       });
       res.status(400).json({ error: 'applyMode は replace / diff / partial を指定してください' });
@@ -404,7 +408,7 @@ router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Re
     if (!allRows) return;
 
     if (headerRowIndex >= allRows.length) {
-      logUploadFailure(req, 'confirm_async', 'header_row_out_of_range', {
+      logUploadFailure(req, failureContext, 'header_row_out_of_range', {
         headerRowIndex,
         rowCount: allRows.length,
       });
@@ -412,7 +416,7 @@ router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Re
       return;
     }
 
-    const mapping = await resolveAndValidateMappingOrReject(req, res, allRows, headerRowIndex, uploadType, 'confirm_async');
+    const mapping = await resolveAndValidateMappingOrReject(req, res, allRows, headerRowIndex, uploadType, failureContext);
     if (!mapping) return;
 
     const deleteMissing = parseDeleteMissing(req.body.deleteMissing);
@@ -439,6 +443,12 @@ router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Re
       canceledAt: enqueueResult.canceledAt,
       partialSummary: null,
       errorReportAvailable: false,
+      ...(routeKind === 'confirm'
+        ? {
+          deprecatedEndpoint: true,
+          deprecationNotice: 'このエンドポイントは将来廃止予定です。/api/upload/confirm-async をご利用ください。',
+        }
+        : {}),
     });
   } catch (err) {
     if (isUploadConfirmIdempotencyConflictError(err)) {
@@ -450,7 +460,7 @@ router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Re
     }
 
     if (isUploadConfirmQueueLimitError(err)) {
-      logUploadFailure(req, 'confirm_async', 'queue_limit', {
+      logUploadFailure(req, failureContext, 'queue_limit', {
         code: err.code,
         limit: err.limit,
         activeJobs: err.activeJobs,
@@ -469,9 +479,21 @@ router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Re
       error: getErrorMessage(err),
       stack: err instanceof Error ? err.stack : undefined,
     }));
-    logUploadFailure(req, 'confirm_async', 'unexpected_error', { error: getErrorMessage(err) });
+    logUploadFailure(req, failureContext, 'unexpected_error', { error: getErrorMessage(err) });
     res.status(500).json({ error: '非同期アップロード処理の受付に失敗しました' });
   }
+}
+
+// Confirm (legacy compatibility): now delegates to async queue processing.
+router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response) => {
+  res.set('Deprecation', 'true');
+  res.set('Link', '</api/upload/confirm-async>; rel="successor-version"');
+  await handleConfirmAsyncEnqueue(req, res, 'confirm');
+});
+
+// Confirm (async): enqueue background upload processing job.
+router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Response) => {
+  await handleConfirmAsyncEnqueue(req, res, 'confirm_async');
 });
 
 router.get('/jobs/:jobId', async (req: AuthRequest, res: Response) => {

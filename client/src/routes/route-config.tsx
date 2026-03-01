@@ -16,6 +16,7 @@ const ProposalDetailPage = lazy(() => import('../pages/ProposalDetailPage'));
 const ProposalPrintPage = lazy(() => import('../pages/ProposalPrintPage'));
 const ExchangeHistoryPage = lazy(() => import('../pages/ExchangeHistoryPage'));
 const PharmacyListPage = lazy(() => import('../pages/PharmacyListPage'));
+const StatisticsPage = lazy(() => import('../pages/StatisticsPage'));
 const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage'));
 const AdminPharmaciesPage = lazy(() => import('../pages/admin/AdminPharmaciesPage'));
 const AdminPharmacyEditPage = lazy(() => import('../pages/admin/AdminPharmacyEditPage'));
@@ -69,6 +70,7 @@ export const ROUTE_META: RouteMeta[] = [
   { path: '/proposals/:id/print', access: 'protected', useLayout: false, component: ProposalPrintPage },
   { path: '/exchange-history', access: 'protected', useLayout: true, component: ExchangeHistoryPage },
   { path: '/pharmacies', access: 'protected', useLayout: true, component: PharmacyListPage },
+  { path: '/statistics', access: 'protected', useLayout: true, component: StatisticsPage },
 
   { path: '/admin', access: 'protected', adminOnly: true, useLayout: true, component: AdminDashboardPage },
   { path: '/admin/risk', access: 'protected', adminOnly: true, useLayout: true, component: AdminRiskPage },

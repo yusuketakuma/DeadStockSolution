@@ -397,6 +397,38 @@ describe('upload routes', () => {
     }));
   });
 
+  it('keeps POST /api/upload/confirm as compatibility alias to async queue', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/upload/confirm')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(202);
+    expect(response.headers.deprecation).toBe('true');
+    expect(response.headers.link).toContain('/api/upload/confirm-async');
+    expect(response.body).toEqual(expect.objectContaining({
+      message: 'アップロード処理を受け付けました',
+      deprecatedEndpoint: true,
+      deprecationNotice: expect.any(String),
+    }));
+    expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledTimes(1);
+  });
+
   it('returns bad request when mapping column is out of header range on confirm-async', async () => {
     const app = createApp();
 

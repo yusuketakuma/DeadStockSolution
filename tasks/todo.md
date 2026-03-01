@@ -165,3 +165,18 @@
 - [x] 3) 関連テストを更新し、ハッシュ安定性と判定整合を検証する
 - [x] 4) `typecheck -> lint -> test -> build:server` を実行して回帰がないことを確認する
 - [x] 5) `tasks/lessons.md` に再発防止ルールを追記する
+
+## 直近3時間実装分の多角的レビュー (2026-03-01)
+- [x] 1) 直近3時間（2026-03-01 19:43 JST 以降）の対象差分を確定する（コミット + 未コミット）
+- [x] 2) 変更内容を security / correctness / quality / perf / ux / ops 観点で精査する
+- [x] 3) テスト更新有無と不足ケースを確認する
+- [x] 4) 重大度順・根拠付き（ファイル/行）でレビュー結果を報告する
+
+## レビュー指摘の全修正 (2026-03-01)
+- [x] 1) `/api/exchange/proposals/:id/(accept|reject|complete)` の単体アクション経路を復旧する
+- [x] 2) statistics の `pendingAction` 集計条件を実運用ロジック（proposed/accepted_a/accepted_b）へ整合させる
+- [x] 3) APIクライアントの `isVerification403` 判定を非オブジェクトJSONでも安全にする
+- [x] 4) `/api/statistics/summary` に短TTLキャッシュを導入し、再訪時の集計負荷を抑制する
+- [x] 5) 削除した `/api/upload/confirm` の互換エンドポイントを復元（内部は async enqueue へ委譲）する
+- [x] 6) server/client の不足テスト（statistics, api client, route meta, upload互換）を追加する
+- [x] 7) `typecheck -> lint -> test` を実行して回帰がないことを確認する

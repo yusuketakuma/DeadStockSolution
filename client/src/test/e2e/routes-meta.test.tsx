@@ -139,6 +139,61 @@ function mockFetchForRoutes(user: typeof mockUser | null, route: string) {
       });
     }
 
+    if (route === '/statistics' && url.includes('/api/statistics/summary')) {
+      return new Response(JSON.stringify({
+        uploads: {
+          deadStockCount: 1,
+          usedMedicationCount: 2,
+          lastDeadStockUpload: '2026-03-01T00:00:00.000Z',
+          lastUsedMedicationUpload: '2026-03-01T01:00:00.000Z',
+        },
+        inventory: {
+          deadStockItems: 3,
+          deadStockTotalValue: 12000,
+          riskScore: 35,
+          bucketCounts: {
+            expired: 0,
+            within30: 1,
+            within60: 1,
+            within90: 0,
+            within120: 0,
+            over120: 0,
+            unknown: 0,
+          },
+        },
+        proposals: {
+          sent: 1,
+          received: 1,
+          completed: 0,
+          pendingAction: 1,
+        },
+        exchanges: {
+          totalCount: 0,
+          totalValue: 0,
+        },
+        matching: {
+          candidateCount: 2,
+        },
+        trust: {
+          score: 60,
+          ratingCount: 0,
+          positiveRate: 0,
+          avgRatingReceived: 0,
+          feedbackCount: 0,
+        },
+        network: {
+          favoriteCount: 0,
+          tradingPartnerCount: 0,
+        },
+        alerts: {
+          activeCount: 0,
+        },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({}), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -210,5 +265,16 @@ describe('Route meta integration', () => {
     await waitFor(() => {
       expect(screen.getByText('薬局ログイン')).toBeInTheDocument();
     });
+  });
+
+  it('renders statistics route for authenticated user', async () => {
+    mockFetchForRoutes(mockUser, '/statistics');
+    const { container } = renderAppAtRoute('/statistics');
+
+    await waitFor(() => {
+      const heading = container.querySelector('h1.h4');
+      expect(heading?.textContent).toBe('統計');
+    });
+    expect(screen.getByText('アップロード実績')).toBeInTheDocument();
   });
 });
