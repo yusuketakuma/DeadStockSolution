@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2026-03-01
+
+### 🎯 What's Changed for You
+
+**統合タイムラインでダッシュボードを刷新。朝開いたら全部わかる体験を実現**
+
+| Before | After |
+|--------|-------|
+| 通知ベースの個別表示 | 9テーブル統合タイムライン（優先度ランク付き） |
+| ダッシュボードはスクロール必須 | PC画面にフィットするビューポートレイアウト |
+| ログイン→表示まで約7秒 | API並列化+キャッシュで高速化 |
+| 運用監視なし | KPIモニタリング・予測アラート・取込ジョブ管理 |
+
+### Added
+
+- **統合タイムライン**: 9テーブルから集約したイベントフィード、Critical/High/Medium/Low 4段階優先度エンジン、SmartDigest（今日のアクション）、優先度フィルタ付きタイムラインビュー（97テスト）
+- **運用管理機能群**: 取込ジョブ管理、システムイベント、KPIモニタリング、予測アラート、マッチングルール管理
+- **ダッシュボードPC画面フィット**: 2カラムトップ（SmartDigest+リスクKPI）+ タイムライン（flex-grow内部スクロール）でスクロール不要
+
+### Fixed
+
+- **セキュリティ**: fast-xml-parser の脆弱性修正（audit finding 対応）
+- **自動スキャン**: safe autofix の適用
+
+### Changed
+
+- **ダッシュボード表示高速化**: `/notifications` クエリ並列化、リスクAPI 30秒キャッシュ、AuthContext 二重取得除去、NotificationContext 統合
+- **運用ドキュメント整備**: hourly scan 設定、isolated subagent review mode 文書化
+
 ## [0.0.4] - 2026-02-28
 
 ### 🎯 What's Changed for You
@@ -142,6 +171,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview DB同期とテストアカウントパスワード更新
 - 本番環境でのCORS同一ホストオリジンチェック
 
+[0.0.5]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.1...v0.0.2
