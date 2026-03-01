@@ -2,6 +2,7 @@ import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import PasswordResetPage from '../pages/PasswordResetPage';
+import VerificationPendingPage from '../pages/VerificationPendingPage';
 
 const DashboardPage = lazy(() => import('../pages/DashboardPage'));
 const AccountPage = lazy(() => import('../pages/AccountPage'));
@@ -54,6 +55,7 @@ export const ROUTE_META: RouteMeta[] = [
   { path: '/login', access: 'public', redirectAuthenticatedTo: '/', component: LoginPage },
   { path: '/register', access: 'public', redirectAuthenticatedTo: '/', component: RegisterPage },
   { path: '/password-reset', access: 'public', redirectAuthenticatedTo: '/', component: PasswordResetPage },
+  { path: '/verification-pending', access: 'public', redirectAuthenticatedTo: '/', component: VerificationPendingPage },
 
   { path: '/', access: 'protected', useLayout: true, component: DashboardPage },
   { path: '/account', access: 'protected', useLayout: true, component: AccountPage },
