@@ -3,8 +3,14 @@ import app from './app';
 import { startDrugMasterScheduler, stopDrugMasterScheduler } from './services/drug-master-scheduler';
 import { startDrugPackageScheduler, stopDrugPackageScheduler } from './services/drug-package-scheduler';
 import { startImportFailureAlertScheduler, stopImportFailureAlertScheduler } from './services/import-failure-alert-scheduler';
+import { startMatchingRefreshScheduler, stopMatchingRefreshScheduler } from './services/matching-refresh-scheduler';
 import { startMonthlyReportScheduler, stopMonthlyReportScheduler } from './services/monthly-report-scheduler';
+import {
+  startMonitoringKpiAlertScheduler,
+  stopMonitoringKpiAlertScheduler,
+} from './services/monitoring-kpi-alert-scheduler';
 import { logger } from './services/logger';
+import { recordUncaughtException, recordUnhandledRejection } from './services/system-event-service';
 
 function resolvePort(): number {
   const parsed = Number(process.env.PORT);
@@ -24,7 +30,9 @@ const server = app.listen(PORT, () => {
   startDrugMasterScheduler();
   startDrugPackageScheduler();
   startImportFailureAlertScheduler();
+  startMatchingRefreshScheduler();
   startMonthlyReportScheduler();
+  startMonitoringKpiAlertScheduler();
 });
 
 function gracefulShutdown(signal: NodeJS.Signals): void {
@@ -34,7 +42,9 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
   stopDrugMasterScheduler();
   stopDrugPackageScheduler();
   stopImportFailureAlertScheduler();
+  stopMatchingRefreshScheduler();
   stopMonthlyReportScheduler();
+  stopMonitoringKpiAlertScheduler();
 
   const forceCloseTimer = setTimeout(() => {
     logger.error('Graceful shutdown timed out. Forcing exit.');
@@ -63,6 +73,7 @@ process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled rejection', {
     reason: reason instanceof Error ? reason.message : String(reason),
   });
+  void recordUnhandledRejection(reason);
 });
 
 process.on('uncaughtException', (err) => {
@@ -70,5 +81,6 @@ process.on('uncaughtException', (err) => {
     error: err instanceof Error ? err.message : String(err),
     stack: err.stack,
   });
+  void recordUncaughtException(err);
   gracefulShutdown('SIGTERM');
 });

@@ -1,5 +1,6 @@
 import { ColumnMapping } from '../types';
 import { parseNumber } from '../utils/string-utils';
+import { parseColumnIndex, getCell as getCellValue } from './column-mapper';
 
 interface ExtractedDeadStock {
   drugCode: string | null;
@@ -31,11 +32,17 @@ interface CompiledMapping {
   monthlyUsageIdx: number;
 }
 
-function parseColumnIndex(index: string | null | undefined): number {
-  if (index === null || index === undefined) return -1;
-  const parsed = Number(index);
-  if (!Number.isInteger(parsed) || parsed < 0) return -1;
-  return parsed;
+export interface UploadExtractionIssue {
+  rowNumber: number;
+  issueCode: string;
+  issueMessage: string;
+  rowData: unknown[] | null;
+}
+
+export interface UploadExtractionResult<T> {
+  rows: T[];
+  issues: UploadExtractionIssue[];
+  inspectedRowCount: number;
 }
 
 function compileMapping(mapping: ColumnMapping): CompiledMapping {
@@ -51,11 +58,6 @@ function compileMapping(mapping: ColumnMapping): CompiledMapping {
   };
 }
 
-function getCellValue(row: unknown[], colIndex: number): unknown {
-  if (colIndex < 0 || colIndex >= row.length) return null;
-  return row[colIndex];
-}
-
 function getStringValue(row: unknown[], colIndex: number): string | null {
   const val = getCellValue(row, colIndex);
   if (val === null || val === undefined || String(val).trim() === '') return null;
@@ -67,26 +69,78 @@ function getNumberValue(row: unknown[], colIndex: number): number | null {
   return parseNumber(val);
 }
 
-export function extractDeadStockRows(
+function isBlankCell(cell: unknown): boolean {
+  if (cell === null || cell === undefined) return true;
+  if (typeof cell === 'string') return cell.trim() === '';
+  return false;
+}
+
+function isBlankRow(row: unknown[]): boolean {
+  return row.every((cell) => isBlankCell(cell));
+}
+
+function normalizeRowForIssue(row: unknown[]): unknown[] {
+  return row.map((cell) => {
+    if (cell === null || cell === undefined) return '';
+    if (typeof cell === 'string') return cell;
+    if (typeof cell === 'number' || typeof cell === 'boolean') return cell;
+    return String(cell);
+  });
+}
+
+function createIssue(
+  rowIndex: number,
+  issueCode: string,
+  issueMessage: string,
+  row: unknown[],
+): UploadExtractionIssue {
+  return {
+    rowNumber: rowIndex + 1,
+    issueCode,
+    issueMessage,
+    rowData: normalizeRowForIssue(row),
+  };
+}
+
+export function extractDeadStockRowsWithIssues(
   dataRows: unknown[][],
   mapping: ColumnMapping,
-  startIndex: number = 0
-): ExtractedDeadStock[] {
+  startIndex: number = 0,
+): UploadExtractionResult<ExtractedDeadStock> {
   const m = compileMapping(mapping);
-  const results: ExtractedDeadStock[] = [];
+  const rows: ExtractedDeadStock[] = [];
+  const issues: UploadExtractionIssue[] = [];
+  let inspectedRowCount = 0;
 
-  for (let i = startIndex; i < dataRows.length; i++) {
-    const row = dataRows[i];
+  for (let i = startIndex; i < dataRows.length; i += 1) {
+    const row = dataRows[i] ?? [];
+    if (isBlankRow(row)) {
+      continue;
+    }
+    inspectedRowCount += 1;
+
     const drugName = getStringValue(row, m.drugNameIdx);
     const quantity = getNumberValue(row, m.quantityIdx);
 
-    // Skip rows without drug name or quantity
-    if (!drugName || quantity === null || quantity <= 0) continue;
+    if (!drugName) {
+      issues.push(createIssue(i, 'MISSING_DRUG_NAME', '薬剤名が入力されていません', row));
+      continue;
+    }
+
+    if (quantity === null) {
+      issues.push(createIssue(i, 'INVALID_QUANTITY', '数量が数値として解釈できません', row));
+      continue;
+    }
+
+    if (quantity <= 0) {
+      issues.push(createIssue(i, 'NON_POSITIVE_QUANTITY', '数量は0より大きい値を指定してください', row));
+      continue;
+    }
 
     const yakkaUnitPrice = getNumberValue(row, m.yakkaUnitPriceIdx);
     const yakkaTotal = yakkaUnitPrice !== null ? yakkaUnitPrice * quantity : null;
 
-    results.push({
+    rows.push({
       drugCode: getStringValue(row, m.drugCodeIdx),
       drugName,
       quantity,
@@ -98,23 +152,45 @@ export function extractDeadStockRows(
     });
   }
 
-  return results;
+  return {
+    rows,
+    issues,
+    inspectedRowCount,
+  };
 }
 
-export function extractUsedMedicationRows(
+export function extractDeadStockRows(
   dataRows: unknown[][],
   mapping: ColumnMapping,
-  startIndex: number = 0
-): ExtractedUsedMedication[] {
+  startIndex: number = 0,
+): ExtractedDeadStock[] {
+  return extractDeadStockRowsWithIssues(dataRows, mapping, startIndex).rows;
+}
+
+export function extractUsedMedicationRowsWithIssues(
+  dataRows: unknown[][],
+  mapping: ColumnMapping,
+  startIndex: number = 0,
+): UploadExtractionResult<ExtractedUsedMedication> {
   const m = compileMapping(mapping);
-  const results: ExtractedUsedMedication[] = [];
+  const rows: ExtractedUsedMedication[] = [];
+  const issues: UploadExtractionIssue[] = [];
+  let inspectedRowCount = 0;
 
-  for (let i = startIndex; i < dataRows.length; i++) {
-    const row = dataRows[i];
+  for (let i = startIndex; i < dataRows.length; i += 1) {
+    const row = dataRows[i] ?? [];
+    if (isBlankRow(row)) {
+      continue;
+    }
+    inspectedRowCount += 1;
+
     const drugName = getStringValue(row, m.drugNameIdx);
-    if (!drugName) continue;
+    if (!drugName) {
+      issues.push(createIssue(i, 'MISSING_DRUG_NAME', '薬剤名が入力されていません', row));
+      continue;
+    }
 
-    results.push({
+    rows.push({
       drugCode: getStringValue(row, m.drugCodeIdx),
       drugName,
       monthlyUsage: getNumberValue(row, m.monthlyUsageIdx),
@@ -123,5 +199,17 @@ export function extractUsedMedicationRows(
     });
   }
 
-  return results;
+  return {
+    rows,
+    issues,
+    inspectedRowCount,
+  };
+}
+
+export function extractUsedMedicationRows(
+  dataRows: unknown[][],
+  mapping: ColumnMapping,
+  startIndex: number = 0,
+): ExtractedUsedMedication[] {
+  return extractUsedMedicationRowsWithIssues(dataRows, mapping, startIndex).rows;
 }

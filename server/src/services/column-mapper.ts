@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import { ColumnMapping, DEAD_STOCK_FIELDS, USED_MEDICATION_FIELDS } from '../types';
+import { parseNumber } from '../utils/string-utils';
 
 type FieldName = typeof DEAD_STOCK_FIELDS[number] | typeof USED_MEDICATION_FIELDS[number];
 
@@ -13,6 +14,143 @@ const KEYWORD_MAP: Record<FieldName, string[]> = {
   lot_number: ['ロット', 'ロット番号', 'lot', 'LOT'],
   monthly_usage: ['月間使用量', '使用量', '月間', '処方量', '使用数量', 'usage'],
 };
+
+const DEAD_STOCK_TYPE_HINTS = [
+  '在庫',
+  '数量',
+  '使用期限',
+  '有効期限',
+  '期限',
+  'ロット',
+  'lot',
+].map((h) => h.normalize('NFKC').toLowerCase());
+
+const USED_MEDICATION_TYPE_HINTS = [
+  '月間使用量',
+  '使用量',
+  '処方量',
+  '月間',
+  'monthly',
+  'usage',
+].map((h) => h.normalize('NFKC').toLowerCase());
+
+export interface UploadTypeDetectionResult {
+  detectedType: 'dead_stock' | 'used_medication';
+  confidence: 'high' | 'medium' | 'low';
+  scores: {
+    dead_stock: number;
+    used_medication: number;
+  };
+}
+
+function normalizeText(value: unknown): string {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase();
+}
+
+export function parseColumnIndex(index: string | null | undefined): number {
+  if (index === null || index === undefined) return -1;
+  const parsed = Number(index);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : -1;
+}
+
+export function getCell(row: unknown[], colIndex: number): unknown {
+  if (colIndex < 0 || colIndex >= row.length) return null;
+  return row[colIndex];
+}
+
+function scoreHeaderHints(headerRow: unknown[], hints: string[]): number {
+  const headers = headerRow.map((cell) => normalizeText(cell));
+  let score = 0;
+  for (const header of headers) {
+    if (!header) continue;
+    for (const hint of hints) {
+      if (header === hint) {
+        score += 4;
+        continue;
+      }
+      if (header.includes(hint)) {
+        score += 2;
+      }
+    }
+  }
+  return score;
+}
+
+function scoreDeadStockDataRows(
+  rows: unknown[][],
+  startIndex: number,
+  mapping: ColumnMapping,
+): number {
+  const drugNameIdx = parseColumnIndex(mapping.drug_name);
+  const quantityIdx = parseColumnIndex(mapping.quantity);
+  const expirationIdx = parseColumnIndex(mapping.expiration_date);
+  const sampleLimit = Math.min(rows.length, startIndex + 30);
+  let score = 0;
+
+  for (let i = startIndex; i < sampleLimit; i += 1) {
+    const row = rows[i] ?? [];
+    const drugName = normalizeText(getCell(row, drugNameIdx));
+    const quantity = parseNumber(getCell(row, quantityIdx));
+    const expiration = normalizeText(getCell(row, expirationIdx));
+
+    if (drugName) {
+      score += 1;
+    }
+    if (quantity !== null && quantity > 0) {
+      score += 2;
+    }
+    if (expiration) {
+      score += 1;
+    }
+  }
+
+  return score;
+}
+
+function scoreUsedMedicationDataRows(
+  rows: unknown[][],
+  startIndex: number,
+  mapping: ColumnMapping,
+): number {
+  const drugNameIdx = parseColumnIndex(mapping.drug_name);
+  const monthlyUsageIdx = parseColumnIndex(mapping.monthly_usage);
+  const sampleLimit = Math.min(rows.length, startIndex + 30);
+  let score = 0;
+
+  for (let i = startIndex; i < sampleLimit; i += 1) {
+    const row = rows[i] ?? [];
+    const drugName = normalizeText(getCell(row, drugNameIdx));
+    const monthlyUsage = parseNumber(getCell(row, monthlyUsageIdx));
+    if (drugName) {
+      score += 1;
+    }
+    if (monthlyUsage !== null && monthlyUsage >= 0) {
+      score += 2;
+    }
+  }
+
+  return score;
+}
+
+function scoreDeadStockMapping(mapping: ColumnMapping): number {
+  let score = 0;
+  if (mapping.drug_name) score += 5;
+  if (mapping.quantity) score += 5;
+  if (mapping.expiration_date) score += 2;
+  if (mapping.unit) score += 1;
+  return score;
+}
+
+function scoreUsedMedicationMapping(mapping: ColumnMapping): number {
+  let score = 0;
+  if (mapping.drug_name) score += 5;
+  if (mapping.monthly_usage) score += 5;
+  if (mapping.unit) score += 1;
+  return score;
+}
 
 export function detectHeaderRow(rows: unknown[][]): number {
   let bestRow = 0;
@@ -95,6 +233,40 @@ export function suggestMapping(
   }
 
   return mapping;
+}
+
+export function detectUploadType(
+  rows: unknown[][],
+  headerRowIndex: number,
+): UploadTypeDetectionResult {
+  const headerRow = rows[headerRowIndex] ?? [];
+  const dataStartIndex = Math.max(0, headerRowIndex + 1);
+  const deadStockMapping = suggestMapping(headerRow, 'dead_stock');
+  const usedMedicationMapping = suggestMapping(headerRow, 'used_medication');
+
+  const deadStockScore = (
+    scoreHeaderHints(headerRow, DEAD_STOCK_TYPE_HINTS) * 4
+    + scoreDeadStockMapping(deadStockMapping) * 3
+    + scoreDeadStockDataRows(rows, dataStartIndex, deadStockMapping)
+  );
+  const usedMedicationScore = (
+    scoreHeaderHints(headerRow, USED_MEDICATION_TYPE_HINTS) * 4
+    + scoreUsedMedicationMapping(usedMedicationMapping) * 3
+    + scoreUsedMedicationDataRows(rows, dataStartIndex, usedMedicationMapping)
+  );
+
+  const detectedType = usedMedicationScore > deadStockScore ? 'used_medication' : 'dead_stock';
+  const scoreDiff = Math.abs(deadStockScore - usedMedicationScore);
+  const confidence = scoreDiff >= 12 ? 'high' : scoreDiff >= 5 ? 'medium' : 'low';
+
+  return {
+    detectedType,
+    confidence,
+    scores: {
+      dead_stock: deadStockScore,
+      used_medication: usedMedicationScore,
+    },
+  };
 }
 
 export function computeHeaderHash(headerRow: unknown[]): string {

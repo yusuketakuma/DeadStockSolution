@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ApiError, type FieldError } from '../api/client';
 import AuthPageLayout from '../components/ui/AuthPageLayout';
-import StatusAlert from '../components/ui/StatusAlert';
+import AppAlert from '../components/ui/AppAlert';
 import AppSelect from '../components/ui/AppSelect';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppField from '../components/ui/AppField';
@@ -19,6 +19,9 @@ interface RegisterForm {
   phone: string;
   fax: string;
   licenseNumber: string;
+  permitLicenseNumber: string;
+  permitPharmacyName: string;
+  permitAddress: string;
   prefecture: string;
 }
 
@@ -36,7 +39,8 @@ const PREFECTURES = [
 export default function RegisterPage() {
   const [form, setForm] = useState<RegisterForm>({
     email: '', password: '', name: '', postalCode: '', address: '',
-    phone: '', fax: '', licenseNumber: '', prefecture: '',
+    phone: '', fax: '', licenseNumber: '', permitLicenseNumber: '',
+    permitPharmacyName: '', permitAddress: '', prefecture: '',
   });
   const [agreed, setAgreed] = useState(false);
   const { loading, setLoading, error, setError } = useAsyncState();
@@ -83,8 +87,8 @@ export default function RegisterPage() {
       main={(
         <>
           <h1 className="h4 text-center mb-2">新規薬局登録</h1>
-          <p className="dl-lead text-center">登録後はすぐに在庫交換機能をご利用いただけます。</p>
-          {error && <StatusAlert variant="danger" message={error} />}
+          <p className="dl-lead text-center">登録情報は薬局開設許可証の記載内容と自動照合されます。</p>
+          {error && <AppAlert variant="danger" className="dl-status-alert">{error}</AppAlert>}
           <form onSubmit={handleSubmit}>
             <AppField
               className="mb-3"
@@ -134,6 +138,43 @@ export default function RegisterPage() {
               required
               isInvalid={!!getFieldError('licenseNumber')}
               errorText={getFieldError('licenseNumber')}
+            />
+
+            <AppField
+              className="mb-3"
+              controlId="register-permit-license-number"
+              label="許可証記載の許可番号 *"
+              type="text"
+              value={form.permitLicenseNumber}
+              onChange={(value) => handleChange('permitLicenseNumber', value)}
+              required
+              isInvalid={!!getFieldError('permitLicenseNumber')}
+              errorText={getFieldError('permitLicenseNumber')}
+            />
+
+            <AppField
+              className="mb-3"
+              controlId="register-permit-pharmacy-name"
+              label="許可証記載の薬局名 *"
+              type="text"
+              value={form.permitPharmacyName}
+              onChange={(value) => handleChange('permitPharmacyName', value)}
+              required
+              isInvalid={!!getFieldError('permitPharmacyName')}
+              errorText={getFieldError('permitPharmacyName')}
+            />
+
+            <AppField
+              className="mb-3"
+              controlId="register-permit-address"
+              label="許可証記載の所在地 *"
+              type="text"
+              value={form.permitAddress}
+              onChange={(value) => handleChange('permitAddress', value)}
+              required
+              isInvalid={!!getFieldError('permitAddress')}
+              errorText={getFieldError('permitAddress')}
+              placeholder="許可証に記載されている所在地"
             />
 
             <Row>
@@ -247,6 +288,7 @@ export default function RegisterPage() {
           <ul className="dl-trust-list">
             <li>住所は位置情報推定に使われるため、省略せず入力してください。</li>
             <li>許可番号は照合のため正確な表記で入力してください。</li>
+            <li>許可証記載の薬局名・所在地・許可番号は証票どおり入力してください。</li>
             <li>パスワードは8文字以上で、他システムと使い回さないでください。</li>
           </ul>
         </section>

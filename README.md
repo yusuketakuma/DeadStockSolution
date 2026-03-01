@@ -111,6 +111,7 @@ npm run db:migrate:legacy --workspace=server
 - `OPENCLAW_LOG_CONTEXT_RECENT_FAILURE_LIMIT`: OpenClawへ渡す直近失敗ログ件数
 - `OPENCLAW_LOG_CONTEXT_RECENT_ACTIVITY_LIMIT`: OpenClawへ渡す薬局別アクティビティログ件数
 - `OPENCLAW_LOG_CONTEXT_DETAIL_MAX_LENGTH`: OpenClawへ渡すログ詳細文の最大文字数
+- `VERCEL_DEPLOY_WEBHOOK_SECRET`: `/api/internal/vercel/deploy-events` のBearer認証シークレット
 - `GITHUB_UPDATES_REPOSITORY`: 更新情報表示で参照するGitHubリポジトリ（`owner/repo`）。本番では必須
 - `GITHUB_UPDATES_RETRIES`: GitHub release 取得失敗時の再試行回数（0-3）
 - OpenClaw Webhook受信時は `x-openclaw-signature` と `x-openclaw-timestamp` を利用したHMAC認証を必須化

@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies } from '../db/schema';
+import { pharmacies, pharmacyRegistrationReviews } from '../db/schema';
 import {
   assertJwtSecretConfigured,
   hashPassword,
@@ -21,6 +21,7 @@ import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
 import { handleRouteError } from '../middleware/error-handler';
+import { evaluateRegistrationScreening } from '../services/registration-screening-service';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -141,7 +142,20 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     }
     assertJwtSecretConfigured();
 
-    const { email, password, name, postalCode, address, phone, fax, licenseNumber, prefecture } = req.body;
+    const {
+      email,
+      password,
+      name,
+      postalCode,
+      address,
+      phone,
+      fax,
+      licenseNumber,
+      prefecture,
+      permitLicenseNumber,
+      permitPharmacyName,
+      permitAddress,
+    } = req.body;
 
     // Check existing email
     const existing = await db.select({ id: pharmacies.id })
@@ -177,21 +191,92 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       return;
     }
 
-    const result = await db.insert(pharmacies).values({
-      email,
-      passwordHash,
-      name,
-      postalCode: postalCode.replace(/[-ー－\s]/g, ''),
-      address,
-      phone,
-      fax,
-      licenseNumber,
+    const screening = evaluateRegistrationScreening({
+      pharmacyName: name,
       prefecture,
-      latitude: coords.lat,
-      longitude: coords.lng,
-    }).returning({ id: pharmacies.id });
+      address,
+      licenseNumber,
+      permitLicenseNumber,
+      permitPharmacyName,
+      permitAddress,
+    });
 
-    const pharmacyId = result[0].id;
+    const registrationIp = getClientIp(req);
+    const normalizedPostalCode = postalCode.replace(/[-ー－\s]/g, '');
+    const registrationResult = await db.transaction(async (tx) => {
+      const [review] = await tx.insert(pharmacyRegistrationReviews).values({
+        email,
+        pharmacyName: name,
+        postalCode: normalizedPostalCode,
+        prefecture,
+        address,
+        phone,
+        fax,
+        licenseNumber,
+        permitLicenseNumber,
+        permitPharmacyName,
+        permitAddress,
+        verdict: screening.approved ? 'approved' : 'rejected',
+        screeningScore: screening.screeningScore,
+        screeningReasons: screening.reasons.join(' / '),
+        mismatchDetailsJson: screening.mismatches.length > 0
+          ? JSON.stringify(screening.mismatches)
+          : null,
+        registrationIp,
+      }).returning({ id: pharmacyRegistrationReviews.id });
+
+      if (!screening.approved) {
+        return {
+          approved: false as const,
+          reviewId: review.id,
+        };
+      }
+
+      const [createdPharmacy] = await tx.insert(pharmacies).values({
+        email,
+        passwordHash,
+        name,
+        postalCode: normalizedPostalCode,
+        address,
+        phone,
+        fax,
+        licenseNumber,
+        prefecture,
+        latitude: coords.lat,
+        longitude: coords.lng,
+      }).returning({ id: pharmacies.id });
+
+      await tx.update(pharmacyRegistrationReviews)
+        .set({
+          createdPharmacyId: createdPharmacy.id,
+          reviewedAt: new Date().toISOString(),
+        })
+        .where(eq(pharmacyRegistrationReviews.id, review.id));
+
+      return {
+        approved: true as const,
+        reviewId: review.id,
+        pharmacyId: createdPharmacy.id,
+      };
+    });
+
+    if (!registrationResult.approved) {
+      writeLog('register', {
+        detail: `失敗|phase=screening|reason=permit_mismatch|score=${screening.screeningScore}`,
+        ipAddress: registrationIp,
+      });
+      res.status(403).json({
+        error: '登録情報と薬局開設許可証情報が一致しないため、登録できません',
+        screening: {
+          score: screening.screeningScore,
+          mismatches: screening.mismatches,
+          reviewId: registrationResult.reviewId,
+        },
+      });
+      return;
+    }
+
+    const pharmacyId = registrationResult.pharmacyId;
 
     const token = generateToken({
       id: pharmacyId,
@@ -208,7 +293,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     });
     setCsrfCookie(res, generateCsrfToken());
 
-    writeLog('register', { pharmacyId, detail: `新規登録: ${name}`, ipAddress: getClientIp(req) });
+    writeLog('register', { pharmacyId, detail: `新規登録: ${name}`, ipAddress: registrationIp });
 
     res.status(201).json({
       id: pharmacyId,

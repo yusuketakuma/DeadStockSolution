@@ -20,10 +20,12 @@ const AdminPharmaciesPage = lazy(() => import('../pages/admin/AdminPharmaciesPag
 const AdminPharmacyEditPage = lazy(() => import('../pages/admin/AdminPharmacyEditPage'));
 const AdminExchangesPage = lazy(() => import('../pages/admin/AdminExchangesPage'));
 const AdminLogsPage = lazy(() => import('../pages/admin/AdminLogsPage'));
+const AdminSystemEventsPage = lazy(() => import('../pages/admin/AdminSystemEventsPage'));
 const AdminRiskPage = lazy(() => import('../pages/admin/AdminRiskPage'));
 const AdminMonthlyReportsPage = lazy(() => import('../pages/admin/AdminMonthlyReportsPage'));
 const AdminDrugMasterPage = lazy(() => import('../pages/admin/AdminDrugMasterPage'));
 const AdminOpenClawPage = lazy(() => import('../pages/admin/AdminOpenClawPage'));
+const AdminUploadJobsPage = lazy(() => import('../pages/admin/AdminUploadJobsPage'));
 
 type RouteComponent = ComponentType | LazyExoticComponent<ComponentType>;
 
@@ -72,7 +74,9 @@ export const ROUTE_META: RouteMeta[] = [
   { path: '/admin/pharmacies', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmaciesPage },
   { path: '/admin/pharmacies/:id/edit', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmacyEditPage },
   { path: '/admin/exchanges', access: 'protected', adminOnly: true, useLayout: true, component: AdminExchangesPage },
+  { path: '/admin/upload-jobs', access: 'protected', adminOnly: true, useLayout: true, component: AdminUploadJobsPage },
   { path: '/admin/logs', access: 'protected', adminOnly: true, useLayout: true, component: AdminLogsPage },
+  { path: '/admin/system-events', access: 'protected', adminOnly: true, useLayout: true, component: AdminSystemEventsPage },
   { path: '/admin/drug-master', access: 'protected', adminOnly: true, useLayout: true, component: AdminDrugMasterPage },
   { path: '/admin/openclaw', access: 'protected', adminOnly: true, useLayout: true, component: AdminOpenClawPage },
 ];

@@ -14,9 +14,11 @@ import {
 import { AuthRequest } from '../types';
 import { rowCount } from '../utils/db-utils';
 import { getObservabilitySnapshot } from '../services/observability-service';
+import { getMonitoringKpiSnapshot } from '../services/monitoring-kpi-service';
 import { handleAdminError } from './admin-utils';
 
 const router = Router();
+
 
 router.get('/stats', async (_req: AuthRequest, res: Response) => {
   try {
@@ -100,6 +102,18 @@ router.get('/alerts', async (_req: AuthRequest, res: Response) => {
     });
   } catch (err) {
     handleAdminError(err, 'Admin alerts error', 'アラート集計の取得に失敗しました', res);
+  }
+});
+
+
+router.get('/kpis', async (req: AuthRequest, res: Response) => {
+  try {
+    const minutesRaw = Number(req.query.minutes);
+    const minutes = Number.isFinite(minutesRaw) ? minutesRaw : 60;
+    const snapshot = await getMonitoringKpiSnapshot(minutes);
+    res.json(snapshot);
+  } catch (err) {
+    handleAdminError(err, 'Admin KPI snapshot error', 'KPI監視情報の取得に失敗しました', res);
   }
 });
 

@@ -1,5 +1,6 @@
 import { Col, Row } from 'react-bootstrap';
 import AppKpiCard from '../../../components/ui/AppKpiCard';
+import { formatDateTimeJa } from '../../../utils/formatters';
 
 interface Stats {
   totalItems: number;
@@ -30,7 +31,7 @@ export default function DrugMasterStatsCards({ stats }: DrugMasterStatsCardsProp
       </Col>
       <Col md={4} xl>
         <AppKpiCard
-          value={stats?.lastSyncAt ? new Date(stats.lastSyncAt).toLocaleString('ja-JP') : '未実行'}
+          value={stats?.lastSyncAt ? formatDateTimeJa(stats.lastSyncAt) : '未実行'}
           label="最終同期"
         />
       </Col>

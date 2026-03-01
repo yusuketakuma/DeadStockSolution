@@ -42,8 +42,11 @@ describe('RegisterPage', () => {
     // Check labels exist
     expect(screen.getByText(/メールアドレス/)).toBeInTheDocument();
     expect(screen.getByText((content, element) => element?.tagName === 'LABEL' && /パスワード/.test(content))).toBeInTheDocument();
-    expect(screen.getByText(/薬局名/)).toBeInTheDocument();
+    expect(screen.getByText((content, element) => element?.tagName === 'LABEL' && content.trim() === '薬局名 *')).toBeInTheDocument();
     expect(screen.getByText(/薬局開設許可番号/)).toBeInTheDocument();
+    expect(screen.getByText((content, element) => element?.tagName === 'LABEL' && content.trim() === '許可証記載の許可番号 *')).toBeInTheDocument();
+    expect(screen.getByText((content, element) => element?.tagName === 'LABEL' && content.trim() === '許可証記載の薬局名 *')).toBeInTheDocument();
+    expect(screen.getByText((content, element) => element?.tagName === 'LABEL' && content.trim() === '許可証記載の所在地 *')).toBeInTheDocument();
     expect(screen.getByText(/都道府県/)).toBeInTheDocument();
     expect(screen.getByText(/郵便番号/)).toBeInTheDocument();
     expect(screen.getByText((content, element) => element?.tagName === 'LABEL' && /住所/.test(content))).toBeInTheDocument();
@@ -137,6 +140,9 @@ describe('RegisterPage', () => {
     await user.type(getInputByLabel('パスワード'), 'securepass123');
     await user.type(getInputByLabel('薬局名'), '新規薬局');
     await user.type(getInputByLabel('薬局開設許可番号'), 'LIC-001');
+    await user.type(getInputByLabel('許可証記載の許可番号'), 'LIC-001');
+    await user.type(getInputByLabel('許可証記載の薬局名'), '新規薬局');
+    await user.type(getInputByLabel('許可証記載の所在地'), '東京都千代田区1-1');
 
     // Select prefecture
     await user.selectOptions(getInputByLabel('都道府県') as HTMLSelectElement, '東京都');
@@ -161,6 +167,8 @@ describe('RegisterPage', () => {
       expect(body.email).toBe('new@pharmacy.com');
       expect(body.name).toBe('新規薬局');
       expect(body.prefecture).toBe('東京都');
+      expect(body.permitLicenseNumber).toBe('LIC-001');
+      expect(body.permitPharmacyName).toBe('新規薬局');
     });
   });
 
@@ -202,6 +210,9 @@ describe('RegisterPage', () => {
     await user.type(getInputByLabel('パスワード'), 'securepass123');
     await user.type(getInputByLabel('薬局名'), '新規薬局');
     await user.type(getInputByLabel('薬局開設許可番号'), 'LIC-001');
+    await user.type(getInputByLabel('許可証記載の許可番号'), 'LIC-001');
+    await user.type(getInputByLabel('許可証記載の薬局名'), '新規薬局');
+    await user.type(getInputByLabel('許可証記載の所在地'), '東京都千代田区1-1');
     await user.selectOptions(getInputByLabel('都道府県') as HTMLSelectElement, '東京都');
     await user.type(getInputByLabel('郵便番号'), '1000001');
     await user.type(getInputByLabel('住所'), '東京都千代田区1-1');

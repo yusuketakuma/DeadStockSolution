@@ -45,6 +45,9 @@ const registrationSchema = z.object({
   phone: phoneSchema,
   fax: faxSchema,
   licenseNumber: z.string().min(1, '薬局開設許可番号を入力してください').max(50, '薬局開設許可番号が長すぎます'),
+  permitLicenseNumber: z.string().min(1, '許可証記載の許可番号を入力してください').max(50, '許可証記載の許可番号が長すぎます'),
+  permitPharmacyName: z.string().min(1, '許可証記載の薬局名を入力してください').max(100, '許可証記載の薬局名が長すぎます'),
+  permitAddress: z.string().min(1, '許可証記載の所在地を入力してください').max(255, '許可証記載の所在地が長すぎます'),
   prefecture: z.string().min(1, '都道府県を選択してください').refine(
     (val) => isValidPrefecture(val),
     '有効な都道府県を選択してください'

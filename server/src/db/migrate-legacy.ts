@@ -18,6 +18,7 @@ import {
   adminMessages,
   adminMessageReads,
 } from './schema';
+import { applyPerformanceScaleIndexes } from './performance-scale-indexes';
 
 type LegacyRow = Record<string, unknown>;
 
@@ -196,6 +197,7 @@ async function clearTargetData(): Promise<void> {
 async function main() {
   logger.info('Running PostgreSQL schema migration...');
   await migrate(db, { migrationsFolder: './drizzle' });
+  await applyPerformanceScaleIndexes();
 
   const replaceMode = process.env.LEGACY_MIGRATION_MODE === 'replace';
   if (replaceMode) {

@@ -2,18 +2,14 @@ import { Collapse, OverlayTrigger, Popover } from 'react-bootstrap';
 import AppButton from '../ui/AppButton';
 import InlineLoader from '../ui/InlineLoader';
 import type { GitHubUpdatesResponse } from '../Header';
+import { formatDateJa, formatDateTimeJa } from '../../utils/formatters';
 
 function formatUpdateDate(value: string | null): string {
-  if (!value) return '日付不明';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '日付不明';
-  return date.toLocaleDateString('ja-JP');
+  return formatDateJa(value, '日付不明');
 }
 
 function formatUpdateDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('ja-JP');
+  return formatDateTimeJa(value, value);
 }
 
 function summarizeUpdateBody(body: string): string {

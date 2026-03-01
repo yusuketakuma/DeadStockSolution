@@ -1,6 +1,7 @@
 import express, { Request } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/auth';
@@ -20,6 +21,9 @@ import updatesRoutes from './routes/updates';
 import internalMatchingRefreshRoutes from './routes/internal-matching-refresh';
 import internalMonthlyReportsRoutes from './routes/internal-monthly-reports';
 import internalUploadJobsRoutes from './routes/internal-upload-jobs';
+import internalMonitoringRoutes from './routes/internal-monitoring';
+import internalPredictiveAlertsRoutes from './routes/internal-predictive-alerts';
+import internalVercelDeployEventsRoutes from './routes/internal-vercel-deploy-events';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { csrfProtection } from './middleware/csrf';
@@ -123,6 +127,9 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
 }));
+app.use(compression({
+  threshold: 1024,
+}));
 app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buf) => {
@@ -175,6 +182,9 @@ app.use('/api/updates', updatesRoutes);
 app.use('/api/internal/matching-refresh', internalMatchingRefreshRoutes);
 app.use('/api/internal/monthly-reports', internalMonthlyReportsRoutes);
 app.use('/api/internal/upload-jobs', internalUploadJobsRoutes);
+app.use('/api/internal/monitoring', internalMonitoringRoutes);
+app.use('/api/internal/predictive-alerts', internalPredictiveAlertsRoutes);
+app.use('/api/internal/vercel', internalVercelDeployEventsRoutes);
 
 // Health check with DB connectivity
 app.get('/api/health', async (_req, res) => {

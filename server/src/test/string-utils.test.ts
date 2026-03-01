@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeString, normalizeDrugName, toHalfWidth, parseNumber } from '../utils/string-utils';
+import { normalizeString, parseNumber } from '../utils/string-utils';
 
 describe('normalizeString', () => {
   it('converts full-width to half-width', () => {
@@ -16,33 +16,6 @@ describe('normalizeString', () => {
 
   it('converts to lowercase', () => {
     expect(normalizeString('UPPER')).toBe('upper');
-  });
-});
-
-describe('normalizeDrugName', () => {
-  it('normalizes NFKC', () => {
-    expect(normalizeDrugName('テスト薬')).toBe('テスト薬');
-  });
-
-  it('removes whitespace', () => {
-    expect(normalizeDrugName('テスト 薬')).toBe('テスト薬');
-  });
-});
-
-describe('toHalfWidth', () => {
-  it('converts full-width alphanumeric to half-width', () => {
-    expect(toHalfWidth('Ａ')).toBe('A');
-    expect(toHalfWidth('ｚ')).toBe('z');
-    expect(toHalfWidth('０')).toBe('0');
-    expect(toHalfWidth('９')).toBe('9');
-  });
-
-  it('preserves half-width characters', () => {
-    expect(toHalfWidth('abc123')).toBe('abc123');
-  });
-
-  it('preserves non-alphanumeric characters', () => {
-    expect(toHalfWidth('あいう')).toBe('あいう');
   });
 });
 

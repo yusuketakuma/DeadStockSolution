@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-02-28T05:44:27.304Z",
+  "updatedAt": "2026-03-01T01:55:08.778Z",
   "skills": {
     "parallel-workflows": {
       "count": 1,
@@ -37,8 +37,8 @@
       "lastUsed": "2026-02-25T04:21:25.400Z"
     },
     "breezing": {
-      "count": 4,
-      "lastUsed": "2026-02-26T11:15:14.972Z"
+      "count": 5,
+      "lastUsed": "2026-03-01T01:55:08.778Z"
     },
     "plan-with-agent": {
       "count": 1,
@@ -57,8 +57,8 @@
       "lastUsed": "2026-02-26T13:56:03.848Z"
     },
     "simplify": {
-      "count": 1,
-      "lastUsed": "2026-02-28T05:44:27.303Z"
+      "count": 3,
+      "lastUsed": "2026-03-01T00:49:11.881Z"
     }
   },
   "agents": {
@@ -81,9 +81,9 @@
   },
   "hooks": {
     "session-init": {
-      "triggered": 26,
+      "triggered": 28,
       "blocked": 0,
-      "lastTriggered": "2026-02-28T05:44:16.843Z"
+      "lastTriggered": "2026-03-01T01:54:56.546Z"
     }
   }
 }

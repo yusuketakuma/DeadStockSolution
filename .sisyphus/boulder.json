@@ -1,10 +1,10 @@
 {
-  "active_plan": "/Users/yusuke/DeadStockSolution/.sisyphus/plans/refactoring.md",
-  "started_at": "2026-02-27T22:29:28.005Z",
+  "active_plan": "/Users/yusuke/DeadStockSolution/.sisyphus/plans/timeline-feature.md",
+  "started_at": "2026-02-28T11:40:52.969Z",
   "session_ids": [
-    "ses_35fd1ce96ffeUDlEcHQQ2Y71x3"
+    "ses_35c0fb903ffecmnRWFCZrc2Exc"
   ],
-  "plan_name": "refactoring",
-  "worktree_path": "/Users/yusuke/DeadStockSolution-refactor",
+  "plan_name": "timeline-feature",
+  "worktree_path": "/Users/yusuke/DeadStockSolution-timeline",
   "agent": "atlas"
 }

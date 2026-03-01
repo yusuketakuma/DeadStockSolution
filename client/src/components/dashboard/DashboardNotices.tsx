@@ -4,6 +4,7 @@ import AppButton from '../ui/AppButton';
 import AppCard from '../ui/AppCard';
 import InlineLoader from '../ui/InlineLoader';
 import { Notice, NotificationsResponse, noticeTypeLabel, noticeVariant } from './types';
+import { formatDateTimeJa } from '../../utils/formatters';
 
 interface Props {
   notifications: NotificationsResponse | null;
@@ -76,7 +77,7 @@ export default function DashboardNotices({
                   <div className="small text-muted">{notice.body}</div>
                   {notice.createdAt && (
                     <div className="small text-muted mt-1">
-                      {new Date(notice.createdAt).toLocaleString('ja-JP')}
+                      {formatDateTimeJa(notice.createdAt)}
                     </div>
                   )}
                 </div>

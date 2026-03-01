@@ -35,10 +35,12 @@ const ADMIN_ITEMS = [
   { to: '/admin/risk', label: '期限リスク分析' },
   { to: '/admin/reports', label: '月次レポート' },
   { to: '/admin/exchanges', label: '交換履歴' },
+  { to: '/admin/upload-jobs', label: '取込ジョブ管理' },
   { to: '/admin/pharmacies', label: '薬局管理' },
   { to: '/admin/openclaw', label: 'OpenClaw連携' },
   { to: '/admin/drug-master', label: '医薬品マスター' },
   { to: '/admin/logs', label: '操作ログ' },
+  { to: '/admin/system-events', label: 'システムイベント' },
 ];
 
 function SidebarLink({
@@ -69,6 +71,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
+    onNavigate?.();
     await logout();
     navigate('/login');
   };

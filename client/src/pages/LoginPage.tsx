@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import AuthPageLayout from '../components/ui/AuthPageLayout';
-import StatusAlert from '../components/ui/StatusAlert';
+import AppAlert from '../components/ui/AppAlert';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppField from '../components/ui/AppField';
 import AppModalShell from '../components/ui/AppModalShell';
@@ -146,7 +146,7 @@ export default function LoginPage() {
           <h2 className="h5 text-center mt-3 mb-3">
             {mode === 'admin' ? '管理者ログイン' : 'ログイン'}
           </h2>
-          {error && <StatusAlert variant="danger" message={error} />}
+          {error && <AppAlert variant="danger" className="dl-status-alert">{error}</AppAlert>}
 
           <form onSubmit={handleSubmit}>
             <AppField
@@ -225,7 +225,7 @@ export default function LoginPage() {
             size="lg"
           >
             {testPharmacyLoading && <p className="text-center mb-0 py-3">テスト薬局情報を読み込み中です...</p>}
-            {testPharmacyError && <StatusAlert variant="danger" message={testPharmacyError} />}
+            {testPharmacyError && <AppAlert variant="danger" className="dl-status-alert">{testPharmacyError}</AppAlert>}
             {!testPharmacyLoading && !testPharmacyError && testPharmacies.length === 0 && (
               <p className="text-muted mb-0">表示できるテスト薬局が見つかりませんでした。</p>
             )}

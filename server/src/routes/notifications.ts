@@ -7,7 +7,12 @@ import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications
 import { parsePositiveInt } from '../utils/request-utils';
 import { sanitizeInternalPath } from '../utils/path-utils';
 import { logger } from '../services/logger';
-import { getDashboardUnreadCount, markAsRead, markAllDashboardAsRead } from '../services/notification-service';
+import {
+  getDashboardUnreadCount,
+  invalidateDashboardUnreadCache,
+  markAsRead,
+  markAllDashboardAsRead,
+} from '../services/notification-service';
 
 type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update' | 'new_comment';
 
@@ -25,10 +30,12 @@ interface NoticeItem {
 }
 
 const PROPOSAL_RESPONSE_DEADLINE_HOURS = 72;
-const PROPOSAL_NOTICE_LIMIT = 50;
+const NOTICE_RESULT_LIMIT = 20;
+const SOURCE_NOTICE_FETCH_LIMIT = 30;
+const PROPOSAL_NOTICE_LIMIT = SOURCE_NOTICE_FETCH_LIMIT;
 const PROPOSAL_NOTICE_STATUSES = ['proposed', 'accepted_a', 'accepted_b', 'confirmed'] as const;
 const PROPOSAL_EVENT_NOTIFICATION_TYPES = new Set(['proposal_received', 'proposal_status_changed']);
-const MATCH_NOTICE_LIMIT = 50;
+const MATCH_NOTICE_LIMIT = SOURCE_NOTICE_FETCH_LIMIT;
 
 interface MatchDiffJson {
   addedPharmacyIds?: unknown;
@@ -207,7 +214,7 @@ function mergeDedupSortByTimestamp<T extends { id: number }>(
 
 function resolveNotificationType(type: string): NoticeType | null {
   if (type === 'new_comment') return 'new_comment';
-  if (type === 'proposal_received' || type === 'proposal_status_changed') return 'status_update';
+  if (type === 'proposal_received' || type === 'proposal_status_changed' || type === 'request_update') return 'status_update';
   return null;
 }
 
@@ -216,6 +223,7 @@ function resolveNotificationActionPath(referenceType: string | null, referenceId
   if ((referenceType === 'proposal' || referenceType === 'comment') && referenceId) {
     return `/proposals/${referenceId}`;
   }
+  if (referenceType === 'request') return '/';
   return '/';
 }
 
@@ -292,7 +300,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
             .from(adminMessages)
             .where(eq(adminMessages.targetType, 'all'))
             .orderBy(desc(adminMessages.createdAt), desc(adminMessages.id))
-            .limit(50),
+            .limit(SOURCE_NOTICE_FETCH_LIMIT),
           db.select(messageSelect)
             .from(adminMessages)
             .where(and(
@@ -300,11 +308,11 @@ router.get('/', async (req: AuthRequest, res: Response) => {
               eq(adminMessages.targetPharmacyId, pharmacyId),
             ))
             .orderBy(desc(adminMessages.createdAt), desc(adminMessages.id))
-            .limit(50),
+            .limit(SOURCE_NOTICE_FETCH_LIMIT),
         ]);
 
         return mergeDedupSortByTimestamp(targetAllMessages, targetPharmacyMessages, (row) => row.createdAt)
-          .slice(0, 50);
+          .slice(0, SOURCE_NOTICE_FETCH_LIMIT);
       })(),
       (async () => {
         try {
@@ -338,7 +346,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       .from(notificationsTable)
       .where(eq(notificationsTable.pharmacyId, pharmacyId))
       .orderBy(desc(notificationsTable.createdAt), desc(notificationsTable.id))
-      .limit(50);
+      .limit(SOURCE_NOTICE_FETCH_LIMIT);
 
     const latestProposalNotificationById = new Map<number, {
       id: number;
@@ -441,7 +449,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     ).length;
 
     res.json({
-      notices: notices.slice(0, 20),
+      notices: notices.slice(0, NOTICE_RESULT_LIMIT),
       summary: {
         unreadMessages,
         actionableRequests,
@@ -492,6 +500,7 @@ router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
     }).onConflictDoNothing({
       target: [adminMessageReads.messageId, adminMessageReads.pharmacyId],
     });
+    invalidateDashboardUnreadCache(pharmacyId);
 
     res.json({ message: '既読にしました' });
   } catch (err) {
@@ -531,6 +540,7 @@ router.post('/matches/:id/read', async (req: AuthRequest, res: Response) => {
     await db.update(matchNotifications)
       .set({ isRead: true })
       .where(eq(matchNotifications.id, id));
+    invalidateDashboardUnreadCache(pharmacyId);
 
     res.json({ message: '既読にしました' });
   } catch (err) {

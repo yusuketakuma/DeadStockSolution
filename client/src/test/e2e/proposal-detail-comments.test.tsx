@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import ProposalDetailPage from '../../pages/ProposalDetailPage';
+import type { ProposalTimelineEvent } from '../../utils/proposal-timeline';
 import { mockUser, renderWithProviders } from '../helpers';
 
 interface ProposalCommentMock {
@@ -14,6 +15,13 @@ interface ProposalCommentMock {
   isDeleted: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+type ProposalTimelineEventMock = ProposalTimelineEvent;
+
+interface ProposalDetailFetchOptions {
+  status?: string;
+  timeline?: ProposalTimelineEventMock[];
 }
 
 function setMatchMedia(matches: boolean) {
@@ -33,13 +41,16 @@ function setMatchMedia(matches: boolean) {
   });
 }
 
-function createProposalDetailFetch(commentsState: ProposalCommentMock[]) {
+function createProposalDetailFetch(
+  commentsState: ProposalCommentMock[],
+  options: ProposalDetailFetchOptions = {},
+) {
   const detail = {
     proposal: {
       id: 1,
       pharmacyAId: 1,
       pharmacyBId: 2,
-      status: 'confirmed',
+      status: options.status ?? 'confirmed',
       totalValueA: 1000,
       totalValueB: 1000,
       valueDifference: 0,
@@ -62,6 +73,7 @@ function createProposalDetailFetch(commentsState: ProposalCommentMock[]) {
       address: 'B',
       prefecture: '神奈川県',
     },
+    timeline: options.timeline,
   };
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -217,5 +229,103 @@ describe('ProposalDetailPage comment actions', () => {
     });
     expect(screen.getByText('（削除済み）')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ProposalDetailPage timeline', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    setMatchMedia(false);
+  });
+
+  it('renders timeline events and filters decision actions', async () => {
+    const commentsState: ProposalCommentMock[] = [];
+    createProposalDetailFetch(commentsState, {
+      status: 'completed',
+      timeline: [
+        {
+          action: 'proposal_created',
+          label: '仮マッチング作成',
+          at: '2026-03-01T00:00:00.000Z',
+          actorPharmacyId: 1,
+          actorName: 'テスト薬局',
+          statusFrom: null,
+          statusTo: 'proposed',
+        },
+        {
+          action: 'proposal_accept',
+          label: '承認',
+          at: '2026-03-01T00:10:00.000Z',
+          actorPharmacyId: 2,
+          actorName: '相手薬局',
+          statusFrom: 'proposed',
+          statusTo: 'confirmed',
+        },
+        {
+          action: 'proposal_complete',
+          label: '交換完了',
+          at: '2026-03-01T01:00:00.000Z',
+          actorPharmacyId: 1,
+          actorName: 'テスト薬局',
+          statusFrom: 'confirmed',
+          statusTo: 'completed',
+        },
+      ],
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/proposals/:id" element={<ProposalDetailPage />} />
+      </Routes>,
+      { route: '/proposals/1' },
+    );
+
+    await waitFor(() => {
+      expect(document.getElementById('proposal-timeline')).not.toBeNull();
+    });
+    const timelineSection = document.getElementById('proposal-timeline');
+    if (!timelineSection) throw new Error('timeline section not found');
+
+    await waitFor(() => {
+      expect(within(timelineSection).getByText('仮マッチング作成')).toBeInTheDocument();
+    });
+
+    await userEvent.selectOptions(within(timelineSection).getByLabelText('進行履歴フィルタ'), 'decision');
+
+    expect(within(timelineSection).queryByText('仮マッチング作成')).not.toBeInTheDocument();
+    expect(within(timelineSection).getByText('承認')).toBeInTheDocument();
+    expect(within(timelineSection).getByText('交換完了')).toBeInTheDocument();
+  });
+
+  it('scrolls timeline section into view when opened from timeline hash link', async () => {
+    const commentsState: ProposalCommentMock[] = [];
+    const scrollIntoViewMock = vi.fn();
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
+
+    createProposalDetailFetch(commentsState, {
+      timeline: [{
+        action: 'proposal_created',
+        label: '仮マッチング作成',
+        at: '2026-03-01T00:00:00.000Z',
+        actorPharmacyId: 1,
+        actorName: 'テスト薬局',
+        statusFrom: null,
+        statusTo: 'proposed',
+      }],
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/proposals/:id" element={<ProposalDetailPage />} />
+      </Routes>,
+      { route: '/proposals/1#proposal-timeline' },
+    );
+
+    await waitFor(() => {
+      expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+    });
   });
 });

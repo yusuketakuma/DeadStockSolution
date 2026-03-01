@@ -11,6 +11,9 @@ describe('validateRegistration', () => {
     phone: '03-1234-5678',
     fax: '03-1234-5679',
     licenseNumber: 'A12345',
+    permitLicenseNumber: 'A12345',
+    permitPharmacyName: 'テスト薬局',
+    permitAddress: '東京都千代田区1-1-1',
     prefecture: '東京都',
   };
 

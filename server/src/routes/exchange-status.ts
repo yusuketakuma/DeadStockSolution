@@ -1,8 +1,8 @@
 import { Router, Response } from 'express';
 import { AuthRequest } from '../types';
 import { acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
-import { parsePositiveInt } from '../utils/request-utils';
 import { writeLog, getClientIp } from '../services/log-service';
+import { parseExchangeIdOrBadRequest } from './exchange-utils';
 
 const router = Router();
 
@@ -20,11 +20,8 @@ function sanitizeProposalActionError(err: unknown): { status: number; message: s
 // Accept proposal
 router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parsePositiveInt(req.params.id);
-    if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const id = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!id) return;
     const newStatus = await acceptProposal(id, req.user!.id);
     const msg = newStatus === 'confirmed' ? '仮マッチングが確定しました' : '仮マッチングを承認しました（相手薬局の承認待ち）';
     void writeLog('proposal_accept', {
@@ -42,11 +39,8 @@ router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => 
 // Reject proposal
 router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parsePositiveInt(req.params.id);
-    if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const id = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!id) return;
     await rejectProposal(id, req.user!.id);
     void writeLog('proposal_reject', {
       pharmacyId: req.user!.id,
@@ -63,11 +57,8 @@ router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => 
 // Complete exchange
 router.post('/proposals/:id/complete', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parsePositiveInt(req.params.id);
-    if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const id = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!id) return;
     await completeProposal(id, req.user!.id);
     void writeLog('proposal_complete', {
       pharmacyId: req.user!.id,

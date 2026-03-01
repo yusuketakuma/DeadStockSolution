@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
 import LoadingButton from '../../components/ui/LoadingButton';
@@ -10,6 +10,8 @@ import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import InlineLoader from '../../components/ui/InlineLoader';
 import Pagination from '../../components/Pagination';
 import { api, buildApiUrl } from '../../api/client';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
+import { formatDateTimeJa } from '../../utils/formatters';
 
 interface MonthlyReportListItem {
   id: number;
@@ -35,49 +37,43 @@ function defaultTargetMonth(): { year: number; month: number } {
 
 export default function AdminMonthlyReportsPage() {
   const defaultTarget = useMemo(() => defaultTargetMonth(), []);
-  const [rows, setRows] = useState<MonthlyReportListItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [year, setYear] = useState(String(defaultTarget.year));
   const [month, setMonth] = useState(String(defaultTarget.month));
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-
-  const fetchData = async (targetPage: number) => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await api.get<MonthlyReportsResponse>(`/admin/reports/monthly?page=${targetPage}`);
-      setRows(data.data);
-      setTotalPages(data.pagination.totalPages);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '月次レポート一覧の取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void fetchData(page);
-  }, [page]);
+  const [actionError, setActionError] = useState('');
+  const {
+    items: rows,
+    page,
+    setPage,
+    totalPages,
+    loading,
+    error,
+    fetchPage,
+    retry,
+  } = usePaginatedList<MonthlyReportListItem, MonthlyReportsResponse>((targetPage, signal) =>
+    api.get<MonthlyReportsResponse>(`/admin/reports/monthly?page=${targetPage}`, { signal }),
+    { errorMessage: '月次レポート一覧の取得に失敗しました' },
+  );
 
   const handleGenerate = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setMessage('');
-    setError('');
+    setActionError('');
     try {
       const result = await api.post<{ message: string }>('/admin/reports/monthly/generate', {
         year: Number(year),
         month: Number(month),
       });
       setMessage(result.message);
-      await fetchData(1);
-      setPage(1);
+      if (page !== 1) {
+        setPage(1);
+      } else {
+        await fetchPage(1);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '月次レポート生成に失敗しました');
+      setActionError(err instanceof Error ? err.message : '月次レポート生成に失敗しました');
     } finally {
       setSubmitting(false);
     }
@@ -87,10 +83,11 @@ export default function AdminMonthlyReportsPage() {
     <div>
       <h4 className="page-title mb-3">月次レポート</h4>
       {message && <AppAlert variant="success">{message}</AppAlert>}
+      {actionError && <AppAlert variant="danger">{actionError}</AppAlert>}
       {error && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchData(page)}>
+          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
             再試行
           </AppButton>
         </AppAlert>
@@ -154,7 +151,7 @@ export default function AdminMonthlyReportsPage() {
                       <td>{row.id}</td>
                       <td>{row.year}/{String(row.month).padStart(2, '0')}</td>
                       <td>{row.status === 'success' ? '成功' : '失敗'}</td>
-                      <td>{row.generatedAt ? new Date(row.generatedAt).toLocaleString('ja-JP') : '-'}</td>
+                      <td>{formatDateTimeJa(row.generatedAt)}</td>
                       <td className="d-flex gap-2">
                         <a className="btn btn-sm btn-outline-primary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=json`)}>JSON</a>
                         <a className="btn btn-sm btn-outline-secondary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=csv`)}>CSV</a>
@@ -174,7 +171,7 @@ export default function AdminMonthlyReportsPage() {
                   subtitle={`ID: ${row.id}`}
                   fields={[
                     { label: '状態', value: row.status === 'success' ? '成功' : '失敗' },
-                    { label: '生成日時', value: row.generatedAt ? new Date(row.generatedAt).toLocaleString('ja-JP') : '-' },
+                    { label: '生成日時', value: formatDateTimeJa(row.generatedAt) },
                   ]}
                   actions={(
                     <div className="d-flex gap-2">

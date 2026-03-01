@@ -227,6 +227,48 @@ describe('admin routes', () => {
     });
   });
 
+  it('returns paginated system events with summary', async () => {
+    const app = createApp();
+    const events = [
+      {
+        id: 201,
+        source: 'runtime_error',
+        level: 'error',
+        eventType: 'http_unhandled_error',
+        message: 'GET /api/upload -> 500',
+        detailJson: '{"status":500}',
+        occurredAt: '2026-02-28T10:00:00.000Z',
+        createdAt: '2026-02-28T10:00:00.000Z',
+      },
+    ];
+
+    mocks.db.select
+      .mockImplementationOnce(() => createLogRowsQuery(events))
+      .mockImplementationOnce(() => createWhereQuery([{ count: 1 }]))
+      .mockImplementationOnce(() => createGroupByQuery([{ source: 'runtime_error', count: 1 }]))
+      .mockImplementationOnce(() => createGroupByQuery([{ level: 'error', count: 1 }]));
+
+    const response = await request(app).get('/api/admin/system-events');
+
+    expect(response.status).toBe(200);
+    expect(response.body.pagination).toEqual(expect.objectContaining({
+      page: 1,
+      limit: 50,
+      total: 1,
+      totalPages: 1,
+    }));
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.summary).toEqual({
+      bySource: { runtime_error: 1 },
+      byLevel: { error: 1 },
+    });
+    expect(response.body.filters).toEqual({
+      source: null,
+      level: null,
+      keyword: null,
+    });
+  });
+
   it('re-handoffs request to OpenClaw and updates request when accepted', async () => {
     const app = createApp();
     const requestRow = [{

@@ -10,6 +10,7 @@ import LoadingButton from '../../components/ui/LoadingButton';
 import AppControl from '../../components/ui/AppControl';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import { formatDateTimeJa } from '../../utils/formatters';
 
 interface UserRequestItem {
   id: number;
@@ -198,7 +199,7 @@ export default function AdminOpenClawPage() {
                               {item.openclawThreadId && <div className="text-muted mt-1">Thread: {item.openclawThreadId}</div>}
                             </td>
                             <td><Badge bg={status.bg}>{status.label}</Badge></td>
-                            <td>{item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : '-'}</td>
+                            <td>{formatDateTimeJa(item.createdAt)}</td>
                             <td>
                               {item.openclawStatus === 'pending_handoff' ? (
                                 <LoadingButton
@@ -236,7 +237,7 @@ export default function AdminOpenClawPage() {
                           { label: '要望内容', value: item.requestText },
                           { label: '要約', value: item.openclawSummary || '-' },
                           { label: 'Thread', value: item.openclawThreadId || '-' },
-                          { label: '受付日時', value: item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : '-' },
+                          { label: '受付日時', value: formatDateTimeJa(item.createdAt) },
                         ]}
                         actions={item.openclawStatus === 'pending_handoff' ? (
                           <LoadingButton

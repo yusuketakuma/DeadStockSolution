@@ -9,6 +9,8 @@ import { api } from '../api/client';
 import Pagination from '../components/Pagination';
 import InlineLoader from '../components/ui/InlineLoader';
 import { usePaginatedList } from '../hooks/usePaginatedList';
+import { Link } from 'react-router-dom';
+import { formatDateJa, formatYen } from '../utils/formatters';
 
 interface HistoryItem {
   id: number;
@@ -26,8 +28,11 @@ interface HistoryResponse {
   pagination: { page: number; totalPages: number; total: number };
 }
 
-function formatYen(value: number | null | undefined) {
-  return value === null || value === undefined ? '-' : `${value.toLocaleString()}円`;
+function timelineDetailTo(proposalId: number) {
+  return {
+    pathname: `/proposals/${proposalId}`,
+    hash: '#proposal-timeline',
+  };
 }
 
 export default function ExchangeHistoryPage() {
@@ -76,6 +81,7 @@ export default function ExchangeHistoryPage() {
                     <th>相手薬局</th>
                     <th>合計薬価</th>
                     <th>完了日</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -88,7 +94,12 @@ export default function ExchangeHistoryPage() {
                         <td>{item.id}</td>
                         <td>{otherName}</td>
                         <td>{formatYen(item.totalValue)}</td>
-                        <td>{item.completedAt ? new Date(item.completedAt).toLocaleDateString('ja-JP') : ''}</td>
+                        <td>{formatDateJa(item.completedAt, '')}</td>
+                        <td>
+                          <Link to={timelineDetailTo(item.proposalId)} className="btn btn-sm btn-outline-primary">
+                            タイムライン
+                          </Link>
+                        </td>
                       </tr>
                     );
                   })}
@@ -110,8 +121,9 @@ export default function ExchangeHistoryPage() {
                     fields={[
                       { label: '提案ID', value: item.proposalId },
                       { label: '合計薬価', value: formatYen(item.totalValue) },
-                      { label: '完了日', value: item.completedAt ? new Date(item.completedAt).toLocaleDateString('ja-JP') : '-' },
+                      { label: '完了日', value: formatDateJa(item.completedAt) },
                     ]}
+                    actions={<Link to={timelineDetailTo(item.proposalId)} className="btn btn-sm btn-outline-primary w-100">タイムライン</Link>}
                   />
                 );
               })}

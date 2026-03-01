@@ -37,6 +37,45 @@ function toBoolean(value: unknown): boolean {
   return false;
 }
 
+const DASHBOARD_UNREAD_CACHE_TTL_MS = 15_000;
+const DASHBOARD_UNREAD_CACHE_MAX_SIZE = 500;
+const DASHBOARD_UNREAD_CACHE_ENABLED = process.env.NODE_ENV !== 'test';
+const dashboardUnreadCache = new Map<number, { value: number; expiresAt: number }>();
+
+function getCachedDashboardUnreadCount(pharmacyId: number): number | null {
+  if (!DASHBOARD_UNREAD_CACHE_ENABLED) return null;
+  const cached = dashboardUnreadCache.get(pharmacyId);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    dashboardUnreadCache.delete(pharmacyId);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedDashboardUnreadCount(pharmacyId: number, value: number): void {
+  if (!DASHBOARD_UNREAD_CACHE_ENABLED) return;
+  const now = Date.now();
+  if (dashboardUnreadCache.size >= DASHBOARD_UNREAD_CACHE_MAX_SIZE && !dashboardUnreadCache.has(pharmacyId)) {
+    for (const [key, entry] of dashboardUnreadCache) {
+      if (entry.expiresAt <= now) dashboardUnreadCache.delete(key);
+    }
+    if (dashboardUnreadCache.size >= DASHBOARD_UNREAD_CACHE_MAX_SIZE) {
+      const oldest = dashboardUnreadCache.keys().next().value;
+      if (oldest !== undefined) dashboardUnreadCache.delete(oldest);
+    }
+  }
+  dashboardUnreadCache.set(pharmacyId, {
+    value,
+    expiresAt: now + DASHBOARD_UNREAD_CACHE_TTL_MS,
+  });
+}
+
+export function invalidateDashboardUnreadCache(pharmacyId: number): void {
+  if (!DASHBOARD_UNREAD_CACHE_ENABLED) return;
+  dashboardUnreadCache.delete(pharmacyId);
+}
+
 async function markNotificationsAsRead(executor: NotificationSqlExecutor, pharmacyId: number): Promise<number> {
   const updatedRows = await executor.execute<{ count: number }>(sql`
     WITH updated AS (
@@ -62,6 +101,7 @@ export async function createNotification(
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
     }).returning({ id: notifications.id });
+    invalidateDashboardUnreadCache(input.pharmacyId);
     return result ?? null;
   } catch (err) {
     logger.error('Failed to create notification', { error: (err as Error).message });
@@ -80,6 +120,11 @@ export async function getUnreadCount(pharmacyId: number): Promise<number> {
 }
 
 export async function getDashboardUnreadCount(pharmacyId: number): Promise<number> {
+  const cached = getCachedDashboardUnreadCount(pharmacyId);
+  if (cached !== null) {
+    return cached;
+  }
+
   const matchUnreadPromise = db.select({ count: rowCount })
     .from(matchNotifications)
     .where(and(
@@ -117,7 +162,9 @@ export async function getDashboardUnreadCount(pharmacyId: number): Promise<numbe
     matchUnreadPromise,
   ]);
 
-  return notificationsUnread + (adminUnreadRow?.count ?? 0) + (matchUnreadRow?.count ?? 0);
+  const totalUnread = notificationsUnread + (adminUnreadRow?.count ?? 0) + (matchUnreadRow?.count ?? 0);
+  setCachedDashboardUnreadCount(pharmacyId, totalUnread);
+  return totalUnread;
 }
 
 export async function getNotifications(
@@ -152,15 +199,22 @@ export async function markAsRead(
       eq(notifications.pharmacyId, pharmacyId),
     ))
     .returning({ id: notifications.id });
+  if (result.length > 0) {
+    invalidateDashboardUnreadCache(pharmacyId);
+  }
   return result.length > 0;
 }
 
 export async function markAllAsRead(pharmacyId: number): Promise<number> {
-  return markNotificationsAsRead(db, pharmacyId);
+  const count = await markNotificationsAsRead(db, pharmacyId);
+  if (count > 0) {
+    invalidateDashboardUnreadCache(pharmacyId);
+  }
+  return count;
 }
 
 export async function markAllDashboardAsRead(pharmacyId: number): Promise<number> {
-  return db.transaction(async (tx) => {
+  const total = await db.transaction(async (tx) => {
     const notificationCount = await markNotificationsAsRead(tx, pharmacyId);
 
     const matchTableExistsRows = await tx.execute<{ exists: boolean | string | number }>(sql`
@@ -203,4 +257,8 @@ export async function markAllDashboardAsRead(pharmacyId: number): Promise<number
 
     return notificationCount + matchUpdateCount + adminMessageReadCount;
   });
+  if (total > 0) {
+    invalidateDashboardUnreadCache(pharmacyId);
+  }
+  return total;
 }

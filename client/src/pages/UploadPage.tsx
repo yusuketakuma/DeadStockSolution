@@ -1,63 +1,77 @@
-import { useState, useRef, useCallback, FormEvent, useEffect } from 'react';
+import { useState, useRef, FormEvent, useEffect } from 'react';
 import AppAlert from '../components/ui/AppAlert';
 import { Form, ProgressBar } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
-import { api, ApiError, isApiErrorCode } from '../api/client';
-import DraftRestoreAlert from '../components/DraftRestoreAlert';
-import { useAutoSave } from '../hooks/useAutoSave';
+import { api, ApiError, buildApiUrl, isApiErrorCode } from '../api/client';
 import AppSelect from '../components/ui/AppSelect';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppControl from '../components/ui/AppControl';
 import AppCard from '../components/ui/AppCard';
-import { useAuth } from '../contexts/AuthContext';
+import AppButton from '../components/ui/AppButton';
 import { useAsyncState } from '../hooks/useAsyncState';
+import {
+  type DiffSummary,
+  type PartialSummary,
+  type UploadConfirmJobResult,
+  type UploadConfirmJobStatusResponse,
+  type UploadJobStatus,
+  type UploadType,
+  resolvePartialSummaryEntries,
+  resolveUploadTypeLabel,
+} from './upload/upload-job-utils';
 
 interface PreviewResponse {
   headers: string[];
   rows: string[][];
   suggestedMapping: Record<string, string | null>;
+  suggestedMappingByType: Record<UploadType, Record<string, string | null> | null>;
   headerRowIndex: number;
   hasSavedMapping: boolean;
-}
-
-interface DiffSummary {
-  inserted: number;
-  updated: number;
-  deactivated: number;
-  unchanged: number;
-  totalIncoming: number;
-}
-
-interface UploadConfirmJobResult {
-  uploadId: number;
-  rowCount: number;
-  applyMode: 'replace' | 'diff';
-  deleteMissing?: boolean;
-  diffSummary?: DiffSummary;
+  detectedUploadType: UploadType;
+  resolvedUploadType: UploadType;
+  rememberedUploadType: UploadType | null;
+  uploadTypeConfidence: 'high' | 'medium' | 'low';
+  uploadTypeScores: {
+    dead_stock: number;
+    used_medication: number;
+  };
 }
 
 interface UploadConfirmAsyncResponse {
   message: string;
   jobId: number;
   status: 'pending' | 'processing';
+  deduplicated?: boolean;
 }
 
-interface UploadConfirmJobStatusResponse {
-  id: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  attempts: number;
-  lastError: string | null;
-  lastErrorCode?: string | null;
-  result: UploadConfirmJobResult | null;
-}
+type UploadProgressPhase = 'idle' | 'previewing' | 'queueing' | 'pending' | 'processing' | 'completed' | 'failed';
 
 interface UploadJobState {
   jobId: number | null;
-  status: 'pending' | 'processing' | null;
+  status: Extract<UploadJobStatus, 'pending' | 'processing'> | null;
   attempts: number;
+  cancelable: boolean;
+  errorReportAvailable: boolean;
+  deduplicated: boolean;
+  partialSummary: PartialSummary | null;
 }
 
-const UPLOAD_JOB_INITIAL_STATE: UploadJobState = { jobId: null, status: null, attempts: 0 };
+interface UploadProgressState {
+  phase: UploadProgressPhase;
+  percent: number;
+  label: string;
+}
+
+const UPLOAD_JOB_INITIAL_STATE: UploadJobState = {
+  jobId: null,
+  status: null,
+  attempts: 0,
+  cancelable: false,
+  errorReportAvailable: false,
+  deduplicated: false,
+  partialSummary: null,
+};
+const UPLOAD_PROGRESS_IDLE: UploadProgressState = { phase: 'idle', percent: 0, label: '' };
 
 const UPLOAD_CONFIRM_ENQUEUE_TIMEOUT_MS = 5 * 60 * 1000;
 const UPLOAD_JOB_POLL_INTERVAL_MS = import.meta.env.MODE === 'test' ? 20 : 1500;
@@ -87,13 +101,45 @@ function resolveTransientPollRetryIntervalMs(retryCount: number): number {
   return Math.min(UPLOAD_JOB_POLL_MAX_INTERVAL_MS, base + jitter);
 }
 
+function resolveJobProgressPercent(status: 'pending' | 'processing', elapsedMs: number): number {
+  if (status === 'pending') {
+    const elapsedBoost = Math.floor(elapsedMs / 10000);
+    return Math.min(70, 50 + elapsedBoost);
+  }
+  const elapsedBoost = Math.floor(elapsedMs / 12000);
+  return Math.min(95, 75 + elapsedBoost);
+}
+
 function isTransientUploadJobPollingError(err: unknown): boolean {
   if (!(err instanceof ApiError)) return false;
   if (err.status === 0) return true;
   return err.status === 429 || (err.status >= 500 && err.status <= 599);
 }
 
+function resolveConfidenceLabel(confidence: PreviewResponse['uploadTypeConfidence']): string {
+  if (confidence === 'high') return '高';
+  if (confidence === 'medium') return '中';
+  return '低';
+}
+
+function resolveSubmittedMapping(
+  preview: PreviewResponse,
+  selectedUploadType: UploadType,
+): Record<string, string | null> | null {
+  const selectedTypeMapping = preview.suggestedMappingByType[selectedUploadType];
+  if (selectedTypeMapping) {
+    return selectedTypeMapping;
+  }
+  if (selectedUploadType === preview.resolvedUploadType) {
+    return preview.suggestedMapping;
+  }
+  return null;
+}
+
 async function waitForNextPoll(signal: AbortSignal, intervalMs: number): Promise<void> {
+  if (signal.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
   await new Promise<void>((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -114,18 +160,10 @@ async function waitForNextPoll(signal: AbortSignal, intervalMs: number): Promise
   });
 }
 
-/** カラムマッピング設定の自動保存対象 */
-interface MappingDraftData {
-  mapping: Record<string, string | null>;
-  uploadType: 'dead_stock' | 'used_medication';
-}
-
 export default function UploadPage() {
-  const { user } = useAuth();
-  const [uploadType, setUploadType] = useState<'dead_stock' | 'used_medication'>('dead_stock');
+  const [uploadType, setUploadType] = useState<UploadType>('dead_stock');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
-  const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
   const [showMatchingHint, setShowMatchingHint] = useState(false);
   const [applyMode, setApplyMode] = useState<'replace' | 'diff'>('replace');
@@ -133,64 +171,49 @@ export default function UploadPage() {
   const [diffSummary, setDiffSummary] = useState<DiffSummary | null>(null);
   const [acknowledgeDeleteImpact, setAcknowledgeDeleteImpact] = useState(false);
   const [uploadJob, setUploadJob] = useState<UploadJobState>(UPLOAD_JOB_INITIAL_STATE);
+  const [cancellingJob, setCancellingJob] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressState>(UPLOAD_PROGRESS_IDLE);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadRequestAbortRef = useRef<AbortController | null>(null);
   const navigate = useNavigate();
 
-  // カラムマッピング設定の自動保存
-  const mappingDraftData: MappingDraftData = { mapping, uploadType };
-  const mappingAutoSave = useAutoSave<MappingDraftData>('upload-mapping', mappingDraftData, {
-    userId: user?.id,
-    enabled: Object.keys(mapping).length > 0,
-  });
-
-  const handleMappingDraftRestore = useCallback(() => {
-    const draft = mappingAutoSave.restoreDraft();
-    if (draft) {
-      setMapping(draft.mapping);
-      setUploadType(draft.uploadType);
-    }
-    mappingAutoSave.clearDraft();
-  }, [mappingAutoSave]);
-
-  const handleMappingDraftDiscard = useCallback(() => {
-    mappingAutoSave.clearDraft();
-  }, [mappingAutoSave]);
-
-  const fieldLabels: Record<string, string> = {
-    drug_code: 'YJコード / GS1コード',
-    drug_name: '薬剤名',
-    quantity: '数量',
-    unit: '包装単位',
-    yakka_unit_price: '薬価（単価）',
-    expiration_date: '期限',
-    lot_number: 'ロット番号',
-    monthly_usage: '月間使用量',
-  };
-
-  const requiredFields: Record<string, Set<string>> = {
-    dead_stock: new Set(['drug_code', 'drug_name', 'quantity', 'unit', 'expiration_date']),
-    used_medication: new Set(['drug_name', 'monthly_usage']),
-  };
-
-  const isRequired = (field: string) => requiredFields[uploadType]?.has(field) ?? false;
-  const missingRequiredFields = Array.from(requiredFields[uploadType] ?? []).filter((field) => !mapping[field]);
-  const hasAllRequiredMappings = missingRequiredFields.length === 0;
   const requiresDiffPreviewRefresh = applyMode === 'diff' && deleteMissing;
   const hasCurrentDiffPreview = !requiresDiffPreviewRefresh || diffSummary !== null;
   const requiresDeleteImpactAcknowledgement = requiresDiffPreviewRefresh && (diffSummary?.deactivated ?? 0) > 0;
-  const canSubmit = hasAllRequiredMappings
+  const hasPreviewRows = (preview?.rows.length ?? 0) > 0;
+  const selectedUploadTypeMapping = preview ? resolveSubmittedMapping(preview, uploadType) : null;
+  const hasResolvableMapping = selectedUploadTypeMapping !== null;
+  const canSubmit = Boolean(preview)
+    && hasPreviewRows
+    && hasResolvableMapping
     && hasCurrentDiffPreview
     && (!requiresDeleteImpactAcknowledgement || acknowledgeDeleteImpact);
+
+  const hasManualTypeOverride = Boolean(preview && uploadType !== preview.resolvedUploadType);
+  const partialSummaryEntries = resolvePartialSummaryEntries(uploadJob.partialSummary);
+  const uploadProgressVariant = uploadProgress.phase === 'failed'
+    ? 'danger'
+    : uploadProgress.phase === 'completed'
+      ? 'success'
+      : 'info';
+  const uploadProgressAnimated = uploadProgress.phase !== 'completed' && uploadProgress.phase !== 'failed';
+
+  const setFailed = (label: string) =>
+    setUploadProgress({ phase: 'failed', percent: 100, label });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     uploadRequestAbortRef.current?.abort();
     uploadRequestAbortRef.current = null;
+    if (navigateTimerRef.current !== null) {
+      clearTimeout(navigateTimerRef.current);
+      navigateTimerRef.current = null;
+    }
     setLoading(false);
     const selected = e.target.files?.[0] || null;
     setFile(selected);
     setPreview(null);
+    setUploadType('dead_stock');
     setMessage('');
     setError('');
     setShowMatchingHint(false);
@@ -199,6 +222,8 @@ export default function UploadPage() {
     setDiffSummary(null);
     setAcknowledgeDeleteImpact(false);
     setUploadJob(UPLOAD_JOB_INITIAL_STATE);
+    setCancellingJob(false);
+    setUploadProgress(UPLOAD_PROGRESS_IDLE);
   };
 
   const handlePreview = async (e: FormEvent) => {
@@ -211,19 +236,28 @@ export default function UploadPage() {
 
     setLoading(true);
     setError('');
+    setMessage('');
+    setShowMatchingHint(false);
+    setUploadProgress({
+      phase: 'previewing',
+      percent: 20,
+      label: 'Excelファイルを解析しています...',
+    });
+
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('uploadType', uploadType);
 
       const data = await api.upload<PreviewResponse>('/upload/preview', formData, { signal: controller.signal });
       if (controller.signal.aborted) return;
       setPreview(data);
-      setMapping(data.suggestedMapping);
+      setUploadType(data.resolvedUploadType);
       setDiffSummary(null);
       setAcknowledgeDeleteImpact(false);
+      setUploadProgress(UPLOAD_PROGRESS_IDLE);
     } catch (err) {
       if (controller.signal.aborted) return;
+      setFailed('Excel解析に失敗しました。');
       setError(err instanceof Error ? err.message : 'プレビューに失敗しました');
     } finally {
       if (uploadRequestAbortRef.current === controller) {
@@ -236,10 +270,13 @@ export default function UploadPage() {
   };
 
   const handleConfirm = async () => {
-    if (!file) return;
-    if (!hasAllRequiredMappings) {
-      const labels = missingRequiredFields.map((field) => fieldLabels[field] || field);
-      setError(`必須項目が未割り当てです: ${labels.join('、')}`);
+    if (!file || !preview) {
+      setError('先にプレビューを実行してください');
+      return;
+    }
+    const submittedMapping = resolveSubmittedMapping(preview, uploadType);
+    if (!submittedMapping) {
+      setError('選択した取込種別の自動判定に必要な列が不足しています。ファイル見出しを確認してください。');
       return;
     }
 
@@ -253,15 +290,21 @@ export default function UploadPage() {
     setMessage('');
     setShowMatchingHint(false);
     setUploadJob(UPLOAD_JOB_INITIAL_STATE);
+    setCancellingJob(false);
+    setUploadProgress({
+      phase: 'queueing',
+      percent: 35,
+      label: 'アップロード処理を受け付けています...',
+    });
     let currentJobId: number | null = null;
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('uploadType', submittedUploadType);
-      formData.append('mapping', JSON.stringify(mapping));
-      formData.append('headerRowIndex', String(preview?.headerRowIndex ?? 0));
+      formData.append('headerRowIndex', String(preview.headerRowIndex));
       formData.append('applyMode', applyMode);
       formData.append('deleteMissing', String(deleteMissing));
+      formData.append('mapping', JSON.stringify(submittedMapping));
 
       const enqueueResult = await api.upload<UploadConfirmAsyncResponse>(
         '/upload/confirm-async',
@@ -275,8 +318,27 @@ export default function UploadPage() {
 
       const { jobId } = enqueueResult;
       currentJobId = jobId;
-      setUploadJob({ jobId, status: enqueueResult.status, attempts: 0 });
-      setMessage(`${enqueueResult.message}（ジョブID: ${jobId}）`);
+      let latestAttempts = 0;
+      let latestPartialSummary: PartialSummary | null = null;
+      let latestErrorReportAvailable = false;
+      let latestDeduplicated = Boolean(enqueueResult.deduplicated);
+      setUploadJob({
+        jobId,
+        status: enqueueResult.status,
+        attempts: 0,
+        cancelable: false,
+        errorReportAvailable: false,
+        deduplicated: latestDeduplicated,
+        partialSummary: null,
+      });
+      setMessage(
+        `${enqueueResult.message}（ジョブID: ${jobId}）${latestDeduplicated ? ' 同一ジョブへ集約して処理します。' : ''}`,
+      );
+      setUploadProgress({
+        phase: enqueueResult.status,
+        percent: enqueueResult.status === 'pending' ? 50 : 75,
+        label: enqueueResult.status === 'pending' ? 'キュー待機中です...' : 'データ反映を処理しています...',
+      });
 
       const pollingStartedAt = Date.now();
       let completedResult: UploadConfirmJobResult | null = null;
@@ -307,22 +369,49 @@ export default function UploadPage() {
 
         transientPollFailures = 0;
         if (controller.signal.aborted) return;
-        setUploadJob((prev) => ({ ...prev, attempts: job.attempts }));
+        latestAttempts = job.attempts;
+        latestPartialSummary = job.partialSummary ?? job.result?.partialSummary ?? null;
+        latestErrorReportAvailable = Boolean(job.errorReportAvailable ?? job.result?.errorReportAvailable ?? latestErrorReportAvailable);
+        latestDeduplicated = Boolean(job.deduplicated ?? job.result?.deduplicated ?? latestDeduplicated);
+        setUploadJob((prev) => ({
+          ...prev,
+          status: job.status === 'pending' || job.status === 'processing' ? job.status : null,
+          attempts: latestAttempts,
+          cancelable: Boolean(job.cancelable),
+          errorReportAvailable: latestErrorReportAvailable,
+          deduplicated: latestDeduplicated,
+          partialSummary: latestPartialSummary,
+        }));
 
         if (job.status === 'completed') {
           if (!job.result) {
             throw new Error('アップロード処理結果の取得に失敗しました');
           }
+          latestPartialSummary = job.result.partialSummary ?? latestPartialSummary;
+          latestErrorReportAvailable = Boolean(job.result.errorReportAvailable ?? latestErrorReportAvailable);
+          latestDeduplicated = Boolean(job.result.deduplicated ?? latestDeduplicated);
           completedResult = job.result;
           break;
         }
         if (job.status === 'failed') {
           throw new Error(job.lastError || 'アップロード処理に失敗しました');
         }
-
-        setUploadJob((prev) => ({ ...prev, status: job.status as 'pending' | 'processing' }));
+        if (job.status === 'cancelled' || job.status === 'canceled') {
+          throw new Error(job.lastError || 'アップロード処理はキャンセルされました');
+        }
+        if (job.status !== 'pending' && job.status !== 'processing') {
+          throw new Error('アップロード処理状態の取得に失敗しました');
+        }
 
         const elapsedMs = Date.now() - pollingStartedAt;
+        setUploadProgress({
+          phase: job.status,
+          percent: resolveJobProgressPercent(job.status, elapsedMs),
+          label: job.status === 'pending'
+            ? 'キュー待機中です...'
+            : 'データ反映を処理しています...',
+        });
+
         if (elapsedMs > UPLOAD_JOB_MAX_POLL_WAIT_MS) {
           throw new Error(`アップロード処理の待機時間が長くなっています（ジョブID: ${jobId}）。時間をおいて再確認してください。`);
         }
@@ -332,36 +421,79 @@ export default function UploadPage() {
       }
 
       if (controller.signal.aborted) return;
-      setUploadJob(UPLOAD_JOB_INITIAL_STATE);
-      setMessage(`${completedResult?.rowCount ?? 0}件のデータを登録しました マッチング候補の再計算と通知更新が反映されます。`);
+      setUploadJob({
+        jobId,
+        status: null,
+        attempts: latestAttempts,
+        cancelable: false,
+        errorReportAvailable: Boolean(completedResult?.errorReportAvailable ?? latestErrorReportAvailable),
+        deduplicated: Boolean(completedResult?.deduplicated ?? latestDeduplicated),
+        partialSummary: completedResult?.partialSummary ?? latestPartialSummary,
+      });
+      setUploadProgress({
+        phase: 'completed',
+        percent: 100,
+        label: 'アップロード処理が完了しました。',
+      });
+      const failedCount = completedResult?.partialSummary?.rejectedRows
+        ?? completedResult?.partialSummary?.failed
+        ?? latestPartialSummary?.rejectedRows
+        ?? latestPartialSummary?.failed
+        ?? 0;
+      const completionMessage = `${completedResult?.rowCount ?? 0}件のデータを登録しました。マッチング候補の再計算と通知更新が反映されます。`;
+      const partialMessage = failedCount > 0
+        ? ` 一部データの取込に失敗しました（${failedCount}件）。`
+        : '';
+      const deduplicateMessage = latestDeduplicated ? ' 同一内容の重複送信はジョブに集約されました。' : '';
+      setMessage(`${completionMessage}${partialMessage}${deduplicateMessage}`);
       setDiffSummary(completedResult?.diffSummary ?? null);
       setShowMatchingHint(true);
       setPreview(null);
       setFile(null);
-      mappingAutoSave.clearDraft();
       if (fileRef.current) fileRef.current.value = '';
 
-      if (navigateTimerRef.current !== null) {
-        clearTimeout(navigateTimerRef.current);
+      const shouldAutoNavigate = !(completedResult?.errorReportAvailable ?? latestErrorReportAvailable) && failedCount === 0;
+      if (shouldAutoNavigate) {
+        if (navigateTimerRef.current !== null) {
+          clearTimeout(navigateTimerRef.current);
+        }
+        navigateTimerRef.current = setTimeout(() => {
+          navigateTimerRef.current = null;
+          navigate(submittedUploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
+        }, 1200);
       }
-      navigateTimerRef.current = setTimeout(() => {
-        navigateTimerRef.current = null;
-        navigate(submittedUploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
-      }, 1200);
     } catch (err) {
       if (controller.signal.aborted) return;
       if (isApiErrorCode(err, 'UPLOAD_CONFIRM_QUEUE_LIMIT')) {
         setUploadJob(UPLOAD_JOB_INITIAL_STATE);
+        setFailed('アップロード処理の受付に失敗しました。');
         setMessage('');
         setError(err.message);
         return;
       }
       if (err instanceof Error && err.message.includes('待機時間が長くなっています')) {
+        setFailed('アップロード処理の待機時間が上限を超えました。');
         setError(err.message);
         setMessage(`ジョブは継続中の可能性があります（ジョブID: ${currentJobId ?? '不明'}）。時間をおいて再確認してください。`);
         return;
       }
-      setUploadJob(UPLOAD_JOB_INITIAL_STATE);
+      if (currentJobId !== null && err instanceof ApiError) {
+        setUploadJob((prev) => ({
+          ...prev,
+          jobId: currentJobId,
+        }));
+        setFailed('ジョブ状態の確認に失敗しました。');
+        setError(err.message);
+        setMessage(`ジョブは継続中の可能性があります（ジョブID: ${currentJobId}）。時間をおいて再確認してください。`);
+        return;
+      }
+      setUploadJob((prev) => ({
+        ...prev,
+        jobId: currentJobId ?? prev.jobId,
+        status: null,
+        cancelable: false,
+      }));
+      setFailed('アップロード処理に失敗しました。');
       setMessage('');
       setError(err instanceof Error ? err.message : '登録に失敗しました');
     } finally {
@@ -377,9 +509,9 @@ export default function UploadPage() {
   const handleDiffPreview = async () => {
     if (!file || !preview) return;
     if (applyMode !== 'diff') return;
-    if (!hasAllRequiredMappings) {
-      const labels = missingRequiredFields.map((field) => fieldLabels[field] || field);
-      setError(`必須項目が未割り当てです: ${labels.join('、')}`);
+    const submittedMapping = resolveSubmittedMapping(preview, uploadType);
+    if (!submittedMapping) {
+      setError('選択した取込種別の自動判定に必要な列が不足しています。ファイル見出しを確認してください。');
       return;
     }
 
@@ -393,10 +525,10 @@ export default function UploadPage() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('uploadType', uploadType);
-      formData.append('mapping', JSON.stringify(mapping));
       formData.append('headerRowIndex', String(preview.headerRowIndex));
       formData.append('applyMode', 'diff');
       formData.append('deleteMissing', String(deleteMissing));
+      formData.append('mapping', JSON.stringify(submittedMapping));
 
       const result = await api.upload<{ summary: DiffSummary }>('/upload/diff-preview', formData, { signal: controller.signal });
       if (controller.signal.aborted) return;
@@ -415,10 +547,32 @@ export default function UploadPage() {
     }
   };
 
-  const handleMappingChange = (field: string, value: string) => {
-    setMapping((prev) => ({ ...prev, [field]: value === '' ? null : value }));
-    setDiffSummary(null);
-    setAcknowledgeDeleteImpact(false);
+  const handleCancelJob = async () => {
+    if (uploadJob.jobId === null || !uploadJob.cancelable || cancellingJob) return;
+
+    uploadRequestAbortRef.current?.abort();
+    uploadRequestAbortRef.current = null;
+    setCancellingJob(true);
+    setError('');
+    try {
+      const result = await api.post<{ message?: string }>(`/upload/jobs/${uploadJob.jobId}/cancel`);
+      setUploadJob((prev) => ({
+        ...prev,
+        status: null,
+        cancelable: false,
+      }));
+      setFailed('アップロード処理をキャンセルしました。');
+      setMessage(result.message ?? `ジョブID: ${uploadJob.jobId} をキャンセルしました。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ジョブのキャンセルに失敗しました');
+    } finally {
+      setCancellingJob(false);
+    }
+  };
+
+  const triggerErrorReportDownload = () => {
+    if (uploadJob.jobId === null || !uploadJob.errorReportAvailable) return;
+    window.open(buildApiUrl(`/upload/jobs/${uploadJob.jobId}/error-report`), '_blank', 'noopener');
   };
 
   useEffect(() => () => {
@@ -440,39 +594,70 @@ export default function UploadPage() {
           交換候補をすぐ確認する場合は「マッチング」ページで再実行してください。
         </AppAlert>
       )}
-      {uploadJob.jobId !== null && uploadJob.status && (
-        <AppAlert variant="info">
-          非同期処理中です（ジョブID: {uploadJob.jobId} / 状態: {uploadJob.status === 'pending' ? '待機中' : '処理中'} / 試行回数: {uploadJob.attempts}）
-        </AppAlert>
-      )}
 
-      {mappingAutoSave.hasDraft && !preview && (
-        <DraftRestoreAlert
-          draftTimestamp={mappingAutoSave.draftTimestamp}
-          onRestore={handleMappingDraftRestore}
-          onDiscard={handleMappingDraftDiscard}
-        />
+      {uploadProgress.phase !== 'idle' && (
+        <AppCard className="mb-3">
+          <AppCard.Body>
+            <div className="small mb-2">{uploadProgress.label}</div>
+            <ProgressBar
+              animated={uploadProgressAnimated}
+              now={uploadProgress.percent}
+              variant={uploadProgressVariant}
+            />
+            {uploadJob.jobId !== null && (
+              <div className="small text-muted mt-2">
+                ジョブID: {uploadJob.jobId}
+                {uploadJob.status && ` / 状態: ${uploadJob.status === 'pending' ? '待機中' : '処理中'}`}
+                {' '} / 試行回数: {uploadJob.attempts}
+              </div>
+            )}
+            {uploadJob.deduplicated && (
+              <div className="small text-info mt-2">
+                同一内容の送信は重複ジョブとして集約されました。
+              </div>
+            )}
+            {partialSummaryEntries.length > 0 && (
+              <div className="small mt-2">
+                部分サマリー:
+                {' '}
+                {partialSummaryEntries.map((entry) => `${entry.label} ${entry.value}件`).join(' / ')}
+              </div>
+            )}
+            {(uploadJob.cancelable || uploadJob.errorReportAvailable) && (
+              <div className="d-flex gap-2 mt-2">
+                <AppButton
+                  size="sm"
+                  variant="outline-warning"
+                  disabled={!uploadJob.cancelable || cancellingJob}
+                  onClick={() => void handleCancelJob()}
+                >
+                  {cancellingJob ? 'キャンセル中...' : 'このジョブをキャンセル'}
+                </AppButton>
+                <AppButton
+                  size="sm"
+                  variant="outline-secondary"
+                  disabled={!uploadJob.errorReportAvailable}
+                  onClick={triggerErrorReportDownload}
+                >
+                  エラーレポートをダウンロード
+                </AppButton>
+              </div>
+            )}
+          </AppCard.Body>
+        </AppCard>
       )}
 
       <AppCard className="mb-3">
         <AppCard.Header>アップロード手順</AppCard.Header>
         <AppCard.Body>
           <ol className="mb-2 upload-step-list">
-            <li>アップロードタイプを選択します（デッドストックリスト / 医薬品使用量リスト）。</li>
             <li><code>.xlsx</code> 形式のExcelファイルを選択します（最大50MB）。</li>
-            <li>「プレビュー」を押してカラム自動判定を確認します。</li>
-            <li>必要に応じてマッピングを修正し、「この設定でデータを登録」を押します。</li>
+            <li>「プレビュー」を押すと、行データ種別（デッドストック/使用量）を自動判定します。</li>
+            <li>判定が異なる場合は取込種別を修正します。</li>
+            <li>「この設定でデータを登録」を押して反映します。</li>
           </ol>
-          <div className="small mt-2">
-            <strong>必須項目（<span className="text-danger">赤字</span>）:</strong>
-            {uploadType === 'dead_stock' ? (
-              <div className="text-danger">YJコード / GS1コード、薬剤名、数量、包装単位、期限</div>
-            ) : (
-              <div className="text-danger">薬剤名、月間使用量</div>
-            )}
-          </div>
           <div className="small text-muted mt-1">
-            見出し行が複数ある場合は、プレビュー結果を見て割当を調整してください。
+            列は固定フォーマットを前提に自動解決されるため、カラム割り当て操作は不要です。
           </div>
         </AppCard.Body>
       </AppCard>
@@ -480,25 +665,7 @@ export default function UploadPage() {
       <AppCard className="mb-3">
         <AppCard.Body>
           <Form onSubmit={handlePreview}>
-            <Form.Group className="mb-3" controlId="upload-type">
-              <Form.Label>アップロードタイプ</Form.Label>
-              <AppSelect
-                controlId="upload-type"
-                value={uploadType}
-                ariaLabel="アップロードタイプ"
-                disabled={loading}
-                onChange={(value) => {
-                  setUploadType(value as typeof uploadType);
-                  setPreview(null);
-                }}
-                options={[
-                  { value: 'dead_stock', label: 'デッドストックリスト' },
-                  { value: 'used_medication', label: '医薬品使用量リスト' },
-                ]}
-              />
-            </Form.Group>
-
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-3" controlId="upload-file">
               <Form.Label>Excelファイル (.xlsx)</Form.Label>
               <AppControl
                 type="file"
@@ -515,16 +682,49 @@ export default function UploadPage() {
         </AppCard.Body>
       </AppCard>
 
-      {loading && <ProgressBar animated now={100} className="mb-3" />}
+      {loading && uploadProgress.phase === 'idle' && <ProgressBar animated now={100} className="mb-3" />}
 
       {preview && (
         <AppCard className="mb-3">
-          <AppCard.Header>
-            カラムマッピング
-            {preview.hasSavedMapping && <small className="text-muted ms-2">（前回のマッピングを適用）</small>}
-          </AppCard.Header>
+          <AppCard.Header>取込内容の確認</AppCard.Header>
           <AppCard.Body>
-            <p className="text-muted small">各カラムに対応するフィールドを選択してください。薬品名は必須です。</p>
+            <Form.Group className="mb-3" controlId="upload-type">
+              <Form.Label>取込種別（自動判定）</Form.Label>
+              <AppSelect
+                controlId="upload-type"
+                value={uploadType}
+                ariaLabel="取込種別"
+                disabled={loading}
+                onChange={(value) => {
+                  setUploadType(value as UploadType);
+                  setDiffSummary(null);
+                  setAcknowledgeDeleteImpact(false);
+                }}
+                options={[
+                  { value: 'dead_stock', label: 'デッドストックリスト' },
+                  { value: 'used_medication', label: '医薬品使用量リスト' },
+                ]}
+              />
+              <div className="small text-muted mt-1">
+                自動判定: {resolveUploadTypeLabel(preview.detectedUploadType)}（信頼度: {resolveConfidenceLabel(preview.uploadTypeConfidence)}）
+                {' '} / スコア: 在庫 {preview.uploadTypeScores.dead_stock}・使用量 {preview.uploadTypeScores.used_medication}
+                {preview.rememberedUploadType && (
+                  <>
+                    {' '} / 前回記憶: {resolveUploadTypeLabel(preview.rememberedUploadType)}
+                  </>
+                )}
+              </div>
+              {preview.hasSavedMapping && (
+                <div className="small text-muted mt-1">
+                  同一ヘッダーの過去アップロード設定を参照しています。
+                </div>
+              )}
+              {hasManualTypeOverride && (
+                <div className="small text-warning mt-1">
+                  自動判定結果を手動修正しています。この種別で取り込みます。
+                </div>
+              )}
+            </Form.Group>
 
             <div className="table-responsive mb-3">
               <table className="table table-sm table-bordered mobile-table">
@@ -546,30 +746,16 @@ export default function UploadPage() {
                 </tbody>
               </table>
             </div>
-
-            <h6>フィールド割り当て</h6>
-            <div className="d-flex flex-column gap-2">
-              {Object.entries(mapping).map(([field, colIdx]) => (
-                <div key={field}>
-                  <Form.Label htmlFor={`upload-mapping-${field}`} className={`small mb-1${isRequired(field) ? ' text-danger fw-semibold' : ''}`}>
-                    {fieldLabels[field] || field}
-                    {isRequired(field) && <span> *</span>}
-                  </Form.Label>
-                  <AppSelect
-                    controlId={`upload-mapping-${field}`}
-                    size="sm"
-                    value={colIdx ?? ''}
-                    ariaLabel={`${fieldLabels[field] || field} の割り当て`}
-                    onChange={(value) => handleMappingChange(field, value)}
-                    placeholder="（未選択）"
-                    options={preview.headers.map((header, headerIdx) => ({
-                      value: String(headerIdx),
-                      label: header || `列${headerIdx + 1}`,
-                    }))}
-                  />
-                </div>
-              ))}
-            </div>
+            {!hasPreviewRows && (
+              <AppAlert variant="warning" className="small">
+                プレビューに取込対象の行が見つかりません。ファイル内容を確認してください。
+              </AppAlert>
+            )}
+            {!hasResolvableMapping && (
+              <AppAlert variant="warning" className="small">
+                選択した取込種別で必要な列を自動判定できませんでした。ファイル見出しを確認してください。
+              </AppAlert>
+            )}
 
             <hr />
 
@@ -612,7 +798,6 @@ export default function UploadPage() {
                     onClick={handleDiffPreview}
                     loading={loading}
                     loadingLabel="差分比較中..."
-                    disabled={!hasAllRequiredMappings}
                   >
                     差分プレビューを更新
                   </LoadingButton>
@@ -646,11 +831,6 @@ export default function UploadPage() {
                     checked={acknowledgeDeleteImpact}
                     onChange={(e) => setAcknowledgeDeleteImpact(e.currentTarget.checked)}
                   />
-                </div>
-              )}
-              {!hasAllRequiredMappings && (
-                <div className="small text-danger mt-2">
-                  必須項目が未割り当てです。赤字項目をすべて選択してください。
                 </div>
               )}
               {requiresDiffPreviewRefresh && !diffSummary && (

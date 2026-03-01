@@ -12,6 +12,8 @@ import AppKpiCard from '../../components/ui/AppKpiCard';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import AdminSentMessagesPanel, { type AdminMessage } from './components/AdminSentMessagesPanel';
+import { formatNumberJa } from '../../utils/formatters';
 
 interface Stats {
   totalPharmacies: number;
@@ -56,20 +58,34 @@ interface AlertsSummary {
   pendingProposalActions24h: number;
 }
 
+interface MonitoringKpiSnapshot {
+  status: 'healthy' | 'warning';
+  metrics: {
+    errorRate5xx: number;
+    uploadFailureRate: number;
+    pendingUploadStaleCount: number;
+  };
+  thresholds: {
+    errorRate5xx: number;
+    uploadFailureRate: number;
+    pendingStaleCount: number;
+    pendingStaleMinutes: number;
+  };
+  breaches: {
+    errorRate5xx: boolean;
+    uploadFailureRate: boolean;
+    pendingStaleCount: boolean;
+  };
+  context: {
+    windowMinutes: number;
+    uploadWindowHours: number;
+  };
+}
+
 interface PharmacyOption {
   id: number;
   name: string;
   isActive: boolean;
-}
-
-interface AdminMessage {
-  id: number;
-  targetType: 'all' | 'pharmacy';
-  targetPharmacyId: number | null;
-  title: string;
-  body: string;
-  actionPath: string | null;
-  createdAt: string | null;
 }
 
 interface MessagesResponse {
@@ -81,6 +97,7 @@ export default function AdminDashboardPage() {
   const [riskOverview, setRiskOverview] = useState<RiskOverview | null>(null);
   const [observability, setObservability] = useState<Observability | null>(null);
   const [alertsSummary, setAlertsSummary] = useState<AlertsSummary | null>(null);
+  const [monitoringKpis, setMonitoringKpis] = useState<MonitoringKpiSnapshot | null>(null);
   const [pharmacies, setPharmacies] = useState<PharmacyOption[]>([]);
   const [messages, setMessages] = useState<AdminMessage[]>([]);
   const [targetType, setTargetType] = useState<'all' | 'pharmacy'>('all');
@@ -96,11 +113,12 @@ export default function AdminDashboardPage() {
   const fetchData = async () => {
     setLoading(true);
     setError('');
-    const [statsResult, riskResult, observabilityResult, alertsResult, pharmacyResult, messagesResult] = await Promise.allSettled([
+    const [statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult] = await Promise.allSettled([
       api.get<Stats>('/admin/stats'),
       api.get<RiskOverview>('/admin/risk/overview'),
       api.get<Observability>('/admin/observability?minutes=60'),
       api.get<AlertsSummary>('/admin/alerts'),
+      api.get<MonitoringKpiSnapshot>('/admin/kpis?minutes=60'),
       api.get<{ data: PharmacyOption[] }>('/admin/pharmacies/options'),
       api.get<MessagesResponse>('/admin/messages?page=1&limit=10'),
     ]);
@@ -109,10 +127,11 @@ export default function AdminDashboardPage() {
     if (riskResult.status === 'fulfilled') setRiskOverview(riskResult.value);
     if (observabilityResult.status === 'fulfilled') setObservability(observabilityResult.value);
     if (alertsResult.status === 'fulfilled') setAlertsSummary(alertsResult.value);
+    if (kpisResult.status === 'fulfilled') setMonitoringKpis(kpisResult.value);
     if (pharmacyResult.status === 'fulfilled') setPharmacies(pharmacyResult.value.data);
     if (messagesResult.status === 'fulfilled') setMessages(messagesResult.value.data);
 
-    const failures = [statsResult, riskResult, observabilityResult, alertsResult, pharmacyResult, messagesResult]
+    const failures = [statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult]
       .filter((r) => r.status === 'rejected');
     if (failures.length > 0) {
       setError('一部のデータの取得に失敗しました');
@@ -152,6 +171,10 @@ export default function AdminDashboardPage() {
     }
   };
 
+  function toKpiValueClassName(breach: boolean): string {
+    return breach ? 'h5 text-danger' : 'h5 text-success';
+  }
+
   return (
     <div>
       <h4 className="page-title mb-3">管理者ダッシュボード</h4>
@@ -163,6 +186,7 @@ export default function AdminDashboardPage() {
           <Link to="/admin/openclaw" className="btn btn-sm btn-primary">OpenClaw連携を確認</Link>
           <Link to="/admin/risk" className="btn btn-sm btn-outline-danger">期限リスク分析</Link>
           <Link to="/admin/reports" className="btn btn-sm btn-outline-success">月次レポート</Link>
+          <Link to="/admin/upload-jobs" className="btn btn-sm btn-outline-warning">取込ジョブ管理</Link>
           <Link to="/admin/drug-master" className="btn btn-sm btn-outline-primary">医薬品マスター管理</Link>
           <Link to="/admin/pharmacies" className="btn btn-sm btn-outline-secondary">加盟薬局管理</Link>
           <Link to="/admin/logs" className="btn btn-sm btn-outline-secondary">操作ログを見る</Link>
@@ -181,7 +205,7 @@ export default function AdminDashboardPage() {
           <AppKpiCard value={stats?.totalPickupItems ?? '-'} label="引き取り数（明細件数）" />
         </Col>
         <Col md={4} xl={3}>
-          <AppKpiCard value={(stats?.totalExchangeValue ?? 0).toLocaleString()} label="交換金額（累計）" />
+          <AppKpiCard value={formatNumberJa(stats?.totalExchangeValue ?? 0)} label="交換金額（累計）" />
         </Col>
         <Col md={4} xl={3}>
           <AppKpiCard
@@ -194,7 +218,7 @@ export default function AdminDashboardPage() {
           <AppKpiCard
             value={stats?.totalUploads ?? '-'}
             label="アップロード件数"
-            action={<Link to="/admin/logs" className="btn btn-sm btn-outline-secondary">操作ログを見る</Link>}
+            action={<Link to="/admin/upload-jobs" className="btn btn-sm btn-outline-secondary">ジョブ一覧を見る</Link>}
           />
         </Col>
         <Col md={4} xl={3}>
@@ -239,6 +263,40 @@ export default function AdminDashboardPage() {
         </Col>
         <Col md={3}>
           <AppKpiCard value={alertsSummary?.pendingProposalActions24h ?? '-'} label="要対応提案 (24h)" />
+        </Col>
+      </Row>
+
+      <Row className="g-3 mb-3">
+        <Col md={3}>
+          <AppKpiCard
+            value={monitoringKpis?.status === 'warning' ? '要対応' : monitoringKpis?.status === 'healthy' ? '正常' : '-'}
+            label="運用KPIステータス"
+            valueClassName={monitoringKpis?.status === 'warning' ? 'h5 text-danger' : 'h5 text-success'}
+          />
+        </Col>
+        <Col md={3}>
+          <AppKpiCard
+            value={monitoringKpis?.metrics.errorRate5xx ?? '-'}
+            label="API 5xx率 (%)"
+            subLabel={`閾値: ${monitoringKpis?.thresholds.errorRate5xx ?? '-'}%`}
+            valueClassName={toKpiValueClassName(Boolean(monitoringKpis?.breaches.errorRate5xx))}
+          />
+        </Col>
+        <Col md={3}>
+          <AppKpiCard
+            value={monitoringKpis?.metrics.uploadFailureRate ?? '-'}
+            label="取込失敗率 (%)"
+            subLabel={`閾値: ${monitoringKpis?.thresholds.uploadFailureRate ?? '-'}%`}
+            valueClassName={toKpiValueClassName(Boolean(monitoringKpis?.breaches.uploadFailureRate))}
+          />
+        </Col>
+        <Col md={3}>
+          <AppKpiCard
+            value={monitoringKpis?.metrics.pendingUploadStaleCount ?? '-'}
+            label="滞留取込ジョブ"
+            subLabel={`閾値: ${monitoringKpis?.thresholds.pendingStaleCount ?? '-'}件 (${monitoringKpis?.thresholds.pendingStaleMinutes ?? '-'}分超)`}
+            valueClassName={toKpiValueClassName(Boolean(monitoringKpis?.breaches.pendingStaleCount))}
+          />
         </Col>
       </Row>
 
@@ -391,56 +449,7 @@ export default function AdminDashboardPage() {
         </Col>
 
         <Col lg={7}>
-          <AppDataPanel title="送信済みメッセージ（最新10件）">
-              {messages.length === 0 ? (
-                <div className="text-muted small">送信済みメッセージはありません。</div>
-              ) : (
-                <AppResponsiveSwitch
-                  desktop={() => (
-                    <div className="table-responsive">
-                      <AppTable striped size="sm" className="mobile-table">
-                        <thead>
-                          <tr>
-                            <th>ID</th>
-                            <th>対象</th>
-                            <th>タイトル</th>
-                            <th>遷移先</th>
-                            <th>送信日時</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {messages.map((item) => (
-                            <tr key={item.id}>
-                              <td>{item.id}</td>
-                              <td>{item.targetType === 'all' ? '全体' : `薬局ID:${item.targetPharmacyId}`}</td>
-                              <td>{item.title}</td>
-                              <td>{item.actionPath || '-'}</td>
-                              <td>{item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : '-'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </AppTable>
-                    </div>
-                  )}
-                  mobile={() => (
-                    <div className="dl-mobile-data-list">
-                      {messages.map((item) => (
-                        <AppMobileDataCard
-                          key={item.id}
-                          title={item.title}
-                          subtitle={`ID: ${item.id}`}
-                          fields={[
-                            { label: '対象', value: item.targetType === 'all' ? '全体' : `薬局ID:${item.targetPharmacyId}` },
-                            { label: '遷移先', value: item.actionPath || '-' },
-                            { label: '送信日時', value: item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : '-' },
-                          ]}
-                        />
-                      ))}
-                    </div>
-                  )}
-                />
-              )}
-          </AppDataPanel>
+          <AdminSentMessagesPanel messages={messages} />
         </Col>
       </Row>
 

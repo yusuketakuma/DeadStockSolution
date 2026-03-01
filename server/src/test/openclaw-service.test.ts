@@ -20,6 +20,9 @@ const OPENCLAW_ENV_KEYS = [
   'OPENCLAW_AGENT_ID',
   'OPENCLAW_IMPLEMENT_BRANCH',
   'OPENCLAW_TIMEOUT_MS',
+  'OPENCLAW_RETRY_MAX',
+  'OPENCLAW_RETRY_BASE_MS',
+  'OPENCLAW_IDEMPOTENCY_TTL_MS',
   'OPENCLAW_WEBHOOK_SECRET',
   'OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS',
 ] as const;
@@ -157,6 +160,111 @@ describe('openclaw-service', () => {
     const payload = JSON.parse(String(requestInit.body));
     expect(payload.context).toEqual(context);
     expect(payload.constraints.implementationBranch).toBe('review');
+  });
+
+
+  it('retries legacy_http handoff on transient server error', async () => {
+    setConnectorEnv('https://openclaw.example.com');
+    process.env.OPENCLAW_RETRY_MAX = '1';
+    process.env.OPENCLAW_RETRY_BASE_MS = '100';
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: 'in_dialogue',
+          threadId: 'thread-retry',
+          summary: 'retried',
+        }),
+      });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await handoffToOpenClaw({
+      requestId: 77,
+      pharmacyId: 9,
+      requestText: 'リトライ確認',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.accepted).toBe(true);
+    expect(result.threadId).toBe('thread-retry');
+  });
+
+  it('deduplicates in-flight handoff calls by idempotency key', async () => {
+    setConnectorEnv('https://openclaw.example.com');
+    process.env.OPENCLAW_RETRY_MAX = '0';
+
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const fetchPromise = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+
+    const fetchMock = vi.fn().mockReturnValue(fetchPromise);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const payload = {
+      requestId: 88,
+      pharmacyId: 9,
+      requestText: '同時呼び出しテスト',
+    };
+
+    const first = handoffToOpenClaw(payload);
+    const second = handoffToOpenClaw(payload);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveFetch?.({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'in_dialogue',
+        threadId: 'thread-dedupe',
+        summary: 'ok',
+      }),
+    });
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(firstResult.threadId).toBe('thread-dedupe');
+    expect(secondResult.threadId).toBe('thread-dedupe');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns cached handoff result for duplicate sequential calls', async () => {
+    setConnectorEnv('https://openclaw.example.com');
+    process.env.OPENCLAW_RETRY_MAX = '0';
+    process.env.OPENCLAW_IDEMPOTENCY_TTL_MS = '60000';
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'in_dialogue',
+        threadId: 'thread-cache',
+        summary: 'cached',
+      }),
+    });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const payload = {
+      requestId: 99,
+      pharmacyId: 3,
+      requestText: 'キャッシュ確認',
+    };
+
+    const firstResult = await handoffToOpenClaw(payload);
+    const secondResult = await handoffToOpenClaw(payload);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(firstResult.threadId).toBe('thread-cache');
+    expect(secondResult.threadId).toBe('thread-cache');
   });
 
   it('verifies OpenClaw webhook signature and timestamp', () => {

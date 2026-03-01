@@ -28,6 +28,9 @@ interface RegisterData {
   phone: string;
   fax: string;
   licenseNumber: string;
+  permitLicenseNumber: string;
+  permitPharmacyName: string;
+  permitAddress: string;
   prefecture: string;
 }
 

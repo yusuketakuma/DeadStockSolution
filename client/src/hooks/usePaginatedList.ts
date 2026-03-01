@@ -18,6 +18,7 @@ interface UsePaginatedListReturn<TItem, TResponse extends PaginatedResponse<TIte
   page: number;
   setPage: (page: number) => void;
   items: TItem[];
+  response: TResponse | null;
   totalPages: number;
   pagination: TResponse['pagination'] | null;
   loading: boolean;
@@ -34,6 +35,7 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
 
   const [page, setPage] = useState(initialPage);
   const [items, setItems] = useState<TItem[]>([]);
+  const [response, setResponse] = useState<TResponse | null>(null);
   const [pagination, setPagination] = useState<TResponse['pagination'] | null>(null);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -56,6 +58,7 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
     try {
       const response = await fetcherRef.current(targetPage, controller.signal);
       if (requestId !== latestRequestIdRef.current) return;
+      setResponse(response);
       setItems(response.data);
       setPagination(response.pagination);
       setTotalPages(response.pagination.totalPages);
@@ -63,6 +66,7 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
       if (controller.signal.aborted) return;
       if (requestId !== latestRequestIdRef.current) return;
       setError(err instanceof Error ? err.message : errorMessage);
+      setResponse(null);
       setItems([]);
       setPagination(null);
       setTotalPages(1);
@@ -90,6 +94,7 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
     page,
     setPage,
     items,
+    response,
     totalPages,
     pagination,
     loading,

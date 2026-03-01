@@ -5,12 +5,14 @@ const mocks = vi.hoisted(() => ({
     transaction: vi.fn(),
   },
   computeHeaderHash: vi.fn(),
-  extractDeadStockRows: vi.fn(),
-  extractUsedMedicationRows: vi.fn(),
+  extractDeadStockRowsWithIssues: vi.fn(),
+  extractUsedMedicationRowsWithIssues: vi.fn(),
   enrichWithDrugMaster: vi.fn(),
   triggerMatchingRefreshOnUpload: vi.fn(),
   applyDeadStockDiff: vi.fn(),
   applyUsedMedicationDiff: vi.fn(),
+  replaceUploadRowIssuesForJob: vi.fn(),
+  clearUploadRowIssuesForJob: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -22,8 +24,8 @@ vi.mock('../services/column-mapper', () => ({
 }));
 
 vi.mock('../services/data-extractor', () => ({
-  extractDeadStockRows: mocks.extractDeadStockRows,
-  extractUsedMedicationRows: mocks.extractUsedMedicationRows,
+  extractDeadStockRowsWithIssues: mocks.extractDeadStockRowsWithIssues,
+  extractUsedMedicationRowsWithIssues: mocks.extractUsedMedicationRowsWithIssues,
 }));
 
 vi.mock('../services/drug-master-enrichment', () => ({
@@ -37,6 +39,11 @@ vi.mock('../services/matching-refresh-service', () => ({
 vi.mock('../services/upload-diff-service', () => ({
   applyDeadStockDiff: mocks.applyDeadStockDiff,
   applyUsedMedicationDiff: mocks.applyUsedMedicationDiff,
+}));
+
+vi.mock('../services/upload-row-issue-service', () => ({
+  replaceUploadRowIssuesForJob: mocks.replaceUploadRowIssuesForJob,
+  clearUploadRowIssuesForJob: mocks.clearUploadRowIssuesForJob,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -66,8 +73,16 @@ describe('upload-confirm-service stale guard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.computeHeaderHash.mockReturnValue('header-hash');
-    mocks.extractDeadStockRows.mockReturnValue([]);
-    mocks.extractUsedMedicationRows.mockReturnValue([]);
+    mocks.extractDeadStockRowsWithIssues.mockReturnValue({
+      rows: [],
+      issues: [],
+      inspectedRowCount: 0,
+    });
+    mocks.extractUsedMedicationRowsWithIssues.mockReturnValue({
+      rows: [],
+      issues: [],
+      inspectedRowCount: 0,
+    });
     mocks.enrichWithDrugMaster.mockResolvedValue([]);
     mocks.applyDeadStockDiff.mockResolvedValue(null);
     mocks.applyUsedMedicationDiff.mockResolvedValue(null);

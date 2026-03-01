@@ -148,6 +148,55 @@
       "when": 1772565600000,
       "tag": "0020_uploads_requested_at",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1772569200000,
+      "tag": "0021_upload_job_idempotency_cancel",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1772572800000,
+      "tag": "0022_activity_logs_resource_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1772576400000,
+      "tag": "0023_upload_row_issues",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1772668800000,
+      "tag": "0024_matching_rule_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1772672400000,
+      "tag": "0025_predictive_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1772740800000,
+      "tag": "0026_system_events_and_registration_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1772827200000,
+      "tag": "0027_performance_scale_indexes",
+      "breakpoints": true
     }
   ]
 }

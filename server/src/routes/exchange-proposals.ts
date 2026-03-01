@@ -7,16 +7,19 @@ import {
   exchangeProposalItems,
   deadStockItems,
   pharmacies,
-  activityLogs,
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
 import { createProposal, acceptProposal, rejectProposal } from '../services/exchange-service';
-import { processPendingMatchingRefreshJobs } from '../services/matching-refresh-service';
-import { parsePagination, parsePositiveInt } from '../utils/request-utils';
+import { parsePagination } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
 import { getProposalPriority } from '../services/proposal-priority-service';
+import {
+  buildProposalTimeline,
+  fetchProposalTimelineActionRows,
+} from '../services/proposal-timeline-service';
+import { parseExchangeIdOrBadRequest } from './exchange-utils';
 
 const router = Router();
 
@@ -77,11 +80,6 @@ function sanitizeBulkActionErrorMessage(err: unknown): string {
 // Find matching candidates
 router.post('/find', findLimiter, async (req: AuthRequest, res: Response) => {
   try {
-    await processPendingMatchingRefreshJobs().catch((err) => {
-      logger.warn('Processing pending matching refresh jobs failed before find', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
     const candidates = await findMatches(req.user!.id);
     res.json({ candidates });
   } catch (err) {
@@ -310,11 +308,8 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
 // Proposal detail
 router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parsePositiveInt(req.params.id);
-    if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const id = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!id) return;
     const pharmacyId = req.user!.id;
 
     const [proposal] = await db.select()
@@ -361,59 +356,14 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       }).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
     ]);
 
-    const actionRows = await db.select({
-      action: activityLogs.action,
-      detail: activityLogs.detail,
-      createdAt: activityLogs.createdAt,
-      actorPharmacyId: activityLogs.pharmacyId,
-      actorName: pharmacies.name,
-    })
-      .from(activityLogs)
-      .leftJoin(pharmacies, eq(activityLogs.pharmacyId, pharmacies.id))
-      .where(and(
-        inArray(activityLogs.action, ['proposal_accept', 'proposal_reject', 'proposal_complete', 'proposal_create']),
-        sql`${activityLogs.detail} LIKE ${`proposalId=${id}|%`}`,
-      ))
-      .orderBy(asc(activityLogs.createdAt), asc(activityLogs.id));
-
-    let previousStatus: string = 'proposed';
-    const timeline = [
-      {
-        action: 'proposal_created',
-        label: '仮マッチング作成',
-        at: proposal.proposedAt,
-        actorPharmacyId: proposal.pharmacyAId,
-        actorName: pharmA?.name ?? '提案元薬局',
-        statusFrom: null,
-        statusTo: 'proposed',
-      },
-      ...actionRows.map((row) => {
-        const nextStatus = row.action === 'proposal_accept'
-          ? (row.detail?.match(/status=([^|]+)/)?.[1] ?? 'accepted')
-          : row.action === 'proposal_reject'
-            ? 'rejected'
-            : row.action === 'proposal_complete'
-              ? 'completed'
-              : null;
-        const event = {
-          action: row.action,
-          label: row.action === 'proposal_accept'
-            ? '承認'
-            : row.action === 'proposal_reject'
-              ? '拒否'
-              : row.action === 'proposal_complete'
-                ? '交換完了'
-                : 'ステータス更新',
-          at: row.createdAt,
-          actorPharmacyId: row.actorPharmacyId,
-          actorName: row.actorName ?? '不明',
-          statusFrom: nextStatus ? previousStatus : null,
-          statusTo: nextStatus,
-        };
-        if (nextStatus) previousStatus = nextStatus;
-        return event;
-      }),
-    ];
+    const actionRows = await fetchProposalTimelineActionRows(id);
+    const timeline = buildProposalTimeline({
+      proposedAt: proposal.proposedAt,
+      proposalCreatorPharmacyId: proposal.pharmacyAId,
+      proposalCreatorName: pharmA?.name ?? '提案元薬局',
+      actionRows,
+      includeStatusTransitions: true,
+    });
 
     res.json({
       proposal,
@@ -432,11 +382,8 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
 router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
   try {
     // Reuse detail logic
-    const id = parsePositiveInt(req.params.id);
-    if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const id = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!id) return;
     const pharmacyId = req.user!.id;
 
     const [proposal] = await db.select()

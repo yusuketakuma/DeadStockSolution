@@ -14,6 +14,7 @@ import {
   getAdminPharmacyRiskPage,
   getAdminRiskOverview,
   getPharmacyRiskDetail,
+  invalidateAdminRiskSnapshotCache,
 } from '../services/expiry-risk-service';
 
 function createWhereQuery(result: unknown) {
@@ -43,6 +44,7 @@ describe('expiry-risk-service', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-01T00:00:00.000Z'));
+    invalidateAdminRiskSnapshotCache();
   });
 
   afterEach(() => {
@@ -98,12 +100,9 @@ describe('expiry-risk-service', () => {
     expect(overview.lowRiskPharmacies).toBe(2);
     expect(overview.topHighRiskPharmacies[0].pharmacyId).toBe(1);
 
-    mocks.db.select
-      .mockImplementationOnce(() => createWhereQuery(pharmacies))
-      .mockImplementationOnce(() => createWhereQuery(stockRows));
-
     const page = await getAdminPharmacyRiskPage(1, 2);
     expect(page.total).toBe(3);
     expect(page.data.map((row) => row.pharmacyId)).toEqual([1, 2]);
+    expect(mocks.db.select).toHaveBeenCalledTimes(2);
   });
 });

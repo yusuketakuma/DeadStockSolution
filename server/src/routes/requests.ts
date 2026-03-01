@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { db } from '../config/database';
 import { userRequests } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
@@ -7,10 +7,47 @@ import { logger } from '../services/logger';
 import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
 import { AuthRequest } from '../types';
+import { parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 
 router.use(requireLogin);
+
+router.get('/me', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({ error: 'ログインが必要です' });
+      return;
+    }
+
+    const parsedLimit = parsePositiveInt(String(req.query.limit ?? ''));
+    const limit = parsedLimit ? Math.min(parsedLimit, 100) : 50;
+
+    const rows = await db.select({
+      id: userRequests.id,
+      requestText: userRequests.requestText,
+      openclawStatus: userRequests.openclawStatus,
+      openclawThreadId: userRequests.openclawThreadId,
+      openclawSummary: userRequests.openclawSummary,
+      createdAt: userRequests.createdAt,
+      updatedAt: userRequests.updatedAt,
+    })
+      .from(userRequests)
+      .where(eq(userRequests.pharmacyId, req.user.id))
+      .orderBy(desc(userRequests.createdAt), desc(userRequests.id))
+      .limit(limit);
+
+    res.json({
+      data: rows,
+      pagination: {
+        limit,
+      },
+    });
+  } catch (err) {
+    logger.error('User request list error', { error: (err as Error).message });
+    res.status(500).json({ error: '要望一覧の取得に失敗しました' });
+  }
+});
 
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {

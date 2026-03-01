@@ -8,9 +8,10 @@ import {
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { createNotification } from '../services/notification-service';
-import { parsePagination, parsePositiveInt } from '../utils/request-utils';
+import { parsePagination } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
+import { parseExchangeIdOrBadRequest } from './exchange-utils';
 
 const router = Router();
 
@@ -20,11 +21,8 @@ const COMMENT_DUPLICATE_WINDOW_MS = 5 * 60 * 1000;
 // Proposal comments
 router.get('/proposals/:id/comments', async (req: AuthRequest, res: Response) => {
   try {
-    const proposalId = parsePositiveInt(req.params.id);
-    if (!proposalId) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!proposalId) return;
     const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
       defaultLimit: 50,
       maxLimit: 200,
@@ -92,11 +90,8 @@ router.get('/proposals/:id/comments', async (req: AuthRequest, res: Response) =>
 
 router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) => {
   try {
-    const proposalId = parsePositiveInt(req.params.id);
-    if (!proposalId) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!proposalId) return;
 
     const [proposal] = await db.select({
       id: exchangeProposals.id,
@@ -219,12 +214,9 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
 
 router.patch('/proposals/:id/comments/:commentId', async (req: AuthRequest, res: Response) => {
   try {
-    const proposalId = parsePositiveInt(req.params.id);
-    const commentId = parsePositiveInt(req.params.commentId);
-    if (!proposalId || !commentId) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
+    const commentId = parseExchangeIdOrBadRequest(res, req.params.commentId);
+    if (!proposalId || !commentId) return;
 
     if (req.user?.isAdmin) {
       res.status(403).json({ error: '管理者はコメントを編集できません' });
@@ -276,12 +268,9 @@ router.patch('/proposals/:id/comments/:commentId', async (req: AuthRequest, res:
 
 router.delete('/proposals/:id/comments/:commentId', async (req: AuthRequest, res: Response) => {
   try {
-    const proposalId = parsePositiveInt(req.params.id);
-    const commentId = parsePositiveInt(req.params.commentId);
-    if (!proposalId || !commentId) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
+    const commentId = parseExchangeIdOrBadRequest(res, req.params.commentId);
+    if (!proposalId || !commentId) return;
 
     if (req.user?.isAdmin) {
       res.status(403).json({ error: '管理者はコメントを削除できません' });

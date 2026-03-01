@@ -1,28 +1,51 @@
 {
-  "session_id": "session-1772258478",
+  "session_id": "session-1772330096",
   "parent_session_id": null,
   "state": "stopped",
-  "started_at": "2026-02-28T06:01:18Z",
-  "updated_at": "2026-02-28T06:44:04Z",
-  "event_seq": 19,
-  "last_event_id": "event-000019",
+  "started_at": "2026-03-01T01:54:56Z",
+  "updated_at": "2026-03-01T01:57:54Z",
+  "event_seq": 12,
+  "last_event_id": "event-000012",
+  "state_version": 1,
+  "cwd": "/Users/yusuke/DeadStockSolution",
+  "project_name": "DeadStockSolution",
+  "resumed_at": "2026-03-01T01:54:56Z",
+  "git": {
+    "branch": "preview",
+    "uncommitted_changes": 165,
+    "last_commit": "086a920"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1772264547,
+    "wip_tasks": 0,
+    "todo_tasks": 0,
+    "pending_tasks": 0,
+    "completed_tasks": 0
+  },
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "prompt_seq": 3,
+  "intent": "literal",
+  "last_message_length": 53,
+  "last_message_hash": "5800db7e7fe1dcc0",
+  "ended_at": "2026-03-01T01:55:22Z",
+  "duration_minutes": 540,
+  "memory_logged": true,
   "changes_this_session": [
     {
-      "file": "Plans.md",
-      "action": "Edit",
-      "timestamp": "2026-02-28T06:42:25Z",
-      "important": true
+      "file": "package.json",
+      "action": "Write",
+      "timestamp": "2026-03-01T01:57:18Z",
+      "important": false
     },
     {
-      "file": ".claude/state/breezing-active.json",
+      "file": "scripts/quality-gate.sh",
       "action": "Write",
-      "timestamp": "2026-02-28T06:43:41Z",
+      "timestamp": "2026-03-01T01:57:35Z",
       "important": false
     }
-  ],
-  "last_message_length": 701,
-  "last_message_hash": "6fa512ebfa20af3c",
-  "ended_at": "2026-02-28T06:44:04Z",
-  "duration_minutes": 582,
-  "memory_logged": true
+  ]
 }

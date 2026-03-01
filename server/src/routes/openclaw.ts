@@ -1,8 +1,8 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../config/database';
-import { userRequests } from '../db/schema';
+import { userRequests, notifications } from '../db/schema';
 import { logger } from '../services/logger';
 import {
   canTransitionOpenClawStatus,
@@ -90,6 +90,7 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
 
     const [current] = await db.select({
       id: userRequests.id,
+      pharmacyId: userRequests.pharmacyId,
       openclawStatus: userRequests.openclawStatus,
       openclawThreadId: userRequests.openclawThreadId,
       openclawSummary: userRequests.openclawSummary,
@@ -120,14 +121,48 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
     }
 
     try {
-      await db.update(userRequests)
-        .set({
+      await db.transaction(async (tx) => {
+        const updatePayload = {
           openclawStatus: status,
           openclawThreadId: threadId ?? current.openclawThreadId,
           openclawSummary: summary ?? current.openclawSummary,
           updatedAt: new Date().toISOString(),
-        })
-        .where(eq(userRequests.id, requestId));
+        };
+
+        if (status !== 'completed') {
+          await tx.update(userRequests)
+            .set(updatePayload)
+            .where(eq(userRequests.id, requestId));
+          return;
+        }
+
+        const transitionedRows = await tx.update(userRequests)
+          .set(updatePayload)
+          .where(and(
+            eq(userRequests.id, requestId),
+            ne(userRequests.openclawStatus, 'completed'),
+          ))
+          .returning({ id: userRequests.id });
+
+        if (transitionedRows.length === 0) {
+          await tx.update(userRequests)
+            .set(updatePayload)
+            .where(eq(userRequests.id, requestId));
+          return;
+        }
+
+        const summaryText = summary ?? current.openclawSummary;
+        await tx.insert(notifications).values({
+          pharmacyId: current.pharmacyId,
+          type: 'request_update',
+          title: 'ご要望の対応が完了しました',
+          message: summaryText
+            ? `要望 #${requestId}: ${summaryText}`
+            : `要望 #${requestId} の対応が完了しました。管理画面で詳細をご確認ください。`,
+          referenceType: 'request',
+          referenceId: requestId,
+        });
+      });
     } catch (err) {
       releaseOpenClawWebhookReplay({
         receivedSignature: signature,

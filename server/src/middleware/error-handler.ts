@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../services/logger';
+import { recordHttpUnhandledError } from '../services/system-event-service';
 
 export function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -84,6 +85,13 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     method: req.method,
     path: req.path,
     status,
+  });
+  void recordHttpUnhandledError({
+    method: req.method,
+    path: req.path,
+    status,
+    requestId: typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined,
+    errorCode: typeof httpErr.code === 'string' ? httpErr.code : undefined,
   });
   res.status(status).json({
     error: resolveResponseMessage(httpErr, status),

@@ -3,7 +3,7 @@ import { useAsyncState } from '../hooks/useAsyncState';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import ConfirmActionModal from '../components/ConfirmActionModal';
@@ -13,6 +13,14 @@ import AppField from '../components/ui/AppField';
 import AppSelect from '../components/ui/AppSelect';
 import LoadingButton from '../components/ui/LoadingButton';
 import ProposalItemsPanel from '../components/ProposalItemsPanel';
+import {
+  filterProposalTimelineEvents,
+  PROPOSAL_TIMELINE_FILTER_OPTIONS,
+  type ProposalTimelineEvent,
+  type ProposalTimelineFilter,
+} from '../utils/proposal-timeline';
+import { toViewerProposalStatusLabel } from '../utils/proposal-status';
+import { formatDateTimeJa } from '../utils/formatters';
 
 interface PharmacyInfo {
   id: number;
@@ -34,16 +42,6 @@ interface ProposalItem {
   yakkaUnitPrice: number | null;
 }
 
-interface ProposalTimelineEvent {
-  action: string;
-  label: string;
-  at: string | null;
-  actorPharmacyId: number | null;
-  actorName: string | null;
-  statusFrom?: string | null;
-  statusTo?: string | null;
-}
-
 interface ProposalDetail {
   proposal: {
     id: number;
@@ -59,22 +57,6 @@ interface ProposalDetail {
   pharmacyA: PharmacyInfo;
   pharmacyB: PharmacyInfo;
   timeline?: ProposalTimelineEvent[];
-}
-
-const statusLabelMap: Record<string, string> = {
-  proposed: '仮マッチング中',
-  accepted_a: 'A側承認済み',
-  accepted_b: 'B側承認済み',
-  confirmed: '確定',
-  rejected: '拒否',
-  completed: '交換完了',
-  cancelled: 'キャンセル',
-};
-
-function toViewerStatusLabel(status: string, isViewerA: boolean): string {
-  if (status === 'accepted_a') return isViewerA ? 'あなた承認済み' : '相手承認済み';
-  if (status === 'accepted_b') return isViewerA ? '相手承認済み' : 'あなた承認済み';
-  return statusLabelMap[status] ?? status;
 }
 
 const commentTemplates = [
@@ -96,6 +78,7 @@ interface ProposalComment {
 export default function ProposalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const location = useLocation();
   const [data, setData] = useState<ProposalDetail | null>(null);
   const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
   const [pendingAction, setPendingAction] = useState<'accept' | 'reject' | 'complete' | null>(null);
@@ -111,7 +94,7 @@ export default function ProposalDetailPage() {
   const [feedbackRating, setFeedbackRating] = useState('5');
   const [feedbackComment, setFeedbackComment] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
-  const [timelineFilter, setTimelineFilter] = useState<'all' | 'decision'>('all');
+  const [timelineFilter, setTimelineFilter] = useState<ProposalTimelineFilter>('all');
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -144,6 +127,15 @@ export default function ProposalDetailPage() {
     void fetchDetail();
     void fetchComments();
   }, [fetchDetail, fetchComments]);
+
+  useEffect(() => {
+    if (!data) return;
+    if (location.hash !== '#proposal-timeline' && location.hash !== '#timeline') return;
+
+    const timelineSection = document.getElementById('proposal-timeline');
+    if (!timelineSection || typeof timelineSection.scrollIntoView !== 'function') return;
+    timelineSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [data, location.hash]);
 
   if (loading && !data) return <PageLoader />;
   if (!data) {
@@ -307,11 +299,7 @@ export default function ProposalDetailPage() {
 ${template}` : template);
   };
 
-  const filteredTimeline = (data.timeline ?? []).filter((event) => (
-    timelineFilter === 'all'
-      ? true
-      : ['proposal_accept', 'proposal_reject', 'proposal_complete'].includes(event.action)
-  ));
+  const filteredTimeline = filterProposalTimelineEvents(data.timeline ?? [], timelineFilter);
 
   const actionLabelMap: Record<'accept' | 'reject' | 'complete', string> = {
     accept: '承認',
@@ -361,36 +349,35 @@ ${template}` : template);
           </div>
       </AppDataPanel>
 
-      <AppDataPanel title="進行履歴" className="mb-3" bodyClassName="small">
-        <div className="mb-2" style={{ maxWidth: 280 }}>
-          <AppSelect
-            controlId="proposal-timeline-filter"
-            value={timelineFilter}
-            ariaLabel="進行履歴フィルタ"
-            onChange={(value) => setTimelineFilter(value as 'all' | 'decision')}
-            options={[
-              { value: 'all', label: 'すべて表示' },
-              { value: 'decision', label: '承認/拒否/完了のみ' },
-            ]}
-          />
-        </div>
-        {filteredTimeline.length === 0 ? (
-          <div className="text-muted">表示できる履歴はありません。</div>
-        ) : (
-          <ul className="mb-0 ps-3">
-            {filteredTimeline.map((event, idx) => (
-              <li key={`${event.action}-${event.at ?? 'na'}-${idx}`} className="mb-1">
-                <strong>{event.label}</strong>
-                {' '}— {event.actorName ?? '不明'}
-                {event.statusFrom && event.statusTo && (
-                  <span className="text-muted"> [{toViewerStatusLabel(event.statusFrom, isA)} → {toViewerStatusLabel(event.statusTo, isA)}]</span>
-                )}
-                {' '}({event.at ? new Date(event.at).toLocaleString('ja-JP') : '日時不明'})
-              </li>
-            ))}
-          </ul>
-        )}
-      </AppDataPanel>
+      <section id="proposal-timeline" style={{ scrollMarginTop: 96 }}>
+        <AppDataPanel title="進行履歴" className="mb-3" bodyClassName="small">
+          <div className="mb-2" style={{ maxWidth: 280 }}>
+            <AppSelect
+              controlId="proposal-timeline-filter"
+              value={timelineFilter}
+              ariaLabel="進行履歴フィルタ"
+              onChange={(value) => setTimelineFilter(value as ProposalTimelineFilter)}
+              options={PROPOSAL_TIMELINE_FILTER_OPTIONS}
+            />
+          </div>
+          {filteredTimeline.length === 0 ? (
+            <div className="text-muted">表示できる履歴はありません。</div>
+          ) : (
+            <ul className="mb-0 ps-3">
+              {filteredTimeline.map((event, idx) => (
+                <li key={`${event.action}-${event.at ?? 'na'}-${idx}`} className="mb-1">
+                  <strong>{event.label}</strong>
+                  {' '}— {event.actorName ?? '不明'}
+                  {event.statusFrom && event.statusTo && (
+                    <span className="text-muted"> [{toViewerProposalStatusLabel(event.statusFrom, isA)} → {toViewerProposalStatusLabel(event.statusTo, isA)}]</span>
+                  )}
+                  {' '}({formatDateTimeJa(event.at, '日時不明')})
+                </li>
+              ))}
+            </ul>
+          )}
+        </AppDataPanel>
+      </section>
 
       <Row className="g-3 mb-3">
         <Col md={6}>
@@ -488,7 +475,7 @@ ${template}` : template);
             {comments.map((comment) => (
               <div key={comment.id} className="border rounded p-2">
                 <div className="small text-muted">
-                  {comment.authorName} / {comment.createdAt ? new Date(comment.createdAt).toLocaleString('ja-JP') : '-'}
+                  {comment.authorName} / {formatDateTimeJa(comment.createdAt)}
                 </div>
                 {editingCommentId === comment.id ? (
                   <div className="mt-2 d-flex flex-column gap-2">

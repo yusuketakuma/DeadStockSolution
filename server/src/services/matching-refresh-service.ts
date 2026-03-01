@@ -1,4 +1,4 @@
-import { and, asc, eq, exists, gte, isNull, lt, lte, notInArray, or } from 'drizzle-orm';
+import { and, asc, eq, exists, gte, inArray, isNull, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies, deadStockItems, matchingRefreshJobs, usedMedicationItems, uploads } from '../db/schema';
 import { splitIntoChunks } from '../utils/array-utils';
@@ -14,6 +14,8 @@ const RETRY_BATCH_SIZE = 3;
 const JOB_STALE_TIMEOUT_MS = 15 * 60 * 1000;
 const RETRY_BACKOFF_BASE_MS = 2 * 60 * 1000;
 const CLAIM_CONTENTION_RETRY_LIMIT = 3;
+const MATCHING_REFRESH_TRIGGER_LOCK_NAMESPACE = 9413;
+const MATCHING_REFRESH_DEBOUNCE_MS = resolveMatchingRefreshDebounceMs(process.env.MATCHING_REFRESH_DEBOUNCE_MS);
 const REFRESH_MATCH_BATCH_SIZE = resolveRefreshMatchBatchSize(process.env.MATCHING_REFRESH_BATCH_SIZE);
 
 interface RefreshJob {
@@ -23,8 +25,12 @@ interface RefreshJob {
   attempts: number;
 }
 
-interface JobInsertExecutor {
+interface JobQueueExecutor {
   insert: typeof db.insert;
+  select: typeof db.select;
+  update: typeof db.update;
+  delete: typeof db.delete;
+  execute: typeof db.execute;
 }
 
 function resolveRefreshMatchBatchSize(value: string | undefined): number {
@@ -33,6 +39,14 @@ function resolveRefreshMatchBatchSize(value: string | undefined): number {
     return 200;
   }
   return parsed;
+}
+
+function resolveMatchingRefreshDebounceMs(value: string | undefined): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return 120_000;
+  }
+  return Math.min(parsed, 10 * 60 * 1000);
 }
 
 function getCurrentMonthStartIso(): string {
@@ -253,17 +267,68 @@ export async function processPendingMatchingRefreshJobs(limit: number = RETRY_BA
 export async function triggerMatchingRefreshOnUpload(params: {
   triggerPharmacyId: number;
   uploadType: 'dead_stock' | 'used_medication';
-}, executor: JobInsertExecutor = db): Promise<void> {
+}, executor: JobQueueExecutor = db): Promise<void> {
   if (!AUTO_RECOMPUTE_ENABLED) return;
+
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const scheduledAtIso = new Date(now + MATCHING_REFRESH_DEBOUNCE_MS).toISOString();
+  const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
+
+  await executor.execute(
+    sql`SELECT pg_advisory_xact_lock(${MATCHING_REFRESH_TRIGGER_LOCK_NAMESPACE}, ${params.triggerPharmacyId})`,
+  );
+
+  const existingRows = await executor.select({
+    id: matchingRefreshJobs.id,
+    processingStartedAt: matchingRefreshJobs.processingStartedAt,
+    attempts: matchingRefreshJobs.attempts,
+  })
+    .from(matchingRefreshJobs)
+    .where(and(
+      eq(matchingRefreshJobs.triggerPharmacyId, params.triggerPharmacyId),
+      lt(matchingRefreshJobs.attempts, MAX_JOB_ATTEMPTS),
+    ))
+    .orderBy(
+      asc(matchingRefreshJobs.createdAt),
+      asc(matchingRefreshJobs.id),
+    );
+
+  const waitingRows = existingRows.filter((row) => (
+    row.processingStartedAt === null || row.processingStartedAt < staleBeforeIso
+  ));
+  const keeper = waitingRows[0];
+
+  if (keeper) {
+    await executor.update(matchingRefreshJobs)
+      .set({
+        uploadType: params.uploadType,
+        attempts: 0,
+        processingStartedAt: null,
+        nextRetryAt: scheduledAtIso,
+        lastError: null,
+        updatedAt: nowIso,
+      })
+      .where(eq(matchingRefreshJobs.id, keeper.id));
+
+    const redundantIds = waitingRows
+      .slice(1)
+      .map((row) => row.id);
+    if (redundantIds.length > 0) {
+      await executor.delete(matchingRefreshJobs)
+        .where(inArray(matchingRefreshJobs.id, redundantIds));
+    }
+    return;
+  }
 
   await executor.insert(matchingRefreshJobs).values({
     triggerPharmacyId: params.triggerPharmacyId,
     uploadType: params.uploadType,
     attempts: 0,
     processingStartedAt: null,
-    nextRetryAt: null,
+    nextRetryAt: scheduledAtIso,
     lastError: null,
-    updatedAt: new Date().toISOString(),
+    updatedAt: nowIso,
   });
 }
 

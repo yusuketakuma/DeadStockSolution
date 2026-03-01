@@ -3,6 +3,7 @@ import AppTable from '../../../components/ui/AppTable';
 import AppCard from '../../../components/ui/AppCard';
 import AppMobileDataCard from '../../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../../components/ui/AppResponsiveSwitch';
+import { formatDateTimeJa } from '../../../utils/formatters';
 
 interface SyncLog {
   id: number;
@@ -45,7 +46,7 @@ export default function SyncLogsTable({ syncLogs }: SyncLogsTableProps) {
               <tbody>
                 {syncLogs.map((log) => (
                   <tr key={log.id}>
-                    <td className="small">{log.startedAt ? new Date(log.startedAt).toLocaleString('ja-JP') : '-'}</td>
+                    <td className="small">{formatDateTimeJa(log.startedAt)}</td>
                     <td>
                       <Badge bg={log.status === 'success' ? 'success' : log.status === 'running' ? 'primary' : 'danger'}>
                         {log.status}
@@ -67,7 +68,7 @@ export default function SyncLogsTable({ syncLogs }: SyncLogsTableProps) {
               {syncLogs.map((log) => (
                 <AppMobileDataCard
                   key={log.id}
-                  title={log.startedAt ? new Date(log.startedAt).toLocaleString('ja-JP') : '-'}
+                  title={formatDateTimeJa(log.startedAt)}
                   badges={(
                     <Badge bg={log.status === 'success' ? 'success' : log.status === 'running' ? 'primary' : 'danger'}>
                       {log.status}

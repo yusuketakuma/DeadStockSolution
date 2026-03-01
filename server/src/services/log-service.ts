@@ -30,14 +30,36 @@ export async function writeLog(
   options: {
     pharmacyId?: number | null;
     detail?: string;
+    resourceType?: string;
+    resourceId?: string | number;
+    metadataJson?: string | Record<string, unknown> | null;
     ipAddress?: string;
   } = {},
 ): Promise<void> {
   try {
+    const metadataJson = (() => {
+      if (options.metadataJson === undefined || options.metadataJson === null) {
+        return null;
+      }
+      if (typeof options.metadataJson === 'string') {
+        return options.metadataJson;
+      }
+      try {
+        return JSON.stringify(options.metadataJson);
+      } catch {
+        return null;
+      }
+    })();
+
     await db.insert(activityLogs).values({
       pharmacyId: options.pharmacyId ?? null,
       action,
       detail: options.detail ?? null,
+      resourceType: options.resourceType ?? null,
+      resourceId: options.resourceId !== undefined && options.resourceId !== null
+        ? String(options.resourceId)
+        : null,
+      metadataJson,
       ipAddress: options.ipAddress ?? null,
     });
   } catch (err) {

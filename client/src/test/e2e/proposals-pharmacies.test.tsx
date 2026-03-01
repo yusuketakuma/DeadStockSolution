@@ -479,6 +479,46 @@ describe('ExchangeHistoryPage', () => {
     expect(screen.getByText('交換履歴はまだありません')).toBeInTheDocument();
   });
 
+  it('shows timeline links for each history row', async () => {
+    createMockFetch({
+      '/api/auth/me': mockUser,
+      '/api/exchange/history': {
+        data: [
+          {
+            id: 1,
+            proposalId: 12,
+            pharmacyAId: 1,
+            pharmacyBId: 2,
+            pharmacyAName: 'テスト薬局',
+            pharmacyBName: '大阪薬局',
+            totalValue: 12000,
+            completedAt: '2026-02-10T10:00:00Z',
+          },
+          {
+            id: 2,
+            proposalId: 25,
+            pharmacyAId: 3,
+            pharmacyBId: 1,
+            pharmacyAName: '名古屋薬局',
+            pharmacyBName: 'テスト薬局',
+            totalValue: 14000,
+            completedAt: '2026-02-11T10:00:00Z',
+          },
+        ],
+        pagination: { page: 1, totalPages: 1, total: 2 },
+      },
+    });
+
+    renderWithProviders(<ExchangeHistoryPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('link', { name: 'タイムライン' })).toHaveLength(2);
+    });
+    const timelineLinks = screen.getAllByRole('link', { name: 'タイムライン' });
+    expect(timelineLinks[0]).toHaveAttribute('href', '/proposals/12#proposal-timeline');
+    expect(timelineLinks[1]).toHaveAttribute('href', '/proposals/25#proposal-timeline');
+  });
+
   it('renders mobile history cards on mobile viewport', async () => {
     setMatchMedia(true);
     createMockFetch({
@@ -503,6 +543,9 @@ describe('ExchangeHistoryPage', () => {
     await waitFor(() => {
       expect(screen.getByText('履歴 #1')).toBeInTheDocument();
     });
+    const timelineLink = screen.getByRole('link', { name: 'タイムライン' });
+    expect(timelineLink).toBeInTheDocument();
+    expect(timelineLink).toHaveAttribute('href', '/proposals/12#proposal-timeline');
     expect(screen.queryByRole('columnheader', { name: '相手薬局' })).not.toBeInTheDocument();
   });
 });

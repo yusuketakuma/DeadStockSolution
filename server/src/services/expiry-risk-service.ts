@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, pharmacies } from '../db/schema';
 
@@ -72,6 +72,23 @@ const RISK_WEIGHTS: Record<keyof RiskBucketCounts, number> = {
   over120: 0.05,
   unknown: 0.35,
 };
+const ADMIN_RISK_CACHE_TTL_MS = resolveAdminRiskCacheTtlMs(process.env.ADMIN_RISK_CACHE_TTL_MS);
+
+interface AdminRiskSnapshot {
+  summaries: PharmacyRiskSummary[];
+  totalBucketCounts: RiskBucketCounts;
+  computedAt: string;
+}
+
+let adminRiskSnapshotCache: { expiresAt: number; value: AdminRiskSnapshot } | null = null;
+
+function resolveAdminRiskCacheTtlMs(value: string | undefined): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return 60_000;
+  }
+  return Math.min(Math.max(parsed, 5_000), 10 * 60 * 1000);
+}
 
 function createEmptyBuckets(): RiskBucketCounts {
   return { ...EMPTY_BUCKETS };
@@ -197,6 +214,72 @@ function aggregatePharmacyRisk(
   };
 }
 
+function cacheAdminRiskSnapshot(snapshot: AdminRiskSnapshot): AdminRiskSnapshot {
+  adminRiskSnapshotCache = {
+    expiresAt: Date.now() + ADMIN_RISK_CACHE_TTL_MS,
+    value: snapshot,
+  };
+  return snapshot;
+}
+
+export function invalidateAdminRiskSnapshotCache(): void {
+  adminRiskSnapshotCache = null;
+}
+
+async function loadAdminRiskSnapshot(forceRefresh: boolean = false): Promise<AdminRiskSnapshot> {
+  const now = Date.now();
+  if (!forceRefresh && adminRiskSnapshotCache && adminRiskSnapshotCache.expiresAt > now) {
+    return adminRiskSnapshotCache.value;
+  }
+
+  const [pharmacyRows, stockRows] = await Promise.all([
+    db.select({ id: pharmacies.id, name: pharmacies.name })
+      .from(pharmacies)
+      .where(eq(pharmacies.isActive, true)),
+    db.select({
+      id: deadStockItems.id,
+      pharmacyId: deadStockItems.pharmacyId,
+      drugName: deadStockItems.drugName,
+      quantity: deadStockItems.quantity,
+      unit: deadStockItems.unit,
+      yakkaTotal: deadStockItems.yakkaTotal,
+      expirationDate: deadStockItems.expirationDate,
+      expirationDateIso: deadStockItems.expirationDateIso,
+    })
+      .from(deadStockItems)
+      .where(eq(deadStockItems.isAvailable, true)),
+  ]);
+
+  const rowsByPharmacy = new Map<number, RiskRow[]>();
+  for (const row of stockRows) {
+    const list = rowsByPharmacy.get(row.pharmacyId) ?? [];
+    list.push(row);
+    rowsByPharmacy.set(row.pharmacyId, list);
+  }
+
+  const totalBucketCounts = createEmptyBuckets();
+  const todayUtc = getTodayUtc();
+  const summaries: PharmacyRiskSummary[] = [];
+
+  for (const pharmacy of pharmacyRows) {
+    const rows = rowsByPharmacy.get(pharmacy.id) ?? [];
+    const { summary } = aggregatePharmacyRisk(rows, pharmacy.id, pharmacy.name, todayUtc);
+    summaries.push(summary);
+    for (const key of Object.keys(totalBucketCounts) as Array<keyof RiskBucketCounts>) {
+      totalBucketCounts[key] += summary.bucketCounts[key];
+    }
+  }
+
+  const orderedSummaries = summaries
+    .sort((a, b) => b.riskScore - a.riskScore || b.totalItems - a.totalItems || a.pharmacyId - b.pharmacyId);
+
+  return cacheAdminRiskSnapshot({
+    summaries: orderedSummaries,
+    totalBucketCounts,
+    computedAt: new Date().toISOString(),
+  });
+}
+
 export async function getPharmacyRiskDetail(pharmacyId: number): Promise<PharmacyRiskDetail> {
   const [pharmacy] = await db.select({
     id: pharmacies.id,
@@ -240,61 +323,21 @@ export async function getPharmacyRiskDetail(pharmacyId: number): Promise<Pharmac
 }
 
 export async function getAdminRiskOverview(): Promise<AdminRiskOverview> {
-  const [pharmacyRows, stockRows] = await Promise.all([
-    db.select({ id: pharmacies.id, name: pharmacies.name })
-      .from(pharmacies)
-      .where(eq(pharmacies.isActive, true)),
-    db.select({
-      id: deadStockItems.id,
-      pharmacyId: deadStockItems.pharmacyId,
-      drugName: deadStockItems.drugName,
-      quantity: deadStockItems.quantity,
-      unit: deadStockItems.unit,
-      yakkaTotal: deadStockItems.yakkaTotal,
-      expirationDate: deadStockItems.expirationDate,
-      expirationDateIso: deadStockItems.expirationDateIso,
-    })
-      .from(deadStockItems)
-      .where(eq(deadStockItems.isAvailable, true)),
-  ]);
-
-  const rowsByPharmacy = new Map<number, RiskRow[]>();
-  for (const row of stockRows) {
-    const list = rowsByPharmacy.get(row.pharmacyId) ?? [];
-    list.push(row);
-    rowsByPharmacy.set(row.pharmacyId, list);
-  }
-
-  const totalBucketCounts = createEmptyBuckets();
-  const todayUtc = getTodayUtc();
-  const summaries: PharmacyRiskSummary[] = [];
-
-  for (const pharmacy of pharmacyRows) {
-    const rows = rowsByPharmacy.get(pharmacy.id) ?? [];
-    const { summary } = aggregatePharmacyRisk(rows, pharmacy.id, pharmacy.name, todayUtc);
-    summaries.push(summary);
-
-    for (const key of Object.keys(totalBucketCounts) as Array<keyof RiskBucketCounts>) {
-      totalBucketCounts[key] += summary.bucketCounts[key];
-    }
-  }
-
-  const totalPharmacies = summaries.length;
+  const snapshot = await loadAdminRiskSnapshot();
+  const totalPharmacies = snapshot.summaries.length;
   const avgRiskScore = totalPharmacies > 0
-    ? to2(summaries.reduce((sum, row) => sum + row.riskScore, 0) / totalPharmacies)
+    ? to2(snapshot.summaries.reduce((sum, row) => sum + row.riskScore, 0) / totalPharmacies)
     : 0;
 
   return {
     totalPharmacies,
-    highRiskPharmacies: summaries.filter((row) => row.riskScore >= 65).length,
-    mediumRiskPharmacies: summaries.filter((row) => row.riskScore >= 35 && row.riskScore < 65).length,
-    lowRiskPharmacies: summaries.filter((row) => row.riskScore < 35).length,
+    highRiskPharmacies: snapshot.summaries.filter((row) => row.riskScore >= 65).length,
+    mediumRiskPharmacies: snapshot.summaries.filter((row) => row.riskScore >= 35 && row.riskScore < 65).length,
+    lowRiskPharmacies: snapshot.summaries.filter((row) => row.riskScore < 35).length,
     avgRiskScore,
-    totalBucketCounts,
-    topHighRiskPharmacies: [...summaries]
-      .sort((a, b) => b.riskScore - a.riskScore || b.totalItems - a.totalItems)
-      .slice(0, 10),
-    computedAt: new Date().toISOString(),
+    totalBucketCounts: snapshot.totalBucketCounts,
+    topHighRiskPharmacies: snapshot.summaries.slice(0, 10),
+    computedAt: snapshot.computedAt,
   };
 }
 
@@ -303,46 +346,10 @@ export async function getAdminPharmacyRiskPage(page: number, limit: number): Pro
   total: number;
 }> {
   const offset = (page - 1) * limit;
-  const pharmacyRows = await db.select({ id: pharmacies.id, name: pharmacies.name })
-    .from(pharmacies)
-    .where(eq(pharmacies.isActive, true));
-
-  const pharmacyIds = pharmacyRows.map((row) => row.id);
-  const stockRows = pharmacyIds.length > 0
-    ? await db.select({
-      id: deadStockItems.id,
-      pharmacyId: deadStockItems.pharmacyId,
-      drugName: deadStockItems.drugName,
-      quantity: deadStockItems.quantity,
-      unit: deadStockItems.unit,
-      yakkaTotal: deadStockItems.yakkaTotal,
-      expirationDate: deadStockItems.expirationDate,
-      expirationDateIso: deadStockItems.expirationDateIso,
-    })
-      .from(deadStockItems)
-      .where(and(
-        inArray(deadStockItems.pharmacyId, pharmacyIds),
-        eq(deadStockItems.isAvailable, true),
-      ))
-    : [];
-
-  const rowsByPharmacy = new Map<number, RiskRow[]>();
-  for (const row of stockRows) {
-    const list = rowsByPharmacy.get(row.pharmacyId) ?? [];
-    list.push(row);
-    rowsByPharmacy.set(row.pharmacyId, list);
-  }
-
-  const todayUtc = getTodayUtc();
-  const summaries = pharmacyRows.map((pharmacy) => (
-    aggregatePharmacyRisk(rowsByPharmacy.get(pharmacy.id) ?? [], pharmacy.id, pharmacy.name, todayUtc).summary
-  ));
-
-  const ordered = summaries
-    .sort((a, b) => b.riskScore - a.riskScore || b.totalItems - a.totalItems || a.pharmacyId - b.pharmacyId);
+  const snapshot = await loadAdminRiskSnapshot();
 
   return {
-    data: ordered.slice(offset, offset + limit),
-    total: ordered.length,
+    data: snapshot.summaries.slice(offset, offset + limit),
+    total: snapshot.summaries.length,
   };
 }

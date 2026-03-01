@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
     update: vi.fn(),
+    insert: vi.fn(),
+    transaction: vi.fn(),
   },
   loggerError: vi.fn(),
 }));
@@ -26,6 +28,8 @@ vi.mock('../services/logger', () => ({
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
+  and: vi.fn(() => ({})),
+  ne: vi.fn(() => ({})),
 }));
 
 import openclawRouter from '../routes/openclaw';
@@ -54,14 +58,22 @@ function createSelectLimitQuery(result: unknown) {
   return query;
 }
 
-function createUpdateQuery() {
+function createUpdateQuery(returningResult: unknown[] = [{ id: 1 }]) {
   const query = {
     set: vi.fn(),
     where: vi.fn(),
+    returning: vi.fn(),
   };
   query.set.mockReturnValue(query);
-  query.where.mockResolvedValue(undefined);
+  query.where.mockReturnValue(query);
+  query.returning.mockResolvedValue(returningResult);
   return query;
+}
+
+function createInsertQuery() {
+  return {
+    values: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 function createFailingUpdateQuery(error: Error) {
@@ -87,6 +99,8 @@ describe('openclaw callback route', () => {
     resetOpenClawWebhookReplayCacheForTests();
     process.env.OPENCLAW_WEBHOOK_SECRET = 'webhook-secret';
     process.env.OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS = '300';
+    mocks.db.insert.mockImplementation(() => createInsertQuery());
+    mocks.db.transaction.mockImplementation(async (callback: (tx: typeof mocks.db) => unknown) => callback(mocks.db));
   });
 
   it('accepts callback with valid HMAC signature', async () => {
@@ -244,6 +258,98 @@ describe('openclaw callback route', () => {
 
     expect(first.status).toBe(500);
     expect(second.status).toBe(200);
+    expect(mocks.db.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('creates request update notification when callback marks request completed', async () => {
+    const app = createApp();
+    const currentRow = [{
+      id: 21,
+      pharmacyId: 8,
+      requestText: '在庫CSV出力',
+      openclawStatus: 'implementing',
+      openclawThreadId: 'thread-21',
+      openclawSummary: null,
+    }];
+    const updateQuery = createUpdateQuery();
+    const insertQuery = createInsertQuery();
+
+    mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
+    mocks.db.update.mockImplementationOnce(() => updateQuery);
+    mocks.db.insert.mockImplementationOnce(() => insertQuery);
+
+    const payload = {
+      requestId: 21,
+      status: 'completed',
+      summary: '管理画面にエクスポート機能を追加しました',
+      threadId: 'thread-21',
+      implementationBranch: 'review',
+    };
+    const rawBody = JSON.stringify(payload);
+    const nowMs = Date.parse('2026-02-25T12:00:00.000Z');
+    const timestamp = Math.floor(nowMs / 1000);
+    vi.useFakeTimers();
+    vi.setSystemTime(nowMs);
+
+    const res = await request(app)
+      .post('/api/openclaw/callback')
+      .set('x-openclaw-timestamp', String(timestamp))
+      .set('x-openclaw-signature', createSignature('webhook-secret', timestamp, rawBody))
+      .send(payload);
+
+    vi.useRealTimers();
+
+    expect(res.status).toBe(200);
+    expect(mocks.db.insert).toHaveBeenCalledTimes(1);
+    expect(insertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
+      pharmacyId: 8,
+      type: 'request_update',
+      referenceType: 'request',
+      referenceId: 21,
+    }));
+  });
+
+  it('does not create duplicate request update notification when already completed', async () => {
+    const app = createApp();
+    const currentRow = [{
+      id: 22,
+      pharmacyId: 8,
+      requestText: '在庫CSV出力',
+      openclawStatus: 'completed',
+      openclawThreadId: 'thread-22',
+      openclawSummary: 'already done',
+    }];
+    const noTransitionUpdateQuery = createUpdateQuery([]);
+    const completedUpdateQuery = createUpdateQuery();
+
+    mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
+    mocks.db.update
+      .mockImplementationOnce(() => noTransitionUpdateQuery)
+      .mockImplementationOnce(() => completedUpdateQuery);
+
+    const payload = {
+      requestId: 22,
+      status: 'completed',
+      summary: '再通知しない',
+      threadId: 'thread-22',
+      implementationBranch: 'review',
+    };
+    const rawBody = JSON.stringify(payload);
+    const nowMs = Date.parse('2026-02-25T12:00:00.000Z');
+    const timestamp = Math.floor(nowMs / 1000);
+    vi.useFakeTimers();
+    vi.setSystemTime(nowMs);
+
+    const res = await request(app)
+      .post('/api/openclaw/callback')
+      .set('x-openclaw-timestamp', String(timestamp))
+      .set('x-openclaw-signature', createSignature('webhook-secret', timestamp, rawBody))
+      .send(payload);
+
+    vi.useRealTimers();
+
+    expect(res.status).toBe(200);
+    expect(mocks.db.insert).not.toHaveBeenCalled();
     expect(mocks.db.update).toHaveBeenCalledTimes(2);
   });
 });

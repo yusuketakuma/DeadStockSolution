@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
@@ -11,6 +11,8 @@ import AppCard from '../../components/ui/AppCard';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
+import { formatDateTimeJa } from '../../utils/formatters';
 
 interface LogEntry {
   id: number;
@@ -98,44 +100,49 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
 };
 
 export default function AdminLogsPage() {
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
   const [actionFilter, setActionFilter] = useState('');
   const [resultFilter, setResultFilter] = useState<'all' | 'failure'>('all');
   const [keyword, setKeyword] = useState('');
-  const [failureTotal, setFailureTotal] = useState(0);
-  const [failureByAction, setFailureByAction] = useState<Record<string, number>>({});
-  const [failureByReason, setFailureByReason] = useState<Array<{ reason: string; count: number }>>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const fetchData = useCallback(async (p: number) => {
-    setLoading(true);
-    setError('');
-    const params = new URLSearchParams({ page: String(p), limit: '50' });
+  const initializedFilterRef = useRef(false);
+  const fetchLogs = useCallback((targetPage: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(targetPage), limit: '50' });
     if (actionFilter) params.set('action', actionFilter);
     if (resultFilter === 'failure') params.set('result', 'failure');
     if (keyword.trim()) params.set('keyword', keyword.trim());
-    try {
-      const data = await api.get<LogsResponse>(`/admin/logs?${params}`);
-      setLogs(data.data);
-      setTotalPages(data.pagination.totalPages);
-      setTotal(data.pagination.total);
-      setFailureTotal(data.summary?.failureTotal ?? 0);
-      setFailureByAction(data.summary?.failureByAction ?? {});
-      setFailureByReason(data.summary?.failureByReason ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'ログデータの取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
+    return api.get<LogsResponse>(`/admin/logs?${params}`, { signal });
   }, [actionFilter, resultFilter, keyword]);
 
+  const {
+    items: logs,
+    response,
+    page,
+    setPage,
+    totalPages,
+    pagination,
+    loading,
+    error,
+    fetchPage,
+    retry,
+  } = usePaginatedList<LogEntry, LogsResponse>(fetchLogs, {
+    errorMessage: 'ログデータの取得に失敗しました',
+  });
+
   useEffect(() => {
-    void fetchData(page);
-  }, [page, fetchData]);
+    if (!initializedFilterRef.current) {
+      initializedFilterRef.current = true;
+      return;
+    }
+    if (page !== 1) {
+      setPage(1);
+      return;
+    }
+    void fetchPage(1);
+  }, [actionFilter, fetchPage, keyword, page, resultFilter, setPage]);
+
+  const total = pagination?.total ?? 0;
+  const failureTotal = response?.summary?.failureTotal ?? 0;
+  const failureByAction = response?.summary?.failureByAction ?? {};
+  const failureByReason = response?.summary?.failureByReason ?? [];
 
   const getActionBadge = (action: string) => {
     const info = ACTION_LABELS[action];
@@ -161,7 +168,7 @@ export default function AdminLogsPage() {
       {error && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchData(page)}>
+          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
             再試行
           </AppButton>
         </AppAlert>
@@ -273,7 +280,7 @@ export default function AdminLogsPage() {
                     <tr key={log.id}>
                       <td>{log.id}</td>
                       <td className="small">
-                        {log.createdAt ? new Date(log.createdAt).toLocaleString('ja-JP') : '-'}
+                        {formatDateTimeJa(log.createdAt)}
                       </td>
                       <td className="d-flex align-items-center gap-1">
                         {getActionBadge(log.action)}
@@ -300,7 +307,7 @@ export default function AdminLogsPage() {
                 <AppMobileDataCard
                   key={log.id}
                   title={`ログ #${log.id}`}
-                  subtitle={log.createdAt ? new Date(log.createdAt).toLocaleString('ja-JP') : '-'}
+                  subtitle={formatDateTimeJa(log.createdAt)}
                   badges={(
                     <>
                       {getActionBadge(log.action)}

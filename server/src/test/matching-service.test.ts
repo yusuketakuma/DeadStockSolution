@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
   },
+  getActiveMatchingRuleProfile: vi.fn(),
   drizzle: {
     eq: vi.fn((a: unknown, b: unknown) => ({ _eq: [a, b] })),
     and: vi.fn((...args: unknown[]) => ({ _and: args })),
@@ -22,6 +23,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../config/database', () => ({
   db: mocks.db,
+}));
+
+vi.mock('../services/matching-rule-service', () => ({
+  getActiveMatchingRuleProfile: mocks.getActiveMatchingRuleProfile,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -48,6 +53,23 @@ import { setupVitestMocks } from './helpers/setup';
 
 describe('matching-service block filtering', () => {
   setupVitestMocks();
+
+  mocks.getActiveMatchingRuleProfile.mockResolvedValue({
+    nameMatchThreshold: 0.7,
+    valueScoreMax: 55,
+    valueScoreDivisor: 2500,
+    balanceScoreMax: 20,
+    balanceScoreDiffFactor: 1.5,
+    distanceScoreMax: 15,
+    distanceScoreDivisor: 8,
+    distanceScoreFallback: 2,
+    nearExpiryScoreMax: 10,
+    nearExpiryItemFactor: 1.5,
+    nearExpiryDays: 120,
+    diversityScoreMax: 10,
+    diversityItemFactor: 1.5,
+    favoriteBonus: 15,
+  });
 
   it('builds viable pharmacy filter with bidirectional block checks', async () => {
     mocks.db.select.mockImplementation((fields: unknown) => {

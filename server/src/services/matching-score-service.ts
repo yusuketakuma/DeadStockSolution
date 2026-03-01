@@ -2,10 +2,42 @@ import { distance as levenshtein } from 'fastest-levenshtein';
 import { normalizeString } from '../utils/string-utils';
 import { MatchItem } from '../types';
 
-export const NAME_MATCH_THRESHOLD = 0.7;
 const MAX_DRUG_MATCH_CACHE_SIZE = 2000;
 const MAX_PARSED_EXPIRY_CACHE_SIZE = 5000;
-const FAVORITE_BONUS = 15;
+
+export interface MatchingScoringRules {
+  nameMatchThreshold: number;
+  valueScoreMax: number;
+  valueScoreDivisor: number;
+  balanceScoreMax: number;
+  balanceScoreDiffFactor: number;
+  distanceScoreMax: number;
+  distanceScoreDivisor: number;
+  distanceScoreFallback: number;
+  nearExpiryScoreMax: number;
+  nearExpiryItemFactor: number;
+  nearExpiryDays: number;
+  diversityScoreMax: number;
+  diversityItemFactor: number;
+  favoriteBonus: number;
+}
+
+export const DEFAULT_MATCHING_SCORING_RULES: MatchingScoringRules = {
+  nameMatchThreshold: 0.7,
+  valueScoreMax: 55,
+  valueScoreDivisor: 2500,
+  balanceScoreMax: 20,
+  balanceScoreDiffFactor: 1.5,
+  distanceScoreMax: 15,
+  distanceScoreDivisor: 8,
+  distanceScoreFallback: 2,
+  nearExpiryScoreMax: 10,
+  nearExpiryItemFactor: 1.5,
+  nearExpiryDays: 120,
+  diversityScoreMax: 10,
+  diversityItemFactor: 1.5,
+  favoriteBonus: 15,
+};
 
 export interface UsedMedRow {
   pharmacyId: number;
@@ -272,16 +304,20 @@ export function parseExpiryDate(value: string | null | undefined): Date | null {
   return parsed;
 }
 
-export function getNearExpiryCount(items: MatchItem[]): number {
+export function getNearExpiryCount(
+  items: MatchItem[],
+  nearExpiryDays: number = DEFAULT_MATCHING_SCORING_RULES.nearExpiryDays,
+): number {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const thresholdDays = Math.max(1, Math.floor(nearExpiryDays));
 
   let count = 0;
   for (const item of items) {
     const expiry = parseExpiryDate(item.expirationDate);
     if (!expiry) continue;
     const diffDays = Math.floor((expiry.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-    if (diffDays >= 0 && diffDays <= 120) count += 1;
+    if (diffDays >= 0 && diffDays <= thresholdDays) count += 1;
   }
   return count;
 }
@@ -293,15 +329,27 @@ export function calculateCandidateScore(
   distanceKm: number,
   itemsFromA: MatchItem[],
   itemsFromB: MatchItem[],
-  isFavorite: boolean = false
+  scoringRules: MatchingScoringRules = DEFAULT_MATCHING_SCORING_RULES,
+  isFavorite: boolean = false,
 ): number {
+  const valueScoreDivisor = Math.max(0.0001, scoringRules.valueScoreDivisor);
+  const distanceScoreDivisor = Math.max(0.0001, scoringRules.distanceScoreDivisor);
+  const nearExpiryDays = Math.max(1, Math.floor(scoringRules.nearExpiryDays));
   const minValue = Math.min(totalA, totalB);
-  const valueScore = Math.min(55, minValue / 2500);
-  const balanceScore = Math.max(0, 20 - diff * 1.5);
-  const distanceScore = distanceKm >= 9999 ? 2 : Math.max(0, 15 - distanceKm / 8);
-  const nearExpiryScore = Math.min(10, (getNearExpiryCount(itemsFromA) + getNearExpiryCount(itemsFromB)) * 1.5);
-  const diversityScore = Math.min(10, Math.min(itemsFromA.length, itemsFromB.length) * 1.5);
-  const favoriteScore = isFavorite ? FAVORITE_BONUS : 0;
+  const valueScore = Math.min(scoringRules.valueScoreMax, minValue / valueScoreDivisor);
+  const balanceScore = Math.max(0, scoringRules.balanceScoreMax - diff * scoringRules.balanceScoreDiffFactor);
+  const distanceScore = distanceKm >= 9999
+    ? scoringRules.distanceScoreFallback
+    : Math.max(0, scoringRules.distanceScoreMax - distanceKm / distanceScoreDivisor);
+  const nearExpiryScore = Math.min(
+    scoringRules.nearExpiryScoreMax,
+    (getNearExpiryCount(itemsFromA, nearExpiryDays) + getNearExpiryCount(itemsFromB, nearExpiryDays)) * scoringRules.nearExpiryItemFactor,
+  );
+  const diversityScore = Math.min(
+    scoringRules.diversityScoreMax,
+    Math.min(itemsFromA.length, itemsFromB.length) * scoringRules.diversityItemFactor,
+  );
+  const favoriteScore = isFavorite ? scoringRules.favoriteBonus : 0;
 
   return roundTo2(valueScore + balanceScore + distanceScore + nearExpiryScore + diversityScore + favoriteScore);
 }

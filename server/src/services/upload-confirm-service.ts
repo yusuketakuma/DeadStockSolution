@@ -8,18 +8,28 @@ import {
 } from '../db/schema';
 import type { ColumnMapping } from '../types';
 import { computeHeaderHash } from './column-mapper';
-import { extractDeadStockRows, extractUsedMedicationRows } from './data-extractor';
+import {
+  extractDeadStockRowsWithIssues,
+  extractUsedMedicationRowsWithIssues,
+  type UploadExtractionIssue,
+} from './data-extractor';
 import { enrichWithDrugMaster } from './drug-master-enrichment';
+import { invalidateAdminRiskSnapshotCache } from './expiry-risk-service';
 import { triggerMatchingRefreshOnUpload } from './matching-refresh-service';
 import {
   applyDeadStockDiff,
   applyUsedMedicationDiff,
   type DiffSummary,
 } from './upload-diff-service';
+import {
+  clearUploadRowIssuesForJob,
+  replaceUploadRowIssuesForJob,
+  type UploadRowIssueInput,
+} from './upload-row-issue-service';
 
 const INSERT_BATCH_SIZE = 500;
 
-export type ApplyMode = 'replace' | 'diff';
+export type ApplyMode = 'replace' | 'diff' | 'partial';
 export type UploadType = 'dead_stock' | 'used_medication';
 
 type DeadStockInsertRow = InferInsertModel<typeof deadStockItems>;
@@ -49,6 +59,7 @@ export interface UploadConfirmExecutionParams {
   pharmacyId: number;
   uploadType: UploadType;
   originalFilename: string;
+  jobId?: number;
   headerRowIndex: number;
   mapping: ColumnMapping;
   allRows: unknown[][];
@@ -61,6 +72,14 @@ export interface UploadConfirmExecutionResult {
   uploadId: number;
   rowCount: number;
   diffSummary: DiffSummary | null;
+  partialSummary: PartialSummary | null;
+}
+
+export interface PartialSummary {
+  inspectedRows: number;
+  acceptedRows: number;
+  rejectedRows: number;
+  issueCounts: Record<string, number>;
 }
 
 function toNumericText(value: number | null): string | null {
@@ -138,6 +157,33 @@ async function insertInBatches(
   }
 }
 
+function toUploadRowIssueInputs(issues: UploadExtractionIssue[]): UploadRowIssueInput[] {
+  return issues.map((issue) => ({
+    rowNumber: issue.rowNumber,
+    issueCode: issue.issueCode,
+    issueMessage: issue.issueMessage,
+    rowData: issue.rowData,
+  }));
+}
+
+function buildPartialSummary(
+  inspectedRows: number,
+  acceptedRows: number,
+  issues: UploadExtractionIssue[],
+): PartialSummary {
+  const issueCounts: Record<string, number> = {};
+  for (const issue of issues) {
+    issueCounts[issue.issueCode] = (issueCounts[issue.issueCode] ?? 0) + 1;
+  }
+  const rejectedRows = issues.length;
+  return {
+    inspectedRows,
+    acceptedRows,
+    rejectedRows,
+    issueCounts,
+  };
+}
+
 export async function runUploadConfirm(
   params: UploadConfirmExecutionParams,
 ): Promise<UploadConfirmExecutionResult> {
@@ -145,6 +191,7 @@ export async function runUploadConfirm(
     pharmacyId,
     uploadType,
     originalFilename,
+    jobId,
     headerRowIndex,
     mapping,
     allRows,
@@ -161,19 +208,24 @@ export async function runUploadConfirm(
   const dataStartIndex = headerRowIndex + 1;
   const headerHash = computeHeaderHash(headerRow);
 
-  const deadStockExtracted = uploadType === 'dead_stock'
-    ? extractDeadStockRows(allRows, mapping, dataStartIndex)
+  const deadStockExtraction = uploadType === 'dead_stock'
+    ? extractDeadStockRowsWithIssues(allRows, mapping, dataStartIndex)
     : null;
-  const usedMedicationExtracted = uploadType === 'used_medication'
-    ? extractUsedMedicationRows(allRows, mapping, dataStartIndex)
+  const usedMedicationExtraction = uploadType === 'used_medication'
+    ? extractUsedMedicationRowsWithIssues(allRows, mapping, dataStartIndex)
     : null;
-  const parsedRowCount = deadStockExtracted?.length ?? usedMedicationExtracted?.length ?? 0;
+  const parsedRowCount = deadStockExtraction?.rows.length ?? usedMedicationExtraction?.rows.length ?? 0;
+  const extractedIssues = deadStockExtraction?.issues ?? usedMedicationExtraction?.issues ?? [];
+  const inspectedRows = deadStockExtraction?.inspectedRowCount ?? usedMedicationExtraction?.inspectedRowCount ?? 0;
+  const partialSummary = applyMode === 'partial'
+    ? buildPartialSummary(inspectedRows, parsedRowCount, extractedIssues)
+    : null;
 
-  const enrichedDeadStock = deadStockExtracted
-    ? await enrichWithDrugMaster(deadStockExtracted, 'dead_stock')
+  const enrichedDeadStock = deadStockExtraction
+    ? await enrichWithDrugMaster(deadStockExtraction.rows, 'dead_stock')
     : null;
-  const enrichedUsedMedication = usedMedicationExtracted
-    ? await enrichWithDrugMaster(usedMedicationExtracted, 'used_medication')
+  const enrichedUsedMedication = usedMedicationExtraction
+    ? await enrichWithDrugMaster(usedMedicationExtraction.rows, 'used_medication')
     : null;
   const requestedAtIso = staleGuardCreatedAt ?? new Date().toISOString();
   const mappingJson = JSON.stringify(mapping);
@@ -202,6 +254,20 @@ export async function runUploadConfirm(
       }
     }
 
+    if (jobId) {
+      if (applyMode === 'partial') {
+        await replaceUploadRowIssuesForJob(
+          jobId,
+          pharmacyId,
+          uploadType,
+          toUploadRowIssueInputs(extractedIssues),
+          tx,
+        );
+      } else {
+        await clearUploadRowIssuesForJob(jobId, tx);
+      }
+    }
+
     const [uploadRecord] = await tx.insert(uploads).values({
       pharmacyId,
       uploadType,
@@ -214,8 +280,8 @@ export async function runUploadConfirm(
     let diffSummary: DiffSummary | null = null;
 
     if (uploadType === 'dead_stock') {
-      const sourceRows = (enrichedDeadStock ?? deadStockExtracted) ?? [];
-      if (applyMode === 'replace') {
+      const sourceRows = (enrichedDeadStock ?? deadStockExtraction?.rows) ?? [];
+      if (applyMode === 'replace' || applyMode === 'partial') {
         await tx.delete(deadStockItems).where(eq(deadStockItems.pharmacyId, pharmacyId));
         if (sourceRows.length > 0) {
           const insertRows = sourceRows.map((item) =>
@@ -230,8 +296,8 @@ export async function runUploadConfirm(
         diffSummary = await applyDeadStockDiff(tx, pharmacyId, uploadRecord.id, sourceRows, { deleteMissing });
       }
     } else {
-      const sourceRows = (enrichedUsedMedication ?? usedMedicationExtracted) ?? [];
-      if (applyMode === 'replace') {
+      const sourceRows = (enrichedUsedMedication ?? usedMedicationExtraction?.rows) ?? [];
+      if (applyMode === 'replace' || applyMode === 'partial') {
         await tx.delete(usedMedicationItems).where(eq(usedMedicationItems.pharmacyId, pharmacyId));
         if (sourceRows.length > 0) {
           const insertRows = sourceRows.map((item) =>
@@ -268,6 +334,7 @@ export async function runUploadConfirm(
       ],
       set: {
         mapping: mappingJson,
+        createdAt: sql`now()`,
       },
     });
 
@@ -275,11 +342,13 @@ export async function runUploadConfirm(
       triggerPharmacyId: pharmacyId,
       uploadType,
     }, tx);
+    invalidateAdminRiskSnapshotCache();
 
     return {
       uploadId: uploadRecord.id,
       rowCount: persistedRowCount,
       diffSummary,
+      partialSummary,
     };
   });
 }

@@ -255,6 +255,9 @@ describe('auth routes', () => {
         phone: '03-1234-5678',
         fax: '03-1234-5679',
         licenseNumber: 'PHARM-999',
+        permitLicenseNumber: 'PHARM-999',
+        permitPharmacyName: '中央薬局',
+        permitAddress: '東京都千代田1-1',
         prefecture: '東京都',
       });
 

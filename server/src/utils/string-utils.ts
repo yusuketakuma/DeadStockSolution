@@ -8,20 +8,6 @@ export function normalizeString(str: string): string {
   return normalized.toLowerCase();
 }
 
-export function normalizeDrugName(name: string): string {
-  let normalized = name.normalize('NFKC');
-  // Remove common suffixes and patterns
-  normalized = normalized.replace(/\s+/g, '');
-  // Keep basic structure for matching
-  return normalized;
-}
-
-export function toHalfWidth(str: string): string {
-  return str.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s) => {
-    return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
-  });
-}
-
 export function parseNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number') {

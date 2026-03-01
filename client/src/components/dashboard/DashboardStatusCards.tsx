@@ -3,6 +3,7 @@ import AppAlert from '../ui/AppAlert';
 import { Link } from 'react-router-dom';
 import { UploadStatus } from './types';
 import AppDataPanel from '../ui/AppDataPanel';
+import { formatDateJa } from '../../utils/formatters';
 
 interface Props {
   status: UploadStatus | null;
@@ -20,7 +21,7 @@ export default function DashboardStatusCards({ status, userName }: Props) {
               <div className="d-flex justify-content-between align-items-start">
                 <h5 className="mb-0">デッドストックリスト</h5>
                 {status?.lastDeadStockUpload && (
-                  <small className="text-muted">最終: {new Date(status.lastDeadStockUpload).toLocaleDateString('ja-JP')}</small>
+                  <small className="text-muted">最終: {formatDateJa(status.lastDeadStockUpload)}</small>
                 )}
               </div>
               <div className="mt-2">
@@ -39,7 +40,7 @@ export default function DashboardStatusCards({ status, userName }: Props) {
               <div className="d-flex justify-content-between align-items-start">
                 <h5 className="mb-0">医薬品使用量リスト</h5>
                 {status?.lastUsedMedicationUpload && (
-                  <small className="text-muted">最終: {new Date(status.lastUsedMedicationUpload).toLocaleDateString('ja-JP')}</small>
+                  <small className="text-muted">最終: {formatDateJa(status.lastUsedMedicationUpload)}</small>
                 )}
               </div>
               <div className="mt-2">

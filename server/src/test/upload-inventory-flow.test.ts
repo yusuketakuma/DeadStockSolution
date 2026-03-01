@@ -110,6 +110,8 @@ function setupDbMock() {
         return {
           where: () => ({
             limit: async (n: number) => mocks.state.templates.slice(0, n),
+            orderBy: async () => [...mocks.state.templates]
+              .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))),
           }),
         };
       }

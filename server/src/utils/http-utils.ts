@@ -21,7 +21,7 @@ const DEFAULT_RETRYABLE_STATUSES = [408, 425, 429, 500, 502, 503, 504];
 const DEFAULT_BASE_DELAY_MS = 250;
 const DEFAULT_MAX_DELAY_MS = 5000;
 
-function sleep(ms: number): Promise<void> {
+export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 

@@ -20,6 +20,16 @@ export type UploadType = 'dead_stock' | 'used_medication';
 export const VALID_UPLOAD_TYPES = new Set<UploadType>(['dead_stock', 'used_medication']);
 export const DEAD_STOCK_FIELD_SET = new Set<string>(DEAD_STOCK_FIELDS);
 export const USED_MEDICATION_FIELD_SET = new Set<string>(USED_MEDICATION_FIELDS);
+const MAPPING_FIELD_LABELS: Record<string, string> = {
+  drug_code: '薬品コード',
+  drug_name: '薬剤名',
+  quantity: '数量',
+  unit: '単位',
+  yakka_unit_price: '薬価',
+  expiration_date: '使用期限',
+  lot_number: 'ロット番号',
+  monthly_usage: '月間使用量',
+};
 
 export function getBaseContext(req: Request): Record<string, unknown> {
   const authReq = req as AuthRequest;
@@ -249,17 +259,64 @@ export function parseHeaderRowIndexOrReject(req: AuthRequest, res: Response): nu
   return headerRowIndex;
 }
 
+function resolveMappingFieldLabel(field: string): string {
+  return MAPPING_FIELD_LABELS[field] ?? field;
+}
+
+function parseMappingColumnIndex(index: string | null | undefined): number | null {
+  if (index === null || index === undefined) return null;
+  const parsed = Number(index);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+export function validateMappingAgainstHeader(
+  mapping: ColumnMapping,
+  headerRow: unknown[],
+): void {
+  const headerLength = Array.isArray(headerRow) ? headerRow.length : 0;
+  if (headerLength <= 0) {
+    throw new Error('ヘッダー行が不正です');
+  }
+
+  for (const [field, value] of Object.entries(mapping) as Array<[string, string | null]>) {
+    if (value === null) continue;
+    const colIndex = parseMappingColumnIndex(value);
+    if (colIndex === null || colIndex < 0 || colIndex >= headerLength) {
+      throw new Error(`${resolveMappingFieldLabel(field)}カラムの割り当てが見出し範囲外です`);
+    }
+  }
+}
+
+export interface ResolvedTemplateMapping {
+  mapping: ColumnMapping;
+  fromSavedTemplate: boolean;
+}
+
+export function resolveMappingFromTemplateWithSource(
+  savedMappingRaw: string | null | undefined,
+  headerRow: unknown[],
+  uploadType: UploadType,
+): ResolvedTemplateMapping {
+  if (savedMappingRaw) {
+    try {
+      return {
+        mapping: parseMapping(savedMappingRaw, uploadType),
+        fromSavedTemplate: true,
+      };
+    } catch {
+      // fallback
+    }
+  }
+  return {
+    mapping: suggestMapping(headerRow, uploadType),
+    fromSavedTemplate: false,
+  };
+}
+
 export function resolveMappingFromTemplate(
   savedMappingRaw: string | null | undefined,
   headerRow: unknown[],
   uploadType: UploadType,
 ): ColumnMapping {
-  if (savedMappingRaw) {
-    try {
-      return parseMapping(savedMappingRaw, uploadType);
-    } catch {
-      // fallback
-    }
-  }
-  return suggestMapping(headerRow, uploadType);
+  return resolveMappingFromTemplateWithSource(savedMappingRaw, headerRow, uploadType).mapping;
 }

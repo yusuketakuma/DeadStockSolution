@@ -43,6 +43,12 @@ export const specialBusinessHoursTypeEnum = pgEnum('special_business_hours_type_
   'special_open',
 ]);
 export const monthlyReportStatusEnum = pgEnum('monthly_report_status_enum', ['success', 'failed']);
+export const systemEventSourceValues = ['runtime_error', 'unhandled_rejection', 'uncaught_exception', 'vercel_deploy'] as const;
+export type SystemEventSource = (typeof systemEventSourceValues)[number];
+export const systemEventLevelValues = ['info', 'warning', 'error'] as const;
+export type SystemEventLevel = (typeof systemEventLevelValues)[number];
+export const registrationReviewVerdictValues = ['approved', 'rejected'] as const;
+export type RegistrationReviewVerdict = (typeof registrationReviewVerdictValues)[number];
 
 export const pharmacies = pgTable('pharmacies', {
   id: serial('id').primaryKey(),
@@ -309,6 +315,38 @@ export const userRequests = pgTable('user_requests', {
   idxUserRequestsStatusCreated: index('idx_user_requests_status_created').on(table.openclawStatus, table.createdAt),
 }));
 
+export const pharmacyRegistrationReviews = pgTable('pharmacy_registration_reviews', {
+  id: serial('id').primaryKey(),
+  email: text('email').notNull(),
+  pharmacyName: text('pharmacy_name').notNull(),
+  postalCode: text('postal_code').notNull(),
+  prefecture: text('prefecture').notNull(),
+  address: text('address').notNull(),
+  phone: text('phone').notNull(),
+  fax: text('fax').notNull(),
+  licenseNumber: text('license_number').notNull(),
+  permitLicenseNumber: text('permit_license_number').notNull(),
+  permitPharmacyName: text('permit_pharmacy_name').notNull(),
+  permitAddress: text('permit_address').notNull(),
+  verdict: text('verdict').$type<RegistrationReviewVerdict>().notNull(),
+  screeningScore: integer('screening_score').notNull().default(0),
+  screeningReasons: text('screening_reasons').notNull(),
+  mismatchDetailsJson: text('mismatch_details_json'),
+  createdPharmacyId: integer('created_pharmacy_id').references(() => pharmacies.id, { onDelete: 'set null' }),
+  registrationIp: text('registration_ip'),
+  submittedAt: timestamp('submitted_at', { mode: 'string' }).defaultNow(),
+  reviewedAt: timestamp('reviewed_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxRegistrationReviewsSubmitted: index('idx_registration_reviews_submitted')
+    .on(table.submittedAt),
+  idxRegistrationReviewsVerdictSubmitted: index('idx_registration_reviews_verdict_submitted')
+    .on(table.verdict, table.submittedAt),
+  idxRegistrationReviewsCreatedPharmacy: index('idx_registration_reviews_created_pharmacy')
+    .on(table.createdPharmacyId),
+  chkRegistrationReviewsVerdict: check('chk_registration_reviews_verdict', sql`${table.verdict} IN ('approved', 'rejected')`),
+  chkRegistrationReviewsScore: check('chk_registration_reviews_score', sql`${table.screeningScore} >= 0 AND ${table.screeningScore} <= 100`),
+}));
+
 export const passwordResetTokens = pgTable('password_reset_tokens', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
@@ -445,6 +483,9 @@ export const activityLogs = pgTable('activity_logs', {
   pharmacyId: integer('pharmacy_id').references(() => pharmacies.id, { onDelete: 'set null' }),
   action: text('action').notNull(),
   detail: text('detail'),
+  resourceType: text('resource_type'),
+  resourceId: text('resource_id'),
+  metadataJson: text('metadata_json'),
   ipAddress: text('ip_address'),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
@@ -454,9 +495,33 @@ export const activityLogs = pgTable('activity_logs', {
     .on(table.pharmacyId, table.createdAt),
   idxActivityLogsAction: index('idx_activity_logs_action')
     .on(table.action, table.createdAt),
+  idxActivityLogsResource: index('idx_activity_logs_resource')
+    .on(table.resourceType, table.resourceId, table.createdAt),
   idxActivityLogsFailurePatternScan: index('idx_activity_logs_failure_pattern_scan')
     .on(table.action, table.createdAt)
     .where(sql`${table.detail} LIKE '失敗|%'`),
+}));
+
+export const systemEvents = pgTable('system_events', {
+  id: serial('id').primaryKey(),
+  source: text('source').$type<SystemEventSource>().notNull(),
+  level: text('level').$type<SystemEventLevel>().notNull().default('error'),
+  eventType: text('event_type').notNull(),
+  message: text('message').notNull(),
+  detailJson: text('detail_json'),
+  occurredAt: timestamp('occurred_at', { mode: 'string' }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxSystemEventsOccurredAt: index('idx_system_events_occurred_at')
+    .on(table.occurredAt),
+  idxSystemEventsSourceOccurredAt: index('idx_system_events_source_occurred_at')
+    .on(table.source, table.occurredAt),
+  idxSystemEventsLevelOccurredAt: index('idx_system_events_level_occurred_at')
+    .on(table.level, table.occurredAt),
+  idxSystemEventsTypeOccurredAt: index('idx_system_events_type_occurred_at')
+    .on(table.eventType, table.occurredAt),
+  chkSystemEventsSource: check('chk_system_events_source', sql`${table.source} IN ('runtime_error', 'unhandled_rejection', 'uncaught_exception', 'vercel_deploy')`),
+  chkSystemEventsLevel: check('chk_system_events_level', sql`${table.level} IN ('info', 'warning', 'error')`),
 }));
 
 // ── 薬局リレーション（お気に入り / ブロック）────────────────
@@ -549,15 +614,21 @@ export const uploadConfirmJobs = pgTable('upload_confirm_jobs', {
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   uploadType: uploadTypeEnum('upload_type').notNull(),
   originalFilename: text('original_filename').notNull(),
+  idempotencyKey: text('idempotency_key'),
+  fileHash: text('file_hash').notNull(),
   headerRowIndex: integer('header_row_index').notNull(),
   mappingJson: text('mapping_json').notNull(),
   applyMode: text('apply_mode').notNull().default('replace'),
   deleteMissing: boolean('delete_missing').notNull().default(false),
+  deduplicated: boolean('deduplicated').notNull().default(false),
   fileBase64: text('file_base64').notNull(),
   status: uploadJobStatusEnum('status').notNull().default('pending'),
   attempts: integer('attempts').notNull().default(0),
   lastError: text('last_error'),
   resultJson: text('result_json'),
+  cancelRequestedAt: timestamp('cancel_requested_at', { mode: 'string' }),
+  canceledAt: timestamp('canceled_at', { mode: 'string' }),
+  canceledBy: integer('canceled_by').references(() => pharmacies.id, { onDelete: 'set null' }),
   processingStartedAt: timestamp('processing_started_at', { mode: 'string' }),
   nextRetryAt: timestamp('next_retry_at', { mode: 'string' }),
   completedAt: timestamp('completed_at', { mode: 'string' }),
@@ -566,19 +637,92 @@ export const uploadConfirmJobs = pgTable('upload_confirm_jobs', {
 }, (table) => ({
   idxUploadConfirmJobsPharmacyCreated: index('idx_upload_confirm_jobs_pharmacy_created')
     .on(table.pharmacyId, table.createdAt),
+  idxUploadConfirmJobsPharmacyIdempotency: index('idx_upload_confirm_jobs_pharmacy_idempotency')
+    .on(table.pharmacyId, table.idempotencyKey),
+  idxUploadConfirmJobsIdempotencyActive: uniqueIndex('idx_upload_confirm_jobs_idempotency_active')
+    .on(table.pharmacyId, table.idempotencyKey)
+    .where(sql`${table.idempotencyKey} IS NOT NULL AND ${table.status} IN ('pending', 'processing')`),
+  idxUploadConfirmJobsPharmacyFileHashCreated: index('idx_upload_confirm_jobs_pharmacy_file_hash_created')
+    .on(table.pharmacyId, table.fileHash, table.createdAt),
   idxUploadConfirmJobsReady: index('idx_upload_confirm_jobs_ready')
     .on(table.status, table.attempts, table.nextRetryAt, table.processingStartedAt, table.createdAt),
-  chkUploadConfirmJobsApplyMode: check('chk_upload_confirm_jobs_apply_mode', sql`${table.applyMode} IN ('replace', 'diff')`),
+  chkUploadConfirmJobsApplyMode: check('chk_upload_confirm_jobs_apply_mode', sql`${table.applyMode} IN ('replace', 'diff', 'partial')`),
   chkUploadConfirmJobsAttemptsNonNegative: check('chk_upload_confirm_jobs_attempts_non_negative', sql`${table.attempts} >= 0`),
+}));
+
+export const uploadRowIssues = pgTable('upload_row_issues', {
+  id: serial('id').primaryKey(),
+  jobId: integer('job_id').notNull().references(() => uploadConfirmJobs.id, { onDelete: 'cascade' }),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  uploadType: uploadTypeEnum('upload_type').notNull(),
+  rowNumber: integer('row_number').notNull(),
+  issueCode: text('issue_code').notNull(),
+  issueMessage: text('issue_message').notNull(),
+  rowDataJson: text('row_data_json'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxUploadRowIssuesJobRow: index('idx_upload_row_issues_job_row')
+    .on(table.jobId, table.rowNumber, table.id),
+  idxUploadRowIssuesPharmacyCreated: index('idx_upload_row_issues_pharmacy_created')
+    .on(table.pharmacyId, table.createdAt),
+  chkUploadRowIssuesRowNumber: check('chk_upload_row_issues_row_number', sql`${table.rowNumber} > 0`),
+}));
+
+export const matchingRuleProfiles = pgTable('matching_rule_profiles', {
+  id: serial('id').primaryKey(),
+  profileName: text('profile_name').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  nameMatchThreshold: real('name_match_threshold').notNull().default(0.7),
+  valueScoreMax: real('value_score_max').notNull().default(55),
+  valueScoreDivisor: real('value_score_divisor').notNull().default(2500),
+  balanceScoreMax: real('balance_score_max').notNull().default(20),
+  balanceScoreDiffFactor: real('balance_score_diff_factor').notNull().default(1.5),
+  distanceScoreMax: real('distance_score_max').notNull().default(15),
+  distanceScoreDivisor: real('distance_score_divisor').notNull().default(8),
+  distanceScoreFallback: real('distance_score_fallback').notNull().default(2),
+  nearExpiryScoreMax: real('near_expiry_score_max').notNull().default(10),
+  nearExpiryItemFactor: real('near_expiry_item_factor').notNull().default(1.5),
+  nearExpiryDays: integer('near_expiry_days').notNull().default(120),
+  diversityScoreMax: real('diversity_score_max').notNull().default(10),
+  diversityItemFactor: real('diversity_item_factor').notNull().default(1.5),
+  favoriteBonus: real('favorite_bonus').notNull().default(15),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxMatchingRuleProfilesNameUnique: uniqueIndex('idx_matching_rule_profiles_name_unique')
+    .on(table.profileName),
+  idxMatchingRuleProfilesActiveUnique: uniqueIndex('idx_matching_rule_profiles_active_unique')
+    .on(table.isActive)
+    .where(sql`${table.isActive} = true`),
+  idxMatchingRuleProfilesUpdatedAt: index('idx_matching_rule_profiles_updated_at')
+    .on(table.updatedAt),
+  chkMatchingRuleNameThreshold: check('chk_matching_rule_name_threshold', sql`${table.nameMatchThreshold} >= 0 AND ${table.nameMatchThreshold} <= 1`),
+  chkMatchingRuleValueScoreMax: check('chk_matching_rule_value_score_max', sql`${table.valueScoreMax} >= 0`),
+  chkMatchingRuleValueScoreDivisor: check('chk_matching_rule_value_score_divisor', sql`${table.valueScoreDivisor} > 0`),
+  chkMatchingRuleBalanceScoreMax: check('chk_matching_rule_balance_score_max', sql`${table.balanceScoreMax} >= 0`),
+  chkMatchingRuleBalanceScoreDiffFactor: check('chk_matching_rule_balance_diff_factor', sql`${table.balanceScoreDiffFactor} >= 0`),
+  chkMatchingRuleDistanceScoreMax: check('chk_matching_rule_distance_score_max', sql`${table.distanceScoreMax} >= 0`),
+  chkMatchingRuleDistanceScoreDivisor: check('chk_matching_rule_distance_score_divisor', sql`${table.distanceScoreDivisor} > 0`),
+  chkMatchingRuleDistanceScoreFallback: check('chk_matching_rule_distance_fallback', sql`${table.distanceScoreFallback} >= 0`),
+  chkMatchingRuleNearExpiryScoreMax: check('chk_matching_rule_near_expiry_score_max', sql`${table.nearExpiryScoreMax} >= 0`),
+  chkMatchingRuleNearExpiryItemFactor: check('chk_matching_rule_near_expiry_item_factor', sql`${table.nearExpiryItemFactor} >= 0`),
+  chkMatchingRuleNearExpiryDays: check('chk_matching_rule_near_expiry_days', sql`${table.nearExpiryDays} >= 1 AND ${table.nearExpiryDays} <= 365`),
+  chkMatchingRuleDiversityScoreMax: check('chk_matching_rule_diversity_score_max', sql`${table.diversityScoreMax} >= 0`),
+  chkMatchingRuleDiversityItemFactor: check('chk_matching_rule_diversity_item_factor', sql`${table.diversityItemFactor} >= 0`),
+  chkMatchingRuleFavoriteBonus: check('chk_matching_rule_favorite_bonus', sql`${table.favoriteBonus} >= 0`),
+  chkMatchingRuleVersion: check('chk_matching_rule_version', sql`${table.version} >= 1`),
 }));
 
 // ── 通知 ──────────────────────────────────────────────────
 
-export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment'] as const;
+export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment', 'request_update'] as const;
 export type NotificationType = (typeof notificationTypeValues)[number];
 
-export const notificationReferenceTypeValues = ['proposal', 'match', 'comment'] as const;
+export const notificationReferenceTypeValues = ['proposal', 'match', 'comment', 'request'] as const;
 export type NotificationReferenceType = (typeof notificationReferenceTypeValues)[number];
+export const predictiveAlertTypeValues = ['near_expiry', 'excess_stock'] as const;
+export type PredictiveAlertType = (typeof predictiveAlertTypeValues)[number];
 
 export const notifications = pgTable('notifications', {
   id: serial('id').primaryKey(),
@@ -594,4 +738,28 @@ export const notifications = pgTable('notifications', {
 }, (table) => ({
   idxNotificationsPharmacyUnread: index('idx_notifications_pharmacy_unread')
     .on(table.pharmacyId, table.isRead, table.createdAt),
+}));
+
+export const predictiveAlerts = pgTable('predictive_alerts', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  alertType: text('alert_type').$type<PredictiveAlertType>().notNull(),
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  detailJson: text('detail_json').notNull(),
+  dedupeKey: text('dedupe_key').notNull(),
+  notificationId: integer('notification_id').references(() => notifications.id, { onDelete: 'set null' }),
+  detectedAt: timestamp('detected_at', { mode: 'string' }).notNull().defaultNow(),
+  resolvedAt: timestamp('resolved_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxPredictiveAlertsPharmacyCreated: index('idx_predictive_alerts_pharmacy_created')
+    .on(table.pharmacyId, table.createdAt),
+  idxPredictiveAlertsUnresolved: index('idx_predictive_alerts_unresolved')
+    .on(table.pharmacyId, table.resolvedAt, table.createdAt),
+  idxPredictiveAlertsTypeDetected: index('idx_predictive_alerts_type_detected')
+    .on(table.alertType, table.detectedAt),
+  idxPredictiveAlertsDedupeUnique: uniqueIndex('idx_predictive_alerts_dedupe_unique')
+    .on(table.pharmacyId, table.dedupeKey),
+  chkPredictiveAlertsType: check('chk_predictive_alerts_type', sql`${table.alertType} IN ('near_expiry', 'excess_stock')`),
 }));

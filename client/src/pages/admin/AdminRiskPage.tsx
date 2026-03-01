@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
 import AppTable from '../../components/ui/AppTable';
@@ -9,6 +9,8 @@ import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import InlineLoader from '../../components/ui/InlineLoader';
 import Pagination from '../../components/Pagination';
 import { api } from '../../api/client';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
+import { formatCountJa, formatNumberJa } from '../../utils/formatters';
 
 interface BucketCounts {
   expired: number;
@@ -52,62 +54,75 @@ function getRiskBadgeClass(score: number): string {
 
 export default function AdminRiskPage() {
   const [overview, setOverview] = useState<RiskOverview | null>(null);
-  const [rows, setRows] = useState<PharmacyRiskSummary[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState('');
+  const fetchRiskList = useCallback((targetPage: number, signal?: AbortSignal) =>
+    api.get<RiskListResponse>(`/admin/risk/pharmacies?page=${targetPage}`, { signal }), []);
+  const {
+    items: rows,
+    page,
+    setPage,
+    totalPages,
+    loading,
+    error,
+    retry,
+  } = usePaginatedList<PharmacyRiskSummary, RiskListResponse>(fetchRiskList, {
+    errorMessage: '期限リスクデータの取得に失敗しました',
+  });
 
-  const fetchData = async (targetPage: number) => {
-    setLoading(true);
-    setError('');
+  const fetchOverview = useCallback(async () => {
+    setOverviewLoading(true);
+    setOverviewError('');
     try {
-      const [overviewData, listData] = await Promise.all([
-        api.get<RiskOverview>('/admin/risk/overview'),
-        api.get<RiskListResponse>(`/admin/risk/pharmacies?page=${targetPage}`),
-      ]);
+      const overviewData = await api.get<RiskOverview>('/admin/risk/overview');
       setOverview(overviewData);
-      setRows(listData.data);
-      setTotalPages(listData.pagination.totalPages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '期限リスクデータの取得に失敗しました');
+      setOverviewError(err instanceof Error ? err.message : 'リスク概要データの取得に失敗しました');
     } finally {
-      setLoading(false);
+      setOverviewLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void fetchData(page);
-  }, [page]);
+    void fetchOverview();
+  }, [fetchOverview]);
+
+  const handleRetry = () => {
+    void fetchOverview();
+    void retry();
+  };
+
+  const hasError = Boolean(error || overviewError);
+  const mergedErrorMessage = error || overviewError;
 
   return (
     <div>
       <h4 className="page-title mb-3">期限切れリスク分析</h4>
-      {error && (
+      {hasError && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchData(page)}>
+          <span>{mergedErrorMessage}</span>
+          <AppButton size="sm" variant="outline-danger" onClick={handleRetry}>
             再試行
           </AppButton>
         </AppAlert>
       )}
 
-      {loading && !overview ? (
+      {(overviewLoading && !overview) || (loading && rows.length === 0) ? (
         <InlineLoader text="リスク分析データを読み込み中..." className="text-muted small" />
       ) : (
         <>
           <div className="row g-3 mb-3">
             <div className="col-md-3">
-              <AppKpiCard value={overview?.totalPharmacies ?? '-'} label="対象薬局数" />
+              <AppKpiCard value={formatCountJa(overview?.totalPharmacies)} label="対象薬局数" />
             </div>
             <div className="col-md-3">
-              <AppKpiCard value={overview?.highRiskPharmacies ?? '-'} label="高リスク薬局" />
+              <AppKpiCard value={formatCountJa(overview?.highRiskPharmacies)} label="高リスク薬局" />
             </div>
             <div className="col-md-3">
-              <AppKpiCard value={overview?.mediumRiskPharmacies ?? '-'} label="中リスク薬局" />
+              <AppKpiCard value={formatCountJa(overview?.mediumRiskPharmacies)} label="中リスク薬局" />
             </div>
             <div className="col-md-3">
-              <AppKpiCard value={overview?.avgRiskScore ?? '-'} label="平均リスクスコア" />
+              <AppKpiCard value={overview ? Number(overview.avgRiskScore).toFixed(1) : '-'} label="平均リスクスコア" />
             </div>
           </div>
 
@@ -134,13 +149,13 @@ export default function AdminRiskPage() {
                       {rows.map((row) => (
                         <tr key={row.pharmacyId}>
                           <td>{row.pharmacyName}</td>
-                          <td>{row.totalItems}</td>
+                          <td>{formatNumberJa(row.totalItems)}</td>
                           <td className={getRiskBadgeClass(row.riskScore)}>{row.riskScore.toFixed(1)}</td>
-                          <td>{row.bucketCounts.expired}</td>
-                          <td>{row.bucketCounts.within30}</td>
-                          <td>{row.bucketCounts.within60}</td>
-                          <td>{row.bucketCounts.within90}</td>
-                          <td>{row.bucketCounts.within120}</td>
+                          <td>{formatNumberJa(row.bucketCounts.expired)}</td>
+                          <td>{formatNumberJa(row.bucketCounts.within30)}</td>
+                          <td>{formatNumberJa(row.bucketCounts.within60)}</td>
+                          <td>{formatNumberJa(row.bucketCounts.within90)}</td>
+                          <td>{formatNumberJa(row.bucketCounts.within120)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -153,14 +168,14 @@ export default function AdminRiskPage() {
                     <AppMobileDataCard
                       key={row.pharmacyId}
                       title={row.pharmacyName}
-                      subtitle={`総件数: ${row.totalItems}`}
+                      subtitle={`総件数: ${formatCountJa(row.totalItems)}`}
                       fields={[
                         { label: 'リスク', value: row.riskScore.toFixed(1) },
-                        { label: '期限切れ', value: row.bucketCounts.expired },
-                        { label: '30日以内', value: row.bucketCounts.within30 },
-                        { label: '60日以内', value: row.bucketCounts.within60 },
-                        { label: '90日以内', value: row.bucketCounts.within90 },
-                        { label: '120日以内', value: row.bucketCounts.within120 },
+                        { label: '期限切れ', value: formatCountJa(row.bucketCounts.expired) },
+                        { label: '30日以内', value: formatCountJa(row.bucketCounts.within30) },
+                        { label: '60日以内', value: formatCountJa(row.bucketCounts.within60) },
+                        { label: '90日以内', value: formatCountJa(row.bucketCounts.within90) },
+                        { label: '120日以内', value: formatCountJa(row.bucketCounts.within120) },
                       ]}
                     />
                   ))}

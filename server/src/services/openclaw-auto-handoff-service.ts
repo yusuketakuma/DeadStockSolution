@@ -4,7 +4,8 @@ import { userRequests } from '../db/schema';
 import { logger } from './logger';
 import { handoffToOpenClaw, type OpenClawStatus } from './openclaw-service';
 import { buildOpenClawLogContext, type OpenClawLogContext } from './openclaw-log-context-service';
-import { parseBoundedInt, parsePositiveInt } from '../utils/number-utils';
+import { parseBoundedInt } from '../utils/number-utils';
+import { parsePositiveInt } from '../utils/request-utils';
 
 interface ImportFailureActionCount {
   action: string;

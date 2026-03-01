@@ -14,6 +14,7 @@ import Pagination from '../components/Pagination';
 import InlineLoader from '../components/ui/InlineLoader';
 import { usePaginatedList } from '../hooks/usePaginatedList';
 import AppSelect from '../components/ui/AppSelect';
+import { formatDateTimeJa, formatYen } from '../utils/formatters';
 
 interface Proposal {
   id: number;
@@ -56,10 +57,6 @@ const STATUS_LABELS: Record<string, { label: string; variant: string }> = {
   cancelled: { label: 'キャンセル', variant: 'dark' },
 };
 
-function formatYen(value: number | null | undefined) {
-  return value === null || value === undefined ? '-' : `${value.toLocaleString()}円`;
-}
-
 function canAcceptProposal(proposal: Proposal, viewerId: number | undefined): boolean {
   if (!viewerId) return false;
   const isA = proposal.pharmacyAId === viewerId;
@@ -70,13 +67,6 @@ function canAcceptProposal(proposal: Proposal, viewerId: number | undefined): bo
 
 function canRejectProposal(proposal: Proposal): boolean {
   return ['proposed', 'accepted_a', 'accepted_b'].includes(proposal.status);
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '-';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '-';
-  return parsed.toLocaleString('ja-JP');
 }
 
 export default function ProposalsPage() {
@@ -275,8 +265,8 @@ export default function ProposalsPage() {
                         <td>{formatYen(p.totalValueA)}</td>
                         <td>{formatYen(p.totalValueB)}</td>
                         <td>{formatYen(p.valueDifference)}</td>
-                        <td>{formatDateTime(p.proposedAt)}</td>
-                        <td>{formatDateTime(p.deadlineAt)}</td>
+                        <td>{formatDateTimeJa(p.proposedAt)}</td>
+                        <td>{formatDateTimeJa(p.deadlineAt)}</td>
                         <td><Link to={`/proposals/${p.id}`} className="btn btn-sm btn-outline-primary">詳細</Link></td>
                       </tr>
                     );
@@ -305,8 +295,8 @@ export default function ProposalsPage() {
                       { label: 'A側薬価', value: formatYen(p.totalValueA) },
                       { label: 'B側薬価', value: formatYen(p.totalValueB) },
                       { label: '差額', value: formatYen(p.valueDifference) },
-                      { label: '開始日', value: formatDateTime(p.proposedAt) },
-                      { label: '期限', value: formatDateTime(p.deadlineAt) },
+                      { label: '開始日', value: formatDateTimeJa(p.proposedAt) },
+                      { label: '期限', value: formatDateTimeJa(p.deadlineAt) },
                     ]}
                     actions={(
                       <div className="d-flex flex-column gap-2">

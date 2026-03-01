@@ -1,0 +1,367 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DeadStockSolution API",
+    "version": "1.0.0",
+    "description": "Baseline OpenAPI contract for public server routes"
+  },
+  "paths": {
+    "/api/account": {
+      "get": {
+        "operationId": "getAccount",
+        "summary": "Get account details",
+        "tags": [
+          "Account"
+        ],
+        "responses": {
+          "200": {
+            "description": "Account details response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/csrf-token": {
+      "get": {
+        "operationId": "getCsrfToken",
+        "summary": "Get CSRF token",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "CSRF token response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "Login",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Login success response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "Logout",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Logout success response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "Get current user",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Current user response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "register",
+        "summary": "Register user",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "201": {
+            "description": "Registration success response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/exchange/find": {
+      "post": {
+        "operationId": "findExchange",
+        "summary": "Find exchange proposals",
+        "tags": [
+          "Exchange"
+        ],
+        "responses": {
+          "200": {
+            "description": "Exchange find response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/exchange/proposals": {
+      "get": {
+        "operationId": "listProposals",
+        "summary": "List proposals",
+        "tags": [
+          "Exchange"
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposal list response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/exchange/proposals/{id}": {
+      "get": {
+        "operationId": "getProposal",
+        "summary": "Get proposal detail",
+        "tags": [
+          "Exchange"
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposal response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Get health status",
+        "tags": [
+          "System"
+        ],
+        "responses": {
+          "200": {
+            "description": "Healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/dead-stock": {
+      "get": {
+        "operationId": "getDeadStock",
+        "summary": "Get dead stock list",
+        "tags": [
+          "Inventory"
+        ],
+        "responses": {
+          "200": {
+            "description": "Dead stock response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "operationId": "getNotifications",
+        "summary": "Get notifications",
+        "tags": [
+          "Notifications"
+        ],
+        "responses": {
+          "200": {
+            "description": "Notifications response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openclaw/callback": {
+      "post": {
+        "operationId": "openclawCallback",
+        "summary": "OpenClaw callback",
+        "tags": [
+          "OpenClaw"
+        ],
+        "responses": {
+          "200": {
+            "description": "Callback response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pharmacies": {
+      "get": {
+        "operationId": "listPharmacies",
+        "summary": "List pharmacies",
+        "tags": [
+          "Pharmacies"
+        ],
+        "responses": {
+          "200": {
+            "description": "Pharmacy list response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pharmacies/{id}": {
+      "get": {
+        "operationId": "getPharmacy",
+        "summary": "Get pharmacy detail",
+        "tags": [
+          "Pharmacies"
+        ],
+        "responses": {
+          "200": {
+            "description": "Pharmacy detail response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "GenericResponse": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checks": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "uptime": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "status",
+          "timestamp"
+        ],
+        "additionalProperties": true
+      }
+    }
+  }
+}

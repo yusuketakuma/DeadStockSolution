@@ -90,7 +90,7 @@ describe('internal upload jobs route auth', () => {
       processed: 4,
       cleaned: 2,
     });
-    expect(mocks.processPendingUploadConfirmJobs).toHaveBeenCalledWith(3);
+    expect(mocks.processPendingUploadConfirmJobs).toHaveBeenCalledWith(1);
     expect(mocks.cleanupUploadConfirmJobs).toHaveBeenCalledWith(50);
   });
 
@@ -103,7 +103,7 @@ describe('internal upload jobs route auth', () => {
       .set('Authorization', 'Bearer upload-secret');
 
     expect(response.status).toBe(200);
-    expect(mocks.processPendingUploadConfirmJobs).toHaveBeenCalledWith(5);
+    expect(mocks.processPendingUploadConfirmJobs).toHaveBeenCalledWith(1);
     expect(mocks.cleanupUploadConfirmJobs).toHaveBeenCalledWith(120);
   });
 
@@ -121,6 +121,6 @@ describe('internal upload jobs route auth', () => {
       processed: 4,
       cleaned: 2,
     });
-    expect(mocks.processPendingUploadConfirmJobs).toHaveBeenCalledWith(3);
+    expect(mocks.processPendingUploadConfirmJobs).toHaveBeenCalledWith(1);
   });
 });

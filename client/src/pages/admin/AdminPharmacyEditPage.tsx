@@ -20,6 +20,7 @@ import {
   SpecialHourEntry,
   SpecialType,
 } from '../../components/account/types';
+import { formatDateTimeJa } from '../../utils/formatters';
 
 interface AdminPharmacyData {
   id: number;
@@ -593,7 +594,7 @@ export default function AdminPharmacyEditPage() {
           />
         )}
         <div className="text-muted small mt-2">
-          登録日: {pharmacy.createdAt ? new Date(pharmacy.createdAt).toLocaleString('ja-JP') : '-'}
+          登録日: {formatDateTimeJa(pharmacy.createdAt)}
         </div>
       </AppDataPanel>
 

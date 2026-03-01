@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import AppAlert from '../components/ui/AppAlert';
 import AppButton from '../components/ui/AppButton';
 import PageLoader from '../components/ui/PageLoader';
+import { formatDateJa } from '../utils/formatters';
 import '../styles/proposal-print.css';
 
 interface PharmacyInfo {
@@ -108,7 +109,7 @@ export default function ProposalPrintPage() {
 
       <h1 className="proposal-print-title">医薬品交換様式（FAX確認用）</h1>
       <p className="proposal-print-meta">
-        マッチング番号: {proposal.id} / 開始日: {new Date(proposal.proposedAt).toLocaleDateString('ja-JP')}
+        マッチング番号: {proposal.id} / 開始日: {formatDateJa(proposal.proposedAt)}
       </p>
 
       <table className="proposal-print-table proposal-print-table-md">

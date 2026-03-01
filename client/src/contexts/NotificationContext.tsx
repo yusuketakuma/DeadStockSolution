@@ -12,15 +12,20 @@ const NotificationContext = createContext<NotificationContextValue>({
   refreshCount: async () => {},
 });
 
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 60_000;
+const MIN_FETCH_INTERVAL_MS = 5_000;
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFetchAtRef = useRef(0);
 
   const fetchCount = useCallback(async () => {
     if (!user) return;
+    const now = Date.now();
+    if (now - lastFetchAtRef.current < MIN_FETCH_INTERVAL_MS) return;
+    lastFetchAtRef.current = now;
     try {
       const data = await api.get<{ unreadCount: number }>('/notifications/unread-count');
       setUnreadCount(data.unreadCount);

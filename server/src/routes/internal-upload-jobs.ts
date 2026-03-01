@@ -8,7 +8,7 @@ import { isAuthorizedCron, resolveCronSecret } from './internal-cron-auth';
 import { parseBoundedInt } from '../utils/number-utils';
 
 const router = Router();
-const DEFAULT_PROCESS_LIMIT = 3;
+const DEFAULT_PROCESS_LIMIT = 1;
 const DEFAULT_CLEANUP_LIMIT = 50;
 
 async function handleRetry(req: Request, res: Response): Promise<void> {
@@ -31,7 +31,8 @@ async function handleRetry(req: Request, res: Response): Promise<void> {
 
     const limitStr = typeof req.query.limit === 'string' ? req.query.limit : undefined;
     const cleanupStr = typeof req.query.cleanupLimit === 'string' ? req.query.cleanupLimit : undefined;
-    const processLimit = parseBoundedInt(limitStr, DEFAULT_PROCESS_LIMIT, 1, 20);
+    // Enforce strict sequential processing: exactly one job per cron tick.
+    const processLimit = parseBoundedInt(limitStr, DEFAULT_PROCESS_LIMIT, 1, 1);
     const cleanupLimit = parseBoundedInt(cleanupStr, DEFAULT_CLEANUP_LIMIT, 1, 500);
     const processed = await processPendingUploadConfirmJobs(processLimit);
     const cleaned = await cleanupUploadConfirmJobs(cleanupLimit);

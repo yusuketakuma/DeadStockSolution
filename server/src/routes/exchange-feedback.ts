@@ -6,20 +6,17 @@ import {
   exchangeFeedback,
 } from '../db/schema';
 import { AuthRequest } from '../types';
-import { parsePositiveInt } from '../utils/request-utils';
 import { recalculateTrustScoreForPharmacy } from '../services/trust-score-service';
 import { logger } from '../services/logger';
+import { parseExchangeIdOrBadRequest } from './exchange-utils';
 
 const router = Router();
 
 // Submit exchange feedback (participants only, completed proposals only)
 router.post('/proposals/:id/feedback', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parsePositiveInt(req.params.id);
-    if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
-      return;
-    }
+    const id = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!id) return;
 
     const rating = Number(req.body?.rating);
     const commentRaw = typeof req.body?.comment === 'string' ? req.body.comment : '';

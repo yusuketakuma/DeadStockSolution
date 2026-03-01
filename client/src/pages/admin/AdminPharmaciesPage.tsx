@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppButton from '../../components/ui/AppButton';
 import AppAlert from '../../components/ui/AppAlert';
@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import InlineLoader from '../../components/ui/InlineLoader';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
+import { formatDateJa, formatNumberJa } from '../../utils/formatters';
 
 interface Pharmacy {
   id: number;
@@ -33,41 +35,34 @@ interface PharmaciesResponse {
 }
 
 export default function AdminPharmaciesPage() {
-  const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const fetchPharmacies = useCallback((targetPage: number, signal?: AbortSignal) =>
+    api.get<PharmaciesResponse>(`/admin/pharmacies/trust?page=${targetPage}`, { signal }), []);
+  const {
+    items: pharmacies,
+    page,
+    setPage,
+    totalPages,
+    loading,
+    error,
+    fetchPage,
+    retry,
+  } = usePaginatedList<Pharmacy, PharmaciesResponse>(fetchPharmacies, {
+    errorMessage: '薬局データの取得に失敗しました',
+  });
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [recalculating, setRecalculating] = useState(false);
 
-  const fetchData = async (p: number, silent = false) => {
-    if (!silent) setLoading(true);
-    setError('');
-    try {
-      const data = await api.get<PharmaciesResponse>(`/admin/pharmacies/trust?page=${p}`);
-      setPharmacies(data.data);
-      setTotalPages(data.pagination.totalPages);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '薬局データの取得に失敗しました');
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void fetchData(page);
-  }, [page]);
-
   const toggleActive = async (id: number) => {
+    setActionError('');
     setUpdatingId(id);
     try {
       const result = await api.put<{ message: string }>(`/admin/pharmacies/${id}/toggle-active`);
       setMessage(result.message);
-      await fetchData(page, true);
+      await fetchPage(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'エラーが発生しました');
+      setActionError(err instanceof Error ? err.message : 'ステータス更新に失敗しました');
     } finally {
       setUpdatingId(null);
     }
@@ -75,7 +70,7 @@ export default function AdminPharmaciesPage() {
 
   const recalculateTrustScores = async () => {
     setRecalculating(true);
-    setError('');
+    setActionError('');
     try {
       const result = await api.post<{ message: string; started?: boolean }>('/admin/pharmacies/trust/recalculate');
       setMessage(
@@ -84,7 +79,7 @@ export default function AdminPharmaciesPage() {
           : `${result.message}（完了後に一覧を再読み込みしてください）`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : '信頼スコア再計算に失敗しました');
+      setActionError(err instanceof Error ? err.message : '信頼スコア再計算に失敗しました');
     } finally {
       setRecalculating(false);
     }
@@ -99,10 +94,11 @@ export default function AdminPharmaciesPage() {
         </AppButton>
       </div>
       {message && <AppAlert variant="info" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
+      {actionError && <AppAlert variant="danger" onClose={() => setActionError('')} dismissible>{actionError}</AppAlert>}
       {error && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchData(page)}>
+          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
             再試行
           </AppButton>
         </AppAlert>
@@ -148,9 +144,9 @@ export default function AdminPharmaciesPage() {
                     <td>{p.prefecture}</td>
                     <td>{p.phone}</td>
                     <td>{p.fax}</td>
-                    <td>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('ja-JP') : '-'}</td>
+                    <td>{formatDateJa(p.createdAt)}</td>
                     <td>{(p.trustScore ?? 60).toFixed(1)}</td>
-                    <td>{p.ratingCount ?? 0}</td>
+                    <td>{formatNumberJa(p.ratingCount ?? 0)}</td>
                     <td>
                       <Badge bg={p.isActive ? 'success' : 'secondary'}>
                         {p.isActive ? '有効' : '無効'}
@@ -199,9 +195,9 @@ export default function AdminPharmaciesPage() {
                     { label: '都道府県', value: p.prefecture },
                     { label: '電話', value: p.phone },
                     { label: 'FAX', value: p.fax },
-                    { label: '登録日', value: p.createdAt ? new Date(p.createdAt).toLocaleDateString('ja-JP') : '-' },
+                    { label: '登録日', value: formatDateJa(p.createdAt) },
                     { label: '信頼スコア', value: (p.trustScore ?? 60).toFixed(1) },
-                    { label: '評価件数', value: p.ratingCount ?? 0 },
+                    { label: '評価件数', value: formatNumberJa(p.ratingCount ?? 0) },
                   ]}
                   actions={(
                     <div className="d-flex gap-2">

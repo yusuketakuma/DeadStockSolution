@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
@@ -10,6 +10,15 @@ import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppModalShell from '../../components/ui/AppModalShell';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
+import { formatDateTimeJa, formatYen } from '../../utils/formatters';
+import { proposalStatusLabel } from '../../utils/proposal-status';
+import {
+  filterProposalTimelineEvents,
+  PROPOSAL_TIMELINE_FILTER_OPTIONS,
+  type ProposalTimelineEvent,
+  type ProposalTimelineFilter,
+} from '../../utils/proposal-timeline';
 
 interface ExchangeHistoryItem {
   id: number;
@@ -27,16 +36,6 @@ interface HistoryResponse {
   pagination: { page: number; totalPages: number; total: number };
 }
 
-interface ProposalTimelineEvent {
-  action: string;
-  label: string;
-  at: string | null;
-  actorPharmacyId: number | null;
-  actorName: string | null;
-  statusFrom?: string | null;
-  statusTo?: string | null;
-}
-
 interface ProposalComment {
   id: number;
   authorName: string;
@@ -44,26 +43,19 @@ interface ProposalComment {
   createdAt: string | null;
 }
 
-const statusLabelMap: Record<string, string> = {
-  proposed: '仮マッチング中',
-  accepted_a: 'A側承認済み',
-  accepted_b: 'B側承認済み',
-  confirmed: '確定',
-  rejected: '拒否',
-  completed: '交換完了',
-  cancelled: 'キャンセル',
-};
-
-function formatYen(value: number | null | undefined) {
-  return value === null || value === undefined ? '-' : `${value.toLocaleString()}円`;
-}
-
 export default function AdminExchangesPage() {
-  const [history, setHistory] = useState<ExchangeHistoryItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const {
+    items: history,
+    page,
+    setPage,
+    totalPages,
+    loading,
+    error,
+    retry,
+  } = usePaginatedList<ExchangeHistoryItem, HistoryResponse>((targetPage, signal) =>
+    api.get<HistoryResponse>(`/admin/history?page=${targetPage}`, { signal }),
+    { errorMessage: '交換履歴データの取得に失敗しました' },
+  );
   const [commentModalOpen, setCommentModalOpen] = useState(false);
   const [selectedProposalId, setSelectedProposalId] = useState<number | null>(null);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -71,25 +63,7 @@ export default function AdminExchangesPage() {
   const [commentsError, setCommentsError] = useState('');
   const [timeline, setTimeline] = useState<ProposalTimelineEvent[]>([]);
   const [timelineError, setTimelineError] = useState('');
-  const [timelineFilter, setTimelineFilter] = useState<'all' | 'decision'>('all');
-
-  const fetchData = async (targetPage: number) => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await api.get<HistoryResponse>(`/admin/history?page=${targetPage}`);
-      setHistory(data.data);
-      setTotalPages(data.pagination.totalPages);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '交換履歴データの取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void fetchData(page);
-  }, [page]);
+  const [timelineFilter, setTimelineFilter] = useState<ProposalTimelineFilter>('all');
 
   const openComments = async (proposalId: number) => {
     setSelectedProposalId(proposalId);
@@ -120,13 +94,15 @@ export default function AdminExchangesPage() {
     setCommentsLoading(false);
   };
 
+  const filteredTimeline = filterProposalTimelineEvents(timeline, timelineFilter);
+
   return (
     <div>
       <h4 className="page-title mb-3">交換履歴（管理者）</h4>
       {error && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchData(page)}>
+          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
             再試行
           </AppButton>
         </AppAlert>
@@ -163,7 +139,7 @@ export default function AdminExchangesPage() {
                       <td>{item.pharmacyAName} (ID:{item.pharmacyAId})</td>
                       <td>{item.pharmacyBName} (ID:{item.pharmacyBId})</td>
                       <td>{formatYen(item.totalValue)}</td>
-                      <td>{item.completedAt ? new Date(item.completedAt).toLocaleString('ja-JP') : '-'}</td>
+                      <td>{formatDateTimeJa(item.completedAt)}</td>
                       <td><Badge bg="secondary">完了</Badge></td>
                       <td>
                         <AppButton size="sm" variant="outline-primary" onClick={() => void openComments(item.proposalId)}>
@@ -188,7 +164,7 @@ export default function AdminExchangesPage() {
                     { label: '薬局A', value: `${item.pharmacyAName} (ID:${item.pharmacyAId})` },
                     { label: '薬局B', value: `${item.pharmacyBName} (ID:${item.pharmacyBId})` },
                     { label: '交換金額', value: formatYen(item.totalValue) },
-                    { label: '完了日時', value: item.completedAt ? new Date(item.completedAt).toLocaleString('ja-JP') : '-' },
+                    { label: '完了日時', value: formatDateTimeJa(item.completedAt) },
                   ]}
                   actions={(
                     <AppButton size="sm" variant="outline-primary" onClick={() => void openComments(item.proposalId)}>
@@ -221,27 +197,26 @@ export default function AdminExchangesPage() {
                   className="form-select form-select-sm"
                   aria-label="管理者向け進行履歴フィルタ"
                   value={timelineFilter}
-                  onChange={(e) => setTimelineFilter(e.target.value as 'all' | 'decision')}
+                  onChange={(e) => setTimelineFilter(e.target.value as ProposalTimelineFilter)}
                 >
-                  <option value="all">すべて表示</option>
-                  <option value="decision">承認/拒否/完了のみ</option>
+                  {PROPOSAL_TIMELINE_FILTER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
                 </select>
               </div>
-              {timeline.filter((event) => timelineFilter === 'all' || ['proposal_accept', 'proposal_reject', 'proposal_complete'].includes(event.action)).length === 0 ? (
+              {filteredTimeline.length === 0 ? (
                 <div className="small text-muted">履歴はありません。</div>
               ) : (
                 <ul className="small mb-0 ps-3">
-                  {timeline
-                    .filter((event) => timelineFilter === 'all' || ['proposal_accept', 'proposal_reject', 'proposal_complete'].includes(event.action))
-                    .map((event, idx) => (
+                  {filteredTimeline.map((event, idx) => (
                       <li key={`${event.action}-${event.at ?? 'na'}-${idx}`}>
                         <strong>{event.label}</strong> — {event.actorName ?? '不明'}
                         {event.statusFrom && event.statusTo && (
-                          <span className="text-muted"> [{statusLabelMap[event.statusFrom] ?? event.statusFrom} → {statusLabelMap[event.statusTo] ?? event.statusTo}]</span>
+                          <span className="text-muted"> [{proposalStatusLabel(event.statusFrom)} → {proposalStatusLabel(event.statusTo)}]</span>
                         )}
-                        {' '}({event.at ? new Date(event.at).toLocaleString('ja-JP') : '-'})
+                        {' '}({formatDateTimeJa(event.at)})
                       </li>
-                    ))}
+                  ))}
                 </ul>
               )}
             </div>
@@ -254,7 +229,7 @@ export default function AdminExchangesPage() {
                 {comments.map((comment) => (
                   <div key={comment.id} className="border rounded p-2">
                     <div className="small text-muted">
-                      {comment.authorName} / {comment.createdAt ? new Date(comment.createdAt).toLocaleString('ja-JP') : '-'}
+                      {comment.authorName} / {formatDateTimeJa(comment.createdAt)}
                     </div>
                     <div>{comment.body}</div>
                   </div>

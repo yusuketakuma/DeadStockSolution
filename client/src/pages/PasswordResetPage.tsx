@@ -3,7 +3,7 @@ import AppButton from '../components/ui/AppButton';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import AuthPageLayout from '../components/ui/AuthPageLayout';
-import StatusAlert from '../components/ui/StatusAlert';
+import AppAlert from '../components/ui/AppAlert';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppField from '../components/ui/AppField';
 
@@ -85,8 +85,8 @@ export default function PasswordResetPage() {
           <h1 className="h4 text-center mb-2">パスワードリセット</h1>
           <p className="dl-lead text-center">登録メールアドレス宛のトークンで再設定できます。</p>
 
-          {error && <StatusAlert variant="danger" message={error} />}
-          {success && <StatusAlert variant="success" message={success} />}
+          {error && <AppAlert variant="danger" className="dl-status-alert">{error}</AppAlert>}
+          {success && <AppAlert variant="success" className="dl-status-alert">{success}</AppAlert>}
 
           {step === 'request' && (
             <form onSubmit={handleRequest}>

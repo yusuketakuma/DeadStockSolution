@@ -1,4 +1,19 @@
-import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { createHash } from 'crypto';
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notExists,
+  gte,
+  lt,
+  lte,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { promisify } from 'util';
 import { gunzip, gzip } from 'zlib';
 import { db } from '../config/database';
@@ -12,7 +27,15 @@ import { rowCount } from '../utils/db-utils';
 import { getNextRetryIso, getStaleBeforeIso } from '../utils/job-retry-utils';
 import { parseBoundedInt } from '../utils/number-utils';
 import { logger } from './logger';
-import { runUploadConfirm, type ApplyMode, type UploadType } from './upload-confirm-service';
+import {
+  clearUploadRowIssuesForJob,
+  getUploadRowIssueCountByJobId,
+} from './upload-row-issue-service';
+import {
+  runUploadConfirm,
+  type ApplyMode,
+  type UploadType,
+} from './upload-confirm-service';
 import { parseExcelBuffer } from './upload-service';
 
 const MAX_JOB_ATTEMPTS = 5;
@@ -29,25 +52,41 @@ const DEFAULT_CLEANUP_BATCH_SIZE = 200;
 const MAX_MAPPING_COLUMN_INDEX = 199;
 const ACTIVE_JOB_STATUSES = ['pending', 'processing'] as const;
 const FINISHED_JOB_STATUSES = ['completed', 'failed'] as const;
+const IDEMPOTENT_DEDUP_JOB_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 const COMPRESSED_PAYLOAD_PREFIX = 'gz:';
 const CLEARED_FILE_PAYLOAD = '';
 const JOB_ERROR_CODE_PREFIX_PATTERN = /^\[([A-Z0-9_]+)]\s*/;
+const CANCELLED_JOB_MESSAGE = '管理者によりジョブがキャンセルされました';
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
 export const UPLOAD_CONFIRM_QUEUE_LIMIT_ERROR_CODE = 'UPLOAD_CONFIRM_QUEUE_LIMIT';
+export const UPLOAD_CONFIRM_IDEMPOTENCY_CONFLICT_ERROR_CODE = 'UPLOAD_CONFIRM_IDEMPOTENCY_CONFLICT';
+export const UPLOAD_CONFIRM_RETRY_UNAVAILABLE_ERROR_CODE = 'UPLOAD_CONFIRM_RETRY_UNAVAILABLE';
 
 interface EnqueueUploadConfirmJobParams {
   pharmacyId: number;
   uploadType: UploadType;
   originalFilename: string;
+  idempotencyKey?: string | null;
   headerRowIndex: number;
   mapping: ColumnMapping;
   applyMode: ApplyMode;
   deleteMissing: boolean;
   fileBuffer: Buffer;
+  requestedAtIso?: string;
 }
+
+export interface EnqueueUploadConfirmJobResult {
+  jobId: number;
+  status: UploadConfirmJobStatus;
+  deduplicated: boolean;
+  cancelable: boolean;
+  canceledAt: string | null;
+}
+
+type UploadConfirmJobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 interface UploadConfirmJobRuntime {
   id: number;
@@ -64,10 +103,45 @@ interface UploadConfirmJobRuntime {
   createdAt: string | null;
 }
 
+interface UploadConfirmJobRecord {
+  id: number;
+  pharmacyId: number;
+  uploadType: UploadType;
+  originalFilename: string;
+  idempotencyKey: string | null;
+  fileHash: string;
+  headerRowIndex: number;
+  mappingJson: string;
+  status: UploadConfirmJobStatus;
+  applyMode: ApplyMode;
+  deleteMissing: boolean;
+  deduplicated: boolean;
+  fileBase64: string;
+  attempts: number;
+  lastError: string | null;
+  resultJson: string | null;
+  cancelRequestedAt: string | null;
+  canceledAt: string | null;
+  canceledBy: number | null;
+  processingStartedAt: string | null;
+  nextRetryAt: string | null;
+  completedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface UploadConfirmQueueLimitError extends Error {
   code: typeof UPLOAD_CONFIRM_QUEUE_LIMIT_ERROR_CODE;
   limit: number;
   activeJobs: number;
+}
+
+export interface UploadConfirmIdempotencyConflictError extends Error {
+  code: typeof UPLOAD_CONFIRM_IDEMPOTENCY_CONFLICT_ERROR_CODE;
+}
+
+export interface UploadConfirmRetryUnavailableError extends Error {
+  code: typeof UPLOAD_CONFIRM_RETRY_UNAVAILABLE_ERROR_CODE;
 }
 
 type UploadConfirmJobErrorCode =
@@ -80,6 +154,7 @@ type UploadConfirmJobErrorCode =
   | 'JOB_STATUS_INVALID'
   | 'FILE_PAYLOAD_MISSING'
   | 'STALE_JOB_SKIPPED'
+  | 'JOB_CANCELED'
   | 'UPLOAD_CONFIRM_FAILED';
 
 interface UploadConfirmJobClassifiedError {
@@ -89,8 +164,32 @@ interface UploadConfirmJobClassifiedError {
   rawMessage: string;
 }
 
+export type UploadConfirmJobView = Omit<
+  UploadConfirmJobRecord,
+  'headerRowIndex' | 'mappingJson' | 'fileBase64' | 'processingStartedAt' | 'nextRetryAt'
+> & {
+  issueCount: number;
+  cancelable: boolean;
+};
+
+export interface CancelUploadConfirmJobResult {
+  id: number;
+  status: UploadConfirmJobStatus;
+  canceledAt: string | null;
+  cancelRequestedAt: string | null;
+  cancelable: boolean;
+}
+
+export interface RetryUploadConfirmJobResult {
+  id: number;
+  status: UploadConfirmJobStatus;
+  cancelable: boolean;
+  canceledAt: string | null;
+}
+
 class UploadConfirmJobProcessingError extends Error {
   readonly code: UploadConfirmJobErrorCode;
+
   readonly retryable: boolean;
 
   constructor(code: UploadConfirmJobErrorCode, message: string, retryable: boolean) {
@@ -121,6 +220,20 @@ function parseJobErrorCode(rawMessage: string): UploadConfirmJobErrorCode | null
   const matched = rawMessage.match(JOB_ERROR_CODE_PREFIX_PATTERN);
   if (!matched?.[1]) return null;
   return matched[1] as UploadConfirmJobErrorCode;
+}
+
+function toSafeCount(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
 }
 
 function getMaxActiveJobsPerPharmacy(): number {
@@ -159,20 +272,6 @@ function getCleanupBatchSize(): number {
   );
 }
 
-function toSafeCount(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === 'bigint') {
-    return Number(value);
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-}
-
 function createQueueLimitError(limit: number, activeJobs: number): UploadConfirmQueueLimitError {
   const error = new Error(
     `現在アップロード処理が混み合っています（上限: ${limit}件）。進行中ジョブ完了後に再実行してください。`,
@@ -184,6 +283,22 @@ function createQueueLimitError(limit: number, activeJobs: number): UploadConfirm
   return error;
 }
 
+function createIdempotencyConflictError(): UploadConfirmIdempotencyConflictError {
+  const error = new Error(
+    '同じ idempotencyKey で異なるアップロード要求が送信されました。新しい idempotencyKey で再実行してください。',
+  ) as UploadConfirmIdempotencyConflictError;
+  error.name = 'UploadConfirmIdempotencyConflictError';
+  error.code = UPLOAD_CONFIRM_IDEMPOTENCY_CONFLICT_ERROR_CODE;
+  return error;
+}
+
+function createRetryUnavailableError(message: string): UploadConfirmRetryUnavailableError {
+  const error = new Error(message) as UploadConfirmRetryUnavailableError;
+  error.name = 'UploadConfirmRetryUnavailableError';
+  error.code = UPLOAD_CONFIRM_RETRY_UNAVAILABLE_ERROR_CODE;
+  return error;
+}
+
 export function isUploadConfirmQueueLimitError(error: unknown): error is UploadConfirmQueueLimitError {
   return Boolean(
     error
@@ -191,6 +306,40 @@ export function isUploadConfirmQueueLimitError(error: unknown): error is UploadC
     && 'code' in error
     && (error as { code?: unknown }).code === UPLOAD_CONFIRM_QUEUE_LIMIT_ERROR_CODE,
   );
+}
+
+export function isUploadConfirmIdempotencyConflictError(error: unknown): error is UploadConfirmIdempotencyConflictError {
+  return Boolean(
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && (error as { code?: unknown }).code === UPLOAD_CONFIRM_IDEMPOTENCY_CONFLICT_ERROR_CODE,
+  );
+}
+
+export function isUploadConfirmRetryUnavailableError(error: unknown): error is UploadConfirmRetryUnavailableError {
+  return Boolean(
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && (error as { code?: unknown }).code === UPLOAD_CONFIRM_RETRY_UNAVAILABLE_ERROR_CODE,
+  );
+}
+
+function isCancelableStatus(status: UploadConfirmJobStatus): boolean {
+  return status === 'pending' || status === 'processing';
+}
+
+function isJobCancelable(
+  status: UploadConfirmJobStatus,
+  cancelRequestedAt: string | null,
+  canceledAt: string | null,
+): boolean {
+  return isCancelableStatus(status) && cancelRequestedAt === null && canceledAt === null;
+}
+
+function computeFileHash(fileBuffer: Buffer): string {
+  return createHash('sha256').update(fileBuffer).digest('hex');
 }
 
 async function encodeUploadJobFilePayload(fileBuffer: Buffer): Promise<string> {
@@ -223,7 +372,7 @@ async function decodeUploadJobFilePayload(filePayload: string): Promise<Buffer> 
   try {
     const compressedBuffer = Buffer.from(compressedBase64, 'base64');
     return await gunzipAsync(compressedBuffer);
-  } catch (err) {
+  } catch {
     throw createUploadConfirmJobError(
       'FILE_PARSE_FAILED',
       'アップロードファイルを解析できませんでした',
@@ -243,6 +392,8 @@ async function countActiveJobsForPharmacy(
     .where(and(
       eq(uploadConfirmJobs.pharmacyId, pharmacyId),
       inArray(uploadConfirmJobs.status, ACTIVE_JOB_STATUSES),
+      isNull(uploadConfirmJobs.cancelRequestedAt),
+      isNull(uploadConfirmJobs.canceledAt),
     ));
 
   return toSafeCount(row?.count);
@@ -255,21 +406,84 @@ async function countActiveJobsGlobal(
     count: rowCount,
   })
     .from(uploadConfirmJobs)
-    .where(inArray(uploadConfirmJobs.status, ACTIVE_JOB_STATUSES));
+    .where(and(
+      inArray(uploadConfirmJobs.status, ACTIVE_JOB_STATUSES),
+      isNull(uploadConfirmJobs.cancelRequestedAt),
+      isNull(uploadConfirmJobs.canceledAt),
+    ));
+
   return toSafeCount(row?.count);
 }
 
+type UploadConfirmQueueCapacityExecutor = Pick<typeof db, 'execute' | 'select'>;
+
+async function lockUploadConfirmQueueCapacity(
+  pharmacyId: number,
+  executor: UploadConfirmQueueCapacityExecutor,
+): Promise<void> {
+  await executor.execute(sql`SELECT pg_advisory_xact_lock(${UPLOAD_CONFIRM_QUEUE_LOCK_NAMESPACE}, ${UPLOAD_CONFIRM_QUEUE_GLOBAL_LOCK_KEY})`);
+  await executor.execute(sql`SELECT pg_advisory_xact_lock(${pharmacyId})`);
+}
+
+async function assertUploadConfirmQueueCapacity(
+  pharmacyId: number,
+  executor: Pick<typeof db, 'select'>,
+): Promise<void> {
+  const maxActiveJobs = getMaxActiveJobsPerPharmacy();
+  const activeJobs = await countActiveJobsForPharmacy(pharmacyId, executor);
+  if (activeJobs >= maxActiveJobs) {
+    throw createQueueLimitError(maxActiveJobs, activeJobs);
+  }
+
+  const maxActiveJobsGlobal = getMaxActiveJobsGlobal();
+  const globalActiveJobs = await countActiveJobsGlobal(executor);
+  if (globalActiveJobs >= maxActiveJobsGlobal) {
+    throw createQueueLimitError(maxActiveJobsGlobal, globalActiveJobs);
+  }
+}
+
+async function assertUploadConfirmQueueCapacityWithLocks(
+  pharmacyId: number,
+  executor: UploadConfirmQueueCapacityExecutor,
+): Promise<void> {
+  await lockUploadConfirmQueueCapacity(pharmacyId, executor);
+  await assertUploadConfirmQueueCapacity(pharmacyId, executor);
+}
+
 function buildClaimableStatusCondition(staleBeforeIso: string) {
-  return or(
-    eq(uploadConfirmJobs.status, 'pending'),
-    and(
-      eq(uploadConfirmJobs.status, 'processing'),
-      or(
-        isNull(uploadConfirmJobs.processingStartedAt),
-        lt(uploadConfirmJobs.processingStartedAt, staleBeforeIso),
+  return and(
+    isNull(uploadConfirmJobs.cancelRequestedAt),
+    isNull(uploadConfirmJobs.canceledAt),
+    or(
+      eq(uploadConfirmJobs.status, 'pending'),
+      and(
+        eq(uploadConfirmJobs.status, 'processing'),
+        or(
+          isNull(uploadConfirmJobs.processingStartedAt),
+          lt(uploadConfirmJobs.processingStartedAt, staleBeforeIso),
+        ),
       ),
     ),
   );
+}
+
+async function finalizeCancelRequestedJob(jobId: number, nowIso: string): Promise<void> {
+  await db.update(uploadConfirmJobs)
+    .set({
+      status: 'failed',
+      lastError: formatJobErrorMessage('JOB_CANCELED', CANCELLED_JOB_MESSAGE),
+      nextRetryAt: null,
+      processingStartedAt: null,
+      fileBase64: CLEARED_FILE_PAYLOAD,
+      canceledAt: sql<string>`coalesce(${uploadConfirmJobs.cancelRequestedAt}, ${nowIso})`,
+      completedAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      eq(uploadConfirmJobs.id, jobId),
+      isNotNull(uploadConfirmJobs.cancelRequestedAt),
+      isNull(uploadConfirmJobs.canceledAt),
+    ));
 }
 
 function classifyUploadConfirmJobError(err: unknown): UploadConfirmJobClassifiedError {
@@ -347,6 +561,14 @@ function classifyUploadConfirmJobError(err: unknown): UploadConfirmJobClassified
       rawMessage,
     };
   }
+  if (/cancel/i.test(rawMessage)) {
+    return {
+      code: 'JOB_CANCELED',
+      message: CANCELLED_JOB_MESSAGE,
+      retryable: false,
+      rawMessage,
+    };
+  }
 
   return {
     code: 'UPLOAD_CONFIRM_FAILED',
@@ -419,7 +641,7 @@ function parseStoredMapping(mappingJson: string, uploadType: UploadType): Column
 }
 
 function normalizeApplyMode(value: string): ApplyMode {
-  if (value === 'replace' || value === 'diff') {
+  if (value === 'replace' || value === 'diff' || value === 'partial') {
     return value;
   }
   throw createUploadConfirmJobError(
@@ -437,6 +659,100 @@ function normalizeClaimableStatus(value: string): 'pending' | 'processing' {
     'JOB_STATUS_INVALID',
     `ジョブ内のstatusが不正です: ${value}`,
     false,
+  );
+}
+
+function normalizeJobStatus(value: string): UploadConfirmJobStatus {
+  if (value === 'pending' || value === 'processing' || value === 'completed' || value === 'failed') {
+    return value;
+  }
+  throw createUploadConfirmJobError(
+    'JOB_STATUS_INVALID',
+    `ジョブ内のstatusが不正です: ${value}`,
+    false,
+  );
+}
+
+const JOB_RECORD_COLUMNS = {
+  id: uploadConfirmJobs.id,
+  pharmacyId: uploadConfirmJobs.pharmacyId,
+  uploadType: uploadConfirmJobs.uploadType,
+  originalFilename: uploadConfirmJobs.originalFilename,
+  idempotencyKey: uploadConfirmJobs.idempotencyKey,
+  fileHash: uploadConfirmJobs.fileHash,
+  headerRowIndex: uploadConfirmJobs.headerRowIndex,
+  mappingJson: uploadConfirmJobs.mappingJson,
+  status: uploadConfirmJobs.status,
+  applyMode: uploadConfirmJobs.applyMode,
+  deleteMissing: uploadConfirmJobs.deleteMissing,
+  deduplicated: uploadConfirmJobs.deduplicated,
+  fileBase64: uploadConfirmJobs.fileBase64,
+  attempts: uploadConfirmJobs.attempts,
+  lastError: uploadConfirmJobs.lastError,
+  resultJson: uploadConfirmJobs.resultJson,
+  cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
+  canceledAt: uploadConfirmJobs.canceledAt,
+  canceledBy: uploadConfirmJobs.canceledBy,
+  processingStartedAt: uploadConfirmJobs.processingStartedAt,
+  nextRetryAt: uploadConfirmJobs.nextRetryAt,
+  completedAt: uploadConfirmJobs.completedAt,
+  createdAt: uploadConfirmJobs.createdAt,
+  updatedAt: uploadConfirmJobs.updatedAt,
+} as const;
+
+function mapJobRecord(
+  row: Omit<UploadConfirmJobRecord, 'status' | 'applyMode'> & { status: string; applyMode: string },
+): UploadConfirmJobRecord {
+  const status = normalizeJobStatus(row.status);
+  const applyMode = normalizeApplyMode(row.applyMode);
+  return {
+    ...row,
+    status,
+    applyMode,
+  };
+}
+
+async function fetchUploadConfirmJobById(
+  jobId: number,
+  executor: Pick<typeof db, 'select'> = db,
+): Promise<UploadConfirmJobRecord | null> {
+  const [row] = await executor.select(JOB_RECORD_COLUMNS)
+    .from(uploadConfirmJobs)
+    .where(eq(uploadConfirmJobs.id, jobId))
+    .limit(1);
+
+  if (!row) return null;
+  return mapJobRecord(row);
+}
+
+async function assertJobNotCancellationRequested(jobId: number): Promise<void> {
+  const [row] = await db.select({
+    cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
+    canceledAt: uploadConfirmJobs.canceledAt,
+  })
+    .from(uploadConfirmJobs)
+    .where(eq(uploadConfirmJobs.id, jobId))
+    .limit(1);
+
+  if (row?.canceledAt || row?.cancelRequestedAt) {
+    throw createUploadConfirmJobError('JOB_CANCELED', CANCELLED_JOB_MESSAGE, false);
+  }
+}
+
+function buildNoOtherActiveProcessingCondition(
+  candidateId: number,
+  staleBeforeIso: string,
+) {
+  return notExists(
+    db.select({ id: uploadConfirmJobs.id })
+      .from(uploadConfirmJobs)
+      .where(and(
+        eq(uploadConfirmJobs.status, 'processing'),
+        isNull(uploadConfirmJobs.cancelRequestedAt),
+        isNull(uploadConfirmJobs.canceledAt),
+        gte(uploadConfirmJobs.processingStartedAt, staleBeforeIso),
+        ne(uploadConfirmJobs.id, candidateId),
+      )),
   );
 }
 
@@ -482,10 +798,13 @@ async function claimPendingUploadConfirmJob(): Promise<UploadConfirmJobRuntime |
       })
       .where(and(
         eq(uploadConfirmJobs.id, candidate.id),
+        isNull(uploadConfirmJobs.cancelRequestedAt),
+        isNull(uploadConfirmJobs.canceledAt),
         eq(uploadConfirmJobs.status, candidateStatus),
         eq(uploadConfirmJobs.attempts, candidate.attempts),
         lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
         or(isNull(uploadConfirmJobs.nextRetryAt), lte(uploadConfirmJobs.nextRetryAt, nowIso)),
+        buildNoOtherActiveProcessingCondition(candidate.id, staleBeforeIso),
         candidateStatus === 'processing'
           ? or(
             isNull(uploadConfirmJobs.processingStartedAt),
@@ -521,6 +840,9 @@ async function claimPendingUploadConfirmJob(): Promise<UploadConfirmJobRuntime |
 
 async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntime): Promise<void> {
   try {
+    await clearUploadRowIssuesForJob(job.id);
+    await assertJobNotCancellationRequested(job.id);
+
     const mapping = parseStoredMapping(job.mappingJson, job.uploadType);
     const payloadBuffer = await decodeUploadJobFilePayload(job.fileBase64);
     let allRows: unknown[][];
@@ -534,10 +856,13 @@ async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntime): Pro
       );
     }
 
+    await assertJobNotCancellationRequested(job.id);
+
     const result = await runUploadConfirm({
       pharmacyId: job.pharmacyId,
       uploadType: job.uploadType,
       originalFilename: job.originalFilename,
+      jobId: job.id,
       headerRowIndex: job.headerRowIndex,
       mapping,
       allRows,
@@ -552,20 +877,37 @@ async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntime): Pro
       applyMode: job.applyMode,
       deleteMissing: job.applyMode === 'diff' ? job.deleteMissing : undefined,
       diffSummary: job.applyMode === 'diff' ? result.diffSummary : undefined,
+      partialSummary: job.applyMode === 'partial' ? result.partialSummary : undefined,
+      errorReportAvailable: job.applyMode === 'partial'
+        ? (result.partialSummary?.rejectedRows ?? 0) > 0
+        : false,
     };
 
     const nowIso = new Date().toISOString();
-    await db.update(uploadConfirmJobs)
+    const [completed] = await db.update(uploadConfirmJobs)
       .set({
         status: 'completed',
         lastError: null,
         resultJson: JSON.stringify(responsePayload),
         fileBase64: CLEARED_FILE_PAYLOAD,
         processingStartedAt: null,
+        cancelRequestedAt: null,
+        canceledAt: null,
+        canceledBy: null,
         completedAt: nowIso,
         updatedAt: nowIso,
       })
-      .where(eq(uploadConfirmJobs.id, job.id));
+      .where(and(
+        eq(uploadConfirmJobs.id, job.id),
+        eq(uploadConfirmJobs.status, 'processing'),
+        isNull(uploadConfirmJobs.cancelRequestedAt),
+        isNull(uploadConfirmJobs.canceledAt),
+      ))
+      .returning({ id: uploadConfirmJobs.id });
+
+    if (!completed) {
+      await finalizeCancelRequestedJob(job.id, nowIso);
+    }
   } catch (err) {
     const nextAttempts = job.attempts + 1;
     const classified = classifyUploadConfirmJobError(err);
@@ -582,14 +924,32 @@ async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntime): Pro
       nextRetryAt: terminal ? null : getNextRetryIso(nextAttempts, MAX_JOB_ATTEMPTS, RETRY_BACKOFF_BASE_MS),
       updatedAt: nowIso,
     };
+
     if (terminal) {
-      updatePayload.fileBase64 = CLEARED_FILE_PAYLOAD;
       updatePayload.completedAt = nowIso;
+      if (classified.code === 'JOB_CANCELED') {
+        updatePayload.cancelRequestedAt = nowIso;
+        updatePayload.canceledAt = nowIso;
+      }
     }
 
-    await db.update(uploadConfirmJobs)
+    const [updated] = await db.update(uploadConfirmJobs)
       .set(updatePayload)
-      .where(eq(uploadConfirmJobs.id, job.id));
+      .where(and(
+        eq(uploadConfirmJobs.id, job.id),
+        eq(uploadConfirmJobs.status, 'processing'),
+        isNull(uploadConfirmJobs.cancelRequestedAt),
+        isNull(uploadConfirmJobs.canceledAt),
+      ))
+      .returning({ id: uploadConfirmJobs.id });
+
+    if (!updated) {
+      await finalizeCancelRequestedJob(job.id, nowIso);
+      const latest = await fetchUploadConfirmJobById(job.id);
+      if (!latest || latest.canceledAt || latest.cancelRequestedAt || latest.status === 'completed') {
+        return;
+      }
+    }
 
     if (!retryable) {
       logger.warn('Upload confirm job failed as non-retryable', {
@@ -619,47 +979,139 @@ async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntime): Pro
   }
 }
 
+async function findJobByIdempotencyKey(
+  pharmacyId: number,
+  idempotencyKey: string,
+  executor: Pick<typeof db, 'select'>,
+): Promise<UploadConfirmJobRecord | null> {
+  const [row] = await executor.select(JOB_RECORD_COLUMNS)
+    .from(uploadConfirmJobs)
+    .where(and(
+      eq(uploadConfirmJobs.pharmacyId, pharmacyId),
+      eq(uploadConfirmJobs.idempotencyKey, idempotencyKey),
+      inArray(uploadConfirmJobs.status, IDEMPOTENT_DEDUP_JOB_STATUSES),
+      isNull(uploadConfirmJobs.canceledAt),
+    ))
+    .orderBy(asc(uploadConfirmJobs.id))
+    .limit(1);
+
+  if (!row) return null;
+  return mapJobRecord(row);
+}
+
+function ensureIdempotentPayloadMatch(
+  existing: UploadConfirmJobRecord,
+  input: {
+    uploadType: UploadType;
+    fileHash: string;
+    headerRowIndex: number;
+    mappingJson: string;
+    applyMode: ApplyMode;
+    deleteMissing: boolean;
+  },
+): void {
+  const matched = existing.uploadType === input.uploadType
+    && existing.fileHash === input.fileHash
+    && existing.headerRowIndex === input.headerRowIndex
+    && existing.mappingJson === input.mappingJson
+    && existing.applyMode === input.applyMode
+    && existing.deleteMissing === input.deleteMissing;
+
+  if (!matched) {
+    throw createIdempotencyConflictError();
+  }
+}
+
 export async function enqueueUploadConfirmJob(
   params: EnqueueUploadConfirmJobParams,
-): Promise<number> {
-  const encodedPayload = await encodeUploadJobFilePayload(params.fileBuffer);
+): Promise<EnqueueUploadConfirmJobResult> {
+  const fileHash = computeFileHash(params.fileBuffer);
+  const mappingJson = JSON.stringify(params.mapping);
 
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${UPLOAD_CONFIRM_QUEUE_LOCK_NAMESPACE}, ${UPLOAD_CONFIRM_QUEUE_GLOBAL_LOCK_KEY})`);
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${params.pharmacyId})`);
+    await lockUploadConfirmQueueCapacity(params.pharmacyId, tx);
 
-    const maxActiveJobs = getMaxActiveJobsPerPharmacy();
-    const activeJobs = await countActiveJobsForPharmacy(params.pharmacyId, tx);
-    if (activeJobs >= maxActiveJobs) {
-      throw createQueueLimitError(maxActiveJobs, activeJobs);
+    if (params.idempotencyKey) {
+      const existing = await findJobByIdempotencyKey(params.pharmacyId, params.idempotencyKey, tx);
+      if (existing) {
+        ensureIdempotentPayloadMatch(existing, {
+          uploadType: params.uploadType,
+          fileHash,
+          headerRowIndex: params.headerRowIndex,
+          mappingJson,
+          applyMode: params.applyMode,
+          deleteMissing: params.deleteMissing,
+        });
+
+        if (!existing.deduplicated) {
+          await tx.update(uploadConfirmJobs)
+            .set({
+              deduplicated: true,
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(uploadConfirmJobs.id, existing.id));
+        }
+
+        return {
+          jobId: existing.id,
+          status: existing.status,
+          deduplicated: true,
+          cancelable: isJobCancelable(existing.status, existing.cancelRequestedAt, existing.canceledAt),
+          canceledAt: existing.canceledAt,
+        };
+      }
     }
 
-    const maxActiveJobsGlobal = getMaxActiveJobsGlobal();
-    const globalActiveJobs = await countActiveJobsGlobal(tx);
-    if (globalActiveJobs >= maxActiveJobsGlobal) {
-      throw createQueueLimitError(maxActiveJobsGlobal, globalActiveJobs);
-    }
+    await assertUploadConfirmQueueCapacity(params.pharmacyId, tx);
 
+    const encodedPayload = await encodeUploadJobFilePayload(params.fileBuffer);
     const nowIso = new Date().toISOString();
+    const requestedAtIso = params.requestedAtIso ?? nowIso;
+
     const [job] = await tx.insert(uploadConfirmJobs).values({
       pharmacyId: params.pharmacyId,
       uploadType: params.uploadType,
       originalFilename: params.originalFilename,
+      idempotencyKey: params.idempotencyKey ?? null,
+      fileHash,
       headerRowIndex: params.headerRowIndex,
-      mappingJson: JSON.stringify(params.mapping),
+      mappingJson,
       applyMode: params.applyMode,
       deleteMissing: params.deleteMissing,
+      deduplicated: false,
       fileBase64: encodedPayload,
       status: 'pending',
       attempts: 0,
+      lastError: null,
+      resultJson: null,
+      cancelRequestedAt: null,
+      canceledAt: null,
+      canceledBy: null,
       processingStartedAt: null,
       nextRetryAt: null,
-      lastError: null,
       completedAt: null,
+      createdAt: requestedAtIso,
       updatedAt: nowIso,
-    }).returning({ id: uploadConfirmJobs.id });
+    }).returning({
+      id: uploadConfirmJobs.id,
+      status: uploadConfirmJobs.status,
+      canceledAt: uploadConfirmJobs.canceledAt,
+      cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
+    });
 
-    return job.id;
+    return {
+      jobId: job.id,
+      status: job.status,
+      deduplicated: false,
+      cancelable: isJobCancelable(job.status, job.cancelRequestedAt, job.canceledAt),
+      canceledAt: job.canceledAt,
+    };
+  });
+}
+
+export async function ensureUploadConfirmQueueHasCapacity(pharmacyId: number): Promise<void> {
+  await db.transaction(async (tx) => {
+    await assertUploadConfirmQueueCapacityWithLocks(pharmacyId, tx);
   });
 }
 
@@ -675,6 +1127,8 @@ export async function processUploadConfirmJobById(jobId: number): Promise<boolea
     .where(and(
       eq(uploadConfirmJobs.id, jobId),
       eq(uploadConfirmJobs.status, 'pending'),
+      isNull(uploadConfirmJobs.cancelRequestedAt),
+      isNull(uploadConfirmJobs.canceledAt),
       lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
       or(isNull(uploadConfirmJobs.nextRetryAt), lte(uploadConfirmJobs.nextRetryAt, nowIso)),
       or(isNull(uploadConfirmJobs.processingStartedAt), lt(uploadConfirmJobs.processingStartedAt, staleBeforeIso)),
@@ -705,15 +1159,14 @@ export async function processUploadConfirmJobById(jobId: number): Promise<boolea
 }
 
 export async function processPendingUploadConfirmJobs(limit: number = RETRY_BATCH_SIZE): Promise<number> {
+  const normalizedLimit = Math.min(Math.max(Math.trunc(limit) || 1, 1), 1);
   let processed = 0;
-
-  for (let i = 0; i < limit; i += 1) {
+  for (let i = 0; i < normalizedLimit; i += 1) {
     const job = await claimPendingUploadConfirmJob();
     if (!job) break;
     await processClaimedUploadConfirmJob(job);
     processed += 1;
   }
-
   return processed;
 }
 
@@ -747,31 +1200,228 @@ export async function cleanupUploadConfirmJobs(limit: number = getCleanupBatchSi
   return staleIds.length;
 }
 
-export async function getUploadConfirmJobForPharmacy(jobId: number, pharmacyId: number): Promise<{
-  id: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  attempts: number;
-  lastError: string | null;
-  resultJson: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
-  completedAt: string | null;
-} | null> {
-  const [row] = await db.select({
-    id: uploadConfirmJobs.id,
-    status: uploadConfirmJobs.status,
-    attempts: uploadConfirmJobs.attempts,
-    lastError: uploadConfirmJobs.lastError,
-    resultJson: uploadConfirmJobs.resultJson,
-    createdAt: uploadConfirmJobs.createdAt,
-    updatedAt: uploadConfirmJobs.updatedAt,
-    completedAt: uploadConfirmJobs.completedAt,
-  })
-    .from(uploadConfirmJobs)
-    .where(and(
-      eq(uploadConfirmJobs.id, jobId),
-      eq(uploadConfirmJobs.pharmacyId, pharmacyId),
-    ))
-    .limit(1);
-  return row ?? null;
+export async function getUploadConfirmJobById(jobId: number): Promise<UploadConfirmJobView | null> {
+  const row = await fetchUploadConfirmJobById(jobId);
+  if (!row) {
+    return null;
+  }
+
+  const issueCount = await getUploadRowIssueCountByJobId(row.id);
+  return {
+    id: row.id,
+    pharmacyId: row.pharmacyId,
+    uploadType: row.uploadType,
+    originalFilename: row.originalFilename,
+    idempotencyKey: row.idempotencyKey,
+    fileHash: row.fileHash,
+    status: row.status,
+    applyMode: row.applyMode,
+    deleteMissing: row.deleteMissing,
+    attempts: row.attempts,
+    lastError: row.lastError,
+    resultJson: row.resultJson,
+    deduplicated: row.deduplicated,
+    cancelRequestedAt: row.cancelRequestedAt,
+    canceledAt: row.canceledAt,
+    canceledBy: row.canceledBy,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    completedAt: row.completedAt,
+    issueCount,
+    cancelable: isJobCancelable(row.status, row.cancelRequestedAt, row.canceledAt),
+  };
+}
+
+export async function getUploadConfirmJobForPharmacy(jobId: number, pharmacyId: number): Promise<UploadConfirmJobView | null> {
+  const row = await getUploadConfirmJobById(jobId);
+  if (!row) return null;
+  if (row.pharmacyId !== pharmacyId) return null;
+  return row;
+}
+
+function toCancelResult(
+  row: { id: number; status: string; canceledAt: string | null; cancelRequestedAt: string | null },
+): CancelUploadConfirmJobResult {
+  return {
+    id: row.id,
+    status: normalizeJobStatus(row.status),
+    canceledAt: row.canceledAt,
+    cancelRequestedAt: row.cancelRequestedAt,
+    cancelable: isJobCancelable(normalizeJobStatus(row.status), row.cancelRequestedAt, row.canceledAt),
+  };
+}
+
+const CANCEL_RETURNING_COLUMNS = {
+  id: uploadConfirmJobs.id,
+  status: uploadConfirmJobs.status,
+  canceledAt: uploadConfirmJobs.canceledAt,
+  cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
+} as const;
+
+async function cancelJobCore(
+  jobId: number,
+  canceledBy: number,
+  options: { requirePharmacyId?: number },
+): Promise<CancelUploadConfirmJobResult | null> {
+  return db.transaction(async (tx) => {
+    const existing = await fetchUploadConfirmJobById(jobId, tx);
+    if (!existing) return null;
+    if (options.requirePharmacyId !== undefined && existing.pharmacyId !== options.requirePharmacyId) {
+      return null;
+    }
+
+    if (!isCancelableStatus(existing.status)) {
+      return toCancelResult(existing);
+    }
+
+    const nowIso = new Date().toISOString();
+    const ownerConditions = options.requirePharmacyId !== undefined
+      ? [eq(uploadConfirmJobs.pharmacyId, options.requirePharmacyId)]
+      : [];
+
+    const [updated] = await tx.update(uploadConfirmJobs)
+      .set(existing.status === 'pending'
+        ? {
+          status: 'failed',
+          cancelRequestedAt: existing.cancelRequestedAt ?? nowIso,
+          canceledAt: nowIso,
+          canceledBy,
+          lastError: formatJobErrorMessage('JOB_CANCELED', CANCELLED_JOB_MESSAGE),
+          nextRetryAt: null,
+          processingStartedAt: null,
+          completedAt: nowIso,
+          updatedAt: nowIso,
+        }
+        : {
+          cancelRequestedAt: existing.cancelRequestedAt ?? nowIso,
+          canceledBy,
+          updatedAt: nowIso,
+        })
+      .where(and(
+        eq(uploadConfirmJobs.id, existing.id),
+        ...ownerConditions,
+        eq(uploadConfirmJobs.status, existing.status),
+        isNull(uploadConfirmJobs.canceledAt),
+      ))
+      .returning(CANCEL_RETURNING_COLUMNS);
+
+    if (!updated) {
+      const latest = await fetchUploadConfirmJobById(jobId, tx);
+      if (!latest) return null;
+      if (options.requirePharmacyId !== undefined && latest.pharmacyId !== options.requirePharmacyId) {
+        return null;
+      }
+      if (isJobCancelable(latest.status, latest.cancelRequestedAt, latest.canceledAt)) {
+        const [retryRequested] = await tx.update(uploadConfirmJobs)
+          .set({
+            cancelRequestedAt: nowIso,
+            canceledBy,
+            updatedAt: nowIso,
+          })
+          .where(and(
+            eq(uploadConfirmJobs.id, latest.id),
+            ...ownerConditions,
+            eq(uploadConfirmJobs.status, latest.status),
+            isNull(uploadConfirmJobs.cancelRequestedAt),
+            isNull(uploadConfirmJobs.canceledAt),
+          ))
+          .returning(CANCEL_RETURNING_COLUMNS);
+
+        if (retryRequested) {
+          return toCancelResult(retryRequested);
+        }
+      }
+      return toCancelResult(latest);
+    }
+
+    return toCancelResult(updated);
+  });
+}
+
+export async function cancelUploadConfirmJobByAdmin(
+  jobId: number,
+  adminPharmacyId: number,
+): Promise<CancelUploadConfirmJobResult | null> {
+  return cancelJobCore(jobId, adminPharmacyId, {});
+}
+
+export async function cancelUploadConfirmJobForPharmacy(
+  jobId: number,
+  pharmacyId: number,
+): Promise<CancelUploadConfirmJobResult | null> {
+  return cancelJobCore(jobId, pharmacyId, { requirePharmacyId: pharmacyId });
+}
+
+export async function retryUploadConfirmJobByAdmin(jobId: number): Promise<RetryUploadConfirmJobResult | null> {
+  return db.transaction(async (tx) => {
+    const existing = await fetchUploadConfirmJobById(jobId, tx);
+    if (!existing) {
+      return null;
+    }
+
+    if (!(existing.status === 'failed' || existing.status === 'completed')) {
+      throw createRetryUnavailableError('再試行できるのは completed / failed 状態のジョブのみです');
+    }
+
+    if (!existing.fileBase64) {
+      throw createRetryUnavailableError('元ファイルが保持されていないため再試行できません');
+    }
+
+    if (existing.idempotencyKey) {
+      const [activeWithSameKey] = await tx.select({
+        id: uploadConfirmJobs.id,
+      })
+        .from(uploadConfirmJobs)
+        .where(and(
+          eq(uploadConfirmJobs.pharmacyId, existing.pharmacyId),
+          eq(uploadConfirmJobs.idempotencyKey, existing.idempotencyKey),
+          ne(uploadConfirmJobs.id, existing.id),
+          inArray(uploadConfirmJobs.status, ACTIVE_JOB_STATUSES),
+        ))
+        .limit(1);
+
+      if (activeWithSameKey) {
+        throw createRetryUnavailableError('同じ idempotencyKey の進行中ジョブがあるため再試行できません');
+      }
+    }
+
+    await assertUploadConfirmQueueCapacityWithLocks(existing.pharmacyId, tx);
+
+    const nowIso = new Date().toISOString();
+    await clearUploadRowIssuesForJob(existing.id, tx);
+
+    const [updated] = await tx.update(uploadConfirmJobs)
+      .set({
+        status: 'pending',
+        attempts: 0,
+        lastError: null,
+        resultJson: null,
+        deduplicated: false,
+        cancelRequestedAt: null,
+        canceledAt: null,
+        canceledBy: null,
+        processingStartedAt: null,
+        nextRetryAt: null,
+        completedAt: null,
+        updatedAt: nowIso,
+      })
+      .where(eq(uploadConfirmJobs.id, existing.id))
+      .returning({
+        id: uploadConfirmJobs.id,
+        status: uploadConfirmJobs.status,
+        canceledAt: uploadConfirmJobs.canceledAt,
+        cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
+      });
+
+    if (!updated) {
+      return null;
+    }
+
+    return {
+      id: updated.id,
+      status: updated.status,
+      cancelable: isJobCancelable(updated.status, updated.cancelRequestedAt, updated.canceledAt),
+      canceledAt: updated.canceledAt,
+    };
+  });
 }
