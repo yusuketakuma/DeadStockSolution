@@ -113,6 +113,11 @@ async function fetchWithTimeout(
   }
 }
 
+async function isVerification403(response: Response): Promise<boolean> {
+  const body = await response.clone().json().catch(() => ({}));
+  return 'verificationStatus' in body;
+}
+
 async function parseSuccessResponse<T>(response: Response): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
@@ -158,8 +163,7 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
   let response = await doRequest();
 
   if (!response.ok && shouldUseCsrf && response.status === 403) {
-    const bodyData = await response.clone().json().catch(() => ({}));
-    if (!('verificationStatus' in bodyData)) {
+    if (!await isVerification403(response)) {
       csrfTokenCache = null;
       const csrfToken = await ensureCsrfToken(timeout);
       (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
@@ -202,8 +206,7 @@ export async function apiUpload<T>(path: string, formData: FormData, options: Up
 
   let response = await fetchWithTimeout(`${API_BASE}${path}`, config, timeout, signal);
   if (!response.ok && response.status === 403 && requiresCsrf('POST', path)) {
-    const bodyData = await response.clone().json().catch(() => ({}));
-    if (!('verificationStatus' in bodyData)) {
+    if (!await isVerification403(response)) {
       csrfTokenCache = null;
       const csrfToken = await ensureCsrfToken(timeout);
       (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
@@ -268,6 +271,10 @@ export function isApiErrorCode(err: unknown, code: string): err is ApiError {
 
 export function isVerificationStatusError(err: unknown): err is ApiError & { data: { verificationStatus: string } } {
   return err instanceof ApiError && err.status === 403 && err.data != null && typeof err.data === 'object' && 'verificationStatus' in err.data;
+}
+
+export function isPartialSuccessError(err: unknown): err is ApiError & { data: { partialSuccess: true; version?: number } } {
+  return err instanceof ApiError && err.status === 503 && err.data != null && typeof err.data === 'object' && (err.data as Record<string, unknown>).partialSuccess === true;
 }
 
 export { ApiError };

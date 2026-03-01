@@ -114,9 +114,8 @@ function createNotificationDedupeKey(params: {
 }
 
 export function createSnapshotPayload(candidates: MatchCandidate[]): SnapshotPayload {
-  const top = candidates.slice(0, 10);
-  const topCandidates = buildTopCandidateDigest(top, top.length);
-  const hashEntries = buildSnapshotHashInput(top, top.length);
+  const topCandidates = buildTopCandidateDigest(candidates, 10);
+  const hashEntries = buildSnapshotHashInput(candidates, 10);
   return {
     hash: createCandidateHash(hashEntries),
     candidateCount: candidates.length,

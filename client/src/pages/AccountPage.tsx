@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, FormEvent, useMemo, useRef } from 're
 import AppAlert from '../components/ui/AppAlert';
 import AppButton from '../components/ui/AppButton';
 import { useAuth } from '../contexts/AuthContext';
-import { api, ApiError, isConflictError, isVerificationStatusError } from '../api/client';
+import { api, isConflictError, isVerificationStatusError, isPartialSuccessError } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import ConflictAlert from '../components/ConflictAlert';
@@ -293,11 +293,10 @@ export default function AccountPage() {
         } else {
           setError(err.message);
         }
-      } else if (err instanceof ApiError && err.status === 503 && err.data != null && typeof err.data === 'object' && 'partialSuccess' in err.data && (err.data as { partialSuccess: boolean }).partialSuccess) {
+      } else if (isPartialSuccessError(err)) {
         setWarning(err.message);
-        const data = err.data as { version?: number };
-        if (data.version && account) {
-          setAccount({ ...account, version: data.version });
+        if (err.data.version && account) {
+          setAccount({ ...account, version: err.data.version });
         }
       } else {
         setError(err instanceof Error ? err.message : '更新に失敗しました');

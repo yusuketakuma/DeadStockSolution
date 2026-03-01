@@ -101,3 +101,67 @@
 - [x] 3) npm run test
 - [x] 4) npm run build:server
 - [x] 5) npm run build:client
+
+## 未コミット差分の多角的レビュー (2026-03-01)
+- [x] 1) `.claude`系を除く未コミット差分を抽出してレビュー対象を確定する
+- [x] 2) 変更コードを精読し、security/correctness/quality/perf/ux/ops観点で懸念を洗い出す
+- [x] 3) 変更テストの妥当性と不足ケースを確認する
+- [x] 4) 重大度順に指摘を整理し、根拠（ファイル/行）付きで報告する
+
+## レビュー指摘の全修正 (2026-03-01)
+- [x] 1) 再認証 request type と OpenClaw callback 判定を整合させる
+- [x] 2) `triggerReverification` の失敗握りつぶしを廃止し、呼び出し側で明示的にエラー応答する
+- [x] 3) 再認証トリガー条件を「フィールド存在」ではなく「実値変更あり」に修正する
+- [x] 4) migration に `verification_status` default 更新（pending_verification）を反映する
+- [x] 5) 管理画面の `unverified` 表示フォールバックと設計ドキュメント整合を修正する
+- [x] 6) 関連テストを更新し、typecheck/lint/test/build を再実行して検証する
+
+## 再レビュー (2026-03-01)
+- [x] 1) `.claude` 除外の未コミット差分を再抽出し、再レビュー対象を確定する
+- [x] 2) 変更差分を security/correctness/quality/perf/ux/ops 観点で再点検する
+- [x] 3) 追加・更新テストの妥当性を再確認し、未カバーを確認する
+- [x] 4) 重大度順に再レビュー結果を報告する
+
+## 再レビュー指摘修正 (2026-03-01)
+- [x] 1) OpenClaw callback 後の認証キャッシュ無効化と stale callback ガードを実装する
+- [x] 2) 再審査トリガーを非同期ハンドオフ化し、重複 request 作成を抑止する
+- [x] 3) `partialSuccess` 応答に最新 `version` を含め、競合再発を防ぐ
+- [x] 4) Upload UI の `applyMode` 固定ロジックを見直し、手動種別変更時の誤ロックを解消する
+- [x] 5) docs 内の callback エンドポイント/マイグレーション記述の実装乖離を修正する
+- [x] 6) 関連テスト更新と `typecheck -> lint -> test -> build` を再実行する
+
+## 未使用API調査と初期リファクタ (2026-03-01)
+- [x] 1) server ルート一覧と client 呼び出しを突合し、未使用API候補を抽出する
+- [x] 2) 候補の実参照（client非test / scripts / docs / tests）を確認し、削除対象を確定する
+- [x] 3) 未使用が確定した legacy endpoint（exchange status 単体API）を削除する
+- [x] 4) 関連テストを整理し、動作保証を bulk-action 系に集約する
+- [x] 5) `typecheck -> lint -> test` を実行し回帰がないことを確認する
+
+## 未使用API追加整理とリファクタ実行 (2026-03-01)
+- [x] 1) `POST /api/upload/confirm` を削除し、`confirm-async` ベースへ統一する
+- [x] 2) upload 系テスト（route / inventory-flow / perf）を async job モデルへ移行する
+- [x] 3) notifications の `POST/PATCH` 重複（`/read-all`, `/:id/read`）を統合する
+- [x] 4) 関連テストを更新し、削除した legacy method 依存を解消する
+- [x] 5) `npm run typecheck -> npm run lint -> npm run test` で再検証する
+
+## マッチングロジック改善: 不動在庫優先 + ベストプラクティス反映 (2026-03-01)
+- [x] 1) 薬局の不動在庫処理に関する一次情報（規制/公的ガイド）を調査し、設計方針を確定する
+- [x] 2) マッチング候補の優先度に「相互不動在庫の解消」を最優先として反映する（近期限/滞留/相互引取量）
+- [x] 3) 反映ロジックのユニットテストを追加・更新する
+- [x] 4) `typecheck -> lint -> test` を実行して回帰を確認する
+- [x] 5) security / correctness / quality / perf / ux / ops 観点で最終確認し、`tasks/lessons.md` に学びを追記する
+
+## マッチングロジック更新: 経営インパクト指標と優先理由の実装 (2026-03-01)
+- [x] 1) 既存優先度ロジックを崩さず、候補ごとの優先理由・経営インパクト指標の型を追加する
+- [x] 2) マッチング生成時に指標（廃棄回避額/解放運転資金/相互不動在庫件数など）を計算して `MatchCandidate` に付与する
+- [x] 3) snapshot 生成にも新指標を反映し、通知差分比較の整合を保つ
+- [x] 4) 関連テストを追加・更新してロジックとシリアライズ結果を検証する
+- [x] 5) `typecheck -> lint -> test` を実行し回帰がないことを確認する
+- [x] 6) security / correctness / quality / perf / ux / ops 観点セルフレビューと `tasks/lessons.md` 追記を行う
+
+## レビュー是正: マッチング期限判定統一と通知ハッシュ安定化 (2026-03-01)
+- [x] 1) 期限切迫判定を `parseExpiryDate` ベースへ統一し、件数計算と金額計算の不整合を解消する
+- [x] 2) snapshot の `candidateHash` を候補構成の安定情報のみで算出し、日次ノイズ通知を抑制する
+- [x] 3) 関連テストを更新し、ハッシュ安定性と判定整合を検証する
+- [x] 4) `typecheck -> lint -> test -> build:server` を実行して回帰がないことを確認する
+- [x] 5) `tasks/lessons.md` に再発防止ルールを追記する
