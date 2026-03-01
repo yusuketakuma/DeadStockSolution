@@ -244,6 +244,57 @@ JSON + CSV 両形式でのエクスポート。管理画面からワンクリッ
 
 ---
 
+## Sprint: 既存ユーザー認証済み化 & 再認証トリガー
+
+> **目的**: 既存ユーザーを verified に移行、ステータス簡素化、プロフィール変更時の再認証トリガー
+
+### Phase 1: バックエンド変更
+- [x] T062: VerificationStatus 型簡素化 + canLogin 変更 `cc:DONE` (2026-03-01)
+  - `unverified` を削除、canLogin は isActive のみチェック
+- [x] T063: auth ミドルウェア isActive 制御に変更 `cc:DONE` (2026-03-01)
+  - isActive=false のみブロック、verificationStatus はメッセージ分岐のみ
+- [x] T064: アカウント更新 API に再認証トリガー追加 `cc:DONE` (2026-03-01)
+  - 対象フィールド変更時に pending_verification + userRequests + handoffToOpenClaw
+- [x] T065: 管理者更新 API に再認証トリガー追加 `cc:DONE` (2026-03-01)
+  - isActive/isTestAccount 以外の対象フィールド変更時に再認証トリガー
+
+### Phase 2: DB マイグレーション
+- [x] T066: 既存ユーザー verified 移行マイグレーション `cc:DONE` (2026-03-01)
+  - 0030_migrate_unverified_to_verified.sql + スキーマデフォルト値変更
+
+### Phase 3: テスト・フロントエンド
+- [x] T067: テスト更新 `cc:DONE` (2026-03-01)
+  - 3テストファイル + optimistic-locking テスト更新、644テスト PASS
+- [x] T068: フロントエンド バッジ表示簡素化 `cc:DONE` (2026-03-01)
+  - unverified バッジ削除、型エラーなし
+
+---
+
+## Sprint: 認証ステータス フロントエンド対応
+
+> **背景**: バックエンドの再認証トリガー・審査ステータス返却を追加したが、フロントエンドの対応が不十分（約40%）
+
+### Phase 1: API クライアント基盤修正 [bugfix]
+- [x] T069: API client の 403 判定修正 `cc:DONE` (2026-03-01)
+  - 403 レスポンスに verificationStatus がある場合は審査ステータスエラーとして処理（CSRF リトライしない）
+  - ない場合のみ従来の CSRF トークンリトライ
+
+### Phase 2: アカウント更新フロー対応 [bugfix]
+- [x] T070: AccountPage に 403 審査ステータスハンドリング追加 `cc:DONE` (2026-03-01) depends:T069
+  - PUT /account の 403 で pending_verification → /verification-pending リダイレクト、rejected → 却下理由表示
+- [x] T071: AccountPage に 503 partialSuccess ハンドリング追加 `cc:DONE` (2026-03-01) depends:T069
+  - 「変更は保存されましたが、再審査依頼の登録に失敗しました」警告表示 + version 更新
+- [x] T072: AccountData 型に verificationStatus 追加 `cc:DONE` (2026-03-01)
+  - client/src/components/account/types.ts に verificationStatus?: string 追加
+
+### Phase 3: 管理画面対応 [bugfix]
+- [x] T073: AdminPharmacyEditPage に 403/503 ハンドリング追加 `cc:DONE` (2026-03-01) depends:T069
+  - PUT /admin/pharmacies/:id の 403 審査ステータスエラー + 503 partialSuccess 処理
+- [x] T074: AdminPharmaciesPage の 'unverified' バッジ判定修正 `cc:DONE` (2026-03-01)
+  - unverified 判定削除、pending_verification / verified / rejected の3値に統一
+
+---
+
 ## 📦 アーカイブ
 
 > 完了済みスプリントは `.claude/memory/archive/` に移動済み

@@ -49,8 +49,33 @@ export interface MatchCandidate {
   valueDifference: number;
   score?: number;
   matchRate?: number;
+  priorityBreakdown?: MatchPriorityBreakdown;
+  businessImpact?: MatchBusinessImpact;
+  priorityReasons?: MatchPriorityReason[];
   businessStatus?: BusinessHoursStatus;
   isFavorite?: boolean;
+}
+
+export interface MatchPriorityBreakdown {
+  mutualStagnantItems: number;
+  mutualNearExpiryItems: number;
+  mutualExchangeValue: number;
+  mutualItemCount: number;
+  mutualTraceableItems: number;
+}
+
+export interface MatchBusinessImpact {
+  estimatedWasteAvoidanceYen: number;
+  estimatedWorkingCapitalReleaseYen: number;
+  estimatedMutualLiquidationItems: number;
+  estimatedMutualNearExpiryItems: number;
+  estimatedTraceableExchangeItems: number;
+}
+
+export interface MatchPriorityReason {
+  code: 'mutual_stagnant' | 'mutual_near_expiry' | 'mutual_exchange_value' | 'mutual_item_count' | 'mutual_traceability';
+  label: string;
+  value: number;
 }
 
 export interface MatchItem {
@@ -61,6 +86,9 @@ export interface MatchItem {
   yakkaUnitPrice: number;
   yakkaValue: number;
   expirationDate?: string | null;
+  expirationDateIso?: string | null;
+  lotNumber?: string | null;
+  stockCreatedAt?: string | null;
   matchScore?: number;
 }
 

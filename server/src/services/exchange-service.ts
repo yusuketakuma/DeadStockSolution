@@ -10,6 +10,7 @@ import {
   pharmacyRelationships,
 } from '../db/schema';
 import { createNotification } from './notification-service';
+import { roundTo2 } from './matching-score-service';
 import { logger } from './logger';
 
 const MIN_EXCHANGE_VALUE = 10000;
@@ -44,10 +45,6 @@ async function createNotificationSafely(input: NotificationInput): Promise<void>
     referenceType: input.referenceType ?? null,
     referenceId: input.referenceId ?? null,
   });
-}
-
-function roundTo2(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 function parseProposalItems(items: unknown, fieldName: string): ProposalItemInput[] {

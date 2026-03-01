@@ -263,7 +263,10 @@ describe('fetchCommentEvents', () => {
       },
     ]);
 
-    const db = { select: chain.select } as { select: typeof chain.select };
+    const db = {
+      select: chain.select,
+      update: (() => undefined) as (...args: any[]) => any,
+    };
 
     const events = await fetchCommentEvents(db, 1, '2026-01-01T00:00:00.000Z');
 

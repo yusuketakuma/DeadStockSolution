@@ -4,6 +4,7 @@ import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { deriveSessionVersion, verifyToken } from '../services/auth-service';
 import { AuthRequest } from '../types';
+import { VerificationStatus } from '../services/pharmacy-verification-service';
 
 interface CachedAuthUser {
   id: number;
@@ -11,7 +12,7 @@ interface CachedAuthUser {
   isAdmin: boolean;
   isActive: boolean;
   sessionVersion: string;
-  verificationStatus: string;
+  verificationStatus: VerificationStatus;
   rejectionReason: string | null;
   expiresAt: number;
 }
@@ -61,7 +62,7 @@ function enforceAuthUserCacheLimit(): void {
   }
 }
 
-function cacheAuthUser(user: { id: number; email: string; isAdmin: boolean; isActive: boolean; sessionVersion: string; verificationStatus: string; rejectionReason: string | null }): void {
+function cacheAuthUser(user: { id: number; email: string; isAdmin: boolean; isActive: boolean; sessionVersion: string; verificationStatus: VerificationStatus; rejectionReason: string | null }): void {
   if (!isAuthUserCacheEnabled()) return;
   authUserCacheWrites += 1;
   if (authUserCacheWrites % CACHE_SWEEP_INTERVAL_WRITES === 0) {
@@ -81,6 +82,16 @@ export function invalidateAuthUserCache(userId: number): void {
 export function clearAuthUserCacheForTests(): void {
   authUserCache.clear();
   authUserCacheWrites = 0;
+}
+
+function sendInactiveAccountResponse(res: Response, verificationStatus: VerificationStatus | null, rejectionReason: string | null): void {
+  if (verificationStatus === 'pending_verification') {
+    res.status(403).json({ error: '審査中です', verificationStatus: 'pending_verification' });
+  } else if (verificationStatus === 'rejected') {
+    res.status(403).json({ error: '却下されました', verificationStatus: 'rejected', rejectionReason });
+  } else {
+    res.status(401).json({ error: 'アカウントが無効です' });
+  }
 }
 
 export async function requireLogin(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -106,23 +117,12 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
   try {
     const cached = getCachedAuthUser(payload.id);
     if (cached) {
-      if (!cached.isActive || cached.sessionVersion !== payload.sessionVersion) {
-        res.status(401).json({ error: 'アカウントが無効です。再度ログインしてください' });
+      if (cached.sessionVersion !== payload.sessionVersion) {
+        res.status(401).json({ error: 'セッションが無効です。再度ログインしてください' });
         return;
       }
-      if (cached.verificationStatus === 'pending_verification') {
-        res.status(403).json({
-          error: 'アカウントは現在審査中です。審査完了後にログインできます。',
-          verificationStatus: 'pending_verification',
-        });
-        return;
-      }
-      if (cached.verificationStatus === 'rejected') {
-        res.status(403).json({
-          error: 'アカウント申請が却下されました。詳細はメールをご確認ください。',
-          verificationStatus: 'rejected',
-          rejectionReason: cached.rejectionReason,
-        });
+      if (!cached.isActive) {
+        sendInactiveAccountResponse(res, cached.verificationStatus, cached.rejectionReason);
         return;
       }
       req.user = {
@@ -147,23 +147,12 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
       .where(eq(pharmacies.id, payload.id))
       .limit(1);
 
-    if (rows.length === 0 || !rows[0].isActive) {
+    if (rows.length === 0) {
       res.status(401).json({ error: 'アカウントが無効です。再度ログインしてください' });
       return;
     }
-    if (rows[0].verificationStatus === 'pending_verification') {
-      res.status(403).json({
-        error: 'アカウントは現在審査中です。審査完了後にログインできます。',
-        verificationStatus: 'pending_verification',
-      });
-      return;
-    }
-    if (rows[0].verificationStatus === 'rejected') {
-      res.status(403).json({
-        error: 'アカウント申請が却下されました。詳細はメールをご確認ください。',
-        verificationStatus: 'rejected',
-        rejectionReason: rows[0].rejectionReason,
-      });
+    if (!rows[0].isActive) {
+      sendInactiveAccountResponse(res, rows[0].verificationStatus as VerificationStatus, rows[0].rejectionReason);
       return;
     }
     const sessionVersion = deriveSessionVersion(rows[0].passwordHash);
@@ -178,7 +167,7 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
       isAdmin: rows[0].isAdmin ?? false,
       isActive: rows[0].isActive,
       sessionVersion,
-      verificationStatus: rows[0].verificationStatus,
+      verificationStatus: rows[0].verificationStatus as VerificationStatus,
       rejectionReason: rows[0].rejectionReason,
     });
 

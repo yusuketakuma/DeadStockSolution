@@ -281,6 +281,12 @@ export function findBestDrugMatch(
 
 const parsedExpiryCache = new Map<string, Date | null>();
 
+export function toStartOfDay(date: Date): Date {
+  const normalized = new Date(date.getTime());
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+}
+
 export function parseExpiryDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const raw = value.trim();
@@ -304,19 +310,29 @@ export function parseExpiryDate(value: string | null | undefined): Date | null {
   return parsed;
 }
 
+export function isExpiredDate(value: string | null | undefined, referenceDate: Date = new Date()): boolean {
+  const expiry = parseExpiryDate(value);
+  if (!expiry) return false;
+  const today = toStartOfDay(referenceDate);
+  const expiryDay = toStartOfDay(expiry);
+  return expiryDay.getTime() < today.getTime();
+}
+
 export function getNearExpiryCount(
   items: MatchItem[],
   nearExpiryDays: number = DEFAULT_MATCHING_SCORING_RULES.nearExpiryDays,
+  referenceDate: Date = new Date(),
 ): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = toStartOfDay(referenceDate);
   const thresholdDays = Math.max(1, Math.floor(nearExpiryDays));
 
   let count = 0;
   for (const item of items) {
-    const expiry = parseExpiryDate(item.expirationDate);
+    const expirySource = item.expirationDateIso ?? item.expirationDate;
+    const expiry = parseExpiryDate(expirySource);
     if (!expiry) continue;
-    const diffDays = Math.floor((expiry.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    const expiryDay = toStartOfDay(expiry);
+    const diffDays = Math.floor((expiryDay.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
     if (diffDays >= 0 && diffDays <= thresholdDays) count += 1;
   }
   return count;
@@ -331,6 +347,7 @@ export function calculateCandidateScore(
   itemsFromB: MatchItem[],
   scoringRules: MatchingScoringRules = DEFAULT_MATCHING_SCORING_RULES,
   isFavorite: boolean = false,
+  referenceDate: Date = new Date(),
 ): number {
   const valueScoreDivisor = Math.max(0.0001, scoringRules.valueScoreDivisor);
   const distanceScoreDivisor = Math.max(0.0001, scoringRules.distanceScoreDivisor);
@@ -343,7 +360,10 @@ export function calculateCandidateScore(
     : Math.max(0, scoringRules.distanceScoreMax - distanceKm / distanceScoreDivisor);
   const nearExpiryScore = Math.min(
     scoringRules.nearExpiryScoreMax,
-    (getNearExpiryCount(itemsFromA, nearExpiryDays) + getNearExpiryCount(itemsFromB, nearExpiryDays)) * scoringRules.nearExpiryItemFactor,
+    (
+      getNearExpiryCount(itemsFromA, nearExpiryDays, referenceDate)
+      + getNearExpiryCount(itemsFromB, nearExpiryDays, referenceDate)
+    ) * scoringRules.nearExpiryItemFactor,
   );
   const diversityScore = Math.min(
     scoringRules.diversityScoreMax,

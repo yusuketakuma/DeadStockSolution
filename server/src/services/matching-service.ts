@@ -21,6 +21,7 @@ import {
   findBestDrugMatch,
   calculateCandidateScore,
   calculateMatchRate,
+  isExpiredDate,
   DrugMatchResult,
   PreparedDrugName,
   UsedMedRow,
@@ -33,6 +34,7 @@ import {
   groupByPharmacy,
 } from './matching-filter-service';
 import { getActiveMatchingRuleProfile } from './matching-rule-service';
+import { sortMatchCandidatesByPriority } from './matching-priority-service';
 
 interface DeadStockRow {
   id: number;
@@ -42,6 +44,9 @@ interface DeadStockRow {
   unit: string | null;
   yakkaUnitPrice: number | string | null;
   expirationDate: string | null;
+  expirationDateIso: string | null;
+  lotNumber: string | null;
+  createdAt: string | null;
 }
 
 const RESERVATION_ACTIVE_STATUSES = ['proposed', 'accepted_a', 'accepted_b', 'confirmed'] as const;
@@ -166,6 +171,8 @@ function buildMatchItems(
   for (const { stock, preparedDrugName } of preparedStocks) {
     const price = Number(stock.yakkaUnitPrice);
     if (!price || price <= 0) continue;
+    const expirySource = stock.expirationDateIso ?? stock.expirationDate;
+    if (isExpiredDate(expirySource)) continue;
     const match = findBestDrugMatch(preparedDrugName, usedMedIndex, matchCache);
     if (match.score < nameMatchThreshold) continue;
     items.push({
@@ -176,6 +183,9 @@ function buildMatchItems(
       yakkaUnitPrice: price,
       yakkaValue: roundTo2(price * stock.quantity),
       expirationDate: stock.expirationDate,
+      expirationDateIso: stock.expirationDateIso,
+      lotNumber: stock.lotNumber,
+      stockCreatedAt: stock.createdAt,
       matchScore: roundTo2(match.score),
     });
   }
@@ -360,6 +370,9 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
       unit: deadStockItems.unit,
       yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
       expirationDate: deadStockItems.expirationDate,
+      expirationDateIso: deadStockItems.expirationDateIso,
+      lotNumber: deadStockItems.lotNumber,
+      createdAt: deadStockItems.createdAt,
     })
       .from(deadStockItems)
       .where(and(
@@ -525,12 +538,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
 
     matchesByPharmacy.set(
       sourcePharmacyId,
-      candidates
-        .sort((a, b) => (
-          (b.score ?? 0) - (a.score ?? 0) ||
-          a.distance - b.distance ||
-          a.pharmacyId - b.pharmacyId
-        ))
+      sortMatchCandidatesByPriority(candidates, matchingRuleProfile.nearExpiryDays, now)
         .slice(0, MAX_CANDIDATES),
     );
   }
@@ -562,6 +570,9 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       unit: deadStockItems.unit,
       yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
       expirationDate: deadStockItems.expirationDate,
+      expirationDateIso: deadStockItems.expirationDateIso,
+      lotNumber: deadStockItems.lotNumber,
+      createdAt: deadStockItems.createdAt,
     })
       .from(deadStockItems)
       .where(and(
@@ -608,6 +619,9 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
       unit: deadStockItems.unit,
       yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
       expirationDate: deadStockItems.expirationDate,
+      expirationDateIso: deadStockItems.expirationDateIso,
+      lotNumber: deadStockItems.lotNumber,
+      createdAt: deadStockItems.createdAt,
     })
       .from(deadStockItems)
       .where(and(
@@ -764,11 +778,6 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     });
   }
 
-  return candidates
-    .sort((a, b) => (
-      (b.score ?? 0) - (a.score ?? 0) ||
-      a.distance - b.distance ||
-      a.pharmacyId - b.pharmacyId
-    ))
+  return sortMatchCandidatesByPriority(candidates, matchingRuleProfile.nearExpiryDays, now)
     .slice(0, MAX_CANDIDATES);
 }

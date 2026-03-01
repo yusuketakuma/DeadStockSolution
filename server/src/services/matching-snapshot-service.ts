@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { matchCandidateSnapshots, matchNotifications } from '../db/schema';
 import { MatchCandidate } from '../types';
+import { roundTo2 } from './matching-score-service';
 
 interface TopCandidateDigest {
   pharmacyId: number;
@@ -13,12 +14,30 @@ interface TopCandidateDigest {
   totalValueB: number;
   itemCountA: number;
   itemCountB: number;
+  mutualStagnantItems: number;
+  mutualNearExpiryItems: number;
+  estimatedWasteAvoidanceYen: number;
+  estimatedWorkingCapitalReleaseYen: number;
 }
 
 interface SnapshotPayload {
   hash: string;
   candidateCount: number;
   topCandidates: TopCandidateDigest[];
+}
+
+interface SnapshotHashItem {
+  deadStockItemId: number;
+  quantity: number;
+}
+
+interface SnapshotHashEntry {
+  pharmacyId: number;
+  totalValueA: number;
+  totalValueB: number;
+  valueDifference: number;
+  itemsFromA: SnapshotHashItem[];
+  itemsFromB: SnapshotHashItem[];
 }
 
 interface SnapshotDiff {
@@ -28,17 +47,26 @@ interface SnapshotDiff {
   afterCount: number;
 }
 
-function roundTo2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
 function safeNumber(value: number | undefined): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return 0;
   return roundTo2(value);
 }
 
-export function buildTopCandidateDigest(candidates: MatchCandidate[], limit: number = 10): TopCandidateDigest[] {
-  return [...candidates]
+function roundTo3(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+function normalizeHashItems(items: MatchCandidate['itemsFromA']): SnapshotHashItem[] {
+  return items
+    .map((item) => ({
+      deadStockItemId: item.deadStockItemId,
+      quantity: roundTo3(Number(item.quantity)),
+    }))
+    .sort((a, b) => a.deadStockItemId - b.deadStockItemId || a.quantity - b.quantity);
+}
+
+export function buildTopCandidateDigest(candidates: readonly MatchCandidate[], limit: number = 10): TopCandidateDigest[] {
+  return candidates
     .slice(0, limit)
     .map((candidate) => ({
       pharmacyId: candidate.pharmacyId,
@@ -49,11 +77,28 @@ export function buildTopCandidateDigest(candidates: MatchCandidate[], limit: num
       totalValueB: safeNumber(candidate.totalValueB),
       itemCountA: candidate.itemsFromA.length,
       itemCountB: candidate.itemsFromB.length,
+      mutualStagnantItems: safeNumber(candidate.priorityBreakdown?.mutualStagnantItems),
+      mutualNearExpiryItems: safeNumber(candidate.priorityBreakdown?.mutualNearExpiryItems),
+      estimatedWasteAvoidanceYen: safeNumber(candidate.businessImpact?.estimatedWasteAvoidanceYen),
+      estimatedWorkingCapitalReleaseYen: safeNumber(candidate.businessImpact?.estimatedWorkingCapitalReleaseYen),
     }));
 }
 
-export function createCandidateHash(topCandidates: TopCandidateDigest[]): string {
-  const serialized = JSON.stringify(topCandidates);
+export function buildSnapshotHashInput(candidates: readonly MatchCandidate[], limit: number = 10): SnapshotHashEntry[] {
+  return candidates
+    .slice(0, limit)
+    .map((candidate) => ({
+      pharmacyId: candidate.pharmacyId,
+      totalValueA: safeNumber(candidate.totalValueA),
+      totalValueB: safeNumber(candidate.totalValueB),
+      valueDifference: safeNumber(candidate.valueDifference),
+      itemsFromA: normalizeHashItems(candidate.itemsFromA),
+      itemsFromB: normalizeHashItems(candidate.itemsFromB),
+    }));
+}
+
+export function createCandidateHash(hashEntries: SnapshotHashEntry[]): string {
+  const serialized = JSON.stringify(hashEntries);
   return crypto.createHash('sha256').update(serialized).digest('hex');
 }
 
@@ -69,9 +114,11 @@ function createNotificationDedupeKey(params: {
 }
 
 export function createSnapshotPayload(candidates: MatchCandidate[]): SnapshotPayload {
-  const topCandidates = buildTopCandidateDigest(candidates);
+  const top = candidates.slice(0, 10);
+  const topCandidates = buildTopCandidateDigest(top, top.length);
+  const hashEntries = buildSnapshotHashInput(top, top.length);
   return {
-    hash: createCandidateHash(topCandidates),
+    hash: createCandidateHash(hashEntries),
     candidateCount: candidates.length,
     topCandidates,
   };

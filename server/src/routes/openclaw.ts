@@ -3,8 +3,10 @@ import rateLimit from 'express-rate-limit';
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../config/database';
 import { userRequests, notifications } from '../db/schema';
+import { invalidateAuthUserCache } from '../middleware/auth';
 import { logger } from '../services/logger';
 import { processVerificationCallback } from '../services/pharmacy-verification-callback-service';
+import { isVerificationRequestType } from '../services/pharmacy-verification-service';
 import {
   canTransitionOpenClawStatus,
   consumeOpenClawWebhookReplay,
@@ -17,7 +19,7 @@ import {
   verifyOpenClawWebhookSignature,
   type OpenClawStatus,
 } from '../services/openclaw-service';
-import { parsePositiveInt } from '../utils/request-utils';
+import { isPositiveSafeInteger, parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 const callbackLimiter = rateLimit({
@@ -29,7 +31,7 @@ const callbackLimiter = rateLimit({
 });
 
 function parseRequestId(rawValue: unknown): number | null {
-  if (typeof rawValue === 'number' && Number.isSafeInteger(rawValue) && rawValue > 0) {
+  if (isPositiveSafeInteger(rawValue)) {
     return rawValue;
   }
   return parsePositiveInt(String(rawValue ?? ''));
@@ -177,14 +179,17 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
     if (status === 'completed') {
       try {
         const requestContent = JSON.parse(current.requestText ?? '{}');
-        if (requestContent.type === 'pharmacy_verification') {
+        if (isVerificationRequestType(requestContent.type)) {
           const verificationData = JSON.parse(summary ?? '{}');
-          await processVerificationCallback({
+          const callbackResult = await processVerificationCallback({
             pharmacyId: current.pharmacyId,
             requestId,
             approved: verificationData.approved === true,
             reason: verificationData.reason || '',
           });
+          if (callbackResult.applied) {
+            invalidateAuthUserCache(current.pharmacyId);
+          }
         }
       } catch (verificationErr) {
         logger.error('Pharmacy verification callback processing failed', {

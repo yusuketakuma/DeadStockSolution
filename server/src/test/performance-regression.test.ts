@@ -115,6 +115,11 @@ const mockState = vi.hoisted(() => ({
   extractDeadStockRows: vi.fn(),
   extractUsedMedicationRows: vi.fn(),
   enrichWithDrugMaster: vi.fn(),
+  enqueueUploadConfirmJob: vi.fn(),
+  getUploadConfirmJobForPharmacy: vi.fn(),
+  cancelUploadConfirmJobForPharmacy: vi.fn(),
+  isUploadConfirmQueueLimitError: vi.fn(),
+  isUploadConfirmIdempotencyConflictError: vi.fn(),
   loggerDebug: vi.fn(),
   loggerInfo: vi.fn(),
   loggerWarn: vi.fn(),
@@ -187,6 +192,14 @@ vi.mock('../services/drug-master-enrichment', () => ({
   enrichWithDrugMaster: mockState.enrichWithDrugMaster,
 }));
 
+vi.mock('../services/upload-confirm-job-service', () => ({
+  enqueueUploadConfirmJob: mockState.enqueueUploadConfirmJob,
+  getUploadConfirmJobForPharmacy: mockState.getUploadConfirmJobForPharmacy,
+  cancelUploadConfirmJobForPharmacy: mockState.cancelUploadConfirmJobForPharmacy,
+  isUploadConfirmQueueLimitError: mockState.isUploadConfirmQueueLimitError,
+  isUploadConfirmIdempotencyConflictError: mockState.isUploadConfirmIdempotencyConflictError,
+}));
+
 vi.mock('../services/log-service', () => ({
   writeLog: mockState.writeLog,
   getClientIp: mockState.getClientIp,
@@ -246,25 +259,6 @@ function createApp() {
   return app;
 }
 
-function createTransactionMock(uploadId: number) {
-  return {
-    insert: () => ({
-      values: () => ({
-        returning: async () => [{ id: uploadId }],
-        onConflictDoUpdate: async () => undefined,
-      }),
-    }),
-    delete: () => ({
-      where: async () => undefined,
-    }),
-    update: () => ({
-      set: () => ({
-        where: async () => undefined,
-      }),
-    }),
-  };
-}
-
 function createSelectQueryResult<T>(rows: T) {
   const query = {
     from: () => query,
@@ -290,6 +284,17 @@ function configureSharedMocks(): void {
   mockState.extractDeadStockRows.mockReturnValue(EXTRACTED_ROWS);
   mockState.extractUsedMedicationRows.mockReturnValue(EXTRACTED_ROWS);
   mockState.enrichWithDrugMaster.mockImplementation(async (rows: unknown[]) => rows);
+  mockState.enqueueUploadConfirmJob.mockResolvedValue({
+    jobId: 9001,
+    status: 'pending',
+    deduplicated: false,
+    cancelable: true,
+    canceledAt: null,
+  });
+  mockState.getUploadConfirmJobForPharmacy.mockResolvedValue(null);
+  mockState.cancelUploadConfirmJobForPharmacy.mockResolvedValue(null);
+  mockState.isUploadConfirmQueueLimitError.mockReturnValue(false);
+  mockState.isUploadConfirmIdempotencyConflictError.mockReturnValue(false);
 
   mockState.handoffImportFailureAlertToOpenClaw.mockResolvedValue({
     triggered: false,
@@ -320,10 +325,6 @@ function configureUploadPreviewBenchmark(): void {
 function configureUploadConfirmBenchmark(): void {
   resetMocksForScenario();
   configureSharedMocks();
-
-  mockState.db.transaction.mockImplementation(
-    async (callback: (tx: unknown) => Promise<unknown>) => callback(createTransactionMock(101)),
-  );
 }
 
 function configureInventoryBrowseBenchmark(): void {
@@ -456,6 +457,11 @@ function resetMocksForScenario(): void {
   mockState.extractDeadStockRows.mockReset();
   mockState.extractUsedMedicationRows.mockReset();
   mockState.enrichWithDrugMaster.mockReset();
+  mockState.enqueueUploadConfirmJob.mockReset();
+  mockState.getUploadConfirmJobForPharmacy.mockReset();
+  mockState.cancelUploadConfirmJobForPharmacy.mockReset();
+  mockState.isUploadConfirmQueueLimitError.mockReset();
+  mockState.isUploadConfirmIdempotencyConflictError.mockReset();
   mockState.loggerDebug.mockReset();
   mockState.loggerInfo.mockReset();
   mockState.loggerWarn.mockReset();
@@ -611,7 +617,7 @@ perfSuite('performance regression guard', () => {
     const scenarioLabels: Record<ScenarioKey, string> = {
       post_api_exchange_find: 'POST /api/exchange/find',
       post_api_upload_preview: 'POST /api/upload/preview',
-      post_api_upload_confirm: 'POST /api/upload/confirm',
+      post_api_upload_confirm: 'POST /api/upload/confirm-async',
       get_api_inventory_browse: 'GET /api/inventory/browse',
       get_api_pharmacies_list: 'GET /api/pharmacies',
       scheduler_import_failure_alert_check: 'scheduler import-failure check',
@@ -662,7 +668,7 @@ perfSuite('performance regression guard', () => {
         },
         run: async () => {
           const response = await api
-            .post('/api/upload/confirm')
+            .post('/api/upload/confirm-async')
             .field('uploadType', 'dead_stock')
             .field('headerRowIndex', '0')
             .field('mapping', JSON.stringify(DEFAULT_MAPPING))
@@ -671,8 +677,8 @@ perfSuite('performance regression guard', () => {
               contentType: XLSX_CONTENT_TYPE,
             });
 
-          if (response.status !== 200) {
-            throw new Error(`POST /api/upload/confirm returned ${response.status}`);
+          if (response.status !== 202) {
+            throw new Error(`POST /api/upload/confirm-async returned ${response.status}`);
           }
         },
       },

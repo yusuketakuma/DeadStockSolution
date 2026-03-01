@@ -9,7 +9,7 @@ import ConflictAlert from '../../components/ConflictAlert';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AccountInfoForm, { AccountFormState } from '../../components/account/AccountInfoForm';
 import BusinessHoursSettings from '../../components/account/BusinessHoursSettings';
-import { api, isConflictError } from '../../api/client';
+import { api, isConflictError, ApiError } from '../../api/client';
 import {
   BusinessHourEntry,
   BusinessHourSettingsResponse,
@@ -257,6 +257,33 @@ export default function AdminPharmacyEditPage() {
           setIsTestAccount(Boolean(latestData.isTestAccount));
           setTestAccountPassword(latestData.testAccountPassword ?? '');
         }
+      } else if (err instanceof ApiError && err.status === 503) {
+        const data = err.data as Record<string, unknown>;
+        if (data?.partialSuccess === true) {
+          setError(err.message);
+          setForm((prev) => ({ ...prev, currentPassword: '', newPassword: '' }));
+          setPharmacy((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              email: form.email,
+              name: form.name,
+              postalCode: form.postalCode,
+              address: form.address,
+              phone: form.phone,
+              fax: form.fax,
+              prefecture: form.prefecture,
+              licenseNumber: form.licenseNumber,
+              isTestAccount,
+              testAccountPassword: isTestAccount ? testAccountPassword : null,
+              ...(typeof data.version === 'number' ? { version: data.version } : {}),
+            };
+          });
+        } else {
+          setError(err.message || '薬局情報の更新に失敗しました');
+        }
+      } else if (err instanceof ApiError && err.status === 403 && typeof (err.data as Record<string, unknown>)?.verificationStatus === 'string') {
+        setError('審査ステータスにより操作を実行できません');
       } else {
         setError(err instanceof Error ? err.message : '薬局情報の更新に失敗しました');
       }

@@ -23,6 +23,7 @@ vi.mock('../services/logger', () => ({
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
+  and: vi.fn(() => ({})),
 }));
 
 import { processVerificationCallback } from '../services/pharmacy-verification-callback-service';
@@ -38,9 +39,11 @@ describe('Pharmacy verification integration', () => {
       const chain = {
         set: vi.fn(),
         where: vi.fn(),
+        returning: vi.fn(),
       };
       chain.set.mockReturnValue(chain);
-      chain.where.mockResolvedValue(undefined);
+      chain.where.mockReturnValue(chain);
+      chain.returning.mockResolvedValue([{ id: 1 }]);
       return chain;
     }
 
@@ -57,6 +60,7 @@ describe('Pharmacy verification integration', () => {
 
       expect(result.verificationStatus).toBe('verified');
       expect(result.pharmacyId).toBe(1);
+      expect(result.applied).toBe(true);
       expect(chain.set).toHaveBeenCalledWith(expect.objectContaining({
         verificationStatus: 'verified',
         isActive: true,
@@ -76,6 +80,7 @@ describe('Pharmacy verification integration', () => {
 
       expect(result.verificationStatus).toBe('rejected');
       expect(result.pharmacyId).toBe(2);
+      expect(result.applied).toBe(true);
       expect(chain.set).toHaveBeenCalledWith(expect.objectContaining({
         verificationStatus: 'rejected',
         isActive: false,
@@ -89,16 +94,13 @@ describe('Pharmacy verification integration', () => {
       expect(canLogin('verified', true)).toBe(true);
     });
 
-    it('blocks pending_verification', () => {
-      expect(canLogin('pending_verification', true)).toBe(false);
-    });
-
-    it('allows unverified + active (legacy)', () => {
-      expect(canLogin('unverified', true)).toBe(true);
+    it('allows pending_verification + active (re-verification)', () => {
+      expect(canLogin('pending_verification', true)).toBe(true);
     });
 
     it('blocks inactive regardless of status', () => {
       expect(canLogin('verified', false)).toBe(false);
+      expect(canLogin('pending_verification', false)).toBe(false);
     });
   });
 });

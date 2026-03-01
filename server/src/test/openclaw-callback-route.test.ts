@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
     transaction: vi.fn(),
   },
   loggerError: vi.fn(),
+  processVerificationCallback: vi.fn(),
+  invalidateAuthUserCache: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -24,6 +26,14 @@ vi.mock('../services/logger', () => ({
     warn: vi.fn(),
     error: mocks.loggerError,
   },
+}));
+
+vi.mock('../services/pharmacy-verification-callback-service', () => ({
+  processVerificationCallback: mocks.processVerificationCallback,
+}));
+
+vi.mock('../middleware/auth', () => ({
+  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -351,5 +361,58 @@ describe('openclaw callback route', () => {
     expect(res.status).toBe(200);
     expect(mocks.db.insert).not.toHaveBeenCalled();
     expect(mocks.db.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('processes pharmacy_reverification callback on completed status', async () => {
+    const app = createApp();
+    const currentRow = [{
+      id: 31,
+      pharmacyId: 9,
+      requestText: JSON.stringify({ type: 'pharmacy_reverification' }),
+      openclawStatus: 'implementing',
+      openclawThreadId: 'thread-31',
+      openclawSummary: null,
+    }];
+    const updateQuery = createUpdateQuery();
+    const insertQuery = createInsertQuery();
+
+    mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
+    mocks.db.update.mockImplementationOnce(() => updateQuery);
+    mocks.db.insert.mockImplementationOnce(() => insertQuery);
+    mocks.processVerificationCallback.mockResolvedValue({
+      verificationStatus: 'verified',
+      pharmacyId: 9,
+      applied: true,
+    });
+
+    const payload = {
+      requestId: 31,
+      status: 'completed',
+      summary: JSON.stringify({ approved: true, reason: 'ok' }),
+      threadId: 'thread-31',
+      implementationBranch: 'review',
+    };
+    const rawBody = JSON.stringify(payload);
+    const nowMs = Date.parse('2026-02-25T12:00:00.000Z');
+    const timestamp = Math.floor(nowMs / 1000);
+    vi.useFakeTimers();
+    vi.setSystemTime(nowMs);
+
+    const res = await request(app)
+      .post('/api/openclaw/callback')
+      .set('x-openclaw-timestamp', String(timestamp))
+      .set('x-openclaw-signature', createSignature('webhook-secret', timestamp, rawBody))
+      .send(payload);
+
+    vi.useRealTimers();
+
+    expect(res.status).toBe(200);
+    expect(mocks.processVerificationCallback).toHaveBeenCalledWith({
+      pharmacyId: 9,
+      requestId: 31,
+      approved: true,
+      reason: 'ok',
+    });
+    expect(mocks.invalidateAuthUserCache).toHaveBeenCalledWith(9);
   });
 });

@@ -158,10 +158,13 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
   let response = await doRequest();
 
   if (!response.ok && shouldUseCsrf && response.status === 403) {
-    csrfTokenCache = null;
-    const csrfToken = await ensureCsrfToken(timeout);
-    (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
-    response = await doRequest();
+    const bodyData = await response.clone().json().catch(() => ({}));
+    if (!('verificationStatus' in bodyData)) {
+      csrfTokenCache = null;
+      const csrfToken = await ensureCsrfToken(timeout);
+      (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
+      response = await doRequest();
+    }
   }
 
   if (!response.ok) {
@@ -199,10 +202,13 @@ export async function apiUpload<T>(path: string, formData: FormData, options: Up
 
   let response = await fetchWithTimeout(`${API_BASE}${path}`, config, timeout, signal);
   if (!response.ok && response.status === 403 && requiresCsrf('POST', path)) {
-    csrfTokenCache = null;
-    const csrfToken = await ensureCsrfToken(timeout);
-    (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
-    response = await fetchWithTimeout(`${API_BASE}${path}`, config, timeout, signal);
+    const bodyData = await response.clone().json().catch(() => ({}));
+    if (!('verificationStatus' in bodyData)) {
+      csrfTokenCache = null;
+      const csrfToken = await ensureCsrfToken(timeout);
+      (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
+      response = await fetchWithTimeout(`${API_BASE}${path}`, config, timeout, signal);
+    }
   }
 
   if (!response.ok) {
@@ -258,6 +264,10 @@ export function isConflictError(err: unknown): err is ApiError & { data: { lates
 
 export function isApiErrorCode(err: unknown, code: string): err is ApiError {
   return err instanceof ApiError && err.code === code;
+}
+
+export function isVerificationStatusError(err: unknown): err is ApiError & { data: { verificationStatus: string } } {
+  return err instanceof ApiError && err.status === 403 && err.data != null && typeof err.data === 'object' && 'verificationStatus' in err.data;
 }
 
 export { ApiError };

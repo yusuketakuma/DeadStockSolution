@@ -622,7 +622,6 @@ const markAllReadHandler = async (req: AuthRequest, res: Response) => {
   }
 };
 router.patch('/read-all', markAllReadHandler);
-router.post('/read-all', markAllReadHandler);
 
 // PATCH /api/notifications/:id/read
 const markReadHandler = async (req: AuthRequest, res: Response) => {
@@ -644,6 +643,5 @@ const markReadHandler = async (req: AuthRequest, res: Response) => {
   }
 };
 router.patch('/:id/read', markReadHandler);
-router.post('/:id/read', markReadHandler);
 
 export default router;

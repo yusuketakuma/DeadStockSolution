@@ -23,6 +23,7 @@ import { logger } from '../services/logger';
 import { handleRouteError } from '../middleware/error-handler';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
+import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verification-service';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -260,7 +261,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       const [verificationRequest] = await tx.insert(userRequests).values({
         pharmacyId: createdPharmacy.id,
         requestText: JSON.stringify({
-          type: 'pharmacy_verification',
+          type: PHARMACY_VERIFICATION_REQUEST_TYPE,
           pharmacyName: name,
           postalCode: normalizedPostalCode,
           prefecture,
@@ -325,7 +326,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       requestId: registrationResult.verificationRequestId,
       pharmacyId,
       requestText: JSON.stringify({
-        type: 'pharmacy_verification',
+        type: PHARMACY_VERIFICATION_REQUEST_TYPE,
         pharmacyName: name,
         postalCode: normalizedPostalCode,
         prefecture,

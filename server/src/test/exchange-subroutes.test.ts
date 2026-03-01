@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   },
   acceptProposal: vi.fn(),
   rejectProposal: vi.fn(),
-  completeProposal: vi.fn(),
   recalculateTrustScoreForPharmacy: vi.fn(),
   createNotification: vi.fn(),
   loggerError: vi.fn(),
@@ -33,7 +32,6 @@ vi.mock('../services/exchange-service', () => ({
   createProposal: vi.fn(),
   acceptProposal: mocks.acceptProposal,
   rejectProposal: mocks.rejectProposal,
-  completeProposal: mocks.completeProposal,
 }));
 
 vi.mock('../services/matching-service', () => ({
@@ -155,116 +153,9 @@ function createUpdateQuery(result: unknown = undefined) {
   return query;
 }
 
-describe('exchange sub-routes: status', () => {
+describe('exchange sub-routes: bulk action', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-  });
-
-  it('POST /proposals/:id/accept returns 200 with confirmed status', async () => {
-    const app = createApp();
-    mocks.acceptProposal.mockResolvedValue('confirmed');
-
-    const response = await request(app)
-      .post('/api/exchange/proposals/5/accept');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      message: '仮マッチングが確定しました',
-      status: 'confirmed',
-    });
-    expect(mocks.acceptProposal).toHaveBeenCalledWith(5, 2);
-  });
-
-  it('POST /proposals/:id/accept returns 200 with pending_b status', async () => {
-    const app = createApp();
-    mocks.acceptProposal.mockResolvedValue('pending_b');
-
-    const response = await request(app)
-      .post('/api/exchange/proposals/6/accept');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      message: '仮マッチングを承認しました（相手薬局の承認待ち）',
-      status: 'pending_b',
-    });
-  });
-
-  it('POST /proposals/:id/accept returns 400 for invalid id', async () => {
-    const app = createApp();
-
-    const response = await request(app)
-      .post('/api/exchange/proposals/abc/accept');
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: '不正なIDです' });
-    expect(mocks.acceptProposal).not.toHaveBeenCalled();
-  });
-
-  it('POST /proposals/:id/accept returns 404 when proposal not found', async () => {
-    const app = createApp();
-    mocks.acceptProposal.mockRejectedValue(new Error('見つかりません'));
-
-    const response = await request(app)
-      .post('/api/exchange/proposals/999/accept');
-
-    expect(response.status).toBe(404);
-    expect(response.body).toEqual({ error: 'マッチングが見つかりません' });
-  });
-
-  it('POST /proposals/:id/accept returns 409 on concurrent modification', async () => {
-    const app = createApp();
-    mocks.acceptProposal.mockRejectedValue(new Error('状態が変更された'));
-
-    const response = await request(app)
-      .post('/api/exchange/proposals/5/accept');
-
-    expect(response.status).toBe(409);
-    expect(response.body).toEqual({ error: '状態が変更されたため、再読み込みして再試行してください' });
-  });
-
-  it('POST /proposals/:id/reject returns 200', async () => {
-    const app = createApp();
-    mocks.rejectProposal.mockResolvedValue(undefined);
-
-    const response = await request(app)
-      .post('/api/exchange/proposals/7/reject');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ message: '仮マッチングを拒否しました' });
-    expect(mocks.rejectProposal).toHaveBeenCalledWith(7, 2);
-  });
-
-  it('POST /proposals/:id/reject returns 400 for invalid id', async () => {
-    const app = createApp();
-
-    const response = await request(app)
-      .post('/api/exchange/proposals/0/reject');
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: '不正なIDです' });
-  });
-
-  it('POST /proposals/:id/complete returns 200', async () => {
-    const app = createApp();
-    mocks.completeProposal.mockResolvedValue(undefined);
-
-    const response = await request(app)
-      .post('/api/exchange/proposals/8/complete');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ message: '交換を完了しました' });
-    expect(mocks.completeProposal).toHaveBeenCalledWith(8, 2);
-  });
-
-  it('POST /proposals/:id/complete returns 400 for generic error', async () => {
-    const app = createApp();
-    mocks.completeProposal.mockRejectedValue(new Error('unknown error'));
-
-    const response = await request(app)
-      .post('/api/exchange/proposals/8/complete');
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: '操作に失敗しました' });
   });
 
   it('POST /proposals/bulk-action returns summary and item errors', async () => {

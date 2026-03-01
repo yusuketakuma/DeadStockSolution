@@ -425,6 +425,66 @@ describe('admin pharmacies detail routes', () => {
     expect(response.body).toEqual({ error: '薬局名は1〜100文字で入力してください' });
   });
 
+  it('PUT /pharmacies/:id skips re-verification when target field value is unchanged', async () => {
+    const app = createApp();
+    const existingRow = {
+      id: 5,
+      email: 'same@test.com',
+      name: '同じ薬局名',
+      postalCode: '1000001',
+      address: '東京都千代田区',
+      phone: '03-0000-0000',
+      fax: '03-0000-0001',
+      licenseNumber: 'LIC-001',
+      prefecture: '東京都',
+      isTestAccount: false,
+      testAccountPassword: null,
+    };
+    mocks.db.select.mockImplementationOnce(() => createLimitQuery([existingRow]));
+    const updateQuery = createUpdateQuery();
+    mocks.db.update.mockReturnValue(updateQuery);
+
+    const response = await request(app)
+      .put('/api/admin/pharmacies/5')
+      .send({ version: 1, name: '同じ薬局名' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ message: '薬局情報を更新しました', version: 2 });
+    expect(mocks.db.insert).not.toHaveBeenCalled();
+  });
+
+  it('PUT /pharmacies/:id returns 503 when re-verification enqueue fails', async () => {
+    const app = createApp();
+    const existingRow = {
+      id: 5,
+      email: 'same@test.com',
+      name: '旧薬局名',
+      postalCode: '1000001',
+      address: '東京都千代田区',
+      phone: '03-0000-0000',
+      fax: '03-0000-0001',
+      licenseNumber: 'LIC-001',
+      prefecture: '東京都',
+      isTestAccount: false,
+      testAccountPassword: null,
+    };
+    mocks.db.select.mockImplementationOnce(() => createLimitQuery([existingRow]));
+    const updateQuery = createUpdateQuery();
+    mocks.db.update.mockReturnValue(updateQuery);
+    const insertReturningMock = vi.fn().mockRejectedValue(new Error('insert failed'));
+    const insertValuesMock = vi.fn(() => ({ returning: insertReturningMock }));
+    mocks.db.insert.mockReturnValue({ values: insertValuesMock });
+
+    const response = await request(app)
+      .put('/api/admin/pharmacies/5')
+      .send({ version: 1, name: '新しい薬局名' });
+
+    expect(response.status).toBe(503);
+    expect(response.body.partialSuccess).toBe(true);
+    expect(response.body.version).toBe(2);
+    expect(response.body.verificationStatus).toBe('pending_verification');
+  });
+
   it('PUT /pharmacies/:id/business-hours updates hours and returns new version', async () => {
     const app = createApp();
     mocks.validateBusinessHours.mockReturnValue({

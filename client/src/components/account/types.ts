@@ -22,6 +22,7 @@ export interface AccountData {
   licenseNumber: string;
   prefecture: string;
   version: number;
+  verificationStatus?: string;
 }
 
 export interface BusinessHourEntry {

@@ -396,7 +396,7 @@ export default function UploadPage() {
         if (job.status === 'failed') {
           throw new Error(job.lastError || 'アップロード処理に失敗しました');
         }
-        if (job.status === 'cancelled' || job.status === 'canceled') {
+        if (job.status === 'canceled') {
           throw new Error(job.lastError || 'アップロード処理はキャンセルされました');
         }
         if (job.status !== 'pending' && job.status !== 'processing') {
@@ -651,13 +651,13 @@ export default function UploadPage() {
         <AppCard.Header>アップロード手順</AppCard.Header>
         <AppCard.Body>
           <ol className="mb-2 upload-step-list">
-            <li><code>.xlsx</code> 形式のExcelファイルを選択します（最大50MB）。</li>
-            <li>「プレビュー」を押すと、行データ種別（デッドストック/使用量）を自動判定します。</li>
-            <li>判定が異なる場合は取込種別を修正します。</li>
+            <li>Excelファイル（.xlsx・最大50MB）を選択します。</li>
+            <li>「プレビュー」を押して、ファイルの内容を確認します。</li>
+            <li>取込種別（デッドストック／使用量）が正しいことを確認します。</li>
             <li>「この設定でデータを登録」を押して反映します。</li>
           </ol>
           <div className="small text-muted mt-1">
-            列は固定フォーマットを前提に自動解決されるため、カラム割り当て操作は不要です。
+            列の対応付けは自動で行われるため、手動での設定は不要です。
           </div>
         </AppCard.Body>
       </AppCard>
@@ -765,17 +765,22 @@ export default function UploadPage() {
                 controlId="upload-apply-mode"
                 value={applyMode}
                 ariaLabel="反映方式"
+                disabled={loading}
                 onChange={(value) => {
                   setApplyMode(value as 'replace' | 'diff');
                   setDiffSummary(null);
                   setAcknowledgeDeleteImpact(false);
                 }}
                 options={[
-                  { value: 'replace', label: '置換（既定）' },
+                  { value: 'replace', label: '置換' },
                   { value: 'diff', label: '差分反映' },
                 ]}
               />
-              <div className="small text-muted mt-1">既定は置換です。差分反映は明示的に選択した場合のみ有効です。</div>
+              <div className="small text-muted mt-1">
+                {preview.hasSavedMapping
+                  ? '同一ヘッダーの過去設定を検出しました。反映方式は必要に応じて選択してください。'
+                  : '初回アップロードのため、反映方式を選択して登録してください。'}
+              </div>
             </Form.Group>
 
             {applyMode === 'diff' && (

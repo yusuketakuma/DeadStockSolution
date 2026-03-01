@@ -2,6 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { columnMappingTemplates, deadStockItems, uploads, usedMedicationItems } from '../db/schema';
+import type { ColumnMapping } from '../types';
 import { setupVitestMocks } from './helpers/setup';
 
 const mocks = vi.hoisted(() => {
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => {
     deadStockRows: [] as Array<Record<string, unknown>>,
     usedMedicationRows: [] as Array<Record<string, unknown>>,
     templates: [] as Array<Record<string, unknown>>,
+    uploadJobSeq: 9000,
     uploadSeq: 100,
     deadStockSeq: 1000,
     usedMedicationSeq: 2000,
@@ -20,6 +22,7 @@ const mocks = vi.hoisted(() => {
     state.deadStockRows.length = 0;
     state.usedMedicationRows.length = 0;
     state.templates.length = 0;
+    state.uploadJobSeq = 9000;
     state.uploadSeq = 100;
     state.deadStockSeq = 1000;
     state.usedMedicationSeq = 2000;
@@ -37,6 +40,11 @@ const mocks = vi.hoisted(() => {
     parseExcelBuffer: vi.fn(),
     enrichWithDrugMaster: vi.fn(),
     triggerMatchingRefreshOnUpload: vi.fn(),
+    enqueueUploadConfirmJob: vi.fn(),
+    getUploadConfirmJobForPharmacy: vi.fn(),
+    cancelUploadConfirmJobForPharmacy: vi.fn(),
+    isUploadConfirmQueueLimitError: vi.fn(),
+    isUploadConfirmIdempotencyConflictError: vi.fn(),
     writeLog: vi.fn(),
     getClientIp: vi.fn(),
   };
@@ -69,6 +77,14 @@ vi.mock('../services/matching-refresh-service', () => ({
   triggerMatchingRefreshOnUpload: mocks.triggerMatchingRefreshOnUpload,
 }));
 
+vi.mock('../services/upload-confirm-job-service', () => ({
+  enqueueUploadConfirmJob: mocks.enqueueUploadConfirmJob,
+  getUploadConfirmJobForPharmacy: mocks.getUploadConfirmJobForPharmacy,
+  cancelUploadConfirmJobForPharmacy: mocks.cancelUploadConfirmJobForPharmacy,
+  isUploadConfirmQueueLimitError: mocks.isUploadConfirmQueueLimitError,
+  isUploadConfirmIdempotencyConflictError: mocks.isUploadConfirmIdempotencyConflictError,
+}));
+
 vi.mock('../services/logger', () => ({
   logger: {
     debug: vi.fn(),
@@ -85,6 +101,7 @@ vi.mock('../services/log-service', () => ({
 
 import uploadRouter from '../routes/upload';
 import inventoryRouter from '../routes/inventory';
+import { runUploadConfirm } from '../services/upload-confirm-service';
 
 function createApp() {
   const app = express();
@@ -302,6 +319,43 @@ describe('upload -> inventory flow', () => {
     ]);
     mocks.enrichWithDrugMaster.mockImplementation(async (rows: unknown[]) => rows);
     mocks.triggerMatchingRefreshOnUpload.mockResolvedValue(undefined);
+    mocks.isUploadConfirmQueueLimitError.mockReturnValue(false);
+    mocks.isUploadConfirmIdempotencyConflictError.mockReturnValue(false);
+    mocks.getUploadConfirmJobForPharmacy.mockResolvedValue(null);
+    mocks.cancelUploadConfirmJobForPharmacy.mockResolvedValue(null);
+    mocks.enqueueUploadConfirmJob.mockImplementation(async (params: {
+      pharmacyId: number;
+      uploadType: 'dead_stock' | 'used_medication';
+      originalFilename: string;
+      headerRowIndex: number;
+      mapping: ColumnMapping;
+      applyMode: 'replace' | 'diff' | 'partial';
+      deleteMissing: boolean;
+      fileBuffer: Buffer;
+      requestedAtIso?: string;
+    }) => {
+      const allRows = await mocks.parseExcelBuffer(params.fileBuffer);
+      await runUploadConfirm({
+        pharmacyId: params.pharmacyId,
+        uploadType: params.uploadType,
+        originalFilename: params.originalFilename,
+        headerRowIndex: params.headerRowIndex,
+        mapping: params.mapping,
+        allRows,
+        applyMode: params.applyMode,
+        deleteMissing: params.deleteMissing,
+        staleGuardCreatedAt: params.requestedAtIso,
+      });
+
+      const jobId = ++mocks.state.uploadJobSeq;
+      return {
+        jobId,
+        status: 'completed' as const,
+        deduplicated: false,
+        cancelable: false,
+        canceledAt: null,
+      };
+    });
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
@@ -319,7 +373,7 @@ describe('upload -> inventory flow', () => {
     }));
 
     const confirmResponse = await attachXlsxFile(request(app)
-      .post('/api/upload/confirm')
+      .post('/api/upload/confirm-async')
       .field('uploadType', 'dead_stock')
       .field('headerRowIndex', '0')
       .field('applyMode', 'replace')
@@ -333,9 +387,9 @@ describe('upload -> inventory flow', () => {
         lot_number: null,
       })), 'dead-stock.xlsx');
 
-    expect(confirmResponse.status).toBe(200);
+    expect(confirmResponse.status).toBe(202);
     expect(confirmResponse.body).toEqual(expect.objectContaining({
-      rowCount: 2,
+      status: 'completed',
     }));
 
     const listResponse = await request(app).get('/api/inventory/dead-stock');
@@ -366,7 +420,7 @@ describe('upload -> inventory flow', () => {
     }));
 
     const confirmResponse = await attachXlsxFile(request(app)
-      .post('/api/upload/confirm')
+      .post('/api/upload/confirm-async')
       .field('uploadType', 'used_medication')
       .field('headerRowIndex', '0')
       .field('applyMode', 'replace')
@@ -378,9 +432,9 @@ describe('upload -> inventory flow', () => {
         yakka_unit_price: null,
       })), 'used-medication.xlsx');
 
-    expect(confirmResponse.status).toBe(200);
+    expect(confirmResponse.status).toBe(202);
     expect(confirmResponse.body).toEqual(expect.objectContaining({
-      rowCount: 2,
+      status: 'completed',
     }));
 
     const listResponse = await request(app).get('/api/inventory/used-medication');
@@ -404,11 +458,11 @@ describe('upload -> inventory flow', () => {
     expect(response.body).toEqual({ error: 'ファイルの解析に失敗しました。xlsx形式を確認してください' });
   });
 
-  it('returns bad request on confirm when headerRowIndex is invalid', async () => {
+  it('returns bad request on confirm-async when headerRowIndex is invalid', async () => {
     const app = createApp();
 
     const response = await attachXlsxFile(request(app)
-      .post('/api/upload/confirm')
+      .post('/api/upload/confirm-async')
       .field('uploadType', 'dead_stock')
       .field('headerRowIndex', 'invalid')
       .field('applyMode', 'replace')

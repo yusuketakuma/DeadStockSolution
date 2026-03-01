@@ -5,10 +5,17 @@ import { pharmacies } from '../db/schema';
 import { deriveSessionVersion, hashPassword, verifyPassword, generateToken } from '../services/auth-service';
 import { requireLogin, invalidateAuthUserCache } from '../middleware/auth';
 import { geocodeAddress } from '../services/geocode-service';
+import {
+  detectChangedReverificationFields,
+  ReverificationTriggerError,
+  sendReverificationTriggerErrorResponse,
+  triggerReverification,
+} from '../services/pharmacy-verification-service';
 import { AuthRequest } from '../types';
 import { clearCsrfCookie } from '../middleware/csrf';
 import { writeLog, getClientIp } from '../services/log-service';
 import { logger } from '../services/logger';
+import { getErrorMessage } from '../middleware/error-handler';
 import { emailSchema } from '../utils/validators';
 
 const router = Router();
@@ -42,13 +49,14 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
     res.json(rows[0]);
   } catch (err) {
     logger.error('Get account error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     });
     res.status(500).json({ error: 'アカウント情報の取得に失敗しました' });
   }
 });
 
 router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
+  let latestVersion: number | null = null;
   try {
     const {
       email,
@@ -73,10 +81,17 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
 
     const accountRows = await db.select({
       id: pharmacies.id,
+      email: pharmacies.email,
+      name: pharmacies.name,
+      postalCode: pharmacies.postalCode,
       address: pharmacies.address,
+      phone: pharmacies.phone,
+      fax: pharmacies.fax,
+      licenseNumber: pharmacies.licenseNumber,
       prefecture: pharmacies.prefecture,
       isTestAccount: pharmacies.isTestAccount,
       testAccountPassword: pharmacies.testAccountPassword,
+      verificationRequestId: pharmacies.verificationRequestId,
     })
       .from(pharmacies)
       .where(eq(pharmacies.id, req.user!.id))
@@ -261,6 +276,9 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       }
     }
 
+    const changedReverificationFields = detectChangedReverificationFields(currentAccount, updates);
+    const hasReverificationField = changedReverificationFields.length > 0;
+
     updates.updatedAt = new Date().toISOString();
     // version をインクリメント
     updates.version = sql`${pharmacies.version} + 1`;
@@ -305,6 +323,7 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
     }
 
     const updatedPharmacy = updateResult[0];
+    latestVersion = updatedPharmacy?.version ?? null;
     invalidateAuthUserCache(req.user!.id);
 
     if (!updatedPharmacy || !updatedPharmacy.isActive) {
@@ -328,16 +347,37 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       maxAge: 24 * 60 * 60 * 1000,
     });
 
+    // 再認証トリガー: 対象フィールドが実際に変更された場合のみ
+    if (hasReverificationField) {
+      await triggerReverification(req.user!.id, changedReverificationFields, {
+        currentVerificationRequestId: currentAccount.verificationRequestId,
+      });
+    }
+
     void writeLog('account_update', {
       pharmacyId: req.user!.id,
-      detail: 'アカウント情報を更新',
+      detail: hasReverificationField ? 'アカウント情報を更新（再認証トリガー）' : 'アカウント情報を更新',
       ipAddress: getClientIp(req),
     });
 
-    res.json({ message: 'アカウント情報を更新しました', version: updatedPharmacy.version });
+    res.json({
+      message: hasReverificationField
+        ? 'アカウント情報を更新しました。プロフィール変更のため再審査を行います。'
+        : 'アカウント情報を更新しました',
+      version: updatedPharmacy.version,
+      ...(hasReverificationField ? { verificationStatus: 'pending_verification' } : {}),
+    });
   } catch (err) {
+    if (err instanceof ReverificationTriggerError) {
+      sendReverificationTriggerErrorResponse(
+        res,
+        'アカウント情報は更新されましたが、再審査依頼の登録に失敗しました。時間をおいて再試行してください。',
+        latestVersion,
+      );
+      return;
+    }
     logger.error('Update account error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     });
     res.status(500).json({ error: 'アカウント更新に失敗しました' });
   }
@@ -384,7 +424,7 @@ router.delete('/', requireLogin, async (req: AuthRequest, res: Response) => {
     res.json({ message: 'アカウントを無効化しました' });
   } catch (err) {
     logger.error('Delete account error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     });
     res.status(500).json({ error: 'アカウント削除に失敗しました' });
   }

@@ -50,6 +50,10 @@ export function normalizeSearchTerm(value: unknown, maxLength: number = 100): st
   return sanitized.slice(0, maxLength);
 }
 
+export function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
 /** Escape LIKE wildcards for safe use in SQL LIKE patterns */
 export function escapeLikeWildcards(value: string): string {
   return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);

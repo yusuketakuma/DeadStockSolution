@@ -8,6 +8,12 @@ import {
 } from '../db/schema';
 import { invalidateAuthUserCache } from '../middleware/auth';
 import { processVerificationCallback } from '../services/pharmacy-verification-callback-service';
+import {
+  detectChangedReverificationFields,
+  ReverificationTriggerError,
+  sendReverificationTriggerErrorResponse,
+  triggerReverification,
+} from '../services/pharmacy-verification-service';
 import { AuthRequest } from '../types';
 import { geocodeAddress } from '../services/geocode-service';
 import { writeLog, getClientIp } from '../services/log-service';
@@ -63,6 +69,7 @@ router.get('/pharmacies/:id/business-hours/settings', async (req: AuthRequest, r
 });
 
 router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
+  let latestVersion: number | null = null;
   try {
     const id = parseIdOrBadRequest(res, req.params.id);
     if (!id) return;
@@ -89,10 +96,17 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
 
     const existingRows = await db.select({
       id: pharmacies.id,
+      email: pharmacies.email,
+      name: pharmacies.name,
+      postalCode: pharmacies.postalCode,
       address: pharmacies.address,
+      phone: pharmacies.phone,
+      fax: pharmacies.fax,
+      licenseNumber: pharmacies.licenseNumber,
       prefecture: pharmacies.prefecture,
       isTestAccount: pharmacies.isTestAccount,
       testAccountPassword: pharmacies.testAccountPassword,
+      verificationRequestId: pharmacies.verificationRequestId,
     })
       .from(pharmacies)
       .where(eq(pharmacies.id, id))
@@ -264,6 +278,9 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
       updates.testAccountPassword = null;
     }
 
+    const changedReverificationFields = detectChangedReverificationFields(current, updates);
+    const hasReverificationField = changedReverificationFields.length > 0;
+
     updates.updatedAt = new Date().toISOString();
     updates.version = sql`${pharmacies.version} + 1`;
 
@@ -276,31 +293,65 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
       });
 
     if (updateResult.length === 0) {
-      const latestRows = await db.select()
+      const latestRows = await db.select({
+        id: pharmacies.id,
+        email: pharmacies.email,
+        name: pharmacies.name,
+        postalCode: pharmacies.postalCode,
+        address: pharmacies.address,
+        phone: pharmacies.phone,
+        fax: pharmacies.fax,
+        licenseNumber: pharmacies.licenseNumber,
+        prefecture: pharmacies.prefecture,
+        isActive: pharmacies.isActive,
+        isTestAccount: pharmacies.isTestAccount,
+        testAccountPassword: pharmacies.testAccountPassword,
+        verificationStatus: pharmacies.verificationStatus,
+        verificationRequestId: pharmacies.verificationRequestId,
+        version: pharmacies.version,
+      })
         .from(pharmacies)
         .where(eq(pharmacies.id, id))
         .limit(1);
-      const latest = latestRows[0];
-      if (!latest) {
+      if (latestRows.length === 0) {
         res.status(404).json({ error: '薬局が見つかりません' });
         return;
       }
-      const { passwordHash: _, ...latestData } = latest;
       res.status(409).json({
         error: '他のデバイスまたはタブで更新されています。最新データを確認してください',
-        latestData,
+        latestData: latestRows[0],
       });
       return;
     }
 
+    latestVersion = updateResult[0]?.version ?? null;
     invalidateAuthUserCache(id);
+
+    // 再認証トリガー: 対象フィールドが実際に変更された場合（isActive/isTestAccount 変更は対象外）
+    if (hasReverificationField) {
+      await triggerReverification(id, changedReverificationFields, {
+        currentVerificationRequestId: current.verificationRequestId,
+        triggeredBy: 'admin',
+      });
+    }
+
     void writeLog('account_update', {
       pharmacyId: req.user!.id,
-      detail: `管理者が薬局ID:${id}の基本情報を更新`,
+      detail: hasReverificationField
+        ? `管理者が薬局ID:${id}の基本情報を更新（再認証トリガー）`
+        : `管理者が薬局ID:${id}の基本情報を更新`,
       ipAddress: getClientIp(req),
     });
     res.json({ message: '薬局情報を更新しました', version: updateResult[0].version });
   } catch (err) {
+    if (err instanceof ReverificationTriggerError) {
+      sendReverificationTriggerErrorResponse(
+        res,
+        '薬局情報は更新されましたが、再審査依頼の登録に失敗しました。時間をおいて再試行してください。',
+        latestVersion,
+      );
+      return;
+    }
     handleAdminError(err, 'Admin pharmacy update error', '薬局情報の更新に失敗しました', res);
   }
 });
@@ -469,7 +520,10 @@ router.post('/pharmacies/:id/verify', adminWriteLimiter, async (req: AuthRequest
       ipAddress: getClientIp(req),
     });
 
-    res.json(result);
+    res.json({
+      verificationStatus: result.verificationStatus,
+      pharmacyId: result.pharmacyId,
+    });
   } catch (err) {
     handleAdminError(err, 'Admin pharmacy verify error', '審査処理に失敗しました', res);
   }

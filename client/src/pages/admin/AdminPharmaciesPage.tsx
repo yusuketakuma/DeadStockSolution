@@ -153,7 +153,7 @@ export default function AdminPharmaciesPage() {
                       {p.verificationStatus === 'verified' && <Badge bg="success">承認済み</Badge>}
                       {p.verificationStatus === 'pending_verification' && <Badge bg="warning" text="dark">審査中</Badge>}
                       {p.verificationStatus === 'rejected' && <Badge bg="danger">却下</Badge>}
-                      {(p.verificationStatus === 'unverified' || !p.verificationStatus) && <Badge bg="secondary">未検証</Badge>}
+                      {!p.verificationStatus && <Badge bg="secondary">未検証</Badge>}
                     </td>
                     <td>
                       <Badge bg={p.isActive ? 'success' : 'secondary'}>
@@ -197,7 +197,7 @@ export default function AdminPharmaciesPage() {
                       {p.verificationStatus === 'verified' && <Badge bg="success">承認済み</Badge>}
                       {p.verificationStatus === 'pending_verification' && <Badge bg="warning" text="dark">審査中</Badge>}
                       {p.verificationStatus === 'rejected' && <Badge bg="danger">却下</Badge>}
-                      {(p.verificationStatus === 'unverified' || !p.verificationStatus) && <Badge bg="secondary">未検証</Badge>}
+                      {!p.verificationStatus && <Badge bg="secondary">未検証</Badge>}
                       <Badge bg={p.isActive ? 'success' : 'secondary'}>
                         {p.isActive ? '有効' : '無効'}
                       </Badge>

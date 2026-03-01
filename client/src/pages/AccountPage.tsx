@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, FormEvent, useMemo, useRef } from 're
 import AppAlert from '../components/ui/AppAlert';
 import AppButton from '../components/ui/AppButton';
 import { useAuth } from '../contexts/AuthContext';
-import { api, isConflictError } from '../api/client';
+import { api, ApiError, isConflictError, isVerificationStatusError } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import ConflictAlert from '../components/ConflictAlert';
@@ -53,6 +53,7 @@ export default function AccountPage() {
   const [account, setAccount] = useState<AccountData | null>(null);
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [message, setMessage] = useState('');
+  const [warning, setWarning] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
@@ -246,6 +247,7 @@ export default function AccountPage() {
     e.preventDefault();
     setError('');
     setMessage('');
+    setWarning('');
     setAccountConflict(false);
     setLoading(true);
     try {
@@ -281,6 +283,21 @@ export default function AccountPage() {
             currentPassword: '',
             newPassword: '',
           }));
+        }
+      } else if (isVerificationStatusError(err)) {
+        const data = err.data as { verificationStatus: string; rejectionReason?: string };
+        if (data.verificationStatus === 'pending_verification') {
+          navigate('/verification-pending');
+        } else if (data.verificationStatus === 'rejected') {
+          setError(data.rejectionReason ? `${err.message}（理由: ${data.rejectionReason}）` : err.message);
+        } else {
+          setError(err.message);
+        }
+      } else if (err instanceof ApiError && err.status === 503 && err.data != null && typeof err.data === 'object' && 'partialSuccess' in err.data && (err.data as { partialSuccess: boolean }).partialSuccess) {
+        setWarning(err.message);
+        const data = err.data as { version?: number };
+        if (data.version && account) {
+          setAccount({ ...account, version: data.version });
         }
       } else {
         setError(err instanceof Error ? err.message : '更新に失敗しました');
@@ -557,6 +574,7 @@ export default function AccountPage() {
     <div>
       <h4 className="page-title mb-3">薬局登録情報の編集</h4>
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
+      {warning && <AppAlert variant="warning" onClose={() => setWarning('')} dismissible>{warning}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
       <ConflictAlert

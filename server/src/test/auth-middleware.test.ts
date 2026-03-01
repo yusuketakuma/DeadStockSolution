@@ -156,7 +156,7 @@ describe('auth middleware cache', () => {
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
-  it('rejects pending_verification accounts with 403', async () => {
+  it('allows pending_verification + active accounts (re-verification)', async () => {
     mocks.verifyToken.mockReturnValue({
       id: 20,
       email: 'pending@example.com',
@@ -180,6 +180,34 @@ describe('auth middleware cache', () => {
 
     await requireLogin(req as never, res as never, next);
 
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('rejects pending_verification + inactive accounts with 403', async () => {
+    mocks.verifyToken.mockReturnValue({
+      id: 23,
+      email: 'pending-inactive@example.com',
+      isAdmin: false,
+      sessionVersion: 'session-v1',
+    });
+    mocks.deriveSessionVersion.mockReturnValue('session-v1');
+    mocks.select.mockImplementation(() => createSelectQuery([{
+      id: 23,
+      email: 'pending-inactive@example.com',
+      isAdmin: false,
+      isActive: false,
+      passwordHash: 'hashed',
+      verificationStatus: 'pending_verification',
+      rejectionReason: null,
+    }]));
+
+    const req = { cookies: { token: 'token-pending-inactive' } } as { cookies: { token: string }; user?: unknown };
+    const res = createRes();
+    const next = vi.fn();
+
+    await requireLogin(req as never, res as never, next);
+
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -187,7 +215,7 @@ describe('auth middleware cache', () => {
     }));
   });
 
-  it('rejects rejected accounts with 403', async () => {
+  it('rejects rejected + inactive accounts with 403 and rejection reason', async () => {
     mocks.verifyToken.mockReturnValue({
       id: 21,
       email: 'rejected@example.com',
@@ -212,8 +240,11 @@ describe('auth middleware cache', () => {
     await requireLogin(req as never, res as never, next);
 
     expect(next).not.toHaveBeenCalled();
-    // rejected accounts have isActive=false, so they get 401 from the isActive check
-    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      verificationStatus: 'rejected',
+      rejectionReason: '情報不一致',
+    }));
   });
 
   it('allows verified accounts to pass through', async () => {

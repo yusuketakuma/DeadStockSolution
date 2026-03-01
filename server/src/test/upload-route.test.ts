@@ -25,12 +25,11 @@ const mocks = vi.hoisted(() => {
     applyDeadStockDiff: vi.fn(),
     applyUsedMedicationDiff: vi.fn(),
     runUploadConfirm: vi.fn(),
-    ensureUploadConfirmQueueHasCapacity: vi.fn(),
     enqueueUploadConfirmJob: vi.fn(),
     isUploadConfirmQueueLimitError: vi.fn(),
     isUploadConfirmIdempotencyConflictError: vi.fn(),
-    processUploadConfirmJobById: vi.fn(),
     getUploadConfirmJobForPharmacy: vi.fn(),
+    cancelUploadConfirmJobForPharmacy: vi.fn(),
     loggerWarn: vi.fn(),
     loggerError: vi.fn(),
     writeLog: vi.fn(),
@@ -90,12 +89,11 @@ vi.mock('../services/upload-confirm-service', () => ({
 }));
 
 vi.mock('../services/upload-confirm-job-service', () => ({
-  ensureUploadConfirmQueueHasCapacity: mocks.ensureUploadConfirmQueueHasCapacity,
   enqueueUploadConfirmJob: mocks.enqueueUploadConfirmJob,
   isUploadConfirmQueueLimitError: mocks.isUploadConfirmQueueLimitError,
   isUploadConfirmIdempotencyConflictError: mocks.isUploadConfirmIdempotencyConflictError,
-  processUploadConfirmJobById: mocks.processUploadConfirmJobById,
   getUploadConfirmJobForPharmacy: mocks.getUploadConfirmJobForPharmacy,
+  cancelUploadConfirmJobForPharmacy: mocks.cancelUploadConfirmJobForPharmacy,
 }));
 
 vi.mock('../services/logger', () => ({
@@ -223,7 +221,6 @@ describe('upload routes', () => {
       diffSummary: null,
       partialSummary: null,
     });
-    mocks.ensureUploadConfirmQueueHasCapacity.mockResolvedValue(undefined);
     mocks.enqueueUploadConfirmJob.mockResolvedValue({
       jobId: 9001,
       status: 'pending',
@@ -247,7 +244,6 @@ describe('upload routes', () => {
         && (error as { code?: unknown }).code === 'UPLOAD_CONFIRM_IDEMPOTENCY_CONFLICT',
       ),
     );
-    mocks.processUploadConfirmJobById.mockResolvedValue(true);
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValue(null);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
 
@@ -362,11 +358,11 @@ describe('upload routes', () => {
     }));
   });
 
-  it('stores extracted rows on confirm (defaults applyMode=replace)', async () => {
+  it('enqueues async confirm job (defaults applyMode=replace)', async () => {
     const app = createApp();
 
     const response = await request(app)
-      .post('/api/upload/confirm')
+      .post('/api/upload/confirm-async')
       .field('uploadType', 'dead_stock')
       .field('headerRowIndex', '0')
       .field('mapping', JSON.stringify({
@@ -383,22 +379,32 @@ describe('upload routes', () => {
         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(expect.objectContaining({
-      uploadId: 101,
-      rowCount: 2,
+    expect(response.status).toBe(202);
+    expect(response.body).toEqual({
+      message: 'アップロード処理を受け付けました',
+      jobId: 9001,
+      status: 'pending',
+      deduplicated: false,
+      cancelable: true,
+      canceledAt: null,
+      partialSummary: null,
+      errorReportAvailable: false,
+    });
+    expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledWith(expect.objectContaining({
       applyMode: 'replace',
+      requestedAtIso: expect.any(String),
     }));
-    expect(mocks.runUploadConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it('returns bad request when mapping column is out of header range on confirm', async () => {
+  it('returns bad request when mapping column is out of header range on confirm-async', async () => {
     const app = createApp();
 
     const response = await request(app)
-      .post('/api/upload/confirm')
+      .post('/api/upload/confirm-async')
       .field('uploadType', 'dead_stock')
       .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
       .field('mapping', JSON.stringify({
         drug_code: '0',
         drug_name: '9',
@@ -415,14 +421,14 @@ describe('upload routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: '薬剤名カラムの割り当てが見出し範囲外です' });
-    expect(mocks.runUploadConfirm).not.toHaveBeenCalled();
+    expect(mocks.enqueueUploadConfirmJob).not.toHaveBeenCalled();
   });
 
-  it('returns bad request when applyMode is invalid on confirm', async () => {
+  it('returns bad request when applyMode is invalid on confirm-async', async () => {
     const app = createApp();
 
     const response = await request(app)
-      .post('/api/upload/confirm')
+      .post('/api/upload/confirm-async')
       .field('uploadType', 'dead_stock')
       .field('headerRowIndex', '0')
       .field('applyMode', 'invalid')
@@ -442,8 +448,8 @@ describe('upload routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: 'applyMode は replace / diff / partial を指定してください' });
-    expect(mocks.db.transaction).not.toHaveBeenCalled();
     expect(mocks.parseExcelBuffer).not.toHaveBeenCalled();
+    expect(mocks.enqueueUploadConfirmJob).not.toHaveBeenCalled();
   });
 
   it('returns diff preview summary when applyMode=diff', async () => {
@@ -485,22 +491,11 @@ describe('upload routes', () => {
     expect(mocks.previewDeadStockDiff).toHaveBeenCalledTimes(1);
   });
 
-  it('stores diff summary on confirm when applyMode=diff', async () => {
+  it('enqueues async confirm job when applyMode=diff', async () => {
     const app = createApp();
-    mocks.runUploadConfirm.mockResolvedValueOnce({
-      uploadId: 101,
-      rowCount: 1,
-      diffSummary: {
-        inserted: 1,
-        updated: 0,
-        deactivated: 0,
-        unchanged: 0,
-        totalIncoming: 1,
-      },
-    });
 
     const response = await request(app)
-      .post('/api/upload/confirm')
+      .post('/api/upload/confirm-async')
       .field('uploadType', 'dead_stock')
       .field('headerRowIndex', '0')
       .field('applyMode', 'diff')
@@ -519,85 +514,17 @@ describe('upload routes', () => {
         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(expect.objectContaining({
+    expect(response.status).toBe(202);
+    expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledWith(expect.objectContaining({
       applyMode: 'diff',
-      rowCount: 1,
-      message: '1件のデータを登録しました',
-      diffSummary: {
-        inserted: 1,
-        updated: 0,
-        deactivated: 0,
-        unchanged: 0,
-        totalIncoming: 1,
-      },
+      deleteMissing: false,
     }));
-    expect(mocks.runUploadConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it('returns 500 when matching refresh enqueue fails during confirm', async () => {
+  it('returns 500 when enqueue fails during confirm-async', async () => {
     const app = createApp();
-    mocks.runUploadConfirm.mockRejectedValueOnce(new Error('queue unavailable'));
-
-    const response = await request(app)
-      .post('/api/upload/confirm')
-      .field('uploadType', 'dead_stock')
-      .field('headerRowIndex', '0')
-      .field('applyMode', 'replace')
-      .field('mapping', JSON.stringify({
-        drug_code: '0',
-        drug_name: '1',
-        quantity: '2',
-        unit: null,
-        yakka_unit_price: null,
-        expiration_date: null,
-        lot_number: null,
-      }))
-      .attach('file', Buffer.from('dummy-xlsx-content'), {
-        filename: 'dead-stock.xlsx',
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-
-    expect(response.status).toBe(500);
-    expect(response.body).toEqual({ error: 'データ登録またはマッチング更新に失敗しました' });
-    expect(mocks.runUploadConfirm).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns 409 when stale upload is skipped during confirm', async () => {
-    const app = createApp();
-    mocks.runUploadConfirm.mockRejectedValueOnce(
-      new Error('[STALE_JOB_SKIPPED] より新しいアップロードが既に反映されています'),
-    );
-
-    const response = await request(app)
-      .post('/api/upload/confirm')
-      .field('uploadType', 'dead_stock')
-      .field('headerRowIndex', '0')
-      .field('applyMode', 'replace')
-      .field('mapping', JSON.stringify({
-        drug_code: '0',
-        drug_name: '1',
-        quantity: '2',
-        unit: null,
-        yakka_unit_price: null,
-        expiration_date: null,
-        lot_number: null,
-      }))
-      .attach('file', Buffer.from('dummy-xlsx-content'), {
-        filename: 'dead-stock.xlsx',
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-
-    expect(response.status).toBe(409);
-    expect(response.body).toEqual({
-      error: 'より新しいアップロードが既に反映されています。最新データで再度実行してください。',
-      code: 'STALE_JOB_SKIPPED',
-    });
-    expect(mocks.runUploadConfirm).toHaveBeenCalledTimes(1);
-  });
-
-  it('enqueues async confirm job', async () => {
-    const app = createApp();
+    mocks.enqueueUploadConfirmJob.mockRejectedValueOnce(new Error('queue unavailable'));
 
     const response = await request(app)
       .post('/api/upload/confirm-async')
@@ -618,22 +545,9 @@ describe('upload routes', () => {
         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
-    expect(response.status).toBe(202);
-    expect(response.body).toEqual({
-      message: 'アップロード処理を受け付けました',
-      jobId: 9001,
-      status: 'pending',
-      deduplicated: false,
-      cancelable: true,
-      canceledAt: null,
-      partialSummary: null,
-      errorReportAvailable: false,
-    });
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: '非同期アップロード処理の受付に失敗しました' });
     expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledTimes(1);
-    expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledWith(expect.objectContaining({
-      requestedAtIso: expect.any(String),
-    }));
-    expect(mocks.processUploadConfirmJobById).not.toHaveBeenCalled();
   });
 
   it('enqueues async confirm job without mapping by auto-resolving fixed columns', async () => {
@@ -660,33 +574,6 @@ describe('upload routes', () => {
         quantity: '2',
       }),
     }));
-  });
-
-  it('returns bad request when explicit mapping is out of header range on confirm-async', async () => {
-    const app = createApp();
-
-    const response = await request(app)
-      .post('/api/upload/confirm-async')
-      .field('uploadType', 'dead_stock')
-      .field('headerRowIndex', '0')
-      .field('applyMode', 'replace')
-      .field('mapping', JSON.stringify({
-        drug_code: '0',
-        drug_name: '9',
-        quantity: '2',
-        unit: null,
-        yakka_unit_price: null,
-        expiration_date: null,
-        lot_number: null,
-      }))
-      .attach('file', Buffer.from('dummy-xlsx-content'), {
-        filename: 'dead-stock.xlsx',
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: '薬剤名カラムの割り当てが見出し範囲外です' });
-    expect(mocks.enqueueUploadConfirmJob).not.toHaveBeenCalled();
   });
 
   it('returns bad request when idempotency key format is invalid on confirm-async', async () => {
@@ -744,7 +631,6 @@ describe('upload routes', () => {
 
     expect(response.status).toBe(202);
     expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledTimes(1);
-    expect(mocks.processUploadConfirmJobById).not.toHaveBeenCalled();
   });
 
   it('returns 429 when async queue is full', async () => {
@@ -784,7 +670,6 @@ describe('upload routes', () => {
       limit: 3,
       activeJobs: 3,
     });
-    expect(mocks.processUploadConfirmJobById).not.toHaveBeenCalled();
     expect(mocks.parseExcelBuffer).toHaveBeenCalledTimes(1);
   });
 

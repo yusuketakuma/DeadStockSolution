@@ -3,11 +3,12 @@ import {
   calculateCandidateScore,
   DEFAULT_MATCHING_SCORING_RULES,
   getNearExpiryCount,
+  isExpiredDate,
   type MatchingScoringRules,
 } from '../services/matching-score-service';
 import { MatchItem } from '../types';
 
-function createItem(expirationDate: string | null): MatchItem {
+function createItem(expirationDate: string | null, expirationDateIso?: string | null): MatchItem {
   return {
     deadStockItemId: 1,
     drugName: '薬A',
@@ -16,6 +17,7 @@ function createItem(expirationDate: string | null): MatchItem {
     yakkaUnitPrice: 100,
     yakkaValue: 1000,
     expirationDate,
+    expirationDateIso: expirationDateIso ?? null,
     matchScore: 0.9,
   };
 }
@@ -35,12 +37,21 @@ describe('matching-score-service configurable scoring', () => {
       createItem('2026-02-05'),
       createItem('2026-02-18'),
       createItem('2026-03-10'),
+      createItem(null, '2026-02-03'),
       createItem(null),
     ];
 
-    expect(getNearExpiryCount(items, 10)).toBe(1);
-    expect(getNearExpiryCount(items, 20)).toBe(2);
-    expect(getNearExpiryCount(items, DEFAULT_MATCHING_SCORING_RULES.nearExpiryDays)).toBe(3);
+    const now = new Date('2026-02-01T00:00:00.000Z');
+    expect(getNearExpiryCount(items, 10, now)).toBe(2);
+    expect(getNearExpiryCount(items, 20, now)).toBe(3);
+    expect(getNearExpiryCount(items, DEFAULT_MATCHING_SCORING_RULES.nearExpiryDays, now)).toBe(4);
+  });
+
+  it('treats dates before today as expired', () => {
+    expect(isExpiredDate('2026-01-31')).toBe(true);
+    expect(isExpiredDate('2026-02-01')).toBe(false);
+    expect(isExpiredDate('2026-02-15')).toBe(false);
+    expect(isExpiredDate(null)).toBe(false);
   });
 
   it('calculates score using profile weights instead of hardcoded constants', () => {

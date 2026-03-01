@@ -54,38 +54,38 @@ describe('notification routes', () => {
     expect(mocks.getDashboardUnreadCount).toHaveBeenCalledWith(10);
   });
 
-  it('POST /api/notifications/:id/read returns 400 for invalid id', async () => {
+  it('PATCH /api/notifications/:id/read returns 400 for invalid id', async () => {
     const app = createApp();
     const { default: notificationsRouter } = await import('../routes/notifications');
     app.use('/api/notifications', notificationsRouter);
 
-    const response = await request(app).post('/api/notifications/invalid/read');
+    const response = await request(app).patch('/api/notifications/invalid/read');
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: '不正なIDです' });
     expect(mocks.markAsRead).not.toHaveBeenCalled();
   });
 
-  it('POST /api/notifications/:id/read returns 404 when target is missing', async () => {
+  it('PATCH /api/notifications/:id/read returns 404 when target is missing', async () => {
     const app = createApp();
     const { default: notificationsRouter } = await import('../routes/notifications');
     app.use('/api/notifications', notificationsRouter);
     mocks.markAsRead.mockResolvedValue(false);
 
-    const response = await request(app).post('/api/notifications/999/read');
+    const response = await request(app).patch('/api/notifications/999/read');
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: '通知が見つかりません' });
     expect(mocks.markAsRead).toHaveBeenCalledWith(999, 10);
   });
 
-  it('POST /api/notifications/:id/read marks one notification as read', async () => {
+  it('PATCH /api/notifications/:id/read marks one notification as read', async () => {
     const app = createApp();
     const { default: notificationsRouter } = await import('../routes/notifications');
     app.use('/api/notifications', notificationsRouter);
     mocks.markAsRead.mockResolvedValue(true);
 
-    const response = await request(app).post('/api/notifications/1/read');
+    const response = await request(app).patch('/api/notifications/1/read');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ message: '既読にしました' });
@@ -105,16 +105,4 @@ describe('notification routes', () => {
     expect(mocks.markAllDashboardAsRead).toHaveBeenCalledWith(10);
   });
 
-  it('POST /api/notifications/read-all returns updated count', async () => {
-    const app = createApp();
-    const { default: notificationsRouter } = await import('../routes/notifications');
-    app.use('/api/notifications', notificationsRouter);
-    mocks.markAllDashboardAsRead.mockResolvedValue(2);
-
-    const response = await request(app).post('/api/notifications/read-all');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ message: '2件を既読にしました', count: 2 });
-    expect(mocks.markAllDashboardAsRead).toHaveBeenCalledWith(10);
-  });
 });

@@ -12,7 +12,7 @@ import {
   previewDeadStockDiff,
   previewUsedMedicationDiff,
 } from '../services/upload-diff-service';
-import { runUploadConfirm, type ApplyMode } from '../services/upload-confirm-service';
+import { type ApplyMode } from '../services/upload-confirm-service';
 import {
   cancelUploadConfirmJobForPharmacy,
   enqueueUploadConfirmJob,
@@ -57,16 +57,6 @@ function parseDeleteMissing(raw: unknown): boolean {
   if (typeof raw === 'boolean') return raw;
   if (typeof raw === 'string') return raw === 'true' || raw === '1';
   return false;
-}
-
-function shouldProcessUploadJobImmediately(): boolean {
-  // Large-scale mode: always process through the queue worker to keep strict FIFO behavior.
-  return false;
-}
-
-function isStaleUploadSkippedError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  return /^\[STALE_JOB_SKIPPED]/.test(err.message);
 }
 
 function resolvePrefixedJobErrorCode(rawMessage: string | null): string | null {
@@ -382,89 +372,6 @@ router.post('/diff-preview', uploadSingleFile, async (req: AuthRequest, res: Res
   }
 });
 
-// Confirm: re-parse file with confirmed mapping, extract data, save to DB
-router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response) => {
-  const confirmRequestedAt = new Date().toISOString();
-  try {
-    const uploadFile = getUploadFileOrReject(req, res);
-    if (!uploadFile) return;
-
-    const uploadType = getUploadTypeOrReject(req, res);
-    if (!uploadType) return;
-
-    const applyMode = parseApplyMode(req.body.applyMode);
-    if (!applyMode) {
-      logUploadFailure(req, 'confirm', 'invalid_apply_mode', {
-        applyMode: String(req.body.applyMode ?? ''),
-      });
-      res.status(400).json({ error: 'applyMode は replace / diff / partial を指定してください' });
-      return;
-    }
-
-    const headerRowIndex = parseHeaderRowIndexOrReject(req, res);
-    if (headerRowIndex === null) return;
-
-    const allRows = await parseExcelRowsOrReject(req, res, 'confirm', uploadFile.buffer);
-    if (!allRows) return;
-
-    if (headerRowIndex >= allRows.length) {
-      logUploadFailure(req, 'confirm', 'header_row_out_of_range', {
-        headerRowIndex,
-        rowCount: allRows.length,
-      });
-      res.status(400).json({ error: 'ヘッダー行指定が不正です' });
-      return;
-    }
-
-    const mapping = await resolveAndValidateMappingOrReject(req, res, allRows, headerRowIndex, uploadType, 'confirm');
-    if (!mapping) return;
-
-    const pharmacyId = req.user!.id;
-    const deleteMissing = parseDeleteMissing(req.body.deleteMissing);
-    const { uploadId, diffSummary, partialSummary, rowCount } = await runUploadConfirm({
-      pharmacyId,
-      uploadType,
-      originalFilename: uploadFile.originalname,
-      headerRowIndex,
-      mapping,
-      allRows,
-      applyMode,
-      deleteMissing,
-      staleGuardCreatedAt: confirmRequestedAt,
-    });
-
-    res.json({
-      message: `${rowCount}件のデータを登録しました`,
-      uploadId,
-      rowCount,
-      applyMode,
-      deleteMissing: applyMode === 'diff' ? deleteMissing : undefined,
-      diffSummary: applyMode === 'diff' ? diffSummary : undefined,
-      partialSummary: applyMode === 'partial' ? partialSummary : undefined,
-      errorReportAvailable: applyMode === 'partial'
-        ? (partialSummary?.rejectedRows ?? 0) > 0
-        : false,
-    });
-  } catch (err) {
-    if (isStaleUploadSkippedError(err)) {
-      logUploadFailure(req, 'confirm', 'stale_upload_skipped');
-      res.status(409).json({
-        error: 'より新しいアップロードが既に反映されています。最新データで再度実行してください。',
-        code: 'STALE_JOB_SKIPPED',
-      });
-      return;
-    }
-
-    logger.error('Upload confirm error', () => ({
-      ...getBaseContext(req),
-      error: getErrorMessage(err),
-      stack: err instanceof Error ? err.stack : undefined,
-    }));
-    logUploadFailure(req, 'confirm', 'unexpected_error', { error: getErrorMessage(err) });
-    res.status(500).json({ error: 'データ登録またはマッチング更新に失敗しました' });
-  }
-});
-
 // Confirm (async): enqueue background upload processing job.
 router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Response) => {
   const confirmRequestedAt = new Date().toISOString();
@@ -522,13 +429,6 @@ router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Re
       fileBuffer: uploadFile.buffer,
       requestedAtIso: confirmRequestedAt,
     });
-
-    if (shouldProcessUploadJobImmediately()) {
-      logger.warn('UPLOAD_CONFIRM_PROCESS_ON_ENQUEUE is ignored in sequential queue mode', {
-        jobId: enqueueResult.jobId,
-        pharmacyId,
-      });
-    }
 
     res.status(202).json({
       message: 'アップロード処理を受け付けました',

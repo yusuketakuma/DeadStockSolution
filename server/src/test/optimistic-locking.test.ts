@@ -66,6 +66,18 @@ vi.mock('../middleware/csrf', () => ({
   csrfProtection: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
+vi.mock('../services/openclaw-service', () => ({
+  handoffToOpenClaw: vi.fn(() => Promise.resolve({
+    accepted: true,
+    connectorConfigured: true,
+    implementationBranch: 'review',
+    status: 'in_dialogue',
+    threadId: 'thread-1',
+    summary: null,
+    note: 'ok',
+  })),
+}));
+
 // ── ヘルパー関数 ──────────────────────────────────────────
 
 function createSelectChain(rows: unknown[]) {
@@ -143,10 +155,29 @@ describe('Optimistic Locking - Account Update', () => {
       isAdmin: false,
       isActive: true,
       version: 2,
+      passwordHash: 'hashed',
     };
 
     const updateChain = createUpdateChain([updatedData]);
     mocks.db.update.mockReturnValue(updateChain);
+    mocks.db.select.mockReturnValue(createSelectChain([{
+      id: 1,
+      email: 'test@example.com',
+      name: '旧薬局名',
+      postalCode: '1000001',
+      address: '千代田区1-1',
+      phone: '03-1234-5678',
+      fax: '03-1234-5679',
+      licenseNumber: 'ABC123',
+      prefecture: '東京都',
+      isTestAccount: false,
+      testAccountPassword: null,
+    }]));
+
+    // Mock for re-verification trigger (db.insert for userRequests)
+    const insertReturningMock = vi.fn().mockResolvedValue([{ id: 99 }]);
+    const insertValuesMock = vi.fn(() => ({ returning: insertReturningMock }));
+    mocks.db.insert.mockReturnValue({ values: insertValuesMock });
 
     const res = await request(app)
       .put('/api/account')
@@ -156,7 +187,7 @@ describe('Optimistic Locking - Account Update', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toBe('アカウント情報を更新しました');
+    expect(res.body.message).toContain('アカウント情報を更新しました');
     expect(res.body.version).toBe(2);
     expect(mocks.invalidateAuthUserCache).toHaveBeenCalledWith(1);
   });
@@ -249,10 +280,29 @@ describe('Optimistic Locking - Account Update', () => {
       isAdmin: false,
       isActive: true,
       version: 6,
+      passwordHash: 'hashed',
     };
 
     const updateChain = createUpdateChain([updatedData]);
     mocks.db.update.mockReturnValue(updateChain);
+    mocks.db.select.mockReturnValue(createSelectChain([{
+      id: 1,
+      email: 'test@example.com',
+      name: '旧薬局名',
+      postalCode: '1000001',
+      address: '千代田区1-1',
+      phone: '03-1234-5678',
+      fax: '03-1234-5679',
+      licenseNumber: 'ABC123',
+      prefecture: '東京都',
+      isTestAccount: false,
+      testAccountPassword: null,
+    }]));
+
+    // Mock for re-verification trigger
+    const insertReturningMock = vi.fn().mockResolvedValue([{ id: 99 }]);
+    const insertValuesMock = vi.fn(() => ({ returning: insertReturningMock }));
+    mocks.db.insert.mockReturnValue({ values: insertValuesMock });
 
     const res = await request(app)
       .put('/api/account')
@@ -263,12 +313,90 @@ describe('Optimistic Locking - Account Update', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.version).toBe(6);
-    // set に version インクリメントが含まれることを確認
-    expect(updateChain.set).toHaveBeenCalledTimes(1);
+    // set の最初の呼び出しが version インクリメントを含むことを確認
+    expect(updateChain.set).toHaveBeenCalled();
     const setCalls = updateChain.set.mock.calls as unknown[][];
     const setArg = setCalls[0]?.[0];
     expect(setArg).toHaveProperty('version');
     expect(setArg).toHaveProperty('updatedAt');
+  });
+
+  it('should not trigger re-verification when target field value is unchanged', async () => {
+    const app = await createAccountApp();
+    const updateChain = createUpdateChain([{
+      id: 1,
+      email: 'test@example.com',
+      isAdmin: false,
+      isActive: true,
+      version: 4,
+      passwordHash: 'hashed',
+    }]);
+    mocks.db.update.mockReturnValue(updateChain);
+    mocks.db.select.mockReturnValue(createSelectChain([{
+      id: 1,
+      email: 'test@example.com',
+      name: '同じ薬局名',
+      postalCode: '1000001',
+      address: '千代田区1-1',
+      phone: '03-1234-5678',
+      fax: '03-1234-5679',
+      licenseNumber: 'ABC123',
+      prefecture: '東京都',
+      isTestAccount: false,
+      testAccountPassword: null,
+    }]));
+
+    const res = await request(app)
+      .put('/api/account')
+      .send({
+        name: '同じ薬局名',
+        version: 3,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.verificationStatus).toBeUndefined();
+    expect(mocks.db.insert).not.toHaveBeenCalled();
+  });
+
+  it('should return 503 when re-verification enqueue fails after account update', async () => {
+    const app = await createAccountApp();
+    const updateChain = createUpdateChain([{
+      id: 1,
+      email: 'test@example.com',
+      isAdmin: false,
+      isActive: true,
+      version: 3,
+      passwordHash: 'hashed',
+    }]);
+    mocks.db.update.mockReturnValue(updateChain);
+    mocks.db.select.mockReturnValue(createSelectChain([{
+      id: 1,
+      email: 'test@example.com',
+      name: '旧薬局名',
+      postalCode: '1000001',
+      address: '千代田区1-1',
+      phone: '03-1234-5678',
+      fax: '03-1234-5679',
+      licenseNumber: 'ABC123',
+      prefecture: '東京都',
+      isTestAccount: false,
+      testAccountPassword: null,
+    }]));
+    const insertReturningMock = vi.fn().mockRejectedValue(new Error('insert failed'));
+    const insertValuesMock = vi.fn(() => ({ returning: insertReturningMock }));
+    mocks.db.insert.mockReturnValue({ values: insertValuesMock });
+
+    const res = await request(app)
+      .put('/api/account')
+      .send({
+        name: '更新薬局',
+        version: 2,
+      });
+
+    expect(res.status).toBe(503);
+    expect(res.body.partialSuccess).toBe(true);
+    expect(res.body.version).toBe(3);
+    expect(res.body.verificationStatus).toBe('pending_verification');
   });
 });
 
