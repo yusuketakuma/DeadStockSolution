@@ -14,7 +14,7 @@ import {
 import { type RawTimelineEvent } from '../types/timeline';
 
 // Drizzle ORM のクエリビルダー型（db.select() が返すオブジェクト）
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type DbClient = { select: (...args: any[]) => any };
 
 // ── マッピング関数（テスト可能な純粋関数として分離） ──────

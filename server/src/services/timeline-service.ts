@@ -21,7 +21,7 @@ import {
 import { assignPriority } from './timeline-priority-engine';
 
 // aggregators.ts と同じ緩い型定義。テスト時のモック注入を可能にする。
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type DbClient = { select: (...args: any[]) => any; update: (...args: any[]) => any };
 
 export interface TimelineQueryOptions {
