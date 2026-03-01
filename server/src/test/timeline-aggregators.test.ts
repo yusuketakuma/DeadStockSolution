@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   mapNotificationToEvent,
   mapMatchNotificationToEvent,
   mapProposalToEvent,
   mapCommentToEvent,
+  fetchCommentEvents,
   mapFeedbackToEvent,
   mapUploadToEvent,
   mapAdminMessageToEvent,
@@ -149,7 +150,7 @@ describe('mapProposalToEvent', () => {
     expect(event.type).toBe('proposal_proposed');
     expect(event.title).toContain('送信済み');
     expect(event.actionPath).toBe('/proposals/20');
-    expect(event.metadata).toMatchObject({ proposalId: 20, isRequester: true });
+    expect(event.metadata).toMatchObject({ proposalId: 20, isInbound: false });
   });
 
   it('受信者として提案イベントを変換する', () => {
@@ -164,7 +165,7 @@ describe('mapProposalToEvent', () => {
     const event = mapProposalToEvent(row, 4);
 
     expect(event.title).toContain('受信');
-    expect(event.metadata).toMatchObject({ isRequester: false });
+    expect(event.metadata).toMatchObject({ isInbound: true });
   });
 
   it('空の配列でもmapは正しく機能する', () => {
@@ -219,6 +220,64 @@ describe('mapCommentToEvent', () => {
     expect(event.body.length).toBeLessThan(longBody.length);
     expect(event.body.endsWith('…')).toBe(true);
     expect(event.isRead).toBe(true);
+  });
+});
+
+describe('fetchCommentEvents', () => {
+  it('提案参加者に紐づくコメントのみ取得するための結合条件を組み立てる', async () => {
+    const chain = {
+      select: (() => {
+        const fn = vi.fn();
+        return fn;
+      })(),
+      from: (() => {
+        const fn = vi.fn();
+        return fn;
+      })(),
+      innerJoin: (() => {
+        const fn = vi.fn();
+        return fn;
+      })(),
+      where: (() => {
+        const fn = vi.fn();
+        return fn;
+      })(),
+      orderBy: (() => {
+        const fn = vi.fn();
+        return fn;
+      })(),
+    };
+
+    chain.select.mockReturnValue(chain);
+    chain.from.mockReturnValue(chain);
+    chain.innerJoin.mockReturnValue(chain);
+    chain.where.mockReturnValue(chain);
+    chain.orderBy.mockResolvedValue([
+      {
+        id: 40,
+        proposalId: 900,
+        authorPharmacyId: 2,
+        body: '相手薬局のコメント',
+        readByRecipient: false,
+        createdAt: '2026-01-09T10:00:00.000Z',
+      },
+    ]);
+
+    const db = { select: chain.select } as { select: typeof chain.select };
+
+    const events = await fetchCommentEvents(db, 1, '2026-01-01T00:00:00.000Z');
+
+    expect(chain.from).toHaveBeenCalledTimes(1);
+    expect(chain.innerJoin).toHaveBeenCalledTimes(1);
+    expect(chain.where).toHaveBeenCalledTimes(1);
+    expect(chain.orderBy).toHaveBeenCalledTimes(1);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      id: 'comment_40',
+      source: 'comment',
+      type: 'new_comment',
+      metadata: { proposalId: 900 },
+    });
   });
 });
 

@@ -53,7 +53,7 @@ export function assignPriority(event: RawTimelineEvent, now: Date = new Date()):
   if (
     event.source === 'proposal' &&
     event.type === 'proposed' &&
-    event.metadata?.isInbound === true
+    (event.metadata?.isInbound === true || event.metadata?.isRequester === false)
   ) {
     return 'high';
   }

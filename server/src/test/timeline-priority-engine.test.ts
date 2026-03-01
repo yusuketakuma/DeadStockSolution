@@ -112,6 +112,15 @@ describe('timeline-priority-engine', () => {
       });
       expect(assignPriority(event, NOW)).not.toBe('high');
     });
+
+    it('旧仕様の isRequester=false でも受信として扱う', () => {
+      const event = makeEvent({
+        source: 'proposal',
+        type: 'proposed',
+        metadata: { isRequester: false },
+      });
+      expect(assignPriority(event, NOW)).toBe('high');
+    });
   });
 
   describe('High: 新規マッチング候補', () => {

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lte, ne, or } from 'drizzle-orm';
 import {
   notifications as notificationsTable,
   matchNotifications,
@@ -88,8 +88,9 @@ export function mapProposalToEvent(
   },
   pharmacyId: number,
 ): RawTimelineEvent {
-  const isRequester = row.pharmacyAId === pharmacyId;
-  const roleLabel = isRequester ? '送信済み' : '受信';
+  const isInbound = row.pharmacyBId === pharmacyId;
+  const isRequester = !isInbound;
+  const roleLabel = isInbound ? '受信' : '送信済み';
 
   return {
     id: `proposal_${row.id}`,
@@ -103,6 +104,8 @@ export function mapProposalToEvent(
     metadata: {
       proposalId: row.id,
       status: row.status,
+      isInbound,
+      // 後方互換: 既存 UI/テスト期待を崩さないため残置
       isRequester,
     },
   };
@@ -353,7 +356,15 @@ export async function fetchCommentEvents(
   pharmacyId: number,
   since?: string,
 ): Promise<RawTimelineEvent[]> {
-  const conditions = [eq(proposalComments.isDeleted, false)];
+  const conditions = [
+    eq(proposalComments.isDeleted, false),
+    ne(proposalComments.authorPharmacyId, pharmacyId),
+    or(
+      eq(exchangeProposals.pharmacyAId, pharmacyId),
+      eq(exchangeProposals.pharmacyBId, pharmacyId),
+    ),
+  ];
+
   if (since) {
     conditions.push(gte(proposalComments.createdAt, since));
   }
@@ -368,13 +379,14 @@ export async function fetchCommentEvents(
       createdAt: proposalComments.createdAt,
     })
     .from(proposalComments)
+    .innerJoin(
+      exchangeProposals,
+      eq(proposalComments.proposalId, exchangeProposals.id),
+    )
     .where(and(...conditions))
     .orderBy(desc(proposalComments.createdAt));
 
-  // アプリケーション層で自分のコメントを除外（自分が書いたコメントは通知対象外）
-  return rows
-    .filter((row: typeof rows[number]) => row.authorPharmacyId !== pharmacyId)
-    .map(mapCommentToEvent);
+  return rows.map(mapCommentToEvent);
 }
 
 export async function fetchFeedbackEvents(
