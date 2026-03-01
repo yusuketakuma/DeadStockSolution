@@ -22,6 +22,7 @@ import { createPasswordResetToken, resetPasswordWithToken } from '../services/pa
 import { logger } from '../services/logger';
 import { handleRouteError } from '../middleware/error-handler';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
+import { handoffToOpenClaw } from '../services/openclaw-service';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -285,6 +286,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
         approved: true as const,
         reviewId: review.id,
         pharmacyId: createdPharmacy.id,
+        verificationRequestId: verificationRequest.id,
       };
     });
 
@@ -316,6 +318,25 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       message: '登録申請を受け付けました。審査完了後にメールでお知らせします。',
       verificationStatus: 'pending_verification',
       pharmacyId,
+    });
+
+    // Fire-and-forget: OpenClaw verification handoff
+    handoffToOpenClaw({
+      requestId: registrationResult.verificationRequestId,
+      pharmacyId,
+      requestText: JSON.stringify({
+        type: 'pharmacy_verification',
+        pharmacyName: name,
+        postalCode: normalizedPostalCode,
+        prefecture,
+        address,
+        licenseNumber,
+      }),
+    }).catch((err) => {
+      logger.error('OpenClaw verification handoff failed', () => ({
+        pharmacyId,
+        error: err instanceof Error ? err.message : String(err),
+      }));
     });
   } catch (err) {
     if (handleAuthConfigurationError('Registration', err, res)) {
