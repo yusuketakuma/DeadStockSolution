@@ -5,6 +5,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/auth';
+import verificationRoutes from './routes/verification';
 import accountRoutes from './routes/account';
 import adminRoutes from './routes/admin';
 import uploadRoutes from './routes/upload';
@@ -167,6 +168,7 @@ app.use('/api', csrfProtection);
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth', verificationRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
