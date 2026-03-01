@@ -4,6 +4,7 @@ import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../config/database';
 import { userRequests, notifications } from '../db/schema';
 import { logger } from '../services/logger';
+import { processVerificationCallback } from '../services/pharmacy-verification-callback-service';
 import {
   canTransitionOpenClawStatus,
   consumeOpenClawWebhookReplay,
@@ -94,6 +95,7 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       openclawStatus: userRequests.openclawStatus,
       openclawThreadId: userRequests.openclawThreadId,
       openclawSummary: userRequests.openclawSummary,
+      requestText: userRequests.requestText,
     })
       .from(userRequests)
       .where(eq(userRequests.id, requestId))
@@ -169,6 +171,29 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
         receivedTimestamp: timestamp,
       });
       throw err;
+    }
+
+    // Process pharmacy verification callback if applicable
+    if (status === 'completed') {
+      try {
+        const requestContent = JSON.parse(current.requestText ?? '{}');
+        if (requestContent.type === 'pharmacy_verification') {
+          const verificationData = JSON.parse(summary ?? '{}');
+          await processVerificationCallback({
+            pharmacyId: current.pharmacyId,
+            requestId,
+            approved: verificationData.approved === true,
+            reason: verificationData.reason || '',
+          });
+        }
+      } catch (verificationErr) {
+        logger.error('Pharmacy verification callback processing failed', {
+          requestId,
+          pharmacyId: current.pharmacyId,
+          error: verificationErr instanceof Error ? verificationErr.message : String(verificationErr),
+        });
+        // Don't fail the whole callback - the OpenClaw status was already updated
+      }
     }
 
     res.json({
