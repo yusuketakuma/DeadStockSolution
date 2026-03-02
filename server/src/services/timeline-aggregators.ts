@@ -638,7 +638,7 @@ export async function fetchExpiryRiskEvents(
     })
     .from(deadStockItems)
     .where(and(...conditions))
-    .orderBy(deadStockItems.expirationDateIso);
+    .orderBy(desc(deadStockItems.createdAt));
   if (limit) query = query.limit(limit);
 
   const rows = await query;
