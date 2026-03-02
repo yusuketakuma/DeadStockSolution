@@ -20,6 +20,7 @@ import searchRoutes from './routes/search';
 import drugMasterRoutes from './routes/drug-master';
 import adminErrorCodesRoutes from './routes/admin-error-codes';
 import adminLogCenterRoutes from './routes/admin-log-center';
+import openclawCommandsRoutes from './routes/openclaw-commands';
 import updatesRoutes from './routes/updates';
 import internalMatchingRefreshRoutes from './routes/internal-matching-refresh';
 import internalMonthlyReportsRoutes from './routes/internal-monthly-reports';
@@ -138,8 +139,8 @@ app.use(compression({
 app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buf) => {
-    // rawBody is only required for OpenClaw webhook HMAC verification.
-    if (req.url?.startsWith('/api/openclaw/callback')) {
+    // rawBody is required for OpenClaw webhook HMAC verification.
+    if (req.url?.startsWith('/api/openclaw/callback') || req.url?.startsWith('/api/openclaw/commands')) {
       (req as Request).rawBody = buf.toString('utf8');
     }
   },
@@ -181,6 +182,7 @@ app.use('/api/pharmacies', pharmaciesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/requests', requestsRoutes);
 app.use('/api/openclaw', openclawRoutes);
+app.use('/api/openclaw/commands', openclawCommandsRoutes);
 app.use('/api/business-hours', businessHoursRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/admin/drug-master', drugMasterRoutes);
