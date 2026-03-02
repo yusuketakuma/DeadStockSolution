@@ -68,6 +68,7 @@ export async function buildOpenClawLogContext(pharmacyId: number, now: Date = ne
   const windowStartIso = new Date(now.getTime() - windowHours * 60 * 60 * 1000).toISOString();
 
   const failureWhereClause = and(
+    eq(activityLogs.pharmacyId, pharmacyId),
     gte(activityLogs.createdAt, windowStartIso),
     like(activityLogs.detail, '失敗|%'),
     inArray(activityLogs.action, IMPORT_FAILURE_ACTIONS),
