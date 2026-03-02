@@ -9,6 +9,7 @@ import AppControl from '../components/ui/AppControl';
 import AppCard from '../components/ui/AppCard';
 import AppButton from '../components/ui/AppButton';
 import { useAsyncState } from '../hooks/useAsyncState';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import {
   type DiffSummary,
   type PartialSummary,
@@ -585,7 +586,7 @@ export default function UploadPage() {
   }, []);
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">Excelアップロード</h4>
       {error && <AppAlert variant="danger">{error}</AppAlert>}
       {message && <AppAlert variant="success">{message}</AppAlert>}
@@ -595,6 +596,7 @@ export default function UploadPage() {
         </AppAlert>
       )}
 
+      <ScrollArea>
       {uploadProgress.phase !== 'idle' && (
         <AppCard className="mb-3">
           <AppCard.Body>
@@ -847,6 +849,7 @@ export default function UploadPage() {
           </AppCard.Body>
         </AppCard>
       )}
-    </div>
+      </ScrollArea>
+    </PageShell>
   );
 }

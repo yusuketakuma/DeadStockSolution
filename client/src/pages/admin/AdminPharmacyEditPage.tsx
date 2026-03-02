@@ -21,6 +21,7 @@ import {
   SpecialType,
 } from '../../components/account/types';
 import { formatDateTimeJa } from '../../utils/formatters';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface AdminPharmacyData {
   id: number;
@@ -575,14 +576,14 @@ export default function AdminPharmacyEditPage() {
   }
 
   return (
-    <div>
+    <PageShell>
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h4 className="page-title mb-0">薬局情報編集（ID: {pharmacy.id}）</h4>
         <AppButton size="sm" variant="outline-secondary" onClick={navigateToList}>
           一覧へ戻る
         </AppButton>
       </div>
-
+      <ScrollArea>
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
@@ -718,6 +719,7 @@ export default function AdminPharmacyEditPage() {
         onSpecialClosedChange={handleSpecialClosedChange}
         onSpecial24HoursChange={handleSpecial24HoursChange}
       />
-    </div>
+      </ScrollArea>
+    </PageShell>
   );
 }

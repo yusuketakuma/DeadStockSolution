@@ -30,7 +30,7 @@ const OPENCLAW_STATUS_ORDER: Record<OpenClawStatus, number> = {
   completed: 3,
 };
 
-interface OpenClawConfig {
+export interface OpenClawConfig {
   mode: OpenClawConnectorMode;
   cliPath: string;
   baseUrl: string;
@@ -84,7 +84,10 @@ function stripTrailingSlash(url: string): string {
 
 function isLocalhostHost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
-  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+  return normalized === 'localhost'
+    || normalized === '127.0.0.1'
+    || normalized === '::1'
+    || normalized === '[::1]';
 }
 
 function normalizeBaseUrl(baseUrlRaw: string): { value: string; error: OpenClawBaseUrlError | null } {
@@ -483,6 +486,83 @@ async function handoffViaLegacyHttp(
   }
 
   return buildHandoffFailure(config, 'OpenClaw連携中にエラーが発生しました。');
+}
+
+export interface GatewaySendInput {
+  agentId: string;
+  message: string;
+  metadata?: unknown;
+}
+
+export function getOpenClawConfig(): OpenClawConfig {
+  return readConfig();
+}
+
+export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ summary: string }> {
+  const config = readConfig();
+
+  if (config.mode === 'gateway_cli') {
+    const timeoutSeconds = resolveGatewayTimeoutSeconds();
+    const args = [
+      'agent',
+      '--agent', input.agentId,
+      '--message', input.message,
+      '--thinking', 'low',
+      '--timeout', String(timeoutSeconds),
+      '--json',
+    ];
+
+    const { stdout } = await execFileAsync(config.cliPath, args, {
+      timeout: timeoutSeconds * 1000 + 3000,
+      maxBuffer: 2 * 1024 * 1024,
+      env: process.env,
+    });
+
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = JSON.parse(stdout) as Record<string, unknown>;
+    } catch {
+      parsed = {};
+    }
+
+    return {
+      summary:
+        (typeof parsed.result === 'string' ? parsed.result : null)
+        ?? (typeof parsed.message === 'string' ? parsed.message : null)
+        ?? stdout.slice(0, 500),
+    };
+  }
+
+  // Legacy HTTP mode
+  const timeoutMs = resolveGatewayTimeoutMs();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`${config.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.agentId,
+        messages: [{ role: 'user', content: input.message }],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenClaw API error: ${response.status}`);
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+    return {
+      summary: ((data?.choices as any)?.[0]?.message?.content as string) ?? '',
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function isOpenClawStatus(value: unknown): value is OpenClawStatus {

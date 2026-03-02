@@ -11,6 +11,7 @@ import AppControl from '../../components/ui/AppControl';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import { formatDateTimeJa } from '../../utils/formatters';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface UserRequestItem {
   id: number;
@@ -119,12 +120,13 @@ export default function AdminOpenClawPage() {
   };
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">OpenClaw連携</h4>
 
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
+      <ScrollArea>
       <AppCard>
         <AppCard.Header>要望一覧（管理者専用）</AppCard.Header>
         <AppCard.Body>
@@ -262,6 +264,7 @@ export default function AdminOpenClawPage() {
           )}
         </AppCard.Body>
       </AppCard>
-    </div>
+      </ScrollArea>
+    </PageShell>
   );
 }

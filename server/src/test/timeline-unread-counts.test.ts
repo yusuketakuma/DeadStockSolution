@@ -14,16 +14,19 @@ import {
 
 // --- DB モックヘルパー ---
 
-/** select().from().where() のチェーンモック（COUNT クエリ用） */
+/** select().from().where()/join のチェーンモック（COUNT クエリ用） */
 function makeMockDb(countResult: number) {
+  const where = vi.fn().mockResolvedValue([{ count: countResult }]);
+  const joinChain = { where };
+  const fromChain = {
+    where,
+    leftJoin: vi.fn().mockReturnValue(joinChain),
+    innerJoin: vi.fn().mockReturnValue(joinChain),
+  };
+
   return {
     select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([{ count: countResult }]),
-        leftJoin: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue([{ count: countResult }]),
-        }),
-      }),
+      from: vi.fn().mockReturnValue(fromChain),
     }),
     update: vi.fn(),
   };
@@ -81,6 +84,23 @@ describe('timeline-unread-counts', () => {
     const db = makeMockDb(4) as MockDb;
     const count = await countUnreadComments(db, pharmacyId, lastViewed);
     expect(count).toBe(4);
+  });
+
+  it('countUnreadComments: exchangeProposals と結合して参加中提案のみ対象にする', async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 2 }]);
+    const innerJoin = vi.fn().mockReturnValue({ where });
+    const from = vi.fn().mockReturnValue({ innerJoin, where, leftJoin: vi.fn() });
+    const db = {
+      select: vi.fn().mockReturnValue({ from }),
+      update: vi.fn(),
+    } as unknown as MockDb;
+
+    const count = await countUnreadComments(db, pharmacyId, lastViewed);
+
+    expect(count).toBe(2);
+    expect(from).toHaveBeenCalledTimes(1);
+    expect(innerJoin).toHaveBeenCalledTimes(1);
+    expect(where).toHaveBeenCalledTimes(1);
   });
 
   it('countUnreadComments: lastViewed が null の場合も動作する', async () => {

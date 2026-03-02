@@ -1,6 +1,7 @@
 import { db } from '../config/database';
 import { activityLogs } from '../db/schema';
 import { logger } from './logger';
+import { enqueueLogAlert } from './openclaw-log-push-service';
 
 export type LogAction =
   | 'login'
@@ -35,6 +36,7 @@ export async function writeLog(
     resourceId?: string | number;
     metadataJson?: string | Record<string, unknown> | null;
     ipAddress?: string;
+    errorCode?: string;
   } = {},
 ): Promise<void> {
   try {
@@ -62,7 +64,26 @@ export async function writeLog(
         : null,
       metadataJson,
       ipAddress: options.ipAddress ?? null,
+      errorCode: options.errorCode ?? null,
     });
+
+    // Forward failures to OpenClaw
+    const isFailure = options.detail?.startsWith('失敗|') ?? false;
+    const isFailedAction = action === 'login_failed' || action === 'password_reset_failed';
+    if (isFailure || isFailedAction) {
+      try {
+        enqueueLogAlert({
+          source: 'activity_logs',
+          severity: isFailure ? 'error' : 'warning',
+          errorCode: options.errorCode ?? null,
+          message: `[${action}] ${options.detail ?? ''}`.trim(),
+          logId: 0,
+          occurredAt: new Date().toISOString(),
+        });
+      } catch {
+        // Log push should never break the main flow
+      }
+    }
   } catch (err) {
     // Logging should never break the main flow
     logger.error('Failed to write activity log', {

@@ -11,6 +11,7 @@ import Pagination from '../../components/Pagination';
 import { api } from '../../api/client';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatCountJa, formatNumberJa } from '../../utils/formatters';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface BucketCounts {
   expired: number;
@@ -96,7 +97,7 @@ export default function AdminRiskPage() {
   const mergedErrorMessage = error || overviewError;
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">期限切れリスク分析</h4>
       {hasError && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -126,6 +127,7 @@ export default function AdminRiskPage() {
             </div>
           </div>
 
+          <ScrollArea>
           {rows.length === 0 ? (
             <AppEmptyState title="リスクデータがありません" description="在庫アップロード後に分析されます。" />
           ) : (
@@ -183,10 +185,11 @@ export default function AdminRiskPage() {
               )}
             />
           )}
+          </ScrollArea>
         </>
       )}
 
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-    </div>
+    </PageShell>
   );
 }

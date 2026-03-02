@@ -102,12 +102,70 @@
   min-height: 50vh;
 }
 
-/* Dashboard viewport-fit layout (PC only) */
+/* KPI tile */
+.dl-kpi-tile {
+  background: var(--dl-app-surface-muted, #f8fbfe);
+  border: 1px solid var(--dl-app-border, #d8e3ee);
+  border-radius: 10px;
+  padding: 0.6rem 0.4rem;
+  text-align: center;
+  transition: box-shadow 0.15s ease;
+}
+
+.dl-kpi-tile:hover {
+  box-shadow: 0 2px 8px rgba(22, 50, 74, 0.08);
+}
+
+.dl-kpi-value {
+  font-weight: 700;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  color: var(--dl-app-text, #16324a);
+}
+
+.dl-kpi-label {
+  font-size: 0.72rem;
+  color: var(--dl-app-text-muted, #5f7a92);
+  margin-top: 0.15rem;
+  line-height: 1.3;
+}
+
+.dl-kpi-tile--danger {
+  border-color: var(--dl-danger-border, #f5b5b5);
+  background: var(--dl-danger-soft, #fde8e8);
+}
+
+.dl-kpi-tile--danger .dl-kpi-value {
+  color: #c53030;
+}
+
+@media (max-width: 991.98px) {
+  .dl-kpi-tile {
+    padding: 0.5rem 0.3rem;
+  }
+
+  .dl-kpi-value {
+    font-size: 1.15rem;
+  }
+
+  .dl-kpi-label {
+    font-size: 0.68rem;
+  }
+}
+
+/* Page viewport-fit layout (PC only) */
 @media (min-width: 992px) {
-  .dashboard-viewport {
+  .page-viewport {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - var(--header-height) - 4.5rem);
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
+  }
+
+  .page-scroll-area {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 }

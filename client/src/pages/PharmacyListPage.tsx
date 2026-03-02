@@ -14,6 +14,7 @@ import AppEmptyState from '../components/ui/AppEmptyState';
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -155,7 +156,7 @@ export default function PharmacyListPage() {
     : pharmacies.find((p) => p.id === pendingBlockId) ?? null;
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">登録薬局一覧</h4>
 
       {message && <AppAlert variant="danger" dismissible onClose={() => setMessage('')}>{message}</AppAlert>}
@@ -197,6 +198,7 @@ export default function PharmacyListPage() {
         </Col>
       </Row>
 
+      <ScrollArea>
       {loading ? (
         <InlineLoader text="薬局一覧を読み込み中..." className="text-muted small" />
       ) : pharmacies.length === 0 ? (
@@ -322,6 +324,7 @@ export default function PharmacyListPage() {
           )}
         />
       )}
+      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
       <ConfirmActionModal
@@ -336,6 +339,6 @@ export default function PharmacyListPage() {
         onConfirm={confirmBlock}
         pending={blockSubmitting}
       />
-    </div>
+    </PageShell>
   );
 }

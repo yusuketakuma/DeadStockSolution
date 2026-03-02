@@ -53,15 +53,33 @@ function timestampSortValue(timestamp: string): number {
   return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 
+function eventIdForSort(id: string): number | null {
+  const separator = id.lastIndexOf('_');
+  if (separator < 0) return null;
+
+  const suffix = id.slice(separator + 1);
+  if (!/^\d+$/.test(suffix)) return null;
+
+  const parsed = Number(suffix);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /**
  * Timeline の並び順:
  * 1) timestamp DESC
- * 2) id ASC (同時刻時の決定論的 tie-break)
+ * 2) id DESC (同時刻時の決定論的 tie-break)
  */
 function compareTimelineOrder(a: TimelineSortable, b: TimelineSortable): number {
   const left = timestampSortValue(a.timestamp);
   const right = timestampSortValue(b.timestamp);
   if (left !== right) return right - left;
+
+  const aId = eventIdForSort(a.id);
+  const bId = eventIdForSort(b.id);
+  if (aId !== null && bId !== null) {
+    return bId - aId;
+  }
+
   return a.id.localeCompare(b.id);
 }
 
@@ -128,9 +146,10 @@ export async function getTimeline(
   const since = options?.since;
   const cursor = options?.cursor ?? null;
   const cursorBefore = cursor?.timestamp;
-  const perTableLimit = cursor
-    ? Math.min(Math.max(limit * CURSOR_FETCH_FACTOR, limit + 1), CURSOR_PER_TABLE_LIMIT_MAX)
-    : undefined;
+  const perTableLimit = Math.min(
+    Math.max(limit * CURSOR_FETCH_FACTOR, limit + 1),
+    CURSOR_PER_TABLE_LIMIT_MAX,
+  );
 
   const now = new Date();
   const rawEvents = await fetchAllEvents(db, pharmacyId, since, perTableLimit, cursorBefore);

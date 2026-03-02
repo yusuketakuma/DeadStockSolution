@@ -85,6 +85,11 @@ describe('openclaw-service', () => {
     expect(isOpenClawConnectorConfigured()).toBe(true);
   });
 
+  it('accepts HTTP for IPv6 localhost loopback', () => {
+    setConnectorEnv('http://[::1]:9000');
+    expect(isOpenClawConnectorConfigured()).toBe(true);
+  });
+
   it('requires OPENCLAW_CLI_PATH in gateway_cli mode', () => {
     process.env.OPENCLAW_CONNECTOR_MODE = 'gateway_cli';
     process.env.OPENCLAW_AGENT_ID = 'gateway-agent';

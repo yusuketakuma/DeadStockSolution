@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, FormEvent, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, FormEvent, useMemo, useRef, type ChangeEvent } from 'react';
+import { Form } from 'react-bootstrap';
 import AppAlert from '../components/ui/AppAlert';
 import AppButton from '../components/ui/AppButton';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,8 +11,10 @@ import DraftRestoreAlert from '../components/DraftRestoreAlert';
 import AccountInfoForm, { AccountFormState } from '../components/account/AccountInfoForm';
 import BusinessHoursSettings from '../components/account/BusinessHoursSettings';
 import WithdrawSection from '../components/account/WithdrawSection';
+import AppDataPanel from '../components/ui/AppDataPanel';
 import { useAutoSave } from '../hooks/useAutoSave';
 import InlineLoader from '../components/ui/InlineLoader';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import {
   AccountData,
   BusinessHourEntry,
@@ -59,6 +62,8 @@ export default function AccountPage() {
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawPassword, setWithdrawPassword] = useState('');
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  // 通知設定
+  const [notifySaving, setNotifySaving] = useState(false);
   // 楽観的ロック競合フラグ
   const [accountConflict, setAccountConflict] = useState(false);
   const [hoursConflict, setHoursConflict] = useState(false);
@@ -76,6 +81,8 @@ export default function AccountPage() {
   const [hoursSaving, setHoursSaving] = useState(false);
   const [hoursMessage, setHoursMessage] = useState('');
   const [hoursError, setHoursError] = useState('');
+
+  const matchingAutoNotify = account?.matchingAutoNotifyEnabled ?? true;
 
   const isAccountDirty = useMemo(() => {
     if (!account) return false;
@@ -243,6 +250,24 @@ export default function AccountPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }, []);
 
+  /** Conflict 時の最新データ反映（共通処理） */
+  const applyLatestAccountData = useCallback((latestData: AccountData) => {
+    setAccount(latestData);
+    setForm((prev) => ({
+      ...prev,
+      email: latestData.email,
+      name: latestData.name,
+      postalCode: latestData.postalCode,
+      address: latestData.address,
+      phone: latestData.phone,
+      fax: latestData.fax,
+      prefecture: latestData.prefecture,
+      licenseNumber: latestData.licenseNumber,
+      currentPassword: '',
+      newPassword: '',
+    }));
+  }, []);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -266,23 +291,9 @@ export default function AccountPage() {
     } catch (err) {
       if (isConflictError(err)) {
         setAccountConflict(true);
-        // 最新データでアカウント状態を更新
         const latestData = err.data.latestData as AccountData | undefined;
         if (latestData) {
-          setAccount(latestData);
-          setForm((prev) => ({
-            ...prev,
-            email: latestData.email,
-            name: latestData.name,
-            postalCode: latestData.postalCode,
-            address: latestData.address,
-            phone: latestData.phone,
-            fax: latestData.fax,
-            prefecture: latestData.prefecture,
-            licenseNumber: latestData.licenseNumber,
-            currentPassword: '',
-            newPassword: '',
-          }));
+          applyLatestAccountData(latestData);
         }
       } else if (isVerificationStatusError(err)) {
         const data = err.data as { verificationStatus: string; rejectionReason?: string };
@@ -305,6 +316,41 @@ export default function AccountPage() {
       setLoading(false);
     }
   };
+
+  const handleNotifyToggle = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
+    const enabled = e.target.checked;
+    const previousValue = account?.matchingAutoNotifyEnabled ?? true;
+    const currentVersion = account?.version;
+    // 楽観的にUIを更新
+    setAccount((prev) => prev ? { ...prev, matchingAutoNotifyEnabled: enabled } : prev);
+    setNotifySaving(true);
+    setError('');
+    try {
+      const result = await api.put<{ message: string; version: number }>('/account', {
+        matchingAutoNotifyEnabled: enabled,
+        version: currentVersion,
+      });
+      setAccount((prev) => prev ? { ...prev, matchingAutoNotifyEnabled: enabled, version: result.version } : prev);
+    } catch (err) {
+      if (isConflictError(err)) {
+        setAccountConflict(true);
+        const latestData = err.data.latestData as AccountData | undefined;
+        if (latestData) {
+          applyLatestAccountData(latestData);
+        } else {
+          // ロールバック
+          setAccount((prev) => prev ? { ...prev, matchingAutoNotifyEnabled: previousValue } : prev);
+        }
+        setError('他のデバイスまたはタブで更新されています。最新データを読み込みました。通知設定を確認して再度保存してください。');
+      } else {
+        // ロールバック
+        setAccount((prev) => prev ? { ...prev, matchingAutoNotifyEnabled: previousValue } : prev);
+        setError(err instanceof Error ? err.message : '通知設定の保存に失敗しました');
+      }
+    } finally {
+      setNotifySaving(false);
+    }
+  }, [account, applyLatestAccountData]);
 
   const handleReloadAccount = useCallback(async () => {
     setAccountConflict(false);
@@ -559,23 +605,24 @@ export default function AccountPage() {
 
   if (!account) {
     return (
-      <div>
+      <PageShell>
         <h4 className="page-title mb-3">薬局登録情報の編集</h4>
         {error && <AppAlert variant="danger">{error}</AppAlert>}
         <AppButton variant="outline-secondary" onClick={() => void loadAccount()}>
           再読み込み
         </AppButton>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">薬局登録情報の編集</h4>
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {warning && <AppAlert variant="warning" onClose={() => setWarning('')} dismissible>{warning}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
+      <ScrollArea>
       <ConflictAlert
         show={accountConflict}
         onReload={handleReloadAccount}
@@ -598,6 +645,20 @@ export default function AccountPage() {
         onSubmit={handleSubmit}
         onChange={handleChange}
       />
+
+      <AppDataPanel title="通知設定" className="mb-3">
+        <Form.Check
+          type="switch"
+          id="matching-auto-notify"
+          label="マッチング候補更新の自動通知"
+          checked={matchingAutoNotify}
+          disabled={notifySaving}
+          onChange={handleNotifyToggle}
+        />
+        <Form.Text className="text-muted">
+          他薬局のアップロードでマッチング候補が更新された時に通知を受け取ります。
+        </Form.Text>
+      </AppDataPanel>
 
       <ConflictAlert
         show={hoursConflict}
@@ -648,6 +709,7 @@ export default function AccountPage() {
         onPasswordChange={setWithdrawPassword}
         onWithdraw={handleWithdraw}
       />
+      </ScrollArea>
 
       <ConfirmActionModal
         show={showWithdrawConfirm}
@@ -659,6 +721,6 @@ export default function AccountPage() {
         onConfirm={handleWithdrawConfirmed}
         pending={withdrawing}
       />
-    </div>
+    </PageShell>
   );
 }

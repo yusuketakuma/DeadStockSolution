@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, FormEvent, useCallback } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import { Col, Row } from 'react-bootstrap';
 import { api, apiUpload } from '../../api/client';
+import Pagination from '../../components/Pagination';
 import DrugMasterSyncCard from './components/DrugMasterSyncCard';
 import PackageUploadCard from './components/PackageUploadCard';
 import AutoSyncStatusCard from './components/AutoSyncStatusCard';
@@ -11,6 +12,7 @@ import DrugMasterSearchFilter from './components/DrugMasterSearchFilter';
 import DrugMasterTable from './components/DrugMasterTable';
 import DrugMasterDetailModal from './components/DrugMasterDetailModal';
 import DrugMasterEditModal from './components/DrugMasterEditModal';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 import type { DrugMasterItem, DrugMasterDetail } from './components/types';
 
@@ -337,7 +339,7 @@ export default function AdminDrugMasterPage() {
   // ── レンダリング ──────────────────────────────────
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">医薬品マスター管理</h4>
 
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
@@ -392,16 +394,16 @@ export default function AdminDrugMasterPage() {
         onCategoryFilterChange={(v) => { setCategoryFilter(v); setPage(1); }}
       />
 
+      <ScrollArea>
       <DrugMasterTable
         items={items}
         loading={loading}
         totalItems={stats?.totalItems}
-        page={page}
-        totalPages={totalPages}
-        onPageChange={setPage}
         onOpenDetail={openDetail}
         onOpenEdit={openEdit}
       />
+      </ScrollArea>
+      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
       <DrugMasterDetailModal
         detail={detail}
@@ -417,6 +419,6 @@ export default function AdminDrugMasterPage() {
         onEditItemChange={setEditItem}
         onSave={handleEditSave}
       />
-    </div>
+    </PageShell>
   );
 }

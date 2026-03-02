@@ -7,6 +7,7 @@ import { usePaginatedList } from '../hooks/usePaginatedList';
 import { Link } from 'react-router-dom';
 import { formatDateJa, formatYen } from '../utils/formatters';
 import AppDataTable from '../components/ui/AppDataTable';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface HistoryItem {
   id: number;
@@ -47,8 +48,9 @@ export default function ExchangeHistoryPage() {
   );
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">交換履歴</h4>
+      <ScrollArea>
       <AppDataTable
         loading={loading}
         error={error}
@@ -117,7 +119,8 @@ export default function ExchangeHistoryPage() {
           </div>
         )}
       />
+      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-    </div>
+    </PageShell>
   );
 }

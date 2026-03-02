@@ -34,6 +34,7 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
       prefecture: pharmacies.prefecture,
       isAdmin: pharmacies.isAdmin,
       isTestAccount: pharmacies.isTestAccount,
+      matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled,
       version: pharmacies.version,
       createdAt: pharmacies.createdAt,
     })
@@ -70,6 +71,7 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       currentPassword,
       newPassword,
       testAccountPassword,
+      matchingAutoNotifyEnabled,
       version,
     } = req.body;
 
@@ -210,6 +212,14 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
       updates.testAccountPassword = normalizedTestAccountPassword;
     }
 
+    if (matchingAutoNotifyEnabled !== undefined) {
+      if (typeof matchingAutoNotifyEnabled !== 'boolean') {
+        res.status(400).json({ error: '通知設定の値が不正です' });
+        return;
+      }
+      updates.matchingAutoNotifyEnabled = matchingAutoNotifyEnabled;
+    }
+
     if (updates.email !== undefined) {
       const existingEmailRows = await db.select({ id: pharmacies.id })
         .from(pharmacies)
@@ -309,6 +319,7 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
         fax: pharmacies.fax,
         licenseNumber: pharmacies.licenseNumber,
         prefecture: pharmacies.prefecture,
+        matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled,
         version: pharmacies.version,
       })
         .from(pharmacies)

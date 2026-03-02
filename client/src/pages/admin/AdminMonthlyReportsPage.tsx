@@ -12,6 +12,7 @@ import Pagination from '../../components/Pagination';
 import { api, buildApiUrl } from '../../api/client';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa } from '../../utils/formatters';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface MonthlyReportListItem {
   id: number;
@@ -80,7 +81,7 @@ export default function AdminMonthlyReportsPage() {
   };
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">月次レポート</h4>
       {message && <AppAlert variant="success">{message}</AppAlert>}
       {actionError && <AppAlert variant="danger">{actionError}</AppAlert>}
@@ -127,6 +128,7 @@ export default function AdminMonthlyReportsPage() {
         </div>
       </form>
 
+      <ScrollArea>
       {loading ? (
         <InlineLoader text="月次レポート一覧を読み込み中..." className="text-muted small" />
       ) : rows.length === 0 ? (
@@ -185,8 +187,9 @@ export default function AdminMonthlyReportsPage() {
           )}
         />
       )}
+      </ScrollArea>
 
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-    </div>
+    </PageShell>
   );
 }

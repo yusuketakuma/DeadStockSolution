@@ -40,8 +40,7 @@ const ADMIN_ITEMS = [
   { to: '/admin/pharmacies', label: '薬局管理' },
   { to: '/admin/openclaw', label: 'OpenClaw連携' },
   { to: '/admin/drug-master', label: '医薬品マスター' },
-  { to: '/admin/logs', label: '操作ログ' },
-  { to: '/admin/system-events', label: 'システムイベント' },
+  { to: '/admin/log-center', label: 'ログセンター' },
 ];
 
 function SidebarLink({

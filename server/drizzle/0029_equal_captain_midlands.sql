@@ -1,4 +1,4 @@
-ALTER TABLE "pharmacies" ADD COLUMN "verification_status" text DEFAULT 'unverified' NOT NULL;--> statement-breakpoint
-ALTER TABLE "pharmacies" ADD COLUMN "verification_request_id" integer;--> statement-breakpoint
-ALTER TABLE "pharmacies" ADD COLUMN "verified_at" timestamp;--> statement-breakpoint
-ALTER TABLE "pharmacies" ADD COLUMN "rejection_reason" text;
+ALTER TABLE "pharmacies" ADD COLUMN IF NOT EXISTS "verification_status" text DEFAULT 'unverified' NOT NULL;--> statement-breakpoint
+ALTER TABLE "pharmacies" ADD COLUMN IF NOT EXISTS "verification_request_id" integer;--> statement-breakpoint
+ALTER TABLE "pharmacies" ADD COLUMN IF NOT EXISTS "verified_at" timestamp;--> statement-breakpoint
+ALTER TABLE "pharmacies" ADD COLUMN IF NOT EXISTS "rejection_reason" text;

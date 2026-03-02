@@ -14,6 +14,7 @@ import AppSelect from '../components/ui/AppSelect';
 import { formatDateTimeJa, formatYen } from '../utils/formatters';
 import AppActionBar from '../components/ui/AppActionBar';
 import AppDataTable from '../components/ui/AppDataTable';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface Proposal {
   id: number;
@@ -157,7 +158,7 @@ export default function ProposalsPage() {
   };
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">マッチング一覧</h4>
       {bulkError && <AppAlert variant="danger">{bulkError}</AppAlert>}
       {message && <AppAlert variant="success">{message}</AppAlert>}
@@ -207,6 +208,7 @@ export default function ProposalsPage() {
         )}
       />
 
+      <ScrollArea>
       <AppDataTable
         loading={loading}
         error={error}
@@ -312,7 +314,8 @@ export default function ProposalsPage() {
           </div>
         )}
       />
+      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-    </div>
+    </PageShell>
   );
 }

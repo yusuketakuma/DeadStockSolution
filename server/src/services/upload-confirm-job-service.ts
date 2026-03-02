@@ -1159,7 +1159,7 @@ export async function processUploadConfirmJobById(jobId: number): Promise<boolea
 }
 
 export async function processPendingUploadConfirmJobs(limit: number = RETRY_BATCH_SIZE): Promise<number> {
-  const normalizedLimit = Math.min(Math.max(Math.trunc(limit) || 1, 1), 1);
+  const normalizedLimit = Math.min(Math.max(Math.trunc(limit) || 1, 1), RETRY_BATCH_SIZE);
   let processed = 0;
   for (let i = 0; i < normalizedLimit; i += 1) {
     const job = await claimPendingUploadConfirmJob();

@@ -25,6 +25,7 @@ import {
   resolveUploadTypeLabel,
 } from '../upload/upload-job-utils';
 import { formatCountJa, formatDateTimeJa, formatNumberJa } from '../../utils/formatters';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface UploadJobRow {
   id: number;
@@ -197,7 +198,7 @@ export default function AdminUploadJobsPage() {
   );
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">アップロードジョブ管理 ({formatCountJa(pagination?.total ?? 0)})</h4>
 
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
@@ -258,6 +259,7 @@ export default function AdminUploadJobsPage() {
         </Col>
       </Row>
 
+      <ScrollArea>
       {loading ? (
         <InlineLoader text="アップロードジョブを読み込み中..." className="text-muted small mb-3" />
       ) : jobs.length === 0 ? (
@@ -336,6 +338,7 @@ export default function AdminUploadJobsPage() {
           )}
         />
       )}
+      </ScrollArea>
 
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
@@ -429,6 +432,6 @@ export default function AdminUploadJobsPage() {
           </AppCard.Body>
         </AppCard>
       )}
-    </div>
+    </PageShell>
   );
 }
