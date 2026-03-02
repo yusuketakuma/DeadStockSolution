@@ -21,6 +21,23 @@ describe('validateRegistration', () => {
     expect(validateRegistration(validData)).toEqual([]);
   });
 
+  it('trims surrounding whitespace in registration fields', () => {
+    expect(validateRegistration({
+      ...validData,
+      email: ' test@example.com ',
+      name: ' テスト薬局 ',
+      permitPharmacyName: ' テスト薬局 ',
+      postalCode: ' 100-0001 ',
+      address: ' 東京都千代田区1-1-1 ',
+      permitAddress: ' 東京都千代田区1-1-1 ',
+      licenseNumber: ' A12345 ',
+      permitLicenseNumber: ' A12345 ',
+      phone: ' 03-1234-5678 ',
+      fax: ' 03-1234-5679 ',
+      prefecture: ' 東京都 ',
+    })).toEqual([]);
+  });
+
   it('rejects invalid email format', () => {
     const errors = validateRegistration({ ...validData, email: 'invalid' });
     expect(errors.some((e) => e.field === 'email')).toBe(true);
@@ -100,6 +117,11 @@ describe('validateRegistration', () => {
 describe('validateLogin', () => {
   it('accepts valid login data', () => {
     const errors = validateLogin({ email: 'test@example.com', password: 'password' });
+    expect(errors).toEqual([]);
+  });
+
+  it('trims login email whitespace', () => {
+    const errors = validateLogin({ email: '  test@example.com  ', password: 'password' });
     expect(errors).toEqual([]);
   });
 
