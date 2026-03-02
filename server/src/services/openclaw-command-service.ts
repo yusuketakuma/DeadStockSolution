@@ -2,7 +2,34 @@ import { db } from '../config/database';
 import { openclawCommands } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { logger } from './logger';
+import { z } from 'zod';
 import type { LogSource, LogCenterQuery } from './log-center-service';
+
+// ── Zod スキーマ定義 ──────────────────────────────────────────
+
+// log-center-service.ts の LOG_SOURCES と一致させる（循環依存回避のため定数を複製）
+const LOG_SOURCE_VALUES = ['activity_logs', 'system_events', 'drug_master_sync_logs'] as const;
+
+const pharmacyToggleSchema = z.object({
+  pharmacyId: z.number().int().positive(),
+});
+
+const jobCancelSchema = z.object({
+  jobId: z.number().int().positive(),
+});
+
+const logsQuerySchema = z.object({
+  sources: z.array(z.enum(LOG_SOURCE_VALUES)).optional(),
+  level: z.enum(['critical', 'error', 'warning', 'info']).optional(),
+  search: z.string().optional(),
+  from: z.iso.datetime().optional(),
+  to: z.iso.datetime().optional(),
+  limit: z.number().int().positive().max(1000).optional(),
+});
+
+const notificationSendSchema = z.object({
+  message: z.string().min(1).max(100),
+});
 
 // ── 型定義 ──────────────────────────────────────────
 
@@ -44,14 +71,15 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
     category: 'read',
     descriptionJa: 'ログ検索',
     handler: async (params) => {
+      const validated = logsQuerySchema.parse(params);
       const { queryLogs } = await import('./log-center-service');
       return queryLogs({
-        sources: params.sources as LogSource[] | undefined,
-        level: params.level as LogCenterQuery['level'],
-        search: typeof params.search === 'string' ? params.search : undefined,
-        from: typeof params.from === 'string' ? params.from : undefined,
-        to: typeof params.to === 'string' ? params.to : undefined,
-        limit: Number(params.limit) || 50,
+        sources: validated.sources as LogSource[] | undefined,
+        level: validated.level as LogCenterQuery['level'],
+        search: validated.search,
+        from: validated.from,
+        to: validated.to,
+        limit: validated.limit ?? 50,
       });
     },
   },
@@ -93,8 +121,7 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
     category: 'admin',
     descriptionJa: '薬局の有効/無効切替',
     handler: async (params) => {
-      const pharmacyId = Number(params.pharmacyId);
-      if (!pharmacyId) throw new Error('pharmacyId is required');
+      const { pharmacyId } = pharmacyToggleSchema.parse(params);
       // Placeholder - actual implementation would toggle pharmacy isActive
       return { pharmacyId, action: 'toggle_requested', timestamp: new Date().toISOString() };
     },
@@ -103,8 +130,7 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
     category: 'write',
     descriptionJa: 'ジョブキャンセル',
     handler: async (params) => {
-      const jobId = Number(params.jobId);
-      if (!jobId) throw new Error('jobId is required');
+      const { jobId } = jobCancelSchema.parse(params);
       return { jobId, action: 'cancel_requested', timestamp: new Date().toISOString() };
     },
   },
@@ -117,8 +143,8 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
     category: 'write',
     descriptionJa: '通知送信',
     handler: async (params) => {
-      if (!params.message || typeof params.message !== 'string') throw new Error('message is required');
-      return { sent: true, message: (params.message as string).slice(0, 100), timestamp: new Date().toISOString() };
+      const { message } = notificationSendSchema.parse(params);
+      return { sent: true, message, timestamp: new Date().toISOString() };
     },
   },
 };

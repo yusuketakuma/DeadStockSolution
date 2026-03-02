@@ -8,6 +8,15 @@ import { parsePositiveInt, normalizeSearchTerm } from '../utils/request-utils';
 
 const VALID_LOG_SOURCES = new Set<LogSource>(LOG_SOURCES);
 
+const MAX_SPAN_MS = 90 * 24 * 60 * 60 * 1000; // 90日
+
+function parseTimestamp(raw: unknown): Date | null {
+  if (typeof raw !== 'string' || raw === '') return null;
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return null;
+  return d;
+}
+
 const router = Router();
 router.use(requireLogin);
 router.use(requireAdmin);
@@ -46,11 +55,34 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       const pid = parsePositiveInt(req.query.pharmacyId);
       if (pid) query.pharmacyId = pid;
     }
-    if (req.query.from) {
-      query.from = String(req.query.from);
-    }
-    if (req.query.to) {
-      query.to = String(req.query.to);
+    if (req.query.from || req.query.to) {
+      const fromDate = req.query.from ? parseTimestamp(req.query.from) : null;
+      const toDate = req.query.to ? parseTimestamp(req.query.to) : null;
+
+      // ISO 8601 形式チェック
+      if (req.query.from && fromDate === null) {
+        res.status(400).json({ error: 'from パラメータが不正な日時形式です' });
+        return;
+      }
+      if (req.query.to && toDate === null) {
+        res.status(400).json({ error: 'to パラメータが不正な日時形式です' });
+        return;
+      }
+
+      // from ≤ to の検証
+      if (fromDate && toDate && fromDate > toDate) {
+        res.status(400).json({ error: 'from は to 以前の日時を指定してください' });
+        return;
+      }
+
+      // 最大スパン 90日の検証
+      if (fromDate && toDate && toDate.getTime() - fromDate.getTime() > MAX_SPAN_MS) {
+        res.status(400).json({ error: '指定できる期間は最大90日です' });
+        return;
+      }
+
+      if (fromDate) query.from = String(req.query.from);
+      if (toDate) query.to = String(req.query.to);
     }
 
     const result = await queryLogs(query);

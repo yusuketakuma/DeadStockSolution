@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { eq } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { matchCandidateSnapshots, matchNotifications, pharmacies } from '../db/schema';
 import { MatchCandidate } from '../types';
@@ -233,4 +233,138 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
     beforeCount,
     afterCount: next.candidateCount,
   };
+}
+
+// ── バッチスナップショット保存 ──────────────────────────────────────────
+
+/**
+ * 複数薬局のスナップショット保存を一括処理する。
+ * M回の個別クエリを3回のDBラウンドトリップに削減：
+ *   1. 既存スナップショットを一括 SELECT
+ *   2. 全スナップショットを一括 UPSERT
+ *   3. 変更があった薬局の通知を一括 INSERT
+ */
+export async function saveMatchSnapshotsBatch(entries: Array<{
+  pharmacyId: number;
+  triggerPharmacyId: number;
+  triggerUploadType: 'dead_stock' | 'used_medication';
+  candidates: MatchCandidate[];
+  notifyEnabled: boolean;
+}>): Promise<{ changedCount: number }> {
+  if (entries.length === 0) return { changedCount: 0 };
+
+  const allPharmacyIds = entries.map((e) => e.pharmacyId);
+  const now = new Date().toISOString();
+
+  // 1. 既存スナップショットを一括取得
+  const existingRows = await db.select({
+    id: matchCandidateSnapshots.id,
+    pharmacyId: matchCandidateSnapshots.pharmacyId,
+    candidateHash: matchCandidateSnapshots.candidateHash,
+    candidateCount: matchCandidateSnapshots.candidateCount,
+    topCandidatesJson: matchCandidateSnapshots.topCandidatesJson,
+  })
+    .from(matchCandidateSnapshots)
+    .where(inArray(matchCandidateSnapshots.pharmacyId, allPharmacyIds));
+
+  const existingMap = new Map(existingRows.map((row) => [row.pharmacyId, row]));
+
+  // 2. 各薬局のスナップショットを計算し、変更検知
+  type ExistingRow = typeof existingRows[number];
+  type SnapshotEntry = typeof entries[number];
+  const upsertValues: Array<{
+    pharmacyId: number;
+    candidateHash: string;
+    candidateCount: number;
+    topCandidatesJson: string;
+    updatedAt: string;
+  }> = [];
+  const changedEntries: Array<{
+    entry: SnapshotEntry;
+    next: ReturnType<typeof createSnapshotPayload>;
+    existing: ExistingRow | undefined;
+  }> = [];
+
+  for (const entry of entries) {
+    const next = createSnapshotPayload(entry.candidates);
+    const existing = existingMap.get(entry.pharmacyId);
+    const changed = !existing
+      || existing.candidateHash !== next.hash
+      || Number(existing.candidateCount) !== next.candidateCount;
+
+    upsertValues.push({
+      pharmacyId: entry.pharmacyId,
+      candidateHash: next.hash,
+      candidateCount: next.candidateCount,
+      topCandidatesJson: JSON.stringify(next.topCandidates),
+      updatedAt: now,
+    });
+
+    if (changed) {
+      changedEntries.push({ entry, next, existing });
+    }
+  }
+
+  // 3. 一括 UPSERT（INSERT ... ON CONFLICT DO UPDATE）
+  await db.insert(matchCandidateSnapshots)
+    .values(upsertValues)
+    .onConflictDoUpdate({
+      target: matchCandidateSnapshots.pharmacyId,
+      set: {
+        candidateHash: sql`excluded.candidate_hash`,
+        candidateCount: sql`excluded.candidate_count`,
+        topCandidatesJson: sql`excluded.top_candidates_json`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    });
+
+  // 4. 変更があった薬局の通知を一括 INSERT
+  const notificationValues: Array<{
+    pharmacyId: number;
+    triggerPharmacyId: number;
+    triggerUploadType: 'dead_stock' | 'used_medication';
+    candidateCountBefore: number;
+    candidateCountAfter: number;
+    diffJson: string;
+    dedupeKey: string;
+    isRead: boolean;
+  }> = [];
+
+  for (const { entry, next, existing } of changedEntries) {
+    if (!entry.notifyEnabled) continue;
+
+    const beforeTopCandidates: TopCandidateDigest[] = existing?.topCandidatesJson
+      ? JSON.parse(existing.topCandidatesJson) as TopCandidateDigest[]
+      : [];
+    const beforeCount = Number(existing?.candidateCount ?? 0);
+    const diff = calculateSnapshotDiff(beforeTopCandidates, next.topCandidates, beforeCount, next.candidateCount);
+    const diffSerialized = JSON.stringify(diff);
+    const dedupeKey = createNotificationDedupeKey({
+      triggerPharmacyId: entry.triggerPharmacyId,
+      triggerUploadType: entry.triggerUploadType,
+      candidateCountAfter: next.candidateCount,
+      diffSerialized,
+    });
+
+    notificationValues.push({
+      pharmacyId: entry.pharmacyId,
+      triggerPharmacyId: entry.triggerPharmacyId,
+      triggerUploadType: entry.triggerUploadType,
+      candidateCountBefore: beforeCount,
+      candidateCountAfter: next.candidateCount,
+      diffJson: diffSerialized,
+      dedupeKey,
+      isRead: false,
+    });
+  }
+
+  if (notificationValues.length > 0) {
+    await db.insert(matchNotifications)
+      .values(notificationValues)
+      .onConflictDoNothing({
+        target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
+      });
+  }
+
+  return { changedCount: changedEntries.length };
 }

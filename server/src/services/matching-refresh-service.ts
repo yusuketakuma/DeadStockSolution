@@ -6,7 +6,7 @@ import { getNextRetryIso, getStaleBeforeIso } from '../utils/job-retry-utils';
 import { parseBooleanFlag } from '../utils/number-utils';
 import { findMatches, findMatchesBatch } from './matching-service';
 import { logger } from './logger';
-import { saveMatchSnapshotAndNotifyOnChange } from './matching-snapshot-service';
+import { saveMatchSnapshotAndNotifyOnChange, saveMatchSnapshotsBatch } from './matching-snapshot-service';
 
 const AUTO_RECOMPUTE_ENABLED = parseBooleanFlag(process.env.MATCHING_AUTO_RECOMPUTE_ENABLED, true);
 const MAX_JOB_ATTEMPTS = 5;
@@ -114,19 +114,27 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
       });
     }
 
+    // マッチング候補を収集（個別フェッチの失敗は per-pharmacy でエラー記録）
+    const snapshotEntries: Array<{
+      pharmacyId: number;
+      triggerPharmacyId: number;
+      triggerUploadType: 'dead_stock' | 'used_medication';
+      candidates: Awaited<ReturnType<typeof findMatches>>;
+      notifyEnabled: boolean;
+    }> = [];
+
     for (const pharmacyId of pharmacyIdChunk) {
       try {
-        const candidates = matchesByPharmacy && matchesByPharmacy.has(pharmacyId)
+        const candidates = matchesByPharmacy?.has(pharmacyId)
           ? matchesByPharmacy.get(pharmacyId) ?? []
           : await findMatches(pharmacyId);
-        const result = await saveMatchSnapshotAndNotifyOnChange({
+        snapshotEntries.push({
           pharmacyId,
           triggerPharmacyId,
           triggerUploadType: uploadType,
           candidates,
           notifyEnabled: notifyEnabledMap.get(pharmacyId) ?? true,
         });
-        if (result.changed) changedCount += 1;
       } catch (err) {
         failedPharmacyIds.push(pharmacyId);
         logger.error('Matching auto refresh failed for pharmacy', {
@@ -135,6 +143,35 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
           uploadType,
           error: err instanceof Error ? err.message : String(err),
         });
+      }
+    }
+
+    // スナップショットを一括保存（バッチ失敗時は個別保存にフォールバック）
+    if (snapshotEntries.length > 0) {
+      try {
+        const { changedCount: chunkChanged } = await saveMatchSnapshotsBatch(snapshotEntries);
+        changedCount += chunkChanged;
+      } catch (batchSaveErr) {
+        logger.warn('Batch snapshot save failed, falling back to per-pharmacy', {
+          triggerPharmacyId,
+          uploadType,
+          chunkSize: snapshotEntries.length,
+          error: batchSaveErr instanceof Error ? batchSaveErr.message : String(batchSaveErr),
+        });
+        for (const entry of snapshotEntries) {
+          try {
+            const result = await saveMatchSnapshotAndNotifyOnChange(entry);
+            if (result.changed) changedCount += 1;
+          } catch (err) {
+            failedPharmacyIds.push(entry.pharmacyId);
+            logger.error('Matching auto refresh failed for pharmacy', {
+              pharmacyId: entry.pharmacyId,
+              triggerPharmacyId,
+              uploadType,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
       }
     }
   }

@@ -465,21 +465,24 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
         throw new Error('在庫数量が不足しているため、交換を完了できません');
       }
     }
-    for (const item of items) {
-      const updated = await tx.update(deadStockItems)
-        .set({
-          quantity: sql`${deadStockItems.quantity} - ${item.quantity}`,
-          isAvailable: sql`CASE WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN false ELSE true END`,
-        })
-        .where(and(
-          eq(deadStockItems.id, item.deadStockItemId),
-          eq(deadStockItems.isAvailable, true),
-          sql`${deadStockItems.quantity} >= ${item.quantity}`,
-        ))
-        .returning({ id: deadStockItems.id });
-      if (updated.length === 0) {
-        throw new Error('在庫状態が変更されているため、交換を完了できません');
-      }
+    // N回の逐次UPDATEをPromise.allで並列化しDBラウンドトリップを削減
+    const updateResults = await Promise.all(
+      items.map((item) =>
+        tx.update(deadStockItems)
+          .set({
+            quantity: sql`${deadStockItems.quantity} - ${item.quantity}`,
+            isAvailable: sql`CASE WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN false ELSE true END`,
+          })
+          .where(and(
+            eq(deadStockItems.id, item.deadStockItemId),
+            eq(deadStockItems.isAvailable, true),
+            sql`${deadStockItems.quantity} >= ${item.quantity}`,
+          ))
+          .returning({ id: deadStockItems.id }),
+      ),
+    );
+    if (updateResults.some((result) => result.length === 0)) {
+      throw new Error('在庫状態が変更されているため、交換を完了できません');
     }
 
     const totalValue = Number(claimedProposal.totalValueA ?? 0) + Number(claimedProposal.totalValueB ?? 0);

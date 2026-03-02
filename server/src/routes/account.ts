@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { eq, and, sql } from 'drizzle-orm';
+import rateLimit from 'express-rate-limit';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { deriveSessionVersion, hashPassword, verifyPassword, generateToken } from '../services/auth-service';
@@ -17,6 +18,26 @@ import { writeLog, getClientIp } from '../services/log-service';
 import { logger } from '../services/logger';
 import { getErrorMessage } from '../middleware/error-handler';
 import { emailSchema } from '../utils/validators';
+
+// パスワード変更用レート制限: 10回/時/ユーザー（requireLogin 後に適用するためユーザーIDをキーに使用）
+const passwordChangeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `user:${(req as AuthRequest).user?.id ?? 'anonymous'}`,
+  message: { error: 'アカウント更新の試行回数が多すぎます。しばらくして再試行してください' },
+});
+
+// アカウント削除用レート制限: 3回/日/ユーザー（requireLogin 後に適用するためユーザーIDをキーに使用）
+const accountDeletionLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 3,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `user:${(req as AuthRequest).user?.id ?? 'anonymous'}`,
+  message: { error: 'アカウント削除の試行回数が多すぎます。しばらくして再試行してください' },
+});
 
 const router = Router();
 
@@ -56,7 +77,7 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
+router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, res: Response) => {
   let latestVersion: number | null = null;
   try {
     const {
@@ -394,7 +415,7 @@ router.put('/', requireLogin, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.delete('/', requireLogin, async (req: AuthRequest, res: Response) => {
+router.delete('/', requireLogin, accountDeletionLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const currentPassword = typeof req.body?.currentPassword === 'string'
       ? req.body.currentPassword

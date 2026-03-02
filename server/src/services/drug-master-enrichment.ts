@@ -305,8 +305,8 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
     return exact;
   }
 
-  // 各行を処理
-  const results: EnrichedRow<T>[] = [];
+  // パス1: 全行の masterInfo を解決（名前キャッシュは初回のみDBロード）
+  const masterInfoByRow: (MasterMatchInfo | null)[] = [];
   for (const row of rows) {
     let masterInfo: MasterMatchInfo | null = null;
 
@@ -320,6 +320,26 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
     if (!masterInfo) {
       masterInfo = await findByName(row.drugName);
     }
+
+    masterInfoByRow.push(masterInfo);
+  }
+
+  // パス2: パッケージ候補が必要な masterIds を収集し、1回のDBクエリで一括取得
+  const masterIdsNeedingPackages: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const masterInfo = masterInfoByRow[i];
+    const row = rows[i];
+    if (masterInfo && !masterInfo.drugMasterPackageId && row.unit) {
+      masterIdsNeedingPackages.push(masterInfo.id);
+    }
+  }
+  await loadPackageCandidatesForMasterIds(masterIdsNeedingPackages);
+
+  // パス3: キャッシュ済みデータを使って各行を補完（DBアクセスなし）
+  const results: EnrichedRow<T>[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const masterInfo = masterInfoByRow[i];
 
     let packageInfo: PackageCandidate | null = null;
     if (masterInfo && !masterInfo.drugMasterPackageId && row.unit) {

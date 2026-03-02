@@ -86,7 +86,12 @@ export async function syncDrugMaster(
 
       type InsertDrugMasterRow = typeof drugMaster.$inferInsert;
       type InsertPriceHistoryRow = typeof drugMasterPriceHistory.$inferInsert;
+      type UpdateDrugMasterItem = {
+        yjCode: string;
+        fields: Omit<InsertDrugMasterRow, 'yjCode' | 'id' | 'createdAt'>;
+      };
       const toInsert: InsertDrugMasterRow[] = [];
+      const toUpdate: UpdateDrugMasterItem[] = [];
       const priceHistoryToInsert: InsertPriceHistoryRow[] = [];
 
       for (const row of batch) {
@@ -137,8 +142,9 @@ export async function syncDrugMaster(
           const shouldUpdate = priceChanged || wasDelisted || metadataChanged;
 
           if (shouldUpdate) {
-            await tx.update(drugMaster)
-              .set({
+            toUpdate.push({
+              yjCode: row.yjCode,
+              fields: {
                 drugName: row.drugName,
                 genericName: row.genericName,
                 specification: row.specification,
@@ -152,8 +158,8 @@ export async function syncDrugMaster(
                 transitionDeadline: row.transitionDeadline,
                 deletedDate: null,
                 updatedAt: now,
-              })
-              .where(eq(drugMaster.yjCode, row.yjCode));
+              },
+            });
 
             if (priceChanged) {
               priceHistoryToInsert.push({
@@ -173,6 +179,16 @@ export async function syncDrugMaster(
       // バッチ INSERT 一括実行
       if (toInsert.length > 0) {
         await tx.insert(drugMaster).values(toInsert);
+      }
+      // バッチ UPDATE 並列実行（N回逐次 → Promise.all でDBラウンドトリップ削減）
+      if (toUpdate.length > 0) {
+        await Promise.all(
+          toUpdate.map((item) =>
+            tx.update(drugMaster)
+              .set(item.fields)
+              .where(eq(drugMaster.yjCode, item.yjCode)),
+          ),
+        );
       }
       if (priceHistoryToInsert.length > 0) {
         await tx.insert(drugMasterPriceHistory).values(priceHistoryToInsert);
