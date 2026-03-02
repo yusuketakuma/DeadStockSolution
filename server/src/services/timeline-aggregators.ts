@@ -81,6 +81,7 @@ export function mapProposalToEvent(
     pharmacyBId: number;
     status: string;
     proposedAt: string | null;
+    completedAt: string | null;
   },
   pharmacyId: number,
 ): RawTimelineEvent {
@@ -101,6 +102,7 @@ export function mapProposalToEvent(
       proposalId: row.id,
       status: row.status,
       isInbound,
+      completedAt: row.completedAt,
       // 後方互換: 既存 UI/テスト期待を崩さないため残置
       isRequester,
     },
@@ -369,6 +371,7 @@ export async function fetchProposalEvents(
       pharmacyBId: exchangeProposals.pharmacyBId,
       status: exchangeProposals.status,
       proposedAt: exchangeProposals.proposedAt,
+      completedAt: exchangeProposals.completedAt,
     })
     .from(exchangeProposals)
     .where(and(...whereConditions))

@@ -141,6 +141,7 @@ describe('mapProposalToEvent', () => {
       pharmacyBId: 2,
       status: 'proposed',
       proposedAt: '2026-01-05T10:00:00.000Z',
+      completedAt: null,
     };
 
     const event = mapProposalToEvent(row, 1);
@@ -150,7 +151,7 @@ describe('mapProposalToEvent', () => {
     expect(event.type).toBe('proposal_proposed');
     expect(event.title).toContain('送信済み');
     expect(event.actionPath).toBe('/proposals/20');
-    expect(event.metadata).toMatchObject({ proposalId: 20, isInbound: false });
+    expect(event.metadata).toMatchObject({ proposalId: 20, isInbound: false, completedAt: null });
   });
 
   it('受信者として提案イベントを変換する', () => {
@@ -160,12 +161,16 @@ describe('mapProposalToEvent', () => {
       pharmacyBId: 4,
       status: 'confirmed',
       proposedAt: '2026-01-06T11:00:00.000Z',
+      completedAt: '2026-01-07T11:00:00.000Z',
     };
 
     const event = mapProposalToEvent(row, 4);
 
     expect(event.title).toContain('受信');
-    expect(event.metadata).toMatchObject({ isInbound: true });
+    expect(event.metadata).toMatchObject({
+      isInbound: true,
+      completedAt: '2026-01-07T11:00:00.000Z',
+    });
   });
 
   it('空の配列でもmapは正しく機能する', () => {
