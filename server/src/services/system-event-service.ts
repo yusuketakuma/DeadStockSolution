@@ -1,6 +1,7 @@
 import { db } from '../config/database';
 import { systemEvents, type SystemEventLevel, type SystemEventSource } from '../db/schema';
 import { logger } from './logger';
+import { enqueueLogAlert } from './openclaw-log-push-service';
 
 interface SystemEventInput {
   source: SystemEventSource;
@@ -9,6 +10,7 @@ interface SystemEventInput {
   message: string;
   detail?: unknown;
   occurredAt?: string;
+  errorCode?: string;
 }
 
 interface HttpErrorSnapshotInput {
@@ -50,8 +52,27 @@ export async function recordSystemEvent(input: SystemEventInput): Promise<boolea
       eventType: sanitizeMessage(input.eventType),
       message: sanitizeMessage(input.message),
       detailJson: toDetailJson(input.detail),
+      errorCode: input.errorCode ?? null,
       occurredAt: input.occurredAt ?? new Date().toISOString(),
     });
+
+    // Forward errors/warnings to OpenClaw
+    const effectiveLevel = input.level ?? 'error';
+    if (effectiveLevel === 'error' || effectiveLevel === 'warning') {
+      try {
+        enqueueLogAlert({
+          source: 'system_events',
+          severity: effectiveLevel === 'error' ? 'error' : 'warning',
+          errorCode: input.errorCode ?? null,
+          message: sanitizeMessage(input.message),
+          logId: 0,
+          occurredAt: input.occurredAt ?? new Date().toISOString(),
+        });
+      } catch {
+        // Log push should never break event recording
+      }
+    }
+
     return true;
   } catch (err) {
     logger.error('Failed to persist system event', {
