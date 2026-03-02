@@ -4,18 +4,11 @@ import { queryLogs, getLogSummary, LOG_SOURCES } from '../services/log-center-se
 import type { LogCenterQuery, LogSource } from '../services/log-center-service';
 import { AuthRequest } from '../types';
 import { handleAdminError, sendPaginated, parseListPagination } from './admin-utils';
-import { parsePositiveInt, normalizeSearchTerm } from '../utils/request-utils';
+import { parsePositiveInt, normalizeSearchTerm, parseTimestamp } from '../utils/request-utils';
 
 const VALID_LOG_SOURCES = new Set<LogSource>(LOG_SOURCES);
 
 const MAX_SPAN_MS = 90 * 24 * 60 * 60 * 1000; // 90日
-
-function parseTimestamp(raw: unknown): Date | null {
-  if (typeof raw !== 'string' || raw === '') return null;
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return null;
-  return d;
-}
 
 const router = Router();
 router.use(requireLogin);
@@ -81,8 +74,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         return;
       }
 
-      if (fromDate) query.from = String(req.query.from);
-      if (toDate) query.to = String(req.query.to);
+      if (fromDate) query.from = fromDate.toISOString();
+      if (toDate) query.to = toDate.toISOString();
     }
 
     const result = await queryLogs(query);

@@ -19,7 +19,7 @@ import { logger } from '../services/logger';
 import { getErrorMessage } from '../middleware/error-handler';
 import { emailSchema } from '../utils/validators';
 
-// パスワード変更用レート制限: 10回/時/ユーザー（requireLogin 後に適用するためユーザーIDをキーに使用）
+// パスワード変更用レート制限: 10回/時/ユーザー
 const passwordChangeLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
@@ -29,7 +29,7 @@ const passwordChangeLimiter = rateLimit({
   message: { error: 'アカウント更新の試行回数が多すぎます。しばらくして再試行してください' },
 });
 
-// アカウント削除用レート制限: 3回/日/ユーザー（requireLogin 後に適用するためユーザーIDをキーに使用）
+// アカウント削除用レート制限: 3回/日/ユーザー
 const accountDeletionLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
   max: 3,

@@ -54,6 +54,13 @@ export function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
+export function parseTimestamp(raw: unknown): Date | null {
+  if (typeof raw !== 'string' || raw === '') return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
 /** Escape LIKE wildcards for safe use in SQL LIKE patterns */
 export function escapeLikeWildcards(value: string): string {
   return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);

@@ -3,12 +3,10 @@ import { openclawCommands } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { logger } from './logger';
 import { z } from 'zod';
+import { LOG_SOURCES } from './log-center-service';
 import type { LogSource, LogCenterQuery } from './log-center-service';
 
 // ── Zod スキーマ定義 ──────────────────────────────────────────
-
-// log-center-service.ts の LOG_SOURCES と一致させる（循環依存回避のため定数を複製）
-const LOG_SOURCE_VALUES = ['activity_logs', 'system_events', 'drug_master_sync_logs'] as const;
 
 const pharmacyToggleSchema = z.object({
   pharmacyId: z.number().int().positive(),
@@ -19,7 +17,7 @@ const jobCancelSchema = z.object({
 });
 
 const logsQuerySchema = z.object({
-  sources: z.array(z.enum(LOG_SOURCE_VALUES)).optional(),
+  sources: z.array(z.enum(LOG_SOURCES)).optional(),
   level: z.enum(['critical', 'error', 'warning', 'info']).optional(),
   search: z.string().optional(),
   from: z.iso.datetime().optional(),
