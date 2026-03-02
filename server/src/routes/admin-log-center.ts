@@ -1,14 +1,27 @@
 import { Router, Response } from 'express';
 import { requireLogin, requireAdmin } from '../middleware/auth';
-import { queryLogs, getLogSummary } from '../services/log-center-service';
+import { queryLogs, getLogSummary, LOG_SOURCES } from '../services/log-center-service';
 import type { LogCenterQuery, LogSource } from '../services/log-center-service';
 import { AuthRequest } from '../types';
 import { handleAdminError, sendPaginated, parseListPagination } from './admin-utils';
 import { parsePositiveInt, normalizeSearchTerm } from '../utils/request-utils';
 
+const VALID_LOG_SOURCES = new Set<LogSource>(LOG_SOURCES);
+
 const router = Router();
 router.use(requireLogin);
 router.use(requireAdmin);
+
+function parseLogSources(raw: unknown): LogSource[] | undefined {
+  if (typeof raw !== 'string') return undefined;
+
+  const parsed = raw.split(',').map((value) => value.trim()).filter(Boolean);
+  const filtered = parsed.filter((value): value is LogSource => VALID_LOG_SOURCES.has(value as LogSource));
+  if (filtered.length === 0) return undefined;
+
+  // 重複は除去
+  return [...new Set(filtered)];
+}
 
 // GET /api/admin/log-center
 router.get('/', async (req: AuthRequest, res: Response) => {
@@ -17,8 +30,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const query: LogCenterQuery = { page, limit };
 
     if (req.query.source) {
-      const raw = String(req.query.source);
-      query.sources = raw.split(',').filter(Boolean) as LogSource[];
+      const sources = parseLogSources(req.query.source);
+      if (sources) {
+        query.sources = sources;
+      }
     }
     if (req.query.level) {
       query.level = String(req.query.level) as LogCenterQuery['level'];
