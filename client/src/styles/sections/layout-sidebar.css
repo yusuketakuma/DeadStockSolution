@@ -22,6 +22,28 @@
   flex: 1;
 }
 
+/* PC viewport-fit: constrain app-main to exact viewport height */
+@media (min-width: 992px) {
+  .app-main {
+    height: calc(100vh - var(--header-height));
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-main .content-container {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .dl-app-screen {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+}
+
 .app-footer {
   background: #f8f9fa;
 }

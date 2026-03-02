@@ -3,7 +3,8 @@ import { requireLogin, requireAdmin } from '../middleware/auth';
 import { queryLogs, getLogSummary } from '../services/log-center-service';
 import type { LogCenterQuery, LogSource } from '../services/log-center-service';
 import { AuthRequest } from '../types';
-import { handleAdminError } from './admin-utils';
+import { handleAdminError, sendPaginated, parseListPagination } from './admin-utils';
+import { parsePositiveInt, normalizeSearchTerm } from '../utils/request-utils';
 
 const router = Router();
 router.use(requireLogin);
@@ -12,7 +13,8 @@ router.use(requireAdmin);
 // GET /api/admin/log-center
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const query: LogCenterQuery = {};
+    const { page, limit } = parseListPagination(req, 50);
+    const query: LogCenterQuery = { page, limit };
 
     if (req.query.source) {
       const raw = String(req.query.source);
@@ -21,12 +23,13 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     if (req.query.level) {
       query.level = String(req.query.level) as LogCenterQuery['level'];
     }
-    if (req.query.search) {
-      query.search = String(req.query.search);
+    const search = normalizeSearchTerm(req.query.search);
+    if (search) {
+      query.search = search;
     }
     if (req.query.pharmacyId) {
-      const pid = Number(req.query.pharmacyId);
-      if (Number.isInteger(pid) && pid > 0) query.pharmacyId = pid;
+      const pid = parsePositiveInt(req.query.pharmacyId);
+      if (pid) query.pharmacyId = pid;
     }
     if (req.query.from) {
       query.from = String(req.query.from);
@@ -34,17 +37,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     if (req.query.to) {
       query.to = String(req.query.to);
     }
-    if (req.query.limit) {
-      const lim = Number(req.query.limit);
-      if (Number.isInteger(lim) && lim > 0) query.limit = lim;
-    }
-    if (req.query.page) {
-      const p = Number(req.query.page);
-      if (Number.isInteger(p) && p > 0) query.page = p;
-    }
 
     const result = await queryLogs(query);
-    res.json(result);
+    sendPaginated(res, result.entries, result.page, result.limit, result.total);
   } catch (err) {
     handleAdminError(err, 'Admin log-center list error', 'ログ一覧の取得に失敗しました', res);
   }

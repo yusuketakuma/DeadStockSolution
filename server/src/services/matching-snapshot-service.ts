@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
-import { matchCandidateSnapshots, matchNotifications } from '../db/schema';
+import { matchCandidateSnapshots, matchNotifications, pharmacies } from '../db/schema';
 import { MatchCandidate } from '../types';
 import { roundTo2 } from './matching-score-service';
 
@@ -148,8 +148,9 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
   triggerPharmacyId: number;
   triggerUploadType: 'dead_stock' | 'used_medication';
   candidates: MatchCandidate[];
+  notifyEnabled?: boolean;
 }): Promise<{ changed: boolean; beforeCount: number; afterCount: number }> {
-  const { pharmacyId, triggerPharmacyId, triggerUploadType, candidates } = params;
+  const { pharmacyId, triggerPharmacyId, triggerUploadType, candidates, notifyEnabled } = params;
 
   const next = createSnapshotPayload(candidates);
 
@@ -186,30 +187,45 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
   }
 
   if (changed) {
-    const beforeTopCandidates: TopCandidateDigest[] = current?.topCandidatesJson
-      ? JSON.parse(current.topCandidatesJson) as TopCandidateDigest[]
-      : [];
-    const diff = calculateSnapshotDiff(beforeTopCandidates, next.topCandidates, beforeCount, next.candidateCount);
-    const diffSerialized = JSON.stringify(diff);
-    const dedupeKey = createNotificationDedupeKey({
-      triggerPharmacyId,
-      triggerUploadType,
-      candidateCountAfter: next.candidateCount,
-      diffSerialized,
-    });
+    // 通知設定を確認: OFF なら通知レコードをスキップ
+    // notifyEnabled が事前に渡されていればDBクエリをスキップ（N+1防止）
+    let shouldNotify: boolean;
+    if (notifyEnabled !== undefined) {
+      shouldNotify = notifyEnabled;
+    } else {
+      const [pharmacy] = await db.select({ matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled })
+        .from(pharmacies)
+        .where(eq(pharmacies.id, pharmacyId))
+        .limit(1);
+      shouldNotify = pharmacy?.matchingAutoNotifyEnabled !== false;
+    }
 
-    await db.insert(matchNotifications).values({
-      pharmacyId,
-      triggerPharmacyId,
-      triggerUploadType,
-      candidateCountBefore: beforeCount,
-      candidateCountAfter: next.candidateCount,
-      diffJson: diffSerialized,
-      dedupeKey,
-      isRead: false,
-    }).onConflictDoNothing({
-      target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
-    });
+    if (shouldNotify) {
+      const beforeTopCandidates: TopCandidateDigest[] = current?.topCandidatesJson
+        ? JSON.parse(current.topCandidatesJson) as TopCandidateDigest[]
+        : [];
+      const diff = calculateSnapshotDiff(beforeTopCandidates, next.topCandidates, beforeCount, next.candidateCount);
+      const diffSerialized = JSON.stringify(diff);
+      const dedupeKey = createNotificationDedupeKey({
+        triggerPharmacyId,
+        triggerUploadType,
+        candidateCountAfter: next.candidateCount,
+        diffSerialized,
+      });
+
+      await db.insert(matchNotifications).values({
+        pharmacyId,
+        triggerPharmacyId,
+        triggerUploadType,
+        candidateCountBefore: beforeCount,
+        candidateCountAfter: next.candidateCount,
+        diffJson: diffSerialized,
+        dedupeKey,
+        isRead: false,
+      }).onConflictDoNothing({
+        target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
+      });
+    }
   }
 
   return {

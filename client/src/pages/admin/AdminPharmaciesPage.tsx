@@ -12,6 +12,7 @@ import Pagination from '../../components/Pagination';
 import InlineLoader from '../../components/ui/InlineLoader';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateJa, formatNumberJa } from '../../utils/formatters';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface Pharmacy {
   id: number;
@@ -87,7 +88,7 @@ export default function AdminPharmaciesPage() {
   };
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">薬局管理</h4>
       <div className="mb-3">
         <AppButton size="sm" variant="outline-primary" onClick={() => void recalculateTrustScores()} disabled={recalculating}>
@@ -104,6 +105,7 @@ export default function AdminPharmaciesPage() {
           </AppButton>
         </AppAlert>
       )}
+      <ScrollArea>
       {loading ? (
         <InlineLoader text="薬局データを読み込み中..." className="text-muted small" />
       ) : pharmacies.length === 0 ? (
@@ -235,7 +237,8 @@ export default function AdminPharmaciesPage() {
           )}
         />
       )}
+      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-    </div>
+    </PageShell>
   );
 }

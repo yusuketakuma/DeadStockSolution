@@ -95,6 +95,12 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
   let changedCount = 0;
   const failedPharmacyIds: number[] = [];
 
+  // 通知設定をバルクフェッチ（N+1 防止）
+  const notifyRows = await db.select({ id: pharmacies.id, matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled })
+    .from(pharmacies)
+    .where(inArray(pharmacies.id, impactedIds));
+  const notifyEnabledMap = new Map(notifyRows.map((r) => [r.id, r.matchingAutoNotifyEnabled !== false]));
+
   for (const pharmacyIdChunk of splitIntoChunks(impactedIds, REFRESH_MATCH_BATCH_SIZE)) {
     let matchesByPharmacy: Map<number, Awaited<ReturnType<typeof findMatches>>> | null = null;
     try {
@@ -118,6 +124,7 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
           triggerPharmacyId,
           triggerUploadType: uploadType,
           candidates,
+          notifyEnabled: notifyEnabledMap.get(pharmacyId) ?? true,
         });
         if (result.changed) changedCount += 1;
       } catch (err) {

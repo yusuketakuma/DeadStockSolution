@@ -11,6 +11,7 @@ import {
 import { executeCommand, listCommandHistory } from '../services/openclaw-command-service';
 import { logger } from '../services/logger';
 import { AuthRequest } from '../types';
+import { handleAdminError, parseListPagination } from './admin-utils';
 
 const router = Router();
 const commandLimiter = rateLimit({
@@ -36,29 +37,20 @@ router.post('/', commandLimiter, async (req: Request, res: Response) => {
 
     const signature = req.header('x-openclaw-signature');
     const timestamp = req.header('x-openclaw-timestamp');
-    const isAuthorized = verifyOpenClawWebhookSignature({
-      receivedSignature: signature,
-      receivedTimestamp: timestamp,
-      rawBody: req.rawBody,
-    });
+    const replayKey = { receivedSignature: signature, receivedTimestamp: timestamp };
 
+    const isAuthorized = verifyOpenClawWebhookSignature({ ...replayKey, rawBody: req.rawBody });
     if (!isAuthorized) {
       res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
       return;
     }
 
-    if (isOpenClawWebhookReplay({
-      receivedSignature: signature,
-      receivedTimestamp: timestamp,
-    })) {
+    if (isOpenClawWebhookReplay(replayKey)) {
       res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
       return;
     }
 
-    const replayAccepted = consumeOpenClawWebhookReplay({
-      receivedSignature: signature,
-      receivedTimestamp: timestamp,
-    });
+    const replayAccepted = consumeOpenClawWebhookReplay(replayKey);
     if (!replayAccepted) {
       res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
       return;
@@ -66,10 +58,7 @@ router.post('/', commandLimiter, async (req: Request, res: Response) => {
 
     const { command, parameters, threadId, reason } = req.body;
     if (!command || typeof command !== 'string') {
-      releaseOpenClawWebhookReplay({
-        receivedSignature: signature,
-        receivedTimestamp: timestamp,
-      });
+      releaseOpenClawWebhookReplay(replayKey);
       res.status(400).json({ error: 'command フィールドが必要です' });
       return;
     }
@@ -79,10 +68,7 @@ router.post('/', commandLimiter, async (req: Request, res: Response) => {
       const statusCode = result.status === 'rejected' ? 403 : result.status === 'failed' ? 500 : 200;
       res.status(statusCode).json(result);
     } catch (err) {
-      releaseOpenClawWebhookReplay({
-        receivedSignature: signature,
-        receivedTimestamp: timestamp,
-      });
+      releaseOpenClawWebhookReplay(replayKey);
       throw err;
     }
   } catch (err) {
@@ -94,13 +80,12 @@ router.post('/', commandLimiter, async (req: Request, res: Response) => {
 // GET /history --- Admin command history (JWT admin auth)
 router.get('/history', requireLogin, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const offset = Number(req.query.offset) || 0;
+    const { page, limit } = parseListPagination(req, 50);
+    const offset = (page - 1) * limit;
     const commands = await listCommandHistory(limit, offset);
     res.json({ commands, limit, offset });
   } catch (err) {
-    logger.error('OpenClaw command history error', { error: (err as Error).message });
-    res.status(500).json({ error: 'コマンド履歴の取得に失敗しました' });
+    handleAdminError(err, 'OpenClaw command history error', 'コマンド履歴の取得に失敗しました', res);
   }
 });
 

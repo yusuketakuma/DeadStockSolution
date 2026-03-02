@@ -23,6 +23,7 @@ export interface AccountData {
   prefecture: string;
   version: number;
   verificationStatus?: string;
+  matchingAutoNotifyEnabled?: boolean;
 }
 
 export interface BusinessHourEntry {

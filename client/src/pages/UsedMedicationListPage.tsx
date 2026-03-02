@@ -9,6 +9,7 @@ import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import { usePaginatedList } from '../hooks/usePaginatedList';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface UsedMedicationItem {
   id: number;
@@ -42,7 +43,7 @@ export default function UsedMedicationListPage() {
   const total = pagination?.total ?? 0;
 
   return (
-    <div>
+    <PageShell>
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4 className="page-title mb-0">医薬品使用量リスト ({total}件)</h4>
         <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
@@ -57,6 +58,7 @@ export default function UsedMedicationListPage() {
         </AppAlert>
       )}
 
+      <ScrollArea>
       {loading ? (
         <InlineLoader text="医薬品使用量一覧を読み込み中..." className="text-muted small" />
       ) : error ? null : items.length === 0 ? (
@@ -112,7 +114,8 @@ export default function UsedMedicationListPage() {
           )}
         />
       )}
+      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-    </div>
+    </PageShell>
   );
 }

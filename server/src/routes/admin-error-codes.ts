@@ -1,13 +1,16 @@
 import { Router, Response } from 'express';
 import { requireLogin, requireAdmin } from '../middleware/auth';
 import { listErrorCodes, createErrorCode, updateErrorCode } from '../services/error-code-service';
-import type { ErrorCodeCategory, ErrorCodeSeverity } from '../db/schema';
+import { errorCodeCategoryValues, errorCodeSeverityValues, type ErrorCodeCategory, type ErrorCodeSeverity } from '../db/schema';
 import { AuthRequest } from '../types';
-import { handleAdminError } from './admin-utils';
+import { handleAdminError, parseIdOrBadRequest } from './admin-utils';
 
 const router = Router();
 router.use(requireLogin);
 router.use(requireAdmin);
+
+const validCategories = new Set<string>(errorCodeCategoryValues);
+const validSeverities = new Set<string>(errorCodeSeverityValues);
 
 // GET /api/admin/error-codes
 router.get('/', async (req: AuthRequest, res: Response) => {
@@ -19,8 +22,12 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       activeOnly?: boolean;
     } = {};
 
-    if (req.query.category) options.category = req.query.category as ErrorCodeCategory;
-    if (req.query.severity) options.severity = req.query.severity as ErrorCodeSeverity;
+    if (req.query.category && validCategories.has(String(req.query.category))) {
+      options.category = String(req.query.category) as ErrorCodeCategory;
+    }
+    if (req.query.severity && validSeverities.has(String(req.query.severity))) {
+      options.severity = String(req.query.severity) as ErrorCodeSeverity;
+    }
     if (req.query.search) options.search = String(req.query.search);
     if (req.query.activeOnly !== 'false') options.activeOnly = true;
 
@@ -53,11 +60,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 // PUT /api/admin/error-codes/:id
 router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id < 1) {
-      res.status(400).json({ error: '無効なIDです' });
-      return;
-    }
+    const id = parseIdOrBadRequest(res, req.params.id);
+    if (!id) return;
     const updated = await updateErrorCode(id, req.body);
     if (!updated) {
       res.status(404).json({ error: 'エラーコードが見つかりません' });

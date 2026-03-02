@@ -2,6 +2,7 @@ import { db } from '../config/database';
 import { openclawCommands } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { logger } from './logger';
+import type { LogSource, LogCenterQuery } from './log-center-service';
 
 // ── 型定義 ──────────────────────────────────────────
 
@@ -43,14 +44,13 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
     category: 'read',
     descriptionJa: 'ログ検索',
     handler: async (params) => {
-      // Dynamic import to avoid circular dep
       const { queryLogs } = await import('./log-center-service');
       return queryLogs({
-        sources: params.sources as any,
-        level: params.level as any,
-        search: params.search as string,
-        from: params.from as string,
-        to: params.to as string,
+        sources: params.sources as LogSource[] | undefined,
+        level: params.level as LogCenterQuery['level'],
+        search: typeof params.search === 'string' ? params.search : undefined,
+        from: typeof params.from === 'string' ? params.from : undefined,
+        to: typeof params.to === 'string' ? params.to : undefined,
         limit: Number(params.limit) || 50,
       });
     },

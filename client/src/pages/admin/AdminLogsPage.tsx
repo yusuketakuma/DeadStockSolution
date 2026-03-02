@@ -13,6 +13,7 @@ import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa } from '../../utils/formatters';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface LogEntry {
   id: number;
@@ -163,7 +164,7 @@ export default function AdminLogsPage() {
   const getFailureReasonLabel = (reason: string) => FAILURE_REASON_LABELS[reason] ?? reason;
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">操作ログ ({total}件)</h4>
       {error && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -256,6 +257,7 @@ export default function AdminLogsPage() {
         </AppCard.Body>
       </AppCard>
 
+      <ScrollArea>
       {loading ? (
         <InlineLoader text="操作ログを読み込み中..." className="text-muted small mb-3" />
       ) : logs.length === 0 ? (
@@ -332,7 +334,8 @@ export default function AdminLogsPage() {
           )}
         />
       )}
+      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-    </div>
+    </PageShell>
   );
 }

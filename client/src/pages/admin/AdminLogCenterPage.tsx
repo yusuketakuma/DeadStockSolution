@@ -9,74 +9,31 @@ import AppTable from '../../components/ui/AppTable';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import InlineLoader from '../../components/ui/InlineLoader';
+import LazyTab from '../../components/ui/LazyTab';
+import LevelBadge from '../../components/ui/LevelBadge';
 import Pagination from '../../components/Pagination';
 import { api } from '../../api/client';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
-import { formatDateTimeJa } from '../../utils/formatters';
-
-// --- Types ---
-
-interface NormalizedLogEntry {
-  id: number;
-  source: 'activity_logs' | 'system_events' | 'drug_master_sync_logs';
-  level: 'critical' | 'error' | 'warning' | 'info';
-  category: string;
-  errorCode: string | null;
-  message: string;
-  detail: unknown;
-  pharmacyId: number | null;
-  timestamp: string;
-}
-
-interface LogCenterResponse {
-  data: NormalizedLogEntry[];
-  pagination: { page: number; totalPages: number; total: number };
-}
-
-interface LogCenterSummary {
-  total: number;
-  errors: number;
-  warnings: number;
-  today: number;
-  bySeverity: Record<string, number>;
-  bySource: Record<string, number>;
-}
-
-interface ErrorCode {
-  id: number;
-  code: string;
-  category: string;
-  severity: string;
-  titleJa: string;
-  descriptionJa: string | null;
-  resolutionJa: string | null;
-  isActive: boolean;
-}
-
-interface ErrorCodesResponse {
-  items: ErrorCode[];
-  total: number;
-}
-
-interface CommandEntry {
-  id: number;
-  commandName: string;
-  parameters: string | null;
-  status: string;
-  result: string | null;
-  errorMessage: string | null;
-  openclawThreadId: string | null;
-  receivedAt: string;
-  completedAt: string | null;
-}
-
-interface CommandsResponse {
-  commands: CommandEntry[];
-}
+import { useAsyncResource } from '../../hooks/useAsyncResource';
+import { formatDateTimeJa, truncatePreview } from '../../utils/formatters';
+import type {
+  NormalizedLogEntry,
+  LogCenterResponse,
+  LogCenterSummary,
+  ErrorCode,
+  ErrorCodesResponse,
+  CommandsResponse,
+} from '../../types/admin-log-center';
 
 // --- Constants ---
 
-type TabKey = 'all' | 'activity_logs' | 'system_events' | 'drug_master_sync_logs' | 'error_codes' | 'command_history';
+const LOG_SOURCE_TABS = [
+  { key: 'activity_logs', title: '操作ログ' },
+  { key: 'system_events', title: 'システムイベント' },
+  { key: 'drug_master_sync_logs', title: '同期ログ' },
+] as const;
+
+type TabKey = 'all' | (typeof LOG_SOURCE_TABS)[number]['key'] | 'error_codes' | 'command_history';
 
 const LEVEL_OPTIONS = [
   { value: '', label: '全てのレベル' },
@@ -85,13 +42,6 @@ const LEVEL_OPTIONS = [
   { value: 'warning', label: 'Warning' },
   { value: 'info', label: 'Info' },
 ];
-
-const LEVEL_BADGE_MAP: Record<string, string> = {
-  critical: 'danger',
-  error: 'danger',
-  warning: 'warning',
-  info: 'info',
-};
 
 const SOURCE_LABELS: Record<string, string> = {
   activity_logs: '操作ログ',
@@ -115,21 +65,8 @@ const COMMAND_STATUS_BADGE: Record<string, string> = {
 
 // --- Helper components ---
 
-function LevelBadge({ level }: { level: string }) {
-  const bg = LEVEL_BADGE_MAP[level] ?? 'secondary';
-  const textProp = level === 'warning' ? 'dark' : undefined;
-  return <Badge bg={bg} text={textProp}>{level}</Badge>;
-}
-
 function SourceLabel({ source }: { source: string }) {
   return <>{SOURCE_LABELS[source] ?? source}</>;
-}
-
-function previewDetail(detail: unknown): string {
-  if (detail === null || detail === undefined) return '-';
-  const str = typeof detail === 'string' ? detail : JSON.stringify(detail);
-  if (str.length <= 180) return str;
-  return `${str.slice(0, 180)}...`;
 }
 
 // --- Summary Cards ---
@@ -182,7 +119,7 @@ function LogEntriesView({
     const params = new URLSearchParams({ page: String(targetPage), limit: '50' });
     if (sourceFilter) params.set('source', sourceFilter);
     if (levelFilter) params.set('level', levelFilter);
-    if (keyword.trim()) params.set('keyword', keyword.trim());
+    if (keyword.trim()) params.set('search', keyword.trim());
     return api.get<LogCenterResponse>(`/admin/log-center?${params}`, { signal });
   }, [sourceFilter, levelFilter, keyword]);
 
@@ -282,7 +219,7 @@ function LogEntriesView({
                         <td className="small">{entry.category}</td>
                         <td className="small">{entry.errorCode ?? '-'}</td>
                         <td className="small">{entry.message}</td>
-                        <td className="small text-muted">{previewDetail(entry.detail)}</td>
+                        <td className="small text-muted">{truncatePreview(entry.detail)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -302,7 +239,7 @@ function LogEntriesView({
                       { label: 'カテゴリ', value: entry.category },
                       { label: 'エラーコード', value: entry.errorCode ?? '-' },
                       { label: 'メッセージ', value: entry.message },
-                      { label: '詳細', value: previewDetail(entry.detail) },
+                      { label: '詳細', value: truncatePreview(entry.detail) },
                     ]}
                   />
                 ))}
@@ -329,33 +266,20 @@ const EMPTY_ERROR_CODE_FORM = {
 };
 
 function ErrorCodesTab() {
-  const [errorCodes, setErrorCodes] = useState<ErrorCode[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const { data: errorCodes, loading, error, reload } = useAsyncResource(
+    useCallback((signal: AbortSignal) =>
+      api.get<ErrorCodesResponse>('/admin/error-codes', { signal }).then((r) => r.items),
+    []),
+  );
   const [form, setForm] = useState(EMPTY_ERROR_CODE_FORM);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-
-  const fetchErrorCodes = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await api.get<ErrorCodesResponse>('/admin/error-codes');
-      setErrorCodes(res.items);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'エラーコードの取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchErrorCodes();
-  }, [fetchErrorCodes]);
+  const [saveError, setSaveError] = useState('');
 
   const handleSubmit = async () => {
     if (!form.code.trim() || !form.titleJa.trim()) return;
     setSaving(true);
+    setSaveError('');
     try {
       if (editingId !== null) {
         await api.put(`/admin/error-codes/${editingId}`, {
@@ -372,9 +296,9 @@ function ErrorCodesTab() {
       }
       setForm(EMPTY_ERROR_CODE_FORM);
       setEditingId(null);
-      await fetchErrorCodes();
+      await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存に失敗しました');
+      setSaveError(err instanceof Error ? err.message : '保存に失敗しました');
     } finally {
       setSaving(false);
     }
@@ -399,9 +323,9 @@ function ErrorCodesTab() {
 
   return (
     <>
-      {error && (
+      {(error || saveError) && (
         <AppAlert variant="danger" className="mb-3">
-          {error}
+          {error || saveError}
         </AppAlert>
       )}
 
@@ -487,7 +411,7 @@ function ErrorCodesTab() {
 
       {loading ? (
         <InlineLoader text="エラーコードを読み込み中..." className="text-muted small mb-3" />
-      ) : errorCodes.length === 0 ? (
+      ) : !errorCodes?.length ? (
         <AppAlert variant="secondary">エラーコードが登録されていません。</AppAlert>
       ) : (
         <AppResponsiveSwitch
@@ -508,7 +432,7 @@ function ErrorCodesTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {errorCodes.map((ec) => (
+                  {errorCodes?.map((ec) => (
                     <tr key={ec.id}>
                       <td>{ec.id}</td>
                       <td><code>{ec.code}</code></td>
@@ -535,7 +459,7 @@ function ErrorCodesTab() {
           )}
           mobile={() => (
             <div className="dl-mobile-data-list">
-              {errorCodes.map((ec) => (
+              {errorCodes?.map((ec) => (
                 <AppMobileDataCard
                   key={ec.id}
                   title={`${ec.code}: ${ec.titleJa}`}
@@ -570,26 +494,11 @@ function ErrorCodesTab() {
 // --- Command History Tab ---
 
 function CommandHistoryTab() {
-  const [commands, setCommands] = useState<CommandEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const fetchCommands = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await api.get<CommandsResponse>('/openclaw/commands/history');
-      setCommands(res.commands);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'コマンド履歴の取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchCommands();
-  }, [fetchCommands]);
+  const { data: commands, loading, error, reload } = useAsyncResource(
+    useCallback((signal: AbortSignal) =>
+      api.get<CommandsResponse>('/openclaw/commands/history', { signal }).then((r) => r.commands),
+    []),
+  );
 
   const getStatusBadge = (status: string) => {
     const bg = COMMAND_STATUS_BADGE[status] ?? 'secondary';
@@ -601,7 +510,7 @@ function CommandHistoryTab() {
       {error && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchCommands()}>
+          <AppButton size="sm" variant="outline-danger" onClick={() => void reload()}>
             再試行
           </AppButton>
         </AppAlert>
@@ -609,7 +518,7 @@ function CommandHistoryTab() {
 
       {loading ? (
         <InlineLoader text="コマンド履歴を読み込み中..." className="text-muted small mb-3" />
-      ) : commands.length === 0 ? (
+      ) : !commands?.length ? (
         <AppAlert variant="secondary">コマンド履歴がありません。</AppAlert>
       ) : (
         <AppResponsiveSwitch
@@ -630,7 +539,7 @@ function CommandHistoryTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {commands.map((cmd) => (
+                  {commands?.map((cmd) => (
                     <tr key={cmd.id}>
                       <td>{cmd.id}</td>
                       <td><code>{cmd.commandName}</code></td>
@@ -649,7 +558,7 @@ function CommandHistoryTab() {
           )}
           mobile={() => (
             <div className="dl-mobile-data-list">
-              {commands.map((cmd) => (
+              {commands?.map((cmd) => (
                 <AppMobileDataCard
                   key={cmd.id}
                   title={cmd.commandName}
@@ -680,18 +589,17 @@ export default function AdminLogCenterPage() {
   const [summaryError, setSummaryError] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
+    const ac = new AbortController();
     (async () => {
       try {
-        const res = await api.get<LogCenterSummary>('/admin/log-center/summary');
-        if (!cancelled) setSummary(res);
+        const res = await api.get<LogCenterSummary>('/admin/log-center/summary', { signal: ac.signal });
+        if (!ac.signal.aborted) setSummary(res);
       } catch (err) {
-        if (!cancelled) {
-          setSummaryError(err instanceof Error ? err.message : 'サマリーの取得に失敗しました');
-        }
+        if (ac.signal.aborted) return;
+        setSummaryError(err instanceof Error ? err.message : 'サマリーの取得に失敗しました');
       }
     })();
-    return () => { cancelled = true; };
+    return () => ac.abort();
   }, []);
 
   return (
@@ -714,20 +622,22 @@ export default function AdminLogCenterPage() {
         <Tab eventKey="all" title="全て">
           <LogEntriesView sourceFilter="" />
         </Tab>
-        <Tab eventKey="activity_logs" title="操作ログ">
-          <LogEntriesView sourceFilter="activity_logs" />
-        </Tab>
-        <Tab eventKey="system_events" title="システムイベント">
-          <LogEntriesView sourceFilter="system_events" />
-        </Tab>
-        <Tab eventKey="drug_master_sync_logs" title="同期ログ">
-          <LogEntriesView sourceFilter="drug_master_sync_logs" />
-        </Tab>
+        {LOG_SOURCE_TABS.map(({ key, title }) => (
+          <Tab key={key} eventKey={key} title={title}>
+            <LazyTab active={activeTab === key}>
+              <LogEntriesView sourceFilter={key} />
+            </LazyTab>
+          </Tab>
+        ))}
         <Tab eventKey="error_codes" title="エラーコード">
-          <ErrorCodesTab />
+          <LazyTab active={activeTab === 'error_codes'}>
+            <ErrorCodesTab />
+          </LazyTab>
         </Tab>
         <Tab eventKey="command_history" title="コマンド履歴">
-          <CommandHistoryTab />
+          <LazyTab active={activeTab === 'command_history'}>
+            <CommandHistoryTab />
+          </LazyTab>
         </Tab>
       </Tabs>
     </div>

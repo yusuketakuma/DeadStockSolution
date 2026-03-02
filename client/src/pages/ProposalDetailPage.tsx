@@ -17,6 +17,7 @@ import type { ProposalTimelineEvent } from '../utils/proposal-timeline';
 import { toViewerProposalStatusLabel } from '../utils/proposal-status';
 import { formatDateTimeJa } from '../utils/formatters';
 import ProposalTimeline from '../components/timeline/ProposalTimeline';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface PharmacyInfo {
   id: number;
@@ -301,7 +302,7 @@ ${template}` : template);
   };
 
   return (
-    <div>
+    <PageShell>
       <div className="d-flex justify-content-between align-items-center mb-3 mobile-card-header">
         <h4 className="page-title mb-0">マッチング #{proposal.id}</h4>
         <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
@@ -312,6 +313,7 @@ ${template}` : template);
       {error && <AppAlert variant="danger">{error}</AppAlert>}
       {message && <AppAlert variant="success">{message}</AppAlert>}
 
+      <ScrollArea>
       {/* 3-phase progress indicator */}
       <AppDataPanel className="mb-3" bodyClassName="py-2">
           <div className="d-flex align-items-center justify-content-between small">
@@ -551,6 +553,8 @@ ${template}` : template);
         )}
       </AppDataPanel>
 
+      </ScrollArea>
+
       <ConfirmActionModal
         show={pendingAction !== null}
         title={`マッチングの${pendingAction ? actionLabelMap[pendingAction] : ''}`}
@@ -563,6 +567,6 @@ ${template}` : template);
         onConfirm={handleAction}
         pending={actionSubmitting}
       />
-    </div>
+    </PageShell>
   );
 }

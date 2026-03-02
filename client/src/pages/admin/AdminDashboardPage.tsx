@@ -14,6 +14,7 @@ import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import AdminSentMessagesPanel, { type AdminMessage } from './components/AdminSentMessagesPanel';
 import { formatNumberJa } from '../../utils/formatters';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface Stats {
   totalPharmacies: number;
@@ -176,8 +177,9 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">管理者ダッシュボード</h4>
+      <ScrollArea>
       {loading && !stats && (
         <InlineLoader text="管理データを読み込み中..." className="text-muted small mb-3" />
       )}
@@ -453,6 +455,7 @@ export default function AdminDashboardPage() {
         </Col>
       </Row>
 
-    </div>
+      </ScrollArea>
+    </PageShell>
   );
 }

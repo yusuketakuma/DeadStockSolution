@@ -510,3 +510,23 @@ function detectPackageHeader(rows: unknown[][]): { rowIndex: number; mapping: Re
 
   return { rowIndex: bestRow, mapping: bestMapping };
 }
+
+/**
+ * MHLW 薬価基準ファイル（Excel/CSV）をパースする共通エントリーポイント。
+ * drug-master-scheduler と mhlw-multi-file-fetcher から使用。
+ */
+export async function parseMhlwDrugFile(
+  url: string,
+  contentType: string | null,
+  buffer: Buffer,
+): Promise<ParsedDrugRow[]> {
+  const isCsv = contentType?.includes('csv')
+    || contentType?.includes('text/plain')
+    || url.endsWith('.csv');
+  if (isCsv) {
+    const csvContent = decodeCsvBuffer(buffer);
+    return parseMhlwCsvData(csvContent);
+  }
+  const excelRows = await parseExcelBuffer(buffer);
+  return parseMhlwExcelData(excelRows);
+}

@@ -11,6 +11,7 @@ import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import { useAsyncState } from '../hooks/useAsyncState';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface BrowseItem {
   id: number;
@@ -63,7 +64,7 @@ export default function InventoryBrowsePage() {
   };
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">全薬局の在庫参照</h4>
       {error && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -92,6 +93,7 @@ export default function InventoryBrowsePage() {
         )}
       </div>
 
+      <ScrollArea>
       {loading ? (
         <InlineLoader text="在庫データを読み込み中..." className="text-muted small" />
       ) : items.length === 0 ? (
@@ -159,7 +161,8 @@ export default function InventoryBrowsePage() {
           )}
         />
       )}
+      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-    </div>
+    </PageShell>
   );
 }

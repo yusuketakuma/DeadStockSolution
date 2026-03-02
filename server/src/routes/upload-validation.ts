@@ -6,6 +6,7 @@ import { suggestMapping } from '../services/column-mapper';
 import { logger } from '../services/logger';
 import { writeLog, getClientIp } from '../services/log-service';
 import { parseExcelBuffer } from '../services/upload-service';
+import { getErrorMessage } from '../middleware/error-handler';
 
 export const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
 export const MAX_MAPPING_KEYS = 30;
@@ -45,10 +46,7 @@ export function getBaseContext(req: Request): Record<string, unknown> {
   };
 }
 
-export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
+export { getErrorMessage } from '../middleware/error-handler';
 
 export function sanitizeLogValue(value: unknown, maxLength: number = 160): string | null {
   if (value === null || value === undefined) return null;

@@ -9,7 +9,10 @@ import { useAsyncResource } from '../hooks/useAsyncResource';
 import AppDataPanel from '../components/ui/AppDataPanel';
 import SmartDigest from '../components/timeline/SmartDigest';
 import DashboardTimeline from '../components/timeline/DashboardTimeline';
+import OnboardingGuide from '../components/onboarding/OnboardingGuide';
+import { useOnboardingVisibility } from '../hooks/useOnboardingVisibility';
 import type { TimelineEvent } from '../types/timeline';
+import PageShell from '../components/ui/PageShell';
 
 interface PharmacyRisk {
   totalItems: number;
@@ -80,6 +83,8 @@ export default function DashboardPage() {
   const status = data?.status ?? null;
   const risk = data?.risk ?? null;
 
+  const { shouldShow: showOnboarding, dismiss: dismissOnboarding } = useOnboardingVisibility(status);
+
   const handleEventClick = useCallback((event: TimelineEvent) => {
     if (event.actionPath) {
       navigate(event.actionPath);
@@ -92,7 +97,11 @@ export default function DashboardPage() {
   }, [navigate]);
 
   return (
-    <div className="dashboard-viewport">
+    <PageShell>
+      {showOnboarding && (
+        <OnboardingGuide status={status} onDismiss={dismissOnboarding} />
+      )}
+
       {/* Title row */}
       <div className="d-flex align-items-center justify-content-between mb-2 flex-shrink-0">
         <h4 className="page-title mb-0">ダッシュボード</h4>
@@ -115,22 +124,30 @@ export default function DashboardPage() {
           {/* Risk KPIs */}
           <AppDataPanel title="期限切れリスク（自薬局）" className="flex-shrink-0">
             {risk ? (
-              <Row className="g-2 text-center">
+              <Row className="g-2">
                 <Col xs={3}>
-                  <div className="fw-bold fs-5">{risk.riskScore.toFixed(1)}</div>
-                  <div className="small text-muted">リスクスコア</div>
+                  <div className="dl-kpi-tile">
+                    <div className="dl-kpi-value">{risk.riskScore.toFixed(1)}</div>
+                    <div className="dl-kpi-label">リスクスコア</div>
+                  </div>
                 </Col>
                 <Col xs={3}>
-                  <div className="fw-bold fs-5">{risk.bucketCounts.expired}</div>
-                  <div className="small text-muted">期限切れ</div>
+                  <div className={`dl-kpi-tile${risk.bucketCounts.expired > 0 ? ' dl-kpi-tile--danger' : ''}`}>
+                    <div className="dl-kpi-value">{risk.bucketCounts.expired}</div>
+                    <div className="dl-kpi-label">期限切れ</div>
+                  </div>
                 </Col>
                 <Col xs={3}>
-                  <div className="fw-bold fs-5">{risk.bucketCounts.within30}</div>
-                  <div className="small text-muted">30日以内</div>
+                  <div className="dl-kpi-tile">
+                    <div className="dl-kpi-value">{risk.bucketCounts.within30}</div>
+                    <div className="dl-kpi-label">30日以内</div>
+                  </div>
                 </Col>
                 <Col xs={3}>
-                  <div className="fw-bold fs-5">{risk.totalItems}</div>
-                  <div className="small text-muted">在庫数</div>
+                  <div className="dl-kpi-tile">
+                    <div className="dl-kpi-value">{risk.totalItems}</div>
+                    <div className="dl-kpi-label">在庫数</div>
+                  </div>
                 </Col>
               </Row>
             ) : (
@@ -139,25 +156,31 @@ export default function DashboardPage() {
           </AppDataPanel>
 
           {/* Compact status strip */}
-          <div className="small flex-shrink-0">
-            <Row className="g-2 mb-1">
+          <AppDataPanel title="アップロード状況" className="flex-shrink-0">
+            <Row className="g-2 mb-2 small">
               <Col xs={4}>
-                <div className="fw-semibold">デッドストックリスト</div>
-                {status?.deadStockUploaded
-                  ? <Badge bg="success">アップロード済み</Badge>
-                  : <Badge bg="secondary">未アップロード</Badge>}
+                <div className="dl-kpi-tile">
+                  <div className="fw-semibold mb-1">デッドストックリスト</div>
+                  {status?.deadStockUploaded
+                    ? <Badge bg="success">アップロード済み</Badge>
+                    : <Badge bg="secondary">未アップロード</Badge>}
+                </div>
               </Col>
               <Col xs={4}>
-                <div className="fw-semibold">医薬品使用量リスト</div>
-                {status?.usedMedicationUploaded
-                  ? <Badge bg="success">当月アップロード済み</Badge>
-                  : <Badge bg="warning" text="dark">当月未アップロード</Badge>}
+                <div className="dl-kpi-tile">
+                  <div className="fw-semibold mb-1">医薬品使用量リスト</div>
+                  {status?.usedMedicationUploaded
+                    ? <Badge bg="success">当月アップロード済み</Badge>
+                    : <Badge bg="warning" text="dark">当月未アップロード</Badge>}
+                </div>
               </Col>
               <Col xs={4}>
-                <div className="fw-semibold">マッチング</div>
-                {status?.usedMedicationUploaded
-                  ? <span className="text-success">デッドストックリストの交換先を検索できます</span>
-                  : <span className="text-muted">医薬品使用量リストのアップロードが必要です</span>}
+                <div className="dl-kpi-tile">
+                  <div className="fw-semibold mb-1">マッチング</div>
+                  {status?.usedMedicationUploaded
+                    ? <span className="text-success">交換先を検索できます</span>
+                    : <span className="text-muted">使用量リストが必要です</span>}
+                </div>
               </Col>
             </Row>
             <div className="d-flex gap-1 flex-wrap">
@@ -168,11 +191,11 @@ export default function DashboardPage() {
               <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm py-0">交換履歴</Link>
             </div>
             {!status?.usedMedicationUploaded && (
-              <div className="text-info mt-1">
+              <div className="text-info mt-1 small">
                 マッチング機能を利用するには、当月の医薬品使用量Excelをアップロードしてください。
               </div>
             )}
-          </div>
+          </AppDataPanel>
         </Col>
       </Row>
 
@@ -190,6 +213,6 @@ export default function DashboardPage() {
         onRefresh={refreshTimeline}
         className="flex-grow-1"
       />
-    </div>
+    </PageShell>
   );
 }

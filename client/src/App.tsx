@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { TimelineProvider } from './contexts/TimelineContext';
+import { ToastProvider } from './contexts/ToastContext';
+import AppToastContainer from './components/ui/AppToastContainer';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppScreen from './components/ui/AppScreen';
@@ -79,7 +81,10 @@ export default function App() {
     <AuthProvider>
       <TimelineProvider>
         <NotificationProvider>
-          <AppRoutes />
+          <ToastProvider>
+            <AppRoutes />
+            <AppToastContainer />
+          </ToastProvider>
         </NotificationProvider>
       </TimelineProvider>
     </AuthProvider>

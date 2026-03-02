@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAsyncState } from '../hooks/useAsyncState';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
@@ -6,12 +6,16 @@ import AppAlert from '../components/ui/AppAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
 import RequireUpload from '../components/RequireUpload';
+import { markMatchingDone, readOnboardingMatchingDone } from '../components/onboarding/onboardingSteps';
+import { useAuth } from '../contexts/AuthContext';
 import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppCard from '../components/ui/AppCard';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
+import { useSearchParams } from 'react-router-dom';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -47,6 +51,8 @@ function formatPercent(value?: number): string {
 }
 
 export default function MatchingPage() {
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
   const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
   const [proposalSubmitting, setProposalSubmitting] = useState(false);
@@ -54,6 +60,18 @@ export default function MatchingPage() {
   const [proposalRetrySuggested, setProposalRetrySuggested] = useState(false);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [candidateForProposal, setCandidateForProposal] = useState<MatchCandidate | null>(null);
+  const requestedDrug = (searchParams.get('drug') ?? '').trim();
+
+  const displayCandidates = useMemo(() => {
+    const needle = requestedDrug.toLowerCase();
+    if (!needle) {
+      return candidates;
+    }
+    return candidates.filter((candidate) =>
+      candidate.itemsFromA.some((item) => item.drugName.toLowerCase().includes(needle))
+      || candidate.itemsFromB.some((item) => item.drugName.toLowerCase().includes(needle)),
+    );
+  }, [candidates, requestedDrug]);
 
   const handleSearch = async () => {
     setLoading(true);
@@ -64,6 +82,9 @@ export default function MatchingPage() {
       const data = await api.post<{ candidates: MatchCandidate[] }>('/exchange/find');
       setCandidates(data.candidates);
       setSearched(true);
+      if (!readOnboardingMatchingDone(user?.id)) {
+        markMatchingDone(user?.id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'マッチングに失敗しました');
     } finally {
@@ -95,7 +116,7 @@ export default function MatchingPage() {
 
   return (
     <RequireUpload>
-      <div>
+      <PageShell>
         <h4 className="page-title mb-3">マッチング</h4>
         {error && <AppAlert variant="danger">{error}</AppAlert>}
         {proposalRetrySuggested && (
@@ -107,6 +128,11 @@ export default function MatchingPage() {
           </AppAlert>
         )}
         {message && <AppAlert variant="success">{message}</AppAlert>}
+        {requestedDrug && (
+          <AppAlert variant="info" className="small">
+            対象薬剤: <strong>{requestedDrug}</strong>（一致候補を優先表示）
+          </AppAlert>
+        )}
 
         <AppCard className="mb-3">
           <AppCard.Body>
@@ -127,8 +153,14 @@ export default function MatchingPage() {
             交換候補が見つかりませんでした。アップロード内容を更新後、再実行してください。
           </AppAlert>
         )}
+        {searched && candidates.length > 0 && displayCandidates.length === 0 && requestedDrug && !loading && (
+          <AppAlert variant="warning">
+            「{requestedDrug}」に一致する候補は見つかりませんでした。クエリを外すと全候補を確認できます。
+          </AppAlert>
+        )}
 
-        {candidates.map((candidate, idx) => (
+        <ScrollArea>
+        {displayCandidates.map((candidate, idx) => (
             <AppCard key={candidate.pharmacyId} className="mb-3">
             <AppCard.Header className="p-0">
               <AppButton
@@ -348,6 +380,7 @@ export default function MatchingPage() {
             )}
           </AppCard>
         ))}
+        </ScrollArea>
 
         <ConfirmActionModal
           show={candidateForProposal !== null}
@@ -368,7 +401,7 @@ export default function MatchingPage() {
           onConfirm={handleSendProposal}
           pending={proposalSubmitting}
         />
-      </div>
+      </PageShell>
     </RequireUpload>
   );
 }

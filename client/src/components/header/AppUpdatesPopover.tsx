@@ -2,7 +2,7 @@ import { Collapse, OverlayTrigger, Popover } from 'react-bootstrap';
 import AppButton from '../ui/AppButton';
 import InlineLoader from '../ui/InlineLoader';
 import type { GitHubUpdatesResponse } from '../Header';
-import { formatDateJa, formatDateTimeJa } from '../../utils/formatters';
+import { formatDateJa, formatDateTimeJa, truncatePreview } from '../../utils/formatters';
 
 function formatUpdateDate(value: string | null): string {
   return formatDateJa(value, '日付不明');
@@ -10,12 +10,6 @@ function formatUpdateDate(value: string | null): string {
 
 function formatUpdateDateTime(value: string): string {
   return formatDateTimeJa(value, value);
-}
-
-function summarizeUpdateBody(body: string): string {
-  const normalized = body.replace(/\s+/g, ' ').trim();
-  if (!normalized) return '';
-  return normalized.length > 180 ? `${normalized.slice(0, 180)}...` : normalized;
 }
 
 const RELEASE_HOST_ALLOWLIST = new Set(['github.com', 'www.github.com']);
@@ -118,7 +112,7 @@ export default function AppUpdatesPopover({
                 )}
                 <small className="text-muted">{formatUpdateDate(latestUpdate.publishedAt)}</small>
                 {latestUpdate.body && (
-                  <p className="app-updates-item-body">{summarizeUpdateBody(latestUpdate.body)}</p>
+                  <p className="app-updates-item-body">{truncatePreview(latestUpdate.body, 180, '')}</p>
                 )}
               </div>
             )}

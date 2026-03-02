@@ -275,7 +275,7 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('デッドストックリストの交換先を検索できます')).toBeInTheDocument();
+      expect(screen.getByText('交換先を検索できます')).toBeInTheDocument();
     });
   });
 });

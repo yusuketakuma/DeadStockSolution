@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Badge, ButtonGroup } from 'react-bootstrap';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
 import ConfirmActionModal from '../components/ConfirmActionModal';
@@ -11,6 +12,9 @@ import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import { useAsyncState } from '../hooks/useAsyncState';
+import { useToast } from '../contexts/ToastContext';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
 
 interface DeadStockItem {
   id: number;
@@ -31,14 +35,40 @@ interface ListResponse {
   pagination: { page: number; totalPages: number; total: number };
 }
 
+type ExpiryFilter = 'all' | 'expired' | 'within30' | 'within60' | 'within90';
+
+const EXPIRY_FILTER_LABELS: Record<ExpiryFilter, string> = {
+  all: 'すべて',
+  expired: '期限切れ',
+  within30: '30日以内',
+  within60: '60日以内',
+  within90: '90日以内',
+};
+
+const EXPIRY_FILTER_BUCKETS: Record<Exclude<ExpiryFilter, 'all'>, RiskBucket[]> = {
+  expired: ['expired'],
+  within30: ['expired', 'within30'],
+  within60: ['expired', 'within30', 'within60'],
+  within90: ['expired', 'within30', 'within60', 'within90'],
+};
+
+interface EnrichedItem extends DeadStockItem {
+  daysRemaining: number | null;
+  bucket: RiskBucket;
+}
+
 export default function DeadStockListPage() {
   const [items, setItems] = useState<DeadStockItem[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
+  const { loading, setLoading, error, setError } = useAsyncState();
+  const { showSuccess } = useToast();
+  const navigate = useNavigate();
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
+  const [sortByExpiry, setSortByExpiry] = useState(false);
 
   const fetchData = useCallback(async (p: number) => {
     setLoading(true);
@@ -63,7 +93,7 @@ export default function DeadStockListPage() {
     setError('');
     try {
       await api.delete(`/inventory/dead-stock/${pendingDeleteId}`);
-      setMessage('削除しました');
+      showSuccess('削除しました');
       await fetchData(page);
     } catch (err) {
       setError(err instanceof Error ? err.message : '削除に失敗しました');
@@ -73,17 +103,63 @@ export default function DeadStockListPage() {
     }
   };
 
+  const enrichedItems = useMemo<EnrichedItem[]>(() =>
+    items.map((item) => {
+      const days = daysUntilExpiry(item.expirationDate);
+      return { ...item, daysRemaining: days, bucket: resolveBucket(days) };
+    }), [items]);
+
+  const displayItems = useMemo(() => {
+    let filtered = enrichedItems;
+    if (expiryFilter !== 'all') {
+      const matchBuckets = EXPIRY_FILTER_BUCKETS[expiryFilter];
+      filtered = filtered.filter((item) => matchBuckets.includes(item.bucket));
+    }
+    if (sortByExpiry) {
+      filtered = [...filtered].sort((a, b) => {
+        if (a.daysRemaining === null && b.daysRemaining === null) return 0;
+        if (a.daysRemaining === null) return 1;
+        if (b.daysRemaining === null) return -1;
+        return a.daysRemaining - b.daysRemaining;
+      });
+    }
+    return filtered;
+  }, [enrichedItems, expiryFilter, sortByExpiry]);
+
   const pendingItem = pendingDeleteId === null
     ? null
     : items.find((item) => item.id === pendingDeleteId) ?? null;
 
   return (
-    <div>
+    <PageShell>
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4 className="page-title mb-0">デッドストックリスト ({total}件)</h4>
         <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
       </div>
-      {message && <AppAlert variant="info" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
+
+      {items.length > 0 && (
+        <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
+          <ButtonGroup size="sm">
+            {(Object.keys(EXPIRY_FILTER_LABELS) as ExpiryFilter[]).map((key) => (
+              <AppButton
+                key={key}
+                variant={expiryFilter === key ? 'primary' : 'outline-primary'}
+                onClick={() => setExpiryFilter(key)}
+              >
+                {EXPIRY_FILTER_LABELS[key]}
+              </AppButton>
+            ))}
+          </ButtonGroup>
+          <AppButton
+            size="sm"
+            variant={sortByExpiry ? 'secondary' : 'outline-secondary'}
+            onClick={() => setSortByExpiry((v) => !v)}
+          >
+            期限順
+          </AppButton>
+        </div>
+      )}
+
       {error && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <span>{error}</span>
@@ -93,6 +169,7 @@ export default function DeadStockListPage() {
         </AppAlert>
       )}
 
+      <ScrollArea>
       {loading ? (
         <InlineLoader text="デッドストック一覧を読み込み中..." className="text-muted small" />
       ) : items.length === 0 ? (
@@ -117,12 +194,13 @@ export default function DeadStockListPage() {
                     <th>薬価(単価)</th>
                     <th>薬価(合計)</th>
                     <th>使用期限</th>
+                    <th>残り日数</th>
                     <th>ロット</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
+                  {displayItems.map((item) => (
                     <tr key={item.id}>
                       <td>{item.drugName}</td>
                       <td className="small text-muted">{item.drugCode}</td>
@@ -132,8 +210,18 @@ export default function DeadStockListPage() {
                       <td>{item.yakkaUnitPrice?.toLocaleString()}</td>
                       <td>{item.yakkaTotal?.toLocaleString()}</td>
                       <td>{item.expirationDate}</td>
-                      <td className="small">{item.lotNumber}</td>
                       <td>
+                        <Badge bg={bucketVariant(item.bucket)}>{formatDaysRemaining(item.daysRemaining)}</Badge>
+                      </td>
+                      <td className="small">{item.lotNumber}</td>
+                      <td className="d-flex gap-1">
+                        <AppButton
+                          size="sm"
+                          variant="outline-primary"
+                          onClick={() => navigate(`/matching?drug=${encodeURIComponent(item.drugName)}`)}
+                        >
+                          候補検索
+                        </AppButton>
                         <AppButton size="sm" variant="outline-danger" onClick={() => setPendingDeleteId(item.id)}>
                           削除
                         </AppButton>
@@ -146,7 +234,7 @@ export default function DeadStockListPage() {
           )}
           mobile={() => (
             <div className="dl-mobile-data-list">
-              {items.map((item) => (
+              {displayItems.map((item) => (
                 <AppMobileDataCard
                   key={item.id}
                   title={item.drugName}
@@ -158,12 +246,22 @@ export default function DeadStockListPage() {
                     { label: '薬価(単価)', value: item.yakkaUnitPrice?.toLocaleString() ?? '-' },
                     { label: '薬価(合計)', value: item.yakkaTotal?.toLocaleString() ?? '-' },
                     { label: '使用期限', value: item.expirationDate || '-' },
+                    { label: '残り日数', value: formatDaysRemaining(item.daysRemaining) },
                     { label: 'ロット', value: item.lotNumber || '-' },
                   ]}
                   actions={(
-                    <AppButton size="sm" variant="outline-danger" onClick={() => setPendingDeleteId(item.id)}>
-                      削除
-                    </AppButton>
+                    <div className="d-flex gap-1">
+                      <AppButton
+                        size="sm"
+                        variant="outline-primary"
+                        onClick={() => navigate(`/matching?drug=${encodeURIComponent(item.drugName)}`)}
+                      >
+                        候補検索
+                      </AppButton>
+                      <AppButton size="sm" variant="outline-danger" onClick={() => setPendingDeleteId(item.id)}>
+                        削除
+                      </AppButton>
+                    </div>
                   )}
                 />
               ))}
@@ -171,6 +269,7 @@ export default function DeadStockListPage() {
           )}
         />
       )}
+      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
       <ConfirmActionModal
@@ -185,6 +284,6 @@ export default function DeadStockListPage() {
         onConfirm={handleDeleteConfirmed}
         pending={deleting}
       />
-    </div>
+    </PageShell>
   );
 }

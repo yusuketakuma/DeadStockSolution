@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../types';
 import { parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { logger } from '../services/logger';
+import { getErrorMessage } from '../middleware/error-handler';
 
 export function sendPaginated<T>(
   res: Response,
@@ -39,10 +40,7 @@ export function parseIdOrBadRequest(res: Response, rawId: string | string[] | un
   return id;
 }
 
-export function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
+export { getErrorMessage } from '../middleware/error-handler';
 
 export function handleAdminError(err: unknown, logContext: string, responseMessage: string, res: Response): void {
   logger.error(logContext, { error: getErrorMessage(err) });

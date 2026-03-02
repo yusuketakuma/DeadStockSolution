@@ -17,8 +17,10 @@ import {
   createSyncLog,
   completeSyncLog,
 } from '../services/drug-master-service';
-import { triggerManualAutoSync } from '../services/drug-master-scheduler';
+import { triggerManualAutoSync, getConfiguredSourceMode } from '../services/drug-master-scheduler';
+import type { SourceMode } from '../services/drug-master-scheduler';
 import { triggerManualPackageAutoSync } from '../services/drug-package-scheduler';
+import { getSourceStatesByPrefix } from '../services/drug-master-source-state-service';
 import { parseExcelBuffer } from '../services/upload-service';
 import { logger } from '../services/logger';
 import { getErrorMessage } from './admin-utils';
@@ -40,10 +42,6 @@ const EMPTY_SYNC_RESULT: DrugMasterSyncSummary = {
   itemsDeleted: 0,
 };
 
-function getErrorMessageOrFallback(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
-}
 
 function getUploadContext(req: AuthRequest): Record<string, unknown> {
   const file = (req as Request & { file?: Express.Multer.File }).file;
@@ -269,8 +267,8 @@ router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) =
         syncLogId: syncLog.id,
         error: getErrorMessage(parseErr),
       });
-      await completeSyncLogAsFailed(syncLog.id, getErrorMessageOrFallback(parseErr, 'パースエラー'));
-      res.status(400).json({ error: getErrorMessageOrFallback(parseErr, 'ファイルのパースに失敗しました') });
+      await completeSyncLogAsFailed(syncLog.id, getErrorMessage(parseErr));
+      res.status(400).json({ error: getErrorMessage(parseErr) });
       return;
     }
 
@@ -316,7 +314,7 @@ router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) =
       });
       // 同期失敗時もログを確実に閉じる
       try {
-        await completeSyncLogAsFailed(syncLog.id, getErrorMessageOrFallback(syncErr, '同期処理中にエラーが発生しました'));
+        await completeSyncLogAsFailed(syncLog.id, getErrorMessage(syncErr));
       } catch { /* ログ更新失敗は無視 */ }
       throw syncErr;
     }
@@ -413,7 +411,8 @@ router.post('/auto-sync', async (req: AuthRequest, res: Response) => {
     const sourceUrl = typeof req.body?.sourceUrl === 'string'
       ? req.body.sourceUrl.trim()
       : '';
-    const result = await triggerManualAutoSync({ sourceUrl: sourceUrl || null });
+    const sourceMode: SourceMode | undefined = req.body?.sourceMode === 'single' ? 'single' : undefined;
+    const result = await triggerManualAutoSync({ sourceUrl: sourceUrl || null, sourceMode });
 
     if (result.triggered) {
       await writeLog('drug_master_sync', {
@@ -439,8 +438,34 @@ router.get('/auto-sync/status', async (_req: AuthRequest, res: Response) => {
     const sourceUrl = process.env.DRUG_MASTER_SOURCE_URL || '';
     const autoSyncEnabled = process.env.DRUG_MASTER_AUTO_SYNC === 'true';
     const checkIntervalHours = resolveIntervalHours(process.env.DRUG_MASTER_CHECK_INTERVAL_HOURS, 24);
+    const sourceMode = getConfiguredSourceMode();
 
-    res.json(buildAutoSyncStatus(sourceUrl, autoSyncEnabled, checkIntervalHours));
+    const baseStatus = buildAutoSyncStatus(sourceUrl, autoSyncEnabled, checkIntervalHours);
+
+    // index モードの場合、発見済みファイル情報を追加
+    let discoveredFiles: { category: string; url: string; lastChanged: string | null }[] | undefined;
+    let lastIndexCheck: string | undefined;
+
+    if (sourceMode === 'index') {
+      const states = await getSourceStatesByPrefix('drug:');
+      const indexState = states.find((s) => s.sourceKey === 'drug:index_page');
+      lastIndexCheck = indexState?.lastCheckedAt ?? undefined;
+
+      discoveredFiles = states
+        .filter((s) => s.sourceKey.startsWith('drug:file:'))
+        .map((s) => ({
+          category: s.sourceKey.replace('drug:file:', ''),
+          url: s.url,
+          lastChanged: s.lastChangedAt,
+        }));
+    }
+
+    res.json({
+      ...baseStatus,
+      sourceMode,
+      discoveredFiles,
+      lastIndexCheck,
+    });
   } catch (err) {
     logger.error('Auto-sync status error', {
       error: err instanceof Error ? err.message : String(err),

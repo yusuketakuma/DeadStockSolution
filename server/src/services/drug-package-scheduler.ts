@@ -1,6 +1,3 @@
-import { eq, desc } from 'drizzle-orm';
-import { db } from '../config/database';
-import { drugMasterSyncLogs } from '../db/schema';
 import {
   parsePackageExcelData,
   parsePackageCsvData,
@@ -15,23 +12,40 @@ import { parseExcelBuffer } from './upload-service';
 import { logger } from './logger';
 import { createPinnedDnsAgent, validateExternalHttpsUrl } from '../utils/network-utils';
 import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
-import { downloadResponseBuffer, fetchWithTimeout } from '../utils/http-utils';
-
-type FetchDispatcher = NonNullable<RequestInit['dispatcher']>;
+import { summarizeSourceUrl, MHLW_DEFAULT_FETCH_RETRIES, type FetchDispatcher } from '../utils/http-utils';
+import { getErrorMessage } from '../middleware/error-handler';
+import { sha256 } from '../utils/crypto-utils';
+import { persistSourceHeaders, SOURCE_KEY_PACKAGE } from './drug-master-source-state-service';
+import { checkForUpdates, downloadFile } from './mhlw-source-fetch';
 
 const CHECK_INTERVAL_HOURS = parseBoundedInt(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS, 24, 1, 24 * 30);
 const CHECK_INTERVAL_MS = CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
 const AUTO_SYNC_ENABLED = process.env.DRUG_PACKAGE_AUTO_SYNC === 'true';
 const SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'SCHEDULER_OPTIMIZED_LOOP_ENABLED';
 const DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'DRUG_PACKAGE_SCHEDULER_OPTIMIZED_LOOP_ENABLED';
-const FETCH_TIMEOUT_MS = 120_000;
-const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024;
-const FETCH_RETRIES = parseBoundedInt(process.env.DRUG_PACKAGE_FETCH_RETRIES, 2, 0, 5);
+const FETCH_RETRIES = parseBoundedInt(process.env.DRUG_PACKAGE_FETCH_RETRIES, MHLW_DEFAULT_FETCH_RETRIES, 0, 5);
 
-function buildSourceRequestHeaders(): Record<string, string> {
+function shouldAttachSourceCredentials(requestUrl: string): boolean {
+  const configuredSourceUrl = getConfiguredSourceUrl();
+  if (!configuredSourceUrl) {
+    return false;
+  }
+  try {
+    const requested = new URL(requestUrl);
+    const configured = new URL(configuredSourceUrl);
+    return requested.origin === configured.origin && requested.pathname === configured.pathname;
+  } catch {
+    return false;
+  }
+}
+
+function buildSourceRequestHeaders(requestUrl: string): Record<string, string> {
   const headers: Record<string, string> = {
     'User-Agent': 'DeadStockSolution-DrugPackageSync/1.0',
   };
+  if (!shouldAttachSourceCredentials(requestUrl)) {
+    return headers;
+  }
   const authorization = process.env.DRUG_PACKAGE_SOURCE_AUTHORIZATION?.trim();
   const cookie = process.env.DRUG_PACKAGE_SOURCE_COOKIE?.trim();
   if (authorization) headers.Authorization = authorization;
@@ -39,32 +53,26 @@ function buildSourceRequestHeaders(): Record<string, string> {
   return headers;
 }
 
-let lastKnownETag: string | null = null;
-let lastKnownLastModified: string | null = null;
 let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let schedulerActive = false;
 let isRunning = false;
 
-function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 function getConfiguredSourceUrl(): string {
   return process.env.DRUG_PACKAGE_SOURCE_URL?.trim() || '';
 }
 
-function summarizeSourceUrl(sourceUrl: string): string {
-  try {
-    return new URL(sourceUrl).hostname;
-  } catch {
-    return sourceUrl.slice(0, 64);
-  }
-}
 
-function updateKnownHeaders(headers: { etag: string | null; lastModified: string | null }): void {
-  if (headers.etag) lastKnownETag = headers.etag;
-  if (headers.lastModified) lastKnownLastModified = headers.lastModified;
+async function persistHeaders(
+  sourceUrl: string,
+  headers: {
+    etag: string | null;
+    lastModified: string | null;
+    contentHash?: string | null;
+  },
+  changed: boolean,
+): Promise<void> {
+  await persistSourceHeaders(SOURCE_KEY_PACKAGE, sourceUrl, headers, changed);
 }
 
 function isOptimizedLoopEnabledForDrugPackageScheduler(): boolean {
@@ -107,84 +115,9 @@ function runPackageAutoSyncSafely(mode: 'initial' | 'scheduled' | 'manual', sour
   return task.catch((err) => {
     const suffix = mode === 'manual' ? 'manual trigger' : `${mode} run`;
     logger.error(`Drug package auto-sync: ${suffix} failed`, {
-      error: formatError(err),
+      error: getErrorMessage(err),
     });
   });
-}
-
-async function checkForUpdates(url: string, dispatcher: FetchDispatcher): Promise<{
-  hasUpdate: boolean;
-  etag: string | null;
-  lastModified: string | null;
-}> {
-  const response = await fetchWithTimeout(url, {
-      method: 'HEAD',
-      timeoutMs: 30_000,
-      retry: { retries: FETCH_RETRIES },
-      redirect: 'manual',
-      dispatcher,
-      headers: buildSourceRequestHeaders(),
-    });
-
-    if (response.status >= 300 && response.status < 400) {
-      throw new Error(`Redirect response is not allowed for source URL: ${response.status}`);
-    }
-
-    if (!response.ok) {
-      throw new Error(`HEAD request failed: ${response.status} ${response.statusText}`);
-    }
-
-    const etag = response.headers.get('etag');
-    const lastModified = response.headers.get('last-modified');
-
-    if (lastKnownETag === null && lastKnownLastModified === null) {
-      const [lastSync] = await db.select({ sourceDescription: drugMasterSyncLogs.sourceDescription })
-        .from(drugMasterSyncLogs)
-        .where(eq(drugMasterSyncLogs.status, 'success'))
-        .orderBy(desc(drugMasterSyncLogs.startedAt))
-        .limit(1);
-
-      if (!lastSync) {
-        return { hasUpdate: true, etag, lastModified };
-      }
-
-      if (!etag && !lastModified) {
-        return { hasUpdate: false, etag, lastModified };
-      }
-    }
-
-    if (etag && lastKnownETag !== null) {
-      return { hasUpdate: etag !== lastKnownETag, etag, lastModified };
-    }
-
-    if (lastModified && lastKnownLastModified !== null) {
-      return { hasUpdate: lastModified !== lastKnownLastModified, etag, lastModified };
-    }
-
-    return { hasUpdate: etag !== lastKnownETag || lastModified !== lastKnownLastModified, etag, lastModified };
-}
-
-async function downloadFile(url: string, dispatcher: FetchDispatcher): Promise<{ buffer: Buffer; contentType: string | null }> {
-  const response = await fetchWithTimeout(url, {
-      timeoutMs: FETCH_TIMEOUT_MS,
-      retry: { retries: FETCH_RETRIES },
-      redirect: 'manual',
-      dispatcher,
-      headers: buildSourceRequestHeaders(),
-    });
-
-    if (response.status >= 300 && response.status < 400) {
-      throw new Error(`Redirect response is not allowed for source URL: ${response.status}`);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Download failed: ${response.status} ${response.statusText}`);
-    }
-
-    const contentType = response.headers.get('content-type');
-    const buffer = await downloadResponseBuffer(response, MAX_DOWNLOAD_SIZE);
-
-    return { buffer, contentType };
 }
 
 async function runPackageAutoSync(): Promise<void> {
@@ -202,32 +135,48 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
     return;
   }
 
-  const validated = await validateExternalHttpsUrl(sourceUrl);
-  if (!validated.ok) {
-    logger.error('Drug package auto-sync: source URL is invalid', {
-      source: summarizeSourceUrl(sourceUrl),
-      reason: validated.reason,
-    });
-    return;
-  }
-
-  const pinnedAgent = createPinnedDnsAgent(validated.hostname ?? new URL(sourceUrl).hostname, validated.resolvedAddresses);
-  const pinnedDispatcher = pinnedAgent as unknown as FetchDispatcher;
-
   isRunning = true;
+  let pinnedAgent: { close: () => Promise<void> } | null = null;
 
   try {
+    const validated = await validateExternalHttpsUrl(sourceUrl);
+    if (!validated.ok) {
+      logger.error('Drug package auto-sync: source URL is invalid', {
+        source: summarizeSourceUrl(sourceUrl),
+        reason: validated.reason,
+      });
+      return;
+    }
+
+    pinnedAgent = createPinnedDnsAgent(
+      validated.hostname ?? new URL(sourceUrl).hostname,
+      validated.resolvedAddresses,
+    );
+    const pinnedDispatcher = pinnedAgent as unknown as FetchDispatcher;
+
     logger.info('Drug package auto-sync: checking for updates', { source: summarizeSourceUrl(sourceUrl) });
-    const updateCheck = await checkForUpdates(sourceUrl, pinnedDispatcher);
+    const fetchOpts = { sourceKey: SOURCE_KEY_PACKAGE, retries: FETCH_RETRIES, headers: buildSourceRequestHeaders(sourceUrl) };
+    const updateCheck = await checkForUpdates(sourceUrl, pinnedDispatcher, fetchOpts);
 
     if (!updateCheck.hasUpdate) {
       logger.info('Drug package auto-sync: no updates detected');
-      updateKnownHeaders(updateCheck);
+      await persistHeaders(sourceUrl, updateCheck, false);
       return;
     }
 
     logger.info('Drug package auto-sync: update detected, downloading file');
-    const { buffer, contentType } = await downloadFile(sourceUrl, pinnedDispatcher);
+    const { buffer, contentType } = await downloadFile(sourceUrl, pinnedDispatcher, fetchOpts);
+    const contentHash = sha256(buffer);
+
+    if (
+      updateCheck.compareByContentHash
+      && updateCheck.previousContentHash
+      && updateCheck.previousContentHash === contentHash
+    ) {
+      logger.info('Drug package auto-sync: no updates detected by content-hash fallback');
+      await persistHeaders(sourceUrl, { ...updateCheck, contentHash }, false);
+      return;
+    }
 
     const syncLog = await createSyncLog('package_auto', `包装単位自動取得: ${summarizeSourceUrl(sourceUrl)}`, null);
     const emptyResult = { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 };
@@ -249,7 +198,7 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
         itemsDeleted: 0,
       });
 
-      updateKnownHeaders(updateCheck);
+      await persistHeaders(sourceUrl, { ...updateCheck, contentHash }, true);
 
       logger.info('Drug package auto-sync: completed successfully', {
         processed: parsedRows.length,
@@ -257,16 +206,18 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
         updated: result.updated,
       });
     } catch (syncErr) {
-      const errorMsg = formatError(syncErr);
+      const errorMsg = getErrorMessage(syncErr);
       await completeSyncLog(syncLog.id, 'failed', emptyResult, errorMsg);
       logger.error('Drug package auto-sync: sync failed', { error: errorMsg });
     }
   } catch (err) {
     logger.error('Drug package auto-sync: check/download failed', {
-      error: formatError(err),
+      error: getErrorMessage(err),
     });
   } finally {
-    await pinnedAgent.close().catch(() => undefined);
+    if (pinnedAgent) {
+      await pinnedAgent.close().catch(() => undefined);
+    }
     isRunning = false;
   }
 }

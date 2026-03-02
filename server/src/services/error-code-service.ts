@@ -7,6 +7,7 @@ import {
   errorCodeCategoryValues,
   errorCodeSeverityValues,
 } from '../db/schema';
+import { escapeLikeWildcards } from '../utils/request-utils';
 import { logger } from './logger';
 
 // ── 初期エラーコード定義 ──────────────────────────────────
@@ -88,7 +89,7 @@ export async function listErrorCodes(options: ListErrorCodesOptions = {}): Promi
       conditions.push(eq(errorCodes.isActive, true));
     }
     if (options.search) {
-      conditions.push(ilike(errorCodes.code, `%${options.search}%`));
+      conditions.push(ilike(errorCodes.code, `%${escapeLikeWildcards(options.search)}%`));
     }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;

@@ -1,10 +1,11 @@
-import { type ReactNode, useCallback } from 'react';
+import { useCallback } from 'react';
 import { Container, Row, Col, Badge } from 'react-bootstrap';
 import AppKpiCard from '../components/ui/AppKpiCard';
 import AppDataPanel from '../components/ui/AppDataPanel';
 import { useAsyncResource } from '../hooks/useAsyncResource';
 import { api } from '../api/client';
 import { formatYen, formatDateJa } from '../utils/formatters';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface BucketCounts {
   expired: number;
@@ -82,12 +83,16 @@ function BucketRiskBadges({ buckets }: { buckets: BucketCounts }) {
   );
 }
 
-function PageShell({ children }: { children: ReactNode }) {
+function StatisticsShell({ children }: { children: React.ReactNode }) {
   return (
-    <Container className="py-4">
-      <h1 className="h4 mb-4">統計</h1>
-      {children}
-    </Container>
+    <PageShell>
+      <h4 className="page-title mb-3">統計</h4>
+      <ScrollArea>
+        <Container>
+          {children}
+        </Container>
+      </ScrollArea>
+    </PageShell>
   );
 }
 
@@ -100,11 +105,11 @@ export default function StatisticsPage() {
   const { data, error, loading } = useAsyncResource(fetcher);
 
   if (loading) {
-    return <PageShell><p className="text-muted">読み込み中...</p></PageShell>;
+    return <StatisticsShell><p className="text-muted">読み込み中...</p></StatisticsShell>;
   }
 
   if (error) {
-    return <PageShell><div className="alert alert-danger">{error}</div></PageShell>;
+    return <StatisticsShell><div className="alert alert-danger">{error}</div></StatisticsShell>;
   }
 
   if (!data) return null;
@@ -112,7 +117,7 @@ export default function StatisticsPage() {
   const buckets = data.inventory.bucketCounts;
 
   return (
-    <PageShell>
+    <StatisticsShell>
       {/* アクション待ち・アラート */}
       {(data.proposals.pendingAction > 0 || data.alerts.activeCount > 0) && (
         <AppDataPanel title="要対応" className="mb-3">
@@ -271,6 +276,6 @@ export default function StatisticsPage() {
           </Col>
         </Row>
       </AppDataPanel>
-    </PageShell>
+    </StatisticsShell>
   );
 }

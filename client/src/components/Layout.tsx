@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import AppScreen from './ui/AppScreen';
+import { useMatchNotificationToast } from '../hooks/useMatchNotificationToast';
 
 interface Props {
   children: React.ReactNode;
@@ -9,6 +10,7 @@ interface Props {
 
 export default function Layout({ children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  useMatchNotificationToast();
 
   return (
     <div className="app-layout app-theme">

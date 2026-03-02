@@ -1,6 +1,7 @@
 import { db } from '../config/database';
 import { activityLogs, systemEvents, drugMasterSyncLogs } from '../db/schema';
 import { desc, and, eq, gte, lte, ilike, or, sql, count } from 'drizzle-orm';
+import { escapeLikeWildcards } from '../utils/request-utils';
 
 // ── 定数・型 ──────────────────────────────────────────
 
@@ -82,8 +83,13 @@ function normalizeActivityLog(row: Record<string, unknown>): NormalizedLogEntry 
   };
 }
 
+const VALID_LEVELS = new Set<NormalizedLogEntry['level']>(['critical', 'error', 'warning', 'info']);
+
 function normalizeSystemEvent(row: Record<string, unknown>): NormalizedLogEntry {
-  const level = String(row.level ?? 'error') as NormalizedLogEntry['level'];
+  const rawLevel = String(row.level ?? 'error');
+  const level: NormalizedLogEntry['level'] = VALID_LEVELS.has(rawLevel as NormalizedLogEntry['level'])
+    ? (rawLevel as NormalizedLogEntry['level'])
+    : 'error';
   const errorCode = row.errorCode != null ? String(row.errorCode) : null;
 
   return {
@@ -142,6 +148,91 @@ function parseJsonSafe(value: unknown): unknown {
   }
 }
 
+// ── ソーステーブル設定 ──────────────────────────────────
+
+const SOURCE_TABLE_CONFIG = {
+  activity_logs: {
+    table: activityLogs,
+    timestampCol: activityLogs.createdAt,
+    pharmacyIdCol: activityLogs.pharmacyId as typeof activityLogs.pharmacyId | null,
+    searchCols: [activityLogs.action, activityLogs.detail] as const,
+    levelCol: null,
+  },
+  system_events: {
+    table: systemEvents,
+    timestampCol: systemEvents.occurredAt,
+    pharmacyIdCol: null,
+    searchCols: [systemEvents.message, systemEvents.eventType] as const,
+    levelCol: systemEvents.level as typeof systemEvents.level | null,
+  },
+  drug_master_sync_logs: {
+    table: drugMasterSyncLogs,
+    timestampCol: drugMasterSyncLogs.startedAt,
+    pharmacyIdCol: drugMasterSyncLogs.triggeredBy as typeof drugMasterSyncLogs.triggeredBy | null,
+    searchCols: [drugMasterSyncLogs.syncType, drugMasterSyncLogs.sourceDescription] as const,
+    levelCol: null,
+  },
+} satisfies Record<LogSource, {
+  table: unknown;
+  timestampCol: unknown;
+  pharmacyIdCol: unknown;
+  searchCols: readonly unknown[];
+  levelCol: unknown;
+}>;
+
+// ── 共通条件構築 ──────────────────────────────────────────
+
+function buildSourceConditions(source: LogSource, query: LogCenterQuery) {
+  const config = SOURCE_TABLE_CONFIG[source];
+  const conditions = [];
+
+  if (query.pharmacyId != null && config.pharmacyIdCol) {
+    conditions.push(eq(config.pharmacyIdCol, query.pharmacyId));
+  }
+  if (query.from) {
+    conditions.push(gte(config.timestampCol, query.from));
+  }
+  if (query.to) {
+    conditions.push(lte(config.timestampCol, query.to));
+  }
+  if (query.search) {
+    const escaped = escapeLikeWildcards(query.search);
+    conditions.push(
+      or(...config.searchCols.map((col) => ilike(col, `%${escaped}%`))),
+    );
+  }
+  if (query.level && config.levelCol) {
+    conditions.push(sql`${config.levelCol} = ${query.level}`);
+  }
+
+  return { config, where: conditions.length > 0 ? and(...conditions) : undefined };
+}
+
+// ── 汎用ソーステーブルクエリ ──────────────────────────────
+
+async function querySourceTable(source: LogSource, query: LogCenterQuery, fetchLimit = 1000): Promise<NormalizedLogEntry[]> {
+  const { config, where } = buildSourceConditions(source, query);
+  const rows = await db
+    .select()
+    .from(config.table)
+    .where(where)
+    .orderBy(desc(config.timestampCol))
+    .limit(fetchLimit);
+
+  return rows.map((r) => normalizeLogEntry(source, r as unknown as Record<string, unknown>));
+}
+
+// ── ソーステーブル COUNT ──────────────────────────────────
+
+async function countSourceTable(source: LogSource, query: LogCenterQuery): Promise<number> {
+  const { config, where } = buildSourceConditions(source, query);
+  const [row] = await db
+    .select({ cnt: count() })
+    .from(config.table)
+    .where(where);
+  return Number(row?.cnt ?? 0);
+}
+
 // ── クエリ関数 ──────────────────────────────────────────
 
 export async function queryLogs(query: LogCenterQuery): Promise<{
@@ -154,29 +245,29 @@ export async function queryLogs(query: LogCenterQuery): Promise<{
   const page = query.page ?? 1;
   const limit = query.limit ?? 50;
 
-  const allEntries: NormalizedLogEntry[] = [];
+  // ソースあたりの fetch limit を動的化（全件ではなく必要分 + バッファ）
+  const perSourceLimit = Math.ceil((page * limit) / sources.length) + limit;
 
-  // 各ソースを並列クエリ
-  const promises = sources.map(async (source) => {
-    switch (source) {
-      case 'activity_logs':
-        return queryActivityLogs(query);
-      case 'system_events':
-        return querySystemEvents(query);
-      case 'drug_master_sync_logs':
-        return querySyncLogs(query);
-    }
-  });
+  // COUNT と data クエリを全て並列実行
+  const countPromises = sources.map((source) => countSourceTable(source, query));
+  const dataPromises = sources.map((source) => querySourceTable(source, query, perSourceLimit));
+  const [counts, results] = await Promise.all([
+    Promise.all(countPromises),
+    Promise.all(dataPromises),
+  ]);
+  const rawTotal = counts.reduce((sum, c) => sum + c, 0);
+  const allEntries = results.flat();
 
-  const results = await Promise.all(promises);
-  for (const rows of results) {
-    allEntries.push(...rows);
-  }
-
-  // レベルフィルタ（DB 側で完全にはフィルタできないため正規化後にフィルタ）
+  // レベルフィルタ（levelCol がないソースは正規化後にフィルタ）
   const filtered = query.level
     ? allEntries.filter((e) => e.level === query.level)
     : allEntries;
+
+  // levelCol のないソースは COUNT にレベル条件を含められないため、
+  // post-hoc フィルタ適用時は total を補正する
+  const total = query.level && filtered.length < allEntries.length
+    ? Math.min(rawTotal, filtered.length)
+    : rawTotal;
 
   // タイムスタンプ降順ソート
   filtered.sort((a, b) => {
@@ -191,160 +282,51 @@ export async function queryLogs(query: LogCenterQuery): Promise<{
 
   return {
     entries: paginated,
-    total: filtered.length,
+    total,
     page,
     limit,
   };
 }
 
-async function queryActivityLogs(query: LogCenterQuery): Promise<NormalizedLogEntry[]> {
-  const conditions = [];
-
-  if (query.pharmacyId != null) {
-    conditions.push(eq(activityLogs.pharmacyId, query.pharmacyId));
-  }
-  if (query.from) {
-    conditions.push(gte(activityLogs.createdAt, query.from));
-  }
-  if (query.to) {
-    conditions.push(lte(activityLogs.createdAt, query.to));
-  }
-  if (query.search) {
-    conditions.push(
-      or(
-        ilike(activityLogs.action, `%${query.search}%`),
-        ilike(activityLogs.detail, `%${query.search}%`),
-      ),
-    );
-  }
-
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
-  const rows = await db
-    .select()
-    .from(activityLogs)
-    .where(where)
-    .orderBy(desc(activityLogs.createdAt))
-    .limit(1000);
-
-  return rows.map((r) => normalizeLogEntry('activity_logs', r as unknown as Record<string, unknown>));
-}
-
-async function querySystemEvents(query: LogCenterQuery): Promise<NormalizedLogEntry[]> {
-  const conditions = [];
-
-  if (query.from) {
-    conditions.push(gte(systemEvents.occurredAt, query.from));
-  }
-  if (query.to) {
-    conditions.push(lte(systemEvents.occurredAt, query.to));
-  }
-  if (query.search) {
-    conditions.push(
-      or(
-        ilike(systemEvents.message, `%${query.search}%`),
-        ilike(systemEvents.eventType, `%${query.search}%`),
-      ),
-    );
-  }
-
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
-  const rows = await db
-    .select()
-    .from(systemEvents)
-    .where(where)
-    .orderBy(desc(systemEvents.occurredAt))
-    .limit(1000);
-
-  return rows.map((r) => normalizeLogEntry('system_events', r as unknown as Record<string, unknown>));
-}
-
-async function querySyncLogs(query: LogCenterQuery): Promise<NormalizedLogEntry[]> {
-  const conditions = [];
-
-  if (query.pharmacyId != null) {
-    conditions.push(eq(drugMasterSyncLogs.triggeredBy, query.pharmacyId));
-  }
-  if (query.from) {
-    conditions.push(gte(drugMasterSyncLogs.startedAt, query.from));
-  }
-  if (query.to) {
-    conditions.push(lte(drugMasterSyncLogs.startedAt, query.to));
-  }
-  if (query.search) {
-    conditions.push(
-      or(
-        ilike(drugMasterSyncLogs.syncType, `%${query.search}%`),
-        ilike(drugMasterSyncLogs.sourceDescription, `%${query.search}%`),
-      ),
-    );
-  }
-
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
-  const rows = await db
-    .select()
-    .from(drugMasterSyncLogs)
-    .where(where)
-    .orderBy(desc(drugMasterSyncLogs.startedAt))
-    .limit(1000);
-
-  return rows.map((r) => normalizeLogEntry('drug_master_sync_logs', r as unknown as Record<string, unknown>));
-}
-
-// ── サマリー ──────────────────────────────────────────
+// ── サマリー（3クエリ: 各テーブルで条件別集計） ──────────
 
 export async function getLogSummary(): Promise<LogSummary> {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayStr = todayStart.toISOString();
 
-  // 各テーブルのカウントを並列取得
-  const [
-    activityTotal,
-    activityToday,
-    systemTotal,
-    systemToday,
-    systemErrors,
-    systemWarnings,
-    syncTotal,
-    syncToday,
-    syncFailed,
-    syncPartial,
-  ] = await Promise.all([
-    // activity_logs
-    db.select({ cnt: count() }).from(activityLogs).then((r) => r[0]?.cnt ?? 0),
-    db.select({ cnt: count() }).from(activityLogs)
-      .where(gte(activityLogs.createdAt, todayStr))
-      .then((r) => r[0]?.cnt ?? 0),
+  const [activityRow, systemRow, syncRow] = await Promise.all([
+    // activity_logs: total + today (1 query)
+    db.select({
+      total: count(),
+      today: sql<number>`count(*) filter (where ${activityLogs.createdAt} >= ${todayStr})`,
+    }).from(activityLogs).then((r) => r[0]),
 
-    // system_events
-    db.select({ cnt: count() }).from(systemEvents).then((r) => r[0]?.cnt ?? 0),
-    db.select({ cnt: count() }).from(systemEvents)
-      .where(gte(systemEvents.occurredAt, todayStr))
-      .then((r) => r[0]?.cnt ?? 0),
-    db.select({ cnt: count() }).from(systemEvents)
-      .where(eq(systemEvents.level, 'error'))
-      .then((r) => r[0]?.cnt ?? 0),
-    db.select({ cnt: count() }).from(systemEvents)
-      .where(eq(systemEvents.level, 'warning'))
-      .then((r) => r[0]?.cnt ?? 0),
+    // system_events: total + today + errors + warnings (1 query)
+    db.select({
+      total: count(),
+      today: sql<number>`count(*) filter (where ${systemEvents.occurredAt} >= ${todayStr})`,
+      errors: sql<number>`count(*) filter (where ${systemEvents.level} = 'error')`,
+      warnings: sql<number>`count(*) filter (where ${systemEvents.level} = 'warning')`,
+    }).from(systemEvents).then((r) => r[0]),
 
-    // drug_master_sync_logs
-    db.select({ cnt: count() }).from(drugMasterSyncLogs).then((r) => r[0]?.cnt ?? 0),
-    db.select({ cnt: count() }).from(drugMasterSyncLogs)
-      .where(gte(drugMasterSyncLogs.startedAt, todayStr))
-      .then((r) => r[0]?.cnt ?? 0),
-    db.select({ cnt: count() }).from(drugMasterSyncLogs)
-      .where(eq(drugMasterSyncLogs.status, 'failed'))
-      .then((r) => r[0]?.cnt ?? 0),
-    db.select({ cnt: count() }).from(drugMasterSyncLogs)
-      .where(eq(drugMasterSyncLogs.status, 'partial'))
-      .then((r) => r[0]?.cnt ?? 0),
+    // drug_master_sync_logs: total + today + failed + partial (1 query)
+    db.select({
+      total: count(),
+      today: sql<number>`count(*) filter (where ${drugMasterSyncLogs.startedAt} >= ${todayStr})`,
+      failed: sql<number>`count(*) filter (where ${drugMasterSyncLogs.status} = 'failed')`,
+      partial: sql<number>`count(*) filter (where ${drugMasterSyncLogs.status} = 'partial')`,
+    }).from(drugMasterSyncLogs).then((r) => r[0]),
   ]);
 
-  const total = Number(activityTotal) + Number(systemTotal) + Number(syncTotal);
-  const errors = Number(systemErrors) + Number(syncFailed);
-  const warnings = Number(systemWarnings) + Number(syncPartial);
-  const today = Number(activityToday) + Number(systemToday) + Number(syncToday);
+  const activityTotal = Number(activityRow?.total ?? 0);
+  const systemTotal = Number(systemRow?.total ?? 0);
+  const syncTotal = Number(syncRow?.total ?? 0);
+  const total = activityTotal + systemTotal + syncTotal;
+
+  const errors = Number(systemRow?.errors ?? 0) + Number(syncRow?.failed ?? 0);
+  const warnings = Number(systemRow?.warnings ?? 0) + Number(syncRow?.partial ?? 0);
+  const today = Number(activityRow?.today ?? 0) + Number(systemRow?.today ?? 0) + Number(syncRow?.today ?? 0);
 
   return {
     total,
@@ -357,9 +339,9 @@ export async function getLogSummary(): Promise<LogSummary> {
       info: total - errors - warnings,
     },
     bySource: {
-      activity_logs: Number(activityTotal),
-      system_events: Number(systemTotal),
-      drug_master_sync_logs: Number(syncTotal),
+      activity_logs: activityTotal,
+      system_events: systemTotal,
+      drug_master_sync_logs: syncTotal,
     },
   };
 }

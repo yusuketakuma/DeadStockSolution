@@ -2,7 +2,6 @@ import { Badge } from 'react-bootstrap';
 import AppTable from '../../../components/ui/AppTable';
 import AppButton from '../../../components/ui/AppButton';
 import InlineLoader from '../../../components/ui/InlineLoader';
-import Pagination from '../../../components/Pagination';
 import AppMobileDataCard from '../../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../../components/ui/AppResponsiveSwitch';
 
@@ -23,9 +22,6 @@ interface DrugMasterTableProps {
   items: DrugMasterItem[];
   loading: boolean;
   totalItems: number | undefined;
-  page: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
   onOpenDetail: (yjCode: string) => void;
   onOpenEdit: (yjCode: string) => void;
 }
@@ -34,9 +30,6 @@ export default function DrugMasterTable({
   items,
   loading,
   totalItems,
-  page,
-  totalPages,
-  onPageChange,
   onOpenDetail,
   onOpenEdit,
 }: DrugMasterTableProps) {
@@ -160,7 +153,6 @@ export default function DrugMasterTable({
           </div>
         )}
       />
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={onPageChange} />
     </>
   );
 }

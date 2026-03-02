@@ -40,6 +40,17 @@ export function formatDateJa(
 }
 
 /**
+ * 値をプレビュー用に切り詰める（ログ詳細・更新本文などで共用）
+ */
+export function truncatePreview(value: unknown, maxLength = 180, fallback = '-'): string {
+  if (value === null || value === undefined) return fallback;
+  const str = typeof value === 'string' ? value : JSON.stringify(value);
+  const normalized = str.replace(/\s+/g, ' ').trim();
+  if (!normalized) return fallback;
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}...`;
+}
+
+/**
  * 相対時間を日本語で返す
  * 例: 「たった今」「5分前」「2時間前」「昨日」「3日前」
  */

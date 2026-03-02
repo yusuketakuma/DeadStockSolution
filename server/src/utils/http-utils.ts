@@ -1,3 +1,11 @@
+/** Undici dispatcher type used with createPinnedDnsAgent */
+export type FetchDispatcher = NonNullable<RequestInit['dispatcher']>;
+
+/** MHLW ファイルダウンロード共通デフォルト */
+export const MHLW_MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024; // 100MB
+export const MHLW_FETCH_TIMEOUT_MS = 120_000; // 2分（大きなファイル用）
+export const MHLW_DEFAULT_FETCH_RETRIES = 2;
+
 export class FetchTimeoutError extends Error {
   constructor(message: string) {
     super(message);
@@ -120,6 +128,14 @@ export async function fetchWithTimeout(url: string, options: FetchWithTimeoutOpt
   }
 
   throw lastError instanceof Error ? lastError : new Error('request failed');
+}
+
+export function summarizeSourceUrl(sourceUrl: string): string {
+  try {
+    return new URL(sourceUrl).hostname;
+  } catch {
+    return sourceUrl.slice(0, 64);
+  }
 }
 
 export async function downloadResponseBuffer(response: Response, maxDownloadSize: number): Promise<Buffer> {

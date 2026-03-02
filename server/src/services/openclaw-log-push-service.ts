@@ -10,6 +10,13 @@ export interface LogAlertEntry {
   detail?: unknown;
 }
 
+type Severity = LogAlertEntry['severity'];
+
+/** Internal wrapper with retry tracking */
+interface PendingEntry extends LogAlertEntry {
+  _retries: number;
+}
+
 interface AlertPayload {
   type: 'log_alert';
   severity: string;
@@ -17,21 +24,28 @@ interface AlertPayload {
   sentAt: string;
 }
 
-// In-memory buffers by severity
-const buffers: Record<string, LogAlertEntry[]> = {
+// In-memory buffers by severity (typed keys)
+const buffers: Record<Severity, PendingEntry[]> = {
   critical: [],
   error: [],
   warning: [],
 };
 
-// Flush intervals (ms)
-const FLUSH_INTERVALS: Record<string, number> = {
-  critical: 0,        // Immediate
-  error: 30_000,      // 30 seconds
-  warning: 300_000,   // 5 minutes
+const MAX_BUFFER_SIZE = 500;
+
+// Resolve flush intervals once at module init
+function resolveInterval(severity: Severity, defaultMs: number): number {
+  const envKey = `OPENCLAW_LOG_PUSH_${severity.toUpperCase()}_BUFFER_MS`;
+  return Number(process.env[envKey]) || defaultMs;
+}
+
+const FLUSH_INTERVALS: Record<Severity, number> = {
+  critical: 0,
+  error: resolveInterval('error', 30_000),
+  warning: resolveInterval('warning', 300_000),
 };
 
-let flushTimers: Record<string, ReturnType<typeof setTimeout> | null> = {
+const flushTimers: Record<Severity, ReturnType<typeof setTimeout> | null> = {
   critical: null,
   error: null,
   warning: null,
@@ -41,10 +55,15 @@ export function enqueueLogAlert(entry: LogAlertEntry): void {
   if (!isEnabled()) return;
 
   const severity = entry.severity;
-  buffers[severity].push(entry);
+
+  // Drop oldest entries if buffer is at capacity
+  if (buffers[severity].length >= MAX_BUFFER_SIZE) {
+    buffers[severity].shift();
+  }
+
+  buffers[severity].push({ ...entry, _retries: 0 });
 
   if (severity === 'critical') {
-    // Flush immediately for critical
     flushBuffer('critical').catch(err => {
       logger.error('Failed to flush critical log alerts', { error: String(err) });
     });
@@ -53,18 +72,16 @@ export function enqueueLogAlert(entry: LogAlertEntry): void {
 
   // Schedule flush if not already scheduled
   if (!flushTimers[severity]) {
-    const envKey = `OPENCLAW_LOG_PUSH_${severity.toUpperCase()}_BUFFER_MS`;
-    const interval = Number(process.env[envKey]) || FLUSH_INTERVALS[severity];
     flushTimers[severity] = setTimeout(() => {
       flushTimers[severity] = null;
       flushBuffer(severity).catch(err => {
         logger.error(`Failed to flush ${severity} log alerts`, { error: String(err) });
       });
-    }, interval);
+    }, FLUSH_INTERVALS[severity]);
   }
 }
 
-export async function flushBuffer(severity: string): Promise<void> {
+export async function flushBuffer(severity: Severity): Promise<void> {
   const entries = buffers[severity].splice(0);
   if (entries.length === 0) return;
 
@@ -75,14 +92,18 @@ export async function flushBuffer(severity: string): Promise<void> {
     logger.info(`Sent ${entries.length} ${severity} log alerts to OpenClaw`);
   } catch (err) {
     // Re-add entries for retry, up to 3 times each
-    const retryable = entries.filter(e => ((e as any)._retries ?? 0) < 3);
-    for (const e of retryable) (e as any)._retries = ((e as any)._retries ?? 0) + 1;
+    const retryable = entries.filter(e => e._retries < 3);
+    for (const e of retryable) e._retries += 1;
     buffers[severity].unshift(...retryable);
+    // Enforce cap after re-add to prevent unbounded growth
+    if (buffers[severity].length > MAX_BUFFER_SIZE) {
+      buffers[severity].length = MAX_BUFFER_SIZE;
+    }
     logger.error('Failed to send log alerts to OpenClaw', { error: String(err), count: entries.length });
   }
 }
 
-export function buildAlertPayload(severity: string, entries: LogAlertEntry[]): AlertPayload {
+export function buildAlertPayload(severity: Severity, entries: LogAlertEntry[]): AlertPayload {
   return {
     type: 'log_alert',
     severity,
@@ -110,14 +131,15 @@ async function sendLogAlertToOpenClaw(payload: AlertPayload): Promise<void> {
 }
 
 export function getBufferSize(severity: string): number {
-  return buffers[severity]?.length ?? 0;
+  if (!(severity in buffers)) return 0;
+  return buffers[severity as Severity].length;
 }
 
 export function clearBuffer(): void {
   buffers.critical = [];
   buffers.error = [];
   buffers.warning = [];
-  for (const key of Object.keys(flushTimers)) {
+  for (const key of Object.keys(flushTimers) as Severity[]) {
     if (flushTimers[key]) clearTimeout(flushTimers[key]!);
     flushTimers[key] = null;
   }

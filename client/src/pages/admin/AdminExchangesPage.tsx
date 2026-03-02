@@ -15,6 +15,7 @@ import { formatDateTimeJa, formatYen } from '../../utils/formatters';
 import { proposalStatusLabel } from '../../utils/proposal-status';
 import type { ProposalTimelineEvent } from '../../utils/proposal-timeline';
 import ProposalTimeline from '../../components/timeline/ProposalTimeline';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface ExchangeHistoryItem {
   id: number;
@@ -89,7 +90,7 @@ export default function AdminExchangesPage() {
   };
 
   return (
-    <div>
+    <PageShell>
       <h4 className="page-title mb-3">交換履歴（管理者）</h4>
       {error && (
         <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -99,6 +100,7 @@ export default function AdminExchangesPage() {
           </AppButton>
         </AppAlert>
       )}
+      <ScrollArea>
       {loading ? (
         <InlineLoader text="交換履歴データを読み込み中..." className="text-muted small" />
       ) : history.length === 0 ? (
@@ -169,6 +171,7 @@ export default function AdminExchangesPage() {
           )}
         />
       )}
+      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
       <AppModalShell
@@ -210,6 +213,6 @@ export default function AdminExchangesPage() {
           </>
         )}
       </AppModalShell>
-    </div>
+    </PageShell>
   );
 }

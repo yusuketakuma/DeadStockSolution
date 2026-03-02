@@ -204,6 +204,9 @@ function mockFetchForRoutes(user: typeof mockUser | null, route: string) {
 describe('Route meta integration', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // Dismiss onboarding so Modal doesn't interfere with route tests
+    localStorage.setItem('dss.onboarding.dismissed', 'true');
+    localStorage.setItem(`dss.onboarding.dismissed:${mockUser.id}`, 'true');
   });
 
   it('redirects authenticated user away from public login route', async () => {
@@ -272,7 +275,7 @@ describe('Route meta integration', () => {
     const { container } = renderAppAtRoute('/statistics');
 
     await waitFor(() => {
-      const heading = container.querySelector('h1.h4');
+      const heading = container.querySelector('h4.page-title');
       expect(heading?.textContent).toBe('統計');
     });
     expect(screen.getByText('アップロード実績')).toBeInTheDocument();
