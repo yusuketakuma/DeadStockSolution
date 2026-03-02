@@ -9,6 +9,7 @@ import {
   numeric,
   boolean,
   timestamp,
+  varchar,
   index,
   uniqueIndex,
   check,
@@ -73,6 +74,7 @@ export const pharmacies = pgTable('pharmacies', {
   verificationRequestId: integer('verification_request_id'),
   verifiedAt: timestamp('verified_at', { mode: 'string' }),
   rejectionReason: text('rejection_reason'),
+  matchingAutoNotifyEnabled: boolean('matching_auto_notify_enabled').notNull().default(true),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
@@ -492,6 +494,7 @@ export const activityLogs = pgTable('activity_logs', {
   resourceId: text('resource_id'),
   metadataJson: text('metadata_json'),
   ipAddress: text('ip_address'),
+  errorCode: varchar('error_code', { length: 64 }),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   idxActivityLogsCreatedAt: index('idx_activity_logs_created_at')
@@ -514,6 +517,7 @@ export const systemEvents = pgTable('system_events', {
   eventType: text('event_type').notNull(),
   message: text('message').notNull(),
   detailJson: text('detail_json'),
+  errorCode: varchar('error_code', { length: 64 }),
   occurredAt: timestamp('occurred_at', { mode: 'string' }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
@@ -528,6 +532,62 @@ export const systemEvents = pgTable('system_events', {
   chkSystemEventsSource: check('chk_system_events_source', sql`${table.source} IN ('runtime_error', 'unhandled_rejection', 'uncaught_exception', 'vercel_deploy')`),
   chkSystemEventsLevel: check('chk_system_events_level', sql`${table.level} IN ('info', 'warning', 'error')`),
 }));
+
+// ── エラーコードレジストリ ──────────────────────────────────
+
+export const errorCodeCategoryValues = ['upload', 'auth', 'sync', 'system', 'openclaw'] as const;
+export type ErrorCodeCategory = (typeof errorCodeCategoryValues)[number];
+
+export const errorCodeSeverityValues = ['critical', 'error', 'warning', 'info'] as const;
+export type ErrorCodeSeverity = (typeof errorCodeSeverityValues)[number];
+
+export const errorCodes = pgTable('error_codes', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 64 }).unique().notNull(),
+  category: text('category').$type<ErrorCodeCategory>().notNull(),
+  severity: text('severity').$type<ErrorCodeSeverity>().notNull(),
+  titleJa: varchar('title_ja', { length: 128 }).notNull(),
+  descriptionJa: text('description_ja'),
+  resolutionJa: text('resolution_ja'),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxErrorCodesCategory: index('idx_error_codes_category').on(table.category),
+  idxErrorCodesSeverity: index('idx_error_codes_severity').on(table.severity),
+  chkErrorCodesCategory: check('chk_error_codes_category', sql`${table.category} IN ('upload', 'auth', 'sync', 'system', 'openclaw')`),
+  chkErrorCodesSeverity: check('chk_error_codes_severity', sql`${table.severity} IN ('critical', 'error', 'warning', 'info')`),
+}));
+
+// ── OpenClawコマンド管理 ──────────────────────────────────
+
+export const openclawCommands = pgTable('openclaw_commands', {
+  id: serial('id').primaryKey(),
+  commandName: varchar('command_name', { length: 64 }).notNull(),
+  parameters: text('parameters'),
+  status: varchar('status', { length: 16 }).notNull(),
+  result: text('result'),
+  errorMessage: text('error_message'),
+  openclawThreadId: varchar('openclaw_thread_id', { length: 255 }),
+  signature: varchar('signature', { length: 255 }).notNull(),
+  receivedAt: timestamp('received_at', { mode: 'string' }).defaultNow(),
+  completedAt: timestamp('completed_at', { mode: 'string' }),
+}, (table) => ({
+  idxOpenclawCommandsReceivedAt: index('idx_openclaw_commands_received_at').on(table.receivedAt),
+  idxOpenclawCommandsStatus: index('idx_openclaw_commands_status').on(table.status),
+  idxOpenclawCommandsName: index('idx_openclaw_commands_name').on(table.commandName),
+}));
+
+export const openclawCommandWhitelist = pgTable('openclaw_command_whitelist', {
+  id: serial('id').primaryKey(),
+  commandName: varchar('command_name', { length: 64 }).unique().notNull(),
+  category: varchar('category', { length: 16 }).notNull(),
+  descriptionJa: varchar('description_ja', { length: 255 }),
+  isEnabled: boolean('is_enabled').default(true).notNull(),
+  parametersSchema: text('parameters_schema'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+});
 
 // ── 薬局リレーション（お気に入り / ブロック）────────────────
 
@@ -767,4 +827,20 @@ export const predictiveAlerts = pgTable('predictive_alerts', {
   idxPredictiveAlertsDedupeUnique: uniqueIndex('idx_predictive_alerts_dedupe_unique')
     .on(table.pharmacyId, table.dedupeKey),
   chkPredictiveAlertsType: check('chk_predictive_alerts_type', sql`${table.alertType} IN ('near_expiry', 'excess_stock')`),
+}));
+
+// ── 医薬品マスターソース状態 ──────────────────────────────
+
+export const drugMasterSourceState = pgTable('drug_master_source_state', {
+  id: serial('id').primaryKey(),
+  sourceKey: text('source_key').notNull().unique(),
+  url: text('url').notNull(),
+  etag: text('etag'),
+  lastModified: text('last_modified'),
+  contentHash: text('content_hash'),
+  lastCheckedAt: timestamp('last_checked_at', { mode: 'string' }),
+  lastChangedAt: timestamp('last_changed_at', { mode: 'string' }),
+  metadataJson: text('metadata_json'),
+}, (table) => ({
+  idxSourceStateSourceKey: uniqueIndex('idx_source_state_source_key').on(table.sourceKey),
 }));
