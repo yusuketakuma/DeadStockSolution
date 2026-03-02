@@ -146,9 +146,10 @@ export async function getTimeline(
   const since = options?.since;
   const cursor = options?.cursor ?? null;
   const cursorBefore = cursor?.timestamp;
-  const perTableLimit = cursor
-    ? Math.min(Math.max(limit * CURSOR_FETCH_FACTOR, limit + 1), CURSOR_PER_TABLE_LIMIT_MAX)
-    : undefined;
+  const perTableLimit = Math.min(
+    Math.max(limit * CURSOR_FETCH_FACTOR, limit + 1),
+    CURSOR_PER_TABLE_LIMIT_MAX,
+  );
 
   const now = new Date();
   const rawEvents = await fetchAllEvents(db, pharmacyId, since, perTableLimit, cursorBefore);

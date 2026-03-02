@@ -415,7 +415,7 @@ describe('timeline-service', () => {
     const db = makeMockDb() as MockDb;
     const result = await getTimeline(db, pharmacyId, { limit: 3 });
 
-    expect(vi.mocked(fetchNotificationEvents)).toHaveBeenCalledWith(db, pharmacyId, undefined, undefined, undefined);
+    expect(vi.mocked(fetchNotificationEvents)).toHaveBeenCalledWith(db, pharmacyId, undefined, 12, undefined);
     expect(result.total).toBe(5);
     expect(result.events).toHaveLength(3);
     expect(result.hasMore).toBe(true);
