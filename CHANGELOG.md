@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7] - 2026-03-02
+
+### 🎯 What's Changed for You
+
+**統合ログセンターとOpenClawコマンド管理で運用監視を強化。コード品質の大幅改善**
+
+| Before | After |
+|--------|-------|
+| ログは各テーブルを個別に確認 | 統合ログセンター（4ソース横断検索・フィルタ） |
+| エラーコードなし | 14種の構造化エラーコード（カテゴリ・重要度付き） |
+| OpenClawコマンドは手動実行のみ | HMAC認証付きコマンド受信API + 管理者履歴表示 |
+| スケジューラに重複ロジック | 共通モジュール化（mhlw-source-fetch等） |
+
+### Added
+
+- **統合ログセンター**: activity_logs / system_events / drug_master_sync_logs / openclaw_commands の4テーブルを横断する統合ログビュー、レベル・ソース・薬局フィルタ、サマリーAPI
+- **エラーコード管理**: error_codes テーブル、14種の初期コード（upload/auth/sync/system/openclaw）、管理者CRUD API
+- **OpenClawコマンド受信**: HMAC署名検証付きコマンドAPI、ホワイトリスト方式の実行制御、管理者向けコマンド履歴タブ
+- **ログアラート転送**: OpenClawゲートウェイへのバッファ付きバッチ送信サービス
+- **MHLWソース状態管理**: drug_master_source_state テーブルで更新チェック状態を永続化、ETag/Last-Modified/content-hash による差分検知
+
+### Fixed
+
+- **タイムラインソート安定化**: cursor pagination のソート順安定性を修正
+- **アップロードジョブ処理**: 設定されたリトライバッチサイズまで処理するよう修正
+- **OpenClaw IPv6対応**: localhost の IPv6 ベースURL を許可
+- **自動スキャン**: safe autofix の適用（6件）
+
+### Changed
+
+- **スケジューラ共通化**: drug-master-scheduler / drug-package-scheduler の更新チェック・ダウンロードロジックを mhlw-source-fetch.ts に統合
+- **コード品質改善**: getErrorMessageOrFallback 除去、previewDetail 共通ユーティリティ化、normalizeSearchTerm 統一、useMemo 最適化、AdminSystemEventsPage デッドコード削除（244行）
+
+## [0.0.6] - 2026-03-01
+
+### 🎯 What's Changed for You
+
+**薬局登録時の本人確認フローを追加。OpenClaw連携による自動検証を実現**
+
+| Before | After |
+|--------|-------|
+| 薬局登録即利用可能 | 登録→本人確認→承認の3ステップフロー |
+| 管理者の手動確認のみ | OpenClaw連携による自動検証 + 管理者手動承認 |
+| 確認状態の表示なし | ログイン時の状態チェック + 確認待ちページ |
+
+### Added
+
+- **薬局本人確認フロー**: 登録→pending_verification→verified/rejected の状態遷移
+- **OpenClaw検証連携**: 登録時にOpenClawへ自動ハンドオフ、コールバックで結果受信
+- **管理者手動承認**: 管理者画面から確認状態の表示・手動承認操作
+- **確認待ちページ**: 登録後のリダイレクト先、状態に応じた案内表示
+- **認証ミドルウェア強化**: ログイン時の確認状態チェック
+
+### Fixed
+
+- **タイムラインUI**: ダッシュボードタイムラインにカードボーダーを追加
+
+### Changed
+
+- **エラーハンドリング整理**: 不要なヘルパー関数の削除
+- **レビュー指摘対応**: exchange/statistics/upload の品質改善
+
 ## [0.0.5] - 2026-03-01
 
 ### 🎯 What's Changed for You
@@ -171,6 +233,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview DB同期とテストアカウントパスワード更新
 - 本番環境でのCORS同一ホストオリジンチェック
 
+[0.0.7]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.6...v0.0.7
+[0.0.6]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.2...v0.0.3
