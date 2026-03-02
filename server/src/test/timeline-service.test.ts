@@ -211,6 +211,47 @@ describe('timeline-service', () => {
     expect(secondPage.hasMore).toBe(true);
   });
 
+  it('getTimeline: 同一 timestamp で ID が可変長の数値でも正しく id 降順になる', async () => {
+    const events: RawTimelineEvent[] = [
+      makeRawEvent({
+        id: 'notification_10',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        source: 'notification',
+      }),
+      makeRawEvent({
+        id: 'notification_2',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        source: 'notification',
+      }),
+      makeRawEvent({
+        id: 'notification_1',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        source: 'notification',
+      }),
+    ];
+    vi.mocked(fetchNotificationEvents).mockResolvedValue(events);
+    mockAssignPriority('low');
+
+    const db = makeMockDb() as MockDb;
+    const firstPage = await getTimeline(db, pharmacyId, { limit: 2 });
+    expect(firstPage.events).toHaveLength(2);
+    expect(firstPage.events[0].id).toBe('notification_10');
+    expect(firstPage.events[1].id).toBe('notification_2');
+    expect(firstPage.hasMore).toBe(true);
+    expect(firstPage.nextCursor).toBeTruthy();
+
+    const cursorPayload = decodeCursor<{ timestamp: string; id: string }>(firstPage.nextCursor);
+    expect(cursorPayload).not.toBeNull();
+    const secondPage = await getTimeline(db, pharmacyId, {
+      limit: 2,
+      cursor: cursorPayload,
+    });
+
+    expect(secondPage.events).toHaveLength(1);
+    expect(secondPage.events[0].id).toBe('notification_1');
+    expect(secondPage.hasMore).toBe(false);
+  });
+
   // 3. getTimeline: priority フィルタが動作する
   it('getTimeline: priority フィルタが正しく動作する', async () => {
     const criticalEvent = makeRawEvent({ id: 'expiry_1', timestamp: '2026-01-01T12:00:00.000Z', source: 'expiry_risk' });
