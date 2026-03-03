@@ -613,9 +613,7 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
 router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const includePasswordRaw = req.query.includePassword;
-    const includePasswordRequested = includePasswordRaw === '1' || includePasswordRaw === 'true';
-    // Production always masks test account passwords for unauthenticated preview.
-    const includePassword = includePasswordRequested && process.env.NODE_ENV !== 'production';
+    const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
     const cacheControlValue = includePassword ? 'no-store' : 'private, max-age=60';
 
     // キャッシュが有効ならDBアクセスをスキップ

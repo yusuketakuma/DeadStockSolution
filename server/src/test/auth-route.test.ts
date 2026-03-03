@@ -343,14 +343,14 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).toEqual({
       accounts: [
         {
-          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: '',
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
         },
         {
-          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: '',
+          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026',
         },
       ],
     });
@@ -370,14 +370,14 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).toEqual({
       accounts: [
         {
-          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: '',
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
         },
         {
-          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: '',
+          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026',
         },
       ],
     });
@@ -450,14 +450,14 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).toEqual({
       accounts: [{
         id: 1,
         name: 'テスト薬局東京店',
         email: 'test-tokyo@example.com',
         prefecture: '東京都',
-        password: '',
+        password: 'TokyoDemo!2026',
       }],
     });
     expect(mocks.db.select).toHaveBeenCalledTimes(2);
