@@ -116,7 +116,11 @@ async function sendLogAlertToOpenClaw(payload: AlertPayload): Promise<void> {
   // Dynamic import to avoid circular dependencies
   const { getOpenClawConfig, sendToOpenClawGateway } = await import('./openclaw-service');
   const config = getOpenClawConfig();
-  if (!config.agentId || !config.apiKey) {
+  const connectorConfigured = config.mode === 'gateway_cli'
+    ? Boolean(config.cliPath && config.agentId)
+    : Boolean(config.baseUrl && config.apiKey && config.agentId);
+
+  if (!connectorConfigured) {
     throw new Error('OpenClaw not configured for log push');
   }
 

@@ -1,8 +1,40 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { enqueueLogAlert, getBufferSize, clearBuffer, buildAlertPayload } from '../services/openclaw-log-push-service';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  getOpenClawConfig: vi.fn(),
+  sendToOpenClawGateway: vi.fn(),
+}));
+
+vi.mock('../services/openclaw-service', () => ({
+  getOpenClawConfig: mocks.getOpenClawConfig,
+  sendToOpenClawGateway: mocks.sendToOpenClawGateway,
+}));
+
+import {
+  enqueueLogAlert,
+  flushBuffer,
+  getBufferSize,
+  clearBuffer,
+  buildAlertPayload,
+} from '../services/openclaw-log-push-service';
+
+const originalLogPushEnabled = process.env.OPENCLAW_LOG_PUSH_ENABLED;
 
 describe('openclaw-log-push-service', () => {
-  beforeEach(() => clearBuffer());
+  beforeEach(() => {
+    clearBuffer();
+    vi.clearAllMocks();
+    delete process.env.OPENCLAW_LOG_PUSH_ENABLED;
+  });
+
+  afterEach(() => {
+    if (typeof originalLogPushEnabled === 'string') {
+      process.env.OPENCLAW_LOG_PUSH_ENABLED = originalLogPushEnabled;
+    } else {
+      delete process.env.OPENCLAW_LOG_PUSH_ENABLED;
+    }
+    clearBuffer();
+  });
 
   describe('enqueueLogAlert (when disabled)', () => {
     it('should not add to buffer when disabled', () => {
@@ -15,6 +47,38 @@ describe('openclaw-log-push-service', () => {
         logId: 1,
         occurredAt: '2026-03-02T10:00:00Z',
       });
+      expect(getBufferSize('error')).toBe(0);
+    });
+  });
+
+  describe('flushBuffer', () => {
+    it('sends log alerts in gateway_cli mode even if apiKey is empty', async () => {
+      process.env.OPENCLAW_LOG_PUSH_ENABLED = 'true';
+      mocks.getOpenClawConfig.mockReturnValue({
+        mode: 'gateway_cli',
+        cliPath: '/usr/local/bin/openclaw',
+        baseUrl: '',
+        baseUrlError: null,
+        apiKey: '',
+        agentId: 'agent-1',
+        webhookSecret: '',
+        implementationBranch: 'review',
+      });
+      mocks.sendToOpenClawGateway.mockResolvedValue({ summary: 'ok' });
+
+      enqueueLogAlert({
+        source: 'system_events',
+        severity: 'error',
+        errorCode: 'LOG001',
+        message: 'Gateway CLI test',
+        logId: 10,
+        occurredAt: '2026-03-02T10:00:00Z',
+      });
+
+      expect(getBufferSize('error')).toBe(1);
+      await flushBuffer('error');
+
+      expect(mocks.sendToOpenClawGateway).toHaveBeenCalledTimes(1);
       expect(getBufferSize('error')).toBe(0);
     });
   });
