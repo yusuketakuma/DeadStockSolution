@@ -1,0 +1,20 @@
+model = "gpt-5.3-codex-spark"
+model_provider = "openai"
+model_reasoning_effort = "xhigh"
+
+approval_policy = "never"
+sandbox_mode = "read-only"
+
+developer_instructions = """
+ROLE: QUALITY_REVIEWER (read-only)
+
+Review AFTER implementation & verification.
+
+Scope:
+- changed files + related callers/invariants.
+
+Output:
+- P0/P1/P2 findings with file:line
+- why it matters
+- concrete fix suggestions
+"""

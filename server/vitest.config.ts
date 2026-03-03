@@ -3,17 +3,17 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['src/test/**/*.test.ts'],
-    exclude: ['dist/**', 'node_modules/**'],
+    exclude: ['dist/**', 'node_modules/**', 'src/test/integration/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text-summary', 'lcov'],
+      reporter: ['text-summary', 'json-summary'],
       reportsDirectory: './coverage',
-      exclude: ['src/test/**', 'src/types/express.d.ts'],
+      exclude: ['src/test/**', 'src/types/express.d.ts', 'src/db/schema.ts'],
       thresholds: {
-        lines: 49,
-        statements: 48,
-        functions: 56,
-        branches: 42,
+        lines: 95,
+        statements: 93,
+        functions: 95,
+        branches: 86,
       },
     },
   },

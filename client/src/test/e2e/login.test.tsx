@@ -255,12 +255,12 @@ describe('LoginPage', () => {
     });
     expect(screen.getByText('テスト薬局東京店')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局札幌店')).toBeInTheDocument();
-    expect(screen.getByText('TokyoDemo!2026')).toBeInTheDocument();
-    expect(screen.getByText('SapporoDemo!2026')).toBeInTheDocument();
+    expect(screen.queryByText('TokyoDemo!2026')).not.toBeInTheDocument();
+    expect(screen.queryByText('SapporoDemo!2026')).not.toBeInTheDocument();
     expect(document.querySelector('.dl-test-pharmacy-modal table')).not.toBeNull();
     expect(document.querySelector('.dl-mobile-data-card')).toBeNull();
 
-    const applyButtons = screen.getAllByRole('button', { name: 'このID/パスワードを入力' });
+    const applyButtons = screen.getAllByRole('button', { name: 'このアカウントを入力' });
     await user.click(applyButtons[0]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('test-tokyo@example.com');
@@ -301,12 +301,12 @@ describe('LoginPage', () => {
       expect(screen.getByText('テスト薬局モバイルA')).toBeInTheDocument();
       expect(screen.getByText('テスト薬局モバイルB')).toBeInTheDocument();
     });
-    expect(screen.getByText('MobileA!2026')).toBeInTheDocument();
-    expect(screen.getByText('MobileB!2026')).toBeInTheDocument();
+    expect(screen.queryByText('MobileA!2026')).not.toBeInTheDocument();
+    expect(screen.queryByText('MobileB!2026')).not.toBeInTheDocument();
     expect(document.querySelector('.dl-mobile-data-card')).not.toBeNull();
     expect(document.querySelector('.dl-test-pharmacy-modal table')).toBeNull();
 
-    const applyButtons = screen.getAllByRole('button', { name: 'このID/パスワードを入力' });
+    const applyButtons = screen.getAllByRole('button', { name: 'このアカウントを入力' });
     await user.click(applyButtons[1]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('mobile-b@example.com');

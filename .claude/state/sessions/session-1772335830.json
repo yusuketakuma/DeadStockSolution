@@ -1,0 +1,291 @@
+{
+  "session_id": "session-1772335830",
+  "parent_session_id": null,
+  "state": "stopped",
+  "started_at": "2026-03-01T03:30:30Z",
+  "updated_at": "2026-03-01T03:58:59Z",
+  "event_seq": 58,
+  "last_event_id": "event-000058",
+  "state_version": 1,
+  "cwd": "/Users/yusuke/DeadStockSolution",
+  "project_name": "DeadStockSolution",
+  "resumed_at": "2026-03-01T03:30:30Z",
+  "git": {
+    "branch": "preview",
+    "uncommitted_changes": 12,
+    "last_commit": "cd4e53d"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1772335394,
+    "wip_tasks": 0,
+    "todo_tasks": 0,
+    "pending_tasks": 0,
+    "completed_tasks": 0
+  },
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "prompt_seq": 1,
+  "intent": "literal",
+  "changes_this_session": [
+    {
+      "file": "client/src/utils/formatters.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:33:29Z",
+      "important": false
+    },
+    {
+      "file": "client/src/components/timeline/TimelineEventCard.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:33:38Z",
+      "important": false
+    },
+    {
+      "file": "client/src/components/timeline/TimelineEventCard.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:33:39Z",
+      "important": false
+    },
+    {
+      "file": "client/src/api/timeline.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:33:53Z",
+      "important": false
+    },
+    {
+      "file": "client/src/pages/DashboardPage.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:33:56Z",
+      "important": false
+    },
+    {
+      "file": "client/src/pages/DashboardPage.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:34:02Z",
+      "important": false
+    },
+    {
+      "file": "client/src/pages/DashboardPage.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:34:12Z",
+      "important": false
+    },
+    {
+      "file": "client/src/contexts/TimelineContext.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:34:20Z",
+      "important": false
+    },
+    {
+      "file": "client/src/contexts/TimelineContext.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:34:22Z",
+      "important": false
+    },
+    {
+      "file": "client/src/contexts/TimelineContext.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:34:24Z",
+      "important": false
+    },
+    {
+      "file": "client/src/contexts/TimelineContext.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:34:36Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:34:43Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:34:45Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:34:47Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:35:03Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:35:10Z",
+      "important": false
+    },
+    {
+      "file": "client/src/components/timeline/SmartDigest.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:35:12Z",
+      "important": false
+    },
+    {
+      "file": "client/src/components/timeline/SmartDigest.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:35:14Z",
+      "important": false
+    },
+    {
+      "file": "client/src/components/timeline/SmartDigest.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:35:14Z",
+      "important": false
+    },
+    {
+      "file": "client/src/components/timeline/SmartDigest.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:35:28Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-unread-counts.ts",
+      "action": "Write",
+      "timestamp": "2026-03-01T03:47:36Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-unread-counts.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:48:24Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-unread-counts.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:48:45Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:48:58Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:49:10Z",
+      "important": false
+    },
+    {
+      "file": "server/src/test/timeline-service.test.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:49:40Z",
+      "important": true
+    },
+    {
+      "file": "server/src/test/timeline-service.test.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:49:54Z",
+      "important": true
+    },
+    {
+      "file": "server/src/test/timeline-service.test.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:49:58Z",
+      "important": true
+    },
+    {
+      "file": "server/src/test/timeline-service.test.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:50:29Z",
+      "important": true
+    },
+    {
+      "file": "server/src/test/timeline-unread-counts.test.ts",
+      "action": "Write",
+      "timestamp": "2026-03-01T03:50:49Z",
+      "important": true
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:51:40Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:51:48Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:51:56Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:52:05Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:52:23Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:52:32Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:52:43Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:52:52Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T03:52:57Z",
+      "important": false
+    },
+    {
+      "file": "client/src/hooks/usePolledFetch.ts",
+      "action": "Write",
+      "timestamp": "2026-03-01T03:53:23Z",
+      "important": false
+    },
+    {
+      "file": "client/src/contexts/NotificationContext.tsx",
+      "action": "Write",
+      "timestamp": "2026-03-01T03:53:32Z",
+      "important": false
+    },
+    {
+      "file": "client/src/hooks/__tests__/usePolledFetch.test.ts",
+      "action": "Write",
+      "timestamp": "2026-03-01T03:54:22Z",
+      "important": true
+    }
+  ],
+  "last_message_length": 1215,
+  "last_message_hash": "df69b9469ad8fc72",
+  "ended_at": "2026-03-01T03:58:59Z",
+  "duration_minutes": 568,
+  "memory_logged": true
+}

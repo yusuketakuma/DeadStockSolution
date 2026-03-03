@@ -1,0 +1,5 @@
+# ~/.codex/config.toml (example)
+# Purpose: mark this repo as trusted so ./.codex/config.toml is loaded.
+
+[projects."/ABSOLUTE/PATH/TO/YOUR/REPO"]
+trust_level = "trusted"

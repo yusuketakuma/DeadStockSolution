@@ -91,7 +91,10 @@ function extractUniqueViolationConstraint(err: unknown): string | null {
 }
 
 function isTestPharmacyPreviewEnabled(): boolean {
-  return process.env.ENABLE_TEST_PHARMACY_PREVIEW !== 'false';
+  const override = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+  if (override === 'true') return true;
+  if (override === 'false') return false;
+  return process.env.NODE_ENV !== 'production';
 }
 
 function extractErrorCode(err: unknown): string | null {
@@ -639,6 +642,7 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
 
     const includePasswordRaw = req.query.includePassword;
     const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
+    const cacheControlValue = includePassword ? 'no-store' : 'private, max-age=60';
 
     // キャッシュが有効ならDBアクセスをスキップ
     if (testPharmacyCache && testPharmacyCache.expiresAt > Date.now()) {
@@ -647,7 +651,7 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
         res.status(404).json({ error: 'テスト薬局がDBに登録されていません（5件登録を確認してください）' });
         return;
       }
-      res.setHeader('Cache-Control', 'private, max-age=60');
+      res.setHeader('Cache-Control', cacheControlValue);
       res.json({
         accounts: cached.map((row) => ({
           id: row.id,
@@ -706,7 +710,7 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
       return;
     }
 
-    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.setHeader('Cache-Control', cacheControlValue);
     res.json({
       accounts: rows.map((row) => ({
         id: row.id,

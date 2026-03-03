@@ -135,3 +135,15 @@
   - What happened: near-expiry件数は `parseExpiryDate`、廃棄回避額は `new Date` 系の別判定で計算しており、フォーマット差で整合しないリスクが生じた
   - Root cause: ドメイン判定関数を共通化せず、サービス内で局所実装を追加した
   - New rule to prevent it: 期限・金額など経営KPIに影響する判定は必ず共通パーサ/共通判定関数を使い、件数系と金額系で同じ入力に対し同じ真偽を返すことをテストで保証する
+- Pattern: セキュリティ改善で補助機能（テストアカウントのクイック入力）を丸ごと落とすと、運用要件との衝突で手戻りになる
+  - What happened: 「情報露出を減らす」指摘に対し、ユーザー要件は「ワンクリック入力の維持」だったため、機能継続を前提に改善する必要があった
+  - Root cause: リスク低減策を「機能削除」寄りで解釈し、利用者が必要とする最小機能（入力ショートカット）を先に固定しなかった
+  - New rule to prevent it: セキュリティ是正は「残す機能」と「削る露出」を分離して設計し、まず露出（画面表示/デフォルト公開/キャッシュ）を削減した上で業務導線は維持する
+- Pattern: テスト追加時に `top-level await` と `Function` 型を混在させると、後段の品質ゲートで一括崩壊しやすい
+  - What happened: server test 群で `top-level await`・middleware 型不一致・`cb: Function` が同時多発し、`typecheck/lint` が大量失敗した
+  - Root cause: テスト実装時に strict TypeScript ルール（CJS環境の await 制約、`@typescript-eslint/no-unsafe-function-type`）を初手で満たす設計にしていなかった
+  - New rule to prevent it: テストで動的 import が必要な場合は必ず `beforeAll` に寄せ、コールバック型は `Function` を使わず具体シグネチャで定義する。追加直後に `typecheck/lint` を最小単位で回して早期に潰す
+- Pattern: integration test ごとに JWT cookie/CSRF helper を複製すると、secret値やpayload仕様のズレで回帰を起こしやすい
+  - What happened: `account/admin-log-center/search` で同一ロジックを別実装しており、修正時に片方だけ更新されるリスクがあった
+  - Root cause: 認証テスト補助の共通化が未実施で、テストコードの重複を許容していた
+  - New rule to prevent it: integration の認証補助（token/cookie/csrf生成）は `server/src/test/integration/helpers/auth-helper.ts` を唯一ソースにし、重複実装を追加しない

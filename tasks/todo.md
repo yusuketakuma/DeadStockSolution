@@ -1,3 +1,73 @@
+## 今日実装コードレビュー (2026-03-03)
+- [x] 1) レビュー対象を確定する（2026-03-03 作業分、`.claude`/環境ログ系は除外）
+- [x] 2) 変更差分と、追加テストが参照する実装本体（routes/services/utils）を精読し、security / correctness / quality / perf / ux / ops 観点で懸念を抽出する
+- [x] 3) `typecheck -> lint -> test -> build:server -> build:client` を実行し、レビュー根拠となる検証結果を取得する
+- [x] 4) 指摘を重大度順（P1/P2/P3）で整理し、ファイル/行番号つきで報告する
+- [x] 5) レビュー結果と検証ログ要約を `tasks/todo.md` に反映して完了状態にする
+
+### 検証ログ要約 (2026-03-03)
+- `npm run typecheck` : `exit 2`（`error TS` 28件。新規テスト群の型不整合・top-level await 制約違反）
+- `npm run lint` : `exit 1`（69件エラー。主因は `cb: Function` の unsafe function type）
+- `npm run test` : `exit 0`（server 225 files / 3513 tests pass, client 31 files / 255 tests pass）
+- `npm run build:server && npm run build:client` : `exit 0`
+- 実装本体レビューを追加実施（`auth.ts`, `matching-refresh-service.ts`, `matching-snapshot-service.ts`, `admin-log-center.ts` など）
+
+## テストアカウントワンクリック入力改善 (2026-03-03)
+- [x] 1) `/api/auth/test-pharmacies` の公開条件を見直し、本番デフォルトを安全側にする
+- [x] 2) ログイン画面のテスト薬局モーダルからパスワード表示を削除し、ワンクリック入力は維持する
+- [x] 3) 既存テスト（server auth-route / client login）を新仕様に更新する
+- [x] 4) 変更影響のあるテストを実行して回帰を確認する
+- [x] 5) 検証結果を `tasks/todo.md` に追記する
+
+### 検証ログ要約 (2026-03-03, テストアカウントワンクリック入力改善)
+- `npm run test --workspace=server -- src/test/auth-route.test.ts` : pass (17 tests)
+- `npm run test --workspace=server -- src/test/auth-route-coverage.test.ts` : pass (26 tests)
+- `npm run test --workspace=server -- src/test/routes-small-gaps-ultra.test.ts` : pass (21 tests)
+- `npm run test --workspace=client -- src/test/e2e/login.test.tsx` : pass (10 tests)
+- `npm run test` : pass (server 3513 passed / client 255 passed)
+- `npm run build:server && npm run build:client` : pass
+- `npm run typecheck` : fail（既存の server test 群起因 28 件）
+- `npm run lint` : fail（既存の server test 群起因 69 errors）
+
+## 全体リファクタリング Batch 1: 品質ゲート復旧 (2026-03-03)
+- [x] 1) `typecheck/lint` エラーを棚卸しし、修正対象ファイルを確定する
+- [x] 2) テストコード型崩れ（top-level await / middleware型 / enum不整合 / mockシグネチャ不整合）を修正する
+- [x] 3) lint エラー（`Function` 型使用など）を低リスクで解消する
+- [x] 4) `typecheck -> lint -> test -> build:server -> build:client` を再実行する
+- [x] 5) 結果を `tasks/todo.md` と `tasks/lessons.md` に記録する
+
+### 検証ログ要約 (2026-03-03, 全体リファクタリング Batch 1)
+- `npm run typecheck` : `exit 0`（server/client とも通過）
+- `npm run lint` : `exit 0`（server/client とも通過）
+- `npm run test` : `exit 0`（server: 225 files / 3513 passed, client: 31 files / 255 passed）
+- `npm run build:server` : `exit 0`
+- `npm run build:client` : `exit 0`
+- 主な修正: integration test の top-level await 解消、Express middleware 型整合、notification enum 整合、`Function` 型の具体型化
+
+## 全体リファクタリング Batch 2: Integration認証ヘルパー共通化 (2026-03-03)
+- [x] 1) integration test 間で重複している JWT cookie/CSRF 生成ロジックを helper へ集約する
+- [x] 2) `account/admin-log-center/search` integration tests を helper 利用へ置換する
+- [x] 3) `typecheck -> test` で回帰がないことを確認する
+
+### 検証ログ要約 (2026-03-03, Batch 2)
+- `npm run typecheck` : `exit 0`
+- `npm run test` : `exit 0`（server/client pass）
+- 変更: `server/src/test/integration/helpers/auth-helper.ts` に cookie/CSRF helper を統合し、3つの integration test から重複ロジックを削除
+
+## 全体リファクタリング Batch 3: Exchangeテスト Query Builder 共通化 (2026-03-03)
+- [x] 1) `exchange-service*` テストで重複する query builder を `server/src/test/helpers/mock-builders.ts` へ集約する
+- [x] 2) 4ファイル（`exchange-service*.test.ts`）を helper 利用へ置換し、重複実装を削除する
+- [x] 3) `typecheck -> lint -> test -> build` を再実行して品質ゲートを再確認する
+- [x] 4) 結果を `tasks/todo.md` / `tasks/lessons.md` に反映する
+
+### 検証ログ要約 (2026-03-03, Batch 3)
+- `npm run typecheck` : `exit 0`
+- `npm run lint` : `exit 0`
+- `npm run test` : `exit 0`（server: 225 files / 3513 passed, client: 31 files / 255 passed）
+- `npm run build:server` : `exit 0`
+- `npm run build:client` : `exit 0`
+- 変更: exchange-service 系4テストの query builder 重複を `server/src/test/helpers/mock-builders.ts` へ集約
+
 - [x] 1) npm run test --workspace=client -- src/test/e2e/admin-upload-jobs-page.test.tsx
 - [x] 2) npm run typecheck
 - [x] 3) npm run lint

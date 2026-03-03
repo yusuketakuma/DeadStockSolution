@@ -225,7 +225,7 @@ export default function LoginPage() {
               {testPharmacyLoading ? '読込中...' : '登録済みテスト薬局を表示'}
             </button>
             <p className="dl-demo-hint">
-              DB登録済みのテスト薬局を表示します。選択するとメールアドレス/パスワード欄へ反映されます。
+              DB登録済みのテスト薬局を表示します。選択するとメールアドレス/パスワード欄へ反映されます（パスワードは画面表示しません）。
             </p>
           </section>
 
@@ -251,7 +251,6 @@ export default function LoginPage() {
                           <th scope="col">薬局名</th>
                           <th scope="col">都道府県</th>
                           <th scope="col">ログインID</th>
-                          <th scope="col">パスワード</th>
                           <th scope="col" className="text-end">操作</th>
                         </tr>
                       </thead>
@@ -262,14 +261,13 @@ export default function LoginPage() {
                             <td>{pharmacy.name}</td>
                             <td>{pharmacy.prefecture}</td>
                             <td className="dl-test-pharmacy-email">{pharmacy.email}</td>
-                            <td><code>{pharmacy.password}</code></td>
                             <td className="text-end">
                               <button
                                 type="button"
                                 className="btn btn-primary btn-sm"
                                 onClick={() => applyTestPharmacy(pharmacy)}
                               >
-                                このID/パスワードを入力
+                                このアカウントを入力
                               </button>
                             </td>
                           </tr>
@@ -288,7 +286,6 @@ export default function LoginPage() {
                         fields={[
                           { label: '都道府県', value: pharmacy.prefecture },
                           { label: 'ログインID', value: <span className="dl-test-pharmacy-email">{pharmacy.email}</span> },
-                          { label: 'パスワード', value: <code>{pharmacy.password}</code> },
                         ]}
                         actions={(
                           <button
@@ -296,7 +293,7 @@ export default function LoginPage() {
                             className="btn btn-primary btn-sm"
                             onClick={() => applyTestPharmacy(pharmacy)}
                           >
-                            このID/パスワードを入力
+                            このアカウントを入力
                           </button>
                         )}
                       />

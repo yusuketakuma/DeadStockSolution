@@ -122,6 +122,36 @@ describe('request-logger flags', () => {
     );
   });
 
+  it('logs warn for 4xx status codes', async () => {
+    process.env.REQUEST_LOG_ERRORS_ONLY = 'true';
+    process.env.REQUEST_METRICS_ENABLED = 'true';
+    const { requestLogger } = await loadRequestLogger();
+    const ctx = createRequestLoggerTestContext(404, '/api/missing');
+
+    requestLogger(ctx.req, ctx.res, ctx.next);
+    ctx.finish();
+
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      'request',
+      expect.objectContaining({
+        path: '/api/missing',
+        status: 404,
+      }),
+    );
+  });
+
+  it('skips logging for /api/health path', async () => {
+    process.env.REQUEST_LOG_ERRORS_ONLY = 'false';
+    process.env.REQUEST_METRICS_ENABLED = 'true';
+    const { requestLogger } = await loadRequestLogger();
+    const ctx = createRequestLoggerTestContext(200, '/api/health');
+
+    requestLogger(ctx.req, ctx.res, ctx.next);
+
+    expect(ctx.next).toHaveBeenCalledOnce();
+    expect(ctx.res.on).not.toHaveBeenCalled();
+  });
+
   it('can disable request metrics collection independently', async () => {
     process.env.REQUEST_LOG_ERRORS_ONLY = 'true';
     process.env.REQUEST_METRICS_ENABLED = 'false';

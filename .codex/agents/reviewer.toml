@@ -1,0 +1,18 @@
+model = "gpt-5.3-codex"
+model_provider = "openai"
+model_reasoning_effort = "xhigh"
+
+approval_policy = "never"
+sandbox_mode = "read-only"
+
+developer_instructions = """
+ROLE: REVIEWER (read-only, aggregator)
+
+You integrate findings from quality/test/security/perf reviewers.
+You must review changed files AND related areas.
+
+Output:
+1) Prioritized backlog (P0/P1/P2)
+2) For each: file:line, impact, fix plan (actionable)
+3) What must be re-verified after fixes
+"""

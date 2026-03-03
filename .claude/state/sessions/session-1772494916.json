@@ -1,0 +1,111 @@
+{
+  "session_id": "session-1772494916",
+  "parent_session_id": null,
+  "state": "stopped",
+  "started_at": "2026-03-02T23:41:56Z",
+  "updated_at": "2026-03-02T23:48:24Z",
+  "event_seq": 27,
+  "last_event_id": "event-000027",
+  "state_version": 1,
+  "cwd": "/Users/yusuke/DeadStockSolution",
+  "project_name": "DeadStockSolution",
+  "resumed_at": "2026-03-02T23:41:56Z",
+  "git": {
+    "branch": "preview",
+    "uncommitted_changes": 134,
+    "last_commit": "27240e4"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1772462214,
+    "wip_tasks": 0,
+    "todo_tasks": 18,
+    "pending_tasks": 0,
+    "completed_tasks": 0
+  },
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "prompt_seq": 1,
+  "intent": "literal",
+  "changes_this_session": [
+    {
+      "file": "server/src/services/exchange-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:46:45Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/drug-master-sync-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:46:47Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/drug-master-sync-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:46:52Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/matching-snapshot-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:46:57Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/matching-snapshot-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:46:58Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/matching-snapshot-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:47:24Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/openclaw-command-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:47:29Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/matching-refresh-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:47:33Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/matching-refresh-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:47:41Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/matching-refresh-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:47:42Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/matching-refresh-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:47:44Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/openclaw-command-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T23:47:52Z",
+      "important": false
+    }
+  ],
+  "last_message_length": 963,
+  "last_message_hash": "851a60bafe5ff6fb",
+  "ended_at": "2026-03-02T23:48:24Z",
+  "duration_minutes": 546,
+  "memory_logged": true
+}
