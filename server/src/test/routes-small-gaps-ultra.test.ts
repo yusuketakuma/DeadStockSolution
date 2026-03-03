@@ -199,21 +199,23 @@ function selectChainWithLimit(result: unknown) {
   return c;
 }
 
-/** select chain that resolves at .orderBy() — used by /test-pharmacies */
+/** select chain that resolves at .limit() after orderBy() — used by /test-pharmacies */
 function selectChainWithOrderBy(result: unknown) {
   const c: Record<string, ReturnType<typeof vi.fn>> = {};
   c.from = vi.fn().mockReturnValue(c);
   c.where = vi.fn().mockReturnValue(c);
-  c.orderBy = vi.fn().mockResolvedValue(result);
+  c.orderBy = vi.fn().mockReturnValue(c);
+  c.limit = vi.fn().mockResolvedValue(result);
   return c;
 }
 
-/** select chain that rejects at .orderBy() */
+/** select chain that rejects at .limit() after orderBy() */
 function selectChainOrderByRejects(err: Error) {
   const c: Record<string, ReturnType<typeof vi.fn>> = {};
   c.from = vi.fn().mockReturnValue(c);
   c.where = vi.fn().mockReturnValue(c);
-  c.orderBy = vi.fn().mockRejectedValue(err);
+  c.orderBy = vi.fn().mockReturnValue(c);
+  c.limit = vi.fn().mockRejectedValue(err);
   return c;
 }
 
@@ -358,6 +360,7 @@ describe('auth.ts — ultra coverage', () => {
     const columnMissingErr = Object.assign(
       new Error('column "is_test_account" does not exist'), { code: '42703' },
     );
+    mocks.db.execute.mockRejectedValueOnce(new Error('permission denied'));
     mocks.db.select.mockReturnValueOnce(selectChainOrderByRejects(columnMissingErr));
     const app = await createFreshAuthApp();
     const res = await request(app).get('/auth/test-pharmacies');
@@ -369,6 +372,7 @@ describe('auth.ts — ultra coverage', () => {
     const columnMissingErr = Object.assign(
       new Error('column "is_test_account" does not exist'), { code: '42703' },
     );
+    mocks.db.execute.mockRejectedValueOnce(new Error('permission denied'));
     mocks.db.select.mockReturnValueOnce(selectChainOrderByRejects(columnMissingErr));
     const app = await createFreshAuthApp();
     const res = await request(app).get('/auth/test-pharmacies');

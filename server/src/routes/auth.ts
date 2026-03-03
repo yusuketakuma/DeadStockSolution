@@ -91,13 +91,6 @@ function extractUniqueViolationConstraint(err: unknown): string | null {
   return matched?.[1]?.toLowerCase() ?? '';
 }
 
-function isTestPharmacyPreviewEnabled(): boolean {
-  const override = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-  if (override === 'true') return true;
-  if (override === 'false') return false;
-  return process.env.NODE_ENV !== 'production';
-}
-
 function extractErrorCode(err: unknown): string | null {
   if (!err || typeof err !== 'object') return null;
   const code = (err as { code?: unknown }).code;
@@ -123,6 +116,7 @@ let isTestAccountColumnAvailable: boolean | null = null;
 
 // テスト薬局リストのメモリキャッシュ（cold start 時の DB往復を回避）
 const TEST_PHARMACY_CACHE_TTL_MS = 60_000;
+const TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS = 5;
 let testPharmacyCache: {
   expiresAt: number;
   rows: Array<{ id: number; name: string; email: string; prefecture: string; password: string | null }>;
@@ -618,13 +612,10 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
 
 router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthRequest, res: Response) => {
   try {
-    if (!isTestPharmacyPreviewEnabled()) {
-      res.status(404).json({ error: 'テスト薬局情報は利用できません' });
-      return;
-    }
-
     const includePasswordRaw = req.query.includePassword;
-    const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
+    const includePasswordRequested = includePasswordRaw === '1' || includePasswordRaw === 'true';
+    // Production always masks test account passwords for unauthenticated preview.
+    const includePassword = includePasswordRequested && process.env.NODE_ENV !== 'production';
     const cacheControlValue = includePassword ? 'no-store' : 'private, max-age=60';
 
     // キャッシュが有効ならDBアクセスをスキップ
@@ -657,7 +648,8 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
       })
         .from(pharmacies)
         .where(eq(pharmacies.isTestAccount, true))
-        .orderBy(asc(pharmacies.id));
+        .orderBy(asc(pharmacies.id))
+        .limit(TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS);
 
       try {
         const currentRows = await getRowsFromFlag();

@@ -190,7 +190,11 @@ export default function LoginPage() {
     setCapsLockOn(false);
     setEmail(pharmacy.email);
     setPassword(pharmacy.password);
-    setAppliedTestPharmacyMessage(`${pharmacy.name} のログイン情報を入力しました。`);
+    setAppliedTestPharmacyMessage(
+      pharmacy.password
+        ? `${pharmacy.name} のログイン情報を入力しました。`
+        : `${pharmacy.name} を選択しました。パスワードを入力してください。`,
+    );
     setShowTestPharmacyModal(false);
   };
 

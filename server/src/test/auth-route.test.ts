@@ -330,21 +330,9 @@ describe('auth routes', () => {
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('disables test pharmacy preview endpoint in production by default', async () => {
+  it('enables test pharmacy preview endpoint in production by default', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-    const app = await createApp();
-
-    const res = await request(app).get('/api/auth/test-pharmacies');
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'テスト薬局情報は利用できません' });
-    expect(mocks.db.select).not.toHaveBeenCalled();
-  });
-
-  it('allows test pharmacy preview endpoint in production when explicitly enabled', async () => {
-    process.env.NODE_ENV = 'production';
-    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'true';
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
       { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
@@ -355,30 +343,45 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['cache-control']).toBe('private, max-age=60');
     expect(res.body).toEqual({
       accounts: [
         {
-          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: '',
         },
         {
-          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026',
+          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: '',
         },
       ],
     });
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
-  it('disables test pharmacy preview endpoint when explicitly configured off', async () => {
+  it('keeps test pharmacy preview endpoint enabled even when disable flag is set', async () => {
     process.env.NODE_ENV = 'production';
     process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'false';
+    const selectChain = createSelectChain([
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+      { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
+    ]);
+    mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();
 
-    const res = await request(app).get('/api/auth/test-pharmacies');
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'テスト薬局情報は利用できません' });
-    expect(mocks.db.select).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.body).toEqual({
+      accounts: [
+        {
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: '',
+        },
+        {
+          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: '',
+        },
+      ],
+    });
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
   it('returns test pharmacy previews from database without password by default', async () => {
@@ -407,7 +410,7 @@ describe('auth routes', () => {
     expect(selectChain.from).toHaveBeenCalledTimes(1);
     expect(selectChain.where).toHaveBeenCalledTimes(1);
     expect(selectChain.orderBy).toHaveBeenCalledTimes(1);
-    expect(selectChain.limit).not.toHaveBeenCalled();
+    expect(selectChain.limit).toHaveBeenCalledWith(5);
   });
 
   it('returns 503 when test pharmacy columns are missing', async () => {
@@ -447,13 +450,14 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, max-age=60');
     expect(res.body).toEqual({
       accounts: [{
         id: 1,
         name: 'テスト薬局東京店',
         email: 'test-tokyo@example.com',
         prefecture: '東京都',
-        password: 'TokyoDemo!2026',
+        password: '',
       }],
     });
     expect(mocks.db.select).toHaveBeenCalledTimes(2);

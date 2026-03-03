@@ -6,15 +6,14 @@
  * - includesIsTestAccountToken 再帰
  * - isMissingTestPharmacyColumnError
  * - handleAuthConfigurationError
- * - isTestPharmacyPreviewEnabled
  * - password-reset/confirm バリデーション
  * - logout (cookie有り/無し)
- * - test-pharmacies disabled / cache / auto-heal 分岐
+ * - test-pharmacies cache / auto-heal 分岐
  */
 import express, { Response } from 'express';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
-import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type ParseSuccess = { success: true };
 type ParseFailure = { success: false; error: { issues: Array<{ message: string }> } };
@@ -128,11 +127,15 @@ import authRouter from '../routes/auth';
 
 /* ── helpers ─────────────────────────────────────── */
 function createSelectQuery(result: unknown) {
+  const resolved = Promise.resolve(result);
   const query = {
     from: vi.fn(),
     where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
+    then: resolved.then.bind(resolved),
+    catch: resolved.catch.bind(resolved),
+    finally: resolved.finally.bind(resolved),
   };
   query.from.mockReturnValue(query);
   query.where.mockReturnValue(query);
@@ -149,20 +152,10 @@ function createApp() {
   return app;
 }
 
-const ORIGINAL_TEST_PHARMACY_PREVIEW = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-
 /* ── tests ─────────────────────────────────────── */
 describe('auth route deep coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    if (ORIGINAL_TEST_PHARMACY_PREVIEW === undefined) {
-      delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-    } else {
-      process.env.ENABLE_TEST_PHARMACY_PREVIEW = ORIGINAL_TEST_PHARMACY_PREVIEW;
-    }
   });
 
   // ── password-reset/request ──
@@ -433,15 +426,21 @@ describe('auth route deep coverage', () => {
   });
 
   // ── test-pharmacies route ──
-
-  // ── test-pharmacies: preview disabled ──
   describe('GET /auth/test-pharmacies', () => {
-    it('returns 404 when preview is disabled', async () => {
+    it('ignores preview disable flag and still serves DB data', async () => {
       process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'false';
+      const q = createSelectQuery([
+        { id: 11, name: 'DB薬局A', email: 'dba@example.com', prefecture: '東京都', password: 'db-pass-a' },
+      ]);
+      mocks.db.select.mockReturnValueOnce(q);
       const app = createApp();
-      const res = await request(app).get('/auth/test-pharmacies');
-      expect(res.status).toBe(404);
-      expect(res.body.error).toContain('テスト薬局情報は利用できません');
+      const res = await request(app).get('/auth/test-pharmacies?includePassword=1');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        accounts: [
+          { id: 11, name: 'DB薬局A', email: 'dba@example.com', prefecture: '東京都', password: 'db-pass-a' },
+        ],
+      });
     });
   });
 });
