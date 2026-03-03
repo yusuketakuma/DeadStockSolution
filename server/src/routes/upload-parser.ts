@@ -20,6 +20,7 @@ import {
   isUploadConfirmIdempotencyConflictError,
   isUploadConfirmQueueLimitError,
 } from '../services/upload-confirm-job-service';
+import { runUploadConfirm } from '../services/upload-confirm-service';
 import {
   buildUploadRowIssueCsv,
   getUploadRowIssueSummary,
@@ -57,6 +58,11 @@ function parseDeleteMissing(raw: unknown): boolean {
   if (typeof raw === 'boolean') return raw;
   if (typeof raw === 'string') return raw === 'true' || raw === '1';
   return false;
+}
+
+function isUploadConfirmEnqueueFallbackEnabled(): boolean {
+  const raw = process.env.UPLOAD_CONFIRM_FALLBACK_SYNC_ON_ENQUEUE_ERROR;
+  return raw === '1' || raw === 'true';
 }
 
 function resolvePrefixedJobErrorCode(rawMessage: string | null): string | null {
@@ -379,6 +385,9 @@ async function handleConfirmAsyncEnqueue(
 ): Promise<void> {
   const confirmRequestedAt = new Date().toISOString();
   const failureContext = routeKind === 'confirm' ? 'confirm_legacy' : 'confirm_async';
+  let fallbackExecutionParams: Parameters<typeof runUploadConfirm>[0] | null = null;
+  let fallbackUploadType: UploadType | null = null;
+  let fallbackApplyMode: ApplyMode | null = null;
   try {
     const uploadFile = getUploadFileOrReject(req, res);
     if (!uploadFile) return;
@@ -421,15 +430,24 @@ async function handleConfirmAsyncEnqueue(
 
     const deleteMissing = parseDeleteMissing(req.body.deleteMissing);
     const pharmacyId = req.user!.id;
-    const enqueueResult = await enqueueUploadConfirmJob({
+    const executionParams = {
       pharmacyId,
       uploadType,
       originalFilename: uploadFile.originalname,
-      idempotencyKey,
       headerRowIndex,
       mapping,
-      applyMode,
+      allRows,
+      applyMode: applyMode as ApplyMode,
       deleteMissing,
+      staleGuardCreatedAt: confirmRequestedAt,
+    };
+    fallbackExecutionParams = executionParams;
+    fallbackUploadType = uploadType;
+    fallbackApplyMode = applyMode;
+
+    const enqueueResult = await enqueueUploadConfirmJob({
+      ...executionParams,
+      idempotencyKey,
       fileBuffer: uploadFile.buffer,
       requestedAtIso: confirmRequestedAt,
     });
@@ -472,6 +490,41 @@ async function handleConfirmAsyncEnqueue(
         activeJobs: err.activeJobs,
       });
       return;
+    }
+
+    if (isUploadConfirmEnqueueFallbackEnabled()) {
+      try {
+        if (!fallbackExecutionParams || !fallbackUploadType || !fallbackApplyMode) {
+          throw new Error('fallback context is unavailable');
+        }
+        const syncResult = await runUploadConfirm(fallbackExecutionParams);
+        logger.warn('Upload confirm async enqueue failed, fell back to sync execution', () => ({
+          ...getBaseContext(req),
+          error: getErrorMessage(err),
+          uploadType: fallbackUploadType,
+          applyMode: fallbackApplyMode,
+        }));
+        res.status(200).json({
+          message: 'キュー登録に失敗したため同期処理で適用しました',
+          status: 'completed_sync_fallback',
+          deduplicated: false,
+          cancelable: false,
+          canceledAt: null,
+          jobId: null,
+          uploadId: syncResult.uploadId,
+          rowCount: syncResult.rowCount,
+          partialSummary: syncResult.partialSummary,
+          errorReportAvailable: false,
+        });
+        return;
+      } catch (fallbackErr) {
+        logger.error('Upload confirm sync fallback failed', () => ({
+          ...getBaseContext(req),
+          enqueueError: getErrorMessage(err),
+          fallbackError: getErrorMessage(fallbackErr),
+          stack: fallbackErr instanceof Error ? fallbackErr.stack : undefined,
+        }));
+      }
     }
 
     logger.error('Upload confirm async enqueue error', () => ({

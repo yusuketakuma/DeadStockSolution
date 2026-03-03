@@ -79,18 +79,21 @@ function resolveResponseCode(err: HttpLikeError, status: number): string {
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   const httpErr = err as HttpLikeError;
   const status = resolveStatusCode(httpErr);
+  const requestId = (req as Request & { requestId?: string }).requestId
+    ?? (typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined);
   logger.error('Unhandled error', {
     error: resolveLogMessage(httpErr, status),
     stack: resolveLogStack(httpErr, status),
     method: req.method,
     path: req.path,
     status,
+    requestId,
   });
   void recordHttpUnhandledError({
     method: req.method,
     path: req.path,
     status,
-    requestId: typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined,
+    requestId,
     errorCode: typeof httpErr.code === 'string' ? httpErr.code : undefined,
   });
   res.status(status).json({

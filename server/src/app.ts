@@ -163,6 +163,14 @@ app.use('/api', apiRateLimiter);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && !uniqueAllowedOrigins.includes(normalizeOrigin(origin)) && !isSameHostOrigin(origin, req)) {
+    logger.warn('Origin blocked by CORS guard', {
+      origin,
+      method: req.method,
+      path: req.path,
+      host: req.headers.host ?? null,
+      forwardedHost: req.headers['x-forwarded-host'] ?? null,
+      requestId: (req as Request & { requestId?: string }).requestId ?? null,
+    });
     res.status(403).json({ error: '許可されていないオリジンです' });
     return;
   }

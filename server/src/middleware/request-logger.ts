@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'crypto';
 import { logger } from '../services/logger';
 import { recordRequestMetric } from '../services/observability-service';
 import { parseBooleanFlag } from '../utils/number-utils';
@@ -21,6 +22,13 @@ function resolveRequestLogLevel(statusCode: number): 'info' | 'warn' | 'error' |
 }
 
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
+  const incomingRequestId = typeof req.headers['x-request-id'] === 'string'
+    ? req.headers['x-request-id'].trim()
+    : '';
+  const requestId = incomingRequestId || randomUUID();
+  (req as Request & { requestId?: string }).requestId = requestId;
+  res.setHeader('x-request-id', requestId);
+
   // Skip health check and static asset logging
   if (req.path === '/api/health') {
     next();
@@ -39,6 +47,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
         path: req.path,
         status: res.statusCode,
         durationMs: duration,
+        requestId,
       });
     }
 
@@ -53,6 +62,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       duration,
       ip: req.ip,
       userAgent: req.headers['user-agent'],
+      requestId,
     });
   });
 

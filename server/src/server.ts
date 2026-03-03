@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import app from './app';
+import { resolvePort, validateRequiredCronSecrets } from './config/env';
+import { ensureTestPharmacyColumnsAtStartup } from './config/test-pharmacy-schema';
 import { startDrugMasterScheduler, stopDrugMasterScheduler } from './services/drug-master-scheduler';
 import { startDrugPackageScheduler, stopDrugPackageScheduler } from './services/drug-package-scheduler';
 import { startImportFailureAlertScheduler, stopImportFailureAlertScheduler } from './services/import-failure-alert-scheduler';
@@ -12,18 +14,11 @@ import {
 import { logger } from './services/logger';
 import { recordUncaughtException, recordUnhandledRejection } from './services/system-event-service';
 
-function resolvePort(): number {
-  const parsed = Number(process.env.PORT);
-  if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) {
-    return parsed;
-  }
-  return 3001;
-}
-
 const PORT = resolvePort();
 const SHUTDOWN_TIMEOUT_MS = 10000;
+let server: ReturnType<typeof app.listen> | null = null;
 
-const server = app.listen(PORT, () => {
+function startSchedulers(): void {
   logger.info('Server started', { port: PORT });
 
   // 医薬品マスター自動同期スケジューラを開始
@@ -33,7 +28,20 @@ const server = app.listen(PORT, () => {
   startMatchingRefreshScheduler();
   startMonthlyReportScheduler();
   startMonitoringKpiAlertScheduler();
-});
+}
+
+async function bootstrapServer(): Promise<void> {
+  const missingCronSecrets = validateRequiredCronSecrets();
+  if (missingCronSecrets.length > 0) {
+    throw new Error(
+      `Missing required cron secret environment variables: ${missingCronSecrets.join(', ')}`,
+    );
+  }
+
+  await ensureTestPharmacyColumnsAtStartup();
+
+  server = app.listen(PORT, startSchedulers);
+}
 
 function gracefulShutdown(signal: NodeJS.Signals): void {
   logger.info('Graceful shutdown started', { signal });
@@ -52,6 +60,13 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
   }, SHUTDOWN_TIMEOUT_MS);
   forceCloseTimer.unref();
 
+  if (!server) {
+    clearTimeout(forceCloseTimer);
+    logger.info('Server was not started; exiting immediately');
+    process.exit(0);
+    return;
+  }
+
   server.close((err) => {
     clearTimeout(forceCloseTimer);
     if (err) {
@@ -59,7 +74,6 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
         error: err instanceof Error ? err.message : String(err),
       });
       process.exit(1);
-      return;
     }
     logger.info('Server stopped');
     process.exit(0);
@@ -68,6 +82,14 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
 
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+void bootstrapServer().catch((err) => {
+  logger.error('Server bootstrap failed', {
+    error: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+  });
+  process.exit(1);
+});
 
 process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled rejection', {

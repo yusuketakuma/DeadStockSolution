@@ -47,6 +47,7 @@ const findLimiter = rateLimit({
 });
 
 type BulkActionType = 'accept' | 'reject';
+const BULK_ACTION_CONCURRENCY = 8;
 
 function parseBulkAction(raw: unknown): BulkActionType | null {
   if (raw === 'accept' || raw === 'reject') return raw;
@@ -60,6 +61,28 @@ function parseBulkIds(raw: unknown): number[] | null {
     .filter((value) => Number.isInteger(value) && value > 0);
   if (normalized.length === 0) return null;
   return [...new Set(normalized)];
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const current = nextIndex;
+      nextIndex += 1;
+      if (current >= items.length) return;
+      results[current] = await mapper(items[current]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
 }
 
 function sanitizeBulkActionErrorMessage(err: unknown): string {
@@ -150,29 +173,26 @@ router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) =>
       status?: string;
       message?: string;
       error?: string;
-    }> = [];
-
-    for (const id of ids) {
+    }> = await mapWithConcurrency(ids, BULK_ACTION_CONCURRENCY, async (id) => {
       try {
         if (action === 'accept') {
           const nextStatus = await acceptProposal(id, actorId);
-          results.push({
+          return {
             id,
             ok: true,
             status: nextStatus,
             message: nextStatus === 'confirmed'
               ? '仮マッチングが確定しました'
               : '承認しました（相手薬局の承認待ち）',
-          });
-        } else {
-          await rejectProposal(id, actorId);
-          results.push({
-            id,
-            ok: true,
-            status: 'rejected',
-            message: '拒否しました',
-          });
+          };
         }
+        await rejectProposal(id, actorId);
+        return {
+          id,
+          ok: true,
+          status: 'rejected',
+          message: '拒否しました',
+        };
       } catch (err) {
         logger.warn('Bulk proposal action item failed', {
           proposalId: id,
@@ -180,9 +200,9 @@ router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) =>
           actorId,
           error: err instanceof Error ? err.message : String(err),
         });
-        results.push({ id, ok: false, error: sanitizeBulkActionErrorMessage(err) });
+        return { id, ok: false, error: sanitizeBulkActionErrorMessage(err) };
       }
-    }
+    });
 
     const successCount = results.filter((row) => row.ok).length;
     res.json({

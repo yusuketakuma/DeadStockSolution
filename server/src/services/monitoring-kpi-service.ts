@@ -1,7 +1,6 @@
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, lte, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { uploadConfirmJobs } from '../db/schema';
-import { rowCount } from '../utils/db-utils';
 import { getObservabilitySnapshot } from './observability-service';
 
 interface MonitoringKpiThresholds {
@@ -68,25 +67,22 @@ export async function getMonitoringKpiSnapshot(windowMinutesRaw: number = 60): P
   const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
   const staleBefore = new Date(now - thresholds.pendingStaleMinutes * 60 * 1000).toISOString();
 
-  const [
-    [failedJobs],
-    [completedJobs],
-    [pendingStaleJobs],
-  ] = await Promise.all([
-    db.select({ count: rowCount })
-      .from(uploadConfirmJobs)
-      .where(and(eq(uploadConfirmJobs.status, 'failed'), gte(uploadConfirmJobs.createdAt, since24h))),
-    db.select({ count: rowCount })
-      .from(uploadConfirmJobs)
-      .where(and(eq(uploadConfirmJobs.status, 'completed'), gte(uploadConfirmJobs.createdAt, since24h))),
-    db.select({ count: rowCount })
-      .from(uploadConfirmJobs)
-      .where(and(eq(uploadConfirmJobs.status, 'pending'), lte(uploadConfirmJobs.createdAt, staleBefore))),
-  ]);
+  const [countsRow] = await db.select({
+    failed: sql<number>`count(*) filter (where ${uploadConfirmJobs.status} = 'failed' and ${uploadConfirmJobs.createdAt} >= ${since24h})`,
+    completed: sql<number>`count(*) filter (where ${uploadConfirmJobs.status} = 'completed' and ${uploadConfirmJobs.createdAt} >= ${since24h})`,
+    pendingStale: sql<number>`count(*) filter (where ${uploadConfirmJobs.status} = 'pending' and ${uploadConfirmJobs.createdAt} <= ${staleBefore})`,
+  })
+    .from(uploadConfirmJobs)
+    .where(
+      or(
+        gte(uploadConfirmJobs.createdAt, since24h),
+        and(eq(uploadConfirmJobs.status, 'pending'), lte(uploadConfirmJobs.createdAt, staleBefore)),
+      ),
+    );
 
-  const failedCount = failedJobs.count;
-  const completedCount = completedJobs.count;
-  const pendingStaleCount = pendingStaleJobs.count;
+  const failedCount = Number(countsRow?.failed ?? 0);
+  const completedCount = Number(countsRow?.completed ?? 0);
+  const pendingStaleCount = Number(countsRow?.pendingStale ?? 0);
   const totalHandled = failedCount + completedCount;
   const uploadFailureRate = totalHandled === 0
     ? 0

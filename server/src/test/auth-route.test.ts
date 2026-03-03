@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
     insert: vi.fn(),
+    execute: vi.fn(),
   },
 }));
 
@@ -414,6 +415,7 @@ describe('auth routes', () => {
     process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'true';
     const missingColumnError = Object.assign(new Error('column "is_test_account" does not exist'), { code: '42703' });
     const missingColumnChain = createRejectedSelectChain(missingColumnError);
+    mocks.db.execute.mockRejectedValueOnce(new Error('permission denied'));
     mocks.db.select
       .mockImplementationOnce(() => missingColumnChain);
     const app = await createApp();
@@ -423,7 +425,39 @@ describe('auth routes', () => {
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
+    expect(mocks.db.execute).toHaveBeenCalledTimes(1);
     expect(missingColumnChain.where).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers test pharmacy preview after ensuring missing columns', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'true';
+    const missingColumnError = Object.assign(new Error('column "is_test_account" does not exist'), { code: '42703' });
+    const missingColumnChain = createRejectedSelectChain(missingColumnError);
+    const healedRows = [
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+    ];
+    const healedChain = createSelectChain(healedRows);
+    mocks.db.execute.mockResolvedValue({});
+    mocks.db.select
+      .mockImplementationOnce(() => missingColumnChain)
+      .mockImplementationOnce(() => healedChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      accounts: [{
+        id: 1,
+        name: 'テスト薬局東京店',
+        email: 'test-tokyo@example.com',
+        prefecture: '東京都',
+        password: 'TokyoDemo!2026',
+      }],
+    });
+    expect(mocks.db.select).toHaveBeenCalledTimes(2);
+    expect(mocks.db.execute).toHaveBeenCalledTimes(2);
   });
 
   it('returns distinct passwords for DB test pharmacy accounts', async () => {

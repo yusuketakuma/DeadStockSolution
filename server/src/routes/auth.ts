@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
+import { ensureTestPharmacyColumnsAtStartup } from '../config/test-pharmacy-schema';
 import { pharmacies, pharmacyRegistrationReviews, userRequests } from '../db/schema';
 import {
   assertJwtSecretConfigured,
@@ -119,7 +120,6 @@ function isMissingTestPharmacyColumnError(err: unknown): boolean {
   return extractErrorCode(err) === '42703' || includesIsTestAccountToken(err);
 }
 let isTestAccountColumnAvailable: boolean | null = null;
-let testPharmacyColumnsEnsured = false;
 
 // テスト薬局リストのメモリキャッシュ（cold start 時の DB往復を回避）
 const TEST_PHARMACY_CACHE_TTL_MS = 60_000;
@@ -127,23 +127,6 @@ let testPharmacyCache: {
   expiresAt: number;
   rows: Array<{ id: number; name: string; email: string; prefecture: string; password: string | null }>;
 } | null = null;
-
-async function ensureTestPharmacyColumns(): Promise<boolean> {
-  if (testPharmacyColumnsEnsured) {
-    return true;
-  }
-  try {
-    await db.execute(sql`ALTER TABLE "pharmacies" ADD COLUMN IF NOT EXISTS "is_test_account" boolean DEFAULT false NOT NULL`);
-    await db.execute(sql`ALTER TABLE "pharmacies" ADD COLUMN IF NOT EXISTS "test_account_password" text`);
-    testPharmacyColumnsEnsured = true;
-    return true;
-  } catch (err) {
-    logger.error('Auto ensure test pharmacy columns failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return false;
-  }
-}
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
@@ -684,18 +667,27 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
         if (!isMissingTestPharmacyColumnError(err)) {
           throw err;
         }
-        logger.warn('test pharmacy columns are missing; attempting auto-heal', {
+        logger.warn('test pharmacy columns are missing', {
           error: err instanceof Error ? err.message : String(err),
         });
-        const ensured = await ensureTestPharmacyColumns();
-        if (!ensured) {
-          isTestAccountColumnAvailable = false;
-          res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
-          return null;
+        const ensured = await ensureTestPharmacyColumnsAtStartup();
+        if (ensured) {
+          try {
+            const healedRows = await getRowsFromFlag();
+            isTestAccountColumnAvailable = true;
+            return healedRows;
+          } catch (retryErr) {
+            if (!isMissingTestPharmacyColumnError(retryErr)) {
+              throw retryErr;
+            }
+            logger.warn('test pharmacy columns remain unavailable after ensure', {
+              error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+            });
+          }
         }
-        const healedRows = await getRowsFromFlag();
-        isTestAccountColumnAvailable = true;
-        return healedRows;
+        isTestAccountColumnAvailable = false;
+        res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
+        return null;
       }
     })();
     if (!rows) {

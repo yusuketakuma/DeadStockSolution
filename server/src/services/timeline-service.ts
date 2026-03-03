@@ -165,10 +165,10 @@ export async function getTimeline(
   // timestamp 降順ソート
   enriched.sort(compareTimelineOrder);
 
-  const total = enriched.length;
   const filteredForCursor = cursor
     ? enriched.filter((event) => compareTimelineOrder(event, cursor) > 0)
     : enriched;
+  const total = enriched.length;
 
   const hasMore = filteredForCursor.length > limit;
   const events = filteredForCursor.slice(0, limit);

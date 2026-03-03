@@ -139,13 +139,94 @@ body[data-design-preset='high-legibility'] {
   margin-top: 0.5rem;
 }
 
+.dl-login-header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--dl-border);
+}
+
+.dl-login-showcase {
+  margin-top: 0.85rem;
+  border: 1px solid #c3d8e8;
+  border-radius: var(--dl-radius-md);
+  padding: 0.78rem;
+  background:
+    linear-gradient(165deg, rgba(11, 110, 168, 0.08), rgba(255, 255, 255, 0.72)),
+    #f6fbff;
+}
+
+.dl-login-showcase-lead {
+  margin: 0 0 0.62rem;
+  font-size: 0.82rem;
+  color: var(--dl-text-muted);
+}
+
+.dl-login-showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.dl-login-showcase-card {
+  border: 1px solid #d4e4f1;
+  border-radius: 10px;
+  padding: 0.52rem 0.56rem;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.dl-login-showcase-label {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #1f678f;
+}
+
+.dl-login-showcase-title {
+  margin: 0.28rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--dl-text);
+}
+
+.dl-login-showcase-text {
+  margin: 0.32rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.42;
+  color: var(--dl-text-muted);
+}
+
 .dl-auth-tabs .nav-link {
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: var(--dl-text-muted);
   font-weight: 700;
+  padding: 0.45rem 0.85rem;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.dl-auth-tabs .nav-link:hover {
+  border-color: var(--dl-border);
+  background: #f4f8fc;
 }
 
 .dl-auth-tabs .nav-link.active {
+  border-color: #b5ccdf;
+  background: #e9f4ff;
   color: var(--dl-primary-strong);
+}
+
+.dl-login-panel {
+  border: 1px solid var(--dl-border);
+  border-radius: var(--dl-radius-md);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(243, 249, 255, 0.85));
+  padding: 0.95rem;
+}
+
+.dl-mode-caption {
+  margin: 0 0 0.8rem;
+  color: var(--dl-text-muted);
+  font-size: 0.84rem;
 }
 
 .dl-form-note {
@@ -153,6 +234,16 @@ body[data-design-preset='high-legibility'] {
   color: var(--dl-text-muted);
   font-size: 0.8rem;
   margin-top: 0.25rem;
+}
+
+.dl-password-toggle {
+  min-width: 5.6rem;
+}
+
+.dl-caps-lock-note {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: #9a3412;
 }
 
 .dl-auth-footer {
@@ -190,24 +281,142 @@ body[data-design-preset='high-legibility'] {
   font-size: 0.9rem;
 }
 
+.dl-login-links {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem 0.95rem;
+}
+
+.dl-login-links a {
+  font-size: 0.9rem;
+}
+
+.dl-login-readiness {
+  border: 1px solid #c8dae8;
+  border-radius: 10px;
+  background: #f8fcff;
+  padding: 0.62rem 0.72rem;
+  margin-bottom: 0.75rem;
+}
+
+.dl-login-readiness-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.dl-login-readiness-title {
+  font-size: 0.79rem;
+  font-weight: 700;
+  color: var(--dl-text-muted);
+}
+
+.dl-login-readiness-rate {
+  font-size: 0.77rem;
+  font-weight: 700;
+  color: var(--dl-primary-strong);
+}
+
+.dl-login-readiness-bar {
+  height: 0.45rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e6eef5;
+  margin-bottom: 0.5rem;
+}
+
+.dl-login-readiness-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #59a9d3, #0b6ea8);
+  transition: transform 0.18s ease-out;
+}
+
+.dl-login-readiness-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+}
+
+.dl-login-readiness-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--dl-text-muted);
+}
+
+.dl-login-readiness-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #bfd0df;
+}
+
+.dl-login-readiness-list li.is-done {
+  color: #0f5132;
+}
+
+.dl-login-readiness-list li.is-done .dl-login-readiness-dot {
+  background: #2aa06a;
+}
+
+.dl-login-quick-actions {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
 .dl-demo-shortcuts {
-  margin-top: 1rem;
-  border: 1px dashed var(--dl-border);
+  margin-top: 0.9rem;
+  border: 1px solid #b9d0e2;
   border-radius: var(--dl-radius-md);
-  padding: 0.75rem;
-  background: #f7fbff;
+  padding: 0.72rem 0.75rem;
+  background: #f3f9ff;
 }
 
 .dl-demo-title {
-  font-size: 0.86rem;
-  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  margin: 0 0 0.35rem;
   color: var(--dl-text-muted);
 }
 
 .dl-demo-hint {
+  margin: 0 0 0.55rem;
+  color: var(--dl-text-muted);
+  font-size: 0.8rem;
+}
+
+.dl-demo-flow {
   margin: 0.55rem 0 0;
   color: var(--dl-text-muted);
   font-size: 0.8rem;
+}
+
+.dl-support-note {
+  margin-top: 1rem;
+  border-top: 1px solid var(--dl-border);
+  padding-top: 0.8rem;
+}
+
+.dl-support-note ol {
+  padding-left: 1rem;
+  color: var(--dl-text-muted);
+  font-size: 0.84rem;
+}
+
+.dl-support-note li + li {
+  margin-top: 0.4rem;
 }
 
 .dl-test-pharmacy-modal .table {
@@ -216,6 +425,19 @@ body[data-design-preset='high-legibility'] {
 
 .dl-test-pharmacy-email {
   word-break: break-all;
+}
+
+.dl-test-pharmacy-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.dl-test-pharmacy-meta {
+  margin: 0 0 0.6rem;
+  font-size: 0.8rem;
+  color: var(--dl-text-muted);
 }
 
 /* ===== App-wide Design Language (protected screens) ===== */
@@ -580,6 +802,32 @@ body.app-theme-root .sidebar-mobile .offcanvas-header .btn-close {
     padding: 0.85rem 0.5rem;
   }
 
+  .dl-login-panel {
+    padding: 0.8rem 0.75rem;
+  }
+
+  .dl-login-showcase-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dl-login-links {
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .dl-login-quick-actions .btn {
+    width: 100%;
+  }
+
+  .dl-login-readiness-list {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .dl-password-toggle {
+    min-width: 4.7rem;
+  }
+
   .dl-app-screen .page-title {
     font-size: 1.2rem;
   }
@@ -601,6 +849,11 @@ body.app-theme-root .sidebar-mobile .offcanvas-header .btn-close {
   .dl-mobile-data-actions .btn,
   .dl-mobile-data-actions a.btn {
     width: 100%;
+  }
+
+  .dl-test-pharmacy-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 

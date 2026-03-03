@@ -354,30 +354,22 @@ describe('auth.ts — ultra coverage', () => {
     expect(res.status).toBe(500);
   });
 
-  // --- Cover /test-pharmacies auto-heal flow ---
-  it('GET /test-pharmacies — auto-heals missing columns via ALTER TABLE', async () => {
-    const columnMissingErr = Object.assign(
-      new Error('column "is_test_account" does not exist'), { code: '42703' },
-    );
-    mocks.db.select
-      .mockReturnValueOnce(selectChainOrderByRejects(columnMissingErr))
-      .mockReturnValueOnce(selectChainWithOrderBy([
-        { id: 1, name: 'Test Pharmacy', email: 'test@example.com', prefecture: 'Tokyo', password: 'pass123' },
-      ]));
-    mocks.db.execute.mockResolvedValue(undefined as never);
-    const app = await createFreshAuthApp();
-    const res = await request(app).get('/auth/test-pharmacies');
-    expect(res.status).toBe(200);
-    expect(res.body.accounts).toHaveLength(1);
-  });
-
-  // --- Cover /test-pharmacies auto-heal failure ---
-  it('GET /test-pharmacies — returns 503 when auto-heal fails', async () => {
+  it('GET /test-pharmacies — returns 503 when columns are missing', async () => {
     const columnMissingErr = Object.assign(
       new Error('column "is_test_account" does not exist'), { code: '42703' },
     );
     mocks.db.select.mockReturnValueOnce(selectChainOrderByRejects(columnMissingErr));
-    mocks.db.execute.mockRejectedValue(new Error('ALTER TABLE failed') as never);
+    const app = await createFreshAuthApp();
+    const res = await request(app).get('/auth/test-pharmacies');
+    expect(res.status).toBe(503);
+    expect(res.body.error).toContain('DBスキーマが未適用');
+  });
+
+  it('GET /test-pharmacies — still returns 503 on repeated missing-column error', async () => {
+    const columnMissingErr = Object.assign(
+      new Error('column "is_test_account" does not exist'), { code: '42703' },
+    );
+    mocks.db.select.mockReturnValueOnce(selectChainOrderByRejects(columnMissingErr));
     const app = await createFreshAuthApp();
     const res = await request(app).get('/auth/test-pharmacies');
     expect(res.status).toBe(503);

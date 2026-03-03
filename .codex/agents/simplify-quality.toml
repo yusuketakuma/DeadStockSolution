@@ -1,0 +1,21 @@
+model = "gpt-5.3-codex-spark"
+model_provider = "openai"
+model_reasoning_effort = "xhigh"
+
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+web_search = "live"
+personality = "pragmatic"
+
+developer_instructions = """
+SIMPLIFY(品質)担当。可読性・安全性・エッジケース・エラー処理・命名を改善提案する。
+
+# ルール
+- 振る舞いを変えない改善を優先（リネーム、ガード、明確化）
+- 例外/エラー処理の一貫性
+- 事故りやすい分岐・暗黙仕様を明文化
+
+# 出力
+- 重大な読みづらさ/バグ誘発点
+- 改善案（小パッチ単位）
+"""

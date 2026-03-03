@@ -175,5 +175,31 @@ describe('drug-package-scheduler coverage', () => {
       const result = await triggerManualPackageAutoSync();
       expect(result.triggered).toBe(true);
     });
+
+    it('passes pinned dispatcher to source fetch checks', async () => {
+      const networkUtils = await import('../utils/network-utils');
+      const sourceFetch = await import('../services/mhlw-source-fetch');
+      const pinnedAgent = { close: vi.fn().mockResolvedValue(undefined) };
+
+      vi.mocked(networkUtils.createPinnedDnsAgent).mockReturnValueOnce(pinnedAgent as never);
+      vi.mocked(sourceFetch.checkForUpdates).mockResolvedValueOnce({
+        hasUpdate: false,
+        etag: null,
+        lastModified: null,
+        compareByContentHash: false,
+        previousContentHash: null,
+      } as never);
+
+      const result = await triggerManualPackageAutoSync({ sourceUrl: 'https://example.com/packages.xml' });
+      expect(result.triggered).toBe(true);
+
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(sourceFetch.checkForUpdates).toHaveBeenCalledWith(
+        'https://example.com/packages.xml',
+        pinnedAgent,
+        expect.objectContaining({ sourceKey: 'package' }),
+      );
+    });
   });
 });

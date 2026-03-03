@@ -11,6 +11,7 @@ vi.mock('node:dns/promises', () => ({
 import {
   assertExternalHttpsUrlSafe,
   createPinnedDnsAgent,
+  createPinnedDnsLookup,
   validateExternalHttpsUrl,
 } from '../utils/network-utils';
 
@@ -315,6 +316,69 @@ describe('network-utils — additional coverage', () => {
       const agent = createPinnedDnsAgent('example.com', ['93.184.216.34', '93.184.216.34']);
 
       expect(agent).toBeDefined();
+    });
+  });
+
+  describe('createPinnedDnsLookup', () => {
+    it('returns hostname mismatch error', async () => {
+      const lookup = createPinnedDnsLookup('example.com', ['93.184.216.34']);
+      await new Promise<void>((resolve) => {
+        lookup('other.example.com', {}, (err) => {
+          expect(err).toBeInstanceOf(Error);
+          expect(err?.message).toContain('Hostname changed');
+          resolve();
+        });
+      });
+    });
+
+    it('filters by family and errors when no address for family', async () => {
+      const lookup = createPinnedDnsLookup('example.com', ['93.184.216.34']);
+      await new Promise<void>((resolve) => {
+        lookup('example.com', { family: 6 }, (err) => {
+          expect(err).toBeInstanceOf(Error);
+          expect(err?.message).toContain('No pinned address');
+          resolve();
+        });
+      });
+    });
+
+    it('returns all addresses in lookup all mode', async () => {
+      const lookup = createPinnedDnsLookup('example.com', ['93.184.216.34', '2001:db8::1']);
+      await new Promise<void>((resolve) => {
+        lookup('example.com', { all: true }, (err, addresses) => {
+          expect(err).toBeNull();
+          expect(Array.isArray(addresses)).toBe(true);
+          expect((addresses as Array<{ address: string }>).map((a) => a.address)).toEqual([
+            '93.184.216.34',
+            '2001:db8::1',
+          ]);
+          resolve();
+        });
+      });
+    });
+
+    it('round-robins pinned addresses in single lookup mode', async () => {
+      const lookup = createPinnedDnsLookup('example.com', ['93.184.216.34', '93.184.216.35']);
+      const first = await new Promise<string>((resolve, reject) => {
+        lookup('example.com', {}, (err, address) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve(address as string);
+        });
+      });
+      const second = await new Promise<string>((resolve, reject) => {
+        lookup('example.com', {}, (err, address) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve(address as string);
+        });
+      });
+      expect(first).toBe('93.184.216.34');
+      expect(second).toBe('93.184.216.35');
     });
   });
 });

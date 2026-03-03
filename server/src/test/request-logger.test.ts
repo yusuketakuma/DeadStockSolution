@@ -41,6 +41,7 @@ function createRequestLoggerTestContext(statusCode: number, path = '/api/example
 
   const res = {
     statusCode,
+    setHeader: vi.fn(),
     on: vi.fn((event: string, handler: () => void) => {
       if (event === 'finish') {
         finishHandler = handler;

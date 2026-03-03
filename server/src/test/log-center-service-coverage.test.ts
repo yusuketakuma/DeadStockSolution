@@ -45,7 +45,6 @@ import {
   queryLogs,
   getLogSummary,
   normalizeLogEntry,
-  type LogCenterQuery,
 } from '../services/log-center-service';
 
 function createSelectChain(result: unknown[]) {
@@ -59,7 +58,10 @@ function createSelectChain(result: unknown[]) {
   chain.from.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
   chain.orderBy.mockReturnValue(chain);
-  chain.limit.mockResolvedValue(result);
+  chain.limit.mockImplementation((fetchLimit: number) => {
+    if (!Number.isInteger(fetchLimit) || fetchLimit < 0) return Promise.resolve(result);
+    return Promise.resolve(result.slice(0, fetchLimit));
+  });
   // For count queries that end with .then()
   chain.then.mockImplementation((fn: (rows: unknown[]) => unknown) => Promise.resolve(fn(result)));
   return chain;
@@ -227,24 +229,44 @@ describe('log-center-service coverage', () => {
       expect(result.entries.length).toBe(2);
     });
 
-    it('applies level filter post-hoc', async () => {
+    it('applies level filter in source query', async () => {
       let selectCallCount = 0;
       mocks.db.select.mockImplementation(() => {
         selectCallCount++;
         if (selectCallCount <= 3) return createSelectChain([{ cnt: 5 }]);
-        // Data queries return rows with various levels
+        // Data query returns source-filtered rows
         if (selectCallCount === 4) {
           return createSelectChain([
             { id: 1, action: 'test', detail: '失敗|err', resourceType: 'test', metadataJson: null, createdAt: '2026-01-01T00:00:00Z' },
-            { id: 2, action: 'test', detail: 'ok', resourceType: 'test', metadataJson: null, createdAt: '2026-01-02T00:00:00Z' },
           ]);
         }
         return createSelectChain([]);
       });
 
       const result = await queryLogs({ level: 'error' });
-      // Only the error entry should remain after post-hoc filtering
       expect(result.entries.every((e) => e.level === 'error')).toBe(true);
+      expect(mocks.drizzle.sql).toHaveBeenCalled();
+    });
+
+    it('reuses cached level condition on repeated queries', async () => {
+      let selectCallCount = 0;
+      mocks.db.select.mockImplementation(() => {
+        const phase = (selectCallCount % 6) + 1;
+        selectCallCount += 1;
+        if (phase <= 3) return createSelectChain([{ cnt: 0 }]);
+        return createSelectChain([]);
+      });
+
+      mocks.drizzle.sql.mockClear();
+
+      await queryLogs({ level: 'warning' });
+      const firstSqlCalls = mocks.drizzle.sql.mock.calls.length;
+
+      await queryLogs({ level: 'warning' });
+      const secondSqlCalls = mocks.drizzle.sql.mock.calls.length;
+
+      expect(firstSqlCalls).toBeGreaterThan(0);
+      expect(secondSqlCalls).toBe(firstSqlCalls);
     });
 
     it('applies pagination correctly', async () => {
@@ -268,7 +290,34 @@ describe('log-center-service coverage', () => {
       const result = await queryLogs({ page: 2, limit: 3 });
       expect(result.page).toBe(2);
       expect(result.limit).toBe(3);
-      expect(result.entries.length).toBeLessThanOrEqual(3);
+      expect(result.entries.length).toBe(3);
+      expect(result.entries.map((entry) => entry.id)).toEqual([4, 5, 6]);
+    });
+
+    it('fills deep page even when logs are skewed to one source', async () => {
+      let selectCallCount = 0;
+      const skewedRows = Array.from({ length: 200 }, (_, i) => ({
+        id: i + 1,
+        action: 'skewed',
+        detail: '',
+        resourceType: 'test',
+        metadataJson: null,
+        createdAt: `2026-01-${String(31 - (i % 31)).padStart(2, '0')}T00:00:00Z`,
+      }));
+
+      mocks.db.select.mockImplementation(() => {
+        selectCallCount++;
+        if (selectCallCount === 1) return createSelectChain([{ cnt: 200 }]);
+        if (selectCallCount === 2 || selectCallCount === 3) return createSelectChain([{ cnt: 0 }]);
+        if (selectCallCount === 4) return createSelectChain(skewedRows);
+        return createSelectChain([]);
+      });
+
+      const result = await queryLogs({ page: 2, limit: 50 });
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(50);
+      expect(result.total).toBe(200);
+      expect(result.entries.length).toBe(50);
     });
 
     it('applies search filter', async () => {

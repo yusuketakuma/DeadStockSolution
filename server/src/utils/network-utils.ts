@@ -239,7 +239,7 @@ export async function assertExternalHttpsUrlSafe(url: string): Promise<void> {
   throw new Error(`${reason}${hostname}`);
 }
 
-export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[]): Agent {
+export function createPinnedDnsLookup(hostname: string, allowedAddresses: string[]): net.LookupFunction {
   const normalizedHostname = hostname.toLowerCase();
   const uniqueAddresses = [...new Set(allowedAddresses)];
   if (uniqueAddresses.length === 0) {
@@ -277,6 +277,12 @@ export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[
     nextAddressIndex += 1;
     callback(null, address, net.isIPv6(address) ? 6 : 4);
   };
+
+  return lookup;
+}
+
+export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[]): Agent {
+  const lookup = createPinnedDnsLookup(hostname, allowedAddresses);
 
   return new Agent({
     connect: { lookup },

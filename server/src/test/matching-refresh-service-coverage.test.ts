@@ -234,6 +234,47 @@ describe('matching-refresh-service coverage', () => {
       // attempts was 4, next is 5 which >= MAX_JOB_ATTEMPTS, so logger.error is called
       expect(mocks.logger.error).toHaveBeenCalled();
     });
+
+    it('uses retry backoff progression arguments when job fails before max attempts', async () => {
+      const job = { id: 11, triggerPharmacyId: 20, uploadType: 'dead_stock', attempts: 1 };
+
+      let claimSelectDone = false;
+      let resolveIdsDone = false;
+      let notifyDone = false;
+      mocks.db.select.mockImplementation((fields: Record<string, unknown>) => {
+        const fieldKeys = fields ? Object.keys(fields) : [];
+        if (!claimSelectDone && fieldKeys.includes('triggerPharmacyId')) {
+          claimSelectDone = true;
+          return createUniversalSelectChain([job]);
+        }
+        if (!notifyDone && fieldKeys.includes('matchingAutoNotifyEnabled')) {
+          notifyDone = true;
+          return createUniversalSelectChain([{ id: 20, matchingAutoNotifyEnabled: true }]);
+        }
+        if (!resolveIdsDone && fieldKeys.length === 1 && fieldKeys[0] === 'id') {
+          resolveIdsDone = true;
+          return createUniversalSelectChain([{ id: 20 }]);
+        }
+        return createUniversalSelectChain([]);
+      });
+
+      let updateCallCount = 0;
+      mocks.db.update.mockImplementation(() => {
+        updateCallCount += 1;
+        if (updateCallCount === 1) {
+          return createUpdateChain([job]);
+        }
+        return createUpdateChain();
+      });
+
+      mocks.findMatchesBatch.mockRejectedValue(new Error('batch-fail'));
+      mocks.findMatches.mockRejectedValue(new Error('single-fail'));
+
+      const result = await processPendingMatchingRefreshJobs(1);
+      expect(result).toBe(0);
+      expect(mocks.getNextRetryIso).toHaveBeenCalledWith(2, 5, 120000);
+      expect(mocks.logger.warn).toHaveBeenCalled();
+    });
   });
 
   describe('triggerMatchingRefreshOnUpload', () => {
@@ -355,6 +396,18 @@ describe('matching-refresh-service coverage', () => {
   describe('__testables.splitIntoChunks', () => {
     it('re-exports splitIntoChunks from array-utils', () => {
       expect(__testables.splitIntoChunks).toBeDefined();
+    });
+  });
+
+  describe('__testables.claimNextRefreshJob', () => {
+    it('reclaims stale processing job candidate using stale timeout helper', async () => {
+      const candidate = { id: 55, triggerPharmacyId: 30, uploadType: 'used_medication', attempts: 0 };
+      mocks.db.select.mockImplementation(() => createUniversalSelectChain([candidate]));
+      mocks.db.update.mockImplementation(() => createUpdateChain([candidate]));
+
+      const claimed = await __testables.claimNextRefreshJob([]);
+      expect(claimed).toEqual(candidate);
+      expect(mocks.getStaleBeforeIso).toHaveBeenCalledWith(15 * 60 * 1000);
     });
   });
 });

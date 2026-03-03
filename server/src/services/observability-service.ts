@@ -4,6 +4,7 @@ interface RequestMetric {
   method: string;
   status: number;
   durationMs: number;
+  requestId?: string;
 }
 
 interface SlowPathStat {

@@ -7,11 +7,13 @@ import { escapeLikeWildcards } from '../utils/request-utils';
 
 export const LOG_SOURCES = ['activity_logs', 'system_events', 'drug_master_sync_logs'] as const;
 export type LogSource = (typeof LOG_SOURCES)[number];
+export const LOG_LEVELS = ['critical', 'error', 'warning', 'info'] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
 
 export interface NormalizedLogEntry {
   id: number;
   source: LogSource;
-  level: 'critical' | 'error' | 'warning' | 'info';
+  level: LogLevel;
   category: string;
   errorCode: string | null;
   message: string;
@@ -22,7 +24,7 @@ export interface NormalizedLogEntry {
 
 export interface LogCenterQuery {
   sources?: LogSource[];
-  level?: NormalizedLogEntry['level'];
+  level?: LogLevel;
   search?: string;
   pharmacyId?: number;
   from?: string;
@@ -46,6 +48,10 @@ export interface LogSummary {
  * activity_logs の失敗パターン: detail が '失敗|' で始まる行
  */
 const FAILURE_ACTIONS = ['login_failed', 'password_reset_failed'] as const;
+
+export function isLogLevel(value: unknown): value is LogLevel {
+  return typeof value === 'string' && (LOG_LEVELS as readonly string[]).includes(value);
+}
 
 export function normalizeLogEntry(source: LogSource, row: Record<string, unknown>): NormalizedLogEntry {
   switch (source) {
@@ -201,12 +207,90 @@ function buildSourceConditions(source: LogSource, query: LogCenterQuery) {
       or(...config.searchCols.map((col) => ilike(col, `%${escaped}%`))),
     );
   }
-  if (query.level && config.levelCol) {
-    conditions.push(sql`${config.levelCol} = ${query.level}`);
+  if (query.level) {
+    const levelCondition = buildLevelCondition(source, query.level, config.levelCol);
+    if (levelCondition) {
+      conditions.push(levelCondition);
+    }
   }
 
   return { config, where: conditions.length > 0 ? and(...conditions) : undefined };
 }
+
+function buildLevelCondition(
+  source: LogSource,
+  level: NonNullable<LogCenterQuery['level']>,
+  levelCol: unknown,
+): ReturnType<typeof sql> | null {
+  const cacheKey = `${source}:${level}`;
+  const cached = levelConditionCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  if (source === 'system_events' && levelCol) {
+    const condition = sql`${levelCol} = ${level}`;
+    levelConditionCache.set(cacheKey, condition);
+    return condition;
+  }
+
+  if (source === 'activity_logs') {
+    if (level === 'critical') {
+      const condition = sql`1 = 0`;
+      levelConditionCache.set(cacheKey, condition);
+      return condition;
+    }
+    if (level === 'error') {
+      const condition = sql`coalesce(${activityLogs.detail}, '') like '失敗|%'`;
+      levelConditionCache.set(cacheKey, condition);
+      return condition;
+    }
+    if (level === 'warning') {
+      const condition = sql`coalesce(${activityLogs.detail}, '') not like '失敗|%' and ${activityLogs.action} in ('login_failed', 'password_reset_failed')`;
+      levelConditionCache.set(cacheKey, condition);
+      return condition;
+    }
+    if (level === 'info') {
+      const condition = sql`coalesce(${activityLogs.detail}, '') not like '失敗|%' and ${activityLogs.action} not in ('login_failed', 'password_reset_failed')`;
+      levelConditionCache.set(cacheKey, condition);
+      return condition;
+    }
+    const condition = sql`1 = 0`;
+    levelConditionCache.set(cacheKey, condition);
+    return condition;
+  }
+
+  if (source === 'drug_master_sync_logs') {
+    if (level === 'critical') {
+      const condition = sql`1 = 0`;
+      levelConditionCache.set(cacheKey, condition);
+      return condition;
+    }
+    if (level === 'error') {
+      const condition = sql`${drugMasterSyncLogs.status} = 'failed'`;
+      levelConditionCache.set(cacheKey, condition);
+      return condition;
+    }
+    if (level === 'warning') {
+      const condition = sql`${drugMasterSyncLogs.status} = 'partial'`;
+      levelConditionCache.set(cacheKey, condition);
+      return condition;
+    }
+    if (level === 'info') {
+      const condition = sql`${drugMasterSyncLogs.status} not in ('failed', 'partial')`;
+      levelConditionCache.set(cacheKey, condition);
+      return condition;
+    }
+    const condition = sql`1 = 0`;
+    levelConditionCache.set(cacheKey, condition);
+    return condition;
+  }
+
+  levelConditionCache.set(cacheKey, null);
+  return null;
+}
+
+const levelConditionCache = new Map<string, ReturnType<typeof sql> | null>();
 
 // ── 汎用ソーステーブルクエリ ──────────────────────────────
 
@@ -233,6 +317,51 @@ async function countSourceTable(source: LogSource, query: LogCenterQuery): Promi
   return Number(row?.cnt ?? 0);
 }
 
+function compareEntryTimestampDesc(left: NormalizedLogEntry, right: NormalizedLogEntry): number {
+  if (left.timestamp > right.timestamp) return -1;
+  if (left.timestamp < right.timestamp) return 1;
+  return 0;
+}
+
+function mergeEntriesForPage(
+  sourceEntries: NormalizedLogEntry[][],
+  offset: number,
+  limit: number,
+): NormalizedLogEntry[] {
+  const targetLength = offset + limit;
+  if (targetLength <= 0) return [];
+
+  const indexes = sourceEntries.map(() => 0);
+  const merged: NormalizedLogEntry[] = [];
+
+  while (merged.length < targetLength) {
+    let selectedSource = -1;
+    let selectedEntry: NormalizedLogEntry | null = null;
+
+    for (let sourceIndex = 0; sourceIndex < sourceEntries.length; sourceIndex += 1) {
+      const rowIndex = indexes[sourceIndex];
+      const candidate = sourceEntries[sourceIndex]?.[rowIndex];
+      if (!candidate) continue;
+      if (!selectedEntry) {
+        selectedEntry = candidate;
+        selectedSource = sourceIndex;
+        continue;
+      }
+      const compare = compareEntryTimestampDesc(candidate, selectedEntry);
+      if (compare < 0 || (compare === 0 && sourceIndex < selectedSource)) {
+        selectedEntry = candidate;
+        selectedSource = sourceIndex;
+      }
+    }
+
+    if (!selectedEntry || selectedSource < 0) break;
+    merged.push(selectedEntry);
+    indexes[selectedSource] += 1;
+  }
+
+  return merged.slice(offset, offset + limit);
+}
+
 // ── クエリ関数 ──────────────────────────────────────────
 
 export async function queryLogs(query: LogCenterQuery): Promise<{
@@ -242,43 +371,24 @@ export async function queryLogs(query: LogCenterQuery): Promise<{
   limit: number;
 }> {
   const sources = query.sources ?? [...LOG_SOURCES];
-  const page = query.page ?? 1;
-  const limit = query.limit ?? 50;
-
-  // ソースあたりの fetch limit を動的化（全件ではなく必要分 + バッファ）
-  const perSourceLimit = Math.ceil((page * limit) / sources.length) + limit;
-
-  // COUNT と data クエリを全て並列実行
-  const countPromises = sources.map((source) => countSourceTable(source, query));
-  const dataPromises = sources.map((source) => querySourceTable(source, query, perSourceLimit));
-  const [counts, results] = await Promise.all([
-    Promise.all(countPromises),
-    Promise.all(dataPromises),
-  ]);
-  const rawTotal = counts.reduce((sum, c) => sum + c, 0);
-  const allEntries = results.flat();
-
-  // レベルフィルタ（levelCol がないソースは正規化後にフィルタ）
-  const filtered = query.level
-    ? allEntries.filter((e) => e.level === query.level)
-    : allEntries;
-
-  // levelCol のないソースは COUNT にレベル条件を含められないため、
-  // post-hoc フィルタ適用時は total を補正する
-  const total = query.level && filtered.length < allEntries.length
-    ? Math.min(rawTotal, filtered.length)
-    : rawTotal;
-
-  // タイムスタンプ降順ソート
-  filtered.sort((a, b) => {
-    if (a.timestamp > b.timestamp) return -1;
-    if (a.timestamp < b.timestamp) return 1;
-    return 0;
-  });
-
-  // ページネーション
+  const page = Math.max(1, query.page ?? 1);
+  const limit = Math.max(1, query.limit ?? 50);
   const offset = (page - 1) * limit;
-  const paginated = filtered.slice(offset, offset + limit);
+  const requiredRows = offset + limit;
+
+  // まず件数だけ取得して総数を確定
+  const countPromises = sources.map((source) => countSourceTable(source, query));
+  const counts = await Promise.all(countPromises);
+  const total = counts.reduce((sum, c) => sum + c, 0);
+
+  // 深いページでも欠落しないよう、必要行数までを各ソースから取得する
+  const dataPromises = sources.map((source, index) => {
+    const fetchLimit = Math.min(counts[index], requiredRows);
+    if (fetchLimit <= 0) return Promise.resolve([]);
+    return querySourceTable(source, query, fetchLimit);
+  });
+  const results = await Promise.all(dataPromises);
+  const paginated = mergeEntriesForPage(results, offset, limit);
 
   return {
     entries: paginated,

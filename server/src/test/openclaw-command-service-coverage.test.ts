@@ -16,6 +16,49 @@ vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('../services/upload-confirm-job-service', () => ({
+  cancelUploadConfirmJobByAdmin: vi.fn(async (jobId: number, canceledBy: number) => ({
+    id: jobId,
+    status: 'cancel_requested',
+    canceledAt: null,
+    cancelRequestedAt: '2026-01-01T00:00:00.000Z',
+    cancelable: true,
+    canceledBy,
+  })),
+}));
+
+vi.mock('../services/drug-master-scheduler', () => ({
+  triggerManualAutoSync: vi.fn(async () => ({ triggered: true, message: 'ok' })),
+  startDrugMasterScheduler: vi.fn(),
+  stopDrugMasterScheduler: vi.fn(),
+}));
+
+vi.mock('../services/drug-package-scheduler', () => ({
+  triggerManualPackageAutoSync: vi.fn(async () => ({ triggered: true, message: 'ok' })),
+  startDrugPackageScheduler: vi.fn(),
+  stopDrugPackageScheduler: vi.fn(),
+}));
+
+vi.mock('../services/import-failure-alert-scheduler', () => ({
+  startImportFailureAlertScheduler: vi.fn(),
+  stopImportFailureAlertScheduler: vi.fn(),
+}));
+
+vi.mock('../services/matching-refresh-scheduler', () => ({
+  startMatchingRefreshScheduler: vi.fn(),
+  stopMatchingRefreshScheduler: vi.fn(),
+}));
+
+vi.mock('../services/monthly-report-scheduler', () => ({
+  startMonthlyReportScheduler: vi.fn(),
+  stopMonthlyReportScheduler: vi.fn(),
+}));
+
+vi.mock('../services/monitoring-kpi-alert-scheduler', () => ({
+  startMonitoringKpiAlertScheduler: vi.fn(),
+  stopMonitoringKpiAlertScheduler: vi.fn(),
+}));
+
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
   desc: vi.fn(() => ({})),
@@ -160,6 +203,11 @@ describe('openclaw-command-service — additional coverage', () => {
       const insertValues = vi.fn().mockReturnValue({ returning: insertReturning });
       mocks.db.insert.mockReturnValue({ values: insertValues });
 
+      const selectLimit = vi.fn().mockResolvedValue([{ id: 1, isActive: false }]);
+      const selectWhere = vi.fn().mockReturnValue({ limit: selectLimit });
+      const selectFrom = vi.fn().mockReturnValue({ where: selectWhere });
+      mocks.db.select.mockReturnValue({ from: selectFrom });
+
       const updateWhere = vi.fn().mockResolvedValue(undefined);
       const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
       mocks.db.update.mockReturnValue({ set: updateSet });
@@ -170,7 +218,7 @@ describe('openclaw-command-service — additional coverage', () => {
       );
 
       expect(result.status).toBe('completed');
-      expect(result.result).toEqual(expect.objectContaining({ pharmacyId: 1, action: 'toggle_requested' }));
+      expect(result.result).toEqual(expect.objectContaining({ pharmacyId: 1, action: 'toggled' }));
     });
 
     it('executes job.cancel command', async () => {

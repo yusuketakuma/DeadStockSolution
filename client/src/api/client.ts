@@ -3,6 +3,8 @@ const API_BASE = configuredApiBase
   ? configuredApiBase.replace(/\/+$/, '')
   : '/api';
 const REQUEST_TIMEOUT_MS = 30000;
+const RETRYABLE_STATUS_CODES = new Set([429, 503]);
+const RETRYABLE_METHODS = new Set(['GET', 'HEAD']);
 
 interface ApiOptions {
   method?: string;
@@ -167,6 +169,8 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
   }
 
   const doRequest = () => fetchWithTimeout(`${API_BASE}${path}`, config, timeout, signal);
+  const methodUpper = method.toUpperCase();
+  const shouldRetry = RETRYABLE_METHODS.has(methodUpper);
   let response = await doRequest();
 
   if (!response.ok && shouldUseCsrf && response.status === 403) {
@@ -176,6 +180,11 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
       (config.headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
       response = await doRequest();
     }
+  }
+
+  if (!response.ok && shouldRetry && RETRYABLE_STATUS_CODES.has(response.status)) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    response = await doRequest();
   }
 
   if (!response.ok) {

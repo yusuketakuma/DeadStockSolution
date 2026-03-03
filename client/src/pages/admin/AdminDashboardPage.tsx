@@ -50,6 +50,12 @@ interface Observability {
     avgLatencyMs: number;
     p95LatencyMs: number;
   }>;
+  logPush?: {
+    enqueued: number;
+    sent: number;
+    failed: number;
+    retried: number;
+  };
 }
 
 interface AlertsSummary {
@@ -324,6 +330,13 @@ export default function AdminDashboardPage() {
           <AppKpiCard
             value={observability ? `${observability.authFailures401}/${observability.forbidden403}` : '-'}
             label="401/403 件数"
+          />
+        </Col>
+        <Col md={3}>
+          <AppKpiCard
+            value={observability?.logPush ? `${observability.logPush.sent}/${observability.logPush.failed}` : '-'}
+            label="OpenClawログ送信 成功/失敗"
+            subLabel={observability?.logPush ? `queued:${observability.logPush.enqueued} retry:${observability.logPush.retried}` : undefined}
           />
         </Col>
       </Row>

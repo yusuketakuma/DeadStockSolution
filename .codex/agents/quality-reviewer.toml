@@ -1,0 +1,22 @@
+model = "gpt-5.3-codex-spark"
+model_provider = "openai"
+model_reasoning_effort = "xhigh"
+
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+web_search = "live"
+personality = "pragmatic"
+
+developer_instructions = """
+コード品質レビュー担当。
+
+# スコープ（広く）
+- 実装箇所
+- “関連項目” （同系統コンポーネント、共通関数、型、フック、lint ルール、周辺UX）
+- 例外/エラー処理/ログ/命名/責務境界/状態管理
+
+# 出力
+- P1/P2 指摘（ファイル:行）
+- 推奨修正（具体）
+- 再発防止（必要なときだけ）
+"""

@@ -173,6 +173,18 @@ describe('GET /api/admin/log-center', () => {
     expect(res.status).toBe(200);
   });
 
+  it('不正な level パラメータで 400 を返す', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    await makeActivityLog(testDb, { action: 'test', detail: 'テスト' });
+    const cookie = makeAuthCookie(admin);
+
+    const res = await request(app)
+      .get('/api/admin/log-center?level=invalid_level')
+      .set('Cookie', [cookie]);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('level');
+  });
+
   it('from パラメータで日時フィルタリングできる', async () => {
     const admin = await makePharmacy(testDb, { isAdmin: true });
     await makeActivityLog(testDb, { action: 'old_event', detail: '古いイベント' });
@@ -270,6 +282,50 @@ describe('GET /api/admin/log-center', () => {
     expect(overlap.length).toBe(0);
   });
 
+  it('同一タイムスタンプの複数ソースでもページ間重複が発生しない', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    const fixedTs = '2026-04-01T00:00:00.000Z';
+
+    for (let i = 0; i < 30; i++) {
+      await makeActivityLog(testDb, {
+        action: `mixed_activity_${i}`,
+        detail: `activity ${i}`,
+        createdAt: fixedTs,
+      });
+    }
+    for (let i = 0; i < 30; i++) {
+      await makeSystemEvent({
+        level: 'warning',
+        message: `system ${i}`,
+        occurredAt: fixedTs,
+      });
+    }
+
+    const cookie = makeAuthCookie(admin);
+    const page1 = await request(app)
+      .get('/api/admin/log-center?source=activity_logs,system_events&page=1&limit=30')
+      .set('Cookie', [cookie]);
+    const page2 = await request(app)
+      .get('/api/admin/log-center?source=activity_logs,system_events&page=2&limit=30')
+      .set('Cookie', [cookie]);
+
+    expect(page1.status).toBe(200);
+    expect(page2.status).toBe(200);
+    expect(page1.body.pagination.total).toBe(60);
+    expect(page2.body.pagination.total).toBe(60);
+    expect(page1.body.data).toHaveLength(30);
+    expect(page2.body.data).toHaveLength(30);
+
+    const page1Keys = new Set(
+      page1.body.data.map((entry: { source: string; id: number }) => `${entry.source}:${entry.id}`),
+    );
+    const page2Keys = new Set(
+      page2.body.data.map((entry: { source: string; id: number }) => `${entry.source}:${entry.id}`),
+    );
+    const overlap = [...page1Keys].filter((key) => page2Keys.has(key));
+    expect(overlap).toHaveLength(0);
+  });
+
   it('pharmacyId でフィルタリングできる', async () => {
     const admin = await makePharmacy(testDb, { isAdmin: true });
     const targetPharmacy = await makePharmacy(testDb, { name: 'ターゲット薬局' });
@@ -291,6 +347,30 @@ describe('GET /api/admin/log-center', () => {
     expect(res.status).toBe(200);
     for (const entry of res.body.data) {
       expect(entry.pharmacyId).toBe(targetPharmacy.id);
+    }
+  });
+
+  it('activity_logs が偏在する深いページでも件数不足にならない', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    for (let i = 0; i < 120; i++) {
+      await makeActivityLog(testDb, {
+        action: `deep_page_${i}`,
+        detail: `深いページ検証 ${i}`,
+      });
+    }
+    const cookie = makeAuthCookie(admin);
+
+    const res = await request(app)
+      .get('/api/admin/log-center?source=activity_logs&page=3&limit=50')
+      .set('Cookie', [cookie]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.pagination.page).toBe(3);
+    expect(res.body.pagination.limit).toBe(50);
+    expect(res.body.pagination.total).toBe(120);
+    expect(res.body.data).toHaveLength(20);
+    for (const entry of res.body.data) {
+      expect(entry.source).toBe('activity_logs');
     }
   });
 });

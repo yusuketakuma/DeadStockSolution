@@ -19,6 +19,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
   gte: vi.fn(() => ({})),
   lte: vi.fn(() => ({})),
+  or: vi.fn(() => ({})),
   sql: vi.fn(),
 }));
 
@@ -49,20 +50,29 @@ function makeDefaultObservability(overrides: Partial<{
   };
 }
 
-/** DB の select チェーンをモックし、並列 Promise.all に対応 */
 function setupDbCounts(failedCount: number, completedCount: number, pendingStaleCount: number) {
-  const makeChain = (count: number) => ({
-    from: vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue([{ count }]),
-    }),
-  });
-  mocks.dbSelect
-    .mockReturnValueOnce(makeChain(failedCount))
-    .mockReturnValueOnce(makeChain(completedCount))
-    .mockReturnValueOnce(makeChain(pendingStaleCount));
+  const chain = {
+    from: vi.fn(),
+    where: vi.fn(),
+  };
+  chain.from.mockReturnValue(chain);
+  chain.where.mockResolvedValue([{
+    failed: failedCount,
+    completed: completedCount,
+    pendingStale: pendingStaleCount,
+  }]);
+  mocks.dbSelect.mockReturnValue(chain);
 }
 
-// ── テスト ──────────────────────────────────────────
+function expectSingleDbAggregateQuery(): void {
+  expect(mocks.dbSelect).toHaveBeenCalledTimes(1);
+  const chain = mocks.dbSelect.mock.results[0]?.value as {
+    from: ReturnType<typeof vi.fn>;
+    where: ReturnType<typeof vi.fn>;
+  };
+  expect(chain.from).toHaveBeenCalledTimes(1);
+  expect(chain.where).toHaveBeenCalledTimes(1);
+}
 
 describe('getMonitoringKpiSnapshot', () => {
   beforeEach(() => {
@@ -75,6 +85,7 @@ describe('getMonitoringKpiSnapshot', () => {
       setupDbCounts(2, 8, 0);
       const snapshot = await getMonitoringKpiSnapshot();
       expect(snapshot.metrics.uploadFailureRate).toBe(20);
+      expectSingleDbAggregateQuery();
     });
 
     it('failed=0, completed=0 のとき uploadFailureRate = 0（ゼロ除算ガード）', async () => {
@@ -170,6 +181,12 @@ describe('getMonitoringKpiSnapshot', () => {
       setupDbCounts(0, 0, 0);
       const snapshot = await getMonitoringKpiSnapshot();
       expect(snapshot.context.windowMinutes).toBe(30);
+    });
+
+    it('DB 集約クエリを 1 回だけ実行する', async () => {
+      setupDbCounts(3, 7, 2);
+      await getMonitoringKpiSnapshot();
+      expectSingleDbAggregateQuery();
     });
   });
 });

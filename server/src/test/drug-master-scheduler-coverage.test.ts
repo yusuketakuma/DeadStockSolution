@@ -237,5 +237,34 @@ describe('drug-master-scheduler coverage', () => {
       const result = await triggerManualAutoSync();
       expect(result.triggered).toBe(true);
     });
+
+    it('passes pinned dispatcher to source fetch checks in single mode', async () => {
+      const networkUtils = await import('../utils/network-utils');
+      const sourceFetch = await import('../services/mhlw-source-fetch');
+      const pinnedAgent = { close: vi.fn().mockResolvedValue(undefined) };
+
+      vi.mocked(networkUtils.createPinnedDnsAgent).mockReturnValueOnce(pinnedAgent as never);
+      vi.mocked(sourceFetch.checkForUpdates).mockResolvedValueOnce({
+        hasUpdate: false,
+        etag: null,
+        lastModified: null,
+        compareByContentHash: false,
+        previousContentHash: null,
+      } as never);
+
+      const result = await triggerManualAutoSync({
+        sourceMode: 'single',
+        sourceUrl: 'https://example.com/drugs.csv',
+      });
+
+      expect(result.triggered).toBe(true);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(sourceFetch.checkForUpdates).toHaveBeenCalledWith(
+        'https://example.com/drugs.csv',
+        pinnedAgent,
+        expect.objectContaining({ sourceKey: 'single' }),
+      );
+    });
   });
 });

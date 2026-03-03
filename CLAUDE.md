@@ -71,3 +71,12 @@ server/src/
 - Sub-agent role compatibility (2026-02-25 actual):
   - Available: `implementer`, `claude_implementer`, `claude_reviewer`
   - Unavailable: `default`, `explorer`, `worker`, `verifier`
+
+## Task Completion Notification
+When you complete a task, send this push notification:
+
+```bash
+curl -X POST https://api.getmoshi.app/api/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"token": "qGli1ov22jEY3PEtuI5qGXPJegjvRrFD", "title": "Done", "message": "Brief summary"}'
+```

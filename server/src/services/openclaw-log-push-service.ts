@@ -24,6 +24,13 @@ interface AlertPayload {
   sentAt: string;
 }
 
+interface LogPushStats {
+  enqueued: number;
+  sent: number;
+  failed: number;
+  retried: number;
+}
+
 // In-memory buffers by severity (typed keys)
 const buffers: Record<Severity, PendingEntry[]> = {
   critical: [],
@@ -51,8 +58,16 @@ const flushTimers: Record<Severity, ReturnType<typeof setTimeout> | null> = {
   warning: null,
 };
 
+const logPushStats: LogPushStats = {
+  enqueued: 0,
+  sent: 0,
+  failed: 0,
+  retried: 0,
+};
+
 export function enqueueLogAlert(entry: LogAlertEntry): void {
   if (!isEnabled()) return;
+  logPushStats.enqueued += 1;
 
   const severity = entry.severity;
 
@@ -89,10 +104,13 @@ export async function flushBuffer(severity: Severity): Promise<void> {
 
   try {
     await sendLogAlertToOpenClaw(payload);
+    logPushStats.sent += entries.length;
     logger.info(`Sent ${entries.length} ${severity} log alerts to OpenClaw`);
   } catch (err) {
+    logPushStats.failed += entries.length;
     // Re-add entries for retry, up to 3 times each
     const retryable = entries.filter(e => e._retries < 3);
+    logPushStats.retried += retryable.length;
     for (const e of retryable) e._retries += 1;
     buffers[severity].unshift(...retryable);
     // Enforce cap after re-add to prevent unbounded growth
@@ -147,6 +165,15 @@ export function clearBuffer(): void {
     if (flushTimers[key]) clearTimeout(flushTimers[key]!);
     flushTimers[key] = null;
   }
+}
+
+export function getLogPushStats(): LogPushStats {
+  return {
+    enqueued: logPushStats.enqueued,
+    sent: logPushStats.sent,
+    failed: logPushStats.failed,
+    retried: logPushStats.retried,
+  };
 }
 
 function isEnabled(): boolean {

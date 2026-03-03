@@ -238,6 +238,7 @@ vi.mock('../services/logger', () => ({
 vi.mock('../utils/http-utils', () => ({
   FetchTimeoutError: class FetchTimeoutError extends Error { },
   fetchWithTimeout: vi.fn(),
+  MHLW_DEFAULT_FETCH_RETRIES: 1,
 }));
 
 vi.mock('../utils/number-utils', () => ({
@@ -586,6 +587,38 @@ vi.mock('../services/upload-confirm-job-service', () => ({
   retryUploadConfirmJobByAdmin: vi.fn(),
 }));
 
+vi.mock('../services/drug-master-scheduler', () => ({
+  triggerManualAutoSync: vi.fn(async () => ({ triggered: true, message: 'ok' })),
+  startDrugMasterScheduler: vi.fn(),
+  stopDrugMasterScheduler: vi.fn(),
+}));
+
+vi.mock('../services/drug-package-scheduler', () => ({
+  triggerManualPackageAutoSync: vi.fn(async () => ({ triggered: true, message: 'ok' })),
+  startDrugPackageScheduler: vi.fn(),
+  stopDrugPackageScheduler: vi.fn(),
+}));
+
+vi.mock('../services/import-failure-alert-scheduler', () => ({
+  startImportFailureAlertScheduler: vi.fn(),
+  stopImportFailureAlertScheduler: vi.fn(),
+}));
+
+vi.mock('../services/matching-refresh-scheduler', () => ({
+  startMatchingRefreshScheduler: vi.fn(),
+  stopMatchingRefreshScheduler: vi.fn(),
+}));
+
+vi.mock('../services/monthly-report-scheduler', () => ({
+  startMonthlyReportScheduler: vi.fn(),
+  stopMonthlyReportScheduler: vi.fn(),
+}));
+
+vi.mock('../services/monitoring-kpi-alert-scheduler', () => ({
+  startMonitoringKpiAlertScheduler: vi.fn(),
+  stopMonitoringKpiAlertScheduler: vi.fn(),
+}));
+
 vi.mock('../services/upload-confirm-service', () => ({}));
 
 import {
@@ -657,8 +690,22 @@ vi.mock('../config/database', () => {
 
 // dynamic import to get the db mock after vi.mock setup
 import { BUILTIN_COMMANDS } from '../services/openclaw-command-service';
+import { db } from '../config/database';
+import { cancelUploadConfirmJobByAdmin } from '../services/upload-confirm-job-service';
+
+const mockedDb = db as unknown as {
+  select: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+};
+const mockedCancelUploadConfirmJobByAdmin = cancelUploadConfirmJobByAdmin as ReturnType<typeof vi.fn>;
 
 describe('openclaw-command-service — handler executions', () => {
+  beforeEach(() => {
+    mockedDb.select.mockReset();
+    mockedDb.update.mockReset();
+    mockedCancelUploadConfirmJobByAdmin.mockReset();
+  });
+
   it('system.status handler returns operational status', async () => {
     const result = await BUILTIN_COMMANDS['system.status'].handler({});
     expect(result).toMatchObject({
@@ -693,8 +740,17 @@ describe('openclaw-command-service — handler executions', () => {
   });
 
   it('pharmacy.toggle handler returns action for valid pharmacyId', async () => {
+    const selectLimit = vi.fn().mockResolvedValue([{ id: 42, isActive: false }]);
+    const selectWhere = vi.fn().mockReturnValue({ limit: selectLimit });
+    const selectFrom = vi.fn().mockReturnValue({ where: selectWhere });
+    mockedDb.select.mockReturnValue({ from: selectFrom });
+
+    const updateWhere = vi.fn().mockResolvedValue(undefined);
+    const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
+    mockedDb.update.mockReturnValue({ set: updateSet });
+
     const result = await BUILTIN_COMMANDS['pharmacy.toggle'].handler({ pharmacyId: 42 });
-    expect(result).toMatchObject({ pharmacyId: 42, action: 'toggle_requested' });
+    expect(result).toMatchObject({ pharmacyId: 42, action: 'toggled' });
   });
 
   it('pharmacy.toggle handler throws for invalid pharmacyId', async () => {
@@ -702,6 +758,15 @@ describe('openclaw-command-service — handler executions', () => {
   });
 
   it('job.cancel handler returns cancel action for valid jobId', async () => {
+    mockedCancelUploadConfirmJobByAdmin.mockResolvedValue({
+      id: 10,
+      status: 'cancel_requested',
+      canceledAt: null,
+      cancelRequestedAt: '2026-01-01T00:00:00.000Z',
+      cancelable: true,
+      canceledBy: 1,
+    });
+
     const result = await BUILTIN_COMMANDS['job.cancel'].handler({ jobId: 10 });
     expect(result).toMatchObject({ jobId: 10, action: 'cancel_requested' });
   });

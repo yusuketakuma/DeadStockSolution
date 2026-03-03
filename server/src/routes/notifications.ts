@@ -223,18 +223,42 @@ function mergeDedupSortByTimestamp<T extends { id: number }>(
   branchA: T[],
   branchB: T[],
   getTimestamp: (row: T) => string | null,
+  limit?: number,
 ): T[] {
-  const deduped = new Map<number, T>();
-  for (const row of branchA) deduped.set(row.id, row);
-  for (const row of branchB) {
-    if (!deduped.has(row.id)) deduped.set(row.id, row);
-  }
+  const merged: T[] = [];
+  const seen = new Set<number>();
+  let indexA = 0;
+  let indexB = 0;
 
-  return [...deduped.values()].sort((left, right) => {
+  const shouldPreferA = (left: T | undefined, right: T | undefined): boolean => {
+    if (left && !right) return true;
+    if (!left) return false;
+    if (!right) return true;
     const leftSort = timestampSortValue(getTimestamp(left));
     const rightSort = timestampSortValue(getTimestamp(right));
-    return rightSort - leftSort || right.id - left.id;
-  });
+    if (leftSort !== rightSort) return leftSort > rightSort;
+    return left.id > right.id;
+  };
+
+  while (indexA < branchA.length || indexB < branchB.length) {
+    const rowA = branchA[indexA];
+    const rowB = branchB[indexB];
+    const useA = shouldPreferA(rowA, rowB);
+    const picked = useA ? rowA : rowB;
+
+    if (useA) {
+      indexA += 1;
+    } else {
+      indexB += 1;
+    }
+
+    if (!picked || seen.has(picked.id)) continue;
+    seen.add(picked.id);
+    merged.push(picked);
+    if (limit && merged.length >= limit) break;
+  }
+
+  return merged;
 }
 
 function resolveNotificationType(type: string): NoticeType | null {
@@ -305,7 +329,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
           eq(exchangeProposals.pharmacyAId, pharmacyId),
           inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
         ))
-        .orderBy(desc(exchangeProposals.proposedAt))
+        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
         .limit(PROPOSAL_NOTICE_LIMIT),
       db.select(proposalSelect)
         .from(exchangeProposals)
@@ -313,7 +337,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
           eq(exchangeProposals.pharmacyBId, pharmacyId),
           inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
         ))
-        .orderBy(desc(exchangeProposals.proposedAt))
+        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
         .limit(PROPOSAL_NOTICE_LIMIT),
       db.select(messageSelect)
         .from(adminMessages)
@@ -361,10 +385,18 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         .limit(SOURCE_NOTICE_FETCH_LIMIT),
     ]);
 
-    const proposalRows = mergeDedupSortByTimestamp(proposalsA, proposalsB, (row) => row.proposedAt)
-      .slice(0, PROPOSAL_NOTICE_LIMIT);
-    const messageRows = mergeDedupSortByTimestamp(messagesAll, messagesPharmacy, (row) => row.createdAt)
-      .slice(0, SOURCE_NOTICE_FETCH_LIMIT);
+    const proposalRows = mergeDedupSortByTimestamp(
+      proposalsA,
+      proposalsB,
+      (row) => row.proposedAt,
+      PROPOSAL_NOTICE_LIMIT,
+    );
+    const messageRows = mergeDedupSortByTimestamp(
+      messagesAll,
+      messagesPharmacy,
+      (row) => row.createdAt,
+      SOURCE_NOTICE_FETCH_LIMIT,
+    );
 
     const latestProposalNotificationById = new Map<number, {
       id: number;
@@ -486,10 +518,16 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         })
       : null;
 
-    const unreadMessages = notices.filter((item) => item.type === 'admin_message' && item.unread).length;
-    const actionableRequests = notices.filter((item) =>
-      item.unread && (item.type === 'inbound_request' || item.type === 'status_update' || item.type === 'match_update')
-    ).length;
+    let unreadMessages = 0;
+    let actionableRequests = 0;
+    for (const item of notices) {
+      if (item.type === 'admin_message' && item.unread) {
+        unreadMessages += 1;
+      }
+      if (item.unread && (item.type === 'inbound_request' || item.type === 'status_update' || item.type === 'match_update')) {
+        actionableRequests += 1;
+      }
+    }
 
     res.json({
       notices: pagedNotices,

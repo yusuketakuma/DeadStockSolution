@@ -1,12 +1,13 @@
 import { Router, Response } from 'express';
 import { requireLogin, requireAdmin } from '../middleware/auth';
-import { queryLogs, getLogSummary, LOG_SOURCES } from '../services/log-center-service';
+import { queryLogs, getLogSummary, LOG_SOURCES, LOG_LEVELS, isLogLevel } from '../services/log-center-service';
 import type { LogCenterQuery, LogSource } from '../services/log-center-service';
 import { AuthRequest } from '../types';
 import { handleAdminError, sendPaginated, parseListPagination } from './admin-utils';
 import { parsePositiveInt, normalizeSearchTerm, parseTimestamp } from '../utils/request-utils';
 
 const VALID_LOG_SOURCES = new Set<LogSource>(LOG_SOURCES);
+const LOG_LEVEL_LABEL = LOG_LEVELS.join(', ');
 
 const MAX_SPAN_MS = 90 * 24 * 60 * 60 * 1000; // 90日
 
@@ -25,6 +26,14 @@ function parseLogSources(raw: unknown): LogSource[] | undefined {
   return [...new Set(filtered)];
 }
 
+function parseLogLevel(raw: unknown): LogCenterQuery['level'] | null | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== 'string') return null;
+  const normalized = raw.trim();
+  if (!normalized || !isLogLevel(normalized)) return null;
+  return normalized;
+}
+
 // GET /api/admin/log-center
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
@@ -37,8 +46,13 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         query.sources = sources;
       }
     }
-    if (req.query.level) {
-      query.level = String(req.query.level) as LogCenterQuery['level'];
+    const level = parseLogLevel(req.query.level);
+    if (level === null) {
+      res.status(400).json({ error: `level パラメータは ${LOG_LEVEL_LABEL} のいずれかを指定してください` });
+      return;
+    }
+    if (level) {
+      query.level = level;
     }
     const search = normalizeSearchTerm(req.query.search);
     if (search) {

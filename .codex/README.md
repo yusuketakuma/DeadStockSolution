@@ -1,24 +1,21 @@
-# .codex/README.md
+# Repository Codex Configuration
 
-このリポジトリは Codex CLI の project-scoped config を使う。
+このリポジトリは `.codex/` に **Codex CLI 用の共通設定** を置き、チームで共有する運用を前提にしています。
 
-## どこに何を置くか
-- .codex/config.toml: プロジェクト設定（共有）
-- .codex/agents/*.toml: マルチエージェント役割
-- codex/rules/*.rules: フルアクセス運用の最低限ガードレール（共有）
-- AGENTS.md: リポジトリ規律（共有）
-- tasks/*.md: Plan/学習ログ（共有）
+## 重要（まず読む）
+- 司令塔は `danger-full-access` + `approval_policy=never` をデフォルトにしています（高リスク）。
+- Apps は **デフォルトON**（`[features].apps=true` / `[apps._default].enabled=true`）です。
+- マルチエージェントは **ON**、同時スレッド上限は **32**、ネスト深さは **2**です。
 
-## 設定の優先順位
-Codex は project-scoped `.codex/config.toml` を user config より優先して読む（ただしプロジェクトが trusted の時だけ）。
+詳しい運用は `AGENTS.md` と `docs/` を参照。
 
-## Web search
-フルアクセス時は live がデフォルトだが、`.codex/config.toml` で `web_search="live"` を明示している。
+## 主要ファイル
+- `.codex/config.toml` : リポジトリ共通設定（コミット対象）
+- `.codex/agents/*.toml` : 役割別プロンプト（コミット対象）
+- `docs/local-user-config.example.toml` : 各自の `~/.codex/config.toml` の例（信頼設定など）
 
-## apps
-apps は無効。過去の codex_apps 起動失敗や403系を踏まない設計。
-必要になった時だけ features.apps を true にして別途チューニングする。
-
-## 注意
-approval_policy=never + danger-full-access は"止まらない"代わりに事故が致命傷になる。
-codex/rules/default.rules で禁じ手を封じる。
+## まず最初にやること（各ユーザー）
+1. `~/.codex/config.toml` を作る（例は docs を参照）
+2. プロジェクトを信頼する（`/permissions` か `[projects]` で trusted）
+3. `codex` を起動し `/debug-config` で設定が読み込まれているか確認
+4. `/apps` で Apps が見えるか確認
