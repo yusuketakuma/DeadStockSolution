@@ -6,6 +6,7 @@ import { getNextRetryIso, getStaleBeforeIso } from '../utils/job-retry-utils';
 import { parseBooleanFlag } from '../utils/number-utils';
 import { findMatches, findMatchesBatch } from './matching-service';
 import { logger } from './logger';
+import { getErrorMessage } from '../middleware/error-handler';
 import { saveMatchSnapshotAndNotifyOnChange, saveMatchSnapshotsBatch } from './matching-snapshot-service';
 
 const AUTO_RECOMPUTE_ENABLED = parseBooleanFlag(process.env.MATCHING_AUTO_RECOMPUTE_ENABLED, true);
@@ -110,7 +111,7 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
         triggerPharmacyId,
         uploadType,
         impactedCount: pharmacyIdChunk.length,
-        error: batchErr instanceof Error ? batchErr.message : String(batchErr),
+        error: getErrorMessage(batchErr),
       });
     }
 
@@ -141,7 +142,7 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
           pharmacyId,
           triggerPharmacyId,
           uploadType,
-          error: err instanceof Error ? err.message : String(err),
+          error: getErrorMessage(err),
         });
       }
     }
@@ -156,7 +157,7 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
           triggerPharmacyId,
           uploadType,
           chunkSize: snapshotEntries.length,
-          error: batchSaveErr instanceof Error ? batchSaveErr.message : String(batchSaveErr),
+          error: getErrorMessage(batchSaveErr),
         });
         for (const entry of snapshotEntries) {
           try {
@@ -168,7 +169,7 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
               pharmacyId: entry.pharmacyId,
               triggerPharmacyId,
               uploadType,
-              error: err instanceof Error ? err.message : String(err),
+              error: getErrorMessage(err),
             });
           }
         }
@@ -249,7 +250,7 @@ async function processOneRefreshJob(job: RefreshJob): Promise<boolean> {
     return true;
   } catch (err) {
     const nextAttempts = job.attempts + 1;
-    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorMessage = getErrorMessage(err);
     const nowIso = new Date().toISOString();
 
     await db.update(matchingRefreshJobs)

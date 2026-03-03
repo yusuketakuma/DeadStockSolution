@@ -98,6 +98,11 @@ vi.mock('../middleware/error-handler', () => ({
   handleRouteError: vi.fn((_err: unknown, _ctx: string, msg: string, res: { status: (s: number) => { json: (b: unknown) => void } }) => {
     res.status(500).json({ error: msg });
   }),
+  getErrorMessage: vi.fn((err: unknown) => (err instanceof Error ? err.message : String(err))),
+}));
+
+vi.mock('../utils/http-utils', () => ({
+  sleep: vi.fn(async () => undefined),
 }));
 
 vi.mock('express-rate-limit', () => ({
@@ -227,7 +232,8 @@ describe('auth routes — additional coverage', () => {
 
     it('returns 409 when email already exists', async () => {
       mocks.db.select
-        .mockReturnValueOnce(createSelectChain([{ id: 5 }])); // existing email
+        .mockReturnValueOnce(createSelectChain([{ id: 5 }])) // existing email
+        .mockReturnValueOnce(createSelectChain([])); // no existing license
 
       const app = createApp();
       const res = await request(app)

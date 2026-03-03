@@ -11,7 +11,7 @@ import {
 import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
 import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
-import { parsePagination } from '../utils/request-utils';
+import { parsePagination, isPositiveSafeInteger } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
 import { getProposalPriority } from '../services/proposal-priority-service';
@@ -21,6 +21,7 @@ import {
   fetchProposalTimelineActionRows,
 } from '../services/proposal-timeline-service';
 import { parseExchangeIdOrBadRequest } from './exchange-utils';
+import { getErrorMessage } from '../middleware/error-handler';
 
 const router = Router();
 
@@ -58,7 +59,7 @@ function parseBulkIds(raw: unknown): number[] | null {
   if (!Array.isArray(raw)) return null;
   const normalized = raw
     .map((value) => Number(value))
-    .filter((value) => Number.isInteger(value) && value > 0);
+    .filter(isPositiveSafeInteger);
   if (normalized.length === 0) return null;
   return [...new Set(normalized)];
 }
@@ -118,7 +119,7 @@ router.post('/find', findLimiter, async (req: AuthRequest, res: Response) => {
     const candidates = await findMatches(req.user!.id);
     res.json({ candidates });
   } catch (err) {
-    logger.error('Find matches error:', { error: (err as Error).message });
+    logger.error('Find matches error:', { error: getErrorMessage(err) });
     const message = process.env.NODE_ENV === 'production'
       ? 'マッチングに失敗しました'
       : (err instanceof Error ? err.message : 'マッチングに失敗しました');
@@ -138,7 +139,7 @@ router.post('/proposals', async (req: AuthRequest, res: Response) => {
     const proposalId = await createProposal(req.user!.id, candidate);
     res.status(201).json({ proposalId, message: '仮マッチングを開始しました' });
   } catch (err) {
-    logger.error('Create proposal error:', { error: (err as Error).message });
+    logger.error('Create proposal error:', { error: getErrorMessage(err) });
     if (err instanceof Error && isProposalInputError(err.message)) {
       logger.warn('Create proposal rejected due to invalid candidate payload', {
         pharmacyId: req.user!.id,
@@ -198,7 +199,7 @@ router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) =>
           proposalId: id,
           action,
           actorId,
-          error: err instanceof Error ? err.message : String(err),
+          error: getErrorMessage(err),
         });
         return { id, ok: false, error: sanitizeBulkActionErrorMessage(err) };
       }
@@ -215,7 +216,7 @@ router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) =>
       },
     });
   } catch (err) {
-    logger.error('Bulk proposal action error', { error: (err as Error).message });
+    logger.error('Bulk proposal action error', { error: getErrorMessage(err) });
     res.status(500).json({ error: '一括操作に失敗しました' });
   }
 });
@@ -393,7 +394,7 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       pagination: { page, limit, total: totalCount, totalPages: Math.ceil(totalCount / limit) },
     });
   } catch (err) {
-    logger.error('List proposals error:', { error: (err as Error).message });
+    logger.error('List proposals error:', { error: getErrorMessage(err) });
     res.status(500).json({ error: 'マッチング一覧の取得に失敗しました' });
   }
 });
@@ -466,7 +467,7 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       timeline,
     });
   } catch (err) {
-    logger.error('Proposal detail error:', { error: (err as Error).message });
+    logger.error('Proposal detail error:', { error: getErrorMessage(err) });
     res.status(500).json({ error: 'マッチング詳細の取得に失敗しました' });
   }
 });
@@ -522,7 +523,7 @@ router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
       pharmacyB: pharmB ?? null,
     });
   } catch (err) {
-    logger.error('Print data error:', { error: (err as Error).message });
+    logger.error('Print data error:', { error: getErrorMessage(err) });
     res.status(500).json({ error: '印刷データの取得に失敗しました' });
   }
 });

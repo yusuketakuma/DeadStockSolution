@@ -2,6 +2,7 @@ import { and, eq, gte, lte, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { uploadConfirmJobs } from '../db/schema';
 import { getObservabilitySnapshot } from './observability-service';
+import { roundTo2 } from './matching-score-service';
 
 interface MonitoringKpiThresholds {
   errorRate5xx: number;
@@ -45,10 +46,6 @@ function resolveThresholdCount(name: string, fallback: number): number {
   return Math.max(0, Math.floor(raw));
 }
 
-function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
 function resolveThresholds(): MonitoringKpiThresholds {
   const pendingStaleMinutes = resolveThresholdCount('MONITORING_PENDING_UPLOAD_STALE_MINUTES', 60);
   return {
@@ -86,7 +83,7 @@ export async function getMonitoringKpiSnapshot(windowMinutesRaw: number = 60): P
   const totalHandled = failedCount + completedCount;
   const uploadFailureRate = totalHandled === 0
     ? 0
-    : round2((failedCount / totalHandled) * 100);
+    : roundTo2((failedCount / totalHandled) * 100);
 
   const metrics: MonitoringKpiMetrics = {
     errorRate5xx: observability.errorRate5xx,

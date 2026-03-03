@@ -4,9 +4,10 @@ import { db } from '../config/database';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications, pharmacies, notifications as notificationsTable } from '../db/schema';
-import { parsePositiveInt } from '../utils/request-utils';
+import { parsePositiveInt, isPositiveSafeInteger } from '../utils/request-utils';
 import { sanitizeInternalPath } from '../utils/path-utils';
 import { logger } from '../services/logger';
+import { getErrorMessage } from '../middleware/error-handler';
 import { decodeCursor, encodeCursor } from '../utils/cursor-pagination';
 import {
   getDashboardUnreadCount,
@@ -64,7 +65,7 @@ function parseNumericList(raw: unknown): number[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .map((value) => Number(value))
-    .filter((value) => Number.isInteger(value) && value > 0);
+    .filter(isPositiveSafeInteger);
 }
 
 function parseMatchDiff(raw: string): { addedCount: number; removedCount: number } {
@@ -373,7 +374,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
             throw err;
           }
           logger.warn('match_notifications query failed (table may not exist)', {
-            error: err instanceof Error ? err.message : String(err),
+            error: getErrorMessage(err),
           });
           return [];
         }
@@ -544,7 +545,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     });
   } catch (err) {
     logger.error('Notifications fetch error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     });
     res.status(500).json({ error: '通知の取得に失敗しました' });
   }
@@ -591,7 +592,7 @@ router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
     res.json({ message: '既読にしました' });
   } catch (err) {
     logger.error('Notification read error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     });
     res.status(500).json({ error: '既読処理に失敗しました' });
   }
@@ -631,7 +632,7 @@ router.post('/matches/:id/read', async (req: AuthRequest, res: Response) => {
     res.json({ message: '既読にしました' });
   } catch (err) {
     logger.error('Match notification read error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     });
     res.status(500).json({ error: '既読処理に失敗しました' });
   }
@@ -644,7 +645,7 @@ router.get('/unread-count', async (req: AuthRequest, res: Response) => {
     const unreadCount = await getDashboardUnreadCount(pharmacyId);
     res.json({ unreadCount });
   } catch (err) {
-    logger.error('Get unread count error', { error: (err as Error).message });
+    logger.error('Get unread count error', { error: getErrorMessage(err) });
     res.status(500).json({ error: '未読件数の取得に失敗しました' });
   }
 });
@@ -655,7 +656,7 @@ const markAllReadHandler = async (req: AuthRequest, res: Response) => {
     const count = await markAllDashboardAsRead(req.user!.id);
     res.json({ message: `${count}件を既読にしました`, count });
   } catch (err) {
-    logger.error('Mark all as read error', { error: (err as Error).message });
+    logger.error('Mark all as read error', { error: getErrorMessage(err) });
     res.status(500).json({ error: '一括既読更新に失敗しました' });
   }
 };
@@ -676,7 +677,7 @@ const markReadHandler = async (req: AuthRequest, res: Response) => {
     }
     res.json({ message: '既読にしました' });
   } catch (err) {
-    logger.error('Mark as read error', { error: (err as Error).message });
+    logger.error('Mark as read error', { error: getErrorMessage(err) });
     res.status(500).json({ error: '既読更新に失敗しました' });
   }
 };

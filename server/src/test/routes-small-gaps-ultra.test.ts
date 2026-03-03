@@ -149,6 +149,7 @@ vi.mock('../services/logger', () => ({
 }));
 vi.mock('../middleware/error-handler', () => ({
   handleRouteError: mocks.handleRouteError,
+  getErrorMessage: vi.fn((err: unknown) => (err instanceof Error ? err.message : String(err))),
 }));
 vi.mock('../services/registration-screening-service', () => ({
   evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
@@ -182,6 +183,10 @@ vi.mock('../services/notification-service', () => ({
 vi.mock('../utils/request-utils', () => ({
   parsePagination: vi.fn(() => ({ page: 1, limit: 50, offset: 0 })),
   parsePositiveInt: mocks.parsePositiveInt,
+  isPositiveSafeInteger: vi.fn((v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v > 0),
+}));
+vi.mock('../utils/http-utils', () => ({
+  sleep: vi.fn(async () => undefined),
 }));
 vi.mock('../utils/db-utils', () => ({ rowCount: {} }));
 

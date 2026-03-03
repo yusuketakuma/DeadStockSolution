@@ -3,10 +3,11 @@ import { openclawCommands, pharmacies } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { logger } from './logger';
 import { z } from 'zod';
-import { LOG_SOURCES } from './log-center-service';
+import { LOG_SOURCES, LOG_LEVELS } from './log-center-service';
 import type { LogSource, LogCenterQuery } from './log-center-service';
 import { clearBuffer } from './openclaw-log-push-service';
 import { resetObservabilityMetrics } from './observability-service';
+import { getErrorMessage } from '../middleware/error-handler';
 
 // ── Zod スキーマ定義 ──────────────────────────────────────────
 
@@ -28,7 +29,7 @@ const drugMasterSyncSchema = z.object({
 
 const logsQuerySchema = z.object({
   sources: z.array(z.enum(LOG_SOURCES)).optional(),
-  level: z.enum(['critical', 'error', 'warning', 'info']).optional(),
+  level: z.enum(LOG_LEVELS).optional(),
   search: z.string().optional(),
   from: z.iso.datetime().optional(),
   to: z.iso.datetime().optional(),
@@ -341,7 +342,7 @@ export async function executeCommand(request: CommandRequest, signature: string)
     logger.info('OpenClaw command executed', { command: request.command });
     return { id: record.id, command: request.command, status: 'completed', result };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = getErrorMessage(err);
     await db.update(openclawCommands)
       .set({ status: 'failed', errorMessage: message, completedAt: new Date().toISOString() })
       .where(eq(openclawCommands.id, record.id));

@@ -241,28 +241,29 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       updates.matchingAutoNotifyEnabled = matchingAutoNotifyEnabled;
     }
 
-    if (updates.email !== undefined) {
-      const existingEmailRows = await db.select({ id: pharmacies.id })
-        .from(pharmacies)
-        .where(eq(pharmacies.email, updates.email as string))
-        .limit(1);
+    const [existingEmailRows, existingLicenseRows] = await Promise.all([
+      updates.email !== undefined
+        ? db.select({ id: pharmacies.id })
+          .from(pharmacies)
+          .where(eq(pharmacies.email, updates.email as string))
+          .limit(1)
+        : Promise.resolve([]),
+      updates.licenseNumber !== undefined
+        ? db.select({ id: pharmacies.id })
+          .from(pharmacies)
+          .where(eq(pharmacies.licenseNumber, updates.licenseNumber as string))
+          .limit(1)
+        : Promise.resolve([]),
+    ]);
 
-      if (existingEmailRows.length > 0 && existingEmailRows[0].id !== req.user!.id) {
-        res.status(409).json({ error: 'このメールアドレスは既に登録されています' });
-        return;
-      }
+    if (existingEmailRows.length > 0 && existingEmailRows[0].id !== req.user!.id) {
+      res.status(409).json({ error: 'このメールアドレスは既に登録されています' });
+      return;
     }
 
-    if (updates.licenseNumber !== undefined) {
-      const existingLicenseRows = await db.select({ id: pharmacies.id })
-        .from(pharmacies)
-        .where(eq(pharmacies.licenseNumber, updates.licenseNumber as string))
-        .limit(1);
-
-      if (existingLicenseRows.length > 0 && existingLicenseRows[0].id !== req.user!.id) {
-        res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
-        return;
-      }
+    if (existingLicenseRows.length > 0 && existingLicenseRows[0].id !== req.user!.id) {
+      res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
+      return;
     }
 
     if (newPassword !== undefined && newPassword !== '') {

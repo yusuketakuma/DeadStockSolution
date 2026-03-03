@@ -1,3 +1,5 @@
+import { roundTo2 } from './matching-score-service';
+
 interface RequestMetric {
   timestamp: number;
   path: string;
@@ -35,10 +37,6 @@ function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const index = Math.ceil((p / 100) * sorted.length) - 1;
   return sorted[Math.max(0, Math.min(index, sorted.length - 1))];
-}
-
-function round(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 export function recordRequestMetric(metric: RequestMetric): void {
@@ -83,9 +81,9 @@ export function getObservabilitySnapshot(windowMinutesRaw: number = 60): Observa
   durations.sort((a, b) => a - b);
   const avgLatencyMs = totalRequests === 0
     ? 0
-    : round(durations.reduce((sum, value) => sum + value, 0) / totalRequests);
-  const p95LatencyMs = round(percentile(durations, 95));
-  const errorRate5xx = totalRequests === 0 ? 0 : round((errors5xx / totalRequests) * 100);
+    : roundTo2(durations.reduce((sum, value) => sum + value, 0) / totalRequests);
+  const p95LatencyMs = roundTo2(percentile(durations, 95));
+  const errorRate5xx = totalRequests === 0 ? 0 : roundTo2((errors5xx / totalRequests) * 100);
 
   const topSlowPaths = [...pathMap.entries()]
     .map(([path, durationsMs]) => {
@@ -94,8 +92,8 @@ export function getObservabilitySnapshot(windowMinutesRaw: number = 60): Observa
       return {
         path,
         count: sortedDurations.length,
-        avgLatencyMs: round(avg),
-        p95LatencyMs: round(percentile(sortedDurations, 95)),
+        avgLatencyMs: roundTo2(avg),
+        p95LatencyMs: roundTo2(percentile(sortedDurations, 95)),
       };
     })
     .sort((a, b) => b.p95LatencyMs - a.p95LatencyMs || b.count - a.count)

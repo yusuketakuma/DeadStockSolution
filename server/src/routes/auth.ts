@@ -21,7 +21,8 @@ import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } f
 import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
-import { handleRouteError } from '../middleware/error-handler';
+import { handleRouteError, getErrorMessage } from '../middleware/error-handler';
+import { sleep } from '../utils/http-utils';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
 import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verification-service';
@@ -69,12 +70,6 @@ function handleAuthConfigurationError(context: string, err: unknown, res: Respon
   });
   res.status(503).json({ error: AUTH_CONFIGURATION_ERROR_MESSAGE });
   return true;
-}
-
-function waitMs(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function extractUniqueViolationConstraint(err: unknown): string | null {
@@ -147,21 +142,21 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     } = req.body;
 
     // Check existing email
-    const existing = await db.select({ id: pharmacies.id })
-      .from(pharmacies)
-      .where(eq(pharmacies.email, email))
-      .limit(1);
+    const [existing, existingLicense] = await Promise.all([
+      db.select({ id: pharmacies.id })
+        .from(pharmacies)
+        .where(eq(pharmacies.email, email))
+        .limit(1),
+      db.select({ id: pharmacies.id })
+        .from(pharmacies)
+        .where(eq(pharmacies.licenseNumber, licenseNumber))
+        .limit(1),
+    ]);
 
     if (existing.length > 0) {
       res.status(409).json({ error: 'このメールアドレスは既に登録されています' });
       return;
     }
-
-    // Check existing license number
-    const existingLicense = await db.select({ id: pharmacies.id })
-      .from(pharmacies)
-      .where(eq(pharmacies.licenseNumber, licenseNumber))
-      .limit(1);
 
     if (existingLicense.length > 0) {
       res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
@@ -316,7 +311,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     }).catch((err) => {
       logger.error('OpenClaw verification handoff failed', () => ({
         pharmacyId,
-        error: err instanceof Error ? err.message : String(err),
+        error: getErrorMessage(err),
       }));
     });
   } catch (err) {
@@ -433,7 +428,7 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
         : 0);
     const elapsedMs = Date.now() - requestStartedAt;
     if (elapsedMs < targetMs) {
-      await waitMs(targetMs - elapsedMs);
+      await sleep(targetMs - elapsedMs);
     }
 
     // Always return success to prevent email enumeration
@@ -575,7 +570,7 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
         }
         isTestAccountColumnAvailable = false;
         logger.warn('is_test_account column is not available yet; fallback to legacy /auth/me response', {
-          error: err instanceof Error ? err.message : String(err),
+          error: getErrorMessage(err),
         });
         const legacyRows = await db.select({
           id: pharmacies.id,
@@ -658,7 +653,7 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
           throw err;
         }
         logger.warn('test pharmacy columns are missing', {
-          error: err instanceof Error ? err.message : String(err),
+          error: getErrorMessage(err),
         });
         const ensured = await ensureTestPharmacyColumnsAtStartup();
         if (ensured) {
