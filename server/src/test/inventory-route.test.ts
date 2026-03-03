@@ -6,8 +6,12 @@ const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
     delete: vi.fn(),
+    insert: vi.fn(),
+    transaction: vi.fn(),
   },
   getPharmacyRiskDetail: vi.fn(),
+  invalidateAdminRiskSnapshotCache: vi.fn(),
+  triggerMatchingRefreshOnUpload: vi.fn(),
   getBusinessHoursStatus: vi.fn(),
   writeLog: vi.fn(),
   getClientIp: vi.fn(),
@@ -27,6 +31,11 @@ vi.mock('../config/database', () => ({
 
 vi.mock('../services/expiry-risk-service', () => ({
   getPharmacyRiskDetail: mocks.getPharmacyRiskDetail,
+  invalidateAdminRiskSnapshotCache: mocks.invalidateAdminRiskSnapshotCache,
+}));
+
+vi.mock('../services/matching-refresh-service', () => ({
+  triggerMatchingRefreshOnUpload: mocks.triggerMatchingRefreshOnUpload,
 }));
 
 vi.mock('../utils/business-hours-utils', () => ({
@@ -122,6 +131,36 @@ function createDeleteReturningQuery(result: unknown) {
     returning: vi.fn(),
   };
   query.where.mockReturnValue(query);
+  query.returning.mockResolvedValue(result);
+  return query;
+}
+
+function createLimitQuery(result: unknown) {
+  const query = {
+    from: vi.fn(),
+    where: vi.fn(),
+    limit: vi.fn(),
+  };
+  query.from.mockReturnValue(query);
+  query.where.mockReturnValue(query);
+  query.limit.mockResolvedValue(result);
+  return query;
+}
+
+function createValuesQuery(result?: unknown) {
+  const query = {
+    values: vi.fn(),
+  };
+  query.values.mockResolvedValue(result);
+  return query;
+}
+
+function createValuesReturningQuery(result: unknown) {
+  const query = {
+    values: vi.fn(),
+    returning: vi.fn(),
+  };
+  query.values.mockReturnValue(query);
   query.returning.mockResolvedValue(result);
   return query;
 }
@@ -223,6 +262,302 @@ describe('inventory routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.data[0]).toEqual(expect.objectContaining({ id: 2 }));
     expect(response.body.pagination.total).toBe(1);
+  });
+
+  it('resolves yj code from camera endpoint', async () => {
+    const app = createApp();
+    mocks.db.select
+      .mockImplementationOnce(() => createLimitQuery([
+        {
+          id: 10,
+          yjCode: '2171014F1020',
+          drugName: '薬A',
+          unit: '錠',
+          yakkaPrice: '12.3',
+        },
+      ]))
+      .mockImplementationOnce(() => createLimitQuery([
+        {
+          id: 50,
+          gs1Code: '04912345678904',
+          janCode: '4912345678904',
+          packageDescription: '100錠',
+          normalizedPackageLabel: '100錠',
+        },
+      ]));
+
+    const response = await request(app)
+      .post('/api/inventory/dead-stock/camera/resolve')
+      .send({ rawCode: '2171014F1020' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.codeType).toBe('yj');
+    expect(response.body.match).toEqual(expect.objectContaining({
+      drugMasterId: 10,
+      drugMasterPackageId: 50,
+      drugName: '薬A',
+    }));
+  });
+
+  it('resolves gs1 code from camera endpoint', async () => {
+    const app = createApp();
+    mocks.db.select
+      .mockImplementationOnce(() => createLimitQuery([
+        {
+          id: 50,
+          drugMasterId: 10,
+          gs1Code: '04912345678904',
+          janCode: '4912345678904',
+          packageDescription: '100錠',
+          normalizedPackageLabel: '100錠',
+        },
+      ]))
+      .mockImplementationOnce(() => createLimitQuery([
+        {
+          id: 10,
+          yjCode: '2171014F1020',
+          drugName: '薬A',
+          unit: '錠',
+          yakkaPrice: '12.3',
+        },
+      ]));
+
+    const response = await request(app)
+      .post('/api/inventory/dead-stock/camera/resolve')
+      .send({ rawCode: '01049123456789041726063010LOT999' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.codeType).toBe('gs1');
+    expect(response.body.parsed).toEqual(expect.objectContaining({
+      gtin: '04912345678904',
+      expirationDate: '2026-06-30',
+      lotNumber: 'LOT999',
+    }));
+    expect(response.body.match).toEqual(expect.objectContaining({
+      drugMasterId: 10,
+      drugMasterPackageId: 50,
+      drugName: '薬A',
+    }));
+  });
+
+  it('returns manual candidates for unmatched rows', async () => {
+    const app = createApp();
+    mocks.db.select
+      .mockImplementationOnce(() => createLimitQuery([
+        {
+          id: 10,
+          yjCode: '2171014F1020',
+          drugName: '薬A',
+          unit: '錠',
+          yakkaPrice: '12.3',
+        },
+      ]))
+      .mockImplementationOnce(() => createWhereQuery([
+        {
+          id: 50,
+          drugMasterId: 10,
+          gs1Code: '04912345678904',
+          janCode: '4912345678904',
+          packageDescription: '100錠',
+          normalizedPackageLabel: '100錠',
+        },
+      ]));
+
+    const response = await request(app)
+      .get('/api/inventory/dead-stock/camera/manual-candidates')
+      .query({ q: '薬A' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual([
+      expect.objectContaining({
+        drugMasterId: 10,
+        drugMasterPackageId: 50,
+        drugName: '薬A',
+        packageLabel: '100錠',
+      }),
+    ]);
+  });
+
+  it('returns 400 when manual candidate keyword is too short', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/api/inventory/dead-stock/camera/manual-candidates')
+      .query({ q: '薬' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('2文字以上');
+    expect(mocks.db.select).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when manual candidate keyword is too long', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/api/inventory/dead-stock/camera/manual-candidates')
+      .query({ q: 'A'.repeat(81) });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('80文字以内');
+    expect(mocks.db.select).not.toHaveBeenCalled();
+  });
+
+  it('returns null yakkaUnitPrice when master yakka price is missing', async () => {
+    const app = createApp();
+    mocks.db.select
+      .mockImplementationOnce(() => createLimitQuery([
+        {
+          id: 10,
+          yjCode: '2171014F1020',
+          drugName: '薬A',
+          unit: '錠',
+          yakkaPrice: null,
+        },
+      ]))
+      .mockImplementationOnce(() => createWhereQuery([
+        {
+          id: 50,
+          drugMasterId: 10,
+          gs1Code: '04912345678904',
+          janCode: '4912345678904',
+          packageDescription: '100錠',
+          normalizedPackageLabel: '100錠',
+        },
+      ]));
+
+    const response = await request(app)
+      .get('/api/inventory/dead-stock/camera/manual-candidates')
+      .query({ q: '薬A' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0]).toEqual(expect.objectContaining({
+      drugMasterId: 10,
+      yakkaUnitPrice: null,
+    }));
+  });
+
+  it('returns 400 when camera confirm batch has invalid quantity', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/inventory/dead-stock/camera/confirm-batch')
+      .send({
+        items: [
+          {
+            rawCode: '2171014F1020',
+            drugMasterId: 10,
+            quantity: 0,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('数量は0より大きい値');
+  });
+
+  it('returns 400 when camera confirm batch has invalid expiration date format', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/inventory/dead-stock/camera/confirm-batch')
+      .send({
+        items: [
+          {
+            rawCode: '2171014F1020',
+            drugMasterId: 10,
+            quantity: 1,
+            expirationDate: '2026-13-40',
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('使用期限はYYYY-MM-DD形式');
+  });
+
+  it('returns 400 when camera confirm batch quantity is too large', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/inventory/dead-stock/camera/confirm-batch')
+      .send({
+        items: [
+          {
+            rawCode: '2171014F1020',
+            drugMasterId: 10,
+            quantity: 100001,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('数量は100000以下');
+  });
+
+  it('uses master values on camera confirm batch even when payload is tampered', async () => {
+    const app = createApp();
+
+    mocks.db.select
+      .mockImplementationOnce(() => createWhereQuery([
+        {
+          id: 10,
+          yjCode: '2171014F1020',
+          drugName: '正規薬名',
+          unit: '錠',
+          yakkaPrice: '120',
+        },
+      ]))
+      .mockImplementationOnce(() => createWhereQuery([
+        {
+          id: 50,
+          drugMasterId: 10,
+          packageDescription: '100錠',
+          normalizedPackageLabel: '100錠',
+        },
+      ]));
+
+    const uploadInsertQuery = createValuesReturningQuery([{ id: 999 }]);
+    const deadStockInsertQuery = createValuesQuery();
+    const tx = {
+      insert: vi.fn()
+        .mockReturnValueOnce(uploadInsertQuery)
+        .mockReturnValueOnce(deadStockInsertQuery),
+    };
+    mocks.db.transaction.mockImplementation(async (callback: (trx: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const response = await request(app)
+      .post('/api/inventory/dead-stock/camera/confirm-batch')
+      .send({
+        items: [
+          {
+            rawCode: '01049123456789041726063010LOT999',
+            drugMasterId: 10,
+            drugMasterPackageId: 50,
+            drugName: '改ざん薬名',
+            drugCode: 'tampered-code',
+            packageLabel: '改ざん包装',
+            expirationDate: '2026-06-30',
+            lotNumber: 'LOT999',
+            quantity: 2,
+            unit: '箱',
+            yakkaUnitPrice: 1,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(201);
+    expect(deadStockInsertQuery.values).toHaveBeenCalledWith([
+      expect.objectContaining({
+        drugName: '正規薬名',
+        unit: '錠',
+        yakkaUnitPrice: '120',
+        yakkaTotal: '240',
+      }),
+    ]);
+    expect(deadStockInsertQuery.values).not.toHaveBeenCalledWith([
+      expect.objectContaining({
+        drugName: '改ざん薬名',
+      }),
+    ]);
+    expect(mocks.triggerMatchingRefreshOnUpload).toHaveBeenCalledTimes(1);
   });
 
   it('returns browse inventory with business status and pagination', async () => {

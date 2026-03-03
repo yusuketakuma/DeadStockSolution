@@ -61,6 +61,52 @@ describe('UploadPage', () => {
     vi.restoreAllMocks();
   });
 
+  it('clears excel messages when switching between excel and camera modes', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse(mockUser);
+      }
+      if (url.includes('/api/upload/preview')) {
+        return jsonResponse({ error: 'プレビュー失敗テスト' }, 500);
+      }
+      return jsonResponse({ error: 'Not found' }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<UploadPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).not.toBeNull();
+    if (!fileInput) {
+      throw new Error('file input not found');
+    }
+    const file = new File(['dummy-xlsx-content'], 'dead-stock.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    await userEvent.upload(fileInput, file);
+    await userEvent.click(screen.getByRole('button', { name: 'プレビュー' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('プレビュー失敗テスト')).toBeInTheDocument();
+    });
+
+    await userEvent.selectOptions(screen.getByLabelText('登録モード'), 'camera');
+    await waitFor(() => {
+      expect(screen.getByText('カメラ読取で在庫登録')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('プレビュー失敗テスト')).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText('登録モード'), 'excel');
+    await waitFor(() => {
+      expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('プレビュー失敗テスト')).not.toBeInTheDocument();
+  });
+
   it('auto-detects upload type and allows manual correction', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();

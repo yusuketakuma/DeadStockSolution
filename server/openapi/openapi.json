@@ -3424,6 +3424,129 @@
         }
       }
     },
+    "/api/inventory/dead-stock/camera/confirm-batch": {
+      "post": {
+        "operationId": "confirmDeadStockCameraBatch",
+        "summary": "Confirm and persist dead stock rows captured by camera",
+        "tags": [
+          "Inventory"
+        ],
+        "responses": {
+          "201": {
+            "description": "Camera dead stock batch created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid camera dead stock batch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Camera dead stock batch failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/dead-stock/camera/manual-candidates": {
+      "get": {
+        "operationId": "searchDeadStockCameraManualCandidates",
+        "summary": "Search drug master candidates for unmatched camera rows",
+        "tags": [
+          "Inventory"
+        ],
+        "responses": {
+          "200": {
+            "description": "Camera manual candidates response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid manual candidate query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Manual candidate search failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/dead-stock/camera/resolve": {
+      "post": {
+        "operationId": "resolveDeadStockCameraCode",
+        "summary": "Resolve GS1/YJ code from camera/manual input",
+        "tags": [
+          "Inventory"
+        ],
+        "responses": {
+          "200": {
+            "description": "Camera code resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid camera code input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Camera code resolve failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/inventory/dead-stock/risk": {
       "get": {
         "operationId": "getDeadStockRiskSummary",

@@ -581,6 +581,42 @@ const ROUTE_BASELINE = [
     ],
   },
   {
+    path: '/api/inventory/dead-stock/camera/resolve',
+    method: 'post',
+    operationId: 'resolveDeadStockCameraCode',
+    summary: 'Resolve GS1/YJ code from camera/manual input',
+    tags: ['Inventory'],
+    responses: [
+      { status: '200', description: 'Camera code resolved', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '400', description: 'Invalid camera code input', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '500', description: 'Camera code resolve failed', schemaRef: '#/components/schemas/GenericResponse' },
+    ],
+  },
+  {
+    path: '/api/inventory/dead-stock/camera/manual-candidates',
+    method: 'get',
+    operationId: 'searchDeadStockCameraManualCandidates',
+    summary: 'Search drug master candidates for unmatched camera rows',
+    tags: ['Inventory'],
+    responses: [
+      { status: '200', description: 'Camera manual candidates response', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '400', description: 'Invalid manual candidate query', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '500', description: 'Manual candidate search failed', schemaRef: '#/components/schemas/GenericResponse' },
+    ],
+  },
+  {
+    path: '/api/inventory/dead-stock/camera/confirm-batch',
+    method: 'post',
+    operationId: 'confirmDeadStockCameraBatch',
+    summary: 'Confirm and persist dead stock rows captured by camera',
+    tags: ['Inventory'],
+    responses: [
+      { status: '201', description: 'Camera dead stock batch created', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '400', description: 'Invalid camera dead stock batch', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '500', description: 'Camera dead stock batch failed', schemaRef: '#/components/schemas/GenericResponse' },
+    ],
+  },
+  {
     path: '/api/inventory/dead-stock/{id}',
     method: 'delete',
     operationId: 'deleteDeadStockItem',

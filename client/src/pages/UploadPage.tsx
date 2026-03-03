@@ -1,4 +1,4 @@
-import { useState, useRef, FormEvent, useEffect } from 'react';
+import { Suspense, lazy, useState, useRef, FormEvent, useEffect } from 'react';
 import AppAlert from '../components/ui/AppAlert';
 import { Form, ProgressBar } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,8 @@ import {
   resolvePartialSummaryEntries,
   resolveUploadTypeLabel,
 } from './upload/upload-job-utils';
+
+const CameraDeadStockRegisterPanel = lazy(() => import('./upload/CameraDeadStockRegisterPanel'));
 
 interface PreviewResponse {
   headers: string[];
@@ -162,6 +164,7 @@ async function waitForNextPoll(signal: AbortSignal, intervalMs: number): Promise
 }
 
 export default function UploadPage() {
+  const [registerMode, setRegisterMode] = useState<'excel' | 'camera'>('excel');
   const [uploadType, setUploadType] = useState<UploadType>('dead_stock');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
@@ -199,32 +202,48 @@ export default function UploadPage() {
       ? 'success'
       : 'info';
   const uploadProgressAnimated = uploadProgress.phase !== 'completed' && uploadProgress.phase !== 'failed';
+  const pageTitle = registerMode === 'excel' ? 'Excelアップロード' : 'カメラ読取で在庫登録';
 
   const setFailed = (label: string) =>
     setUploadProgress({ phase: 'failed', percent: 100, label });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const clearPendingUploadSideEffects = () => {
     uploadRequestAbortRef.current?.abort();
     uploadRequestAbortRef.current = null;
     if (navigateTimerRef.current !== null) {
       clearTimeout(navigateTimerRef.current);
       navigateTimerRef.current = null;
     }
+  };
+
+  const resetExcelTransientUiState = () => {
     setLoading(false);
+    setError('');
+    setMessage('');
+    setShowMatchingHint(false);
+    setUploadJob(UPLOAD_JOB_INITIAL_STATE);
+    setCancellingJob(false);
+    setUploadProgress(UPLOAD_PROGRESS_IDLE);
+  };
+
+  const handleRegisterModeChange = (nextMode: 'excel' | 'camera') => {
+    if (registerMode === nextMode) return;
+    clearPendingUploadSideEffects();
+    resetExcelTransientUiState();
+    setRegisterMode(nextMode);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    clearPendingUploadSideEffects();
+    resetExcelTransientUiState();
     const selected = e.target.files?.[0] || null;
     setFile(selected);
     setPreview(null);
     setUploadType('dead_stock');
-    setMessage('');
-    setError('');
-    setShowMatchingHint(false);
     setApplyMode('replace');
     setDeleteMissing(false);
     setDiffSummary(null);
     setAcknowledgeDeleteImpact(false);
-    setUploadJob(UPLOAD_JOB_INITIAL_STATE);
-    setCancellingJob(false);
-    setUploadProgress(UPLOAD_PROGRESS_IDLE);
   };
 
   const handlePreview = async (e: FormEvent) => {
@@ -587,16 +606,33 @@ export default function UploadPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">Excelアップロード</h4>
-      {error && <AppAlert variant="danger">{error}</AppAlert>}
-      {message && <AppAlert variant="success">{message}</AppAlert>}
-      {showMatchingHint && (
+      <h4 className="page-title mb-3">{pageTitle}</h4>
+      <Form.Group className="mb-3" controlId="upload-register-mode">
+        <Form.Label>登録モード</Form.Label>
+        <AppSelect
+          controlId="upload-register-mode"
+          value={registerMode}
+          ariaLabel="登録モード"
+          onChange={(value) => {
+            handleRegisterModeChange(value as 'excel' | 'camera');
+          }}
+          options={[
+            { value: 'excel', label: 'Excel取込' },
+            { value: 'camera', label: 'カメラ読取登録' },
+          ]}
+        />
+      </Form.Group>
+      {registerMode === 'excel' && error && <AppAlert variant="danger">{error}</AppAlert>}
+      {registerMode === 'excel' && message && <AppAlert variant="success">{message}</AppAlert>}
+      {registerMode === 'excel' && showMatchingHint && (
         <AppAlert variant="info">
           交換候補をすぐ確認する場合は「マッチング」ページで再実行してください。
         </AppAlert>
       )}
 
       <ScrollArea>
+      {registerMode === 'excel' ? (
+      <>
       {uploadProgress.phase !== 'idle' && (
         <AppCard className="mb-3">
           <AppCard.Body>
@@ -848,6 +884,17 @@ export default function UploadPage() {
             </div>
           </AppCard.Body>
         </AppCard>
+      )}
+      </>
+      ) : (
+        <Suspense fallback={(
+          <AppCard className="mb-3">
+            <AppCard.Body className="small text-muted">カメラ登録画面を読み込み中です...</AppCard.Body>
+          </AppCard>
+        )}
+        >
+          <CameraDeadStockRegisterPanel />
+        </Suspense>
       )}
       </ScrollArea>
     </PageShell>
