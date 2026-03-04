@@ -201,4 +201,95 @@ describe('UploadPage camera register mode', () => {
       quantity: 3,
     }));
   });
+
+  it('shows camera error on insecure context', async () => {
+    const originalIsSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext');
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: false,
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse(mockUser);
+      }
+      return jsonResponse({ error: 'Not found' }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderWithProviders(<UploadPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
+      });
+
+      await userEvent.selectOptions(screen.getByLabelText('登録モード'), 'camera');
+      await userEvent.click(await screen.findByRole('button', { name: 'カメラ開始' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('カメラ利用にはHTTPS接続が必要です')).toBeInTheDocument();
+      });
+    } finally {
+      if (originalIsSecureContext) {
+        Object.defineProperty(window, 'isSecureContext', originalIsSecureContext);
+      } else {
+        Reflect.deleteProperty(window, 'isSecureContext');
+      }
+    }
+  });
+
+  it('validates manual candidate keyword length before API call', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse(mockUser);
+      }
+      if (url.includes('/api/inventory/dead-stock/camera/resolve')) {
+        return jsonResponse({
+          codeType: 'unknown',
+          parsed: {
+            gtin: null,
+            yjCode: null,
+            expirationDate: null,
+            lotNumber: null,
+          },
+          match: null,
+          warnings: ['GS1またはYJコードとして認識できませんでした。'],
+        });
+      }
+      return jsonResponse({ error: 'Not found' }, 404);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<UploadPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
+    });
+
+    await userEvent.selectOptions(screen.getByLabelText('登録モード'), 'camera');
+
+    const codeInput = await screen.findByPlaceholderText('例: (01)...(17)...(10)... または YJコード');
+    await userEvent.type(codeInput, 'UNKNOWN-CODE');
+    await userEvent.click(screen.getByRole('button', { name: '解析して追加' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('未一致')).toBeInTheDocument();
+    });
+
+    const searchInput = await screen.findByPlaceholderText('薬剤名 or YJコードで検索');
+    await userEvent.type(searchInput, '薬');
+    await userEvent.click(screen.getByRole('button', { name: '候補検索' }));
+
+    expect(await screen.findByText('検索キーワードは2文字以上で入力してください')).toBeInTheDocument();
+
+    const hasManualSearchCall = fetchMock.mock.calls.some((call) => {
+      const url = typeof call[0] === 'string' ? call[0] : call[0].toString();
+      return url.includes('/api/inventory/dead-stock/camera/manual-candidates');
+    });
+    expect(hasManualSearchCall).toBe(false);
+  });
 });

@@ -109,4 +109,18 @@
   .upload-step-list li {
     margin-bottom: 0.35rem;
   }
+
+  .camera-mobile-actions .btn,
+  .camera-mobile-actions a.btn {
+    min-height: 44px;
+  }
+
+  .camera-mobile-video {
+    max-width: 100% !important;
+  }
+
+  .camera-mobile-table .form-control,
+  .camera-mobile-table .btn {
+    min-height: 40px;
+  }
 }

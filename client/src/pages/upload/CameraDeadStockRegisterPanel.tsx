@@ -78,8 +78,28 @@ const SCAN_DUPLICATE_SUPPRESS_MS = 1500;
 const MAX_CAMERA_CODE_INPUT_LENGTH = 500;
 const MAX_PACKAGE_LABEL_LENGTH = 120;
 const MAX_LOT_NUMBER_LENGTH = 120;
+const MIN_MANUAL_CANDIDATE_SEARCH_LENGTH = 2;
+const MAX_MANUAL_CANDIDATE_SEARCH_LENGTH = 80;
 const QUANTITY_STEP = '0.001';
 const MAX_RESOLVE_CACHE_SIZE = 300;
+const CAMERA_ERROR_UPDATE_MIN_INTERVAL_MS = 1200;
+
+const CAMERA_CONSTRAINTS_PREFERRED: MediaStreamConstraints = {
+  audio: false,
+  video: {
+    facingMode: { ideal: 'environment' },
+    width: { ideal: 1280, max: 1920 },
+    height: { ideal: 720, max: 1080 },
+    frameRate: { ideal: 24, max: 30 },
+  },
+};
+
+const CAMERA_CONSTRAINTS_FALLBACK: MediaStreamConstraints = {
+  audio: false,
+  video: {
+    facingMode: { ideal: 'environment' },
+  },
+};
 
 const POSSIBLE_FORMATS = [
   BarcodeFormat.DATA_MATRIX,
@@ -138,6 +158,17 @@ function isPositiveQuantity(value: string): boolean {
   return Number.isFinite(parsed) && parsed > 0;
 }
 
+function isOverconstrainedError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === 'OverconstrainedError';
+  }
+  if (typeof error === 'object' && error !== null && 'name' in error) {
+    const { name } = error as { name?: unknown };
+    return name === 'OverconstrainedError';
+  }
+  return false;
+}
+
 interface UnmatchedManualResolverProps {
   rowId: number;
   disabled: boolean;
@@ -159,6 +190,14 @@ function UnmatchedManualResolver({ rowId, disabled, onApplyCandidate }: Unmatche
     const keyword = searchKeyword.trim();
     if (!keyword) {
       setError('検索キーワードを入力してください');
+      return;
+    }
+    if (keyword.length < MIN_MANUAL_CANDIDATE_SEARCH_LENGTH) {
+      setError(`検索キーワードは${MIN_MANUAL_CANDIDATE_SEARCH_LENGTH}文字以上で入力してください`);
+      return;
+    }
+    if (keyword.length > MAX_MANUAL_CANDIDATE_SEARCH_LENGTH) {
+      setError(`検索キーワードは${MAX_MANUAL_CANDIDATE_SEARCH_LENGTH}文字以内で入力してください`);
       return;
     }
 
@@ -188,6 +227,7 @@ function UnmatchedManualResolver({ rowId, disabled, onApplyCandidate }: Unmatche
         <AppControl
           value={searchKeyword}
           onChange={(event: ChangeEvent<HTMLInputElement>) => setSearchKeyword(event.currentTarget.value)}
+          maxLength={MAX_MANUAL_CANDIDATE_SEARCH_LENGTH}
           placeholder="薬剤名 or YJコードで検索"
         />
         <LoadingButton
@@ -243,12 +283,16 @@ export default function CameraDeadStockRegisterPanel() {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [cameraBusy, setCameraBusy] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchEnabled, setTorchEnabled] = useState(false);
+  const [torchBusy, setTorchBusy] = useState(false);
 
   const nextRowIdRef = useRef(1);
   const resolvingRef = useRef(false);
   const controlsRef = useRef<IScannerControls | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastScanRef = useRef<{ text: string; at: number }>({ text: '', at: 0 });
+  const lastCameraErrorRef = useRef<{ message: string; at: number }>({ message: '', at: 0 });
   const resolveCacheRef = useRef(new Map<string, CameraResolveResponse>());
   const navigate = useNavigate();
 
@@ -257,14 +301,57 @@ export default function CameraDeadStockRegisterPanel() {
     && rows.every((row) => row.status === 'resolved' && isPositiveQuantity(row.quantity))
   ), [rows]);
 
+  const setCameraErrorState = useCallback((message: string, throttled = false) => {
+    if (!message) {
+      lastCameraErrorRef.current = { message: '', at: 0 };
+      setCameraError('');
+      return;
+    }
+
+    if (!throttled) {
+      lastCameraErrorRef.current = { message, at: Date.now() };
+      setCameraError(message);
+      return;
+    }
+
+    const now = Date.now();
+    const last = lastCameraErrorRef.current;
+    if (last.message === message && now - last.at < CAMERA_ERROR_UPDATE_MIN_INTERVAL_MS) {
+      return;
+    }
+    lastCameraErrorRef.current = { message, at: now };
+    setCameraError(message);
+  }, []);
+
   const stopCamera = useCallback(() => {
     controlsRef.current?.stop();
     controlsRef.current = null;
+    const videoElement = videoRef.current;
+    const stream = videoElement?.srcObject;
+    if (videoElement && stream && typeof (stream as MediaStream).getTracks === 'function') {
+      (stream as MediaStream).getTracks().forEach((track) => track.stop());
+      videoElement.srcObject = null;
+    }
+    setTorchSupported(false);
+    setTorchEnabled(false);
+    setTorchBusy(false);
     setCameraActive(false);
   }, []);
 
   useEffect(() => () => {
     stopCamera();
+  }, [stopCamera]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopCamera();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [stopCamera]);
 
   const updateRow = useCallback((rowId: number, updater: (row: DraftRow) => DraftRow) => {
@@ -399,42 +486,73 @@ export default function CameraDeadStockRegisterPanel() {
   const handleStartCamera = async () => {
     if (cameraActive || cameraBusy) return;
     if (!videoRef.current) {
-      setCameraError('カメラ初期化に失敗しました');
+      setCameraErrorState('カメラ初期化に失敗しました');
+      return;
+    }
+    if (!window.isSecureContext) {
+      setCameraErrorState('カメラ利用にはHTTPS接続が必要です');
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('このブラウザはカメラ機能に対応していません');
+      setCameraErrorState('このブラウザはカメラ機能に対応していません');
       return;
     }
 
     setCameraBusy(true);
-    setCameraError('');
+    setCameraErrorState('', false);
 
     try {
       const reader = createReader();
-
-      const controls = await reader.decodeFromConstraints({
-        audio: false,
-        video: {
-          facingMode: { ideal: 'environment' },
-        },
-      }, videoRef.current, (result, decodeError) => {
+      const onDecode = (result: Parameters<NonNullable<Parameters<typeof reader.decodeFromConstraints>[2]>>[0], decodeError: Parameters<NonNullable<Parameters<typeof reader.decodeFromConstraints>[2]>>[1]) => {
         if (result) {
           void handleDecodedFromCamera(result.getText());
           return;
         }
         if (decodeError && !(decodeError instanceof NotFoundException)) {
-          setCameraError(decodeError.message || 'カメラ読取に失敗しました');
+          setCameraErrorState(decodeError.message || 'カメラ読取に失敗しました', true);
         }
-      });
+      };
+
+      let controls: IScannerControls;
+      try {
+        controls = await reader.decodeFromConstraints(CAMERA_CONSTRAINTS_PREFERRED, videoRef.current, onDecode);
+      } catch (error) {
+        if (!isOverconstrainedError(error)) {
+          throw error;
+        }
+        controls = await reader.decodeFromConstraints(CAMERA_CONSTRAINTS_FALLBACK, videoRef.current, onDecode);
+      }
 
       controlsRef.current = controls;
+      setTorchSupported(typeof controls.switchTorch === 'function');
+      setTorchEnabled(false);
       setCameraActive(true);
     } catch (err) {
-      setCameraError(err instanceof Error ? err.message : 'カメラ起動に失敗しました');
+      if (err instanceof DOMException && err.name === 'NotAllowedError') {
+        setCameraErrorState('カメラ権限が拒否されました。ブラウザ設定から許可してください');
+      } else if (err instanceof DOMException && err.name === 'NotFoundError') {
+        setCameraErrorState('利用可能なカメラが見つかりません');
+      } else {
+        setCameraErrorState(err instanceof Error ? err.message : 'カメラ起動に失敗しました');
+      }
       stopCamera();
     } finally {
       setCameraBusy(false);
+    }
+  };
+
+  const handleToggleTorch = async () => {
+    const controls = controlsRef.current;
+    if (!controls?.switchTorch || torchBusy) return;
+    const nextTorchEnabled = !torchEnabled;
+    setTorchBusy(true);
+    try {
+      await controls.switchTorch(nextTorchEnabled);
+      setTorchEnabled(nextTorchEnabled);
+    } catch (err) {
+      setCameraErrorState(err instanceof Error ? err.message : 'ライト切替に失敗しました');
+    } finally {
+      setTorchBusy(false);
     }
   };
 
@@ -487,13 +605,17 @@ export default function CameraDeadStockRegisterPanel() {
             <li>「一括登録」でデッドストックへ反映します。</li>
           </ol>
 
-          <div className="d-flex gap-2 flex-wrap align-items-end mb-3">
+          <div className="d-flex gap-2 flex-wrap align-items-end mb-3 mobile-stack camera-mobile-actions">
             <Form.Group className="flex-grow-1 mb-0" controlId="camera-manual-code">
               <Form.Label>コード入力（手動補完）</Form.Label>
               <AppControl
                 value={manualCode}
                 onChange={(event: ChangeEvent<HTMLInputElement>) => setManualCode(event.currentTarget.value)}
                 maxLength={MAX_CAMERA_CODE_INPUT_LENGTH}
+                inputMode="text"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="例: (01)...(17)...(10)... または YJコード"
               />
             </Form.Group>
@@ -508,7 +630,7 @@ export default function CameraDeadStockRegisterPanel() {
             </LoadingButton>
           </div>
 
-          <div className="d-flex gap-2 flex-wrap mb-3">
+          <div className="d-flex gap-2 flex-wrap mb-3 mobile-stack camera-mobile-actions">
             <AppButton
               variant={cameraActive ? 'outline-danger' : 'outline-secondary'}
               onClick={cameraActive ? stopCamera : () => void handleStartCamera()}
@@ -516,6 +638,15 @@ export default function CameraDeadStockRegisterPanel() {
             >
               {cameraActive ? 'カメラ停止' : 'カメラ開始'}
             </AppButton>
+            {torchSupported && (
+              <AppButton
+                variant={torchEnabled ? 'warning' : 'outline-warning'}
+                onClick={() => void handleToggleTorch()}
+                disabled={!cameraActive || cameraBusy || torchBusy}
+              >
+                {torchEnabled ? 'ライトOFF' : 'ライトON'}
+              </AppButton>
+            )}
             <AppButton
               variant="outline-secondary"
               onClick={() => setRows([])}
@@ -533,7 +664,7 @@ export default function CameraDeadStockRegisterPanel() {
 
           {cameraError && <AppAlert variant="warning" className="small">{cameraError}</AppAlert>}
 
-          <div className="mb-3" style={{ maxWidth: 480 }}>
+          <div className="mb-3 camera-mobile-video" style={{ maxWidth: 480 }}>
             <video
               ref={videoRef}
               muted
@@ -552,7 +683,7 @@ export default function CameraDeadStockRegisterPanel() {
             <div className="small text-muted">まだ読取結果がありません。カメラ読取またはコード入力で追加してください。</div>
           ) : (
             <div className="table-responsive">
-              <table className="table table-sm table-bordered mobile-table">
+              <table className="table table-sm table-bordered mobile-table camera-mobile-table">
                 <thead>
                   <tr>
                     <th>コード</th>
@@ -577,6 +708,10 @@ export default function CameraDeadStockRegisterPanel() {
                             updateRow(row.id, (current) => ({ ...current, rawCode: value }));
                           }}
                           maxLength={MAX_CAMERA_CODE_INPUT_LENGTH}
+                          inputMode="text"
+                          autoCapitalize="off"
+                          autoCorrect="off"
+                          spellCheck={false}
                         />
                       </td>
                       <td>
@@ -626,6 +761,10 @@ export default function CameraDeadStockRegisterPanel() {
                             updateRow(row.id, (current) => ({ ...current, lotNumber: value }));
                           }}
                           maxLength={MAX_LOT_NUMBER_LENGTH}
+                          inputMode="text"
+                          autoCapitalize="off"
+                          autoCorrect="off"
+                          spellCheck={false}
                         />
                       </td>
                       <td style={{ minWidth: 110 }}>
@@ -633,6 +772,7 @@ export default function CameraDeadStockRegisterPanel() {
                           type="number"
                           min="0"
                           step={QUANTITY_STEP}
+                          inputMode="decimal"
                           value={row.quantity}
                           onChange={(event: ChangeEvent<HTMLInputElement>) => {
                             const value = event.currentTarget.value;
