@@ -72,6 +72,20 @@ interface DraftRow {
   quantity: string;
   unit: string;
   warnings: string[];
+  candidateOptions: CameraManualCandidate[];
+  candidateSearchKeyword: string;
+}
+
+interface DetectedBarcodeLike {
+  rawValue?: string;
+}
+
+interface BarcodeDetectorLike {
+  detect: (image: HTMLCanvasElement) => Promise<DetectedBarcodeLike[]>;
+}
+
+interface BarcodeDetectorConstructorLike {
+  new (options?: { formats?: string[] }): BarcodeDetectorLike;
 }
 
 const SCAN_DUPLICATE_SUPPRESS_MS = 1500;
@@ -83,6 +97,18 @@ const MAX_MANUAL_CANDIDATE_SEARCH_LENGTH = 80;
 const QUANTITY_STEP = '0.001';
 const MAX_RESOLVE_CACHE_SIZE = 300;
 const CAMERA_ERROR_UPDATE_MIN_INTERVAL_MS = 1200;
+const AUTO_CANDIDATE_TERM_LIMIT = 3;
+
+const BARCODE_DETECTOR_FORMATS = [
+  'data_matrix',
+  'code_128',
+  'ean_13',
+  'ean_8',
+  'itf',
+  'upc_a',
+  'upc_e',
+  'qr_code',
+];
 
 const CAMERA_CONSTRAINTS_PREFERRED: MediaStreamConstraints = {
   audio: false,
@@ -121,20 +147,72 @@ function createReader(): BrowserMultiFormatReader {
   });
 }
 
-function toDraftRow(id: number, rawCode: string, resolved: CameraResolveResponse): DraftRow {
+function resolveCandidateKey(candidate: CameraManualCandidate): string {
+  return `${candidate.drugMasterId}:${candidate.drugMasterPackageId ?? 'none'}`;
+}
+
+function mergeCandidateLists(candidates: CameraManualCandidate[]): CameraManualCandidate[] {
+  const uniqueByKey = new Map<string, CameraManualCandidate>();
+  for (const candidate of candidates) {
+    const key = resolveCandidateKey(candidate);
+    if (!uniqueByKey.has(key)) {
+      uniqueByKey.set(key, candidate);
+    }
+  }
+  return [...uniqueByKey.values()];
+}
+
+function getBarcodeDetectorConstructor(): BarcodeDetectorConstructorLike | null {
+  const maybe = (globalThis as { BarcodeDetector?: unknown }).BarcodeDetector;
+  return typeof maybe === 'function' ? maybe as BarcodeDetectorConstructorLike : null;
+}
+
+function resolveAutoCandidateSearchKeyword(rawCode: string, resolved: CameraResolveResponse): string {
+  const candidate = resolved.parsed.yjCode
+    ?? resolved.parsed.gtin
+    ?? resolved.match?.yjCode
+    ?? resolved.match?.gs1Code
+    ?? rawCode;
+  return candidate.slice(0, MAX_MANUAL_CANDIDATE_SEARCH_LENGTH);
+}
+
+function resolveAutoCandidateSearchTerms(rawCode: string, resolved: CameraResolveResponse): string[] {
+  const terms = [
+    resolved.parsed.yjCode,
+    resolved.parsed.gtin,
+    resolved.match?.yjCode,
+    resolved.match?.gs1Code,
+    rawCode,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.trim())
+    .filter((value) => value.length >= MIN_MANUAL_CANDIDATE_SEARCH_LENGTH
+      && value.length <= MAX_MANUAL_CANDIDATE_SEARCH_LENGTH);
+
+  return [...new Set(terms)].slice(0, AUTO_CANDIDATE_TERM_LIMIT);
+}
+
+function toDraftRow(
+  id: number,
+  rawCode: string,
+  resolved: CameraResolveResponse,
+  candidateOptions: CameraManualCandidate[],
+): DraftRow {
   return {
     id,
     rawCode,
-    status: resolved.match ? 'resolved' : 'unmatched',
-    drugMasterId: resolved.match?.drugMasterId ?? null,
-    drugMasterPackageId: resolved.match?.drugMasterPackageId ?? null,
-    drugName: resolved.match?.drugName ?? '',
+    status: 'unmatched',
+    drugMasterId: null,
+    drugMasterPackageId: null,
+    drugName: '',
     packageLabel: resolved.match?.packageLabel ?? '',
     expirationDate: resolved.parsed.expirationDate ?? '',
     lotNumber: resolved.parsed.lotNumber ?? '',
     quantity: '',
-    unit: resolved.match?.unit ?? '',
+    unit: '',
     warnings: resolved.warnings,
+    candidateOptions,
+    candidateSearchKeyword: resolveAutoCandidateSearchKeyword(rawCode, resolved),
   };
 }
 
@@ -172,19 +250,38 @@ function isOverconstrainedError(error: unknown): boolean {
 interface UnmatchedManualResolverProps {
   rowId: number;
   disabled: boolean;
+  initialCandidates: CameraManualCandidate[];
+  initialSearchKeyword: string;
   onApplyCandidate: (rowId: number, candidate: CameraManualCandidate) => void;
 }
 
-function UnmatchedManualResolver({ rowId, disabled, onApplyCandidate }: UnmatchedManualResolverProps) {
-  const [searchKeyword, setSearchKeyword] = useState('');
-  const [candidates, setCandidates] = useState<CameraManualCandidate[]>([]);
-  const [selectedDrugMasterId, setSelectedDrugMasterId] = useState('');
+function UnmatchedManualResolver({
+  rowId,
+  disabled,
+  initialCandidates,
+  initialSearchKeyword,
+  onApplyCandidate,
+}: UnmatchedManualResolverProps) {
+  const [searchKeyword, setSearchKeyword] = useState(initialSearchKeyword);
+  const [candidates, setCandidates] = useState<CameraManualCandidate[]>(initialCandidates);
+  const [selectedCandidateKey, setSelectedCandidateKey] = useState(
+    initialCandidates[0] ? resolveCandidateKey(initialCandidates[0]) : '',
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    setCandidates(initialCandidates);
+    setSelectedCandidateKey(initialCandidates[0] ? resolveCandidateKey(initialCandidates[0]) : '');
+  }, [initialCandidates]);
+
+  useEffect(() => {
+    setSearchKeyword(initialSearchKeyword);
+  }, [initialSearchKeyword]);
+
   const selectedCandidate = useMemo(() => (
-    candidates.find((candidate) => String(candidate.drugMasterId) === selectedDrugMasterId) ?? null
-  ), [candidates, selectedDrugMasterId]);
+    candidates.find((candidate) => resolveCandidateKey(candidate) === selectedCandidateKey) ?? null
+  ), [candidates, selectedCandidateKey]);
 
   const handleSearch = async () => {
     const keyword = searchKeyword.trim();
@@ -207,13 +304,13 @@ function UnmatchedManualResolver({ rowId, disabled, onApplyCandidate }: Unmatche
       const result = await api.get<CameraManualCandidateResponse>(
         `/inventory/dead-stock/camera/manual-candidates?q=${encodeURIComponent(keyword)}`,
       );
-      setCandidates(result.data);
+      const mergedCandidates = mergeCandidateLists([...candidates, ...result.data]);
+      setCandidates(mergedCandidates);
       if (result.data.length === 0) {
-        setSelectedDrugMasterId('');
-        setError('候補が見つかりませんでした');
+        setError('候補が見つかりませんでした。薬剤名やYJコードを変えて再検索してください。');
         return;
       }
-      setSelectedDrugMasterId(String(result.data[0].drugMasterId));
+      setSelectedCandidateKey(resolveCandidateKey(result.data[0]));
     } catch (err) {
       setError(err instanceof Error ? err.message : '候補検索に失敗しました');
     } finally {
@@ -245,12 +342,12 @@ function UnmatchedManualResolver({ rowId, disabled, onApplyCandidate }: Unmatche
         <div className="d-flex gap-1 align-items-center">
           <Form.Select
             size="sm"
-            value={selectedDrugMasterId}
+            value={selectedCandidateKey}
             disabled={disabled}
-            onChange={(event) => setSelectedDrugMasterId(event.currentTarget.value)}
+            onChange={(event) => setSelectedCandidateKey(event.currentTarget.value)}
           >
             {candidates.map((candidate) => (
-              <option key={candidate.drugMasterId} value={candidate.drugMasterId}>
+              <option key={resolveCandidateKey(candidate)} value={resolveCandidateKey(candidate)}>
                 {candidate.drugName} ({candidate.yjCode ?? '-'})
               </option>
             ))}
@@ -286,15 +383,19 @@ export default function CameraDeadStockRegisterPanel() {
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [torchBusy, setTorchBusy] = useState(false);
+  const [frameCapturing, setFrameCapturing] = useState(false);
 
   const nextRowIdRef = useRef(1);
   const resolvingRef = useRef(false);
   const controlsRef = useRef<IScannerControls | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastScanRef = useRef<{ text: string; at: number }>({ text: '', at: 0 });
   const lastCameraErrorRef = useRef<{ message: string; at: number }>({ message: '', at: 0 });
   const resolveCacheRef = useRef(new Map<string, CameraResolveResponse>());
+  const manualCandidatesCacheRef = useRef(new Map<string, CameraManualCandidate[]>());
   const navigate = useNavigate();
+  const barcodeDetectorSupported = useMemo(() => getBarcodeDetectorConstructor() !== null, []);
 
   const canSubmit = useMemo(() => (
     rows.length > 0
@@ -381,11 +482,58 @@ export default function CameraDeadStockRegisterPanel() {
     return resolved;
   }, []);
 
-  const appendOrUpdateRow = useCallback((rawCode: string, resolved: CameraResolveResponse, rowId?: number) => {
+  const fetchManualCandidatesByKeyword = useCallback(async (keyword: string): Promise<CameraManualCandidate[]> => {
+    const normalizedKeyword = keyword.trim();
+    if (!normalizedKeyword) {
+      return [];
+    }
+    if (normalizedKeyword.length < MIN_MANUAL_CANDIDATE_SEARCH_LENGTH) {
+      return [];
+    }
+    if (normalizedKeyword.length > MAX_MANUAL_CANDIDATE_SEARCH_LENGTH) {
+      return [];
+    }
+    const cacheKey = normalizedKeyword.toUpperCase();
+    const cached = manualCandidatesCacheRef.current.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const result = await api.get<CameraManualCandidateResponse>(
+      `/inventory/dead-stock/camera/manual-candidates?q=${encodeURIComponent(normalizedKeyword)}`,
+    );
+    manualCandidatesCacheRef.current.set(cacheKey, result.data);
+    return result.data;
+  }, []);
+
+  const resolveAutoCandidatesForCode = useCallback(async (
+    rawCode: string,
+    resolved: CameraResolveResponse,
+  ): Promise<CameraManualCandidate[]> => {
+    const seededCandidates = resolved.match ? [resolved.match] : [];
+    const terms = resolveAutoCandidateSearchTerms(rawCode, resolved);
+    if (terms.length === 0) {
+      return seededCandidates;
+    }
+    const fetched = await Promise.all(terms.map(async (term) => {
+      try {
+        return await fetchManualCandidatesByKeyword(term);
+      } catch {
+        return [] as CameraManualCandidate[];
+      }
+    }));
+    return mergeCandidateLists([...seededCandidates, ...fetched.flat()]);
+  }, [fetchManualCandidatesByKeyword]);
+
+  const appendOrUpdateRow = useCallback((
+    rawCode: string,
+    resolved: CameraResolveResponse,
+    candidateOptions: CameraManualCandidate[],
+    rowId?: number,
+  ) => {
     if (rowId !== undefined) {
       updateRow(rowId, (row) => {
         const quantity = row.quantity;
-        const merged = toDraftRow(row.id, rawCode, resolved);
+        const merged = toDraftRow(row.id, rawCode, resolved, candidateOptions);
         return { ...merged, quantity };
       });
       return;
@@ -399,7 +547,7 @@ export default function CameraDeadStockRegisterPanel() {
       }
       const nextId = nextRowIdRef.current;
       nextRowIdRef.current += 1;
-      return [...prev, toDraftRow(nextId, rawCode, resolved)];
+      return [...prev, toDraftRow(nextId, rawCode, resolved, candidateOptions)];
     });
     if (duplicate) {
       setInfo(`同じコードは既に追加済みです: ${rawCode}`);
@@ -425,11 +573,12 @@ export default function CameraDeadStockRegisterPanel() {
     setInfo('');
     try {
       const resolved = await resolveCode(normalized, forceRefresh);
-      appendOrUpdateRow(normalized, resolved, rowId);
-      if (resolved.match) {
-        setInfo(`医薬品を特定しました: ${resolved.match.drugName}`);
+      const candidateOptions = await resolveAutoCandidatesForCode(normalized, resolved);
+      appendOrUpdateRow(normalized, resolved, candidateOptions, rowId);
+      if (candidateOptions.length > 0) {
+        setInfo(`コード ${normalized} を読取しました。候補 ${candidateOptions.length} 件から医薬品を確定してください。`);
       } else {
-        setInfo('医薬品を特定できませんでした。コードを修正して再解析してください。');
+        setInfo(`コード ${normalized} を読取しました。候補が見つからないため、薬剤名またはYJコードで検索してください。`);
       }
       return true;
     } catch (err) {
@@ -439,7 +588,86 @@ export default function CameraDeadStockRegisterPanel() {
       resolvingRef.current = false;
       setResolving(false);
     }
-  }, [appendOrUpdateRow, resolveCode]);
+  }, [appendOrUpdateRow, resolveAutoCandidatesForCode, resolveCode]);
+
+  const detectCodesFromCurrentFrame = useCallback(async (): Promise<string[]> => {
+    const videoElement = videoRef.current;
+    if (!videoElement) {
+      throw new Error('カメラ映像が取得できません');
+    }
+    if (videoElement.videoWidth < 2 || videoElement.videoHeight < 2) {
+      throw new Error('カメラ映像を準備中です。少し待って再実行してください。');
+    }
+
+    const canvas = frameCanvasRef.current ?? document.createElement('canvas');
+    frameCanvasRef.current = canvas;
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('カメラ画像の解析準備に失敗しました');
+    }
+    context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+    const detectorCtor = getBarcodeDetectorConstructor();
+    if (detectorCtor) {
+      const detector = new detectorCtor({ formats: BARCODE_DETECTOR_FORMATS });
+      const detected = await detector.detect(canvas);
+      const detectedCodes = [...new Set(
+        detected
+          .map((item) => normalizeCodeInput(item.rawValue ?? ''))
+          .filter((code) => code.length > 0),
+      )];
+      if (detectedCodes.length > 0) {
+        return detectedCodes;
+      }
+    }
+
+    try {
+      const reader = createReader();
+      const result = reader.decodeFromCanvas(canvas);
+      const fallbackCode = normalizeCodeInput(result.getText());
+      return fallbackCode ? [fallbackCode] : [];
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        return [];
+      }
+      throw err;
+    }
+  }, []);
+
+  const handleCaptureFromFrame = async () => {
+    if (frameCapturing || resolving || submitting) return;
+    if (!cameraActive) {
+      setError('先に「カメラ開始」を押してから実行してください');
+      return;
+    }
+
+    setFrameCapturing(true);
+    setError('');
+    setInfo('');
+    try {
+      const codes = await detectCodesFromCurrentFrame();
+      if (codes.length === 0) {
+        setError('画像内に読取可能なコードが見つかりませんでした');
+        return;
+      }
+
+      let addedCount = 0;
+      for (const code of codes) {
+        const success = await handleResolveCode(code);
+        if (success) {
+          addedCount += 1;
+        }
+      }
+      setInfo(`画像内コードを ${addedCount} 件追加しました。候補を確認して医薬品を確定してください。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '画像からのコード検出に失敗しました');
+    } finally {
+      setFrameCapturing(false);
+    }
+  };
 
   const handleManualAdd = async () => {
     const success = await handleResolveCode(manualCode);
@@ -599,8 +827,8 @@ export default function CameraDeadStockRegisterPanel() {
         <AppCard.Header>カメラ読取登録</AppCard.Header>
         <AppCard.Body>
           <ol className="mb-3 upload-step-list">
-            <li>スマートフォンのカメラでGS1またはYJコードを読み取ります。</li>
-            <li>医薬品が特定されたら数量を入力します。</li>
+            <li>カメラ開始後、リアルタイム読取または画像検出でコードを取り込みます。</li>
+            <li>行ごとに提示された候補医薬品から手動で確定します。</li>
             <li>必要に応じて包装単位・使用期限・ロット番号を補完します。</li>
             <li>「一括登録」でデッドストックへ反映します。</li>
           </ol>
@@ -647,6 +875,15 @@ export default function CameraDeadStockRegisterPanel() {
                 {torchEnabled ? 'ライトOFF' : 'ライトON'}
               </AppButton>
             )}
+            <LoadingButton
+              variant="outline-primary"
+              loading={frameCapturing}
+              loadingLabel="検出中..."
+              disabled={!cameraActive || cameraBusy || resolving || submitting}
+              onClick={() => void handleCaptureFromFrame()}
+            >
+              画像からコード検出
+            </LoadingButton>
             <AppButton
               variant="outline-secondary"
               onClick={() => setRows([])}
@@ -661,6 +898,11 @@ export default function CameraDeadStockRegisterPanel() {
               一覧へ移動
             </AppButton>
           </div>
+          <div className="small text-muted mb-2">
+            {barcodeDetectorSupported
+              ? '画像検出では1フレーム内の複数コードを同時に追加できます。'
+              : '画像検出は単一コード読取にフォールバックします（ブラウザ機能制限）。'}
+          </div>
 
           {cameraError && <AppAlert variant="warning" className="small">{cameraError}</AppAlert>}
 
@@ -672,6 +914,7 @@ export default function CameraDeadStockRegisterPanel() {
               autoPlay
               style={{ width: '100%', minHeight: 220, borderRadius: 8, border: '1px solid #dee2e6', backgroundColor: '#111' }}
             />
+            <canvas ref={frameCanvasRef} style={{ display: 'none' }} />
           </div>
         </AppCard.Body>
       </AppCard>
@@ -715,8 +958,8 @@ export default function CameraDeadStockRegisterPanel() {
                         />
                       </td>
                       <td>
-                        <Badge bg={row.status === 'resolved' ? 'success' : 'secondary'}>
-                          {row.status === 'resolved' ? '確定' : '未一致'}
+                        <Badge bg={row.status === 'resolved' ? 'success' : 'warning'}>
+                          {row.status === 'resolved' ? '確定済み' : '候補確認待ち'}
                         </Badge>
                         {row.warnings.length > 0 && (
                           <div className="small text-muted mt-1">{row.warnings.join(' / ')}</div>
@@ -729,6 +972,8 @@ export default function CameraDeadStockRegisterPanel() {
                           <UnmatchedManualResolver
                             rowId={row.id}
                             disabled={submitting || resolving}
+                            initialCandidates={row.candidateOptions}
+                            initialSearchKeyword={row.candidateSearchKeyword}
                             onApplyCandidate={handleApplyManualCandidate}
                           />
                         )}

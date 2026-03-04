@@ -1,4 +1,28 @@
 /* ===== Mobile overrides ===== */
+.upload-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.upload-entry-card-item {
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  padding: 1rem;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.upload-dual-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.upload-dual-flow-section {
+  min-width: 0;
+}
+
 @media (max-width: 991.98px) {
   :root {
     --header-height: 96px;
@@ -122,5 +146,10 @@
   .camera-mobile-table .form-control,
   .camera-mobile-table .btn {
     min-height: 40px;
+  }
+
+  .upload-entry-grid,
+  .upload-dual-flow-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

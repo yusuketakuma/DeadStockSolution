@@ -164,7 +164,6 @@ async function waitForNextPoll(signal: AbortSignal, intervalMs: number): Promise
 }
 
 export default function UploadPage() {
-  const [registerMode, setRegisterMode] = useState<'excel' | 'camera'>('excel');
   const [uploadType, setUploadType] = useState<UploadType>('dead_stock');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
@@ -202,7 +201,7 @@ export default function UploadPage() {
       ? 'success'
       : 'info';
   const uploadProgressAnimated = uploadProgress.phase !== 'completed' && uploadProgress.phase !== 'failed';
-  const pageTitle = registerMode === 'excel' ? 'Excelアップロード' : 'カメラ読取で在庫登録';
+  const pageTitle = 'デッドストック取込（Excel / カメラ）';
 
   const setFailed = (label: string) =>
     setUploadProgress({ phase: 'failed', percent: 100, label });
@@ -224,13 +223,6 @@ export default function UploadPage() {
     setUploadJob(UPLOAD_JOB_INITIAL_STATE);
     setCancellingJob(false);
     setUploadProgress(UPLOAD_PROGRESS_IDLE);
-  };
-
-  const handleRegisterModeChange = (nextMode: 'excel' | 'camera') => {
-    if (registerMode === nextMode) return;
-    clearPendingUploadSideEffects();
-    resetExcelTransientUiState();
-    setRegisterMode(nextMode);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -604,35 +596,46 @@ export default function UploadPage() {
     uploadRequestAbortRef.current = null;
   }, []);
 
+  const scrollToFlow = (id: 'upload-excel-flow' | 'upload-camera-flow') => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <PageShell>
       <h4 className="page-title mb-3">{pageTitle}</h4>
-      <Form.Group className="mb-3" controlId="upload-register-mode">
-        <Form.Label>登録モード</Form.Label>
-        <AppSelect
-          controlId="upload-register-mode"
-          value={registerMode}
-          ariaLabel="登録モード"
-          onChange={(value) => {
-            handleRegisterModeChange(value as 'excel' | 'camera');
-          }}
-          options={[
-            { value: 'excel', label: 'Excel取込' },
-            { value: 'camera', label: 'カメラ読取登録' },
-          ]}
-        />
-      </Form.Group>
-      {registerMode === 'excel' && error && <AppAlert variant="danger">{error}</AppAlert>}
-      {registerMode === 'excel' && message && <AppAlert variant="success">{message}</AppAlert>}
-      {registerMode === 'excel' && showMatchingHint && (
+      <AppCard className="mb-3 upload-entry-card-shell">
+        <AppCard.Body className="upload-entry-grid">
+          <section className="upload-entry-card-item" aria-labelledby="upload-entry-excel">
+            <h5 id="upload-entry-excel" className="h6 mb-2">Excelアップロード</h5>
+            <div className="small text-muted mb-3">
+              一括で在庫データを登録する場合は、Excelファイルから取込みます。
+            </div>
+            <AppButton variant="outline-primary" onClick={() => scrollToFlow('upload-excel-flow')}>
+              Excel取込へ移動
+            </AppButton>
+          </section>
+          <section className="upload-entry-card-item" aria-labelledby="upload-entry-camera">
+            <h5 id="upload-entry-camera" className="h6 mb-2">カメラ取込み</h5>
+            <div className="small text-muted mb-3">
+              カメラ画像のコードから候補医薬品を自動提示し、手動確定で登録します。
+            </div>
+            <AppButton variant="outline-primary" onClick={() => scrollToFlow('upload-camera-flow')}>
+              カメラ取込へ移動
+            </AppButton>
+          </section>
+        </AppCard.Body>
+      </AppCard>
+      {error && <AppAlert variant="danger">{error}</AppAlert>}
+      {message && <AppAlert variant="success">{message}</AppAlert>}
+      {showMatchingHint && (
         <AppAlert variant="info">
           交換候補をすぐ確認する場合は「マッチング」ページで再実行してください。
         </AppAlert>
       )}
 
       <ScrollArea>
-      {registerMode === 'excel' ? (
-      <>
+      <div className="upload-dual-flow-grid">
+      <section id="upload-excel-flow" className="upload-dual-flow-section">
       {uploadProgress.phase !== 'idle' && (
         <AppCard className="mb-3">
           <AppCard.Body>
@@ -885,8 +888,8 @@ export default function UploadPage() {
           </AppCard.Body>
         </AppCard>
       )}
-      </>
-      ) : (
+      </section>
+      <section id="upload-camera-flow" className="upload-dual-flow-section">
         <Suspense fallback={(
           <AppCard className="mb-3">
             <AppCard.Body className="small text-muted">カメラ登録画面を読み込み中です...</AppCard.Body>
@@ -895,7 +898,8 @@ export default function UploadPage() {
         >
           <CameraDeadStockRegisterPanel />
         </Suspense>
-      )}
+      </section>
+      </div>
       </ScrollArea>
     </PageShell>
   );

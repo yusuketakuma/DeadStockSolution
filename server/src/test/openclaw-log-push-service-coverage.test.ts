@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OpenClawConfig } from '../services/openclaw-service';
 
 // ── Hoisted mocks ──────────────────────────────────
 const mocks = vi.hoisted(() => ({
@@ -40,6 +41,20 @@ function makeEntry(overrides: Partial<LogAlertEntry> = {}): LogAlertEntry {
     message: 'test message',
     logId: 1,
     occurredAt: '2026-03-02T10:00:00Z',
+    ...overrides,
+  };
+}
+
+function makeOpenClawConfig(overrides: Partial<OpenClawConfig> = {}): OpenClawConfig {
+  return {
+    mode: 'legacy_http',
+    cliPath: 'openclaw',
+    baseUrl: 'https://openclaw.example',
+    baseUrlError: null,
+    apiKey: 'test-api-key',
+    agentId: 'test-agent-id',
+    webhookSecret: '',
+    implementationBranch: 'review',
     ...overrides,
   };
 }
@@ -189,7 +204,7 @@ describe('openclaw-log-push-service (coverage)', () => {
     });
 
     it('should send entries and log success', async () => {
-      mocks.getOpenClawConfig.mockReturnValue({ agentId: 'a1', apiKey: 'k1' });
+      mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockResolvedValue({ summary: 'ok' });
 
       enqueueLogAlert(makeEntry({ severity: 'warning' }));
@@ -203,7 +218,7 @@ describe('openclaw-log-push-service (coverage)', () => {
     });
 
     it('should flush critical buffer directly and log success', async () => {
-      mocks.getOpenClawConfig.mockReturnValue({ agentId: 'a1', apiKey: 'k1' });
+      mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockResolvedValue({ summary: 'ok' });
 
       // Manually push to critical buffer and flush directly (not via enqueueLogAlert
@@ -226,7 +241,7 @@ describe('openclaw-log-push-service (coverage)', () => {
     });
 
     it('should re-enqueue retryable entries on send failure', async () => {
-      mocks.getOpenClawConfig.mockReturnValue({ agentId: 'a1', apiKey: 'k1' });
+      mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockRejectedValue(new Error('network error'));
 
       enqueueLogAlert(makeEntry({ severity: 'warning' }));
@@ -240,7 +255,7 @@ describe('openclaw-log-push-service (coverage)', () => {
     });
 
     it('should stop retrying after 3 failures', async () => {
-      mocks.getOpenClawConfig.mockReturnValue({ agentId: 'a1', apiKey: 'k1' });
+      mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockRejectedValue(new Error('network error'));
 
       enqueueLogAlert(makeEntry({ severity: 'warning' }));
@@ -256,7 +271,11 @@ describe('openclaw-log-push-service (coverage)', () => {
     });
 
     it('should log error when OpenClaw is not configured', async () => {
-      mocks.getOpenClawConfig.mockReturnValue({ agentId: '', apiKey: '' });
+      mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({
+        agentId: '',
+        apiKey: '',
+        baseUrl: '',
+      }));
 
       enqueueLogAlert(makeEntry({ severity: 'error' }));
       await flushBuffer('error');
@@ -265,7 +284,7 @@ describe('openclaw-log-push-service (coverage)', () => {
     });
 
     it('should cap buffer after re-adding retryable entries', async () => {
-      mocks.getOpenClawConfig.mockReturnValue({ agentId: 'a1', apiKey: 'k1' });
+      mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockRejectedValue(new Error('fail'));
 
       for (let i = 0; i < 499; i++) {
@@ -286,7 +305,7 @@ describe('openclaw-log-push-service (coverage)', () => {
   describe('timer-based flushing', () => {
     beforeEach(() => {
       process.env.OPENCLAW_LOG_PUSH_ENABLED = 'true';
-      mocks.getOpenClawConfig.mockReturnValue({ agentId: 'a1', apiKey: 'k1' });
+      mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockResolvedValue({ summary: 'ok' });
     });
 
@@ -299,7 +318,7 @@ describe('openclaw-log-push-service (coverage)', () => {
     });
 
     it('should log error when scheduled flush fails', async () => {
-      mocks.getOpenClawConfig.mockReturnValue({ agentId: 'a1', apiKey: 'k1' });
+      mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockRejectedValue(new Error('timeout'));
 
       enqueueLogAlert(makeEntry({ severity: 'error' }));
@@ -320,7 +339,7 @@ describe('openclaw-log-push-service (coverage)', () => {
     });
 
     it('should trigger immediate async flush for critical severity', async () => {
-      mocks.getOpenClawConfig.mockReturnValue({ agentId: 'agent1', apiKey: 'key1' });
+      mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'agent1', apiKey: 'key1' }));
       mocks.sendToOpenClawGateway.mockResolvedValue({ summary: 'ok' });
 
       enqueueLogAlert(makeEntry({ severity: 'critical' }));

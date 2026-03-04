@@ -61,7 +61,7 @@ describe('UploadPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('clears excel messages when switching between excel and camera modes', async () => {
+  it('shows excel and camera flows side-by-side while keeping excel validation visible', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/me')) {
@@ -94,17 +94,9 @@ describe('UploadPage', () => {
       expect(screen.getByText('プレビュー失敗テスト')).toBeInTheDocument();
     });
 
-    await userEvent.selectOptions(screen.getByLabelText('登録モード'), 'camera');
-    await waitFor(() => {
-      expect(screen.getByText('カメラ読取で在庫登録')).toBeInTheDocument();
-    });
-    expect(screen.queryByText('プレビュー失敗テスト')).not.toBeInTheDocument();
-
-    await userEvent.selectOptions(screen.getByLabelText('登録モード'), 'excel');
-    await waitFor(() => {
-      expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
-    });
-    expect(screen.queryByText('プレビュー失敗テスト')).not.toBeInTheDocument();
+    expect(screen.getByText('カメラ取込み')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'カメラ開始' })).toBeInTheDocument();
+    expect(screen.getByText('プレビュー失敗テスト')).toBeInTheDocument();
   });
 
   it('auto-detects upload type and allows manual correction', async () => {
