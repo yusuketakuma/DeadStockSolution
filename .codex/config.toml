@@ -1,181 +1,146 @@
-# careviax-pharmacy (repo-local) Codex CLI config
-# Target: Codex CLI >= 0.107.0
-#
-# NOTE:
-# - This file is intended to be committed to the repository.
-# - Trust / per-user notices should live in ~/.codex/config.toml (see docs/local-user-config.example.toml).
-# - Root keys should appear before any tables.
-
+# =========================
+# Root keys（必ず先頭）
+# =========================
 model = "gpt-5.3-codex"
 review_model = "gpt-5.3-codex"
 model_provider = "openai"
 
-# Default reasoning (commander / goal-setter will also pin xhigh explicitly)
+# 司令塔（ルートセッション）は 5.3 codex xhigh
 model_reasoning_effort = "xhigh"
 
-# Non-interactive / no approval prompts
+# 非対話（承認ダイアログで止めない）
+# on-failure は deprecated。never / on-request を使う。  [oai_citation:8‡OpenAI Developers](https://developers.openai.com/codex/config-reference/)
 approval_policy = "never"
 
-# Default full access (high risk; see docs/codex-setup.md)
+# デフォルトはフルアクセス（危険なので rules で最低限ガード）
 sandbox_mode = "danger-full-access"
 
-# Aggressive internet usage (explicit override)
+# Web検索は積極利用
 web_search = "live"
 
-# Pragmatic tone for implementation work
+# 口調（任意）
 personality = "pragmatic"
 
-# Reduce TUI noise / speed up (optional)
-hide_agent_reasoning = true
-show_raw_agent_reasoning = false
-
-# Keep tool output bounded (prevents huge command dumps)
-tool_output_token_limit = 800
-
-# Experimental / under-development flags warning suppression
+# 実験機能を意図的に使うので警告は抑止
 suppress_unstable_features_warning = true
 
 
 # =========================
-# Feature flags (0.107.0)
+# Multi-agent limits / roles
+# =========================
+[agents]
+max_threads = 32
+max_depth = 2
+
+# --- Explorer ---
+[agents.explorer]
+description = "高速調査・影響範囲特定・委譲設計（原則実装しない）。spark優先。"
+config_file = "agents/explorer.toml"
+
+[agents.explorer_fallback]
+description = "explorer のフォールバック（spark不可時）。gpt-5.3-codex + medium。"
+config_file = "agents/explorer_fallback.toml"
+
+# --- Workers ---
+[agents.worker_light]
+description = "軽量実装（<=250LOC目安）。spark優先。/simplify必須。"
+config_file = "agents/worker_light.toml"
+
+[agents.worker_light_fallback]
+description = "worker_light のフォールバック（spark不可時）。gpt-5.3-codex + medium。"
+config_file = "agents/worker_light_fallback.toml"
+
+[agents.worker_heavy]
+description = "重たい実装（>800LOCや横断改修）。gpt-5.3-codex xhigh。/simplify必須。"
+config_file = "agents/worker_heavy.toml"
+
+# --- Test engineer ---
+[agents.test_engineer]
+description = "テスト追加/再現/検証設計。spark優先。"
+config_file = "agents/test_engineer.toml"
+
+[agents.test_engineer_fallback]
+description = "test_engineer のフォールバック（spark不可時）。gpt-5.3-codex + medium。"
+config_file = "agents/test_engineer_fallback.toml"
+
+# --- Reviewers (multi-lens) ---
+[agents.reviewer_security]
+description = "セキュリティ観点レビュー＋修正（必要時）"
+config_file = "agents/reviewer_security.toml"
+
+[agents.reviewer_quality]
+description = "正しさ/型/保守性/設計観点レビュー＋修正（必要時）"
+config_file = "agents/reviewer_quality.toml"
+
+[agents.reviewer_release]
+description = "CI/Workflow/設定/運用観点レビュー＋修正（必要時）"
+config_file = "agents/reviewer_release.toml"
+
+# --- Docs writer ---
+[agents.docs_writer]
+description = "ドキュメント/README/運用ノート更新。spark優先。"
+config_file = "agents/docs_writer.toml"
+
+[agents.docs_writer_fallback]
+description = "docs_writer のフォールバック（spark不可時）。gpt-5.3-codex + medium。"
+config_file = "agents/docs_writer_fallback.toml"
+
+
+# =========================
+# Features（0.107.0 の config reference に準拠）
 # =========================
 [features]
-# Multi-agent tools: spawn_agent, send_input, resume_agent, wait, close_agent
-multi_agent = true
-
-# Apps (connectors) support + gateway routing to avoid legacy/blocked endpoints
-apps = true
-apps_mcp_gateway = true
-
-# Improve tool discovery before invoking app MCP tools
-search_tool = true
-
-# Show runtime summary at turn separators (useful when many agents run)
-runtime_metrics = true
-
-# Quality-of-life / speed
+# 実行系
+shell_tool = true
 unified_exec = true
 shell_snapshot = true
 
-# Keep apply_patch strict by default
+# multi-agent（experimental; off by default）  [oai_citation:9‡OpenAI Developers](https://developers.openai.com/codex/config-reference/)
+multi_agent = true
+
+# 便利系（必要に応じて）
+collaboration_modes = true
+personality = true
+request_rule = true
+
+# 実験機能（速度/体験改善）
+child_agents_md = true
+remote_models = true
+runtime_metrics = true
+
+# Apps/connectors は明示的に無効（過去の 403 / codex_apps MCP 失敗回避）
+# apps は experimental  [oai_citation:10‡OpenAI Developers](https://developers.openai.com/codex/config-reference/)
+apps = false
+apps_mcp_gateway = false
+search_tool = false
+
+# 使わない（必要になったら true に）
 apply_patch_freeform = false
 
-# Cross-platform harmless; default true on Windows
+# Windows 向け（害はない）
 powershell_utf8 = true
 
 
 # =========================
-# Multi-agent limits
+# MCP servers（任意: 既存のものを踏襲）
 # =========================
-[agents]
-# Always allow up to 32 concurrent threads
-max_threads = 32
 
-# Allow nested spawning depth = 2
-# (root depth 0 -> child depth 1 -> grandchild depth 2)
-max_depth = 2
-
-
-# =========================
-# Agent registry (role -> config file)
-# =========================
-[agents.commander]
-description = "司令塔。実装を一気に完了→最後に検証→広範レビュー→必要修正→最終検証。未完成で終了禁止。"
-config_file = "agents/commander.toml"
-
-[agents.goal_setter]
-description = "目標設定専任。最小スキャンでコードベース理解→目標/スコープ/完了条件→委譲割り当てを確定。"
-config_file = "agents/goal-setter.toml"
-
-[agents.explorer]
-description = "高速探索・影響範囲特定・変更計画の材料収集。"
-config_file = "agents/explorer.toml"
-
-[agents.docs_researcher]
-description = "外部公式ドキュメント/仕様調査（web_search前提）。"
-config_file = "agents/docs-researcher.toml"
-
-[agents.implementer_heavy]
-description = "重たい実装担当（広範囲/難所/セキュリティ境界/設計変更）。最後にSIMPLIFYパス必須。"
-config_file = "agents/implementer-heavy.toml"
-
-[agents.implementer_light]
-description = "軽め実装担当（小規模改修/局所修正/反復作業）。最後にSIMPLIFYパス必須。"
-config_file = "agents/implementer-light.toml"
-
-[agents.test_writer]
-description = "テスト追加・回帰防止。最後にSIMPLIFYパス必須。"
-config_file = "agents/test-writer.toml"
-
-[agents.ci_fixer]
-description = "CI/型/リント/ビルド失敗の解消。最後にSIMPLIFYパス必須。"
-config_file = "agents/ci-fixer.toml"
-
-[agents.verifier]
-description = "最後にまとめて検証（typecheck/lint/test/build）。証跡を残す。"
-config_file = "agents/verifier.toml"
-
-[agents.reviewer]
-description = "レビュー統括（複数観点レビュー結果を集約し、修正指示を優先度順に整理）。"
-config_file = "agents/reviewer.toml"
-
-[agents.quality_reviewer]
-description = "実装/関連箇所を広くコード品質レビュー（保守性/一貫性/UX/例外/ログ/設計）。"
-config_file = "agents/quality-reviewer.toml"
-
-[agents.security_auditor]
-description = "セキュリティ観点レビュー（認可/秘密情報/注入/CSRF/SQL/CSV式/権限境界）。"
-config_file = "agents/security-auditor.toml"
-
-[agents.perf_sleuth]
-description = "性能観点レビュー（無駄な再計算/レンダリング/DB/IO/キャッシュ）。"
-config_file = "agents/perf-sleuth.toml"
-
-[agents.test_auditor]
-description = "テスト観点レビュー（不足/脆弱/フレーク/観測性）。"
-config_file = "agents/test-auditor.toml"
-
-
-# =========================
-# Simplify pass agents (Claude Code /simplify inspired)
-# =========================
-[agents.simplify_reuse]
-description = "SIMPLIFY: 既存実装の再利用・重複削減・抽象化の妥当性を提案。"
-config_file = "agents/simplify-reuse.toml"
-
-[agents.simplify_quality]
-description = "SIMPLIFY: 可読性・安全性・エッジケース・エラー処理・命名を改善提案。"
-config_file = "agents/simplify-quality.toml"
-
-[agents.simplify_efficiency]
-description = "SIMPLIFY: パフォーマンス/計算量/レンダリング/クエリ効率の改善提案。"
-config_file = "agents/simplify-efficiency.toml"
-
-
-# =========================
-# Apps default policy (Apps = default ON)
-# =========================
-# This controls whether app tools with open_world_hint / destructive_hint are allowed by default.
-# NOTE: Approval behavior per app/tool can be customized after you learn app ids via /apps.
-[apps._default]
-enabled = true
-open_world_enabled = true
-destructive_enabled = false
-
-
-# =========================
-# MCP servers (project-specific)
-# =========================
 [mcp_servers.context7]
 command = "npx"
 args = ["-y", "@upstash/context7-mcp"]
 startup_timeout_sec = 60
+required = false
+enabled = true
 
 [mcp_servers.serena]
 command = "uvx"
 args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]
 startup_timeout_sec = 120
+required = false
+enabled = true
 
 [mcp_servers.ultracite]
 url = "https://docs.ultracite.ai/mcp"
 startup_timeout_sec = 60
+required = false
+enabled = true

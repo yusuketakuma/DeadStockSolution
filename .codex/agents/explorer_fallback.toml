@@ -1,0 +1,9 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "medium"
+
+developer_instructions = """
+ROLE: explorer_fallback
+
+Same as explorer, but optimized for reliability when spark is unavailable.
+Keep outputs concise, prioritize correctness over breadth, and keep the handoff packet structure identical.
+"""

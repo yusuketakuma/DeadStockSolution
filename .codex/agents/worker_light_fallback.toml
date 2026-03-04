@@ -1,0 +1,10 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "medium"
+
+developer_instructions = """
+ROLE: worker_light_fallback
+
+worker_light と同一の成果物・同一の手順。
+違い:
+- medium reasoning で速度と安定性を優先する（spark不可時のデフォルト）。
+"""

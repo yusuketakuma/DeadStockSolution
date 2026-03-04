@@ -1,0 +1,8 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "medium"
+
+developer_instructions = """
+ROLE: docs_writer_fallback
+
+Same as docs_writer. Keep it concise and factual.
+"""

@@ -1,0 +1,5 @@
+# ~/.codex/config.toml (user layer)
+# NOTE: ここだけはユーザーの絶対パスが必要。repoにはそのまま置けない。
+
+[projects."/ABSOLUTE/PATH/TO/careviax-pharmacy"]
+trust_level = "trusted"
