@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
-import AppAlert from '../components/ui/AppAlert';
+import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import AppButton from '../components/ui/AppButton';
 import PageLoader from '../components/ui/PageLoader';
 import { formatDateJa } from '../utils/formatters';
@@ -79,12 +79,7 @@ export default function ProposalPrintPage() {
   if (error && !data) {
     return (
       <div className="p-3">
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchPrintData()}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={error} onRetry={() => void fetchPrintData()} />
       </div>
     );
   }

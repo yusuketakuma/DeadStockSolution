@@ -1,0 +1,32 @@
+{
+  "count": 3,
+  "targets": [
+    {
+      "rank": 1,
+      "source": "static-heuristic",
+      "id": "server/src/services/upload-confirm-job-service.ts",
+      "file": "server/src/services/upload-confirm-job-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=1455, loops=4, awaitInLoop=2, sql=29",
+      "score": 189.95
+    },
+    {
+      "rank": 2,
+      "source": "static-heuristic",
+      "id": "server/src/services/drug-master-sync-service.ts",
+      "file": "server/src/services/drug-master-sync-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=503, loops=10, awaitInLoop=7, sql=23",
+      "score": 163.09
+    },
+    {
+      "rank": 3,
+      "source": "static-heuristic",
+      "id": "server/src/services/matching-service.ts",
+      "file": "server/src/services/matching-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=857, loops=11, awaitInLoop=4, sql=23",
+      "score": 155.51
+    }
+  ]
+}

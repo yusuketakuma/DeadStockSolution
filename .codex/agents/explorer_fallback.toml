@@ -1,9 +1,12 @@
 model = "gpt-5.3-codex"
+model_provider = "openai"
 model_reasoning_effort = "medium"
 
-developer_instructions = """
-ROLE: explorer_fallback
+sandbox_mode = "read-only"
+approval_policy = "never"
+web_search = "live"
 
-Same as explorer, but optimized for reliability when spark is unavailable.
-Keep outputs concise, prioritize correctness over breadth, and keep the handoff packet structure identical.
+developer_instructions = """
+explorer の fallback（sparkが使えない場合）。
+方針は explorer と同じ。速度優先で最短根拠を集める。
 """

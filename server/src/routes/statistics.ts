@@ -18,8 +18,8 @@ import { getPharmacyRiskDetail } from '../services/expiry-risk-service';
 import { logger } from '../services/logger';
 
 const router = Router();
-const DEFAULT_STATS_SUMMARY_CACHE_TTL_MS = 30_000;
-const MAX_STATS_SUMMARY_CACHE_TTL_MS = 5 * 60_000;
+const DEFAULT_STATS_SUMMARY_CACHE_TTL_MS = 300_000;
+const MAX_STATS_SUMMARY_CACHE_TTL_MS = 30 * 60_000;
 const STATS_SUMMARY_CACHE_MAX_ENTRIES = 1_000;
 const statisticsSummaryCache = new Map<number, {
   expiresAtMs: number;

@@ -483,7 +483,7 @@ router.put('/pharmacies/:id/toggle-active', adminWriteLimiter, async (req: AuthR
       .where(eq(pharmacies.id, id));
     invalidateAuthUserCache(id);
 
-    writeLog('admin_toggle_active', {
+    void writeLog('admin_toggle_active', {
       pharmacyId: req.user!.id,
       detail: `薬局ID:${id}を${rows[0].isActive ? '無効' : '有効'}に変更`,
       ipAddress: getClientIp(req),

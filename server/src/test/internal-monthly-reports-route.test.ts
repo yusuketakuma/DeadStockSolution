@@ -85,7 +85,7 @@ describe('internal monthly reports route auth and validation', () => {
       .set('Authorization', 'Bearer monthly-secret');
 
     expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: '年月パラメータが不正です' });
+    expect(response.body).toEqual({ error: '月パラメータが不正です' });
     expect(mocks.triggerManualMonthlyReport).not.toHaveBeenCalled();
   });
 

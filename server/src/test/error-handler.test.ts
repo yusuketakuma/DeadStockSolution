@@ -66,7 +66,7 @@ describe('error-handler', () => {
     const res = await request(app).get('/http-error');
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'not found', code: 'HTTP_404' });
+    expect(res.body).toEqual({ error: 'リクエストに失敗しました', code: 'HTTP_404' });
   });
 
   it('hides 4xx details in production', async () => {
@@ -92,7 +92,7 @@ describe('error-handler', () => {
     const res = await request(app).get('/unsafe-code');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: 'db detail', code: 'HTTP_400' });
+    expect(res.body).toEqual({ error: 'リクエストに失敗しました', code: 'HTTP_400' });
   });
 
   it('keeps whitelisted application error codes', async () => {
@@ -100,6 +100,6 @@ describe('error-handler', () => {
     const res = await request(app).get('/safe-code');
 
     expect(res.status).toBe(429);
-    expect(res.body).toEqual({ error: 'queue full', code: 'UPLOAD_CONFIRM_QUEUE_LIMIT' });
+    expect(res.body).toEqual({ error: 'リクエストに失敗しました', code: 'UPLOAD_CONFIRM_QUEUE_LIMIT' });
   });
 });

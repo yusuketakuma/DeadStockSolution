@@ -1,4 +1,73 @@
 {
-  "lastCheckedPluginVersion": "2.25.0",
-  "files": {}
+  "lastCheckedPluginVersion": "3.3.0",
+  "files": {
+    "CLAUDE.md": {
+      "templateVersion": "2.5.23",
+      "hash": "afcf816a3bb6eb9b01eadf66eeeba1328df6d0a8722945c831dec792efe89c2c"
+    },
+    "AGENTS.md": {
+      "templateVersion": "2.5.23",
+      "hash": "cf28a2b76a21b5b3c2a2a0460f8f11a5ee4d4fe92d16ea89731b10c7b4a69187"
+    },
+    "Plans.md": {
+      "templateVersion": "2.5.23",
+      "hash": "031d88807cf9ccc48b51cf0e617cf3919d8c24263478e72e2767056187ec71a5"
+    },
+    ".claude/rules/workflow.md": {
+      "templateVersion": "2.5.23",
+      "hash": "a4841055753fe75ab9fe365edd23646779f03a00b7fecace8aa6b5bf194d2332"
+    },
+    ".claude/rules/coding-standards.md": {
+      "templateVersion": "2.5.23",
+      "hash": "b604e695e1bee170c06def6c124bbfba4443ade362d83755bd050817de3202c4"
+    },
+    ".claude/rules/testing.md": {
+      "templateVersion": "2.5.23",
+      "hash": "9c6f142106f8d28be80a1ad1a7fe5f04ed01c4557166adb70b97745b94bd074b"
+    },
+    ".claude/rules/plans-management.md": {
+      "templateVersion": "2.5.23",
+      "hash": "a550e64247fbf7774b8789b58ad9ce5fa17a8e51865171cbcc1f1b4355a0f067"
+    },
+    ".claude/rules/ui-debugging-agent-browser.md": {
+      "templateVersion": "2.7.13",
+      "hash": "9db2009249867b92c401994835427167a8fb032a533b86935db02938509bbb60"
+    },
+    ".claude/rules/test-quality.md": {
+      "templateVersion": "2.5.30",
+      "hash": "21b73fe02f5c47f0ffb60e37e8de854d37d99d4aa24bc9c34ae232e597581c72"
+    },
+    ".claude/rules/implementation-quality.md": {
+      "templateVersion": "2.5.30",
+      "hash": "6afed9bbd3cff620c87292fbfbad94e0802805581973192e60f1c8be65d96ec3"
+    },
+    ".claude/rules/skills-gate.md": {
+      "templateVersion": "2.6.0",
+      "hash": "ad3e44c32f056ec03b42e4a8f689ca55afc1152f4fbce6b45fe4202efa4fc6f2"
+    },
+    ".claude/rules/memory-integration.md": {
+      "templateVersion": "2.6.0",
+      "hash": "d610241464d19ce79b5c6cb7ba25aabfd9d6b303f488b5786b72b8013e8328c7"
+    },
+    ".claude/memory/decisions.md": {
+      "templateVersion": "2.5.23",
+      "hash": "1b2eadaa879cce73757bd08bab3742e2cf447255c86776e9bb9550dc873135bc"
+    },
+    ".claude/memory/patterns.md": {
+      "templateVersion": "2.5.23",
+      "hash": "46b9d44b794786994458bcad8360f7703d8a162fb40bfe83974e6aa011588141"
+    },
+    ".claude/settings.local.json": {
+      "templateVersion": "2.5.23",
+      "hash": "357d10ab3d70840eb1ca8e2f794cdf4b0bf82d35d5cbdc80396753e6c8193a0e"
+    },
+    ".claude/settings.json": {
+      "templateVersion": "2.5.23",
+      "hash": "7b94450742b3a08d2fe56aae7dd41c3ebcb0eff584d4c446f67cfb8e1cbdb99a"
+    },
+    ".claude-code-harness.config.yaml": {
+      "templateVersion": "2.5.23",
+      "hash": "236dec7eb635b8c6b0d196bfcbe53005c46d2dd9afd92291d40bf90dbb1b3d7a"
+    }
+  }
 }

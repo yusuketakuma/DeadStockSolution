@@ -2,7 +2,7 @@
 description: Memory Integration ルール - Claude-mem との連携によるセッション跨ぎ品質強化
 paths: "**"
 _harness_template: "rules/memory-integration.md.template"
-_harness_version: "2.25.0"
+_harness_version: "2.6.0"
 _harness_condition: "claude_mem.enabled"
 ---
 

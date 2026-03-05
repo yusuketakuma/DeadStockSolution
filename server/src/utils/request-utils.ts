@@ -65,3 +65,13 @@ export function parseTimestamp(raw: unknown): Date | null {
 export function escapeLikeWildcards(value: string): string {
   return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);
 }
+
+export function buildPaginatedResponse<T>(data: T[], pagination: { page: number; limit: number; total: number }) {
+  return {
+    data,
+    pagination: {
+      ...pagination,
+      totalPages: Math.ceil(pagination.total / pagination.limit),
+    },
+  };
+}

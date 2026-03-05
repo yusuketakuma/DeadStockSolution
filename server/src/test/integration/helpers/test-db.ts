@@ -11,6 +11,9 @@ export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
 let client: PGlite | null = null;
 let db: TestDb | null = null;
+let initPromise: Promise<TestDb> | null = null;
+let snapshotCache: Snapshot | null = null;
+let resetTableNamesCache: string[] | null = null;
 
 /* ------------------------------------------------------------------ */
 /*  Snapshot types                                                     */
@@ -73,6 +76,8 @@ interface Snapshot {
 const DRIZZLE_DIR = path.resolve(__dirname, '../../../../drizzle');
 
 function getLatestSnapshot(): Snapshot {
+  if (snapshotCache) return snapshotCache;
+
   const journalPath = path.join(DRIZZLE_DIR, 'meta', '_journal.json');
   const journal = JSON.parse(fs.readFileSync(journalPath, 'utf-8')) as {
     entries: Array<{ idx: number; tag: string }>;
@@ -86,7 +91,8 @@ function getLatestSnapshot(): Snapshot {
       `${String(entry.idx).padStart(4, '0')}_snapshot.json`,
     );
     if (fs.existsSync(snapshotPath)) {
-      return JSON.parse(fs.readFileSync(snapshotPath, 'utf-8')) as Snapshot;
+      snapshotCache = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8')) as Snapshot;
+      return snapshotCache;
     }
   }
   throw new Error('No Drizzle snapshot found');
@@ -98,10 +104,10 @@ function getLatestSnapshot(): Snapshot {
 
 function buildColumnDef(col: SnapshotColumn): string {
   if (col.type === 'serial' && col.primaryKey) {
-    return `"${col.name}" SERIAL PRIMARY KEY`;
+    return `${quoteIdentifier(col.name)} SERIAL PRIMARY KEY`;
   }
 
-  let def = `"${col.name}" ${col.type}`;
+  let def = `${quoteIdentifier(col.name)} ${col.type}`;
   if (col.default != null) {
     def += ` DEFAULT ${col.default}`;
   }
@@ -112,6 +118,44 @@ function buildColumnDef(col: SnapshotColumn): string {
     def += ' PRIMARY KEY';
   }
   return def;
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function joinQuoted(columns: string[]): string {
+  return columns.map(quoteIdentifier).join(', ');
+}
+
+function buildOptionalActionClause(
+  action: string,
+  keyword: 'DELETE' | 'UPDATE',
+): string {
+  return action !== 'no action' ? ` ON ${keyword} ${action}` : '';
+}
+
+function getColumnExpression(
+  column: SnapshotIndex['columns'][number],
+): string {
+  return column.isExpression ? column.expression : quoteIdentifier(column.expression);
+}
+
+function buildCreateIndexSql(table: SnapshotTable, index: SnapshotIndex): string {
+  const columnExpressions = index.columns.map(getColumnExpression).join(', ');
+  const unique = index.isUnique ? 'UNIQUE ' : '';
+  const method =
+    index.method && index.method !== 'btree' ? ` USING ${index.method}` : '';
+  const where = index.where ? ` WHERE ${index.where}` : '';
+  return `CREATE ${unique}INDEX IF NOT EXISTS ${quoteIdentifier(index.name)} ON ${quoteIdentifier(table.name)}${method} (${columnExpressions})${where}`;
+}
+
+function buildAddForeignKeySql(table: SnapshotTable, foreignKey: SnapshotForeignKey): string {
+  const fromColumns = joinQuoted(foreignKey.columnsFrom);
+  const toColumns = joinQuoted(foreignKey.columnsTo);
+  const onDelete = buildOptionalActionClause(foreignKey.onDelete, 'DELETE');
+  const onUpdate = buildOptionalActionClause(foreignKey.onUpdate, 'UPDATE');
+  return `ALTER TABLE ${quoteIdentifier(table.name)} ADD CONSTRAINT ${quoteIdentifier(foreignKey.name)} FOREIGN KEY (${fromColumns}) REFERENCES ${quoteIdentifier(foreignKey.tableTo)} (${toColumns})${onDelete}${onUpdate}`;
 }
 
 async function execIgnore(pg: PGlite, statement: string): Promise<void> {
@@ -137,7 +181,7 @@ async function buildSchemaFromSnapshot(pg: PGlite): Promise<void> {
     const values = enumDef.values.map((v) => `'${v}'`).join(', ');
     await execIgnore(
       pg,
-      `CREATE TYPE "${enumDef.name}" AS ENUM (${values})`,
+      `CREATE TYPE ${quoteIdentifier(enumDef.name)} AS ENUM (${values})`,
     );
   }
 
@@ -146,34 +190,25 @@ async function buildSchemaFromSnapshot(pg: PGlite): Promise<void> {
     const colDefs = Object.values(table.columns).map(buildColumnDef);
 
     for (const uc of Object.values(table.uniqueConstraints)) {
-      const cols = uc.columns.map((c) => `"${c}"`).join(', ');
-      colDefs.push(`CONSTRAINT "${uc.name}" UNIQUE (${cols})`);
+      const cols = joinQuoted(uc.columns);
+      colDefs.push(`CONSTRAINT ${quoteIdentifier(uc.name)} UNIQUE (${cols})`);
     }
 
     for (const cc of Object.values(table.checkConstraints)) {
-      colDefs.push(`CONSTRAINT "${cc.name}" CHECK (${cc.value})`);
+      colDefs.push(`CONSTRAINT ${quoteIdentifier(cc.name)} CHECK (${cc.value})`);
     }
 
     await execIgnore(
       pg,
-      `CREATE TABLE IF NOT EXISTS "${table.name}" (\n  ${colDefs.join(',\n  ')}\n)`,
+      `CREATE TABLE IF NOT EXISTS ${quoteIdentifier(table.name)} (\n  ${colDefs.join(',\n  ')}\n)`,
     );
   }
 
   // 3. Create indexes
   for (const table of Object.values(snapshot.tables)) {
     for (const idx of Object.values(table.indexes)) {
-      const colExprs = idx.columns
-        .map((c) => (c.isExpression ? c.expression : `"${c.expression}"`))
-        .join(', ');
-      const unique = idx.isUnique ? 'UNIQUE ' : '';
-      const method =
-        idx.method && idx.method !== 'btree' ? ` USING ${idx.method}` : '';
-      const where = idx.where ? ` WHERE ${idx.where}` : '';
       try {
-        await pg.exec(
-          `CREATE ${unique}INDEX IF NOT EXISTS "${idx.name}" ON "${table.name}"${method} (${colExprs})${where}`,
-        );
+        await pg.exec(buildCreateIndexSql(table, idx));
       } catch {
         // Ignore index errors (expression indexes, missing operators, etc.)
       }
@@ -183,20 +218,8 @@ async function buildSchemaFromSnapshot(pg: PGlite): Promise<void> {
   // 4. Add foreign keys
   for (const table of Object.values(snapshot.tables)) {
     for (const fk of Object.values(table.foreignKeys)) {
-      const fromCols = fk.columnsFrom.map((c) => `"${c}"`).join(', ');
-      const toCols = fk.columnsTo.map((c) => `"${c}"`).join(', ');
-      const onDelete =
-        fk.onDelete !== 'no action'
-          ? ` ON DELETE ${fk.onDelete}`
-          : '';
-      const onUpdate =
-        fk.onUpdate !== 'no action'
-          ? ` ON UPDATE ${fk.onUpdate}`
-          : '';
       try {
-        await pg.exec(
-          `ALTER TABLE "${table.name}" ADD CONSTRAINT "${fk.name}" FOREIGN KEY (${fromCols}) REFERENCES "${fk.tableTo}" (${toCols})${onDelete}${onUpdate}`,
-        );
+        await pg.exec(buildAddForeignKeySql(table, fk));
       } catch {
         // Ignore FK errors (missing target table, duplicate, etc.)
       }
@@ -210,70 +233,40 @@ async function buildSchemaFromSnapshot(pg: PGlite): Promise<void> {
 
 export async function getTestDb(): Promise<TestDb> {
   if (db) return db;
+  if (initPromise) return initPromise;
 
-  client = new PGlite({
-    extensions: { pg_trgm },
-  });
+  initPromise = (async () => {
+    client = new PGlite({
+      extensions: { pg_trgm },
+    });
 
-  await buildSchemaFromSnapshot(client);
+    await buildSchemaFromSnapshot(client);
 
-  db = drizzle(client, { schema });
-  return db;
+    db = drizzle(client, { schema });
+    return db;
+  })();
+
+  try {
+    return await initPromise;
+  } finally {
+    initPromise = null;
+  }
 }
 
-const TABLE_NAMES = [
-  'predictive_alerts',
-  'match_notifications',
-  'match_candidate_snapshots',
-  'dead_stock_reservations',
-  'matching_refresh_jobs',
-  'upload_row_issues',
-  'upload_confirm_jobs',
-  'exchange_proposal_items',
-  'exchange_history',
-  'exchange_feedback',
-  'proposal_comments',
-  'exchange_proposals',
-  'used_medication_items',
-  'dead_stock_items',
-  'uploads',
-  'activity_logs',
-  'system_events',
-  'admin_message_reads',
-  'admin_messages',
-  'user_requests',
-  'password_reset_tokens',
-  'pharmacy_business_hours',
-  'pharmacy_special_hours',
-  'pharmacy_relationships',
-  'pharmacy_trust_scores',
-  'pharmacy_registration_reviews',
-  'notifications',
-  'monthly_reports',
-  'column_mapping_templates',
-  'drug_master_price_history',
-  'drug_master_packages',
-  'drug_master_sync_logs',
-  'drug_master',
-  'drug_master_source_state',
-  'error_codes',
-  'openclaw_commands',
-  'openclaw_command_whitelist',
-  'matching_rule_profiles',
-  'pharmacies',
-];
+function getResetTableNames(): string[] {
+  if (resetTableNamesCache) return resetTableNamesCache;
+  resetTableNamesCache = Object.keys(getLatestSnapshot().tables);
+  return resetTableNamesCache;
+}
 
 export async function resetTestDb(): Promise<void> {
   if (!db) throw new Error('Test DB not initialized. Call getTestDb() first.');
 
-  for (const table of TABLE_NAMES) {
-    await db.execute(sql.raw(`TRUNCATE TABLE "${table}" CASCADE`));
-  }
-  for (const table of TABLE_NAMES) {
-    await db.execute(
-      sql.raw(`ALTER SEQUENCE IF EXISTS "${table}_id_seq" RESTART WITH 1`),
-    );
-  }
+  const tableNames = getResetTableNames();
+  if (tableNames.length === 0) return;
+
+  const tables = tableNames.map(quoteIdentifier).join(', ');
+  await db.execute(sql.raw(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE`));
 }
 
 export async function closeTestDb(): Promise<void> {
@@ -281,5 +274,8 @@ export async function closeTestDb(): Promise<void> {
     await client.close();
     client = null;
     db = null;
+    initPromise = null;
+    snapshotCache = null;
+    resetTableNamesCache = null;
   }
 }

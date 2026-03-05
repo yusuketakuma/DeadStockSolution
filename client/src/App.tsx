@@ -5,6 +5,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { TimelineProvider } from './contexts/TimelineContext';
 import { ToastProvider } from './contexts/ToastContext';
 import AppToastContainer from './components/ui/AppToastContainer';
+import ErrorBoundary from './components/ui/ErrorBoundary';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppScreen from './components/ui/AppScreen';
@@ -82,8 +83,10 @@ export default function App() {
       <TimelineProvider>
         <NotificationProvider>
           <ToastProvider>
-            <AppRoutes />
-            <AppToastContainer />
+            <ErrorBoundary>
+              <AppRoutes />
+              <AppToastContainer />
+            </ErrorBoundary>
           </ToastProvider>
         </NotificationProvider>
       </TimelineProvider>

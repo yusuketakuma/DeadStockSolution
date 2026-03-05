@@ -2,7 +2,7 @@
 description: Plans.md タスク管理ルール（Plans.md 編集時のみ適用）
 paths: "**/Plans.md"
 _harness_template: "rules/plans-management.md.template"
-_harness_version: "2.5.27"
+_harness_version: "2.5.23"
 ---
 
 # Plans.md Management Rules

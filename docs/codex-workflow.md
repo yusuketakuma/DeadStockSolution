@@ -1,16 +1,24 @@
-# Codex Workflow（未完了終了禁止）
+# Codex Workflow (確定版)
 
-## ルール
-- 未完了で終了しない（DONE / BLOCKED の二択）
-- レビューは実装後（実装中のレビュー割り込み禁止）
+## 実行順（絶対）
+1. Plan（必要な時だけ）: `tasks/todo.md` を作る
+2. Implementation: Work Items を “一気に” 全部完了
+3. Verification: typecheck/lint/tests をまとめて実施
+4. Broad Review: 複数観点レビュー（関連項目まで）
+5. Fix & Re-verify: 指摘があれば修正して検証を通しきる
+6. Done: 成果物/検証/レビューが揃ったら終了
 
-## フェーズ
-0) Preflight: lessons を読んで防止ルール適用
-1) Plan: tasks/todo.md に仕様と検証計画を書く（非自明は plan 必須）
-2) Implement: todo の実装を全部終える（レビュー禁止）
-3) Verify: typecheck → lint → tests を通して証拠を残す
-4) Review: 多観点レビュー → 指摘修正 → 再検証 → 再レビュー（P1=0まで）
+## 委譲例
+- 調査: `explorer`
+- 軽実装: `worker`
+- 重実装/設計/セキュリティ: `worker_heavy`
+- spark が死ぬ: `*_fallback`
 
-## BLOCKED
-外部要因で進めない場合のみ END_STATE=BLOCKED とし、
-必要な情報/権限/認証/再現手順を最小要求で列挙する。
+## spark フォールバック（運用）
+- 最初に `explorer` を軽タスクで spawn して疎通確認
+- 失敗したら以後 `explorer_fallback` / `worker_fallback` を使う
+
+## “途中で止まらない”ためのルール
+- 計画提示後に確認待ちしない
+- 「次に進めるなら…」は禁止（やるなら今やる）
+- レビューは最後にまとめる（実装中に挟まない）

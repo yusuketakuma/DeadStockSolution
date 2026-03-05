@@ -58,6 +58,47 @@ interface StatisticsSummary {
     activeCount: number;
   };
 }
+const EMPTY_STATS: StatisticsSummary = {
+  uploads: {
+    deadStockCount: 0,
+    usedMedicationCount: 0,
+    lastDeadStockUpload: null,
+    lastUsedMedicationUpload: null,
+  },
+  inventory: {
+    deadStockItems: 0,
+    deadStockTotalValue: 0,
+    riskScore: 0,
+    bucketCounts: null,
+  },
+  proposals: {
+    sent: 0,
+    received: 0,
+    completed: 0,
+    pendingAction: 0,
+  },
+  exchanges: {
+    totalCount: 0,
+    totalValue: 0,
+  },
+  matching: {
+    candidateCount: 0,
+  },
+  trust: {
+    score: 0,
+    ratingCount: 0,
+    positiveRate: 0,
+    avgRatingReceived: 0,
+    feedbackCount: 0,
+  },
+  network: {
+    favoriteCount: 0,
+    tradingPartnerCount: 0,
+  },
+  alerts: {
+    activeCount: 0,
+  },
+};
 
 function riskScoreVariant(score: number): string {
   if (score >= 65) return 'text-danger';
@@ -103,37 +144,29 @@ export default function StatisticsPage() {
   );
 
   const { data, error, loading } = useAsyncResource(fetcher);
-
-  if (loading) {
-    return <StatisticsShell><p className="text-muted">読み込み中...</p></StatisticsShell>;
-  }
-
-  if (error) {
-    return <StatisticsShell><div className="alert alert-danger">{error}</div></StatisticsShell>;
-  }
-
-  if (!data) return null;
-
-  const buckets = data.inventory.bucketCounts;
+  const summary = data ?? EMPTY_STATS;
+  const buckets = summary.inventory.bucketCounts;
 
   return (
     <StatisticsShell>
+      {loading && <p className="text-muted">読み込み中...</p>}
+      {error && <div className="alert alert-danger">{error}</div>}
       {/* アクション待ち・アラート */}
-      {(data.proposals.pendingAction > 0 || data.alerts.activeCount > 0) && (
+      {(summary.proposals.pendingAction > 0 || summary.alerts.activeCount > 0) && (
         <AppDataPanel title="要対応" className="mb-3">
           <Row className="g-3">
-            {data.proposals.pendingAction > 0 && (
+            {summary.proposals.pendingAction > 0 && (
               <Col xs={6}>
                 <AppKpiCard
-                  value={<span className="text-warning">{data.proposals.pendingAction}</span>}
+                  value={<span className="text-warning">{summary.proposals.pendingAction}</span>}
                   label="対応待ち提案"
                 />
               </Col>
             )}
-            {data.alerts.activeCount > 0 && (
+            {summary.alerts.activeCount > 0 && (
               <Col xs={6}>
                 <AppKpiCard
-                  value={<span className="text-danger">{data.alerts.activeCount}</span>}
+                  value={<span className="text-danger">{summary.alerts.activeCount}</span>}
                   label="未解決アラート"
                 />
               </Col>
@@ -147,21 +180,21 @@ export default function StatisticsPage() {
         <Row className="g-3">
           <Col xs={6} md={3}>
             <AppKpiCard
-              value={data.uploads.deadStockCount}
+              value={summary.uploads.deadStockCount}
               label="デッドストック"
               subLabel="アップロード回数"
             />
           </Col>
           <Col xs={6} md={3}>
             <AppKpiCard
-              value={data.uploads.usedMedicationCount}
+              value={summary.uploads.usedMedicationCount}
               label="医薬品使用量"
               subLabel="アップロード回数"
             />
           </Col>
           <Col xs={6} md={3}>
             <AppKpiCard
-              value={formatDateJa(data.uploads.lastDeadStockUpload, '未実施')}
+              value={formatDateJa(summary.uploads.lastDeadStockUpload, '未実施')}
               label="最終アップロード"
               subLabel="デッドストック"
               valueClassName="h5"
@@ -169,7 +202,7 @@ export default function StatisticsPage() {
           </Col>
           <Col xs={6} md={3}>
             <AppKpiCard
-              value={formatDateJa(data.uploads.lastUsedMedicationUpload, '未実施')}
+              value={formatDateJa(summary.uploads.lastUsedMedicationUpload, '未実施')}
               label="最終アップロード"
               subLabel="医薬品使用量"
               valueClassName="h5"
@@ -183,19 +216,19 @@ export default function StatisticsPage() {
         <Row className="g-3">
           <Col xs={6} md={3}>
             <AppKpiCard
-              value={data.inventory.deadStockItems}
+              value={summary.inventory.deadStockItems}
               label="デッドストック品目数"
             />
           </Col>
           <Col xs={6} md={3}>
             <AppKpiCard
-              value={formatYen(data.inventory.deadStockTotalValue)}
+              value={formatYen(summary.inventory.deadStockTotalValue)}
               label="デッドストック総額"
             />
           </Col>
           <Col xs={6} md={3}>
             <AppKpiCard
-              value={<span className={riskScoreVariant(data.inventory.riskScore)}>{data.inventory.riskScore}</span>}
+              value={<span className={riskScoreVariant(summary.inventory.riskScore)}>{summary.inventory.riskScore}</span>}
               label="リスクスコア"
             />
           </Col>
@@ -215,22 +248,22 @@ export default function StatisticsPage() {
       <AppDataPanel title="マッチング・交換" className="mt-3">
         <Row className="g-3">
           <Col xs={6} md={4}>
-            <AppKpiCard value={data.proposals.sent} label="送信した提案" />
+            <AppKpiCard value={summary.proposals.sent} label="送信した提案" />
           </Col>
           <Col xs={6} md={4}>
-            <AppKpiCard value={data.proposals.received} label="受信した提案" />
+            <AppKpiCard value={summary.proposals.received} label="受信した提案" />
           </Col>
           <Col xs={6} md={4}>
-            <AppKpiCard value={data.proposals.completed} label="完了済み提案" />
+            <AppKpiCard value={summary.proposals.completed} label="完了済み提案" />
           </Col>
           <Col xs={6} md={4}>
-            <AppKpiCard value={data.exchanges.totalCount} label="交換完了件数" />
+            <AppKpiCard value={summary.exchanges.totalCount} label="交換完了件数" />
           </Col>
           <Col xs={6} md={4}>
-            <AppKpiCard value={formatYen(data.exchanges.totalValue)} label="累計交換薬価" />
+            <AppKpiCard value={formatYen(summary.exchanges.totalValue)} label="累計交換薬価" />
           </Col>
           <Col xs={6} md={4}>
-            <AppKpiCard value={data.matching.candidateCount} label="マッチング候補数" />
+            <AppKpiCard value={summary.matching.candidateCount} label="マッチング候補数" />
           </Col>
         </Row>
       </AppDataPanel>
@@ -239,24 +272,24 @@ export default function StatisticsPage() {
       <AppDataPanel title="信頼・評価" className="mt-3">
         <Row className="g-3">
           <Col xs={6} md={3}>
-            <AppKpiCard value={data.trust.score} label="信頼スコア" />
+            <AppKpiCard value={summary.trust.score} label="信頼スコア" />
           </Col>
           <Col xs={6} md={3}>
             <AppKpiCard
-              value={data.trust.feedbackCount > 0 ? `${data.trust.avgRatingReceived} / 5` : '-'}
+              value={summary.trust.feedbackCount > 0 ? `${summary.trust.avgRatingReceived} / 5` : '-'}
               label="平均評価"
-              subLabel={data.trust.feedbackCount > 0 ? `${data.trust.feedbackCount}件の評価` : '評価なし'}
+              subLabel={summary.trust.feedbackCount > 0 ? `${summary.trust.feedbackCount}件の評価` : '評価なし'}
             />
           </Col>
           <Col xs={6} md={3}>
             <AppKpiCard
-              value={data.trust.ratingCount > 0 ? `${data.trust.positiveRate}%` : '-'}
+              value={summary.trust.ratingCount > 0 ? `${summary.trust.positiveRate}%` : '-'}
               label="高評価率"
               subLabel="評価4以上の割合"
             />
           </Col>
           <Col xs={6} md={3}>
-            <AppKpiCard value={data.trust.ratingCount} label="評価件数" />
+            <AppKpiCard value={summary.trust.ratingCount} label="評価件数" />
           </Col>
         </Row>
       </AppDataPanel>
@@ -266,13 +299,13 @@ export default function StatisticsPage() {
         <Row className="g-3">
           <Col xs={6}>
             <AppKpiCard
-              value={data.network.tradingPartnerCount}
+              value={summary.network.tradingPartnerCount}
               label="取引先数"
               subLabel="交換実績がある薬局"
             />
           </Col>
           <Col xs={6}>
-            <AppKpiCard value={data.network.favoriteCount} label="お気に入り薬局数" />
+            <AppKpiCard value={summary.network.favoriteCount} label="お気に入り薬局数" />
           </Col>
         </Row>
       </AppDataPanel>

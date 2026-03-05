@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAsyncState } from '../hooks/useAsyncState';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
+import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -133,23 +134,27 @@ export default function ProposalDetailPage() {
     timelineSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [data, location.hash]);
 
+  const proposalForItems = data?.proposal;
+  const items = useMemo(() => data?.items ?? [], [data]);
+  const itemsAtoB = useMemo(
+    () => (proposalForItems ? items.filter((i) => i.fromPharmacyId === proposalForItems.pharmacyAId) : []),
+    [items, proposalForItems],
+  );
+  const itemsBtoA = useMemo(
+    () => (proposalForItems ? items.filter((i) => i.fromPharmacyId === proposalForItems.pharmacyBId) : []),
+    [items, proposalForItems],
+  );
+
   if (loading && !data) return <PageLoader />;
   if (!data) {
     return (
-      <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-        <span>{error || 'マッチング詳細を取得できませんでした。'}</span>
-        <AppButton size="sm" variant="outline-danger" onClick={() => void fetchDetail()}>
-          再試行
-        </AppButton>
-      </AppAlert>
+      <ErrorRetryAlert error={error || 'マッチング詳細を取得できませんでした。'} onRetry={() => void fetchDetail()} />
     );
   }
 
-  const { proposal, items, pharmacyA, pharmacyB } = data;
+  const proposal = data.proposal;
+  const { pharmacyA, pharmacyB } = data;
   const isA = proposal.pharmacyAId === user?.id;
-
-  const itemsAtoB = items.filter((i) => i.fromPharmacyId === proposal.pharmacyAId);
-  const itemsBtoA = items.filter((i) => i.fromPharmacyId === proposal.pharmacyBId);
 
   // 3-phase: マッチング前 → 仮マッチング → 確定
   const isTentativePhase = ['proposed', 'accepted_a', 'accepted_b'].includes(proposal.status);
@@ -189,8 +194,7 @@ export default function ProposalDetailPage() {
       const result = await api.post<{ message: string }>(`/exchange/proposals/${id}/${pendingAction}`);
       setMessage(result.message);
       setPendingAction(null);
-      await fetchDetail();
-      await fetchComments();
+      await Promise.all([fetchDetail(), fetchComments()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : '操作に失敗しました');
     } finally {

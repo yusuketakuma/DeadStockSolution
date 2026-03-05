@@ -81,6 +81,7 @@ const UPLOAD_JOB_POLL_INTERVAL_MS = import.meta.env.MODE === 'test' ? 20 : 1500;
 const UPLOAD_JOB_POLL_MAX_INTERVAL_MS = import.meta.env.MODE === 'test' ? 100 : 5000;
 const UPLOAD_JOB_MAX_POLL_WAIT_MS = import.meta.env.MODE === 'test' ? 3000 : 60 * 60 * 1000;
 const UPLOAD_JOB_POLL_TRANSIENT_RETRY_MAX = import.meta.env.MODE === 'test' ? 1 : 3;
+const UPLOAD_COMPLETE_NAVIGATE_DELAY_MS = import.meta.env.MODE === 'test' ? 0 : 1200;
 
 function resolveNextPollIntervalMs(elapsedMs: number, status: 'pending' | 'processing'): number {
   if (status === 'processing') {
@@ -472,7 +473,7 @@ export default function UploadPage() {
         navigateTimerRef.current = setTimeout(() => {
           navigateTimerRef.current = null;
           navigate(submittedUploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
-        }, 1200);
+        }, UPLOAD_COMPLETE_NAVIGATE_DELAY_MS);
       }
     } catch (err) {
       if (controller.signal.aborted) return;

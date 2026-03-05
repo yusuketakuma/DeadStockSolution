@@ -13,7 +13,7 @@ import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { groupBy } from '../utils/array-utils';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { normalizeSearchTerm, parsePagination, escapeLikeWildcards } from '../utils/request-utils';
+import { normalizeSearchTerm, parsePagination, escapeLikeWildcards, buildPaginatedResponse } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 import { logger } from '../services/logger';
@@ -174,10 +174,7 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
       .from(deadStockItems)
       .where(eq(deadStockItems.pharmacyId, req.user!.id));
 
-    res.json({
-      data: items,
-      pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
-    });
+    res.json(buildPaginatedResponse(items, { page, limit, total: total.count }));
   } catch (err) {
     logger.error('Dead stock list error:', { error: (err as Error).message });
     res.status(500).json({ error: 'デッドストックリストの取得に失敗しました' });
@@ -237,10 +234,7 @@ router.get('/used-medication', async (req: AuthRequest, res: Response) => {
       .from(usedMedicationItems)
       .where(eq(usedMedicationItems.pharmacyId, req.user!.id));
 
-    res.json({
-      data: items,
-      pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
-    });
+    res.json(buildPaginatedResponse(items, { page, limit, total: total.count }));
   } catch (err) {
     logger.error('Used medication list error:', { error: (err as Error).message });
     res.status(500).json({ error: '医薬品使用量リストの取得に失敗しました' });
@@ -360,10 +354,7 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       .innerJoin(pharmacies, eq(deadStockItems.pharmacyId, pharmacies.id))
       .where(whereExpr);
 
-    res.json({
-      data: enrichedItems,
-      pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
-    });
+    res.json(buildPaginatedResponse(enrichedItems, { page, limit, total: total.count }));
   } catch (err) {
     logger.error('Browse inventory error:', { error: (err as Error).message });
     res.status(500).json({ error: '在庫参照に失敗しました' });

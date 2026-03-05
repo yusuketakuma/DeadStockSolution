@@ -40,7 +40,7 @@ vi.mock('drizzle-orm', () => ({
   asc: vi.fn(() => ({})),
   desc: vi.fn(() => ({})),
   inArray: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
+  sql: vi.fn(() => ({ as: vi.fn(() => ({})) })),
 }));
 
 vi.mock('express-rate-limit', () => ({
@@ -406,16 +406,13 @@ describe('exchange-proposals route coverage: GET /proposals list', () => {
         id: 1, pharmacyAId: 2, pharmacyBId: 3, status: 'proposed',
         totalValueA: '1000', totalValueB: '800', valueDifference: '200',
         proposedAt: '2026-03-01T00:00:00.000Z',
+        pharmacyAName: '自薬局', pharmacyBName: '相手薬局',
       },
     ];
 
     mocks.db.select
       .mockImplementationOnce(() => createPaginatedQuery(proposalRows))
-      .mockImplementationOnce(() => createWhereQuery([{ count: 1 }]))
-      .mockImplementationOnce(() => createWhereQuery([
-        { id: 2, name: '自薬局' },
-        { id: 3, name: '相手薬局' },
-      ]));
+      .mockImplementationOnce(() => createWhereQuery([{ count: 1 }]));
 
     mocks.getProposalPriority.mockReturnValue({
       priorityScore: 85,

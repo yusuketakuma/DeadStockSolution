@@ -21,13 +21,6 @@ export interface ColumnMapping {
   [fieldName: string]: string | null;
 }
 
-export interface PreviewResult {
-  headers: string[];
-  rows: string[][];
-  suggestedMapping: ColumnMapping;
-  headerRowIndex: number;
-}
-
 export interface BusinessHoursStatus {
   isOpen: boolean;
   closingSoon: boolean;

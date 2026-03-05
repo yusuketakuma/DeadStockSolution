@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   exchangeProposals,
@@ -91,6 +91,7 @@ function sanitizeBulkActionErrorMessage(err: unknown): string {
   const hiddenDetailTokens = [
     '見つかりません',
     'アクセス権限',
+    'アクセスする権限',
     '承認できる状態',
     '拒否できる状態',
     '状態が変更された',
@@ -104,7 +105,11 @@ function sanitizeBulkActionErrorMessage(err: unknown): string {
 
 function sanitizeProposalActionError(err: unknown): { status: number; message: string } {
   const message = err instanceof Error ? err.message : '';
-  if (message.includes('見つかりません') || message.includes('アクセス権限')) {
+  if (
+    message.includes('見つかりません')
+    || message.includes('アクセス権限')
+    || message.includes('アクセスする権限')
+  ) {
     return { status: 404, message: 'マッチングが見つかりません' };
   }
   if (message.includes('状態が変更された')) {
@@ -291,6 +296,8 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       maxLimit: 100,
     });
     const pharmacyId = req.user!.id;
+    const pharmacyAName = sql<string>`(SELECT name FROM pharmacies WHERE id = ${exchangeProposals.pharmacyAId})`.as('pharmacy_a_name');
+    const pharmacyBName = sql<string>`(SELECT name FROM pharmacies WHERE id = ${exchangeProposals.pharmacyBId})`.as('pharmacy_b_name');
     const proposalSelect = {
       id: exchangeProposals.id,
       pharmacyAId: exchangeProposals.pharmacyAId,
@@ -300,8 +307,9 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
       totalValueB: exchangeProposals.totalValueB,
       valueDifference: exchangeProposals.valueDifference,
       proposedAt: exchangeProposals.proposedAt,
+      pharmacyAName,
+      pharmacyBName,
     };
-
     const ownershipFilter = or(
       eq(exchangeProposals.pharmacyAId, pharmacyId),
       eq(exchangeProposals.pharmacyBId, pharmacyId),
@@ -360,13 +368,6 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
     ]);
     const totalCount = countRow.count;
 
-    const pharmacyIds = [...new Set(rows.flatMap((row) => [row.pharmacyAId, row.pharmacyBId]))];
-    const pharmacyRows = pharmacyIds.length > 0
-      ? await db.select({ id: pharmacies.id, name: pharmacies.name })
-        .from(pharmacies)
-        .where(inArray(pharmacies.id, pharmacyIds))
-      : [];
-    const pharmacyMap = new Map(pharmacyRows.map((row) => [row.id, row.name]));
 
     const prioritized = rows.map((row) => {
       const priority = getProposalPriority({
@@ -379,8 +380,8 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
 
       return {
         ...row,
-        pharmacyAName: pharmacyMap.get(row.pharmacyAId) ?? '',
-        pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
+        pharmacyAName: row.pharmacyAName ?? '',
+        pharmacyBName: row.pharmacyBName ?? '',
         priorityScore: priority.priorityScore,
         priorityReasons: priority.priorityReasons,
         deadlineAt: priority.deadlineAt,
@@ -399,6 +400,37 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
   }
 });
 
+async function fetchProposalData(proposalId: number, pharmacyId: number) {
+  const [proposal] = await db.select()
+    .from(exchangeProposals)
+    .where(and(
+      eq(exchangeProposals.id, proposalId),
+      or(
+        eq(exchangeProposals.pharmacyAId, pharmacyId),
+        eq(exchangeProposals.pharmacyBId, pharmacyId),
+      ),
+    ))
+    .limit(1);
+
+  if (!proposal) return null;
+
+  const items = await db.select({
+    id: exchangeProposalItems.id,
+    deadStockItemId: exchangeProposalItems.deadStockItemId,
+    fromPharmacyId: exchangeProposalItems.fromPharmacyId,
+    toPharmacyId: exchangeProposalItems.toPharmacyId,
+    quantity: exchangeProposalItems.quantity,
+    yakkaValue: exchangeProposalItems.yakkaValue,
+    drugName: deadStockItems.drugName,
+    unit: deadStockItems.unit,
+    yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
+  })
+    .from(exchangeProposalItems)
+    .innerJoin(deadStockItems, eq(exchangeProposalItems.deadStockItemId, deadStockItems.id))
+    .where(eq(exchangeProposalItems.proposalId, proposalId));
+
+  return { proposal, items };
+}
 // Proposal detail
 router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
   try {
@@ -406,37 +438,13 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
     if (!id) return;
     const pharmacyId = req.user!.id;
 
-    const [proposal] = await db.select()
-      .from(exchangeProposals)
-      .where(and(
-        eq(exchangeProposals.id, id),
-        or(
-          eq(exchangeProposals.pharmacyAId, pharmacyId),
-          eq(exchangeProposals.pharmacyBId, pharmacyId),
-        ),
-      ))
-      .limit(1);
-
-    if (!proposal) {
+    const data = await fetchProposalData(id, pharmacyId);
+    if (!data) {
       res.status(404).json({ error: 'マッチングが見つかりません' });
       return;
     }
 
-    // Get items
-    const items = await db.select({
-      id: exchangeProposalItems.id,
-      deadStockItemId: exchangeProposalItems.deadStockItemId,
-      fromPharmacyId: exchangeProposalItems.fromPharmacyId,
-      toPharmacyId: exchangeProposalItems.toPharmacyId,
-      quantity: exchangeProposalItems.quantity,
-      yakkaValue: exchangeProposalItems.yakkaValue,
-      drugName: deadStockItems.drugName,
-      unit: deadStockItems.unit,
-      yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-    })
-      .from(exchangeProposalItems)
-      .innerJoin(deadStockItems, eq(exchangeProposalItems.deadStockItemId, deadStockItems.id))
-      .where(eq(exchangeProposalItems.proposalId, id));
+    const { proposal, items } = data;
 
     // Get pharmacy info
     const [[pharmA], [pharmB]] = await Promise.all([
@@ -475,37 +483,17 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
 // Print data
 router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
   try {
-    // Reuse detail logic
     const id = parseExchangeIdOrBadRequest(res, req.params.id);
     if (!id) return;
     const pharmacyId = req.user!.id;
 
-    const [proposal] = await db.select()
-      .from(exchangeProposals)
-      .where(and(
-        eq(exchangeProposals.id, id),
-        or(
-          eq(exchangeProposals.pharmacyAId, pharmacyId),
-          eq(exchangeProposals.pharmacyBId, pharmacyId),
-        ),
-      ))
-      .limit(1);
+    const data = await fetchProposalData(id, pharmacyId);
+    if (!data) {
+      res.status(404).json({ error: '提案が見つかりません' });
+      return;
+    }
 
-    if (!proposal) { res.status(404).json({ error: '提案が見つかりません' }); return; }
-
-    const items = await db.select({
-      id: exchangeProposalItems.id,
-      fromPharmacyId: exchangeProposalItems.fromPharmacyId,
-      toPharmacyId: exchangeProposalItems.toPharmacyId,
-      quantity: exchangeProposalItems.quantity,
-      yakkaValue: exchangeProposalItems.yakkaValue,
-      drugName: deadStockItems.drugName,
-      unit: deadStockItems.unit,
-      yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-    })
-      .from(exchangeProposalItems)
-      .innerJoin(deadStockItems, eq(exchangeProposalItems.deadStockItemId, deadStockItems.id))
-      .where(eq(exchangeProposalItems.proposalId, id));
+    const { proposal, items } = data;
 
     const printFields = {
       name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,

@@ -1,16 +1,13 @@
 model = "gpt-5.3-codex-spark"
+model_provider = "openai"
 model_reasoning_effort = "xhigh"
+
+sandbox_mode = "read-only"
 approval_policy = "never"
+web_search = "live"
 
 developer_instructions = """
-あなたは UX reviewer。
-観点：
-- alert() 依存など"本番UX破壊"の検出
-- エラー表示/空状態/ローディング/アクセシビリティ
-- 文言（誤解・不安を増やす表現）
-
-出力：
-- P1: ユーザーが詰む/誤操作する
-- P2: 不快/不明瞭/運用事故
-- 改善案（最小）
+UX/運用 reviewer（read-only）。
+- alert() 乱用、フォーカス/print/close の不安定、CSV式注入、エラーメッセージ
+- 管理画面/運用フローで “事故る導線” を優先的に指摘
 """

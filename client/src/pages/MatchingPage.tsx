@@ -3,6 +3,7 @@ import { useAsyncState } from '../hooks/useAsyncState';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
+import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
 import RequireUpload from '../components/RequireUpload';
@@ -48,6 +49,66 @@ interface MatchCandidate {
 function formatPercent(value?: number): string {
   if (value === undefined || value === null || Number.isNaN(value)) return '-';
   return `${Math.round(value)}%`;
+}
+
+interface MatchItemsTableProps {
+  items: MatchItem[];
+  keyPrefix: string;
+}
+
+function MatchItemsTable({ items, keyPrefix }: MatchItemsTableProps) {
+  return (
+    <AppResponsiveSwitch
+      desktop={() => (
+        <div className="table-responsive">
+          <AppTable size="sm" striped className="mb-0 mobile-table">
+            <thead>
+              <tr>
+                <th>薬品名</th>
+                <th>数量</th>
+                <th>単位</th>
+                <th>使用期限</th>
+                <th>薬価(単価)</th>
+                <th>薬価(合計)</th>
+                <th>一致度</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, itemIdx) => (
+                <tr key={itemIdx}>
+                  <td>{item.drugName}</td>
+                  <td>{item.quantity}</td>
+                  <td>{item.unit || '-'}</td>
+                  <td>{item.expirationDate || '-'}</td>
+                  <td>{item.yakkaUnitPrice.toLocaleString()}</td>
+                  <td>{item.yakkaValue.toLocaleString()}</td>
+                  <td>{formatPercent((item.matchScore ?? 0) * 100)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </AppTable>
+        </div>
+      )}
+      mobile={() => (
+        <div className="dl-mobile-data-list">
+          {items.map((item, itemIdx) => (
+            <AppMobileDataCard
+              key={`${keyPrefix}-${itemIdx}`}
+              title={item.drugName}
+              fields={[
+                { label: '数量', value: item.quantity },
+                { label: '単位', value: item.unit || '-' },
+                { label: '使用期限', value: item.expirationDate || '-' },
+                { label: '薬価(単価)', value: item.yakkaUnitPrice.toLocaleString() },
+                { label: '薬価(合計)', value: item.yakkaValue.toLocaleString() },
+                { label: '一致度', value: formatPercent((item.matchScore ?? 0) * 100) },
+              ]}
+            />
+          ))}
+        </div>
+      )}
+    />
+  );
 }
 
 export default function MatchingPage() {
@@ -118,7 +179,7 @@ export default function MatchingPage() {
     <RequireUpload>
       <PageShell>
         <h4 className="page-title mb-3">マッチング</h4>
-        {error && <AppAlert variant="danger">{error}</AppAlert>}
+        {error && <ErrorRetryAlert error={error} onRetry={() => { setError(''); void handleSearch(); }} />}
         {proposalRetrySuggested && (
           <AppAlert variant="warning" className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
             <span className="small">在庫状態が更新された可能性があります。最新条件で再マッチングしてください。</span>
@@ -200,109 +261,11 @@ export default function MatchingPage() {
                 <Row className="g-3 mb-3">
                   <Col lg={6}>
                     <h6>あなた → {candidate.pharmacyName} ({candidate.totalValueA.toLocaleString()}円)</h6>
-                    <AppResponsiveSwitch
-                      desktop={() => (
-                        <div className="table-responsive">
-                          <AppTable size="sm" striped className="mb-0 mobile-table">
-                            <thead>
-                              <tr>
-                                <th>薬品名</th>
-                                <th>数量</th>
-                                <th>単位</th>
-                                <th>使用期限</th>
-                                <th>薬価(単価)</th>
-                                <th>薬価(合計)</th>
-                                <th>一致度</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {candidate.itemsFromA.map((item, itemIdx) => (
-                                <tr key={itemIdx}>
-                                  <td>{item.drugName}</td>
-                                  <td>{item.quantity}</td>
-                                  <td>{item.unit || '-'}</td>
-                                  <td>{item.expirationDate || '-'}</td>
-                                  <td>{item.yakkaUnitPrice.toLocaleString()}</td>
-                                  <td>{item.yakkaValue.toLocaleString()}</td>
-                                  <td>{formatPercent((item.matchScore ?? 0) * 100)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </AppTable>
-                        </div>
-                      )}
-                      mobile={() => (
-                        <div className="dl-mobile-data-list">
-                          {candidate.itemsFromA.map((item, itemIdx) => (
-                            <AppMobileDataCard
-                              key={`${candidate.pharmacyId}-a-${itemIdx}`}
-                              title={item.drugName}
-                              fields={[
-                                { label: '数量', value: item.quantity },
-                                { label: '単位', value: item.unit || '-' },
-                                { label: '使用期限', value: item.expirationDate || '-' },
-                                { label: '薬価(単価)', value: item.yakkaUnitPrice.toLocaleString() },
-                                { label: '薬価(合計)', value: item.yakkaValue.toLocaleString() },
-                                { label: '一致度', value: formatPercent((item.matchScore ?? 0) * 100) },
-                              ]}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    />
+                    <MatchItemsTable items={candidate.itemsFromA} keyPrefix={`${candidate.pharmacyId}-a`} />
                   </Col>
                   <Col lg={6}>
                     <h6>{candidate.pharmacyName} → あなた ({candidate.totalValueB.toLocaleString()}円)</h6>
-                    <AppResponsiveSwitch
-                      desktop={() => (
-                        <div className="table-responsive">
-                          <AppTable size="sm" striped className="mb-0 mobile-table">
-                            <thead>
-                              <tr>
-                                <th>薬品名</th>
-                                <th>数量</th>
-                                <th>単位</th>
-                                <th>使用期限</th>
-                                <th>薬価(単価)</th>
-                                <th>薬価(合計)</th>
-                                <th>一致度</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {candidate.itemsFromB.map((item, itemIdx) => (
-                                <tr key={itemIdx}>
-                                  <td>{item.drugName}</td>
-                                  <td>{item.quantity}</td>
-                                  <td>{item.unit || '-'}</td>
-                                  <td>{item.expirationDate || '-'}</td>
-                                  <td>{item.yakkaUnitPrice.toLocaleString()}</td>
-                                  <td>{item.yakkaValue.toLocaleString()}</td>
-                                  <td>{formatPercent((item.matchScore ?? 0) * 100)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </AppTable>
-                        </div>
-                      )}
-                      mobile={() => (
-                        <div className="dl-mobile-data-list">
-                          {candidate.itemsFromB.map((item, itemIdx) => (
-                            <AppMobileDataCard
-                              key={`${candidate.pharmacyId}-b-${itemIdx}`}
-                              title={item.drugName}
-                              fields={[
-                                { label: '数量', value: item.quantity },
-                                { label: '単位', value: item.unit || '-' },
-                                { label: '使用期限', value: item.expirationDate || '-' },
-                                { label: '薬価(単価)', value: item.yakkaUnitPrice.toLocaleString() },
-                                { label: '薬価(合計)', value: item.yakkaValue.toLocaleString() },
-                                { label: '一致度', value: formatPercent((item.matchScore ?? 0) * 100) },
-                              ]}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    />
+                    <MatchItemsTable items={candidate.itemsFromB} keyPrefix={`${candidate.pharmacyId}-b`} />
                   </Col>
                 </Row>
 

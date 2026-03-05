@@ -2,7 +2,7 @@
 description: 2エージェントワークフローの基本ルール
 alwaysApply: true
 _harness_template: "rules/workflow.md.template"
-_harness_version: "2.5.27"
+_harness_version: "2.5.23"
 ---
 
 # 2-Agent Workflow Rules

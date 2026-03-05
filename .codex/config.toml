@@ -1,146 +1,155 @@
+# .codex/config.toml (project-scoped)
+# 読み込みには「プロジェクトを trusted」にする必要があります。
+
 # =========================
-# Root keys（必ず先頭）
+# Root keys
 # =========================
 model = "gpt-5.3-codex"
 review_model = "gpt-5.3-codex"
 model_provider = "openai"
 
-# 司令塔（ルートセッション）は 5.3 codex xhigh
-model_reasoning_effort = "xhigh"
+# 司令塔（ルートセッション）
+model_reasoning_effort = "medium"
+# model_reasoning_summary = "auto"
 
-# 非対話（承認ダイアログで止めない）
-# on-failure は deprecated。never / on-request を使う。  [oai_citation:8‡OpenAI Developers](https://developers.openai.com/codex/config-reference/)
+# 途中停止要因（承認待ち）を排除
 approval_policy = "never"
 
-# デフォルトはフルアクセス（危険なので rules で最低限ガード）
+# デフォルトはフルアクセス（危険）
 sandbox_mode = "danger-full-access"
 
-# Web検索は積極利用
+# Web search: disabled | cached | live
 web_search = "live"
 
-# 口調（任意）
+# 任意: pragmatic / etc
 personality = "pragmatic"
 
-# 実験機能を意図的に使うので警告は抑止
+# 不安定機能の警告を抑制
 suppress_unstable_features_warning = true
 
+# AGENTS.md 等のプロジェクトドキュメントを切り詰めない
+project_doc_max_bytes = 131072
+
+# 長時間コマンドを途中で殺さない（ms）
+background_terminal_max_timeout = 3600000
+
+# コンテキスト圧縮時に “未完了で終了しない規約” を保持する
+experimental_compact_prompt_file = "compact_prompt.txt"
 
 # =========================
-# Multi-agent limits / roles
-# =========================
-[agents]
-max_threads = 32
-max_depth = 2
-
-# --- Explorer ---
-[agents.explorer]
-description = "高速調査・影響範囲特定・委譲設計（原則実装しない）。spark優先。"
-config_file = "agents/explorer.toml"
-
-[agents.explorer_fallback]
-description = "explorer のフォールバック（spark不可時）。gpt-5.3-codex + medium。"
-config_file = "agents/explorer_fallback.toml"
-
-# --- Workers ---
-[agents.worker_light]
-description = "軽量実装（<=250LOC目安）。spark優先。/simplify必須。"
-config_file = "agents/worker_light.toml"
-
-[agents.worker_light_fallback]
-description = "worker_light のフォールバック（spark不可時）。gpt-5.3-codex + medium。"
-config_file = "agents/worker_light_fallback.toml"
-
-[agents.worker_heavy]
-description = "重たい実装（>800LOCや横断改修）。gpt-5.3-codex xhigh。/simplify必須。"
-config_file = "agents/worker_heavy.toml"
-
-# --- Test engineer ---
-[agents.test_engineer]
-description = "テスト追加/再現/検証設計。spark優先。"
-config_file = "agents/test_engineer.toml"
-
-[agents.test_engineer_fallback]
-description = "test_engineer のフォールバック（spark不可時）。gpt-5.3-codex + medium。"
-config_file = "agents/test_engineer_fallback.toml"
-
-# --- Reviewers (multi-lens) ---
-[agents.reviewer_security]
-description = "セキュリティ観点レビュー＋修正（必要時）"
-config_file = "agents/reviewer_security.toml"
-
-[agents.reviewer_quality]
-description = "正しさ/型/保守性/設計観点レビュー＋修正（必要時）"
-config_file = "agents/reviewer_quality.toml"
-
-[agents.reviewer_release]
-description = "CI/Workflow/設定/運用観点レビュー＋修正（必要時）"
-config_file = "agents/reviewer_release.toml"
-
-# --- Docs writer ---
-[agents.docs_writer]
-description = "ドキュメント/README/運用ノート更新。spark優先。"
-config_file = "agents/docs_writer.toml"
-
-[agents.docs_writer_fallback]
-description = "docs_writer のフォールバック（spark不可時）。gpt-5.3-codex + medium。"
-config_file = "agents/docs_writer_fallback.toml"
-
-
-# =========================
-# Features（0.107.0 の config reference に準拠）
+# Features (0.107.0)
 # =========================
 [features]
-# 実行系
-shell_tool = true
-unified_exec = true
-shell_snapshot = true
-
-# multi-agent（experimental; off by default）  [oai_citation:9‡OpenAI Developers](https://developers.openai.com/codex/config-reference/)
+# Multi-agent を積極利用
 multi_agent = true
 
-# 便利系（必要に応じて）
+# /plan などのモード（必要なら）
 collaboration_modes = true
-personality = true
-request_rule = true
 
-# 実験機能（速度/体験改善）
-child_agents_md = true
-remote_models = true
+# ルール/実行周り（運用で便利）
+request_rule = true
 runtime_metrics = true
 
-# Apps/connectors は明示的に無効（過去の 403 / codex_apps MCP 失敗回避）
-# apps は experimental  [oai_citation:10‡OpenAI Developers](https://developers.openai.com/codex/config-reference/)
+# 実行ツール
+shell_tool = true
+
+# 既定で apps は無効（過去のエラー回避）
 apps = false
 apps_mcp_gateway = false
 search_tool = false
 
-# 使わない（必要になったら true に）
+# 使うなら true（ただし環境によっては不要）
+remote_models = false
+
+# パッチ自由形式は現状オフ（必要なら true）
 apply_patch_freeform = false
 
-# Windows 向け（害はない）
-powershell_utf8 = true
+# =========================
+# TUI notifications (optional)
+# =========================
+[tui]
+# 公式例に沿って event type を指定
+notifications = ["agent-turn-complete", "approval-requested"]
 
+# notify フックは “turnごと” に走るのでデフォルトはオフ推奨。
+# 必要なら有効化して .codex/tools/notify-moshi.sh を使う。
+# notify = ["bash", ".codex/tools/notify-moshi.sh"]
 
 # =========================
-# MCP servers（任意: 既存のものを踏襲）
+# Agents
+# =========================
+[agents]
+max_threads = 32
+max_depth = 2
+job_max_runtime_seconds = 21600
+
+# --- Planner / Goal-setter ---
+[agents.planner]
+description = "コードベース理解→目標自動設定→作業分解→委譲設計（確認待ち禁止）"
+config_file = "agents/planner.toml"
+
+# --- Explorer (default: spark) ---
+[agents.explorer]
+description = "高速調査・根拠集め（read-only）。詰まったら web search / 参照を集める。"
+config_file = "agents/explorer_spark.toml"
+
+[agents.explorer_fallback]
+description = "spark が使えない/失敗する場合の代替 explorer（codex medium）"
+config_file = "agents/explorer_fallback.toml"
+
+# --- Worker (default: spark) ---
+[agents.worker]
+description = "軽め/中規模の実装（spark xhigh）。/simplify 標準化。"
+config_file = "agents/worker_spark.toml"
+
+[agents.worker_fallback]
+description = "spark が使えない/失敗する場合の代替 worker（codex medium）"
+config_file = "agents/worker_fallback.toml"
+
+[agents.worker_heavy]
+description = "重い実装・設計判断・セキュリティ絡み（codex xhigh）"
+config_file = "agents/worker_heavy.toml"
+
+# --- Reviewers (read-only) ---
+[agents.review_security]
+description = "Security 観点レビュー（read-only）"
+config_file = "agents/review_security.toml"
+
+[agents.review_correctness]
+description = "Correctness/境界ケース観点レビュー（read-only）"
+config_file = "agents/review_correctness.toml"
+
+[agents.review_quality]
+description = "品質/保守性/設計観点レビュー（read-only）"
+config_file = "agents/review_quality.toml"
+
+[agents.review_performance]
+description = "Performance/スケール観点レビュー（read-only）"
+config_file = "agents/review_performance.toml"
+
+[agents.review_ux]
+description = "UX/アクセシビリティ/運用観点レビュー（read-only）"
+config_file = "agents/review_ux.toml"
+
+# --- Monitor ---
+[agents.monitor]
+description = "長時間コマンド監視・待機・ポーリング（monitor）"
+config_file = "agents/monitor.toml"
+
+# =========================
+# MCP servers
 # =========================
 
 [mcp_servers.context7]
 command = "npx"
 args = ["-y", "@upstash/context7-mcp"]
 startup_timeout_sec = 60
-required = false
-enabled = true
 
 [mcp_servers.serena]
 command = "uvx"
 args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]
 startup_timeout_sec = 120
-required = false
-enabled = true
 
 [mcp_servers.ultracite]
 url = "https://docs.ultracite.ai/mcp"
 startup_timeout_sec = 60
-required = false
-enabled = true

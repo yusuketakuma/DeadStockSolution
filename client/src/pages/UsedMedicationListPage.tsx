@@ -1,6 +1,5 @@
 import AppTable from '../components/ui/AppTable';
-import AppAlert from '../components/ui/AppAlert';
-import AppButton from '../components/ui/AppButton';
+import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
@@ -50,12 +49,7 @@ export default function UsedMedicationListPage() {
       </div>
 
       {error && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={error} onRetry={() => void retry()} />
       )}
 
       <ScrollArea>

@@ -103,6 +103,11 @@ interface UploadConfirmJobRuntime {
   createdAt: string | null;
 }
 
+type UploadConfirmJobRuntimeRow = Omit<UploadConfirmJobRuntime, 'status' | 'applyMode'> & {
+  status: string;
+  applyMode: string;
+};
+
 interface UploadConfirmJobRecord {
   id: number;
   pharmacyId: number;
@@ -156,6 +161,20 @@ type UploadConfirmJobErrorCode =
   | 'STALE_JOB_SKIPPED'
   | 'JOB_CANCELED'
   | 'UPLOAD_CONFIRM_FAILED';
+
+const UPLOAD_CONFIRM_JOB_ERROR_CODES: ReadonlySet<UploadConfirmJobErrorCode> = new Set([
+  'MAPPING_INVALID',
+  'HEADER_ROW_INVALID',
+  'FILE_LIMIT_EXCEEDED',
+  'FILE_PARSE_FAILED',
+  'APPLY_MODE_INVALID',
+  'UPLOAD_TYPE_INVALID',
+  'JOB_STATUS_INVALID',
+  'FILE_PAYLOAD_MISSING',
+  'STALE_JOB_SKIPPED',
+  'JOB_CANCELED',
+  'UPLOAD_CONFIRM_FAILED',
+]);
 
 interface UploadConfirmJobClassifiedError {
   code: UploadConfirmJobErrorCode;
@@ -219,7 +238,9 @@ function stripJobErrorCodePrefix(rawMessage: string): string {
 function parseJobErrorCode(rawMessage: string): UploadConfirmJobErrorCode | null {
   const matched = rawMessage.match(JOB_ERROR_CODE_PREFIX_PATTERN);
   if (!matched?.[1]) return null;
-  return matched[1] as UploadConfirmJobErrorCode;
+  return UPLOAD_CONFIRM_JOB_ERROR_CODES.has(matched[1] as UploadConfirmJobErrorCode)
+    ? (matched[1] as UploadConfirmJobErrorCode)
+    : null;
 }
 
 function toSafeCount(value: unknown): number {
@@ -561,7 +582,7 @@ function classifyUploadConfirmJobError(err: unknown): UploadConfirmJobClassified
       rawMessage,
     };
   }
-  if (/cancel/i.test(rawMessage)) {
+  if (rawMessage.includes(CANCELLED_JOB_MESSAGE) || /キャンセル/.test(rawMessage) || /cancel/i.test(rawMessage)) {
     return {
       code: 'JOB_CANCELED',
       message: CANCELLED_JOB_MESSAGE,
@@ -673,6 +694,21 @@ function normalizeJobStatus(value: string): UploadConfirmJobStatus {
   );
 }
 
+const JOB_RUNTIME_COLUMNS = {
+  id: uploadConfirmJobs.id,
+  pharmacyId: uploadConfirmJobs.pharmacyId,
+  uploadType: uploadConfirmJobs.uploadType,
+  originalFilename: uploadConfirmJobs.originalFilename,
+  headerRowIndex: uploadConfirmJobs.headerRowIndex,
+  mappingJson: uploadConfirmJobs.mappingJson,
+  status: uploadConfirmJobs.status,
+  applyMode: uploadConfirmJobs.applyMode,
+  deleteMissing: uploadConfirmJobs.deleteMissing,
+  fileBase64: uploadConfirmJobs.fileBase64,
+  attempts: uploadConfirmJobs.attempts,
+  createdAt: uploadConfirmJobs.createdAt,
+} as const;
+
 const JOB_RECORD_COLUMNS = {
   id: uploadConfirmJobs.id,
   pharmacyId: uploadConfirmJobs.pharmacyId,
@@ -699,6 +735,16 @@ const JOB_RECORD_COLUMNS = {
   createdAt: uploadConfirmJobs.createdAt,
   updatedAt: uploadConfirmJobs.updatedAt,
 } as const;
+
+function mapJobRuntime(
+  row: UploadConfirmJobRuntimeRow,
+): UploadConfirmJobRuntime {
+  return {
+    ...row,
+    status: normalizeClaimableStatus(row.status),
+    applyMode: normalizeApplyMode(row.applyMode),
+  };
+}
 
 function mapJobRecord(
   row: Omit<UploadConfirmJobRecord, 'status' | 'applyMode'> & { status: string; applyMode: string },
@@ -756,24 +802,24 @@ function buildNoOtherActiveProcessingCondition(
   );
 }
 
+function buildClaimStatusMatchCondition(
+  candidateStatus: 'pending' | 'processing',
+  staleBeforeIso: string,
+) {
+  if (candidateStatus === 'pending') {
+    return eq(uploadConfirmJobs.status, 'pending');
+  }
+  return or(
+    isNull(uploadConfirmJobs.processingStartedAt),
+    lt(uploadConfirmJobs.processingStartedAt, staleBeforeIso),
+  );
+}
+
 async function claimPendingUploadConfirmJob(): Promise<UploadConfirmJobRuntime | null> {
   for (let attempt = 0; attempt < CLAIM_CONTENTION_RETRY_LIMIT; attempt += 1) {
     const nowIso = new Date().toISOString();
     const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
-    const [candidate] = await db.select({
-      id: uploadConfirmJobs.id,
-      pharmacyId: uploadConfirmJobs.pharmacyId,
-      uploadType: uploadConfirmJobs.uploadType,
-      originalFilename: uploadConfirmJobs.originalFilename,
-      headerRowIndex: uploadConfirmJobs.headerRowIndex,
-      mappingJson: uploadConfirmJobs.mappingJson,
-      status: uploadConfirmJobs.status,
-      applyMode: uploadConfirmJobs.applyMode,
-      deleteMissing: uploadConfirmJobs.deleteMissing,
-      fileBase64: uploadConfirmJobs.fileBase64,
-      attempts: uploadConfirmJobs.attempts,
-      createdAt: uploadConfirmJobs.createdAt,
-    })
+    const [candidate] = await db.select(JOB_RUNTIME_COLUMNS)
       .from(uploadConfirmJobs)
       .where(and(
         buildClaimableStatusCondition(staleBeforeIso),
@@ -805,37 +851,67 @@ async function claimPendingUploadConfirmJob(): Promise<UploadConfirmJobRuntime |
         lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
         or(isNull(uploadConfirmJobs.nextRetryAt), lte(uploadConfirmJobs.nextRetryAt, nowIso)),
         buildNoOtherActiveProcessingCondition(candidate.id, staleBeforeIso),
-        candidateStatus === 'processing'
-          ? or(
-            isNull(uploadConfirmJobs.processingStartedAt),
-            lt(uploadConfirmJobs.processingStartedAt, staleBeforeIso),
-          )
-          : eq(uploadConfirmJobs.status, 'pending'),
+        buildClaimStatusMatchCondition(candidateStatus, staleBeforeIso),
       ))
-      .returning({
-        id: uploadConfirmJobs.id,
-        pharmacyId: uploadConfirmJobs.pharmacyId,
-        uploadType: uploadConfirmJobs.uploadType,
-        originalFilename: uploadConfirmJobs.originalFilename,
-        headerRowIndex: uploadConfirmJobs.headerRowIndex,
-        mappingJson: uploadConfirmJobs.mappingJson,
-        status: uploadConfirmJobs.status,
-        applyMode: uploadConfirmJobs.applyMode,
-        deleteMissing: uploadConfirmJobs.deleteMissing,
-        fileBase64: uploadConfirmJobs.fileBase64,
-        attempts: uploadConfirmJobs.attempts,
-        createdAt: uploadConfirmJobs.createdAt,
-      });
+      .returning(JOB_RUNTIME_COLUMNS);
 
     if (claimed) {
-      return {
-        ...claimed,
-        status: normalizeClaimableStatus(claimed.status),
-        applyMode: normalizeApplyMode(claimed.applyMode),
-      };
+      return mapJobRuntime(claimed);
     }
   }
   return null;
+}
+
+function buildFailedJobUpdatePayload(
+  nextAttempts: number,
+  classified: UploadConfirmJobClassifiedError,
+  nowIso: string,
+): Partial<typeof uploadConfirmJobs.$inferInsert> {
+  const terminal = !classified.retryable || nextAttempts >= MAX_JOB_ATTEMPTS;
+  const payload: Partial<typeof uploadConfirmJobs.$inferInsert> = {
+    status: terminal ? 'failed' : 'pending',
+    attempts: nextAttempts,
+    lastError: formatJobErrorMessage(classified.code, classified.message),
+    processingStartedAt: null,
+    nextRetryAt: terminal ? null : getNextRetryIso(nextAttempts, MAX_JOB_ATTEMPTS, RETRY_BACKOFF_BASE_MS),
+    updatedAt: nowIso,
+  };
+
+  if (terminal) {
+    payload.completedAt = nowIso;
+    if (classified.code === 'JOB_CANCELED') {
+      payload.cancelRequestedAt = nowIso;
+      payload.canceledAt = nowIso;
+    }
+  }
+
+  return payload;
+}
+
+function logUploadConfirmJobFailure(
+  job: UploadConfirmJobRuntime,
+  nextAttempts: number,
+  classified: UploadConfirmJobClassifiedError,
+): void {
+  const logMeta = {
+    jobId: job.id,
+    pharmacyId: job.pharmacyId,
+    attempts: nextAttempts,
+    error: classified.rawMessage,
+    code: classified.code,
+  };
+
+  if (!classified.retryable) {
+    logger.warn('Upload confirm job failed as non-retryable', logMeta);
+    return;
+  }
+
+  if (nextAttempts >= MAX_JOB_ATTEMPTS) {
+    logger.error('Upload confirm job reached max attempts', logMeta);
+    return;
+  }
+
+  logger.warn('Upload confirm job failed and will retry', logMeta);
 }
 
 async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntime): Promise<void> {
@@ -911,27 +987,8 @@ async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntime): Pro
   } catch (err) {
     const nextAttempts = job.attempts + 1;
     const classified = classifyUploadConfirmJobError(err);
-    const message = formatJobErrorMessage(classified.code, classified.message);
     const nowIso = new Date().toISOString();
-    const retryable = classified.retryable;
-    const terminal = !retryable || nextAttempts >= MAX_JOB_ATTEMPTS;
-
-    const updatePayload: Partial<typeof uploadConfirmJobs.$inferInsert> = {
-      status: terminal ? 'failed' : 'pending',
-      attempts: nextAttempts,
-      lastError: message,
-      processingStartedAt: null,
-      nextRetryAt: terminal ? null : getNextRetryIso(nextAttempts, MAX_JOB_ATTEMPTS, RETRY_BACKOFF_BASE_MS),
-      updatedAt: nowIso,
-    };
-
-    if (terminal) {
-      updatePayload.completedAt = nowIso;
-      if (classified.code === 'JOB_CANCELED') {
-        updatePayload.cancelRequestedAt = nowIso;
-        updatePayload.canceledAt = nowIso;
-      }
-    }
+    const updatePayload = buildFailedJobUpdatePayload(nextAttempts, classified, nowIso);
 
     const [updated] = await db.update(uploadConfirmJobs)
       .set(updatePayload)
@@ -951,31 +1008,7 @@ async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntime): Pro
       }
     }
 
-    if (!retryable) {
-      logger.warn('Upload confirm job failed as non-retryable', {
-        jobId: job.id,
-        pharmacyId: job.pharmacyId,
-        attempts: nextAttempts,
-        error: classified.rawMessage,
-        code: classified.code,
-      });
-    } else if (terminal) {
-      logger.error('Upload confirm job reached max attempts', {
-        jobId: job.id,
-        pharmacyId: job.pharmacyId,
-        attempts: nextAttempts,
-        error: classified.rawMessage,
-        code: classified.code,
-      });
-    } else {
-      logger.warn('Upload confirm job failed and will retry', {
-        jobId: job.id,
-        pharmacyId: job.pharmacyId,
-        attempts: nextAttempts,
-        error: classified.rawMessage,
-        code: classified.code,
-      });
-    }
+    logUploadConfirmJobFailure(job, nextAttempts, classified);
   }
 }
 
@@ -1133,28 +1166,11 @@ export async function processUploadConfirmJobById(jobId: number): Promise<boolea
       or(isNull(uploadConfirmJobs.nextRetryAt), lte(uploadConfirmJobs.nextRetryAt, nowIso)),
       or(isNull(uploadConfirmJobs.processingStartedAt), lt(uploadConfirmJobs.processingStartedAt, staleBeforeIso)),
     ))
-    .returning({
-      id: uploadConfirmJobs.id,
-      pharmacyId: uploadConfirmJobs.pharmacyId,
-      uploadType: uploadConfirmJobs.uploadType,
-      originalFilename: uploadConfirmJobs.originalFilename,
-      headerRowIndex: uploadConfirmJobs.headerRowIndex,
-      mappingJson: uploadConfirmJobs.mappingJson,
-      status: uploadConfirmJobs.status,
-      applyMode: uploadConfirmJobs.applyMode,
-      deleteMissing: uploadConfirmJobs.deleteMissing,
-      fileBase64: uploadConfirmJobs.fileBase64,
-      attempts: uploadConfirmJobs.attempts,
-      createdAt: uploadConfirmJobs.createdAt,
-    });
+    .returning(JOB_RUNTIME_COLUMNS);
 
   if (!claimed) return false;
 
-  await processClaimedUploadConfirmJob({
-    ...claimed,
-    status: normalizeClaimableStatus(claimed.status),
-    applyMode: normalizeApplyMode(claimed.applyMode),
-  });
+  await processClaimedUploadConfirmJob(mapJobRuntime(claimed));
   return true;
 }
 
@@ -1242,12 +1258,13 @@ export async function getUploadConfirmJobForPharmacy(jobId: number, pharmacyId: 
 function toCancelResult(
   row: { id: number; status: string; canceledAt: string | null; cancelRequestedAt: string | null },
 ): CancelUploadConfirmJobResult {
+  const status = normalizeJobStatus(row.status);
   return {
     id: row.id,
-    status: normalizeJobStatus(row.status),
+    status,
     canceledAt: row.canceledAt,
     cancelRequestedAt: row.cancelRequestedAt,
-    cancelable: isJobCancelable(normalizeJobStatus(row.status), row.cancelRequestedAt, row.canceledAt),
+    cancelable: isJobCancelable(status, row.cancelRequestedAt, row.canceledAt),
   };
 }
 
@@ -1257,6 +1274,32 @@ const CANCEL_RETURNING_COLUMNS = {
   canceledAt: uploadConfirmJobs.canceledAt,
   cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
 } as const;
+
+function buildCancelUpdatePayload(
+  existing: UploadConfirmJobRecord,
+  canceledBy: number,
+  nowIso: string,
+): Partial<typeof uploadConfirmJobs.$inferInsert> {
+  if (existing.status === 'pending') {
+    return {
+      status: 'failed',
+      cancelRequestedAt: existing.cancelRequestedAt ?? nowIso,
+      canceledAt: nowIso,
+      canceledBy,
+      lastError: formatJobErrorMessage('JOB_CANCELED', CANCELLED_JOB_MESSAGE),
+      nextRetryAt: null,
+      processingStartedAt: null,
+      completedAt: nowIso,
+      updatedAt: nowIso,
+    };
+  }
+
+  return {
+    cancelRequestedAt: existing.cancelRequestedAt ?? nowIso,
+    canceledBy,
+    updatedAt: nowIso,
+  };
+}
 
 async function cancelJobCore(
   jobId: number,
@@ -1280,23 +1323,7 @@ async function cancelJobCore(
       : [];
 
     const [updated] = await tx.update(uploadConfirmJobs)
-      .set(existing.status === 'pending'
-        ? {
-          status: 'failed',
-          cancelRequestedAt: existing.cancelRequestedAt ?? nowIso,
-          canceledAt: nowIso,
-          canceledBy,
-          lastError: formatJobErrorMessage('JOB_CANCELED', CANCELLED_JOB_MESSAGE),
-          nextRetryAt: null,
-          processingStartedAt: null,
-          completedAt: nowIso,
-          updatedAt: nowIso,
-        }
-        : {
-          cancelRequestedAt: existing.cancelRequestedAt ?? nowIso,
-          canceledBy,
-          updatedAt: nowIso,
-        })
+      .set(buildCancelUpdatePayload(existing, canceledBy, nowIso))
       .where(and(
         eq(uploadConfirmJobs.id, existing.id),
         ...ownerConditions,

@@ -51,7 +51,7 @@ export interface ProtectedRouteMeta extends BaseRouteMeta {
 
 export type RouteMeta = PublicRouteMeta | ProtectedRouteMeta;
 
-export const ROUTE_META: RouteMeta[] = [
+export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/login', access: 'public', redirectAuthenticatedTo: '/', component: LoginPage },
   { path: '/register', access: 'public', redirectAuthenticatedTo: '/', component: RegisterPage },
   { path: '/password-reset', access: 'public', redirectAuthenticatedTo: '/', component: PasswordResetPage },
@@ -81,4 +81,4 @@ export const ROUTE_META: RouteMeta[] = [
   { path: '/admin/log-center', access: 'protected', adminOnly: true, useLayout: true, component: AdminLogCenterPage },
   { path: '/admin/drug-master', access: 'protected', adminOnly: true, useLayout: true, component: AdminDrugMasterPage },
   { path: '/admin/openclaw', access: 'protected', adminOnly: true, useLayout: true, component: AdminOpenClawPage },
-];
+]);

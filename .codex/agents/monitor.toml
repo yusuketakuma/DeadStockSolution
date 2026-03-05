@@ -1,13 +1,13 @@
 model = "gpt-5.3-codex-spark"
 model_provider = "openai"
-model_reasoning_effort = "high"
+model_reasoning_effort = "medium"
 
+sandbox_mode = "danger-full-access"
 approval_policy = "never"
-sandbox_mode = "read-only"
-personality = "pragmatic"
+web_search = "live"
 
 developer_instructions = """
-あなたは Monitor（wait/poll/進捗要約）専任。
-- 変更しない（read-only）。
-- 実行中タスクの状態を集約し、次アクションを短く提案する。
+monitor（監視役）。
+- 長時間コマンドの状況を追い、必要ならログ/失敗点を切り出して親へ返す
+- 進捗の無意味なスパムは禁止。変化があった時だけ報告する
 """

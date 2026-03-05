@@ -86,4 +86,17 @@ describe('updates route', () => {
     });
     expect(mocks.loggerWarn).toHaveBeenCalledTimes(1);
   });
+
+  it('returns 502 and stringifies non-Error rejection reason', async () => {
+    const app = createApp();
+    mocks.getGitHubUpdates.mockRejectedValue('upstream-string-error');
+
+    const response = await request(app).get('/api/updates/github');
+
+    expect(response.status).toBe(502);
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      'Failed to fetch GitHub updates',
+      { error: 'upstream-string-error' },
+    );
+  });
 });

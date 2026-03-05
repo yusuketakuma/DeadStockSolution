@@ -1,0 +1,16 @@
+{
+  "phase": "running",
+  "timestamp": "2026-03-05T01:36:00Z",
+  "agentMode": "fallback",
+  "runProcessed": 4,
+  "runMax": 30,
+  "totalTargets": 30,
+  "totalProcessed": 11,
+  "totalRemaining": 19,
+  "current": {
+    "rank": "12",
+    "source": "static-heuristic",
+    "target": "server/src/services/openclaw-service.ts",
+    "reason": "loc=776, loops=4, awaitInLoop=2, sql=5"
+  }
+}

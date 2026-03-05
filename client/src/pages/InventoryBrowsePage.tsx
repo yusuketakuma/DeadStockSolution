@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
-import AppAlert from '../components/ui/AppAlert';
+import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import AppEmptyState from '../components/ui/AppEmptyState';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
@@ -10,7 +10,7 @@ import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/Bus
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-import { useAsyncState } from '../hooks/useAsyncState';
+import { usePaginatedList } from '../hooks/usePaginatedList';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface BrowseItem {
@@ -33,46 +33,49 @@ interface BrowseResponse {
 }
 
 export default function InventoryBrowsePage() {
-  const [items, setItems] = useState<BrowseItem[]>([]);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const { loading, setLoading, error, setError } = useAsyncState();
+  const initializedSearchRef = useRef(false);
 
-  const fetchData = useCallback(async (p: number, q: string) => {
-    setLoading(true);
-    setError('');
-    const params = new URLSearchParams({ page: String(p) });
-    if (q) params.set('search', q);
-    try {
-      const data = await api.get<BrowseResponse>(`/inventory/browse?${params}`);
-      setItems(data.data);
-      setTotalPages(data.pagination.totalPages);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '在庫データの取得に失敗しました');
-    } finally {
-      setLoading(false);
+  const fetchBrowse = useCallback((targetPage: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(targetPage) });
+    if (search) params.set('search', search);
+    return api.get<BrowseResponse>(`/inventory/browse?${params}`, { signal });
+  }, [search]);
+
+  const {
+    items,
+    page,
+    setPage,
+    totalPages,
+    loading,
+    error,
+    fetchPage,
+    retry,
+  } = usePaginatedList<BrowseItem, BrowseResponse>(fetchBrowse, {
+    errorMessage: '在庫データの取得に失敗しました',
+  });
+
+  useEffect(() => {
+    if (!initializedSearchRef.current) {
+      initializedSearchRef.current = true;
+      return;
     }
-  }, [setLoading, setError, setItems, setTotalPages]);
-
-  useEffect(() => { void fetchData(page, search); }, [page, search, fetchData]);
+    if (page !== 1) {
+      setPage(1);
+      return;
+    }
+    void fetchPage(1);
+  }, [fetchPage, page, setPage, search]);
 
   const handleSearch = (q: string) => {
-    setPage(1);
     setSearch(q);
   };
-
   return (
     <PageShell>
       <h4 className="page-title mb-3">全薬局の在庫参照</h4>
       {error && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchData(page, search)}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={error} onRetry={() => void retry()} />
       )}
 
       <div className="mb-3 d-flex gap-2 mobile-stack">

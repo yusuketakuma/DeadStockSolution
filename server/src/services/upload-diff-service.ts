@@ -94,19 +94,92 @@ type UploadDiffTx = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete' | 
 type UploadDiffReader = Pick<typeof db, 'select'>;
 type DeadStockInsertRow = InferInsertModel<typeof deadStockItems>;
 type UsedMedicationInsertRow = InferInsertModel<typeof usedMedicationItems>;
+type WithId = { id: number };
 
-async function insertDeadStockInBatches(tx: UploadDiffTx, rows: DeadStockInsertRow[]): Promise<void> {
-  for (let i = 0; i < rows.length; i += DIFF_INSERT_BATCH_SIZE) {
-    const batch = rows.slice(i, i + DIFF_INSERT_BATCH_SIZE);
-    await tx.insert(deadStockItems).values(batch);
+interface DiffPlan<TIncoming, TExisting extends WithId> {
+  insertedItems: TIncoming[];
+  updatedPairs: Array<{ current: TExisting; item: TIncoming }>;
+  unchanged: number;
+  seenExistingIds: Set<number>;
+}
+
+async function processInBatches<T>(
+  items: T[],
+  batchSize: number,
+  processor: (batch: T[]) => Promise<void>,
+): Promise<void> {
+  const batches = splitIntoChunks(items, batchSize);
+  for (const batch of batches) {
+    await processor(batch);
   }
 }
 
-async function insertUsedMedicationInBatches(tx: UploadDiffTx, rows: UsedMedicationInsertRow[]): Promise<void> {
-  for (let i = 0; i < rows.length; i += DIFF_INSERT_BATCH_SIZE) {
-    const batch = rows.slice(i, i + DIFF_INSERT_BATCH_SIZE);
-    await tx.insert(usedMedicationItems).values(batch);
+function summarizeDiff(
+  diffPlan: { insertedItems: unknown[]; updatedPairs: unknown[]; unchanged: number },
+  deactivated: number,
+  totalIncoming: number,
+): DiffSummary {
+  return {
+    inserted: diffPlan.insertedItems.length,
+    updated: diffPlan.updatedPairs.length,
+    deactivated,
+    unchanged: diffPlan.unchanged,
+    totalIncoming,
+  };
+}
+
+function analyzeIncomingDiff<TIncoming, TExisting extends WithId>(
+  existing: TExisting[],
+  incoming: TIncoming[],
+  buildKeyForExisting: (row: TExisting) => string,
+  buildKeyForIncoming: (item: TIncoming) => string,
+  hasRowChanged: (current: TExisting, item: TIncoming) => boolean,
+): DiffPlan<TIncoming, TExisting> {
+  const existingByKey = buildExistingByKey(existing, buildKeyForExisting);
+  const insertedItems: TIncoming[] = [];
+  const updatedPairs: Array<{ current: TExisting; item: TIncoming }> = [];
+  const seenExistingIds = new Set<number>();
+  let unchanged = 0;
+
+  for (const item of incoming) {
+    const current = existingByKey.get(buildKeyForIncoming(item));
+    if (!current) {
+      insertedItems.push(item);
+      continue;
+    }
+
+    seenExistingIds.add(current.id);
+    if (hasRowChanged(current, item)) {
+      updatedPairs.push({ current, item });
+      continue;
+    }
+
+    unchanged += 1;
   }
+
+  return { insertedItems, updatedPairs, unchanged, seenExistingIds };
+}
+
+function collectMissingIds<TExisting extends WithId>(
+  existing: TExisting[],
+  seenExistingIds: Set<number>,
+  shouldInclude: (row: TExisting) => boolean = () => true,
+): number[] {
+  return existing
+    .filter((row) => shouldInclude(row) && !seenExistingIds.has(row.id))
+    .map((row) => row.id);
+}
+
+async function insertDeadStockInBatches(tx: UploadDiffTx, rows: DeadStockInsertRow[]): Promise<void> {
+  await processInBatches(rows, DIFF_INSERT_BATCH_SIZE, async (batch) => {
+    await tx.insert(deadStockItems).values(batch);
+  });
+}
+
+async function insertUsedMedicationInBatches(tx: UploadDiffTx, rows: UsedMedicationInsertRow[]): Promise<void> {
+  await processInBatches(rows, DIFF_INSERT_BATCH_SIZE, async (batch) => {
+    await tx.insert(usedMedicationItems).values(batch);
+  });
 }
 
 async function updateDeadStockInBatches(
@@ -115,8 +188,7 @@ async function updateDeadStockInBatches(
   uploadId: number,
   updatedPairs: Array<{ current: DeadStockExistingRow; item: PreparedDeadStockDiffInput }>,
 ): Promise<void> {
-  const batches = splitIntoChunks(updatedPairs, DIFF_UPDATE_BATCH_SIZE);
-  for (const batch of batches) {
+  await processInBatches(updatedPairs, DIFF_UPDATE_BATCH_SIZE, async (batch) => {
     const updateRowsSql = sql.join(batch.map(({ current, item }) => sql`(
       ${current.id},
       ${uploadId},
@@ -167,7 +239,7 @@ async function updateDeadStockInBatches(
       WHERE target.id = updates.id
         AND target.pharmacy_id = ${pharmacyId}
     `);
-  }
+  });
 }
 
 async function updateUsedMedicationInBatches(
@@ -176,8 +248,7 @@ async function updateUsedMedicationInBatches(
   uploadId: number,
   updatedPairs: Array<{ current: UsedMedicationExistingRow; item: UsedMedicationDiffInput }>,
 ): Promise<void> {
-  const batches = splitIntoChunks(updatedPairs, DIFF_UPDATE_BATCH_SIZE);
-  for (const batch of batches) {
+  await processInBatches(updatedPairs, DIFF_UPDATE_BATCH_SIZE, async (batch) => {
     const updateRowsSql = sql.join(batch.map(({ current, item }) => sql`(
       ${current.id},
       ${uploadId},
@@ -215,7 +286,7 @@ async function updateUsedMedicationInBatches(
       WHERE target.id = updates.id
         AND target.pharmacy_id = ${pharmacyId}
     `);
-  }
+  });
 }
 
 function prepareDeadStockIncoming(incoming: DeadStockDiffInput[]): PreparedDeadStockDiffInput[] {
@@ -302,125 +373,60 @@ async function selectUsedMedicationExisting(
     .where(eq(usedMedicationItems.pharmacyId, pharmacyId));
 }
 
-interface DeadStockDiffPlan {
-  insertedItems: PreparedDeadStockDiffInput[];
-  updatedPairs: Array<{ current: DeadStockExistingRow; item: PreparedDeadStockDiffInput }>;
-  unchanged: number;
-  seenExistingIds: Set<number>;
-}
-
 function analyzeDeadStockDiff(
   existing: DeadStockExistingRow[],
   dedupedIncoming: PreparedDeadStockDiffInput[],
-): DeadStockDiffPlan {
-  const existingByKey = buildExistingByKey(existing, (row) => deadStockKey({
-    drugCode: row.drugCode,
-    drugName: row.drugName,
-    unit: row.unit,
-    expirationDate: row.expirationDateIso ?? row.expirationDate,
-    lotNumber: row.lotNumber,
-  }));
-
-  const insertedItems: PreparedDeadStockDiffInput[] = [];
-  const updatedPairs: Array<{ current: DeadStockExistingRow; item: PreparedDeadStockDiffInput }> = [];
-  let unchanged = 0;
-  const seenExistingIds = new Set<number>();
-
-  for (const item of dedupedIncoming) {
-    const key = deadStockKey({
+): DiffPlan<PreparedDeadStockDiffInput, DeadStockExistingRow> {
+  return analyzeIncomingDiff(
+    existing,
+    dedupedIncoming,
+    (row) => deadStockKey({
+      drugCode: row.drugCode,
+      drugName: row.drugName,
+      unit: row.unit,
+      expirationDate: row.expirationDateIso ?? row.expirationDate,
+      lotNumber: row.lotNumber,
+    }),
+    (item) => deadStockKey({
       drugCode: item.drugCode,
       drugName: item.drugName,
       unit: item.unit,
       expirationDate: item.normalizedDate,
       lotNumber: item.lotNumber,
-    });
-
-    const current = existingByKey.get(key);
-    if (!current) {
-      insertedItems.push(item);
-      continue;
-    }
-
-    seenExistingIds.add(current.id);
-    if (hasDeadStockRowChanged(current, item)) {
-      updatedPairs.push({ current, item });
-      continue;
-    }
-
-    unchanged += 1;
-  }
-
-  return {
-    insertedItems,
-    updatedPairs,
-    unchanged,
-    seenExistingIds,
-  };
+    }),
+    hasDeadStockRowChanged,
+  );
 }
 
 function collectDeadStockDeactivateIds(
   existing: DeadStockExistingRow[],
   seenExistingIds: Set<number>,
 ): number[] {
-  return existing
-    .filter((row) => row.isAvailable && !seenExistingIds.has(row.id))
-    .map((row) => row.id);
-}
-
-interface UsedMedicationDiffPlan {
-  insertedItems: UsedMedicationDiffInput[];
-  updatedPairs: Array<{ current: UsedMedicationExistingRow; item: UsedMedicationDiffInput }>;
-  unchanged: number;
-  seenExistingIds: Set<number>;
+  return collectMissingIds(existing, seenExistingIds, (row) => row.isAvailable === true);
 }
 
 function analyzeUsedMedicationDiff(
   existing: UsedMedicationExistingRow[],
   dedupedIncoming: UsedMedicationDiffInput[],
-): UsedMedicationDiffPlan {
-  const existingByKey = buildExistingByKey(existing, (row) => usedMedicationKey({
-    drugCode: row.drugCode,
-    drugName: row.drugName,
-    unit: row.unit,
-  }));
-
-  const insertedItems: UsedMedicationDiffInput[] = [];
-  const updatedPairs: Array<{ current: UsedMedicationExistingRow; item: UsedMedicationDiffInput }> = [];
-  let unchanged = 0;
-  const seenExistingIds = new Set<number>();
-
-  for (const item of dedupedIncoming) {
-    const key = usedMedicationKey(item);
-    const current = existingByKey.get(key);
-    if (!current) {
-      insertedItems.push(item);
-      continue;
-    }
-
-    seenExistingIds.add(current.id);
-    if (hasUsedMedicationRowChanged(current, item)) {
-      updatedPairs.push({ current, item });
-      continue;
-    }
-
-    unchanged += 1;
-  }
-
-  return {
-    insertedItems,
-    updatedPairs,
-    unchanged,
-    seenExistingIds,
-  };
+): DiffPlan<UsedMedicationDiffInput, UsedMedicationExistingRow> {
+  return analyzeIncomingDiff(
+    existing,
+    dedupedIncoming,
+    (row) => usedMedicationKey({
+      drugCode: row.drugCode,
+      drugName: row.drugName,
+      unit: row.unit,
+    }),
+    usedMedicationKey,
+    hasUsedMedicationRowChanged,
+  );
 }
 
 function collectUsedMedicationDeleteIds(
   existing: UsedMedicationExistingRow[],
   seenExistingIds: Set<number>,
 ): number[] {
-  return existing
-    .filter((row) => !seenExistingIds.has(row.id))
-    .map((row) => row.id);
+  return collectMissingIds(existing, seenExistingIds);
 }
 
 export async function previewDeadStockDiff(
@@ -436,13 +442,7 @@ export async function previewDeadStockDiff(
     ? collectDeadStockDeactivateIds(existing, diffPlan.seenExistingIds).length
     : 0;
 
-  return {
-    inserted: diffPlan.insertedItems.length,
-    updated: diffPlan.updatedPairs.length,
-    deactivated,
-    unchanged: diffPlan.unchanged,
-    totalIncoming: dedupedIncoming.length,
-  };
+  return summarizeDiff(diffPlan, deactivated, dedupedIncoming.length);
 }
 
 export async function applyDeadStockDiff(
@@ -496,13 +496,7 @@ export async function applyDeadStockDiff(
     }
   }
 
-  return {
-    inserted: diffPlan.insertedItems.length,
-    updated: diffPlan.updatedPairs.length,
-    deactivated,
-    unchanged: diffPlan.unchanged,
-    totalIncoming: dedupedIncoming.length,
-  };
+  return summarizeDiff(diffPlan, deactivated, dedupedIncoming.length);
 }
 
 export async function previewUsedMedicationDiff(
@@ -518,13 +512,7 @@ export async function previewUsedMedicationDiff(
     ? collectUsedMedicationDeleteIds(existing, diffPlan.seenExistingIds).length
     : 0;
 
-  return {
-    inserted: diffPlan.insertedItems.length,
-    updated: diffPlan.updatedPairs.length,
-    deactivated,
-    unchanged: diffPlan.unchanged,
-    totalIncoming: dedupedIncoming.length,
-  };
+  return summarizeDiff(diffPlan, deactivated, dedupedIncoming.length);
 }
 
 export async function applyUsedMedicationDiff(
@@ -572,11 +560,5 @@ export async function applyUsedMedicationDiff(
     }
   }
 
-  return {
-    inserted: diffPlan.insertedItems.length,
-    updated: diffPlan.updatedPairs.length,
-    deactivated,
-    unchanged: diffPlan.unchanged,
-    totalIncoming: dedupedIncoming.length,
-  };
+  return summarizeDiff(diffPlan, deactivated, dedupedIncoming.length);
 }

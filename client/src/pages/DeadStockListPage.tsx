@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Badge, ButtonGroup } from 'react-bootstrap';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
-import AppAlert from '../components/ui/AppAlert';
 import { Link, useNavigate } from 'react-router-dom';
+import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
 import ConfirmActionModal from '../components/ConfirmActionModal';
@@ -11,7 +11,7 @@ import AppEmptyState from '../components/ui/AppEmptyState';
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-import { useAsyncState } from '../hooks/useAsyncState';
+import { usePaginatedList } from '../hooks/usePaginatedList';
 import { useToast } from '../contexts/ToastContext';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
@@ -58,45 +58,41 @@ interface EnrichedItem extends DeadStockItem {
 }
 
 export default function DeadStockListPage() {
-  const [items, setItems] = useState<DeadStockItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const { loading, setLoading, error, setError } = useAsyncState();
   const { showSuccess } = useToast();
   const navigate = useNavigate();
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
   const [sortByExpiry, setSortByExpiry] = useState(false);
 
-  const fetchData = useCallback(async (p: number) => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await api.get<ListResponse>(`/inventory/dead-stock?page=${p}`);
-      setItems(data.data);
-      setTotalPages(data.pagination.totalPages);
-      setTotal(data.pagination.total);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'デッドストック一覧の取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, [setLoading, setError]);
+  const fetchDeadStock = useCallback((targetPage: number, signal?: AbortSignal) =>
+    api.get<ListResponse>(`/inventory/dead-stock?page=${targetPage}`, { signal }), []);
 
-  useEffect(() => { void fetchData(page); }, [page, fetchData]);
+  const {
+    items,
+    page,
+    setPage,
+    totalPages,
+    pagination,
+    loading,
+    error,
+    retry,
+  } = usePaginatedList<DeadStockItem, ListResponse>(fetchDeadStock, {
+    errorMessage: 'デッドストック一覧の取得に失敗しました',
+  });
+  const total = pagination?.total ?? 0;
 
   const handleDeleteConfirmed = async () => {
     if (pendingDeleteId === null) return;
     setDeleting(true);
-    setError('');
+    setActionError('');
     try {
       await api.delete(`/inventory/dead-stock/${pendingDeleteId}`);
       showSuccess('削除しました');
-      await fetchData(page);
+      retry();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '削除に失敗しました');
+      setActionError(err instanceof Error ? err.message : '削除に失敗しました');
     } finally {
       setDeleting(false);
       setPendingDeleteId(null);
@@ -160,13 +156,8 @@ export default function DeadStockListPage() {
         </div>
       )}
 
-      {error && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void fetchData(page)}>
-            再試行
-          </AppButton>
-        </AppAlert>
+      {(error || actionError) && (
+        <ErrorRetryAlert error={error || actionError || ''} onRetry={error ? () => void retry() : undefined} />
       )}
 
       <ScrollArea>

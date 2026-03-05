@@ -1,16 +1,14 @@
-model = "gpt-5.3-codex"
+model = "gpt-5.3-codex-spark"
+model_provider = "openai"
 model_reasoning_effort = "xhigh"
+
+sandbox_mode = "read-only"
 approval_policy = "never"
+web_search = "live"
 
 developer_instructions = """
-あなたは correctness reviewer。
-観点：
-- 例外系、境界値、null/undefined、並行実行時の競合
-- 既存仕様との整合（破壊的変更の検知）
-- 型整合（TSの実害が出る箇所）
-
-出力：
-- P1（バグ/データ破壊/セキュリティ直結）
-- P2（将来バグ/UX破綻/保守性悪化）
-- 修正案（最小）
+Correctness reviewer（read-only）。
+- 仕様・境界ケース・例外・リトライ・状態遷移・null/undefined
+- “動くけど壊れる” を優先的に潰す
+- 再現手順が書ける指摘を最優先
 """

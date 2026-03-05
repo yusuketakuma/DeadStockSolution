@@ -9,6 +9,7 @@ import {
   type PredictiveAlertType,
   usedMedicationItems,
 } from '../db/schema';
+import { splitIntoChunks } from '../utils/array-utils';
 import { parseBoundedInt } from '../utils/number-utils';
 import { normalizeString } from '../utils/string-utils';
 import { logger } from './logger';
@@ -17,6 +18,7 @@ const DEFAULT_NEAR_EXPIRY_DAYS = 45;
 const DEFAULT_EXCESS_STOCK_MONTHS = 3;
 const DEFAULT_PHARMACY_BATCH_SIZE = 200;
 const DEFAULT_SIGNAL_PERSIST_CONCURRENCY = 8;
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 const PREDICTIVE_ALERT_NOTIFICATION_TYPE: NotificationType = 'proposal_status_changed';
 
 interface NearExpiryAggregate {
@@ -43,6 +45,14 @@ interface PredictiveAlertSignal {
   title: string;
   message: string;
   detail: Record<string, unknown>;
+}
+
+interface PredictiveAlertCounters {
+  generatedAlerts: number;
+  duplicateAlerts: number;
+  failedAlerts: number;
+  nearExpiryAlerts: number;
+  excessStockAlerts: number;
 }
 
 export interface RunPredictiveAlertsOptions {
@@ -83,15 +93,18 @@ function to2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function chunkArray<T>(values: T[], size: number): T[][] {
-  if (values.length === 0) {
-    return [];
+
+function getOrInitMapValue<K, V>(map: Map<K, V>, key: K, factory: () => V): V {
+  if (map.has(key)) {
+    return map.get(key) as V;
   }
-  const chunks: T[][] = [];
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push(values.slice(index, index + size));
-  }
-  return chunks;
+  const created = factory();
+  map.set(key, created);
+  return created;
+}
+
+function isFinitePositiveNumber(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
 }
 
 function resolveStockMatchKey(row: {
@@ -99,8 +112,8 @@ function resolveStockMatchKey(row: {
   drugMasterId: number | null;
   drugName: string;
 }): string | null {
-  if (row.drugMasterPackageId) return `pkg:${row.drugMasterPackageId}`;
-  if (row.drugMasterId) return `drug:${row.drugMasterId}`;
+  if (row.drugMasterPackageId !== null) return `pkg:${row.drugMasterPackageId}`;
+  if (row.drugMasterId !== null) return `drug:${row.drugMasterId}`;
   const normalizedName = normalizeString(row.drugName);
   if (!normalizedName) return null;
   return `name:${normalizedName}`;
@@ -204,14 +217,13 @@ async function fetchExcessStockAggregates(
   const usageByPharmacyAndKey = new Map<number, Map<string, number>>();
   for (const usageRow of usageRows) {
     const monthlyUsage = Number(usageRow.monthlyUsage ?? 0);
-    if (!Number.isFinite(monthlyUsage) || monthlyUsage <= 0) continue;
+    if (!isFinitePositiveNumber(monthlyUsage)) continue;
 
     const key = resolveStockMatchKey(usageRow);
     if (!key) continue;
 
-    const byKey = usageByPharmacyAndKey.get(usageRow.pharmacyId) ?? new Map<string, number>();
+    const byKey = getOrInitMapValue(usageByPharmacyAndKey, usageRow.pharmacyId, () => new Map<string, number>());
     byKey.set(key, (byKey.get(key) ?? 0) + monthlyUsage);
-    usageByPharmacyAndKey.set(usageRow.pharmacyId, byKey);
   }
 
   const stockByPharmacyAndKey = new Map<number, Map<string, StockQuantityAggregate>>();
@@ -221,15 +233,14 @@ async function fetchExcessStockAggregates(
     if (!key) continue;
 
     const stockQuantity = Number(stockRow.quantity ?? 0);
-    if (!Number.isFinite(stockQuantity) || stockQuantity <= 0) continue;
+    if (!isFinitePositiveNumber(stockQuantity)) continue;
     const unitPrice = Number(stockRow.yakkaUnitPrice ?? 0);
-    const stockValue = Number.isFinite(unitPrice) && unitPrice > 0 ? stockQuantity * unitPrice : 0;
-    const byKey = stockByPharmacyAndKey.get(stockRow.pharmacyId) ?? new Map<string, StockQuantityAggregate>();
+    const stockValue = isFinitePositiveNumber(unitPrice) ? stockQuantity * unitPrice : 0;
+    const byKey = getOrInitMapValue(stockByPharmacyAndKey, stockRow.pharmacyId, () => new Map<string, StockQuantityAggregate>());
     const current = byKey.get(key) ?? { quantity: 0, totalValue: 0 };
     current.quantity += stockQuantity;
     current.totalValue += stockValue;
     byKey.set(key, current);
-    stockByPharmacyAndKey.set(stockRow.pharmacyId, byKey);
   }
 
   const aggregates = new Map<number, ExcessStockAggregate>();
@@ -272,6 +283,7 @@ async function persistSignal(
 ): Promise<'created' | 'duplicate'> {
   return db.transaction(async (tx) => {
     const dedupeKey = `${signal.alertType}:${dedupeDateKey}`;
+    const createdAtIso = new Date().toISOString();
     const [insertedAlert] = await tx.insert(predictiveAlerts)
       .values({
         pharmacyId: signal.pharmacyId,
@@ -280,8 +292,8 @@ async function persistSignal(
         message: signal.message,
         detailJson: JSON.stringify(signal.detail),
         dedupeKey,
-        detectedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
+        detectedAt: createdAtIso,
+        createdAt: createdAtIso,
       })
       .onConflictDoNothing({ target: [predictiveAlerts.pharmacyId, predictiveAlerts.dedupeKey] })
       .returning({ id: predictiveAlerts.id });
@@ -311,6 +323,34 @@ async function persistSignal(
   });
 }
 
+function applyPersistedSignalResult(
+  counters: PredictiveAlertCounters,
+  signal: PredictiveAlertSignal,
+  result: PromiseSettledResult<'created' | 'duplicate'>,
+): void {
+  if (result.status === 'rejected') {
+    counters.failedAlerts += 1;
+    logger.error('Failed to persist predictive alert signal', {
+      pharmacyId: signal.pharmacyId,
+      alertType: signal.alertType,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+    return;
+  }
+
+  if (result.value === 'duplicate') {
+    counters.duplicateAlerts += 1;
+    return;
+  }
+
+  counters.generatedAlerts += 1;
+  if (signal.alertType === 'near_expiry') {
+    counters.nearExpiryAlerts += 1;
+    return;
+  }
+  counters.excessStockAlerts += 1;
+}
+
 export async function runPredictiveAlertsJob(
   options: RunPredictiveAlertsOptions = {},
 ): Promise<PredictiveAlertsJobResult> {
@@ -319,7 +359,7 @@ export async function runPredictiveAlertsJob(
   const excessStockMonths = resolveExcessStockMonths(options.excessStockMonths);
 
   const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const expiryThreshold = new Date(todayUtc.getTime() + nearExpiryDays * 24 * 60 * 60 * 1000);
+  const expiryThreshold = new Date(todayUtc.getTime() + nearExpiryDays * MILLISECONDS_PER_DAY);
   const todayIso = toDateIso(todayUtc);
   const expiryThresholdIso = toDateIso(expiryThreshold);
   const dedupeDateKey = toDateIso(now);
@@ -353,13 +393,15 @@ export async function runPredictiveAlertsJob(
     };
   }
 
-  let generatedAlerts = 0;
-  let duplicateAlerts = 0;
-  let failedAlerts = 0;
-  let nearExpiryAlerts = 0;
-  let excessStockAlerts = 0;
+  const counters: PredictiveAlertCounters = {
+    generatedAlerts: 0,
+    duplicateAlerts: 0,
+    failedAlerts: 0,
+    nearExpiryAlerts: 0,
+    excessStockAlerts: 0,
+  };
 
-  for (const pharmacyIdBatch of chunkArray(pharmacyIds, pharmacyBatchSize)) {
+  for (const pharmacyIdBatch of splitIntoChunks(pharmacyIds, pharmacyBatchSize)) {
     const [nearExpiryRows, excessStockRows] = await Promise.all([
       fetchNearExpiryAggregates(pharmacyIdBatch, todayIso, expiryThresholdIso),
       fetchExcessStockAggregates(pharmacyIdBatch, excessStockMonths),
@@ -370,42 +412,22 @@ export async function runPredictiveAlertsJob(
       ...excessStockRows.map((row) => buildExcessStockSignal(row, excessStockMonths)),
     ];
 
-    for (const signalBatch of chunkArray(signals, signalPersistConcurrency)) {
+    for (const signalBatch of splitIntoChunks(signals, signalPersistConcurrency)) {
       const settled = await Promise.allSettled(signalBatch.map((signal) => persistSignal(signal, dedupeDateKey)));
       settled.forEach((result, index) => {
         const signal = signalBatch[index];
-        if (result.status === 'rejected') {
-          failedAlerts += 1;
-          logger.error('Failed to persist predictive alert signal', {
-            pharmacyId: signal.pharmacyId,
-            alertType: signal.alertType,
-            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-          });
-          return;
-        }
-
-        if (result.value === 'duplicate') {
-          duplicateAlerts += 1;
-          return;
-        }
-
-        generatedAlerts += 1;
-        if (signal.alertType === 'near_expiry') {
-          nearExpiryAlerts += 1;
-        } else if (signal.alertType === 'excess_stock') {
-          excessStockAlerts += 1;
-        }
+        applyPersistedSignalResult(counters, signal, result);
       });
     }
   }
 
   return {
     processedPharmacies: pharmacyIds.length,
-    generatedAlerts,
-    nearExpiryAlerts,
-    excessStockAlerts,
-    duplicateAlerts,
-    failedAlerts,
+    generatedAlerts: counters.generatedAlerts,
+    nearExpiryAlerts: counters.nearExpiryAlerts,
+    excessStockAlerts: counters.excessStockAlerts,
+    duplicateAlerts: counters.duplicateAlerts,
+    failedAlerts: counters.failedAlerts,
     generatedAt: new Date().toISOString(),
   };
 }

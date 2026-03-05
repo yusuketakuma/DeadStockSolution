@@ -11,7 +11,7 @@
     "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "NODE_OPTIONS=--max-old-space-size=8192 vitest run --coverage --maxWorkers=2",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },

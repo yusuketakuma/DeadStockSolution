@@ -267,7 +267,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     });
 
     if (!registrationResult.approved) {
-      writeLog('register', {
+      void writeLog('register', {
         detail: `失敗|phase=screening|reason=permit_mismatch|score=${screening.screeningScore}`,
         ipAddress: registrationIp,
       });
@@ -284,7 +284,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
 
     const pharmacyId = registrationResult.pharmacyId;
 
-    writeLog('register', {
+    void writeLog('register', {
       pharmacyId,
       detail: `新規登録（審査待ち）: ${name}`,
       ipAddress: registrationIp,
@@ -367,7 +367,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
 
     const valid = await verifyPassword(password, pharmacy.passwordHash);
     if (!valid) {
-      writeLog('login_failed', { detail: `ログイン失敗: ${email}`, ipAddress: getClientIp(req) });
+      void writeLog('login_failed', { detail: `ログイン失敗: ${email}`, ipAddress: getClientIp(req) });
       res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
       return;
     }
@@ -389,7 +389,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
     setCsrfCookie(res, generateCsrfToken());
 
     const logAction = pharmacy.isAdmin ? 'admin_login' as const : 'login' as const;
-    writeLog(logAction, { pharmacyId: pharmacy.id, detail: `ログイン: ${pharmacy.name}`, ipAddress: getClientIp(req) });
+    void writeLog(logAction, { pharmacyId: pharmacy.id, detail: `ログイン: ${pharmacy.name}`, ipAddress: getClientIp(req) });
 
     res.json({
       id: pharmacy.id,
@@ -432,7 +432,7 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
     }
 
     // Always return success to prevent email enumeration
-    writeLog('password_reset_request', {
+    void writeLog('password_reset_request', {
       detail: 'パスワードリセット要求を受理',
       ipAddress: getClientIp(req),
     });
@@ -465,13 +465,13 @@ router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, re
 
     const resetResult = await resetPasswordWithToken(token, newPassword);
     if (!resetResult.success) {
-      writeLog('password_reset_failed', { detail: 'リセットトークン無効または期限切れ', ipAddress: getClientIp(req) });
+      void writeLog('password_reset_failed', { detail: 'リセットトークン無効または期限切れ', ipAddress: getClientIp(req) });
       res.status(400).json({ error: 'リセットトークンが無効または期限切れです' });
       return;
     }
     invalidateAuthUserCache(resetResult.pharmacyId);
 
-    writeLog('password_reset_complete', { detail: 'パスワードリセット完了', ipAddress: getClientIp(req) });
+    void writeLog('password_reset_complete', { detail: 'パスワードリセット完了', ipAddress: getClientIp(req) });
     res.json({ message: 'パスワードをリセットしました。新しいパスワードでログインしてください' });
   } catch (err) {
     handleRouteError(err, 'Password reset confirm error', 'パスワードリセットに失敗しました', res);

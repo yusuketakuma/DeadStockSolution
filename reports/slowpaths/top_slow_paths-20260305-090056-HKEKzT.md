@@ -1,0 +1,32 @@
+| Rank | Source | Score | Target | Reason |
+|---:|---|---:|---|---|
+| 1 | static-heuristic | 189.9500 | server/src/services/upload-confirm-job-service.ts | loc=1455, loops=4, awaitInLoop=2, sql=29 |
+| 2 | static-heuristic | 163.0900 | server/src/services/drug-master-sync-service.ts | loc=503, loops=10, awaitInLoop=7, sql=23 |
+| 3 | static-heuristic | 150.8600 | server/src/services/matching-service.ts | loc=802, loops=12, awaitInLoop=3, sql=25 |
+| 4 | static-heuristic | 146.0700 | server/src/services/drug-master-enrichment.ts | loc=379, loops=12, awaitInLoop=9, sql=6 |
+| 5 | static-heuristic | 140.2300 | server/src/services/exchange-service.ts | loc=501, loops=4, awaitInLoop=4, sql=23 |
+| 6 | static-heuristic | 122.6900 | server/src/services/drug-master-parser-service.ts | loc=533, loops=19, awaitInLoop=2, sql=0 |
+| 7 | static-heuristic | 121.7500 | server/src/services/matching-refresh-service.ts | loc=385, loops=5, awaitInLoop=5, sql=22 |
+| 8 | static-heuristic | 118.3900 | server/src/services/upload-diff-service.ts | loc=583, loops=7, awaitInLoop=5, sql=15 |
+| 9 | static-heuristic | 109.3100 | server/src/routes/notifications.ts | loc=687, loops=7, awaitInLoop=1, sql=12 |
+| 10 | static-heuristic | 109.1800 | server/src/test/integration/helpers/test-db.ts | loc=286, loops=11, awaitInLoop=7, sql=4 |
+| 11 | static-heuristic | 107.9300 | client/src/pages/upload/CameraDeadStockRegisterPanel.tsx | loc=1081, loops=3, awaitInLoop=2, sql=3 |
+| 12 | static-heuristic | 93.7600 | server/src/services/predictive-alert-service.ts | loc=412, loops=7, awaitInLoop=4, sql=7 |
+| 13 | static-heuristic | 93.0800 | server/src/services/openclaw-service.ts | loc=776, loops=4, awaitInLoop=2, sql=5 |
+| 14 | static-heuristic | 92.6900 | server/src/routes/admin-pharmacies-detail.ts | loc=533, loops=0, awaitInLoop=0, sql=16 |
+| 15 | static-heuristic | 91.9500 | server/src/db/migrate-legacy.ts | loc=385, loops=2, awaitInLoop=2, sql=16 |
+| 16 | static-heuristic | 82.3800 | server/src/routes/auth.ts | loc=706, loops=0, awaitInLoop=0, sql=13 |
+| 17 | static-heuristic | 80.4500 | server/src/services/camera-dead-stock-service.ts | loc=505, loops=2, awaitInLoop=1, sql=10 |
+| 18 | static-heuristic | 79.8500 | server/src/routes/business-hours.ts | loc=405, loops=2, awaitInLoop=1, sql=12 |
+| 19 | static-heuristic | 74.0800 | server/src/routes/upload-parser.ts | loc=696, loops=0, awaitInLoop=0, sql=1 |
+| 20 | static-heuristic | 74.0100 | server/src/services/timeline-aggregators.ts | loc=647, loops=1, awaitInLoop=1, sql=11 |
+| 21 | static-heuristic | 73.0100 | server/src/routes/account.ts | loc=467, loops=0, awaitInLoop=0, sql=12 |
+| 22 | static-heuristic | 72.2400 | client/src/pages/UploadPage.tsx | loc=908, loops=1, awaitInLoop=0, sql=2 |
+| 23 | static-heuristic | 71.9200 | server/src/services/matching-score-service.ts | loc=384, loops=11, awaitInLoop=0, sql=1 |
+| 24 | static-heuristic | 69.7500 | server/src/services/notification-service.ts | loc=265, loops=1, awaitInLoop=1, sql=19 |
+| 25 | static-heuristic | 68.6300 | server/src/services/matching-snapshot-service.ts | loc=371, loops=2, awaitInLoop=2, sql=15 |
+| 26 | static-heuristic | 66.0600 | server/src/services/expiry-risk-service.ts | loc=442, loops=5, awaitInLoop=2, sql=4 |
+| 27 | static-heuristic | 63.7500 | server/src/services/upload-confirm-service.ts | loc=355, loops=2, awaitInLoop=2, sql=9 |
+| 28 | static-heuristic | 62.9300 | server/src/utils/network-utils.ts | loc=291, loops=2, awaitInLoop=2, sql=0 |
+| 29 | static-heuristic | 60.3600 | server/src/routes/exchange-proposals.ts | loc=532, loops=1, awaitInLoop=0, sql=11 |
+| 30 | static-heuristic | 58.7000 | server/src/services/upload-row-issue-service.ts | loc=220, loops=4, awaitInLoop=2, sql=11 |

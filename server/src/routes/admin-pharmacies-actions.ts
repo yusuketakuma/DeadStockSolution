@@ -233,7 +233,7 @@ router.post('/messages', adminWriteLimiter, async (req: AuthRequest, res: Respon
       actionPath: actionPath || null,
     });
 
-    writeLog('admin_send_message', {
+    void writeLog('admin_send_message', {
       pharmacyId: req.user!.id,
       detail: `メッセージ送信: ${title} (対象: ${targetType === 'all' ? '全体' : `薬局ID:${targetPharmacyId}`})`,
       ipAddress: getClientIp(req),

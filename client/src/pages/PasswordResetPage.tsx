@@ -7,6 +7,9 @@ import AppAlert from '../components/ui/AppAlert';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppField from '../components/ui/AppField';
 
+const PASSWORD_ALPHA_PATTERN = /[a-zA-Z]/;
+const PASSWORD_DIGIT_PATTERN = /\d/;
+
 export default function PasswordResetPage() {
   const [searchParams] = useSearchParams();
   const tokenFromUrl = searchParams.get('token') || '';
@@ -54,11 +57,11 @@ export default function PasswordResetPage() {
       setError('パスワードは8文字以上で入力してください');
       return;
     }
-    if (!/[a-zA-Z]/.test(newPassword)) {
+    if (!PASSWORD_ALPHA_PATTERN.test(newPassword)) {
       setError('パスワードにはアルファベットを含めてください');
       return;
     }
-    if (!/\d/.test(newPassword)) {
+    if (!PASSWORD_DIGIT_PATTERN.test(newPassword)) {
       setError('パスワードには数字を含めてください');
       return;
     }

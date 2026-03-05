@@ -39,14 +39,10 @@ function resolveResponseMessage(err: HttpLikeError, status: number): string {
   }
 
   if (status >= 500) {
-    return process.env.NODE_ENV === 'production'
-      ? 'サーバーエラーが発生しました'
-      : err.message;
+    return 'サーバーエラーが発生しました';
   }
 
-  return process.env.NODE_ENV === 'production'
-    ? 'リクエストに失敗しました'
-    : err.message || 'リクエストに失敗しました';
+  return 'リクエストに失敗しました';
 }
 
 function resolveLogMessage(err: HttpLikeError, status: number): string {

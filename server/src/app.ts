@@ -46,37 +46,15 @@ function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/\/$/, '');
 }
 
-function extractHostname(value: string): string | null {
-  const candidate = value.split(',')[0]?.trim();
-  if (!candidate) return null;
-
-  try {
-    const normalized = candidate.includes('://')
-      ? candidate
-      : `http://${candidate}`;
-    return new URL(normalized).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
 function isSameHostOrigin(origin: string, req: Request): boolean {
   try {
     const originHost = new URL(origin).hostname.toLowerCase();
-    const forwardedHost = req.headers['x-forwarded-host'];
-    const requestHostRaw = Array.isArray(forwardedHost)
-      ? forwardedHost[0]
-      : forwardedHost ?? req.headers.host;
-
-    if (!requestHostRaw) {
-      return false;
-    }
-
-    const requestHost = extractHostname(requestHostRaw);
+    // Use req.hostname which respects Express trust proxy setting
+    // instead of manually reading x-forwarded-host (user-controlled header)
+    const requestHost = req.hostname?.toLowerCase();
     if (!requestHost) {
       return false;
     }
-
     return originHost === requestHost;
   } catch {
     return false;

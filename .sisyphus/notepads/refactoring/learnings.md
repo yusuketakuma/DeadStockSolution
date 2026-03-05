@@ -158,3 +158,67 @@
 - Added route test file for internal monthly report endpoint: auth failure, sanitized validation failure, and success path
 - Added production-mode test in error-handler suite to lock behavior that 4xx details are hidden in production
 - Security behavior changes should always ship with explicit tests so future refactors cannot silently revert them
+
+## [2026-03-05] Task 12: openclaw-service.ts Simplification
+
+### Refactoring Pattern: Generic Helper Extraction
+- **pruneExpiredMapEntries<K, V>()**: Generic helper for cache pruning
+  - Constraint: `V extends { expiresAtMs: number }`
+  - Eliminates duplication between webhookReplayCache (Map<string, number>) and handoffResultCache (Map<string, { expiresAtMs: number; result: ... }>)
+  - Note: webhookReplayCache stores raw numbers, not objects, so it keeps its own pruneWebhookReplayCache() function
+  - handoffResultCache now delegates to generic helper via pruneExpiredMapEntries(handoffResultCache, nowMs)
+
+### Refactoring Pattern: Options Object Helper
+- **buildHandoffSuccess()**: Consolidates success response construction
+  - Takes config + options object with (status, threadId, summary, note)
+  - Spreads options into response object
+  - Eliminates duplication between handoffViaGatewayCli (status: 'in_dialogue') and handoffViaLegacyHttp (status: dynamic)
+  - Both callers now use: `buildHandoffSuccess(config, { status, threadId, summary, note })`
+
+### Verification
+- All 99 tests pass (3 test files: openclaw-service.test.ts, openclaw-service-deep.test.ts, openclaw-service-ultra.test.ts)
+- typecheck: 0 errors
+- lint: 0 warnings
+- No behavior changes, no API signature changes
+- Reduced duplication: 2 success returns → 1 helper + 2 calls, 2 prune functions → 1 helper + 1 call
+
+### Multi-angle Review Results
+- **Correctness**: All behavior preserved, type safety maintained, edge cases handled
+- **Security**: No regressions, no new input processing, helpers are internal
+- **Performance**: No degradation, same O(n) for pruning, O(1) for object spread
+- **Maintainability**: Clearer intent, reduced duplication, consistent naming
+- **UX**: No user-facing changes, logging preserved, observability maintained
+
+### Key Insight
+Generic constraint pattern (`V extends { expiresAtMs: number }`) is effective for consolidating similar operations on different Map types. The constraint ensures type safety while allowing code reuse.
+
+## [2026-03-05] Security Audit Findings
+
+### P1 Fixes Applied
+1. **Command Injection Defense** in `openclaw-service.ts`
+   - Added `sanitizeCliMessage()` helper to remove control characters and shell metacharacters
+   - Applied to `input.requestText` before passing to `execFile`
+   - Defense-in-depth: `execFile` doesn't use shell, but sanitization prevents edge cases
+
+### P2 Fixes Applied
+1. **Input Validation** in `internal-monthly-reports.ts`
+   - Replaced `Number()` with `parsePositiveInt()` utility
+   - Added year range validation (2020-2099)
+   - Added month range validation (1-12)
+   - Specific error messages for each validation failure
+
+### Already Secure (No Changes Needed)
+- SQL Injection: Drizzle ORM with parameterized queries ✓
+- XSS: No `dangerouslySetInnerHTML` usage ✓
+- CSRF: Proper implementation with timing-safe comparison ✓
+- CSP Headers: Properly configured in app.ts ✓
+- Error Handling: Production mode hides details ✓
+- Rate Limiting: Implemented on auth endpoints ✓
+- Webhook Security: `crypto.timingSafeEqual` used ✓
+
+### Security Patterns to Follow
+- Always use `parsePositiveInt()` from `request-utils.ts` for integer parsing
+- Always use `timingSafeEqual` for secret comparison
+- Sanitize user input before passing to external processes
+- Validate ranges explicitly (not just type checking)
+Generic constraint pattern (`V extends { expiresAtMs: number }`) is effective for consolidating similar operations on different Map types. The constraint ensures type safety while allowing code reuse.

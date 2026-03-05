@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
-import AppButton from '../../components/ui/AppButton';
+import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
@@ -167,12 +167,7 @@ export default function AdminLogsPage() {
     <PageShell>
       <h4 className="page-title mb-3">操作ログ ({total}件)</h4>
       {error && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={error} onRetry={() => void retry()} />
       )}
 
       <Row className="g-2 mb-3">
