@@ -25,7 +25,10 @@ interface UsePaginatedListReturn<TItem, TResponse extends PaginatedResponse<TIte
   error: string;
   fetchPage: (targetPage: number) => Promise<void>;
   retry: () => void;
+  invalidateCache: () => void;
 }
+
+const MAX_PAGE_CACHE_SIZE = 50;
 
 export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TItem, PaginationExtra>>(
   fetcher: (targetPage: number, signal?: AbortSignal) => Promise<TResponse>,
@@ -42,13 +45,26 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
   const [error, setError] = useState('');
   const latestRequestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const responseCacheRef = useRef(new Map<number, TResponse>());
 
   const fetcherRef = useRef(fetcher);
   useEffect(() => {
     fetcherRef.current = fetcher;
+    responseCacheRef.current.clear();
   }, [fetcher]);
 
   const fetchPage = useCallback(async (targetPage: number) => {
+    const cached = responseCacheRef.current.get(targetPage);
+    if (cached) {
+      setResponse(cached);
+      setItems(cached.data);
+      setPagination(cached.pagination);
+      setTotalPages(cached.pagination.totalPages);
+      setError('');
+      setLoading(false);
+      return;
+    }
+
     const requestId = ++latestRequestIdRef.current;
     abortControllerRef.current?.abort();
     const controller = new AbortController();
@@ -58,6 +74,11 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
     try {
       const response = await fetcherRef.current(targetPage, controller.signal);
       if (requestId !== latestRequestIdRef.current) return;
+      if (responseCacheRef.current.size >= MAX_PAGE_CACHE_SIZE) {
+        const firstKey = responseCacheRef.current.keys().next().value;
+        if (firstKey !== undefined) responseCacheRef.current.delete(firstKey);
+      }
+      responseCacheRef.current.set(targetPage, response);
       setResponse(response);
       setItems(response.data);
       setPagination(response.pagination);
@@ -77,7 +98,12 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
     }
   }, [errorMessage]);
 
+  const invalidateCache = useCallback(() => {
+    responseCacheRef.current.clear();
+  }, []);
+
   const retry = useCallback(() => {
+    responseCacheRef.current.clear();
     void fetchPage(page);
   }, [fetchPage, page]);
 
@@ -90,9 +116,13 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
     abortControllerRef.current?.abort();
   }, []);
 
+  const stableSetPage = useCallback((nextPage: number) => {
+    setPage((prevPage) => (prevPage === nextPage ? prevPage : nextPage));
+  }, []);
+
   return {
     page,
-    setPage,
+    setPage: stableSetPage,
     items,
     response,
     totalPages,
@@ -101,5 +131,6 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
     error,
     fetchPage,
     retry,
+    invalidateCache,
   };
 }

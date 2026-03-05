@@ -31,6 +31,10 @@ interface LoginFieldErrors {
   email?: string;
   password?: string;
 }
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TEST_PHARMACY_ENDPOINT = import.meta.env.PROD
+  ? '/auth/test-pharmacies'
+  : '/auth/test-pharmacies?includePassword=1';
 
 function isTestPharmacyPreview(value: unknown): value is TestPharmacyPreview {
   if (!value || typeof value !== 'object') return false;
@@ -83,7 +87,7 @@ export default function LoginPage() {
 
     if (!normalizedEmail) {
       nextErrors.email = 'メールアドレスを入力してください。';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    } else if (!EMAIL_PATTERN.test(normalizedEmail)) {
       nextErrors.email = 'メールアドレス形式で入力してください。';
     }
 
@@ -159,7 +163,7 @@ export default function LoginPage() {
     if (!forceRefresh && testPharmacies.length > 0) return testPharmacies;
     setTestPharmacyLoading(true);
     try {
-      const response = await api.get<TestPharmacyResponse>('/auth/test-pharmacies?includePassword=1');
+      const response = await api.get<TestPharmacyResponse>(TEST_PHARMACY_ENDPOINT);
       const accounts = parseTestPharmacyAccounts(response);
       setTestPharmacies(accounts);
       setTestPharmacyError('');
@@ -248,7 +252,7 @@ export default function LoginPage() {
   const normalizedEmail = email.trim();
   const hasEmailInput = normalizedEmail.length > 0;
   const hasPasswordInput = password.length > 0;
-  const isEmailFormatValid = hasEmailInput && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+  const isEmailFormatValid = hasEmailInput && EMAIL_PATTERN.test(normalizedEmail);
   const readinessItems = [
     { label: 'メールアドレス入力', done: hasEmailInput },
     { label: 'パスワード入力', done: hasPasswordInput },
@@ -257,41 +261,43 @@ export default function LoginPage() {
   const readinessCompleted = readinessItems.filter((item) => item.done).length;
   const readinessPercent = Math.round((readinessCompleted / readinessItems.length) * 100);
   const readinessScale = Math.min(Math.max(readinessPercent / 100, 0), 1);
-  const showcaseItems = mode === 'admin'
-    ? [
-      {
-        label: 'CONTROL',
-        title: '監査ログに即時アクセス',
-        description: '運用監視・承認ワークフローを管理画面から一元管理できます。',
-      },
-      {
-        label: 'SECURITY',
-        title: '権限分離を前提に設計',
-        description: '管理者専用導線と業務ユーザー導線を明確に分離しています。',
-      },
-      {
-        label: 'RESPONSE',
-        title: '障害時の復旧を高速化',
-        description: 'ログ確認とパスワード再設定導線を同一画面で案内します。',
-      },
-    ]
-    : [
-      {
-        label: 'MATCHING',
-        title: '在庫交換をすばやく開始',
-        description: 'ログイン後すぐにデッドストック照合と提案確認を行えます。',
-      },
-      {
-        label: 'TRUST',
-        title: '業務運用に合わせた安全設計',
-        description: '共用端末運用や入力ミス防止のガイドをログイン前に提示します。',
-      },
-      {
-        label: 'TRY IT',
-        title: 'お試しアカウントで体験',
-        description: 'テストアカウントを選ぶだけで、ログイン情報をワンクリック入力できます。',
-      },
-    ];
+  const showcaseItems = useMemo(() => (
+    mode === 'admin'
+      ? [
+        {
+          label: 'CONTROL',
+          title: '監査ログに即時アクセス',
+          description: '運用監視・承認ワークフローを管理画面から一元管理できます。',
+        },
+        {
+          label: 'SECURITY',
+          title: '権限分離を前提に設計',
+          description: '管理者専用導線と業務ユーザー導線を明確に分離しています。',
+        },
+        {
+          label: 'RESPONSE',
+          title: '障害時の復旧を高速化',
+          description: 'ログ確認とパスワード再設定導線を同一画面で案内します。',
+        },
+      ]
+      : [
+        {
+          label: 'MATCHING',
+          title: '在庫交換をすばやく開始',
+          description: 'ログイン後すぐにデッドストック照合と提案確認を行えます。',
+        },
+        {
+          label: 'TRUST',
+          title: '業務運用に合わせた安全設計',
+          description: '共用端末運用や入力ミス防止のガイドをログイン前に提示します。',
+        },
+        {
+          label: 'TRY IT',
+          title: 'お試しアカウントで体験',
+          description: 'テストアカウントを選ぶだけで、ログイン情報をワンクリック入力できます。',
+        },
+      ]
+  ), [mode]);
 
   return (
     <AuthPageLayout
