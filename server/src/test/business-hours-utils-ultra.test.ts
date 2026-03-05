@@ -99,8 +99,9 @@ describe('business-hours-utils ultra coverage', () => {
           is24Hours: true,
         },
       ];
-      // Monday at 23:00 (normally after close)
-      const monday11pm = new Date('2026-02-23T23:00:00');
+      // Monday at 23:00 JST (normally after close)
+      // Use explicit UTC time (14:00 UTC = 23:00 JST) for CI compatibility
+      const monday11pm = new Date('2026-02-23T14:00:00Z');
       const status = getBusinessHoursStatus(weeklyHours, specialHours, monday11pm);
       expect(status.isOpen).toBe(true);
       expect(status.is24Hours).toBe(true);
