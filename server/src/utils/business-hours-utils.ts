@@ -50,7 +50,21 @@ function parseTimeToMinutes(time: string): number {
 }
 
 function toJstDate(now: Date): Date {
-  return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  // Use Intl.DateTimeFormat to get JST components reliably across all environments
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(now);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value ?? '00';
+  // Create ISO string with explicit +09:00 timezone - parsed consistently in any environment
+  return new Date(`${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}+09:00`);
 }
 
 function formatJstDate(now: Date): string {
