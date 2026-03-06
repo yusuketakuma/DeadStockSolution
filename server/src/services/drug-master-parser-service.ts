@@ -207,7 +207,13 @@ export function parseMhlwCsvData(csvContent: string): ParsedDrugRow[] {
   return parseMhlwExcelData(allRows);
 }
 
+const MAX_CSV_LINE_LENGTH = 10000; // 10KB per line
+
 function parseCsvLine(line: string): string[] {
+  if (line.length > MAX_CSV_LINE_LENGTH) {
+    throw new Error(`CSV行が長すぎます（最大${MAX_CSV_LINE_LENGTH}文字）`);
+  }
+
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
