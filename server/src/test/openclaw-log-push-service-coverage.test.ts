@@ -207,6 +207,9 @@ describe('openclaw-log-push-service (coverage)', () => {
       mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockResolvedValue({ summary: 'ok' });
 
+      // Switch to real timers for dynamic import resolution
+      vi.useRealTimers();
+
       enqueueLogAlert(makeEntry({ severity: 'warning' }));
       await flushBuffer('warning');
 
@@ -215,11 +218,17 @@ describe('openclaw-log-push-service (coverage)', () => {
         expect.stringContaining('1 warning log alerts'),
       );
       expect(getBufferSize('warning')).toBe(0);
+
+      // Restore fake timers for afterEach
+      vi.useFakeTimers();
     });
 
     it('should flush critical buffer directly and log success', async () => {
       mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockResolvedValue({ summary: 'ok' });
+
+      // Switch to real timers for dynamic import resolution
+      vi.useRealTimers();
 
       // Manually push to critical buffer and flush directly (not via enqueueLogAlert
       // which fires-and-forgets a promise)
@@ -238,11 +247,17 @@ describe('openclaw-log-push-service (coverage)', () => {
       expect(mocks.loggerInfo).toHaveBeenCalledWith(
         expect.stringContaining('2 warning log alerts'),
       );
+
+      // Restore fake timers for afterEach
+      vi.useFakeTimers();
     });
 
     it('should re-enqueue retryable entries on send failure', async () => {
       mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockRejectedValue(new Error('network error'));
+
+      // Switch to real timers for dynamic import resolution
+      vi.useRealTimers();
 
       enqueueLogAlert(makeEntry({ severity: 'warning' }));
       await flushBuffer('warning');
@@ -252,11 +267,17 @@ describe('openclaw-log-push-service (coverage)', () => {
         'Failed to send log alerts to OpenClaw',
         expect.objectContaining({ count: 1 }),
       );
+
+      // Restore fake timers for afterEach
+      vi.useFakeTimers();
     });
 
     it('should stop retrying after 3 failures', async () => {
       mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockRejectedValue(new Error('network error'));
+
+      // Switch to real timers for dynamic import resolution
+      vi.useRealTimers();
 
       enqueueLogAlert(makeEntry({ severity: 'warning' }));
 
@@ -268,6 +289,9 @@ describe('openclaw-log-push-service (coverage)', () => {
       expect(getBufferSize('warning')).toBe(1); // retry 3
       await flushBuffer('warning');
       expect(getBufferSize('warning')).toBe(0); // dropped after 3 retries
+
+      // Restore fake timers for afterEach
+      vi.useFakeTimers();
     });
 
     it('should log error when OpenClaw is not configured', async () => {
@@ -277,15 +301,24 @@ describe('openclaw-log-push-service (coverage)', () => {
         baseUrl: '',
       }));
 
+      // Switch to real timers for dynamic import resolution
+      vi.useRealTimers();
+
       enqueueLogAlert(makeEntry({ severity: 'error' }));
       await flushBuffer('error');
 
       expect(mocks.loggerError).toHaveBeenCalled();
+
+      // Restore fake timers for afterEach
+      vi.useFakeTimers();
     });
 
     it('should cap buffer after re-adding retryable entries', async () => {
       mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockRejectedValue(new Error('fail'));
+
+      // Switch to real timers for dynamic import resolution
+      vi.useRealTimers();
 
       for (let i = 0; i < 499; i++) {
         enqueueLogAlert(makeEntry({ severity: 'error', logId: i }));
@@ -296,26 +329,39 @@ describe('openclaw-log-push-service (coverage)', () => {
       enqueueLogAlert(makeEntry({ severity: 'error', logId: 501 }));
 
       expect(getBufferSize('error')).toBeLessThanOrEqual(500);
+
+      // Restore fake timers for afterEach
+      vi.useFakeTimers();
     });
   });
 
   // ────────────────────────────────────────────────────
   // Timer-based flushing
+  // NOTE: These tests use fake timers which don't work well with dynamic imports.
+  // Using real timers with actual waits instead.
   // ────────────────────────────────────────────────────
   describe('timer-based flushing', () => {
     beforeEach(() => {
       process.env.OPENCLAW_LOG_PUSH_ENABLED = 'true';
       mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
       mocks.sendToOpenClawGateway.mockResolvedValue({ summary: 'ok' });
+      // Use real timers for dynamic import compatibility
+      vi.useRealTimers();
+    });
+
+    afterEach(() => {
+      // Restore fake timers for parent afterEach
+      vi.useFakeTimers();
     });
 
     it('should flush error buffer after interval', async () => {
       enqueueLogAlert(makeEntry({ severity: 'error' }));
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      // Wait for the 30s interval plus buffer for async processing
+      await new Promise((r) => setTimeout(r, 31_000));
 
       expect(mocks.sendToOpenClawGateway).toHaveBeenCalled();
-    });
+    }, 35_000);
 
     it('should log error when scheduled flush fails', async () => {
       mocks.getOpenClawConfig.mockReturnValue(makeOpenClawConfig({ agentId: 'a1', apiKey: 'k1' }));
@@ -323,10 +369,11 @@ describe('openclaw-log-push-service (coverage)', () => {
 
       enqueueLogAlert(makeEntry({ severity: 'error' }));
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      // Wait for the 30s interval plus buffer for async processing
+      await new Promise((r) => setTimeout(r, 31_000));
 
       expect(mocks.loggerError).toHaveBeenCalled();
-    });
+    }, 35_000);
   });
 
   // ────────────────────────────────────────────────────
@@ -348,10 +395,19 @@ describe('openclaw-log-push-service (coverage)', () => {
       // We need to let the microtask queue drain. Use real timers briefly to allow
       // the dynamic import() promise chain to resolve.
       vi.useRealTimers();
-      // Wait enough ticks for: dynamic import resolution + sendToOpenClawGateway resolution
-      await new Promise((r) => setTimeout(r, 50));
 
-      expect(getBufferSize('critical')).toBe(0);
+      // Poll until buffer is cleared (max 5 seconds)
+      // Dynamic import needs extra time to resolve with mocked modules
+      let cleared = false;
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        if (getBufferSize('critical') === 0) {
+          cleared = true;
+          break;
+        }
+      }
+
+      expect(cleared).toBe(true);
       expect(mocks.sendToOpenClawGateway).toHaveBeenCalledTimes(1);
       expect(mocks.loggerInfo).toHaveBeenCalledWith(
         expect.stringContaining('1 critical log alerts'),
@@ -359,6 +415,6 @@ describe('openclaw-log-push-service (coverage)', () => {
 
       // Restore fake timers for afterEach
       vi.useFakeTimers();
-    });
+    }, 10_000);
   });
 });
