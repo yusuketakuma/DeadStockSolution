@@ -1,4 +1,3 @@
-import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -79,12 +78,10 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 import exchangeRouter from '../routes/exchange';
+import { createAuthenticatedApp } from './helpers/mock-builders';
 
 function createApp() {
-  const app = express();
-  app.use(express.json());
-  app.use('/api/exchange', exchangeRouter);
-  return app;
+  return createAuthenticatedApp('/api/exchange', exchangeRouter);
 }
 
 function createLimitQuery(rows: unknown[]) {

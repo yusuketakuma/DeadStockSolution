@@ -3,6 +3,7 @@ import { logger } from '../services/logger';
 import { triggerManualMonthlyReport } from '../services/monthly-report-scheduler';
 import { resolveDefaultTargetMonth, validateYearMonth } from '../services/monthly-report-service';
 import { isAuthorizedCron, resolveCronSecret } from './internal-cron-auth';
+import { parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 
@@ -23,8 +24,27 @@ router.get('/run', async (req, res: Response) => {
     }
 
     const defaultTarget = resolveDefaultTargetMonth();
-    const year = Number(req.query.year ?? defaultTarget.year);
-    const month = Number(req.query.month ?? defaultTarget.month);
+    const yearRaw = req.query.year !== undefined
+      ? parsePositiveInt(req.query.year)
+      : defaultTarget.year;
+    const monthRaw = req.query.month !== undefined
+      ? parsePositiveInt(req.query.month)
+      : defaultTarget.month;
+
+    // Validate year is 4 digits in reasonable range (2020-2099)
+    if (yearRaw === null || yearRaw < 2020 || yearRaw > 2099) {
+      res.status(400).json({ error: '年パラメータが不正です' });
+      return;
+    }
+
+    // Validate month is 1-12
+    if (monthRaw === null || monthRaw < 1 || monthRaw > 12) {
+      res.status(400).json({ error: '月パラメータが不正です' });
+      return;
+    }
+
+    const year = yearRaw;
+    const month = monthRaw;
     validateYearMonth(year, month);
 
     await triggerManualMonthlyReport(year, month);

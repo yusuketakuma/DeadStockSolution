@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
     insert: vi.fn(),
+    execute: vi.fn(),
   },
 }));
 
@@ -106,14 +107,16 @@ function createRejectedSelectChain(error: Error & { code?: string }) {
 describe('auth routes', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalExposePasswordResetToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN;
-  const originalEnableTestPharmacyPreview = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+  const originalTestLoginFeatureEnabled = process.env.TEST_LOGIN_FEATURE_ENABLED;
+  const originalVercelEnv = process.env.VERCEL_ENV;
   const originalVitest = process.env.VITEST;
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
-    delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    delete process.env.TEST_LOGIN_FEATURE_ENABLED;
+    delete process.env.VERCEL_ENV;
     mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
     mocks.authService.isJwtSecretMissingError.mockImplementation(
       (err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'
@@ -132,10 +135,16 @@ describe('auth routes', () => {
       process.env.EXPOSE_PASSWORD_RESET_TOKEN = originalExposePasswordResetToken;
     }
 
-    if (originalEnableTestPharmacyPreview === undefined) {
-      delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    if (originalTestLoginFeatureEnabled === undefined) {
+      delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     } else {
-      process.env.ENABLE_TEST_PHARMACY_PREVIEW = originalEnableTestPharmacyPreview;
+      process.env.TEST_LOGIN_FEATURE_ENABLED = originalTestLoginFeatureEnabled;
+    }
+
+    if (originalVercelEnv === undefined) {
+      delete process.env.VERCEL_ENV;
+    } else {
+      process.env.VERCEL_ENV = originalVercelEnv;
     }
 
     if (originalVitest === undefined) {
@@ -329,35 +338,10 @@ describe('auth routes', () => {
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('keeps test pharmacy preview endpoint enabled in production by default', async () => {
+  it('enables test login endpoint by default when VERCEL_ENV=production', async () => {
     process.env.NODE_ENV = 'production';
-    delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-    const selectChain = createSelectChain([
-      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
-    ]);
-    mocks.db.select.mockReturnValue(selectChain);
-    const app = await createApp();
-
-    const res = await request(app).get('/api/auth/test-pharmacies');
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      accounts: [
-        {
-          id: 1,
-          name: 'テスト薬局東京店',
-          email: 'test-tokyo@example.com',
-          prefecture: '東京都',
-          password: '',
-        },
-      ],
-    });
-    expect(mocks.db.select).toHaveBeenCalledTimes(1);
-  });
-
-  it('allows test pharmacy preview endpoint in production when explicitly enabled', async () => {
-    process.env.NODE_ENV = 'production';
-    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'true';
+    process.env.VERCEL_ENV = 'production';
+    delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
       { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
@@ -368,6 +352,7 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).toEqual({
       accounts: [
         {
@@ -381,15 +366,40 @@ describe('auth routes', () => {
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
-  it('disables test pharmacy preview endpoint when explicitly configured off', async () => {
+  it('enables test login endpoint by default when VERCEL_ENV=preview', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'false';
+    process.env.VERCEL_ENV = 'preview';
+    delete process.env.TEST_LOGIN_FEATURE_ENABLED;
+    const selectChain = createSelectChain([
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+    ]);
+    mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();
 
-    const res = await request(app).get('/api/auth/test-pharmacies');
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body).toEqual({
+      accounts: [
+        {
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
+        },
+      ],
+    });
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables test login endpoint when feature flag is false', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.VERCEL_ENV = 'production';
+    process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'テスト薬局情報は利用できません' });
+    expect(res.body).toEqual({ error: 'テストログインは無効です' });
     expect(mocks.db.select).not.toHaveBeenCalled();
   });
 
@@ -404,6 +414,7 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies');
 
     expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, max-age=60');
     expect(res.body).toEqual({
       accounts: [
         {
@@ -418,14 +429,15 @@ describe('auth routes', () => {
     expect(selectChain.from).toHaveBeenCalledTimes(1);
     expect(selectChain.where).toHaveBeenCalledTimes(1);
     expect(selectChain.orderBy).toHaveBeenCalledTimes(1);
-    expect(selectChain.limit).not.toHaveBeenCalled();
+    expect(selectChain.limit).toHaveBeenCalledWith(5);
   });
 
   it('returns 503 when test pharmacy columns are missing', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'true';
+    process.env.TEST_LOGIN_FEATURE_ENABLED = 'true';
     const missingColumnError = Object.assign(new Error('column "is_test_account" does not exist'), { code: '42703' });
     const missingColumnChain = createRejectedSelectChain(missingColumnError);
+    mocks.db.execute.mockRejectedValueOnce(new Error('permission denied'));
     mocks.db.select
       .mockImplementationOnce(() => missingColumnChain);
     const app = await createApp();
@@ -435,7 +447,40 @@ describe('auth routes', () => {
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
+    expect(mocks.db.execute).toHaveBeenCalledTimes(1);
     expect(missingColumnChain.where).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers test pharmacy preview after ensuring missing columns', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.TEST_LOGIN_FEATURE_ENABLED = 'true';
+    const missingColumnError = Object.assign(new Error('column "is_test_account" does not exist'), { code: '42703' });
+    const missingColumnChain = createRejectedSelectChain(missingColumnError);
+    const healedRows = [
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+    ];
+    const healedChain = createSelectChain(healedRows);
+    mocks.db.execute.mockResolvedValue({});
+    mocks.db.select
+      .mockImplementationOnce(() => missingColumnChain)
+      .mockImplementationOnce(() => healedChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body).toEqual({
+      accounts: [{
+        id: 1,
+        name: 'テスト薬局東京店',
+        email: 'test-tokyo@example.com',
+        prefecture: '東京都',
+        password: 'TokyoDemo!2026',
+      }],
+    });
+    expect(mocks.db.select).toHaveBeenCalledTimes(2);
+    expect(mocks.db.execute).toHaveBeenCalledTimes(2);
   });
 
   it('returns distinct passwords for DB test pharmacy accounts', async () => {

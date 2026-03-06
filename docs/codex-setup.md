@@ -1,23 +1,27 @@
-# Codex Setup（Repo-scoped）
+# Codex Setup (repo-scoped)
 
-## 共有されるもの（コミット対象）
-- AGENTS.md（運用契約）
-- .codex/config.toml（プロジェクト設定）
-- .codex/agents/*.toml（役割別）
-- .codex/rules/default.rules（Smart approvals最適化）
-- tasks/todo.md / tasks/lessons.md（計画と学習）
-- .agents/skills/*（任意）
+## 目的
+- 設定・エージェント定義を **リポジトリ側** に集約する
+- ユーザー側 `~/.codex` は最小（trust設定のみ）にする
 
-## ユーザー側（~/.codex）に残すもの（最小）
-- 認証（keyring/keychain 推奨）
-- このリポジトリを trusted にする設定
+## 必須
+1) repo ルートに `.codex/` と `AGENTS.md` を置く
+2) プロジェクトを trusted にする（trusted でないと `.codex/` が読み込まれない）
 
-## なぜ trusted が必要か
-- .codex/config.toml は trusted なプロジェクトでのみ読み込まれる。
+### trust の最小例（ユーザー側）
+`~/.codex/config.toml` に以下を追加（パスは自分の環境に合わせる）:
 
-## 使い方（基本）
-- 対話:
-  - `codex`
-  - 非自明なら `/plan` で plan mode に入ってから進める
-- 非対話:
-  - `codex exec "<指示>"` でもよいが、未完了終了禁止のため tasks/todo.md を必ず更新する
+```toml
+[projects."/ABSOLUTE/PATH/TO/careviax-pharmacy"]
+trust_level = "trusted"
+```
+
+## 起動
+
+- repo ルートで `codex` を起動する（相対パス設定が安定）
+
+## 注意
+
+- この設定は `approval_policy = "never"` かつ `sandbox_mode = "danger-full-access"`。
+  “速い”が、事故ったら致命的。運用で縛りたいなら workspace-write へ戻すこと。
+

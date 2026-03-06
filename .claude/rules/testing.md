@@ -2,7 +2,7 @@
 description: テストファイル作成・編集時のルール
 paths: "**/*.{test,spec}.{ts,tsx,js,jsx}, **/test/**/*.*, **/tests/**/*.*, **/__tests__/**/*.*"
 _harness_template: "rules/testing.md.template"
-_harness_version: "2.5.27"
+_harness_version: "2.5.23"
 ---
 
 # Testing Rules

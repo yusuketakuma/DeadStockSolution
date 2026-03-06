@@ -1,0 +1,19 @@
+{"type":"session.start","ts":"2026-03-01T04:58:37Z","state":"initialized","data":{"cc_session_id":"a614054e-8ed7-4f97-9b4d-fd12bf0ff3b8"}}
+{"id":"event-000001","type":"session.resume","ts":"2026-03-01T04:58:36Z","state":"initialized"}
+{"id":"event-000002","type":"tool.bash","ts":"2026-03-01T04:59:05Z","state":"initialized","data":{"command":"npm list -g --depth=0 2>&1 | head -30"}}
+{"id":"event-000003","type":"tool.bash","ts":"2026-03-01T04:59:08Z","state":"initialized","data":{"command":"ls -la $(npm prefix -g)/bin/ 2>&1 | grep -E 'codex|opencode' ; echo "---"; ls -la /usr/local/bin/ 2>&1 | grep -E 'codex|opencode'; echo "---"; ls -la ~/.local/bin/ 2>&1 | grep -E 'codex|opencode'"}}
+{"id":"event-000004","type":"tool.bash","ts":"2026-03-01T04:59:10Z","state":"initialized","data":{"command":"echo $PATH | tr ':' '\n' | head -20"}}
+{"id":"event-000005","type":"tool.bash","ts":"2026-03-01T04:59:26Z","state":"initialized","data":{"command":"find /Users/yusuke -name "codex" -o -name "opencode" 2>/dev/null | head -20"}}
+{"id":"event-000006","type":"tool.bash","ts":"2026-03-01T04:59:29Z","state":"initialized","data":{"command":"echo $PATH | tr ':' '\n'"}}
+{"id":"event-000007","type":"tool.bash","ts":"2026-03-01T04:59:30Z","state":"initialized","data":{"command":"brew list 2>&1 | grep -E 'codex|opencode'"}}
+{"id":"event-000008","type":"tool.bash","ts":"2026-03-01T04:59:35Z","state":"initialized","data":{"command":"brew info codexbar 2>&1 | head -10"}}
+{"id":"event-000009","type":"tool.bash","ts":"2026-03-01T04:59:44Z","state":"initialized","data":{"command":"npx codex --version 2>&1; echo "---"; npx @openai/codex --version 2>&1"}}
+{"id":"event-000010","type":"tool.bash","ts":"2026-03-01T04:59:44Z","state":"initialized","data":{"command":"ls /opt/homebrew/bin/ 2>&1 | grep -E 'codex|opencode'"}}
+{"id":"event-000011","type":"tool.bash","ts":"2026-03-01T04:59:47Z","state":"initialized","data":{"command":"cat ~/.zshrc 2>/dev/null | grep -E 'codex|opencode' ; echo "---"; cat ~/.zprofile 2>/dev/null | grep -E 'codex|opencode'"}}
+{"id":"event-000012","type":"tool.bash","ts":"2026-03-01T04:59:57Z","state":"initialized","data":{"command":"nvm ls 2>&1 | head -15"}}
+{"id":"event-000013","type":"tool.bash","ts":"2026-03-01T04:59:58Z","state":"initialized","data":{"command":"file /Users/yusuke/.opencode/bin/opencode 2>&1; /Users/yusuke/.opencode/bin/opencode --version 2>&1"}}
+{"id":"event-000014","type":"tool.bash","ts":"2026-03-01T05:00:36Z","state":"initialized","data":{"command":"npm install -g @openai/codex 2>&1"}}
+{"id":"event-000015","type":"tool.bash","ts":"2026-03-01T05:00:39Z","state":"initialized","data":{"command":"which codex && codex --version 2>&1"}}
+{"id":"event-000016","type":"tool.edit","ts":"2026-03-01T05:00:46Z","state":"initialized","data":{"file_path":"/Users/yusuke/.zshrc"}}
+{"id":"event-000017","type":"tool.bash","ts":"2026-03-01T05:00:49Z","state":"initialized","data":{"command":"export PATH="$HOME/.opencode/bin:$PATH" && which opencode && opencode --version 2>&1"}}
+{"id":"event-000018","type":"session.stop","ts":"2026-03-01T05:00:54Z","state":"stopped"}

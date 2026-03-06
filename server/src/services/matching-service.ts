@@ -55,6 +55,40 @@ const MAX_COMPARISON_PHARMACIES_PER_SOURCE = resolveComparisonPharmacyLimit(
 );
 type UsedMedIndex = ReturnType<typeof buildUsedMedIndex>;
 type PreparedStockRow = { stock: DeadStockRow; preparedDrugName: PreparedDrugName };
+type MatchingRuleProfile = Awaited<ReturnType<typeof getActiveMatchingRuleProfile>>;
+type BusinessHoursRows = Parameters<typeof getBusinessHoursStatus>[0];
+type SpecialHoursRows = Exclude<Parameters<typeof getBusinessHoursStatus>[1], Date>;
+
+interface ViablePharmacyRow {
+  id: number;
+  name: string;
+  phone: string | null;
+  fax: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+interface PharmacyWithDistance extends ViablePharmacyRow {
+  distance: number;
+}
+
+const DISTANCE_FALLBACK = 9999;
+const DEAD_STOCK_SELECT_FIELDS = {
+  id: deadStockItems.id,
+  pharmacyId: deadStockItems.pharmacyId,
+  drugName: deadStockItems.drugName,
+  quantity: deadStockItems.quantity,
+  unit: deadStockItems.unit,
+  yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
+  expirationDate: deadStockItems.expirationDate,
+  expirationDateIso: deadStockItems.expirationDateIso,
+  lotNumber: deadStockItems.lotNumber,
+  createdAt: deadStockItems.createdAt,
+};
+const USED_MED_SELECT_FIELDS = {
+  pharmacyId: usedMedicationItems.pharmacyId,
+  drugName: usedMedicationItems.drugName,
+};
 
 function resolveComparisonPharmacyLimit(value: string | undefined): number {
   const parsed = Number(value);
@@ -84,7 +118,7 @@ function applyReservationsToStockRows(
 async function fetchViablePharmacies(
   pharmacyId: number,
   firstOfMonth: string,
-): Promise<Array<{ id: number; name: string; phone: string; fax: string; latitude: number | null; longitude: number | null }>> {
+): Promise<ViablePharmacyRow[]> {
   return db.select({
     id: pharmacies.id,
     name: pharmacies.name,
@@ -257,6 +291,269 @@ function clampPharmacyComparisonPool<T extends { id: number }>(
   return selected;
 }
 
+function resolveDistance(
+  sourcePharmacy: { latitude: number | null; longitude: number | null },
+  targetPharmacy: { latitude: number | null; longitude: number | null },
+): number {
+  if (
+    sourcePharmacy.latitude === null ||
+    sourcePharmacy.longitude === null ||
+    targetPharmacy.latitude === null ||
+    targetPharmacy.longitude === null
+  ) {
+    return DISTANCE_FALLBACK;
+  }
+  return haversineDistance(
+    sourcePharmacy.latitude,
+    sourcePharmacy.longitude,
+    targetPharmacy.latitude,
+    targetPharmacy.longitude,
+  );
+}
+
+function buildPharmaciesWithDistance(
+  sourcePharmacy: { latitude: number | null; longitude: number | null },
+  viablePharmacies: ViablePharmacyRow[],
+  favoriteIds: Set<number>,
+): PharmacyWithDistance[] {
+  const sortedByDistance = viablePharmacies
+    .map((pharmacy) => ({
+      ...pharmacy,
+      distance: resolveDistance(sourcePharmacy, pharmacy),
+    }))
+    .sort((a, b) => a.distance - b.distance || a.id - b.id);
+  return clampPharmacyComparisonPool(sortedByDistance, favoriteIds);
+}
+
+function buildCandidateBusinessStatus(
+  pharmacyHours: BusinessHoursRows | undefined,
+  pharmacySpecialHours: SpecialHoursRows | undefined,
+  now: Date,
+  includeIsConfigured: boolean,
+) {
+  const businessStatus = getBusinessHoursStatus(pharmacyHours ?? [], pharmacySpecialHours ?? [], now);
+  if (!includeIsConfigured) {
+    return businessStatus;
+  }
+  return {
+    ...businessStatus,
+    isConfigured: (pharmacyHours?.length ?? 0) > 0 || (pharmacySpecialHours?.length ?? 0) > 0,
+  };
+}
+
+function buildCandidateFromPharmacy(params: {
+  otherPharmacy: PharmacyWithDistance;
+  myPreparedDeadStock: PreparedStockRow[];
+  myUsedMedIndex: UsedMedIndex;
+  preparedDeadStockByPharmacy: Map<number, PreparedStockRow[]>;
+  usedMedIndexByPharmacy: Map<number, UsedMedIndex>;
+  businessHoursByPharmacy: Map<number, BusinessHoursRows>;
+  specialHoursByPharmacy: Map<number, SpecialHoursRows>;
+  matchingRuleProfile: MatchingRuleProfile;
+  favoriteIds: Set<number>;
+  now: Date;
+  includeIsConfiguredInBusinessStatus: boolean;
+}): MatchCandidate | null {
+  const {
+    otherPharmacy,
+    myPreparedDeadStock,
+    myUsedMedIndex,
+    preparedDeadStockByPharmacy,
+    usedMedIndexByPharmacy,
+    businessHoursByPharmacy,
+    specialHoursByPharmacy,
+    matchingRuleProfile,
+    favoriteIds,
+    now,
+    includeIsConfiguredInBusinessStatus,
+  } = params;
+
+  const theirPreparedDeadStock = preparedDeadStockByPharmacy.get(otherPharmacy.id) ?? [];
+  const theirUsedMedIndex = usedMedIndexByPharmacy.get(otherPharmacy.id);
+  if (theirPreparedDeadStock.length === 0 || !theirUsedMedIndex) return null;
+
+  const myToTheirCache = new Map<string, DrugMatchResult>();
+  const theirToMyCache = new Map<string, DrugMatchResult>();
+  const itemsFromA = buildMatchItems(
+    myPreparedDeadStock,
+    theirUsedMedIndex,
+    myToTheirCache,
+    matchingRuleProfile.nameMatchThreshold,
+  );
+  const itemsFromB = buildMatchItems(
+    theirPreparedDeadStock,
+    myUsedMedIndex,
+    theirToMyCache,
+    matchingRuleProfile.nameMatchThreshold,
+  );
+  if (itemsFromA.length === 0 || itemsFromB.length === 0) return null;
+
+  const { balancedA, balancedB, totalA, totalB } = balanceValues(itemsFromA, itemsFromB);
+  if (balancedA.length === 0 || balancedB.length === 0) return null;
+
+  const minValue = Math.min(totalA, totalB);
+  if (minValue < MIN_EXCHANGE_VALUE) return null;
+
+  const diff = roundTo2(Math.abs(totalA - totalB));
+  if (diff > VALUE_TOLERANCE) return null;
+
+  const isFavorite = favoriteIds.has(otherPharmacy.id);
+  const score = calculateCandidateScore(
+    totalA,
+    totalB,
+    diff,
+    otherPharmacy.distance,
+    balancedA,
+    balancedB,
+    matchingRuleProfile,
+    isFavorite,
+  );
+  const matchRate = calculateMatchRate(balancedA, balancedB);
+  const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id);
+  const pharmacySpecialHours = specialHoursByPharmacy.get(otherPharmacy.id);
+  const businessStatus = buildCandidateBusinessStatus(
+    pharmacyHours,
+    pharmacySpecialHours,
+    now,
+    includeIsConfiguredInBusinessStatus,
+  );
+
+  return {
+    pharmacyId: otherPharmacy.id,
+    pharmacyName: otherPharmacy.name,
+    pharmacyPhone: otherPharmacy.phone,
+    pharmacyFax: otherPharmacy.fax,
+    distance: roundTo2(otherPharmacy.distance),
+    itemsFromA: balancedA,
+    itemsFromB: balancedB,
+    totalValueA: roundTo2(totalA),
+    totalValueB: roundTo2(totalB),
+    valueDifference: diff,
+    score,
+    matchRate,
+    businessStatus,
+    isFavorite,
+  };
+}
+
+async function fetchBusinessHoursMaps(
+  pharmacyIds: number[],
+): Promise<{
+  businessHoursByPharmacy: Map<number, BusinessHoursRows>;
+  specialHoursByPharmacy: Map<number, SpecialHoursRows>;
+}> {
+  if (pharmacyIds.length === 0) {
+    return {
+      businessHoursByPharmacy: new Map(),
+      specialHoursByPharmacy: new Map(),
+    };
+  }
+
+  const [allBusinessHours, allSpecialHours] = await Promise.all([
+    db.select({
+      pharmacyId: pharmacyBusinessHours.pharmacyId,
+      dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+      openTime: pharmacyBusinessHours.openTime,
+      closeTime: pharmacyBusinessHours.closeTime,
+      isClosed: pharmacyBusinessHours.isClosed,
+      is24Hours: pharmacyBusinessHours.is24Hours,
+    })
+      .from(pharmacyBusinessHours)
+      .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds)),
+    db.select({
+      pharmacyId: pharmacySpecialHours.pharmacyId,
+      id: pharmacySpecialHours.id,
+      specialType: pharmacySpecialHours.specialType,
+      startDate: pharmacySpecialHours.startDate,
+      endDate: pharmacySpecialHours.endDate,
+      openTime: pharmacySpecialHours.openTime,
+      closeTime: pharmacySpecialHours.closeTime,
+      isClosed: pharmacySpecialHours.isClosed,
+      is24Hours: pharmacySpecialHours.is24Hours,
+      note: pharmacySpecialHours.note,
+      updatedAt: pharmacySpecialHours.updatedAt,
+    })
+      .from(pharmacySpecialHours)
+      .where(inArray(pharmacySpecialHours.pharmacyId, pharmacyIds)),
+  ]);
+
+  return {
+    businessHoursByPharmacy: groupByPharmacy(allBusinessHours),
+    specialHoursByPharmacy: groupByPharmacy(allSpecialHours),
+  };
+}
+
+function collectCandidates(params: {
+  pharmaciesWithDistance: PharmacyWithDistance[];
+  myPreparedDeadStock: PreparedStockRow[];
+  myUsedMedIndex: UsedMedIndex;
+  preparedDeadStockByPharmacy: Map<number, PreparedStockRow[]>;
+  usedMedIndexByPharmacy: Map<number, UsedMedIndex>;
+  businessHoursByPharmacy: Map<number, BusinessHoursRows>;
+  specialHoursByPharmacy: Map<number, SpecialHoursRows>;
+  matchingRuleProfile: MatchingRuleProfile;
+  favoriteIds: Set<number>;
+  now: Date;
+  includeIsConfiguredInBusinessStatus: boolean;
+}): MatchCandidate[] {
+  const candidates: MatchCandidate[] = [];
+
+  for (const otherPharmacy of params.pharmaciesWithDistance) {
+    const candidate = buildCandidateFromPharmacy({
+      otherPharmacy,
+      myPreparedDeadStock: params.myPreparedDeadStock,
+      myUsedMedIndex: params.myUsedMedIndex,
+      matchingRuleProfile: params.matchingRuleProfile,
+      preparedDeadStockByPharmacy: params.preparedDeadStockByPharmacy,
+      usedMedIndexByPharmacy: params.usedMedIndexByPharmacy,
+      businessHoursByPharmacy: params.businessHoursByPharmacy,
+      specialHoursByPharmacy: params.specialHoursByPharmacy,
+      favoriteIds: params.favoriteIds,
+      now: params.now,
+      includeIsConfiguredInBusinessStatus: params.includeIsConfiguredInBusinessStatus,
+    });
+    if (!candidate) continue;
+    candidates.push(candidate);
+  }
+
+  return candidates;
+}
+
+function buildMatchingIndexes(
+  deadStockByPharmacy: Map<number, DeadStockRow[]>,
+  usedMedsByPharmacy: Map<number, UsedMedRow[]>,
+): {
+  preparedDeadStockByPharmacy: Map<number, PreparedStockRow[]>;
+  usedMedIndexByPharmacy: Map<number, UsedMedIndex>;
+} {
+  return {
+    preparedDeadStockByPharmacy: buildPreparedDeadStockByPharmacy(deadStockByPharmacy),
+    usedMedIndexByPharmacy: buildUsedMedIndexByPharmacy(usedMedsByPharmacy),
+  };
+}
+
+function getSourcePreparedData(
+  pharmacyId: number,
+  preparedDeadStockByPharmacy: Map<number, PreparedStockRow[]>,
+  usedMedIndexByPharmacy: Map<number, UsedMedIndex>,
+): { myPreparedDeadStock: PreparedStockRow[]; myUsedMedIndex: UsedMedIndex } | null {
+  const myPreparedDeadStock = preparedDeadStockByPharmacy.get(pharmacyId) ?? [];
+  const myUsedMedIndex = usedMedIndexByPharmacy.get(pharmacyId);
+  if (myPreparedDeadStock.length === 0 || !myUsedMedIndex) {
+    return null;
+  }
+  return { myPreparedDeadStock, myUsedMedIndex };
+}
+
+function sortAndLimitCandidates(
+  candidates: MatchCandidate[],
+  matchingRuleProfile: MatchingRuleProfile,
+  now: Date,
+): MatchCandidate[] {
+  return sortMatchCandidatesByPriority(candidates, matchingRuleProfile.nearExpiryDays, now)
+    .slice(0, MAX_CANDIDATES);
+}
+
 export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<number, MatchCandidate[]>> {
   const sourcePharmacyIds = [...new Set(pharmacyIds)];
   const matchesByPharmacy = new Map<number, MatchCandidate[]>();
@@ -362,28 +659,14 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
 
   const allRelevantPharmacyIds = [...new Set([...existingSourcePharmacyIds, ...viablePharmacyPoolIds])];
   const [allDeadStockRows, allUsedMedRows] = await Promise.all([
-    db.select({
-      id: deadStockItems.id,
-      pharmacyId: deadStockItems.pharmacyId,
-      drugName: deadStockItems.drugName,
-      quantity: deadStockItems.quantity,
-      unit: deadStockItems.unit,
-      yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-      expirationDate: deadStockItems.expirationDate,
-      expirationDateIso: deadStockItems.expirationDateIso,
-      lotNumber: deadStockItems.lotNumber,
-      createdAt: deadStockItems.createdAt,
-    })
+    db.select(DEAD_STOCK_SELECT_FIELDS)
       .from(deadStockItems)
       .where(and(
         inArray(deadStockItems.pharmacyId, allRelevantPharmacyIds),
         eq(deadStockItems.isAvailable, true),
       ))
       .orderBy(deadStockItems.id),
-    db.select({
-      pharmacyId: usedMedicationItems.pharmacyId,
-      drugName: usedMedicationItems.drugName,
-    })
+    db.select(USED_MED_SELECT_FIELDS)
       .from(usedMedicationItems)
       .where(inArray(usedMedicationItems.pharmacyId, allRelevantPharmacyIds))
       .orderBy(usedMedicationItems.id),
@@ -394,49 +677,25 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
 
   const adjustedAllDeadStock = applyReservationsToStockRows(allDeadStockRows, reservedByItemId);
 
-  const [allBusinessHours, allSpecialHours] = await Promise.all([
-    db.select({
-      pharmacyId: pharmacyBusinessHours.pharmacyId,
-      dayOfWeek: pharmacyBusinessHours.dayOfWeek,
-      openTime: pharmacyBusinessHours.openTime,
-      closeTime: pharmacyBusinessHours.closeTime,
-      isClosed: pharmacyBusinessHours.isClosed,
-      is24Hours: pharmacyBusinessHours.is24Hours,
-    })
-      .from(pharmacyBusinessHours)
-      .where(inArray(pharmacyBusinessHours.pharmacyId, viablePharmacyPoolIds)),
-    db.select({
-      pharmacyId: pharmacySpecialHours.pharmacyId,
-      id: pharmacySpecialHours.id,
-      specialType: pharmacySpecialHours.specialType,
-      startDate: pharmacySpecialHours.startDate,
-      endDate: pharmacySpecialHours.endDate,
-      openTime: pharmacySpecialHours.openTime,
-      closeTime: pharmacySpecialHours.closeTime,
-      isClosed: pharmacySpecialHours.isClosed,
-      is24Hours: pharmacySpecialHours.is24Hours,
-      note: pharmacySpecialHours.note,
-      updatedAt: pharmacySpecialHours.updatedAt,
-    })
-      .from(pharmacySpecialHours)
-      .where(inArray(pharmacySpecialHours.pharmacyId, viablePharmacyPoolIds)),
-  ]);
-
-  const businessHoursByPharmacy = groupByPharmacy(allBusinessHours);
-  const specialHoursByPharmacy = groupByPharmacy(allSpecialHours);
+  const { businessHoursByPharmacy, specialHoursByPharmacy } = await fetchBusinessHoursMaps(viablePharmacyPoolIds);
 
   const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(adjustedAllDeadStock);
   const usedMedsByPharmacy = groupByPharmacy<UsedMedRow>(allUsedMedRows);
-  const preparedDeadStockByPharmacy = buildPreparedDeadStockByPharmacy(deadStockByPharmacy);
-  const usedMedIndexByPharmacy = buildUsedMedIndexByPharmacy(usedMedsByPharmacy);
+  const {
+    preparedDeadStockByPharmacy,
+    usedMedIndexByPharmacy,
+  } = buildMatchingIndexes(deadStockByPharmacy, usedMedsByPharmacy);
 
   for (const sourcePharmacyId of existingSourcePharmacyIds) {
     const currentPharmacy = currentPharmacyById.get(sourcePharmacyId);
     if (!currentPharmacy) throw new Error('薬局が見つかりません');
 
-    const myPreparedDeadStock = preparedDeadStockByPharmacy.get(sourcePharmacyId) ?? [];
-    const myUsedMedIndex = usedMedIndexByPharmacy.get(sourcePharmacyId);
-    if (myPreparedDeadStock.length === 0 || !myUsedMedIndex) {
+    const sourcePreparedData = getSourcePreparedData(
+      sourcePharmacyId,
+      preparedDeadStockByPharmacy,
+      usedMedIndexByPharmacy,
+    );
+    if (!sourcePreparedData) {
       matchesByPharmacy.set(sourcePharmacyId, []);
       continue;
     }
@@ -453,137 +712,57 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
 
     const favoriteIds = favoriteIdsByPharmacy.get(sourcePharmacyId) ?? new Set<number>();
 
-    const pharmaciesWithDistance = clampPharmacyComparisonPool(viablePharmacies
-      .map((pharmacy) => ({
-        ...pharmacy,
-        distance: (
-          currentPharmacy.latitude !== null &&
-          currentPharmacy.longitude !== null &&
-          pharmacy.latitude !== null &&
-          pharmacy.longitude !== null
-        )
-          ? haversineDistance(currentPharmacy.latitude, currentPharmacy.longitude, pharmacy.latitude, pharmacy.longitude)
-          : 9999,
-      }))
-      .sort((a, b) => a.distance - b.distance || a.id - b.id), favoriteIds);
-
-    const candidates: MatchCandidate[] = [];
-
-    for (const otherPharmacy of pharmaciesWithDistance) {
-      const theirPreparedDeadStock = preparedDeadStockByPharmacy.get(otherPharmacy.id) ?? [];
-      const theirUsedMedIndex = usedMedIndexByPharmacy.get(otherPharmacy.id);
-      if (theirPreparedDeadStock.length === 0 || !theirUsedMedIndex) continue;
-      const myToTheirCache = new Map<string, DrugMatchResult>();
-      const theirToMyCache = new Map<string, DrugMatchResult>();
-
-      const itemsFromA = buildMatchItems(
-        myPreparedDeadStock,
-        theirUsedMedIndex,
-        myToTheirCache,
-        matchingRuleProfile.nameMatchThreshold,
-      );
-
-      const itemsFromB = buildMatchItems(
-        theirPreparedDeadStock,
-        myUsedMedIndex,
-        theirToMyCache,
-        matchingRuleProfile.nameMatchThreshold,
-      );
-
-      if (itemsFromA.length === 0 || itemsFromB.length === 0) continue;
-
-      const { balancedA, balancedB, totalA, totalB } = balanceValues(itemsFromA, itemsFromB);
-      if (balancedA.length === 0 || balancedB.length === 0) continue;
-
-      const minValue = Math.min(totalA, totalB);
-      if (minValue < MIN_EXCHANGE_VALUE) continue;
-
-      const diff = roundTo2(Math.abs(totalA - totalB));
-      if (diff > VALUE_TOLERANCE) continue;
-
-      const isFavorite = favoriteIds.has(otherPharmacy.id);
-      const score = calculateCandidateScore(
-        totalA,
-        totalB,
-        diff,
-        otherPharmacy.distance,
-        balancedA,
-        balancedB,
-        matchingRuleProfile,
-        isFavorite,
-      );
-      const matchRate = calculateMatchRate(balancedA, balancedB);
-
-      const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id) ?? [];
-      const pharmacySpecialHours = specialHoursByPharmacy.get(otherPharmacy.id) ?? [];
-      const businessStatus = getBusinessHoursStatus(pharmacyHours, pharmacySpecialHours, now);
-
-      candidates.push({
-        pharmacyId: otherPharmacy.id,
-        pharmacyName: otherPharmacy.name,
-        pharmacyPhone: otherPharmacy.phone,
-        pharmacyFax: otherPharmacy.fax,
-        distance: roundTo2(otherPharmacy.distance),
-        itemsFromA: balancedA,
-        itemsFromB: balancedB,
-        totalValueA: roundTo2(totalA),
-        totalValueB: roundTo2(totalB),
-        valueDifference: diff,
-        score,
-        matchRate,
-        businessStatus,
-        isFavorite,
-      });
-    }
-
-    matchesByPharmacy.set(
-      sourcePharmacyId,
-      sortMatchCandidatesByPriority(candidates, matchingRuleProfile.nearExpiryDays, now)
-        .slice(0, MAX_CANDIDATES),
+    const pharmaciesWithDistance = buildPharmaciesWithDistance(
+      currentPharmacy,
+      viablePharmacies,
+      favoriteIds,
     );
+
+    const candidates = collectCandidates({
+      pharmaciesWithDistance,
+      myPreparedDeadStock: sourcePreparedData.myPreparedDeadStock,
+      myUsedMedIndex: sourcePreparedData.myUsedMedIndex,
+      matchingRuleProfile,
+      preparedDeadStockByPharmacy,
+      usedMedIndexByPharmacy,
+      businessHoursByPharmacy,
+      specialHoursByPharmacy,
+      favoriteIds,
+      now,
+      includeIsConfiguredInBusinessStatus: false,
+    });
+
+    matchesByPharmacy.set(sourcePharmacyId, sortAndLimitCandidates(candidates, matchingRuleProfile, now));
   }
 
   return matchesByPharmacy;
 }
 
 export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]> {
-  const matchingRuleProfile = await getActiveMatchingRuleProfile();
-
-  const [currentPharmacy] = await db.select({
-    id: pharmacies.id,
-    name: pharmacies.name,
-    latitude: pharmacies.latitude,
-    longitude: pharmacies.longitude,
-  })
-    .from(pharmacies)
-    .where(eq(pharmacies.id, pharmacyId))
-    .limit(1);
+  const [matchingRuleProfile, [currentPharmacy]] = await Promise.all([
+    getActiveMatchingRuleProfile(),
+    db.select({
+      id: pharmacies.id,
+      name: pharmacies.name,
+      latitude: pharmacies.latitude,
+      longitude: pharmacies.longitude,
+    })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, pharmacyId))
+      .limit(1),
+  ]);
 
   if (!currentPharmacy) throw new Error('薬局が見つかりません');
 
   const [myDeadStock, myUsedMeds] = await Promise.all([
-    db.select({
-      id: deadStockItems.id,
-      pharmacyId: deadStockItems.pharmacyId,
-      drugName: deadStockItems.drugName,
-      quantity: deadStockItems.quantity,
-      unit: deadStockItems.unit,
-      yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-      expirationDate: deadStockItems.expirationDate,
-      expirationDateIso: deadStockItems.expirationDateIso,
-      lotNumber: deadStockItems.lotNumber,
-      createdAt: deadStockItems.createdAt,
-    })
+    db.select(DEAD_STOCK_SELECT_FIELDS)
       .from(deadStockItems)
       .where(and(
         eq(deadStockItems.pharmacyId, pharmacyId),
         eq(deadStockItems.isAvailable, true),
       ))
       .orderBy(deadStockItems.id),
-    db.select({
-      pharmacyId: usedMedicationItems.pharmacyId,
-      drugName: usedMedicationItems.drugName,
-    })
+    db.select(USED_MED_SELECT_FIELDS)
       .from(usedMedicationItems)
       .where(eq(usedMedicationItems.pharmacyId, pharmacyId))
       .orderBy(usedMedicationItems.id),
@@ -595,189 +774,84 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
 
   const now = new Date();
   const firstOfMonth = getFirstOfMonthIso(now);
-  const favoriteRows = await db.select({
-    targetPharmacyId: pharmacyRelationships.targetPharmacyId,
-  })
-    .from(pharmacyRelationships)
-    .where(and(
-      eq(pharmacyRelationships.pharmacyId, pharmacyId),
-      eq(pharmacyRelationships.relationshipType, 'favorite'),
-    ));
+  const [favoriteRows, viablePharmacies] = await Promise.all([
+    db.select({
+      targetPharmacyId: pharmacyRelationships.targetPharmacyId,
+    })
+      .from(pharmacyRelationships)
+      .where(and(
+        eq(pharmacyRelationships.pharmacyId, pharmacyId),
+        eq(pharmacyRelationships.relationshipType, 'favorite'),
+      )),
+    fetchViablePharmacies(pharmacyId, firstOfMonth),
+  ]);
   const favoriteIds = new Set(favoriteRows.map((row) => row.targetPharmacyId));
-
-  const viablePharmacies = await fetchViablePharmacies(pharmacyId, firstOfMonth);
 
   if (viablePharmacies.length === 0) return [];
   const viablePharmacyIds = viablePharmacies.map((pharmacy) => pharmacy.id);
 
   const [allOtherDeadStock, allOtherUsedMeds] = await Promise.all([
-    db.select({
-      id: deadStockItems.id,
-      pharmacyId: deadStockItems.pharmacyId,
-      drugName: deadStockItems.drugName,
-      quantity: deadStockItems.quantity,
-      unit: deadStockItems.unit,
-      yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-      expirationDate: deadStockItems.expirationDate,
-      expirationDateIso: deadStockItems.expirationDateIso,
-      lotNumber: deadStockItems.lotNumber,
-      createdAt: deadStockItems.createdAt,
-    })
+    db.select(DEAD_STOCK_SELECT_FIELDS)
       .from(deadStockItems)
       .where(and(
         inArray(deadStockItems.pharmacyId, viablePharmacyIds),
         eq(deadStockItems.isAvailable, true),
       ))
       .orderBy(deadStockItems.id),
-    db.select({
-      pharmacyId: usedMedicationItems.pharmacyId,
-      drugName: usedMedicationItems.drugName,
-    })
+    db.select(USED_MED_SELECT_FIELDS)
       .from(usedMedicationItems)
       .where(inArray(usedMedicationItems.pharmacyId, viablePharmacyIds))
       .orderBy(usedMedicationItems.id),
   ]);
 
   const allDeadStockIds = [...new Set([...myDeadStock, ...allOtherDeadStock].map((row) => row.id))];
-  const reservedByItemId = await fetchReservationMap(allDeadStockIds);
-
+  const [reservedByItemId, { businessHoursByPharmacy, specialHoursByPharmacy }] = await Promise.all([
+    fetchReservationMap(allDeadStockIds),
+    fetchBusinessHoursMaps(viablePharmacyIds),
+  ]);
   const adjustedMyDeadStock = applyReservationsToStockRows(myDeadStock, reservedByItemId);
   if (adjustedMyDeadStock.length === 0) {
     return [];
   }
   const adjustedOtherDeadStock = applyReservationsToStockRows(allOtherDeadStock, reservedByItemId);
-
-  const [allBusinessHours, allSpecialHours] = await Promise.all([
-    db.select({
-      pharmacyId: pharmacyBusinessHours.pharmacyId,
-      dayOfWeek: pharmacyBusinessHours.dayOfWeek,
-      openTime: pharmacyBusinessHours.openTime,
-      closeTime: pharmacyBusinessHours.closeTime,
-      isClosed: pharmacyBusinessHours.isClosed,
-      is24Hours: pharmacyBusinessHours.is24Hours,
-    })
-      .from(pharmacyBusinessHours)
-      .where(inArray(pharmacyBusinessHours.pharmacyId, viablePharmacyIds)),
-    db.select({
-      pharmacyId: pharmacySpecialHours.pharmacyId,
-      id: pharmacySpecialHours.id,
-      specialType: pharmacySpecialHours.specialType,
-      startDate: pharmacySpecialHours.startDate,
-      endDate: pharmacySpecialHours.endDate,
-      openTime: pharmacySpecialHours.openTime,
-      closeTime: pharmacySpecialHours.closeTime,
-      isClosed: pharmacySpecialHours.isClosed,
-      is24Hours: pharmacySpecialHours.is24Hours,
-      note: pharmacySpecialHours.note,
-      updatedAt: pharmacySpecialHours.updatedAt,
-    })
-      .from(pharmacySpecialHours)
-      .where(inArray(pharmacySpecialHours.pharmacyId, viablePharmacyIds)),
-  ]);
-
-  const businessHoursByPharmacy = groupByPharmacy(allBusinessHours);
-  const specialHoursByPharmacy = groupByPharmacy(allSpecialHours);
-
   const deadStockByPharmacy = groupByPharmacy<DeadStockRow>(adjustedOtherDeadStock);
   const usedMedsByPharmacy = groupByPharmacy<UsedMedRow>(allOtherUsedMeds);
   const allDeadStockByPharmacy = new Map(deadStockByPharmacy);
   allDeadStockByPharmacy.set(pharmacyId, adjustedMyDeadStock);
   const allUsedMedsByPharmacy = new Map(usedMedsByPharmacy);
   allUsedMedsByPharmacy.set(pharmacyId, myUsedMeds);
-  const preparedDeadStockByPharmacy = buildPreparedDeadStockByPharmacy(allDeadStockByPharmacy);
-  const usedMedIndexByPharmacy = buildUsedMedIndexByPharmacy(allUsedMedsByPharmacy);
-  const myPreparedDeadStock = preparedDeadStockByPharmacy.get(pharmacyId) ?? [];
-  const myUsedMedIndex = usedMedIndexByPharmacy.get(pharmacyId);
-  if (myPreparedDeadStock.length === 0 || !myUsedMedIndex) {
+  const {
+    preparedDeadStockByPharmacy,
+    usedMedIndexByPharmacy,
+  } = buildMatchingIndexes(allDeadStockByPharmacy, allUsedMedsByPharmacy);
+  const sourcePreparedData = getSourcePreparedData(
+    pharmacyId,
+    preparedDeadStockByPharmacy,
+    usedMedIndexByPharmacy,
+  );
+  if (!sourcePreparedData) {
     return [];
   }
 
-  const pharmaciesWithDistance = clampPharmacyComparisonPool(viablePharmacies
-    .map((pharmacy) => ({
-      ...pharmacy,
-      distance: (
-        currentPharmacy.latitude !== null &&
-        currentPharmacy.longitude !== null &&
-        pharmacy.latitude !== null &&
-        pharmacy.longitude !== null
-      )
-        ? haversineDistance(currentPharmacy.latitude, currentPharmacy.longitude, pharmacy.latitude, pharmacy.longitude)
-        : 9999,
-    }))
-    .sort((a, b) => a.distance - b.distance || a.id - b.id), favoriteIds);
+  const pharmaciesWithDistance = buildPharmaciesWithDistance(
+    currentPharmacy,
+    viablePharmacies,
+    favoriteIds,
+  );
 
-  const candidates: MatchCandidate[] = [];
+  const candidates = collectCandidates({
+    pharmaciesWithDistance,
+    myPreparedDeadStock: sourcePreparedData.myPreparedDeadStock,
+    myUsedMedIndex: sourcePreparedData.myUsedMedIndex,
+    matchingRuleProfile,
+    preparedDeadStockByPharmacy,
+    usedMedIndexByPharmacy,
+    businessHoursByPharmacy,
+    specialHoursByPharmacy,
+    favoriteIds,
+    now,
+    includeIsConfiguredInBusinessStatus: true,
+  });
 
-  for (const otherPharmacy of pharmaciesWithDistance) {
-    const theirPreparedDeadStock = preparedDeadStockByPharmacy.get(otherPharmacy.id) ?? [];
-    const theirUsedMedIndex = usedMedIndexByPharmacy.get(otherPharmacy.id);
-    if (theirPreparedDeadStock.length === 0 || !theirUsedMedIndex) continue;
-    const myToTheirCache = new Map<string, DrugMatchResult>();
-    const theirToMyCache = new Map<string, DrugMatchResult>();
-
-    const itemsFromA = buildMatchItems(
-      myPreparedDeadStock,
-      theirUsedMedIndex,
-      myToTheirCache,
-      matchingRuleProfile.nameMatchThreshold,
-    );
-
-    const itemsFromB = buildMatchItems(
-      theirPreparedDeadStock,
-      myUsedMedIndex,
-      theirToMyCache,
-      matchingRuleProfile.nameMatchThreshold,
-    );
-
-    if (itemsFromA.length === 0 || itemsFromB.length === 0) continue;
-
-    const { balancedA, balancedB, totalA, totalB } = balanceValues(itemsFromA, itemsFromB);
-    if (balancedA.length === 0 || balancedB.length === 0) continue;
-
-    const minValue = Math.min(totalA, totalB);
-    if (minValue < MIN_EXCHANGE_VALUE) continue;
-
-    const diff = roundTo2(Math.abs(totalA - totalB));
-    if (diff > VALUE_TOLERANCE) continue;
-
-    const isFavorite = favoriteIds.has(otherPharmacy.id);
-    const score = calculateCandidateScore(
-      totalA,
-      totalB,
-      diff,
-      otherPharmacy.distance,
-      balancedA,
-      balancedB,
-      matchingRuleProfile,
-      isFavorite,
-    );
-    const matchRate = calculateMatchRate(balancedA, balancedB);
-
-    const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id) ?? [];
-    const pharmacySpecialHours = specialHoursByPharmacy.get(otherPharmacy.id) ?? [];
-    const businessStatus = {
-      ...getBusinessHoursStatus(pharmacyHours, pharmacySpecialHours, now),
-      isConfigured: pharmacyHours.length > 0 || pharmacySpecialHours.length > 0,
-    };
-
-    candidates.push({
-      pharmacyId: otherPharmacy.id,
-      pharmacyName: otherPharmacy.name,
-      pharmacyPhone: otherPharmacy.phone,
-      pharmacyFax: otherPharmacy.fax,
-      distance: roundTo2(otherPharmacy.distance),
-      itemsFromA: balancedA,
-      itemsFromB: balancedB,
-      totalValueA: roundTo2(totalA),
-      totalValueB: roundTo2(totalB),
-      valueDifference: diff,
-      score,
-      matchRate,
-      businessStatus,
-      isFavorite,
-    });
-  }
-
-  return sortMatchCandidatesByPriority(candidates, matchingRuleProfile.nearExpiryDays, now)
-    .slice(0, MAX_CANDIDATES);
+  return sortAndLimitCandidates(candidates, matchingRuleProfile, now);
 }

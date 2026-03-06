@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useMemo, useState, FormEvent } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,6 +35,7 @@ const PREFECTURES = [
   '徳島県', '香川県', '愛媛県', '高知県',
   '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
 ];
+const PREFECTURE_OPTIONS = PREFECTURES.map((pref) => ({ value: pref, label: pref }));
 
 export default function RegisterPage() {
   const [form, setForm] = useState<RegisterForm>({
@@ -53,9 +54,11 @@ export default function RegisterPage() {
     setFieldErrors((prev) => prev.filter((fe) => fe.field !== field));
   };
 
-  const getFieldError = (field: string): string | undefined => {
-    return fieldErrors.find((fe) => fe.field === field)?.message;
-  };
+  const fieldErrorMap = useMemo(() => (
+    new Map(fieldErrors.map((fieldError) => [fieldError.field, fieldError.message]))
+  ), [fieldErrors]);
+
+  const getFieldError = (field: string): string | undefined => fieldErrorMap.get(field);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -192,7 +195,7 @@ export default function RegisterPage() {
                   isInvalid={!!getFieldError('prefecture')}
                   errorText={getFieldError('prefecture')}
                   placeholder="選択してください"
-                  options={PREFECTURES.map((pref) => ({ value: pref, label: pref }))}
+                  options={PREFECTURE_OPTIONS}
                 />
               </Col>
               <Col md={6}>

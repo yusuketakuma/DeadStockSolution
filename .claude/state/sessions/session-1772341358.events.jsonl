@@ -1,0 +1,8 @@
+{"type":"session.start","ts":"2026-03-01T05:02:38Z","state":"initialized","data":{"cc_session_id":"59a55dff-bb02-43ba-8af3-b35378ba5e7b"}}
+{"id":"event-000001","type":"session.resume","ts":"2026-03-01T05:02:38Z","state":"initialized"}
+{"id":"event-000002","type":"tool.bash","ts":"2026-03-01T05:03:31Z","state":"initialized","data":{"command":"find /usr/local /opt/homebrew ~/go ~/.local -name "opencode" -type f 2>/dev/null; echo "---"; echo $PATH | tr ':' '\n'"}}
+{"id":"event-000003","type":"tool.bash","ts":"2026-03-01T05:03:40Z","state":"initialized","data":{"command":"find ~ -maxdepth 5 -name "opencode*" -type f 2>/dev/null"}}
+{"id":"event-000004","type":"tool.bash","ts":"2026-03-01T05:03:48Z","state":"initialized","data":{"command":"ls -la ~/.opencode/bin/opencode"}}
+{"id":"event-000005","type":"tool.bash","ts":"2026-03-01T05:03:56Z","state":"initialized","data":{"command":"grep -n 'opencode' ~/.zshrc"}}
+{"id":"event-000006","type":"tool.bash","ts":"2026-03-01T05:03:56Z","state":"initialized","data":{"command":"echo $PATH | tr ':' '\n' | grep opencode"}}
+{"id":"event-000007","type":"session.stop","ts":"2026-03-01T05:04:10Z","state":"stopped"}

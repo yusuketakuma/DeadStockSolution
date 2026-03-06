@@ -6,8 +6,10 @@ export interface ValidationError {
   message: string;
 }
 
+const trimmedText = z.string().trim();
+
 // Email: proper format with @ and domain
-const emailSchema = z.string()
+const emailSchema = trimmedText
   .min(1, 'メールアドレスを入力してください')
   .email('有効なメールアドレスを入力してください')
   .max(254, 'メールアドレスが長すぎます');
@@ -20,16 +22,16 @@ const passwordSchema = z.string()
   .regex(/\d/, 'パスワードには数字を含めてください');
 
 // Phone / FAX: Japanese phone number patterns
-const phoneSchema = z.string()
+const phoneSchema = trimmedText
   .min(1, '電話番号を入力してください')
   .regex(/^[\d\-ー－() ]{8,20}$/, '有効な電話番号を入力してください');
 
-const faxSchema = z.string()
+const faxSchema = trimmedText
   .min(1, 'FAX番号を入力してください')
   .regex(/^[\d\-ー－() ]{8,20}$/, '有効なFAX番号を入力してください');
 
 // Postal code: 7 digits (allow hyphens)
-const postalCodeSchema = z.string()
+const postalCodeSchema = trimmedText
   .min(1, '郵便番号を入力してください')
   .refine((val) => {
     const normalized = val.replace(/[-ー－\s]/g, '');
@@ -39,23 +41,23 @@ const postalCodeSchema = z.string()
 const registrationSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
-  name: z.string().min(1, '薬局名を入力してください').max(100, '薬局名は100文字以下で入力してください'),
+  name: trimmedText.min(1, '薬局名を入力してください').max(100, '薬局名は100文字以下で入力してください'),
   postalCode: postalCodeSchema,
-  address: z.string().min(1, '住所を入力してください').max(255, '住所は255文字以下で入力してください'),
+  address: trimmedText.min(1, '住所を入力してください').max(255, '住所は255文字以下で入力してください'),
   phone: phoneSchema,
   fax: faxSchema,
-  licenseNumber: z.string().min(1, '薬局開設許可番号を入力してください').max(50, '薬局開設許可番号が長すぎます'),
-  permitLicenseNumber: z.string().min(1, '許可証記載の許可番号を入力してください').max(50, '許可証記載の許可番号が長すぎます'),
-  permitPharmacyName: z.string().min(1, '許可証記載の薬局名を入力してください').max(100, '許可証記載の薬局名が長すぎます'),
-  permitAddress: z.string().min(1, '許可証記載の所在地を入力してください').max(255, '許可証記載の所在地が長すぎます'),
-  prefecture: z.string().min(1, '都道府県を選択してください').refine(
+  licenseNumber: trimmedText.min(1, '薬局開設許可番号を入力してください').max(50, '薬局開設許可番号が長すぎます'),
+  permitLicenseNumber: trimmedText.min(1, '許可証記載の許可番号を入力してください').max(50, '許可証記載の許可番号が長すぎます'),
+  permitPharmacyName: trimmedText.min(1, '許可証記載の薬局名を入力してください').max(100, '許可証記載の薬局名が長すぎます'),
+  permitAddress: trimmedText.min(1, '許可証記載の所在地を入力してください').max(255, '許可証記載の所在地が長すぎます'),
+  prefecture: trimmedText.min(1, '都道府県を選択してください').refine(
     (val) => isValidPrefecture(val),
     '有効な都道府県を選択してください'
   ),
 });
 
 const loginSchema = z.object({
-  email: z.string().min(1, 'メールアドレスを入力してください'),
+  email: emailSchema,
   password: z.string().min(1, 'パスワードを入力してください'),
 });
 

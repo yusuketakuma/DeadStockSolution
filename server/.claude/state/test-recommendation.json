@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-02-26T12:06:05Z",
-  "changed_file": "/Users/yusuke/DeadStockSolution/client/src/components/dashboard/types.ts",
+  "timestamp": "2026-03-05T02:47:48Z",
+  "changed_file": "src/services/upload-confirm-job-service.ts",
   "test_command": "npm test",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

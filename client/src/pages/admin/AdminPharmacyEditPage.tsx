@@ -661,7 +661,7 @@ export default function AdminPharmacyEditPage() {
             value={testAccountPassword}
             onChange={setTestAccountPassword}
             required
-            helpText="ログイン画面の「登録済みテスト薬局」に表示する値です。"
+            helpText="ログイン画面の「お試しアカウントを選ぶ」で選択した際に自動入力される値です。"
           />
         )}
         <div className="text-muted small mt-2">

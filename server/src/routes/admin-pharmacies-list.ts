@@ -156,7 +156,7 @@ router.get('/requests', async (req: AuthRequest, res: Response) => {
     })
       .from(userRequests)
       .innerJoin(pharmacies, eq(userRequests.pharmacyId, pharmacies.id))
-      .orderBy(desc(userRequests.createdAt))
+      .orderBy(desc(userRequests.createdAt), desc(userRequests.id))
       .limit(limit)
       .offset(offset);
 

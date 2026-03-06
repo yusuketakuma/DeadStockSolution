@@ -2,6 +2,7 @@ import { useState } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
+import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
@@ -93,12 +94,7 @@ export default function AdminExchangesPage() {
     <PageShell>
       <h4 className="page-title mb-3">交換履歴（管理者）</h4>
       {error && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={error} onRetry={() => void retry()} />
       )}
       <ScrollArea>
       {loading ? (

@@ -1,0 +1,129 @@
+{
+  "session_id": "session-1772420049",
+  "parent_session_id": null,
+  "state": "stopped",
+  "started_at": "2026-03-02T02:54:09Z",
+  "updated_at": "2026-03-02T03:01:35Z",
+  "event_seq": 29,
+  "last_event_id": "event-000029",
+  "state_version": 1,
+  "cwd": "/Users/yusuke/DeadStockSolution",
+  "project_name": "DeadStockSolution",
+  "resumed_at": "2026-03-02T02:54:09Z",
+  "git": {
+    "branch": "preview",
+    "uncommitted_changes": 111,
+    "last_commit": "2ae8010"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1772409333,
+    "wip_tasks": 0,
+    "todo_tasks": 0,
+    "pending_tasks": 0,
+    "completed_tasks": 0
+  },
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "prompt_seq": 1,
+  "intent": "literal",
+  "changes_this_session": [
+    {
+      "file": "server/src/services/matching-snapshot-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T02:58:23Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/matching-snapshot-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T02:58:29Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/matching-refresh-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T02:58:51Z",
+      "important": false
+    },
+    {
+      "file": "client/src/pages/AccountPage.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-02T02:58:56Z",
+      "important": false
+    },
+    {
+      "file": "client/src/pages/AccountPage.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-02T02:59:06Z",
+      "important": false
+    },
+    {
+      "file": "client/src/pages/AccountPage.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-02T02:59:39Z",
+      "important": false
+    },
+    {
+      "file": "client/src/utils/expiry-risk.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T02:59:50Z",
+      "important": false
+    },
+    {
+      "file": "client/src/pages/MatchingPage.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-02T02:59:56Z",
+      "important": false
+    },
+    {
+      "file": "client/src/components/onboarding/onboardingSteps.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T03:00:02Z",
+      "important": false
+    },
+    {
+      "file": "client/src/components/onboarding/onboardingSteps.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T03:00:08Z",
+      "important": false
+    },
+    {
+      "file": "client/src/hooks/useOnboardingVisibility.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T03:00:16Z",
+      "important": false
+    },
+    {
+      "file": "client/src/hooks/useOnboardingVisibility.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T03:00:26Z",
+      "important": false
+    },
+    {
+      "file": "client/src/hooks/useOnboardingVisibility.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-02T03:00:35Z",
+      "important": false
+    },
+    {
+      "file": "client/src/pages/DeadStockListPage.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-02T03:00:47Z",
+      "important": false
+    },
+    {
+      "file": "client/src/pages/DeadStockListPage.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-02T03:00:52Z",
+      "important": false
+    }
+  ],
+  "last_message_length": 1053,
+  "last_message_hash": "4284d2f7b6f7292f",
+  "ended_at": "2026-03-02T03:01:35Z",
+  "duration_minutes": 547,
+  "memory_logged": true
+}

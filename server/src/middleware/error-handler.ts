@@ -39,14 +39,10 @@ function resolveResponseMessage(err: HttpLikeError, status: number): string {
   }
 
   if (status >= 500) {
-    return process.env.NODE_ENV === 'production'
-      ? 'サーバーエラーが発生しました'
-      : err.message;
+    return 'サーバーエラーが発生しました';
   }
 
-  return process.env.NODE_ENV === 'production'
-    ? 'リクエストに失敗しました'
-    : err.message || 'リクエストに失敗しました';
+  return 'リクエストに失敗しました';
 }
 
 function resolveLogMessage(err: HttpLikeError, status: number): string {
@@ -79,18 +75,21 @@ function resolveResponseCode(err: HttpLikeError, status: number): string {
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   const httpErr = err as HttpLikeError;
   const status = resolveStatusCode(httpErr);
+  const requestId = (req as Request & { requestId?: string }).requestId
+    ?? (typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined);
   logger.error('Unhandled error', {
     error: resolveLogMessage(httpErr, status),
     stack: resolveLogStack(httpErr, status),
     method: req.method,
     path: req.path,
     status,
+    requestId,
   });
   void recordHttpUnhandledError({
     method: req.method,
     path: req.path,
     status,
-    requestId: typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined,
+    requestId,
     errorCode: typeof httpErr.code === 'string' ? httpErr.code : undefined,
   });
   res.status(status).json({

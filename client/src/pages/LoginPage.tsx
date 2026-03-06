@@ -1,7 +1,7 @@
-import { useState, FormEvent } from 'react';
-import { useAsyncState } from '../hooks/useAsyncState';
-import { Nav } from 'react-bootstrap';
+import { useMemo, useState, FormEvent, KeyboardEvent } from 'react';
+import { Form } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAsyncState } from '../hooks/useAsyncState';
 import { useAuth } from '../contexts/AuthContext';
 import { api, ApiError } from '../api/client';
 import AuthPageLayout from '../components/ui/AuthPageLayout';
@@ -12,6 +12,7 @@ import AppModalShell from '../components/ui/AppModalShell';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import { APP_VERSION } from '../constants/appVersion';
+import { resolveClientTestLoginFeatureEnabled } from '../features/testLoginFeature';
 
 type LoginMode = 'user' | 'admin';
 
@@ -25,6 +26,20 @@ interface TestPharmacyPreview {
 
 interface TestPharmacyResponse {
   accounts?: unknown;
+}
+
+interface LoginFieldErrors {
+  email?: string;
+  password?: string;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TEST_PHARMACY_ENDPOINT = '/auth/test-pharmacies?includePassword=1';
+
+function isTestLoginFeatureEnabled(): boolean {
+  return resolveClientTestLoginFeatureEnabled(import.meta.env as {
+    readonly VITE_TEST_LOGIN_FEATURE_ENABLED?: string;
+  });
 }
 
 function isTestPharmacyPreview(value: unknown): value is TestPharmacyPreview {
@@ -45,23 +60,65 @@ function parseTestPharmacyAccounts(payload: unknown): TestPharmacyPreview[] {
 }
 
 export default function LoginPage() {
+  const testLoginFeatureEnabled = isTestLoginFeatureEnabled();
+  const [mode, setMode] = useState<LoginMode>('user');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { loading, setLoading, error, setError } = useAsyncState();
-  const [mode, setMode] = useState<LoginMode>('user');
+  const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const [showTestPharmacyModal, setShowTestPharmacyModal] = useState(false);
   const [testPharmacyLoading, setTestPharmacyLoading] = useState(false);
   const [testPharmacyError, setTestPharmacyError] = useState('');
+  const [testPharmacyQuery, setTestPharmacyQuery] = useState('');
+  const [appliedTestPharmacyMessage, setAppliedTestPharmacyMessage] = useState('');
   const [testPharmacies, setTestPharmacies] = useState<TestPharmacyPreview[]>([]);
+  const { loading, setLoading, error, setError } = useAsyncState();
   const { login, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const filteredTestPharmacies = useMemo(() => {
+    const normalizedQuery = testPharmacyQuery.trim().toLowerCase();
+    if (!normalizedQuery) return testPharmacies;
+    return testPharmacies.filter((pharmacy) => (
+      pharmacy.name.toLowerCase().includes(normalizedQuery)
+      || pharmacy.email.toLowerCase().includes(normalizedQuery)
+      || pharmacy.prefecture.toLowerCase().includes(normalizedQuery)
+      || String(pharmacy.id).includes(normalizedQuery)
+    ));
+  }, [testPharmacies, testPharmacyQuery]);
+
+  const validateForm = (): boolean => {
+    const nextErrors: LoginFieldErrors = {};
+    const normalizedEmail = email.trim();
+
+    if (!normalizedEmail) {
+      nextErrors.email = 'メールアドレスを入力してください。';
+    } else if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      nextErrors.email = 'メールアドレス形式で入力してください。';
+    }
+
+    if (!password) {
+      nextErrors.password = 'パスワードを入力してください。';
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!validateForm()) {
+      setError('');
+      return;
+    }
+
+    const normalizedEmail = email.trim();
+    setAppliedTestPharmacyMessage('');
     setError('');
     setLoading(true);
     try {
-      const user = await login(email, password);
+      const user = await login(normalizedEmail, password);
       if (mode === 'admin') {
         if (!user.isAdmin) {
           try {
@@ -73,14 +130,14 @@ export default function LoginPage() {
           return;
         }
         navigate('/admin');
-      } else {
-        navigate('/');
+        return;
       }
+      navigate('/');
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         const data = err.data as { verificationStatus?: string } | undefined;
         if (data?.verificationStatus === 'pending_verification') {
-          navigate(`/verification-pending?email=${encodeURIComponent(email)}`);
+          navigate(`/verification-pending?email=${encodeURIComponent(normalizedEmail)}`);
           return;
         }
         if (data?.verificationStatus === 'rejected') {
@@ -88,185 +145,252 @@ export default function LoginPage() {
           return;
         }
       }
+      if (err instanceof ApiError && err.status === 401) {
+        setError('メールアドレスまたはパスワードが正しくありません');
+        return;
+      }
       setError(err instanceof Error ? err.message : 'ログインに失敗しました');
     } finally {
       setLoading(false);
     }
   };
 
-  const switchMode = (newMode: LoginMode) => {
-    setMode(newMode);
+  const switchMode = (nextMode: LoginMode) => {
+    setMode(nextMode);
     setError('');
-    setEmail('');
-    setPassword('');
+    setFieldErrors({});
+    setCapsLockOn(false);
+    setAppliedTestPharmacyMessage('');
   };
 
-  const openTestPharmacyModal = async () => {
-    if (testPharmacyLoading) return;
-    setShowTestPharmacyModal(true);
+  const fetchTestPharmacies = async (forceRefresh = false): Promise<TestPharmacyPreview[]> => {
+    if (!testLoginFeatureEnabled) return [];
+    if (!forceRefresh && testPharmacies.length > 0) return testPharmacies;
     setTestPharmacyLoading(true);
-    setTestPharmacyError('');
     try {
-      const response = await api.get<TestPharmacyResponse>('/auth/test-pharmacies?includePassword=1');
-      setTestPharmacies(parseTestPharmacyAccounts(response));
+      const response = await api.get<TestPharmacyResponse>(TEST_PHARMACY_ENDPOINT);
+      const accounts = parseTestPharmacyAccounts(response);
+      setTestPharmacies(accounts);
+      setTestPharmacyError('');
+      return accounts;
     } catch (err) {
       setTestPharmacies([]);
       setTestPharmacyError(err instanceof Error ? err.message : 'テスト薬局情報の取得に失敗しました');
+      return [];
     } finally {
       setTestPharmacyLoading(false);
     }
   };
 
+  const openTestPharmacyModal = async () => {
+    if (!testLoginFeatureEnabled || testPharmacyLoading) return;
+    setShowTestPharmacyModal(true);
+    setTestPharmacyError('');
+    setTestPharmacyQuery('');
+    if (testPharmacies.length > 0) return;
+    await fetchTestPharmacies(true);
+  };
+
   const applyTestPharmacy = (pharmacy: TestPharmacyPreview) => {
     setMode('user');
     setError('');
+    setFieldErrors({});
+    setCapsLockOn(false);
     setEmail(pharmacy.email);
     setPassword(pharmacy.password);
+    setAppliedTestPharmacyMessage(`${pharmacy.name} のログイン情報を入力しました。`);
     setShowTestPharmacyModal(false);
   };
+
+  const handlePasswordKeyUp = (event: KeyboardEvent<HTMLInputElement>) => {
+    setCapsLockOn(event.getModifierState('CapsLock'));
+  };
+
+  const isAdminMode = mode === 'admin';
 
   return (
     <AuthPageLayout
       footerNote="本システムは業務補助ツールです。入力内容は確認のうえ運用してください。"
       main={(
-        <>
-          <div className="dl-brand-row">
-            <h1>薬局デッドストック交換システム</h1>
-            <span className="dl-version-chip">{APP_VERSION}</span>
-          </div>
-          <p className="dl-lead">薬局間在庫の調整を安全に進めるための業務ポータルです。</p>
+        <div className="mx-auto" style={{ maxWidth: '720px', width: '100%' }}>
+          <div className="card shadow-sm border-0">
+            <div className="card-body p-4 p-md-5">
+              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                <div>
+                  <p className="text-uppercase text-muted small mb-1">Sign in</p>
+                  <h1 className="h3 mb-1">薬局デッドストック交換システム</h1>
+                  <p className="text-muted mb-0">
+                    登録済みアカウントでログインしてください。
+                  </p>
+                </div>
+                <span className="badge text-bg-light border">{APP_VERSION}</span>
+              </div>
 
-          <Nav
-            className="dl-auth-tabs"
-            variant="tabs"
-            activeKey={mode}
-            onSelect={(k) => {
-              if (k === 'user' || k === 'admin') {
-                switchMode(k);
-              }
-            }}
-          >
-            <Nav.Item>
-              <Nav.Link eventKey="user">薬局ログイン</Nav.Link>
-            </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="admin">管理者ログイン</Nav.Link>
-            </Nav.Item>
-          </Nav>
+              <div className="btn-group w-100 mb-4" role="group" aria-label="ログイン種別">
+                <button
+                  type="button"
+                  className={`btn ${isAdminMode ? 'btn-outline-secondary' : 'btn-primary'}`}
+                  onClick={() => switchMode('user')}
+                  aria-pressed={!isAdminMode}
+                >
+                  通常ログイン
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${isAdminMode ? 'btn-dark' : 'btn-outline-secondary'}`}
+                  onClick={() => switchMode('admin')}
+                  aria-pressed={isAdminMode}
+                >
+                  管理者ログイン
+                </button>
+              </div>
 
-          <h2 className="h5 text-center mt-3 mb-3">
-            {mode === 'admin' ? '管理者ログイン' : 'ログイン'}
-          </h2>
-          {error && <AppAlert variant="danger" className="dl-status-alert">{error}</AppAlert>}
+              {error && <AppAlert variant="danger" className="mb-3">{error}</AppAlert>}
+              {appliedTestPharmacyMessage && <AppAlert variant="success" className="mb-3">{appliedTestPharmacyMessage}</AppAlert>}
 
-          <form onSubmit={handleSubmit}>
-            <AppField
-              className="mb-3"
-              controlId="login-email"
-              label="メールアドレス"
-              type="email"
-              value={email}
-              onChange={(value) => setEmail(value)}
-              autoComplete="username"
-              inputMode="email"
-              enterKeyHint="next"
-              required
-              helpText="連絡先として登録したメールアドレスを入力してください。"
-            />
-            <AppField
-              className="mb-3"
-              controlId="login-password"
-              label="パスワード"
-              type="password"
-              value={password}
-              onChange={(value) => setPassword(value)}
-              autoComplete="current-password"
-              enterKeyHint="go"
-              required
-              helpText="共用端末では入力後に周囲確認を行ってください。"
-            />
-            <LoadingButton
-              type="submit"
-              variant={mode === 'admin' ? 'danger' : 'primary'}
-              className="w-100"
-              loading={loading}
-              loadingLabel="ログイン中..."
-            >
-              {mode === 'admin' ? '管理者ログイン' : 'ログイン'}
-            </LoadingButton>
-          </form>
+              <form onSubmit={handleSubmit}>
+                <h2 className="h5 mb-3">{isAdminMode ? '管理者ログイン' : 'ログイン'}</h2>
+                <AppField
+                  className="mb-3"
+                  controlId="login-email"
+                  label="メールアドレス"
+                  type="email"
+                  value={email}
+                  onChange={setEmail}
+                  autoComplete="username"
+                  inputMode="email"
+                  enterKeyHint="next"
+                  required
+                  disabled={loading}
+                  placeholder="登録済みメールアドレス"
+                  isInvalid={!!fieldErrors.email}
+                  errorText={fieldErrors.email}
+                />
+                <Form.Group className="mb-3">
+                  <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                    <Form.Label htmlFor="login-password" className="mb-0">パスワード</Form.Label>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      disabled={loading}
+                    >
+                      {showPassword ? '非表示' : '表示'}
+                    </button>
+                  </div>
+                  <Form.Control
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    autoComplete="current-password"
+                    enterKeyHint="go"
+                    required
+                    disabled={loading}
+                    isInvalid={!!fieldErrors.password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    onKeyUp={handlePasswordKeyUp}
+                  />
+                  {fieldErrors.password && <div className="invalid-feedback d-block">{fieldErrors.password}</div>}
+                  {capsLockOn && (
+                    <div className="form-text text-warning">
+                      Caps Lock が有効です。大文字入力に注意してください。
+                    </div>
+                  )}
+                </Form.Group>
 
-          <div className="dl-link-row">
-            <Link to="/password-reset">パスワードを忘れた方</Link>
-          </div>
+                <LoadingButton
+                  type="submit"
+                  variant={isAdminMode ? 'dark' : 'primary'}
+                  className="w-100"
+                  loading={loading}
+                  loadingLabel="ログイン中..."
+                >
+                  {isAdminMode ? '管理者ログイン' : 'ログイン'}
+                </LoadingButton>
+              </form>
 
-          {mode === 'user' && (
-            <div className="dl-link-row">
-              <Link to="/register">新規登録はこちら</Link>
+              <div className="d-flex flex-wrap gap-3 mt-3">
+                {!isAdminMode && (
+                  <Link to="/register" className="small text-decoration-none">
+                    新規登録はこちら
+                  </Link>
+                )}
+                <span className="small text-muted">
+                  {isAdminMode ? '管理者アカウントでログインしてください。' : '通常アカウントで業務画面に入ります。'}
+                </span>
+              </div>
+
+              {!isAdminMode && testLoginFeatureEnabled && (
+                <section className="border rounded-3 p-3 mt-4" aria-label="開発者ログイン">
+                  <div className="mb-2">
+                    <h3 className="h6 mb-1">開発者ログイン</h3>
+                    <p className="text-muted small mb-0">
+                      テスト薬局の ID とパスワードを転記して、動作確認をすぐ始められます。
+                    </p>
+                  </div>
+                  <div className="d-flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary"
+                      onClick={() => {
+                        void openTestPharmacyModal();
+                      }}
+                      disabled={loading || testPharmacyLoading}
+                    >
+                      一覧から選ぶ
+                    </button>
+                  </div>
+                </section>
+              )}
             </div>
-          )}
-
-          {mode === 'admin' && (
-            <div className="text-muted small text-center mt-3">
-              管理者アカウントでログインしてください。
-            </div>
-          )}
-
-          <section className="dl-demo-shortcuts" aria-label="テスト薬局情報">
-            <h3 className="dl-demo-title">テスト薬局情報</h3>
-            <button
-              type="button"
-              className="btn btn-outline-secondary btn-sm w-100"
-              onClick={() => {
-                void openTestPharmacyModal();
-              }}
-              disabled={loading || testPharmacyLoading}
-            >
-              {testPharmacyLoading ? '読込中...' : '登録済みテスト薬局を表示'}
-            </button>
-            <p className="dl-demo-hint">
-              DB登録済みのテスト薬局を表示します。選択するとメールアドレス/パスワード欄へ反映されます。
-            </p>
-          </section>
+          </div>
 
           <AppModalShell
             show={showTestPharmacyModal}
             onHide={() => setShowTestPharmacyModal(false)}
-            title="登録済みテスト薬局"
+            title="開発者ログイン"
             size="lg"
           >
-            {testPharmacyLoading && <p className="text-center mb-0 py-3">テスト薬局情報を読み込み中です...</p>}
-            {testPharmacyError && <AppAlert variant="danger" className="dl-status-alert">{testPharmacyError}</AppAlert>}
-            {!testPharmacyLoading && !testPharmacyError && testPharmacies.length === 0 && (
-              <p className="text-muted mb-0">表示できるテスト薬局が見つかりませんでした。</p>
-            )}
-            {!testPharmacyLoading && !testPharmacyError && testPharmacies.length > 0 && (
+            <div className="mb-3">
+              <Form.Control
+                type="search"
+                placeholder="薬局名 / メールアドレス / 都道府県 / ID で絞り込み"
+                value={testPharmacyQuery}
+                onChange={(event) => setTestPharmacyQuery(event.target.value)}
+              />
+            </div>
+            {testPharmacyError && <AppAlert variant="danger">{testPharmacyError}</AppAlert>}
+            {testPharmacyLoading ? (
+              <p className="text-muted mb-0">読み込み中...</p>
+            ) : filteredTestPharmacies.length === 0 ? (
+              <p className="text-muted mb-0">表示できるテスト薬局がありません。</p>
+            ) : (
               <AppResponsiveSwitch
                 desktop={(
-                  <div className="dl-test-pharmacy-modal">
-                    <table className="table table-sm align-middle mb-0">
+                  <div className="table-responsive">
+                    <table className="table align-middle mb-0">
                       <thead>
                         <tr>
-                          <th scope="col">ID</th>
-                          <th scope="col">薬局名</th>
-                          <th scope="col">都道府県</th>
-                          <th scope="col">ログインID</th>
-                          <th scope="col">パスワード</th>
-                          <th scope="col" className="text-end">操作</th>
+                          <th>ID</th>
+                          <th>薬局名</th>
+                          <th>メールアドレス</th>
+                          <th>都道府県</th>
+                          <th>パスワード</th>
+                          <th className="text-end">操作</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {testPharmacies.map((pharmacy) => (
+                        {filteredTestPharmacies.map((pharmacy) => (
                           <tr key={pharmacy.id}>
                             <td>{pharmacy.id}</td>
                             <td>{pharmacy.name}</td>
+                            <td>{pharmacy.email}</td>
                             <td>{pharmacy.prefecture}</td>
-                            <td className="dl-test-pharmacy-email">{pharmacy.email}</td>
-                            <td><code>{pharmacy.password}</code></td>
+                            <td>{pharmacy.password}</td>
                             <td className="text-end">
                               <button
                                 type="button"
-                                className="btn btn-primary btn-sm"
+                                className="btn btn-sm btn-primary"
                                 onClick={() => applyTestPharmacy(pharmacy)}
                               >
                                 このID/パスワードを入力
@@ -279,21 +403,21 @@ export default function LoginPage() {
                   </div>
                 )}
                 mobile={(
-                  <div className="dl-mobile-data-list">
-                    {testPharmacies.map((pharmacy) => (
+                  <div className="d-grid gap-3">
+                    {filteredTestPharmacies.map((pharmacy) => (
                       <AppMobileDataCard
                         key={pharmacy.id}
                         title={pharmacy.name}
-                        subtitle={`ID: ${pharmacy.id}`}
+                        subtitle={pharmacy.email}
                         fields={[
+                          { label: 'ID', value: pharmacy.id },
                           { label: '都道府県', value: pharmacy.prefecture },
-                          { label: 'ログインID', value: <span className="dl-test-pharmacy-email">{pharmacy.email}</span> },
-                          { label: 'パスワード', value: <code>{pharmacy.password}</code> },
+                          { label: 'パスワード', value: pharmacy.password },
                         ]}
                         actions={(
                           <button
                             type="button"
-                            className="btn btn-primary btn-sm"
+                            className="btn btn-primary w-100"
                             onClick={() => applyTestPharmacy(pharmacy)}
                           >
                             このID/パスワードを入力
@@ -306,18 +430,7 @@ export default function LoginPage() {
               />
             )}
           </AppModalShell>
-        </>
-      )}
-      aside={(
-        <section aria-label="運用上の確認事項">
-          <h3 className="h6 mb-3">ログイン前の確認</h3>
-          <ul className="dl-trust-list">
-            <li>患者情報や薬歴情報はこの画面で入力しないでください。</li>
-            <li>入力エラー時はメッセージ内容を確認し、同じ操作を繰り返さないでください。</li>
-            <li>管理者ログインは運用担当者のみ利用してください。</li>
-            <li>共用端末では操作後に必ずログアウトしてください。</li>
-          </ul>
-        </section>
+        </div>
       )}
     />
   );

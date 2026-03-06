@@ -1,24 +1,32 @@
-# Troubleshooting
+# Codex Troubleshooting
 
-## apps が 403 / Cloudflare HTML / MCP decode で落ちる
-Symptoms:
-- 403 Forbidden (Just a moment...)
-- MCP handshaking failed / error decoding response body
+## 1) MCP client for `codex_apps` failed to start / 403 / decode error
+- apps 機能が有効な場合、内部で apps 系 MCP が起動して失敗することがある
+- 対策: `.codex/config.toml` で
+  - `[features].apps = false`
+  - `[features].apps_mcp_gateway = false`
+  - `[features].search_tool = false`
+  にして apps 系を明示的に無効化する
+
+## 2) spark フォールバックが効かない
+- 自動フォールバックは保証されない
+- 対策: “運用”でフォールバックする
+  - 最初に spark ロールを軽タスクで spawn（疎通）
+  - 失敗したら `*_fallback` を使い続ける
+  - spawn 失敗時は同じ指示を fallback に即投げ直す（確認待ち禁止）
+
+## 3) タスクが途中で止まる
+主因はこの2つ:
+- “確認待ち”の手順（計画確認など）が混入している
+- コンテキスト圧縮で完遂規約が落ちる
 
 対策:
-1) .codex/config.toml:
-   - [features].apps = true
-   - [features].apps_mcp_gateway = true
-2) 再ログイン:
-   - codex login
-3) Enterprise/Workspace 制限の可能性があれば管理者に設定確認
-4) 作業継続が優先なら apps を一時OFFにして回避
-   - 例: `[features].apps = false`
-   - 復旧条件: `codex login` 再実行後に handshake エラーが解消し、Apps機能が必要な作業に戻る時点で `apps=true` に戻す
+- AGENTS.md の Completion Contract（確認待ち禁止）を厳守
+- `.codex/config.toml` の
+  - `project_doc_max_bytes` を増やす
+  - `experimental_compact_prompt_file` を設定
+  で圧縮時も規約を保持
 
-## plan mode
-- CLIでは /plan が使える。非自明タスクは必ず plan から入る。
-
-## multi-agent
-- [features].multi_agent = true が必要
-- agents.max_threads で上限を管理する
+## 4) 長時間コマンドが途中で死ぬ
+- `background_terminal_max_timeout` を増やす（ms）
+  例: 3600000 (60分)

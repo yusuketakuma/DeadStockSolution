@@ -24,6 +24,7 @@ import { getSourceStatesByPrefix } from '../services/drug-master-source-state-se
 import { parseExcelBuffer } from '../services/upload-service';
 import { logger } from '../services/logger';
 import { getErrorMessage } from './admin-utils';
+import { createMemorySingleFileUpload } from '../middleware/upload-middleware';
 
 const router = Router();
 type ParsedDrugMasterRows = ReturnType<typeof parseMhlwExcelData>;
@@ -115,22 +116,11 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/x-zip-compressed',
 ]);
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_UPLOAD_SIZE,
-    files: 1,
-    fields: 10,
-    fieldSize: 100 * 1024,
-  },
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(ext) || !ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      cb(new Error('xlsx / csv / xml / zip ファイルのみアップロードできます'));
-      return;
-    }
-    cb(null, true);
-  },
+const upload = createMemorySingleFileUpload({
+  maxUploadSize: MAX_UPLOAD_SIZE,
+  allowedExtensions: ALLOWED_EXTENSIONS,
+  allowedMimeTypes: ALLOWED_MIME_TYPES,
+  invalidTypeErrorMessage: 'xlsx / csv / xml / zip ファイルのみアップロードできます',
 });
 
 function resolveIntervalHours(raw: string | undefined, fallback: number = 24): number {

@@ -1,0 +1,75 @@
+{
+  "session_id": "session-1772340621",
+  "parent_session_id": null,
+  "state": "stopped",
+  "started_at": "2026-03-01T04:50:21Z",
+  "updated_at": "2026-03-01T04:54:57Z",
+  "event_seq": 14,
+  "last_event_id": "event-000014",
+  "state_version": 1,
+  "cwd": "/Users/yusuke/DeadStockSolution",
+  "project_name": "DeadStockSolution",
+  "resumed_at": "2026-03-01T04:50:21Z",
+  "git": {
+    "branch": "preview",
+    "uncommitted_changes": 62,
+    "last_commit": "cd4e53d"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1772339857,
+    "wip_tasks": 0,
+    "todo_tasks": 0,
+    "pending_tasks": 0,
+    "completed_tasks": 0
+  },
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "prompt_seq": 1,
+  "intent": "literal",
+  "changes_this_session": [
+    {
+      "file": "client/src/contexts/NotificationContext.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T04:54:05Z",
+      "important": false
+    },
+    {
+      "file": "client/src/contexts/NotificationContext.tsx",
+      "action": "Edit",
+      "timestamp": "2026-03-01T04:54:07Z",
+      "important": false
+    },
+    {
+      "file": "server/src/types/timeline.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T04:54:08Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T04:54:10Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-service.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T04:54:26Z",
+      "important": false
+    },
+    {
+      "file": "server/src/services/timeline-aggregators.ts",
+      "action": "Edit",
+      "timestamp": "2026-03-01T04:54:38Z",
+      "important": false
+    }
+  ],
+  "last_message_length": 529,
+  "last_message_hash": "27a9f19d6172a9c5",
+  "ended_at": "2026-03-01T04:54:57Z",
+  "duration_minutes": 544,
+  "memory_logged": true
+}

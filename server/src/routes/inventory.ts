@@ -13,16 +13,49 @@ import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { groupBy } from '../utils/array-utils';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { normalizeSearchTerm, parsePagination, escapeLikeWildcards } from '../utils/request-utils';
+import { normalizeSearchTerm, parsePagination, escapeLikeWildcards, buildPaginatedResponse } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 import { logger } from '../services/logger';
 import { writeLog, getClientIp } from '../services/log-service';
-import { getPharmacyRiskDetail } from '../services/expiry-risk-service';
+import { getPharmacyRiskDetail, invalidateAdminRiskSnapshotCache } from '../services/expiry-risk-service';
+import { parseCameraCode, type CameraCodeType } from '../services/gs1-parser';
+import {
+  confirmCameraDeadStockBatch,
+  resolveCameraMatchByCode,
+  sanitizeRawCode,
+  searchCameraManualCandidates,
+} from '../services/camera-dead-stock-service';
 
 const router = Router();
 
 router.use(requireLogin);
+
+interface CameraResolveBody {
+  rawCode?: unknown;
+}
+
+interface CameraConfirmBody {
+  items?: unknown;
+}
+
+interface CameraManualCandidatesQuery {
+  q?: unknown;
+  limit?: unknown;
+}
+
+const CAMERA_BAD_REQUEST_MESSAGES = new Set<string>([
+  '読取コードを入力してください',
+  '検索キーワードを入力してください',
+  '登録する行がありません',
+  '一度に登録できる件数は200件までです',
+  '検索キーワードは2文字以上で入力してください',
+  '検索キーワードは80文字以内で入力してください',
+]);
+
+function isCameraBadRequestMessage(message: string): boolean {
+  return message.startsWith('行') || CAMERA_BAD_REQUEST_MESSAGES.has(message);
+}
 
 // My dead stock expiry risk summary
 router.get('/dead-stock/risk', async (req: AuthRequest, res: Response) => {
@@ -35,6 +68,90 @@ router.get('/dead-stock/risk', async (req: AuthRequest, res: Response) => {
       ? err.message
       : '期限切れリスク集計の取得に失敗しました';
     res.status(message.includes('見つかりません') ? 404 : 500).json({ error: message });
+  }
+});
+
+// Resolve GS1/YJ code from camera/manual scan (no persistence)
+router.post('/dead-stock/camera/resolve', async (req: AuthRequest, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as CameraResolveBody;
+    const rawCode = sanitizeRawCode(body.rawCode);
+    if (!rawCode) {
+      res.status(400).json({ error: '読取コードを入力してください' });
+      return;
+    }
+
+    const parsed = parseCameraCode(rawCode);
+    const match = await resolveCameraMatchByCode(parsed);
+
+    const response = {
+      codeType: parsed.codeType as CameraCodeType,
+      parsed: {
+        gtin: parsed.gtin,
+        yjCode: parsed.yjCode,
+        expirationDate: parsed.expirationDate,
+        lotNumber: parsed.lotNumber,
+      },
+      match,
+      warnings: parsed.warnings,
+    };
+
+    res.json(response);
+  } catch (err) {
+    logger.error('Camera resolve error:', { error: (err as Error).message });
+    res.status(500).json({ error: 'コード解析に失敗しました' });
+  }
+});
+
+// Search drug master candidates for unmatched camera rows
+router.get('/dead-stock/camera/manual-candidates', async (req: AuthRequest, res: Response) => {
+  try {
+    const query = req.query as CameraManualCandidatesQuery;
+    const search = normalizeSearchTerm(query.q);
+    if (!search) {
+      res.status(400).json({ error: '検索キーワードを入力してください' });
+      return;
+    }
+
+    const data = await searchCameraManualCandidates(search, query.limit);
+    res.json({ data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '医薬品候補の検索に失敗しました';
+    if (isCameraBadRequestMessage(message)) {
+      res.status(400).json({ error: message });
+      return;
+    }
+    logger.error('Camera manual candidates error:', { error: message });
+    res.status(500).json({ error: '医薬品候補の検索に失敗しました' });
+  }
+});
+
+// Confirm scanned rows and register as dead stock
+router.post('/dead-stock/camera/confirm-batch', async (req: AuthRequest, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as CameraConfirmBody;
+    const result = await confirmCameraDeadStockBatch(req.user!.id, body.items);
+
+    invalidateAdminRiskSnapshotCache();
+    void writeLog('upload', {
+      pharmacyId: req.user!.id,
+      detail: `カメラ登録 ${result.createdCount}件 (uploadId:${result.uploadId})`,
+      ipAddress: getClientIp(req),
+    });
+
+    res.status(201).json({
+      message: `${result.createdCount}件のデータを登録しました`,
+      uploadId: result.uploadId,
+      createdCount: result.createdCount,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'カメラ登録に失敗しました';
+    if (isCameraBadRequestMessage(message)) {
+      res.status(400).json({ error: message });
+      return;
+    }
+    logger.error('Camera confirm batch error:', { error: message });
+    res.status(500).json({ error: 'カメラ登録に失敗しました' });
   }
 });
 
@@ -57,10 +174,7 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
       .from(deadStockItems)
       .where(eq(deadStockItems.pharmacyId, req.user!.id));
 
-    res.json({
-      data: items,
-      pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
-    });
+    res.json(buildPaginatedResponse(items, { page, limit, total: total.count }));
   } catch (err) {
     logger.error('Dead stock list error:', { error: (err as Error).message });
     res.status(500).json({ error: 'デッドストックリストの取得に失敗しました' });
@@ -120,10 +234,7 @@ router.get('/used-medication', async (req: AuthRequest, res: Response) => {
       .from(usedMedicationItems)
       .where(eq(usedMedicationItems.pharmacyId, req.user!.id));
 
-    res.json({
-      data: items,
-      pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
-    });
+    res.json(buildPaginatedResponse(items, { page, limit, total: total.count }));
   } catch (err) {
     logger.error('Used medication list error:', { error: (err as Error).message });
     res.status(500).json({ error: '医薬品使用量リストの取得に失敗しました' });
@@ -243,10 +354,7 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       .innerJoin(pharmacies, eq(deadStockItems.pharmacyId, pharmacies.id))
       .where(whereExpr);
 
-    res.json({
-      data: enrichedItems,
-      pagination: { page, limit, total: total.count, totalPages: Math.ceil(total.count / limit) },
-    });
+    res.json(buildPaginatedResponse(enrichedItems, { page, limit, total: total.count }));
   } catch (err) {
     logger.error('Browse inventory error:', { error: (err as Error).message });
     res.status(500).json({ error: '在庫参照に失敗しました' });

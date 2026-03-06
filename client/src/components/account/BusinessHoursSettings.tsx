@@ -79,6 +79,10 @@ function BusinessHoursSettings({
     () => [...businessHours].sort((a, b) => a.dayOfWeek - b.dayOfWeek),
     [businessHours],
   );
+  const specialTypeOptions = useMemo(
+    () => Object.entries(SPECIAL_TYPE_LABELS).map(([value, label]) => ({ value, label })),
+    [],
+  );
   const canEditHours = hoursEditable && orderedBusinessHours.length > 0;
 
   return (
@@ -320,7 +324,7 @@ function BusinessHoursSettings({
                                 value={entry.specialType}
                                 ariaLabel={`特例営業時間 ${index + 1} 種別`}
                                 onChange={(value) => onSpecialTypeChange(index, value as SpecialType)}
-                                options={Object.entries(SPECIAL_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+                                options={specialTypeOptions}
                               />
                             ) : (
                               SPECIAL_TYPE_LABELS[entry.specialType]

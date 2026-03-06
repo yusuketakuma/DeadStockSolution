@@ -9,6 +9,7 @@ REMOTE="${QUALITY_GATE_REMOTE:-origin}"
 SKIP_INSTALL="${QUALITY_GATE_SKIP_INSTALL:-0}"
 SKIP_SYNC="${QUALITY_GATE_SKIP_SYNC:-0}"
 ALLOW_DIRTY="${QUALITY_GATE_ALLOW_DIRTY:-0}"
+READ_ONLY="${QUALITY_GATE_READ_ONLY:-0}"
 OPENCLAW_CLI_PATH="${OPENCLAW_CLI_PATH:-openclaw}"
 NOTIFY_CHANNEL="${OPENCLAW_NOTIFY_CHANNEL:-telegram}"
 NOTIFY_TARGET="${OPENCLAW_NOTIFY_TARGET:-}"
@@ -79,8 +80,13 @@ if [ "$SKIP_INSTALL" != "1" ]; then
 fi
 
 status=0
-LAST_STEP="lint:fix"
-run_step "lint:fix" npm run lint:fix || status=1
+if [ "$READ_ONLY" = "1" ]; then
+  LAST_STEP="lint"
+  run_step "lint" npm run lint || status=1
+else
+  LAST_STEP="lint:fix"
+  run_step "lint:fix" npm run lint:fix || status=1
+fi
 LAST_STEP="typecheck"
 run_step "typecheck" npm run typecheck || status=1
 LAST_STEP="test"
@@ -89,6 +95,11 @@ run_step "test" npm run test || status=1
 if [ "$status" -ne 0 ]; then
   log "quality gate failed"
   exit 1
+fi
+
+if [ "$READ_ONLY" = "1" ]; then
+  log "read-only mode: skip commit/push"
+  exit 0
 fi
 
 if git diff --quiet && git diff --cached --quiet; then

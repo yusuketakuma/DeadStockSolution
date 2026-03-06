@@ -1,12 +1,15 @@
 import { Router, Response } from 'express';
 import { requireLogin, requireAdmin } from '../middleware/auth';
-import { queryLogs, getLogSummary, LOG_SOURCES } from '../services/log-center-service';
+import { queryLogs, getLogSummary, LOG_SOURCES, LOG_LEVELS, isLogLevel } from '../services/log-center-service';
 import type { LogCenterQuery, LogSource } from '../services/log-center-service';
 import { AuthRequest } from '../types';
 import { handleAdminError, sendPaginated, parseListPagination } from './admin-utils';
-import { parsePositiveInt, normalizeSearchTerm } from '../utils/request-utils';
+import { parsePositiveInt, normalizeSearchTerm, parseTimestamp } from '../utils/request-utils';
 
 const VALID_LOG_SOURCES = new Set<LogSource>(LOG_SOURCES);
+const LOG_LEVEL_LABEL = LOG_LEVELS.join(', ');
+
+const MAX_SPAN_MS = 90 * 24 * 60 * 60 * 1000; // 90日
 
 const router = Router();
 router.use(requireLogin);
@@ -23,6 +26,14 @@ function parseLogSources(raw: unknown): LogSource[] | undefined {
   return [...new Set(filtered)];
 }
 
+function parseLogLevel(raw: unknown): LogCenterQuery['level'] | null | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== 'string') return null;
+  const normalized = raw.trim();
+  if (!normalized || !isLogLevel(normalized)) return null;
+  return normalized;
+}
+
 // GET /api/admin/log-center
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
@@ -35,8 +46,13 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         query.sources = sources;
       }
     }
-    if (req.query.level) {
-      query.level = String(req.query.level) as LogCenterQuery['level'];
+    const level = parseLogLevel(req.query.level);
+    if (level === null) {
+      res.status(400).json({ error: `level パラメータは ${LOG_LEVEL_LABEL} のいずれかを指定してください` });
+      return;
+    }
+    if (level) {
+      query.level = level;
     }
     const search = normalizeSearchTerm(req.query.search);
     if (search) {
@@ -46,11 +62,34 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       const pid = parsePositiveInt(req.query.pharmacyId);
       if (pid) query.pharmacyId = pid;
     }
-    if (req.query.from) {
-      query.from = String(req.query.from);
-    }
-    if (req.query.to) {
-      query.to = String(req.query.to);
+    if (req.query.from || req.query.to) {
+      const fromDate = req.query.from ? parseTimestamp(req.query.from) : null;
+      const toDate = req.query.to ? parseTimestamp(req.query.to) : null;
+
+      // ISO 8601 形式チェック
+      if (req.query.from && fromDate === null) {
+        res.status(400).json({ error: 'from パラメータが不正な日時形式です' });
+        return;
+      }
+      if (req.query.to && toDate === null) {
+        res.status(400).json({ error: 'to パラメータが不正な日時形式です' });
+        return;
+      }
+
+      // from ≤ to の検証
+      if (fromDate && toDate && fromDate > toDate) {
+        res.status(400).json({ error: 'from は to 以前の日時を指定してください' });
+        return;
+      }
+
+      // 最大スパン 90日の検証
+      if (fromDate && toDate && toDate.getTime() - fromDate.getTime() > MAX_SPAN_MS) {
+        res.status(400).json({ error: '指定できる期間は最大90日です' });
+        return;
+      }
+
+      if (fromDate) query.from = fromDate.toISOString();
+      if (toDate) query.to = toDate.toISOString();
     }
 
     const result = await queryLogs(query);

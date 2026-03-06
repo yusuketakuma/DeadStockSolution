@@ -4,9 +4,10 @@ import { db } from '../config/database';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications, pharmacies, notifications as notificationsTable } from '../db/schema';
-import { parsePositiveInt } from '../utils/request-utils';
+import { parsePositiveInt, isPositiveSafeInteger } from '../utils/request-utils';
 import { sanitizeInternalPath } from '../utils/path-utils';
 import { logger } from '../services/logger';
+import { getErrorMessage } from '../middleware/error-handler';
 import { decodeCursor, encodeCursor } from '../utils/cursor-pagination';
 import {
   getDashboardUnreadCount,
@@ -56,6 +57,42 @@ interface PostgresErrorLike {
   code?: string;
 }
 
+interface ProposalNotificationLink {
+  id: number;
+  isRead: boolean;
+  createdAt: string | null;
+}
+
+interface AdminMessageRow {
+  id: number;
+  title: string;
+  body: string;
+  actionPath: string | null;
+  createdAt: string | null;
+}
+
+interface ProposalRow {
+  id: number;
+  pharmacyAId: number;
+  pharmacyBId: number;
+  status: typeof exchangeProposals.$inferSelect.status;
+  proposedAt: string | null;
+}
+
+interface NotificationRowForProposalLink {
+  id: number;
+  type: string;
+  referenceType: string | null;
+  referenceId: number | null;
+  isRead: boolean;
+  createdAt: string | null;
+}
+
+interface NotificationNoticeRow extends NotificationRowForProposalLink {
+  title: string;
+  message: string;
+}
+
 function isUndefinedTableError(err: unknown): err is PostgresErrorLike {
   return typeof err === 'object' && err !== null && (err as PostgresErrorLike).code === '42P01';
 }
@@ -64,7 +101,7 @@ function parseNumericList(raw: unknown): number[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .map((value) => Number(value))
-    .filter((value) => Number.isInteger(value) && value > 0);
+    .filter(isPositiveSafeInteger);
 }
 
 function parseMatchDiff(raw: string): { addedCount: number; removedCount: number } {
@@ -219,22 +256,112 @@ function parseNoticeCursor(raw: unknown): NoticeCursor | null {
   return cursor;
 }
 
+function buildLatestProposalNotificationMap(
+  notificationRows: NotificationRowForProposalLink[],
+): Map<number, ProposalNotificationLink> {
+  const latestById = new Map<number, ProposalNotificationLink>();
+  for (const row of notificationRows) {
+    if (row.referenceType !== 'proposal') continue;
+    if (!PROPOSAL_EVENT_NOTIFICATION_TYPES.has(row.type)) continue;
+    if (!row.referenceId || row.referenceId <= 0) continue;
+    if (latestById.has(row.referenceId)) continue;
+    latestById.set(row.referenceId, {
+      id: row.id,
+      isRead: row.isRead,
+      createdAt: row.createdAt,
+    });
+  }
+  return latestById;
+}
+
+function toAdminMessageNotice(message: AdminMessageRow, unread: boolean): NoticeItem {
+  const actionPath = sanitizeInternalPath(message.actionPath) ?? '/';
+  return {
+    id: `message-${message.id}`,
+    type: 'admin_message',
+    title: `管理者: ${message.title}`,
+    body: message.body,
+    actionPath,
+    actionLabel: actionPath === '/' ? 'ダッシュボードへ' : '内容を確認',
+    createdAt: message.createdAt,
+    deadlineAt: null,
+    unread,
+    priority: unread ? 1 : 4,
+  };
+}
+
+function resolveNoticeStartIndex(notices: NoticeItem[], cursor: NoticeCursor | null): number {
+  if (!cursor) return 0;
+  const exactIndex = notices.findIndex((notice) => notice.id === cursor.id);
+  if (exactIndex >= 0) return exactIndex + 1;
+
+  const cursorTime = timestampSortValue(cursor.createdAt);
+  const fallback = notices.findIndex((notice) => {
+    if (notice.priority > cursor.priority) return true;
+    if (notice.priority < cursor.priority) return false;
+
+    const noticeTime = timestampSortValue(notice.createdAt);
+    if (noticeTime < cursorTime) return true;
+    if (noticeTime > cursorTime) return false;
+    return notice.id.localeCompare(cursor.id) > 0;
+  });
+  return fallback >= 0 ? fallback : notices.length;
+}
+
+function buildNoticeSummary(notices: NoticeItem[]): { unreadMessages: number; actionableRequests: number } {
+  let unreadMessages = 0;
+  let actionableRequests = 0;
+  for (const item of notices) {
+    if (item.type === 'admin_message' && item.unread) {
+      unreadMessages += 1;
+    }
+    if (item.unread && (item.type === 'inbound_request' || item.type === 'status_update' || item.type === 'match_update')) {
+      actionableRequests += 1;
+    }
+  }
+  return { unreadMessages, actionableRequests };
+}
+
 function mergeDedupSortByTimestamp<T extends { id: number }>(
   branchA: T[],
   branchB: T[],
   getTimestamp: (row: T) => string | null,
+  limit?: number,
 ): T[] {
-  const deduped = new Map<number, T>();
-  for (const row of branchA) deduped.set(row.id, row);
-  for (const row of branchB) {
-    if (!deduped.has(row.id)) deduped.set(row.id, row);
-  }
+  const merged: T[] = [];
+  const seen = new Set<number>();
+  let indexA = 0;
+  let indexB = 0;
 
-  return [...deduped.values()].sort((left, right) => {
+  const shouldPreferA = (left: T | undefined, right: T | undefined): boolean => {
+    if (left && !right) return true;
+    if (!left) return false;
+    if (!right) return true;
     const leftSort = timestampSortValue(getTimestamp(left));
     const rightSort = timestampSortValue(getTimestamp(right));
-    return rightSort - leftSort || right.id - left.id;
-  });
+    if (leftSort !== rightSort) return leftSort > rightSort;
+    return left.id > right.id;
+  };
+
+  while (indexA < branchA.length || indexB < branchB.length) {
+    const rowA = branchA[indexA];
+    const rowB = branchB[indexB];
+    const useA = shouldPreferA(rowA, rowB);
+    const picked = useA ? rowA : rowB;
+
+    if (useA) {
+      indexA += 1;
+    } else {
+      indexB += 1;
+    }
+
+    if (!picked || seen.has(picked.id)) continue;
+    seen.add(picked.id);
+    merged.push(picked);
+    if (limit && merged.length >= limit) break;
+  }
+
+  return merged;
 }
 
 function resolveNotificationType(type: string): NoticeType | null {
@@ -252,7 +379,7 @@ function resolveNotificationActionPath(referenceType: string | null, referenceId
   return '/';
 }
 
-function notificationToNotice(n: typeof notificationsTable.$inferSelect): NoticeItem | null {
+function notificationToNotice(n: NotificationNoticeRow): NoticeItem | null {
   const noticeType = resolveNotificationType(n.type);
   if (!noticeType) {
     logger.warn('Unsupported notification type skipped', { type: n.type, id: n.id });
@@ -281,7 +408,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const pharmacyId = req.user!.id;
     const limit = Math.min(parsePositiveInt(req.query.limit) ?? NOTICE_RESULT_LIMIT, MAX_NOTICE_PAGE_LIMIT);
     const cursor = parseNoticeCursor(req.query.cursor);
-
     const proposalSelect = {
       id: exchangeProposals.id,
       pharmacyAId: exchangeProposals.pharmacyAId,
@@ -296,6 +422,16 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       actionPath: adminMessages.actionPath,
       createdAt: adminMessages.createdAt,
     };
+    const notificationSelect = {
+      id: notificationsTable.id,
+      type: notificationsTable.type,
+      title: notificationsTable.title,
+      message: notificationsTable.message,
+      referenceType: notificationsTable.referenceType,
+      referenceId: notificationsTable.referenceId,
+      isRead: notificationsTable.isRead,
+      createdAt: notificationsTable.createdAt,
+    };
 
     // 全6クエリを完全並列実行（直列→並列で約50%高速化）
     const [proposalsA, proposalsB, messagesAll, messagesPharmacy, matchRows, notificationRows] = await Promise.all([
@@ -305,7 +441,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
           eq(exchangeProposals.pharmacyAId, pharmacyId),
           inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
         ))
-        .orderBy(desc(exchangeProposals.proposedAt))
+        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
         .limit(PROPOSAL_NOTICE_LIMIT),
       db.select(proposalSelect)
         .from(exchangeProposals)
@@ -313,7 +449,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
           eq(exchangeProposals.pharmacyBId, pharmacyId),
           inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
         ))
-        .orderBy(desc(exchangeProposals.proposedAt))
+        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
         .limit(PROPOSAL_NOTICE_LIMIT),
       db.select(messageSelect)
         .from(adminMessages)
@@ -349,39 +485,32 @@ router.get('/', async (req: AuthRequest, res: Response) => {
             throw err;
           }
           logger.warn('match_notifications query failed (table may not exist)', {
-            error: err instanceof Error ? err.message : String(err),
+            error: getErrorMessage(err),
           });
           return [];
         }
       })(),
-      db.select()
+      db.select(notificationSelect)
         .from(notificationsTable)
         .where(eq(notificationsTable.pharmacyId, pharmacyId))
         .orderBy(desc(notificationsTable.createdAt), desc(notificationsTable.id))
         .limit(SOURCE_NOTICE_FETCH_LIMIT),
     ]);
 
-    const proposalRows = mergeDedupSortByTimestamp(proposalsA, proposalsB, (row) => row.proposedAt)
-      .slice(0, PROPOSAL_NOTICE_LIMIT);
-    const messageRows = mergeDedupSortByTimestamp(messagesAll, messagesPharmacy, (row) => row.createdAt)
-      .slice(0, SOURCE_NOTICE_FETCH_LIMIT);
+    const proposalRows: ProposalRow[] = mergeDedupSortByTimestamp(
+      proposalsA,
+      proposalsB,
+      (row) => row.proposedAt,
+      PROPOSAL_NOTICE_LIMIT,
+    );
+    const messageRows: AdminMessageRow[] = mergeDedupSortByTimestamp(
+      messagesAll,
+      messagesPharmacy,
+      (row) => row.createdAt,
+      SOURCE_NOTICE_FETCH_LIMIT,
+    );
 
-    const latestProposalNotificationById = new Map<number, {
-      id: number;
-      isRead: boolean;
-      createdAt: string | null;
-    }>();
-    for (const row of notificationRows) {
-      if (row.referenceType !== 'proposal') continue;
-      if (!PROPOSAL_EVENT_NOTIFICATION_TYPES.has(row.type)) continue;
-      if (!row.referenceId || row.referenceId <= 0) continue;
-      if (latestProposalNotificationById.has(row.referenceId)) continue;
-      latestProposalNotificationById.set(row.referenceId, {
-        id: row.id,
-        isRead: row.isRead,
-        createdAt: row.createdAt,
-      });
-    }
+    const latestProposalNotificationById = buildLatestProposalNotificationMap(notificationRows);
 
     // messageReads と triggerPharmacy names を並列取得
     const messageIds = messageRows.map((message) => message.id);
@@ -419,19 +548,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     for (const message of messageRows) {
       const unread = !readMessageIdSet.has(message.id);
-      const actionPath = sanitizeInternalPath(message.actionPath) ?? '/';
-      notices.push({
-        id: `message-${message.id}`,
-        type: 'admin_message',
-        title: `管理者: ${message.title}`,
-        body: message.body,
-        actionPath,
-        actionLabel: actionPath === '/' ? 'ダッシュボードへ' : '内容を確認',
-        createdAt: message.createdAt,
-        deadlineAt: null,
-        unread,
-        priority: unread ? 1 : 4,
-      });
+      notices.push(toAdminMessageNotice(message, unread));
     }
 
     const triggerPharmacyNameById = new Map(triggerPharmacyRows.map((row) => [row.id, row.name]));
@@ -457,24 +574,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     }
 
     notices.sort(compareNoticeOrder);
-
-    const startIndex = (() => {
-      if (!cursor) return 0;
-      const exactIndex = notices.findIndex((notice) => notice.id === cursor.id);
-      if (exactIndex >= 0) return exactIndex + 1;
-
-      const cursorTime = timestampSortValue(cursor.createdAt);
-      const fallback = notices.findIndex((notice) => {
-        if (notice.priority > cursor.priority) return true;
-        if (notice.priority < cursor.priority) return false;
-
-        const noticeTime = timestampSortValue(notice.createdAt);
-        if (noticeTime < cursorTime) return true;
-        if (noticeTime > cursorTime) return false;
-        return notice.id.localeCompare(cursor.id) > 0;
-      });
-      return fallback >= 0 ? fallback : notices.length;
-    })();
+    const startIndex = resolveNoticeStartIndex(notices, cursor);
     const pagedNotices = notices.slice(startIndex, startIndex + limit);
     const hasMore = startIndex + limit < notices.length;
     const lastNotice = pagedNotices[pagedNotices.length - 1];
@@ -486,10 +586,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         })
       : null;
 
-    const unreadMessages = notices.filter((item) => item.type === 'admin_message' && item.unread).length;
-    const actionableRequests = notices.filter((item) =>
-      item.unread && (item.type === 'inbound_request' || item.type === 'status_update' || item.type === 'match_update')
-    ).length;
+    const { unreadMessages, actionableRequests } = buildNoticeSummary(notices);
 
     res.json({
       notices: pagedNotices,
@@ -506,7 +603,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     });
   } catch (err) {
     logger.error('Notifications fetch error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     });
     res.status(500).json({ error: '通知の取得に失敗しました' });
   }
@@ -553,7 +650,7 @@ router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
     res.json({ message: '既読にしました' });
   } catch (err) {
     logger.error('Notification read error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     });
     res.status(500).json({ error: '既読処理に失敗しました' });
   }
@@ -593,7 +690,7 @@ router.post('/matches/:id/read', async (req: AuthRequest, res: Response) => {
     res.json({ message: '既読にしました' });
   } catch (err) {
     logger.error('Match notification read error', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
     });
     res.status(500).json({ error: '既読処理に失敗しました' });
   }
@@ -606,7 +703,7 @@ router.get('/unread-count', async (req: AuthRequest, res: Response) => {
     const unreadCount = await getDashboardUnreadCount(pharmacyId);
     res.json({ unreadCount });
   } catch (err) {
-    logger.error('Get unread count error', { error: (err as Error).message });
+    logger.error('Get unread count error', { error: getErrorMessage(err) });
     res.status(500).json({ error: '未読件数の取得に失敗しました' });
   }
 });
@@ -617,7 +714,7 @@ const markAllReadHandler = async (req: AuthRequest, res: Response) => {
     const count = await markAllDashboardAsRead(req.user!.id);
     res.json({ message: `${count}件を既読にしました`, count });
   } catch (err) {
-    logger.error('Mark all as read error', { error: (err as Error).message });
+    logger.error('Mark all as read error', { error: getErrorMessage(err) });
     res.status(500).json({ error: '一括既読更新に失敗しました' });
   }
 };
@@ -638,7 +735,7 @@ const markReadHandler = async (req: AuthRequest, res: Response) => {
     }
     res.json({ message: '既読にしました' });
   } catch (err) {
-    logger.error('Mark as read error', { error: (err as Error).message });
+    logger.error('Mark as read error', { error: getErrorMessage(err) });
     res.status(500).json({ error: '既読更新に失敗しました' });
   }
 };

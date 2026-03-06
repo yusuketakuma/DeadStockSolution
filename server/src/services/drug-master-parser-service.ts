@@ -48,7 +48,15 @@ const MHLW_HEADER_KEYWORDS: Record<string, string[]> = {
   transitionDeadline: ['経過措置期限', '経過措置', '経過措置年月日'],
 };
 
-function detectMhlwHeaderRow(rows: unknown[][]): { rowIndex: number; mapping: Record<string, number> } {
+interface HeaderDetectionOptions {
+  isMatch?: (field: string, header: string, keyword: string) => boolean;
+}
+
+function detectHeaderRow(
+  rows: unknown[][],
+  keywordMap: Record<string, string[]>,
+  options?: HeaderDetectionOptions,
+): { rowIndex: number; mapping: Record<string, number> } {
   let bestRow = 0;
   let bestScore = 0;
   let bestMapping: Record<string, number> = {};
@@ -62,16 +70,14 @@ function detectMhlwHeaderRow(rows: unknown[][]): { rowIndex: number; mapping: Re
     const mapping: Record<string, number> = {};
     let score = 0;
 
-    for (const [field, keywords] of Object.entries(MHLW_HEADER_KEYWORDS)) {
+    for (const [field, keywords] of Object.entries(keywordMap)) {
       for (let colIdx = 0; colIdx < headers.length; colIdx++) {
         const header = headers[colIdx];
         if (!header) continue;
         for (const keyword of keywords) {
-          let matched = header === keyword || header.includes(keyword);
-          // 「薬価基準収載医薬品コード」を薬価列と誤認しない
-          if (field === 'yakkaPrice' && matched && header.includes('コード')) {
-            matched = false;
-          }
+          const matched = options?.isMatch
+            ? options.isMatch(field, header, keyword)
+            : (header === keyword || header.includes(keyword));
           if (matched) {
             if (mapping[field] === undefined) {
               mapping[field] = colIdx;
@@ -91,6 +97,18 @@ function detectMhlwHeaderRow(rows: unknown[][]): { rowIndex: number; mapping: Re
   }
 
   return { rowIndex: bestRow, mapping: bestMapping };
+}
+
+function detectMhlwHeaderRow(rows: unknown[][]): { rowIndex: number; mapping: Record<string, number> } {
+  return detectHeaderRow(rows, MHLW_HEADER_KEYWORDS, {
+    isMatch: (field, header, keyword) => {
+      // 「薬価基準収載医薬品コード」を薬価列と誤認しない
+      if (field === 'yakkaPrice' && header.includes(keyword) && header.includes('コード')) {
+        return false;
+      }
+      return header === keyword || header.includes(keyword);
+    },
+  });
 }
 
 function getCell(row: unknown[], idx: number | undefined): string | null {
@@ -189,7 +207,13 @@ export function parseMhlwCsvData(csvContent: string): ParsedDrugRow[] {
   return parseMhlwExcelData(allRows);
 }
 
+const MAX_CSV_LINE_LENGTH = 10000; // 10KB per line
+
 function parseCsvLine(line: string): string[] {
+  if (line.length > MAX_CSV_LINE_LENGTH) {
+    throw new Error(`CSV行が長すぎます（最大${MAX_CSV_LINE_LENGTH}文字）`);
+  }
+
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -333,6 +357,21 @@ function extractPackageRowFromXmlObject(obj: Record<string, unknown>): ParsedPac
   };
 }
 
+function buildPackageRowKey(row: ParsedPackageRow): string {
+  return [row.yjCode, row.gs1Code ?? '', row.janCode ?? '', row.hotCode ?? '', row.packageDescription ?? ''].join('|');
+}
+
+function dedupePackageRows(rows: ParsedPackageRow[]): ParsedPackageRow[] {
+  const deduped = new Map<string, ParsedPackageRow>();
+  for (const row of rows) {
+    const key = buildPackageRowKey(row);
+    if (!deduped.has(key)) {
+      deduped.set(key, row);
+    }
+  }
+  return [...deduped.values()];
+}
+
 export function parsePackageXmlData(xmlContent: string): ParsedPackageRow[] {
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -363,15 +402,7 @@ export function parsePackageXmlData(xmlContent: string): ParsedPackageRow[] {
   };
 
   walk(parsed);
-
-  const deduped = new Map<string, ParsedPackageRow>();
-  for (const row of rows) {
-    const key = [row.yjCode, row.gs1Code ?? '', row.janCode ?? '', row.hotCode ?? '', row.packageDescription ?? ''].join('|');
-    if (!deduped.has(key)) {
-      deduped.set(key, row);
-    }
-  }
-  return [...deduped.values()];
+  return dedupePackageRows(rows);
 }
 
 const MAX_ZIP_ENTRY_SIZE = 200 * 1024 * 1024; // 200MB per entry
@@ -427,14 +458,7 @@ export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackage
     }
   }
 
-  const deduped = new Map<string, ParsedPackageRow>();
-  for (const row of rows) {
-    const key = [row.yjCode, row.gs1Code ?? '', row.janCode ?? '', row.hotCode ?? '', row.packageDescription ?? ''].join('|');
-    if (!deduped.has(key)) {
-      deduped.set(key, row);
-    }
-  }
-  return [...deduped.values()];
+  return dedupePackageRows(rows);
 }
 
 export function parsePackageExcelData(rows: unknown[][]): ParsedPackageRow[] {
@@ -472,43 +496,7 @@ export function parsePackageExcelData(rows: unknown[][]): ParsedPackageRow[] {
 }
 
 function detectPackageHeader(rows: unknown[][]): { rowIndex: number; mapping: Record<string, number> } {
-  let bestRow = 0;
-  let bestScore = 0;
-  let bestMapping: Record<string, number> = {};
-
-  const scanLimit = Math.min(rows.length, 15);
-  for (let i = 0; i < scanLimit; i++) {
-    const row = rows[i];
-    if (!row) continue;
-
-    const headers = row.map((h) => String(h || '').normalize('NFKC').trim());
-    const mapping: Record<string, number> = {};
-    let score = 0;
-
-    for (const [field, keywords] of Object.entries(PACKAGE_HEADER_KEYWORDS)) {
-      for (let colIdx = 0; colIdx < headers.length; colIdx++) {
-        const header = headers[colIdx];
-        if (!header) continue;
-        for (const keyword of keywords) {
-          if (header === keyword || header.includes(keyword)) {
-            if (mapping[field] === undefined) {
-              mapping[field] = colIdx;
-              score += header === keyword ? 10 : 5;
-            }
-            break;
-          }
-        }
-      }
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestRow = i;
-      bestMapping = mapping;
-    }
-  }
-
-  return { rowIndex: bestRow, mapping: bestMapping };
+  return detectHeaderRow(rows, PACKAGE_HEADER_KEYWORDS);
 }
 
 /**

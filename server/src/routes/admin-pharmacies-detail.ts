@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -29,6 +29,339 @@ function isValidVersion(value: unknown): value is number {
     && value <= 2_147_483_647;
 }
 
+type InputValidationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string };
+
+type PharmacyUpdatePreparationResult =
+  | { ok: true; value: PharmacyUpdatePayload }
+  | { ok: false; status: 400 | 409; error: string };
+
+type PharmacyUpdatePayload = Partial<{
+  email: string;
+  name: string;
+  postalCode: string;
+  address: string;
+  phone: string;
+  fax: string;
+  licenseNumber: string;
+  prefecture: string;
+  isActive: boolean;
+  isTestAccount: boolean;
+  testAccountPassword: string | null;
+  latitude: number;
+  longitude: number;
+  updatedAt: string;
+  version: number | SQL;
+}>;
+
+const PHARMACY_NOT_FOUND_ERROR = '薬局が見つかりません';
+const INVALID_VERSION_ERROR = 'バージョン情報が不正です';
+const OPTIMISTIC_LOCK_CONFLICT_ERROR = '他のデバイスまたはタブで更新されています。最新データを確認してください';
+
+const pharmacyUpdateSelection = {
+  id: pharmacies.id,
+  email: pharmacies.email,
+  name: pharmacies.name,
+  postalCode: pharmacies.postalCode,
+  address: pharmacies.address,
+  phone: pharmacies.phone,
+  fax: pharmacies.fax,
+  licenseNumber: pharmacies.licenseNumber,
+  prefecture: pharmacies.prefecture,
+  isTestAccount: pharmacies.isTestAccount,
+  testAccountPassword: pharmacies.testAccountPassword,
+  verificationRequestId: pharmacies.verificationRequestId,
+};
+
+const pharmacyConflictSelection = {
+  ...pharmacyUpdateSelection,
+  isActive: pharmacies.isActive,
+  verificationStatus: pharmacies.verificationStatus,
+  version: pharmacies.version,
+};
+
+async function fetchPharmacyForUpdate(id: number) {
+  const rows = await db.select(pharmacyUpdateSelection)
+    .from(pharmacies)
+    .where(eq(pharmacies.id, id))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function fetchLatestPharmacyConflict(id: number) {
+  const rows = await db.select(pharmacyConflictSelection)
+    .from(pharmacies)
+    .where(eq(pharmacies.id, id))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+type PharmacyUpdateCurrent = NonNullable<Awaited<ReturnType<typeof fetchPharmacyForUpdate>>>;
+
+async function pharmacyExists(id: number): Promise<boolean> {
+  const rows = await db.select({ id: pharmacies.id })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, id))
+    .limit(1);
+
+  return rows.length > 0;
+}
+
+async function findPharmacyIdByEmail(email: string): Promise<number | null> {
+  const rows = await db.select({ id: pharmacies.id })
+    .from(pharmacies)
+    .where(eq(pharmacies.email, email))
+    .limit(1);
+
+  return rows[0]?.id ?? null;
+}
+
+async function findPharmacyIdByLicenseNumber(licenseNumber: string): Promise<number | null> {
+  const rows = await db.select({ id: pharmacies.id })
+    .from(pharmacies)
+    .where(eq(pharmacies.licenseNumber, licenseNumber))
+    .limit(1);
+
+  return rows[0]?.id ?? null;
+}
+
+function sendPharmacyNotFound(res: Response) {
+  res.status(404).json({ error: PHARMACY_NOT_FOUND_ERROR });
+}
+
+function sendOptimisticLockConflict(res: Response, latestData: unknown) {
+  res.status(409).json({
+    error: OPTIMISTIC_LOCK_CONFLICT_ERROR,
+    latestData,
+  });
+}
+
+function parseVersionOrSendError(res: Response, value: unknown): number | null {
+  if (!isValidVersion(value)) {
+    res.status(400).json({ error: INVALID_VERSION_ERROR });
+    return null;
+  }
+
+  return value;
+}
+
+function setEmailUpdate(updates: PharmacyUpdatePayload, value: unknown): string | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'string') {
+    return 'メールアドレスが不正です';
+  }
+
+  const normalizedEmail = value.trim().toLowerCase();
+  const parsedEmail = emailSchema.safeParse(normalizedEmail);
+  if (!parsedEmail.success) {
+    return parsedEmail.error.issues[0]?.message ?? 'メールアドレスが不正です';
+  }
+
+  updates.email = normalizedEmail;
+  return null;
+}
+
+function setTrimmedStringUpdate(
+  updates: PharmacyUpdatePayload,
+  key: 'name' | 'address' | 'phone' | 'fax' | 'licenseNumber' | 'prefecture',
+  value: unknown,
+  maxLength: number,
+  error: string,
+): string | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'string') {
+    return error;
+  }
+
+  const normalizedValue = value.trim();
+  if (normalizedValue.length === 0 || normalizedValue.length > maxLength) {
+    return error;
+  }
+
+  updates[key] = normalizedValue;
+  return null;
+}
+
+function setPostalCodeUpdate(updates: PharmacyUpdatePayload, value: unknown): string | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'string') {
+    return '郵便番号が不正です';
+  }
+
+  const normalizedPostalCode = value.replace(/[-ー－\s]/g, '');
+  if (!/^\d{7}$/.test(normalizedPostalCode)) {
+    return '郵便番号は7桁の数字で入力してください';
+  }
+
+  updates.postalCode = normalizedPostalCode;
+  return null;
+}
+
+function setBooleanUpdate(
+  updates: PharmacyUpdatePayload,
+  key: 'isActive' | 'isTestAccount',
+  value: unknown,
+  error: string,
+): string | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'boolean') {
+    return error;
+  }
+
+  updates[key] = value;
+  return null;
+}
+
+function setTestAccountPasswordUpdate(updates: PharmacyUpdatePayload, value: unknown): string | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'string') {
+    return 'テストアカウントの表示用パスワードが不正です';
+  }
+
+  const normalizedTestAccountPassword = value.trim();
+  if (normalizedTestAccountPassword.length > 100) {
+    return 'テストアカウントの表示用パスワードは100文字以内で入力してください';
+  }
+
+  updates.testAccountPassword = normalizedTestAccountPassword.length === 0
+    ? null
+    : normalizedTestAccountPassword;
+  return null;
+}
+
+function buildPharmacyUpdatePayload(body: Record<string, unknown>): InputValidationResult<PharmacyUpdatePayload> {
+  const updates: PharmacyUpdatePayload = {};
+
+  const emailError = setEmailUpdate(updates, body.email);
+  if (emailError) return { ok: false, error: emailError };
+
+  const nameError = setTrimmedStringUpdate(updates, 'name', body.name, 100, '薬局名は1〜100文字で入力してください');
+  if (nameError) return { ok: false, error: nameError };
+
+  const postalCodeError = setPostalCodeUpdate(updates, body.postalCode);
+  if (postalCodeError) return { ok: false, error: postalCodeError };
+
+  const addressError = setTrimmedStringUpdate(updates, 'address', body.address, 255, '住所は1〜255文字で入力してください');
+  if (addressError) return { ok: false, error: addressError };
+
+  const phoneError = setTrimmedStringUpdate(updates, 'phone', body.phone, 30, '電話番号が不正です');
+  if (phoneError) return { ok: false, error: phoneError };
+
+  const faxError = setTrimmedStringUpdate(updates, 'fax', body.fax, 30, 'FAX番号が不正です');
+  if (faxError) return { ok: false, error: faxError };
+
+  const licenseNumberError = setTrimmedStringUpdate(updates, 'licenseNumber', body.licenseNumber, 50, '薬局開設許可番号が不正です');
+  if (licenseNumberError) return { ok: false, error: licenseNumberError };
+
+  const prefectureError = setTrimmedStringUpdate(updates, 'prefecture', body.prefecture, 10, '都道府県が不正です');
+  if (prefectureError) return { ok: false, error: prefectureError };
+
+  const isActiveError = setBooleanUpdate(updates, 'isActive', body.isActive, '有効状態フラグが不正です');
+  if (isActiveError) return { ok: false, error: isActiveError };
+
+  const isTestAccountError = setBooleanUpdate(updates, 'isTestAccount', body.isTestAccount, 'テストアカウントフラグが不正です');
+  if (isTestAccountError) return { ok: false, error: isTestAccountError };
+
+  const testAccountPasswordError = setTestAccountPasswordUpdate(updates, body.testAccountPassword);
+  if (testAccountPasswordError) return { ok: false, error: testAccountPasswordError };
+
+  return { ok: true, value: updates };
+}
+
+async function ensureUniquePharmacyUpdates(
+  id: number,
+  updates: PharmacyUpdatePayload,
+): Promise<string | null> {
+  if (typeof updates.email === 'string') {
+    const existingEmailId = await findPharmacyIdByEmail(updates.email);
+    if (existingEmailId !== null && existingEmailId !== id) {
+      return 'このメールアドレスは既に登録されています';
+    }
+  }
+
+  if (typeof updates.licenseNumber === 'string') {
+    const existingLicenseId = await findPharmacyIdByLicenseNumber(updates.licenseNumber);
+    if (existingLicenseId !== null && existingLicenseId !== id) {
+      return 'この薬局開設許可番号は既に登録されています';
+    }
+  }
+
+  return null;
+}
+
+async function applyGeocodedCoordinates(
+  current: PharmacyUpdateCurrent,
+  updates: PharmacyUpdatePayload,
+): Promise<string | null> {
+  if (updates.address === undefined && updates.prefecture === undefined) {
+    return null;
+  }
+
+  const nextPrefecture = updates.prefecture ?? current.prefecture;
+  const nextAddress = updates.address ?? current.address;
+  const coords = await geocodeAddress(`${nextPrefecture}${nextAddress}`);
+  if (!coords) {
+    return '住所から位置情報を特定できませんでした。正しい住所を入力してください';
+  }
+
+  updates.latitude = coords.lat;
+  updates.longitude = coords.lng;
+  return null;
+}
+
+function finalizeTestAccountUpdate(
+  current: PharmacyUpdateCurrent,
+  updates: PharmacyUpdatePayload,
+): string | null {
+  const nextIsTestAccount = updates.isTestAccount ?? current.isTestAccount;
+  const nextTestAccountPassword = updates.testAccountPassword !== undefined
+    ? updates.testAccountPassword
+    : current.testAccountPassword;
+
+  if (nextIsTestAccount) {
+    if (typeof nextTestAccountPassword !== 'string' || nextTestAccountPassword.trim().length === 0) {
+      return 'テストアカウントには表示用パスワードを設定してください';
+    }
+    return null;
+  }
+
+  updates.testAccountPassword = null;
+  return null;
+}
+
+async function preparePharmacyUpdatePayload(
+  id: number,
+  current: PharmacyUpdateCurrent,
+  body: Record<string, unknown>,
+): Promise<PharmacyUpdatePreparationResult> {
+  const parsed = buildPharmacyUpdatePayload(body);
+  if (!parsed.ok) {
+    return { ok: false, status: 400, error: parsed.error };
+  }
+
+  const updates = parsed.value;
+
+  const uniqueUpdateError = await ensureUniquePharmacyUpdates(id, updates);
+  if (uniqueUpdateError) {
+    return { ok: false, status: 409, error: uniqueUpdateError };
+  }
+
+  const geocodeError = await applyGeocodedCoordinates(current, updates);
+  if (geocodeError) {
+    return { ok: false, status: 400, error: geocodeError };
+  }
+
+  const testAccountError = finalizeTestAccountUpdate(current, updates);
+  if (testAccountError) {
+    return { ok: false, status: 400, error: testAccountError };
+  }
+
+  return { ok: true, value: updates };
+}
+
 const router = Router();
 
 router.get('/pharmacies/:id', async (req: AuthRequest, res: Response) => {
@@ -41,7 +374,7 @@ router.get('/pharmacies/:id', async (req: AuthRequest, res: Response) => {
       .limit(1);
 
     if (rows.length === 0) {
-      res.status(404).json({ error: '薬局が見つかりません' });
+      sendPharmacyNotFound(res);
       return;
     }
 
@@ -60,8 +393,8 @@ router.get('/pharmacies/:id/business-hours/settings', async (req: AuthRequest, r
     const data = await fetchBusinessHourSettings(id);
     res.json(data);
   } catch (err) {
-    if (err instanceof Error && err.message === '薬局が見つかりません') {
-      res.status(404).json({ error: '薬局が見つかりません' });
+    if (err instanceof Error && err.message === PHARMACY_NOT_FOUND_ERROR) {
+      sendPharmacyNotFound(res);
       return;
     }
     handleAdminError(err, 'Admin pharmacy business hour settings error', '営業時間設定の取得に失敗しました', res);
@@ -74,210 +407,23 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
     const id = parseIdOrBadRequest(res, req.params.id);
     if (!id) return;
 
-    const {
-      email,
-      name,
-      postalCode,
-      address,
-      phone,
-      fax,
-      licenseNumber,
-      prefecture,
-      isActive,
-      isTestAccount,
-      testAccountPassword,
-      version,
-    } = req.body as Record<string, unknown>;
+    const body = req.body as Record<string, unknown>;
+    const version = parseVersionOrSendError(res, body.version);
+    if (version === null) return;
 
-    if (!isValidVersion(version)) {
-      res.status(400).json({ error: 'バージョン情報が不正です' });
+    const current = await fetchPharmacyForUpdate(id);
+    if (!current) {
+      sendPharmacyNotFound(res);
       return;
     }
 
-    const existingRows = await db.select({
-      id: pharmacies.id,
-      email: pharmacies.email,
-      name: pharmacies.name,
-      postalCode: pharmacies.postalCode,
-      address: pharmacies.address,
-      phone: pharmacies.phone,
-      fax: pharmacies.fax,
-      licenseNumber: pharmacies.licenseNumber,
-      prefecture: pharmacies.prefecture,
-      isTestAccount: pharmacies.isTestAccount,
-      testAccountPassword: pharmacies.testAccountPassword,
-      verificationRequestId: pharmacies.verificationRequestId,
-    })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, id))
-      .limit(1);
-
-    if (existingRows.length === 0) {
-      res.status(404).json({ error: '薬局が見つかりません' });
+    const preparedUpdates = await preparePharmacyUpdatePayload(id, current, body);
+    if (!preparedUpdates.ok) {
+      res.status(preparedUpdates.status).json({ error: preparedUpdates.error });
       return;
     }
 
-    const updates: Record<string, unknown> = {};
-
-    if (email !== undefined) {
-      if (typeof email !== 'string') {
-        res.status(400).json({ error: 'メールアドレスが不正です' });
-        return;
-      }
-      const normalizedEmail = email.trim().toLowerCase();
-      const parsedEmail = emailSchema.safeParse(normalizedEmail);
-      if (!parsedEmail.success) {
-        res.status(400).json({ error: parsedEmail.error.issues[0]?.message ?? 'メールアドレスが不正です' });
-        return;
-      }
-      updates.email = normalizedEmail;
-    }
-
-    if (name !== undefined) {
-      if (typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 100) {
-        res.status(400).json({ error: '薬局名は1〜100文字で入力してください' });
-        return;
-      }
-      updates.name = name.trim();
-    }
-
-    if (postalCode !== undefined) {
-      if (typeof postalCode !== 'string') {
-        res.status(400).json({ error: '郵便番号が不正です' });
-        return;
-      }
-      const normalizedPostalCode = postalCode.replace(/[-ー－\s]/g, '');
-      if (!/^\d{7}$/.test(normalizedPostalCode)) {
-        res.status(400).json({ error: '郵便番号は7桁の数字で入力してください' });
-        return;
-      }
-      updates.postalCode = normalizedPostalCode;
-    }
-
-    if (address !== undefined) {
-      if (typeof address !== 'string' || address.trim().length === 0 || address.trim().length > 255) {
-        res.status(400).json({ error: '住所は1〜255文字で入力してください' });
-        return;
-      }
-      updates.address = address.trim();
-    }
-
-    if (phone !== undefined) {
-      if (typeof phone !== 'string' || phone.trim().length === 0 || phone.trim().length > 30) {
-        res.status(400).json({ error: '電話番号が不正です' });
-        return;
-      }
-      updates.phone = phone.trim();
-    }
-
-    if (fax !== undefined) {
-      if (typeof fax !== 'string' || fax.trim().length === 0 || fax.trim().length > 30) {
-        res.status(400).json({ error: 'FAX番号が不正です' });
-        return;
-      }
-      updates.fax = fax.trim();
-    }
-
-    if (licenseNumber !== undefined) {
-      if (typeof licenseNumber !== 'string' || licenseNumber.trim().length === 0 || licenseNumber.trim().length > 50) {
-        res.status(400).json({ error: '薬局開設許可番号が不正です' });
-        return;
-      }
-      updates.licenseNumber = licenseNumber.trim();
-    }
-
-    if (prefecture !== undefined) {
-      if (typeof prefecture !== 'string' || prefecture.trim().length === 0 || prefecture.trim().length > 10) {
-        res.status(400).json({ error: '都道府県が不正です' });
-        return;
-      }
-      updates.prefecture = prefecture.trim();
-    }
-
-    if (isActive !== undefined) {
-      if (typeof isActive !== 'boolean') {
-        res.status(400).json({ error: '有効状態フラグが不正です' });
-        return;
-      }
-      updates.isActive = isActive;
-    }
-
-    if (isTestAccount !== undefined) {
-      if (typeof isTestAccount !== 'boolean') {
-        res.status(400).json({ error: 'テストアカウントフラグが不正です' });
-        return;
-      }
-      updates.isTestAccount = isTestAccount;
-    }
-
-    if (testAccountPassword !== undefined) {
-      if (typeof testAccountPassword !== 'string') {
-        res.status(400).json({ error: 'テストアカウントの表示用パスワードが不正です' });
-        return;
-      }
-      const normalizedTestAccountPassword = testAccountPassword.trim();
-      if (normalizedTestAccountPassword.length > 100) {
-        res.status(400).json({ error: 'テストアカウントの表示用パスワードは100文字以内で入力してください' });
-        return;
-      }
-      updates.testAccountPassword = normalizedTestAccountPassword.length === 0
-        ? null
-        : normalizedTestAccountPassword;
-    }
-
-    if (updates.email !== undefined) {
-      const existingEmailRows = await db.select({ id: pharmacies.id })
-        .from(pharmacies)
-        .where(eq(pharmacies.email, updates.email as string))
-        .limit(1);
-
-      if (existingEmailRows.length > 0 && existingEmailRows[0].id !== id) {
-        res.status(409).json({ error: 'このメールアドレスは既に登録されています' });
-        return;
-      }
-    }
-
-    if (updates.licenseNumber !== undefined) {
-      const existingLicenseRows = await db.select({ id: pharmacies.id })
-        .from(pharmacies)
-        .where(eq(pharmacies.licenseNumber, updates.licenseNumber as string))
-        .limit(1);
-
-      if (existingLicenseRows.length > 0 && existingLicenseRows[0].id !== id) {
-        res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
-        return;
-      }
-    }
-
-    if (address !== undefined || prefecture !== undefined) {
-      const current = existingRows[0];
-      const newPrefecture = (updates.prefecture as string) ?? current.prefecture;
-      const newAddress = (updates.address as string) ?? current.address;
-      const coords = await geocodeAddress(`${newPrefecture}${newAddress}`);
-      if (!coords) {
-        res.status(400).json({ error: '住所から位置情報を特定できませんでした。正しい住所を入力してください' });
-        return;
-      }
-      updates.latitude = coords.lat;
-      updates.longitude = coords.lng;
-    }
-
-    const current = existingRows[0];
-    const nextIsTestAccount = typeof updates.isTestAccount === 'boolean'
-      ? updates.isTestAccount
-      : current.isTestAccount;
-    const nextTestAccountPassword = updates.testAccountPassword !== undefined
-      ? updates.testAccountPassword
-      : current.testAccountPassword;
-    if (nextIsTestAccount) {
-      if (typeof nextTestAccountPassword !== 'string' || nextTestAccountPassword.trim().length === 0) {
-        res.status(400).json({ error: 'テストアカウントには表示用パスワードを設定してください' });
-        return;
-      }
-    } else {
-      updates.testAccountPassword = null;
-    }
-
+    const updates = preparedUpdates.value;
     const changedReverificationFields = detectChangedReverificationFields(current, updates);
     const hasReverificationField = changedReverificationFields.length > 0;
 
@@ -293,34 +439,12 @@ router.put('/pharmacies/:id', adminWriteLimiter, async (req: AuthRequest, res: R
       });
 
     if (updateResult.length === 0) {
-      const latestRows = await db.select({
-        id: pharmacies.id,
-        email: pharmacies.email,
-        name: pharmacies.name,
-        postalCode: pharmacies.postalCode,
-        address: pharmacies.address,
-        phone: pharmacies.phone,
-        fax: pharmacies.fax,
-        licenseNumber: pharmacies.licenseNumber,
-        prefecture: pharmacies.prefecture,
-        isActive: pharmacies.isActive,
-        isTestAccount: pharmacies.isTestAccount,
-        testAccountPassword: pharmacies.testAccountPassword,
-        verificationStatus: pharmacies.verificationStatus,
-        verificationRequestId: pharmacies.verificationRequestId,
-        version: pharmacies.version,
-      })
-        .from(pharmacies)
-        .where(eq(pharmacies.id, id))
-        .limit(1);
-      if (latestRows.length === 0) {
-        res.status(404).json({ error: '薬局が見つかりません' });
+      const latestData = await fetchLatestPharmacyConflict(id);
+      if (!latestData) {
+        sendPharmacyNotFound(res);
         return;
       }
-      res.status(409).json({
-        error: '他のデバイスまたはタブで更新されています。最新データを確認してください',
-        latestData: latestRows[0],
-      });
+      sendOptimisticLockConflict(res, latestData);
       return;
     }
 
@@ -373,18 +497,11 @@ router.put('/pharmacies/:id/business-hours', adminWriteLimiter, async (req: Auth
       return;
     }
 
-    const version = req.body.version;
-    if (!isValidVersion(version)) {
-      res.status(400).json({ error: 'バージョン情報が不正です' });
-      return;
-    }
+    const version = parseVersionOrSendError(res, req.body.version);
+    if (version === null) return;
 
-    const existsRows = await db.select({ id: pharmacies.id })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, id))
-      .limit(1);
-    if (existsRows.length === 0) {
-      res.status(404).json({ error: '薬局が見つかりません' });
+    if (!await pharmacyExists(id)) {
+      sendPharmacyNotFound(res);
       return;
     }
 
@@ -442,10 +559,7 @@ router.put('/pharmacies/:id/business-hours', adminWriteLimiter, async (req: Auth
 
     if (result.conflict) {
       const latestData = await fetchBusinessHourSettings(id);
-      res.status(409).json({
-        error: '他のデバイスまたはタブで更新されています。最新データを確認してください',
-        latestData,
-      });
+      sendOptimisticLockConflict(res, latestData);
       return;
     }
 
@@ -471,7 +585,7 @@ router.put('/pharmacies/:id/toggle-active', adminWriteLimiter, async (req: AuthR
       .limit(1);
 
     if (rows.length === 0) {
-      res.status(404).json({ error: '薬局が見つかりません' });
+      sendPharmacyNotFound(res);
       return;
     }
 
@@ -483,7 +597,7 @@ router.put('/pharmacies/:id/toggle-active', adminWriteLimiter, async (req: AuthR
       .where(eq(pharmacies.id, id));
     invalidateAuthUserCache(id);
 
-    writeLog('admin_toggle_active', {
+    void writeLog('admin_toggle_active', {
       pharmacyId: req.user!.id,
       detail: `薬局ID:${id}を${rows[0].isActive ? '無効' : '有効'}に変更`,
       ipAddress: getClientIp(req),

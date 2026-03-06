@@ -159,8 +159,6 @@ export default function PharmacyListPage() {
     <PageShell>
       <h4 className="page-title mb-3">登録薬局一覧</h4>
 
-      {message && <AppAlert variant="danger" dismissible onClose={() => setMessage('')}>{message}</AppAlert>}
-
       <Row className="mb-3 g-2">
         <Col md={5}>
           <div className="d-flex gap-2">
@@ -199,7 +197,9 @@ export default function PharmacyListPage() {
       </Row>
 
       <ScrollArea>
-      {loading ? (
+      {message ? (
+        <AppAlert variant="danger" dismissible onClose={() => setMessage('')}>{message}</AppAlert>
+      ) : loading ? (
         <InlineLoader text="薬局一覧を読み込み中..." className="text-muted small" />
       ) : pharmacies.length === 0 ? (
         <AppEmptyState

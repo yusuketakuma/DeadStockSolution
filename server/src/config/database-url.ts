@@ -34,6 +34,9 @@ export function resolveDatabaseUrls(env: NodeJS.ProcessEnv = process.env): Resol
     );
   }
   const pooledUrl = pooledUrlFromEnv ?? DEFAULT_LOCAL_POSTGRES_URL;
+  if (!pooledUrlFromEnv && env.NODE_ENV !== 'test' && process.env.NODE_ENV !== 'test') {
+    console.warn('[database-url] No POSTGRES_URL configured — using default local URL. Set POSTGRES_URL or POSTGRES_URL_UNIFIED for non-local environments.');
+  }
 
   const preferPooledForNonPooling = pooledUnifiedUrl !== undefined || pooledPreviewProductionUrl !== undefined;
 

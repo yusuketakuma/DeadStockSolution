@@ -10,6 +10,21 @@ interface ExternalUrlValidationResult {
   resolvedAddresses: string[];
 }
 
+function buildValidationFailure(
+  reason: string,
+  hostname: string | null,
+  resolvedAddresses: string[] = [],
+): ExternalUrlValidationResult {
+  return { ok: false, reason, hostname, resolvedAddresses };
+}
+
+function buildValidationSuccess(
+  hostname: string,
+  resolvedAddresses: string[],
+): ExternalUrlValidationResult {
+  return { ok: true, reason: null, hostname, resolvedAddresses };
+}
+
 function parseAllowedHostPatterns(raw: string | undefined): string[] {
   return (raw ?? '')
     .split(',')
@@ -104,7 +119,6 @@ function isPrivateIpv6(ip: string): boolean {
   if (!expanded) return true;
 
   const first = parseInt(expanded[0], 16);
-  const second = parseInt(expanded[1], 16);
 
   const isLoopback = expanded.every((group, idx) => (idx < 7 ? group === '0000' : group === '0001'));
   if (isLoopback) return true;
@@ -129,7 +143,6 @@ function isPrivateIpv6(ip: string): boolean {
     return isPrivateIpv4(ipv4);
   }
 
-  void second;
   return false;
 }
 
@@ -145,10 +158,9 @@ function isPrivateIpAddress(ip: string): boolean {
 
 function isBlockedHostname(hostname: string): boolean {
   const lower = hostname.toLowerCase();
-  if (lower === 'localhost') return true;
-  if (lower.endsWith('.localhost')) return true;
-  if (lower.endsWith('.local')) return true;
-  return false;
+  return lower === 'localhost'
+    || lower.endsWith('.localhost')
+    || lower.endsWith('.local');
 }
 
 async function resolveHostname(hostname: string): Promise<string[]> {
@@ -166,69 +178,61 @@ async function resolveHostname(hostname: string): Promise<string[]> {
   return [...unique];
 }
 
+function filterAddressesByFamily(addresses: string[], family: number | string | undefined): string[] {
+  return addresses.filter((address) => {
+    if (family === 4 || family === 'IPv4') return net.isIPv4(address);
+    if (family === 6 || family === 'IPv6') return net.isIPv6(address);
+    return true;
+  });
+}
+
+function toLookupAddress(address: string): LookupAddress {
+  return {
+    address,
+    family: net.isIPv6(address) ? 6 : 4,
+  };
+}
+
 export async function validateExternalHttpsUrl(url: string): Promise<ExternalUrlValidationResult> {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return { ok: false, reason: 'URL形式が不正です', hostname: null, resolvedAddresses: [] };
+    return buildValidationFailure('URL形式が不正です', null);
   }
 
   if (parsed.protocol !== 'https:') {
-    return { ok: false, reason: 'HTTPSのみ許可されています', hostname: parsed.hostname, resolvedAddresses: [] };
+    return buildValidationFailure('HTTPSのみ許可されています', parsed.hostname);
   }
 
   if (isBlockedHostname(parsed.hostname)) {
-    return {
-      ok: false,
-      reason: 'ローカルドメインは許可されていません',
-      hostname: parsed.hostname,
-      resolvedAddresses: [],
-    };
+    return buildValidationFailure('ローカルドメインは許可されていません', parsed.hostname);
   }
 
   if (!isHostnameAllowedByPolicy(parsed.hostname)) {
-    return {
-      ok: false,
-      reason: '許可リストにないホストです',
-      hostname: parsed.hostname,
-      resolvedAddresses: [],
-    };
+    return buildValidationFailure('許可リストにないホストです', parsed.hostname);
   }
 
   let addresses: string[];
   try {
     addresses = await resolveHostname(parsed.hostname);
   } catch {
-    return {
-      ok: false,
-      reason: 'ホスト名を解決できませんでした',
-      hostname: parsed.hostname,
-      resolvedAddresses: [],
-    };
+    return buildValidationFailure('ホスト名を解決できませんでした', parsed.hostname);
   }
 
   if (addresses.length === 0) {
-    return {
-      ok: false,
-      reason: 'ホスト名の解決結果が空です',
-      hostname: parsed.hostname,
-      resolvedAddresses: [],
-    };
+    return buildValidationFailure('ホスト名の解決結果が空です', parsed.hostname);
   }
 
-  for (const address of addresses) {
-    if (isPrivateIpAddress(address)) {
-      return {
-        ok: false,
-        reason: 'プライベート/ローカルIPへの接続は許可されていません',
-        hostname: parsed.hostname,
-        resolvedAddresses: addresses,
-      };
-    }
+  if (addresses.some((address) => isPrivateIpAddress(address))) {
+    return buildValidationFailure(
+      'プライベート/ローカルIPへの接続は許可されていません',
+      parsed.hostname,
+      addresses,
+    );
   }
 
-  return { ok: true, reason: null, hostname: parsed.hostname, resolvedAddresses: addresses };
+  return buildValidationSuccess(parsed.hostname, addresses);
 }
 
 export async function assertExternalHttpsUrlSafe(url: string): Promise<void> {
@@ -239,7 +243,7 @@ export async function assertExternalHttpsUrlSafe(url: string): Promise<void> {
   throw new Error(`${reason}${hostname}`);
 }
 
-export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[]): Agent {
+export function createPinnedDnsLookup(hostname: string, allowedAddresses: string[]): net.LookupFunction {
   const normalizedHostname = hostname.toLowerCase();
   const uniqueAddresses = [...new Set(allowedAddresses)];
   if (uniqueAddresses.length === 0) {
@@ -252,12 +256,7 @@ export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[
       return;
     }
 
-    const family = lookupOptions?.family;
-    const filtered = uniqueAddresses.filter((address) => {
-      if (family === 4) return net.isIPv4(address);
-      if (family === 6) return net.isIPv6(address);
-      return true;
-    });
+    const filtered = filterAddressesByFamily(uniqueAddresses, lookupOptions?.family);
 
     if (filtered.length === 0) {
       callback(new Error('No pinned address available for requested IP family'), '');
@@ -265,10 +264,7 @@ export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[
     }
 
     if (lookupOptions?.all) {
-      const addresses: LookupAddress[] = filtered.map((address) => ({
-        address,
-        family: net.isIPv6(address) ? 6 : 4,
-      }));
+      const addresses = filtered.map(toLookupAddress);
       callback(null, addresses);
       return;
     }
@@ -277,6 +273,12 @@ export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[
     nextAddressIndex += 1;
     callback(null, address, net.isIPv6(address) ? 6 : 4);
   };
+
+  return lookup;
+}
+
+export function createPinnedDnsAgent(hostname: string, allowedAddresses: string[]): Agent {
+  const lookup = createPinnedDnsLookup(hostname, allowedAddresses);
 
   return new Agent({
     connect: { lookup },

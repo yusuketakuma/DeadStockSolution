@@ -61,6 +61,44 @@ describe('UploadPage', () => {
     vi.restoreAllMocks();
   });
 
+  it('shows excel and camera flows side-by-side while keeping excel validation visible', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse(mockUser);
+      }
+      if (url.includes('/api/upload/preview')) {
+        return jsonResponse({ error: 'プレビュー失敗テスト' }, 500);
+      }
+      return jsonResponse({ error: 'Not found' }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<UploadPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).not.toBeNull();
+    if (!fileInput) {
+      throw new Error('file input not found');
+    }
+    const file = new File(['dummy-xlsx-content'], 'dead-stock.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    await userEvent.upload(fileInput, file);
+    await userEvent.click(screen.getByRole('button', { name: 'プレビュー' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('プレビュー失敗テスト')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('カメラ取込み')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'カメラ開始' })).toBeInTheDocument();
+    expect(screen.getByText('プレビュー失敗テスト')).toBeInTheDocument();
+  });
+
   it('auto-detects upload type and allows manual correction', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();

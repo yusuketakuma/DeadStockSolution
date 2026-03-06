@@ -1,4 +1,4 @@
-import { useState, useRef, FormEvent, useEffect } from 'react';
+import { Suspense, lazy, useState, useRef, FormEvent, useEffect } from 'react';
 import AppAlert from '../components/ui/AppAlert';
 import { Form, ProgressBar } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,8 @@ import {
   resolvePartialSummaryEntries,
   resolveUploadTypeLabel,
 } from './upload/upload-job-utils';
+
+const CameraDeadStockRegisterPanel = lazy(() => import('./upload/CameraDeadStockRegisterPanel'));
 
 interface PreviewResponse {
   headers: string[];
@@ -63,6 +65,15 @@ interface UploadProgressState {
   label: string;
 }
 
+interface UploadMutationFormDataOptions {
+  file: File;
+  uploadType: UploadType;
+  headerRowIndex: number;
+  applyMode: 'replace' | 'diff';
+  deleteMissing: boolean;
+  mapping: Record<string, string | null>;
+}
+
 const UPLOAD_JOB_INITIAL_STATE: UploadJobState = {
   jobId: null,
   status: null,
@@ -79,6 +90,7 @@ const UPLOAD_JOB_POLL_INTERVAL_MS = import.meta.env.MODE === 'test' ? 20 : 1500;
 const UPLOAD_JOB_POLL_MAX_INTERVAL_MS = import.meta.env.MODE === 'test' ? 100 : 5000;
 const UPLOAD_JOB_MAX_POLL_WAIT_MS = import.meta.env.MODE === 'test' ? 3000 : 60 * 60 * 1000;
 const UPLOAD_JOB_POLL_TRANSIENT_RETRY_MAX = import.meta.env.MODE === 'test' ? 1 : 3;
+const UPLOAD_COMPLETE_NAVIGATE_DELAY_MS = import.meta.env.MODE === 'test' ? 0 : 1200;
 
 function resolveNextPollIntervalMs(elapsedMs: number, status: 'pending' | 'processing'): number {
   if (status === 'processing') {
@@ -135,6 +147,28 @@ function resolveSubmittedMapping(
     return preview.suggestedMapping;
   }
   return null;
+}
+
+function buildUploadMutationFormData({
+  file,
+  uploadType,
+  headerRowIndex,
+  applyMode,
+  deleteMissing,
+  mapping,
+}: UploadMutationFormDataOptions): FormData {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('uploadType', uploadType);
+  formData.append('headerRowIndex', String(headerRowIndex));
+  formData.append('applyMode', applyMode);
+  formData.append('deleteMissing', String(deleteMissing));
+  formData.append('mapping', JSON.stringify(mapping));
+  return formData;
+}
+
+function resolvePossiblyRunningJobMessage(jobId: number | null): string {
+  return `ジョブは継続中の可能性があります（ジョブID: ${jobId ?? '不明'}）。時間をおいて再確認してください。`;
 }
 
 async function waitForNextPoll(signal: AbortSignal, intervalMs: number): Promise<void> {
@@ -199,32 +233,49 @@ export default function UploadPage() {
       ? 'success'
       : 'info';
   const uploadProgressAnimated = uploadProgress.phase !== 'completed' && uploadProgress.phase !== 'failed';
+  const pageTitle = 'デッドストック取込（Excel / カメラ）';
 
   const setFailed = (label: string) =>
     setUploadProgress({ phase: 'failed', percent: 100, label });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const clearTransientFeedback = () => {
+    setError('');
+    setMessage('');
+    setShowMatchingHint(false);
+  };
+
+  const resetDiffPreviewState = () => {
+    setDiffSummary(null);
+    setAcknowledgeDeleteImpact(false);
+  };
+
+  const clearPendingUploadSideEffects = () => {
     uploadRequestAbortRef.current?.abort();
     uploadRequestAbortRef.current = null;
     if (navigateTimerRef.current !== null) {
       clearTimeout(navigateTimerRef.current);
       navigateTimerRef.current = null;
     }
+  };
+
+  const resetExcelTransientUiState = () => {
     setLoading(false);
+    clearTransientFeedback();
+    setUploadJob(UPLOAD_JOB_INITIAL_STATE);
+    setCancellingJob(false);
+    setUploadProgress(UPLOAD_PROGRESS_IDLE);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    clearPendingUploadSideEffects();
+    resetExcelTransientUiState();
     const selected = e.target.files?.[0] || null;
     setFile(selected);
     setPreview(null);
     setUploadType('dead_stock');
-    setMessage('');
-    setError('');
-    setShowMatchingHint(false);
     setApplyMode('replace');
     setDeleteMissing(false);
-    setDiffSummary(null);
-    setAcknowledgeDeleteImpact(false);
-    setUploadJob(UPLOAD_JOB_INITIAL_STATE);
-    setCancellingJob(false);
-    setUploadProgress(UPLOAD_PROGRESS_IDLE);
+    resetDiffPreviewState();
   };
 
   const handlePreview = async (e: FormEvent) => {
@@ -236,9 +287,7 @@ export default function UploadPage() {
     uploadRequestAbortRef.current = controller;
 
     setLoading(true);
-    setError('');
-    setMessage('');
-    setShowMatchingHint(false);
+    clearTransientFeedback();
     setUploadProgress({
       phase: 'previewing',
       percent: 20,
@@ -253,8 +302,7 @@ export default function UploadPage() {
       if (controller.signal.aborted) return;
       setPreview(data);
       setUploadType(data.resolvedUploadType);
-      setDiffSummary(null);
-      setAcknowledgeDeleteImpact(false);
+      resetDiffPreviewState();
       setUploadProgress(UPLOAD_PROGRESS_IDLE);
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -287,9 +335,7 @@ export default function UploadPage() {
     const submittedUploadType = uploadType;
 
     setLoading(true);
-    setError('');
-    setMessage('');
-    setShowMatchingHint(false);
+    clearTransientFeedback();
     setUploadJob(UPLOAD_JOB_INITIAL_STATE);
     setCancellingJob(false);
     setUploadProgress({
@@ -299,13 +345,14 @@ export default function UploadPage() {
     });
     let currentJobId: number | null = null;
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('uploadType', submittedUploadType);
-      formData.append('headerRowIndex', String(preview.headerRowIndex));
-      formData.append('applyMode', applyMode);
-      formData.append('deleteMissing', String(deleteMissing));
-      formData.append('mapping', JSON.stringify(submittedMapping));
+      const formData = buildUploadMutationFormData({
+        file,
+        uploadType: submittedUploadType,
+        headerRowIndex: preview.headerRowIndex,
+        applyMode,
+        deleteMissing,
+        mapping: submittedMapping,
+      });
 
       const enqueueResult = await api.upload<UploadConfirmAsyncResponse>(
         '/upload/confirm-async',
@@ -461,7 +508,7 @@ export default function UploadPage() {
         navigateTimerRef.current = setTimeout(() => {
           navigateTimerRef.current = null;
           navigate(submittedUploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
-        }, 1200);
+        }, UPLOAD_COMPLETE_NAVIGATE_DELAY_MS);
       }
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -475,7 +522,7 @@ export default function UploadPage() {
       if (err instanceof Error && err.message.includes('待機時間が長くなっています')) {
         setFailed('アップロード処理の待機時間が上限を超えました。');
         setError(err.message);
-        setMessage(`ジョブは継続中の可能性があります（ジョブID: ${currentJobId ?? '不明'}）。時間をおいて再確認してください。`);
+        setMessage(resolvePossiblyRunningJobMessage(currentJobId));
         return;
       }
       if (currentJobId !== null && err instanceof ApiError) {
@@ -485,7 +532,7 @@ export default function UploadPage() {
         }));
         setFailed('ジョブ状態の確認に失敗しました。');
         setError(err.message);
-        setMessage(`ジョブは継続中の可能性があります（ジョブID: ${currentJobId}）。時間をおいて再確認してください。`);
+        setMessage(resolvePossiblyRunningJobMessage(currentJobId));
         return;
       }
       setUploadJob((prev) => ({
@@ -523,13 +570,14 @@ export default function UploadPage() {
     setLoading(true);
     setError('');
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('uploadType', uploadType);
-      formData.append('headerRowIndex', String(preview.headerRowIndex));
-      formData.append('applyMode', 'diff');
-      formData.append('deleteMissing', String(deleteMissing));
-      formData.append('mapping', JSON.stringify(submittedMapping));
+      const formData = buildUploadMutationFormData({
+        file,
+        uploadType,
+        headerRowIndex: preview.headerRowIndex,
+        applyMode: 'diff',
+        deleteMissing,
+        mapping: submittedMapping,
+      });
 
       const result = await api.upload<{ summary: DiffSummary }>('/upload/diff-preview', formData, { signal: controller.signal });
       if (controller.signal.aborted) return;
@@ -585,9 +633,35 @@ export default function UploadPage() {
     uploadRequestAbortRef.current = null;
   }, []);
 
+  const scrollToFlow = (id: 'upload-excel-flow' | 'upload-camera-flow') => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <PageShell>
-      <h4 className="page-title mb-3">Excelアップロード</h4>
+      <h4 className="page-title mb-3">{pageTitle}</h4>
+      <AppCard className="mb-3 upload-entry-card-shell">
+        <AppCard.Body className="upload-entry-grid">
+          <section className="upload-entry-card-item" aria-labelledby="upload-entry-excel">
+            <h5 id="upload-entry-excel" className="h6 mb-2">Excelアップロード</h5>
+            <div className="small text-muted mb-3">
+              一括で在庫データを登録する場合は、Excelファイルから取込みます。
+            </div>
+            <AppButton variant="outline-primary" onClick={() => scrollToFlow('upload-excel-flow')}>
+              Excel取込へ移動
+            </AppButton>
+          </section>
+          <section className="upload-entry-card-item" aria-labelledby="upload-entry-camera">
+            <h5 id="upload-entry-camera" className="h6 mb-2">カメラ取込み</h5>
+            <div className="small text-muted mb-3">
+              カメラ画像のコードから候補医薬品を自動提示し、手動確定で登録します。
+            </div>
+            <AppButton variant="outline-primary" onClick={() => scrollToFlow('upload-camera-flow')}>
+              カメラ取込へ移動
+            </AppButton>
+          </section>
+        </AppCard.Body>
+      </AppCard>
       {error && <AppAlert variant="danger">{error}</AppAlert>}
       {message && <AppAlert variant="success">{message}</AppAlert>}
       {showMatchingHint && (
@@ -597,6 +671,8 @@ export default function UploadPage() {
       )}
 
       <ScrollArea>
+      <div className="upload-dual-flow-grid">
+      <section id="upload-excel-flow" className="upload-dual-flow-section">
       {uploadProgress.phase !== 'idle' && (
         <AppCard className="mb-3">
           <AppCard.Body>
@@ -699,8 +775,7 @@ export default function UploadPage() {
                 disabled={loading}
                 onChange={(value) => {
                   setUploadType(value as UploadType);
-                  setDiffSummary(null);
-                  setAcknowledgeDeleteImpact(false);
+                  resetDiffPreviewState();
                 }}
                 options={[
                   { value: 'dead_stock', label: 'デッドストックリスト' },
@@ -770,8 +845,7 @@ export default function UploadPage() {
                 disabled={loading}
                 onChange={(value) => {
                   setApplyMode(value as 'replace' | 'diff');
-                  setDiffSummary(null);
-                  setAcknowledgeDeleteImpact(false);
+                  resetDiffPreviewState();
                 }}
                 options={[
                   { value: 'replace', label: '置換' },
@@ -794,8 +868,7 @@ export default function UploadPage() {
                   checked={deleteMissing}
                   onChange={(e) => {
                     setDeleteMissing(e.currentTarget.checked);
-                    setDiffSummary(null);
-                    setAcknowledgeDeleteImpact(false);
+                    resetDiffPreviewState();
                   }}
                 />
                 <div className="mt-2">
@@ -849,6 +922,18 @@ export default function UploadPage() {
           </AppCard.Body>
         </AppCard>
       )}
+      </section>
+      <section id="upload-camera-flow" className="upload-dual-flow-section">
+        <Suspense fallback={(
+          <AppCard className="mb-3">
+            <AppCard.Body className="small text-muted">カメラ登録画面を読み込み中です...</AppCard.Body>
+          </AppCard>
+        )}
+        >
+          <CameraDeadStockRegisterPanel />
+        </Suspense>
+      </section>
+      </div>
       </ScrollArea>
     </PageShell>
   );

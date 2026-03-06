@@ -6,7 +6,8 @@ import { getNextRetryIso, getStaleBeforeIso } from '../utils/job-retry-utils';
 import { parseBooleanFlag } from '../utils/number-utils';
 import { findMatches, findMatchesBatch } from './matching-service';
 import { logger } from './logger';
-import { saveMatchSnapshotAndNotifyOnChange } from './matching-snapshot-service';
+import { getErrorMessage } from '../middleware/error-handler';
+import { saveMatchSnapshotAndNotifyOnChange, saveMatchSnapshotsBatch } from './matching-snapshot-service';
 
 const AUTO_RECOMPUTE_ENABLED = parseBooleanFlag(process.env.MATCHING_AUTO_RECOMPUTE_ENABLED, true);
 const MAX_JOB_ATTEMPTS = 5;
@@ -33,6 +34,15 @@ interface JobQueueExecutor {
   execute: typeof db.execute;
 }
 
+type MatchCandidates = Awaited<ReturnType<typeof findMatches>>;
+type SnapshotEntry = {
+  pharmacyId: number;
+  triggerPharmacyId: number;
+  triggerUploadType: 'dead_stock' | 'used_medication';
+  candidates: MatchCandidates;
+  notifyEnabled: boolean;
+};
+
 function resolveRefreshMatchBatchSize(value: string | undefined): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -52,6 +62,30 @@ function resolveMatchingRefreshDebounceMs(value: string | undefined): number {
 function getCurrentMonthStartIso(): string {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+}
+
+function buildClaimEligibilityConditions(nowIso: string, staleBeforeIso: string) {
+  return [
+    lt(matchingRefreshJobs.attempts, MAX_JOB_ATTEMPTS),
+    or(isNull(matchingRefreshJobs.nextRetryAt), lte(matchingRefreshJobs.nextRetryAt, nowIso)),
+    or(isNull(matchingRefreshJobs.processingStartedAt), lt(matchingRefreshJobs.processingStartedAt, staleBeforeIso)),
+  ];
+}
+
+function recordPharmacyRefreshFailure(
+  failedPharmacyIds: number[],
+  pharmacyId: number,
+  triggerPharmacyId: number,
+  uploadType: 'dead_stock' | 'used_medication',
+  err: unknown,
+): void {
+  failedPharmacyIds.push(pharmacyId);
+  logger.error('Matching auto refresh failed for pharmacy', {
+    pharmacyId,
+    triggerPharmacyId,
+    uploadType,
+    error: getErrorMessage(err),
+  });
 }
 
 async function resolveImpactedPharmacyIds(triggerPharmacyId: number): Promise<number[]> {
@@ -110,31 +144,50 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
         triggerPharmacyId,
         uploadType,
         impactedCount: pharmacyIdChunk.length,
-        error: batchErr instanceof Error ? batchErr.message : String(batchErr),
+        error: getErrorMessage(batchErr),
       });
     }
 
+    // マッチング候補を収集（個別フェッチの失敗は per-pharmacy でエラー記録）
+    const snapshotEntries: SnapshotEntry[] = [];
+
     for (const pharmacyId of pharmacyIdChunk) {
       try {
-        const candidates = matchesByPharmacy && matchesByPharmacy.has(pharmacyId)
+        const candidates = matchesByPharmacy?.has(pharmacyId)
           ? matchesByPharmacy.get(pharmacyId) ?? []
           : await findMatches(pharmacyId);
-        const result = await saveMatchSnapshotAndNotifyOnChange({
+        snapshotEntries.push({
           pharmacyId,
           triggerPharmacyId,
           triggerUploadType: uploadType,
           candidates,
           notifyEnabled: notifyEnabledMap.get(pharmacyId) ?? true,
         });
-        if (result.changed) changedCount += 1;
       } catch (err) {
-        failedPharmacyIds.push(pharmacyId);
-        logger.error('Matching auto refresh failed for pharmacy', {
-          pharmacyId,
+        recordPharmacyRefreshFailure(failedPharmacyIds, pharmacyId, triggerPharmacyId, uploadType, err);
+      }
+    }
+
+    // スナップショットを一括保存（バッチ失敗時は個別保存にフォールバック）
+    if (snapshotEntries.length > 0) {
+      try {
+        const { changedCount: chunkChanged } = await saveMatchSnapshotsBatch(snapshotEntries);
+        changedCount += chunkChanged;
+      } catch (batchSaveErr) {
+        logger.warn('Batch snapshot save failed, falling back to per-pharmacy', {
           triggerPharmacyId,
           uploadType,
-          error: err instanceof Error ? err.message : String(err),
+          chunkSize: snapshotEntries.length,
+          error: getErrorMessage(batchSaveErr),
         });
+        for (const entry of snapshotEntries) {
+          try {
+            const result = await saveMatchSnapshotAndNotifyOnChange(entry);
+            if (result.changed) changedCount += 1;
+          } catch (err) {
+            recordPharmacyRefreshFailure(failedPharmacyIds, entry.pharmacyId, triggerPharmacyId, uploadType, err);
+          }
+        }
       }
     }
   }
@@ -155,12 +208,9 @@ async function claimNextRefreshJob(excludedJobIds: number[] = []): Promise<Refre
   for (let attempt = 0; attempt < CLAIM_CONTENTION_RETRY_LIMIT; attempt += 1) {
     const nowIso = new Date().toISOString();
     const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
+    const baseConditions = buildClaimEligibilityConditions(nowIso, staleBeforeIso);
 
-    const conditions = [
-      lt(matchingRefreshJobs.attempts, MAX_JOB_ATTEMPTS),
-      or(isNull(matchingRefreshJobs.nextRetryAt), lte(matchingRefreshJobs.nextRetryAt, nowIso)),
-      or(isNull(matchingRefreshJobs.processingStartedAt), lt(matchingRefreshJobs.processingStartedAt, staleBeforeIso)),
-    ];
+    const conditions = [...baseConditions];
     if (excludedJobIds.length > 0) {
       conditions.push(notInArray(matchingRefreshJobs.id, excludedJobIds));
     }
@@ -188,9 +238,7 @@ async function claimNextRefreshJob(excludedJobIds: number[] = []): Promise<Refre
       })
       .where(and(
         eq(matchingRefreshJobs.id, candidate.id),
-        lt(matchingRefreshJobs.attempts, MAX_JOB_ATTEMPTS),
-        or(isNull(matchingRefreshJobs.nextRetryAt), lte(matchingRefreshJobs.nextRetryAt, nowIso)),
-        or(isNull(matchingRefreshJobs.processingStartedAt), lt(matchingRefreshJobs.processingStartedAt, staleBeforeIso)),
+        ...baseConditions,
       ))
       .returning({
         id: matchingRefreshJobs.id,
@@ -212,7 +260,7 @@ async function processOneRefreshJob(job: RefreshJob): Promise<boolean> {
     return true;
   } catch (err) {
     const nextAttempts = job.attempts + 1;
-    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorMessage = getErrorMessage(err);
     const nowIso = new Date().toISOString();
 
     await db.update(matchingRefreshJobs)

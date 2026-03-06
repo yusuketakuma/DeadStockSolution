@@ -1,1 +1,7 @@
-{"used": [], "session_start": "2026-03-01T01:54:56Z"}
+{
+  "used": [
+    "claude-code-harness:harness-setup"
+  ],
+  "session_start": "2026-03-06T01:40:34Z",
+  "last_used": "2026-03-06T01:41:19Z"
+}

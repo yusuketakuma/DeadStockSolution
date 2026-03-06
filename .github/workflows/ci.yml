@@ -50,6 +50,11 @@ jobs:
         run: npm ci
 
       - name: Run quality gate
+        env:
+          QUALITY_GATE_READ_ONLY: '1'
+          QUALITY_GATE_SKIP_SYNC: '1'
+          QUALITY_GATE_SKIP_INSTALL: '1'
+          QUALITY_GATE_ALLOW_DIRTY: '1'
         run: npm run quality:gate
 
       - name: Check OpenAPI contract

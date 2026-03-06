@@ -1,0 +1,16 @@
+{
+  "phase": "completed",
+  "timestamp": "2026-03-06T01:07:22Z",
+  "agentMode": "fallback",
+  "runProcessed": 4,
+  "runMax": 4,
+  "totalTargets": 30,
+  "totalProcessed": 30,
+  "totalRemaining": 0,
+  "current": {
+    "rank": "30",
+    "source": "static-heuristic",
+    "target": "server/src/routes/exchange-proposals.ts",
+    "reason": "loc=520, loops=1, awaitInLoop=0, sql=10"
+  }
+}

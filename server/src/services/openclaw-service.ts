@@ -190,6 +190,35 @@ function normalizeSignature(raw: string): string {
   return trimmed.toLowerCase();
 }
 
+/**
+ * Sanitizes user input for safe CLI message passing.
+ * Removes control characters and shell metacharacters that could be interpreted.
+ * This is defense-in-depth since execFile doesn't use a shell.
+ */
+function sanitizeCliMessage(input: string, maxLength: number = 8000): string {
+  // Remove control characters (except newlines which are preserved for formatting)
+  const sanitized = input
+    .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    // Remove shell metacharacters as defense-in-depth
+    .replace(/[`$\\]/g, '')
+    .trim();
+  
+  return sanitized.slice(0, maxLength);
+}
+
+function pruneExpiredMapEntries<K, V extends { expiresAtMs: number }>(
+  cache: Map<K, V>,
+  nowMs: number,
+): void {
+  for (const [key, entry] of cache.entries()) {
+    if (entry.expiresAtMs <= nowMs) {
+      cache.delete(key);
+    }
+  }
+}
+
+
+
 function pruneWebhookReplayCache(nowMs: number): void {
   for (const [key, expiresAtMs] of webhookReplayCache.entries()) {
     if (expiresAtMs <= nowMs) {
@@ -227,11 +256,7 @@ function buildHandoffIdempotencyKey(input: OpenClawHandoffInput): string {
 }
 
 function pruneHandoffResultCache(nowMs: number): void {
-  for (const [key, entry] of handoffResultCache.entries()) {
-    if (entry.expiresAtMs <= nowMs) {
-      handoffResultCache.delete(key);
-    }
-  }
+  pruneExpiredMapEntries(handoffResultCache, nowMs);
 }
 
 function getCachedHandoffResult(key: string, nowMs: number): OpenClawHandoffResult | null {
@@ -261,6 +286,23 @@ function buildHandoffFailure(config: OpenClawConfig, note: string): OpenClawHand
   };
 }
 
+function buildHandoffSuccess(
+  config: OpenClawConfig,
+  options: {
+    status: OpenClawStatus;
+    threadId: string | null;
+    summary: string | null;
+    note: string;
+  },
+): OpenClawHandoffResult {
+  return {
+    accepted: true,
+    connectorConfigured: true,
+    implementationBranch: config.implementationBranch,
+    ...options,
+  };
+}
+
 function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
@@ -287,12 +329,13 @@ async function handoffViaGatewayCli(
 ): Promise<OpenClawHandoffResult> {
   const timeoutSeconds = resolveGatewayTimeoutSeconds();
   const maxAttempts = resolveRetryMax() + 1;
+  const sanitizedRequestText = sanitizeCliMessage(input.requestText);
   const message = [
     'あなたはDeadStockSolutionのOpenClaw連携エージェントです。',
     `要望ID: ${input.requestId}`,
     `薬局ID: ${input.pharmacyId}`,
     `冪等キー: ${idempotencyKey}`,
-    `要望: ${input.requestText}`,
+    `要望: ${sanitizedRequestText}`,
     '次の形式で短く返答してください: 1) 受領確認 2) 初動方針 3) 次アクション',
   ].join('\n');
 
@@ -311,7 +354,13 @@ async function handoffViaGatewayCli(
       const { stdout } = await execFileAsync(config.cliPath, args, {
         timeout: timeoutSeconds * 1000 + 3000,
         maxBuffer: 2 * 1024 * 1024,
-        env: process.env,
+        // Pass only necessary environment variables to CLI process
+        env: {
+          PATH: process.env.PATH,
+          HOME: process.env.HOME,
+          USER: process.env.USER,
+          LANG: process.env.LANG ?? 'en_US.UTF-8',
+        },
       });
 
       let payload: OpenClawCliAgentResponse = {};
@@ -335,15 +384,12 @@ async function handoffViaGatewayCli(
         threadId,
       });
 
-      return {
-        accepted: true,
-        connectorConfigured: true,
-        implementationBranch: config.implementationBranch,
+      return buildHandoffSuccess(config, {
         status: 'in_dialogue',
         threadId,
         summary,
         note: 'OpenClaw Gateway CLI へ連携しました。',
-      };
+      });
     } catch (err) {
       const durationMs = Date.now() - startedAt;
       const messageText = getErrorMessage(err);
@@ -450,15 +496,12 @@ async function handoffViaLegacyHttp(
         status,
       });
 
-      return {
-        accepted: true,
-        connectorConfigured: true,
-        implementationBranch: config.implementationBranch,
+      return buildHandoffSuccess(config, {
         status,
         threadId,
         summary,
         note: `OpenClawへ連携しました。実装ブランチは ${config.implementationBranch} に固定されています。`,
-      };
+      });
     } catch (err) {
       const retryable = attempt < maxAttempts;
       logger.warn('OpenClaw handoff legacy_http error', {
@@ -515,7 +558,13 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
     const { stdout } = await execFileAsync(config.cliPath, args, {
       timeout: timeoutSeconds * 1000 + 3000,
       maxBuffer: 2 * 1024 * 1024,
-      env: process.env,
+      // Pass only necessary environment variables to CLI process
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        USER: process.env.USER,
+        LANG: process.env.LANG ?? 'en_US.UTF-8',
+      },
     });
 
     let parsed: Record<string, unknown> = {};

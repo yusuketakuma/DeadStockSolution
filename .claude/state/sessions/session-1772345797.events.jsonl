@@ -1,0 +1,5 @@
+{"type":"session.start","ts":"2026-03-01T06:16:37Z","state":"initialized","data":{"cc_session_id":"6347b655-75f0-45e7-be6c-80234c73bfb0"}}
+{"id":"event-000001","type":"session.resume","ts":"2026-03-01T06:16:37Z","state":"initialized"}
+{"id":"event-000002","type":"tool.skill","ts":"2026-03-01T06:18:21Z","state":"initialized"}
+{"id":"event-000003","type":"tool.edit","ts":"2026-03-01T06:18:31Z","state":"initialized","data":{"file_path":"/Users/yusuke/DeadStockSolution/client/src/pages/UploadPage.tsx"}}
+{"id":"event-000004","type":"session.stop","ts":"2026-03-01T06:18:38Z","state":"stopped"}

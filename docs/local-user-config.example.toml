@@ -1,0 +1,22 @@
+# ~/.codex/config.toml (per-user)
+# This file SHOULD NOT be committed to the repository.
+
+# Optional: store credentials in OS keychain instead of auth.json
+cli_auth_credentials_store = "keyring"
+
+# Optional: if you only use ChatGPT login for apps/connectors
+# forced_login_method = "chatgpt"
+
+# Optional: hide repeated warnings (per-user preference)
+[notice]
+hide_full_access_warning = true
+
+# Trust settings (examples)
+# macOS: prefer exact path that appears in warnings.
+# Example:
+# [projects."/Users/you/path/to/careviax-pharmacy"]
+# trust_level = "trusted"
+
+# If you want parent folder untrusted:
+# [projects."/Users/you"]
+# trust_level = "untrusted"

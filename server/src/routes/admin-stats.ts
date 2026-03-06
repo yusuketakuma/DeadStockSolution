@@ -15,6 +15,7 @@ import { AuthRequest } from '../types';
 import { rowCount } from '../utils/db-utils';
 import { getObservabilitySnapshot } from '../services/observability-service';
 import { getMonitoringKpiSnapshot } from '../services/monitoring-kpi-service';
+import { getLogPushStats } from '../services/openclaw-log-push-service';
 import { handleAdminError } from './admin-utils';
 
 const router = Router();
@@ -122,7 +123,10 @@ router.get('/observability', async (req: AuthRequest, res: Response) => {
     const minutesRaw = Number(req.query.minutes);
     const minutes = Number.isFinite(minutesRaw) ? minutesRaw : 60;
     const snapshot = getObservabilitySnapshot(minutes);
-    res.json(snapshot);
+    res.json({
+      ...snapshot,
+      logPush: getLogPushStats(),
+    });
   } catch (err) {
     handleAdminError(err, 'Admin observability error', '監視情報の取得に失敗しました', res);
   }

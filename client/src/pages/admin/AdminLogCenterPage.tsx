@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Row, Col, Badge, Tabs, Tab } from 'react-bootstrap';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
+import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import AppCard from '../../components/ui/AppCard';
 import AppControl from '../../components/ui/AppControl';
 import AppSelect from '../../components/ui/AppSelect';
@@ -159,12 +160,7 @@ function LogEntriesView({
   return (
     <>
       {error && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={error} onRetry={() => void retry()} />
       )}
 
       <Row className="g-2 mb-3">
@@ -508,12 +504,7 @@ function CommandHistoryTab() {
   return (
     <>
       {error && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void reload()}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={error} onRetry={() => void reload()} />
       )}
 
       {loading ? (

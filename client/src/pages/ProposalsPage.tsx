@@ -12,6 +12,7 @@ import Pagination from '../components/Pagination';
 import { usePaginatedList } from '../hooks/usePaginatedList';
 import AppSelect from '../components/ui/AppSelect';
 import { formatDateTimeJa, formatYen } from '../utils/formatters';
+import { proposalStatusStyle } from '../utils/proposal-status';
 import AppActionBar from '../components/ui/AppActionBar';
 import AppDataTable from '../components/ui/AppDataTable';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
@@ -47,15 +48,6 @@ interface BulkActionResponse {
 
 type ProposalSortMode = 'recent' | 'priority';
 
-const STATUS_LABELS: Record<string, { label: string; variant: string }> = {
-  proposed: { label: '仮マッチング中', variant: 'warning' },
-  accepted_a: { label: '仮マッチング中（A承認済）', variant: 'info' },
-  accepted_b: { label: '仮マッチング中（B承認済）', variant: 'info' },
-  confirmed: { label: '確定', variant: 'success' },
-  completed: { label: '完了', variant: 'secondary' },
-  rejected: { label: '拒否', variant: 'danger' },
-  cancelled: { label: 'キャンセル', variant: 'dark' },
-};
 
 function canAcceptProposal(proposal: Proposal, viewerId: number | undefined): boolean {
   if (!viewerId) return false;
@@ -119,15 +111,19 @@ export default function ProposalsPage() {
       .filter((proposal) => canAcceptProposal(proposal, viewerId) || canRejectProposal(proposal))
       .map((proposal) => proposal.id);
   }, [proposals, user?.id]);
+  const actionableIdSet = useMemo(() => new Set(actionableIds), [actionableIds]);
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-  const allSelected = actionableIds.length > 0 && actionableIds.every((id) => selectedIds.includes(id));
+  const allSelected = actionableIds.length > 0 && actionableIds.every((id) => selectedIdSet.has(id));
 
   const toggleSelection = (id: number) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds((prev) => (allSelected ? prev.filter((id) => !actionableIds.includes(id)) : [...new Set([...prev, ...actionableIds])]));
+    setSelectedIds((prev) => (allSelected
+      ? prev.filter((id) => !actionableIdSet.has(id))
+      : [...new Set([...prev, ...actionableIds])]));
   };
 
   const handleBulkAction = async (action: 'accept' | 'reject') => {
@@ -241,14 +237,14 @@ export default function ProposalsPage() {
                 {proposals.map((p) => {
                   const isA = p.pharmacyAId === user?.id;
                   const otherName = isA ? p.pharmacyBName : p.pharmacyAName;
-                  const statusInfo = STATUS_LABELS[p.status] || { label: p.status, variant: 'secondary' };
+                  const statusInfo = proposalStatusStyle(p.status);
                   const selectable = canAcceptProposal(p, user?.id) || canRejectProposal(p);
 
                   return (
                     <tr key={p.id}>
                       <td>
                         <FormCheck
-                          checked={selectedIds.includes(p.id)}
+                          checked={selectedIdSet.has(p.id)}
                           onChange={() => toggleSelection(p.id)}
                           disabled={!selectable}
                           aria-label={`proposal-${p.id}`}
@@ -279,7 +275,7 @@ export default function ProposalsPage() {
             {proposals.map((p) => {
               const isA = p.pharmacyAId === user?.id;
               const otherName = isA ? p.pharmacyBName : p.pharmacyAName;
-              const statusInfo = STATUS_LABELS[p.status] || { label: p.status, variant: 'secondary' };
+              const statusInfo = proposalStatusStyle(p.status);
               const selectable = canAcceptProposal(p, user?.id) || canRejectProposal(p);
 
               return (
@@ -300,7 +296,7 @@ export default function ProposalsPage() {
                   actions={(
                     <div className="d-flex flex-column gap-2">
                       <FormCheck
-                        checked={selectedIds.includes(p.id)}
+                        checked={selectedIdSet.has(p.id)}
                         onChange={() => toggleSelection(p.id)}
                         disabled={!selectable}
                         label="一括対象に追加"

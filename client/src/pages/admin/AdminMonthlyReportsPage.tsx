@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
-import AppButton from '../../components/ui/AppButton';
+import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import LoadingButton from '../../components/ui/LoadingButton';
 import AppField from '../../components/ui/AppField';
 import AppTable from '../../components/ui/AppTable';
@@ -86,12 +86,7 @@ export default function AdminMonthlyReportsPage() {
       {message && <AppAlert variant="success">{message}</AppAlert>}
       {actionError && <AppAlert variant="danger">{actionError}</AppAlert>}
       {error && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={() => void retry()}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={error} onRetry={() => void retry()} />
       )}
 
       <form onSubmit={handleGenerate} className="mb-3">

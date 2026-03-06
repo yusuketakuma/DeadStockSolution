@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Badge, Button, ListGroup } from 'react-bootstrap';
 import AppCard from '../ui/AppCard';
 import InlineLoader from '../ui/InlineLoader';
@@ -39,6 +40,11 @@ export default function DashboardTimeline({
   error,
   className,
 }: DashboardTimelineProps) {
+  const renderedEvents = useMemo(
+    () => events.map((event) => <TimelineEventCard key={event.id} event={event} onClick={onEventClick} />),
+    [events, onEventClick],
+  );
+
   return (
     <AppCard className={`d-flex flex-column ${className ?? ''}`} style={{ minHeight: 0 }}>
       <AppCard.Header className="flex-shrink-0 py-2 px-3">
@@ -84,9 +90,7 @@ export default function DashboardTimeline({
 
         {events.length > 0 && (
           <ListGroup variant="flush">
-            {events.map((event) => (
-              <TimelineEventCard key={event.id} event={event} onClick={onEventClick} />
-            ))}
+            {renderedEvents}
           </ListGroup>
         )}
 

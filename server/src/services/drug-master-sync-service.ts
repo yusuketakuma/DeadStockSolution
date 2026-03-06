@@ -21,6 +21,117 @@ export interface SyncResult {
 // ── 同期処理 ─────────────────────────────────────────
 
 const BATCH_SIZE = 500;
+const PRICE_COMPARISON_EPSILON = 0.001;
+
+type InsertDrugMasterRow = typeof drugMaster.$inferInsert;
+type InsertPriceHistoryRow = typeof drugMasterPriceHistory.$inferInsert;
+type UpdateDrugMasterFields = Omit<InsertDrugMasterRow, 'yjCode' | 'id' | 'createdAt'>;
+type UpdateDrugMasterItem = {
+  yjCode: string;
+  fields: UpdateDrugMasterFields;
+};
+
+interface ExistingDrugMasterForSync {
+  yjCode: string;
+  drugName: string;
+  genericName: string | null;
+  specification: string | null;
+  unit: string | null;
+  yakkaPrice: string;
+  manufacturer: string | null;
+  category: string | null;
+  therapeuticCategory: string | null;
+  isListed: boolean;
+  listedDate: string | null;
+  transitionDeadline: string | null;
+  deletedDate: string | null;
+}
+
+function buildDrugMasterInsertRow(row: ParsedDrugRow, now: string): InsertDrugMasterRow {
+  return {
+    yjCode: row.yjCode,
+    drugName: row.drugName,
+    genericName: row.genericName,
+    specification: row.specification,
+    unit: row.unit,
+    yakkaPrice: String(row.yakkaPrice),
+    manufacturer: row.manufacturer,
+    category: row.category,
+    therapeuticCategory: row.therapeuticCategory,
+    isListed: true,
+    listedDate: row.listedDate,
+    transitionDeadline: row.transitionDeadline,
+    updatedAt: now,
+  };
+}
+
+function buildDrugMasterUpdateFields(row: ParsedDrugRow, now: string): UpdateDrugMasterFields {
+  return {
+    drugName: row.drugName,
+    genericName: row.genericName,
+    specification: row.specification,
+    unit: row.unit,
+    yakkaPrice: String(row.yakkaPrice),
+    manufacturer: row.manufacturer,
+    category: row.category,
+    therapeuticCategory: row.therapeuticCategory,
+    isListed: true,
+    listedDate: row.listedDate,
+    transitionDeadline: row.transitionDeadline,
+    deletedDate: null,
+    updatedAt: now,
+  };
+}
+
+function buildPriceHistoryRow(params: {
+  yjCode: string;
+  previousPrice: string | null;
+  newPrice: string | null;
+  revisionDate: string;
+  revisionType: InsertPriceHistoryRow['revisionType'];
+}): InsertPriceHistoryRow {
+  return {
+    yjCode: params.yjCode,
+    previousPrice: params.previousPrice,
+    newPrice: params.newPrice,
+    revisionDate: params.revisionDate,
+    revisionType: params.revisionType,
+  };
+}
+
+function hasMetadataChanged(existing: ExistingDrugMasterForSync, row: ParsedDrugRow): boolean {
+  return (
+    existing.drugName !== row.drugName ||
+    existing.genericName !== row.genericName ||
+    existing.specification !== row.specification ||
+    existing.unit !== row.unit ||
+    existing.manufacturer !== row.manufacturer ||
+    existing.category !== row.category ||
+    existing.therapeuticCategory !== row.therapeuticCategory ||
+    existing.listedDate !== row.listedDate ||
+    existing.transitionDeadline !== row.transitionDeadline ||
+    existing.deletedDate !== null
+  );
+}
+
+function evaluateDrugMasterUpdate(existing: ExistingDrugMasterForSync, row: ParsedDrugRow): {
+  priceChanged: boolean;
+  wasDelisted: boolean;
+  shouldUpdate: boolean;
+} {
+  const priceChanged = Math.abs(Number(existing.yakkaPrice) - row.yakkaPrice) > PRICE_COMPARISON_EPSILON;
+  const wasDelisted = !existing.isListed;
+  const shouldUpdate = priceChanged || wasDelisted || hasMetadataChanged(existing, row);
+  return { priceChanged, wasDelisted, shouldUpdate };
+}
+
+function normalizePackage(row: ParsedPackageRow) {
+  return normalizePackageInfo({
+    packageDescription: row.packageDescription,
+    packageQuantity: row.packageQuantity,
+    packageUnit: row.packageUnit,
+  });
+}
 
 function assertNoDuplicateYjCodes(parsedRows: ParsedDrugRow[]): ParsedDrugRow[] {
   const seen = new Set<string>();
@@ -77,16 +188,15 @@ export async function syncDrugMaster(
       deletedDate: drugMaster.deletedDate,
     }).from(drugMaster);
 
-    const existingMap = new Map(existingItems.map((item) => [item.yjCode, item]));
+    const existingMap = new Map(existingItems.map((item) => [item.yjCode, item as ExistingDrugMasterForSync]));
     const incomingCodes = new Set(normalizedRows.map((r) => r.yjCode));
 
     // バッチ処理: INSERT/UPDATE を蓄積して一括実行
     for (let i = 0; i < normalizedRows.length; i += BATCH_SIZE) {
       const batch = normalizedRows.slice(i, i + BATCH_SIZE);
 
-      type InsertDrugMasterRow = typeof drugMaster.$inferInsert;
-      type InsertPriceHistoryRow = typeof drugMasterPriceHistory.$inferInsert;
       const toInsert: InsertDrugMasterRow[] = [];
+      const toUpdate: UpdateDrugMasterItem[] = [];
       const priceHistoryToInsert: InsertPriceHistoryRow[] = [];
 
       for (const row of batch) {
@@ -94,85 +204,55 @@ export async function syncDrugMaster(
         result.itemsProcessed++;
 
         if (!existing) {
-          toInsert.push({
-            yjCode: row.yjCode,
-            drugName: row.drugName,
-            genericName: row.genericName,
-            specification: row.specification,
-            unit: row.unit,
-            yakkaPrice: String(row.yakkaPrice),
-            manufacturer: row.manufacturer,
-            category: row.category,
-            therapeuticCategory: row.therapeuticCategory,
-            isListed: true,
-            listedDate: row.listedDate,
-            transitionDeadline: row.transitionDeadline,
-            updatedAt: now,
-          });
-
-          priceHistoryToInsert.push({
+          toInsert.push(buildDrugMasterInsertRow(row, now));
+          priceHistoryToInsert.push(buildPriceHistoryRow({
             yjCode: row.yjCode,
             previousPrice: null,
             newPrice: String(row.yakkaPrice),
             revisionDate,
             revisionType: 'new_listing',
-          });
+          }));
 
           result.itemsAdded++;
-        } else {
-          // 既存品目の更新チェック（float精度を考慮）
-          const priceChanged = Math.abs(Number(existing.yakkaPrice) - row.yakkaPrice) > 0.001;
-          const wasDelisted = !existing.isListed;
-          const metadataChanged =
-            existing.drugName !== row.drugName ||
-            existing.genericName !== row.genericName ||
-            existing.specification !== row.specification ||
-            existing.unit !== row.unit ||
-            existing.manufacturer !== row.manufacturer ||
-            existing.category !== row.category ||
-            existing.therapeuticCategory !== row.therapeuticCategory ||
-            existing.listedDate !== row.listedDate ||
-            existing.transitionDeadline !== row.transitionDeadline ||
-            existing.deletedDate !== null;
-          const shouldUpdate = priceChanged || wasDelisted || metadataChanged;
-
-          if (shouldUpdate) {
-            await tx.update(drugMaster)
-              .set({
-                drugName: row.drugName,
-                genericName: row.genericName,
-                specification: row.specification,
-                unit: row.unit,
-                yakkaPrice: String(row.yakkaPrice),
-                manufacturer: row.manufacturer,
-                category: row.category,
-                therapeuticCategory: row.therapeuticCategory,
-                isListed: true,
-                listedDate: row.listedDate,
-                transitionDeadline: row.transitionDeadline,
-                deletedDate: null,
-                updatedAt: now,
-              })
-              .where(eq(drugMaster.yjCode, row.yjCode));
-
-            if (priceChanged) {
-              priceHistoryToInsert.push({
-                yjCode: row.yjCode,
-                previousPrice: existing.yakkaPrice,
-                newPrice: String(row.yakkaPrice),
-                revisionDate,
-                revisionType: wasDelisted ? 'new_listing' : 'price_revision',
-              });
-            }
-
-            result.itemsUpdated++;
-          }
+          continue;
         }
+
+        const { priceChanged, wasDelisted, shouldUpdate } = evaluateDrugMasterUpdate(existing, row);
+        if (!shouldUpdate) {
+          continue;
+        }
+
+        toUpdate.push({
+          yjCode: row.yjCode,
+          fields: buildDrugMasterUpdateFields(row, now),
+        });
+
+        if (priceChanged) {
+          priceHistoryToInsert.push(buildPriceHistoryRow({
+            yjCode: row.yjCode,
+            previousPrice: existing.yakkaPrice,
+            newPrice: String(row.yakkaPrice),
+            revisionDate,
+            revisionType: wasDelisted ? 'new_listing' : 'price_revision',
+          }));
+        }
+
+        result.itemsUpdated++;
       }
 
       // バッチ INSERT 一括実行
       if (toInsert.length > 0) {
         await tx.insert(drugMaster).values(toInsert);
+      }
+      // バッチ UPDATE 並列実行（N回逐次 → Promise.all でDBラウンドトリップ削減）
+      if (toUpdate.length > 0) {
+        await Promise.all(
+          toUpdate.map((item) =>
+            tx.update(drugMaster)
+              .set(item.fields)
+              .where(eq(drugMaster.yjCode, item.yjCode)),
+          ),
+        );
       }
       if (priceHistoryToInsert.length > 0) {
         await tx.insert(drugMasterPriceHistory).values(priceHistoryToInsert);
@@ -186,13 +266,13 @@ export async function syncDrugMaster(
     for (const [yjCode, existing] of existingMap) {
       if (!incomingCodes.has(yjCode) && existing.isListed) {
         delistingCodes.push(yjCode);
-        delistingPriceHistory.push({
+        delistingPriceHistory.push(buildPriceHistoryRow({
           yjCode,
           previousPrice: existing.yakkaPrice,
           newPrice: null,
           revisionDate,
           revisionType: 'delisting',
-        });
+        }));
         result.itemsDeleted++;
       }
     }
@@ -325,15 +405,11 @@ export async function syncPackageData(
       for (const row of batch) {
         const drugMasterId = yjToId.get(row.yjCode);
         if (!drugMasterId) continue;
+        const normalized = normalizePackage(row);
 
         const existingPkg = findExistingPackage(drugMasterId, row);
 
         if (existingPkg) {
-          const normalized = normalizePackageInfo({
-            packageDescription: row.packageDescription,
-            packageQuantity: row.packageQuantity,
-            packageUnit: row.packageUnit,
-          });
           const nextValues = {
             gs1Code: row.gs1Code ?? existingPkg.gs1Code,
             janCode: row.janCode ?? existingPkg.janCode,
@@ -357,11 +433,6 @@ export async function syncPackageData(
 
           updated++;
         } else {
-          const normalized = normalizePackageInfo({
-            packageDescription: row.packageDescription,
-            packageQuantity: row.packageQuantity,
-            packageUnit: row.packageUnit,
-          });
           toInsert.push({
             drugMasterId,
             gs1Code: row.gs1Code,

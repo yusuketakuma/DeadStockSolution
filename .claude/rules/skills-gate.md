@@ -2,7 +2,7 @@
 description: Skills Gate ルール - コード編集前にスキル使用を促す
 paths: "**/*.{ts,tsx,js,jsx,py,rb,go,rs,java,kt,swift,c,cpp,h,hpp,cs,php}"
 _harness_template: "rules/skills-gate.md.template"
-_harness_version: "2.25.0"
+_harness_version: "2.6.0"
 _harness_condition: "skills_gate.enabled"
 ---
 

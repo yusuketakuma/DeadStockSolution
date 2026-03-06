@@ -377,3 +377,89 @@
 - （必要に応じて追記）
 
 ---
+
+## セッション: 2026-03-04T21:44:39Z
+
+- session_id: `session-1772577305`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-03T22:35:05Z`
+- ended_at: `2026-03-04T21:44:39Z`
+- duration_minutes: 1929
+- changes: 0
+- commits: 3
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
+
+## セッション: 2026-03-05T01:40:14Z
+
+- session_id: `session-1772674768`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-05T01:39:28Z`
+- ended_at: `2026-03-05T01:40:14Z`
+- duration_minutes: 540
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
+
+## セッション: 2026-03-05T11:04:47Z
+
+- session_id: `session-1772687744`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-05T05:15:44Z`
+- ended_at: `2026-03-05T11:04:47Z`
+- duration_minutes: 889
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
+
+## セッション: 2026-03-06T01:42:32Z
+
+- session_id: `session-1772761234`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-06T01:40:34Z`
+- ended_at: `2026-03-06T01:42:32Z`
+- duration_minutes: 541
+- changes: 2
+
+### 変更ファイル
+- `/Users/yusuke/.claude/projects/-Users-yusuke-DeadStockSolution/memory/MEMORY.md`
+- `.claude-code-harness-version`
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---

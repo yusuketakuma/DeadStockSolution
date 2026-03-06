@@ -1,4 +1,3 @@
-import path from 'path';
 import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { AuthRequest, ColumnMapping, DEAD_STOCK_FIELDS, USED_MEDICATION_FIELDS } from '../types';
@@ -7,6 +6,7 @@ import { logger } from '../services/logger';
 import { writeLog, getClientIp } from '../services/log-service';
 import { parseExcelBuffer } from '../services/upload-service';
 import { getErrorMessage } from '../middleware/error-handler';
+import { createMemorySingleFileUpload } from '../middleware/upload-middleware';
 
 export const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
 export const MAX_MAPPING_KEYS = 30;
@@ -92,22 +92,11 @@ export function logUploadFailure(
   });
 }
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_UPLOAD_SIZE,
-    files: 1,
-    fields: 10,
-    fieldSize: 100 * 1024,
-  },
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(ext) || !ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      cb(new Error('xlsxファイルのみアップロードできます'));
-      return;
-    }
-    cb(null, true);
-  },
+const upload = createMemorySingleFileUpload({
+  maxUploadSize: MAX_UPLOAD_SIZE,
+  allowedExtensions: ALLOWED_EXTENSIONS,
+  allowedMimeTypes: ALLOWED_MIME_TYPES,
+  invalidTypeErrorMessage: 'xlsxファイルのみアップロードできます',
 });
 
 export function uploadSingleFile(req: Request, res: Response, next: NextFunction): void {

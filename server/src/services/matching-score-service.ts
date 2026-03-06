@@ -4,6 +4,13 @@ import { MatchItem } from '../types';
 
 const MAX_DRUG_MATCH_CACHE_SIZE = 2000;
 const MAX_PARSED_EXPIRY_CACHE_SIZE = 5000;
+const TOKEN_INDEX_MIN_LENGTH = 2;
+const NAME_MATCH_EARLY_EXIT_SCORE = 0.98;
+const TOKEN_CANDIDATE_LIMIT = 500;
+const SPARSE_CANDIDATE_THRESHOLD = 25;
+const NEAR_LENGTH_CANDIDATE_LIMIT = 200;
+const NEAR_LENGTH_WINDOW = 2;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface MatchingScoringRules {
   nameMatchThreshold: number;
@@ -115,6 +122,27 @@ function createTokenSet(normalizedName: string): Set<string> {
   return tokenSet;
 }
 
+function appendIndexedValue<K>(map: Map<K, number[]>, key: K, value: number): void {
+  const existing = map.get(key);
+  if (existing) {
+    existing.push(value);
+    return;
+  }
+
+  map.set(key, [value]);
+}
+
+function addCandidates(candidateIds: Set<number>, candidates: Iterable<number>, limit: number): boolean {
+  for (const candidateId of candidates) {
+    candidateIds.add(candidateId);
+    if (candidateIds.size >= limit) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function jaccardScore(tokensA: Set<string>, tokensB: Set<string>): number {
   if (tokensA.size === 0 || tokensB.size === 0) return 0;
 
@@ -174,21 +202,11 @@ export function buildUsedMedIndex(rows: UsedMedRow[]): UsedMedIndex {
       length: normalizedName.length,
     });
 
-    const lengthBucket = lengthBuckets.get(normalizedName.length);
-    if (lengthBucket) {
-      lengthBucket.push(index);
-    } else {
-      lengthBuckets.set(normalizedName.length, [index]);
-    }
+    appendIndexedValue(lengthBuckets, normalizedName.length, index);
 
     for (const token of tokenSet) {
-      if (token.length < 2) continue;
-      const list = tokenIndex.get(token);
-      if (list) {
-        list.push(index);
-      } else {
-        tokenIndex.set(token, [index]);
-      }
+      if (token.length < TOKEN_INDEX_MIN_LENGTH) continue;
+      appendIndexedValue(tokenIndex, token, index);
     }
   }
 
@@ -205,24 +223,16 @@ function collectCandidateIndices(
   for (const token of tokenSet) {
     const matched = index.tokenIndex.get(token);
     if (!matched) continue;
-    for (const id of matched) {
-      candidateIds.add(id);
-      if (candidateIds.size >= 500) break;
-    }
-    if (candidateIds.size >= 500) break;
+    if (addCandidates(candidateIds, matched, TOKEN_CANDIDATE_LIMIT)) break;
   }
 
   // Ensure near-length alternatives are included when token hit is sparse.
-  if (candidateIds.size > 0 && candidateIds.size < 25) {
+  if (candidateIds.size > 0 && candidateIds.size < SPARSE_CANDIDATE_THRESHOLD) {
     const targetLength = normalizedDrugName.length;
-    for (let length = Math.max(0, targetLength - 2); length <= targetLength + 2; length += 1) {
+    for (let length = Math.max(0, targetLength - NEAR_LENGTH_WINDOW); length <= targetLength + NEAR_LENGTH_WINDOW; length += 1) {
       const nearLengthCandidates = index.lengthBuckets.get(length);
       if (!nearLengthCandidates) continue;
-      for (const candidateIndex of nearLengthCandidates) {
-        candidateIds.add(candidateIndex);
-        if (candidateIds.size >= 200) break;
-      }
-      if (candidateIds.size >= 200) break;
+      if (addCandidates(candidateIds, nearLengthCandidates, NEAR_LENGTH_CANDIDATE_LIMIT)) break;
     }
   }
 
@@ -231,6 +241,28 @@ function collectCandidateIndices(
   }
 
   return [...candidateIds];
+}
+
+function findBestNameScore(
+  normalizedDrugName: string,
+  tokenSet: Set<string>,
+  names: Iterable<UsedMedName | undefined>,
+): number {
+  let bestScore = 0;
+
+  for (const name of names) {
+    if (!name) continue;
+
+    const score = computeNameSimilarity(normalizedDrugName, tokenSet, name);
+    if (score <= bestScore) continue;
+
+    bestScore = score;
+    if (bestScore >= NAME_MATCH_EARLY_EXIT_SCORE) {
+      break;
+    }
+  }
+
+  return bestScore;
 }
 
 export function findBestDrugMatch(
@@ -251,30 +283,12 @@ export function findBestDrugMatch(
     return result;
   }
 
-  let bestScore = 0;
   const candidateIndices = collectCandidateIndices(normalizedDrugName, tokenSet, index);
+  const namesToSearch = candidateIndices
+    ? candidateIndices.map((candidateIndex) => index.names[candidateIndex])
+    : index.names;
 
-  if (candidateIndices) {
-    for (const candidateIndex of candidateIndices) {
-      const name = index.names[candidateIndex];
-      if (!name) continue;
-      const score = computeNameSimilarity(normalizedDrugName, tokenSet, name);
-      if (score > bestScore) {
-        bestScore = score;
-        if (bestScore >= 0.98) break;
-      }
-    }
-  } else {
-    for (const name of index.names) {
-      const score = computeNameSimilarity(normalizedDrugName, tokenSet, name);
-      if (score > bestScore) {
-        bestScore = score;
-        if (bestScore >= 0.98) break;
-      }
-    }
-  }
-
-  const result = { score: bestScore };
+  const result = { score: findBestNameScore(normalizedDrugName, tokenSet, namesToSearch) };
   setLimitedCacheEntry(cache, normalizedDrugName, result, MAX_DRUG_MATCH_CACHE_SIZE);
   return result;
 }
@@ -318,6 +332,10 @@ export function isExpiredDate(value: string | null | undefined, referenceDate: D
   return expiryDay.getTime() < today.getTime();
 }
 
+function getItemExpiryDate(item: MatchItem): Date | null {
+  return parseExpiryDate(item.expirationDateIso ?? item.expirationDate);
+}
+
 export function getNearExpiryCount(
   items: MatchItem[],
   nearExpiryDays: number = DEFAULT_MATCHING_SCORING_RULES.nearExpiryDays,
@@ -328,11 +346,10 @@ export function getNearExpiryCount(
 
   let count = 0;
   for (const item of items) {
-    const expirySource = item.expirationDateIso ?? item.expirationDate;
-    const expiry = parseExpiryDate(expirySource);
+    const expiry = getItemExpiryDate(item);
     if (!expiry) continue;
     const expiryDay = toStartOfDay(expiry);
-    const diffDays = Math.floor((expiryDay.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    const diffDays = Math.floor((expiryDay.getTime() - today.getTime()) / MS_PER_DAY);
     if (diffDays >= 0 && diffDays <= thresholdDays) count += 1;
   }
   return count;

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createSelectQuery, createUpdateReturningQuery } from './helpers/mock-builders';
 
 const mocks = vi.hoisted(() => ({
   db: {
@@ -20,30 +21,6 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 import { completeProposal, createProposal } from '../services/exchange-service';
-
-function createSelectQuery(result: unknown) {
-  const query = {
-    from: vi.fn(),
-    where: vi.fn(),
-    limit: vi.fn(),
-  };
-  query.from.mockReturnValue(query);
-  query.where.mockReturnValue(query);
-  query.limit.mockResolvedValue(result);
-  return query;
-}
-
-function createUpdateReturningQuery(result: unknown) {
-  const query = {
-    set: vi.fn(),
-    where: vi.fn(),
-    returning: vi.fn(),
-  };
-  query.set.mockReturnValue(query);
-  query.where.mockReturnValue(query);
-  query.returning.mockResolvedValue(result);
-  return query;
-}
 
 describe('exchange-service', () => {
   beforeEach(() => {

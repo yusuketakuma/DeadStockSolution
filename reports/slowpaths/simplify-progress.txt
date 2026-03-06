@@ -1,0 +1,12 @@
+phase=completed
+timestamp=2026-03-06T01:07:22Z
+agent_mode=fallback
+run_processed=4
+run_max=4
+total_targets=30
+total_processed=30
+total_remaining=0
+current_rank=30
+current_source=static-heuristic
+current_target=server/src/routes/exchange-proposals.ts
+current_reason=loc=520, loops=1, awaitInLoop=0, sql=10

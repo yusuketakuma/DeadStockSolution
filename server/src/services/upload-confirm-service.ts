@@ -35,6 +35,7 @@ export type UploadType = 'dead_stock' | 'used_medication';
 type DeadStockInsertRow = InferInsertModel<typeof deadStockItems>;
 type UsedMedicationInsertRow = InferInsertModel<typeof usedMedicationItems>;
 type DrugMasterLinkFields = Pick<DeadStockInsertRow, 'drugMasterId' | 'drugMasterPackageId' | 'packageLabel'>;
+type UploadConfirmTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 interface DeadStockInsertSource extends DrugMasterLinkFields {
   drugCode: string | null;
@@ -108,6 +109,10 @@ function toTimestampMs(value: string | null | undefined): number | null {
 
 function resolveUploadTypeLockKey(uploadType: UploadType): number {
   return uploadType === 'dead_stock' ? 1 : 2;
+}
+
+function shouldReplaceRows(applyMode: ApplyMode): boolean {
+  return applyMode !== 'diff';
 }
 
 function toDeadStockInsertRow(
@@ -184,6 +189,73 @@ function buildPartialSummary(
   };
 }
 
+async function assertUploadIsFresh(
+  tx: UploadConfirmTx,
+  pharmacyId: number,
+  uploadType: UploadType,
+  staleGuardCreatedAt: string | null,
+): Promise<void> {
+  if (!staleGuardCreatedAt) return;
+
+  const staleGuardMs = toTimestampMs(staleGuardCreatedAt);
+  if (staleGuardMs === null) return;
+
+  const [latestUpload] = await tx.select({
+    id: uploads.id,
+    requestedAt: uploads.requestedAt,
+  })
+    .from(uploads)
+    .where(and(
+      eq(uploads.pharmacyId, pharmacyId),
+      eq(uploads.uploadType, uploadType),
+    ))
+    .orderBy(desc(uploads.requestedAt), desc(uploads.id))
+    .limit(1);
+  const latestUploadMs = toTimestampMs(latestUpload?.requestedAt ?? null);
+  if (latestUploadMs !== null && latestUploadMs >= staleGuardMs) {
+    throw new Error('[STALE_JOB_SKIPPED] より新しいアップロードが既に反映されているため、このジョブはスキップされました');
+  }
+}
+
+async function syncUploadRowIssuesForJob(
+  tx: UploadConfirmTx,
+  jobId: number | undefined,
+  pharmacyId: number,
+  uploadType: UploadType,
+  applyMode: ApplyMode,
+  extractedIssues: UploadExtractionIssue[],
+): Promise<void> {
+  if (!jobId) return;
+
+  if (applyMode !== 'partial') {
+    await clearUploadRowIssuesForJob(jobId, tx);
+    return;
+  }
+
+  await replaceUploadRowIssuesForJob(
+    jobId,
+    pharmacyId,
+    uploadType,
+    toUploadRowIssueInputs(extractedIssues),
+    tx,
+  );
+}
+
+async function replaceUploadItems<TSource, TInsertRow>(
+  sourceRows: TSource[],
+  clearExistingRows: () => Promise<unknown>,
+  toInsertRow: (item: TSource) => TInsertRow,
+  insertRows: (rows: TInsertRow[]) => Promise<unknown>,
+): Promise<void> {
+  await clearExistingRows();
+  if (sourceRows.length === 0) return;
+
+  const preparedRows = sourceRows.map(toInsertRow);
+  await insertInBatches(preparedRows.length, (start, end) =>
+    insertRows(preparedRows.slice(start, end))
+  );
+}
+
 export async function runUploadConfirm(
   params: UploadConfirmExecutionParams,
 ): Promise<UploadConfirmExecutionResult> {
@@ -232,41 +304,8 @@ export async function runUploadConfirm(
 
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${pharmacyId}, ${resolveUploadTypeLockKey(uploadType)})`);
-
-    if (staleGuardCreatedAt) {
-      const staleGuardMs = toTimestampMs(staleGuardCreatedAt);
-      if (staleGuardMs !== null) {
-        const [latestUpload] = await tx.select({
-          id: uploads.id,
-          requestedAt: uploads.requestedAt,
-        })
-          .from(uploads)
-          .where(and(
-            eq(uploads.pharmacyId, pharmacyId),
-            eq(uploads.uploadType, uploadType),
-          ))
-          .orderBy(desc(uploads.requestedAt), desc(uploads.id))
-          .limit(1);
-        const latestUploadMs = toTimestampMs(latestUpload?.requestedAt ?? null);
-        if (latestUploadMs !== null && latestUploadMs >= staleGuardMs) {
-          throw new Error('[STALE_JOB_SKIPPED] より新しいアップロードが既に反映されているため、このジョブはスキップされました');
-        }
-      }
-    }
-
-    if (jobId) {
-      if (applyMode === 'partial') {
-        await replaceUploadRowIssuesForJob(
-          jobId,
-          pharmacyId,
-          uploadType,
-          toUploadRowIssueInputs(extractedIssues),
-          tx,
-        );
-      } else {
-        await clearUploadRowIssuesForJob(jobId, tx);
-      }
-    }
+    await assertUploadIsFresh(tx, pharmacyId, uploadType, staleGuardCreatedAt);
+    await syncUploadRowIssuesForJob(tx, jobId, pharmacyId, uploadType, applyMode, extractedIssues);
 
     const [uploadRecord] = await tx.insert(uploads).values({
       pharmacyId,
@@ -278,38 +317,31 @@ export async function runUploadConfirm(
     }).returning({ id: uploads.id });
 
     let diffSummary: DiffSummary | null = null;
+    const isReplaceMode = shouldReplaceRows(applyMode);
 
     if (uploadType === 'dead_stock') {
       const sourceRows = (enrichedDeadStock ?? deadStockExtraction?.rows) ?? [];
-      if (applyMode === 'replace' || applyMode === 'partial') {
-        await tx.delete(deadStockItems).where(eq(deadStockItems.pharmacyId, pharmacyId));
-        if (sourceRows.length > 0) {
-          const insertRows = sourceRows.map((item) =>
-            toDeadStockInsertRow(pharmacyId, uploadRecord.id, item)
-          );
-
-          await insertInBatches(insertRows.length, async (start, end) =>
-            tx.insert(deadStockItems).values(insertRows.slice(start, end))
-          );
-        }
-      } else {
+      if (!isReplaceMode) {
         diffSummary = await applyDeadStockDiff(tx, pharmacyId, uploadRecord.id, sourceRows, { deleteMissing });
+      } else {
+        await replaceUploadItems(
+          sourceRows,
+          () => tx.delete(deadStockItems).where(eq(deadStockItems.pharmacyId, pharmacyId)),
+          (item) => toDeadStockInsertRow(pharmacyId, uploadRecord.id, item),
+          (rows) => tx.insert(deadStockItems).values(rows),
+        );
       }
     } else {
       const sourceRows = (enrichedUsedMedication ?? usedMedicationExtraction?.rows) ?? [];
-      if (applyMode === 'replace' || applyMode === 'partial') {
-        await tx.delete(usedMedicationItems).where(eq(usedMedicationItems.pharmacyId, pharmacyId));
-        if (sourceRows.length > 0) {
-          const insertRows = sourceRows.map((item) =>
-            toUsedMedicationInsertRow(pharmacyId, uploadRecord.id, item)
-          );
-
-          await insertInBatches(insertRows.length, async (start, end) =>
-            tx.insert(usedMedicationItems).values(insertRows.slice(start, end))
-          );
-        }
-      } else {
+      if (!isReplaceMode) {
         diffSummary = await applyUsedMedicationDiff(tx, pharmacyId, uploadRecord.id, sourceRows, { deleteMissing });
+      } else {
+        await replaceUploadItems(
+          sourceRows,
+          () => tx.delete(usedMedicationItems).where(eq(usedMedicationItems.pharmacyId, pharmacyId)),
+          (item) => toUsedMedicationInsertRow(pharmacyId, uploadRecord.id, item),
+          (rows) => tx.insert(usedMedicationItems).values(rows),
+        );
       }
     }
 

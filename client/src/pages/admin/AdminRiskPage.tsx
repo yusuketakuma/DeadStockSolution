@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import AppAlert from '../../components/ui/AppAlert';
-import AppButton from '../../components/ui/AppButton';
+import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import AppTable from '../../components/ui/AppTable';
 import AppKpiCard from '../../components/ui/AppKpiCard';
 import AppEmptyState from '../../components/ui/AppEmptyState';
@@ -100,12 +99,7 @@ export default function AdminRiskPage() {
     <PageShell>
       <h4 className="page-title mb-3">期限切れリスク分析</h4>
       {hasError && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{mergedErrorMessage}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={handleRetry}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={mergedErrorMessage} onRetry={handleRetry} />
       )}
 
       {(overviewLoading && !overview) || (loading && rows.length === 0) ? (

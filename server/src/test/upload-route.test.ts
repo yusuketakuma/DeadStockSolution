@@ -142,6 +142,7 @@ describe('upload routes', () => {
 
   beforeEach(() => {
     delete process.env.UPLOAD_CONFIRM_PROCESS_ON_ENQUEUE;
+    delete process.env.UPLOAD_CONFIRM_FALLBACK_SYNC_ON_ENQUEUE_ERROR;
 
     mocks.parseExcelBuffer.mockResolvedValue([
       ['YJコード', '薬剤名', '数量'],
@@ -580,6 +581,52 @@ describe('upload routes', () => {
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ error: '非同期アップロード処理の受付に失敗しました' });
     expect(mocks.enqueueUploadConfirmJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to sync confirm when enqueue fails and fallback flag is enabled', async () => {
+    process.env.UPLOAD_CONFIRM_FALLBACK_SYNC_ON_ENQUEUE_ERROR = 'true';
+    const app = createApp();
+    mocks.enqueueUploadConfirmJob.mockRejectedValueOnce(new Error('queue unavailable'));
+    mocks.runUploadConfirm.mockResolvedValueOnce({
+      uploadId: 777,
+      rowCount: 2,
+      diffSummary: null,
+      partialSummary: null,
+    });
+
+    const response = await request(app)
+      .post('/api/upload/confirm-async')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
+      .field('mapping', JSON.stringify({
+        drug_code: '0',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: null,
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      message: 'キュー登録に失敗したため同期処理で適用しました',
+      status: 'completed_sync_fallback',
+      deduplicated: false,
+      cancelable: false,
+      canceledAt: null,
+      jobId: null,
+      uploadId: 777,
+      rowCount: 2,
+      partialSummary: null,
+      errorReportAvailable: false,
+    });
+    expect(mocks.runUploadConfirm).toHaveBeenCalledTimes(1);
   });
 
   it('enqueues async confirm job without mapping by auto-resolving fixed columns', async () => {

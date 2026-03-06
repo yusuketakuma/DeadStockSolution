@@ -59,12 +59,21 @@ function normalizeDrugCode(value: string): string {
  */
 export async function enrichWithDrugMaster<T extends BaseRow>(
   rows: T[],
-  _type: 'dead_stock' | 'used_medication',
+  type: 'dead_stock' | 'used_medication',
 ): Promise<EnrichedRow<T>[]> {
+  function toEmptyEnrichedRow(row: T): EnrichedRow<T> {
+    return {
+      ...row,
+      drugMasterId: null,
+      drugMasterPackageId: null,
+      packageLabel: null,
+    };
+  }
+
   // マスターが空なら何もしない
   const [masterCheck] = await db.select({ id: drugMaster.id }).from(drugMaster).limit(1);
   if (!masterCheck) {
-    return rows.map((r) => ({ ...r, drugMasterId: null, drugMasterPackageId: null, packageLabel: null }));
+    return rows.map(toEmptyEnrichedRow);
   }
 
   // drugCodeを持つ行のコードをまとめて検索
@@ -141,9 +150,8 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
     }
   }
 
-  async function findPackageByUnit(drugMasterId: number, rowUnit: string | null): Promise<PackageCandidate | null> {
+  function findPackageByUnit(drugMasterId: number, rowUnit: string | null): PackageCandidate | null {
     if (!rowUnit) return null;
-    await loadPackageCandidatesForMasterIds([drugMasterId]);
     const candidates = packageCandidatesByMaster.get(drugMasterId) ?? [];
     if (candidates.length === 0) return null;
 
@@ -163,6 +171,32 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
     }
 
     return bestScore >= 40 ? best : null;
+  }
+
+  function resolvePackageLabel(
+    packageInfo: PackageCandidate | null,
+    masterInfo: MasterMatchInfo | null,
+  ): string | null {
+    return packageInfo?.normalizedPackageLabel
+      ?? packageInfo?.packageDescription
+      ?? masterInfo?.packageLabel
+      ?? null;
+  }
+
+  function applyMasterDefaults(enriched: EnrichedRow<T>, masterInfo: MasterMatchInfo): void {
+    const isDeadStockLike = (row: EnrichedRow<T>): row is EnrichedRow<T & DeadStockRow> => (
+      'quantity' in row && 'yakkaTotal' in row
+    );
+
+    if (enriched.yakkaUnitPrice === null || enriched.yakkaUnitPrice === undefined) {
+      enriched.yakkaUnitPrice = masterInfo.yakkaPrice;
+      if (type === 'dead_stock' && isDeadStockLike(enriched)) {
+        enriched.yakkaTotal = masterInfo.yakkaPrice * enriched.quantity;
+      }
+    }
+    if (!enriched.unit && masterInfo.unit) {
+      enriched.unit = masterInfo.unit;
+    }
   }
 
   if (codesInRows.size > 0) {
@@ -293,37 +327,63 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
     masterByNormalizedName = byName;
   }
 
-  async function findByName(drugName: string): Promise<MasterMatchInfo | null> {
+  function findByName(drugName: string): MasterMatchInfo | null {
     if (nameCache.has(drugName)) {
       return nameCache.get(drugName) ?? null;
     }
 
-    await loadNameCache();
+    if (!masterByNormalizedName) {
+      return null;
+    }
+
     const normalized = normalizeString(drugName);
     const exact = masterByNormalizedName?.get(normalized) ?? null;
     nameCache.set(drugName, exact);
     return exact;
   }
 
-  // 各行を処理
+  function resolveByCode(drugCode: string | null): MasterMatchInfo | null {
+    if (!drugCode) return null;
+    const cleaned = normalizeDrugCode(drugCode);
+    return codeCache.get(cleaned) ?? null;
+  }
+
+  // パス1: 全行の masterInfo を解決（名前マッチは必要時のみ一括ロード）
+  const masterInfoByRow: (MasterMatchInfo | null)[] = rows.map((row) => resolveByCode(row.drugCode));
+  const unresolvedNameIndexes: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (!masterInfoByRow[i]) {
+      unresolvedNameIndexes.push(i);
+    }
+  }
+
+  if (unresolvedNameIndexes.length > 0) {
+    await loadNameCache();
+    for (const idx of unresolvedNameIndexes) {
+      masterInfoByRow[idx] = findByName(rows[idx].drugName);
+    }
+  }
+
+  // パス2: パッケージ候補が必要な masterIds を収集し、1回のDBクエリで一括取得
+  const masterIdsNeedingPackages = new Set<number>();
+  for (let i = 0; i < rows.length; i++) {
+    const masterInfo = masterInfoByRow[i];
+    const row = rows[i];
+    if (masterInfo && !masterInfo.drugMasterPackageId && row.unit) {
+      masterIdsNeedingPackages.add(masterInfo.id);
+    }
+  }
+  await loadPackageCandidatesForMasterIds([...masterIdsNeedingPackages]);
+
+  // パス3: キャッシュ済みデータを使って各行を補完（DBアクセスなし）
   const results: EnrichedRow<T>[] = [];
-  for (const row of rows) {
-    let masterInfo: MasterMatchInfo | null = null;
-
-    // 1. コードでの検索
-    if (row.drugCode) {
-      const cleaned = normalizeDrugCode(row.drugCode);
-      masterInfo = codeCache.get(cleaned) || null;
-    }
-
-    // 2. 名前でのマッチ（コードで見つからない場合）
-    if (!masterInfo) {
-      masterInfo = await findByName(row.drugName);
-    }
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const masterInfo = masterInfoByRow[i];
 
     let packageInfo: PackageCandidate | null = null;
     if (masterInfo && !masterInfo.drugMasterPackageId && row.unit) {
-      packageInfo = await findPackageByUnit(masterInfo.id, row.unit);
+      packageInfo = findPackageByUnit(masterInfo.id, row.unit);
     }
 
     // 自動補完
@@ -331,24 +391,11 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
       ...row,
       drugMasterId: masterInfo?.id ?? null,
       drugMasterPackageId: packageInfo?.id ?? masterInfo?.drugMasterPackageId ?? null,
-      packageLabel: packageInfo?.normalizedPackageLabel
-        ?? packageInfo?.packageDescription
-        ?? masterInfo?.packageLabel
-        ?? null,
+      packageLabel: resolvePackageLabel(packageInfo, masterInfo),
     };
 
     if (masterInfo) {
-      if (enriched.yakkaUnitPrice === null || enriched.yakkaUnitPrice === undefined) {
-        enriched.yakkaUnitPrice = masterInfo.yakkaPrice;
-        // dead_stock の場合、yakkaTotal も再計算
-        if ('quantity' in enriched && 'yakkaTotal' in enriched) {
-          const ds = enriched as unknown as DeadStockRow & { drugMasterId: number | null };
-          ds.yakkaTotal = masterInfo.yakkaPrice * ds.quantity;
-        }
-      }
-      if (!enriched.unit && masterInfo.unit) {
-        enriched.unit = masterInfo.unit;
-      }
+      applyMasterDefaults(enriched, masterInfo);
     }
 
     results.push(enriched);

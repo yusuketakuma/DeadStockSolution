@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Badge, Col, Row } from 'react-bootstrap';
 import { api, buildApiUrl } from '../../api/client';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
+import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import AppCard from '../../components/ui/AppCard';
 import AppControl from '../../components/ui/AppControl';
 import AppEmptyState from '../../components/ui/AppEmptyState';
@@ -95,6 +96,7 @@ export default function AdminUploadJobsPage() {
   const [actionError, setActionError] = useState('');
   const [actionKey, setActionKey] = useState<string | null>(null);
   const initializedFilterRef = useRef(false);
+  const normalizedKeyword = useMemo(() => keyword.trim(), [keyword]);
 
   const fetchJobs = useCallback((targetPage: number, signal?: AbortSignal) => {
     const params = new URLSearchParams({
@@ -103,9 +105,9 @@ export default function AdminUploadJobsPage() {
     });
     if (statusFilter !== 'all') params.set('status', statusFilter);
     if (uploadTypeFilter !== 'all') params.set('uploadType', uploadTypeFilter);
-    if (keyword.trim()) params.set('keyword', keyword.trim());
+    if (normalizedKeyword) params.set('keyword', normalizedKeyword);
     return api.get<UploadJobsResponse>(`/admin/upload-jobs?${params.toString()}`, { signal });
-  }, [keyword, statusFilter, uploadTypeFilter]);
+  }, [normalizedKeyword, statusFilter, uploadTypeFilter]);
 
   const {
     items: jobs,
@@ -175,10 +177,10 @@ export default function AdminUploadJobsPage() {
         ? await api.patch<{ message?: string }>(`/admin/upload-jobs/${jobId}/cancel`)
         : await api.post<{ message?: string }>(`/admin/upload-jobs/${jobId}/retry`);
       setMessage(result.message ?? (action === 'retry' ? 'ジョブを再実行しました' : 'ジョブをキャンセルしました'));
-      await fetchPage(page);
-      if (selectedJobId === jobId) {
-        await fetchJobDetail(jobId);
-      }
+      await Promise.all([
+        fetchPage(page),
+        selectedJobId === jobId ? fetchJobDetail(jobId) : Promise.resolve(),
+      ]);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'ジョブ操作に失敗しました');
     } finally {
@@ -204,12 +206,7 @@ export default function AdminUploadJobsPage() {
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {actionError && <AppAlert variant="danger" onClose={() => setActionError('')} dismissible>{actionError}</AppAlert>}
       {error && (
-        <AppAlert variant="danger" className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <span>{error}</span>
-          <AppButton size="sm" variant="outline-danger" onClick={handleRetryList}>
-            再試行
-          </AppButton>
-        </AppAlert>
+        <ErrorRetryAlert error={error} onRetry={handleRetryList} />
       )}
 
       <Row className="g-2 mb-3">

@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
@@ -82,6 +82,10 @@ export default function DashboardPage() {
   const { data, error } = useAsyncResource<StatusAndRiskData>(fetchStatusAndRisk);
   const status = data?.status ?? null;
   const risk = data?.risk ?? null;
+  const dashboardError = useMemo(
+    () => timelineError || (data?.partialError ?? '') || (error ?? ''),
+    [data?.partialError, error, timelineError],
+  );
 
   const { shouldShow: showOnboarding, dismiss: dismissOnboarding } = useOnboardingVisibility(status);
 
@@ -205,7 +209,7 @@ export default function DashboardPage() {
         loading={timelineLoading}
         hasMore={hasMore}
         total={total}
-        error={timelineError || (data?.partialError ?? '') || (error ?? '')}
+        error={dashboardError}
         selectedPriority={selectedPriority}
         onPriorityChange={setSelectedPriority}
         onLoadMore={loadMore}

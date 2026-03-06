@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react';
 import { Badge, ListGroup } from 'react-bootstrap';
 import AppCard from '../ui/AppCard';
 import InlineLoader from '../ui/InlineLoader';
@@ -103,7 +104,14 @@ export default function SmartDigest({
   onActionPathClick,
   className,
 }: SmartDigestProps) {
-  const digestItems = buildDigestItems(status, events);
+  const digestItems = useMemo(() => buildDigestItems(status, events), [events, status]);
+  const handleItemClick = useCallback((item: DigestItem) => {
+    if (item.event) {
+      onEventClick?.(item.event);
+      return;
+    }
+    onActionPathClick?.(item.actionPath);
+  }, [onActionPathClick, onEventClick]);
 
   return (
     <AppCard className={className ?? 'mb-3'}>
@@ -142,13 +150,7 @@ export default function SmartDigest({
                   <button
                     type="button"
                     className="btn btn-link btn-sm p-0 text-nowrap small"
-                    onClick={() => {
-                      if (item.event) {
-                        onEventClick?.(item.event);
-                        return;
-                      }
-                      onActionPathClick?.(item.actionPath);
-                    }}
+                    onClick={() => handleItemClick(item)}
                   >
                     {item.actionLabel} →
                   </button>

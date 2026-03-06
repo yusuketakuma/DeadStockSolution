@@ -109,6 +109,15 @@ npm run db:migrate:legacy --workspace=server
 - `POSTGRES_URL_NON_POOLING_PRODUCTION`: 上記の非プーリング版（任意）
 - `NODE_ENV=production` または `VERCEL_ENV` 設定環境では、上記いずれかのPostgres URL未設定時にアプリは起動エラーで停止（fail-closed）
 - `VITE_API_BASE_URL`: クライアントのAPIベースURL（未設定時は同一オリジンの `/api`）
+- `TEST_LOGIN_FEATURE_ENABLED`: テストログイン機能の server-side feature flag。`true` / `false` で明示上書き。未設定時は `VERCEL_ENV=production` または `VERCEL_ENV=preview` なら `true`、それ以外は `NODE_ENV=production` で `false`、それ以外で `true`
+- `VITE_TEST_LOGIN_FEATURE_ENABLED`: テストログイン機能の client-side feature flag。未設定時は `true`、`false` を明示すると無効
+
+### テストログイン仕様の固定ルール
+
+- この仕様は固定です。変更は明示的なプロダクト判断がある場合のみ行ってください。
+- server 側は `TEST_LOGIN_FEATURE_ENABLED` 明示値を最優先し、未設定時は `VERCEL_ENV=preview` / `production` で有効、`NODE_ENV=production` 単独では無効です。
+- client 側は `VITE_TEST_LOGIN_FEATURE_ENABLED=false` を明示した場合のみ無効で、未設定時は有効です。
+- 回帰防止の契約テストは [test-login-feature-config.test.ts](/Users/yusuke/DeadStockSolution/server/src/test/test-login-feature-config.test.ts) と [test-login-feature.test.ts](/Users/yusuke/DeadStockSolution/client/src/test/test-login-feature.test.ts) です。仕様変更時はこの2つの意図も合わせて更新してください。
 - `EXPOSE_PASSWORD_RESET_TOKEN`: `true` のときのみパスワードリセットトークンをAPIレスポンスに含める（開発限定）
 - `TRUST_PROXY`: `true` または hop数（例: `1`）で `trust proxy` を有効化
 - `DRUG_MASTER_AUTO_SYNC`: `true` で医薬品マスター自動取得を有効化
