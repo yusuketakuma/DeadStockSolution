@@ -1,9 +1,6 @@
 import { Router, Response } from 'express';
-import rateLimit from 'express-rate-limit';
-import { asc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
-import { ensureTestPharmacyColumnsAtStartup } from '../config/test-pharmacy-schema';
-import { pharmacies, pharmacyRegistrationReviews, userRequests } from '../db/schema';
+import { pharmacyRegistrationReviews, userRequests } from '../db/schema';
 import {
   assertJwtSecretConfigured,
   hashPassword,
@@ -11,7 +8,6 @@ import {
   generateToken,
   verifyToken,
   deriveSessionVersion,
-  isJwtSecretMissingError,
 } from '../services/auth-service';
 import { validateRegistration, validateLogin, emailSchema, passwordSchema } from '../utils/validators';
 import { geocodeAddress } from '../services/geocode-service';
@@ -21,13 +17,32 @@ import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } f
 import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
-import { handleRouteError, getErrorMessage } from '../middleware/error-handler';
+import { handleRouteError } from '../middleware/error-handler';
+import {
+  createAuthLimiter,
+  isTestLoginFeatureEnabled,
+  handleAuthConfigurationError,
+  extractUniqueViolationConstraint,
+  isMissingTestPharmacyColumnError,
+  mapLegacyAuthMeRows,
+  selectLegacyAuthMeRows,
+  selectCurrentAuthMeRows,
+  loadAuthMeRows,
+  formatTestPharmacyAccounts,
+  sendTestPharmacyResponse,
+  selectFlaggedTestPharmacyRows,
+  loadTestPharmacyRows,
+  TEST_PHARMACY_CACHE_TTL_MS,
+  TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS,
+  type AuthMeRow,
+  type LegacyAuthMeRow,
+  type TestPharmacyPreviewRow,
+} from './auth-helpers';
 import { sleep } from '../utils/http-utils';
 import { eqEmailCaseInsensitive, normalizeEmail } from '../utils/email-utils';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
 import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verification-service';
-import { resolveServerTestLoginFeatureEnabled } from '../config/test-login-feature';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -41,93 +56,6 @@ const PASSWORD_RESET_RESPONSE_JITTER_MS = process.env.NODE_ENV === 'test' ? 0 : 
 const registerLimiter = createAuthLimiter(5, '登録試行回数が多すぎます。しばらくしてから再試行してください');
 const loginLimiter = createAuthLimiter(10, 'ログイン試行回数が多すぎます。しばらくしてから再試行してください');
 const testPharmacyPreviewLimiter = createAuthLimiter(30, 'テスト薬局情報の取得回数が多すぎます。しばらくしてから再試行してください');
-type AuthMeRow = {
-  id: number;
-  email: string;
-  name: string;
-  postalCode: string;
-  address: string;
-  phone: string;
-  fax: string;
-  licenseNumber: string;
-  prefecture: string;
-  isAdmin: boolean | null;
-  isTestAccount: boolean;
-};
-type LegacyAuthMeRow = Omit<AuthMeRow, 'isTestAccount'>;
-type TestPharmacyPreviewRow = {
-  id: number;
-  name: string;
-  email: string;
-  prefecture: string;
-  password: string | null;
-};
-
-function createAuthLimiter(max: number, error: string) {
-  return rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    message: { error },
-  });
-}
-
-function isTestLoginFeatureEnabled(): boolean {
-  return resolveServerTestLoginFeatureEnabled(process.env as {
-    NODE_ENV?: string;
-    VERCEL_ENV?: string;
-    TEST_LOGIN_FEATURE_ENABLED?: string;
-  });
-}
-
-function handleAuthConfigurationError(context: string, err: unknown, res: Response): boolean {
-  if (!isJwtSecretMissingError(err)) {
-    return false;
-  }
-
-  logger.error(`${context} configuration error`, {
-    error: err.message,
-  });
-  res.status(503).json({ error: AUTH_CONFIGURATION_ERROR_MESSAGE });
-  return true;
-}
-
-function extractUniqueViolationConstraint(err: unknown): string | null {
-  if (!err || typeof err !== 'object') return null;
-
-  const code = String((err as { code?: unknown }).code ?? '');
-  if (code !== '23505') return null;
-
-  const constraint = String((err as { constraint?: unknown }).constraint ?? '').toLowerCase();
-  if (constraint) return constraint;
-
-  const message = String((err as { message?: unknown }).message ?? '');
-  const matched = message.match(/unique constraint "([^"]+)"/i);
-  return matched?.[1]?.toLowerCase() ?? '';
-}
-
-function extractErrorCode(err: unknown): string | null {
-  if (!err || typeof err !== 'object') return null;
-  const code = (err as { code?: unknown }).code;
-  if (typeof code === 'string' && code.trim().length > 0) {
-    return code;
-  }
-  return extractErrorCode((err as { cause?: unknown }).cause);
-}
-
-function includesIsTestAccountToken(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const message = String((err as { message?: unknown }).message ?? '').toLowerCase();
-  if (message.includes('is_test_account') || message.includes('test_account_password')) {
-    return true;
-  }
-  return includesIsTestAccountToken((err as { cause?: unknown }).cause);
-}
-
-function isMissingTestPharmacyColumnError(err: unknown): boolean {
-  return extractErrorCode(err) === '42703' || includesIsTestAccountToken(err);
-}
 let isTestAccountColumnAvailable: boolean | null = null;
 
 // テスト薬局リストのメモリキャッシュ（cold start 時の DB往復を回避）
