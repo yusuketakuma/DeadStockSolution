@@ -76,7 +76,7 @@ function isTestLoginFeatureEnabled(): boolean {
   if (raw === 'true') return true;
   if (raw === 'false') return false;
   const vercelEnv = process.env.VERCEL_ENV?.trim().toLowerCase();
-  if (vercelEnv === 'production') return true;
+  if (vercelEnv === 'production' || vercelEnv === 'preview') return true;
   return process.env.NODE_ENV !== 'production';
 }
 

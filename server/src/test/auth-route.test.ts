@@ -366,6 +366,30 @@ describe('auth routes', () => {
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
+  it('enables test login endpoint by default when VERCEL_ENV=preview', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.VERCEL_ENV = 'preview';
+    delete process.env.TEST_LOGIN_FEATURE_ENABLED;
+    const selectChain = createSelectChain([
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+    ]);
+    mocks.db.select.mockReturnValue(selectChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body).toEqual({
+      accounts: [
+        {
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
+        },
+      ],
+    });
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+  });
+
   it('disables test login endpoint when feature flag is false', async () => {
     process.env.NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
