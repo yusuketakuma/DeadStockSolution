@@ -108,6 +108,7 @@ describe('auth routes', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalExposePasswordResetToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN;
   const originalTestLoginFeatureEnabled = process.env.TEST_LOGIN_FEATURE_ENABLED;
+  const originalVercelEnv = process.env.VERCEL_ENV;
   const originalVitest = process.env.VITEST;
 
   beforeEach(() => {
@@ -115,6 +116,7 @@ describe('auth routes', () => {
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
     delete process.env.TEST_LOGIN_FEATURE_ENABLED;
+    delete process.env.VERCEL_ENV;
     mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
     mocks.authService.isJwtSecretMissingError.mockImplementation(
       (err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'
@@ -137,6 +139,12 @@ describe('auth routes', () => {
       delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     } else {
       process.env.TEST_LOGIN_FEATURE_ENABLED = originalTestLoginFeatureEnabled;
+    }
+
+    if (originalVercelEnv === undefined) {
+      delete process.env.VERCEL_ENV;
+    } else {
+      process.env.VERCEL_ENV = originalVercelEnv;
     }
 
     if (originalVitest === undefined) {
@@ -330,33 +338,10 @@ describe('auth routes', () => {
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('disables test login endpoint in production by default', async () => {
+  it('enables test login endpoint by default when VERCEL_ENV=production', async () => {
     process.env.NODE_ENV = 'production';
+    process.env.VERCEL_ENV = 'production';
     delete process.env.TEST_LOGIN_FEATURE_ENABLED;
-    const app = await createApp();
-
-    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'テストログインは無効です' });
-    expect(mocks.db.select).not.toHaveBeenCalled();
-  });
-
-  it('disables test login endpoint when feature flag is false', async () => {
-    process.env.NODE_ENV = 'production';
-    process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
-    const app = await createApp();
-
-    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'テストログインは無効です' });
-    expect(mocks.db.select).not.toHaveBeenCalled();
-  });
-
-  it('enables test login endpoint when feature flag is true', async () => {
-    process.env.NODE_ENV = 'production';
-    process.env.TEST_LOGIN_FEATURE_ENABLED = 'true';
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
       { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
@@ -379,6 +364,19 @@ describe('auth routes', () => {
       ],
     });
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables test login endpoint when feature flag is false', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.VERCEL_ENV = 'production';
+    process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'テストログインは無効です' });
+    expect(mocks.db.select).not.toHaveBeenCalled();
   });
 
   it('returns test pharmacy previews from database without password by default', async () => {

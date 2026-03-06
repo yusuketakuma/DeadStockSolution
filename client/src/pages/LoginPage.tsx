@@ -36,9 +36,7 @@ const TEST_PHARMACY_ENDPOINT = '/auth/test-pharmacies?includePassword=1';
 
 function isTestLoginFeatureEnabled(): boolean {
   const raw = import.meta.env.VITE_TEST_LOGIN_FEATURE_ENABLED?.trim().toLowerCase();
-  if (raw === 'true') return true;
-  if (raw === 'false') return false;
-  return true;
+  return raw !== 'false';
 }
 
 function isTestPharmacyPreview(value: unknown): value is TestPharmacyPreview {

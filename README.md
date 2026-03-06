@@ -109,8 +109,8 @@ npm run db:migrate:legacy --workspace=server
 - `POSTGRES_URL_NON_POOLING_PRODUCTION`: 上記の非プーリング版（任意）
 - `NODE_ENV=production` または `VERCEL_ENV` 設定環境では、上記いずれかのPostgres URL未設定時にアプリは起動エラーで停止（fail-closed）
 - `VITE_API_BASE_URL`: クライアントのAPIベースURL（未設定時は同一オリジンの `/api`）
-- `TEST_LOGIN_FEATURE_ENABLED`: テストログイン機能の server-side feature flag。`true` / `false` で明示上書き。未設定時は `VERCEL_ENV=production` または `NODE_ENV=production` で `false`、それ以外で `true`
-- `VITE_TEST_LOGIN_FEATURE_ENABLED`: テストログイン機能の client-side feature flag。`true` / `false` で明示上書き。未設定時は `true`（本番では明示的に `false` を設定する運用を推奨）
+- `TEST_LOGIN_FEATURE_ENABLED`: テストログイン機能の server-side feature flag。`true` / `false` で明示上書き。未設定時は `VERCEL_ENV=production` なら `true`、それ以外は `NODE_ENV=production` で `false`、それ以外で `true`
+- `VITE_TEST_LOGIN_FEATURE_ENABLED`: テストログイン機能の client-side feature flag。未設定時は `true`、`false` を明示すると無効
 - `EXPOSE_PASSWORD_RESET_TOKEN`: `true` のときのみパスワードリセットトークンをAPIレスポンスに含める（開発限定）
 - `TRUST_PROXY`: `true` または hop数（例: `1`）で `trust proxy` を有効化
 - `DRUG_MASTER_AUTO_SYNC`: `true` で医薬品マスター自動取得を有効化
