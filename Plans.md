@@ -4,7 +4,28 @@
 
 ## 🔴 進行中のタスク
 
-（なし）
+## Sprint: Frontend Hooks抽出 v0.0.10
+
+> **目的**: UploadPage.tsx（940行）の巨大コンポーネントを分割し、保守性・テスタビリティを向上
+
+### Phase 1: ポーリングロジック抽出 [refactoring]
+
+- [ ] T128: useUploadJobPolling.ts 抽出 `cc:計画済` (2026-03-07)
+  - 抽出対象: ポーリングループ（391-508行）、waitForNextPoll関数
+  - 状態: uploadJob, cancellingJob, uploadProgress
+  - テスト要件: ポーリング成功/失敗/タイムアウト/キャンセル
+
+### Phase 2: フォーム状態抽出 [refactoring]
+
+- [ ] T129: useUploadForm.ts 抽出 `cc:計画済` (2026-03-07)
+  - 抽出対象: uploadType, file, applyMode, deleteMissing, mapping, preview
+  - テスト要件: 状態変更・バリデーション
+
+### Phase 3: 差分サマリー抽出 [refactoring]
+
+- [ ] T130: useDiffSummary.ts 抽出 `cc:計画済` (2026-03-07)
+  - 抽出対象: diffSummary, acknowledgeDeleteImpact
+  - テスト要件: 状態変更・削除影響確認
 
 ---
 
