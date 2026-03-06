@@ -20,6 +20,10 @@
 - [x] useAccountForm.ts / useBusinessHoursForm.ts / useNotificationSettings.ts 抽出
 - [x] AccountPage.tsx 簡素化 (726→130行)
 
+### Wave 5: サーバーサイド効率化 (simplify-refact) ✅
+- [x] upload-confirm-query-service.ts — `createEnumNormalizer` ファクトリで3つのnormalize関数を統合、`countActiveJobs` でcount関数を統合 `cc:完了` (2026-03-07)
+- [x] exchange-comments.ts — `findProposalForUser`・`findOwnComment`・`parseCommentBody`・`rejectIfAdmin` の4ヘルパー抽出 `cc:完了` (2026-03-07)
+- [x] exchange-service.ts — `notifyProposalEvent`・`assertNotBlocked`・`validateAndUpdateStock` の3ヘルパー抽出 `cc:完了` (2026-03-07)
 ---
 
 ## 🟡 未着手のタスク
