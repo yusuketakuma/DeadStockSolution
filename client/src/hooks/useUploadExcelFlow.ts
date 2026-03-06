@@ -284,7 +284,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       confirmAbortRef.current = null;
       jobPolling.stopPolling();
     };
-  }, [jobPolling]);
+  }, [jobPolling.stopPolling]);
 
   return {
     file,
