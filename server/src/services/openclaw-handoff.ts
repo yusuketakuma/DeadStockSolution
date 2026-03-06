@@ -1,62 +1,32 @@
-import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getErrorMessage } from '../middleware/error-handler';
 import { sleep } from '../utils/http-utils';
 import { isRecord } from '../utils/type-guards';
 import { logger } from './logger';
+import {
+  deleteInFlightHandoff,
+  getCachedHandoffResult,
+  getInFlightHandoff,
+  getOpenClawConfig,
+  type OpenClawConfig,
+  type OpenClawHandoffResult,
+  type OpenClawStatus,
+  resolveGatewayTimeoutMs,
+  resolveGatewayTimeoutSeconds,
+  resolveRetryBaseMs,
+  resolveRetryMax,
+  setCachedHandoffResult,
+  setInFlightHandoff,
+} from './openclaw-status';
 
-export type OpenClawStatus = 'pending_handoff' | 'in_dialogue' | 'implementing' | 'completed';
-type OpenClawBaseUrlError = 'missing' | 'invalid' | 'insecure';
-type OpenClawConnectorMode = 'legacy_http' | 'gateway_cli';
-
-const FIXED_IMPLEMENTATION_BRANCH = 'review';
 const execFileAsync = promisify(execFile);
-const DEFAULT_WEBHOOK_MAX_SKEW_SECONDS = 300;
-const WEBHOOK_SIGNATURE_PREFIX = 'sha256=';
-const DEFAULT_OPENCLAW_TIMEOUT_MS = 10000;
-const DEFAULT_OPENCLAW_TIMEOUT_SECONDS = 120;
-const DEFAULT_OPENCLAW_RETRY_MAX = 2;
-const DEFAULT_OPENCLAW_RETRY_BASE_MS = 400;
-const DEFAULT_OPENCLAW_IDEMPOTENCY_TTL_MS = 120_000;
-
-const webhookReplayCache = new Map<string, number>();
-const handoffInFlight = new Map<string, Promise<OpenClawHandoffResult>>();
-const handoffResultCache = new Map<string, { expiresAtMs: number; result: OpenClawHandoffResult }>();
-
-const OPENCLAW_STATUS_ORDER: Record<OpenClawStatus, number> = {
-  pending_handoff: 0,
-  in_dialogue: 1,
-  implementing: 2,
-  completed: 3,
-};
-
-export interface OpenClawConfig {
-  mode: OpenClawConnectorMode;
-  cliPath: string;
-  baseUrl: string;
-  baseUrlError: OpenClawBaseUrlError | null;
-  apiKey: string;
-  agentId: string;
-  webhookSecret: string;
-  implementationBranch: string;
-}
 
 export interface OpenClawHandoffInput {
   requestId: number;
   pharmacyId: number;
   requestText: string;
   context?: Record<string, unknown>;
-}
-
-export interface OpenClawHandoffResult {
-  accepted: boolean;
-  connectorConfigured: boolean;
-  implementationBranch: string;
-  status: OpenClawStatus;
-  threadId: string | null;
-  summary: string | null;
-  note: string;
 }
 
 interface OpenClawHandoffResponseBody {
@@ -73,6 +43,12 @@ interface OpenClawCliAgentResponse {
       agentMeta?: { sessionId?: unknown };
     };
   };
+}
+
+export interface GatewaySendInput {
+  agentId: string;
+  message: string;
+  metadata?: unknown;
 }
 
 function readStringField(record: Record<string, unknown>, key: string): string | null {
@@ -107,39 +83,6 @@ function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === 'AbortError';
 }
 
-function stripTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
-
-function isLocalhostHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase();
-  return normalized === 'localhost'
-    || normalized === '127.0.0.1'
-    || normalized === '::1'
-    || normalized === '[::1]';
-}
-
-function normalizeBaseUrl(baseUrlRaw: string): { value: string; error: OpenClawBaseUrlError | null } {
-  const trimmed = baseUrlRaw.trim();
-  if (!trimmed) return { value: '', error: 'missing' };
-
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return { value: '', error: 'invalid' };
-  }
-
-  const protocol = parsed.protocol.toLowerCase();
-  if (protocol === 'https:' || (protocol === 'http:' && isLocalhostHost(parsed.hostname))) {
-    parsed.search = '';
-    parsed.hash = '';
-    return { value: stripTrailingSlash(parsed.toString()), error: null };
-  }
-
-  return { value: '', error: 'insecure' };
-}
-
 function connectorNotReadyMessage(config: OpenClawConfig): string {
   if (config.mode === 'gateway_cli') {
     return 'OpenClaw CLIコネクター未接続。OPENCLAW_CLI_PATH と OPENCLAW_AGENT_ID を確認してください。';
@@ -153,124 +96,13 @@ function connectorNotReadyMessage(config: OpenClawConfig): string {
   return 'OpenClawコネクター未接続。接続後に再連携してください。';
 }
 
-function resolveOpenClawConnectorMode(): OpenClawConnectorMode {
-  const rawMode = (process.env.OPENCLAW_CONNECTOR_MODE ?? '').trim().toLowerCase();
-  if (rawMode === 'gateway_cli') return 'gateway_cli';
-  return 'legacy_http';
-}
-
-function readConfig(): OpenClawConfig {
-  const baseUrl = normalizeBaseUrl(process.env.OPENCLAW_BASE_URL ?? '');
-  return {
-    mode: resolveOpenClawConnectorMode(),
-    cliPath: (process.env.OPENCLAW_CLI_PATH ?? '').trim(),
-    baseUrl: baseUrl.value,
-    baseUrlError: baseUrl.error,
-    apiKey: (process.env.OPENCLAW_API_KEY ?? '').trim(),
-    agentId: (process.env.OPENCLAW_AGENT_ID ?? '').trim(),
-    webhookSecret: (process.env.OPENCLAW_WEBHOOK_SECRET ?? '').trim(),
-    implementationBranch: FIXED_IMPLEMENTATION_BRANCH,
-  };
-}
-
-function resolveWebhookMaxSkewSeconds(): number {
-  const rawValue = Number(process.env.OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS ?? DEFAULT_WEBHOOK_MAX_SKEW_SECONDS);
-  if (!Number.isFinite(rawValue) || rawValue <= 0 || rawValue > 3600) {
-    return DEFAULT_WEBHOOK_MAX_SKEW_SECONDS;
-  }
-  return Math.floor(rawValue);
-}
-
-function resolveRetryMax(): number {
-  const raw = Number(process.env.OPENCLAW_RETRY_MAX ?? DEFAULT_OPENCLAW_RETRY_MAX);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_RETRY_MAX;
-  return Math.max(0, Math.min(5, Math.floor(raw)));
-}
-
-function resolveRetryBaseMs(): number {
-  const raw = Number(process.env.OPENCLAW_RETRY_BASE_MS ?? DEFAULT_OPENCLAW_RETRY_BASE_MS);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_RETRY_BASE_MS;
-  return Math.max(100, Math.min(5000, Math.floor(raw)));
-}
-
-function resolveIdempotencyTtlMs(): number {
-  const raw = Number(process.env.OPENCLAW_IDEMPOTENCY_TTL_MS ?? DEFAULT_OPENCLAW_IDEMPOTENCY_TTL_MS);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_IDEMPOTENCY_TTL_MS;
-  return Math.max(5_000, Math.min(15 * 60_000, Math.floor(raw)));
-}
-
-function resolveGatewayTimeoutMs(): number {
-  const raw = Number(process.env.OPENCLAW_TIMEOUT_MS ?? DEFAULT_OPENCLAW_TIMEOUT_MS);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_TIMEOUT_MS;
-  return Math.max(1000, Math.min(60_000, Math.floor(raw)));
-}
-
-function resolveGatewayTimeoutSeconds(): number {
-  const raw = Number(process.env.OPENCLAW_TIMEOUT_SECONDS ?? DEFAULT_OPENCLAW_TIMEOUT_SECONDS);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_TIMEOUT_SECONDS;
-  return Math.max(10, Math.min(600, Math.floor(raw)));
-}
-
-function normalizeSignature(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith(WEBHOOK_SIGNATURE_PREFIX)) {
-    return trimmed.slice(WEBHOOK_SIGNATURE_PREFIX.length).toLowerCase();
-  }
-  return trimmed.toLowerCase();
-}
-
-/**
- * Sanitizes user input for safe CLI message passing.
- * Removes control characters and shell metacharacters that could be interpreted.
- * This is defense-in-depth since execFile doesn't use a shell.
- */
 function sanitizeCliMessage(input: string, maxLength: number = 8000): string {
-  // Remove control characters (except newlines which are preserved for formatting)
   const sanitized = input
     .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g, '')
-    // Remove shell metacharacters as defense-in-depth
     .replace(/[`$\\]/g, '')
     .trim();
-  
+
   return sanitized.slice(0, maxLength);
-}
-
-function pruneExpiredMapEntries<K, V extends { expiresAtMs: number }>(
-  cache: Map<K, V>,
-  nowMs: number,
-): void {
-  for (const [key, entry] of cache.entries()) {
-    if (entry.expiresAtMs <= nowMs) {
-      cache.delete(key);
-    }
-  }
-}
-
-
-
-function pruneWebhookReplayCache(nowMs: number): void {
-  for (const [key, expiresAtMs] of webhookReplayCache.entries()) {
-    if (expiresAtMs <= nowMs) {
-      webhookReplayCache.delete(key);
-    }
-  }
-}
-
-function isReplayRequest(signature: string, timestamp: string, nowMs: number): boolean {
-  pruneWebhookReplayCache(nowMs);
-  const replayKey = buildReplayKey(signature, timestamp);
-  const existing = webhookReplayCache.get(replayKey);
-  if (existing && existing > nowMs) {
-    return true;
-  }
-
-  const ttlMs = resolveWebhookMaxSkewSeconds() * 1000;
-  webhookReplayCache.set(replayKey, nowMs + ttlMs);
-  return false;
-}
-
-function buildReplayKey(signature: string, timestamp: string): string {
-  return `${timestamp}:${signature}`;
 }
 
 function normalizeStatus(value: unknown): OpenClawStatus {
@@ -282,25 +114,6 @@ function normalizeStatus(value: unknown): OpenClawStatus {
 
 function buildHandoffIdempotencyKey(input: OpenClawHandoffInput): string {
   return `openclaw-handoff:${input.requestId}:${input.pharmacyId}`;
-}
-
-function pruneHandoffResultCache(nowMs: number): void {
-  pruneExpiredMapEntries(handoffResultCache, nowMs);
-}
-
-function getCachedHandoffResult(key: string, nowMs: number): OpenClawHandoffResult | null {
-  const cached = handoffResultCache.get(key);
-  if (!cached || cached.expiresAtMs <= nowMs) return null;
-  return cached.result;
-}
-
-function setCachedHandoffResult(key: string, result: OpenClawHandoffResult, nowMs: number): void {
-  pruneHandoffResultCache(nowMs);
-  const ttlMs = resolveIdempotencyTtlMs();
-  handoffResultCache.set(key, {
-    expiresAtMs: nowMs + ttlMs,
-    result,
-  });
 }
 
 function buildHandoffFailure(config: OpenClawConfig, note: string): OpenClawHandoffResult {
@@ -383,7 +196,6 @@ async function handoffViaGatewayCli(
       const { stdout } = await execFileAsync(config.cliPath, args, {
         timeout: timeoutSeconds * 1000 + 3000,
         maxBuffer: 2 * 1024 * 1024,
-        // Pass only necessary environment variables to CLI process
         env: {
           PATH: process.env.PATH,
           HOME: process.env.HOME,
@@ -560,18 +372,8 @@ async function handoffViaLegacyHttp(
   return buildHandoffFailure(config, 'OpenClaw連携中にエラーが発生しました。');
 }
 
-export interface GatewaySendInput {
-  agentId: string;
-  message: string;
-  metadata?: unknown;
-}
-
-export function getOpenClawConfig(): OpenClawConfig {
-  return readConfig();
-}
-
 export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ summary: string }> {
-  const config = readConfig();
+  const config = getOpenClawConfig();
 
   if (config.mode === 'gateway_cli') {
     const timeoutSeconds = resolveGatewayTimeoutSeconds();
@@ -587,7 +389,6 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
     const { stdout } = await execFileAsync(config.cliPath, args, {
       timeout: timeoutSeconds * 1000 + 3000,
       maxBuffer: 2 * 1024 * 1024,
-      // Pass only necessary environment variables to CLI process
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
@@ -611,7 +412,6 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
     };
   }
 
-  // Legacy HTTP mode
   const timeoutMs = resolveGatewayTimeoutMs();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -643,157 +443,8 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
   }
 }
 
-export function isOpenClawStatus(value: unknown): value is OpenClawStatus {
-  return value === 'pending_handoff'
-    || value === 'in_dialogue'
-    || value === 'implementing'
-    || value === 'completed';
-}
-
-export function canTransitionOpenClawStatus(current: OpenClawStatus, next: OpenClawStatus): boolean {
-  return OPENCLAW_STATUS_ORDER[next] >= OPENCLAW_STATUS_ORDER[current];
-}
-
-export function getOpenClawImplementationBranch(): string {
-  return FIXED_IMPLEMENTATION_BRANCH;
-}
-
-export function isOpenClawConnectorConfigured(): boolean {
-  const config = readConfig();
-  if (config.mode === 'gateway_cli') {
-    return Boolean(config.cliPath && config.agentId);
-  }
-  return Boolean(config.baseUrl && config.apiKey && config.agentId);
-}
-
-export function isOpenClawWebhookConfigured(): boolean {
-  return Boolean(readConfig().webhookSecret);
-}
-
-export function verifyOpenClawWebhookSignature({
-  receivedSignature,
-  receivedTimestamp,
-  rawBody,
-  nowMs = Date.now(),
-}: {
-  receivedSignature: string | undefined;
-  receivedTimestamp: string | undefined;
-  rawBody: string | undefined;
-  nowMs?: number;
-}): boolean {
-  const expectedSecret = readConfig().webhookSecret;
-  if (!expectedSecret || !receivedSignature || !receivedTimestamp || typeof rawBody !== 'string') {
-    return false;
-  }
-
-  const timestampText = receivedTimestamp.trim();
-  const timestampSeconds = Number(timestampText);
-  if (!Number.isInteger(timestampSeconds) || timestampSeconds <= 0) {
-    return false;
-  }
-
-  const maxSkewSeconds = resolveWebhookMaxSkewSeconds();
-  const skewSeconds = Math.abs(Math.floor(nowMs / 1000) - timestampSeconds);
-  if (skewSeconds > maxSkewSeconds) {
-    return false;
-  }
-
-  const signature = normalizeSignature(receivedSignature);
-  if (!/^[a-f0-9]{64}$/.test(signature)) {
-    return false;
-  }
-
-  const signedPayload = `${timestampText}.${rawBody}`;
-  const expectedDigest = crypto.createHmac('sha256', expectedSecret)
-    .update(signedPayload)
-    .digest('hex')
-    .toLowerCase();
-
-  const expectedBuffer = Buffer.from(expectedDigest, 'utf8');
-  const receivedBuffer = Buffer.from(signature, 'utf8');
-  if (expectedBuffer.length !== receivedBuffer.length) {
-    return false;
-  }
-  if (!crypto.timingSafeEqual(expectedBuffer, receivedBuffer)) {
-    return false;
-  }
-
-  return true;
-}
-
-export function consumeOpenClawWebhookReplay({
-  receivedSignature,
-  receivedTimestamp,
-  nowMs = Date.now(),
-}: {
-  receivedSignature: string | undefined;
-  receivedTimestamp: string | undefined;
-  nowMs?: number;
-}): boolean {
-  if (!receivedSignature || !receivedTimestamp) {
-    return false;
-  }
-  const signature = normalizeSignature(receivedSignature);
-  const timestamp = receivedTimestamp.trim();
-  if (!signature || !timestamp) {
-    return false;
-  }
-  return !isReplayRequest(signature, timestamp, nowMs);
-}
-
-export function isOpenClawWebhookReplay({
-  receivedSignature,
-  receivedTimestamp,
-  nowMs = Date.now(),
-}: {
-  receivedSignature: string | undefined;
-  receivedTimestamp: string | undefined;
-  nowMs?: number;
-}): boolean {
-  if (!receivedSignature || !receivedTimestamp) {
-    return false;
-  }
-  const signature = normalizeSignature(receivedSignature);
-  const timestamp = receivedTimestamp.trim();
-  if (!signature || !timestamp) {
-    return false;
-  }
-  pruneWebhookReplayCache(nowMs);
-  const existing = webhookReplayCache.get(buildReplayKey(signature, timestamp));
-  return Boolean(existing && existing > nowMs);
-}
-
-export function releaseOpenClawWebhookReplay({
-  receivedSignature,
-  receivedTimestamp,
-}: {
-  receivedSignature: string | undefined;
-  receivedTimestamp: string | undefined;
-}): void {
-  if (!receivedSignature || !receivedTimestamp) {
-    return;
-  }
-  const signature = normalizeSignature(receivedSignature);
-  const timestamp = receivedTimestamp.trim();
-  if (!signature || !timestamp) {
-    return;
-  }
-  webhookReplayCache.delete(buildReplayKey(signature, timestamp));
-}
-
-export function resetOpenClawWebhookReplayCacheForTests(): void {
-  webhookReplayCache.clear();
-  handoffInFlight.clear();
-  handoffResultCache.clear();
-}
-
-export function isImplementationBranchAllowed(branch: string | null | undefined): boolean {
-  if (!branch) return false;
-  return branch.trim() === getOpenClawImplementationBranch();
-}
-
 export async function handoffToOpenClaw(input: OpenClawHandoffInput): Promise<OpenClawHandoffResult> {
-  const config = readConfig();
+  const config = getOpenClawConfig();
   const connectorConfigured = config.mode === 'gateway_cli'
     ? Boolean(config.cliPath && config.agentId)
     : Boolean(config.baseUrl && config.apiKey && config.agentId);
@@ -823,7 +474,7 @@ export async function handoffToOpenClaw(input: OpenClawHandoffInput): Promise<Op
     return cached;
   }
 
-  const inFlight = handoffInFlight.get(idempotencyKey);
+  const inFlight = getInFlightHandoff(idempotencyKey);
   if (inFlight) {
     logger.info('OpenClaw handoff deduplicated by in-flight key', {
       mode: config.mode,
@@ -841,13 +492,13 @@ export async function handoffToOpenClaw(input: OpenClawHandoffInput): Promise<Op
     return handoffViaLegacyHttp(config, input, idempotencyKey);
   })();
 
-  handoffInFlight.set(idempotencyKey, task);
+  setInFlightHandoff(idempotencyKey, task);
 
   try {
     const result = await task;
     setCachedHandoffResult(idempotencyKey, result, Date.now());
     return result;
   } finally {
-    handoffInFlight.delete(idempotencyKey);
+    deleteInFlightHandoff(idempotencyKey);
   }
 }
