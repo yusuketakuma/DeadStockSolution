@@ -1,6 +1,8 @@
 import { Router, Response } from 'express';
 import { db } from '../config/database';
-import { pharmacyRegistrationReviews, userRequests } from '../db/schema';
+import { pharmacies, pharmacyRegistrationReviews, userRequests } from '../db/schema';
+import { asc, eq } from 'drizzle-orm';
+import { ensureTestPharmacyColumnsAtStartup } from '../config/test-pharmacy-schema';
 import {
   assertJwtSecretConfigured,
   hashPassword,
@@ -17,7 +19,7 @@ import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } f
 import { writeLog, getClientIp } from '../services/log-service';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
-import { handleRouteError } from '../middleware/error-handler';
+import { handleRouteError, getErrorMessage } from '../middleware/error-handler';
 import {
   createAuthLimiter,
   isTestLoginFeatureEnabled,
@@ -65,149 +67,6 @@ let testPharmacyCache: {
   expiresAt: number;
   rows: TestPharmacyPreviewRow[];
 } | null = null;
-
-function mapLegacyAuthMeRows(rows: LegacyAuthMeRow[]): AuthMeRow[] {
-  return rows.map((row) => ({
-    ...row,
-    isTestAccount: false,
-  }));
-}
-
-async function selectLegacyAuthMeRows(pharmacyId: number): Promise<LegacyAuthMeRow[]> {
-  return db.select({
-    id: pharmacies.id,
-    email: pharmacies.email,
-    name: pharmacies.name,
-    postalCode: pharmacies.postalCode,
-    address: pharmacies.address,
-    phone: pharmacies.phone,
-    fax: pharmacies.fax,
-    licenseNumber: pharmacies.licenseNumber,
-    prefecture: pharmacies.prefecture,
-    isAdmin: pharmacies.isAdmin,
-  })
-    .from(pharmacies)
-    .where(eq(pharmacies.id, pharmacyId))
-    .limit(1);
-}
-
-async function selectCurrentAuthMeRows(pharmacyId: number): Promise<AuthMeRow[]> {
-  return db.select({
-    id: pharmacies.id,
-    email: pharmacies.email,
-    name: pharmacies.name,
-    postalCode: pharmacies.postalCode,
-    address: pharmacies.address,
-    phone: pharmacies.phone,
-    fax: pharmacies.fax,
-    licenseNumber: pharmacies.licenseNumber,
-    prefecture: pharmacies.prefecture,
-    isAdmin: pharmacies.isAdmin,
-    isTestAccount: pharmacies.isTestAccount,
-  })
-    .from(pharmacies)
-    .where(eq(pharmacies.id, pharmacyId))
-    .limit(1);
-}
-
-async function loadAuthMeRows(pharmacyId: number): Promise<AuthMeRow[]> {
-  if (isTestAccountColumnAvailable === false) {
-    return mapLegacyAuthMeRows(await selectLegacyAuthMeRows(pharmacyId));
-  }
-
-  try {
-    const rows = await selectCurrentAuthMeRows(pharmacyId);
-    isTestAccountColumnAvailable = true;
-    return rows;
-  } catch (err) {
-    if (!isMissingTestPharmacyColumnError(err)) {
-      throw err;
-    }
-
-    isTestAccountColumnAvailable = false;
-    logger.warn('is_test_account column is not available yet; fallback to legacy /auth/me response', {
-      error: getErrorMessage(err),
-    });
-    return mapLegacyAuthMeRows(await selectLegacyAuthMeRows(pharmacyId));
-  }
-}
-
-function formatTestPharmacyAccounts(rows: TestPharmacyPreviewRow[], includePassword: boolean) {
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    prefecture: row.prefecture,
-    password: includePassword ? (row.password ?? '') : '',
-  }));
-}
-
-function sendTestPharmacyResponse(
-  res: Response,
-  rows: TestPharmacyPreviewRow[],
-  includePassword: boolean,
-  cacheControlValue: string,
-): void {
-  if (rows.length === 0) {
-    res.status(404).json({ error: 'テスト薬局がDBに登録されていません（5件登録を確認してください）' });
-    return;
-  }
-
-  res.setHeader('Cache-Control', cacheControlValue);
-  res.json({
-    accounts: formatTestPharmacyAccounts(rows, includePassword),
-  });
-}
-
-async function selectFlaggedTestPharmacyRows(): Promise<TestPharmacyPreviewRow[]> {
-  return db.select({
-    id: pharmacies.id,
-    name: pharmacies.name,
-    email: pharmacies.email,
-    prefecture: pharmacies.prefecture,
-    password: pharmacies.testAccountPassword,
-  })
-    .from(pharmacies)
-    .where(eq(pharmacies.isTestAccount, true))
-    .orderBy(asc(pharmacies.id))
-    .limit(TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS);
-}
-
-async function loadTestPharmacyRows(res: Response): Promise<TestPharmacyPreviewRow[] | null> {
-  try {
-    const rows = await selectFlaggedTestPharmacyRows();
-    isTestAccountColumnAvailable = true;
-    return rows;
-  } catch (err) {
-    if (!isMissingTestPharmacyColumnError(err)) {
-      throw err;
-    }
-
-    logger.warn('test pharmacy columns are missing', {
-      error: getErrorMessage(err),
-    });
-    const ensured = await ensureTestPharmacyColumnsAtStartup();
-    if (ensured) {
-      try {
-        const healedRows = await selectFlaggedTestPharmacyRows();
-        isTestAccountColumnAvailable = true;
-        return healedRows;
-      } catch (retryErr) {
-        if (!isMissingTestPharmacyColumnError(retryErr)) {
-          throw retryErr;
-        }
-
-        logger.warn('test pharmacy columns remain unavailable after ensure', {
-          error: retryErr instanceof Error ? retryErr.message : String(retryErr),
-        });
-      }
-    }
-
-    isTestAccountColumnAvailable = false;
-    res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
-    return null;
-  }
-}
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
   try {

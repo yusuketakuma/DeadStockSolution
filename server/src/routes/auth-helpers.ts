@@ -146,32 +146,6 @@ export async function selectCurrentAuthMeRows(pharmacyId: number): Promise<AuthM
     .limit(1);
 }
 
-export async function loadAuthMeRows(
-  pharmacyId: number,
-  isTestAccountColumnAvailable: boolean | null,
-  setIsTestAccountColumnAvailable: (val: boolean) => void,
-): Promise<AuthMeRow[]> {
-  if (isTestAccountColumnAvailable === false) {
-    return mapLegacyAuthMeRows(await selectLegacyAuthMeRows(pharmacyId));
-  }
-
-  try {
-    const rows = await selectCurrentAuthMeRows(pharmacyId);
-    setIsTestAccountColumnAvailable(true);
-    return rows;
-  } catch (err) {
-    if (!isMissingTestPharmacyColumnError(err)) {
-      throw err;
-    }
-
-    setIsTestAccountColumnAvailable(false);
-    logger.warn('is_test_account column is not available yet; fallback to legacy /auth/me response', {
-      error: getErrorMessage(err),
-    });
-    return mapLegacyAuthMeRows(await selectLegacyAuthMeRows(pharmacyId));
-  }
-}
-
 export function formatTestPharmacyAccounts(rows: TestPharmacyPreviewRow[], includePassword: boolean) {
   return rows.map((row) => ({
     id: row.id,
@@ -211,6 +185,32 @@ export async function selectFlaggedTestPharmacyRows(): Promise<TestPharmacyPrevi
     .where(eq(pharmacies.isTestAccount, true))
     .orderBy(asc(pharmacies.id))
     .limit(TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS);
+}
+
+export async function loadAuthMeRows(
+  pharmacyId: number,
+  isTestAccountColumnAvailable: boolean | null,
+  setIsTestAccountColumnAvailable: (val: boolean) => void,
+): Promise<AuthMeRow[]> {
+  if (isTestAccountColumnAvailable === false) {
+    return mapLegacyAuthMeRows(await selectLegacyAuthMeRows(pharmacyId));
+  }
+
+  try {
+    const rows = await selectCurrentAuthMeRows(pharmacyId);
+    setIsTestAccountColumnAvailable(true);
+    return rows;
+  } catch (err) {
+    if (!isMissingTestPharmacyColumnError(err)) {
+      throw err;
+    }
+
+    setIsTestAccountColumnAvailable(false);
+    logger.warn('is_test_account column is not available yet; fallback to legacy /auth/me response', {
+      error: getErrorMessage(err),
+    });
+    return mapLegacyAuthMeRows(await selectLegacyAuthMeRows(pharmacyId));
+  }
 }
 
 export async function loadTestPharmacyRows(

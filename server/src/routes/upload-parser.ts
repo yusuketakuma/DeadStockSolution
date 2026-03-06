@@ -51,6 +51,10 @@ import {
   validateSuggestedPreviewMapping,
   buildPreviewMappings,
   resolveMappingFromRequestOrAuto,
+  resolveAndValidateMappingOrReject,
+  parseJobIdOrReject,
+  loadUploadJobOrReject,
+  handleConfirmAsyncEnqueue,
   type MappingTemplateSnapshot,
   type SuggestedPreviewMappings,
   type ValidatedPreviewMappings,
@@ -61,66 +65,6 @@ import {
 const router = Router();
 
 
-async function resolveAndValidateMappingOrReject(
-  req: AuthRequest,
-  res: Response,
-  allRows: unknown[][],
-  headerRowIndex: number,
-  uploadType: UploadType,
-  failureContext?: string,
-): Promise<ColumnMapping | null> {
-  const headerRow = allRows[headerRowIndex];
-  try {
-    let mapping;
-    const hasExplicitMapping = typeof req.body.mapping === 'string' && req.body.mapping.trim() !== '';
-    if (hasExplicitMapping) {
-      mapping = parseMapping(req.body.mapping, uploadType);
-    } else {
-      const headerHash = computeHeaderHash(headerRow);
-      const templates = await loadMappingTemplatesByHeaderHash(req.user!.id, headerHash);
-      const templateForUploadType = findTemplateByUploadType(templates, uploadType);
-      mapping = resolveMappingFromRequestOrAuto(
-        req.body.mapping,
-        uploadType,
-        headerRow,
-        templateForUploadType?.mapping,
-      );
-    }
-    validateMappingAgainstHeader(mapping, headerRow);
-    return mapping;
-  } catch (err) {
-    if (failureContext) {
-      logUploadFailure(req, failureContext, 'invalid_mapping', { error: getErrorMessage(err) });
-    }
-    res.status(400).json({ error: err instanceof Error ? err.message : 'mapping形式が不正です' });
-    return null;
-  }
-}
-
-function parseJobIdOrReject(req: AuthRequest, res: Response): number | null {
-  const jobId = parsePositiveInt(req.params.jobId);
-  if (jobId !== null) {
-    return jobId;
-  }
-  res.status(400).json({ error: 'jobIdが不正です' });
-  return null;
-}
-
-async function loadUploadJobOrReject(
-  req: AuthRequest,
-  res: Response,
-): Promise<{ jobId: number; row: UploadConfirmJob } | null> {
-  const jobId = parseJobIdOrReject(req, res);
-  if (jobId === null) return null;
-
-  const row = await getUploadConfirmJobForPharmacy(jobId, req.user!.id);
-  if (row) {
-    return { jobId, row };
-  }
-
-  res.status(404).json({ error: 'ジョブが見つかりません' });
-  return null;
-}
 
 // Preview: parse file and return headers + first 5 rows + suggested mapping
 router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response) => {
@@ -270,161 +214,6 @@ router.post('/diff-preview', uploadSingleFile, async (req: AuthRequest, res: Res
   }
 });
 
-async function handleConfirmAsyncEnqueue(
-  req: AuthRequest,
-  res: Response,
-  routeKind: 'confirm' | 'confirm_async',
-): Promise<void> {
-  const confirmRequestedAt = new Date().toISOString();
-  const failureContext = routeKind === 'confirm' ? 'confirm_legacy' : 'confirm_async';
-  let fallbackExecutionParams: UploadConfirmExecutionParams | null = null;
-  try {
-    const uploadFile = getUploadFileOrReject(req, res);
-    if (!uploadFile) return;
-
-    const uploadType = getUploadTypeOrReject(req, res);
-    if (!uploadType) return;
-
-    const applyMode = parseApplyMode(req.body.applyMode);
-    if (!applyMode) {
-      logUploadFailure(req, failureContext, 'invalid_apply_mode', {
-        applyMode: String(req.body.applyMode ?? ''),
-      });
-      res.status(400).json({ error: 'applyMode は replace / diff / partial を指定してください' });
-      return;
-    }
-
-    const idempotencyKey = parseIdempotencyKey(req.body.idempotencyKey);
-    if (idempotencyKey === undefined) {
-      res.status(400).json({ error: 'idempotencyKey は 8-120文字の英数字記号（: _ - .）で指定してください' });
-      return;
-    }
-
-    const headerRowIndex = parseHeaderRowIndexOrReject(req, res);
-    if (headerRowIndex === null) return;
-
-    const allRows = await parseExcelRowsOrReject(req, res, 'confirm', uploadFile.buffer);
-    if (!allRows) return;
-
-    if (headerRowIndex >= allRows.length) {
-      logUploadFailure(req, failureContext, 'header_row_out_of_range', {
-        headerRowIndex,
-        rowCount: allRows.length,
-      });
-      res.status(400).json({ error: 'ヘッダー行指定が不正です' });
-      return;
-    }
-
-    const mapping = await resolveAndValidateMappingOrReject(req, res, allRows, headerRowIndex, uploadType, failureContext);
-    if (!mapping) return;
-
-    const deleteMissing = parseDeleteMissing(req.body.deleteMissing);
-    const pharmacyId = req.user!.id;
-    const executionParams: UploadConfirmExecutionParams = {
-      pharmacyId,
-      uploadType,
-      originalFilename: uploadFile.originalname,
-      headerRowIndex,
-      mapping,
-      allRows,
-      applyMode,
-      deleteMissing,
-      staleGuardCreatedAt: confirmRequestedAt,
-    };
-    fallbackExecutionParams = executionParams;
-
-    const enqueueResult = await enqueueUploadConfirmJob({
-      ...executionParams,
-      idempotencyKey,
-      fileBuffer: uploadFile.buffer,
-      requestedAtIso: confirmRequestedAt,
-    });
-
-    res.status(202).json({
-      message: 'アップロード処理を受け付けました',
-      jobId: enqueueResult.jobId,
-      status: enqueueResult.status,
-      deduplicated: enqueueResult.deduplicated,
-      cancelable: enqueueResult.cancelable,
-      canceledAt: enqueueResult.canceledAt,
-      partialSummary: null,
-      errorReportAvailable: false,
-      ...(routeKind === 'confirm'
-        ? {
-          deprecatedEndpoint: true,
-          deprecationNotice: 'このエンドポイントは将来廃止予定です。/api/upload/confirm-async をご利用ください。',
-        }
-        : {}),
-    });
-  } catch (err) {
-    if (isUploadConfirmIdempotencyConflictError(err)) {
-      res.status(409).json({
-        error: err.message,
-        code: err.code,
-      });
-      return;
-    }
-
-    if (isUploadConfirmQueueLimitError(err)) {
-      logUploadFailure(req, failureContext, 'queue_limit', {
-        code: err.code,
-        limit: err.limit,
-        activeJobs: err.activeJobs,
-      });
-      res.status(429).json({
-        error: err.message,
-        code: err.code,
-        limit: err.limit,
-        activeJobs: err.activeJobs,
-      });
-      return;
-    }
-
-    if (isUploadConfirmEnqueueFallbackEnabled()) {
-      try {
-        if (!fallbackExecutionParams) {
-          throw new Error('fallback context is unavailable');
-        }
-        const executionParams = fallbackExecutionParams;
-        const syncResult = await runUploadConfirm(executionParams);
-        logger.warn('Upload confirm async enqueue failed, fell back to sync execution', () => ({
-          ...getBaseContext(req),
-          error: getErrorMessage(err),
-          uploadType: executionParams.uploadType,
-          applyMode: executionParams.applyMode,
-        }));
-        res.status(200).json({
-          message: 'キュー登録に失敗したため同期処理で適用しました',
-          status: 'completed_sync_fallback',
-          deduplicated: false,
-          cancelable: false,
-          canceledAt: null,
-          jobId: null,
-          uploadId: syncResult.uploadId,
-          rowCount: syncResult.rowCount,
-          partialSummary: syncResult.partialSummary,
-          errorReportAvailable: false,
-        });
-        return;
-      } catch (fallbackErr) {
-        logger.error('Upload confirm sync fallback failed', () => ({
-          ...getBaseContext(req),
-          enqueueError: getErrorMessage(err),
-          fallbackError: getErrorMessage(fallbackErr),
-          stack: fallbackErr instanceof Error ? fallbackErr.stack : undefined,
-        }));
-      }
-    }
-
-    logger.error('Upload confirm async enqueue error', () => ({
-      ...getBaseContext(req),
-      error: getErrorMessage(err),
-      stack: err instanceof Error ? err.stack : undefined,
-    }));
-    logUploadFailure(req, failureContext, 'unexpected_error', { error: getErrorMessage(err) });
-    res.status(500).json({ error: '非同期アップロード処理の受付に失敗しました' });
-  }
-}
 
 // Confirm (legacy compatibility): now delegates to async queue processing.
 router.post('/confirm', uploadSingleFile, async (req: AuthRequest, res: Response) => {
