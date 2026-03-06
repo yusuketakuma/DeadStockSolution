@@ -11,8 +11,6 @@ import {
   resolveTransientPollRetryIntervalMs,
   resolveJobProgressPercent,
   waitForNextPoll,
-  UPLOAD_JOB_POLL_INTERVAL_MS,
-  UPLOAD_JOB_POLL_MAX_INTERVAL_MS,
   UPLOAD_JOB_INITIAL_STATE,
   UPLOAD_PROGRESS_IDLE,
 } from '../useUploadJobPolling';
