@@ -46,6 +46,8 @@ import pushRoutes from './routes/push';
 import uploadQualityRoutes from './routes/upload-quality';
 import messagesRoutes from './routes/messages';
 import sseRoutes from './routes/sse';
+import stripeWebhookRoutes from './routes/stripe-webhook';
+import subscriptionsRoutes from './routes/subscriptions';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { csrfProtection } from './middleware/csrf';
@@ -73,7 +75,7 @@ function registerApiRoute(path: string, ...handlers: RequestHandler[]): void {
   }
 }
 
-function isOpenclawRawBodyRoute(url?: string): boolean {
+function isRawBodyRoute(url?: string): boolean {
   if (!url) {
     return false;
   }
@@ -83,6 +85,8 @@ function isOpenclawRawBodyRoute(url?: string): boolean {
     || url.startsWith('/api/openclaw/commands')
     || url.startsWith('/api/v1/openclaw/callback')
     || url.startsWith('/api/v1/openclaw/commands')
+    || url.startsWith('/api/stripe/webhook')
+    || url.startsWith('/api/v1/stripe/webhook')
   );
 }
 
@@ -225,8 +229,8 @@ app.use(compression({
 app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buf) => {
-    // rawBody is required for OpenClaw webhook HMAC verification.
-    if (isOpenclawRawBodyRoute(req.url)) {
+    // rawBody is required for OpenClaw webhook HMAC verification and Stripe webhook signature verification.
+    if (isRawBodyRoute(req.url)) {
       (req as Request).rawBody = buf.toString('utf8');
     }
   },
@@ -335,6 +339,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+registerApiRoute('/stripe', stripeWebhookRoutes);
 app.use(API_BASE_PATH_PATTERN, csrfProtection);
 
 // Routes
@@ -358,6 +363,7 @@ registerApiRoute('/push', rejectAdmin, pushRoutes);
 registerApiRoute('/upload-quality', rejectAdmin, uploadQualityRoutes);
 registerApiRoute('/messages', messagesRoutes);
 registerApiRoute('/sse', requireLogin, rejectAdmin, sseRoutes);
+registerApiRoute('/subscriptions', subscriptionsRoutes);
 
 // Shared routes (both admin and user)
 registerApiRoute('/notifications', notificationsRoutes);

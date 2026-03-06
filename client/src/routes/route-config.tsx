@@ -50,7 +50,8 @@ const GroupDetailPage = lazy(() => import('../pages/GroupDetailPage'));
 const AlertListPage = lazy(() => import('../pages/AlertListPage'));
 const BookmarksPage = lazy(() => import('../pages/BookmarksPage'));
 const MessagesPage = lazy(() => import('../pages/MessagesPage'));
-
+const SubscriptionSuccessPage = lazy(() => import('../pages/SubscriptionSuccessPage'));
+const SubscriptionCancelPage = lazy(() => import('../pages/SubscriptionCancelPage'));
 
 type RouteComponent = ComponentType | LazyExoticComponent<ComponentType>;
 
@@ -106,6 +107,8 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/alerts', access: 'protected', userOnly: true, useLayout: true, component: AlertListPage, title: 'アラート' },
   { path: '/bookmarks', access: 'protected', userOnly: true, useLayout: true, component: BookmarksPage, title: 'ブックマーク' },
   { path: '/messages', access: 'protected', userOnly: true, useLayout: true, component: MessagesPage, title: 'メッセージ' },
+  { path: '/subscription/success', access: 'protected', useLayout: false, component: SubscriptionSuccessPage },
+  { path: '/subscription/cancel', access: 'protected', useLayout: false, component: SubscriptionCancelPage },
 
   { path: '/admin', access: 'protected', adminOnly: true, useLayout: true, component: AdminDashboardPage, title: 'ダッシュボード' },
   { path: '/admin/pharmacies', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmaciesPage, title: '薬局管理', parent: '/admin' },
