@@ -10,10 +10,11 @@
 
 ### Phase 1: ポーリングロジック抽出 [refactoring]
 
-- [ ] T128: useUploadJobPolling.ts 抽出 `cc:計画済` (2026-03-07)
+- [x] T128: useUploadJobPolling.ts 抽出 `cc:完了` (2026-03-07)
   - 抽出対象: ポーリングループ（391-508行）、waitForNextPoll関数
   - 状態: uploadJob, cancellingJob, uploadProgress
   - テスト要件: ポーリング成功/失敗/タイムアウト/キャンセル
+  - 実績: フック作成完了、16テスト成功、UploadPage統合は別タスクで実施予定
 
 ### Phase 2: フォーム状態抽出 [refactoring]
 
