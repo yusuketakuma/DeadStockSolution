@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.9] - 2026-03-06
+
+### Added
+
+- **カメラデッドストック登録**: カメラ撮影によるデッドストック一括登録フロー（CameraDeadStockRegisterPanel 1,202行）、GS1バーコードパーサー、サーバー側 camera-dead-stock-service
+- **サインインフロー刷新**: ログイン画面を再設計しシンプル化、テストログインのゲート制御（testLoginFeature）、環境別フィーチャーフラグ対応
+- **ErrorBoundary**: クライアント全体のエラー境界コンポーネント、ErrorRetryAlert による再試行UI
+- **デッドストック取込改善**: アップロードページの取込フロー安定化、CSV行長セキュリティチェック追加
+- **テスト大幅追加**: inventory-route（335行）、scheduler-runtime-branch（235行）、admin-pharmacies-list-extra（141行）、logger-branches（144行）、drug-master-source-state-service-extra（121行）、test-pharmacy-schema（91行）、gs1-parser（57行）、test-login-feature-config（46行）、csv-line-length-security（37行）等の新規テスト
+- **デザインシステム拡張**: design-language.css（286行追加）、モバイル向けスタイル強化
+- **proposal-status ユーティリティ**: proposalStatusStyle のカバレッジを95%基準に到達
+
+### Fixed
+
+- **テスト薬局プレビュー**: Vercel preview 環境でのテスト薬局プレビュー表示を修正（2件）
+- **タイムゾーン対応**: toJstDate のタイムゾーン非依存化、23:00 JST テストの UTC 明示化でCI互換性を確保
+- **自動スキャン**: safe autofix の適用（2件）
+- **エラーハンドラ**: error-handler ミドルウェアの改善
+- **テストアカウントパスワード**: preview 環境でのテストアカウントパスワード返却を修正
+
+### Changed
+
+- **サーバー大規模リファクタリング**: auth.ts、exchange-proposals.ts、notifications.ts、matching-service.ts、upload-diff-service.ts、upload-confirm-service.ts 等の主要サービス・ルートを整理・最適化（計 6,000行以上の差分）
+- **ホットパス最適化**: codex repo 設定の除去、不要な処理パスの簡略化
+- **usePaginatedList**: キャッシュ処理の簡略化、過剰な useMemo を除去
+- **共通ユーティリティ抽出**: parseTimestamp 抽出、LOG_SOURCE_VALUES 重複除去
+- **ページコンポーネント改善**: LoginPage（535行→簡略化）、MatchingPage、StatisticsPage、UploadPage、ProposalDetailPage 等の UI 改善
+- **PGlite統合テスト基盤**: test-db.ts のスナップショットDDL生成を168行拡張
+- **network-utils**: 100行の改善、request-utils にユーティリティ追加
+- **migrate-legacy**: レガシーマイグレーション処理の簡略化（135行削減）
+
 ## [0.0.7] - 2026-03-02
 
 ### 🎯 What's Changed for You
@@ -233,6 +264,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview DB同期とテストアカウントパスワード更新
 - 本番環境でのCORS同一ホストオリジンチェック
 
+[0.0.9]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.8...v0.0.9
 [0.0.7]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.4...v0.0.5
