@@ -532,14 +532,6 @@ export function setIsTestAccountColumnAvailable(val: boolean): void {
   isTestAccountColumnAvailable = val;
 }
 
-// Registration validation helper
-export function validateRegistrationInput(body: unknown): { valid: boolean; errors?: unknown[] } {
-  const errors = (body as any)?.errors || [];
-  if (errors.length > 0) {
-    return { valid: false, errors };
-  }
-  return { valid: true };
-}
 
 // Password reset request validation
 export function validatePasswordResetRequest(email: string): { valid: boolean; error?: string } {
