@@ -161,6 +161,95 @@ function getOtherPartyId(pharmacyAId: number, pharmacyBId: number, pharmacyId: n
   return pharmacyAId === pharmacyId ? pharmacyBId : pharmacyAId;
 }
 
+async function notifyProposalEvent(
+  pharmacyId: number,
+  type: string,
+  proposalId: number,
+  title: string,
+  message: string
+): Promise<void> {
+  await createNotificationSafely({
+    pharmacyId,
+    type: type as NotificationInput['type'],
+    title,
+    message,
+    referenceType: 'proposal',
+    referenceId: proposalId,
+  });
+}
+
+async function assertNotBlocked(
+  tx: TransactionClient,
+  pharmacyAId: number,
+  pharmacyBId: number
+): Promise<void> {
+  const [blockedRelationship] = await tx.select({ id: pharmacyRelationships.id })
+    .from(pharmacyRelationships)
+    .where(and(
+      eq(pharmacyRelationships.relationshipType, 'blocked'),
+      or(
+        and(
+          eq(pharmacyRelationships.pharmacyId, pharmacyAId),
+          eq(pharmacyRelationships.targetPharmacyId, pharmacyBId),
+        ),
+        and(
+          eq(pharmacyRelationships.pharmacyId, pharmacyBId),
+          eq(pharmacyRelationships.targetPharmacyId, pharmacyAId),
+        ),
+      ),
+    ))
+    .limit(1);
+
+  if (blockedRelationship) {
+    throw new Error('ブロック中の薬局には提案できません');
+  }
+}
+
+async function validateAndUpdateStock(
+  tx: TransactionClient,
+  items: Array<{ deadStockItemId: number; fromPharmacyId: number; quantity: number }>
+): Promise<void> {
+  const itemIds = [...new Set(items.map((item) => item.deadStockItemId))];
+  const stockRows = await tx.select({
+    id: deadStockItems.id,
+    pharmacyId: deadStockItems.pharmacyId,
+    quantity: deadStockItems.quantity,
+    isAvailable: deadStockItems.isAvailable,
+  })
+    .from(deadStockItems)
+    .where(inArray(deadStockItems.id, itemIds));
+
+  const stockMap = new Map(stockRows.map((row) => [row.id, row]));
+  for (const item of items) {
+    const stock = stockMap.get(item.deadStockItemId);
+    if (!stock || stock.pharmacyId !== item.fromPharmacyId || !stock.isAvailable) {
+      throw new Error('在庫状態が変更されているため、交換を完了できません');
+    }
+    if (Number(stock.quantity) < Number(item.quantity)) {
+      throw new Error('在庫数量が不足しているため、交換を完了できません');
+    }
+  }
+  // N回の逐次UPDATEをPromise.allで並列化しDBラウンドトリップを削減
+  const updateResults = await Promise.all(
+    items.map((item) =>
+      tx.update(deadStockItems)
+        .set({
+          quantity: sql`${deadStockItems.quantity} - ${item.quantity}`,
+          isAvailable: sql`CASE WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN false ELSE true END`,
+        })
+        .where(and(
+          eq(deadStockItems.id, item.deadStockItemId),
+          eq(deadStockItems.isAvailable, true),
+          sql`${deadStockItems.quantity} >= ${item.quantity}`,
+        ))
+        .returning({ id: deadStockItems.id }),
+    ),
+  );
+  if (updateResults.some((result) => result.length === 0)) {
+    throw new Error('在庫状態が変更されているため、交換を完了できません');
+  }
+}
+
 async function updateProposalStatusWithOptimisticLock(
   tx: TransactionClient,
   proposalId: number,
@@ -235,26 +324,7 @@ export async function createProposal(
       throw new Error('交換先薬局が見つからないか、無効です');
     }
 
-    const [blockedRelationship] = await tx.select({ id: pharmacyRelationships.id })
-      .from(pharmacyRelationships)
-      .where(and(
-        eq(pharmacyRelationships.relationshipType, 'blocked'),
-        or(
-          and(
-            eq(pharmacyRelationships.pharmacyId, pharmacyAId),
-            eq(pharmacyRelationships.targetPharmacyId, candidate.pharmacyBId),
-          ),
-          and(
-            eq(pharmacyRelationships.pharmacyId, candidate.pharmacyBId),
-            eq(pharmacyRelationships.targetPharmacyId, pharmacyAId),
-          ),
-        ),
-      ))
-      .limit(1);
-
-    if (blockedRelationship) {
-      throw new Error('ブロック中の薬局には提案できません');
-    }
+    await assertNotBlocked(tx, pharmacyAId, candidate.pharmacyBId);
 
     const allIds = [...candidate.itemsFromA, ...candidate.itemsFromB].map((item) => item.deadStockItemId);
     const sortedUniqueIds = [...new Set(allIds)].sort((a, b) => a - b);
@@ -368,14 +438,7 @@ export async function createProposal(
     };
   });
 
-  await createNotificationSafely({
-    pharmacyId: candidate.pharmacyBId,
-    type: 'proposal_received',
-    title: '交換提案が届きました',
-    message: `新しい交換提案（${result.itemCount}品目）`,
-    referenceType: 'proposal',
-    referenceId: result.proposalId,
-  });
+  await notifyProposalEvent(candidate.pharmacyBId, 'proposal_received', result.proposalId, '交換提案が届きました', `新しい交換提案（${result.itemCount}品目）`);
 
   return result.proposalId;
 }
@@ -414,14 +477,7 @@ export async function acceptProposal(proposalId: number, pharmacyId: number): Pr
 
     const otherPartyId = getOtherPartyId(proposal.pharmacyAId, proposal.pharmacyBId, pharmacyId);
 
-    await createNotificationSafely({
-      pharmacyId: otherPartyId,
-      type: 'proposal_status_changed',
-      title: '交換提案のステータスが更新されました',
-      message: `提案が${newStatus === 'confirmed' ? '確定' : '承認'}されました`,
-      referenceType: 'proposal',
-      referenceId: proposalId,
-    });
+    await notifyProposalEvent(otherPartyId, 'proposal_status_changed', proposalId, '交換提案のステータスが更新されました', `提案が${newStatus === 'confirmed' ? '確定' : '承認'}されました`);
 
     return newStatus;
   });
@@ -443,14 +499,7 @@ export async function rejectProposal(proposalId: number, pharmacyId: number): Pr
 
     const rejectOtherPartyId = getOtherPartyId(proposal.pharmacyAId, proposal.pharmacyBId, pharmacyId);
 
-    await createNotificationSafely({
-      pharmacyId: rejectOtherPartyId,
-      type: 'proposal_status_changed',
-      title: '交換提案が却下されました',
-      message: '相手薬局が提案を却下しました',
-      referenceType: 'proposal',
-      referenceId: proposalId,
-    });
+    await notifyProposalEvent(rejectOtherPartyId, 'proposal_status_changed', proposalId, '交換提案が却下されました', '相手薬局が提案を却下しました');
   });
 }
 
@@ -501,45 +550,7 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
       throw new Error('提案アイテムが存在しません');
     }
 
-    const itemIds = [...new Set(items.map((item) => item.deadStockItemId))];
-    const stockRows = await tx.select({
-      id: deadStockItems.id,
-      pharmacyId: deadStockItems.pharmacyId,
-      quantity: deadStockItems.quantity,
-      isAvailable: deadStockItems.isAvailable,
-    })
-      .from(deadStockItems)
-      .where(inArray(deadStockItems.id, itemIds));
-
-    const stockMap = new Map(stockRows.map((row) => [row.id, row]));
-    for (const item of items) {
-      const stock = stockMap.get(item.deadStockItemId);
-      if (!stock || stock.pharmacyId !== item.fromPharmacyId || !stock.isAvailable) {
-        throw new Error('在庫状態が変更されているため、交換を完了できません');
-      }
-      if (Number(stock.quantity) < Number(item.quantity)) {
-        throw new Error('在庫数量が不足しているため、交換を完了できません');
-      }
-    }
-    // N回の逐次UPDATEをPromise.allで並列化しDBラウンドトリップを削減
-    const updateResults = await Promise.all(
-      items.map((item) =>
-        tx.update(deadStockItems)
-          .set({
-            quantity: sql`${deadStockItems.quantity} - ${item.quantity}`,
-            isAvailable: sql`CASE WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN false ELSE true END`,
-          })
-          .where(and(
-            eq(deadStockItems.id, item.deadStockItemId),
-            eq(deadStockItems.isAvailable, true),
-            sql`${deadStockItems.quantity} >= ${item.quantity}`,
-          ))
-          .returning({ id: deadStockItems.id }),
-      ),
-    );
-    if (updateResults.some((result) => result.length === 0)) {
-      throw new Error('在庫状態が変更されているため、交換を完了できません');
-    }
+    await validateAndUpdateStock(tx, items);
 
     const totalValue = Number(claimedProposal.totalValueA ?? 0) + Number(claimedProposal.totalValueB ?? 0);
     await tx.insert(exchangeHistory).values({

@@ -4,8 +4,9 @@ import { db } from '../config/database';
 import { pharmacies } from './schema';
 import { hashPassword } from '../services/auth-service';
 import { logger } from '../services/logger';
+import { eqEmailCaseInsensitive, normalizeEmail } from '../utils/email-utils';
 
-const ADMIN_LOGIN_ID = 'admin@admin.com';
+const ADMIN_LOGIN_ID = normalizeEmail('admin@admin.com');
 const LEGACY_ADMIN_LOGIN_ID = 'admin';
 function requireAdminSeedPassword(): string {
   const password = process.env.ADMIN_SEED_PASSWORD?.trim();
@@ -22,7 +23,7 @@ async function findByEmail(email: string): Promise<{ id: number } | null> {
     id: pharmacies.id,
   })
     .from(pharmacies)
-    .where(eq(pharmacies.email, email))
+    .where(eqEmailCaseInsensitive(pharmacies.email, email))
     .limit(1);
   return row ?? null;
 }

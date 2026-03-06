@@ -274,6 +274,7 @@ export default function LoginPage() {
                       className="btn btn-sm btn-outline-secondary"
                       onClick={() => setShowPassword((prev) => !prev)}
                       disabled={loading}
+                      aria-label={showPassword ? 'パスワードを非表示にする' : 'パスワードを表示する'}
                     >
                       {showPassword ? '非表示' : '表示'}
                     </button>

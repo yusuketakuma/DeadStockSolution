@@ -122,11 +122,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 export default function Sidebar({ isOpen, onClose }: Props) {
   return (
     <>
-      <aside className="sidebar-desktop d-none d-lg-flex">
+      <aside className="sidebar-desktop d-none d-lg-flex" role="navigation" aria-label="メインナビゲーション">
         <SidebarContent />
       </aside>
 
-      <Offcanvas show={isOpen} onHide={onClose} className="sidebar-mobile d-lg-none" placement="start">
+      <Offcanvas show={isOpen} onHide={onClose} className="sidebar-mobile d-lg-none" placement="start" aria-label="モバイルナビゲーション">
         <Offcanvas.Header closeButton>
           <Offcanvas.Title>メニュー</Offcanvas.Title>
         </Offcanvas.Header>

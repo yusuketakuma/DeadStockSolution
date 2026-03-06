@@ -172,6 +172,18 @@ describe('auth routes', () => {
     expect(mocks.createPasswordResetToken).toHaveBeenCalledWith('test@example.com');
   });
 
+  it('normalizes email casing before creating password reset tokens', async () => {
+    const app = await createApp();
+    mocks.createPasswordResetToken.mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/auth/password-reset/request')
+      .send({ email: 'Test.User@Example.COM ' });
+
+    expect(res.status).toBe(200);
+    expect(mocks.createPasswordResetToken).toHaveBeenCalledWith('test.user@example.com');
+  });
+
   it('exposes password reset token when explicitly enabled in test environment', async () => {
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'true';

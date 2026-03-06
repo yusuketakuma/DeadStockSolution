@@ -1,11 +1,53 @@
 import { logger } from './logger';
+import { FetchTimeoutError, fetchWithTimeout } from '../utils/http-utils';
+import { isRecord } from '../utils/type-guards';
 
 interface GeocodeResult {
   lat: number;
   lng: number;
 }
 
+type GeocodeFeature = {
+  geometry: {
+    coordinates: [number, number];
+  };
+};
+
 const GEOCODE_TIMEOUT_MS = 5000;
+
+function summarizeAddressForLog(address: string): string {
+  const trimmed = address.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (trimmed.length <= 4) {
+    return `${trimmed.slice(0, 1)}***`;
+  }
+  return `${trimmed.slice(0, 2)}***(${trimmed.length})`;
+}
+
+function extractCoordinates(value: unknown): { lat: number; lng: number } | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+
+  const first = value[0];
+  if (!isRecord(first)) {
+    return null;
+  }
+
+  const geometry = first.geometry;
+  if (!isRecord(geometry) || !Array.isArray(geometry.coordinates) || geometry.coordinates.length < 2) {
+    return null;
+  }
+
+  const [lng, lat] = geometry.coordinates as GeocodeFeature['geometry']['coordinates'];
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  return { lat, lng };
+}
 
 /**
  * 住所文字列から緯度・経度を取得する（国土地理院 API）
@@ -14,53 +56,38 @@ const GEOCODE_TIMEOUT_MS = 5000;
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
   const query = address.trim();
   if (!query) return null;
+  const addressSummary = summarizeAddressForLog(query);
 
   const url = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(query)}`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
-
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
+    const response = await fetchWithTimeout(url, {
+      timeoutMs: GEOCODE_TIMEOUT_MS,
       headers: { 'Accept': 'application/json' },
     });
 
     if (!response.ok) {
-      logger.warn('Geocoding API returned non-OK status', { status: response.status, address: query });
+      logger.warn('Geocoding API returned non-OK status', { status: response.status, addressSummary });
       return null;
     }
 
-    const data = await response.json() as Array<{
-      geometry: { coordinates: [number, number] };
-      properties: { title: string };
-    }>;
-
-    if (!Array.isArray(data) || data.length === 0) {
-      logger.info('Geocoding returned no results', { address: query });
+    const data: unknown = await response.json();
+    const coordinates = extractCoordinates(data);
+    if (!coordinates) {
+      logger.info('Geocoding returned no results', { addressSummary });
       return null;
     }
 
-    // coordinates are [lng, lat] in GeoJSON format
-    const [lng, lat] = data[0].geometry.coordinates;
-
-    if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      logger.warn('Geocoding returned invalid coordinates', { address: query, lat, lng });
-      return null;
-    }
-
-    return { lat, lng };
+    return coordinates;
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      logger.warn('Geocoding request timed out', { address: query });
+    if (err instanceof FetchTimeoutError || (err instanceof DOMException && err.name === 'AbortError')) {
+      logger.warn('Geocoding request timed out', { addressSummary });
     } else {
       logger.error('Geocoding request failed', {
-        address: query,
+        addressSummary,
         error: err instanceof Error ? err.message : String(err),
       });
     }
     return null;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }

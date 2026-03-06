@@ -4,20 +4,20 @@ import { NextFunction, Request, Response } from 'express';
 const CSRF_COOKIE_NAME = 'csrfToken';
 const CSRF_HEADER_NAME = 'x-csrf-token';
 
-const EXEMPT_PATH_PREFIXES = [
+const EXEMPT_PATHS = new Set([
   '/auth/login',
   '/auth/register',
   '/auth/password-reset/request',
   '/auth/password-reset/confirm',
   '/auth/csrf-token',
-];
+]);
 
 function isSafeMethod(method: string): boolean {
   return ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
 }
 
 function isExemptPath(path: string): boolean {
-  return EXEMPT_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
+  return EXEMPT_PATHS.has(path);
 }
 function timingSafeCompare(a: string, b: string): boolean {
   const aBuffer = Buffer.from(a, 'utf8');

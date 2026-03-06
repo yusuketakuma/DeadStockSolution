@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-03-06T01:41:19.536Z",
+  "updatedAt": "2026-03-06T03:34:22.460Z",
   "skills": {
     "parallel-workflows": {
       "count": 1,
@@ -13,6 +13,10 @@
     "harness-setup": {
       "count": 1,
       "lastUsed": "2026-03-06T01:41:19.536Z"
+    },
+    "brainstorming": {
+      "count": 1,
+      "lastUsed": "2026-03-06T03:34:22.459Z"
     }
   },
   "commands": {
@@ -71,6 +75,10 @@
     "init": {
       "count": 1,
       "lastUsed": "2026-03-04T21:44:49.796Z"
+    },
+    "harness-release": {
+      "count": 1,
+      "lastUsed": "2026-03-06T03:03:11.230Z"
     }
   },
   "agents": {
@@ -93,9 +101,9 @@
   },
   "hooks": {
     "session-init": {
-      "triggered": 34,
+      "triggered": 35,
       "blocked": 0,
-      "lastTriggered": "2026-03-06T01:40:34.055Z"
+      "lastTriggered": "2026-03-06T03:02:47.637Z"
     }
   }
 }

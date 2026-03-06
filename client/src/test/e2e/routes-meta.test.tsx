@@ -254,19 +254,21 @@ describe('Route meta integration', () => {
 
   it('redirects unauthenticated user from protected route to login', async () => {
     mockFetchForRoutes(null, '/');
-    renderAppAtRoute('/');
+    const { container } = renderAppAtRoute('/');
 
     await waitFor(() => {
-      expect(screen.getByText('薬局ログイン')).toBeInTheDocument();
+      const loginHeading = container.querySelector('h2.h5');
+      expect(loginHeading?.textContent).toBe('ログイン');
     });
   });
 
   it('redirects unauthenticated user from admin route to login', async () => {
     mockFetchForRoutes(null, '/admin');
-    renderAppAtRoute('/admin');
+    const { container } = renderAppAtRoute('/admin');
 
     await waitFor(() => {
-      expect(screen.getByText('薬局ログイン')).toBeInTheDocument();
+      const loginHeading = container.querySelector('h2.h5');
+      expect(loginHeading?.textContent).toBe('ログイン');
     });
   });
 

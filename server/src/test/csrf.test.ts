@@ -52,6 +52,23 @@ describe('csrf middleware', () => {
     expect(status).not.toHaveBeenCalled();
   });
 
+  it('allows exact exempt auth paths without csrf validation', () => {
+    const req = createRequestMock({
+      path: '/auth/login',
+      cookies: {
+        token: 'auth-cookie',
+        csrfToken: 'cookie-token',
+      },
+    });
+    const { res, status } = createResponseMock();
+    const next = vi.fn() as unknown as NextFunction;
+
+    csrfProtection(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(status).not.toHaveBeenCalled();
+  });
+
   it('allows unauthenticated unsafe requests', () => {
     const req = createRequestMock({
       cookies: {},
@@ -99,5 +116,24 @@ describe('csrf middleware', () => {
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(status).not.toHaveBeenCalled();
+  });
+
+  it('does not exempt auth subpaths that only share a prefix', () => {
+    const req = createRequestMock({
+      path: '/auth/login/extra',
+      cookies: {
+        token: 'auth-cookie',
+        csrfToken: 'cookie-token',
+      },
+      header: ((_: string) => '') as Request['header'],
+    });
+    const { res, status, json } = createResponseMock();
+    const next = vi.fn() as unknown as NextFunction;
+
+    csrfProtection(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(403);
+    expect(json).toHaveBeenCalledWith({ error: 'CSRFトークンが無効です。再読み込みしてください' });
   });
 });

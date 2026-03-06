@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   db: {
@@ -104,6 +104,10 @@ function createResetTxMock(candidateRows: Array<{ pharmacyId: number }>, consume
 describe('password-reset-service', () => {
   setupVitestMocks('reset');
 
+  beforeEach(() => {
+    vi.mocked(sql).mockClear();
+  });
+
   it('returns null when account does not exist', async () => {
     const { tx, spies } = createTxMock();
     spies.selectLimit.mockResolvedValueOnce([]);
@@ -135,12 +139,18 @@ describe('password-reset-service', () => {
 
     expect(spies.txDelete.mock.invocationCallOrder[0]).toBeLessThan(spies.execute.mock.invocationCallOrder[1]);
 
-    const lockQuery = Array.from((vi.mocked(sql).mock.calls[0]?.[0] as TemplateStringsArray) ?? []).join('');
-    expect(lockQuery).toContain('pg_advisory_xact_lock');
+    const sqlCalls = vi.mocked(sql).mock.calls;
+    const lockCall = sqlCalls.find(call => {
+      const query = Array.from((call?.[0] as TemplateStringsArray) ?? []).join('');
+      return query.includes('pg_advisory_xact_lock');
+    });
+    expect(lockCall).toBeDefined();
 
-    const countQuery = Array.from((vi.mocked(sql).mock.calls[1]?.[0] as TemplateStringsArray) ?? []).join('');
-    expect(countQuery).toContain('used_at IS NULL');
-    expect(countQuery).toContain('expires_at >');
+    const countCall = sqlCalls.find(call => {
+      const query = Array.from((call?.[0] as TemplateStringsArray) ?? []).join('');
+      return query.includes('used_at IS NULL') && query.includes('expires_at >');
+    });
+    expect(countCall).toBeDefined();
   });
 
   it('issues token when under cap and returns pharmacy metadata', async () => {

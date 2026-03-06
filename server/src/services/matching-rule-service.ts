@@ -11,6 +11,12 @@ interface PostgresErrorLike {
   code?: string;
 }
 
+interface RuleFieldSpec {
+  min: number;
+  max: number;
+  integer?: boolean;
+}
+
 export class MatchingRuleValidationError extends Error {}
 export class MatchingRuleVersionConflictError extends Error {}
 
@@ -30,6 +36,25 @@ export interface MatchingRuleProfileUpdateInput extends Partial<MatchingScoringR
 
 let cachedProfile: MatchingRuleProfile | null = null;
 let cacheExpiresAt = 0;
+
+const MATCHING_RULE_FIELD_SPECS: Record<keyof MatchingScoringRules, RuleFieldSpec> = {
+  nameMatchThreshold: { min: 0, max: 1 },
+  valueScoreMax: { min: 0, max: 200 },
+  valueScoreDivisor: { min: 0.0001, max: 1_000_000 },
+  balanceScoreMax: { min: 0, max: 200 },
+  balanceScoreDiffFactor: { min: 0, max: 1_000 },
+  distanceScoreMax: { min: 0, max: 200 },
+  distanceScoreDivisor: { min: 0.0001, max: 1_000_000 },
+  distanceScoreFallback: { min: 0, max: 200 },
+  nearExpiryScoreMax: { min: 0, max: 200 },
+  nearExpiryItemFactor: { min: 0, max: 100 },
+  nearExpiryDays: { min: 1, max: 365, integer: true },
+  diversityScoreMax: { min: 0, max: 200 },
+  diversityItemFactor: { min: 0, max: 100 },
+  favoriteBonus: { min: 0, max: 200 },
+} satisfies Record<keyof MatchingScoringRules, RuleFieldSpec>;
+
+const MATCHING_RULE_FIELDS = Object.keys(MATCHING_RULE_FIELD_SPECS) as Array<keyof MatchingScoringRules>;
 
 function isUndefinedTableError(err: unknown): err is PostgresErrorLike {
   return typeof err === 'object' && err !== null && (err as PostgresErrorLike).code === '42P01';
@@ -78,46 +103,36 @@ function buildFallbackProfile(): MatchingRuleProfile {
   };
 }
 
+function validateRuleField(
+  field: keyof MatchingScoringRules,
+  value: unknown,
+  coerceNumber: boolean,
+): number {
+  const spec = MATCHING_RULE_FIELD_SPECS[field];
+  const numericValue = coerceNumber ? (toFiniteNumber(value) ?? Number.NaN) : value;
+  return validateRange(field, numericValue as number, spec.min, spec.max, spec.integer ?? false);
+}
+
+function buildDefaultProfileInsertValues(now: string): typeof matchingRuleProfiles.$inferInsert {
+  return {
+    profileName: DEFAULT_PROFILE_NAME,
+    isActive: true,
+    ...DEFAULT_MATCHING_SCORING_RULES,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 function normalizeRulesFromDbRow(
   row: typeof matchingRuleProfiles.$inferSelect,
 ): MatchingScoringRules | null {
   try {
-    const nameMatchThreshold = validateRange(
-      'nameMatchThreshold',
-      toFiniteNumber(row.nameMatchThreshold) ?? NaN,
-      0,
-      1,
-    );
-    const valueScoreMax = validateRange('valueScoreMax', toFiniteNumber(row.valueScoreMax) ?? NaN, 0, 200);
-    const valueScoreDivisor = validateRange('valueScoreDivisor', toFiniteNumber(row.valueScoreDivisor) ?? NaN, 0.0001, 1_000_000);
-    const balanceScoreMax = validateRange('balanceScoreMax', toFiniteNumber(row.balanceScoreMax) ?? NaN, 0, 200);
-    const balanceScoreDiffFactor = validateRange('balanceScoreDiffFactor', toFiniteNumber(row.balanceScoreDiffFactor) ?? NaN, 0, 1_000);
-    const distanceScoreMax = validateRange('distanceScoreMax', toFiniteNumber(row.distanceScoreMax) ?? NaN, 0, 200);
-    const distanceScoreDivisor = validateRange('distanceScoreDivisor', toFiniteNumber(row.distanceScoreDivisor) ?? NaN, 0.0001, 1_000_000);
-    const distanceScoreFallback = validateRange('distanceScoreFallback', toFiniteNumber(row.distanceScoreFallback) ?? NaN, 0, 200);
-    const nearExpiryScoreMax = validateRange('nearExpiryScoreMax', toFiniteNumber(row.nearExpiryScoreMax) ?? NaN, 0, 200);
-    const nearExpiryItemFactor = validateRange('nearExpiryItemFactor', toFiniteNumber(row.nearExpiryItemFactor) ?? NaN, 0, 100);
-    const nearExpiryDays = validateRange('nearExpiryDays', toFiniteNumber(row.nearExpiryDays) ?? NaN, 1, 365, true);
-    const diversityScoreMax = validateRange('diversityScoreMax', toFiniteNumber(row.diversityScoreMax) ?? NaN, 0, 200);
-    const diversityItemFactor = validateRange('diversityItemFactor', toFiniteNumber(row.diversityItemFactor) ?? NaN, 0, 100);
-    const favoriteBonus = validateRange('favoriteBonus', toFiniteNumber(row.favoriteBonus) ?? NaN, 0, 200);
-
-    return {
-      nameMatchThreshold,
-      valueScoreMax,
-      valueScoreDivisor,
-      balanceScoreMax,
-      balanceScoreDiffFactor,
-      distanceScoreMax,
-      distanceScoreDivisor,
-      distanceScoreFallback,
-      nearExpiryScoreMax,
-      nearExpiryItemFactor,
-      nearExpiryDays,
-      diversityScoreMax,
-      diversityItemFactor,
-      favoriteBonus,
-    };
+    const normalized = {} as MatchingScoringRules;
+    for (const field of MATCHING_RULE_FIELDS) {
+      normalized[field] = validateRuleField(field, row[field], true);
+    }
+    return normalized;
   } catch (err) {
     logger.error('Matching rule profile row validation failed', {
       error: err instanceof Error ? err.message : String(err),
@@ -152,69 +167,19 @@ function storeCache(profile: MatchingRuleProfile): MatchingRuleProfile {
 function normalizeRulesForUpdate(input: Partial<MatchingScoringRules>): Partial<MatchingScoringRules> {
   const normalized: Partial<MatchingScoringRules> = {};
 
-  if (input.nameMatchThreshold !== undefined) {
-    normalized.nameMatchThreshold = validateRange('nameMatchThreshold', input.nameMatchThreshold, 0, 1);
-  }
-  if (input.valueScoreMax !== undefined) {
-    normalized.valueScoreMax = validateRange('valueScoreMax', input.valueScoreMax, 0, 200);
-  }
-  if (input.valueScoreDivisor !== undefined) {
-    normalized.valueScoreDivisor = validateRange('valueScoreDivisor', input.valueScoreDivisor, 0.0001, 1_000_000);
-  }
-  if (input.balanceScoreMax !== undefined) {
-    normalized.balanceScoreMax = validateRange('balanceScoreMax', input.balanceScoreMax, 0, 200);
-  }
-  if (input.balanceScoreDiffFactor !== undefined) {
-    normalized.balanceScoreDiffFactor = validateRange('balanceScoreDiffFactor', input.balanceScoreDiffFactor, 0, 1_000);
-  }
-  if (input.distanceScoreMax !== undefined) {
-    normalized.distanceScoreMax = validateRange('distanceScoreMax', input.distanceScoreMax, 0, 200);
-  }
-  if (input.distanceScoreDivisor !== undefined) {
-    normalized.distanceScoreDivisor = validateRange('distanceScoreDivisor', input.distanceScoreDivisor, 0.0001, 1_000_000);
-  }
-  if (input.distanceScoreFallback !== undefined) {
-    normalized.distanceScoreFallback = validateRange('distanceScoreFallback', input.distanceScoreFallback, 0, 200);
-  }
-  if (input.nearExpiryScoreMax !== undefined) {
-    normalized.nearExpiryScoreMax = validateRange('nearExpiryScoreMax', input.nearExpiryScoreMax, 0, 200);
-  }
-  if (input.nearExpiryItemFactor !== undefined) {
-    normalized.nearExpiryItemFactor = validateRange('nearExpiryItemFactor', input.nearExpiryItemFactor, 0, 100);
-  }
-  if (input.nearExpiryDays !== undefined) {
-    normalized.nearExpiryDays = validateRange('nearExpiryDays', input.nearExpiryDays, 1, 365, true);
-  }
-  if (input.diversityScoreMax !== undefined) {
-    normalized.diversityScoreMax = validateRange('diversityScoreMax', input.diversityScoreMax, 0, 200);
-  }
-  if (input.diversityItemFactor !== undefined) {
-    normalized.diversityItemFactor = validateRange('diversityItemFactor', input.diversityItemFactor, 0, 100);
-  }
-  if (input.favoriteBonus !== undefined) {
-    normalized.favoriteBonus = validateRange('favoriteBonus', input.favoriteBonus, 0, 200);
+  for (const field of MATCHING_RULE_FIELDS) {
+    const value = input[field];
+    if (value === undefined) {
+      continue;
+    }
+    normalized[field] = validateRuleField(field, value, false);
   }
 
   return normalized;
 }
 
 function hasAnyRuleField(input: MatchingRuleProfileUpdateInput): boolean {
-  return [
-    input.nameMatchThreshold,
-    input.valueScoreMax,
-    input.valueScoreDivisor,
-    input.balanceScoreMax,
-    input.balanceScoreDiffFactor,
-    input.distanceScoreMax,
-    input.distanceScoreDivisor,
-    input.distanceScoreFallback,
-    input.nearExpiryScoreMax,
-    input.nearExpiryItemFactor,
-    input.nearExpiryDays,
-    input.diversityScoreMax,
-    input.diversityItemFactor,
-    input.favoriteBonus,
-  ].some((value) => value !== undefined);
+  return MATCHING_RULE_FIELDS.some((field) => input[field] !== undefined);
 }
 
 async function ensureActiveProfileRow(): Promise<typeof matchingRuleProfiles.$inferSelect | null> {
@@ -228,14 +193,7 @@ async function ensureActiveProfileRow(): Promise<typeof matchingRuleProfiles.$in
   }
 
   await db.insert(matchingRuleProfiles)
-    .values({
-      profileName: DEFAULT_PROFILE_NAME,
-      isActive: true,
-      ...DEFAULT_MATCHING_SCORING_RULES,
-      version: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
+    .values(buildDefaultProfileInsertValues(new Date().toISOString()))
     .onConflictDoNothing({ target: matchingRuleProfiles.profileName });
 
   const [activeAfterInsert] = await db.select()
@@ -316,15 +274,9 @@ export async function updateActiveMatchingRuleProfile(input: MatchingRuleProfile
 
       let current = currentActive;
       if (!current) {
+        const now = new Date().toISOString();
         await tx.insert(matchingRuleProfiles)
-          .values({
-            profileName: DEFAULT_PROFILE_NAME,
-            isActive: true,
-            ...DEFAULT_MATCHING_SCORING_RULES,
-            version: 1,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          })
+          .values(buildDefaultProfileInsertValues(now))
           .onConflictDoNothing({ target: matchingRuleProfiles.profileName });
 
         const [activeAfterInsert] = await tx.select()

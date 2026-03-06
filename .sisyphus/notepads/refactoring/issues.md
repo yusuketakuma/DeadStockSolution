@@ -19,3 +19,11 @@
 ### 再発防止メモ
 - タスク単位コミット前に `git show --name-only <hash>` で「想定ファイルのみ」を必須確認
 - evidence/notepad 更新は実装コミットと分離し、専用コミットへ分ける
+
+## [2026-03-07] upload-parser helper extraction regression
+
+### 事象
+- `/api/upload/preview` が正常系でも 400 を返し、`upload-route.test.ts` と `upload-inventory-flow.test.ts` の preview 系テストが失敗。
+
+### 根本原因
+- `upload-parser-helpers.ts` の `SuggestedPreviewMapping` 型変更漏れで、`suggestedByType[uploadType].mapping` 参照先が不整合になり、マッピング検証が常に null 化。

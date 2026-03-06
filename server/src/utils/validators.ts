@@ -78,3 +78,22 @@ export function validateLogin(body: Record<string, unknown>): ValidationError[] 
 }
 
 export { emailSchema, passwordSchema, registrationSchema, loginSchema };
+
+// Camera scan request schemas
+export const cameraResolveSchema = z.object({
+  rawCode: z.string().min(1, '読取コードを入力してください'),
+});
+
+export const cameraConfirmSchema = z.object({
+  items: z.array(z.record(z.string(), z.unknown())).min(1, '登録する行がありません').max(200, '一度に登録できる件数は200件までです'),
+});
+
+export const cameraManualCandidatesSchema = z.object({
+  q: z.string().trim().min(2, '検索キーワードは2文字以上で入力してください').max(80, '検索キーワードは80文字以内で入力してください'),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+// Type helpers for validated bodies
+export type CameraResolveBody = z.infer<typeof cameraResolveSchema>;
+export type CameraConfirmBody = z.infer<typeof cameraConfirmSchema>;
+export type CameraManualCandidatesQuery = z.infer<typeof cameraManualCandidatesSchema>;

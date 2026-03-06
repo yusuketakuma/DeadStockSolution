@@ -13,6 +13,64 @@ import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
 import { parseExchangeIdOrBadRequest } from './exchange-utils';
 
+// Helper: Find proposal where user is party A or B
+async function findProposalForUser(proposalId: number, userId: number) {
+  const [proposal] = await db.select({
+    id: exchangeProposals.id,
+    pharmacyAId: exchangeProposals.pharmacyAId,
+    pharmacyBId: exchangeProposals.pharmacyBId,
+  })
+    .from(exchangeProposals)
+    .where(and(
+      eq(exchangeProposals.id, proposalId),
+      or(
+        eq(exchangeProposals.pharmacyAId, userId),
+        eq(exchangeProposals.pharmacyBId, userId),
+      ),
+    ))
+    .limit(1);
+  return proposal || null;
+}
+
+// Helper: Find own comment by id
+async function findOwnComment(commentId: number, proposalId: number, userId: number) {
+  const [current] = await db.select({
+    id: proposalComments.id,
+    proposalId: proposalComments.proposalId,
+    isDeleted: proposalComments.isDeleted,
+  })
+    .from(proposalComments)
+    .where(and(
+      eq(proposalComments.id, commentId),
+      eq(proposalComments.proposalId, proposalId),
+      eq(proposalComments.authorPharmacyId, userId),
+    ))
+    .limit(1);
+  return current || null;
+}
+
+// Helper: Parse and validate comment body
+function parseCommentBody(rawBody: unknown): string {
+  const body = typeof rawBody === 'string' ? rawBody.trim() : '';
+  if (!body) {
+    throw new Error('EMPTY_BODY');
+  }
+  if (body.length > 1000) {
+    throw new Error('BODY_TOO_LONG');
+  }
+  return body;
+}
+
+// Helper: Check if user is admin and send 403 if so
+function rejectIfAdmin(req: AuthRequest, res: Response, action: string): boolean {
+  if (req.user?.isAdmin) {
+    const actionText = action === 'post' ? 'コメントを投稿' : action === 'edit' ? 'コメントを編集' : 'コメントを削除';
+    res.status(403).json({ error: `管理者は${actionText}できません` });
+    return true;
+  }
+  return false;
+}
+
 const router = Router();
 
 const COMMENT_POST_MIN_INTERVAL_MS = 10_000;
@@ -28,20 +86,7 @@ router.get('/proposals/:id/comments', async (req: AuthRequest, res: Response) =>
       maxLimit: 200,
     });
 
-    const [proposal] = await db.select({
-      id: exchangeProposals.id,
-      pharmacyAId: exchangeProposals.pharmacyAId,
-      pharmacyBId: exchangeProposals.pharmacyBId,
-    })
-      .from(exchangeProposals)
-      .where(and(
-        eq(exchangeProposals.id, proposalId),
-        or(
-          eq(exchangeProposals.pharmacyAId, req.user!.id),
-          eq(exchangeProposals.pharmacyBId, req.user!.id),
-        ),
-      ))
-      .limit(1);
+    const proposal = await findProposalForUser(proposalId, req.user!.id);
 
     if (!proposal) {
       res.status(404).json({ error: 'マッチングが見つかりません' });
@@ -93,39 +138,28 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
     const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
     if (!proposalId) return;
 
-    const [proposal] = await db.select({
-      id: exchangeProposals.id,
-      pharmacyAId: exchangeProposals.pharmacyAId,
-      pharmacyBId: exchangeProposals.pharmacyBId,
-    })
-      .from(exchangeProposals)
-      .where(and(
-        eq(exchangeProposals.id, proposalId),
-        or(
-          eq(exchangeProposals.pharmacyAId, req.user!.id),
-          eq(exchangeProposals.pharmacyBId, req.user!.id),
-        ),
-      ))
-      .limit(1);
+    const proposal = await findProposalForUser(proposalId, req.user!.id);
 
     if (!proposal) {
       res.status(404).json({ error: 'マッチングが見つかりません' });
       return;
     }
 
-    if (req.user?.isAdmin) {
-      res.status(403).json({ error: '管理者はコメントを投稿できません' });
-      return;
-    }
+    if (rejectIfAdmin(req, res, 'post')) return;
 
-    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
-    if (!body) {
-      res.status(400).json({ error: 'コメント本文を入力してください' });
-      return;
-    }
-    if (body.length > 1000) {
-      res.status(400).json({ error: 'コメントは1000文字以内で入力してください' });
-      return;
+    let body: string;
+    try {
+      body = parseCommentBody(req.body?.body);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'EMPTY_BODY') {
+        res.status(400).json({ error: 'コメント本文を入力してください' });
+        return;
+      }
+      if (err instanceof Error && err.message === 'BODY_TOO_LONG') {
+        res.status(400).json({ error: 'コメントは1000文字以内で入力してください' });
+        return;
+      }
+      throw err;
     }
 
     const saved = await db.transaction(async (tx) => {
@@ -218,23 +252,9 @@ router.patch('/proposals/:id/comments/:commentId', async (req: AuthRequest, res:
     const commentId = parseExchangeIdOrBadRequest(res, req.params.commentId);
     if (!proposalId || !commentId) return;
 
-    if (req.user?.isAdmin) {
-      res.status(403).json({ error: '管理者はコメントを編集できません' });
-      return;
-    }
+    if (rejectIfAdmin(req, res, 'edit')) return;
 
-    const [current] = await db.select({
-      id: proposalComments.id,
-      proposalId: proposalComments.proposalId,
-      isDeleted: proposalComments.isDeleted,
-    })
-      .from(proposalComments)
-      .where(and(
-        eq(proposalComments.id, commentId),
-        eq(proposalComments.proposalId, proposalId),
-        eq(proposalComments.authorPharmacyId, req.user!.id),
-      ))
-      .limit(1);
+    const current = await findOwnComment(commentId, proposalId, req.user!.id);
 
     if (!current) {
       res.status(404).json({ error: 'コメントが見つかりません' });
@@ -245,14 +265,19 @@ router.patch('/proposals/:id/comments/:commentId', async (req: AuthRequest, res:
       return;
     }
 
-    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
-    if (!body) {
-      res.status(400).json({ error: 'コメント本文を入力してください' });
-      return;
-    }
-    if (body.length > 1000) {
-      res.status(400).json({ error: 'コメントは1000文字以内で入力してください' });
-      return;
+    let body: string;
+    try {
+      body = parseCommentBody(req.body?.body);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'EMPTY_BODY') {
+        res.status(400).json({ error: 'コメント本文を入力してください' });
+        return;
+      }
+      if (err instanceof Error && err.message === 'BODY_TOO_LONG') {
+        res.status(400).json({ error: 'コメントは1000文字以内で入力してください' });
+        return;
+      }
+      throw err;
     }
 
     await db.update(proposalComments)
@@ -272,23 +297,9 @@ router.delete('/proposals/:id/comments/:commentId', async (req: AuthRequest, res
     const commentId = parseExchangeIdOrBadRequest(res, req.params.commentId);
     if (!proposalId || !commentId) return;
 
-    if (req.user?.isAdmin) {
-      res.status(403).json({ error: '管理者はコメントを削除できません' });
-      return;
-    }
+    if (rejectIfAdmin(req, res, 'delete')) return;
 
-    const [current] = await db.select({
-      id: proposalComments.id,
-      proposalId: proposalComments.proposalId,
-      isDeleted: proposalComments.isDeleted,
-    })
-      .from(proposalComments)
-      .where(and(
-        eq(proposalComments.id, commentId),
-        eq(proposalComments.proposalId, proposalId),
-        eq(proposalComments.authorPharmacyId, req.user!.id),
-      ))
-      .limit(1);
+    const current = await findOwnComment(commentId, proposalId, req.user!.id);
 
     if (!current) {
       res.status(404).json({ error: 'コメントが見つかりません' });

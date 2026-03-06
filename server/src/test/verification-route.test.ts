@@ -24,6 +24,10 @@ vi.mock('../services/logger', () => ({
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
+  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({
+    sql: strings.join('?'),
+    params: values,
+  })),
 }));
 
 import verificationRouter from '../routes/verification';

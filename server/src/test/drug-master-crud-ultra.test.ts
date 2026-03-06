@@ -21,6 +21,10 @@ vi.mock('../middleware/auth', () => ({
   requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
 }));
 
+vi.mock('../middleware/csrf', () => ({
+  csrfMiddleware: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+}));
+
 vi.mock('../config/database', () => ({
   db: mocks.db,
 }));

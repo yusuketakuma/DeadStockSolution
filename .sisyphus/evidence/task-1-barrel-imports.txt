@@ -1,0 +1,41 @@
+task-1: openclaw-service barrel verification
+
+command: grep -c "^export " server/src/services/openclaw-service.ts
+result: 19
+
+command: grep -rn "from.*openclaw-service" server/src/ --include='*.ts'
+result files:
+- server/src/routes/admin-pharmacies-actions.ts
+- server/src/routes/admin-pharmacies-list.ts
+- server/src/routes/auth.ts
+- server/src/routes/openclaw-commands.ts
+- server/src/routes/openclaw.ts
+- server/src/routes/requests.ts
+- server/src/services/openclaw-auto-handoff-service.ts
+- server/src/services/pharmacy-verification-service.ts
+- server/src/test/openclaw-callback-route.test.ts
+- server/src/test/openclaw-log-push-service-coverage.test.ts
+- server/src/test/openclaw-service-deep.test.ts
+- server/src/test/openclaw-service-ultra.test.ts
+- server/src/test/openclaw-service.test.ts
+
+barrel exports:
+- OpenClawStatus
+- OpenClawConfig
+- OpenClawHandoffInput
+- OpenClawHandoffResult
+- GatewaySendInput
+- getOpenClawConfig
+- sendToOpenClawGateway
+- isOpenClawStatus
+- canTransitionOpenClawStatus
+- getOpenClawImplementationBranch
+- isOpenClawConnectorConfigured
+- isOpenClawWebhookConfigured
+- verifyOpenClawWebhookSignature
+- consumeOpenClawWebhookReplay
+- isOpenClawWebhookReplay
+- releaseOpenClawWebhookReplay
+- resetOpenClawWebhookReplayCacheForTests
+- isImplementationBranchAllowed
+- handoffToOpenClaw
