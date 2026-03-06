@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import LoginPage from '../../pages/LoginPage';
 import { renderWithProviders, mockUser } from '../helpers';
 
-/** Find an input field by the label text in the same form group */
 function getInputByLabel(labelText: string): HTMLInputElement {
   const labels = document.querySelectorAll('.form-label');
   for (const label of labels) {
@@ -74,53 +73,34 @@ describe('LoginPage', () => {
     setMatchMedia(false);
   });
 
-  it('renders the login form with tabs', async () => {
+  it('renders a simple login screen', async () => {
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
 
     await waitFor(() => {
       expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
-    expect(document.querySelector('.dl-version-chip')).not.toBeNull();
-    // Tab navigation
-    expect(screen.getByText('薬局ログイン')).toBeInTheDocument();
-    expect(screen.getByText('管理者ログイン')).toBeInTheDocument();
-    // Default tab is user login
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
-    expect(screen.getByText('メールアドレス')).toBeInTheDocument();
-    expect(screen.getByText('パスワード')).toBeInTheDocument();
-    expect(getInputByLabel('メールアドレス')).toHaveAttribute('type', 'email');
-    expect(getInputByLabel('パスワード')).toHaveAttribute('type', 'password');
-    expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument();
-    expect(screen.getByText('入力準備ステータス')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '入力をクリア' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'ランダムでお試し入力' })).toBeInTheDocument();
+
+    expect(screen.getByRole('button', { name: '通常ログイン' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '管理者ログイン' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'ログイン' })).toBeInTheDocument();
     expect(screen.getByText('新規登録はこちら')).toBeInTheDocument();
+    expect(screen.getByText('開発者ログイン')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '一覧から選ぶ' })).toBeInTheDocument();
   });
 
-  it('switches to admin login tab', async () => {
+  it('switches to admin login mode', async () => {
     const user = userEvent.setup();
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
 
-    await waitFor(() => {
-      expect(screen.getByText('管理者ログイン')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText('管理者ログイン'));
+    await user.click(screen.getByRole('button', { name: '管理者ログイン' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('管理者ログイン');
+      expect(screen.getByRole('heading', { level: 2, name: '管理者ログイン' })).toBeInTheDocument();
     });
-    // Admin tab shows admin login submit button
-    const submitBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
-    expect(submitBtn).toBeTruthy();
-    expect(submitBtn.textContent).toBe('管理者ログイン');
-    // Register link should NOT be visible in admin mode
+    expect(screen.queryByText('開発者ログイン')).not.toBeInTheDocument();
     expect(screen.queryByText('新規登録はこちら')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'お試しアカウントを選ぶ' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'ランダムでお試し入力' })).not.toBeInTheDocument();
-    // Admin mode hint
     expect(screen.getByText('管理者アカウントでログインしてください。')).toBeInTheDocument();
   });
 
@@ -149,10 +129,6 @@ describe('LoginPage', () => {
 
     renderWithProviders(<LoginPage />, { route: '/login' });
 
-    await waitFor(() => {
-      expect(screen.getByText('メールアドレス')).toBeInTheDocument();
-    });
-
     await user.type(getInputByLabel('メールアドレス'), 'wrong@example.com');
     await user.type(getInputByLabel('パスワード'), 'wrongpassword');
     await user.click(screen.getByRole('button', { name: 'ログイン' }));
@@ -164,8 +140,7 @@ describe('LoginPage', () => {
 
   it('submits login form with correct credentials', async () => {
     const user = userEvent.setup();
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/login')) {
         return new Response(JSON.stringify(mockUser), {
@@ -188,49 +163,22 @@ describe('LoginPage', () => {
 
     renderWithProviders(<LoginPage />, { route: '/login' });
 
-    await waitFor(() => {
-      expect(screen.getByText('メールアドレス')).toBeInTheDocument();
-    });
-
     await user.type(getInputByLabel('メールアドレス'), 'test@example.com');
     await user.type(getInputByLabel('パスワード'), 'password123');
     await user.click(screen.getByRole('button', { name: 'ログイン' }));
 
     await waitFor(() => {
       const loginCall = fetchMock.mock.calls.find(
-        (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/login')
-      );
+        (call) => typeof call[0] === 'string' && call[0].includes('/api/auth/login'),
+      ) as [RequestInfo | URL, RequestInit?] | undefined;
       expect(loginCall).toBeTruthy();
-      const body = JSON.parse((loginCall![1] as RequestInit).body as string);
+      const body = JSON.parse(loginCall?.[1]?.body as string);
       expect(body.email).toBe('test@example.com');
       expect(body.password).toBe('password123');
     });
   });
 
-  it('renders login page key sections', async () => {
-    mockUnauthFetch();
-    renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
-    });
-
-    expect(screen.getByRole('button', { name: 'ログイン' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'ログイン' })).toBeInTheDocument();
-  });
-
-  it('has link to registration page in user mode', async () => {
-    mockUnauthFetch();
-    renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      const registerLink = screen.getByText('新規登録はこちら');
-      expect(registerLink).toBeInTheDocument();
-      expect(registerLink.closest('a')).toHaveAttribute('href', '/register');
-    });
-  });
-
-  it('hides test login shortcuts when feature flag is disabled', async () => {
+  it('hides developer login shortcuts when feature flag is disabled', async () => {
     vi.stubEnv('VITE_TEST_LOGIN_FEATURE_ENABLED', 'false');
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
@@ -239,46 +187,11 @@ describe('LoginPage', () => {
       expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole('button', { name: 'ランダムでお試し入力' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'お試しアカウントを選ぶ' })).not.toBeInTheDocument();
-    expect(screen.queryByText('まずはお試しログイン')).not.toBeInTheDocument();
+    expect(screen.queryByText('開発者ログイン')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '一覧から選ぶ' })).not.toBeInTheDocument();
   });
 
-  it('fills login form by random trial account action', async () => {
-    const user = userEvent.setup();
-    vi.spyOn(Math, 'random').mockReturnValue(0.9);
-    mockUnauthFetch({
-      testPharmacies: [
-        {
-          id: 51,
-          name: 'ランダム候補A',
-          email: 'random-a@example.com',
-          prefecture: '京都府',
-          password: 'RandomA!2026',
-        },
-        {
-          id: 52,
-          name: 'ランダム候補B',
-          email: 'random-b@example.com',
-          prefecture: '広島県',
-          password: 'RandomB!2026',
-        },
-      ],
-    });
-    renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'ランダムでお試し入力' })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole('button', { name: 'ランダムでお試し入力' }));
-
-    await waitFor(() => {
-      expect(getInputByLabel('メールアドレス')).toHaveValue('random-b@example.com');
-      expect(getInputByLabel('パスワード')).toHaveValue('RandomB!2026');
-    });
-  });
-
-  it('opens test pharmacy window and applies selected account in desktop view', async () => {
+  it('opens developer login modal and applies selected account in desktop view', async () => {
     const user = userEvent.setup();
     const fetchMock = mockUnauthFetch({
       testPharmacies: [
@@ -300,20 +213,14 @@ describe('LoginPage', () => {
     });
     renderWithProviders(<LoginPage />, { route: '/login' });
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'お試しアカウントを選ぶ' })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole('button', { name: 'お試しアカウントを選ぶ' }));
+    await user.click(screen.getByRole('button', { name: '一覧から選ぶ' }));
 
     await waitFor(() => {
-      expect(screen.getByText('登録済みテスト薬局')).toBeInTheDocument();
+      expect(screen.getAllByText('開発者ログイン').length).toBeGreaterThan(0);
     });
     expect(screen.getByText('テスト薬局東京店')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局札幌店')).toBeInTheDocument();
     expect(screen.getByText('TokyoDemo!2026')).toBeInTheDocument();
-    expect(screen.getByText('SapporoDemo!2026')).toBeInTheDocument();
-    expect(document.querySelector('.dl-test-pharmacy-modal table')).not.toBeNull();
-    expect(document.querySelector('.dl-mobile-data-card')).toBeNull();
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies?includePassword=1')),
     ).toBe(true);
@@ -323,13 +230,12 @@ describe('LoginPage', () => {
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('test-tokyo@example.com');
     expect(getInputByLabel('パスワード')).toHaveValue('TokyoDemo!2026');
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
   });
 
-  it('renders same selection feature in mobile view', async () => {
+  it('renders developer login modal list in mobile view', async () => {
     const user = userEvent.setup();
     setMatchMedia(true);
-    const fetchMock = mockUnauthFetch({
+    mockUnauthFetch({
       testPharmacies: [
         {
           id: 11,
@@ -338,49 +244,15 @@ describe('LoginPage', () => {
           prefecture: '愛知県',
           password: 'MobileA!2026',
         },
-        {
-          id: 12,
-          name: 'テスト薬局モバイルB',
-          email: 'mobile-b@example.com',
-          prefecture: '福岡県',
-          password: 'MobileB!2026',
-        },
       ],
     });
     renderWithProviders(<LoginPage />, { route: '/login' });
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'お試しアカウントを選ぶ' })).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('button', { name: 'お試しアカウントを選ぶ' }));
+    await user.click(screen.getByRole('button', { name: '一覧から選ぶ' }));
 
     await waitFor(() => {
       expect(screen.getByText('テスト薬局モバイルA')).toBeInTheDocument();
-      expect(screen.getByText('テスト薬局モバイルB')).toBeInTheDocument();
-    });
-    expect(screen.getByText('MobileA!2026')).toBeInTheDocument();
-    expect(screen.getByText('MobileB!2026')).toBeInTheDocument();
-    expect(document.querySelector('.dl-mobile-data-card')).not.toBeNull();
-    expect(document.querySelector('.dl-test-pharmacy-modal table')).toBeNull();
-    expect(
-      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies?includePassword=1')),
-    ).toBe(true);
-
-    const applyButtons = screen.getAllByRole('button', { name: 'このID/パスワードを入力' });
-    await user.click(applyButtons[1]);
-
-    expect(getInputByLabel('メールアドレス')).toHaveValue('mobile-b@example.com');
-    expect(getInputByLabel('パスワード')).toHaveValue('MobileB!2026');
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('ログイン');
-  });
-
-  it('displays footer operation note', async () => {
-    mockUnauthFetch();
-    renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      expect(screen.getByText(/本システムは業務補助ツールです/)).toBeInTheDocument();
+      expect(screen.getByText('MobileA!2026')).toBeInTheDocument();
     });
   });
 
@@ -408,20 +280,7 @@ describe('LoginPage', () => {
     }));
 
     renderWithProviders(<LoginPage />, { route: '/login' });
-
-    await waitFor(() => {
-      expect(screen.getByText('管理者ログイン')).toBeInTheDocument();
-    });
-
-    // Switch to admin tab
-    await user.click(screen.getByText('管理者ログイン'));
-
-    await waitFor(() => {
-      const submitBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
-      expect(submitBtn).toBeTruthy();
-      expect(submitBtn.textContent).toBe('管理者ログイン');
-    });
-
+    await user.click(screen.getByRole('button', { name: '管理者ログイン' }));
     await user.type(getInputByLabel('メールアドレス'), 'user@example.com');
     await user.type(getInputByLabel('パスワード'), 'password123');
     await user.click(document.querySelector('button[type="submit"]') as HTMLButtonElement);

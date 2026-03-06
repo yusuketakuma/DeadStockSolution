@@ -26,6 +26,7 @@ import { sleep } from '../utils/http-utils';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
 import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verification-service';
+import { resolveServerTestLoginFeatureEnabled } from '../config/test-login-feature';
 
 const router = Router();
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
@@ -72,12 +73,11 @@ function createAuthLimiter(max: number, error: string) {
 }
 
 function isTestLoginFeatureEnabled(): boolean {
-  const raw = process.env.TEST_LOGIN_FEATURE_ENABLED?.trim().toLowerCase();
-  if (raw === 'true') return true;
-  if (raw === 'false') return false;
-  const vercelEnv = process.env.VERCEL_ENV?.trim().toLowerCase();
-  if (vercelEnv === 'production' || vercelEnv === 'preview') return true;
-  return process.env.NODE_ENV !== 'production';
+  return resolveServerTestLoginFeatureEnabled(process.env as {
+    NODE_ENV?: string;
+    VERCEL_ENV?: string;
+    TEST_LOGIN_FEATURE_ENABLED?: string;
+  });
 }
 
 function handleAuthConfigurationError(context: string, err: unknown, res: Response): boolean {
