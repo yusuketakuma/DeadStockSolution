@@ -1,81 +1,39 @@
-import { and, eq, inArray, sql, type InferInsertModel, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, type InferInsertModel } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, usedMedicationItems } from '../db/schema';
 import {
-  buildExistingByKey,
   deadStockKey,
   dedupeIncomingByKey,
-  equalNullableNumber,
   normalizeDate,
-  normalizeNullableNumber,
-  normalizeString,
   usedMedicationKey,
 } from '../utils/upload-diff-utils';
-
-const DIFF_INSERT_BATCH_SIZE = 500;
-const DIFF_UPDATE_BATCH_SIZE = 250;
-
-interface DeadStockDiffInput {
-  drugCode: string | null;
-  drugName: string;
-  drugMasterId?: number | null;
-  drugMasterPackageId?: number | null;
-  packageLabel?: string | null;
-  quantity: number;
-  unit: string | null;
-  yakkaUnitPrice: number | null;
-  yakkaTotal: number | null;
-  expirationDate: string | null;
-  lotNumber: string | null;
-}
-
-interface UsedMedicationDiffInput {
-  drugCode: string | null;
-  drugName: string;
-  drugMasterId?: number | null;
-  drugMasterPackageId?: number | null;
-  packageLabel?: string | null;
-  monthlyUsage: number | null;
-  unit: string | null;
-  yakkaUnitPrice: number | null;
-}
-
-type PreparedDeadStockDiffInput = DeadStockDiffInput & { normalizedDate: string | null };
-
-interface DeadStockComparableRow {
-  drugMasterId: number | null;
-  drugMasterPackageId: number | null;
-  packageLabel: string | null;
-  quantity: number | string | null;
-  yakkaUnitPrice: number | string | null;
-  yakkaTotal: number | string | null;
-  unit: string | null;
-  lotNumber: string | null;
-  expirationDate: string | null;
-  expirationDateIso: string | null;
-  isAvailable: boolean | null;
-}
-
-interface UsedMedicationComparableRow {
-  drugMasterId: number | null;
-  drugMasterPackageId: number | null;
-  packageLabel: string | null;
-  monthlyUsage: number | string | null;
-  yakkaUnitPrice: number | string | null;
-}
-
-interface DeadStockExistingRow extends DeadStockComparableRow {
-  id: number;
-  drugCode: string | null;
-  drugName: string;
-}
-
-interface UsedMedicationExistingRow extends UsedMedicationComparableRow {
-  id: number;
-  drugCode: string | null;
-  drugName: string;
-  unit: string | null;
-}
+import {
+  buildDeadStockInsertRow,
+  buildUsedMedicationInsertRow,
+  type DeadStockDiffInput,
+  type PreparedDeadStockDiffInput,
+  type UsedMedicationDiffInput,
+} from './upload-diff-builders';
+import {
+  analyzeIncomingDiff,
+  type DiffPlan,
+} from './upload-diff-analyzer';
+import {
+  collectMissingIds,
+  countMissingRows,
+} from './upload-diff-utils';
+import {
+  insertDeadStockInBatches,
+  insertUsedMedicationInBatches,
+  updateDeadStockInBatches,
+  updateUsedMedicationInBatches,
+  type DeadStockExistingRow,
+  type UsedMedicationExistingRow,
+} from './upload-diff-batch';
+import {
+  hasDeadStockRowChanged,
+  hasUsedMedicationRowChanged,
+} from './upload-diff-comparator';
 
 export interface DiffSummary {
   inserted: number;
@@ -93,29 +51,11 @@ type UploadDiffTx = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete' | 
 type UploadDiffReader = Pick<typeof db, 'select'>;
 type DeadStockInsertRow = InferInsertModel<typeof deadStockItems>;
 type UsedMedicationInsertRow = InferInsertModel<typeof usedMedicationItems>;
-type WithId = { id: number };
 
-interface DiffPlan<TIncoming, TExisting extends WithId> {
-  insertedItems: TIncoming[];
-  updatedPairs: Array<{ current: TExisting; item: TIncoming }>;
-  unchanged: number;
-  seenExistingIds: Set<number>;
-}
-
-interface DiffContext<TIncoming, TExisting extends WithId> {
+interface DiffContext<TIncoming, TExisting extends { id: number }> {
   incomingItems: TIncoming[];
   existing: TExisting[];
   diffPlan: DiffPlan<TIncoming, TExisting>;
-}
-
-async function processInBatches<T>(
-  items: T[],
-  batchSize: number,
-  processor: (batch: T[]) => Promise<void>,
-): Promise<void> {
-  for (let start = 0; start < items.length; start += batchSize) {
-    await processor(items.slice(start, start + batchSize));
-  }
 }
 
 function summarizeDiff(
@@ -132,7 +72,7 @@ function summarizeDiff(
   };
 }
 
-async function resolveDiffContext<TSource, TIncoming, TExisting extends WithId>(
+async function resolveDiffContext<TSource, TIncoming, TExisting extends { id: number }>(
   reader: UploadDiffReader,
   pharmacyId: number,
   incoming: TSource[],
@@ -146,7 +86,7 @@ async function resolveDiffContext<TSource, TIncoming, TExisting extends WithId>(
   return { incomingItems, existing, diffPlan };
 }
 
-function resolveMissingIds<TExisting extends WithId>(
+function resolveMissingIds<TExisting extends { id: number }>(
   deleteMissing: boolean,
   existing: TExisting[],
   seenExistingIds: Set<number>,
@@ -156,189 +96,6 @@ function resolveMissingIds<TExisting extends WithId>(
     return [];
   }
   return collectMissing(existing, seenExistingIds);
-}
-
-function toNullableDecimalString(value: number | null): string | null {
-  return value !== null ? String(value) : null;
-}
-
-function buildValuesSql<T>(items: T[], buildRow: (item: T) => SQL): SQL {
-  return sql.join(items.map((item) => buildRow(item)), sql`, `);
-}
-
-function analyzeIncomingDiff<TIncoming, TExisting extends WithId>(
-  existing: TExisting[],
-  incoming: TIncoming[],
-  buildKeyForExisting: (row: TExisting) => string,
-  buildKeyForIncoming: (item: TIncoming) => string,
-  hasRowChanged: (current: TExisting, item: TIncoming) => boolean,
-): DiffPlan<TIncoming, TExisting> {
-  const existingByKey = buildExistingByKey(existing, buildKeyForExisting);
-  const insertedItems: TIncoming[] = [];
-  const updatedPairs: Array<{ current: TExisting; item: TIncoming }> = [];
-  const seenExistingIds = new Set<number>();
-  let unchanged = 0;
-
-  for (const item of incoming) {
-    const current = existingByKey.get(buildKeyForIncoming(item));
-    if (!current) {
-      insertedItems.push(item);
-      continue;
-    }
-
-    seenExistingIds.add(current.id);
-    if (hasRowChanged(current, item)) {
-      updatedPairs.push({ current, item });
-      continue;
-    }
-
-    unchanged += 1;
-  }
-
-  return { insertedItems, updatedPairs, unchanged, seenExistingIds };
-}
-
-function collectMissingIds<TExisting extends WithId>(
-  existing: TExisting[],
-  seenExistingIds: Set<number>,
-  shouldInclude: (row: TExisting) => boolean = () => true,
-): number[] {
-  return existing
-    .filter((row) => shouldInclude(row) && !seenExistingIds.has(row.id))
-    .map((row) => row.id);
-}
-
-function countMissingRows<TExisting extends WithId>(
-  existing: TExisting[],
-  seenExistingIds: Set<number>,
-  shouldInclude: (row: TExisting) => boolean = () => true,
-): number {
-  let count = 0;
-  for (const row of existing) {
-    if (shouldInclude(row) && !seenExistingIds.has(row.id)) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-async function insertDeadStockInBatches(tx: UploadDiffTx, rows: DeadStockInsertRow[]): Promise<void> {
-  await processInBatches(rows, DIFF_INSERT_BATCH_SIZE, async (batch) => {
-    await tx.insert(deadStockItems).values(batch);
-  });
-}
-
-async function insertUsedMedicationInBatches(tx: UploadDiffTx, rows: UsedMedicationInsertRow[]): Promise<void> {
-  await processInBatches(rows, DIFF_INSERT_BATCH_SIZE, async (batch) => {
-    await tx.insert(usedMedicationItems).values(batch);
-  });
-}
-
-async function updateDeadStockInBatches(
-  tx: UploadDiffTx,
-  pharmacyId: number,
-  uploadId: number,
-  updatedPairs: Array<{ current: DeadStockExistingRow; item: PreparedDeadStockDiffInput }>,
-): Promise<void> {
-  await processInBatches(updatedPairs, DIFF_UPDATE_BATCH_SIZE, async (batch) => {
-    const updateRowsSql = buildValuesSql(batch, ({ current, item }) => sql`(
-      ${current.id},
-      ${uploadId},
-      ${item.drugMasterId ?? null},
-      ${item.drugMasterPackageId ?? null},
-      ${item.packageLabel ?? null},
-      ${item.quantity},
-      ${item.unit},
-      ${toNullableDecimalString(item.yakkaUnitPrice)},
-      ${toNullableDecimalString(item.yakkaTotal)},
-      ${item.expirationDate},
-      ${item.normalizedDate},
-      ${item.lotNumber}
-    )`);
-
-    await tx.execute(sql`
-      WITH updates (
-        id,
-        upload_id,
-        drug_master_id,
-        drug_master_package_id,
-        package_label,
-        quantity,
-        unit,
-        yakka_unit_price,
-        yakka_total,
-        expiration_date,
-        expiration_date_iso,
-        lot_number
-      ) AS (
-        VALUES ${updateRowsSql}
-      )
-      UPDATE dead_stock_items AS target
-      SET
-        upload_id = updates.upload_id,
-        drug_master_id = updates.drug_master_id,
-        drug_master_package_id = updates.drug_master_package_id,
-        package_label = updates.package_label,
-        quantity = updates.quantity,
-        unit = updates.unit,
-        yakka_unit_price = updates.yakka_unit_price,
-        yakka_total = updates.yakka_total,
-        expiration_date = updates.expiration_date,
-        expiration_date_iso = updates.expiration_date_iso,
-        lot_number = updates.lot_number,
-        is_available = true
-      FROM updates
-      WHERE target.id = updates.id
-        AND target.pharmacy_id = ${pharmacyId}
-    `);
-  });
-}
-
-async function updateUsedMedicationInBatches(
-  tx: UploadDiffTx,
-  pharmacyId: number,
-  uploadId: number,
-  updatedPairs: Array<{ current: UsedMedicationExistingRow; item: UsedMedicationDiffInput }>,
-): Promise<void> {
-  await processInBatches(updatedPairs, DIFF_UPDATE_BATCH_SIZE, async (batch) => {
-    const updateRowsSql = buildValuesSql(batch, ({ current, item }) => sql`(
-      ${current.id},
-      ${uploadId},
-      ${item.drugMasterId ?? null},
-      ${item.drugMasterPackageId ?? null},
-      ${item.packageLabel ?? null},
-      ${item.monthlyUsage},
-      ${item.unit},
-      ${toNullableDecimalString(item.yakkaUnitPrice)}
-    )`);
-
-    await tx.execute(sql`
-      WITH updates (
-        id,
-        upload_id,
-        drug_master_id,
-        drug_master_package_id,
-        package_label,
-        monthly_usage,
-        unit,
-        yakka_unit_price
-      ) AS (
-        VALUES ${updateRowsSql}
-      )
-      UPDATE used_medication_items AS target
-      SET
-        upload_id = updates.upload_id,
-        drug_master_id = updates.drug_master_id,
-        drug_master_package_id = updates.drug_master_package_id,
-        package_label = updates.package_label,
-        monthly_usage = updates.monthly_usage,
-        unit = updates.unit,
-        yakka_unit_price = updates.yakka_unit_price
-      FROM updates
-      WHERE target.id = updates.id
-        AND target.pharmacy_id = ${pharmacyId}
-    `);
-  });
 }
 
 function prepareDeadStockIncoming(incoming: DeadStockDiffInput[]): PreparedDeadStockDiffInput[] {
@@ -359,31 +116,6 @@ function prepareDeadStockIncoming(incoming: DeadStockDiffInput[]): PreparedDeadS
 
 function prepareUsedMedicationIncoming(incoming: UsedMedicationDiffInput[]): UsedMedicationDiffInput[] {
   return dedupeIncomingByKey(incoming, usedMedicationKey);
-}
-
-function hasDeadStockRowChanged(current: DeadStockComparableRow, item: PreparedDeadStockDiffInput): boolean {
-  return (
-    (current.drugMasterId ?? null) !== (item.drugMasterId ?? null) ||
-    (current.drugMasterPackageId ?? null) !== (item.drugMasterPackageId ?? null) ||
-    normalizeString(current.packageLabel) !== normalizeString(item.packageLabel) ||
-    !equalNullableNumber(current.quantity, normalizeNullableNumber(item.quantity)) ||
-    !equalNullableNumber(current.yakkaUnitPrice, normalizeNullableNumber(item.yakkaUnitPrice)) ||
-    !equalNullableNumber(current.yakkaTotal, normalizeNullableNumber(item.yakkaTotal)) ||
-    normalizeString(current.unit) !== normalizeString(item.unit) ||
-    normalizeString(current.lotNumber) !== normalizeString(item.lotNumber) ||
-    normalizeString(current.expirationDateIso ?? current.expirationDate) !== normalizeString(item.normalizedDate) ||
-    current.isAvailable !== true
-  );
-}
-
-function hasUsedMedicationRowChanged(current: UsedMedicationComparableRow, item: UsedMedicationDiffInput): boolean {
-  return (
-    (current.drugMasterId ?? null) !== (item.drugMasterId ?? null) ||
-    (current.drugMasterPackageId ?? null) !== (item.drugMasterPackageId ?? null) ||
-    normalizeString(current.packageLabel) !== normalizeString(item.packageLabel) ||
-    !equalNullableNumber(current.monthlyUsage, normalizeNullableNumber(item.monthlyUsage)) ||
-    !equalNullableNumber(current.yakkaUnitPrice, normalizeNullableNumber(item.yakkaUnitPrice))
-  );
 }
 
 async function selectDeadStockExisting(
@@ -497,49 +229,6 @@ function countUsedMedicationDeleteRows(
   seenExistingIds: Set<number>,
 ): number {
   return countMissingRows(existing, seenExistingIds);
-}
-
-function buildDeadStockInsertRow(
-  pharmacyId: number,
-  uploadId: number,
-  item: PreparedDeadStockDiffInput,
-): DeadStockInsertRow {
-  return {
-    pharmacyId,
-    uploadId,
-    drugCode: item.drugCode,
-    drugName: item.drugName,
-    drugMasterId: item.drugMasterId ?? null,
-    drugMasterPackageId: item.drugMasterPackageId ?? null,
-    packageLabel: item.packageLabel ?? null,
-    quantity: item.quantity,
-    unit: item.unit,
-    yakkaUnitPrice: toNullableDecimalString(item.yakkaUnitPrice),
-    yakkaTotal: toNullableDecimalString(item.yakkaTotal),
-    expirationDate: item.expirationDate,
-    expirationDateIso: item.normalizedDate,
-    lotNumber: item.lotNumber,
-    isAvailable: true,
-  };
-}
-
-function buildUsedMedicationInsertRow(
-  pharmacyId: number,
-  uploadId: number,
-  item: UsedMedicationDiffInput,
-): UsedMedicationInsertRow {
-  return {
-    pharmacyId,
-    uploadId,
-    drugCode: item.drugCode,
-    drugName: item.drugName,
-    drugMasterId: item.drugMasterId ?? null,
-    drugMasterPackageId: item.drugMasterPackageId ?? null,
-    packageLabel: item.packageLabel ?? null,
-    monthlyUsage: item.monthlyUsage,
-    unit: item.unit,
-    yakkaUnitPrice: toNullableDecimalString(item.yakkaUnitPrice),
-  };
 }
 
 export async function previewDeadStockDiff(

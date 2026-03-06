@@ -19,7 +19,7 @@ export interface FieldError {
   message: string;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   public code?: string;
   public fieldErrors?: FieldError[];
   constructor(public status: number, message: string, public data?: unknown) {
@@ -292,5 +292,3 @@ export function isVerificationStatusError(err: unknown): err is ApiError & { dat
 export function isPartialSuccessError(err: unknown): err is ApiError & { data: { partialSuccess: true; version?: number } } {
   return err instanceof ApiError && err.status === 503 && err.data != null && typeof err.data === 'object' && (err.data as Record<string, unknown>).partialSuccess === true;
 }
-
-export { ApiError };

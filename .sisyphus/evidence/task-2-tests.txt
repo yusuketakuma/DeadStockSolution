@@ -1,0 +1,91 @@
+TASK 2: Reduce upload-diff-service.ts from 670 lines to ≤400 lines
+========================================================================
+
+COMPLETION STATUS: ✓ PASSED
+
+REFACTORING SUMMARY:
+- Original file: 670 lines
+- Final file: 359 lines (target: ≤400 lines)
+- Reduction: 311 lines (46.4% reduction)
+
+FILES CREATED:
+1. upload-diff-utils.ts (64 lines)
+   - toNullableDecimalString()
+   - buildValuesSql()
+   - processInBatches()
+   - collectMissingIds()
+   - countMissingRows()
+
+2. upload-diff-analyzer.ts (49 lines)
+   - DiffPlan interface
+   - analyzeIncomingDiff() - core diff algorithm
+
+3. upload-diff-builders.ts (85 lines)
+   - DeadStockDiffInput interface
+   - UsedMedicationDiffInput interface
+   - PreparedDeadStockDiffInput type
+   - buildDeadStockInsertRow()
+   - buildUsedMedicationInsertRow()
+
+4. upload-diff-batch.ts (161 lines)
+   - insertDeadStockInBatches()
+   - insertUsedMedicationInBatches()
+   - updateDeadStockInBatches()
+   - updateUsedMedicationInBatches()
+   - DeadStockExistingRow interface (exported)
+   - UsedMedicationExistingRow interface (exported)
+
+5. upload-diff-comparator.ts (60 lines)
+   - hasDeadStockRowChanged()
+   - hasUsedMedicationRowChanged()
+   - DeadStockComparableRow interface
+   - UsedMedicationComparableRow interface
+
+MAIN SERVICE FILE CHANGES:
+- Imports from 5 new utility modules
+- Removed pure helper functions (moved to utils)
+- Removed diff analysis logic (moved to analyzer)
+- Removed row builders (moved to builders)
+- Removed batch operations (moved to batch)
+- Removed change detection logic (moved to comparator)
+- Kept: core orchestration logic, public API, type definitions
+
+VERIFICATION RESULTS:
+✓ TypeScript compilation: No upload-diff related errors
+✓ Test suite: 8 tests passed (100%)
+✓ Test duration: 4ms
+✓ All imports resolved correctly
+✓ No breaking changes to public API
+
+EXPORTED SYMBOLS (unchanged):
+- previewDeadStockDiff()
+- applyDeadStockDiff()
+- previewUsedMedicationDiff()
+- applyUsedMedicationDiff()
+- DiffSummary interface
+- ApplyDiffOptions interface
+
+CONSUMERS VERIFIED:
+- server/src/routes/upload-parser.ts: ✓ imports work
+- server/src/services/upload-confirm-service.ts: ✓ imports work
+- server/src/test/upload-diff-service.test.ts: ✓ all tests pass
+
+LINE COUNT VERIFICATION:
+$ wc -l server/src/services/upload-diff-service.ts
+359 server/src/services/upload-diff-service.ts
+
+Target: ≤400 lines
+Result: 359 lines
+Status: ✓ PASSED (41 lines under target)
+
+REDUCTION METRICS:
+- Original: 670 lines
+- Final: 359 lines
+- Reduction: 311 lines (46.4%)
+- Target achieved: YES
+
+EXTRACTED MODULES SUMMARY:
+- Total lines extracted: 419 lines across 5 new files
+- Main service file: 359 lines (down from 670)
+- Modular organization: Pure functions separated by concern
+- Maintainability: Improved through separation of concerns
