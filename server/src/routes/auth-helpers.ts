@@ -3,8 +3,8 @@ import rateLimit from 'express-rate-limit';
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { ensureTestPharmacyColumnsAtStartup } from '../config/test-pharmacy-schema';
-import { pharmacies } from '../db/schema';
-import { eqEmailCaseInsensitive } from '../utils/email-utils';
+import { pharmacies, pharmacyRegistrationReviews, userRequests } from '../db/schema';
+import { eqEmailCaseInsensitive, normalizeEmail } from '../utils/email-utils';
 import { emailSchema, passwordSchema } from '../utils/validators';
 import { isJwtSecretMissingError, verifyToken, deriveSessionVersion } from '../services/auth-service';
 import { resolveServerTestLoginFeatureEnabled } from '../config/test-login-feature';
@@ -502,4 +502,157 @@ export function buildInvalidCredentialsResponse() {
 
 export function buildValidationErrorResponse(errors: unknown[]) {
   return { errors };
+}
+
+// Auth configuration constants
+export const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
+export const SHOULD_EXPOSE_PASSWORD_RESET_TOKEN = process.env.NODE_ENV === 'test' && EXPOSE_PASSWORD_RESET_TOKEN;
+export const AUTH_CONFIGURATION_ERROR_MESSAGE = '認証設定が未完了です。管理者に連絡してください';
+export const PASSWORD_RESET_MIN_RESPONSE_MS = process.env.NODE_ENV === 'test' ? 0 : 180;
+export const PASSWORD_RESET_RESPONSE_JITTER_MS = process.env.NODE_ENV === 'test' ? 0 : 120;
+
+// Auth limiters
+export const registerLimiter = createAuthLimiter(5, '登録試行回数が多すぎます。しばらくしてから再試行してください');
+export const loginLimiter = createAuthLimiter(10, 'ログイン試行回数が多すぎます。しばらくしてから再試行してください');
+export const testPharmacyPreviewLimiter = createAuthLimiter(30, 'テスト薬局情報の取得回数が多すぎます。しばらくしてから再試行してください');
+
+// Test pharmacy cache state
+export let isTestAccountColumnAvailable: boolean | null = null;
+export let testPharmacyCache: {
+  expiresAt: number;
+  rows: TestPharmacyPreviewRow[];
+} | null = null;
+
+// Cache management
+export function setTestPharmacyCache(cache: { expiresAt: number; rows: TestPharmacyPreviewRow[] } | null): void {
+  testPharmacyCache = cache;
+}
+
+export function setIsTestAccountColumnAvailable(val: boolean): void {
+  isTestAccountColumnAvailable = val;
+}
+
+// Registration validation helper
+export function validateRegistrationInput(body: unknown): { valid: boolean; errors?: unknown[] } {
+  const errors = (body as any)?.errors || [];
+  if (errors.length > 0) {
+    return { valid: false, errors };
+  }
+  return { valid: true };
+}
+
+// Password reset request validation
+export function validatePasswordResetRequest(email: string): { valid: boolean; error?: string } {
+  if (!email) {
+    return { valid: false, error: 'メールアドレスを入力してください' };
+  }
+  const emailValidation = validateEmail(email);
+  if (!emailValidation.valid) {
+    return { valid: false, error: emailValidation.error };
+  }
+  return { valid: true };
+}
+
+// Password reset confirm validation
+export function validatePasswordResetConfirm(token: string, newPassword: string): { valid: boolean; error?: string } {
+  if (!validateResetToken(token)) {
+    return { valid: false, error: 'invalid_token' };
+  }
+  const passwordValidation = validatePassword(newPassword);
+  if (!passwordValidation.valid) {
+    return { valid: false, error: passwordValidation.error };
+  }
+  return { valid: true };
+}
+
+// Login helper
+export function validateLoginInput(email: string, password: string): { valid: boolean; error?: string } {
+  if (!email || !password) {
+    return { valid: false, error: 'メールアドレスとパスワードを入力してください' };
+  }
+  return { valid: true };
+}
+
+// Registration process helper - handles the core registration logic
+export async function executeRegistrationProcess(
+  normalizedEmail: string,
+  passwordHash: string,
+  name: string,
+  normalizedPostalCode: string,
+  prefecture: string,
+  address: string,
+  phone: string,
+  fax: string,
+  licenseNumber: string,
+  permitLicenseNumber: string,
+  permitPharmacyName: string,
+  permitAddress: string,
+  coords: { lat: number; lng: number },
+  screening: any,
+) {
+  return db.transaction(async (tx) => {
+    const [review] = await tx.insert(pharmacyRegistrationReviews).values({
+      email: normalizedEmail,
+      pharmacyName: name,
+      postalCode: normalizedPostalCode,
+      prefecture,
+      address,
+      phone,
+      fax,
+      licenseNumber,
+      permitLicenseNumber,
+      permitPharmacyName,
+      permitAddress,
+      verdict: screening.approved ? 'approved' : 'rejected',
+      screeningScore: screening.screeningScore,
+      screeningReasons: screening.reasons.join(' / '),
+      mismatchDetailsJson: screening.mismatches.length > 0
+        ? JSON.stringify(screening.mismatches)
+        : null,
+      registrationIp: '',
+    }).returning({ id: pharmacyRegistrationReviews.id });
+
+    if (!screening.approved) {
+      return { approved: false as const, reviewId: review.id };
+    }
+
+    const [createdPharmacy] = await tx.insert(pharmacies).values({
+      email: normalizedEmail,
+      passwordHash,
+      name,
+      postalCode: normalizedPostalCode,
+      prefecture,
+      address,
+      phone,
+      fax,
+      licenseNumber,
+      latitude: coords.lat,
+      longitude: coords.lng,
+      isActive: false,
+      verificationStatus: 'pending_verification',
+    }).returning({ id: pharmacies.id });
+
+    const [verificationRequest] = await tx.insert(userRequests).values({
+      pharmacyId: createdPharmacy.id,
+      requestText: buildVerificationRequestText(name, normalizedPostalCode, prefecture, address, licenseNumber),
+    }).returning({ id: userRequests.id });
+
+    await tx.update(pharmacies)
+      .set({ verificationRequestId: verificationRequest.id })
+      .where(eq(pharmacies.id, createdPharmacy.id));
+
+    await tx.update(pharmacyRegistrationReviews)
+      .set({
+        createdPharmacyId: createdPharmacy.id,
+        reviewedAt: new Date().toISOString(),
+      })
+      .where(eq(pharmacyRegistrationReviews.id, review.id));
+
+    return {
+      approved: true as const,
+      reviewId: review.id,
+      pharmacyId: createdPharmacy.id,
+      verificationRequestId: verificationRequest.id,
+    };
+  });
 }

@@ -192,6 +192,16 @@
 ### Key Insight
 Generic constraint pattern (`V extends { expiresAtMs: number }`) is effective for consolidating similar operations on different Map types. The constraint ensures type safety while allowing code reuse.
 
+## [2026-03-07] upload-parser preview regression fix
+
+### Regression pattern
+- Helper extraction changed preview mapping type semantics: `buildPreviewMappings()` switched from source-aware mapping objects to plain `ColumnMapping`, but callers still read `.mapping` and `.fromSavedTemplate`.
+- This silently made `validateSuggestedPreviewMapping()` receive `undefined` and return `null` for both upload types, which forced `/api/upload/preview` into `auto_mapping_failed` (HTTP 400).
+
+### Safe restore approach
+- Keep helper extraction structure; restore prior semantics by using `resolveMappingFromTemplateWithSource` in `buildPreviewMappings()` and validating `suggestedByType[uploadType].mapping`.
+- Maintain existing public behavior: `hasSavedMapping` remains correctly derived from `fromSavedTemplate` without broad route changes.
+
 ## [2026-03-05] Security Audit Findings
 
 ### P1 Fixes Applied
