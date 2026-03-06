@@ -41,9 +41,28 @@ const accountDeletionLimiter = rateLimit({
 
 const router = Router();
 
+function parseVersion(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  if (value < 1 || value > 2_147_483_647) return null;
+  return value;
+}
+
+function parseOptionalTrimmedString(value: unknown, maxLength: number): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (normalized.length === 0 || normalized.length > maxLength) return null;
+  return normalized;
+}
+
+async function selectFirst<T>(rowsPromise: PromiseLike<T[]>): Promise<T | null> {
+  const rows = await rowsPromise;
+  return rows[0] ?? null;
+}
+
 router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
   try {
-    const rows = await db.select({
+    const account = await selectFirst(db.select({
       id: pharmacies.id,
       email: pharmacies.email,
       name: pharmacies.name,
@@ -61,14 +80,14 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
     })
       .from(pharmacies)
       .where(eq(pharmacies.id, req.user!.id))
-      .limit(1);
+      .limit(1));
 
-    if (rows.length === 0) {
+    if (!account) {
       res.status(404).json({ error: 'アカウントが見つかりません' });
       return;
     }
 
-    res.json(rows[0]);
+    res.json(account);
   } catch (err) {
     logger.error('Get account error', {
       error: getErrorMessage(err),
@@ -97,12 +116,13 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     } = req.body;
 
     // version バリデーション
-    if (version === undefined || version === null || typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version > 2_147_483_647) {
+    const parsedVersion = parseVersion(version);
+    if (parsedVersion === null) {
       res.status(400).json({ error: 'バージョン情報が不正です' });
       return;
     }
 
-    const accountRows = await db.select({
+    const currentAccount = await selectFirst(db.select({
       id: pharmacies.id,
       email: pharmacies.email,
       name: pharmacies.name,
@@ -118,12 +138,11 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     })
       .from(pharmacies)
       .where(eq(pharmacies.id, req.user!.id))
-      .limit(1);
-    if (accountRows.length === 0) {
+      .limit(1));
+    if (!currentAccount) {
       res.status(404).json({ error: 'アカウントが見つかりません' });
       return;
     }
-    const currentAccount = accountRows[0];
 
     const updates: Record<string, unknown> = {};
 
@@ -141,12 +160,13 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       updates.email = normalizedEmail;
     }
 
-    if (name !== undefined) {
-      if (typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 100) {
+    const normalizedName = parseOptionalTrimmedString(name, 100);
+    if (normalizedName === null) {
         res.status(400).json({ error: '薬局名は1〜100文字で入力してください' });
         return;
-      }
-      updates.name = name.trim();
+    }
+    if (normalizedName !== undefined) {
+      updates.name = normalizedName;
     }
 
     if (postalCode !== undefined) {
@@ -162,12 +182,13 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       updates.postalCode = normalized;
     }
 
-    if (address !== undefined) {
-      if (typeof address !== 'string' || address.trim().length === 0 || address.trim().length > 255) {
+    const normalizedAddress = parseOptionalTrimmedString(address, 255);
+    if (normalizedAddress === null) {
         res.status(400).json({ error: '住所は1〜255文字で入力してください' });
         return;
-      }
-      updates.address = address.trim();
+    }
+    if (normalizedAddress !== undefined) {
+      updates.address = normalizedAddress;
     }
 
     // 住所または都道府県が変更された場合、再ジオコーディング
@@ -184,36 +205,40 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       updates.longitude = coords.lng;
     }
 
-    if (phone !== undefined) {
-      if (typeof phone !== 'string' || phone.trim().length === 0 || phone.trim().length > 30) {
+    const normalizedPhone = parseOptionalTrimmedString(phone, 30);
+    if (normalizedPhone === null) {
         res.status(400).json({ error: '電話番号が不正です' });
         return;
-      }
-      updates.phone = phone.trim();
+    }
+    if (normalizedPhone !== undefined) {
+      updates.phone = normalizedPhone;
     }
 
-    if (fax !== undefined) {
-      if (typeof fax !== 'string' || fax.trim().length === 0 || fax.trim().length > 30) {
+    const normalizedFax = parseOptionalTrimmedString(fax, 30);
+    if (normalizedFax === null) {
         res.status(400).json({ error: 'FAX番号が不正です' });
         return;
-      }
-      updates.fax = fax.trim();
+    }
+    if (normalizedFax !== undefined) {
+      updates.fax = normalizedFax;
     }
 
-    if (prefecture !== undefined) {
-      if (typeof prefecture !== 'string' || prefecture.trim().length === 0 || prefecture.trim().length > 10) {
+    const normalizedPrefecture = parseOptionalTrimmedString(prefecture, 10);
+    if (normalizedPrefecture === null) {
         res.status(400).json({ error: '都道府県が不正です' });
         return;
-      }
-      updates.prefecture = prefecture.trim();
+    }
+    if (normalizedPrefecture !== undefined) {
+      updates.prefecture = normalizedPrefecture;
     }
 
-    if (licenseNumber !== undefined) {
-      if (typeof licenseNumber !== 'string' || licenseNumber.trim().length === 0 || licenseNumber.trim().length > 50) {
+    const normalizedLicenseNumber = parseOptionalTrimmedString(licenseNumber, 50);
+    if (normalizedLicenseNumber === null) {
         res.status(400).json({ error: '薬局開設許可番号が不正です' });
         return;
-      }
-      updates.licenseNumber = licenseNumber.trim();
+    }
+    if (normalizedLicenseNumber !== undefined) {
+      updates.licenseNumber = normalizedLicenseNumber;
     }
 
     if (testAccountPassword !== undefined) {
@@ -277,16 +302,16 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
         return;
       }
 
-      const rows = await db.select({ passwordHash: pharmacies.passwordHash })
+      const passwordRow = await selectFirst(db.select({ passwordHash: pharmacies.passwordHash })
         .from(pharmacies)
         .where(eq(pharmacies.id, req.user!.id))
-        .limit(1);
-      if (rows.length === 0) {
+        .limit(1));
+      if (!passwordRow) {
         res.status(404).json({ error: 'アカウントが見つかりません' });
         return;
       }
 
-      const valid = await verifyPassword(currentPassword, rows[0].passwordHash);
+      const valid = await verifyPassword(currentPassword, passwordRow.passwordHash);
       if (!valid) {
         res.status(400).json({ error: '現在のパスワードが正しくありません' });
         return;
@@ -318,7 +343,7 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     // 楽観的ロック: id と version の両方が一致する場合のみ更新
     const updateResult = await db.update(pharmacies)
       .set(updates)
-      .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, version)))
+      .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, parsedVersion)))
       .returning({
         id: pharmacies.id,
         email: pharmacies.email,
@@ -331,7 +356,7 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     // 更新行数 0 = 楽観的ロック競合
     if (updateResult.length === 0) {
       // 最新データを取得して 409 レスポンスに含める
-      const latestRows = await db.select({
+      const latestAccount = await selectFirst(db.select({
         id: pharmacies.id,
         email: pharmacies.email,
         name: pharmacies.name,
@@ -346,11 +371,11 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       })
         .from(pharmacies)
         .where(eq(pharmacies.id, req.user!.id))
-        .limit(1);
+        .limit(1));
 
       res.status(409).json({
         error: '他のデバイスまたはタブで更新されています。最新データを確認してください',
-        latestData: latestRows[0] ?? null,
+        latestData: latestAccount,
       });
       return;
     }
@@ -426,17 +451,17 @@ router.delete('/', requireLogin, accountDeletionLimiter, async (req: AuthRequest
       return;
     }
 
-    const rows = await db.select({ passwordHash: pharmacies.passwordHash })
+    const passwordRow = await selectFirst(db.select({ passwordHash: pharmacies.passwordHash })
       .from(pharmacies)
       .where(eq(pharmacies.id, req.user!.id))
-      .limit(1);
+      .limit(1));
 
-    if (rows.length === 0) {
+    if (!passwordRow) {
       res.status(404).json({ error: 'アカウントが見つかりません' });
       return;
     }
 
-    const valid = await verifyPassword(currentPassword, rows[0].passwordHash);
+    const valid = await verifyPassword(currentPassword, passwordRow.passwordHash);
     if (!valid) {
       res.status(400).json({ error: '現在のパスワードが正しくありません' });
       return;

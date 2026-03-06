@@ -72,14 +72,29 @@ describe('business-hours routes — deep coverage', () => {
   describe('GET /settings — error handling', () => {
     it('returns 500 on fetchBusinessHourSettings error', async () => {
       const app = createApp();
-      // simulate error in one of the parallel queries
-      mocks.db.select.mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            orderBy: vi.fn().mockRejectedValue(new Error('DB error')),
+      // simulate error in one of the parallel queries while the others resolve
+      mocks.db.select
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockRejectedValue(new Error('DB error')),
+            }),
           }),
-        }),
-      });
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{ version: 1 }]),
+            }),
+          }),
+        });
 
       const res = await request(app).get('/api/business-hours/settings');
 

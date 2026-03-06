@@ -49,6 +49,7 @@ const findLimiter = rateLimit({
 
 type BulkActionType = 'accept' | 'reject';
 const BULK_ACTION_CONCURRENCY = 8;
+type ProposalLogAction = 'proposal_accept' | 'proposal_reject' | 'proposal_complete';
 
 function parseBulkAction(raw: unknown): BulkActionType | null {
   if (raw === 'accept' || raw === 'reject') return raw;
@@ -116,6 +117,36 @@ function sanitizeProposalActionError(err: unknown): { status: number; message: s
     return { status: 409, message: '状態が変更されたため、再読み込みして再試行してください' };
   }
   return { status: 400, message: '操作に失敗しました' };
+}
+
+interface ProposalActionHandlerConfig<TResult> {
+  logAction: ProposalLogAction;
+  run: (proposalId: number, actorId: number) => Promise<TResult>;
+  buildLogDetail: (proposalId: number, result: TResult) => string;
+  buildResponse: (result: TResult) => Record<string, unknown>;
+}
+
+async function handleProposalAction<TResult>(
+  req: AuthRequest,
+  res: Response,
+  config: ProposalActionHandlerConfig<TResult>,
+): Promise<void> {
+  try {
+    const id = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!id) return;
+
+    const actorId = req.user!.id;
+    const result = await config.run(id, actorId);
+    void writeLog(config.logAction, {
+      pharmacyId: actorId,
+      detail: config.buildLogDetail(id, result),
+      ipAddress: getClientIp(req),
+    });
+    res.json(config.buildResponse(result));
+  } catch (err) {
+    const failure = sanitizeProposalActionError(err);
+    res.status(failure.status).json({ error: failure.message });
+  }
 }
 
 // Find matching candidates
@@ -228,63 +259,37 @@ router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) =>
 
 // Accept proposal (single action endpoint kept for backward compatibility with detail page)
 router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => {
-  try {
-    const id = parseExchangeIdOrBadRequest(res, req.params.id);
-    if (!id) return;
-
-    const newStatus = await acceptProposal(id, req.user!.id);
-    const message = newStatus === 'confirmed'
-      ? '仮マッチングが確定しました'
-      : '仮マッチングを承認しました（相手薬局の承認待ち）';
-
-    void writeLog('proposal_accept', {
-      pharmacyId: req.user!.id,
-      detail: `proposalId=${id}|status=${newStatus}`,
-      ipAddress: getClientIp(req),
-    });
-    res.json({ message, status: newStatus });
-  } catch (err) {
-    const failure = sanitizeProposalActionError(err);
-    res.status(failure.status).json({ error: failure.message });
-  }
+  await handleProposalAction(req, res, {
+    logAction: 'proposal_accept',
+    run: acceptProposal,
+    buildLogDetail: (proposalId, status) => `proposalId=${proposalId}|status=${status}`,
+    buildResponse: (status) => ({
+      message: status === 'confirmed'
+        ? '仮マッチングが確定しました'
+        : '仮マッチングを承認しました（相手薬局の承認待ち）',
+      status,
+    }),
+  });
 });
 
 // Reject proposal (single action endpoint kept for backward compatibility with detail page)
 router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => {
-  try {
-    const id = parseExchangeIdOrBadRequest(res, req.params.id);
-    if (!id) return;
-
-    await rejectProposal(id, req.user!.id);
-    void writeLog('proposal_reject', {
-      pharmacyId: req.user!.id,
-      detail: `proposalId=${id}|status=rejected`,
-      ipAddress: getClientIp(req),
-    });
-    res.json({ message: '仮マッチングを拒否しました' });
-  } catch (err) {
-    const failure = sanitizeProposalActionError(err);
-    res.status(failure.status).json({ error: failure.message });
-  }
+  await handleProposalAction(req, res, {
+    logAction: 'proposal_reject',
+    run: rejectProposal,
+    buildLogDetail: (proposalId) => `proposalId=${proposalId}|status=rejected`,
+    buildResponse: () => ({ message: '仮マッチングを拒否しました' }),
+  });
 });
 
 // Complete exchange (single action endpoint kept for backward compatibility with detail page)
 router.post('/proposals/:id/complete', async (req: AuthRequest, res: Response) => {
-  try {
-    const id = parseExchangeIdOrBadRequest(res, req.params.id);
-    if (!id) return;
-
-    await completeProposal(id, req.user!.id);
-    void writeLog('proposal_complete', {
-      pharmacyId: req.user!.id,
-      detail: `proposalId=${id}|status=completed`,
-      ipAddress: getClientIp(req),
-    });
-    res.json({ message: '交換を完了しました' });
-  } catch (err) {
-    const failure = sanitizeProposalActionError(err);
-    res.status(failure.status).json({ error: failure.message });
-  }
+  await handleProposalAction(req, res, {
+    logAction: 'proposal_complete',
+    run: completeProposal,
+    buildLogDetail: (proposalId) => `proposalId=${proposalId}|status=completed`,
+    buildResponse: () => ({ message: '交換を完了しました' }),
+  });
 });
 
 // List my proposals
@@ -367,9 +372,7 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
         .where(ownershipFilter),
     ]);
     const totalCount = countRow.count;
-
-
-    const prioritized = rows.map((row) => {
+    const enriched = rows.map((row) => {
       const priority = getProposalPriority({
         id: row.id,
         pharmacyAId: row.pharmacyAId,
@@ -387,8 +390,6 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
         deadlineAt: priority.deadlineAt,
       };
     });
-
-    const enriched = prioritized;
 
     res.json({
       data: enriched,

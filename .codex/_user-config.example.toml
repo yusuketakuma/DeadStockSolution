@@ -1,6 +1,0 @@
-# これは repo に置く “例” です。
-# 実際は ~/.codex/config.toml にコピーして使ってください。
-
-# プロジェクトを trusted にすると .codex/config.toml が読み込まれます。
-[projects."/ABSOLUTE/PATH/TO/careviax-pharmacy"]
-trust_level = "trusted"

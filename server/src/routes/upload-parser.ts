@@ -123,6 +123,20 @@ interface MappingTemplateSnapshot {
   createdAt: string | null;
 }
 
+type UploadTypeRecord<T> = Record<UploadType, T>;
+type SuggestedPreviewMapping = ReturnType<typeof resolveMappingFromTemplateWithSource>;
+type SuggestedPreviewMappings = UploadTypeRecord<SuggestedPreviewMapping>;
+type ValidatedPreviewMappings = UploadTypeRecord<ColumnMapping | null>;
+type UploadConfirmExecutionParams = Parameters<typeof runUploadConfirm>[0];
+type UploadConfirmJob = NonNullable<Awaited<ReturnType<typeof getUploadConfirmJobForPharmacy>>>;
+
+function mapUploadTypes<T>(resolver: (uploadType: UploadType) => T): UploadTypeRecord<T> {
+  return {
+    dead_stock: resolver('dead_stock'),
+    used_medication: resolver('used_medication'),
+  };
+}
+
 async function loadMappingTemplatesByHeaderHash(
   pharmacyId: number,
   headerHash: string,
@@ -145,6 +159,43 @@ function findTemplateByUploadType(
   uploadType: UploadType,
 ): MappingTemplateSnapshot | undefined {
   return templates.find((template) => template.uploadType === uploadType);
+}
+
+function validateSuggestedPreviewMapping(
+  headerRow: unknown[],
+  uploadType: UploadType,
+  mapping: unknown,
+): ColumnMapping | null {
+  try {
+    const parsed = parseMapping(JSON.stringify(mapping), uploadType);
+    validateMappingAgainstHeader(parsed, headerRow);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function buildPreviewMappings(
+  templates: MappingTemplateSnapshot[],
+  headerRow: unknown[],
+): {
+  suggestedByType: SuggestedPreviewMappings;
+  validatedByType: ValidatedPreviewMappings;
+} {
+  const suggestedByType = mapUploadTypes((uploadType) => resolveMappingFromTemplateWithSource(
+    findTemplateByUploadType(templates, uploadType)?.mapping,
+    headerRow,
+    uploadType,
+  ));
+
+  return {
+    suggestedByType,
+    validatedByType: mapUploadTypes((uploadType) => validateSuggestedPreviewMapping(
+      headerRow,
+      uploadType,
+      suggestedByType[uploadType].mapping,
+    )),
+  };
 }
 
 function resolveMappingFromRequestOrAuto(
@@ -201,6 +252,31 @@ async function resolveAndValidateMappingOrReject(
   }
 }
 
+function parseJobIdOrReject(req: AuthRequest, res: Response): number | null {
+  const jobId = parsePositiveInt(req.params.jobId);
+  if (jobId !== null) {
+    return jobId;
+  }
+  res.status(400).json({ error: 'jobIdが不正です' });
+  return null;
+}
+
+async function loadUploadJobOrReject(
+  req: AuthRequest,
+  res: Response,
+): Promise<{ jobId: number; row: UploadConfirmJob } | null> {
+  const jobId = parseJobIdOrReject(req, res);
+  if (jobId === null) return null;
+
+  const row = await getUploadConfirmJobForPharmacy(jobId, req.user!.id);
+  if (row) {
+    return { jobId, row };
+  }
+
+  res.status(404).json({ error: 'ジョブが見つかりません' });
+  return null;
+}
+
 // Preview: parse file and return headers + first 5 rows + suggested mapping
 router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response) => {
   try {
@@ -234,36 +310,7 @@ router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response
     const templates = await loadMappingTemplatesByHeaderHash(req.user!.id, headerHash);
     const detected = detectUploadType(allRows, headerRowIndex);
     const rememberedUploadType = templates[0]?.uploadType ?? null;
-    const templateByType = {
-      dead_stock: findTemplateByUploadType(templates, 'dead_stock'),
-      used_medication: findTemplateByUploadType(templates, 'used_medication'),
-    } as const;
-
-    const suggestedByType = {
-      dead_stock: resolveMappingFromTemplateWithSource(templateByType.dead_stock?.mapping, headerRow, 'dead_stock'),
-      used_medication: resolveMappingFromTemplateWithSource(templateByType.used_medication?.mapping, headerRow, 'used_medication'),
-    } as const;
-
-    const validatedByType = {
-      dead_stock: (() => {
-        try {
-          const parsed = parseMapping(JSON.stringify(suggestedByType.dead_stock.mapping), 'dead_stock');
-          validateMappingAgainstHeader(parsed, headerRow);
-          return parsed;
-        } catch {
-          return null;
-        }
-      })(),
-      used_medication: (() => {
-        try {
-          const parsed = parseMapping(JSON.stringify(suggestedByType.used_medication.mapping), 'used_medication');
-          validateMappingAgainstHeader(parsed, headerRow);
-          return parsed;
-        } catch {
-          return null;
-        }
-      })(),
-    } as const;
+    const { suggestedByType, validatedByType } = buildPreviewMappings(templates, headerRow);
 
     const preferRemembered = rememberedUploadType !== null
       && (detected.confidence === 'low' || rememberedUploadType === detected.detectedType);
@@ -385,9 +432,7 @@ async function handleConfirmAsyncEnqueue(
 ): Promise<void> {
   const confirmRequestedAt = new Date().toISOString();
   const failureContext = routeKind === 'confirm' ? 'confirm_legacy' : 'confirm_async';
-  let fallbackExecutionParams: Parameters<typeof runUploadConfirm>[0] | null = null;
-  let fallbackUploadType: UploadType | null = null;
-  let fallbackApplyMode: ApplyMode | null = null;
+  let fallbackExecutionParams: UploadConfirmExecutionParams | null = null;
   try {
     const uploadFile = getUploadFileOrReject(req, res);
     if (!uploadFile) return;
@@ -430,20 +475,18 @@ async function handleConfirmAsyncEnqueue(
 
     const deleteMissing = parseDeleteMissing(req.body.deleteMissing);
     const pharmacyId = req.user!.id;
-    const executionParams = {
+    const executionParams: UploadConfirmExecutionParams = {
       pharmacyId,
       uploadType,
       originalFilename: uploadFile.originalname,
       headerRowIndex,
       mapping,
       allRows,
-      applyMode: applyMode as ApplyMode,
+      applyMode,
       deleteMissing,
       staleGuardCreatedAt: confirmRequestedAt,
     };
     fallbackExecutionParams = executionParams;
-    fallbackUploadType = uploadType;
-    fallbackApplyMode = applyMode;
 
     const enqueueResult = await enqueueUploadConfirmJob({
       ...executionParams,
@@ -494,15 +537,16 @@ async function handleConfirmAsyncEnqueue(
 
     if (isUploadConfirmEnqueueFallbackEnabled()) {
       try {
-        if (!fallbackExecutionParams || !fallbackUploadType || !fallbackApplyMode) {
+        if (!fallbackExecutionParams) {
           throw new Error('fallback context is unavailable');
         }
-        const syncResult = await runUploadConfirm(fallbackExecutionParams);
+        const executionParams = fallbackExecutionParams;
+        const syncResult = await runUploadConfirm(executionParams);
         logger.warn('Upload confirm async enqueue failed, fell back to sync execution', () => ({
           ...getBaseContext(req),
           error: getErrorMessage(err),
-          uploadType: fallbackUploadType,
-          applyMode: fallbackApplyMode,
+          uploadType: executionParams.uploadType,
+          applyMode: executionParams.applyMode,
         }));
         res.status(200).json({
           message: 'キュー登録に失敗したため同期処理で適用しました',
@@ -551,17 +595,9 @@ router.post('/confirm-async', uploadSingleFile, async (req: AuthRequest, res: Re
 
 router.get('/jobs/:jobId', async (req: AuthRequest, res: Response) => {
   try {
-    const jobId = parsePositiveInt(req.params.jobId);
-    if (jobId === null) {
-      res.status(400).json({ error: 'jobIdが不正です' });
-      return;
-    }
-
-    const row = await getUploadConfirmJobForPharmacy(jobId, req.user!.id);
-    if (!row) {
-      res.status(404).json({ error: 'ジョブが見つかりません' });
-      return;
-    }
+    const jobContext = await loadUploadJobOrReject(req, res);
+    if (!jobContext) return;
+    const { row } = jobContext;
 
     let result: unknown = null;
     if (row.resultJson) {
@@ -610,11 +646,8 @@ router.get('/jobs/:jobId', async (req: AuthRequest, res: Response) => {
 
 router.post('/jobs/:jobId/cancel', async (req: AuthRequest, res: Response) => {
   try {
-    const jobId = parsePositiveInt(req.params.jobId);
-    if (jobId === null) {
-      res.status(400).json({ error: 'jobIdが不正です' });
-      return;
-    }
+    const jobId = parseJobIdOrReject(req, res);
+    if (jobId === null) return;
 
     const result = await cancelUploadConfirmJobForPharmacy(jobId, req.user!.id);
     if (!result) {
@@ -650,17 +683,9 @@ router.post('/jobs/:jobId/cancel', async (req: AuthRequest, res: Response) => {
 
 router.get('/jobs/:jobId/error-report', async (req: AuthRequest, res: Response) => {
   try {
-    const jobId = parsePositiveInt(req.params.jobId);
-    if (jobId === null) {
-      res.status(400).json({ error: 'jobIdが不正です' });
-      return;
-    }
-
-    const row = await getUploadConfirmJobForPharmacy(jobId, req.user!.id);
-    if (!row) {
-      res.status(404).json({ error: 'ジョブが見つかりません' });
-      return;
-    }
+    const jobContext = await loadUploadJobOrReject(req, res);
+    if (!jobContext) return;
+    const { jobId } = jobContext;
 
     const issues = await getUploadRowIssuesForJob(jobId);
     if (issues.length === 0) {

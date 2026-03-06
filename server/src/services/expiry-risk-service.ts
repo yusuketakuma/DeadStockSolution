@@ -62,6 +62,10 @@ const EMPTY_BUCKETS: RiskBucketCounts = {
   over120: 0,
   unknown: 0,
 };
+const RISK_BUCKET_KEYS = Object.keys(EMPTY_BUCKETS) as Array<keyof RiskBucketCounts>;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const TOP_RISK_ITEMS_LIMIT = 20;
+const TOP_HIGH_RISK_SUMMARIES_LIMIT = 10;
 
 const RISK_WEIGHTS: Record<keyof RiskBucketCounts, number> = {
   expired: 1,
@@ -128,14 +132,10 @@ function to2(value: number): number {
 
 function calculateRiskScore(bucketCounts: RiskBucketCounts, totalItems: number): number {
   if (totalItems <= 0) return 0;
-  const weightedSum =
-    bucketCounts.expired * RISK_WEIGHTS.expired +
-    bucketCounts.within30 * RISK_WEIGHTS.within30 +
-    bucketCounts.within60 * RISK_WEIGHTS.within60 +
-    bucketCounts.within90 * RISK_WEIGHTS.within90 +
-    bucketCounts.within120 * RISK_WEIGHTS.within120 +
-    bucketCounts.over120 * RISK_WEIGHTS.over120 +
-    bucketCounts.unknown * RISK_WEIGHTS.unknown;
+  const weightedSum = RISK_BUCKET_KEYS.reduce(
+    (sum, bucket) => sum + bucketCounts[bucket] * RISK_WEIGHTS[bucket],
+    0,
+  );
 
   return to2((weightedSum / totalItems) * 100);
 }
@@ -162,23 +162,61 @@ interface PharmacyRiskAccumulator {
   bucketCounts: RiskBucketCounts;
 }
 
+function createPharmacyRiskAccumulator(): PharmacyRiskAccumulator {
+  return {
+    totalItems: 0,
+    bucketCounts: createEmptyBuckets(),
+  };
+}
+
+function resolveDaysUntilExpiry(
+  expirationDateIso: string | null,
+  expirationDate: string | null,
+  todayUtc: Date,
+): number | null {
+  const parsedDate = parseDateOnly(expirationDateIso) ?? parseDateOnly(expirationDate);
+  if (!parsedDate) {
+    return null;
+  }
+
+  return Math.floor((parsedDate.getTime() - todayUtc.getTime()) / MS_PER_DAY);
+}
+
+function addBucketCount(bucketCounts: RiskBucketCounts, bucket: keyof RiskBucketCounts): void {
+  bucketCounts[bucket] += 1;
+}
+
+function addBucketCounts(target: RiskBucketCounts, source: RiskBucketCounts): void {
+  for (const key of RISK_BUCKET_KEYS) {
+    target[key] += source[key];
+  }
+}
+
+function buildPharmacyRiskSummary(
+  pharmacyId: number,
+  pharmacyName: string,
+  bucketCounts: RiskBucketCounts,
+  totalItems: number,
+): PharmacyRiskSummary {
+  return {
+    pharmacyId,
+    pharmacyName,
+    totalItems,
+    riskScore: calculateRiskScore(bucketCounts, totalItems),
+    bucketCounts,
+  };
+}
+
 function resolveBucketFromExpiryDates(
   expirationDateIso: string | null,
   expirationDate: string | null,
   todayUtc: Date,
 ): keyof RiskBucketCounts {
-  const parsedDate = parseDateOnly(expirationDateIso) ?? parseDateOnly(expirationDate);
-  const daysUntilExpiry = parsedDate
-    ? Math.floor((parsedDate.getTime() - todayUtc.getTime()) / (24 * 60 * 60 * 1000))
-    : null;
-  return resolveBucket(daysUntilExpiry);
+  return resolveBucket(resolveDaysUntilExpiry(expirationDateIso, expirationDate, todayUtc));
 }
 
 function buildRiskItem(row: RiskRow, todayUtc: Date, pharmacyName?: string): ExpiryRiskItem {
-  const parsedDate = parseDateOnly(row.expirationDateIso) ?? parseDateOnly(row.expirationDate);
-  const daysUntilExpiry = parsedDate
-    ? Math.floor((parsedDate.getTime() - todayUtc.getTime()) / (24 * 60 * 60 * 1000))
-    : null;
+  const daysUntilExpiry = resolveDaysUntilExpiry(row.expirationDateIso, row.expirationDate, todayUtc);
   const bucket = resolveBucket(daysUntilExpiry);
 
   return {
@@ -224,7 +262,7 @@ function aggregatePharmacyRisk(
   pharmacyId: number,
   pharmacyName: string,
   todayUtc: Date,
-  topRiskLimit: number = 20,
+  topRiskLimit: number = TOP_RISK_ITEMS_LIMIT,
 ): { summary: PharmacyRiskSummary; topRiskItems: ExpiryRiskItem[] } {
   const bucketCounts = createEmptyBuckets();
   const topRiskItems: ExpiryRiskItem[] = [];
@@ -232,23 +270,15 @@ function aggregatePharmacyRisk(
 
   for (const row of rows) {
     const item = buildRiskItem(row, todayUtc, pharmacyName);
-    bucketCounts[item.bucket] += 1;
+    addBucketCount(bucketCounts, item.bucket);
     totalItems += 1;
     if (topRiskLimit > 0) {
       collectTopRiskItems(topRiskItems, item, topRiskLimit);
     }
   }
 
-  const riskScore = calculateRiskScore(bucketCounts, totalItems);
-
   return {
-    summary: {
-      pharmacyId,
-      pharmacyName,
-      totalItems,
-      riskScore,
-      bucketCounts,
-    },
+    summary: buildPharmacyRiskSummary(pharmacyId, pharmacyName, bucketCounts, totalItems),
     topRiskItems,
   };
 }
@@ -303,12 +333,9 @@ async function loadAdminRiskSnapshot(forceRefresh: boolean = false): Promise<Adm
       row.expirationDate,
       todayUtc,
     );
-    const accumulator = accumulators.get(row.pharmacyId) ?? {
-      totalItems: 0,
-      bucketCounts: createEmptyBuckets(),
-    };
+    const accumulator = accumulators.get(row.pharmacyId) ?? createPharmacyRiskAccumulator();
     accumulator.totalItems += 1;
-    accumulator.bucketCounts[bucket] += 1;
+    addBucketCount(accumulator.bucketCounts, bucket);
     accumulators.set(row.pharmacyId, accumulator);
   }
 
@@ -319,18 +346,9 @@ async function loadAdminRiskSnapshot(forceRefresh: boolean = false): Promise<Adm
     const accumulator = accumulators.get(pharmacy.id);
     const bucketCounts = accumulator ? { ...accumulator.bucketCounts } : createEmptyBuckets();
     const totalItems = accumulator?.totalItems ?? 0;
-    const riskScore = calculateRiskScore(bucketCounts, totalItems);
-    const summary: PharmacyRiskSummary = {
-      pharmacyId: pharmacy.id,
-      pharmacyName: pharmacy.name,
-      totalItems,
-      riskScore,
-      bucketCounts,
-    };
+    const summary = buildPharmacyRiskSummary(pharmacy.id, pharmacy.name, bucketCounts, totalItems);
     summaries.push(summary);
-    for (const key of Object.keys(totalBucketCounts) as Array<keyof RiskBucketCounts>) {
-      totalBucketCounts[key] += summary.bucketCounts[key];
-    }
+    addBucketCounts(totalBucketCounts, summary.bucketCounts);
   }
 
   const orderedSummaries = summaries
@@ -422,7 +440,7 @@ export async function getAdminRiskOverview(): Promise<AdminRiskOverview> {
     lowRiskPharmacies,
     avgRiskScore,
     totalBucketCounts: snapshot.totalBucketCounts,
-    topHighRiskPharmacies: snapshot.summaries.slice(0, 10),
+    topHighRiskPharmacies: snapshot.summaries.slice(0, TOP_HIGH_RISK_SUMMARIES_LIMIT),
     computedAt: snapshot.computedAt,
   };
 }

@@ -34,6 +34,18 @@ export interface UploadRowIssueSummary {
 type UploadRowIssueReadExecutor = Pick<typeof db, 'select'>;
 type UploadRowIssueWriteExecutor = Pick<typeof db, 'insert' | 'delete'>;
 
+function normalizePositiveInteger(value: number | undefined, fallback: number): number {
+  return Number.isInteger(value) && Number(value) > 0
+    ? Number(value)
+    : fallback;
+}
+
+function normalizeNonNegativeInteger(value: number | undefined, fallback: number): number {
+  return Number.isInteger(value) && Number(value) >= 0
+    ? Number(value)
+    : fallback;
+}
+
 function safeStringifyRowData(rowData: unknown[] | Record<string, unknown> | null): string | null {
   if (rowData === null) return null;
   try {
@@ -51,6 +63,42 @@ function quoteCsvField(value: string): string {
   return normalizedValue;
 }
 
+function toUploadRowIssueInsertValues(
+  jobId: number,
+  pharmacyId: number,
+  uploadType: UploadRowIssueUploadType,
+  issues: UploadRowIssueInput[],
+  createdAt: string,
+) {
+  return issues.map((issue) => ({
+    jobId,
+    pharmacyId,
+    uploadType,
+    rowNumber: issue.rowNumber,
+    issueCode: issue.issueCode,
+    issueMessage: issue.issueMessage,
+    rowDataJson: safeStringifyRowData(issue.rowData),
+    createdAt,
+  }));
+}
+
+function createEmptyIssueSummary(): UploadRowIssueSummary {
+  return {
+    totalIssues: 0,
+    byCode: {},
+  };
+}
+
+function addIssueCount(
+  summary: UploadRowIssueSummary,
+  issueCode: string,
+  count: number,
+): UploadRowIssueSummary {
+  summary.byCode[issueCode] = count;
+  summary.totalIssues += count;
+  return summary;
+}
+
 export async function replaceUploadRowIssuesForJob(
   jobId: number,
   pharmacyId: number,
@@ -58,7 +106,7 @@ export async function replaceUploadRowIssuesForJob(
   issues: UploadRowIssueInput[],
   executor: UploadRowIssueWriteExecutor = db,
 ): Promise<void> {
-  await executor.delete(uploadRowIssues).where(eq(uploadRowIssues.jobId, jobId));
+  await clearUploadRowIssuesForJob(jobId, executor);
   if (issues.length === 0) {
     return;
   }
@@ -66,16 +114,9 @@ export async function replaceUploadRowIssuesForJob(
   const nowIso = new Date().toISOString();
   for (let i = 0; i < issues.length; i += ISSUE_INSERT_BATCH_SIZE) {
     const batch = issues.slice(i, i + ISSUE_INSERT_BATCH_SIZE);
-    await executor.insert(uploadRowIssues).values(batch.map((issue) => ({
-      jobId,
-      pharmacyId,
-      uploadType,
-      rowNumber: issue.rowNumber,
-      issueCode: issue.issueCode,
-      issueMessage: issue.issueMessage,
-      rowDataJson: safeStringifyRowData(issue.rowData),
-      createdAt: nowIso,
-    })));
+    await executor.insert(uploadRowIssues).values(
+      toUploadRowIssueInsertValues(jobId, pharmacyId, uploadType, batch, nowIso),
+    );
   }
 }
 
@@ -123,12 +164,8 @@ export async function getUploadRowIssuesForJob(
   options: { limit?: number; offset?: number } = {},
   executor: UploadRowIssueReadExecutor = db,
 ): Promise<UploadRowIssueRecord[]> {
-  const limit = Number.isInteger(options.limit) && Number(options.limit) > 0
-    ? Number(options.limit)
-    : 10000;
-  const offset = Number.isInteger(options.offset) && Number(options.offset) >= 0
-    ? Number(options.offset)
-    : 0;
+  const limit = normalizePositiveInteger(options.limit, 10000);
+  const offset = normalizeNonNegativeInteger(options.offset, 0);
 
   return executor.select({
     id: uploadRowIssues.id,
@@ -161,17 +198,12 @@ export async function getUploadRowIssueSummary(
     .groupBy(uploadRowIssues.issueCode)
     .orderBy(desc(uploadRowIssues.issueCode));
 
-  const byCode: Record<string, number> = {};
-  let totalIssues = 0;
+  const summary = createEmptyIssueSummary();
   for (const row of rows) {
-    byCode[row.issueCode] = row.count;
-    totalIssues += row.count;
+    addIssueCount(summary, row.issueCode, row.count);
   }
 
-  return {
-    totalIssues,
-    byCode,
-  };
+  return summary;
 }
 
 export async function getUploadRowIssueSummaryByJobIds(
@@ -193,9 +225,8 @@ export async function getUploadRowIssueSummaryByJobIds(
 
   const summaryMap = new Map<number, UploadRowIssueSummary>();
   for (const row of rows) {
-    const current = summaryMap.get(row.jobId) ?? { totalIssues: 0, byCode: {} };
-    current.byCode[row.issueCode] = row.count;
-    current.totalIssues += row.count;
+    const current = summaryMap.get(row.jobId) ?? createEmptyIssueSummary();
+    addIssueCount(current, row.issueCode, row.count);
     summaryMap.set(row.jobId, current);
   }
 

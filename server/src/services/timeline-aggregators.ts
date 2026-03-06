@@ -15,6 +15,43 @@ import { type DbClient, type RawTimelineEvent, toTimelineEventType } from '../ty
 
 // ── マッピング関数（テスト可能な純粋関数として分離） ──────
 
+type AdminMessageRow = {
+  id: number;
+  title: string;
+  body: string;
+  createdAt: string | null;
+};
+
+function resolveEventTimestamp(timestamp: string | null): string {
+  return timestamp ?? new Date().toISOString();
+}
+
+function appendDateRangeConditions<T>(
+  conditions: T[],
+  since: string | undefined,
+  before: string | undefined,
+  buildSinceCondition: (value: string) => T,
+  buildBeforeCondition: (value: string) => T,
+): void {
+  if (since) {
+    conditions.push(buildSinceCondition(since));
+  }
+  if (before) {
+    conditions.push(buildBeforeCondition(before));
+  }
+}
+
+function dedupeRowsById<T extends { id: number }>(rows: readonly T[]): T[] {
+  const seen = new Set<number>();
+  const merged: T[] = [];
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    merged.push(row);
+  }
+  return merged;
+}
+
 export function mapNotificationToEvent(row: {
   id: number;
   type: string;
@@ -38,7 +75,7 @@ export function mapNotificationToEvent(row: {
     type: toTimelineEventType(row.type),
     title: row.title,
     body: row.message,
-    timestamp: row.createdAt ?? new Date().toISOString(),
+    timestamp: resolveEventTimestamp(row.createdAt),
     isRead: row.isRead,
     actionPath,
     metadata: {
@@ -64,7 +101,7 @@ export function mapMatchNotificationToEvent(row: {
     type: 'match_update',
     title: 'マッチング候補が更新されました',
     body: `候補数が ${row.candidateCountBefore}件 から ${row.candidateCountAfter}件 に変わりました（${diffLabel}）`,
-    timestamp: row.createdAt ?? new Date().toISOString(),
+    timestamp: resolveEventTimestamp(row.createdAt),
     isRead: row.isRead,
     actionPath: '/matching',
     metadata: {
@@ -95,7 +132,7 @@ export function mapProposalToEvent(
     type: toTimelineEventType(`proposal_${row.status}`),
     title: `仮マッチング（${roleLabel}）: ${row.status}`,
     body: `マッチング #${row.id} のステータスは「${row.status}」です。`,
-    timestamp: row.proposedAt ?? new Date().toISOString(),
+    timestamp: resolveEventTimestamp(row.proposedAt),
     isRead: false,
     actionPath: `/proposals/${row.id}`,
     metadata: {
@@ -124,7 +161,7 @@ export function mapCommentToEvent(row: {
     type: 'new_comment',
     title: '提案にコメントが届きました',
     body: bodyPreview,
-    timestamp: row.createdAt ?? new Date().toISOString(),
+    timestamp: resolveEventTimestamp(row.createdAt),
     isRead: row.readByRecipient,
     actionPath: `/proposals/${row.proposalId}`,
     metadata: {
@@ -151,7 +188,7 @@ export function mapFeedbackToEvent(row: {
     type: 'exchange_feedback',
     title: '取引フィードバックが届きました',
     body: bodyText,
-    timestamp: row.createdAt ?? new Date().toISOString(),
+    timestamp: resolveEventTimestamp(row.createdAt),
     isRead: false,
     actionPath: `/proposals/${row.proposalId}`,
     metadata: {
@@ -175,7 +212,7 @@ export function mapUploadToEvent(row: {
     type: toTimelineEventType(`upload_${row.uploadType}`),
     title: `${typeLabel}データをアップロードしました`,
     body: `ファイル: ${row.originalFilename}`,
-    timestamp: row.createdAt ?? new Date().toISOString(),
+    timestamp: resolveEventTimestamp(row.createdAt),
     isRead: true,
     actionPath: '/upload',
     metadata: {
@@ -198,7 +235,7 @@ export function mapAdminMessageToEvent(row: {
     type: 'admin_message',
     title: `管理者からのお知らせ: ${row.title}`,
     body: row.body,
-    timestamp: row.createdAt ?? new Date().toISOString(),
+    timestamp: resolveEventTimestamp(row.createdAt),
     isRead: row.isRead,
     actionPath: '/',
     metadata: {
@@ -228,7 +265,7 @@ export function mapExchangeHistoryToEvent(
     type: 'exchange_completed',
     title: `交換が完了しました（${roleLabel}）`,
     body: `マッチング #${row.proposalId} の交換が完了しました。${totalLabel}`,
-    timestamp: row.completedAt ?? new Date().toISOString(),
+    timestamp: resolveEventTimestamp(row.completedAt),
     isRead: true,
     actionPath: `/proposals/${row.proposalId}`,
     metadata: {
@@ -254,7 +291,7 @@ export function mapExpiryRiskToEvent(row: {
     type: 'near_expiry',
     title: `期限切れ間近の在庫があります: ${row.drugName}`,
     body: `有効期限: ${expiryLabel} / 数量: ${row.quantity}`,
-    timestamp: row.createdAt ?? new Date().toISOString(),
+    timestamp: resolveEventTimestamp(row.createdAt),
     isRead: false,
     actionPath: '/upload',
     metadata: {
@@ -285,12 +322,13 @@ export async function fetchNotificationEvents(
   before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [eq(notificationsTable.pharmacyId, pharmacyId)];
-  if (since) {
-    conditions.push(gte(notificationsTable.createdAt, since));
-  }
-  if (before) {
-    conditions.push(lte(notificationsTable.createdAt, before));
-  }
+  appendDateRangeConditions(
+    conditions,
+    since,
+    before,
+    (value) => gte(notificationsTable.createdAt, value),
+    (value) => lte(notificationsTable.createdAt, value),
+  );
 
   let query = db
     .select({
@@ -320,12 +358,13 @@ export async function fetchMatchEvents(
   before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [eq(matchNotifications.pharmacyId, pharmacyId)];
-  if (since) {
-    conditions.push(gte(matchNotifications.createdAt, since));
-  }
-  if (before) {
-    conditions.push(lte(matchNotifications.createdAt, before));
-  }
+  appendDateRangeConditions(
+    conditions,
+    since,
+    before,
+    (value) => gte(matchNotifications.createdAt, value),
+    (value) => lte(matchNotifications.createdAt, value),
+  );
 
   let query = db
     .select({
@@ -357,12 +396,13 @@ export async function fetchProposalEvents(
   ];
   const ownershipCondition = or(...conditions);
   const whereConditions = [ownershipCondition];
-  if (since) {
-    whereConditions.push(gte(exchangeProposals.proposedAt, since));
-  }
-  if (before) {
-    whereConditions.push(lte(exchangeProposals.proposedAt, before));
-  }
+  appendDateRangeConditions(
+    whereConditions,
+    since,
+    before,
+    (value) => gte(exchangeProposals.proposedAt, value),
+    (value) => lte(exchangeProposals.proposedAt, value),
+  );
 
   let query = db
     .select({
@@ -397,12 +437,13 @@ export async function fetchCommentEvents(
       eq(exchangeProposals.pharmacyBId, pharmacyId),
     ),
   ];
-  if (since) {
-    conditions.push(gte(proposalComments.createdAt, since));
-  }
-  if (before) {
-    conditions.push(lte(proposalComments.createdAt, before));
-  }
+  appendDateRangeConditions(
+    conditions,
+    since,
+    before,
+    (value) => gte(proposalComments.createdAt, value),
+    (value) => lte(proposalComments.createdAt, value),
+  );
 
   let query = db
     .select({
@@ -433,12 +474,13 @@ export async function fetchFeedbackEvents(
   before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [eq(exchangeFeedback.toPharmacyId, pharmacyId)];
-  if (since) {
-    conditions.push(gte(exchangeFeedback.createdAt, since));
-  }
-  if (before) {
-    conditions.push(lte(exchangeFeedback.createdAt, before));
-  }
+  appendDateRangeConditions(
+    conditions,
+    since,
+    before,
+    (value) => gte(exchangeFeedback.createdAt, value),
+    (value) => lte(exchangeFeedback.createdAt, value),
+  );
 
   let query = db
     .select({
@@ -465,12 +507,13 @@ export async function fetchUploadEvents(
   before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [eq(uploads.pharmacyId, pharmacyId)];
-  if (since) {
-    conditions.push(gte(uploads.createdAt, since));
-  }
-  if (before) {
-    conditions.push(lte(uploads.createdAt, before));
-  }
+  appendDateRangeConditions(
+    conditions,
+    since,
+    before,
+    (value) => gte(uploads.createdAt, value),
+    (value) => lte(uploads.createdAt, value),
+  );
 
   let query = db
     .select({
@@ -538,14 +581,7 @@ export async function fetchAdminMessageEvents(
   const [allMessages, pharmacyMessages] = await Promise.all([allQuery, pharmacyQuery]);
 
   // 重複排除してマージ
-  const seen = new Set<number>();
-  const merged: Array<{ id: number; title: string; body: string; createdAt: string | null }> = [];
-  for (const row of [...allMessages, ...pharmacyMessages]) {
-    if (!seen.has(row.id)) {
-      seen.add(row.id);
-      merged.push(row);
-    }
-  }
+  const merged = dedupeRowsById<AdminMessageRow>([...allMessages, ...pharmacyMessages]);
 
   if (merged.length === 0) return [];
 
@@ -583,12 +619,13 @@ export async function fetchExchangeHistoryEvents(
     eq(exchangeHistory.pharmacyBId, pharmacyId),
   );
   const conditions = [ownershipCondition];
-  if (since) {
-    conditions.push(gte(exchangeHistory.completedAt, since));
-  }
-  if (before) {
-    conditions.push(lte(exchangeHistory.completedAt, before));
-  }
+  appendDateRangeConditions(
+    conditions,
+    since,
+    before,
+    (value) => gte(exchangeHistory.completedAt, value),
+    (value) => lte(exchangeHistory.completedAt, value),
+  );
 
   let query = db
     .select({
@@ -624,9 +661,13 @@ export async function fetchExpiryRiskEvents(
     gte(deadStockItems.expirationDateIso, todayStr),
     lte(deadStockItems.expirationDateIso, threeDaysLaterStr),
   ];
-  if (before) {
-    conditions.push(lte(deadStockItems.createdAt, before));
-  }
+  appendDateRangeConditions(
+    conditions,
+    undefined,
+    before,
+    (value) => gte(deadStockItems.createdAt, value),
+    (value) => lte(deadStockItems.createdAt, value),
+  );
 
   let query = db
     .select({

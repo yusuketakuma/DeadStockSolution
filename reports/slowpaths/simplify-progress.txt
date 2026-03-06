@@ -1,12 +1,12 @@
-phase=running
-timestamp=2026-03-05T01:36:00Z
+phase=completed
+timestamp=2026-03-06T01:07:22Z
 agent_mode=fallback
 run_processed=4
-run_max=30
+run_max=4
 total_targets=30
-total_processed=11
-total_remaining=19
-current_rank=12
+total_processed=30
+total_remaining=0
+current_rank=30
 current_source=static-heuristic
-current_target=server/src/services/openclaw-service.ts
-current_reason=loc=776, loops=4, awaitInLoop=2, sql=5
+current_target=server/src/routes/exchange-proposals.ts
+current_reason=loc=520, loops=1, awaitInLoop=0, sql=10

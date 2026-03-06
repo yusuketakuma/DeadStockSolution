@@ -53,6 +53,8 @@ interface PackageRow {
   drugMasterId: number;
   packageDescription: string | null;
   normalizedPackageLabel: string | null;
+  gs1Code?: string | null;
+  janCode?: string | null;
 }
 
 const MAX_CAMERA_BATCH_COUNT = 200;
@@ -60,6 +62,27 @@ const MAX_CAMERA_QUANTITY = 100_000;
 const CAMERA_QUANTITY_SCALE = 1000;
 const MIN_MANUAL_SEARCH_LENGTH = 2;
 const MAX_MANUAL_SEARCH_LENGTH = 80;
+const MASTER_ROW_FIELDS = {
+  id: drugMaster.id,
+  yjCode: drugMaster.yjCode,
+  drugName: drugMaster.drugName,
+  unit: drugMaster.unit,
+  yakkaPrice: drugMaster.yakkaPrice,
+} as const;
+const PACKAGE_MATCH_FIELDS = {
+  id: drugMasterPackages.id,
+  drugMasterId: drugMasterPackages.drugMasterId,
+  gs1Code: drugMasterPackages.gs1Code,
+  janCode: drugMasterPackages.janCode,
+  packageDescription: drugMasterPackages.packageDescription,
+  normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
+} as const;
+const PACKAGE_SUMMARY_FIELDS = {
+  id: drugMasterPackages.id,
+  drugMasterId: drugMasterPackages.drugMasterId,
+  packageDescription: drugMasterPackages.packageDescription,
+  normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
+} as const;
 
 export function sanitizeRawCode(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -115,6 +138,20 @@ function toNullablePrice(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function buildCameraCodeMatch(masterRow: MasterRow, pkg: PackageRow | null): CameraCodeMatch {
+  return {
+    drugMasterId: masterRow.id,
+    drugMasterPackageId: pkg?.id ?? null,
+    drugName: masterRow.drugName,
+    yjCode: masterRow.yjCode,
+    gs1Code: pkg?.gs1Code ?? null,
+    janCode: pkg?.janCode ?? null,
+    packageLabel: pkg?.normalizedPackageLabel ?? pkg?.packageDescription ?? null,
+    unit: masterRow.unit,
+    yakkaUnitPrice: toNullablePrice(masterRow.yakkaPrice),
+  };
+}
+
 export function buildCameraUploadFilename(now: Date): string {
   const iso = now.toISOString().replace(/[:.]/g, '-');
   return `camera-scan-${iso}.json`;
@@ -141,6 +178,20 @@ function normalizeManualCandidateSearch(search: string): string {
   return normalized;
 }
 
+function resolveParsedCodeFromRaw(rawCode: string, parsedCodeCache: Map<string, string | null>): string | null {
+  if (!rawCode) {
+    return null;
+  }
+  if (parsedCodeCache.has(rawCode)) {
+    return parsedCodeCache.get(rawCode) ?? null;
+  }
+
+  const parsedFromRaw = parseCameraCode(rawCode);
+  const codeFromRaw = parsedFromRaw.yjCode ?? parsedFromRaw.gtin ?? null;
+  parsedCodeCache.set(rawCode, codeFromRaw);
+  return codeFromRaw;
+}
+
 export async function resolveCameraMatchByCode(parsed: ParsedCameraCode): Promise<CameraCodeMatch | null> {
   const normalizedGtins = new Set<string>();
   if (parsed.gtin) {
@@ -152,14 +203,7 @@ export async function resolveCameraMatchByCode(parsed: ParsedCameraCode): Promis
 
   if (parsed.codeType === 'gs1' && normalizedGtins.size > 0) {
     const gtinCandidates = [...normalizedGtins];
-    const packageRows = await db.select({
-      id: drugMasterPackages.id,
-      drugMasterId: drugMasterPackages.drugMasterId,
-      gs1Code: drugMasterPackages.gs1Code,
-      janCode: drugMasterPackages.janCode,
-      packageDescription: drugMasterPackages.packageDescription,
-      normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
-    })
+    const packageRows = await db.select(PACKAGE_MATCH_FIELDS)
       .from(drugMasterPackages)
       .where(or(
         inArray(drugMasterPackages.gs1Code, gtinCandidates),
@@ -169,41 +213,19 @@ export async function resolveCameraMatchByCode(parsed: ParsedCameraCode): Promis
 
     if (packageRows.length > 0) {
       const pkg = packageRows[0];
-      const [masterRow] = await db.select({
-        id: drugMaster.id,
-        yjCode: drugMaster.yjCode,
-        drugName: drugMaster.drugName,
-        unit: drugMaster.unit,
-        yakkaPrice: drugMaster.yakkaPrice,
-      })
+      const [masterRow] = await db.select(MASTER_ROW_FIELDS)
         .from(drugMaster)
         .where(eq(drugMaster.id, pkg.drugMasterId))
         .limit(1);
 
       if (masterRow) {
-        return {
-          drugMasterId: masterRow.id,
-          drugMasterPackageId: pkg.id,
-          drugName: masterRow.drugName,
-          yjCode: masterRow.yjCode,
-          gs1Code: pkg.gs1Code,
-          janCode: pkg.janCode,
-          packageLabel: pkg.normalizedPackageLabel ?? pkg.packageDescription,
-          unit: masterRow.unit,
-          yakkaUnitPrice: toNullablePrice(masterRow.yakkaPrice),
-        };
+        return buildCameraCodeMatch(masterRow, pkg);
       }
     }
   }
 
   if (parsed.yjCode) {
-    const [masterRow] = await db.select({
-      id: drugMaster.id,
-      yjCode: drugMaster.yjCode,
-      drugName: drugMaster.drugName,
-      unit: drugMaster.unit,
-      yakkaPrice: drugMaster.yakkaPrice,
-    })
+    const [masterRow] = await db.select(MASTER_ROW_FIELDS)
       .from(drugMaster)
       .where(eq(drugMaster.yjCode, parsed.yjCode))
       .limit(1);
@@ -212,28 +234,12 @@ export async function resolveCameraMatchByCode(parsed: ParsedCameraCode): Promis
       return null;
     }
 
-    const [pkg] = await db.select({
-      id: drugMasterPackages.id,
-      gs1Code: drugMasterPackages.gs1Code,
-      janCode: drugMasterPackages.janCode,
-      packageDescription: drugMasterPackages.packageDescription,
-      normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
-    })
+    const [pkg] = await db.select(PACKAGE_MATCH_FIELDS)
       .from(drugMasterPackages)
       .where(eq(drugMasterPackages.drugMasterId, masterRow.id))
       .limit(1);
 
-    return {
-      drugMasterId: masterRow.id,
-      drugMasterPackageId: pkg?.id ?? null,
-      drugName: masterRow.drugName,
-      yjCode: masterRow.yjCode,
-      gs1Code: pkg?.gs1Code ?? null,
-      janCode: pkg?.janCode ?? null,
-      packageLabel: pkg?.normalizedPackageLabel ?? pkg?.packageDescription ?? null,
-      unit: masterRow.unit,
-      yakkaUnitPrice: toNullablePrice(masterRow.yakkaPrice),
-    };
+    return buildCameraCodeMatch(masterRow, pkg ?? null);
   }
 
   return null;
@@ -264,13 +270,7 @@ export async function searchCameraManualCandidates(
   }
 
   const limit = normalizeManualCandidateLimit(limitInput);
-  const masters = await db.select({
-    id: drugMaster.id,
-    yjCode: drugMaster.yjCode,
-    drugName: drugMaster.drugName,
-    unit: drugMaster.unit,
-    yakkaPrice: drugMaster.yakkaPrice,
-  })
+  const masters = await db.select(MASTER_ROW_FIELDS)
     .from(drugMaster)
     .where(whereExpr)
     .limit(limit);
@@ -279,14 +279,7 @@ export async function searchCameraManualCandidates(
     return [];
   }
 
-  const packageRows = await db.select({
-    id: drugMasterPackages.id,
-    drugMasterId: drugMasterPackages.drugMasterId,
-    gs1Code: drugMasterPackages.gs1Code,
-    janCode: drugMasterPackages.janCode,
-    packageDescription: drugMasterPackages.packageDescription,
-    normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
-  })
+  const packageRows = await db.select(PACKAGE_MATCH_FIELDS)
     .from(drugMasterPackages)
     .where(inArray(drugMasterPackages.drugMasterId, masters.map((master) => master.id)));
 
@@ -299,17 +292,7 @@ export async function searchCameraManualCandidates(
 
   return masters.map((master) => {
     const pkg = firstPackageByMasterId.get(master.id);
-    return {
-      drugMasterId: master.id,
-      yjCode: master.yjCode,
-      drugName: master.drugName,
-      unit: master.unit,
-      yakkaUnitPrice: toNullablePrice(master.yakkaPrice),
-      drugMasterPackageId: pkg?.id ?? null,
-      packageLabel: pkg?.normalizedPackageLabel ?? pkg?.packageDescription ?? null,
-      gs1Code: pkg?.gs1Code ?? null,
-      janCode: pkg?.janCode ?? null,
-    };
+    return buildCameraCodeMatch(master, pkg ?? null);
   });
 }
 
@@ -361,16 +344,7 @@ function parseCameraConfirmItems(rawItems: unknown): ParsedCameraConfirmItem[] {
     }
 
     const rawCode = sanitizeRawCode(row.rawCode) ?? '';
-    let codeFromRaw: string | null = null;
-    if (rawCode) {
-      if (parsedCodeCache.has(rawCode)) {
-        codeFromRaw = parsedCodeCache.get(rawCode) ?? null;
-      } else {
-        const parsedFromRaw = parseCameraCode(rawCode);
-        codeFromRaw = parsedFromRaw.yjCode ?? parsedFromRaw.gtin ?? null;
-        parsedCodeCache.set(rawCode, codeFromRaw);
-      }
-    }
+    const codeFromRaw = resolveParsedCodeFromRaw(rawCode, parsedCodeCache);
 
     return {
       rowNumber: idx + 1,
@@ -423,13 +397,7 @@ export async function confirmCameraDeadStockBatch(
   const parsedItems = parseCameraConfirmItems(rawItems);
 
   const masterIds = [...new Set(parsedItems.map((item) => item.drugMasterId))];
-  const masterRows = await db.select({
-    id: drugMaster.id,
-    yjCode: drugMaster.yjCode,
-    drugName: drugMaster.drugName,
-    unit: drugMaster.unit,
-    yakkaPrice: drugMaster.yakkaPrice,
-  })
+  const masterRows = await db.select(MASTER_ROW_FIELDS)
     .from(drugMaster)
     .where(inArray(drugMaster.id, masterIds));
   const masterById = buildMasterById(masterRows);
@@ -438,12 +406,7 @@ export async function confirmCameraDeadStockBatch(
     .map((item) => item.drugMasterPackageId)
     .filter((id): id is number => typeof id === 'number'))];
   const packageRows = packageIds.length > 0
-    ? await db.select({
-      id: drugMasterPackages.id,
-      drugMasterId: drugMasterPackages.drugMasterId,
-      packageDescription: drugMasterPackages.packageDescription,
-      normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
-    })
+    ? await db.select(PACKAGE_SUMMARY_FIELDS)
       .from(drugMasterPackages)
       .where(inArray(drugMasterPackages.id, packageIds))
     : [];

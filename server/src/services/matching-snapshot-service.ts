@@ -5,6 +5,10 @@ import { matchCandidateSnapshots, matchNotifications, pharmacies } from '../db/s
 import { MatchCandidate } from '../types';
 import { roundTo2 } from './matching-score-service';
 
+const SNAPSHOT_TOP_CANDIDATE_LIMIT = 10;
+
+type SnapshotTriggerUploadType = 'dead_stock' | 'used_medication';
+
 interface TopCandidateDigest {
   pharmacyId: number;
   score: number;
@@ -47,6 +51,32 @@ interface SnapshotDiff {
   afterCount: number;
 }
 
+interface StoredSnapshotRow {
+  id: number;
+  pharmacyId?: number;
+  candidateHash: string;
+  candidateCount: number | string | null;
+  topCandidatesJson: string | null;
+}
+
+interface SnapshotSetValue {
+  candidateHash: string;
+  candidateCount: number;
+  topCandidatesJson: string;
+  updatedAt: string;
+}
+
+interface MatchNotificationValue {
+  pharmacyId: number;
+  triggerPharmacyId: number;
+  triggerUploadType: SnapshotTriggerUploadType;
+  candidateCountBefore: number;
+  candidateCountAfter: number;
+  diffJson: string;
+  dedupeKey: string;
+  isRead: boolean;
+}
+
 function safeNumber(value: number | undefined): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return 0;
   return roundTo2(value);
@@ -65,36 +95,125 @@ function normalizeHashItems(items: MatchCandidate['itemsFromA']): SnapshotHashIt
     .sort((a, b) => a.deadStockItemId - b.deadStockItemId || a.quantity - b.quantity);
 }
 
-export function buildTopCandidateDigest(candidates: readonly MatchCandidate[], limit: number = 10): TopCandidateDigest[] {
-  return candidates
-    .slice(0, limit)
-    .map((candidate) => ({
-      pharmacyId: candidate.pharmacyId,
-      score: safeNumber(candidate.score),
-      matchRate: safeNumber(candidate.matchRate),
-      valueDifference: safeNumber(candidate.valueDifference),
-      totalValueA: safeNumber(candidate.totalValueA),
-      totalValueB: safeNumber(candidate.totalValueB),
-      itemCountA: candidate.itemsFromA.length,
-      itemCountB: candidate.itemsFromB.length,
-      mutualStagnantItems: safeNumber(candidate.priorityBreakdown?.mutualStagnantItems),
-      mutualNearExpiryItems: safeNumber(candidate.priorityBreakdown?.mutualNearExpiryItems),
-      estimatedWasteAvoidanceYen: safeNumber(candidate.businessImpact?.estimatedWasteAvoidanceYen),
-      estimatedWorkingCapitalReleaseYen: safeNumber(candidate.businessImpact?.estimatedWorkingCapitalReleaseYen),
-    }));
+function createTopCandidateDigest(candidate: MatchCandidate): TopCandidateDigest {
+  return {
+    pharmacyId: candidate.pharmacyId,
+    score: safeNumber(candidate.score),
+    matchRate: safeNumber(candidate.matchRate),
+    valueDifference: safeNumber(candidate.valueDifference),
+    totalValueA: safeNumber(candidate.totalValueA),
+    totalValueB: safeNumber(candidate.totalValueB),
+    itemCountA: candidate.itemsFromA.length,
+    itemCountB: candidate.itemsFromB.length,
+    mutualStagnantItems: safeNumber(candidate.priorityBreakdown?.mutualStagnantItems),
+    mutualNearExpiryItems: safeNumber(candidate.priorityBreakdown?.mutualNearExpiryItems),
+    estimatedWasteAvoidanceYen: safeNumber(candidate.businessImpact?.estimatedWasteAvoidanceYen),
+    estimatedWorkingCapitalReleaseYen: safeNumber(candidate.businessImpact?.estimatedWorkingCapitalReleaseYen),
+  };
 }
 
-export function buildSnapshotHashInput(candidates: readonly MatchCandidate[], limit: number = 10): SnapshotHashEntry[] {
+function createSnapshotHashEntry(candidate: MatchCandidate): SnapshotHashEntry {
+  return {
+    pharmacyId: candidate.pharmacyId,
+    totalValueA: safeNumber(candidate.totalValueA),
+    totalValueB: safeNumber(candidate.totalValueB),
+    valueDifference: safeNumber(candidate.valueDifference),
+    itemsFromA: normalizeHashItems(candidate.itemsFromA),
+    itemsFromB: normalizeHashItems(candidate.itemsFromB),
+  };
+}
+
+function getStoredCandidateCount(snapshot: Pick<StoredSnapshotRow, 'candidateCount'> | undefined): number {
+  return Number(snapshot?.candidateCount ?? 0);
+}
+
+function hasSnapshotChanged(
+  snapshot: Pick<StoredSnapshotRow, 'candidateHash' | 'candidateCount'> | undefined,
+  next: SnapshotPayload,
+): boolean {
+  return !snapshot || snapshot.candidateHash !== next.hash || getStoredCandidateCount(snapshot) !== next.candidateCount;
+}
+
+function serializeTopCandidates(topCandidates: TopCandidateDigest[]): string {
+  return JSON.stringify(topCandidates);
+}
+
+function parseTopCandidates(topCandidatesJson: string | null | undefined): TopCandidateDigest[] {
+  return topCandidatesJson ? JSON.parse(topCandidatesJson) as TopCandidateDigest[] : [];
+}
+
+function createSnapshotSetValue(next: SnapshotPayload, updatedAt: string): SnapshotSetValue {
+  return {
+    candidateHash: next.hash,
+    candidateCount: next.candidateCount,
+    topCandidatesJson: serializeTopCandidates(next.topCandidates),
+    updatedAt,
+  };
+}
+
+function createMatchNotificationValue(params: {
+  pharmacyId: number;
+  triggerPharmacyId: number;
+  triggerUploadType: SnapshotTriggerUploadType;
+  beforeCount: number;
+  beforeTopCandidatesJson?: string | null;
+  next: SnapshotPayload;
+}): MatchNotificationValue {
+  const beforeTopCandidates = parseTopCandidates(params.beforeTopCandidatesJson);
+  const diff = calculateSnapshotDiff(
+    beforeTopCandidates,
+    params.next.topCandidates,
+    params.beforeCount,
+    params.next.candidateCount,
+  );
+  const diffSerialized = JSON.stringify(diff);
+
+  return {
+    pharmacyId: params.pharmacyId,
+    triggerPharmacyId: params.triggerPharmacyId,
+    triggerUploadType: params.triggerUploadType,
+    candidateCountBefore: params.beforeCount,
+    candidateCountAfter: params.next.candidateCount,
+    diffJson: diffSerialized,
+    dedupeKey: createNotificationDedupeKey({
+      triggerPharmacyId: params.triggerPharmacyId,
+      triggerUploadType: params.triggerUploadType,
+      candidateCountAfter: params.next.candidateCount,
+      diffSerialized,
+    }),
+    isRead: false,
+  };
+}
+
+async function resolveShouldNotify(pharmacyId: number, notifyEnabled?: boolean): Promise<boolean> {
+  if (notifyEnabled !== undefined) {
+    return notifyEnabled;
+  }
+
+  const [pharmacy] = await db.select({ matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, pharmacyId))
+    .limit(1);
+
+  return pharmacy?.matchingAutoNotifyEnabled !== false;
+}
+
+export function buildTopCandidateDigest(
+  candidates: readonly MatchCandidate[],
+  limit: number = SNAPSHOT_TOP_CANDIDATE_LIMIT,
+): TopCandidateDigest[] {
   return candidates
     .slice(0, limit)
-    .map((candidate) => ({
-      pharmacyId: candidate.pharmacyId,
-      totalValueA: safeNumber(candidate.totalValueA),
-      totalValueB: safeNumber(candidate.totalValueB),
-      valueDifference: safeNumber(candidate.valueDifference),
-      itemsFromA: normalizeHashItems(candidate.itemsFromA),
-      itemsFromB: normalizeHashItems(candidate.itemsFromB),
-    }));
+    .map(createTopCandidateDigest);
+}
+
+export function buildSnapshotHashInput(
+  candidates: readonly MatchCandidate[],
+  limit: number = SNAPSHOT_TOP_CANDIDATE_LIMIT,
+): SnapshotHashEntry[] {
+  return candidates
+    .slice(0, limit)
+    .map(createSnapshotHashEntry);
 }
 
 export function createCandidateHash(hashEntries: SnapshotHashEntry[]): string {
@@ -114,8 +233,8 @@ function createNotificationDedupeKey(params: {
 }
 
 export function createSnapshotPayload(candidates: MatchCandidate[]): SnapshotPayload {
-  const topCandidates = buildTopCandidateDigest(candidates, 10);
-  const hashEntries = buildSnapshotHashInput(candidates, 10);
+  const topCandidates = buildTopCandidateDigest(candidates, SNAPSHOT_TOP_CANDIDATE_LIMIT);
+  const hashEntries = buildSnapshotHashInput(candidates, SNAPSHOT_TOP_CANDIDATE_LIMIT);
   return {
     hash: createCandidateHash(hashEntries),
     candidateCount: candidates.length,
@@ -146,13 +265,14 @@ export function calculateSnapshotDiff(
 export async function saveMatchSnapshotAndNotifyOnChange(params: {
   pharmacyId: number;
   triggerPharmacyId: number;
-  triggerUploadType: 'dead_stock' | 'used_medication';
+  triggerUploadType: SnapshotTriggerUploadType;
   candidates: MatchCandidate[];
   notifyEnabled?: boolean;
 }): Promise<{ changed: boolean; beforeCount: number; afterCount: number }> {
   const { pharmacyId, triggerPharmacyId, triggerUploadType, candidates, notifyEnabled } = params;
 
   const next = createSnapshotPayload(candidates);
+  const snapshotSetValue = createSnapshotSetValue(next, new Date().toISOString());
 
   const [current] = await db.select({
     id: matchCandidateSnapshots.id,
@@ -164,65 +284,30 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
     .where(eq(matchCandidateSnapshots.pharmacyId, pharmacyId))
     .limit(1);
 
-  const beforeCount = Number(current?.candidateCount ?? 0);
-  const changed = !current || current.candidateHash !== next.hash || beforeCount !== next.candidateCount;
+  const beforeCount = getStoredCandidateCount(current);
+  const changed = hasSnapshotChanged(current, next);
 
   if (current) {
     await db.update(matchCandidateSnapshots)
-      .set({
-        candidateHash: next.hash,
-        candidateCount: next.candidateCount,
-        topCandidatesJson: JSON.stringify(next.topCandidates),
-        updatedAt: new Date().toISOString(),
-      })
+      .set(snapshotSetValue)
       .where(eq(matchCandidateSnapshots.id, current.id));
   } else {
     await db.insert(matchCandidateSnapshots).values({
       pharmacyId,
-      candidateHash: next.hash,
-      candidateCount: next.candidateCount,
-      topCandidatesJson: JSON.stringify(next.topCandidates),
-      updatedAt: new Date().toISOString(),
+      ...snapshotSetValue,
     });
   }
 
   if (changed) {
-    // 通知設定を確認: OFF なら通知レコードをスキップ
-    // notifyEnabled が事前に渡されていればDBクエリをスキップ（N+1防止）
-    let shouldNotify: boolean;
-    if (notifyEnabled !== undefined) {
-      shouldNotify = notifyEnabled;
-    } else {
-      const [pharmacy] = await db.select({ matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled })
-        .from(pharmacies)
-        .where(eq(pharmacies.id, pharmacyId))
-        .limit(1);
-      shouldNotify = pharmacy?.matchingAutoNotifyEnabled !== false;
-    }
-
-    if (shouldNotify) {
-      const beforeTopCandidates: TopCandidateDigest[] = current?.topCandidatesJson
-        ? JSON.parse(current.topCandidatesJson) as TopCandidateDigest[]
-        : [];
-      const diff = calculateSnapshotDiff(beforeTopCandidates, next.topCandidates, beforeCount, next.candidateCount);
-      const diffSerialized = JSON.stringify(diff);
-      const dedupeKey = createNotificationDedupeKey({
-        triggerPharmacyId,
-        triggerUploadType,
-        candidateCountAfter: next.candidateCount,
-        diffSerialized,
-      });
-
-      await db.insert(matchNotifications).values({
+    if (await resolveShouldNotify(pharmacyId, notifyEnabled)) {
+      await db.insert(matchNotifications).values(createMatchNotificationValue({
         pharmacyId,
         triggerPharmacyId,
         triggerUploadType,
-        candidateCountBefore: beforeCount,
-        candidateCountAfter: next.candidateCount,
-        diffJson: diffSerialized,
-        dedupeKey,
-        isRead: false,
-      }).onConflictDoNothing({
+        beforeCount,
+        beforeTopCandidatesJson: current?.topCandidatesJson,
+        next,
+      })).onConflictDoNothing({
         target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
       });
     }
@@ -247,7 +332,7 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
 export async function saveMatchSnapshotsBatch(entries: Array<{
   pharmacyId: number;
   triggerPharmacyId: number;
-  triggerUploadType: 'dead_stock' | 'used_medication';
+  triggerUploadType: SnapshotTriggerUploadType;
   candidates: MatchCandidate[];
   notifyEnabled: boolean;
 }>): Promise<{ changedCount: number }> {
@@ -270,15 +355,9 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
   const existingMap = new Map(existingRows.map((row) => [row.pharmacyId, row]));
 
   // 2. 各薬局のスナップショットを計算し、変更検知
-  type ExistingRow = typeof existingRows[number];
+  type ExistingRow = StoredSnapshotRow;
   type SnapshotEntry = typeof entries[number];
-  const upsertValues: Array<{
-    pharmacyId: number;
-    candidateHash: string;
-    candidateCount: number;
-    topCandidatesJson: string;
-    updatedAt: string;
-  }> = [];
+  const upsertValues: Array<{ pharmacyId: number } & SnapshotSetValue> = [];
   const changedEntries: Array<{
     entry: SnapshotEntry;
     next: ReturnType<typeof createSnapshotPayload>;
@@ -288,16 +367,11 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
   for (const entry of entries) {
     const next = createSnapshotPayload(entry.candidates);
     const existing = existingMap.get(entry.pharmacyId);
-    const changed = !existing
-      || existing.candidateHash !== next.hash
-      || Number(existing.candidateCount) !== next.candidateCount;
+    const changed = hasSnapshotChanged(existing, next);
 
     upsertValues.push({
       pharmacyId: entry.pharmacyId,
-      candidateHash: next.hash,
-      candidateCount: next.candidateCount,
-      topCandidatesJson: JSON.stringify(next.topCandidates),
-      updatedAt: now,
+      ...createSnapshotSetValue(next, now),
     });
 
     if (changed) {
@@ -319,43 +393,19 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
     });
 
   // 4. 変更があった薬局の通知を一括 INSERT
-  const notificationValues: Array<{
-    pharmacyId: number;
-    triggerPharmacyId: number;
-    triggerUploadType: 'dead_stock' | 'used_medication';
-    candidateCountBefore: number;
-    candidateCountAfter: number;
-    diffJson: string;
-    dedupeKey: string;
-    isRead: boolean;
-  }> = [];
+  const notificationValues: MatchNotificationValue[] = [];
 
   for (const { entry, next, existing } of changedEntries) {
     if (!entry.notifyEnabled) continue;
 
-    const beforeTopCandidates: TopCandidateDigest[] = existing?.topCandidatesJson
-      ? JSON.parse(existing.topCandidatesJson) as TopCandidateDigest[]
-      : [];
-    const beforeCount = Number(existing?.candidateCount ?? 0);
-    const diff = calculateSnapshotDiff(beforeTopCandidates, next.topCandidates, beforeCount, next.candidateCount);
-    const diffSerialized = JSON.stringify(diff);
-    const dedupeKey = createNotificationDedupeKey({
-      triggerPharmacyId: entry.triggerPharmacyId,
-      triggerUploadType: entry.triggerUploadType,
-      candidateCountAfter: next.candidateCount,
-      diffSerialized,
-    });
-
-    notificationValues.push({
+    notificationValues.push(createMatchNotificationValue({
       pharmacyId: entry.pharmacyId,
       triggerPharmacyId: entry.triggerPharmacyId,
       triggerUploadType: entry.triggerUploadType,
-      candidateCountBefore: beforeCount,
-      candidateCountAfter: next.candidateCount,
-      diffJson: diffSerialized,
-      dedupeKey,
-      isRead: false,
-    });
+      beforeCount: getStoredCandidateCount(existing),
+      beforeTopCandidatesJson: existing?.topCandidatesJson,
+      next,
+    }));
   }
 
   if (notificationValues.length > 0) {

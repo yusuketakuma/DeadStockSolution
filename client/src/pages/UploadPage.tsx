@@ -65,6 +65,15 @@ interface UploadProgressState {
   label: string;
 }
 
+interface UploadMutationFormDataOptions {
+  file: File;
+  uploadType: UploadType;
+  headerRowIndex: number;
+  applyMode: 'replace' | 'diff';
+  deleteMissing: boolean;
+  mapping: Record<string, string | null>;
+}
+
 const UPLOAD_JOB_INITIAL_STATE: UploadJobState = {
   jobId: null,
   status: null,
@@ -140,6 +149,28 @@ function resolveSubmittedMapping(
   return null;
 }
 
+function buildUploadMutationFormData({
+  file,
+  uploadType,
+  headerRowIndex,
+  applyMode,
+  deleteMissing,
+  mapping,
+}: UploadMutationFormDataOptions): FormData {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('uploadType', uploadType);
+  formData.append('headerRowIndex', String(headerRowIndex));
+  formData.append('applyMode', applyMode);
+  formData.append('deleteMissing', String(deleteMissing));
+  formData.append('mapping', JSON.stringify(mapping));
+  return formData;
+}
+
+function resolvePossiblyRunningJobMessage(jobId: number | null): string {
+  return `ジョブは継続中の可能性があります（ジョブID: ${jobId ?? '不明'}）。時間をおいて再確認してください。`;
+}
+
 async function waitForNextPoll(signal: AbortSignal, intervalMs: number): Promise<void> {
   if (signal.aborted) {
     throw new DOMException('Aborted', 'AbortError');
@@ -207,6 +238,17 @@ export default function UploadPage() {
   const setFailed = (label: string) =>
     setUploadProgress({ phase: 'failed', percent: 100, label });
 
+  const clearTransientFeedback = () => {
+    setError('');
+    setMessage('');
+    setShowMatchingHint(false);
+  };
+
+  const resetDiffPreviewState = () => {
+    setDiffSummary(null);
+    setAcknowledgeDeleteImpact(false);
+  };
+
   const clearPendingUploadSideEffects = () => {
     uploadRequestAbortRef.current?.abort();
     uploadRequestAbortRef.current = null;
@@ -218,9 +260,7 @@ export default function UploadPage() {
 
   const resetExcelTransientUiState = () => {
     setLoading(false);
-    setError('');
-    setMessage('');
-    setShowMatchingHint(false);
+    clearTransientFeedback();
     setUploadJob(UPLOAD_JOB_INITIAL_STATE);
     setCancellingJob(false);
     setUploadProgress(UPLOAD_PROGRESS_IDLE);
@@ -235,8 +275,7 @@ export default function UploadPage() {
     setUploadType('dead_stock');
     setApplyMode('replace');
     setDeleteMissing(false);
-    setDiffSummary(null);
-    setAcknowledgeDeleteImpact(false);
+    resetDiffPreviewState();
   };
 
   const handlePreview = async (e: FormEvent) => {
@@ -248,9 +287,7 @@ export default function UploadPage() {
     uploadRequestAbortRef.current = controller;
 
     setLoading(true);
-    setError('');
-    setMessage('');
-    setShowMatchingHint(false);
+    clearTransientFeedback();
     setUploadProgress({
       phase: 'previewing',
       percent: 20,
@@ -265,8 +302,7 @@ export default function UploadPage() {
       if (controller.signal.aborted) return;
       setPreview(data);
       setUploadType(data.resolvedUploadType);
-      setDiffSummary(null);
-      setAcknowledgeDeleteImpact(false);
+      resetDiffPreviewState();
       setUploadProgress(UPLOAD_PROGRESS_IDLE);
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -299,9 +335,7 @@ export default function UploadPage() {
     const submittedUploadType = uploadType;
 
     setLoading(true);
-    setError('');
-    setMessage('');
-    setShowMatchingHint(false);
+    clearTransientFeedback();
     setUploadJob(UPLOAD_JOB_INITIAL_STATE);
     setCancellingJob(false);
     setUploadProgress({
@@ -311,13 +345,14 @@ export default function UploadPage() {
     });
     let currentJobId: number | null = null;
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('uploadType', submittedUploadType);
-      formData.append('headerRowIndex', String(preview.headerRowIndex));
-      formData.append('applyMode', applyMode);
-      formData.append('deleteMissing', String(deleteMissing));
-      formData.append('mapping', JSON.stringify(submittedMapping));
+      const formData = buildUploadMutationFormData({
+        file,
+        uploadType: submittedUploadType,
+        headerRowIndex: preview.headerRowIndex,
+        applyMode,
+        deleteMissing,
+        mapping: submittedMapping,
+      });
 
       const enqueueResult = await api.upload<UploadConfirmAsyncResponse>(
         '/upload/confirm-async',
@@ -487,7 +522,7 @@ export default function UploadPage() {
       if (err instanceof Error && err.message.includes('待機時間が長くなっています')) {
         setFailed('アップロード処理の待機時間が上限を超えました。');
         setError(err.message);
-        setMessage(`ジョブは継続中の可能性があります（ジョブID: ${currentJobId ?? '不明'}）。時間をおいて再確認してください。`);
+        setMessage(resolvePossiblyRunningJobMessage(currentJobId));
         return;
       }
       if (currentJobId !== null && err instanceof ApiError) {
@@ -497,7 +532,7 @@ export default function UploadPage() {
         }));
         setFailed('ジョブ状態の確認に失敗しました。');
         setError(err.message);
-        setMessage(`ジョブは継続中の可能性があります（ジョブID: ${currentJobId}）。時間をおいて再確認してください。`);
+        setMessage(resolvePossiblyRunningJobMessage(currentJobId));
         return;
       }
       setUploadJob((prev) => ({
@@ -535,13 +570,14 @@ export default function UploadPage() {
     setLoading(true);
     setError('');
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('uploadType', uploadType);
-      formData.append('headerRowIndex', String(preview.headerRowIndex));
-      formData.append('applyMode', 'diff');
-      formData.append('deleteMissing', String(deleteMissing));
-      formData.append('mapping', JSON.stringify(submittedMapping));
+      const formData = buildUploadMutationFormData({
+        file,
+        uploadType,
+        headerRowIndex: preview.headerRowIndex,
+        applyMode: 'diff',
+        deleteMissing,
+        mapping: submittedMapping,
+      });
 
       const result = await api.upload<{ summary: DiffSummary }>('/upload/diff-preview', formData, { signal: controller.signal });
       if (controller.signal.aborted) return;
@@ -739,8 +775,7 @@ export default function UploadPage() {
                 disabled={loading}
                 onChange={(value) => {
                   setUploadType(value as UploadType);
-                  setDiffSummary(null);
-                  setAcknowledgeDeleteImpact(false);
+                  resetDiffPreviewState();
                 }}
                 options={[
                   { value: 'dead_stock', label: 'デッドストックリスト' },
@@ -810,8 +845,7 @@ export default function UploadPage() {
                 disabled={loading}
                 onChange={(value) => {
                   setApplyMode(value as 'replace' | 'diff');
-                  setDiffSummary(null);
-                  setAcknowledgeDeleteImpact(false);
+                  resetDiffPreviewState();
                 }}
                 options={[
                   { value: 'replace', label: '置換' },
@@ -834,8 +868,7 @@ export default function UploadPage() {
                   checked={deleteMissing}
                   onChange={(e) => {
                     setDeleteMissing(e.currentTarget.checked);
-                    setDiffSummary(null);
-                    setAcknowledgeDeleteImpact(false);
+                    resetDiffPreviewState();
                   }}
                 />
                 <div className="mt-2">
