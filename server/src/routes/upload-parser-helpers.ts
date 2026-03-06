@@ -3,7 +3,13 @@ import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../config/database';
 import { columnMappingTemplates } from '../db/schema';
 import { AuthRequest, ColumnMapping } from '../types';
-import { parseMapping, validateMappingAgainstHeader, resolveMappingFromTemplate, type UploadType } from './upload-validation';
+import {
+  parseMapping,
+  validateMappingAgainstHeader,
+  resolveMappingFromTemplate,
+  resolveMappingFromTemplateWithSource,
+  type UploadType,
+} from './upload-validation';
 import { type ApplyMode, runUploadConfirm } from '../services/upload-confirm-service';
 import { getUploadConfirmJobForPharmacy, enqueueUploadConfirmJob, isUploadConfirmIdempotencyConflictError, isUploadConfirmQueueLimitError } from '../services/upload-confirm-job-service';
 import { computeHeaderHash } from '../services/column-mapper';
@@ -105,7 +111,7 @@ export interface MappingTemplateSnapshot {
 }
 
 export type UploadTypeRecord<T> = Record<UploadType, T>;
-export type SuggestedPreviewMapping = ReturnType<typeof resolveMappingFromTemplate>;
+export type SuggestedPreviewMapping = ReturnType<typeof resolveMappingFromTemplateWithSource>;
 export type SuggestedPreviewMappings = UploadTypeRecord<SuggestedPreviewMapping>;
 export type ValidatedPreviewMappings = UploadTypeRecord<ColumnMapping | null>;
 export type UploadConfirmExecutionParams = Parameters<typeof runUploadConfirm>[0];
@@ -176,7 +182,7 @@ export function buildPreviewMappings(
   suggestedByType: SuggestedPreviewMappings;
   validatedByType: ValidatedPreviewMappings;
 } {
-  const suggestedByType = mapUploadTypes((uploadType) => resolveMappingFromTemplate(
+  const suggestedByType = mapUploadTypes((uploadType) => resolveMappingFromTemplateWithSource(
     findTemplateByUploadType(templates, uploadType)?.mapping,
     headerRow,
     uploadType,
