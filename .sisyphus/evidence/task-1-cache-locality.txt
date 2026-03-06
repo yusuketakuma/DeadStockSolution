@@ -1,0 +1,12 @@
+task-1: openclaw cache locality verification
+
+command: grep -rn "new Map<|handoffInFlight|handoffResultCache|webhookReplayCache" server/src/services/openclaw-*.ts
+result:
+- all cache declarations are in server/src/services/openclaw-status.ts
+- no cache declarations found in server/src/services/openclaw-handoff.ts
+- no cache declarations found in server/src/services/openclaw-webhook-handler.ts
+
+declared caches:
+- const webhookReplayCache = new Map<string, number>();
+- const handoffInFlight = new Map<string, Promise<OpenClawHandoffResult>>();
+- const handoffResultCache = new Map<string, { expiresAtMs: number; result: OpenClawHandoffResult }>();
