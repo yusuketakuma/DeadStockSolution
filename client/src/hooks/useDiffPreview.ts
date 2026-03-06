@@ -15,6 +15,7 @@ export interface UseDiffPreviewReturn {
   deleteMissing: boolean;
   setDeleteMissing: (value: boolean) => void;
   diffSummary: DiffSummary | null;
+  setDiffSummary: React.Dispatch<React.SetStateAction<DiffSummary | null>>;
   acknowledgeDeleteImpact: boolean;
   setAcknowledgeDeleteImpact: (value: boolean) => void;
   requiresDiffPreviewRefresh: boolean;
@@ -103,6 +104,7 @@ export function useDiffPreview({
     deleteMissing,
     setDeleteMissing,
     diffSummary,
+    setDiffSummary,
     acknowledgeDeleteImpact,
     setAcknowledgeDeleteImpact,
     requiresDiffPreviewRefresh,

@@ -1,0 +1,2 @@
+2026-03-07: `useUploadExcelFlow` can stay behavior-compatible while shrinking significantly by delegating preview, diff preview, and job polling responsibilities to dedicated sub-hooks and only keeping orchestration/state-bridging logic in the main hook.
+2026-03-07: Keeping a single external `error`/`message` surface while composing sub-hooks works best when hook-local errors are bridged upward via effect-based synchronization.

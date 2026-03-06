@@ -1,0 +1,2 @@
+2026-03-07: Retained `useUploadExcelFlow` public return contract unchanged and treated it as an orchestration layer over `useUploadPreview`, `useDiffPreview`, and `useUploadJobPolling` instead of moving consumer-facing logic into `UploadPage`.
+2026-03-07: Standardized polling helper behavior inside `useUploadJobPolling` to match the prior in-hook semantics so refactoring remains behavior-preserving while making the sub-hook reusable.
