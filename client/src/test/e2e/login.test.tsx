@@ -44,7 +44,7 @@ function setMatchMedia(matches: boolean) {
 
 function mockUnauthFetch(options: { testPharmacies?: TestPharmacyPreview[] } = {}) {
   const { testPharmacies = [] } = options;
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('/api/auth/test-pharmacies')) {
       return new Response(JSON.stringify({ accounts: testPharmacies }), {
@@ -62,12 +62,15 @@ function mockUnauthFetch(options: { testPharmacies?: TestPharmacyPreview[] } = {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
-  }));
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
 }
 
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     setMatchMedia(false);
   });
 
@@ -227,6 +230,20 @@ describe('LoginPage', () => {
     });
   });
 
+  it('hides test login shortcuts when feature flag is disabled', async () => {
+    vi.stubEnv('VITE_TEST_LOGIN_FEATURE_ENABLED', 'false');
+    mockUnauthFetch();
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('button', { name: 'ランダムでお試し入力' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'お試しアカウントを選ぶ' })).not.toBeInTheDocument();
+    expect(screen.queryByText('まずはお試しログイン')).not.toBeInTheDocument();
+  });
+
   it('fills login form by random trial account action', async () => {
     const user = userEvent.setup();
     vi.spyOn(Math, 'random').mockReturnValue(0.9);
@@ -263,7 +280,7 @@ describe('LoginPage', () => {
 
   it('opens test pharmacy window and applies selected account in desktop view', async () => {
     const user = userEvent.setup();
-    mockUnauthFetch({
+    const fetchMock = mockUnauthFetch({
       testPharmacies: [
         {
           id: 1,
@@ -289,16 +306,19 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'お試しアカウントを選ぶ' }));
 
     await waitFor(() => {
-      expect(screen.getByText('お試しアカウントを選択')).toBeInTheDocument();
+      expect(screen.getByText('登録済みテスト薬局')).toBeInTheDocument();
     });
     expect(screen.getByText('テスト薬局東京店')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局札幌店')).toBeInTheDocument();
-    expect(screen.queryByText('TokyoDemo!2026')).not.toBeInTheDocument();
-    expect(screen.queryByText('SapporoDemo!2026')).not.toBeInTheDocument();
+    expect(screen.getByText('TokyoDemo!2026')).toBeInTheDocument();
+    expect(screen.getByText('SapporoDemo!2026')).toBeInTheDocument();
     expect(document.querySelector('.dl-test-pharmacy-modal table')).not.toBeNull();
     expect(document.querySelector('.dl-mobile-data-card')).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies?includePassword=1')),
+    ).toBe(true);
 
-    const applyButtons = screen.getAllByRole('button', { name: 'このアカウントを入力' });
+    const applyButtons = screen.getAllByRole('button', { name: 'このID/パスワードを入力' });
     await user.click(applyButtons[0]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('test-tokyo@example.com');
@@ -309,7 +329,7 @@ describe('LoginPage', () => {
   it('renders same selection feature in mobile view', async () => {
     const user = userEvent.setup();
     setMatchMedia(true);
-    mockUnauthFetch({
+    const fetchMock = mockUnauthFetch({
       testPharmacies: [
         {
           id: 11,
@@ -339,12 +359,15 @@ describe('LoginPage', () => {
       expect(screen.getByText('テスト薬局モバイルA')).toBeInTheDocument();
       expect(screen.getByText('テスト薬局モバイルB')).toBeInTheDocument();
     });
-    expect(screen.queryByText('MobileA!2026')).not.toBeInTheDocument();
-    expect(screen.queryByText('MobileB!2026')).not.toBeInTheDocument();
+    expect(screen.getByText('MobileA!2026')).toBeInTheDocument();
+    expect(screen.getByText('MobileB!2026')).toBeInTheDocument();
     expect(document.querySelector('.dl-mobile-data-card')).not.toBeNull();
     expect(document.querySelector('.dl-test-pharmacy-modal table')).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies?includePassword=1')),
+    ).toBe(true);
 
-    const applyButtons = screen.getAllByRole('button', { name: 'このアカウントを入力' });
+    const applyButtons = screen.getAllByRole('button', { name: 'このID/パスワードを入力' });
     await user.click(applyButtons[1]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('mobile-b@example.com');

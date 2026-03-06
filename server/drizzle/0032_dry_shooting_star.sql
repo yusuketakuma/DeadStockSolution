@@ -1,4 +1,4 @@
-CREATE TABLE "drug_master_source_state" (
+CREATE TABLE IF NOT EXISTS "drug_master_source_state" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"source_key" text NOT NULL,
 	"url" text NOT NULL,
@@ -11,7 +11,7 @@ CREATE TABLE "drug_master_source_state" (
 	CONSTRAINT "drug_master_source_state_source_key_unique" UNIQUE("source_key")
 );
 --> statement-breakpoint
-CREATE TABLE "error_codes" (
+CREATE TABLE IF NOT EXISTS "error_codes" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"code" varchar(64) NOT NULL,
 	"category" text NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE "error_codes" (
 	CONSTRAINT "chk_error_codes_severity" CHECK ("error_codes"."severity" IN ('critical', 'error', 'warning', 'info'))
 );
 --> statement-breakpoint
-CREATE TABLE "openclaw_command_whitelist" (
+CREATE TABLE IF NOT EXISTS "openclaw_command_whitelist" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"command_name" varchar(64) NOT NULL,
 	"category" varchar(16) NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE "openclaw_command_whitelist" (
 	CONSTRAINT "openclaw_command_whitelist_command_name_unique" UNIQUE("command_name")
 );
 --> statement-breakpoint
-CREATE TABLE "openclaw_commands" (
+CREATE TABLE IF NOT EXISTS "openclaw_commands" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"command_name" varchar(64) NOT NULL,
 	"parameters" text,
@@ -52,11 +52,11 @@ CREATE TABLE "openclaw_commands" (
 	"completed_at" timestamp
 );
 --> statement-breakpoint
-ALTER TABLE "activity_logs" ADD COLUMN "error_code" varchar(64);--> statement-breakpoint
-ALTER TABLE "system_events" ADD COLUMN "error_code" varchar(64);--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_source_state_source_key" ON "drug_master_source_state" USING btree ("source_key");--> statement-breakpoint
-CREATE INDEX "idx_error_codes_category" ON "error_codes" USING btree ("category");--> statement-breakpoint
-CREATE INDEX "idx_error_codes_severity" ON "error_codes" USING btree ("severity");--> statement-breakpoint
-CREATE INDEX "idx_openclaw_commands_received_at" ON "openclaw_commands" USING btree ("received_at");--> statement-breakpoint
-CREATE INDEX "idx_openclaw_commands_status" ON "openclaw_commands" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "idx_openclaw_commands_name" ON "openclaw_commands" USING btree ("command_name");
+ALTER TABLE "activity_logs" ADD COLUMN IF NOT EXISTS "error_code" varchar(64);--> statement-breakpoint
+ALTER TABLE "system_events" ADD COLUMN IF NOT EXISTS "error_code" varchar(64);--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_source_state_source_key" ON "drug_master_source_state" USING btree ("source_key");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_error_codes_category" ON "error_codes" USING btree ("category");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_error_codes_severity" ON "error_codes" USING btree ("severity");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_openclaw_commands_received_at" ON "openclaw_commands" USING btree ("received_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_openclaw_commands_status" ON "openclaw_commands" USING btree ("status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_openclaw_commands_name" ON "openclaw_commands" USING btree ("command_name");

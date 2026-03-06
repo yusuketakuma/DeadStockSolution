@@ -1,6 +1,6 @@
 import { useMemo, useState, FormEvent, KeyboardEvent } from 'react';
 import { useAsyncState } from '../hooks/useAsyncState';
-import { Form, Nav } from 'react-bootstrap';
+import { Form } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api, ApiError } from '../api/client';
@@ -32,9 +32,14 @@ interface LoginFieldErrors {
   password?: string;
 }
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TEST_PHARMACY_ENDPOINT = import.meta.env.PROD
-  ? '/auth/test-pharmacies'
-  : '/auth/test-pharmacies?includePassword=1';
+const TEST_PHARMACY_ENDPOINT = '/auth/test-pharmacies?includePassword=1';
+
+function isTestLoginFeatureEnabled(): boolean {
+  const raw = import.meta.env.VITE_TEST_LOGIN_FEATURE_ENABLED?.trim().toLowerCase();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return true;
+}
 
 function isTestPharmacyPreview(value: unknown): value is TestPharmacyPreview {
   if (!value || typeof value !== 'object') return false;
@@ -54,6 +59,7 @@ function parseTestPharmacyAccounts(payload: unknown): TestPharmacyPreview[] {
 }
 
 export default function LoginPage() {
+  const testLoginFeatureEnabled = isTestLoginFeatureEnabled();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
@@ -152,14 +158,12 @@ export default function LoginPage() {
     setMode(newMode);
     setError('');
     setFieldErrors({});
-    setEmail('');
-    setPassword('');
-    setShowPassword(false);
     setCapsLockOn(false);
     setAppliedTestPharmacyMessage('');
   };
 
   const fetchTestPharmacies = async (forceRefresh = false): Promise<TestPharmacyPreview[]> => {
+    if (!testLoginFeatureEnabled) return [];
     if (!forceRefresh && testPharmacies.length > 0) return testPharmacies;
     setTestPharmacyLoading(true);
     try {
@@ -179,6 +183,7 @@ export default function LoginPage() {
   };
 
   const openTestPharmacyModal = async (forceRefresh = false) => {
+    if (!testLoginFeatureEnabled) return;
     if (testPharmacyLoading) return;
     setShowTestPharmacyModal(true);
     setTestPharmacyError('');
@@ -194,15 +199,12 @@ export default function LoginPage() {
     setCapsLockOn(false);
     setEmail(pharmacy.email);
     setPassword(pharmacy.password);
-    setAppliedTestPharmacyMessage(
-      pharmacy.password
-        ? `${pharmacy.name} のログイン情報を入力しました。`
-        : `${pharmacy.name} を選択しました。パスワードを入力してください。`,
-    );
+    setAppliedTestPharmacyMessage(`${pharmacy.name} のログイン情報を入力しました。`);
     setShowTestPharmacyModal(false);
   };
 
   const applyRandomTestPharmacy = async () => {
+    if (!testLoginFeatureEnabled) return;
     if (testPharmacyLoading || loading) return;
     setError('');
     setAppliedTestPharmacyMessage('');
@@ -298,6 +300,51 @@ export default function LoginPage() {
         },
       ]
   ), [mode]);
+  const modeCards = useMemo(() => ([
+    {
+      key: 'user' as const,
+      title: '薬局ログイン',
+      badge: 'Primary Flow',
+      description: 'アップロード、照合、交換提案の確認まで最短で進めます。',
+      hint: testLoginFeatureEnabled ? 'お試しアカウント導線を利用できます。' : '登録済みアカウントで続行します。',
+    },
+    {
+      key: 'admin' as const,
+      title: '管理者ログイン',
+      badge: 'Operations',
+      description: '審査、監査、運用判断に必要な情報へ直接アクセスします。',
+      hint: '権限のないアカウントでは管理画面に入れません。',
+    },
+  ]), [testLoginFeatureEnabled]);
+  const supportChecklist = useMemo(() => (
+    mode === 'admin'
+      ? [
+        '監査ログと審査フローを確認する担当者向けの導線です。',
+        '一般薬局アカウントで入った場合は自動で拒否されます。',
+        '異常時はパスワード再設定後に再ログインしてください。',
+      ]
+      : [
+        'メールアドレスとパスワードだけでログインできます。',
+        '入力に迷う場合は下の補助導線から復旧できます。',
+        testLoginFeatureEnabled
+          ? 'お試しアカウントを使うと画面操作をすぐ確認できます。'
+          : 'テストログインはこの環境では無効です。',
+      ]
+  ), [mode, testLoginFeatureEnabled]);
+  const afterLoginItems = useMemo(() => (
+    mode === 'admin'
+      ? [
+        '審査待ち薬局の確認',
+        'ログ監視と障害切り分け',
+        '運用設定と通知確認',
+      ]
+      : [
+        '在庫アップロード',
+        'マッチング候補の確認',
+        '交換提案と通知の確認',
+      ]
+  ), [mode]);
+  const isUserMode = mode === 'user';
 
   return (
     <AuthPageLayout
@@ -305,33 +352,50 @@ export default function LoginPage() {
       main={(
         <>
           <header className="dl-login-header">
-            <div className="dl-brand-row">
-              <h1>薬局デッドストック交換システム</h1>
-              <span className="dl-version-chip">{APP_VERSION}</span>
+            <div className="dl-login-hero">
+              <div className="dl-login-hero-copy">
+                <p className="dl-login-kicker">Dead stock exchange control desk</p>
+                <div className="dl-brand-row">
+                  <h1>薬局デッドストック交換システム</h1>
+                  <span className="dl-version-chip">{APP_VERSION}</span>
+                </div>
+                <p className="dl-lead">
+                  ログイン前に入口を明確化し、入力ミスや迷いを減らすために導線を再設計しています。
+                  よく使う入口を上に、復旧導線を近く、運用メモは右側へ分離しました。
+                </p>
+              </div>
+              <section className="dl-login-entry-grid" aria-label="ログイン入口の選択">
+                {modeCards.map((item) => {
+                  const active = item.key === mode;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className={`dl-login-entry-card${active ? ' is-active' : ''}`}
+                      onClick={() => switchMode(item.key)}
+                      aria-pressed={active}
+                    >
+                      <div className="dl-login-entry-head">
+                        <span className="dl-login-entry-badge">{item.badge}</span>
+                        <span className="dl-login-entry-state">{active ? '選択中' : '切替'}</span>
+                      </div>
+                      <h3 className="dl-login-entry-title">{item.title}</h3>
+                      <p className="dl-login-entry-text">{item.description}</p>
+                      <p className="dl-login-entry-hint">{item.hint}</p>
+                    </button>
+                  );
+                })}
+              </section>
             </div>
-            <p className="dl-lead">薬局間在庫の調整を安全に進めるための業務ポータルです。</p>
-            <Nav
-              className="dl-auth-tabs"
-              variant="tabs"
-              activeKey={mode}
-              onSelect={(k) => {
-                if (k === 'user' || k === 'admin') {
-                  switchMode(k);
-                }
-              }}
-            >
-              <Nav.Item>
-                <Nav.Link eventKey="user">薬局ログイン</Nav.Link>
-              </Nav.Item>
-              <Nav.Item>
-                <Nav.Link eventKey="admin">管理者ログイン</Nav.Link>
-              </Nav.Item>
-            </Nav>
-
             <section className="dl-login-showcase" aria-label="ログイン画面の特長">
-              <p className="dl-login-showcase-lead">
-                {mode === 'admin' ? '運用管理に必要な情報へ、最短で到達できる設計です。' : '在庫交換業務を、迷わず始められる導線に整えています。'}
-              </p>
+              <div className="dl-login-showcase-head">
+                <p className="dl-login-showcase-lead">
+                  {mode === 'admin'
+                    ? '管理画面へ進む前に、権限と目的が一致しているかをひと目で確認できます。'
+                    : '通常業務のログインに必要な情報を一つの視線で把握できる構成です。'}
+                </p>
+                <span className="dl-login-showcase-mode">{mode === 'admin' ? 'Admin Route' : 'User Route'}</span>
+              </div>
               <div className="dl-login-showcase-grid">
                 {showcaseItems.map((item) => (
                   <article key={item.label} className="dl-login-showcase-card">
@@ -344,163 +408,217 @@ export default function LoginPage() {
             </section>
           </header>
 
-          <section className="dl-login-panel" aria-label="ログインフォーム">
-            <h2 className="h5 text-center mt-0 mb-2">
-              {mode === 'admin' ? '管理者ログイン' : 'ログイン'}
-            </h2>
-            <p className="dl-mode-caption text-center">
-              {mode === 'admin'
-                ? '運用管理者向けの管理画面にアクセスします。'
-                : '登録済みのメールアドレスとパスワードを入力してください。'}
-            </p>
-
-            {error && <AppAlert variant="danger" className="dl-status-alert">{error}</AppAlert>}
-            {appliedTestPharmacyMessage && <AppAlert variant="success" className="dl-status-alert">{appliedTestPharmacyMessage}</AppAlert>}
-
-            <section className="dl-login-readiness" aria-label="入力準備ステータス" aria-live="polite">
-              <div className="dl-login-readiness-head">
-                <p className="dl-login-readiness-title mb-0">入力準備ステータス</p>
-                <span className="dl-login-readiness-rate">{readinessPercent}%</span>
+          <div className="dl-login-stage">
+            <section className="dl-login-panel" aria-label="ログインフォーム">
+              <div className="dl-login-panel-head">
+                <div>
+                  <p className="dl-login-panel-step">Sign-in workspace</p>
+                  <h2 className="h5 mt-0 mb-2">
+                    {mode === 'admin' ? '管理者ログイン' : 'ログイン'}
+                  </h2>
+                  <p className="dl-mode-caption">
+                    {mode === 'admin'
+                      ? '運用管理者向けの管理画面にアクセスします。'
+                      : '登録済みのメールアドレスとパスワードで続行します。'}
+                  </p>
+                </div>
+                <div className="dl-login-panel-status" aria-label="入力準備ステータス">
+                  <span className="dl-login-panel-status-label">入力準備ステータス</span>
+                  <strong>{readinessPercent}%</strong>
+                </div>
               </div>
-              <div className="dl-login-readiness-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={readinessPercent}>
-                <span className="dl-login-readiness-fill" style={{ transform: `scaleX(${readinessScale})` }} />
-              </div>
-              <ul className="dl-login-readiness-list">
-                {readinessItems.map((item) => (
-                  <li key={item.label} className={item.done ? 'is-done' : ''}>
-                    <span className="dl-login-readiness-dot" aria-hidden="true" />
-                    {item.label}
-                  </li>
-                ))}
-              </ul>
-            </section>
 
-            <form onSubmit={handleSubmit}>
-              <AppField
-                className="mb-3"
-                controlId="login-email"
-                label="メールアドレス"
-                type="email"
-                value={email}
-                onChange={(value) => handleEmailChange(value)}
-                autoComplete="username"
-                inputMode="email"
-                enterKeyHint="next"
-                required
-                disabled={loading}
-                placeholder="登録済みメールアドレス"
-                isInvalid={!!fieldErrors.email}
-                errorText={fieldErrors.email}
-                helpText="連絡先として登録したメールアドレスを入力してください。"
-              />
-              <Form.Group className="mb-3">
-                <Form.Label htmlFor="login-password">パスワード</Form.Label>
-                <div className="input-group">
-                  <Form.Control
-                    id="login-password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    autoComplete="current-password"
-                    enterKeyHint="go"
-                    required
-                    disabled={loading}
-                    isInvalid={!!fieldErrors.password}
-                    aria-describedby={passwordDescribedBy || undefined}
-                    onChange={(event) => handlePasswordChange(event.target.value)}
-                    onKeyUp={handlePasswordKeyUp}
-                  />
+              {error && <AppAlert variant="danger" className="dl-status-alert">{error}</AppAlert>}
+              {appliedTestPharmacyMessage && <AppAlert variant="success" className="dl-status-alert">{appliedTestPharmacyMessage}</AppAlert>}
+
+              <section className="dl-login-readiness" aria-label="入力準備ステータス" aria-live="polite">
+                <div className="dl-login-readiness-head">
+                  <p className="dl-login-readiness-title mb-0">入力の進み具合</p>
+                  <span className="dl-login-readiness-rate">{readinessPercent}%</span>
+                </div>
+                <div className="dl-login-readiness-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={readinessPercent}>
+                  <span className="dl-login-readiness-fill" style={{ transform: `scaleX(${readinessScale})` }} />
+                </div>
+                <ul className="dl-login-readiness-list">
+                  {readinessItems.map((item) => (
+                    <li key={item.label} className={item.done ? 'is-done' : ''}>
+                      <span className="dl-login-readiness-dot" aria-hidden="true" />
+                      {item.label}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <form onSubmit={handleSubmit} className="dl-login-form">
+                <AppField
+                  className="mb-3"
+                  controlId="login-email"
+                  label="メールアドレス"
+                  type="email"
+                  value={email}
+                  onChange={(value) => handleEmailChange(value)}
+                  autoComplete="username"
+                  inputMode="email"
+                  enterKeyHint="next"
+                  required
+                  disabled={loading}
+                  placeholder="登録済みメールアドレス"
+                  isInvalid={!!fieldErrors.email}
+                  errorText={fieldErrors.email}
+                  helpText="連絡先として登録したメールアドレスを入力してください。"
+                />
+                <Form.Group className="mb-3">
+                  <div className="dl-password-row">
+                    <Form.Label htmlFor="login-password">パスワード</Form.Label>
+                    <span className="dl-password-row-note">Caps Lock と前後スペースに注意</span>
+                  </div>
+                  <div className="input-group">
+                    <Form.Control
+                      id="login-password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      autoComplete="current-password"
+                      enterKeyHint="go"
+                      required
+                      disabled={loading}
+                      isInvalid={!!fieldErrors.password}
+                      aria-describedby={passwordDescribedBy || undefined}
+                      onChange={(event) => handlePasswordChange(event.target.value)}
+                      onKeyUp={handlePasswordKeyUp}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary dl-password-toggle"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? 'パスワードを非表示' : 'パスワードを表示'}
+                      disabled={loading}
+                    >
+                      {showPassword ? '非表示' : '表示'}
+                    </button>
+                  </div>
+                  {fieldErrors.password && <div id="login-password-error" className="invalid-feedback d-block">{fieldErrors.password}</div>}
+                  <Form.Text id="login-password-help" className="text-muted">
+                    共用端末では入力後に周囲確認を行ってください。
+                  </Form.Text>
+                  {capsLockOn && (
+                    <div id="login-password-caps-lock" className="dl-caps-lock-note" role="status">
+                      Caps Lock が有効です。大文字入力に注意してください。
+                    </div>
+                  )}
+                </Form.Group>
+                <LoadingButton
+                  type="submit"
+                  variant={mode === 'admin' ? 'danger' : 'primary'}
+                  className="w-100"
+                  loading={loading}
+                  loadingLabel="ログイン中..."
+                >
+                  {mode === 'admin' ? '管理者ログイン' : 'ログイン'}
+                </LoadingButton>
+
+                <div className="dl-login-quick-actions" role="group" aria-label="ログイン入力の操作">
                   <button
                     type="button"
-                    className="btn btn-outline-secondary dl-password-toggle"
-                    onClick={() => setShowPassword((prev) => !prev)}
-                    aria-label={showPassword ? 'パスワードを非表示' : 'パスワードを表示'}
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={clearLoginFields}
                     disabled={loading}
                   >
-                    {showPassword ? '非表示' : '表示'}
+                    入力をクリア
                   </button>
+                  {isUserMode && testLoginFeatureEnabled && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary btn-sm"
+                      onClick={() => {
+                        void applyRandomTestPharmacy();
+                      }}
+                      disabled={loading || testPharmacyLoading}
+                    >
+                      {testPharmacyLoading ? 'お試し読込中...' : 'ランダムでお試し入力'}
+                    </button>
+                  )}
                 </div>
-                {fieldErrors.password && <div id="login-password-error" className="invalid-feedback d-block">{fieldErrors.password}</div>}
-                <Form.Text id="login-password-help" className="text-muted">
-                  共用端末では入力後に周囲確認を行ってください。
-                </Form.Text>
-                {capsLockOn && (
-                  <div id="login-password-caps-lock" className="dl-caps-lock-note" role="status">
-                    Caps Lock が有効です。大文字入力に注意してください。
-                  </div>
-                )}
-              </Form.Group>
-              <LoadingButton
-                type="submit"
-                variant={mode === 'admin' ? 'danger' : 'primary'}
-                className="w-100"
-                loading={loading}
-                loadingLabel="ログイン中..."
-              >
-                {mode === 'admin' ? '管理者ログイン' : 'ログイン'}
-              </LoadingButton>
+              </form>
 
-              <div className="dl-login-quick-actions" role="group" aria-label="ログイン入力の操作">
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm"
-                  onClick={clearLoginFields}
-                  disabled={loading}
-                >
-                  入力をクリア
-                </button>
-                {mode === 'user' && (
+              <div className="dl-login-links">
+                <Link to="/password-reset">パスワードを忘れた方</Link>
+                {isUserMode && <Link to="/register">新規登録はこちら</Link>}
+              </div>
+            </section>
+
+            <section className="dl-login-support-panel" aria-label="ログイン補助">
+              <article className="dl-support-card">
+                <div className="dl-support-card-head">
+                  <span className="dl-support-card-badge">Guidance</span>
+                  <h3 className="h6 mb-0">この入口でできること</h3>
+                </div>
+                <ul className="dl-support-list">
+                  {afterLoginItems.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </article>
+
+              <article className="dl-support-card">
+                <div className="dl-support-card-head">
+                  <span className="dl-support-card-badge">Checklist</span>
+                  <h3 className="h6 mb-0">ログイン前の確認</h3>
+                </div>
+                <ul className="dl-support-list">
+                  {supportChecklist.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </article>
+
+              {isUserMode && testLoginFeatureEnabled && (
+                <article className="dl-support-card dl-support-card-emphasis" aria-label="お試しログイン">
+                  <div className="dl-support-card-head">
+                    <span className="dl-support-card-badge">Try It</span>
+                    <h3 className="dl-demo-title mb-0">まずはお試しログイン</h3>
+                  </div>
+                  <p className="dl-demo-hint">
+                    画面の流れを先に確認したい場合は、DB登録済みのテスト薬局からそのまま入力できます。
+                  </p>
                   <button
                     type="button"
-                    className="btn btn-outline-primary btn-sm"
+                    className="btn btn-outline-secondary btn-sm w-100"
                     onClick={() => {
-                      void applyRandomTestPharmacy();
+                      void openTestPharmacyModal(false);
                     }}
                     disabled={loading || testPharmacyLoading}
                   >
-                    {testPharmacyLoading ? 'お試し読込中...' : 'ランダムでお試し入力'}
+                    {testPharmacyLoading ? '読込中...' : 'お試しアカウントを選ぶ'}
                   </button>
+                  <p className="dl-demo-flow">
+                    一覧でアカウントを選ぶと、メールアドレスとパスワードが自動入力されます。
+                  </p>
+                </article>
+              )}
+
+              <article className="dl-support-card">
+                <div className="dl-support-card-head">
+                  <span className="dl-support-card-badge">Recovery</span>
+                  <h3 className="h6 mb-0">ログインできない場合</h3>
+                </div>
+                <ol className="dl-support-steps">
+                  <li>メールアドレスの前後スペースがないか確認</li>
+                  <li>Caps Lock の状態を確認</li>
+                  <li>「パスワードを忘れた方」から再設定</li>
+                </ol>
+                {mode === 'admin' && (
+                  <p className="text-muted small mb-0">
+                    管理者アカウントでログインしてください。
+                  </p>
                 )}
-              </div>
-            </form>
-
-            {mode === 'user' && (
-              <section className="dl-demo-shortcuts" aria-label="お試しログイン">
-                <h3 className="dl-demo-title">まずはお試しログイン</h3>
-                <p className="dl-demo-hint">
-                  一般ユーザーの試用向けに、テストアカウントの入力をワンクリックで行えます。
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm w-100"
-                  onClick={() => {
-                    void openTestPharmacyModal(false);
-                  }}
-                  disabled={loading || testPharmacyLoading}
-                >
-                  {testPharmacyLoading ? '読込中...' : 'お試しアカウントを選ぶ'}
-                </button>
-                <p className="dl-demo-flow">
-                  一覧でアカウントを選ぶと、メールアドレスとパスワードが自動入力されます。
-                </p>
-              </section>
-            )}
-
-            <div className="dl-login-links">
-              <Link to="/password-reset">パスワードを忘れた方</Link>
-              {mode === 'user' && <Link to="/register">新規登録はこちら</Link>}
-            </div>
-
-            {mode === 'admin' && (
-              <p className="text-muted small text-center mt-3 mb-0">
-                管理者アカウントでログインしてください。
-              </p>
-            )}
-          </section>
+              </article>
+            </section>
+          </div>
 
           <AppModalShell
-            show={showTestPharmacyModal}
+            show={testLoginFeatureEnabled && showTestPharmacyModal}
             onHide={() => setShowTestPharmacyModal(false)}
-            title="お試しアカウントを選択"
+            title="登録済みテスト薬局"
             size="lg"
           >
             {testPharmacyLoading && <p className="text-center mb-0 py-3">テスト薬局情報を読み込み中です...</p>}
@@ -548,6 +666,7 @@ export default function LoginPage() {
                           <th scope="col">薬局名</th>
                           <th scope="col">都道府県</th>
                           <th scope="col">ログインID</th>
+                          <th scope="col">パスワード</th>
                           <th scope="col" className="text-end">操作</th>
                         </tr>
                       </thead>
@@ -558,13 +677,14 @@ export default function LoginPage() {
                             <td>{pharmacy.name}</td>
                             <td>{pharmacy.prefecture}</td>
                             <td className="dl-test-pharmacy-email">{pharmacy.email}</td>
+                            <td><code>{pharmacy.password}</code></td>
                             <td className="text-end">
                               <button
                                 type="button"
                                 className="btn btn-primary btn-sm"
                                 onClick={() => applyTestPharmacy(pharmacy)}
                               >
-                                このアカウントを入力
+                                このID/パスワードを入力
                               </button>
                             </td>
                           </tr>
@@ -583,6 +703,7 @@ export default function LoginPage() {
                         fields={[
                           { label: '都道府県', value: pharmacy.prefecture },
                           { label: 'ログインID', value: <span className="dl-test-pharmacy-email">{pharmacy.email}</span> },
+                          { label: 'パスワード', value: <code>{pharmacy.password}</code> },
                         ]}
                         actions={(
                           <button
@@ -590,7 +711,7 @@ export default function LoginPage() {
                             className="btn btn-primary btn-sm"
                             onClick={() => applyTestPharmacy(pharmacy)}
                           >
-                            このアカウントを入力
+                            このID/パスワードを入力
                           </button>
                         )}
                       />
@@ -603,22 +724,27 @@ export default function LoginPage() {
         </>
       )}
       aside={(
-        <section aria-label="運用上の確認事項">
-          <h3 className="h6 mb-3">ログイン前の確認</h3>
-          <ul className="dl-trust-list">
-            <li>患者情報や薬歴情報はこの画面で入力しないでください。</li>
-            <li>入力エラー時はメッセージ内容を確認し、同じ操作を繰り返さないでください。</li>
-            <li>管理者ログインは運用担当者のみ利用してください。</li>
-            <li>共用端末では操作後に必ずログアウトしてください。</li>
-          </ul>
-          <div className="dl-support-note">
-            <h4 className="h6 mb-2">ログインできない場合</h4>
-            <ol className="mb-0">
-              <li>メールアドレスの前後スペースがないか確認</li>
-              <li>Caps Lock の状態を確認</li>
-              <li>「パスワードを忘れた方」から再設定</li>
+        <section aria-label="運用上の確認事項" className="dl-aside-stack">
+          <article className="dl-aside-card">
+            <span className="dl-support-card-badge">Flow</span>
+            <h3 className="h6 mb-3">ログイン後の進み方</h3>
+            <ol className="dl-support-steps">
+              <li>入口を選び、認証情報を入力</li>
+              <li>{mode === 'admin' ? '管理画面' : '業務トップ'}へ遷移</li>
+              <li>{mode === 'admin' ? '監査・審査・設定' : '在庫アップロードと提案確認'}を開始</li>
             </ol>
-          </div>
+          </article>
+
+          <article className="dl-aside-card">
+            <span className="dl-support-card-badge">Safety</span>
+            <h3 className="h6 mb-3">運用上の確認</h3>
+            <ul className="dl-trust-list">
+              <li>患者情報や薬歴情報はこの画面で入力しないでください。</li>
+              <li>入力エラー時は内容を確認し、同じ操作を連続しないでください。</li>
+              <li>管理者ログインは運用担当者のみ利用してください。</li>
+              <li>共用端末では操作後に必ずログアウトしてください。</li>
+            </ul>
+          </article>
         </section>
       )}
     />

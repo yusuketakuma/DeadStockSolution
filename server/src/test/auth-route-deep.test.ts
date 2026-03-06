@@ -427,20 +427,13 @@ describe('auth route deep coverage', () => {
 
   // ── test-pharmacies route ──
   describe('GET /auth/test-pharmacies', () => {
-    it('ignores preview disable flag and still serves DB data', async () => {
-      process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'false';
-      const q = createSelectQuery([
-        { id: 11, name: 'DB薬局A', email: 'dba@example.com', prefecture: '東京都', password: 'db-pass-a' },
-      ]);
-      mocks.db.select.mockReturnValueOnce(q);
+    it('returns 404 when test login feature flag is disabled', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
       const app = createApp();
       const res = await request(app).get('/auth/test-pharmacies?includePassword=1');
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual({
-        accounts: [
-          { id: 11, name: 'DB薬局A', email: 'dba@example.com', prefecture: '東京都', password: 'db-pass-a' },
-        ],
-      });
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: 'テストログインは無効です' });
     });
   });
 });

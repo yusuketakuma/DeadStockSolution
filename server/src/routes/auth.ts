@@ -71,6 +71,17 @@ function createAuthLimiter(max: number, error: string) {
   });
 }
 
+function isTestLoginFeatureEnabled(): boolean {
+  const raw = process.env.TEST_LOGIN_FEATURE_ENABLED?.trim().toLowerCase();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  const vercelEnv = process.env.VERCEL_ENV?.trim().toLowerCase();
+  if (vercelEnv) {
+    return vercelEnv !== 'production';
+  }
+  return process.env.NODE_ENV !== 'production';
+}
+
 function handleAuthConfigurationError(context: string, err: unknown, res: Response): boolean {
   if (!isJwtSecretMissingError(err)) {
     return false;
@@ -679,6 +690,11 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
 
 router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthRequest, res: Response) => {
   try {
+    if (!isTestLoginFeatureEnabled()) {
+      res.status(404).json({ error: 'テストログインは無効です' });
+      return;
+    }
+
     const includePasswordRaw = req.query.includePassword;
     const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
     const cacheControlValue = includePassword ? 'no-store' : 'private, max-age=60';

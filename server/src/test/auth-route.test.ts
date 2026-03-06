@@ -107,14 +107,14 @@ function createRejectedSelectChain(error: Error & { code?: string }) {
 describe('auth routes', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalExposePasswordResetToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN;
-  const originalEnableTestPharmacyPreview = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+  const originalTestLoginFeatureEnabled = process.env.TEST_LOGIN_FEATURE_ENABLED;
   const originalVitest = process.env.VITEST;
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
-    delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
     mocks.authService.isJwtSecretMissingError.mockImplementation(
       (err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'
@@ -133,10 +133,10 @@ describe('auth routes', () => {
       process.env.EXPOSE_PASSWORD_RESET_TOKEN = originalExposePasswordResetToken;
     }
 
-    if (originalEnableTestPharmacyPreview === undefined) {
-      delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    if (originalTestLoginFeatureEnabled === undefined) {
+      delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     } else {
-      process.env.ENABLE_TEST_PHARMACY_PREVIEW = originalEnableTestPharmacyPreview;
+      process.env.TEST_LOGIN_FEATURE_ENABLED = originalTestLoginFeatureEnabled;
     }
 
     if (originalVitest === undefined) {
@@ -330,36 +330,33 @@ describe('auth routes', () => {
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('enables test pharmacy preview endpoint in production by default', async () => {
+  it('disables test login endpoint in production by default', async () => {
     process.env.NODE_ENV = 'production';
-    delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
-    const selectChain = createSelectChain([
-      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
-      { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
-    ]);
-    mocks.db.select.mockReturnValue(selectChain);
+    delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     const app = await createApp();
 
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
-    expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('no-store');
-    expect(res.body).toEqual({
-      accounts: [
-        {
-          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
-        },
-        {
-          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026',
-        },
-      ],
-    });
-    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'テストログインは無効です' });
+    expect(mocks.db.select).not.toHaveBeenCalled();
   });
 
-  it('keeps test pharmacy preview endpoint enabled even when disable flag is set', async () => {
+  it('disables test login endpoint when feature flag is false', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'false';
+    process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'テストログインは無効です' });
+    expect(mocks.db.select).not.toHaveBeenCalled();
+  });
+
+  it('enables test login endpoint when feature flag is true', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.TEST_LOGIN_FEATURE_ENABLED = 'true';
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
       { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
@@ -415,7 +412,7 @@ describe('auth routes', () => {
 
   it('returns 503 when test pharmacy columns are missing', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'true';
+    process.env.TEST_LOGIN_FEATURE_ENABLED = 'true';
     const missingColumnError = Object.assign(new Error('column "is_test_account" does not exist'), { code: '42703' });
     const missingColumnChain = createRejectedSelectChain(missingColumnError);
     mocks.db.execute.mockRejectedValueOnce(new Error('permission denied'));
@@ -434,7 +431,7 @@ describe('auth routes', () => {
 
   it('recovers test pharmacy preview after ensuring missing columns', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.ENABLE_TEST_PHARMACY_PREVIEW = 'true';
+    process.env.TEST_LOGIN_FEATURE_ENABLED = 'true';
     const missingColumnError = Object.assign(new Error('column "is_test_account" does not exist'), { code: '42703' });
     const missingColumnChain = createRejectedSelectChain(missingColumnError);
     const healedRows = [

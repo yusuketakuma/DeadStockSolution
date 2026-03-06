@@ -184,23 +184,23 @@ function createTransactionMock(pharmacyId: number, reviewId: number, verificatio
 describe('auth routes — additional coverage', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalExposeToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN;
-  const originalTestPharmacyPreview = process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+  const originalTestLoginFeatureEnabled = process.env.TEST_LOGIN_FEATURE_ENABLED;
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
-    delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
   });
 
   afterEach(() => {
     process.env.NODE_ENV = originalNodeEnv ?? 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = originalExposeToken ?? 'false';
-    if (originalTestPharmacyPreview === undefined) {
-      delete process.env.ENABLE_TEST_PHARMACY_PREVIEW;
+    if (originalTestLoginFeatureEnabled === undefined) {
+      delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     } else {
-      process.env.ENABLE_TEST_PHARMACY_PREVIEW = originalTestPharmacyPreview;
+      process.env.TEST_LOGIN_FEATURE_ENABLED = originalTestLoginFeatureEnabled;
     }
   });
 
@@ -552,6 +552,19 @@ describe('auth routes — additional coverage', () => {
   });
 
   describe('GET /test-pharmacies', () => {
+    it('returns 404 when test login feature is disabled', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
+      const app = await createFreshApp();
+
+      const res = await request(app)
+        .get('/api/auth/test-pharmacies');
+
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: 'テストログインは無効です' });
+      expect(mocks.db.select).not.toHaveBeenCalled();
+    });
+
     // These tests need createFreshApp() because the auth route module keeps a
     // module-level testPharmacyCache that persists across requests to the same
     // router instance. Each test needs a fresh module to start with an empty cache.
