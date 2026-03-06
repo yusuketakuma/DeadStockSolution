@@ -4,10 +4,14 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { ensureTestPharmacyColumnsAtStartup } from '../config/test-pharmacy-schema';
 import { pharmacies } from '../db/schema';
-import { isJwtSecretMissingError } from '../services/auth-service';
+import { eqEmailCaseInsensitive } from '../utils/email-utils';
+import { emailSchema, passwordSchema } from '../utils/validators';
+import { isJwtSecretMissingError, verifyToken, deriveSessionVersion } from '../services/auth-service';
 import { resolveServerTestLoginFeatureEnabled } from '../config/test-login-feature';
 import { getErrorMessage } from '../middleware/error-handler';
 import { logger } from '../services/logger';
+import { sleep } from '../utils/http-utils';
+import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verification-service';
 
 export const TEST_PHARMACY_CACHE_TTL_MS = 60_000;
 export const TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS = 5;
@@ -251,4 +255,251 @@ export async function loadTestPharmacyRows(
     res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
     return null;
   }
+}
+
+export async function checkExistingPharmacy(
+  normalizedEmail: string,
+  licenseNumber: string,
+): Promise<{ existingEmail: boolean; existingLicense: boolean }> {
+  const [existing, existingLicense] = await Promise.all([
+    db.select({ id: pharmacies.id })
+      .from(pharmacies)
+      .where(eqEmailCaseInsensitive(pharmacies.email, normalizedEmail))
+      .limit(1),
+    db.select({ id: pharmacies.id })
+      .from(pharmacies)
+      .where(eq(pharmacies.licenseNumber, licenseNumber))
+      .limit(1),
+  ]);
+
+  return {
+    existingEmail: existing.length > 0,
+    existingLicense: existingLicense.length > 0,
+  };
+}
+
+export function normalizePostalCode(postalCode: string): string {
+  return postalCode.replace(/[-ー－\s]/g, '');
+}
+
+export function buildFullAddress(prefecture: string, address: string): string {
+  return `${prefecture}${address}`;
+}
+
+export function setAuthCookie(
+  res: Response,
+  token: string,
+  isProduction: boolean,
+): void {
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000,
+  });
+}
+
+export function getLoginLogAction(isAdmin: boolean | null): 'admin_login' | 'login' {
+  return isAdmin ? 'admin_login' : 'login';
+}
+
+export function buildLoginResponse(pharmacy: {
+  id: number;
+  email: string;
+  name: string;
+  prefecture: string;
+  isAdmin: boolean | null;
+}) {
+  return {
+    id: pharmacy.id,
+    email: pharmacy.email,
+    name: pharmacy.name,
+    prefecture: pharmacy.prefecture,
+    isAdmin: pharmacy.isAdmin,
+  };
+}
+
+export async function calculatePasswordResetDelay(
+  requestStartedAt: number,
+  minResponseMs: number,
+  jitterMs: number,
+): Promise<void> {
+  const targetMs = minResponseMs
+    + (jitterMs > 0
+      ? Math.floor(Math.random() * (jitterMs + 1))
+      : 0);
+  const elapsedMs = Date.now() - requestStartedAt;
+  if (elapsedMs < targetMs) {
+    await sleep(targetMs - elapsedMs);
+  }
+}
+
+export function buildPasswordResetResponse(
+  shouldExposeToken: boolean,
+  result?: { token: string; pharmacyName: string } | null,
+) {
+  return {
+    message: 'パスワードリセットの手続きを受け付けました',
+    ...(shouldExposeToken && result ? { token: result.token } : {}),
+  };
+}
+
+export function validateResetToken(token: string): boolean {
+  return token.length > 0 && /^[a-f0-9]{64}$/.test(token);
+}
+
+export function extractPharmacyIdFromToken(token: string): number | null {
+  if (!token) return null;
+  try {
+    const payload = verifyToken(token);
+    return payload.id;
+  } catch {
+    return null;
+  }
+}
+
+export function parseIncludePasswordQuery(includePasswordRaw: unknown): boolean {
+  return includePasswordRaw === '1' || includePasswordRaw === 'true';
+}
+
+export function getCacheControlValue(includePassword: boolean): string {
+  return includePassword ? 'no-store' : 'private, max-age=60';
+}
+
+export function isCacheValid(
+  cache: { expiresAt: number; rows: TestPharmacyPreviewRow[] } | null,
+): boolean {
+  return cache !== null && cache.expiresAt > Date.now();
+}
+
+export function buildRegistrationRejectionResponse(
+  screening: { screeningScore: number; mismatches: unknown[] },
+  reviewId: number,
+) {
+  return {
+    error: '登録情報と薬局開設許可証情報が一致しないため、登録できません',
+    screening: {
+      score: screening.screeningScore,
+      mismatches: screening.mismatches,
+      reviewId,
+    },
+  };
+}
+
+export function buildRegistrationSuccessResponse(pharmacyId: number) {
+  return {
+    message: '登録申請を受け付けました。審査完了後にメールでお知らせします。',
+    verificationStatus: 'pending_verification',
+    pharmacyId,
+  };
+}
+
+export function buildVerificationRequestText(
+  pharmacyName: string,
+  postalCode: string,
+  prefecture: string,
+  address: string,
+  licenseNumber: string,
+): string {
+  return JSON.stringify({
+    type: PHARMACY_VERIFICATION_REQUEST_TYPE,
+    pharmacyName,
+    postalCode,
+    prefecture,
+    address,
+    licenseNumber,
+    instruction: '薬局機能情報提供制度APIで検索し、薬局名と開設許可番号の一致を確認してください',
+  });
+}
+
+export async function findPharmacyByEmail(normalizedEmail: string) {
+  const rows = await db.select()
+    .from(pharmacies)
+    .where(eqEmailCaseInsensitive(pharmacies.email, normalizedEmail))
+    .limit(1);
+  return rows.length > 0 ? rows[0] : null;
+}
+
+export function buildTokenPayload(pharmacy: {
+  id: number;
+  email: string;
+  isAdmin: boolean | null;
+  passwordHash: string;
+}) {
+  return {
+    id: pharmacy.id,
+    email: pharmacy.email,
+    isAdmin: pharmacy.isAdmin ?? false,
+    sessionVersion: deriveSessionVersion(pharmacy.passwordHash),
+  };
+}
+
+export function buildPasswordResetCompleteResponse() {
+  return { message: 'パスワードをリセットしました。新しいパスワードでログインしてください' };
+}
+
+export function validateEmail(email: string): { valid: boolean; error?: string } {
+  const result = emailSchema.safeParse(email);
+  if (!result.success) {
+    return { valid: false, error: result.error.issues[0].message };
+  }
+  return { valid: true };
+}
+
+export function validatePassword(password: string): { valid: boolean; error?: string } {
+  const result = passwordSchema.safeParse(password);
+  if (!result.success) {
+    return { valid: false, error: result.error.issues[0].message };
+  }
+  return { valid: true };
+}
+
+export function buildCsrfTokenResponse(token: string) {
+  return { csrfToken: token };
+}
+
+export function buildLogoutResponse() {
+  return { message: 'ログアウトしました' };
+}
+
+export function buildUserNotFoundResponse() {
+  return { error: 'ユーザーが見つかりません' };
+}
+
+export function buildTestLoginDisabledResponse() {
+  return { error: 'テストログインは無効です' };
+}
+
+export function buildEmailAlreadyRegisteredResponse() {
+  return { error: 'このメールアドレスは既に登録されています' };
+}
+
+export function buildLicenseAlreadyRegisteredResponse() {
+  return { error: 'この薬局開設許可番号は既に登録されています' };
+}
+
+export function buildInvalidAddressResponse() {
+  return {
+    errors: [{ field: 'address', message: '住所から位置情報を特定できませんでした。正しい住所を入力してください' }],
+  };
+}
+
+export function buildInvalidResetTokenResponse() {
+  return { error: 'リセットトークンが無効です' };
+}
+
+export function buildInvalidPasswordResetResponse() {
+  return { error: 'リセットトークンが無効または期限切れです' };
+}
+
+export function buildInactiveAccountResponse() {
+  return { error: 'このアカウントは無効になっています' };
+}
+
+export function buildInvalidCredentialsResponse() {
+  return { error: 'メールアドレスまたはパスワードが正しくありません' };
+}
+
+export function buildValidationErrorResponse(errors: unknown[]) {
+  return { errors };
 }

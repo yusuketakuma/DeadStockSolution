@@ -34,8 +34,39 @@ import {
   sendTestPharmacyResponse,
   selectFlaggedTestPharmacyRows,
   loadTestPharmacyRows,
-  TEST_PHARMACY_CACHE_TTL_MS,
-  TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS,
+  checkExistingPharmacy,
+  normalizePostalCode,
+  buildFullAddress,
+  setAuthCookie,
+  getLoginLogAction,
+  buildLoginResponse,
+  calculatePasswordResetDelay,
+  buildPasswordResetResponse,
+  validateResetToken,
+  extractPharmacyIdFromToken,
+  parseIncludePasswordQuery,
+  getCacheControlValue,
+  isCacheValid,
+  buildRegistrationRejectionResponse,
+  buildRegistrationSuccessResponse,
+  buildVerificationRequestText,
+  findPharmacyByEmail,
+  buildTokenPayload,
+  buildPasswordResetCompleteResponse,
+  validateEmail,
+  validatePassword,
+  buildCsrfTokenResponse,
+  buildLogoutResponse,
+  buildUserNotFoundResponse,
+  buildTestLoginDisabledResponse,
+  buildEmailAlreadyRegisteredResponse,
+  buildLicenseAlreadyRegisteredResponse,
+  buildInvalidAddressResponse,
+  buildInvalidResetTokenResponse,
+  buildInvalidPasswordResetResponse,
+  buildInactiveAccountResponse,
+  buildInvalidCredentialsResponse,
+  buildValidationErrorResponse,
   type AuthMeRow,
   type LegacyAuthMeRow,
   type TestPharmacyPreviewRow,
@@ -72,7 +103,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
   try {
     const errors = validateRegistration(req.body);
     if (errors.length > 0) {
-      res.status(400).json({ errors });
+      res.status(400).json(buildValidationErrorResponse(errors));
       return;
     }
     assertJwtSecretConfigured();
@@ -94,36 +125,25 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     const normalizedEmail = normalizeEmail(email);
 
     // Check existing email
-    const [existing, existingLicense] = await Promise.all([
-      db.select({ id: pharmacies.id })
-        .from(pharmacies)
-        .where(eqEmailCaseInsensitive(pharmacies.email, normalizedEmail))
-        .limit(1),
-      db.select({ id: pharmacies.id })
-        .from(pharmacies)
-        .where(eq(pharmacies.licenseNumber, licenseNumber))
-        .limit(1),
-    ]);
+    const { existingEmail, existingLicense } = await checkExistingPharmacy(normalizedEmail, licenseNumber);
 
-    if (existing.length > 0) {
-      res.status(409).json({ error: 'このメールアドレスは既に登録されています' });
+    if (existingEmail) {
+      res.status(409).json(buildEmailAlreadyRegisteredResponse());
       return;
     }
 
-    if (existingLicense.length > 0) {
-      res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
+    if (existingLicense) {
+      res.status(409).json(buildLicenseAlreadyRegisteredResponse());
       return;
     }
 
     const passwordHash = await hashPassword(password);
 
     // 住所からジオコーディング（都道府県+住所で検索）
-    const fullAddress = `${prefecture}${address}`;
+    const fullAddress = buildFullAddress(prefecture, address);
     const coords = await geocodeAddress(fullAddress);
     if (!coords) {
-      res.status(400).json({
-        errors: [{ field: 'address', message: '住所から位置情報を特定できませんでした。正しい住所を入力してください' }],
-      });
+      res.status(400).json(buildInvalidAddressResponse());
       return;
     }
 
@@ -138,7 +158,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     });
 
     const registrationIp = getClientIp(req);
-    const normalizedPostalCode = postalCode.replace(/[-ー－\s]/g, '');
+    const normalizedPostalCode = normalizePostalCode(postalCode);
     const registrationResult = await db.transaction(async (tx) => {
       const [review] = await tx.insert(pharmacyRegistrationReviews).values({
         email: normalizedEmail,
@@ -187,15 +207,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       // Insert verification request into user_requests for OpenClaw verification
       const [verificationRequest] = await tx.insert(userRequests).values({
         pharmacyId: createdPharmacy.id,
-        requestText: JSON.stringify({
-          type: PHARMACY_VERIFICATION_REQUEST_TYPE,
-          pharmacyName: name,
-          postalCode: normalizedPostalCode,
-          prefecture,
-          address,
-          licenseNumber,
-          instruction: '薬局機能情報提供制度APIで検索し、薬局名と開設許可番号の一致を確認してください',
-        }),
+        requestText: buildVerificationRequestText(name, normalizedPostalCode, prefecture, address, licenseNumber),
       }).returning({ id: userRequests.id });
 
       // Link verification request to pharmacy
@@ -223,14 +235,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
         detail: `失敗|phase=screening|reason=permit_mismatch|score=${screening.screeningScore}`,
         ipAddress: registrationIp,
       });
-      res.status(403).json({
-        error: '登録情報と薬局開設許可証情報が一致しないため、登録できません',
-        screening: {
-          score: screening.screeningScore,
-          mismatches: screening.mismatches,
-          reviewId: registrationResult.reviewId,
-        },
-      });
+      res.status(403).json(buildRegistrationRejectionResponse(screening, registrationResult.reviewId));
       return;
     }
 
@@ -242,24 +247,13 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       ipAddress: registrationIp,
     });
 
-    res.status(201).json({
-      message: '登録申請を受け付けました。審査完了後にメールでお知らせします。',
-      verificationStatus: 'pending_verification',
-      pharmacyId,
-    });
+    res.status(201).json(buildRegistrationSuccessResponse(pharmacyId));
 
     // Fire-and-forget: OpenClaw verification handoff
     handoffToOpenClaw({
       requestId: registrationResult.verificationRequestId,
       pharmacyId,
-      requestText: JSON.stringify({
-        type: PHARMACY_VERIFICATION_REQUEST_TYPE,
-        pharmacyName: name,
-        postalCode: normalizedPostalCode,
-        prefecture,
-        address,
-        licenseNumber,
-      }),
+      requestText: buildVerificationRequestText(name, normalizedPostalCode, prefecture, address, licenseNumber),
     }).catch((err) => {
       logger.error('OpenClaw verification handoff failed', () => ({
         pharmacyId,
@@ -274,11 +268,11 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     const uniqueConstraint = extractUniqueViolationConstraint(err);
     if (uniqueConstraint !== null) {
       if (uniqueConstraint.includes('license')) {
-        res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
+        res.status(409).json(buildLicenseAlreadyRegisteredResponse());
         return;
       }
       if (uniqueConstraint.includes('email')) {
-        res.status(409).json({ error: 'このメールアドレスは既に登録されています' });
+        res.status(409).json(buildEmailAlreadyRegisteredResponse());
         return;
       }
       res.status(409).json({ error: 'この情報は既に登録されています' });
@@ -293,7 +287,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const errors = validateLogin(req.body);
     if (errors.length > 0) {
-      res.status(400).json({ errors });
+      res.status(400).json(buildValidationErrorResponse(errors));
       return;
     }
     assertJwtSecretConfigured();
@@ -301,56 +295,35 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
     const { email, password } = req.body;
     const normalizedEmail = normalizeEmail(email);
 
-    const rows = await db.select()
-      .from(pharmacies)
-      .where(eqEmailCaseInsensitive(pharmacies.email, normalizedEmail))
-      .limit(1);
+    const pharmacy = await findPharmacyByEmail(normalizedEmail);
 
-    if (rows.length === 0) {
-      res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
+    if (!pharmacy) {
+      res.status(401).json(buildInvalidCredentialsResponse());
       return;
     }
 
-    const pharmacy = rows[0];
-
     if (!pharmacy.isActive) {
-      res.status(403).json({ error: 'このアカウントは無効になっています' });
+      res.status(403).json(buildInactiveAccountResponse());
       return;
     }
 
     const valid = await verifyPassword(password, pharmacy.passwordHash);
     if (!valid) {
       void writeLog('login_failed', { detail: `ログイン失敗: ${normalizedEmail}`, ipAddress: getClientIp(req) });
-      res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
+      res.status(401).json(buildInvalidCredentialsResponse());
       return;
     }
 
-    const token = generateToken({
-      id: pharmacy.id,
-      email: pharmacy.email,
-      isAdmin: pharmacy.isAdmin ?? false,
-      sessionVersion: deriveSessionVersion(pharmacy.passwordHash),
-    });
+    const token = generateToken(buildTokenPayload(pharmacy));
     invalidateAuthUserCache(pharmacy.id);
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000,
-    });
+    setAuthCookie(res, token, process.env.NODE_ENV === 'production');
     setCsrfCookie(res, generateCsrfToken());
 
-    const logAction = pharmacy.isAdmin ? 'admin_login' as const : 'login' as const;
+    const logAction = getLoginLogAction(pharmacy.isAdmin);
     void writeLog(logAction, { pharmacyId: pharmacy.id, detail: `ログイン: ${pharmacy.name}`, ipAddress: getClientIp(req) });
 
-    res.json({
-      id: pharmacy.id,
-      email: pharmacy.email,
-      name: pharmacy.name,
-      prefecture: pharmacy.prefecture,
-      isAdmin: pharmacy.isAdmin,
-    });
+    res.json(buildLoginResponse(pharmacy));
   } catch (err) {
     if (handleAuthConfigurationError('Login', err, res)) {
       return;
@@ -368,21 +341,14 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
       res.status(400).json({ error: 'メールアドレスを入力してください' });
       return;
     }
-    const emailResult = emailSchema.safeParse(email);
-    if (!emailResult.success) {
-      res.status(400).json({ error: emailResult.error.issues[0].message });
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.valid) {
+      res.status(400).json({ error: emailValidation.error });
       return;
     }
 
     const result = await createPasswordResetToken(email);
-    const targetMs = PASSWORD_RESET_MIN_RESPONSE_MS
-      + (PASSWORD_RESET_RESPONSE_JITTER_MS > 0
-        ? Math.floor(Math.random() * (PASSWORD_RESET_RESPONSE_JITTER_MS + 1))
-        : 0);
-    const elapsedMs = Date.now() - requestStartedAt;
-    if (elapsedMs < targetMs) {
-      await sleep(targetMs - elapsedMs);
-    }
+    await calculatePasswordResetDelay(requestStartedAt, PASSWORD_RESET_MIN_RESPONSE_MS, PASSWORD_RESET_RESPONSE_JITTER_MS);
 
     // Always return success to prevent email enumeration
     void writeLog('password_reset_request', {
@@ -390,11 +356,7 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
       ipAddress: getClientIp(req),
     });
 
-    res.json({
-      message: 'パスワードリセットの手続きを受け付けました',
-      // Token exposure should be explicitly enabled only in secured dev/test environments.
-      ...(SHOULD_EXPOSE_PASSWORD_RESET_TOKEN && result ? { token: result.token } : {}),
-    });
+    res.json(buildPasswordResetResponse(SHOULD_EXPOSE_PASSWORD_RESET_TOKEN, result));
   } catch (err) {
     handleRouteError(err, 'Password reset request error', 'パスワードリセットに失敗しました', res);
   }
@@ -405,43 +367,35 @@ router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, re
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
 
-    if (!token || !/^[a-f0-9]{64}$/.test(token)) {
-      res.status(400).json({ error: 'リセットトークンが無効です' });
+    if (!validateResetToken(token)) {
+      res.status(400).json(buildInvalidResetTokenResponse());
       return;
     }
 
-    const passwordResult = passwordSchema.safeParse(newPassword);
-    if (!passwordResult.success) {
-      res.status(400).json({ error: passwordResult.error.issues[0].message });
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.valid) {
+      res.status(400).json({ error: passwordValidation.error });
       return;
     }
 
     const resetResult = await resetPasswordWithToken(token, newPassword);
     if (!resetResult.success) {
       void writeLog('password_reset_failed', { detail: 'リセットトークン無効または期限切れ', ipAddress: getClientIp(req) });
-      res.status(400).json({ error: 'リセットトークンが無効または期限切れです' });
+      res.status(400).json(buildInvalidPasswordResetResponse());
       return;
     }
     invalidateAuthUserCache(resetResult.pharmacyId);
 
     void writeLog('password_reset_complete', { detail: 'パスワードリセット完了', ipAddress: getClientIp(req) });
-    res.json({ message: 'パスワードをリセットしました。新しいパスワードでログインしてください' });
+    res.json(buildPasswordResetCompleteResponse());
   } catch (err) {
     handleRouteError(err, 'Password reset confirm error', 'パスワードリセットに失敗しました', res);
   }
 });
 
 router.post('/logout', (req: AuthRequest, res: Response) => {
-  let pharmacyId: number | null = null;
   const token = typeof req.cookies?.token === 'string' ? req.cookies.token : '';
-  if (token) {
-    try {
-      const payload = verifyToken(token);
-      pharmacyId = payload.id;
-    } catch {
-      // ignore invalid token
-    }
-  }
+  const pharmacyId = extractPharmacyIdFromToken(token);
 
   res.clearCookie('token');
   clearCsrfCookie(res);
@@ -453,20 +407,20 @@ router.post('/logout', (req: AuthRequest, res: Response) => {
     detail: 'ログアウト',
     ipAddress: getClientIp(req),
   });
-  res.json({ message: 'ログアウトしました' });
+  res.json(buildLogoutResponse());
 });
 
 router.get('/csrf-token', (req: AuthRequest, res: Response) => {
   const token = ensureCsrfCookie(req, res);
-  res.json({ csrfToken: token });
+  res.json(buildCsrfTokenResponse(token));
 });
 
 router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
   try {
-    const rows = await loadAuthMeRows(req.user!.id);
+    const rows = await loadAuthMeRows(req.user!.id, isTestAccountColumnAvailable, (val) => { isTestAccountColumnAvailable = val; });
 
     if (rows.length === 0) {
-      res.status(404).json({ error: 'ユーザーが見つかりません' });
+      res.status(404).json(buildUserNotFoundResponse());
       return;
     }
 
@@ -479,21 +433,20 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
 router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthRequest, res: Response) => {
   try {
     if (!isTestLoginFeatureEnabled()) {
-      res.status(404).json({ error: 'テストログインは無効です' });
+      res.status(404).json(buildTestLoginDisabledResponse());
       return;
     }
 
-    const includePasswordRaw = req.query.includePassword;
-    const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
-    const cacheControlValue = includePassword ? 'no-store' : 'private, max-age=60';
+    const includePassword = parseIncludePasswordQuery(req.query.includePassword);
+    const cacheControlValue = getCacheControlValue(includePassword);
 
     // キャッシュが有効ならDBアクセスをスキップ
-    if (testPharmacyCache && testPharmacyCache.expiresAt > Date.now()) {
-      sendTestPharmacyResponse(res, testPharmacyCache.rows, includePassword, cacheControlValue);
+    if (isCacheValid(testPharmacyCache)) {
+      sendTestPharmacyResponse(res, testPharmacyCache!.rows, includePassword, cacheControlValue);
       return;
     }
 
-    const rows = await loadTestPharmacyRows(res);
+    const rows = await loadTestPharmacyRows(res, isTestAccountColumnAvailable, (val) => { isTestAccountColumnAvailable = val; });
     if (!rows) {
       return;
     }
