@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { proposalStatusLabel, toViewerProposalStatusLabel } from '../proposal-status';
+import { proposalStatusLabel, toViewerProposalStatusLabel, proposalStatusStyle } from '../proposal-status';
 
 describe('proposalStatusLabel', () => {
   it('returns label for proposed', () => {
@@ -55,5 +55,23 @@ describe('toViewerProposalStatusLabel', () => {
   it('delegates to proposalStatusLabel for other statuses', () => {
     expect(toViewerProposalStatusLabel('confirmed', true)).toBe('確定');
     expect(toViewerProposalStatusLabel('rejected', false)).toBe('拒否');
+  });
+});
+
+describe('proposalStatusStyle', () => {
+  it('returns style for proposed', () => {
+    expect(proposalStatusStyle('proposed')).toEqual({ label: '仮マッチング中', variant: 'warning' });
+  });
+
+  it('returns style for confirmed', () => {
+    expect(proposalStatusStyle('confirmed')).toEqual({ label: '確定', variant: 'success' });
+  });
+
+  it('returns style for completed', () => {
+    expect(proposalStatusStyle('completed')).toEqual({ label: '完了', variant: 'secondary' });
+  });
+
+  it('returns default style for unknown status', () => {
+    expect(proposalStatusStyle('unknown_status')).toEqual({ label: 'unknown_status', variant: 'secondary' });
   });
 });
