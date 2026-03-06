@@ -6,6 +6,20 @@
 
 （なし）
 
+## 🟢 Sprint: リファクタリング (新機能構築前整理) — 完了 (2026-03-07)
+
+### Wave 1-3: サーバーサイド分割 ✅
+- [x] matching-service → 4サブモジュール分割
+- [x] upload-confirm-job-service → 8サブモジュール分割
+
+### Wave 4: フロントエンドhook抽出 ✅
+- [x] useCamera.ts / useBarcodeResolver.ts / useCameraDraftRows.ts 抽出
+- [x] CameraDeadStockRegisterPanel.tsx 統合
+- [x] useDiffPreview.ts / useUploadPreview.ts / useUploadJobPolling.ts 抽出
+- [x] useUploadExcelFlow.ts 抽出 → UploadPage.tsx 簡素化 (908→280行)
+- [x] useAccountForm.ts / useBusinessHoursForm.ts / useNotificationSettings.ts 抽出
+- [x] AccountPage.tsx 簡素化 (726→130行)
+
 ---
 
 ## 🟡 未着手のタスク
