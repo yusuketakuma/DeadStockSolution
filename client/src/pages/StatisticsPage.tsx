@@ -6,6 +6,7 @@ import { useAsyncResource } from '../hooks/useAsyncResource';
 import { api } from '../api/client';
 import { formatYen, formatDateJa } from '../utils/formatters';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import InlineLoader from '../components/ui/InlineLoader';
 
 interface BucketCounts {
   expired: number;
@@ -149,7 +150,7 @@ export default function StatisticsPage() {
 
   return (
     <StatisticsShell>
-      {loading && <p className="text-muted">読み込み中...</p>}
+      {loading && <InlineLoader text="統計データを読み込み中..." />}
       {error && <div className="alert alert-danger">{error}</div>}
       {/* アクション待ち・アラート */}
       {(summary.proposals.pendingAction > 0 || summary.alerts.activeCount > 0) && (

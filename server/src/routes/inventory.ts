@@ -26,23 +26,15 @@ import {
   sanitizeRawCode,
   searchCameraManualCandidates,
 } from '../services/camera-dead-stock-service';
-
-const router = Router();
-
-router.use(requireLogin);
-
-interface CameraResolveBody {
-  rawCode?: unknown;
-}
-
-interface CameraConfirmBody {
-  items?: unknown;
-}
-
-interface CameraManualCandidatesQuery {
-  q?: unknown;
-  limit?: unknown;
-}
+import {
+  cameraResolveSchema,
+  cameraConfirmSchema,
+  cameraManualCandidatesSchema,
+  type CameraResolveBody,
+  type CameraConfirmBody,
+  type CameraManualCandidatesQuery,
+} from '../utils/validators';
+import { ApiError, isApiError } from '../utils/api-error';
 
 const CAMERA_BAD_REQUEST_MESSAGES = new Set<string>([
   '読取コードを入力してください',
@@ -57,25 +49,49 @@ function isCameraBadRequestMessage(message: string): boolean {
   return message.startsWith('行') || CAMERA_BAD_REQUEST_MESSAGES.has(message);
 }
 
+// Helper to handle errors consistently
+function handleRouteError(err: unknown, logContext: string, res: Response): void {
+  if (isApiError(err)) {
+    res.status(err.status).json(err.toBody());
+    return;
+  }
+  const message = err instanceof Error ? err.message : '不明なエラー';
+  if (message === '薬局が見つかりません') {
+    res.status(404).json({ error: message });
+    return;
+  }
+  if (isCameraBadRequestMessage(message)) {
+    res.status(400).json({ error: message });
+    return;
+  }
+  logger.error(logContext, { error: message });
+  res.status(500).json({ error: 'サーバーエラーが発生しました' });
+}
+
+const router = Router();
+
+router.use(requireLogin);
+
 // My dead stock expiry risk summary
 router.get('/dead-stock/risk', async (req: AuthRequest, res: Response) => {
   try {
     const detail = await getPharmacyRiskDetail(req.user!.id);
     res.json(detail);
   } catch (err) {
-    logger.error('Dead stock risk summary error:', { error: (err as Error).message });
-    const message = err instanceof Error && err.message.includes('見つかりません')
-      ? err.message
-      : '期限切れリスク集計の取得に失敗しました';
-    res.status(message.includes('見つかりません') ? 404 : 500).json({ error: message });
+    handleRouteError(err, 'Dead stock risk summary error', res);
   }
 });
 
 // Resolve GS1/YJ code from camera/manual scan (no persistence)
 router.post('/dead-stock/camera/resolve', async (req: AuthRequest, res: Response) => {
   try {
-    const body = (req.body ?? {}) as CameraResolveBody;
-    const rawCode = sanitizeRawCode(body.rawCode);
+    const parseResult = cameraResolveSchema.safeParse(req.body ?? {});
+    if (!parseResult.success) {
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? '読取コードを入力してください' });
+      return;
+    }
+    const { rawCode: rawCodeInput } = parseResult.data;
+    const rawCode = sanitizeRawCode(rawCodeInput);
     if (!rawCode) {
       res.status(400).json({ error: '読取コードを入力してください' });
       return;
@@ -98,39 +114,42 @@ router.post('/dead-stock/camera/resolve', async (req: AuthRequest, res: Response
 
     res.json(response);
   } catch (err) {
-    logger.error('Camera resolve error:', { error: (err as Error).message });
-    res.status(500).json({ error: 'コード解析に失敗しました' });
+    handleRouteError(err, 'Camera resolve error', res);
   }
 });
 
 // Search drug master candidates for unmatched camera rows
 router.get('/dead-stock/camera/manual-candidates', async (req: AuthRequest, res: Response) => {
   try {
-    const query = req.query as CameraManualCandidatesQuery;
-    const search = normalizeSearchTerm(query.q);
+    const parseResult = cameraManualCandidatesSchema.safeParse(req.query);
+    if (!parseResult.success) {
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? '検索キーワードを入力してください' });
+      return;
+    }
+    const { q, limit } = parseResult.data;
+    const search = normalizeSearchTerm(q);
     if (!search) {
       res.status(400).json({ error: '検索キーワードを入力してください' });
       return;
     }
 
-    const data = await searchCameraManualCandidates(search, query.limit);
+    const data = await searchCameraManualCandidates(search, limit);
     res.json({ data });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '医薬品候補の検索に失敗しました';
-    if (isCameraBadRequestMessage(message)) {
-      res.status(400).json({ error: message });
-      return;
-    }
-    logger.error('Camera manual candidates error:', { error: message });
-    res.status(500).json({ error: '医薬品候補の検索に失敗しました' });
+    handleRouteError(err, 'Camera manual candidates error', res);
   }
 });
 
 // Confirm scanned rows and register as dead stock
 router.post('/dead-stock/camera/confirm-batch', async (req: AuthRequest, res: Response) => {
   try {
-    const body = (req.body ?? {}) as CameraConfirmBody;
-    const result = await confirmCameraDeadStockBatch(req.user!.id, body.items);
+    const parseResult = cameraConfirmSchema.safeParse(req.body ?? {});
+    if (!parseResult.success) {
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? '登録する行がありません' });
+      return;
+    }
+    const { items } = parseResult.data;
+    const result = await confirmCameraDeadStockBatch(req.user!.id, items);
 
     invalidateAdminRiskSnapshotCache();
     void writeLog('upload', {
@@ -145,13 +164,7 @@ router.post('/dead-stock/camera/confirm-batch', async (req: AuthRequest, res: Re
       createdCount: result.createdCount,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'カメラ登録に失敗しました';
-    if (isCameraBadRequestMessage(message)) {
-      res.status(400).json({ error: message });
-      return;
-    }
-    logger.error('Camera confirm batch error:', { error: message });
-    res.status(500).json({ error: 'カメラ登録に失敗しました' });
+    handleRouteError(err, 'Camera confirm batch error', res);
   }
 });
 

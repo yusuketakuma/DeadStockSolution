@@ -8,6 +8,8 @@ const originalFetch = global.fetch;
 const fetchMock = vi.fn();
 
 import { geocodeAddress } from '../services/geocode-service';
+import { FetchTimeoutError } from '../utils/http-utils';
+import { logger } from '../services/logger';
 
 describe('geocode-service', () => {
   beforeEach(() => {
@@ -62,6 +64,10 @@ describe('geocode-service', () => {
     const result = await geocodeAddress('東京都千代田区');
 
     expect(result).toBeNull();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Geocoding API returned non-OK status',
+      expect.objectContaining({ addressSummary: '東京***(7)' }),
+    );
   });
 
   it('returns null when API returns empty results', async () => {
@@ -106,11 +112,34 @@ describe('geocode-service', () => {
     const result = await geocodeAddress('東京都千代田区');
 
     expect(result).toBeNull();
+    expect(logger.error).toHaveBeenCalledWith(
+      'Geocoding request failed',
+      expect.objectContaining({ addressSummary: '東京***(7)' }),
+    );
   });
 
   it('returns null on abort timeout', async () => {
     const abortError = new DOMException('The operation was aborted', 'AbortError');
     fetchMock.mockRejectedValue(abortError);
+
+    const result = await geocodeAddress('東京都千代田区');
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the first result is missing a coordinate tuple', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [{ geometry: { coordinates: ['139.76'] } }],
+    });
+
+    const result = await geocodeAddress('東京都千代田区');
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null on fetch timeout helper error', async () => {
+    fetchMock.mockRejectedValue(new FetchTimeoutError('request timed out'));
 
     const result = await geocodeAddress('東京都千代田区');
 

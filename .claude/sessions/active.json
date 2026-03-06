@@ -10,5 +10,11 @@
     "last_seen": 1772761234,
     "pid": "69933",
     "status": "active"
+  },
+  "session-1772766167": {
+    "short_id": "session-1772",
+    "last_seen": 1772766167,
+    "pid": "93396",
+    "status": "active"
   }
 }

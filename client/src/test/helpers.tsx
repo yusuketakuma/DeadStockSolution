@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import React from 'react';
-import { render, type RenderOptions } from '@testing-library/react';
+import { render, renderHook, type RenderOptions } from '@testing-library/react';
 import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom';
 import { AuthProvider } from '../contexts/AuthContext';
 import { NotificationProvider } from '../contexts/NotificationContext';
@@ -41,6 +41,16 @@ export function renderWithProviders(
   return render(ui, {
     wrapper: createWrapper({ route, routerProps }),
     ...renderOptions,
+  });
+}
+
+export function renderHookWithProviders<Result>(
+  renderCallback: () => Result,
+  options: WrapperOptions = {},
+) {
+  const { route, routerProps } = options;
+  return renderHook(renderCallback, {
+    wrapper: createWrapper({ route, routerProps }),
   });
 }
 

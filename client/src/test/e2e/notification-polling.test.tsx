@@ -5,25 +5,10 @@
  * TimelineContext の unreadCount を再利用することを検証する。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import React from 'react';
-import { TimelineProvider } from '../../contexts/TimelineContext';
-import { NotificationProvider } from '../../contexts/NotificationContext';
-import { AuthProvider } from '../../contexts/AuthContext';
+import { act } from '@testing-library/react';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useTimeline } from '../../contexts/TimelineContext';
-
-function AllProviders({ children }: { children: React.ReactNode }) {
-  return (
-    <AuthProvider>
-      <TimelineProvider>
-        <NotificationProvider>
-          {children}
-        </NotificationProvider>
-      </TimelineProvider>
-    </AuthProvider>
-  );
-}
+import { renderHookWithProviders } from '../helpers';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -66,7 +51,7 @@ afterEach(() => {
 
 describe('双方ポーリング統合', () => {
   it('/notifications/unread-count は呼ばれない', async () => {
-    renderHook(() => useNotifications(), { wrapper: AllProviders });
+    renderHookWithProviders(() => useNotifications());
 
     await act(async () => {
       await Promise.resolve();
@@ -80,7 +65,7 @@ describe('双方ポーリング統合', () => {
   });
 
   it('60秒後にポーリングしても /notifications/unread-count は呼ばれない', async () => {
-    renderHook(() => useNotifications(), { wrapper: AllProviders });
+    renderHookWithProviders(() => useNotifications());
 
     await act(async () => {
       await Promise.resolve();
@@ -99,8 +84,8 @@ describe('双方ポーリング統合', () => {
   });
 
   it('useNotifications().unreadCount と useTimeline().unreadCount が同一の値を返す', async () => {
-    const { result: notifResult } = renderHook(() => useNotifications(), { wrapper: AllProviders });
-    const { result: timelineResult } = renderHook(() => useTimeline(), { wrapper: AllProviders });
+    const { result: notifResult } = renderHookWithProviders(() => useNotifications());
+    const { result: timelineResult } = renderHookWithProviders(() => useTimeline());
 
     await act(async () => {
       await Promise.resolve();

@@ -18,6 +18,7 @@ import { AuthRequest } from '../types';
 import { geocodeAddress } from '../services/geocode-service';
 import { writeLog, getClientIp } from '../services/log-service';
 import { emailSchema } from '../utils/validators';
+import { eqEmailCaseInsensitive } from '../utils/email-utils';
 import { fetchBusinessHourSettings, validateBusinessHours, validateSpecialBusinessHours } from './business-hours';
 import { adminWriteLimiter } from './admin-write-limiter';
 import { parseIdOrBadRequest, handleAdminError } from './admin-utils';
@@ -113,7 +114,7 @@ async function pharmacyExists(id: number): Promise<boolean> {
 async function findPharmacyIdByEmail(email: string): Promise<number | null> {
   const rows = await db.select({ id: pharmacies.id })
     .from(pharmacies)
-    .where(eq(pharmacies.email, email))
+    .where(eqEmailCaseInsensitive(pharmacies.email, email))
     .limit(1);
 
   return rows[0]?.id ?? null;

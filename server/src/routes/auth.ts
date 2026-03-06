@@ -23,6 +23,7 @@ import { createPasswordResetToken, resetPasswordWithToken } from '../services/pa
 import { logger } from '../services/logger';
 import { handleRouteError, getErrorMessage } from '../middleware/error-handler';
 import { sleep } from '../utils/http-utils';
+import { eqEmailCaseInsensitive, normalizeEmail } from '../utils/email-utils';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
 import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verification-service';
@@ -303,12 +304,13 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       permitPharmacyName,
       permitAddress,
     } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
     // Check existing email
     const [existing, existingLicense] = await Promise.all([
       db.select({ id: pharmacies.id })
         .from(pharmacies)
-        .where(eq(pharmacies.email, email))
+        .where(eqEmailCaseInsensitive(pharmacies.email, normalizedEmail))
         .limit(1),
       db.select({ id: pharmacies.id })
         .from(pharmacies)
@@ -352,7 +354,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     const normalizedPostalCode = postalCode.replace(/[-ー－\s]/g, '');
     const registrationResult = await db.transaction(async (tx) => {
       const [review] = await tx.insert(pharmacyRegistrationReviews).values({
-        email,
+        email: normalizedEmail,
         pharmacyName: name,
         postalCode: normalizedPostalCode,
         prefecture,
@@ -380,7 +382,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       }
 
       const [createdPharmacy] = await tx.insert(pharmacies).values({
-        email,
+        email: normalizedEmail,
         passwordHash,
         name,
         postalCode: normalizedPostalCode,
@@ -510,10 +512,11 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
     assertJwtSecretConfigured();
 
     const { email, password } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
     const rows = await db.select()
       .from(pharmacies)
-      .where(eq(pharmacies.email, email))
+      .where(eqEmailCaseInsensitive(pharmacies.email, normalizedEmail))
       .limit(1);
 
     if (rows.length === 0) {
@@ -530,7 +533,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
 
     const valid = await verifyPassword(password, pharmacy.passwordHash);
     if (!valid) {
-      void writeLog('login_failed', { detail: `ログイン失敗: ${email}`, ipAddress: getClientIp(req) });
+      void writeLog('login_failed', { detail: `ログイン失敗: ${normalizedEmail}`, ipAddress: getClientIp(req) });
       res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません' });
       return;
     }
@@ -573,7 +576,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
 router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const requestStartedAt = Date.now();
-    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    const email = typeof req.body?.email === 'string' ? normalizeEmail(req.body.email) : '';
     if (!email) {
       res.status(400).json({ error: 'メールアドレスを入力してください' });
       return;

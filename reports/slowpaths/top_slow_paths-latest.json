@@ -79,8 +79,8 @@
       "id": "server/src/services/drug-master-parser-service.ts",
       "file": "server/src/services/drug-master-parser-service.ts",
       "hotPath": "file-hotspot",
-      "reason": "loc=515, loops=14, awaitInLoop=2, sql=0",
-      "score": 105.45
+      "reason": "loc=521, loops=14, awaitInLoop=2, sql=0",
+      "score": 106.33
     },
     {
       "rank": 10,
@@ -142,8 +142,8 @@
       "id": "server/src/routes/auth.ts",
       "file": "server/src/routes/auth.ts",
       "hotPath": "file-hotspot",
-      "reason": "loc=707, loops=0, awaitInLoop=0, sql=12",
-      "score": 80.31
+      "reason": "loc=721, loops=0, awaitInLoop=0, sql=12",
+      "score": 81.43
     },
     {
       "rank": 17,
@@ -214,8 +214,8 @@
       "id": "server/src/services/expiry-risk-service.ts",
       "file": "server/src/services/expiry-risk-service.ts",
       "hotPath": "file-hotspot",
-      "reason": "loc=460, loops=5, awaitInLoop=2, sql=4",
-      "score": 68.5
+      "reason": "loc=461, loops=5, awaitInLoop=2, sql=4",
+      "score": 68.53
     },
     {
       "rank": 25,
@@ -238,6 +238,15 @@
     {
       "rank": 27,
       "source": "static-heuristic",
+      "id": "server/src/services/matching-rule-service.ts",
+      "file": "server/src/services/matching-rule-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=338, loops=2, awaitInLoop=1, sql=10",
+      "score": 60.24
+    },
+    {
+      "rank": 28,
+      "source": "static-heuristic",
       "id": "server/src/services/timeline-aggregators.ts",
       "file": "server/src/services/timeline-aggregators.ts",
       "hotPath": "file-hotspot",
@@ -245,7 +254,7 @@
       "score": 58.14
     },
     {
-      "rank": 28,
+      "rank": 29,
       "source": "static-heuristic",
       "id": "server/src/services/upload-row-issue-service.ts",
       "file": "server/src/services/upload-row-issue-service.ts",
@@ -254,22 +263,13 @@
       "score": 57.83
     },
     {
-      "rank": 29,
-      "source": "static-heuristic",
-      "id": "server/src/services/matching-rule-service.ts",
-      "file": "server/src/services/matching-rule-service.ts",
-      "hotPath": "file-hotspot",
-      "reason": "loc=386, loops=0, awaitInLoop=0, sql=10",
-      "score": 57.78
-    },
-    {
       "rank": 30,
       "source": "static-heuristic",
-      "id": "server/src/routes/pharmacies.ts",
-      "file": "server/src/routes/pharmacies.ts",
+      "id": "server/src/routes/exchange-proposals.ts",
+      "file": "server/src/routes/exchange-proposals.ts",
       "hotPath": "file-hotspot",
-      "reason": "loc=365, loops=0, awaitInLoop=0, sql=17",
-      "score": 57.65
+      "reason": "loc=521, loops=1, awaitInLoop=0, sql=10",
+      "score": 57.53
     }
   ]
 }

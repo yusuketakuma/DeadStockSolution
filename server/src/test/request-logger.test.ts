@@ -171,4 +171,39 @@ describe('request-logger flags', () => {
       }),
     );
   });
+
+  it('falls back to a generated request id when x-request-id is too long', async () => {
+    process.env.REQUEST_LOG_ERRORS_ONLY = 'false';
+    process.env.REQUEST_METRICS_ENABLED = 'true';
+    const { requestLogger } = await loadRequestLogger();
+    const ctx = createRequestLoggerTestContext(200, '/api/orders');
+    ctx.req.headers['x-request-id'] = 'a'.repeat(200);
+
+    requestLogger(ctx.req, ctx.res, ctx.next);
+    ctx.finish();
+
+    expect(ctx.res.setHeader).toHaveBeenCalledWith('x-request-id', expect.stringMatching(/^[0-9a-f-]{36}$/));
+    expect(mocks.recordRequestMetric).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    }));
+  });
+
+  it('falls back to a generated request id when x-request-id contains unsafe characters', async () => {
+    process.env.REQUEST_LOG_ERRORS_ONLY = 'false';
+    process.env.REQUEST_METRICS_ENABLED = 'true';
+    const { requestLogger } = await loadRequestLogger();
+    const ctx = createRequestLoggerTestContext(200, '/api/orders');
+    ctx.req.headers['x-request-id'] = 'req-123\nmalicious';
+
+    requestLogger(ctx.req, ctx.res, ctx.next);
+    ctx.finish();
+
+    expect(ctx.res.setHeader).toHaveBeenCalledWith('x-request-id', expect.stringMatching(/^[0-9a-f-]{36}$/));
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      'request',
+      expect.objectContaining({
+        requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      }),
+    );
+  });
 });

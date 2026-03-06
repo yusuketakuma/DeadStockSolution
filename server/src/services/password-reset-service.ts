@@ -3,6 +3,7 @@ import { eq, and, gt, lt, isNull, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { passwordResetTokens, pharmacies } from '../db/schema';
 import { hashPassword } from './auth-service';
+import { eqEmailCaseInsensitive } from '../utils/email-utils';
 
 const TOKEN_EXPIRY_MINUTES = 30;
 const MAX_ACTIVE_TOKENS_PER_USER = 3;
@@ -31,7 +32,7 @@ export async function createPasswordResetToken(email: string): Promise<{ token: 
   return db.transaction(async (tx) => {
     const [pharmacy] = await tx.select({ id: pharmacies.id, name: pharmacies.name, isActive: pharmacies.isActive })
       .from(pharmacies)
-      .where(eq(pharmacies.email, email))
+      .where(eqEmailCaseInsensitive(pharmacies.email, email))
       .limit(1);
 
     if (!pharmacy || !pharmacy.isActive) {

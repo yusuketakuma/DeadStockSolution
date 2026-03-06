@@ -3,6 +3,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getErrorMessage } from '../middleware/error-handler';
 import { sleep } from '../utils/http-utils';
+import { isRecord } from '../utils/type-guards';
 import { logger } from './logger';
 
 export type OpenClawStatus = 'pending_handoff' | 'in_dialogue' | 'implementing' | 'completed';
@@ -72,6 +73,34 @@ interface OpenClawCliAgentResponse {
       agentMeta?: { sessionId?: unknown };
     };
   };
+}
+
+function readStringField(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === 'string' ? value : null;
+}
+
+function extractGatewaySummaryPayload(payload: unknown): string {
+  if (!isRecord(payload)) {
+    return '';
+  }
+
+  const choices = payload.choices;
+  if (!Array.isArray(choices) || choices.length === 0) {
+    return '';
+  }
+
+  const firstChoice = choices[0];
+  if (!isRecord(firstChoice)) {
+    return '';
+  }
+
+  const message = firstChoice.message;
+  if (!isRecord(message)) {
+    return '';
+  }
+
+  return readStringField(message, 'content') ?? '';
 }
 
 function isAbortError(err: unknown): boolean {
@@ -605,9 +634,9 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
       throw new Error(`OpenClaw API error: ${response.status}`);
     }
 
-    const data = await response.json() as Record<string, unknown>;
+    const data: unknown = await response.json();
     return {
-      summary: ((data?.choices as any)?.[0]?.message?.content as string) ?? '',
+      summary: extractGatewaySummaryPayload(data),
     };
   } finally {
     clearTimeout(timer);

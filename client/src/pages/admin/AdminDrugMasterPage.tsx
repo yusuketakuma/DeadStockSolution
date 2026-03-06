@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, FormEvent, useCallback } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
+import { useToast } from '../../contexts/ToastContext';
 import { Col, Row } from 'react-bootstrap';
 import { api, apiUpload } from '../../api/client';
 import Pagination from '../../components/Pagination';
@@ -56,6 +57,7 @@ interface AutoSyncStatus {
 // ── メインコンポーネント ─────────────────────────────
 
 export default function AdminDrugMasterPage() {
+  const { showError } = useToast();
   const [stats, setStats] = useState<Stats | null>(null);
   const [items, setItems] = useState<DrugMasterItem[]>([]);
   const [page, setPage] = useState(1);
@@ -103,12 +105,12 @@ export default function AdminDrugMasterPage() {
 
   // ── データ取得 ──────────────────────────────────
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const data = await api.get<Stats>('/admin/drug-master/stats');
       setStats(data);
-    } catch (err) { console.error('Failed to fetch stats', err); }
-  };
+    } catch (_err) { showError('医薬品統計の取得に失敗しました'); }
+  }, [showError]);
 
   const fetchItems = useCallback(async (p: number) => {
     setLoading(true);
@@ -206,7 +208,7 @@ export default function AdminDrugMasterPage() {
     fetchSyncLogs();
     fetchAutoSyncStatus();
     fetchPackageAutoSyncStatus();
-  }, []);
+  }, [fetchStats]);
 
   useEffect(() => () => {
     if (autoSyncRefreshTimerRef.current !== null) {

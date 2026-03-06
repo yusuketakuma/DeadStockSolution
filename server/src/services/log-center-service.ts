@@ -42,6 +42,12 @@ export interface LogSummary {
   bySource: Record<string, number>;
 }
 
+function toUnknownRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 // ── 正規化（純粋関数） ──────────────────────────────────
 
 /**
@@ -303,7 +309,7 @@ async function querySourceTable(source: LogSource, query: LogCenterQuery, fetchL
     .orderBy(desc(config.timestampCol))
     .limit(fetchLimit);
 
-  return rows.map((r) => normalizeLogEntry(source, r as unknown as Record<string, unknown>));
+  return rows.map((row) => normalizeLogEntry(source, toUnknownRecord(row)));
 }
 
 // ── ソーステーブル COUNT ──────────────────────────────────

@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, pharmacies } from '../db/schema';
+import { ApiError } from '../utils/api-error';
 
 export interface RiskBucketCounts {
   expired: number;
@@ -376,7 +377,7 @@ export async function getPharmacyRiskDetail(pharmacyId: number): Promise<Pharmac
     .limit(1);
 
   if (!pharmacy) {
-    throw new Error('薬局が見つかりません');
+    throw ApiError.notFound('薬局が見つかりません');
   }
 
   const rows = await db.select({

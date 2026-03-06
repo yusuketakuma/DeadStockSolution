@@ -300,6 +300,7 @@ export default function ProposalsPage() {
                         onChange={() => toggleSelection(p.id)}
                         disabled={!selectable}
                         label="一括対象に追加"
+                        aria-label={`${otherName}との提案を一括対象に追加`}
                       />
                       <Link to={`/proposals/${p.id}`} className="btn btn-sm btn-outline-primary w-100">詳細</Link>
                     </div>

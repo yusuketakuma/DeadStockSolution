@@ -17,6 +17,7 @@ import { clearCsrfCookie } from '../middleware/csrf';
 import { writeLog, getClientIp } from '../services/log-service';
 import { logger } from '../services/logger';
 import { getErrorMessage } from '../middleware/error-handler';
+import { eqEmailCaseInsensitive } from '../utils/email-utils';
 import { emailSchema } from '../utils/validators';
 
 // パスワード変更用レート制限: 10回/時/ユーザー
@@ -270,7 +271,7 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       updates.email !== undefined
         ? db.select({ id: pharmacies.id })
           .from(pharmacies)
-          .where(eq(pharmacies.email, updates.email as string))
+          .where(eqEmailCaseInsensitive(pharmacies.email, updates.email as string))
           .limit(1)
         : Promise.resolve([]),
       updates.licenseNumber !== undefined

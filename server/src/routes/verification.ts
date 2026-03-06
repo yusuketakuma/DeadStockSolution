@@ -1,8 +1,8 @@
 import { Router, Response, Request } from 'express';
-import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { handleRouteError } from '../middleware/error-handler';
+import { eqEmailCaseInsensitive, normalizeEmail } from '../utils/email-utils';
 
 const router = Router();
 
@@ -14,12 +14,14 @@ router.get('/verification-status', async (req: Request, res: Response) => {
       return;
     }
 
+    const normalizedEmail = normalizeEmail(email);
+
     const [pharmacy] = await db.select({
       verificationStatus: pharmacies.verificationStatus,
       rejectionReason: pharmacies.rejectionReason,
     })
       .from(pharmacies)
-      .where(eq(pharmacies.email, email.trim().toLowerCase()))
+      .where(eqEmailCaseInsensitive(pharmacies.email, normalizedEmail))
       .limit(1);
 
     if (!pharmacy) {

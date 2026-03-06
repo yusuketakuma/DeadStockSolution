@@ -28,3 +28,5 @@ server/src/services/upload-confirm-service.ts
 server/src/utils/network-utils.ts
 server/src/services/upload-row-issue-service.ts
 server/src/routes/exchange-proposals.ts
+server/src/services/matching-rule-service.ts
+server/src/routes/pharmacies.ts

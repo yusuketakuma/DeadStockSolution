@@ -15,6 +15,129 @@ import { logger } from '../services/logger';
 const router = Router();
 router.use(requireLogin);
 
+type RelationshipType = 'favorite' | 'blocked';
+
+const RELATIONSHIP_MESSAGES: Record<RelationshipType, {
+  addSuccess: string;
+  removeSuccess: string;
+  addFailure: string;
+  removeFailure: string;
+  selfError: string;
+  logLabel: string;
+}> = {
+  favorite: {
+    addSuccess: 'お気に入りに設定しました',
+    removeSuccess: 'お気に入りを解除しました',
+    addFailure: 'お気に入りの追加に失敗しました',
+    removeFailure: 'お気に入りの解除に失敗しました',
+    selfError: '自分自身をお気に入りに追加できません',
+    logLabel: 'favorite',
+  },
+  blocked: {
+    addSuccess: 'ブロックしました',
+    removeSuccess: 'ブロックを解除しました',
+    addFailure: 'ブロックの追加に失敗しました',
+    removeFailure: 'ブロックの解除に失敗しました',
+    selfError: '自分自身をブロックできません',
+    logLabel: 'block',
+  },
+};
+
+function parseRoutePharmacyId(value: string | string[] | undefined): number | null {
+  return parsePositiveInt(Array.isArray(value) ? value[0] : value);
+}
+
+async function findActivePharmacyById(id: number): Promise<{ id: number } | null> {
+  const [target] = await db.select({ id: pharmacies.id })
+    .from(pharmacies)
+    .where(and(eq(pharmacies.id, id), eq(pharmacies.isActive, true)))
+    .limit(1);
+  return target ?? null;
+}
+
+async function upsertRelationship(
+  pharmacyId: number,
+  targetPharmacyId: number,
+  relationshipType: RelationshipType,
+): Promise<void> {
+  await db.insert(pharmacyRelationships).values({
+    pharmacyId,
+    targetPharmacyId,
+    relationshipType,
+  }).onConflictDoUpdate({
+    target: [pharmacyRelationships.pharmacyId, pharmacyRelationships.targetPharmacyId],
+    set: {
+      relationshipType,
+      createdAt: new Date().toISOString(),
+    },
+  });
+}
+
+async function deleteRelationship(
+  pharmacyId: number,
+  targetPharmacyId: number,
+  relationshipType: RelationshipType,
+): Promise<void> {
+  await db.delete(pharmacyRelationships)
+    .where(and(
+      eq(pharmacyRelationships.pharmacyId, pharmacyId),
+      eq(pharmacyRelationships.targetPharmacyId, targetPharmacyId),
+      eq(pharmacyRelationships.relationshipType, relationshipType),
+    ));
+}
+
+function createRelationshipHandler(relationshipType: RelationshipType) {
+  return async (req: AuthRequest, res: Response) => {
+    const messages = RELATIONSHIP_MESSAGES[relationshipType];
+
+    try {
+      const targetId = parseRoutePharmacyId(req.params.id);
+      if (!targetId) {
+        res.status(400).json({ error: '不正なIDです' });
+        return;
+      }
+      if (targetId === req.user!.id) {
+        res.status(400).json({ error: messages.selfError });
+        return;
+      }
+      if (!(await findActivePharmacyById(targetId))) {
+        res.status(404).json({ error: '対象の薬局が見つかりません' });
+        return;
+      }
+
+      await upsertRelationship(req.user!.id, targetId, relationshipType);
+      res.json({ message: messages.addSuccess });
+    } catch (err) {
+      logger.error(`Add ${messages.logLabel} error`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      res.status(500).json({ error: messages.addFailure });
+    }
+  };
+}
+
+function createRelationshipDeleteHandler(relationshipType: RelationshipType) {
+  return async (req: AuthRequest, res: Response) => {
+    const messages = RELATIONSHIP_MESSAGES[relationshipType];
+
+    try {
+      const targetId = parseRoutePharmacyId(req.params.id);
+      if (!targetId) {
+        res.status(400).json({ error: '不正なIDです' });
+        return;
+      }
+
+      await deleteRelationship(req.user!.id, targetId, relationshipType);
+      res.json({ message: messages.removeSuccess });
+    } catch (err) {
+      logger.error(`Remove ${messages.logLabel} error`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      res.status(500).json({ error: messages.removeFailure });
+    }
+  };
+}
+
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
@@ -219,7 +342,7 @@ router.get('/relationships', async (req: AuthRequest, res: Response) => {
 
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const id = parsePositiveInt(req.params.id);
+    const id = parseRoutePharmacyId(req.params.id);
     if (!id) {
       res.status(400).json({ error: '不正なIDです' });
       return;
@@ -253,112 +376,12 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/:id/favorite', async (req: AuthRequest, res: Response) => {
-  try {
-    const targetId = parsePositiveInt(req.params.id);
-    if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
-    if (targetId === req.user!.id) { res.status(400).json({ error: '自分自身をお気に入りに追加できません' }); return; }
+router.post('/:id/favorite', createRelationshipHandler('favorite'));
 
-    // Verify target pharmacy exists
-    const [target] = await db.select({ id: pharmacies.id })
-      .from(pharmacies)
-      .where(and(eq(pharmacies.id, targetId), eq(pharmacies.isActive, true)))
-      .limit(1);
-    if (!target) { res.status(404).json({ error: '対象の薬局が見つかりません' }); return; }
+router.delete('/:id/favorite', createRelationshipDeleteHandler('favorite'));
 
-    await db.insert(pharmacyRelationships).values({
-      pharmacyId: req.user!.id,
-      targetPharmacyId: targetId,
-      relationshipType: 'favorite',
-    }).onConflictDoUpdate({
-      target: [pharmacyRelationships.pharmacyId, pharmacyRelationships.targetPharmacyId],
-      set: {
-        relationshipType: 'favorite',
-        createdAt: new Date().toISOString(),
-      },
-    });
+router.post('/:id/block', createRelationshipHandler('blocked'));
 
-    res.json({ message: 'お気に入りに設定しました' });
-  } catch (err) {
-    logger.error('Add favorite error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: 'お気に入りの追加に失敗しました' });
-  }
-});
-
-router.delete('/:id/favorite', async (req: AuthRequest, res: Response) => {
-  try {
-    const targetId = parsePositiveInt(req.params.id);
-    if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
-
-    await db.delete(pharmacyRelationships)
-      .where(and(
-        eq(pharmacyRelationships.pharmacyId, req.user!.id),
-        eq(pharmacyRelationships.targetPharmacyId, targetId),
-        eq(pharmacyRelationships.relationshipType, 'favorite'),
-      ));
-    res.json({ message: 'お気に入りを解除しました' });
-  } catch (err) {
-    logger.error('Remove favorite error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: 'お気に入りの解除に失敗しました' });
-  }
-});
-
-router.post('/:id/block', async (req: AuthRequest, res: Response) => {
-  try {
-    const targetId = parsePositiveInt(req.params.id);
-    if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
-    if (targetId === req.user!.id) { res.status(400).json({ error: '自分自身をブロックできません' }); return; }
-
-    // Verify target pharmacy exists
-    const [target] = await db.select({ id: pharmacies.id })
-      .from(pharmacies)
-      .where(and(eq(pharmacies.id, targetId), eq(pharmacies.isActive, true)))
-      .limit(1);
-    if (!target) { res.status(404).json({ error: '対象の薬局が見つかりません' }); return; }
-
-    await db.insert(pharmacyRelationships).values({
-      pharmacyId: req.user!.id,
-      targetPharmacyId: targetId,
-      relationshipType: 'blocked',
-    }).onConflictDoUpdate({
-      target: [pharmacyRelationships.pharmacyId, pharmacyRelationships.targetPharmacyId],
-      set: {
-        relationshipType: 'blocked',
-        createdAt: new Date().toISOString(),
-      },
-    });
-
-    res.json({ message: 'ブロックしました' });
-  } catch (err) {
-    logger.error('Add block error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: 'ブロックの追加に失敗しました' });
-  }
-});
-
-router.delete('/:id/block', async (req: AuthRequest, res: Response) => {
-  try {
-    const targetId = parsePositiveInt(req.params.id);
-    if (!targetId) { res.status(400).json({ error: '不正なIDです' }); return; }
-
-    await db.delete(pharmacyRelationships)
-      .where(and(
-        eq(pharmacyRelationships.pharmacyId, req.user!.id),
-        eq(pharmacyRelationships.targetPharmacyId, targetId),
-        eq(pharmacyRelationships.relationshipType, 'blocked'),
-      ));
-    res.json({ message: 'ブロックを解除しました' });
-  } catch (err) {
-    logger.error('Remove block error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ error: 'ブロックの解除に失敗しました' });
-  }
-});
+router.delete('/:id/block', createRelationshipDeleteHandler('blocked'));
 
 export default router;

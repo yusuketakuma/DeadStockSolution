@@ -110,6 +110,15 @@ function buildAlertMessage(snapshot: MonitoringKpiSnapshot): string {
   ].join('\n');
 }
 
+function buildMonitoringAlertEnv(): NodeJS.ProcessEnv {
+  return {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    USER: process.env.USER,
+    LANG: process.env.LANG ?? 'en_US.UTF-8',
+  };
+}
+
 async function sendAlertMessage(config: MonitoringKpiAlertConfig, snapshot: MonitoringKpiSnapshot): Promise<boolean> {
   try {
     const message = buildAlertMessage(snapshot);
@@ -125,7 +134,7 @@ async function sendAlertMessage(config: MonitoringKpiAlertConfig, snapshot: Moni
     ], {
       timeout: 15000,
       maxBuffer: 1024 * 1024,
-      env: process.env,
+      env: buildMonitoringAlertEnv(),
     });
     return true;
   } catch (err) {
