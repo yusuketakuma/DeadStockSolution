@@ -147,6 +147,35 @@ describe('openclaw-service-ultra', () => {
       expect(result.status).toBe('in_dialogue');
     });
 
+    it('includes structured context in gateway CLI messages', async () => {
+      setCliEnv();
+
+      mocks.execFileAsync.mockResolvedValue({
+        stdout: JSON.stringify({
+          result: {
+            payloads: [{ text: 'Task accepted and processed' }],
+            meta: { agentMeta: { sessionId: 'cli-session-ctx' } },
+          },
+        }),
+      } as never);
+
+      await handoffToOpenClaw({
+        requestId: 110,
+        pharmacyId: 6,
+        requestText: 'CLI context test',
+        context: {
+          sentryEventId: 'evt-123',
+          sourceFile: 'server/src/app.ts',
+        },
+      });
+
+      const callArgs = mocks.execFileAsync.mock.calls[0]?.[1] as string[];
+      const message = callArgs[callArgs.indexOf('--message') + 1];
+      expect(message).toContain('追加コンテキスト(JSON)');
+      expect(message).toContain('evt-123');
+      expect(message).toContain('server/src/app.ts');
+    });
+
     it('returns null threadId when sessionId is empty', async () => {
       setCliEnv();
 

@@ -61,12 +61,12 @@ describe('/api/health', () => {
   });
 
   describe('DB 失敗時', () => {
-    it('HTTP 200 で degraded ステータスを返す', async () => {
+    it('HTTP 503 で degraded ステータスを返す', async () => {
       mocks.dbExecute.mockRejectedValue(new Error('connection refused'));
 
       const res = await request(app).get('/api/health');
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(503);
       expect(res.body.status).toBe('degraded');
     });
 
@@ -98,15 +98,13 @@ describe('/api/health/ready', () => {
   });
 
   describe('DB 失敗時', () => {
-    it('HTTP 503 で { ready: false, reason: ... } を返す', async () => {
+    it('HTTP 503 で { ready: false } を返す', async () => {
       mocks.dbExecute.mockRejectedValue(new Error('db unavailable'));
 
       const res = await request(app).get('/api/health/ready');
 
       expect(res.status).toBe(503);
-      expect(res.body.ready).toBe(false);
-      expect(typeof res.body.reason).toBe('string');
-      expect(res.body.reason).toContain('db unavailable');
+      expect(res.body).toEqual({ ready: false });
     });
   });
 });

@@ -22,6 +22,7 @@ export interface UseDiffPreviewReturn {
   hasCurrentDiffPreview: boolean;
   requiresDeleteImpactAcknowledgement: boolean;
   handleDiffPreview: () => Promise<void>;
+  abortDiffPreview: () => void;
   resetDiffPreviewState: () => void;
   loading: boolean;
   error: string;
@@ -49,10 +50,17 @@ export function useDiffPreview({
   const hasCurrentDiffPreview = !requiresDiffPreviewRefresh || diffSummary !== null;
   const requiresDeleteImpactAcknowledgement = requiresDiffPreviewRefresh && (diffSummary?.deactivated ?? 0) > 0;
 
+  const abortDiffPreview = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+  }, []);
+
   const resetDiffPreviewState = useCallback(() => {
+    abortDiffPreview();
     setDiffSummary(null);
     setAcknowledgeDeleteImpact(false);
-  }, []);
+  }, [abortDiffPreview]);
 
   const handleDiffPreview = useCallback(async () => {
     if (!file || previewHeaderRowIndex === null) return;
@@ -111,6 +119,7 @@ export function useDiffPreview({
     hasCurrentDiffPreview,
     requiresDeleteImpactAcknowledgement,
     handleDiffPreview,
+    abortDiffPreview,
     resetDiffPreviewState,
     loading,
     error,

@@ -39,6 +39,28 @@ const execFileAsync = promisify(execFile);
 export type { OpenClawHandoffInput } from './openclaw-handoff-helpers';
 export type { GatewaySendInput } from './openclaw-handoff-helpers';
 
+function buildGatewayCliMessage(
+  input: OpenClawHandoffInput,
+  idempotencyKey: string,
+): string {
+  const sanitizedRequestText = sanitizeCliMessage(input.requestText);
+  const sections = [
+    'あなたはDeadStockSolutionのOpenClaw連携エージェントです。',
+    `要望ID: ${input.requestId}`,
+    `薬局ID: ${input.pharmacyId}`,
+    `冪等キー: ${idempotencyKey}`,
+    `要望: ${sanitizedRequestText}`,
+  ];
+
+  if (input.context && Object.keys(input.context).length > 0) {
+    const serializedContext = sanitizeCliMessage(JSON.stringify(input.context, null, 2), 6000);
+    sections.push(`追加コンテキスト(JSON):\n${serializedContext}`);
+  }
+
+  sections.push('次の形式で短く返答してください: 1) 受領確認 2) 初動方針 3) 次アクション');
+  return sections.join('\n');
+}
+
 async function handoffViaGatewayCli(
   config: OpenClawConfig,
   input: OpenClawHandoffInput,
@@ -46,15 +68,7 @@ async function handoffViaGatewayCli(
 ): Promise<OpenClawHandoffResult> {
   const timeoutSeconds = getGatewayTimeoutSeconds();
   const maxAttempts = getRetryMaxAttempts();
-  const sanitizedRequestText = sanitizeCliMessage(input.requestText);
-  const message = [
-    'あなたはDeadStockSolutionのOpenClaw連携エージェントです。',
-    `要望ID: ${input.requestId}`,
-    `薬局ID: ${input.pharmacyId}`,
-    `冪等キー: ${idempotencyKey}`,
-    `要望: ${sanitizedRequestText}`,
-    '次の形式で短く返答してください: 1) 受領確認 2) 初動方針 3) 次アクション',
-  ].join('\n');
+  const message = buildGatewayCliMessage(input, idempotencyKey);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const startedAt = Date.now();

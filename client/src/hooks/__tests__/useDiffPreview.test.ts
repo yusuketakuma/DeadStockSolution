@@ -91,6 +91,42 @@ describe('useDiffPreview', () => {
     expect(result.current.acknowledgeDeleteImpact).toBe(false);
   });
 
+  it('aborts in-flight diff preview when reset is called', async () => {
+    const { api } = await import('../../api/client');
+    const mockApi = vi.mocked(api);
+
+    let requestSignal: AbortSignal | undefined;
+    mockApi.upload.mockImplementationOnce(async (_path, _body, options) => {
+      requestSignal = options?.signal;
+      return new Promise(() => {});
+    });
+
+    const { result } = renderHook(() =>
+      useDiffPreview({
+        file: mockFile,
+        uploadType: 'dead_stock',
+        previewHeaderRowIndex: 0,
+        resolveSubmittedMapping: mockResolveSubmittedMapping,
+      }),
+    );
+
+    act(() => {
+      result.current.setApplyMode('diff');
+      result.current.setDeleteMissing(true);
+    });
+
+    act(() => {
+      void result.current.handleDiffPreview();
+    });
+
+    act(() => {
+      result.current.resetDiffPreviewState();
+    });
+
+    expect(requestSignal?.aborted).toBe(true);
+    expect(result.current.loading).toBe(false);
+  });
+
   it('computes requiresDiffPreviewRefresh correctly', () => {
     const { result } = renderHook(() =>
       useDiffPreview({

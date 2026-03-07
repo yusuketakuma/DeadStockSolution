@@ -43,11 +43,9 @@ function isDeduplicated(fingerprint: string, dedupMinutes: number): boolean {
 function buildRequestText(ctx: ErrorFixContext): string {
   const parts = [
     AUTO_REQUEST_TEXT_PREFIX,
-    ctx.errorMessage,
-    ctx.sourceFile ? `ファイル: ${ctx.sourceFile}:${ctx.sourceLine}` : '',
     ctx.endpoint ? `エンドポイント: ${ctx.endpoint}` : '',
     ctx.sentryEventId ? `Sentry Event: ${ctx.sentryEventId}` : '',
-    'エラーを分析し、修正ブランチを作成してPRを出してください。',
+    '5xx 障害を分析し、必要なら修正ブランチとPRを作成してください。',
   ].filter(Boolean);
   const text = parts.join(' ');
   if (text.length > 2000) {
@@ -62,10 +60,6 @@ function buildContext(ctx: ErrorFixContext): Record<string, unknown> {
   return {
     source: 'sentry_error_autofix',
     errorContext: {
-      errorMessage: ctx.errorMessage,
-      stackTrace: ctx.stackTrace,
-      sourceFile: ctx.sourceFile,
-      sourceLine: ctx.sourceLine,
       endpoint: ctx.endpoint,
       sentryEventId: ctx.sentryEventId,
       timestamp: ctx.timestamp,
@@ -105,13 +99,18 @@ export async function handoffErrorToOpenClaw(
   try {
     dedupCache.set(fingerprint, Date.now());
     const requestText = buildRequestText(ctx);
-    return await executeOpenClawHandoff({
+    const result = await executeOpenClawHandoff({
       pharmacyId: config.pharmacyId,
       requestText,
       context: buildContext(ctx),
       logLabel: 'OpenClaw error autofix handoff completed',
     });
+    if (!result.accepted) {
+      dedupCache.delete(fingerprint);
+    }
+    return result;
   } catch (err) {
+    dedupCache.delete(fingerprint);
     logger.error('OpenClaw error autofix failed', {
       error: getErrorMessage(err),
       fingerprint,

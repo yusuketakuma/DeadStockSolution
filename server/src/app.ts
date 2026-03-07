@@ -206,7 +206,7 @@ app.get('/api/health', async (_req, res) => {
 
   const overallStatus = dbStatus === 'ok' ? 'ok' : 'degraded';
 
-  res.status(200).json({
+  res.status(dbStatus === 'ok' ? 200 : 503).json({
     status: overallStatus,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
@@ -222,7 +222,7 @@ app.get('/api/health/ready', async (_req, res) => {
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.error('Readiness check: database connection failed', { error: reason });
-    res.status(503).json({ ready: false, reason });
+    res.status(503).json({ ready: false });
   }
 });
 

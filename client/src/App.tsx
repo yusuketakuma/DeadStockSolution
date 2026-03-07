@@ -5,7 +5,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { TimelineProvider } from './contexts/TimelineContext';
 import { ToastProvider } from './contexts/ToastContext';
 import AppToastContainer from './components/ui/AppToastContainer';
-import ErrorBoundary from './components/ui/ErrorBoundary';
+import ErrorBoundary, { ErrorFallback } from './components/ui/ErrorBoundary';
 import { Sentry, isSentryEnabled } from './config/sentry';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -95,7 +95,7 @@ export default function App() {
   );
 
   if (isSentryEnabled()) {
-    return <Sentry.ErrorBoundary fallback={<ErrorBoundary><div /></ErrorBoundary>}>{content}</Sentry.ErrorBoundary>;
+    return <Sentry.ErrorBoundary fallback={<ErrorFallback />}>{content}</Sentry.ErrorBoundary>;
   }
 
   return content;

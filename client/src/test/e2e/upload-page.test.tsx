@@ -217,6 +217,61 @@ describe('UploadPage', () => {
     expect(calledUrls.some((url) => url.includes('/api/upload/jobs/77'))).toBe(true);
   });
 
+  it('handles sync fallback response from confirm-async without polling', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse(mockUser);
+      }
+      if (url.includes('/api/upload/preview')) {
+        return jsonResponse(createPreviewResponse());
+      }
+      if (url.includes('/api/upload/confirm-async')) {
+        return jsonResponse({
+          message: 'キュー登録に失敗したため同期処理で適用しました',
+          jobId: null,
+          status: 'completed_sync_fallback',
+          rowCount: 2,
+          uploadId: 600,
+          partialSummary: null,
+          errorReportAvailable: false,
+        });
+      }
+      return jsonResponse({ error: 'Not found' }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<UploadPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).not.toBeNull();
+    if (!fileInput) {
+      throw new Error('file input not found');
+    }
+    const file = new File(['dummy-xlsx-content'], 'dead-stock.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    await userEvent.upload(fileInput, file);
+    await userEvent.click(screen.getByRole('button', { name: 'プレビュー' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('取込内容の確認')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'この設定でデータを登録' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('キュー登録に失敗したため同期処理で適用しました')).toBeInTheDocument();
+    });
+
+    const calledUrls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(calledUrls.some((url) => url.includes('/api/upload/confirm-async'))).toBe(true);
+    expect(calledUrls.some((url) => url.includes('/api/upload/jobs/'))).toBe(false);
+  });
+
   it('retries polling when a transient job status error occurs', async () => {
     let jobStatusCallCount = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

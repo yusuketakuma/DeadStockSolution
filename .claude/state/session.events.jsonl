@@ -298,3 +298,40 @@ feat: complete Sentry→OpenClaw autofix integration (T213-T217)
 Phase 7 tasks all done — captureException returns eventId,
 error-fix-context utility, o"}}
 {"id":"event-000230","type":"tool.bash","ts":"2026-03-07T01:36:26Z","state":"stopped","data":{"command":"curl -s -X POST https://api.getmoshi.app/api/webhook -H "Content-Type: application/json" -d '{"token": "qGli1ov22jEY3PEtuI5qGXPJegjvRrFD", "title": "Done", "message": "Sentry→OpenClaw autofix integrat"}}
+{"id":"event-000231","type":"tool.bash","ts":"2026-03-07T01:36:58Z","state":"stopped","data":{"command":"git diff HEAD~2 --stat"}}
+{"id":"event-000232","type":"tool.bash","ts":"2026-03-07T01:37:02Z","state":"stopped","data":{"command":"git diff HEAD~3 -- '*.ts' '*.tsx' '*.cjs' '*.mjs' '*.yml' '*.yaml'"}}
+{"id":"event-000233","type":"tool.bash","ts":"2026-03-07T01:37:07Z","state":"stopped","data":{"command":"git diff HEAD~3 -- server/src/config/sentry.ts server/src/services/error-fix-context.ts server/src/services/openclaw-error-autofix-service.ts server/src/middleware/error-handler.ts server/src/test/err"}}
+{"id":"event-000234","type":"tool.bash","ts":"2026-03-07T01:37:10Z","state":"stopped","data":{"command":"cat /Users/yusuke/.claude/projects/-Users-yusuke-DeadStockSolution/552c93ab-fad5-413a-b16f-1b07bec48c33/tool-results/bapdbn9y6.txt"}}
+{"id":"event-000235","type":"tool.edit","ts":"2026-03-07T01:39:09Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-error-autofix-service.ts"}}
+{"id":"event-000236","type":"tool.edit","ts":"2026-03-07T01:39:14Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/error-fix-context.ts"}}
+{"id":"event-000237","type":"tool.edit","ts":"2026-03-07T01:39:18Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/test/error-handler-middleware.test.ts"}}
+{"id":"event-000237","type":"tool.bash","ts":"2026-03-07T01:39:56Z","state":"stopped","data":{"command":"cd /Users/yusuke/DeadStockSolution && git add server/src/services/openclaw-error-autofix-service.ts server/src/services/error-fix-context.ts server/src/test/error-handler-middleware.test.ts && git com"}}
+{"id":"event-000238","type":"tool.bash","ts":"2026-03-07T01:42:48Z","state":"stopped","data":{"command":"cd /Users/yusuke/DeadStockSolution/server && npx vitest run src/test/error-handler-middleware.test.ts 2>&1 | tail -20"}}
+{"id":"event-000239","type":"tool.edit","ts":"2026-03-07T01:43:27Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-error-autofix-service.ts"}}
+{"id":"event-000240","type":"tool.edit","ts":"2026-03-07T01:43:31Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-auto-handoff-service.ts"}}
+{"id":"event-000241","type":"tool.bash","ts":"2026-03-07T01:43:35Z","state":"stopped","data":{"command":"cd /Users/yusuke/DeadStockSolution/server && npx vitest run src/test/openclaw-error-autofix-service.test.ts 2>&1"}}
+{"id":"event-000242","type":"tool.bash","ts":"2026-03-07T01:43:40Z","state":"stopped","data":{"command":"npm run build:server 2>&1"}}
+{"id":"event-000243","type":"tool.bash","ts":"2026-03-07T01:43:48Z","state":"stopped","data":{"command":"curl -s -X POST https://api.getmoshi.app/api/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"token": "qGli1ov22jEY3PEtuI5qGXPJegjvRrFD", "title": "Done", "message": "buildRequestText に trunc"}}
+{"id":"event-000244","type":"tool.write","ts":"2026-03-07T01:44:00Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/utils/error-utils.ts"}}
+{"id":"event-000245","type":"tool.write","ts":"2026-03-07T01:44:11Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-handoff-executor.ts"}}
+{"id":"event-000246","type":"tool.edit","ts":"2026-03-07T01:44:24Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/middleware/error-handler.ts"}}
+{"id":"event-000247","type":"tool.edit","ts":"2026-03-07T01:44:32Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/middleware/error-handler.ts"}}
+{"id":"event-000247","type":"tool.edit","ts":"2026-03-07T01:44:36Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/middleware/error-handler.ts"}}
+{"id":"event-000248","type":"tool.edit","ts":"2026-03-07T01:44:52Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-error-autofix-service.ts"}}
+{"id":"event-000249","type":"tool.edit","ts":"2026-03-07T01:45:07Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-error-autofix-service.ts"}}
+{"id":"event-000250","type":"tool.edit","ts":"2026-03-07T01:46:46Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-error-autofix-service.ts"}}
+{"id":"event-000251","type":"tool.edit","ts":"2026-03-07T01:46:52Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-auto-handoff-service.ts"}}
+{"id":"event-000251","type":"tool.edit","ts":"2026-03-07T01:46:59Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-auto-handoff-service.ts"}}
+{"id":"event-000252","type":"tool.edit","ts":"2026-03-07T01:47:04Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-auto-handoff-service.ts"}}
+{"id":"event-000253","type":"tool.edit","ts":"2026-03-07T01:47:08Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-auto-handoff-service.ts"}}
+{"id":"event-000254","type":"tool.edit","ts":"2026-03-07T01:47:11Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-auto-handoff-service.ts"}}
+{"id":"event-000255","type":"tool.edit","ts":"2026-03-07T01:47:22Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-auto-handoff-service.ts"}}
+{"id":"event-000256","type":"tool.edit","ts":"2026-03-07T01:47:33Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/src/services/openclaw-auto-handoff-service.ts"}}
+{"id":"event-000257","type":"tool.bash","ts":"2026-03-07T01:48:09Z","state":"stopped","data":{"command":"cd /Users/yusuke/DeadStockSolution && npm run build:server 2>&1 | tail -10"}}
+{"id":"event-000258","type":"tool.bash","ts":"2026-03-07T01:48:12Z","state":"stopped","data":{"command":"git diff --stat HEAD -- server/src/"}}
+{"id":"event-000259","type":"tool.bash","ts":"2026-03-07T01:48:45Z","state":"stopped","data":{"command":"git status -u && echo "---" && git diff HEAD -- server/src/ | head -20 && echo "---" && git log --oneline -5"}}
+{"id":"event-000260","type":"tool.bash","ts":"2026-03-07T01:48:53Z","state":"stopped","data":{"command":"git add server/src/middleware/error-handler.ts server/src/services/openclaw-auto-handoff-service.ts server/src/services/openclaw-error-autofix-service.ts server/src/services/openclaw-handoff-executor."}}
+{"id":"event-000261","type":"tool.bash","ts":"2026-03-07T02:20:12Z","state":"stopped","data":{"command":"git diff HEAD~1 --stat"}}
+{"id":"event-000262","type":"tool.bash","ts":"2026-03-07T02:20:14Z","state":"stopped","data":{"command":"git diff HEAD~1 -- server/src/middleware/error-handler.ts server/src/services/openclaw-auto-handoff-service.ts server/src/services/openclaw-error-autofix-service.ts server/src/services/openclaw-handof"}}

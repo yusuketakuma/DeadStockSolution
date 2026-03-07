@@ -12,7 +12,27 @@ import {
 } from './useUploadJobPolling';
 import { type DiffSummary, type UploadType, resolvePartialSummaryEntries } from '../pages/upload/upload-job-utils';
 
-interface UploadConfirmAsyncResponse { message: string; jobId: number; status: 'pending' | 'processing'; deduplicated?: boolean }
+interface UploadConfirmQueuedResponse {
+  message: string;
+  jobId: number;
+  status: 'pending' | 'processing';
+  deduplicated?: boolean;
+  partialSummary?: null;
+  errorReportAvailable?: boolean;
+}
+
+interface UploadConfirmSyncFallbackResponse {
+  message: string;
+  jobId: null;
+  status: 'completed_sync_fallback';
+  deduplicated?: boolean;
+  rowCount: number;
+  uploadId: number;
+  partialSummary?: UploadJobState['partialSummary'];
+  errorReportAvailable?: boolean;
+}
+
+type UploadConfirmAsyncResponse = UploadConfirmQueuedResponse | UploadConfirmSyncFallbackResponse;
 interface UploadMutationFormDataOptions {
   file: File; uploadType: UploadType; headerRowIndex: number; applyMode: 'replace' | 'diff';
   deleteMissing: boolean; mapping: Record<string, string | null>;
@@ -169,6 +189,34 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
         timeout: UPLOAD_CONFIRM_ENQUEUE_TIMEOUT_MS,
       });
       if (controller.signal.aborted) return;
+
+      if (enqueueResult.status === 'completed_sync_fallback') {
+        const failedCount = enqueueResult.partialSummary?.rejectedRows ?? enqueueResult.partialSummary?.failed ?? 0;
+        const partialMessage = failedCount > 0 ? ` 一部データの取込に失敗しました（${failedCount}件）。` : '';
+        setMessage(`${enqueueResult.message}${partialMessage}`);
+        jobPolling.setJob({
+          ...UPLOAD_JOB_INITIAL_STATE,
+          partialSummary: enqueueResult.partialSummary ?? null,
+          errorReportAvailable: Boolean(enqueueResult.errorReportAvailable),
+        });
+        jobPolling.setProgress({ phase: 'completed', percent: 100, label: 'アップロード処理が完了しました。' });
+        diffPreviewFlow.setDiffSummary(null);
+        diffPreviewFlow.setAcknowledgeDeleteImpact(false);
+        previewFlow.setPreview(null);
+        setFile(null);
+        if (fileRef.current) fileRef.current.value = '';
+        setShowMatchingHint(true);
+
+        const shouldAutoNavigate = !enqueueResult.errorReportAvailable && failedCount === 0;
+        if (shouldAutoNavigate) {
+          if (navigateTimerRef.current !== null) clearTimeout(navigateTimerRef.current);
+          navigateTimerRef.current = setTimeout(() => {
+            navigateTimerRef.current = null;
+            navigate(submittedUploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
+          }, UPLOAD_COMPLETE_NAVIGATE_DELAY_MS);
+        }
+        return;
+      }
 
       currentJobId = enqueueResult.jobId;
       const deduplicated = Boolean(enqueueResult.deduplicated);
