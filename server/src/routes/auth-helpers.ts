@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { ensureTestPharmacyColumnsAtStartup } from '../config/test-pharmacy-schema';
 import { pharmacies, pharmacyRegistrationReviews, userRequests } from '../db/schema';
@@ -183,7 +183,8 @@ export async function selectFlaggedTestPharmacyRows(): Promise<TestPharmacyPrevi
     name: pharmacies.name,
     email: pharmacies.email,
     prefecture: pharmacies.prefecture,
-    password: pharmacies.testAccountPassword,
+    // Never expose account credentials from the database.
+    password: sql<string | null>`NULL`,
   })
     .from(pharmacies)
     .where(eq(pharmacies.isTestAccount, true))
