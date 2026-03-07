@@ -318,9 +318,6 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       }
 
       updates.passwordHash = await hashPassword(newPassword);
-      if (currentAccount.isTestAccount) {
-        updates.testAccountPassword = newPassword;
-      }
     }
 
     if (currentAccount.isTestAccount) {
