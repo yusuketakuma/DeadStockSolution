@@ -6,7 +6,7 @@ import { TimelineProvider } from './contexts/TimelineContext';
 import { ToastProvider } from './contexts/ToastContext';
 import AppToastContainer from './components/ui/AppToastContainer';
 import ErrorBoundary from './components/ui/ErrorBoundary';
-import { Sentry } from './config/sentry';
+import { Sentry, isSentryEnabled } from './config/sentry';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppScreen from './components/ui/AppScreen';
@@ -79,20 +79,24 @@ export default function App() {
     return () => document.body.classList.remove('app-theme-root');
   }, []);
 
-  return (
-    <Sentry.ErrorBoundary fallback={<p>予期しないエラーが発生しました</p>}>
-      <AuthProvider>
-        <TimelineProvider>
-          <NotificationProvider>
-            <ToastProvider>
-              <ErrorBoundary>
-                <AppRoutes />
-                <AppToastContainer />
-              </ErrorBoundary>
-            </ToastProvider>
-          </NotificationProvider>
-        </TimelineProvider>
-      </AuthProvider>
-    </Sentry.ErrorBoundary>
+  const content = (
+    <AuthProvider>
+      <TimelineProvider>
+        <NotificationProvider>
+          <ToastProvider>
+            <ErrorBoundary>
+              <AppRoutes />
+              <AppToastContainer />
+            </ErrorBoundary>
+          </ToastProvider>
+        </NotificationProvider>
+      </TimelineProvider>
+    </AuthProvider>
   );
+
+  if (isSentryEnabled()) {
+    return <Sentry.ErrorBoundary fallback={<ErrorBoundary><div /></ErrorBoundary>}>{content}</Sentry.ErrorBoundary>;
+  }
+
+  return content;
 }

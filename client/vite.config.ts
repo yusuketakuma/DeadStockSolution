@@ -53,7 +53,8 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             'vendor-react': ['react', 'react-dom', 'react-router-dom'],
             'vendor-bootstrap': ['react-bootstrap', 'bootstrap'],
-            'vendor-misc': ['@hookform/resolvers', 'react-hook-form', 'zod', '@sentry/react'],
+            'vendor-forms': ['@hookform/resolvers', 'react-hook-form', 'zod'],
+            'vendor-sentry': ['@sentry/react'],
           },
         },
       },
