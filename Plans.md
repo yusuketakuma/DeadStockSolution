@@ -4,11 +4,45 @@
 
 ## 🔴 進行中のタスク
 
-（なし）
+## Sprint: Frontend Hooks抽出 v0.0.10
+
+> **目的**: UploadPage.tsx（940行）の巨大コンポーネントを分割し、保守性・テスタビリティを向上
+
+### Phase 1: ポーリングロジック抽出 [refactoring]
+
+- [x] T128: useUploadJobPolling.ts 抽出 `cc:完了` (2026-03-07)
+  - 抽出対象: ポーリングループ（391-508行）、waitForNextPoll関数
+  - 状態: uploadJob, cancellingJob, uploadProgress
+  - テスト要件: ポーリング成功/失敗/タイムアウト/キャンセル
+  - 実績: フック作成完了、16テスト成功、UploadPage統合は別タスクで実施予定
+
+### Phase 2: フォーム状態抽出 [refactoring]
+
+- [ ] T129: useUploadForm.ts 抽出 `cc:計画済` (2026-03-07)
+  - 抽出対象: uploadType, file, applyMode, deleteMissing, mapping, preview
+  - テスト要件: 状態変更・バリデーション
+
+### Phase 3: 差分サマリー抽出 [refactoring]
+
+- [ ] T130: useDiffSummary.ts 抽出 `cc:計画済` (2026-03-07)
+  - 抽出対象: diffSummary, acknowledgeDeleteImpact
+  - テスト要件: 状態変更・削除影響確認
 
 ## 🟡 未着手のタスク
 
-（なし）
+### v0.0.11 パフォーマンス改善スプリント
+
+- [ ] **T218**: insertInBatches バッチサイズ最適化
+  - 現状: 500件ずつ挿入（大規模アップロードでトランザクション長期化）
+  - 提案: 動的バッチサイズ（1000-5000件）または COPY 使用検討
+  - 優先度: Medium
+  - 影響: 10万件以上のアップロード
+
+- [ ] **T219**: detectHeaderRow スキャン最適化
+  - 現状: 最大15行スキャン O(rows × headers × keywords)
+  - 提案: 早期終了条件の追加
+  - 優先度: Low
+  - 影響: 軽微（初期行のみ）
 
 ---
 

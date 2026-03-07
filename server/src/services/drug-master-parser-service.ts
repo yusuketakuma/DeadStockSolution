@@ -198,16 +198,25 @@ export function decodeCsvBuffer(buffer: Buffer): string {
 
 // ── CSV パース ──────────────────────────────────────
 
+const MAX_CSV_FILE_SIZE = 50 * 1024 * 1024; // 50MB total
+const MAX_CSV_ROWS = 100000; // 10万行制限
+const MAX_CSV_LINE_LENGTH = 10000; // 10KB per line
+
 export function parseMhlwCsvData(csvContent: string): ParsedDrugRow[] {
+  if (csvContent.length > MAX_CSV_FILE_SIZE) {
+    throw new Error(`CSVファイルが大きすぎます（最大${MAX_CSV_FILE_SIZE / 1024 / 1024}MB）`);
+  }
+
   const lines = csvContent.split(/\r?\n/);
+  if (lines.length > MAX_CSV_ROWS) {
+    throw new Error(`CSV行数が上限を超えています（最大${MAX_CSV_ROWS}行）`);
+  }
   if (lines.length < 2) return [];
 
   // ヘッダー行を検出（CSVなのでカンマ区切り）
   const allRows = lines.map((line) => parseCsvLine(line));
   return parseMhlwExcelData(allRows);
 }
-
-const MAX_CSV_LINE_LENGTH = 10000; // 10KB per line
 
 function parseCsvLine(line: string): string[] {
   if (line.length > MAX_CSV_LINE_LENGTH) {
@@ -267,7 +276,15 @@ const PACKAGE_XML_KEYWORDS: Record<string, string[]> = {
 };
 
 export function parsePackageCsvData(csvContent: string): ParsedPackageRow[] {
+  if (csvContent.length > MAX_CSV_FILE_SIZE) {
+    throw new Error(`CSVファイルが大きすぎます（最大${MAX_CSV_FILE_SIZE / 1024 / 1024}MB）`);
+  }
+
   const lines = csvContent.split(/\r?\n/);
+  if (lines.length > MAX_CSV_ROWS) {
+    throw new Error(`CSV行数が上限を超えています（最大${MAX_CSV_ROWS}行）`);
+  }
+
   const allRows = lines.map((line) => parseCsvLine(line));
   return parsePackageExcelData(allRows);
 }
