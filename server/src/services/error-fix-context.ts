@@ -16,14 +16,14 @@ export interface ErrorFixInput {
   sentryEventId: string | null;
 }
 
+const SOURCE_LOCATION_RE =
+  /at .+\((?:\/[^)]*\/)?((?:server|client)\/src\/[^:]+):(\d+):\d+\)/;
+
 export function extractSourceLocation(
   stack: string | undefined,
 ): { file: string; line: number } | null {
   if (!stack) return null;
-  // Match project files (not node_modules, not node: internals)
-  const match = stack.match(
-    /at .+\((?:\/[^)]*\/)?((?:server|client)\/src\/[^:]+):(\d+):\d+\)/,
-  );
+  const match = stack.match(SOURCE_LOCATION_RE);
   if (!match) return null;
   return { file: match[1], line: Number(match[2]) };
 }

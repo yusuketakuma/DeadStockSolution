@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 
 // ── Hoisted mocks ──────────────────────────────────
@@ -73,10 +73,6 @@ function createReq(overrides?: Partial<Request>) {
 
 describe('error-handler middleware', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
     vi.clearAllMocks();
   });
 

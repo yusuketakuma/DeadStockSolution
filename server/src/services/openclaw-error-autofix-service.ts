@@ -40,7 +40,11 @@ function buildFingerprint(ctx: ErrorFixContext): string {
 function isDeduplicated(fingerprint: string, dedupMinutes: number): boolean {
   const lastSeen = dedupCache.get(fingerprint);
   if (!lastSeen) return false;
-  return Date.now() - lastSeen < dedupMinutes * 60_000;
+  if (Date.now() - lastSeen >= dedupMinutes * 60_000) {
+    dedupCache.delete(fingerprint);
+    return false;
+  }
+  return true;
 }
 
 function buildRequestText(ctx: ErrorFixContext): string {
