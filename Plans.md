@@ -70,6 +70,22 @@
   - Referrer-Policy を strict-origin-when-cross-origin に変更
   - セキュリティヘッダーテスト追加 (5テスト) (2026-03-07)
 
+### Phase 7: Sentry→OpenClaw 自律修正 [feature]
+- [ ] T213: captureException が eventId を返す `cc:TODO`
+  - server/src/config/sentry.ts の captureException を string | null 返却に変更
+- [ ] T214: error-fix-context ユーティリティ `cc:TODO`
+  - server/src/services/error-fix-context.ts 新規作成 (TDD)
+  - エラー情報からOpenClaw向けコンテキスト生成
+- [ ] T215: openclaw-error-autofix-service `cc:TODO`
+  - server/src/services/openclaw-error-autofix-service.ts 新規作成 (TDD)
+  - エラー重複排除 + OpenClaw自動修正トリガー
+- [ ] T216: error-handler 統合 `cc:TODO`
+  - server/src/middleware/error-handler.ts にautofix呼び出し追加
+- [ ] T217: 最終検証 + Plans.md 更新 `cc:TODO`
+  - 全テスト通過確認、Plans.md完了マーク
+
+> 詳細計画: [docs/plans/2026-03-07-sentry-openclaw-autofix.md](docs/plans/2026-03-07-sentry-openclaw-autofix.md)
+
 ---
 
 ## 📦 アーカイブ
