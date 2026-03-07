@@ -25,11 +25,11 @@ describe('resolveServerTestLoginFeatureEnabled', () => {
     })).toBe(true);
   });
 
-  it('defaults to enabled on vercel production', () => {
+  it('defaults to disabled on vercel production', () => {
     expect(resolveServerTestLoginFeatureEnabled({
       NODE_ENV: 'production',
       VERCEL_ENV: 'production',
-    })).toBe(true);
+    })).toBe(false);
   });
 
   it('defaults to disabled on plain production without vercel env', () => {

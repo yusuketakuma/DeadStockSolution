@@ -7,7 +7,7 @@ type TestLoginEnv = {
 /**
  * Locked contract for test-login availability.
  * - explicit TEST_LOGIN_FEATURE_ENABLED wins
- * - Vercel preview / production default to enabled
+ * - Vercel preview defaults to enabled
  * - plain NODE_ENV=production defaults to disabled
  * Changing this requires explicit product approval because login UX depends on it.
  */
@@ -17,7 +17,7 @@ export function resolveServerTestLoginFeatureEnabled(env: TestLoginEnv = process
   if (raw === 'false') return false;
 
   const vercelEnv = env.VERCEL_ENV?.trim().toLowerCase();
-  if (vercelEnv === 'production' || vercelEnv === 'preview') return true;
+  if (vercelEnv === 'preview') return true;
 
   return env.NODE_ENV !== 'production';
 }
