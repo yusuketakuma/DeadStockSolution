@@ -332,6 +332,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       confirmAbortRef.current = null;
       jobPolling.stopPolling();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobPolling.stopPolling]);
 
   return {
