@@ -11,7 +11,7 @@ export function initSentry(): void {
   });
 }
 
-export function captureException(err: unknown): void {
-  if (!process.env.SENTRY_DSN) return;
-  Sentry.captureException(err);
+export function captureException(err: unknown): string | null {
+  if (!process.env.SENTRY_DSN) return null;
+  return Sentry.captureException(err);
 }

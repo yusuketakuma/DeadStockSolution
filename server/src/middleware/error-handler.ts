@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { captureException } from '../config/sentry';
 import { logger } from '../services/logger';
 import { recordHttpUnhandledError } from '../services/system-event-service';
+import { buildErrorFixContext } from '../services/error-fix-context';
+import { handoffErrorToOpenClaw } from '../services/openclaw-error-autofix-service';
 
 export function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -78,7 +80,7 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
   const status = resolveStatusCode(httpErr);
   const requestId = (req as Request & { requestId?: string }).requestId
     ?? (typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined);
-  captureException(err);
+  const eventId = captureException(err);
   logger.error('Unhandled error', {
     error: resolveLogMessage(httpErr, status),
     stack: resolveLogStack(httpErr, status),
@@ -94,6 +96,19 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     requestId,
     errorCode: typeof httpErr.code === 'string' ? httpErr.code : undefined,
   });
+
+  // 5xx の場合のみ OpenClaw 自動修正ハンドオフ（非ブロック）
+  if (status >= 500) {
+    const fixContext = buildErrorFixContext({
+      err,
+      method: req.method,
+      path: req.path,
+      status,
+      sentryEventId: eventId,
+    });
+    void handoffErrorToOpenClaw(fixContext, status);
+  }
+
   res.status(status).json({
     error: resolveResponseMessage(httpErr, status),
     code: resolveResponseCode(httpErr, status),
