@@ -6,6 +6,7 @@ import { TimelineProvider } from './contexts/TimelineContext';
 import { ToastProvider } from './contexts/ToastContext';
 import AppToastContainer from './components/ui/AppToastContainer';
 import ErrorBoundary from './components/ui/ErrorBoundary';
+import { Sentry } from './config/sentry';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppScreen from './components/ui/AppScreen';
@@ -79,17 +80,19 @@ export default function App() {
   }, []);
 
   return (
-    <AuthProvider>
-      <TimelineProvider>
-        <NotificationProvider>
-          <ToastProvider>
-            <ErrorBoundary>
-              <AppRoutes />
-              <AppToastContainer />
-            </ErrorBoundary>
-          </ToastProvider>
-        </NotificationProvider>
-      </TimelineProvider>
-    </AuthProvider>
+    <Sentry.ErrorBoundary fallback={<p>予期しないエラーが発生しました</p>}>
+      <AuthProvider>
+        <TimelineProvider>
+          <NotificationProvider>
+            <ToastProvider>
+              <ErrorBoundary>
+                <AppRoutes />
+                <AppToastContainer />
+              </ErrorBoundary>
+            </ToastProvider>
+          </NotificationProvider>
+        </TimelineProvider>
+      </AuthProvider>
+    </Sentry.ErrorBoundary>
   );
 }

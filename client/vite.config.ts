@@ -2,7 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv } from 'vite';
+import { visualizer } from 'rollup-plugin-visualizer';
+import { defineConfig, loadEnv, type PluginOption } from 'vite';
 
 type PackageJson = {
   version?: string;
@@ -27,10 +28,35 @@ export default defineConfig(({ mode }) => {
   const envVersion = env.VITE_APP_VERSION?.trim();
   const appVersion = normalizeVersion(envVersion || packageJson.version);
 
+  const plugins: PluginOption[] = [react()];
+
+  if (process.env.ANALYZE === 'true') {
+    plugins.push(
+      visualizer({
+        template: 'treemap',
+        filename: 'stats.html',
+        gzipSize: true,
+        open: false,
+      }) as PluginOption,
+    );
+  }
+
   return {
-    plugins: [react()],
+    plugins,
     define: {
       __APP_VERSION__: JSON.stringify(appVersion),
+    },
+    build: {
+      chunkSizeWarningLimit: 500,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-bootstrap': ['react-bootstrap', 'bootstrap'],
+            'vendor-misc': ['@hookform/resolvers', 'react-hook-form', 'zod', '@sentry/react'],
+          },
+        },
+      },
     },
     server: {
       host: '127.0.0.1',

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { captureException } from '../config/sentry';
 import { logger } from '../services/logger';
 import { recordHttpUnhandledError } from '../services/system-event-service';
 
@@ -77,6 +78,7 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
   const status = resolveStatusCode(httpErr);
   const requestId = (req as Request & { requestId?: string }).requestId
     ?? (typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined);
+  captureException(err);
   logger.error('Unhandled error', {
     error: resolveLogMessage(httpErr, status),
     stack: resolveLogStack(httpErr, status),

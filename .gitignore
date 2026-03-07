@@ -154,3 +154,9 @@ data/
 # Claude Code harness
 .claude-code-harness/
 .vercel
+
+# Bundle analysis output
+stats.html
+
+# Lighthouse CI
+.lighthouseci/

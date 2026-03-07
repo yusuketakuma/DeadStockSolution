@@ -28,6 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@sentry/node": "^10.42.0",
     "@vercel/postgres": "^0.10.0",
     "adm-zip": "^0.5.16",
     "bcryptjs": "^3.0.3",
