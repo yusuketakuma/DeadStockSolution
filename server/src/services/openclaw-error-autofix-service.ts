@@ -1,18 +1,11 @@
-import { db } from '../config/database';
-import { userRequests } from '../db/schema';
-import { eq } from 'drizzle-orm';
 import { logger } from './logger';
-import { handoffToOpenClaw } from './openclaw-service';
+import { executeOpenClawHandoff, skippedHandoff, type HandoffExecutorResult } from './openclaw-handoff-executor';
 import type { ErrorFixContext } from './error-fix-context';
 import { parsePositiveInt } from '../utils/request-utils';
 import { parseBoundedInt } from '../utils/number-utils';
+import { getErrorMessage } from '../utils/error-utils';
 
-export interface ErrorAutoFixResult {
-  triggered: boolean;
-  accepted: boolean;
-  requestId: number | null;
-  reason: string;
-}
+export type ErrorAutoFixResult = HandoffExecutorResult;
 
 const AUTO_REQUEST_TEXT_PREFIX = '[自動修正] Sentry エラー検知:';
 
@@ -56,7 +49,13 @@ function buildRequestText(ctx: ErrorFixContext): string {
     ctx.sentryEventId ? `Sentry Event: ${ctx.sentryEventId}` : '',
     'エラーを分析し、修正ブランチを作成してPRを出してください。',
   ].filter(Boolean);
-  return parts.join(' ').slice(0, 2000);
+  const text = parts.join(' ');
+  if (text.length > 2000) {
+    logger.warn('OpenClaw error autofix request text truncated', {
+      originalLength: text.length,
+    });
+  }
+  return text.slice(0, 2000);
 }
 
 function buildContext(ctx: ErrorFixContext): Record<string, unknown> {
@@ -81,87 +80,43 @@ function buildContext(ctx: ErrorFixContext): Record<string, unknown> {
   };
 }
 
-function skipped(reason: string): ErrorAutoFixResult {
-  return {
-    triggered: false,
-    accepted: false,
-    requestId: null,
-    reason,
-  };
-}
-
 export async function handoffErrorToOpenClaw(
   ctx: ErrorFixContext,
   status: number,
 ): Promise<ErrorAutoFixResult> {
   const config = readConfig();
 
-  if (!config.enabled) return skipped('disabled');
+  if (!config.enabled) return skippedHandoff('disabled');
 
   if (!config.pharmacyId) {
     logger.warn('OpenClaw error autofix skipped: invalid pharmacy ID');
-    return skipped('invalid_pharmacy_id');
+    return skippedHandoff('invalid_pharmacy_id');
   }
 
-  if (status < 500) return skipped('not_5xx');
+  if (status < 500) return skippedHandoff('not_5xx');
 
   const fingerprint = buildFingerprint(ctx);
 
   if (isDeduplicated(fingerprint, config.dedupMinutes)) {
     logger.info('OpenClaw error autofix deduplicated', { fingerprint });
-    return skipped('deduplicated');
+    return skippedHandoff('deduplicated');
   }
 
   try {
     dedupCache.set(fingerprint, Date.now());
-
     const requestText = buildRequestText(ctx);
-    const [created] = await db
-      .insert(userRequests)
-      .values({
-        pharmacyId: config.pharmacyId,
-        requestText,
-        openclawStatus: 'pending_handoff',
-      })
-      .returning({ id: userRequests.id });
-
-    const handoff = await handoffToOpenClaw({
-      requestId: created.id,
+    return await executeOpenClawHandoff({
       pharmacyId: config.pharmacyId,
       requestText,
       context: buildContext(ctx),
+      logLabel: 'OpenClaw error autofix handoff completed',
     });
-
-    if (handoff.accepted) {
-      await db
-        .update(userRequests)
-        .set({
-          openclawStatus: handoff.status,
-          openclawThreadId: handoff.threadId,
-          openclawSummary: handoff.summary,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(userRequests.id, created.id));
-    }
-
-    logger.info('OpenClaw error autofix handoff completed', {
-      requestId: created.id,
-      accepted: handoff.accepted,
-      fingerprint,
-    });
-
-    return {
-      triggered: true,
-      accepted: handoff.accepted,
-      requestId: created.id,
-      reason: handoff.note,
-    };
   } catch (err) {
     logger.error('OpenClaw error autofix failed', {
-      error: err instanceof Error ? err.message : String(err),
+      error: getErrorMessage(err),
       fingerprint,
     });
-    return skipped('error');
+    return skippedHandoff('error');
   }
 }
 
