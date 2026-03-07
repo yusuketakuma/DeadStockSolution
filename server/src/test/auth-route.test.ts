@@ -350,32 +350,17 @@ describe('auth routes', () => {
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('enables test login endpoint by default when VERCEL_ENV=production', async () => {
+  it('disables test login endpoint by default when VERCEL_ENV=production', async () => {
     process.env.NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
     delete process.env.TEST_LOGIN_FEATURE_ENABLED;
-    const selectChain = createSelectChain([
-      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
-      { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
-    ]);
-    mocks.db.select.mockReturnValue(selectChain);
     const app = await createApp();
 
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
-    expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('no-store');
-    expect(res.body).toEqual({
-      accounts: [
-        {
-          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
-        },
-        {
-          id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026',
-        },
-      ],
-    });
-    expect(mocks.db.select).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'テストログインは無効です' });
+    expect(mocks.db.select).not.toHaveBeenCalled();
   });
 
   it('enables test login endpoint by default when VERCEL_ENV=preview', async () => {
