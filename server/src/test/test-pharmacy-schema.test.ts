@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  execute: vi.fn(),
-  loggerInfo: vi.fn(),
-  loggerWarn: vi.fn(),
+  execute: vi.fn() as unknown as ReturnType<typeof vi.fn>,
+  loggerInfo: vi.fn() as unknown as ReturnType<typeof vi.fn>,
+  loggerWarn: vi.fn() as unknown as ReturnType<typeof vi.fn>,
 }));
 
 vi.mock('../config/database', () => ({
