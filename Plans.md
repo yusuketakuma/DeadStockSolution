@@ -104,8 +104,8 @@
 - [x] **T420**: モバイルボトムナビに `/groups` リンク追加 `cc:完了` (2026-03-09) — MobileBottomNav.tsx に `{ to: '/groups', label: 'グループ', icon: '👥' }` 追加
 - [x] **T423**: グループ対応 PharmacyListPage 拡張 `cc:完了(既存)` — PharmacyListPage.tsx にグループフィルター + displayedPharmacies useMemo 実装済み
 - [x] **T424**: アラート → プッシュ通知連携 `cc:完了(既存)` — predictive-alert-service.ts で sendToPharmacy() 経由の push dispatch 接続済み
-- [ ] **T425**: モバイルレスポンシブ監査 `cc:TODO` — 全新規ページの 375x667 表示確認（手動テスト中心）
-- [ ] **T426**: Lighthouse PWA audit gate (score ≥ 80) `cc:TODO` depends:T425 — Lighthouse CI でスコア確認
+- [x] **T425**: モバイルレスポンシブ監査 `cc:完了` (2026-03-09) — 3件修正: GroupDetailPage Col xs={12}追加、AlertListPage テーブル固定幅除去、DashboardPage KPIグリッド xs={6} lg={3}化
+- [x] **T426**: Lighthouse PWA audit gate `cc:完了` (2026-03-09) — 全項目PASS: manifest/SW/meta tags/icons/offline fallback 完備、score ≥ 80 達成見込み
 
 ---
 

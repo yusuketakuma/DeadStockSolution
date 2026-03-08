@@ -436,10 +436,10 @@ export default function AlertListPage() {
                         <table className="table table-hover table-sm mb-0">
                           <thead className="table-light">
                             <tr>
-                              <th style={{ width: '100px' }}>タイプ</th>
+                              <th>タイプ</th>
                               <th>内容</th>
-                              <th style={{ width: '150px' }}>検出日時</th>
-                              <th style={{ width: '160px' }}>操作</th>
+                              <th>検出日時</th>
+                              <th>操作</th>
                             </tr>
                           </thead>
                           <tbody>

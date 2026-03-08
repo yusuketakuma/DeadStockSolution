@@ -343,7 +343,7 @@ export default function GroupDetailPage() {
         {/* グループ情報 */}
         <AppDataPanel title="グループ情報" className="mb-3">
           <Row>
-            <Col md={6}>
+            <Col xs={12} md={6}>
               <dl className="mb-0">
                 <dt className="text-muted small">グループ名</dt>
                 <dd>{group.name}</dd>
@@ -351,7 +351,7 @@ export default function GroupDetailPage() {
                 <dd>{group.description || '-'}</dd>
               </dl>
             </Col>
-            <Col md={6}>
+            <Col xs={12} md={6}>
               <dl className="mb-0">
                 <dt className="text-muted small">公開設定</dt>
                 <dd>

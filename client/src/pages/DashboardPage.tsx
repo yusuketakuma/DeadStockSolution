@@ -148,25 +148,25 @@ export default function DashboardPage() {
           <AppDataPanel title="期限切れリスク（自薬局）" className="flex-shrink-0">
             {risk ? (
               <Row className="g-2">
-                <Col xs={3}>
+                <Col xs={6} lg={3}>
                   <div className="dl-kpi-tile">
                     <div className="dl-kpi-value">{risk.riskScore.toFixed(1)}</div>
                     <div className="dl-kpi-label">リスクスコア</div>
                   </div>
                 </Col>
-                <Col xs={3}>
+                <Col xs={6} lg={3}>
                   <div className={`dl-kpi-tile${risk.bucketCounts.expired > 0 ? ' dl-kpi-tile--danger' : ''}`}>
                     <div className="dl-kpi-value">{risk.bucketCounts.expired}</div>
                     <div className="dl-kpi-label">期限切れ</div>
                   </div>
                 </Col>
-                <Col xs={3}>
+                <Col xs={6} lg={3}>
                   <div className="dl-kpi-tile">
                     <div className="dl-kpi-value">{risk.bucketCounts.within30}</div>
                     <div className="dl-kpi-label">30日以内</div>
                   </div>
                 </Col>
-                <Col xs={3}>
+                <Col xs={6} lg={3}>
                   <div className="dl-kpi-tile">
                     <div className="dl-kpi-value">{risk.totalItems}</div>
                     <div className="dl-kpi-label">在庫数</div>
