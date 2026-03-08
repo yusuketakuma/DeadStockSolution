@@ -140,6 +140,10 @@ function resolveManualCandidatesEndpoint(keyword: string): string {
   return `/inventory/dead-stock/camera/manual-candidates?q=${encodeURIComponent(keyword)}`;
 }
 
+function resolveManualCandidatesCacheKey(keyword: string): string {
+  return keyword.toUpperCase();
+}
+
 interface UseBarcodeResolverOptions {
   appendOrUpdateRow: (
     rawCode: string,
@@ -185,7 +189,7 @@ export function useBarcodeResolver({
       return [];
     }
 
-    const cacheKey = normalizedKeyword.toUpperCase();
+    const cacheKey = resolveManualCandidatesCacheKey(normalizedKeyword);
     const cached = manualCandidatesCacheRef.current.get(cacheKey);
     if (cached) {
       return cached;

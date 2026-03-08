@@ -72,6 +72,21 @@ function resolvePossiblyRunningJobMessage(jobId: number | null): string {
   return `ジョブは継続中の可能性があります（ジョブID: ${jobId ?? '不明'}）。時間をおいて再確認してください。`;
 }
 
+function resolveUploadDestination(uploadType: UploadType): string {
+  return uploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication';
+}
+
+function shouldAutoNavigateAfterUpload(errorReportAvailable: boolean | undefined, failedCount: number): boolean {
+  return !errorReportAvailable && failedCount === 0;
+}
+
+function buildUploadCompletionMessage(rowCount: number, failedCount: number, deduplicated: boolean): string {
+  const completionMessage = `${rowCount}件のデータを登録しました。マッチング候補の再計算と通知更新が反映されます。`;
+  const partialMessage = failedCount > 0 ? ` 一部データの取込に失敗しました（${failedCount}件）。` : '';
+  const deduplicateMessage = deduplicated ? ' 同一内容の重複送信はジョブに集約されました。' : '';
+  return `${completionMessage}${partialMessage}${deduplicateMessage}`;
+}
+
 export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const [uploadType, setUploadTypeState] = useState<UploadType>('dead_stock');
   const [file, setFile] = useState<File | null>(null);
@@ -104,6 +119,16 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     jobPolling.stopPolling();
     if (navigateTimerRef.current !== null) { clearTimeout(navigateTimerRef.current); navigateTimerRef.current = null; }
   }, [jobPolling]);
+
+  const scheduleCompletionNavigation = useCallback((nextUploadType: UploadType) => {
+    if (navigateTimerRef.current !== null) {
+      clearTimeout(navigateTimerRef.current);
+    }
+    navigateTimerRef.current = setTimeout(() => {
+      navigateTimerRef.current = null;
+      navigate(resolveUploadDestination(nextUploadType));
+    }, UPLOAD_COMPLETE_NAVIGATE_DELAY_MS);
+  }, [navigate]);
 
   const resetDiffPreviewState = useCallback(() => { diffPreviewFlow.resetDiffPreviewState(); }, [diffPreviewFlow]);
   const resetExcelTransientUiState = useCallback(() => {
@@ -211,13 +236,9 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
         if (fileRef.current) fileRef.current.value = '';
         setShowMatchingHint(true);
 
-        const shouldAutoNavigate = !enqueueResult.errorReportAvailable && failedCount === 0;
+        const shouldAutoNavigate = shouldAutoNavigateAfterUpload(enqueueResult.errorReportAvailable, failedCount);
         if (shouldAutoNavigate) {
-          if (navigateTimerRef.current !== null) clearTimeout(navigateTimerRef.current);
-          navigateTimerRef.current = setTimeout(() => {
-            navigateTimerRef.current = null;
-            navigate(submittedUploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
-          }, UPLOAD_COMPLETE_NAVIGATE_DELAY_MS);
+          scheduleCompletionNavigation(submittedUploadType);
         }
         return;
       }
@@ -244,10 +265,11 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       const completedResult = pollingResult.result;
 
       const failedCount = completedResult.partialSummary?.rejectedRows ?? completedResult.partialSummary?.failed ?? 0;
-      const completionMessage = `${completedResult.rowCount ?? 0}件のデータを登録しました。マッチング候補の再計算と通知更新が反映されます。`;
-      const partialMessage = failedCount > 0 ? ` 一部データの取込に失敗しました（${failedCount}件）。` : '';
-      const deduplicateMessage = completedResult.deduplicated ? ' 同一内容の重複送信はジョブに集約されました。' : '';
-      setMessage(`${completionMessage}${partialMessage}${deduplicateMessage}`);
+      setMessage(buildUploadCompletionMessage(
+        completedResult.rowCount ?? 0,
+        failedCount,
+        Boolean(completedResult.deduplicated),
+      ));
 
       diffPreviewFlow.setDiffSummary(completedResult.diffSummary ?? null);
       diffPreviewFlow.setAcknowledgeDeleteImpact(false);
@@ -256,13 +278,9 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       if (fileRef.current) fileRef.current.value = '';
       setShowMatchingHint(true);
 
-      const shouldAutoNavigate = !completedResult.errorReportAvailable && failedCount === 0;
+      const shouldAutoNavigate = shouldAutoNavigateAfterUpload(completedResult.errorReportAvailable, failedCount);
       if (shouldAutoNavigate && !cancelFailureRef.current) {
-        if (navigateTimerRef.current !== null) clearTimeout(navigateTimerRef.current);
-        navigateTimerRef.current = setTimeout(() => {
-          navigateTimerRef.current = null;
-          navigate(submittedUploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
-        }, UPLOAD_COMPLETE_NAVIGATE_DELAY_MS);
+        scheduleCompletionNavigation(submittedUploadType);
       }
     } catch (err) {
       if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return;
@@ -299,8 +317,8 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     diffPreviewFlow,
     file,
     jobPolling,
-    navigate,
     previewFlow,
+    scheduleCompletionNavigation,
     setFailed,
     uploadType,
   ]);

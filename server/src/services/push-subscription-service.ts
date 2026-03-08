@@ -28,6 +28,30 @@ function mapToRecord(row: typeof pushSubscriptions.$inferSelect): PushSubscripti
   };
 }
 
+async function trimSubscriptionsToLimit(pharmacyId: number): Promise<void> {
+  const currentSubs = await db
+    .select()
+    .from(pushSubscriptions)
+    .where(eq(pushSubscriptions.pharmacyId, pharmacyId))
+    .orderBy(asc(pushSubscriptions.createdAt));
+
+  if (currentSubs.length < MAX_SUBSCRIPTIONS_PER_PHARMACY) {
+    return;
+  }
+
+  const removeCount = currentSubs.length - MAX_SUBSCRIPTIONS_PER_PHARMACY + 1;
+  const toRemove = currentSubs.slice(0, removeCount);
+  for (const sub of toRemove) {
+    await db
+      .delete(pushSubscriptions)
+      .where(eq(pushSubscriptions.id, sub.id));
+  }
+  logger.info('デバイス上限超過のため古い購読を削除しました', {
+    pharmacyId,
+    removedCount: toRemove.length,
+  });
+}
+
 /**
  * プッシュ購読を登録（upsert）
  *
@@ -71,25 +95,7 @@ export async function subscribe(
   }
 
   // 3. デバイス上限チェック — 超過分は古い順に削除
-  const currentSubs = await db
-    .select()
-    .from(pushSubscriptions)
-    .where(eq(pushSubscriptions.pharmacyId, pharmacyId))
-    .orderBy(asc(pushSubscriptions.createdAt));
-
-  if (currentSubs.length >= MAX_SUBSCRIPTIONS_PER_PHARMACY) {
-    const removeCount = currentSubs.length - MAX_SUBSCRIPTIONS_PER_PHARMACY + 1;
-    const toRemove = currentSubs.slice(0, removeCount);
-    for (const sub of toRemove) {
-      await db
-        .delete(pushSubscriptions)
-        .where(eq(pushSubscriptions.id, sub.id));
-    }
-    logger.info('デバイス上限超過のため古い購読を削除しました', {
-      pharmacyId,
-      removedCount: toRemove.length,
-    });
-  }
+  await trimSubscriptionsToLimit(pharmacyId);
 
   // 4. 新規登録
   const [inserted] = await db

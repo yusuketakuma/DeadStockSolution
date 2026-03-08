@@ -5,6 +5,7 @@ import { pharmacies, pharmacyBusinessHours, pharmacySpecialHours } from '../db/s
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { logger } from '../services/logger';
+import { sendBadRequest } from './response-helpers';
 
 const router = Router();
 router.use(requireLogin);
@@ -295,6 +296,39 @@ export function validateSpecialBusinessHours(
   return { valid: validated, provided: true };
 }
 
+function unwrapSettled<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === 'rejected') {
+    throw result.reason;
+  }
+  return result.value;
+}
+
+function parseBusinessHoursUpdatePayload(
+  body: Record<string, unknown>,
+): { weekly: BusinessHourInput[]; special: SpecialHourInput[]; specialProvided: boolean; version: number } | { error: string } {
+  const weeklyResult = validateBusinessHours(body.hours);
+  if ('error' in weeklyResult) {
+    return { error: weeklyResult.error };
+  }
+
+  const specialResult = validateSpecialBusinessHours(body.specialHours);
+  if ('error' in specialResult) {
+    return { error: specialResult.error };
+  }
+
+  const version = body.version;
+  if (!isValidVersion(version)) {
+    return { error: 'バージョン情報が不正です' };
+  }
+
+  return {
+    weekly: weeklyResult.valid,
+    special: specialResult.valid,
+    specialProvided: specialResult.provided,
+    version,
+  };
+}
+
 /**
  * 指定薬局の営業時間設定（週次 + 特例 + version）を取得する共通関数。
  * GET /settings と PUT / の 409 conflict レスポンスの両方で使用する。
@@ -311,13 +345,9 @@ export async function fetchBusinessHourSettings(pharmacyId: number) {
       .where(eq(pharmacies.id, pharmacyId))
       .limit(1),
   ]);
-  if (hoursResult.status === 'rejected') throw hoursResult.reason;
-  if (specialHoursRowsResult.status === 'rejected') throw specialHoursRowsResult.reason;
-  if (pharmacyRowsResult.status === 'rejected') throw pharmacyRowsResult.reason;
-
-  const hours = hoursResult.value;
-  const specialHoursRows = specialHoursRowsResult.value;
-  const pharmacyRows = pharmacyRowsResult.value;
+  const hours = unwrapSettled(hoursResult);
+  const specialHoursRows = unwrapSettled(specialHoursRowsResult);
+  const pharmacyRows = unwrapSettled(pharmacyRowsResult);
 
   if (pharmacyRows.length === 0) {
     throw new Error('薬局が見つかりません');
@@ -354,22 +384,9 @@ router.get('/settings', async (req: AuthRequest, res: Response) => {
 // Set/update current pharmacy's business hours
 router.put('/', async (req: AuthRequest, res: Response) => {
   try {
-    const weeklyResult = validateBusinessHours(req.body.hours);
-    if ('error' in weeklyResult) {
-      res.status(400).json({ error: weeklyResult.error });
-      return;
-    }
-
-    const specialResult = validateSpecialBusinessHours(req.body.specialHours);
-    if ('error' in specialResult) {
-      res.status(400).json({ error: specialResult.error });
-      return;
-    }
-
-    // version バリデーション
-    const version = req.body.version;
-    if (!isValidVersion(version)) {
-      res.status(400).json({ error: 'バージョン情報が不正です' });
+    const parsed = parseBusinessHoursUpdatePayload(req.body as Record<string, unknown>);
+    if ('error' in parsed) {
+      sendBadRequest(res, parsed.error);
       return;
     }
 
@@ -381,7 +398,7 @@ router.put('/', async (req: AuthRequest, res: Response) => {
           version: sql`${pharmacies.version} + 1`,
           updatedAt: new Date().toISOString(),
         })
-        .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, version)))
+        .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, parsed.version)))
         .returning({ version: pharmacies.version });
 
       if (versionUpdate.length === 0) {
@@ -391,15 +408,15 @@ router.put('/', async (req: AuthRequest, res: Response) => {
       await tx.delete(pharmacyBusinessHours)
         .where(eq(pharmacyBusinessHours.pharmacyId, req.user!.id));
 
-      await tx.insert(pharmacyBusinessHours).values(buildWeeklyBusinessHourValues(req.user!.id, weeklyResult.valid));
+      await tx.insert(pharmacyBusinessHours).values(buildWeeklyBusinessHourValues(req.user!.id, parsed.weekly));
 
-      if (specialResult.provided) {
+      if (parsed.specialProvided) {
         await tx.delete(pharmacySpecialHours)
           .where(eq(pharmacySpecialHours.pharmacyId, req.user!.id));
 
-        if (specialResult.valid.length > 0) {
+        if (parsed.special.length > 0) {
           await tx.insert(pharmacySpecialHours).values(
-            buildSpecialBusinessHourValues(req.user!.id, specialResult.valid, new Date().toISOString()),
+            buildSpecialBusinessHourValues(req.user!.id, parsed.special, new Date().toISOString()),
           );
         }
       }
@@ -426,11 +443,11 @@ router.put('/', async (req: AuthRequest, res: Response) => {
 });
 
 // Get another pharmacy's business hours
-router.get('/:pharmacyId', async (req: AuthRequest, res: Response) => {
+  router.get('/:pharmacyId', async (req: AuthRequest, res: Response) => {
   try {
     const pharmacyId = parsePositiveInteger(req.params.pharmacyId);
     if (pharmacyId === null) {
-      res.status(400).json({ error: '不正なIDです' });
+      sendBadRequest(res, '不正なIDです');
       return;
     }
 

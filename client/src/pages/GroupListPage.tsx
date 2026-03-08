@@ -17,6 +17,26 @@ import type { PharmacyGroup, GroupListResponse, GroupVisibility } from '../../..
 
 type TabKey = 'mine' | 'public';
 
+function buildGroupsQuery(activeTab: TabKey, search: string): string {
+  const params = new URLSearchParams({ tab: activeTab });
+  if (activeTab === 'public' && search) {
+    params.set('search', search);
+  }
+  return params.toString();
+}
+
+function buildCreateGroupPayload(
+  createName: string,
+  createDescription: string,
+  createVisibility: GroupVisibility,
+) {
+  return {
+    name: createName.trim(),
+    description: createDescription.trim() || undefined,
+    visibility: createVisibility,
+  };
+}
+
 export default function GroupListPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>('mine');
@@ -43,10 +63,7 @@ export default function GroupListPage() {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ tab: activeTab });
-      if (activeTab === 'public' && search) {
-        params.set('search', search);
-      }
+      const params = buildGroupsQuery(activeTab, search);
       const data = await api.get<GroupListResponse>(`/groups?${params}`);
       setGroups(data.groups);
     } catch (err) {
@@ -76,11 +93,7 @@ export default function GroupListPage() {
     setCreating(true);
     setCreateError('');
     try {
-      await api.post('/groups', {
-        name: createName.trim(),
-        description: createDescription.trim() || undefined,
-        visibility: createVisibility,
-      });
+      await api.post('/groups', buildCreateGroupPayload(createName, createDescription, createVisibility));
       setShowCreateModal(false);
       resetCreateForm();
       await fetchGroups();

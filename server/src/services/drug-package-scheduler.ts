@@ -62,6 +62,40 @@ function getConfiguredSourceUrl(): string {
   return process.env.DRUG_PACKAGE_SOURCE_URL?.trim() || '';
 }
 
+function clearSchedulerHandle(handle: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null, clearer: typeof clearTimeout): null {
+  if (handle) {
+    clearer(handle);
+  }
+  return null;
+}
+
+function buildEmptySyncResult() {
+  return { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 };
+}
+
+function buildPackageFetchOptions(sourceUrl: string) {
+  return {
+    sourceKey: SOURCE_KEY_PACKAGE,
+    retries: FETCH_RETRIES,
+    headers: buildSourceRequestHeaders(sourceUrl),
+  };
+}
+
+function getInitialDrugPackageRunDelay(): number {
+  return Math.min(60_000, CHECK_INTERVAL_MS);
+}
+
+function hasUnchangedPackageContent(
+  updateCheck: { compareByContentHash?: boolean; previousContentHash?: string | null },
+  contentHash: string,
+): boolean {
+  return Boolean(
+    updateCheck.compareByContentHash
+    && updateCheck.previousContentHash
+    && updateCheck.previousContentHash === contentHash,
+  );
+}
+
 
 async function persistHeaders(
   sourceUrl: string,
@@ -155,7 +189,7 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
     const pinnedDispatcher = pinnedAgent as unknown as FetchDispatcher;
 
     logger.info('Drug package auto-sync: checking for updates', { source: summarizeSourceUrl(sourceUrl) });
-    const fetchOpts = { sourceKey: SOURCE_KEY_PACKAGE, retries: FETCH_RETRIES, headers: buildSourceRequestHeaders(sourceUrl) };
+    const fetchOpts = buildPackageFetchOptions(sourceUrl);
     const updateCheck = await checkForUpdates(sourceUrl, pinnedDispatcher, fetchOpts);
 
     if (!updateCheck.hasUpdate) {
@@ -168,18 +202,14 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
     const { buffer, contentType } = await downloadFile(sourceUrl, pinnedDispatcher, fetchOpts);
     const contentHash = sha256(buffer);
 
-    if (
-      updateCheck.compareByContentHash
-      && updateCheck.previousContentHash
-      && updateCheck.previousContentHash === contentHash
-    ) {
+    if (hasUnchangedPackageContent(updateCheck, contentHash)) {
       logger.info('Drug package auto-sync: no updates detected by content-hash fallback');
       await persistHeaders(sourceUrl, { ...updateCheck, contentHash }, false);
       return;
     }
 
     const syncLog = await createSyncLog('package_auto', `包装単位自動取得: ${summarizeSourceUrl(sourceUrl)}`, null);
-    const emptyResult = { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 };
+    const emptyResult = buildEmptySyncResult();
 
     try {
       const parsedRows = await parseDownloadedPackageRows(sourceUrl, contentType, buffer);
@@ -227,15 +257,7 @@ function scheduleNextDrugPackageRun(delayMs: number, mode: 'initial' | 'schedule
     return;
   }
 
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
-
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
+  clearDrugPackageSchedulerHandles();
 
   schedulerTimer = setTimeout(() => {
     schedulerTimer = null;
@@ -255,14 +277,7 @@ function startLegacyDrugPackageIntervalScheduler(): void {
     return;
   }
 
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
+  clearDrugPackageSchedulerHandles();
 
   schedulerTimer = setTimeout(() => {
     schedulerTimer = null;
@@ -270,7 +285,7 @@ function startLegacyDrugPackageIntervalScheduler(): void {
       return;
     }
     void runPackageAutoSyncSafely('initial');
-  }, Math.min(60_000, CHECK_INTERVAL_MS));
+  }, getInitialDrugPackageRunDelay());
   schedulerTimer.unref();
 
   schedulerInterval = setInterval(() => {
@@ -283,14 +298,8 @@ function startLegacyDrugPackageIntervalScheduler(): void {
 }
 
 function clearDrugPackageSchedulerHandles(): void {
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
+  schedulerTimer = clearSchedulerHandle(schedulerTimer, clearTimeout);
+  schedulerInterval = clearSchedulerHandle(schedulerInterval, clearInterval);
 }
 
 export function startDrugPackageScheduler(): void {
@@ -319,7 +328,7 @@ export function startDrugPackageScheduler(): void {
 
   schedulerActive = true;
   if (optimizedLoopEnabled) {
-    scheduleNextDrugPackageRun(Math.min(60_000, CHECK_INTERVAL_MS), 'initial');
+    scheduleNextDrugPackageRun(getInitialDrugPackageRunDelay(), 'initial');
     return;
   }
   startLegacyDrugPackageIntervalScheduler();

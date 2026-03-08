@@ -37,6 +37,54 @@ function normalizeRawCode(value: string): string {
     .trim();
 }
 
+function buildGs1Response(
+  normalizedCode: string,
+  gs1: PartialGs1Fields,
+  warnings: string[],
+): ParsedCameraCode {
+  return {
+    codeType: 'gs1',
+    normalizedCode,
+    gtin: gs1.gtin ?? null,
+    yjCode: null,
+    expirationDate: gs1.expirationDate ?? null,
+    lotNumber: gs1.lotNumber ?? null,
+    warnings,
+  };
+}
+
+function resolveGs1Warnings(gs1: PartialGs1Fields): string[] {
+  const warnings: string[] = [];
+  if (gs1.expirationDate === undefined) {
+    warnings.push('使用期限(AI17)はバーコードから取得できませんでした。');
+  }
+  if (gs1.lotNumber === undefined) {
+    warnings.push('ロット番号(AI10)はバーコードから取得できませんでした。');
+  }
+  return warnings;
+}
+
+function hasGs1Fields(parsed: PartialGs1Fields): boolean {
+  return Boolean(parsed.gtin || parsed.expirationDate || parsed.lotNumber);
+}
+
+function buildNonGs1Response(
+  codeType: Exclude<CameraCodeType, 'gs1'>,
+  normalizedCode: string,
+  yjCode: string | null,
+  warnings: string[],
+): ParsedCameraCode {
+  return {
+    codeType,
+    normalizedCode,
+    gtin: null,
+    yjCode,
+    expirationDate: null,
+    lotNumber: null,
+    warnings,
+  };
+}
+
 function toIsoDateFromYymmdd(raw: string): string | null {
   if (!/^\d{6}$/.test(raw)) return null;
   const yy = Number(raw.slice(0, 2));
@@ -94,7 +142,7 @@ function parseBracketedGs1(value: string): PartialGs1Fields | null {
     }
   }
 
-  return parsed.gtin || parsed.expirationDate || parsed.lotNumber ? parsed : null;
+  return hasGs1Fields(parsed) ? parsed : null;
 }
 
 function parseUnbracketedGs1(value: string): PartialGs1Fields | null {
@@ -142,7 +190,7 @@ function parseUnbracketedGs1(value: string): PartialGs1Fields | null {
     consumeSeparator();
   }
 
-  if (parsed.gtin || parsed.expirationDate || parsed.lotNumber) {
+  if (hasGs1Fields(parsed)) {
     return parsed;
   }
 
@@ -158,51 +206,18 @@ function parseUnbracketedGs1(value: string): PartialGs1Fields | null {
 
 export function parseCameraCode(rawCode: string): ParsedCameraCode {
   const normalizedCode = normalizeRawCode(rawCode);
-  const warnings: string[] = [];
-
   const bracketed = parseBracketedGs1(normalizedCode);
   const unbracketed = bracketed ? null : parseUnbracketedGs1(normalizedCode);
   const gs1 = bracketed ?? unbracketed;
 
   if (gs1) {
-    if (gs1.expirationDate === undefined) {
-      warnings.push('使用期限(AI17)はバーコードから取得できませんでした。');
-    }
-    if (gs1.lotNumber === undefined) {
-      warnings.push('ロット番号(AI10)はバーコードから取得できませんでした。');
-    }
-
-    return {
-      codeType: 'gs1',
-      normalizedCode,
-      gtin: gs1.gtin ?? null,
-      yjCode: null,
-      expirationDate: gs1.expirationDate ?? null,
-      lotNumber: gs1.lotNumber ?? null,
-      warnings,
-    };
+    return buildGs1Response(normalizedCode, gs1, resolveGs1Warnings(gs1));
   }
 
   const yjCode = parseYjCode(normalizedCode);
   if (yjCode) {
-    return {
-      codeType: 'yj',
-      normalizedCode,
-      gtin: null,
-      yjCode,
-      expirationDate: null,
-      lotNumber: null,
-      warnings,
-    };
+    return buildNonGs1Response('yj', normalizedCode, yjCode, []);
   }
 
-  return {
-    codeType: 'unknown',
-    normalizedCode,
-    gtin: null,
-    yjCode: null,
-    expirationDate: null,
-    lotNumber: null,
-    warnings: ['GS1またはYJコードとして認識できませんでした。'],
-  };
+  return buildNonGs1Response('unknown', normalizedCode, null, ['GS1またはYJコードとして認識できませんでした。']);
 }

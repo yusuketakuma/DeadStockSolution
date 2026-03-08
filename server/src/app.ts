@@ -192,13 +192,20 @@ app.use(cookieParser());
 app.use(requestLogger);
 
 // Health check endpoints (before rate limiter — no rate limiting needed)
+const HEALTH_CHECK_DB_TIMEOUT_MS = 5_000;
+
 app.get('/api/health', async (_req, res) => {
   const start = Date.now();
   let dbStatus: 'ok' | 'error' = 'ok';
   let dbResponseTime: number | null = null;
 
   try {
-    await db.execute(sql`SELECT 1`);
+    await Promise.race([
+      db.execute(sql`SELECT 1`),
+      new Promise((_resolve, reject) =>
+        setTimeout(() => reject(new Error('Health check DB query timed out')), HEALTH_CHECK_DB_TIMEOUT_MS),
+      ),
+    ]);
     dbResponseTime = Date.now() - start;
   } catch (err) {
     dbStatus = 'error';
@@ -221,7 +228,12 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/health/ready', async (_req, res) => {
   try {
-    await db.execute(sql`SELECT 1`);
+    await Promise.race([
+      db.execute(sql`SELECT 1`),
+      new Promise((_resolve, reject) =>
+        setTimeout(() => reject(new Error('Readiness check DB query timed out')), HEALTH_CHECK_DB_TIMEOUT_MS),
+      ),
+    ]);
     res.status(200).json({ ready: true });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

@@ -1,10 +1,10 @@
 {
-  "active_plan": "/Users/yusuke/DeadStockSolution-mobile/.sisyphus/plans/mobile-ux.md",
-  "started_at": "2026-03-07T23:42:10.557Z",
+  "active_plan": "/Users/yusuke/DeadStockSolution/.sisyphus/plans/nighttime-refactor.md",
+  "started_at": "2026-03-08T17:37:48.642Z",
   "session_ids": [
-    "ses_33551f1bfffeEH7bQEAd0wNAbH"
+    "ses_33204608dffetAMwVM9nDi6IpS"
   ],
-  "plan_name": "mobile-ux",
-  "worktree_path": "/Users/yusuke/DeadStockSolution-mobile",
-  "agent": "atlas"
+  "plan_name": "nighttime-refactor",
+  "agent": "atlas",
+  "worktree_path": "/Users/yusuke/DeadStockSolution-nighttime-refactor"
 }

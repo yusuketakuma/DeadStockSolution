@@ -202,7 +202,7 @@ const MAX_CSV_FILE_SIZE = 50 * 1024 * 1024; // 50MB total
 const MAX_CSV_ROWS = 100000; // 10万行制限
 const MAX_CSV_LINE_LENGTH = 10000; // 10KB per line
 
-export function parseMhlwCsvData(csvContent: string): ParsedDrugRow[] {
+function assertCsvLimits(csvContent: string): string[] {
   if (csvContent.length > MAX_CSV_FILE_SIZE) {
     throw new Error(`CSVファイルが大きすぎます（最大${MAX_CSV_FILE_SIZE / 1024 / 1024}MB）`);
   }
@@ -211,11 +211,22 @@ export function parseMhlwCsvData(csvContent: string): ParsedDrugRow[] {
   if (lines.length > MAX_CSV_ROWS) {
     throw new Error(`CSV行数が上限を超えています（最大${MAX_CSV_ROWS}行）`);
   }
+
+  return lines;
+}
+
+function parseCsvContent(csvContent: string): string[][] {
+  return assertCsvLimits(csvContent).map((line) => parseCsvLine(line));
+}
+
+export function parseMhlwCsvData(csvContent: string): ParsedDrugRow[] {
+  const lines = assertCsvLimits(csvContent);
+  if (lines.length > MAX_CSV_ROWS) {
+    throw new Error(`CSV行数が上限を超えています（最大${MAX_CSV_ROWS}行）`);
+  }
   if (lines.length < 2) return [];
 
-  // ヘッダー行を検出（CSVなのでカンマ区切り）
-  const allRows = lines.map((line) => parseCsvLine(line));
-  return parseMhlwExcelData(allRows);
+  return parseMhlwExcelData(lines.map((line) => parseCsvLine(line)));
 }
 
 function parseCsvLine(line: string): string[] {
@@ -276,17 +287,7 @@ const PACKAGE_XML_KEYWORDS: Record<string, string[]> = {
 };
 
 export function parsePackageCsvData(csvContent: string): ParsedPackageRow[] {
-  if (csvContent.length > MAX_CSV_FILE_SIZE) {
-    throw new Error(`CSVファイルが大きすぎます（最大${MAX_CSV_FILE_SIZE / 1024 / 1024}MB）`);
-  }
-
-  const lines = csvContent.split(/\r?\n/);
-  if (lines.length > MAX_CSV_ROWS) {
-    throw new Error(`CSV行数が上限を超えています（最大${MAX_CSV_ROWS}行）`);
-  }
-
-  const allRows = lines.map((line) => parseCsvLine(line));
-  return parsePackageExcelData(allRows);
+  return parsePackageExcelData(parseCsvContent(csvContent));
 }
 
 function normalizeXmlKey(key: string): string {
@@ -389,6 +390,20 @@ function dedupePackageRows(rows: ParsedPackageRow[]): ParsedPackageRow[] {
   return [...deduped.values()];
 }
 
+function parsePackageZipEntry(entryName: string, entryBuffer: Buffer): Promise<ParsedPackageRow[]> | ParsedPackageRow[] {
+  const lowerName = entryName.toLowerCase();
+  if (lowerName.endsWith('.xml')) {
+    return parsePackageXmlData(entryBuffer.toString('utf-8'));
+  }
+  if (lowerName.endsWith('.csv')) {
+    return parsePackageCsvData(decodeCsvBuffer(entryBuffer));
+  }
+  if (lowerName.endsWith('.xlsx')) {
+    return parseExcelBuffer(entryBuffer).then((excelRows) => parsePackageExcelData(excelRows));
+  }
+  return [];
+}
+
 export function parsePackageXmlData(xmlContent: string): ParsedPackageRow[] {
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -453,18 +468,10 @@ export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackage
       break;
     }
 
-    const lowerName = entry.entryName.toLowerCase();
     const entryBuffer = entry.getData();
 
     try {
-      if (lowerName.endsWith('.xml')) {
-        rows.push(...parsePackageXmlData(entryBuffer.toString('utf-8')));
-      } else if (lowerName.endsWith('.csv')) {
-        rows.push(...parsePackageCsvData(decodeCsvBuffer(entryBuffer)));
-      } else if (lowerName.endsWith('.xlsx')) {
-        const excelRows = await parseExcelBuffer(entryBuffer);
-        rows.push(...parsePackageExcelData(excelRows));
-      }
+      rows.push(...await parsePackageZipEntry(entry.entryName, entryBuffer));
     } catch (err) {
       logger.warn(`Failed to parse ZIP entry: ${entry.entryName}`, { error: err instanceof Error ? err.message : err });
     }
@@ -525,10 +532,10 @@ export async function parseMhlwDrugFile(
   contentType: string | null,
   buffer: Buffer,
 ): Promise<ParsedDrugRow[]> {
-  const isCsv = contentType?.includes('csv')
+  const looksLikeCsv = contentType?.includes('csv')
     || contentType?.includes('text/plain')
     || url.endsWith('.csv');
-  if (isCsv) {
+  if (looksLikeCsv) {
     const csvContent = decodeCsvBuffer(buffer);
     return parseMhlwCsvData(csvContent);
   }

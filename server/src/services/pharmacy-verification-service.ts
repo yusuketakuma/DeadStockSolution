@@ -53,6 +53,17 @@ export function detectChangedReverificationFields(
   return changed;
 }
 
+function buildReverificationRequestText(
+  changedFields: string[],
+  triggeredBy?: 'admin' | 'user',
+): string {
+  return JSON.stringify({
+    type: PHARMACY_REVERIFICATION_REQUEST_TYPE,
+    changedFields,
+    ...(triggeredBy ? { triggeredBy } : {}),
+  } as const);
+}
+
 export class ReverificationTriggerError extends Error {
   constructor(message: string) {
     super(message);
@@ -95,12 +106,7 @@ export async function triggerReverification(
   options: ReverificationTriggerOptions = {},
 ): Promise<ReverificationTriggerResult> {
   const { triggeredBy } = options;
-  const requestPayload = {
-    type: PHARMACY_REVERIFICATION_REQUEST_TYPE,
-    changedFields,
-    ...(triggeredBy ? { triggeredBy } : {}),
-  } as const;
-  const requestText = JSON.stringify(requestPayload);
+  const requestText = buildReverificationRequestText(changedFields, triggeredBy);
 
   try {
     let requestId: number | null = null;

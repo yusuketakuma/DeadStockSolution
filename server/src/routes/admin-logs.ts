@@ -135,6 +135,46 @@ function truncateSystemEventDetail(detailJson: string | null): string | null {
   return `${detailJson.slice(0, SYSTEM_EVENT_DETAIL_PREVIEW_MAX_LENGTH)}...`;
 }
 
+function buildCountMap<T extends string>(rows: Array<{ [key: string]: T | number }>, keyName: string): Record<string, number> {
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    const key = row[keyName];
+    if (typeof key === 'string') {
+      acc[key] = Number(row.count);
+    }
+    return acc;
+  }, {});
+}
+
+async function fetchActivityLogTotal(whereClause: ActivityLogWhereClause): Promise<number> {
+  const [totalRow] = await db.select({ count: rowCount })
+    .from(activityLogs)
+    .where(whereClause);
+  return totalRow.count;
+}
+
+function buildAdminLogFilterSummary(filters: AdminLogFilters) {
+  return {
+    action: filters.actionFilter ?? null,
+    result: filters.failureOnly ? 'failure' : 'all',
+    keyword: filters.keyword ?? null,
+  };
+}
+
+function buildSystemEventFilterSummary(filters: AdminSystemEventFilters) {
+  return {
+    source: filters.sourceFilter ?? null,
+    level: filters.levelFilter ?? null,
+    keyword: filters.keyword ?? null,
+  };
+}
+
+function buildSystemEventResponseRows(rows: SystemEventRow[]) {
+  return rows.map((row) => ({
+    ...row,
+    detailJson: truncateSystemEventDetail(row.detailJson),
+  }));
+}
+
 async function fetchActivityLogRows(
   whereClause: ActivityLogWhereClause,
   limit: number,
@@ -261,14 +301,8 @@ async function fetchSystemEventSummary(whereClause: SystemEventWhereClause): Pro
   ]);
 
   return {
-    bySource: bySourceRows.reduce<Record<string, number>>((acc, row) => {
-      acc[row.source] = row.count;
-      return acc;
-    }, {}),
-    byLevel: byLevelRows.reduce<Record<string, number>>((acc, row) => {
-      acc[row.level] = row.count;
-      return acc;
-    }, {}),
+    bySource: buildCountMap(bySourceRows, 'source'),
+    byLevel: buildCountMap(byLevelRows, 'level'),
   };
 }
 
@@ -284,23 +318,16 @@ router.get('/logs', async (req: AuthRequest, res: Response) => {
     const rows = await fetchActivityLogRows(whereClause, limit, offset);
     const mappedRows = await mapActivityLogsWithPharmacyName(rows);
 
-    const [total] = await db.select({ count: rowCount })
-      .from(activityLogs)
-      .where(whereClause);
-
+    const total = await fetchActivityLogTotal(whereClause);
     const failureSummary = await fetchFailureSummary(failureWhereClause);
 
-    sendPaginated(res, mappedRows, page, limit, total.count, {
+    sendPaginated(res, mappedRows, page, limit, total, {
       summary: {
         failureTotal: failureSummary.failureTotal,
         failureByAction: failureSummary.failureByAction,
         failureByReason: failureSummary.failureByReason,
       },
-      filters: {
-        action: filters.actionFilter ?? null,
-        result: filters.failureOnly ? 'failure' : 'all',
-        keyword: filters.keyword ?? null,
-      },
+      filters: buildAdminLogFilterSummary(filters),
     });
   } catch (err) {
     handleAdminError(err, 'Admin logs error', 'ログの取得に失敗しました', res);
@@ -320,21 +347,14 @@ router.get('/system-events', async (req: AuthRequest, res: Response) => {
         ? fetchSystemEventSummary(whereClause)
         : Promise.resolve({ bySource: {}, byLevel: {} }),
     ]);
-    const responseRows = rows.map((row) => ({
-      ...row,
-      detailJson: truncateSystemEventDetail(row.detailJson),
-    }));
+    const responseRows = buildSystemEventResponseRows(rows);
 
     sendPaginated(res, responseRows, page, limit, total, {
       summary: {
         bySource: summary.bySource,
         byLevel: summary.byLevel,
       },
-      filters: {
-        source: filters.sourceFilter ?? null,
-        level: filters.levelFilter ?? null,
-        keyword: filters.keyword ?? null,
-      },
+      filters: buildSystemEventFilterSummary(filters),
     });
   } catch (err) {
     handleAdminError(err, 'Admin system events error', 'システムイベントの取得に失敗しました', res);

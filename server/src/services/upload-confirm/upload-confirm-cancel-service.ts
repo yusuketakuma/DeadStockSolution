@@ -60,6 +60,12 @@ function buildCancelUpdatePayload(
   };
 }
 
+function buildOwnerConditions(requiredPharmacyId?: number) {
+  return requiredPharmacyId !== undefined
+    ? [eq(uploadConfirmJobs.pharmacyId, requiredPharmacyId)]
+    : [];
+}
+
 async function cancelJobCore(
   jobId: number,
   canceledBy: number,
@@ -77,9 +83,7 @@ async function cancelJobCore(
     }
 
     const nowIso = new Date().toISOString();
-    const ownerConditions = options.requirePharmacyId !== undefined
-      ? [eq(uploadConfirmJobs.pharmacyId, options.requirePharmacyId)]
-      : [];
+    const ownerConditions = buildOwnerConditions(options.requirePharmacyId);
 
     const [updated] = await tx.update(uploadConfirmJobs)
       .set(buildCancelUpdatePayload(existing, canceledBy, nowIso))

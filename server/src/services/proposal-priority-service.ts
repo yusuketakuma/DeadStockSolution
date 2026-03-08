@@ -25,20 +25,13 @@ function buildDeadlineAt(proposedAt: string | null): string | null {
   return new Date(ts + (RESPONSE_DEADLINE_HOURS * 60 * 60 * 1000)).toISOString();
 }
 
-function isInboundWaiting(input: ProposalPriorityInput, viewerPharmacyId: number): boolean {
-  if (input.status === 'proposed') return input.pharmacyBId === viewerPharmacyId;
-  if (input.status === 'accepted_a') return input.pharmacyBId === viewerPharmacyId;
-  if (input.status === 'accepted_b') return input.pharmacyAId === viewerPharmacyId;
-  return false;
-}
-
-export function getProposalPriority(input: ProposalPriorityInput, viewerPharmacyId: number): ProposalPriority {
+function buildProposalStatusPriority(
+  input: ProposalPriorityInput,
+  inboundWaiting: boolean,
+  outbound: boolean,
+): { score: number; reasons: string[] } {
   const reasons: string[] = [];
   let score = 0;
-
-  const inboundWaiting = isInboundWaiting(input, viewerPharmacyId);
-  const outbound = input.pharmacyAId === viewerPharmacyId;
-  const deadlineAt = buildDeadlineAt(input.proposedAt);
 
   if (input.status === 'confirmed') {
     score += 70;
@@ -59,6 +52,24 @@ export function getProposalPriority(input: ProposalPriorityInput, viewerPharmacy
     score += 5;
     reasons.push('終了済み');
   }
+
+  return { score, reasons };
+}
+
+function isInboundWaiting(input: ProposalPriorityInput, viewerPharmacyId: number): boolean {
+  if (input.status === 'proposed') return input.pharmacyBId === viewerPharmacyId;
+  if (input.status === 'accepted_a') return input.pharmacyBId === viewerPharmacyId;
+  if (input.status === 'accepted_b') return input.pharmacyAId === viewerPharmacyId;
+  return false;
+}
+
+export function getProposalPriority(input: ProposalPriorityInput, viewerPharmacyId: number): ProposalPriority {
+  const inboundWaiting = isInboundWaiting(input, viewerPharmacyId);
+  const outbound = input.pharmacyAId === viewerPharmacyId;
+  const deadlineAt = buildDeadlineAt(input.proposedAt);
+  const basePriority = buildProposalStatusPriority(input, inboundWaiting, outbound);
+  let score = basePriority.score;
+  const reasons = [...basePriority.reasons];
 
   if (deadlineAt && inboundWaiting) {
     const deadlineMs = new Date(deadlineAt).getTime();

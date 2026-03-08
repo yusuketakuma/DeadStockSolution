@@ -52,6 +52,18 @@ async function countUnreadByIsReadFlag(
   return rows[0]?.count ?? 0;
 }
 
+async function countRows(
+  db: DbClient,
+  table: PgTable,
+  whereCondition: ReturnType<typeof and> | ReturnType<typeof or> | ReturnType<typeof eq>,
+): Promise<number> {
+  const rows = await db
+    .select({ count: rowCount })
+    .from(table)
+    .where(whereCondition);
+  return rows[0]?.count ?? 0;
+}
+
 /** notifications: isRead=false OR createdAt > lastViewed */
 export async function countUnreadNotifications(
   db: DbClient,
@@ -152,16 +164,10 @@ export async function countUnreadProposals(
   db: DbClient,
   pharmacyId: number,
 ): Promise<number> {
-  const rows = await db
-    .select({ count: rowCount })
-    .from(exchangeProposals)
-    .where(
-      or(
-        eq(exchangeProposals.pharmacyAId, pharmacyId),
-        eq(exchangeProposals.pharmacyBId, pharmacyId),
-      ),
-    );
-  return rows[0]?.count ?? 0;
+  return countRows(db, exchangeProposals, or(
+    eq(exchangeProposals.pharmacyAId, pharmacyId),
+    eq(exchangeProposals.pharmacyBId, pharmacyId),
+  ));
 }
 
 /** exchangeFeedback: 常に unread → COUNT(*) */
@@ -169,11 +175,7 @@ export async function countUnreadFeedback(
   db: DbClient,
   pharmacyId: number,
 ): Promise<number> {
-  const rows = await db
-    .select({ count: rowCount })
-    .from(exchangeFeedback)
-    .where(eq(exchangeFeedback.toPharmacyId, pharmacyId));
-  return rows[0]?.count ?? 0;
+  return countRows(db, exchangeFeedback, eq(exchangeFeedback.toPharmacyId, pharmacyId));
 }
 
 /** deadStockItems: 常に unread (期限リスク条件付き) → COUNT(*) */
@@ -182,20 +184,13 @@ export async function countUnreadExpiryRisk(
   pharmacyId: number,
 ): Promise<number> {
   const { todayStr, threeDaysLaterStr } = getExpiryDateRange();
-
-  const rows = await db
-    .select({ count: rowCount })
-    .from(deadStockItems)
-    .where(
-      and(
-        eq(deadStockItems.pharmacyId, pharmacyId),
-        eq(deadStockItems.isAvailable, true),
-        isNotNull(deadStockItems.expirationDateIso),
-        gte(deadStockItems.expirationDateIso, todayStr),
-        lte(deadStockItems.expirationDateIso, threeDaysLaterStr),
-      ),
-    );
-  return rows[0]?.count ?? 0;
+  return countRows(db, deadStockItems, and(
+    eq(deadStockItems.pharmacyId, pharmacyId),
+    eq(deadStockItems.isAvailable, true),
+    isNotNull(deadStockItems.expirationDateIso),
+    gte(deadStockItems.expirationDateIso, todayStr),
+    lte(deadStockItems.expirationDateIso, threeDaysLaterStr),
+  ));
 }
 
 /** uploads: 常に read → createdAt > lastViewed のみ */
@@ -205,17 +200,10 @@ export async function countUnreadUploads(
   lastViewed: string | null,
 ): Promise<number> {
   if (!lastViewed) return 0;
-
-  const rows = await db
-    .select({ count: rowCount })
-    .from(uploads)
-    .where(
-      and(
-        eq(uploads.pharmacyId, pharmacyId),
-        gt(uploads.createdAt, lastViewed),
-      ),
-    );
-  return rows[0]?.count ?? 0;
+  return countRows(db, uploads, and(
+    eq(uploads.pharmacyId, pharmacyId),
+    gt(uploads.createdAt, lastViewed),
+  ));
 }
 
 /** exchangeHistory: 常に read → completedAt > lastViewed のみ */
@@ -225,20 +213,13 @@ export async function countUnreadExchangeHistory(
   lastViewed: string | null,
 ): Promise<number> {
   if (!lastViewed) return 0;
-
-  const rows = await db
-    .select({ count: rowCount })
-    .from(exchangeHistory)
-    .where(
-      and(
-        or(
-          eq(exchangeHistory.pharmacyAId, pharmacyId),
-          eq(exchangeHistory.pharmacyBId, pharmacyId),
-        ),
-        gt(exchangeHistory.completedAt, lastViewed),
-      ),
-    );
-  return rows[0]?.count ?? 0;
+  return countRows(db, exchangeHistory, and(
+    or(
+      eq(exchangeHistory.pharmacyAId, pharmacyId),
+      eq(exchangeHistory.pharmacyBId, pharmacyId),
+    ),
+    gt(exchangeHistory.completedAt, lastViewed),
+  ));
 }
 
 /**

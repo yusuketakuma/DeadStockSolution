@@ -22,6 +22,79 @@ interface UseBusinessHoursFormOptions {
   userId?: number | string;
 }
 
+function resolveFormErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+function applyLoadedBusinessHoursState(
+  data: BusinessHourSettingsResponse,
+  setters: {
+    setBusinessHours: (value: BusinessHourEntry[]) => void;
+    setSavedBusinessHours: (value: BusinessHourEntry[]) => void;
+    setSpecialHours: (value: SpecialHourEntry[]) => void;
+    setSavedSpecialHours: (value: SpecialHourEntry[]) => void;
+    setHoursVersion: (value: number) => void;
+    setHoursLoadFailed: (value: boolean) => void;
+    setHoursHasRemoteData: (value: boolean) => void;
+    setHoursError: (value: string) => void;
+    setHoursConflict: (value: boolean) => void;
+  },
+): void {
+  const normalizedWeekly = normalizeBusinessHours(data.hours ?? []);
+  const normalizedSpecial = normalizeSpecialHours(data.specialHours ?? []);
+  setters.setBusinessHours(normalizedWeekly);
+  setters.setSavedBusinessHours(normalizedWeekly);
+  setters.setSpecialHours(normalizedSpecial);
+  setters.setSavedSpecialHours(normalizedSpecial);
+  setters.setHoursVersion(data.version ?? 1);
+  setters.setHoursLoadFailed(false);
+  setters.setHoursHasRemoteData(true);
+  setters.setHoursError('');
+  setters.setHoursConflict(false);
+}
+
+function resolveHoursValidationError(
+  businessHours: BusinessHourEntry[],
+  specialHours: SpecialHourEntry[],
+): string | null {
+  const invalidDateRange = specialHours.find((entry) => entry.startDate > entry.endDate);
+  if (invalidDateRange) {
+    return '特例営業時間の開始日と終了日の順序が不正です';
+  }
+
+  const invalidWeeklyHours = businessHours.find((entry) =>
+    !entry.isClosed
+    && !entry.is24Hours
+    && (!entry.openTime || !entry.closeTime || entry.openTime === entry.closeTime));
+  if (invalidWeeklyHours) {
+    return '通常営業時間の開店時間・閉店時間を正しく入力してください';
+  }
+
+  const invalidSpecialHours = specialHours.find((entry) =>
+    entry.specialType === 'special_open'
+    && !entry.isClosed
+    && !entry.is24Hours
+    && (!entry.openTime || !entry.closeTime || entry.openTime === entry.closeTime));
+  if (invalidSpecialHours) {
+    return '特別営業時間の開店時間・閉店時間を正しく入力してください';
+  }
+
+  return null;
+}
+
+function buildSpecialHoursPayload(specialHours: SpecialHourEntry[]) {
+  return specialHours.map((entry) => ({
+    specialType: entry.specialType,
+    startDate: entry.startDate,
+    endDate: entry.endDate,
+    openTime: entry.isClosed || entry.is24Hours ? null : entry.openTime,
+    closeTime: entry.isClosed || entry.is24Hours ? null : entry.closeTime,
+    isClosed: entry.isClosed,
+    is24Hours: entry.is24Hours,
+    note: entry.note?.trim() || null,
+  }));
+}
+
 export interface UseBusinessHoursFormReturn {
   businessHours: BusinessHourEntry[];
   specialHours: SpecialHourEntry[];
@@ -104,17 +177,17 @@ export function useBusinessHoursForm({ userId }: UseBusinessHoursFormOptions): U
     try {
       const data = await api.get<BusinessHourSettingsResponse>('/business-hours/settings', { signal });
       if (signal?.aborted) return;
-      const normalizedWeekly = normalizeBusinessHours(data.hours ?? []);
-      const normalizedSpecial = normalizeSpecialHours(data.specialHours ?? []);
-      setBusinessHours(normalizedWeekly);
-      setSavedBusinessHours(normalizedWeekly);
-      setSpecialHours(normalizedSpecial);
-      setSavedSpecialHours(normalizedSpecial);
-      setHoursVersion(data.version ?? 1);
-      setHoursLoadFailed(false);
-      setHoursHasRemoteData(true);
-      setHoursError('');
-      setHoursConflict(false);
+      applyLoadedBusinessHoursState(data, {
+        setBusinessHours,
+        setSavedBusinessHours,
+        setSpecialHours,
+        setSavedSpecialHours,
+        setHoursVersion,
+        setHoursLoadFailed,
+        setHoursHasRemoteData,
+        setHoursError,
+        setHoursConflict,
+      });
     } catch (err) {
       if (signal?.aborted) return;
       setHoursLoadFailed(true);
@@ -129,7 +202,7 @@ export function useBusinessHoursForm({ userId }: UseBusinessHoursFormOptions): U
         return prev;
       });
       setHoursEditing(false);
-      setHoursError(err instanceof Error ? err.message : '営業時間の取得に失敗しました');
+      setHoursError(resolveFormErrorMessage(err, '営業時間の取得に失敗しました'));
     } finally {
       if (!signal?.aborted) {
         setHoursLoaded(true);
@@ -172,46 +245,17 @@ export function useBusinessHoursForm({ userId }: UseBusinessHoursFormOptions): U
     setHoursMessage('');
     setHoursConflict(false);
 
-    const invalidDateRange = specialHours.find((entry) => entry.startDate > entry.endDate);
-    if (invalidDateRange) {
-      setHoursError('特例営業時間の開始日と終了日の順序が不正です');
-      return;
-    }
-
-    const invalidWeeklyHours = businessHours.find((entry) =>
-      !entry.isClosed
-      && !entry.is24Hours
-      && (!entry.openTime || !entry.closeTime || entry.openTime === entry.closeTime));
-    if (invalidWeeklyHours) {
-      setHoursError('通常営業時間の開店時間・閉店時間を正しく入力してください');
-      return;
-    }
-
-    const invalidSpecialHours = specialHours.find((entry) =>
-      entry.specialType === 'special_open'
-      && !entry.isClosed
-      && !entry.is24Hours
-      && (!entry.openTime || !entry.closeTime || entry.openTime === entry.closeTime));
-    if (invalidSpecialHours) {
-      setHoursError('特別営業時間の開店時間・閉店時間を正しく入力してください');
+    const validationError = resolveHoursValidationError(businessHours, specialHours);
+    if (validationError) {
+      setHoursError(validationError);
       return;
     }
 
     setHoursSaving(true);
     try {
-      const payloadSpecialHours = specialHours.map((entry) => ({
-        specialType: entry.specialType,
-        startDate: entry.startDate,
-        endDate: entry.endDate,
-        openTime: entry.isClosed || entry.is24Hours ? null : entry.openTime,
-        closeTime: entry.isClosed || entry.is24Hours ? null : entry.closeTime,
-        isClosed: entry.isClosed,
-        is24Hours: entry.is24Hours,
-        note: entry.note?.trim() || null,
-      }));
       const result = await api.put<{ message: string; version: number }>('/business-hours', {
         hours: businessHours,
-        specialHours: payloadSpecialHours,
+        specialHours: buildSpecialHoursPayload(specialHours),
         version: hoursVersion,
       });
       const normalizedSpecial = normalizeSpecialHours(specialHours);
@@ -231,17 +275,21 @@ export function useBusinessHoursForm({ userId }: UseBusinessHoursFormOptions): U
         // 最新データで営業時間状態を更新
         const latestData = err.data.latestData as BusinessHourSettingsResponse | undefined;
         if (latestData) {
-          const normalizedWeekly = normalizeBusinessHours(latestData.hours ?? []);
-          const normalizedSpecial = normalizeSpecialHours(latestData.specialHours ?? []);
-          setBusinessHours(normalizedWeekly);
-          setSavedBusinessHours(normalizedWeekly);
-          setSpecialHours(normalizedSpecial);
-          setSavedSpecialHours(normalizedSpecial);
-          setHoursVersion(latestData.version ?? 1);
+          applyLoadedBusinessHoursState(latestData, {
+            setBusinessHours,
+            setSavedBusinessHours,
+            setSpecialHours,
+            setSavedSpecialHours,
+            setHoursVersion,
+            setHoursLoadFailed,
+            setHoursHasRemoteData,
+            setHoursError,
+            setHoursConflict,
+          });
           setHoursEditing(false);
         }
       } else {
-        setHoursError(err instanceof Error ? err.message : '営業時間の更新に失敗しました');
+        setHoursError(resolveFormErrorMessage(err, '営業時間の更新に失敗しました'));
       }
     } finally {
       setHoursSaving(false);

@@ -356,7 +356,7 @@ describe('auth routes', () => {
     delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     const app = await createApp();
 
-    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
+    const res = await request(app).get('/api/auth/test-pharmacies');
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'テストログインは無効です' });
@@ -376,11 +376,11 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['cache-control']).toBe('private, max-age=60');
     expect(res.body).toEqual({
       accounts: [
         {
-          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: '',
         },
       ],
     });
@@ -393,7 +393,7 @@ describe('auth routes', () => {
     process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
     const app = await createApp();
 
-    const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
+    const res = await request(app).get('/api/auth/test-pharmacies');
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'テストログインは無効です' });
@@ -466,21 +466,21 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['cache-control']).toBe('private, max-age=60');
     expect(res.body).toEqual({
       accounts: [{
         id: 1,
         name: 'テスト薬局東京店',
         email: 'test-tokyo@example.com',
         prefecture: '東京都',
-        password: 'TokyoDemo!2026',
+        password: '',
       }],
     });
     expect(mocks.db.select).toHaveBeenCalledTimes(2);
     expect(mocks.db.execute).toHaveBeenCalledTimes(2);
   });
 
-  it('returns distinct passwords for DB test pharmacy accounts', async () => {
+  it('does not expose test pharmacy passwords even when includePassword is requested in preview', async () => {
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
       { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
@@ -500,40 +500,40 @@ describe('auth routes', () => {
         name: 'テスト薬局東京店',
         email: 'test-tokyo@example.com',
         prefecture: '東京都',
-        password: 'TokyoDemo!2026',
+        password: '',
       },
       {
         id: 2,
         name: 'テスト薬局札幌店',
         email: 'test-sapporo@example.com',
         prefecture: '北海道',
-        password: 'SapporoDemo!2026',
+        password: '',
       },
       {
         id: 3,
         name: 'テスト薬局大阪店',
         email: 'test-osaka@example.com',
         prefecture: '大阪府',
-        password: 'OsakaDemo!2026',
+        password: '',
       },
       {
         id: 4,
         name: 'テスト薬局福岡店',
         email: 'test-fukuoka@example.com',
         prefecture: '福岡県',
-        password: 'FukuokaDemo!2026',
+        password: '',
       },
       {
         id: 5,
         name: 'テスト薬局那覇店',
         email: 'test-naha@example.com',
         prefecture: '沖縄県',
-        password: 'NahaDemo!2026',
+        password: '',
       },
     ]);
   });
 
-  it('uses DB password value in preview response', async () => {
+  it('does not use DB password value in preview response', async () => {
     const selectChain = createSelectChain([
       { id: 7, name: 'デモ薬局', email: 'demo@example.com', prefecture: '福岡県', password: 'DemoPass!999' },
     ]);
@@ -550,7 +550,7 @@ describe('auth routes', () => {
           name: 'デモ薬局',
           email: 'demo@example.com',
           prefecture: '福岡県',
-          password: 'DemoPass!999',
+          password: '',
         },
       ],
     });

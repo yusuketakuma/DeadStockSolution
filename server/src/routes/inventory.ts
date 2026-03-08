@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { eq, and, or, like, desc, inArray, notExists } from 'drizzle-orm';
+import type { ZodType } from 'zod';
 import { db } from '../config/database';
 import {
   deadStockItems,
@@ -30,11 +31,9 @@ import {
   cameraResolveSchema,
   cameraConfirmSchema,
   cameraManualCandidatesSchema,
-  type CameraResolveBody,
-  type CameraConfirmBody,
-  type CameraManualCandidatesQuery,
 } from '../utils/validators';
-import { ApiError, isApiError } from '../utils/api-error';
+import { isApiError } from '../utils/api-error';
+import { sendBadRequest } from './response-helpers';
 
 const CAMERA_BAD_REQUEST_MESSAGES = new Set<string>([
   '読取コードを入力してください',
@@ -49,6 +48,96 @@ function isCameraBadRequestMessage(message: string): boolean {
   return message.startsWith('行') || CAMERA_BAD_REQUEST_MESSAGES.has(message);
 }
 
+function parsePayloadOrRespond<TSchema extends ZodType>(
+  schema: TSchema,
+  payload: unknown,
+  res: Response,
+  fallbackMessage: string,
+): TSchema['_output'] | null {
+  const parseResult = schema.safeParse(payload);
+  if (!parseResult.success) {
+    return sendBadRequest(res, parseResult.error.issues[0]?.message ?? fallbackMessage);
+  }
+  return parseResult.data;
+}
+
+function buildCameraResolveResponse(
+  parsed: ReturnType<typeof parseCameraCode>,
+  match: Awaited<ReturnType<typeof resolveCameraMatchByCode>>,
+) {
+  return {
+    codeType: parsed.codeType as CameraCodeType,
+    parsed: {
+      gtin: parsed.gtin,
+      yjCode: parsed.yjCode,
+      expirationDate: parsed.expirationDate,
+      lotNumber: parsed.lotNumber,
+    },
+    match,
+    warnings: parsed.warnings,
+  };
+}
+
+function buildBrowseSearchCondition(rawSearch: unknown) {
+  const search = normalizeSearchTerm(rawSearch);
+  if (!search) {
+    return undefined;
+  }
+
+  const normalized = normalizeKana(search);
+  const hiragana = katakanaToHiragana(normalized);
+  const katakana = hiraganaToKatakana(normalized);
+  const likeTerms = [...new Set([normalized, hiragana, katakana])];
+  const likeConditions = likeTerms.map((term) => like(deadStockItems.drugName, `%${escapeLikeWildcards(term)}%`));
+  return likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
+}
+
+type BusinessStatus = ReturnType<typeof getBusinessHoursStatus> & { isConfigured: boolean };
+
+async function buildBusinessStatusMap(pharmacyIds: number[], now: Date): Promise<Map<number, BusinessStatus>> {
+  if (pharmacyIds.length === 0) {
+    return new Map();
+  }
+
+  const [allHours, allSpecialHours] = await Promise.all([
+    db.select({
+      pharmacyId: pharmacyBusinessHours.pharmacyId,
+      dayOfWeek: pharmacyBusinessHours.dayOfWeek,
+      openTime: pharmacyBusinessHours.openTime,
+      closeTime: pharmacyBusinessHours.closeTime,
+      isClosed: pharmacyBusinessHours.isClosed,
+      is24Hours: pharmacyBusinessHours.is24Hours,
+    })
+      .from(pharmacyBusinessHours)
+      .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds)),
+    db.select({
+      pharmacyId: pharmacySpecialHours.pharmacyId,
+      id: pharmacySpecialHours.id,
+      specialType: pharmacySpecialHours.specialType,
+      startDate: pharmacySpecialHours.startDate,
+      endDate: pharmacySpecialHours.endDate,
+      openTime: pharmacySpecialHours.openTime,
+      closeTime: pharmacySpecialHours.closeTime,
+      isClosed: pharmacySpecialHours.isClosed,
+      is24Hours: pharmacySpecialHours.is24Hours,
+      note: pharmacySpecialHours.note,
+      updatedAt: pharmacySpecialHours.updatedAt,
+    })
+      .from(pharmacySpecialHours)
+      .where(inArray(pharmacySpecialHours.pharmacyId, pharmacyIds)),
+  ]);
+
+  const hoursByPharmacy = groupBy(allHours, (row) => row.pharmacyId);
+  const specialHoursByPharmacy = groupBy(allSpecialHours, (row) => row.pharmacyId);
+
+  return new Map(pharmacyIds.map((pharmacyId) => {
+    const hours = hoursByPharmacy.get(pharmacyId) ?? [];
+    const specialHours = specialHoursByPharmacy.get(pharmacyId) ?? [];
+    const status = getBusinessHoursStatus(hours, specialHours, now);
+    return [pharmacyId, { ...status, isConfigured: hours.length > 0 || specialHours.length > 0 }];
+  }));
+}
+
 // Helper to handle errors consistently
 function handleRouteError(err: unknown, logContext: string, res: Response): void {
   if (isApiError(err)) {
@@ -61,7 +150,7 @@ function handleRouteError(err: unknown, logContext: string, res: Response): void
     return;
   }
   if (isCameraBadRequestMessage(message)) {
-    res.status(400).json({ error: message });
+    sendBadRequest(res, message);
     return;
   }
   logger.error(logContext, { error: message });
@@ -85,34 +174,20 @@ router.get('/dead-stock/risk', async (req: AuthRequest, res: Response) => {
 // Resolve GS1/YJ code from camera/manual scan (no persistence)
 router.post('/dead-stock/camera/resolve', async (req: AuthRequest, res: Response) => {
   try {
-    const parseResult = cameraResolveSchema.safeParse(req.body ?? {});
-    if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? '読取コードを入力してください' });
+    const data = parsePayloadOrRespond(cameraResolveSchema, req.body ?? {}, res, '読取コードを入力してください');
+    if (!data) {
       return;
     }
-    const { rawCode: rawCodeInput } = parseResult.data;
+    const { rawCode: rawCodeInput } = data;
     const rawCode = sanitizeRawCode(rawCodeInput);
     if (!rawCode) {
-      res.status(400).json({ error: '読取コードを入力してください' });
+      sendBadRequest(res, '読取コードを入力してください');
       return;
     }
 
     const parsed = parseCameraCode(rawCode);
     const match = await resolveCameraMatchByCode(parsed);
-
-    const response = {
-      codeType: parsed.codeType as CameraCodeType,
-      parsed: {
-        gtin: parsed.gtin,
-        yjCode: parsed.yjCode,
-        expirationDate: parsed.expirationDate,
-        lotNumber: parsed.lotNumber,
-      },
-      match,
-      warnings: parsed.warnings,
-    };
-
-    res.json(response);
+    res.json(buildCameraResolveResponse(parsed, match));
   } catch (err) {
     handleRouteError(err, 'Camera resolve error', res);
   }
@@ -121,20 +196,19 @@ router.post('/dead-stock/camera/resolve', async (req: AuthRequest, res: Response
 // Search drug master candidates for unmatched camera rows
 router.get('/dead-stock/camera/manual-candidates', async (req: AuthRequest, res: Response) => {
   try {
-    const parseResult = cameraManualCandidatesSchema.safeParse(req.query);
-    if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? '検索キーワードを入力してください' });
+    const data = parsePayloadOrRespond(cameraManualCandidatesSchema, req.query, res, '検索キーワードを入力してください');
+    if (!data) {
       return;
     }
-    const { q, limit } = parseResult.data;
+    const { q, limit } = data;
     const search = normalizeSearchTerm(q);
     if (!search) {
-      res.status(400).json({ error: '検索キーワードを入力してください' });
+      sendBadRequest(res, '検索キーワードを入力してください');
       return;
     }
 
-    const data = await searchCameraManualCandidates(search, limit);
-    res.json({ data });
+    const candidates = await searchCameraManualCandidates(search, limit);
+    res.json({ data: candidates });
   } catch (err) {
     handleRouteError(err, 'Camera manual candidates error', res);
   }
@@ -143,12 +217,11 @@ router.get('/dead-stock/camera/manual-candidates', async (req: AuthRequest, res:
 // Confirm scanned rows and register as dead stock
 router.post('/dead-stock/camera/confirm-batch', async (req: AuthRequest, res: Response) => {
   try {
-    const parseResult = cameraConfirmSchema.safeParse(req.body ?? {});
-    if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? '登録する行がありません' });
+    const data = parsePayloadOrRespond(cameraConfirmSchema, req.body ?? {}, res, '登録する行がありません');
+    if (!data) {
       return;
     }
-    const { items } = parseResult.data;
+    const { items } = data;
     const result = await confirmCameraDeadStockBatch(req.user!.id, items);
 
     invalidateAdminRiskSnapshotCache();
@@ -195,11 +268,11 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
 });
 
 // Delete dead stock item
-router.delete('/dead-stock/:id', async (req: AuthRequest, res: Response) => {
+  router.delete('/dead-stock/:id', async (req: AuthRequest, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
-      res.status(400).json({ error: '不正なIDです' });
+      sendBadRequest(res, '不正なIDです');
       return;
     }
 
@@ -261,17 +334,7 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       defaultLimit: 50,
       maxLimit: 200,
     });
-    const search = normalizeSearchTerm(req.query.search);
-
-    let searchCondition;
-    if (search) {
-      const normalized = normalizeKana(search);
-      const hiragana = katakanaToHiragana(normalized);
-      const katakana = hiraganaToKatakana(normalized);
-      const likeTerms = [...new Set([normalized, hiragana, katakana])];
-      const likeConditions = likeTerms.map((term) => like(deadStockItems.drugName, `%${escapeLikeWildcards(term)}%`));
-      searchCondition = likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
-    }
+    const searchCondition = buildBrowseSearchCondition(req.query.search);
 
     const blockCondition = notExists(
       db.select({ id: pharmacyRelationships.id })
@@ -318,48 +381,11 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       .limit(limit)
       .offset(offset);
 
-    // Fetch business hours for pharmacies in results
     const pharmacyIds = [...new Set(items.map((i) => i.pharmacyId))];
-    const [allHours, allSpecialHours] = pharmacyIds.length > 0
-      ? await Promise.all([
-        db.select({
-          pharmacyId: pharmacyBusinessHours.pharmacyId,
-          dayOfWeek: pharmacyBusinessHours.dayOfWeek,
-          openTime: pharmacyBusinessHours.openTime,
-          closeTime: pharmacyBusinessHours.closeTime,
-          isClosed: pharmacyBusinessHours.isClosed,
-          is24Hours: pharmacyBusinessHours.is24Hours,
-        })
-          .from(pharmacyBusinessHours)
-          .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds)),
-        db.select({
-          pharmacyId: pharmacySpecialHours.pharmacyId,
-          id: pharmacySpecialHours.id,
-          specialType: pharmacySpecialHours.specialType,
-          startDate: pharmacySpecialHours.startDate,
-          endDate: pharmacySpecialHours.endDate,
-          openTime: pharmacySpecialHours.openTime,
-          closeTime: pharmacySpecialHours.closeTime,
-          isClosed: pharmacySpecialHours.isClosed,
-          is24Hours: pharmacySpecialHours.is24Hours,
-          note: pharmacySpecialHours.note,
-          updatedAt: pharmacySpecialHours.updatedAt,
-        })
-          .from(pharmacySpecialHours)
-          .where(inArray(pharmacySpecialHours.pharmacyId, pharmacyIds)),
-      ])
-      : [[], []];
-
-    const hoursByPharmacy = groupBy(allHours, (h) => h.pharmacyId);
-    const specialHoursByPharmacy = groupBy(allSpecialHours, (h) => h.pharmacyId);
-
     const now = new Date();
+    const businessStatusMap = await buildBusinessStatusMap(pharmacyIds, now);
     const enrichedItems = items.map(({ pharmacyId, ...item }) => {
-      const hours = hoursByPharmacy.get(pharmacyId) ?? [];
-      const specialHours = specialHoursByPharmacy.get(pharmacyId) ?? [];
-      const status = getBusinessHoursStatus(hours, specialHours, now);
-      const isConfigured = hours.length > 0 || specialHours.length > 0;
-      return { ...item, businessStatus: { ...status, isConfigured } };
+      return { ...item, businessStatus: businessStatusMap.get(pharmacyId)! };
     });
 
     const [total] = await db.select({ count: rowCount })

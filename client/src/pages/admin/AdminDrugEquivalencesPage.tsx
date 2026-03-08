@@ -25,6 +25,23 @@ const EMPTY_FORM: { drugNameA: string; drugNameB: string; equivalenceType: DrugE
   notes: '',
 };
 
+function buildDrugEquivalencePayload(
+  formData: typeof EMPTY_FORM,
+  editingId: number | null,
+): {
+  drugNameA: string;
+  drugNameB: string;
+  equivalenceType: DrugEquivalence['equivalenceType'];
+  notes?: string | null;
+} {
+  return {
+    drugNameA: formData.drugNameA,
+    drugNameB: formData.drugNameB,
+    equivalenceType: formData.equivalenceType,
+    notes: editingId ? (formData.notes || null) : (formData.notes || undefined),
+  };
+}
+
 export default function AdminDrugEquivalencesPage() {
   const [items, setItems] = useState<DrugEquivalence[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,23 +74,29 @@ export default function AdminDrugEquivalencesPage() {
     void fetchList();
   }, [fetchList]);
 
-  const openCreateModal = () => {
-    setEditingId(null);
-    setFormData(EMPTY_FORM);
+  const openFormModal = (nextEditingId: number | null, nextFormData: typeof EMPTY_FORM) => {
+    setEditingId(nextEditingId);
+    setFormData(nextFormData);
     setFormError('');
     setShowModal(true);
   };
 
+  const closeFormModal = () => {
+    setShowModal(false);
+    setFormError('');
+  };
+
+  const openCreateModal = () => {
+    openFormModal(null, EMPTY_FORM);
+  };
+
   const openEditModal = (item: DrugEquivalence) => {
-    setEditingId(item.id);
-    setFormData({
+    openFormModal(item.id, {
       drugNameA: item.drugNameA,
       drugNameB: item.drugNameB,
       equivalenceType: item.equivalenceType,
       notes: item.notes ?? '',
     });
-    setFormError('');
-    setShowModal(true);
   };
 
   const handleFormChange = (field: string, value: string) => {
@@ -85,24 +108,15 @@ export default function AdminDrugEquivalencesPage() {
     setFormSaving(true);
     setFormError('');
     try {
+      const payload = buildDrugEquivalencePayload(formData, editingId);
       if (editingId) {
-        await api.put(`/admin/drug-equivalences/${editingId}`, {
-          drugNameA: formData.drugNameA,
-          drugNameB: formData.drugNameB,
-          equivalenceType: formData.equivalenceType,
-          notes: formData.notes || null,
-        });
+        await api.put(`/admin/drug-equivalences/${editingId}`, payload);
         setSuccess('薬品同等性を更新しました');
       } else {
-        await api.post('/admin/drug-equivalences', {
-          drugNameA: formData.drugNameA,
-          drugNameB: formData.drugNameB,
-          equivalenceType: formData.equivalenceType,
-          notes: formData.notes || undefined,
-        });
+        await api.post('/admin/drug-equivalences', payload);
         setSuccess('薬品同等性を登録しました');
       }
-      setShowModal(false);
+      closeFormModal();
       void fetchList();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : '保存に失敗しました');
@@ -188,7 +202,7 @@ export default function AdminDrugEquivalencesPage() {
       )}
 
       {/* Create/Edit Modal */}
-      <Modal show={showModal} onHide={() => setShowModal(false)}>
+      <Modal show={showModal} onHide={closeFormModal}>
         <Modal.Header closeButton>
           <Modal.Title>{editingId ? '薬品同等性の編集' : '薬品同等性の新規登録'}</Modal.Title>
         </Modal.Header>
@@ -247,7 +261,7 @@ export default function AdminDrugEquivalencesPage() {
           </Row>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" size="sm" onClick={() => setShowModal(false)} disabled={formSaving}>
+          <Button variant="secondary" size="sm" onClick={closeFormModal} disabled={formSaving}>
             キャンセル
           </Button>
           <Button

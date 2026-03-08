@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, type FormEvent } from 'react';
+import { useState, useCallback, useMemo, useRef, type Dispatch, type FormEvent, type MutableRefObject, type SetStateAction } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, isConflictError, isVerificationStatusError, isPartialSuccessError } from '../api/client';
 import { useAutoSave, type AutoSaveResult } from './useAutoSave';
@@ -22,6 +22,25 @@ interface UseAccountFormOptions {
   refreshUser: () => Promise<void>;
 }
 
+function resolveAccountErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+function applyAccountToFormState(account: AccountData, preservePasswords: boolean): AccountFormState {
+  return {
+    email: account.email,
+    name: account.name,
+    postalCode: account.postalCode,
+    address: account.address,
+    phone: account.phone,
+    fax: account.fax,
+    prefecture: account.prefecture,
+    licenseNumber: account.licenseNumber,
+    currentPassword: preservePasswords ? '' : '',
+    newPassword: preservePasswords ? '' : '',
+  };
+}
+
 export interface UseAccountFormReturn {
   form: AccountFormState;
   account: AccountData | null;
@@ -38,7 +57,7 @@ export interface UseAccountFormReturn {
   handleSubmit: (e: FormEvent) => Promise<void>;
   applyLatestAccountData: (latestData: AccountData) => void;
   handleReloadAccount: () => Promise<void>;
-  setAccount: React.Dispatch<React.SetStateAction<AccountData | null>>;
+  setAccount: Dispatch<SetStateAction<AccountData | null>>;
   setMessage: (message: string) => void;
   setWarning: (warning: string) => void;
   accountAutoSave: AutoSaveResult<AccountDraftData>;
@@ -46,7 +65,7 @@ export interface UseAccountFormReturn {
   handleAccountDraftRestore: () => void;
   handleAccountDraftDiscard: () => void;
   isAccountDirty: boolean;
-  initialLoadAbortRef: React.MutableRefObject<AbortController | null>;
+  initialLoadAbortRef: MutableRefObject<AbortController | null>;
 }
 
 export function useAccountForm({ userId, refreshUser }: UseAccountFormOptions): UseAccountFormReturn {
@@ -133,17 +152,7 @@ export function useAccountForm({ userId, refreshUser }: UseAccountFormOptions): 
       if (signal?.aborted) return;
       setError('');
       setAccount(data);
-      setForm((prev) => ({
-        ...prev,
-        email: data.email,
-        name: data.name,
-        postalCode: data.postalCode,
-        address: data.address,
-        phone: data.phone,
-        fax: data.fax,
-        prefecture: data.prefecture,
-        licenseNumber: data.licenseNumber,
-      }));
+      setForm((prev) => ({ ...prev, ...applyAccountToFormState(data, false) }));
       setAccountConflict(false);
     } catch {
       if (signal?.aborted) return;
@@ -158,19 +167,7 @@ export function useAccountForm({ userId, refreshUser }: UseAccountFormOptions): 
   /** Conflict 時の最新データ反映（共通処理） */
   const applyLatestAccountData = useCallback((latestData: AccountData) => {
     setAccount(latestData);
-    setForm((prev) => ({
-      ...prev,
-      email: latestData.email,
-      name: latestData.name,
-      postalCode: latestData.postalCode,
-      address: latestData.address,
-      phone: latestData.phone,
-      fax: latestData.fax,
-      prefecture: latestData.prefecture,
-      licenseNumber: latestData.licenseNumber,
-      currentPassword: '',
-      newPassword: '',
-    }));
+    setForm((prev) => ({ ...prev, ...applyAccountToFormState(latestData, true) }));
   }, []);
 
   const handleChange = useCallback((field: keyof AccountFormState, value: string) => {
@@ -219,7 +216,7 @@ export function useAccountForm({ userId, refreshUser }: UseAccountFormOptions): 
           setAccount({ ...account, version: err.data.version });
         }
       } else {
-        setError(err instanceof Error ? err.message : '更新に失敗しました');
+        setError(resolveAccountErrorMessage(err, '更新に失敗しました'));
       }
     } finally {
       setLoading(false);

@@ -16,6 +16,20 @@ let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let schedulerActive = false;
 let jobRunning = false;
 
+function clearTimerHandle(timer: ReturnType<typeof setTimeout> | null): null {
+  if (timer) {
+    clearTimeout(timer);
+  }
+  return null;
+}
+
+function clearIntervalHandle(timer: ReturnType<typeof setInterval> | null): null {
+  if (timer) {
+    clearInterval(timer);
+  }
+  return null;
+}
+
 function readConfig(): MatchingRefreshSchedulerConfig {
   return {
     intervalMs: parseBoundedInt(
@@ -58,15 +72,8 @@ async function runScheduledMatchingRefresh(batchSize: number): Promise<void> {
 }
 
 function clearScheduledTimers(): void {
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
+  schedulerTimer = clearTimerHandle(schedulerTimer);
+  schedulerInterval = clearIntervalHandle(schedulerInterval);
 }
 
 function scheduleLoop(intervalMs: number, batchSize: number): void {

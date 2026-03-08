@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, FormEvent, useCallback } from 'react';
+import { useState, useEffect, useRef, FormEvent, useCallback, type MutableRefObject } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import { useToast } from '../../contexts/ToastContext';
 import { Col, Row } from 'react-bootstrap';
@@ -52,6 +52,43 @@ interface AutoSyncStatus {
   hasSourceUrl: boolean;
   checkIntervalHours: number;
   supportsManualUrlOverride: boolean;
+}
+
+function resolveErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+function buildDrugMasterListParams(input: {
+  page: number;
+  search: string;
+  statusFilter: string;
+  categoryFilter: string;
+}): string {
+  const params = new URLSearchParams({
+    page: String(input.page),
+    limit: '30',
+  });
+  if (input.search) params.set('search', input.search);
+  if (input.statusFilter) params.set('status', input.statusFilter);
+  if (input.categoryFilter) params.set('category', input.categoryFilter);
+  return params.toString();
+}
+
+function scheduleRefresh(
+  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  callback: () => void,
+): void {
+  if (timerRef.current !== null) {
+    clearTimeout(timerRef.current);
+  }
+  timerRef.current = setTimeout(() => {
+    timerRef.current = null;
+    callback();
+  }, 5000);
+}
+
+function fetchDrugMasterDetailByYjCode(yjCode: string): Promise<DrugMasterDetail> {
+  return api.get<DrugMasterDetail>(`/admin/drug-master/detail/${encodeURIComponent(yjCode)}`);
 }
 
 // ── メインコンポーネント ─────────────────────────────
@@ -115,42 +152,43 @@ export default function AdminDrugMasterPage() {
   const fetchItems = useCallback(async (p: number) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(p), limit: '30' });
-      if (search) params.set('search', search);
-      if (statusFilter) params.set('status', statusFilter);
-      if (categoryFilter) params.set('category', categoryFilter);
-
+      const params = buildDrugMasterListParams({
+        page: p,
+        search,
+        statusFilter,
+        categoryFilter,
+      });
       const data = await api.get<ListResponse>(`/admin/drug-master?${params}`);
       setItems(data.data);
       setTotalPages(data.pagination.totalPages);
       setTotal(data.pagination.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'データの取得に失敗しました');
+      setError(resolveErrorMessage(err, 'データの取得に失敗しました'));
     } finally {
       setLoading(false);
     }
   }, [search, statusFilter, categoryFilter]);
 
-  const fetchSyncLogs = async () => {
+  const fetchSyncLogs = useCallback(async () => {
     try {
       const data = await api.get<{ data: SyncLog[] }>('/admin/drug-master/sync-logs');
       setSyncLogs(data.data.slice(0, 5));
     } catch { /* ignore */ }
-  };
+  }, []);
 
-  const fetchAutoSyncStatus = async () => {
+  const fetchAutoSyncStatus = useCallback(async () => {
     try {
       const data = await api.get<AutoSyncStatus>('/admin/drug-master/auto-sync/status');
       setAutoSyncStatus(data);
     } catch { /* ignore */ }
-  };
+  }, []);
 
-  const fetchPackageAutoSyncStatus = async () => {
+  const fetchPackageAutoSyncStatus = useCallback(async () => {
     try {
       const data = await api.get<AutoSyncStatus>('/admin/drug-master/auto-sync/packages/status');
       setPackageAutoSyncStatus(data);
     } catch { /* ignore */ }
-  };
+  }, []);
 
   const handleAutoSyncTrigger = async () => {
     setAutoSyncTriggering(true);
@@ -160,19 +198,15 @@ export default function AdminDrugMasterPage() {
       });
       if (result.triggered) {
         setMessage(result.message);
-        if (autoSyncRefreshTimerRef.current !== null) {
-          clearTimeout(autoSyncRefreshTimerRef.current);
-        }
-        autoSyncRefreshTimerRef.current = setTimeout(() => {
-          autoSyncRefreshTimerRef.current = null;
+        scheduleRefresh(autoSyncRefreshTimerRef, () => {
           fetchSyncLogs();
           fetchStats();
-        }, 5000);
+        });
       } else {
         setSyncError(result.message);
       }
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : '自動取得の開始に失敗しました');
+      setSyncError(resolveErrorMessage(err, '自動取得の開始に失敗しました'));
     } finally {
       setAutoSyncTriggering(false);
     }
@@ -186,29 +220,25 @@ export default function AdminDrugMasterPage() {
       });
       if (result.triggered) {
         setMessage(result.message);
-        if (packageAutoSyncRefreshTimerRef.current !== null) {
-          clearTimeout(packageAutoSyncRefreshTimerRef.current);
-        }
-        packageAutoSyncRefreshTimerRef.current = setTimeout(() => {
-          packageAutoSyncRefreshTimerRef.current = null;
+        scheduleRefresh(packageAutoSyncRefreshTimerRef, () => {
           fetchSyncLogs();
-        }, 5000);
+        });
       } else {
         setSyncError(result.message);
       }
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : '包装単位データ自動取得の開始に失敗しました');
+      setSyncError(resolveErrorMessage(err, '包装単位データ自動取得の開始に失敗しました'));
     } finally {
       setPackageAutoSyncTriggering(false);
     }
   };
 
   useEffect(() => {
-    fetchStats();
-    fetchSyncLogs();
-    fetchAutoSyncStatus();
-    fetchPackageAutoSyncStatus();
-  }, [fetchStats]);
+    void fetchStats();
+    void fetchSyncLogs();
+    void fetchAutoSyncStatus();
+    void fetchPackageAutoSyncStatus();
+  }, [fetchAutoSyncStatus, fetchPackageAutoSyncStatus, fetchStats, fetchSyncLogs]);
 
   useEffect(() => () => {
     if (autoSyncRefreshTimerRef.current !== null) {
@@ -256,11 +286,11 @@ export default function AdminDrugMasterPage() {
       const r = result.result;
       setSyncResult(`同期完了: 処理 ${r.itemsProcessed}件 / 追加 ${r.itemsAdded}件 / 更新 ${r.itemsUpdated}件 / 削除 ${r.itemsDeleted}件`);
       if (syncFileRef.current) syncFileRef.current.value = '';
-      fetchStats();
-      fetchItems(page);
-      fetchSyncLogs();
+      void fetchStats();
+      void fetchItems(page);
+      void fetchSyncLogs();
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : '同期に失敗しました');
+      setSyncError(resolveErrorMessage(err, '同期に失敗しました'));
     } finally {
       setSyncing(false);
     }
@@ -283,7 +313,7 @@ export default function AdminDrugMasterPage() {
       setMessage(`包装単位登録完了: 追加 ${result.result.added}件 / 更新 ${result.result.updated}件`);
       if (pkgFileRef.current) pkgFileRef.current.value = '';
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登録に失敗しました');
+      setError(resolveErrorMessage(err, '登録に失敗しました'));
     } finally {
       setPkgUploading(false);
     }
@@ -293,11 +323,11 @@ export default function AdminDrugMasterPage() {
 
   const openDetail = async (yjCode: string) => {
     try {
-      const data = await api.get<DrugMasterDetail>(`/admin/drug-master/detail/${encodeURIComponent(yjCode)}`);
+      const data = await fetchDrugMasterDetailByYjCode(yjCode);
       setDetail(data);
       setShowDetail(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '詳細の取得に失敗しました');
+      setError(resolveErrorMessage(err, '詳細の取得に失敗しました'));
     }
   };
 
@@ -305,11 +335,11 @@ export default function AdminDrugMasterPage() {
 
   const openEdit = async (yjCode: string) => {
     try {
-      const data = await api.get<DrugMasterDetail>(`/admin/drug-master/detail/${encodeURIComponent(yjCode)}`);
+      const data = await fetchDrugMasterDetailByYjCode(yjCode);
       setEditItem(data);
       setShowEdit(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '詳細の取得に失敗しました');
+      setError(resolveErrorMessage(err, '詳細の取得に失敗しました'));
     }
   };
 
@@ -329,10 +359,10 @@ export default function AdminDrugMasterPage() {
       });
       setMessage('医薬品情報を更新しました');
       setShowEdit(false);
-      fetchItems(page);
-      fetchStats();
+      void fetchItems(page);
+      void fetchStats();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '更新に失敗しました');
+      setError(resolveErrorMessage(err, '更新に失敗しました'));
     } finally {
       setEditSaving(false);
     }

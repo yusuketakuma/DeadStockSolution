@@ -77,6 +77,8 @@ interface MatchNotificationValue {
   isRead: boolean;
 }
 
+type SnapshotDbExecutor = Pick<typeof db, 'select' | 'insert' | 'update'>;
+
 function safeNumber(value: number | undefined): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return 0;
   return roundTo2(value);
@@ -338,83 +340,86 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
 }>): Promise<{ changedCount: number }> {
   if (entries.length === 0) return { changedCount: 0 };
 
-  const allPharmacyIds = entries.map((e) => e.pharmacyId);
-  const now = new Date().toISOString();
+  const runBatchSave = async (executor: SnapshotDbExecutor) => {
+    const allPharmacyIds = entries.map((entry) => entry.pharmacyId);
+    const now = new Date().toISOString();
 
-  // 1. 既存スナップショットを一括取得
-  const existingRows = await db.select({
-    id: matchCandidateSnapshots.id,
-    pharmacyId: matchCandidateSnapshots.pharmacyId,
-    candidateHash: matchCandidateSnapshots.candidateHash,
-    candidateCount: matchCandidateSnapshots.candidateCount,
-    topCandidatesJson: matchCandidateSnapshots.topCandidatesJson,
-  })
-    .from(matchCandidateSnapshots)
-    .where(inArray(matchCandidateSnapshots.pharmacyId, allPharmacyIds));
+    const existingRows = await executor.select({
+      id: matchCandidateSnapshots.id,
+      pharmacyId: matchCandidateSnapshots.pharmacyId,
+      candidateHash: matchCandidateSnapshots.candidateHash,
+      candidateCount: matchCandidateSnapshots.candidateCount,
+      topCandidatesJson: matchCandidateSnapshots.topCandidatesJson,
+    })
+      .from(matchCandidateSnapshots)
+      .where(inArray(matchCandidateSnapshots.pharmacyId, allPharmacyIds));
 
-  const existingMap = new Map(existingRows.map((row) => [row.pharmacyId, row]));
+    const existingMap = new Map(existingRows.map((row) => [row.pharmacyId, row]));
 
-  // 2. 各薬局のスナップショットを計算し、変更検知
-  type ExistingRow = StoredSnapshotRow;
-  type SnapshotEntry = typeof entries[number];
-  const upsertValues: Array<{ pharmacyId: number } & SnapshotSetValue> = [];
-  const changedEntries: Array<{
-    entry: SnapshotEntry;
-    next: ReturnType<typeof createSnapshotPayload>;
-    existing: ExistingRow | undefined;
-  }> = [];
+    type ExistingRow = StoredSnapshotRow;
+    type SnapshotEntry = typeof entries[number];
+    const upsertValues: Array<{ pharmacyId: number } & SnapshotSetValue> = [];
+    const changedEntries: Array<{
+      entry: SnapshotEntry;
+      next: ReturnType<typeof createSnapshotPayload>;
+      existing: ExistingRow | undefined;
+    }> = [];
 
-  for (const entry of entries) {
-    const next = createSnapshotPayload(entry.candidates);
-    const existing = existingMap.get(entry.pharmacyId);
-    const changed = hasSnapshotChanged(existing, next);
+    for (const entry of entries) {
+      const next = createSnapshotPayload(entry.candidates);
+      const existing = existingMap.get(entry.pharmacyId);
+      const changed = hasSnapshotChanged(existing, next);
 
-    upsertValues.push({
-      pharmacyId: entry.pharmacyId,
-      ...createSnapshotSetValue(next, now),
-    });
-
-    if (changed) {
-      changedEntries.push({ entry, next, existing });
-    }
-  }
-
-  // 3. 一括 UPSERT（INSERT ... ON CONFLICT DO UPDATE）
-  await db.insert(matchCandidateSnapshots)
-    .values(upsertValues)
-    .onConflictDoUpdate({
-      target: matchCandidateSnapshots.pharmacyId,
-      set: {
-        candidateHash: sql`excluded.candidate_hash`,
-        candidateCount: sql`excluded.candidate_count`,
-        topCandidatesJson: sql`excluded.top_candidates_json`,
-        updatedAt: sql`excluded.updated_at`,
-      },
-    });
-
-  // 4. 変更があった薬局の通知を一括 INSERT
-  const notificationValues: MatchNotificationValue[] = [];
-
-  for (const { entry, next, existing } of changedEntries) {
-    if (!entry.notifyEnabled) continue;
-
-    notificationValues.push(createMatchNotificationValue({
-      pharmacyId: entry.pharmacyId,
-      triggerPharmacyId: entry.triggerPharmacyId,
-      triggerUploadType: entry.triggerUploadType,
-      beforeCount: getStoredCandidateCount(existing),
-      beforeTopCandidatesJson: existing?.topCandidatesJson,
-      next,
-    }));
-  }
-
-  if (notificationValues.length > 0) {
-    await db.insert(matchNotifications)
-      .values(notificationValues)
-      .onConflictDoNothing({
-        target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
+      upsertValues.push({
+        pharmacyId: entry.pharmacyId,
+        ...createSnapshotSetValue(next, now),
       });
+
+      if (changed) {
+        changedEntries.push({ entry, next, existing });
+      }
+    }
+
+    await executor.insert(matchCandidateSnapshots)
+      .values(upsertValues)
+      .onConflictDoUpdate({
+        target: matchCandidateSnapshots.pharmacyId,
+        set: {
+          candidateHash: sql`excluded.candidate_hash`,
+          candidateCount: sql`excluded.candidate_count`,
+          topCandidatesJson: sql`excluded.top_candidates_json`,
+          updatedAt: sql`excluded.updated_at`,
+        },
+      });
+
+    const notificationValues: MatchNotificationValue[] = [];
+    for (const { entry, next, existing } of changedEntries) {
+      if (!entry.notifyEnabled) continue;
+
+      notificationValues.push(createMatchNotificationValue({
+        pharmacyId: entry.pharmacyId,
+        triggerPharmacyId: entry.triggerPharmacyId,
+        triggerUploadType: entry.triggerUploadType,
+        beforeCount: getStoredCandidateCount(existing),
+        beforeTopCandidatesJson: existing?.topCandidatesJson,
+        next,
+      }));
+    }
+
+    if (notificationValues.length > 0) {
+      await executor.insert(matchNotifications)
+        .values(notificationValues)
+        .onConflictDoNothing({
+          target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
+        });
+    }
+
+    return { changedCount: changedEntries.length };
+  };
+
+  if (typeof (db as { transaction?: unknown }).transaction === 'function') {
+    return db.transaction(async (tx) => runBatchSave(tx));
   }
 
-  return { changedCount: changedEntries.length };
+  return runBatchSave(db);
 }

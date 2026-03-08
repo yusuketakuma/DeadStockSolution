@@ -47,9 +47,36 @@ interface MatchCandidate {
   isFavorite?: boolean;
 }
 
+interface ProposalMessageState {
+  errorMessage: string;
+  shouldSuggestRetry: boolean;
+}
+
 function formatPercent(value?: number): string {
   if (value === undefined || value === null || Number.isNaN(value)) return '-';
   return `${Math.round(value)}%`;
+}
+
+function collectGroupPharmacyIds(groupDetails: GroupDetailResponse[]): Set<number> {
+  const ids = new Set<number>();
+  for (const detail of groupDetails) {
+    for (const member of detail.members) {
+      ids.add(member.pharmacyId);
+    }
+  }
+  return ids;
+}
+
+function resolveProposalMessageState(err: unknown): ProposalMessageState {
+  const errorMessage = err instanceof Error ? err.message : '仮マッチングの送信に失敗しました';
+  return {
+    errorMessage,
+    shouldSuggestRetry: (
+      errorMessage.includes('在庫')
+      || errorMessage.includes('数量')
+      || errorMessage.includes('利用可能')
+    ),
+  };
 }
 
 interface MatchItemsTableProps {
@@ -133,11 +160,7 @@ export default function MatchingPage() {
         const details = await Promise.all(
           listRes.groups.map((g) => api.get<GroupDetailResponse>(`/groups/${g.id}`))
         );
-        const ids = new Set<number>();
-        for (const d of details) {
-          for (const m of d.members) ids.add(m.pharmacyId);
-        }
-        setGroupPharmacyIds(ids);
+        setGroupPharmacyIds(collectGroupPharmacyIds(details));
       } catch {
         // Silently fail - group data is supplementary
       }
@@ -185,13 +208,9 @@ export default function MatchingPage() {
       setCandidates((prev) => prev.filter((c) => c.pharmacyId !== candidateForProposal.pharmacyId));
       setCandidateForProposal(null);
     } catch (err) {
-      const messageText = err instanceof Error ? err.message : '仮マッチングの送信に失敗しました';
-      setError(messageText);
-      setProposalRetrySuggested(
-        messageText.includes('在庫')
-        || messageText.includes('数量')
-        || messageText.includes('利用可能')
-      );
+      const proposalMessageState = resolveProposalMessageState(err);
+      setError(proposalMessageState.errorMessage);
+      setProposalRetrySuggested(proposalMessageState.shouldSuggestRetry);
     } finally {
       setProposalSubmitting(false);
     }

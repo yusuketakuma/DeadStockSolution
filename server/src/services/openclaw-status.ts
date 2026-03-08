@@ -109,6 +109,17 @@ function pruneHandoffResultCache(nowMs: number): void {
   pruneExpiredMapEntries(handoffResultCache, nowMs);
 }
 
+function resolveBoundedEnvInt(
+  rawValue: string | undefined,
+  defaultValue: number,
+  min: number,
+  max: number,
+): number {
+  const raw = Number(rawValue ?? defaultValue);
+  if (!Number.isFinite(raw)) return defaultValue;
+  return Math.max(min, Math.min(max, Math.floor(raw)));
+}
+
 export function getOpenClawConfig(): OpenClawConfig {
   const baseUrl = normalizeBaseUrl(process.env.OPENCLAW_BASE_URL ?? '');
   return {
@@ -124,41 +135,32 @@ export function getOpenClawConfig(): OpenClawConfig {
 }
 
 export function resolveWebhookMaxSkewSeconds(): number {
-  const rawValue = Number(process.env.OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS ?? DEFAULT_WEBHOOK_MAX_SKEW_SECONDS);
-  if (!Number.isFinite(rawValue) || rawValue <= 0 || rawValue > 3600) {
-    return DEFAULT_WEBHOOK_MAX_SKEW_SECONDS;
-  }
-  return Math.floor(rawValue);
+  return resolveBoundedEnvInt(
+    process.env.OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS,
+    DEFAULT_WEBHOOK_MAX_SKEW_SECONDS,
+    1,
+    3600,
+  );
 }
 
 export function resolveRetryMax(): number {
-  const raw = Number(process.env.OPENCLAW_RETRY_MAX ?? DEFAULT_OPENCLAW_RETRY_MAX);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_RETRY_MAX;
-  return Math.max(0, Math.min(5, Math.floor(raw)));
+  return resolveBoundedEnvInt(process.env.OPENCLAW_RETRY_MAX, DEFAULT_OPENCLAW_RETRY_MAX, 0, 5);
 }
 
 export function resolveRetryBaseMs(): number {
-  const raw = Number(process.env.OPENCLAW_RETRY_BASE_MS ?? DEFAULT_OPENCLAW_RETRY_BASE_MS);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_RETRY_BASE_MS;
-  return Math.max(100, Math.min(5000, Math.floor(raw)));
+  return resolveBoundedEnvInt(process.env.OPENCLAW_RETRY_BASE_MS, DEFAULT_OPENCLAW_RETRY_BASE_MS, 100, 5000);
 }
 
 export function resolveIdempotencyTtlMs(): number {
-  const raw = Number(process.env.OPENCLAW_IDEMPOTENCY_TTL_MS ?? DEFAULT_OPENCLAW_IDEMPOTENCY_TTL_MS);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_IDEMPOTENCY_TTL_MS;
-  return Math.max(5_000, Math.min(15 * 60_000, Math.floor(raw)));
+  return resolveBoundedEnvInt(process.env.OPENCLAW_IDEMPOTENCY_TTL_MS, DEFAULT_OPENCLAW_IDEMPOTENCY_TTL_MS, 5_000, 15 * 60_000);
 }
 
 export function resolveGatewayTimeoutMs(): number {
-  const raw = Number(process.env.OPENCLAW_TIMEOUT_MS ?? DEFAULT_OPENCLAW_TIMEOUT_MS);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_TIMEOUT_MS;
-  return Math.max(1000, Math.min(60_000, Math.floor(raw)));
+  return resolveBoundedEnvInt(process.env.OPENCLAW_TIMEOUT_MS, DEFAULT_OPENCLAW_TIMEOUT_MS, 1000, 60_000);
 }
 
 export function resolveGatewayTimeoutSeconds(): number {
-  const raw = Number(process.env.OPENCLAW_TIMEOUT_SECONDS ?? DEFAULT_OPENCLAW_TIMEOUT_SECONDS);
-  if (!Number.isFinite(raw)) return DEFAULT_OPENCLAW_TIMEOUT_SECONDS;
-  return Math.max(10, Math.min(600, Math.floor(raw)));
+  return resolveBoundedEnvInt(process.env.OPENCLAW_TIMEOUT_SECONDS, DEFAULT_OPENCLAW_TIMEOUT_SECONDS, 10, 600);
 }
 
 export function normalizeWebhookSignature(raw: string): string {

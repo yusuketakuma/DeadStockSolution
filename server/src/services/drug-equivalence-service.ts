@@ -55,14 +55,22 @@ function validateInput(input: CreateDrugEquivalenceInput): void {
   }
 }
 
+function normalizeDrugName(value: string): string {
+  return value.trim();
+}
+
+function buildPairCondition(drugNameA: string, drugNameB: string) {
+  return and(
+    eq(drugEquivalences.drugNameA, drugNameA),
+    eq(drugEquivalences.drugNameB, drugNameB),
+  );
+}
+
 async function checkDuplicate(drugNameA: string, drugNameB: string): Promise<void> {
   // Check A-B
   const [existingAB] = await db.select()
     .from(drugEquivalences)
-    .where(and(
-      eq(drugEquivalences.drugNameA, drugNameA),
-      eq(drugEquivalences.drugNameB, drugNameB),
-    ))
+    .where(buildPairCondition(drugNameA, drugNameB))
     .limit(1);
 
   if (existingAB) {
@@ -72,10 +80,7 @@ async function checkDuplicate(drugNameA: string, drugNameB: string): Promise<voi
   // Check B-A (reverse pair)
   const [existingBA] = await db.select()
     .from(drugEquivalences)
-    .where(and(
-      eq(drugEquivalences.drugNameA, drugNameB),
-      eq(drugEquivalences.drugNameB, drugNameA),
-    ))
+    .where(buildPairCondition(drugNameB, drugNameA))
     .limit(1);
 
   if (existingBA) {
@@ -85,8 +90,8 @@ async function checkDuplicate(drugNameA: string, drugNameB: string): Promise<voi
 
 export async function createDrugEquivalence(input: CreateDrugEquivalenceInput): Promise<DrugEquivalence> {
   validateInput(input);
-  const trimmedA = input.drugNameA.trim();
-  const trimmedB = input.drugNameB.trim();
+  const trimmedA = normalizeDrugName(input.drugNameA);
+  const trimmedB = normalizeDrugName(input.drugNameB);
 
   await checkDuplicate(trimmedA, trimmedB);
 
@@ -142,10 +147,10 @@ export async function updateDrugEquivalence(
   };
 
   if (input.drugNameA !== undefined) {
-    updateData.drugNameA = input.drugNameA.trim();
+    updateData.drugNameA = normalizeDrugName(input.drugNameA);
   }
   if (input.drugNameB !== undefined) {
-    updateData.drugNameB = input.drugNameB.trim();
+    updateData.drugNameB = normalizeDrugName(input.drugNameB);
   }
   if (input.equivalenceType !== undefined) {
     if (!VALID_EQUIVALENCE_TYPES.has(input.equivalenceType)) {
@@ -181,6 +186,20 @@ export async function deleteDrugEquivalence(id: number): Promise<boolean> {
 
   logger.info('Drug equivalence deleted', { id });
   return true;
+}
+
+export async function fetchEquivalenceMap(): Promise<Map<string, string[]>> {
+  const rows = await db.select().from(drugEquivalences);
+  const map = new Map<string, string[]>();
+  for (const row of rows) {
+    const existingA = map.get(row.drugNameA) ?? [];
+    existingA.push(row.drugNameB);
+    map.set(row.drugNameA, existingA);
+    const existingB = map.get(row.drugNameB) ?? [];
+    existingB.push(row.drugNameA);
+    map.set(row.drugNameB, existingB);
+  }
+  return map;
 }
 
 export async function findEquivalentDrugNames(drugName: string): Promise<string[]> {

@@ -70,18 +70,34 @@ function parseUploadJobFilters(req: AuthRequest): AdminUploadJobListFilters {
   return filters;
 }
 
+function parseUploadJobId(res: Response, rawId: string | string[] | undefined): number | null {
+  if (Array.isArray(rawId) || typeof rawId !== 'string') {
+    res.status(400).json({ error: 'IDが不正です' });
+    return null;
+  }
+  return parseIdOrBadRequest(res, rawId) ?? null;
+}
+
+function respondUploadJobNotFound(res: Response): void {
+  res.status(404).json({ error: 'ジョブが見つかりません' });
+}
+
+function buildUploadJobFilterMeta(filters: AdminUploadJobListFilters) {
+  return {
+    status: filters.status ?? null,
+    uploadType: filters.uploadType ?? null,
+    applyMode: filters.applyMode ?? null,
+    pharmacyId: filters.pharmacyId ?? null,
+    keyword: filters.keyword ?? null,
+  };
+}
+
 router.get('/upload-jobs', async (req: AuthRequest, res: Response) => {
   try {
     const filters = parseUploadJobFilters(req);
     const { data, total } = await listAdminUploadJobs(filters);
     sendPaginated(res, data, filters.page, filters.limit, total, {
-      filters: {
-        status: filters.status ?? null,
-        uploadType: filters.uploadType ?? null,
-        applyMode: filters.applyMode ?? null,
-        pharmacyId: filters.pharmacyId ?? null,
-        keyword: filters.keyword ?? null,
-      },
+      filters: buildUploadJobFilterMeta(filters),
     });
   } catch (err) {
     logger.error('Admin upload jobs list error', { error: getErrorMessage(err) });
@@ -91,12 +107,12 @@ router.get('/upload-jobs', async (req: AuthRequest, res: Response) => {
 
 router.get('/upload-jobs/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const jobId = parseIdOrBadRequest(res, req.params.id);
-    if (!jobId) return;
+    const jobId = parseUploadJobId(res, req.params.id);
+    if (jobId === null) return;
 
     const detail = await getAdminUploadJobDetail(jobId);
     if (!detail) {
-      res.status(404).json({ error: 'ジョブが見つかりません' });
+      respondUploadJobNotFound(res);
       return;
     }
 
@@ -109,12 +125,12 @@ router.get('/upload-jobs/:id', async (req: AuthRequest, res: Response) => {
 
 router.patch('/upload-jobs/:id/cancel', async (req: AuthRequest, res: Response) => {
   try {
-    const jobId = parseIdOrBadRequest(res, req.params.id);
-    if (!jobId) return;
+    const jobId = parseUploadJobId(res, req.params.id);
+    if (jobId === null) return;
 
     const result = await cancelAdminUploadJob(jobId, req.user!.id);
     if (!result) {
-      res.status(404).json({ error: 'ジョブが見つかりません' });
+      respondUploadJobNotFound(res);
       return;
     }
 
@@ -141,12 +157,12 @@ router.patch('/upload-jobs/:id/cancel', async (req: AuthRequest, res: Response) 
 
 router.post('/upload-jobs/:id/retry', async (req: AuthRequest, res: Response) => {
   try {
-    const jobId = parseIdOrBadRequest(res, req.params.id);
-    if (!jobId) return;
+    const jobId = parseUploadJobId(res, req.params.id);
+    if (jobId === null) return;
 
     const retried = await retryAdminUploadJob(jobId);
     if (!retried) {
-      res.status(404).json({ error: 'ジョブが見つかりません' });
+      respondUploadJobNotFound(res);
       return;
     }
 
@@ -167,8 +183,8 @@ router.post('/upload-jobs/:id/retry', async (req: AuthRequest, res: Response) =>
 
 router.get('/upload-jobs/:id/error-report', async (req: AuthRequest, res: Response) => {
   try {
-    const jobId = parseIdOrBadRequest(res, req.params.id);
-    if (!jobId) return;
+    const jobId = parseUploadJobId(res, req.params.id);
+    if (jobId === null) return;
 
     const format = req.query.format === 'json' ? 'json' : 'csv';
     const report = await getAdminUploadJobErrorReport(jobId, format);

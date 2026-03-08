@@ -68,22 +68,16 @@ export function toPublicUploadJobError(rawMessage: string | null): { code: strin
   if (!code) {
     return { code: null, message: null };
   }
-  if (code === 'MAPPING_INVALID') {
-    return { code, message: 'カラム割り当ての設定が不正です。設定を見直して再実行してください。' };
-  }
-  if (code === 'HEADER_ROW_INVALID') {
-    return { code, message: 'ヘッダー行の指定が不正です。設定を見直して再実行してください。' };
-  }
-  if (code === 'FILE_LIMIT_EXCEEDED' || code === 'FILE_PARSE_FAILED') {
-    return { code, message: 'アップロードファイルを解析できませんでした。ファイル形式と内容を確認してください。' };
-  }
-  if (code === 'STALE_JOB_SKIPPED') {
-    return { code, message: 'より新しいアップロードが既に反映されているため、この処理はスキップされました。' };
-  }
-  if (code === 'JOB_CANCELED') {
-    return { code, message: 'このジョブは管理者によりキャンセルされました。' };
-  }
-  return { code, message: 'アップロード処理に失敗しました。時間をおいて再実行してください。' };
+  const messageByCode: Partial<Record<NonNullable<typeof code>, string>> = {
+    MAPPING_INVALID: 'カラム割り当ての設定が不正です。設定を見直して再実行してください。',
+    HEADER_ROW_INVALID: 'ヘッダー行の指定が不正です。設定を見直して再実行してください。',
+    FILE_LIMIT_EXCEEDED: 'アップロードファイルを解析できませんでした。ファイル形式と内容を確認してください。',
+    FILE_PARSE_FAILED: 'アップロードファイルを解析できませんでした。ファイル形式と内容を確認してください。',
+    STALE_JOB_SKIPPED: 'より新しいアップロードが既に反映されているため、この処理はスキップされました。',
+    JOB_CANCELED: 'このジョブは管理者によりキャンセルされました。',
+    UPLOAD_CONFIRM_FAILED: 'アップロード処理に失敗しました。時間をおいて再実行してください。',
+  };
+  return { code, message: messageByCode[code] ?? 'アップロード処理に失敗しました。時間をおいて再実行してください。' };
 }
 
 // ============================================================================
@@ -230,21 +224,18 @@ export async function resolveAndValidateMappingOrReject(
 ): Promise<ColumnMapping | null> {
   const headerRow = allRows[headerRowIndex];
   try {
-    let mapping;
     const hasExplicitMapping = typeof req.body.mapping === 'string' && req.body.mapping.trim() !== '';
-    if (hasExplicitMapping) {
-      mapping = parseMapping(req.body.mapping, uploadType);
-    } else {
-      const headerHash = computeHeaderHash(headerRow);
-      const templates = await loadMappingTemplatesByHeaderHash(req.user!.id, headerHash);
-      const templateForUploadType = findTemplateByUploadType(templates, uploadType);
-      mapping = resolveMappingFromRequestOrAuto(
+    const mapping = hasExplicitMapping
+      ? parseMapping(req.body.mapping, uploadType)
+      : resolveMappingFromRequestOrAuto(
         req.body.mapping,
         uploadType,
         headerRow,
-        templateForUploadType?.mapping,
+        findTemplateByUploadType(
+          await loadMappingTemplatesByHeaderHash(req.user!.id, computeHeaderHash(headerRow)),
+          uploadType,
+        )?.mapping,
       );
-    }
     validateMappingAgainstHeader(mapping, headerRow);
     return mapping;
   } catch (err) {

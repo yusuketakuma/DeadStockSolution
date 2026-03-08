@@ -37,6 +37,24 @@ interface PharmaciesResponse {
   pagination: { page: number; totalPages: number; total: number };
 }
 
+function isPendingVerification(pharmacy: Pharmacy): boolean {
+  return pharmacy.verificationStatus === 'pending_verification';
+}
+
+function collectPendingPharmacyIds(pharmacies: Pharmacy[]): number[] {
+  return pharmacies.filter(isPendingVerification).map((pharmacy) => pharmacy.id);
+}
+
+function toggleSelectedPharmacy(current: Set<number>, id: number): Set<number> {
+  const next = new Set(current);
+  if (next.has(id)) {
+    next.delete(id);
+  } else {
+    next.add(id);
+  }
+  return next;
+}
+
 export default function AdminPharmaciesPage() {
   const fetchPharmacies = useCallback((targetPage: number, signal?: AbortSignal) =>
     api.get<PharmaciesResponse>(`/admin/pharmacies/trust?page=${targetPage}`, { signal }), []);
@@ -93,21 +111,21 @@ export default function AdminPharmaciesPage() {
 
   // 承認待ち件数
   const pendingCount = useMemo(() =>
-    pharmacies.filter(p => p.verificationStatus === 'pending_verification').length,
+    pharmacies.filter(isPendingVerification).length,
     [pharmacies]
   );
 
   // タブに応じたフィルタリング
   const filteredPharmacies = useMemo(() =>
     activeTab === 'pending'
-      ? pharmacies.filter(p => p.verificationStatus === 'pending_verification')
+      ? pharmacies.filter(isPendingVerification)
       : pharmacies,
     [pharmacies, activeTab]
   );
 
   // 選択中の薬局のうち、審査可能な（pending_verification）もののみを抽出
   const selectablePharmacyIds = useMemo(() =>
-    filteredPharmacies.filter(p => p.verificationStatus === 'pending_verification').map(p => p.id),
+    collectPendingPharmacyIds(filteredPharmacies),
     [filteredPharmacies]
   );
 
@@ -116,15 +134,7 @@ export default function AdminPharmaciesPage() {
   const isPartialSelected = !isAllSelected && selectablePharmacyIds.some(id => selectedIds.has(id));
 
   const toggleSelect = (id: number) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    setSelectedIds((prev) => toggleSelectedPharmacy(prev, id));
   };
 
   const toggleSelectAll = () => {
@@ -135,40 +145,33 @@ export default function AdminPharmaciesPage() {
     }
   };
 
-  const handleBulkVerify = async () => {
+  const runBulkAction = async (
+    endpoint: '/admin/pharmacies/bulk-verify' | '/admin/pharmacies/bulk-reject',
+    fallbackMessage: string,
+  ) => {
     if (selectedIds.size === 0) return;
     setBulkLoading(true);
     setActionError('');
     try {
-      const result = await api.post<{ message: string }>('/admin/pharmacies/bulk-verify', {
+      const result = await api.post<{ message: string }>(endpoint, {
         pharmacyIds: Array.from(selectedIds),
       });
       setMessage(result.message);
       setSelectedIds(new Set());
       await fetchPage(page);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : '一括承認に失敗しました');
+      setActionError(err instanceof Error ? err.message : fallbackMessage);
     } finally {
       setBulkLoading(false);
     }
   };
 
+  const handleBulkVerify = async () => {
+    await runBulkAction('/admin/pharmacies/bulk-verify', '一括承認に失敗しました');
+  };
+
   const handleBulkReject = async () => {
-    if (selectedIds.size === 0) return;
-    setBulkLoading(true);
-    setActionError('');
-    try {
-      const result = await api.post<{ message: string }>('/admin/pharmacies/bulk-reject', {
-        pharmacyIds: Array.from(selectedIds),
-      });
-      setMessage(result.message);
-      setSelectedIds(new Set());
-      await fetchPage(page);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : '一括拒否に失敗しました');
-    } finally {
-      setBulkLoading(false);
-    }
+    await runBulkAction('/admin/pharmacies/bulk-reject', '一括拒否に失敗しました');
   };
 
   return (

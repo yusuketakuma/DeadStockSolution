@@ -57,6 +57,26 @@ function resolveNextStatus(action: string, detail: string | null): string | null
   return null;
 }
 
+function buildProposalTimelineEvent(
+  row: ProposalTimelineActionRow,
+  includeStatusTransitions: boolean,
+  previousStatus: string,
+): { event: ProposalTimelineEvent; nextStatus: string | null } {
+  const nextStatus = resolveNextStatus(row.action, row.detail);
+  const event: ProposalTimelineEvent = {
+    action: row.action,
+    label: toTimelineLabel(row.action),
+    at: row.createdAt,
+    actorPharmacyId: row.actorPharmacyId,
+    actorName: row.actorName ?? '不明',
+  };
+  if (includeStatusTransitions) {
+    event.statusFrom = nextStatus ? previousStatus : null;
+    event.statusTo = nextStatus;
+  }
+  return { event, nextStatus };
+}
+
 export async function fetchProposalTimelineActionRows(proposalId: number): Promise<ProposalTimelineActionRow[]> {
   return db.select({
     action: activityLogs.action,
@@ -97,18 +117,7 @@ export function buildProposalTimeline({
   return [
     createdEvent,
     ...actionRows.map((row) => {
-      const nextStatus = resolveNextStatus(row.action, row.detail);
-      const event: ProposalTimelineEvent = {
-        action: row.action,
-        label: toTimelineLabel(row.action),
-        at: row.createdAt,
-        actorPharmacyId: row.actorPharmacyId,
-        actorName: row.actorName ?? '不明',
-      };
-      if (includeStatusTransitions) {
-        event.statusFrom = nextStatus ? previousStatus : null;
-        event.statusTo = nextStatus;
-      }
+      const { event, nextStatus } = buildProposalTimelineEvent(row, includeStatusTransitions, previousStatus);
       if (nextStatus) {
         previousStatus = nextStatus;
       }

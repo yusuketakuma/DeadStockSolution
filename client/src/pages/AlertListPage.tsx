@@ -97,6 +97,24 @@ function parseEarliestExpiry(detailJson: Record<string, unknown>): string | null
   return null;
 }
 
+function buildAlertsQuery(page: number, resolvedTab: 'unresolved' | 'resolved', alertTypeFilter: string): string {
+  const offset = (page - 1) * PAGE_SIZE;
+  const resolved = resolvedTab === 'resolved';
+  const params = new URLSearchParams({
+    resolved: String(resolved),
+    offset: String(offset),
+    limit: String(PAGE_SIZE),
+  });
+  if (alertTypeFilter) {
+    params.set('alertType', alertTypeFilter);
+  }
+  return params.toString();
+}
+
+function resolveAlertRequestError(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 // ── メインコンポーネント ──────────────────────────────────────
 export default function AlertListPage() {
   const [resolvedTab, setResolvedTab] = useState<'unresolved' | 'resolved'>('unresolved');
@@ -122,21 +140,11 @@ export default function AlertListPage() {
     setLoading(true);
     setError('');
     try {
-      const offset = (page - 1) * PAGE_SIZE;
-      const resolved = resolvedTab === 'resolved';
-      const params = new URLSearchParams({
-        resolved: String(resolved),
-        offset: String(offset),
-        limit: String(PAGE_SIZE),
-      });
-      if (alertTypeFilter) {
-        params.set('alertType', alertTypeFilter);
-      }
-      const data = await api.get<AlertListResponse>(`/alerts?${params.toString()}`);
+      const data = await api.get<AlertListResponse>(`/alerts?${buildAlertsQuery(page, resolvedTab, alertTypeFilter)}`);
       setAlerts(data.alerts);
       setTotal(data.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'アラートの取得に失敗しました');
+      setError(resolveAlertRequestError(err, 'アラートの取得に失敗しました'));
       setAlerts([]);
       setTotal(0);
     } finally {
@@ -174,7 +182,7 @@ export default function AlertListPage() {
       void fetchAlerts();
       void fetchStats();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'アラートの解決に失敗しました');
+      setError(resolveAlertRequestError(err, 'アラートの解決に失敗しました'));
     } finally {
       setResolving(null);
     }
@@ -186,7 +194,7 @@ export default function AlertListPage() {
       const data = await api.get<AlertItem>(`/alerts/${alertId}`);
       setDetailAlert(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'アラート詳細の取得に失敗しました');
+      setError(resolveAlertRequestError(err, 'アラート詳細の取得に失敗しました'));
     } finally {
       setDetailLoading(false);
     }

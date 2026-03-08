@@ -43,6 +43,13 @@ type SnapshotEntry = {
   notifyEnabled: boolean;
 };
 
+type MatchingRefreshUploadType = 'dead_stock' | 'used_medication';
+type WaitingRefreshJob = {
+  id: number;
+  processingStartedAt: string | null;
+  attempts: number;
+};
+
 function resolveRefreshMatchBatchSize(value: string | undefined): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -71,6 +78,8 @@ function buildClaimEligibilityConditions(nowIso: string, staleBeforeIso: string)
     or(isNull(matchingRefreshJobs.processingStartedAt), lt(matchingRefreshJobs.processingStartedAt, staleBeforeIso)),
   ];
 }
+
+type ClaimConditions = ReturnType<typeof buildClaimEligibilityConditions>;
 
 function recordPharmacyRefreshFailure(
   failedPharmacyIds: number[],
@@ -124,72 +133,116 @@ async function resolveImpactedPharmacyIds(triggerPharmacyId: number): Promise<nu
   return [...ids];
 }
 
-async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_stock' | 'used_medication'): Promise<void> {
+async function fetchNotifyEnabledMap(pharmacyIds: number[]): Promise<Map<number, boolean>> {
+  const notifyRows = await db.select({
+    id: pharmacies.id,
+    matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled,
+  })
+    .from(pharmacies)
+    .where(inArray(pharmacies.id, pharmacyIds));
+  return new Map(notifyRows.map((row) => [row.id, row.matchingAutoNotifyEnabled !== false]));
+}
+
+async function findMatchesForChunk(
+  pharmacyIdChunk: number[],
+  triggerPharmacyId: number,
+  uploadType: MatchingRefreshUploadType,
+): Promise<Map<number, MatchCandidates> | null> {
+  try {
+    return await findMatchesBatch(pharmacyIdChunk);
+  } catch (batchErr) {
+    logger.warn('Matching auto refresh batch lookup failed. Falling back to per-pharmacy matching', {
+      triggerPharmacyId,
+      uploadType,
+      impactedCount: pharmacyIdChunk.length,
+      error: getErrorMessage(batchErr),
+    });
+    return null;
+  }
+}
+
+async function buildSnapshotEntries(
+  pharmacyIdChunk: number[],
+  triggerPharmacyId: number,
+  uploadType: MatchingRefreshUploadType,
+  notifyEnabledMap: Map<number, boolean>,
+  failedPharmacyIds: number[],
+): Promise<SnapshotEntry[]> {
+  const matchesByPharmacy = await findMatchesForChunk(pharmacyIdChunk, triggerPharmacyId, uploadType);
+  const snapshotEntries: SnapshotEntry[] = [];
+
+  for (const pharmacyId of pharmacyIdChunk) {
+    try {
+      const candidates = matchesByPharmacy?.has(pharmacyId)
+        ? matchesByPharmacy.get(pharmacyId) ?? []
+        : await findMatches(pharmacyId);
+      snapshotEntries.push({
+        pharmacyId,
+        triggerPharmacyId,
+        triggerUploadType: uploadType,
+        candidates,
+        notifyEnabled: notifyEnabledMap.get(pharmacyId) ?? true,
+      });
+    } catch (err) {
+      recordPharmacyRefreshFailure(failedPharmacyIds, pharmacyId, triggerPharmacyId, uploadType, err);
+    }
+  }
+
+  return snapshotEntries;
+}
+
+async function persistSnapshotEntries(
+  snapshotEntries: SnapshotEntry[],
+  triggerPharmacyId: number,
+  uploadType: MatchingRefreshUploadType,
+  failedPharmacyIds: number[],
+): Promise<number> {
+  if (snapshotEntries.length === 0) return 0;
+
+  try {
+    const { changedCount } = await saveMatchSnapshotsBatch(snapshotEntries);
+    return changedCount;
+  } catch (batchSaveErr) {
+    logger.warn('Batch snapshot save failed, falling back to per-pharmacy', {
+      triggerPharmacyId,
+      uploadType,
+      chunkSize: snapshotEntries.length,
+      error: getErrorMessage(batchSaveErr),
+    });
+
+    let changedCount = 0;
+    for (const entry of snapshotEntries) {
+      try {
+        const result = await saveMatchSnapshotAndNotifyOnChange(entry);
+        if (result.changed) changedCount += 1;
+      } catch (err) {
+        recordPharmacyRefreshFailure(failedPharmacyIds, entry.pharmacyId, triggerPharmacyId, uploadType, err);
+      }
+    }
+    return changedCount;
+  }
+}
+
+async function runSingleRefresh(triggerPharmacyId: number, uploadType: MatchingRefreshUploadType): Promise<void> {
   const impactedIds = await resolveImpactedPharmacyIds(triggerPharmacyId);
   let changedCount = 0;
   const failedPharmacyIds: number[] = [];
-
-  // 通知設定をバルクフェッチ（N+1 防止）
-  const notifyRows = await db.select({ id: pharmacies.id, matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled })
-    .from(pharmacies)
-    .where(inArray(pharmacies.id, impactedIds));
-  const notifyEnabledMap = new Map(notifyRows.map((r) => [r.id, r.matchingAutoNotifyEnabled !== false]));
+  const notifyEnabledMap = await fetchNotifyEnabledMap(impactedIds);
 
   for (const pharmacyIdChunk of splitIntoChunks(impactedIds, REFRESH_MATCH_BATCH_SIZE)) {
-    let matchesByPharmacy: Map<number, Awaited<ReturnType<typeof findMatches>>> | null = null;
-    try {
-      matchesByPharmacy = await findMatchesBatch(pharmacyIdChunk);
-    } catch (batchErr) {
-      logger.warn('Matching auto refresh batch lookup failed. Falling back to per-pharmacy matching', {
-        triggerPharmacyId,
-        uploadType,
-        impactedCount: pharmacyIdChunk.length,
-        error: getErrorMessage(batchErr),
-      });
-    }
-
-    // マッチング候補を収集（個別フェッチの失敗は per-pharmacy でエラー記録）
-    const snapshotEntries: SnapshotEntry[] = [];
-
-    for (const pharmacyId of pharmacyIdChunk) {
-      try {
-        const candidates = matchesByPharmacy?.has(pharmacyId)
-          ? matchesByPharmacy.get(pharmacyId) ?? []
-          : await findMatches(pharmacyId);
-        snapshotEntries.push({
-          pharmacyId,
-          triggerPharmacyId,
-          triggerUploadType: uploadType,
-          candidates,
-          notifyEnabled: notifyEnabledMap.get(pharmacyId) ?? true,
-        });
-      } catch (err) {
-        recordPharmacyRefreshFailure(failedPharmacyIds, pharmacyId, triggerPharmacyId, uploadType, err);
-      }
-    }
-
-    // スナップショットを一括保存（バッチ失敗時は個別保存にフォールバック）
-    if (snapshotEntries.length > 0) {
-      try {
-        const { changedCount: chunkChanged } = await saveMatchSnapshotsBatch(snapshotEntries);
-        changedCount += chunkChanged;
-      } catch (batchSaveErr) {
-        logger.warn('Batch snapshot save failed, falling back to per-pharmacy', {
-          triggerPharmacyId,
-          uploadType,
-          chunkSize: snapshotEntries.length,
-          error: getErrorMessage(batchSaveErr),
-        });
-        for (const entry of snapshotEntries) {
-          try {
-            const result = await saveMatchSnapshotAndNotifyOnChange(entry);
-            if (result.changed) changedCount += 1;
-          } catch (err) {
-            recordPharmacyRefreshFailure(failedPharmacyIds, entry.pharmacyId, triggerPharmacyId, uploadType, err);
-          }
-        }
-      }
-    }
+    const snapshotEntries = await buildSnapshotEntries(
+      pharmacyIdChunk,
+      triggerPharmacyId,
+      uploadType,
+      notifyEnabledMap,
+      failedPharmacyIds,
+    );
+    changedCount += await persistSnapshotEntries(
+      snapshotEntries,
+      triggerPharmacyId,
+      uploadType,
+      failedPharmacyIds,
+    );
   }
 
   if (failedPharmacyIds.length > 0) {
@@ -204,6 +257,50 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: 'dead_sto
   });
 }
 
+async function selectClaimCandidate(
+  conditions: ClaimConditions,
+): Promise<RefreshJob | null> {
+  const [candidate] = await db.select({
+    id: matchingRefreshJobs.id,
+    triggerPharmacyId: matchingRefreshJobs.triggerPharmacyId,
+    uploadType: matchingRefreshJobs.uploadType,
+    attempts: matchingRefreshJobs.attempts,
+  })
+    .from(matchingRefreshJobs)
+    .where(and(...conditions))
+    .orderBy(
+      asc(matchingRefreshJobs.createdAt),
+      asc(matchingRefreshJobs.id),
+    )
+    .limit(1);
+
+  return candidate ?? null;
+}
+
+async function claimCandidateWithCas(
+  candidate: RefreshJob,
+  nowIso: string,
+  baseConditions: ClaimConditions,
+): Promise<RefreshJob | null> {
+  const [claimed] = await db.update(matchingRefreshJobs)
+    .set({
+      processingStartedAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      eq(matchingRefreshJobs.id, candidate.id),
+      ...baseConditions,
+    ))
+    .returning({
+      id: matchingRefreshJobs.id,
+      triggerPharmacyId: matchingRefreshJobs.triggerPharmacyId,
+      uploadType: matchingRefreshJobs.uploadType,
+      attempts: matchingRefreshJobs.attempts,
+    });
+
+  return claimed ?? null;
+}
+
 async function claimNextRefreshJob(excludedJobIds: number[] = []): Promise<RefreshJob | null> {
   for (let attempt = 0; attempt < CLAIM_CONTENTION_RETRY_LIMIT; attempt += 1) {
     const nowIso = new Date().toISOString();
@@ -215,38 +312,10 @@ async function claimNextRefreshJob(excludedJobIds: number[] = []): Promise<Refre
       conditions.push(notInArray(matchingRefreshJobs.id, excludedJobIds));
     }
 
-    const [candidate] = await db.select({
-      id: matchingRefreshJobs.id,
-      triggerPharmacyId: matchingRefreshJobs.triggerPharmacyId,
-      uploadType: matchingRefreshJobs.uploadType,
-      attempts: matchingRefreshJobs.attempts,
-    })
-      .from(matchingRefreshJobs)
-      .where(and(...conditions))
-      .orderBy(
-        asc(matchingRefreshJobs.createdAt),
-        asc(matchingRefreshJobs.id),
-      )
-      .limit(1);
-
+    const candidate = await selectClaimCandidate(conditions);
     if (!candidate) return null;
 
-    const [claimed] = await db.update(matchingRefreshJobs)
-      .set({
-        processingStartedAt: nowIso,
-        updatedAt: nowIso,
-      })
-      .where(and(
-        eq(matchingRefreshJobs.id, candidate.id),
-        ...baseConditions,
-      ))
-      .returning({
-        id: matchingRefreshJobs.id,
-        triggerPharmacyId: matchingRefreshJobs.triggerPharmacyId,
-        uploadType: matchingRefreshJobs.uploadType,
-        attempts: matchingRefreshJobs.attempts,
-      });
-
+    const claimed = await claimCandidateWithCas(candidate, nowIso, baseConditions);
     if (claimed) return claimed;
   }
 
@@ -319,63 +388,75 @@ export async function processPendingMatchingRefreshJobs(limit: number = RETRY_BA
   return processPendingRefreshJobs(limit);
 }
 
-export async function triggerMatchingRefreshOnUpload(params: {
-  triggerPharmacyId: number;
-  uploadType: 'dead_stock' | 'used_medication';
-}, executor: JobQueueExecutor = db): Promise<void> {
-  if (!AUTO_RECOMPUTE_ENABLED) return;
+async function withTransactionExecutor<T>(
+  executor: JobQueueExecutor,
+  action: (tx: JobQueueExecutor) => Promise<T>,
+): Promise<T> {
+  if (executor !== db) {
+    return action(executor);
+  }
 
-  const now = Date.now();
-  const nowIso = new Date(now).toISOString();
-  const scheduledAtIso = new Date(now + MATCHING_REFRESH_DEBOUNCE_MS).toISOString();
-  const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
+  return db.transaction(async (tx) => action(tx as unknown as JobQueueExecutor));
+}
 
-  await executor.execute(
-    sql`SELECT pg_advisory_xact_lock(${MATCHING_REFRESH_TRIGGER_LOCK_NAMESPACE}, ${params.triggerPharmacyId})`,
-  );
-
-  const existingRows = await executor.select({
+async function listWaitingJobsForTrigger(
+  executor: JobQueueExecutor,
+  triggerPharmacyId: number,
+): Promise<WaitingRefreshJob[]> {
+  return executor.select({
     id: matchingRefreshJobs.id,
     processingStartedAt: matchingRefreshJobs.processingStartedAt,
     attempts: matchingRefreshJobs.attempts,
   })
     .from(matchingRefreshJobs)
     .where(and(
-      eq(matchingRefreshJobs.triggerPharmacyId, params.triggerPharmacyId),
+      eq(matchingRefreshJobs.triggerPharmacyId, triggerPharmacyId),
       lt(matchingRefreshJobs.attempts, MAX_JOB_ATTEMPTS),
     ))
     .orderBy(
       asc(matchingRefreshJobs.createdAt),
       asc(matchingRefreshJobs.id),
     );
+}
 
-  const waitingRows = existingRows.filter((row) => (
+function selectWaitingRows(existingRows: WaitingRefreshJob[], staleBeforeIso: string): WaitingRefreshJob[] {
+  return existingRows.filter((row) => (
     row.processingStartedAt === null || row.processingStartedAt < staleBeforeIso
   ));
-  const keeper = waitingRows[0];
+}
 
-  if (keeper) {
-    await executor.update(matchingRefreshJobs)
-      .set({
-        uploadType: params.uploadType,
-        attempts: 0,
-        processingStartedAt: null,
-        nextRetryAt: scheduledAtIso,
-        lastError: null,
-        updatedAt: nowIso,
-      })
-      .where(eq(matchingRefreshJobs.id, keeper.id));
+async function reuseKeeperJob(
+  executor: JobQueueExecutor,
+  keeper: WaitingRefreshJob,
+  waitingRows: WaitingRefreshJob[],
+  params: { triggerPharmacyId: number; uploadType: MatchingRefreshUploadType },
+  scheduledAtIso: string,
+  nowIso: string,
+): Promise<void> {
+  await executor.update(matchingRefreshJobs)
+    .set({
+      uploadType: params.uploadType,
+      attempts: 0,
+      processingStartedAt: null,
+      nextRetryAt: scheduledAtIso,
+      lastError: null,
+      updatedAt: nowIso,
+    })
+    .where(eq(matchingRefreshJobs.id, keeper.id));
 
-    const redundantIds = waitingRows
-      .slice(1)
-      .map((row) => row.id);
-    if (redundantIds.length > 0) {
-      await executor.delete(matchingRefreshJobs)
-        .where(inArray(matchingRefreshJobs.id, redundantIds));
-    }
-    return;
+  const redundantIds = waitingRows.slice(1).map((row) => row.id);
+  if (redundantIds.length > 0) {
+    await executor.delete(matchingRefreshJobs)
+      .where(inArray(matchingRefreshJobs.id, redundantIds));
   }
+}
 
+async function insertRefreshJob(
+  executor: JobQueueExecutor,
+  params: { triggerPharmacyId: number; uploadType: MatchingRefreshUploadType },
+  scheduledAtIso: string,
+  nowIso: string,
+): Promise<void> {
   await executor.insert(matchingRefreshJobs).values({
     triggerPharmacyId: params.triggerPharmacyId,
     uploadType: params.uploadType,
@@ -384,6 +465,35 @@ export async function triggerMatchingRefreshOnUpload(params: {
     nextRetryAt: scheduledAtIso,
     lastError: null,
     updatedAt: nowIso,
+  });
+}
+
+export async function triggerMatchingRefreshOnUpload(params: {
+  triggerPharmacyId: number;
+  uploadType: MatchingRefreshUploadType;
+}, executor: JobQueueExecutor = db): Promise<void> {
+  if (!AUTO_RECOMPUTE_ENABLED) return;
+
+  await withTransactionExecutor(executor, async (tx) => {
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    const scheduledAtIso = new Date(now + MATCHING_REFRESH_DEBOUNCE_MS).toISOString();
+    const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
+
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(${MATCHING_REFRESH_TRIGGER_LOCK_NAMESPACE}, ${params.triggerPharmacyId})`,
+    );
+
+    const existingRows = await listWaitingJobsForTrigger(tx, params.triggerPharmacyId);
+    const waitingRows = selectWaitingRows(existingRows, staleBeforeIso);
+    const keeper = waitingRows[0];
+
+    if (keeper) {
+      await reuseKeeperJob(tx, keeper, waitingRows, params, scheduledAtIso, nowIso);
+      return;
+    }
+
+    await insertRefreshJob(tx, params, scheduledAtIso, nowIso);
   });
 }
 

@@ -255,22 +255,20 @@ export function buildNextAction(
 }
 
 export function parseMessageId(noticeId: string): number | null {
-  if (!noticeId.startsWith('message-')) return null;
-  const id = Number(noticeId.replace('message-', ''));
-  if (!Number.isInteger(id) || id <= 0) return null;
-  return id;
+  return parsePrefixedPositiveId(noticeId, 'message-');
 }
 
 export function parseMatchNotificationId(noticeId: string): number | null {
-  if (!noticeId.startsWith('match-')) return null;
-  const id = Number(noticeId.replace('match-', ''));
-  if (!Number.isInteger(id) || id <= 0) return null;
-  return id;
+  return parsePrefixedPositiveId(noticeId, 'match-');
 }
 
 export function parseNotificationId(noticeId: string): number | null {
-  if (!noticeId.startsWith('notification-')) return null;
-  const id = Number(noticeId.replace('notification-', ''));
+  return parsePrefixedPositiveId(noticeId, 'notification-');
+}
+
+function parsePrefixedPositiveId(value: string, prefix: string): number | null {
+  if (!value.startsWith(prefix)) return null;
+  const id = Number(value.replace(prefix, ''));
   if (!Number.isInteger(id) || id <= 0) return null;
   return id;
 }

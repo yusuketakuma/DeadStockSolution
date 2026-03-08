@@ -62,6 +62,38 @@ interface GroupInfo {
   memberPharmacyIds: number[];
 }
 
+function toGroupInfo(detail: GroupDetailResponse): GroupInfo {
+  return {
+    id: detail.id,
+    name: detail.name,
+    memberPharmacyIds: detail.members.map((member) => member.pharmacyId),
+  };
+}
+
+function buildPharmacyQuery(page: number, filters: { search: string; prefecture: string; sortBy: string }) {
+  const params = new URLSearchParams({ page: String(page) });
+  if (filters.search) params.set('search', filters.search);
+  if (filters.prefecture) params.set('prefecture', filters.prefecture);
+  if (filters.sortBy) params.set('sortBy', filters.sortBy);
+  return params;
+}
+
+function buildGroupMaps(groups: GroupInfo[]) {
+  const pharmacyIds = new Set<number>();
+  const pharmacyNames = new Map<number, string[]>();
+
+  for (const group of groups) {
+    for (const pharmacyId of group.memberPharmacyIds) {
+      pharmacyIds.add(pharmacyId);
+      const existing = pharmacyNames.get(pharmacyId) ?? [];
+      existing.push(group.name);
+      pharmacyNames.set(pharmacyId, existing);
+    }
+  }
+
+  return { pharmacyIds, pharmacyNames };
+}
+
 export default function PharmacyListPage() {
   const { user } = useAuth();
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
@@ -97,11 +129,7 @@ export default function PharmacyListPage() {
       const details = await Promise.all(
         listRes.groups.map((g) => api.get<GroupDetailResponse>(`/groups/${g.id}`))
       );
-      setMyGroups(details.map((d) => ({
-        id: d.id,
-        name: d.name,
-        memberPharmacyIds: d.members.map((m) => m.pharmacyId),
-      })));
+      setMyGroups(details.map(toGroupInfo));
     } catch {
       // Silently fail - group data is supplementary
     }
@@ -111,10 +139,7 @@ export default function PharmacyListPage() {
     setLoading(true);
     setMessage('');
     try {
-      const params = new URLSearchParams({ page: String(p) });
-      if (search) params.set('search', search);
-      if (prefecture) params.set('prefecture', prefecture);
-      if (sortBy) params.set('sortBy', sortBy);
+      const params = buildPharmacyQuery(p, { search, prefecture, sortBy });
       const data = await api.get<PharmaciesResponse>(`/pharmacies?${params}`);
       setPharmacies(data.data);
       setTotalPages(data.pagination.totalPages);
@@ -129,25 +154,10 @@ export default function PharmacyListPage() {
   useEffect(() => { fetchRelationships(); }, [fetchRelationships]);
   useEffect(() => { void fetchGroupData(); }, [fetchGroupData]);
 
-  const groupPharmacyIds = useMemo(() => {
-    const ids = new Set<number>();
-    for (const g of myGroups) {
-      for (const id of g.memberPharmacyIds) ids.add(id);
-    }
-    return ids;
-  }, [myGroups]);
-
-  const pharmacyGroupNames = useMemo(() => {
-    const map = new Map<number, string[]>();
-    for (const g of myGroups) {
-      for (const id of g.memberPharmacyIds) {
-        const existing = map.get(id) ?? [];
-        existing.push(g.name);
-        map.set(id, existing);
-      }
-    }
-    return map;
-  }, [myGroups]);
+  const { pharmacyIds: groupPharmacyIds, pharmacyNames: pharmacyGroupNames } = useMemo(
+    () => buildGroupMaps(myGroups),
+    [myGroups],
+  );
 
   const displayedPharmacies = useMemo(() => {
     if (!groupFilter) return pharmacies;

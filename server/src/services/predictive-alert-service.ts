@@ -55,6 +55,16 @@ interface PredictiveAlertCounters {
   nearExpiryAlerts: number;
   excessStockAlerts: number;
 }
+interface PredictiveAlertJobContext {
+  now: Date;
+  nearExpiryDays: number;
+  excessStockMonths: number;
+  todayIso: string;
+  expiryThresholdIso: string;
+  dedupeDateKey: string;
+  pharmacyBatchSize: number;
+  signalPersistConcurrency: number;
+}
 
 export interface RunPredictiveAlertsOptions {
   nearExpiryDays?: number;
@@ -147,6 +157,63 @@ function buildExcessStockSignal(row: ExcessStockAggregate, excessStockMonths: nu
       excessStockMonths,
     },
   };
+}
+
+function buildPredictiveAlertJobContext(
+  options: RunPredictiveAlertsOptions,
+): PredictiveAlertJobContext {
+  const now = options.now ?? new Date();
+  const nearExpiryDays = resolveNearExpiryDays(options.nearExpiryDays);
+  const excessStockMonths = resolveExcessStockMonths(options.excessStockMonths);
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const expiryThreshold = new Date(todayUtc.getTime() + nearExpiryDays * MILLISECONDS_PER_DAY);
+
+  return {
+    now,
+    nearExpiryDays,
+    excessStockMonths,
+    todayIso: toDateIso(todayUtc),
+    expiryThresholdIso: toDateIso(expiryThreshold),
+    dedupeDateKey: toDateIso(now),
+    pharmacyBatchSize: parseBoundedInt(
+      process.env.PREDICTIVE_ALERT_BATCH_SIZE,
+      DEFAULT_PHARMACY_BATCH_SIZE,
+      20,
+      2_000,
+    ),
+    signalPersistConcurrency: parseBoundedInt(
+      process.env.PREDICTIVE_ALERT_PERSIST_CONCURRENCY,
+      DEFAULT_SIGNAL_PERSIST_CONCURRENCY,
+      1,
+      32,
+    ),
+  };
+}
+
+function buildSignalsForBatch(
+  nearExpiryRows: NearExpiryAggregate[],
+  excessStockRows: ExcessStockAggregate[],
+  context: Pick<PredictiveAlertJobContext, 'nearExpiryDays' | 'excessStockMonths'>,
+): PredictiveAlertSignal[] {
+  return [
+    ...nearExpiryRows.map((row) => buildNearExpirySignal(row, context.nearExpiryDays)),
+    ...excessStockRows.map((row) => buildExcessStockSignal(row, context.excessStockMonths)),
+  ];
+}
+
+async function persistSignalsForBatch(
+  signals: PredictiveAlertSignal[],
+  dedupeDateKey: string,
+  signalPersistConcurrency: number,
+  counters: PredictiveAlertCounters,
+): Promise<void> {
+  for (const signalBatch of splitIntoChunks(signals, signalPersistConcurrency)) {
+    const settled = await Promise.allSettled(signalBatch.map((signal) => persistSignal(signal, dedupeDateKey)));
+    settled.forEach((result, index) => {
+      const signal = signalBatch[index];
+      applyPersistedSignalResult(counters, signal, result);
+    });
+  }
 }
 
 async function fetchNearExpiryAggregates(
@@ -376,27 +443,7 @@ function applyPersistedSignalResult(
 export async function runPredictiveAlertsJob(
   options: RunPredictiveAlertsOptions = {},
 ): Promise<PredictiveAlertsJobResult> {
-  const now = options.now ?? new Date();
-  const nearExpiryDays = resolveNearExpiryDays(options.nearExpiryDays);
-  const excessStockMonths = resolveExcessStockMonths(options.excessStockMonths);
-
-  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const expiryThreshold = new Date(todayUtc.getTime() + nearExpiryDays * MILLISECONDS_PER_DAY);
-  const todayIso = toDateIso(todayUtc);
-  const expiryThresholdIso = toDateIso(expiryThreshold);
-  const dedupeDateKey = toDateIso(now);
-  const pharmacyBatchSize = parseBoundedInt(
-    process.env.PREDICTIVE_ALERT_BATCH_SIZE,
-    DEFAULT_PHARMACY_BATCH_SIZE,
-    20,
-    2_000,
-  );
-  const signalPersistConcurrency = parseBoundedInt(
-    process.env.PREDICTIVE_ALERT_PERSIST_CONCURRENCY,
-    DEFAULT_SIGNAL_PERSIST_CONCURRENCY,
-    1,
-    32,
-  );
+  const context = buildPredictiveAlertJobContext(options);
 
   const activePharmacies = await db.select({ id: pharmacies.id })
     .from(pharmacies)
@@ -423,24 +470,19 @@ export async function runPredictiveAlertsJob(
     excessStockAlerts: 0,
   };
 
-  for (const pharmacyIdBatch of splitIntoChunks(pharmacyIds, pharmacyBatchSize)) {
+  for (const pharmacyIdBatch of splitIntoChunks(pharmacyIds, context.pharmacyBatchSize)) {
     const [nearExpiryRows, excessStockRows] = await Promise.all([
-      fetchNearExpiryAggregates(pharmacyIdBatch, todayIso, expiryThresholdIso),
-      fetchExcessStockAggregates(pharmacyIdBatch, excessStockMonths),
+      fetchNearExpiryAggregates(pharmacyIdBatch, context.todayIso, context.expiryThresholdIso),
+      fetchExcessStockAggregates(pharmacyIdBatch, context.excessStockMonths),
     ]);
 
-    const signals: PredictiveAlertSignal[] = [
-      ...nearExpiryRows.map((row) => buildNearExpirySignal(row, nearExpiryDays)),
-      ...excessStockRows.map((row) => buildExcessStockSignal(row, excessStockMonths)),
-    ];
-
-    for (const signalBatch of splitIntoChunks(signals, signalPersistConcurrency)) {
-      const settled = await Promise.allSettled(signalBatch.map((signal) => persistSignal(signal, dedupeDateKey)));
-      settled.forEach((result, index) => {
-        const signal = signalBatch[index];
-        applyPersistedSignalResult(counters, signal, result);
-      });
-    }
+    const signals = buildSignalsForBatch(nearExpiryRows, excessStockRows, context);
+    await persistSignalsForBatch(
+      signals,
+      context.dedupeDateKey,
+      context.signalPersistConcurrency,
+      counters,
+    );
   }
 
   return {

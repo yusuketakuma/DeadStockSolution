@@ -39,6 +39,16 @@ let onAuthExpired: AuthExpiredHandler | null = null;
 let csrfTokenCache: string | null = null;
 let csrfTokenPromise: Promise<string> | null = null;
 
+function clearAuthState(): void {
+  csrfTokenCache = null;
+  onAuthExpired?.();
+}
+
+async function parseErrorResponse(response: Response, fallbackMessage: string): Promise<never> {
+  const data = await response.json().catch(() => ({}));
+  throw new ApiError(response.status, data.error || fallbackMessage, data);
+}
+
 export function setAuthExpiredHandler(handler: AuthExpiredHandler): void {
   onAuthExpired = handler;
 }
@@ -59,8 +69,7 @@ async function requestCsrfToken(timeout: number): Promise<string> {
     credentials: 'include',
   }, timeout);
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, data.error || 'CSRFトークンの取得に失敗しました', data);
+    await parseErrorResponse(response, 'CSRFトークンの取得に失敗しました');
   }
   const data = await response.json().catch(() => ({}));
   const token = typeof data?.csrfToken === 'string' ? data.csrfToken : '';
@@ -189,11 +198,9 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
 
   if (!response.ok) {
     if (response.status === 401) {
-      csrfTokenCache = null;
-      onAuthExpired?.();
+      clearAuthState();
     }
-    const data = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, data.error || 'リクエストに失敗しました', data);
+    await parseErrorResponse(response, 'リクエストに失敗しました');
   }
 
   return parseSuccessResponse<T>(response);
@@ -232,11 +239,9 @@ export async function apiUpload<T>(path: string, formData: FormData, options: Up
 
   if (!response.ok) {
     if (response.status === 401) {
-      csrfTokenCache = null;
-      onAuthExpired?.();
+      clearAuthState();
     }
-    const data = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, data.error || 'アップロードに失敗しました', data);
+    await parseErrorResponse(response, 'アップロードに失敗しました');
   }
 
   return parseSuccessResponse<T>(response);

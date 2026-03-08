@@ -53,6 +53,64 @@ function resolveCommandAdminPharmacyId(explicitAdminPharmacyId?: number): number
   return 1;
 }
 
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function withTimestamp<T extends Record<string, unknown>>(payload: T): T & { timestamp: string } {
+  return {
+    ...payload,
+    timestamp: nowIso(),
+  };
+}
+
+function setMaintenanceMode(enabled: boolean) {
+  if (enabled) {
+    process.env.MAINTENANCE_MODE = 'true';
+  } else {
+    delete process.env.MAINTENANCE_MODE;
+  }
+  return { maintenanceMode: enabled };
+}
+
+async function restartManagedSchedulers() {
+  const [
+    drugMasterScheduler,
+    drugPackageScheduler,
+    importFailureScheduler,
+    matchingRefreshScheduler,
+    monthlyReportScheduler,
+    monitoringKpiScheduler,
+  ] = await Promise.all([
+    import('./drug-master-scheduler'),
+    import('./drug-package-scheduler'),
+    import('./import-failure-alert-scheduler'),
+    import('./matching-refresh-scheduler'),
+    import('./monthly-report-scheduler'),
+    import('./monitoring-kpi-alert-scheduler'),
+  ]);
+
+  drugMasterScheduler.stopDrugMasterScheduler();
+  drugPackageScheduler.stopDrugPackageScheduler();
+  importFailureScheduler.stopImportFailureAlertScheduler();
+  matchingRefreshScheduler.stopMatchingRefreshScheduler();
+  monthlyReportScheduler.stopMonthlyReportScheduler();
+  monitoringKpiScheduler.stopMonitoringKpiAlertScheduler();
+
+  drugMasterScheduler.startDrugMasterScheduler();
+  drugPackageScheduler.startDrugPackageScheduler();
+  importFailureScheduler.startImportFailureAlertScheduler();
+  matchingRefreshScheduler.startMatchingRefreshScheduler();
+  monthlyReportScheduler.startMonthlyReportScheduler();
+  monitoringKpiScheduler.startMonitoringKpiAlertScheduler();
+}
+
+async function updateCommandRecord(id: number, values: Partial<typeof openclawCommands.$inferInsert>): Promise<void> {
+  await db.update(openclawCommands)
+    .set(values)
+    .where(eq(openclawCommands.id, id));
+}
+
 // ── 型定義 ──────────────────────────────────────────
 
 export interface CommandDefinition {
@@ -82,9 +140,8 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
   'system.status': {
     category: 'read',
     descriptionJa: 'システムステータス取得',
-    handler: async () => ({
+    handler: async () => withTimestamp({
       status: 'operational',
-      timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? 'unknown',
       uptime: process.uptime(),
     }),
@@ -119,60 +176,25 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
     handler: async () => {
       resetObservabilityMetrics();
       clearBuffer();
-      return { cleared: true, timestamp: new Date().toISOString() };
+      return withTimestamp({ cleared: true });
     },
   },
   'maintenance.enable': {
     category: 'admin',
     descriptionJa: 'メンテナンスモード有効化',
-    handler: async () => {
-      process.env.MAINTENANCE_MODE = 'true';
-      return { maintenanceMode: true };
-    },
+    handler: async () => setMaintenanceMode(true),
   },
   'maintenance.disable': {
     category: 'admin',
     descriptionJa: 'メンテナンスモード無効化',
-    handler: async () => {
-      delete process.env.MAINTENANCE_MODE;
-      return { maintenanceMode: false };
-    },
+    handler: async () => setMaintenanceMode(false),
   },
   'scheduler.restart': {
     category: 'write',
     descriptionJa: 'スケジューラー再起動',
     handler: async () => {
-      const [
-        drugMasterScheduler,
-        drugPackageScheduler,
-        importFailureScheduler,
-        matchingRefreshScheduler,
-        monthlyReportScheduler,
-        monitoringKpiScheduler,
-      ] = await Promise.all([
-        import('./drug-master-scheduler'),
-        import('./drug-package-scheduler'),
-        import('./import-failure-alert-scheduler'),
-        import('./matching-refresh-scheduler'),
-        import('./monthly-report-scheduler'),
-        import('./monitoring-kpi-alert-scheduler'),
-      ]);
-
-      drugMasterScheduler.stopDrugMasterScheduler();
-      drugPackageScheduler.stopDrugPackageScheduler();
-      importFailureScheduler.stopImportFailureAlertScheduler();
-      matchingRefreshScheduler.stopMatchingRefreshScheduler();
-      monthlyReportScheduler.stopMonthlyReportScheduler();
-      monitoringKpiScheduler.stopMonitoringKpiAlertScheduler();
-
-      drugMasterScheduler.startDrugMasterScheduler();
-      drugPackageScheduler.startDrugPackageScheduler();
-      importFailureScheduler.startImportFailureAlertScheduler();
-      matchingRefreshScheduler.startMatchingRefreshScheduler();
-      monthlyReportScheduler.startMonthlyReportScheduler();
-      monitoringKpiScheduler.startMonitoringKpiAlertScheduler();
-
-      return {
+      await restartManagedSchedulers();
+      return withTimestamp({
         restarted: true,
         schedulers: [
           'drug_master',
@@ -182,8 +204,7 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
           'monthly_report',
           'monitoring_kpi_alert',
         ],
-        timestamp: new Date().toISOString(),
-      };
+      });
     },
   },
   'pharmacy.toggle': {
@@ -211,17 +232,16 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
       await db.update(pharmacies)
         .set({
           isActive: nextIsActive,
-          updatedAt: new Date().toISOString(),
+          updatedAt: nowIso(),
         })
         .where(eq(pharmacies.id, pharmacyId));
 
-      return {
+      return withTimestamp({
         pharmacyId,
         action: 'toggled',
         previousIsActive: current.isActive,
         isActive: nextIsActive,
-        timestamp: new Date().toISOString(),
-      };
+      });
     },
   },
   'job.cancel': {
@@ -241,7 +261,7 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
         throw new Error('このジョブはキャンセルできません');
       }
 
-      return {
+      return withTimestamp({
         jobId,
         action: canceled.canceledAt ? 'canceled' : 'cancel_requested',
         status: canceled.status,
@@ -249,8 +269,7 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
         cancelRequestedAt: canceled.cancelRequestedAt,
         cancelable: canceled.cancelable,
         canceledBy,
-        timestamp: new Date().toISOString(),
-      };
+      });
     },
   },
   'drug_master.sync': {
@@ -279,13 +298,12 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
         }
       }
 
-      return {
+      return withTimestamp({
         syncTriggered: true,
         sourceMode: validated.sourceMode ?? 'index',
         message: syncResult.message,
         packageSync: packageSyncResult,
-        timestamp: new Date().toISOString(),
-      };
+      });
     },
   },
   'notification.send': {
@@ -293,7 +311,7 @@ export const BUILTIN_COMMANDS: Record<string, CommandDefinition> = {
     descriptionJa: '通知送信',
     handler: async (params) => {
       const { message } = notificationSendSchema.parse(params);
-      return { sent: true, message, timestamp: new Date().toISOString() };
+      return withTimestamp({ sent: true, message });
     },
   },
 };
@@ -318,9 +336,11 @@ export async function executeCommand(request: CommandRequest, signature: string)
 
   // Check whitelist
   if (!isCommandAllowed(request.command)) {
-    await db.update(openclawCommands)
-      .set({ status: 'rejected', errorMessage: `Command not in whitelist: ${request.command}`, completedAt: new Date().toISOString() })
-      .where(eq(openclawCommands.id, record.id));
+    await updateCommandRecord(record.id, {
+      status: 'rejected',
+      errorMessage: `Command not in whitelist: ${request.command}`,
+      completedAt: nowIso(),
+    });
 
     logger.warn('OpenClaw command rejected', { command: request.command, reason: 'not_in_whitelist' });
     return { id: record.id, command: request.command, status: 'rejected', errorMessage: 'コマンドが許可リストにありません' };
@@ -328,24 +348,26 @@ export async function executeCommand(request: CommandRequest, signature: string)
 
   // Execute
   try {
-    await db.update(openclawCommands)
-      .set({ status: 'executing' })
-      .where(eq(openclawCommands.id, record.id));
+    await updateCommandRecord(record.id, { status: 'executing' });
 
     const handler = BUILTIN_COMMANDS[request.command].handler;
     const result = await handler(request.parameters ?? {});
 
-    await db.update(openclawCommands)
-      .set({ status: 'completed', result: JSON.stringify(result), completedAt: new Date().toISOString() })
-      .where(eq(openclawCommands.id, record.id));
+    await updateCommandRecord(record.id, {
+      status: 'completed',
+      result: JSON.stringify(result),
+      completedAt: nowIso(),
+    });
 
     logger.info('OpenClaw command executed', { command: request.command });
     return { id: record.id, command: request.command, status: 'completed', result };
   } catch (err) {
     const message = getErrorMessage(err);
-    await db.update(openclawCommands)
-      .set({ status: 'failed', errorMessage: message, completedAt: new Date().toISOString() })
-      .where(eq(openclawCommands.id, record.id));
+    await updateCommandRecord(record.id, {
+      status: 'failed',
+      errorMessage: message,
+      completedAt: nowIso(),
+    });
 
     logger.error('OpenClaw command failed', { command: request.command, error: message });
     return { id: record.id, command: request.command, status: 'failed', errorMessage: message };

@@ -3,6 +3,7 @@ import { AuthRequest } from '../types';
 import * as alertReadService from '../services/alert-read-service';
 import { predictiveAlertTypeValues } from '../db/schema';
 import { logger } from '../services/logger';
+import { parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 
@@ -28,8 +29,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const pharmacyId = req.user!.id;
     const resolved = parseResolved(req.query.resolved as string | undefined);
     const type = req.query.type as string | undefined;
-    const offset = req.query.offset ? Number(req.query.offset) : 0;
-    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const offset = parsePositiveInt(req.query.offset) ?? 0;
+    const limit = parsePositiveInt(req.query.limit) ?? 20;
 
     // alertType バリデーション
     if (type && !(predictiveAlertTypeValues as readonly string[]).includes(type)) {
@@ -47,7 +48,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error('List alerts error', { error: message });
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: 'アラート一覧の取得に失敗しました' });
   }
 });
 
@@ -62,7 +63,7 @@ router.get('/stats', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error('Get alert stats error', { error: message });
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: 'アラート統計の取得に失敗しました' });
   }
 });
 
@@ -86,7 +87,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error('Get alert detail error', { error: message });
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: 'アラート詳細の取得に失敗しました' });
   }
 });
 
@@ -110,7 +111,7 @@ router.patch('/:id/resolve', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error('Resolve alert error', { error: message });
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: 'アラートの解決に失敗しました' });
   }
 });
 

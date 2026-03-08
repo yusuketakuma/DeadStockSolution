@@ -1,0 +1,32 @@
+| Rank | Source | Score | Target | Reason |
+|---:|---|---:|---|---|
+| 1 | static-heuristic | 163.0900 | server/src/services/drug-master-sync-service.ts | loc=503, loops=10, awaitInLoop=7, sql=23 |
+| 2 | static-heuristic | 134.7400 | server/src/services/exchange-service.ts | loc=568, loops=4, awaitInLoop=4, sql=21 |
+| 3 | static-heuristic | 125.5800 | server/src/services/drug-master-enrichment.ts | loc=406, loops=13, awaitInLoop=6, sql=6 |
+| 4 | static-heuristic | 123.2300 | server/src/services/matching-service.ts | loc=411, loops=8, awaitInLoop=5, sql=19 |
+| 5 | static-heuristic | 122.0500 | server/src/services/matching-refresh-service.ts | loc=395, loops=5, awaitInLoop=5, sql=22 |
+| 6 | static-heuristic | 109.6400 | server/src/services/drug-master-parser-service.ts | loc=538, loops=14, awaitInLoop=2, sql=0 |
+| 7 | static-heuristic | 92.3900 | server/src/services/group-service.ts | loc=533, loops=0, awaitInLoop=0, sql=18 |
+| 8 | static-heuristic | 87.3800 | server/src/db/migrate-legacy.ts | loc=386, loops=2, awaitInLoop=2, sql=16 |
+| 9 | static-heuristic | 84.9800 | server/src/services/predictive-alert-service.ts | loc=456, loops=6, awaitInLoop=3, sql=7 |
+| 10 | static-heuristic | 84.6600 | server/src/test/integration/helpers/test-db.ts | loc=282, loops=9, awaitInLoop=4, sql=5 |
+| 11 | static-heuristic | 83.3400 | server/src/routes/admin-pharmacies-actions.ts | loc=488, loops=2, awaitInLoop=2, sql=12 |
+| 12 | static-heuristic | 82.5100 | server/src/services/matching-score-service.ts | loc=537, loops=12, awaitInLoop=0, sql=1 |
+| 13 | static-heuristic | 79.3400 | server/src/services/camera-dead-stock-service.ts | loc=468, loops=2, awaitInLoop=1, sql=10 |
+| 14 | static-heuristic | 78.8500 | server/src/routes/business-hours.ts | loc=445, loops=2, awaitInLoop=1, sql=10 |
+| 15 | static-heuristic | 76.9000 | server/src/routes/account.ts | loc=490, loops=0, awaitInLoop=0, sql=12 |
+| 16 | static-heuristic | 72.1000 | server/src/services/notification-service.ts | loc=300, loops=1, awaitInLoop=1, sql=19 |
+| 17 | static-heuristic | 70.5300 | server/src/services/matching-snapshot-service.ts | loc=421, loops=2, awaitInLoop=2, sql=15 |
+| 18 | static-heuristic | 68.5300 | server/src/services/expiry-risk-service.ts | loc=461, loops=5, awaitInLoop=2, sql=4 |
+| 19 | static-heuristic | 66.0400 | server/src/routes/exchange-proposals.ts | loc=588, loops=1, awaitInLoop=0, sql=12 |
+| 20 | static-heuristic | 64.8100 | server/src/services/upload-confirm-service.ts | loc=387, loops=2, awaitInLoop=2, sql=9 |
+| 21 | static-heuristic | 64.2800 | server/src/routes/notifications.ts | loc=386, loops=4, awaitInLoop=1, sql=12 |
+| 22 | static-heuristic | 63.3900 | server/src/routes/auth-helpers.ts | loc=703, loops=0, awaitInLoop=0, sql=11 |
+| 23 | static-heuristic | 60.3700 | server/src/services/upload-confirm/upload-confirm-query-service.ts | loc=359, loops=1, awaitInLoop=1, sql=14 |
+| 24 | static-heuristic | 60.3600 | server/src/services/matching-rule-service.ts | loc=342, loops=2, awaitInLoop=1, sql=10 |
+| 25 | static-heuristic | 59.9700 | client/src/hooks/useCamera.ts | loc=469, loops=2, awaitInLoop=1, sql=1 |
+| 26 | static-heuristic | 58.4700 | server/src/routes/exchange-comments.ts | loc=329, loops=0, awaitInLoop=0, sql=13 |
+| 27 | static-heuristic | 58.1400 | server/src/services/timeline-aggregators.ts | loc=688, loops=1, awaitInLoop=0, sql=11 |
+| 28 | static-heuristic | 57.8300 | server/src/services/upload-row-issue-service.ts | loc=251, loops=4, awaitInLoop=2, sql=10 |
+| 29 | static-heuristic | 54.2200 | server/src/services/log-center-service.ts | loc=464, loops=2, awaitInLoop=0, sql=5 |
+| 30 | static-heuristic | 53.9800 | server/src/routes/admin-pharmacies-detail.ts | loc=316, loops=0, awaitInLoop=0, sql=11 |

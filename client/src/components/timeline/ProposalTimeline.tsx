@@ -30,6 +30,16 @@ function getNextStepMessage(events: EnrichedProposalTimelineEvent[]): string | n
   return null;
 }
 
+function getEventKey(event: EnrichedProposalTimelineEvent, index: number): string {
+  return [
+    event.action,
+    event.at ?? 'pending',
+    event.actorPharmacyId ?? 'anonymous',
+    event.label,
+    index,
+  ].join(':');
+}
+
 function StarRating({ rating }: { rating: number }) {
   return (
     <span aria-label={`評価${rating}点`} data-testid="star-rating">
@@ -89,7 +99,7 @@ export default function ProposalTimeline({ events }: ProposalTimelineProps) {
 
           return (
             <div
-              key={`${event.action}-${event.at ?? i}`}
+              key={getEventKey(event, i)}
               style={{ position: 'relative', marginBottom: isLast ? 0 : '20px' }}
               data-testid="timeline-node"
             >

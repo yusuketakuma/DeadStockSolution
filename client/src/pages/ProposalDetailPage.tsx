@@ -74,6 +74,35 @@ interface ProposalComment {
   updatedAt: string | null;
 }
 
+function resolveProposalStatusMeta(proposal: ProposalDetail['proposal'], currentUserId: number | undefined) {
+  const isA = proposal.pharmacyAId === currentUserId;
+  const isTentativePhase = ['proposed', 'accepted_a', 'accepted_b'].includes(proposal.status);
+  const isConfirmedPhase = proposal.status === 'confirmed';
+  const isCompletedPhase = proposal.status === 'completed';
+  const isTerminalPhase = ['rejected', 'cancelled'].includes(proposal.status);
+  const phaseIndex = isTerminalPhase ? -1
+    : isTentativePhase ? 1
+    : isConfirmedPhase ? 2
+    : isCompletedPhase ? 3
+    : 0;
+
+  return {
+    isA,
+    isTentativePhase,
+    isConfirmedPhase,
+    isCompletedPhase,
+    isTerminalPhase,
+    phaseIndex,
+    canAccept: (
+      (proposal.status === 'proposed') ||
+      (proposal.status === 'accepted_a' && !isA) ||
+      (proposal.status === 'accepted_b' && isA)
+    ),
+    canReject: isTentativePhase,
+    canComplete: isConfirmedPhase,
+  };
+}
+
 export default function ProposalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -156,19 +185,15 @@ export default function ProposalDetailPage() {
 
   const proposal = data.proposal;
   const { pharmacyA, pharmacyB } = data;
-  const isA = proposal.pharmacyAId === user?.id;
-
-  // 3-phase: マッチング前 → 仮マッチング → 確定
-  const isTentativePhase = ['proposed', 'accepted_a', 'accepted_b'].includes(proposal.status);
-  const isConfirmedPhase = proposal.status === 'confirmed';
-  const isCompletedPhase = proposal.status === 'completed';
-  const isTerminalPhase = ['rejected', 'cancelled'].includes(proposal.status);
-
-  const phaseIndex = isTerminalPhase ? -1
-    : isTentativePhase ? 1
-    : isConfirmedPhase ? 2
-    : isCompletedPhase ? 3
-    : 0;
+  const {
+    isConfirmedPhase,
+    isCompletedPhase,
+    isTerminalPhase,
+    phaseIndex,
+    canAccept,
+    canReject,
+    canComplete,
+  } = resolveProposalStatusMeta(proposal, user?.id);
 
   const statusLabel = proposal.status === 'proposed' ? '仮マッチング中（双方未承認）'
     : proposal.status === 'accepted_a' ? '仮マッチング中（A側承認済）'
@@ -179,13 +204,6 @@ export default function ProposalDetailPage() {
     : proposal.status === 'cancelled' ? 'キャンセル'
     : proposal.status;
 
-  const canAccept = (
-    (proposal.status === 'proposed') ||
-    (proposal.status === 'accepted_a' && !isA) ||
-    (proposal.status === 'accepted_b' && isA)
-  );
-  const canReject = isTentativePhase;
-  const canComplete = isConfirmedPhase;
 
   const handleAction = async () => {
     if (!pendingAction) return;

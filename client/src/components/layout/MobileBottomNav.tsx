@@ -17,6 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/matching', label: 'マッチング', icon: '🔗' },
   { to: '/proposals', label: '提案', icon: '📋', badgeKey: 'proposals' },
   { to: '/alerts', label: 'アラート', icon: '🔔', badgeKey: 'alerts' },
+  { to: '/groups', label: 'グループ', icon: '👥' },
 ];
 
 /**

@@ -170,6 +170,10 @@ function compareNumberAsc(a: number, b: number): number {
   return a - b;
 }
 
+function resolveCandidateDistance(distance: number): number {
+  return Number.isFinite(distance) ? distance : Number.MAX_SAFE_INTEGER;
+}
+
 export function sortMatchCandidatesByPriority(
   candidates: MatchCandidate[],
   nearExpiryDays: number,
@@ -199,10 +203,7 @@ export function sortMatchCandidatesByPriority(
       || compareNumberDesc(a.priority.mutualItemCount, b.priority.mutualItemCount)
       || compareNumberDesc(a.priority.mutualTraceableItems, b.priority.mutualTraceableItems)
       || compareNumberDesc(toFiniteNumber(a.candidate.score), toFiniteNumber(b.candidate.score))
-      || compareNumberAsc(
-        Number.isFinite(a.candidate.distance) ? a.candidate.distance : Number.MAX_SAFE_INTEGER,
-        Number.isFinite(b.candidate.distance) ? b.candidate.distance : Number.MAX_SAFE_INTEGER,
-      )
+      || compareNumberAsc(resolveCandidateDistance(a.candidate.distance), resolveCandidateDistance(b.candidate.distance))
       || compareNumberAsc(a.candidate.pharmacyId, b.candidate.pharmacyId)
     ))
     .map((entry) => entry.candidate);

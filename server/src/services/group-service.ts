@@ -80,6 +80,79 @@ function toMember(member: GroupMemberRow): GroupMember {
   };
 }
 
+async function listGroupMembersPage(groupId: number, limit: number, offset: number): Promise<GroupMemberRow[]> {
+  return db.select()
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, groupId))
+    .orderBy(desc(groupMembers.joinedAt))
+    .limit(limit)
+    .offset(offset);
+}
+
+async function countGroupMembers(groupId: number): Promise<number> {
+  const allMembers = await db.select({ id: groupMembers.id })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, groupId));
+  return allMembers.length;
+}
+
+async function findUnreadGroupInvitation(groupId: number, pharmacyId: number) {
+  const [invitation] = await db.select({ id: notifications.id })
+    .from(notifications)
+    .where(and(
+      eq(notifications.pharmacyId, pharmacyId),
+      eq(notifications.type, 'group_invitation'),
+      eq(notifications.referenceId, groupId),
+      eq(notifications.isRead, false),
+    ));
+  return invitation ?? null;
+}
+
+async function createGroupMemberOrThrow(groupId: number, pharmacyId: number, role: GroupMemberRole): Promise<GroupMemberRow> {
+  const [createdMember] = await db.insert(groupMembers).values({
+    groupId,
+    pharmacyId,
+    role,
+  }).returning();
+
+  if (!createdMember) {
+    throw new Error('グループ参加に失敗しました');
+  }
+
+  return createdMember;
+}
+
+async function markNotificationAsRead(notificationId: number): Promise<void> {
+  await db.update(notifications)
+    .set({ isRead: true, readAt: new Date().toISOString() })
+    .where(eq(notifications.id, notificationId))
+    .returning({ id: notifications.id });
+}
+
+async function notifyGroupOwnerMembershipChange(
+  ownerPharmacyId: number,
+  actorPharmacyId: number,
+  groupId: number,
+  event: 'group_joined' | 'group_left',
+): Promise<void> {
+  if (ownerPharmacyId === actorPharmacyId) {
+    return;
+  }
+
+  const joined = event === 'group_joined';
+  await sendGroupPush(ownerPharmacyId, {
+    title: joined ? 'グループ参加' : 'グループ脱退',
+    body: joined
+      ? `薬局ID:${actorPharmacyId} がグループに参加しました`
+      : `薬局ID:${actorPharmacyId} がグループを脱退しました`,
+    data: {
+      url: `/groups/${groupId}`,
+      type: event,
+      referenceId: String(groupId),
+    },
+  });
+}
+
 async function getGroupById(groupId: number): Promise<PharmacyGroupRow> {
   const [group] = await db.select()
     .from(pharmacyGroups)
@@ -248,20 +321,14 @@ export async function listMembers(
   const group = await getGroupById(groupId);
   await assertCanViewGroup(group, pharmacyId);
 
-  const members = await db.select()
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId))
-    .orderBy(desc(groupMembers.joinedAt))
-    .limit(limit)
-    .offset(offset);
-
-  const allMembers = await db.select({ id: groupMembers.id })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const [members, total] = await Promise.all([
+    listGroupMembersPage(groupId, limit, offset),
+    countGroupMembers(groupId),
+  ]);
 
   return {
     members: members.map(toMember),
-    total: allMembers.length,
+    total,
     offset,
     limit,
   };
@@ -276,21 +343,15 @@ export async function getGroupDetail(
   const group = await getGroupById(groupId);
   await assertCanViewGroup(group, pharmacyId);
 
-  const members = await db.select()
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId))
-    .orderBy(desc(groupMembers.joinedAt))
-    .limit(limit)
-    .offset(offset);
-
-  const allMembers = await db.select({ id: groupMembers.id })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const [members, memberCount] = await Promise.all([
+    listGroupMembersPage(groupId, limit, offset),
+    countGroupMembers(groupId),
+  ]);
 
   return {
     ...toGroup(group),
     members: members.map(toMember),
-    memberCount: allMembers.length,
+    memberCount,
   };
 }
 
@@ -311,15 +372,7 @@ export async function inviteMember(
     throw new Error('既にグループメンバーです');
   }
 
-  const [existingInvitation] = await db.select({ id: notifications.id })
-    .from(notifications)
-    .where(and(
-      eq(notifications.pharmacyId, inviteePharmacyId),
-      eq(notifications.type, 'group_invitation'),
-      eq(notifications.referenceId, groupId),
-      eq(notifications.isRead, false),
-    ));
-
+  const existingInvitation = await findUnreadGroupInvitation(groupId, inviteePharmacyId);
   if (existingInvitation) {
     throw new Error('既に招待済みです');
   }
@@ -350,46 +403,16 @@ export async function acceptInvitation(groupId: number, pharmacyId: number): Pro
     throw new Error('既にグループメンバーです');
   }
 
-  const [invitation] = await db.select()
-    .from(notifications)
-    .where(and(
-      eq(notifications.pharmacyId, pharmacyId),
-      eq(notifications.type, 'group_invitation'),
-      eq(notifications.referenceId, groupId),
-      eq(notifications.isRead, false),
-    ));
-
+  const invitation = await findUnreadGroupInvitation(groupId, pharmacyId);
   if (!invitation) {
     throw new Error('有効な招待が見つかりません');
   }
 
-  const [createdMember] = await db.insert(groupMembers).values({
-    groupId,
-    pharmacyId,
-    role: 'member',
-  }).returning();
-
-  if (!createdMember) {
-    throw new Error('グループ参加に失敗しました');
-  }
-
-  await db.update(notifications)
-    .set({ isRead: true, readAt: new Date().toISOString() })
-    .where(eq(notifications.id, invitation.id))
-    .returning({ id: notifications.id });
+  await createGroupMemberOrThrow(groupId, pharmacyId, 'member');
+  await markNotificationAsRead(invitation.id);
 
   const group = await getGroupById(groupId);
-  if (group.ownerPharmacyId !== pharmacyId) {
-    await sendGroupPush(group.ownerPharmacyId, {
-      title: 'グループ参加',
-      body: `薬局ID:${pharmacyId} がグループに参加しました`,
-      data: {
-        url: `/groups/${groupId}`,
-        type: 'group_joined',
-        referenceId: String(groupId),
-      },
-    });
-  }
+  await notifyGroupOwnerMembershipChange(group.ownerPharmacyId, pharmacyId, groupId, 'group_joined');
 }
 
 export async function joinPublicGroup(groupId: number, pharmacyId: number): Promise<void> {
@@ -403,47 +426,17 @@ export async function joinPublicGroup(groupId: number, pharmacyId: number): Prom
     throw new Error('既にグループメンバーです');
   }
 
-  const [createdMember] = await db.insert(groupMembers).values({
-    groupId,
-    pharmacyId,
-    role: 'member',
-  }).returning();
-
-  if (!createdMember) {
-    throw new Error('グループ参加に失敗しました');
-  }
-
-  if (group.ownerPharmacyId !== pharmacyId) {
-    await sendGroupPush(group.ownerPharmacyId, {
-      title: 'グループ参加',
-      body: `薬局ID:${pharmacyId} がグループに参加しました`,
-      data: {
-        url: `/groups/${groupId}`,
-        type: 'group_joined',
-        referenceId: String(groupId),
-      },
-    });
-  }
+  await createGroupMemberOrThrow(groupId, pharmacyId, 'member');
+  await notifyGroupOwnerMembershipChange(group.ownerPharmacyId, pharmacyId, groupId, 'group_joined');
 }
 
 export async function declineInvitation(groupId: number, pharmacyId: number): Promise<void> {
-  const [invitation] = await db.select()
-    .from(notifications)
-    .where(and(
-      eq(notifications.pharmacyId, pharmacyId),
-      eq(notifications.type, 'group_invitation'),
-      eq(notifications.referenceId, groupId),
-      eq(notifications.isRead, false),
-    ));
-
+  const invitation = await findUnreadGroupInvitation(groupId, pharmacyId);
   if (!invitation) {
     throw new Error('有効な招待が見つかりません');
   }
 
-  await db.update(notifications)
-    .set({ isRead: true, readAt: new Date().toISOString() })
-    .where(eq(notifications.id, invitation.id))
-    .returning({ id: notifications.id });
+  await markNotificationAsRead(invitation.id);
 }
 
 export async function removeMember(
@@ -499,17 +492,7 @@ export async function leaveGroup(groupId: number, pharmacyId: number): Promise<v
   }
 
   const group = await getGroupById(groupId);
-  if (group.ownerPharmacyId !== pharmacyId) {
-    await sendGroupPush(group.ownerPharmacyId, {
-      title: 'グループ脱退',
-      body: `薬局ID:${pharmacyId} がグループを脱退しました`,
-      data: {
-        url: `/groups/${groupId}`,
-        type: 'group_left',
-        referenceId: String(groupId),
-      },
-    });
-  }
+  await notifyGroupOwnerMembershipChange(group.ownerPharmacyId, pharmacyId, groupId, 'group_left');
 }
 
 export async function updateMemberRole(

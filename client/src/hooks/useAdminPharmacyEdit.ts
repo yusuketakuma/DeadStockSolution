@@ -100,6 +100,44 @@ export interface UseAdminPharmacyEditReturn {
   handleSpecial24HoursChange: (index: number, is24Hours: boolean) => void;
 }
 
+function toAccountFormState(pharmacy: AdminPharmacyData): AccountFormState {
+  return {
+    email: pharmacy.email,
+    name: pharmacy.name,
+    postalCode: pharmacy.postalCode,
+    address: pharmacy.address,
+    phone: pharmacy.phone,
+    fax: pharmacy.fax,
+    prefecture: pharmacy.prefecture,
+    licenseNumber: pharmacy.licenseNumber,
+    currentPassword: '',
+    newPassword: '',
+  };
+}
+
+function applyAdminPharmacyDraft(
+  current: AdminPharmacyData,
+  form: AccountFormState,
+  isTestAccount: boolean,
+  testAccountPassword: string,
+  version?: number,
+): AdminPharmacyData {
+  return {
+    ...current,
+    email: form.email,
+    name: form.name,
+    postalCode: form.postalCode,
+    address: form.address,
+    phone: form.phone,
+    fax: form.fax,
+    prefecture: form.prefecture,
+    licenseNumber: form.licenseNumber,
+    isTestAccount,
+    testAccountPassword: isTestAccount ? testAccountPassword : null,
+    ...(version ? { version } : {}),
+  };
+}
+
 export function useAdminPharmacyEdit(): UseAdminPharmacyEditReturn {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -179,18 +217,7 @@ export function useAdminPharmacyEdit(): UseAdminPharmacyEditReturn {
       setPharmacy(data);
       setIsTestAccount(Boolean(data.isTestAccount));
       setTestAccountPassword(data.testAccountPassword ?? '');
-      setForm({
-        email: data.email,
-        name: data.name,
-        postalCode: data.postalCode,
-        address: data.address,
-        phone: data.phone,
-        fax: data.fax,
-        prefecture: data.prefecture,
-        licenseNumber: data.licenseNumber,
-        currentPassword: '',
-        newPassword: '',
-      });
+      setForm(toAccountFormState(data));
       setAccountConflict(false);
     } catch (err) {
       if (signal?.aborted) return;
@@ -294,61 +321,25 @@ export function useAdminPharmacyEdit(): UseAdminPharmacyEditReturn {
       });
       setMessage('薬局情報を更新しました');
       setForm((prev) => ({ ...prev, currentPassword: '', newPassword: '' }));
-      setPharmacy((prev) => (prev ? {
-        ...prev,
-        email: form.email,
-        name: form.name,
-        postalCode: form.postalCode,
-        address: form.address,
-        phone: form.phone,
-        fax: form.fax,
-        prefecture: form.prefecture,
-        licenseNumber: form.licenseNumber,
-        isTestAccount,
-        testAccountPassword: isTestAccount ? testAccountPassword : null,
-        version: result.version,
-      } : prev));
+      setPharmacy((prev) => (prev
+        ? applyAdminPharmacyDraft(prev, form, isTestAccount, testAccountPassword, result.version)
+        : prev));
     } catch (err) {
       if (isConflictError(err)) {
         setAccountConflict(true);
         const latestData = err.data.latestData as AdminPharmacyData | undefined;
         if (latestData) {
           setPharmacy(latestData);
-          setForm({
-            email: latestData.email,
-            name: latestData.name,
-            postalCode: latestData.postalCode,
-            address: latestData.address,
-            phone: latestData.phone,
-            fax: latestData.fax,
-            prefecture: latestData.prefecture,
-            licenseNumber: latestData.licenseNumber,
-            currentPassword: '',
-            newPassword: '',
-          });
+          setForm(toAccountFormState(latestData));
           setIsTestAccount(Boolean(latestData.isTestAccount));
           setTestAccountPassword(latestData.testAccountPassword ?? '');
         }
       } else if (isPartialSuccessError(err)) {
         setError(err.message);
         setForm((prev) => ({ ...prev, currentPassword: '', newPassword: '' }));
-        setPharmacy((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            email: form.email,
-            name: form.name,
-            postalCode: form.postalCode,
-            address: form.address,
-            phone: form.phone,
-            fax: form.fax,
-            prefecture: form.prefecture,
-            licenseNumber: form.licenseNumber,
-            isTestAccount,
-            testAccountPassword: isTestAccount ? testAccountPassword : null,
-            ...(err.data.version ? { version: err.data.version } : {}),
-          };
-        });
+        setPharmacy((prev) => (prev
+          ? applyAdminPharmacyDraft(prev, form, isTestAccount, testAccountPassword, err.data.version)
+          : prev));
       } else if (isVerificationStatusError(err)) {
         setError('審査ステータスにより操作を実行できません');
       } else {

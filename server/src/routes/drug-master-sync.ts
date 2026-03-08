@@ -222,16 +222,60 @@ function uploadSingleFile(req: Request, res: Response, next: NextFunction): void
   });
 }
 
+function getUploadedFileOrRespond(req: AuthRequest, res: Response): Express.Multer.File | null {
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) {
+    res.status(400).json({ error: 'ファイルが必要です' });
+    return null;
+  }
+  return file;
+}
+
+async function parseRowsOrRespond<T>(
+  req: AuthRequest,
+  res: Response,
+  action: 'drug_master_sync' | 'drug_master_package_upload',
+  phase: string,
+  ext: string,
+  parseRows: () => Promise<T[]>,
+  syncLogId?: number,
+  genericErrorMessage?: string,
+): Promise<{ rows: T[] | null; failureMessage: string | null }> {
+  try {
+    const parsedRows = await parseRows();
+    if (parsedRows.length > 0) {
+      return { rows: parsedRows, failureMessage: null };
+    }
+
+    logImportFailure(action, req, phase, 'empty_rows', {
+      extension: ext,
+      ...(syncLogId ? { syncLogId } : {}),
+    });
+    res.status(400).json({ error: action === 'drug_master_sync'
+      ? '有効なデータ行が見つかりませんでした。ファイル形式を確認してください。'
+      : '有効なデータ行が見つかりませんでした。' });
+    return { rows: null, failureMessage: '有効なデータ行が見つかりません' };
+  } catch (parseErr) {
+    const failureMessage = getErrorMessage(parseErr);
+    logImportFailure(action, req, phase, 'parse_failed', {
+      extension: ext,
+      ...(syncLogId ? { syncLogId } : {}),
+      error: failureMessage,
+    });
+    res.status(400).json({
+      error: parseErr instanceof Error ? parseErr.message : (genericErrorMessage ?? failureMessage),
+    });
+    return { rows: null, failureMessage };
+  }
+}
+
 // ── 薬価基準収載品目リスト同期（ファイルアップロード）──
 
 router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) => {
   let syncFailureLogged = false;
   try {
-    const file = (req as Request & { file?: Express.Multer.File }).file;
-    if (!file) {
-      res.status(400).json({ error: 'ファイルが必要です' });
-      return;
-    }
+    const file = getUploadedFileOrRespond(req, res);
+    if (!file) return;
 
     const revisionDate = normalizeRevisionDate(req.body.revisionDate);
 
@@ -248,27 +292,18 @@ router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) =
     // 同期ログ作成
     const syncLog = await createSyncLog('manual', file.originalname, userId);
 
-    let parsedRows: ParsedDrugMasterRows;
-    try {
-      parsedRows = await parseDrugMasterRows(file, ext);
-    } catch (parseErr) {
-      logImportFailure('drug_master_sync', req, 'sync', 'parse_failed', {
-        extension: ext,
-        syncLogId: syncLog.id,
-        error: getErrorMessage(parseErr),
-      });
-      await completeSyncLogAsFailed(syncLog.id, getErrorMessage(parseErr));
-      res.status(400).json({ error: getErrorMessage(parseErr) });
-      return;
-    }
-
-    if (parsedRows.length === 0) {
-      logImportFailure('drug_master_sync', req, 'sync', 'empty_rows', {
-        extension: ext,
-        syncLogId: syncLog.id,
-      });
-      await completeSyncLogAsFailed(syncLog.id, '有効なデータ行が見つかりません');
-      res.status(400).json({ error: '有効なデータ行が見つかりませんでした。ファイル形式を確認してください。' });
+    const { rows: parsedRows, failureMessage } = await parseRowsOrRespond(
+      req,
+      res,
+      'drug_master_sync',
+      'sync',
+      ext,
+      () => parseDrugMasterRows(file, ext),
+      syncLog.id,
+      undefined,
+    );
+    if (!parsedRows) {
+      await completeSyncLogAsFailed(syncLog.id, failureMessage ?? '同期前の検証に失敗しました');
       return;
     }
 
@@ -305,7 +340,12 @@ router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) =
       // 同期失敗時もログを確実に閉じる
       try {
         await completeSyncLogAsFailed(syncLog.id, getErrorMessage(syncErr));
-      } catch { /* ログ更新失敗は無視 */ }
+      } catch (logErr) {
+        logger.warn('Drug master sync: failed to update sync log after failure', {
+          syncLogId: syncLog.id,
+          error: logErr instanceof Error ? logErr.message : String(logErr),
+        });
+      }
       throw syncErr;
     }
   } catch (err) {
@@ -327,33 +367,21 @@ router.post('/sync', uploadSingleFile, async (req: AuthRequest, res: Response) =
 
 router.post('/upload-packages', uploadSingleFile, async (req: AuthRequest, res: Response) => {
   try {
-    const file = (req as Request & { file?: Express.Multer.File }).file;
-    if (!file) {
-      res.status(400).json({ error: 'ファイルが必要です' });
-      return;
-    }
+    const file = getUploadedFileOrRespond(req, res);
+    if (!file) return;
 
     const ext = path.extname(file.originalname).toLowerCase();
-    let parsedRows: ParsedPackageRows;
-
-    try {
-      parsedRows = await parsePackageRows(file, ext);
-    } catch (parseErr) {
-      logImportFailure('drug_master_package_upload', req, 'upload_packages', 'parse_failed', {
-        extension: ext,
-        error: getErrorMessage(parseErr),
-      });
-      res.status(400).json({ error: parseErr instanceof Error ? parseErr.message : 'ファイルのパースに失敗しました' });
-      return;
-    }
-
-    if (parsedRows.length === 0) {
-      logImportFailure('drug_master_package_upload', req, 'upload_packages', 'empty_rows', {
-        extension: ext,
-      });
-      res.status(400).json({ error: '有効なデータ行が見つかりませんでした。' });
-      return;
-    }
+    const { rows: parsedRows } = await parseRowsOrRespond(
+      req,
+      res,
+      'drug_master_package_upload',
+      'upload_packages',
+      ext,
+      () => parsePackageRows(file, ext),
+      undefined,
+      'ファイルのパースに失敗しました',
+    );
+    if (!parsedRows) return;
 
     const result = await syncPackageData(parsedRows);
 

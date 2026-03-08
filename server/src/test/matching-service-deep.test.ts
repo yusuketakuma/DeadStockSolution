@@ -40,6 +40,10 @@ vi.mock('../config/database', () => ({
   db: mocks.db,
 }));
 
+vi.mock('../services/drug-equivalence-service', () => ({
+  fetchEquivalenceMap: vi.fn().mockResolvedValue(new Map()),
+}));
+
 vi.mock('../services/matching-rule-service', () => ({
   getActiveMatchingRuleProfile: mocks.getActiveMatchingRuleProfile,
 }));

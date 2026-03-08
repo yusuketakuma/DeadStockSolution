@@ -135,6 +135,10 @@ export async function waitForNextPoll(signal: AbortSignal, intervalMs: number): 
   });
 }
 
+function buildPollingTerminalResult(message: string): PollingResult {
+  return { result: null, error: new Error(message), wasAborted: false };
+}
+
 // === メインフック ===
 export function useUploadJobPolling() {
   const [jobState, setJobState] = useState<UploadJobState>(UPLOAD_JOB_INITIAL_STATE);
@@ -246,17 +250,17 @@ export function useUploadJobPolling() {
       if (job.status === 'failed') {
         setJobState((prev) => ({ ...prev, status: null, cancelable: false }));
         setIsPolling(false);
-        return { result: null, error: new Error(job.lastError || 'アップロード処理に失敗しました'), wasAborted: false };
+        return buildPollingTerminalResult(job.lastError || 'アップロード処理に失敗しました');
       }
       if (job.status === 'canceled' || job.status === 'cancelled') {
         setJobState((prev) => ({ ...prev, status: null, cancelable: false }));
         setIsPolling(false);
-        return { result: null, error: new Error(job.lastError || 'アップロード処理はキャンセルされました'), wasAborted: false };
+        return buildPollingTerminalResult(job.lastError || 'アップロード処理はキャンセルされました');
       }
       if (job.status !== 'pending' && job.status !== 'processing') {
         setJobState((prev) => ({ ...prev, status: null, cancelable: false }));
         setIsPolling(false);
-        return { result: null, error: new Error('アップロード処理状態の取得に失敗しました'), wasAborted: false };
+        return buildPollingTerminalResult('アップロード処理状態の取得に失敗しました');
       }
 
       const elapsedMs = Date.now() - pollingStartedAt;

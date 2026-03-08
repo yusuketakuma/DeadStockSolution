@@ -241,6 +241,32 @@ export function matchUpdateNotice(row: {
   };
 }
 
+function buildProposalNotice(params: {
+  id: string;
+  type: NoticeType;
+  title: string;
+  body: string;
+  actionPath: string;
+  actionLabel: string;
+  createdAt: string | null;
+  deadlineAt: string | null;
+  unread: boolean;
+  priority: number;
+}): NoticeItem {
+  return {
+    id: params.id,
+    type: params.type,
+    title: params.title,
+    body: params.body,
+    actionPath: params.actionPath,
+    actionLabel: params.actionLabel,
+    createdAt: params.createdAt,
+    deadlineAt: params.deadlineAt,
+    unread: params.unread,
+    priority: params.priority,
+  };
+}
+
 export function proposalActionNotice(proposal: {
   id: number;
   pharmacyAId: number;
@@ -261,7 +287,7 @@ export function proposalActionNotice(proposal: {
 
   if (proposal.status === 'proposed') {
     if (isA) {
-      return {
+      return buildProposalNotice({
         id: linkedId ?? `proposal-${proposal.id}-outbound`,
         type: 'outbound_request',
         title: '仮マッチングを送信済みです',
@@ -272,9 +298,9 @@ export function proposalActionNotice(proposal: {
         deadlineAt,
         unread: linkedNotification ? linkedUnread : false,
         priority: 3,
-      };
+      });
     }
-    return {
+    return buildProposalNotice({
       id: linkedId ?? `proposal-${proposal.id}-inbound`,
       type: 'inbound_request',
       title: '仮マッチングが届いています',
@@ -285,11 +311,11 @@ export function proposalActionNotice(proposal: {
       deadlineAt,
       unread: linkedUnread,
       priority: 1,
-    };
+    });
   }
 
   if ((proposal.status === 'accepted_a' && !isA) || (proposal.status === 'accepted_b' && isA)) {
-    return {
+    return buildProposalNotice({
       id: linkedId ?? `proposal-${proposal.id}-pending-my-approval`,
       type: 'inbound_request',
       title: '相手承認済みの仮マッチングがあります',
@@ -300,11 +326,11 @@ export function proposalActionNotice(proposal: {
       deadlineAt,
       unread: linkedUnread,
       priority: 1,
-    };
+    });
   }
 
   if (proposal.status === 'confirmed') {
-    return {
+    return buildProposalNotice({
       id: linkedId ?? `proposal-${proposal.id}-confirmed`,
       type: 'status_update',
       title: 'マッチングが確定しました',
@@ -315,7 +341,7 @@ export function proposalActionNotice(proposal: {
       deadlineAt: null,
       unread: linkedUnread,
       priority: 2,
-    };
+    });
   }
 
   return null;

@@ -12,9 +12,19 @@ function assertMonotonicMigrationJournal(migrationsFolder: string): void {
   const ENFORCE_FROM_IDX = 28;
   const journalPath = path.resolve(migrationsFolder, 'meta/_journal.json');
   const raw = fs.readFileSync(journalPath, 'utf8');
-  const journal = JSON.parse(raw) as {
+
+  let journal: {
     entries?: Array<{ idx: number; when: number; tag: string }>;
   };
+  try {
+    journal = JSON.parse(raw) as {
+      entries?: Array<{ idx: number; when: number; tag: string }>;
+    };
+  } catch (err) {
+    logger.error('Migration journal JSON parse failed', { error: err instanceof Error ? err.message : String(err) });
+    process.exit(1);
+  }
+
   const entries = journal.entries ?? [];
   for (let i = 1; i < entries.length; i += 1) {
     const prev = entries[i - 1];

@@ -53,10 +53,34 @@ async function fetchAggregatesForTargets(targetIds?: number[]): Promise<Aggregat
   return query.where(inArray(exchangeFeedback.toPharmacyId, targetIds));
 }
 
-export async function recalculateTrustScores(targetPharmacyIds?: number[]): Promise<void> {
-  const targetIds = targetPharmacyIds && targetPharmacyIds.length > 0
+function normalizeTargetIds(targetPharmacyIds?: number[]): number[] | null {
+  return targetPharmacyIds && targetPharmacyIds.length > 0
     ? [...new Set(targetPharmacyIds)]
     : null;
+}
+
+function buildTrustScoreRecord(
+  pharmacyId: number,
+  aggregate: AggregateRow | undefined,
+  updatedAt: string,
+) {
+  const ratingCount = Number(aggregate?.ratingCount ?? 0);
+  const avgRating = Number(aggregate?.avgRating ?? 0);
+  const positiveCount = Number(aggregate?.positiveCount ?? 0);
+  const trustScore = ratingCount > 0 ? toTrustScore(avgRating, ratingCount) : 60;
+  const positiveRate = ratingCount > 0 ? toPositiveRate(positiveCount, ratingCount) : 0;
+
+  return {
+    pharmacyId,
+    trustScore: String(trustScore),
+    ratingCount,
+    positiveRate: String(positiveRate),
+    updatedAt,
+  };
+}
+
+export async function recalculateTrustScores(targetPharmacyIds?: number[]): Promise<void> {
+  const targetIds = normalizeTargetIds(targetPharmacyIds);
 
   const [activePharmacyRows, aggregateRows] = await Promise.all([
     targetIds
@@ -74,28 +98,12 @@ export async function recalculateTrustScores(targetPharmacyIds?: number[]): Prom
 
   const now = new Date().toISOString();
   for (const pharmacy of activePharmacyRows) {
-    const aggregate = aggregateMap.get(pharmacy.id);
-    const ratingCount = Number(aggregate?.ratingCount ?? 0);
-    const avgRating = Number(aggregate?.avgRating ?? 0);
-    const positiveCount = Number(aggregate?.positiveCount ?? 0);
-
-    const trustScore = ratingCount > 0 ? toTrustScore(avgRating, ratingCount) : 60;
-    const positiveRate = ratingCount > 0 ? toPositiveRate(positiveCount, ratingCount) : 0;
-
+    const record = buildTrustScoreRecord(pharmacy.id, aggregateMap.get(pharmacy.id), now);
     await db.insert(pharmacyTrustScores).values({
-      pharmacyId: pharmacy.id,
-      trustScore: String(trustScore),
-      ratingCount,
-      positiveRate: String(positiveRate),
-      updatedAt: now,
+      ...record,
     }).onConflictDoUpdate({
       target: [pharmacyTrustScores.pharmacyId],
-      set: {
-        trustScore: String(trustScore),
-        ratingCount,
-        positiveRate: String(positiveRate),
-        updatedAt: now,
-      },
+      set: record,
     });
   }
 }

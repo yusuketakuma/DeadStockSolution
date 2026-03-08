@@ -27,6 +27,15 @@ export interface CsvExportOptions {
   batchSize?: number;
 }
 
+interface CsvExportRunnerOptions<Row> {
+  writer: CsvWriter;
+  headers: string[];
+  batchSize: number;
+  fetchRows: (offset: number, batchSize: number) => Promise<Row[]>;
+  writeRow: (writer: CsvWriter, row: Row) => void;
+  errorMessage: string;
+}
+
 // ── ヘルパー ──────────────────────────────────────────────
 
 function escapeCsvField(value: unknown): string {
@@ -53,6 +62,44 @@ function writeHeader(writer: CsvWriter, headers: string[]): void {
   writer.write(toCsvRow(headers));
 }
 
+async function runCsvExport<Row>({
+  writer,
+  headers,
+  batchSize,
+  fetchRows,
+  writeRow,
+  errorMessage,
+}: CsvExportRunnerOptions<Row>): Promise<number> {
+  writeBom(writer);
+  writeHeader(writer, headers);
+
+  let offset = 0;
+  let totalRows = 0;
+
+  try {
+    while (true) {
+      const rows = await fetchRows(offset, batchSize);
+      if (rows.length === 0) break;
+
+      for (const row of rows) {
+        writeRow(writer, row);
+      }
+
+      totalRows += rows.length;
+      if (rows.length < batchSize) break;
+      offset += batchSize;
+    }
+  } catch (err) {
+    logger.error(errorMessage, {
+      error: err instanceof Error ? err.message : String(err),
+      exportedRows: totalRows,
+    });
+    throw err;
+  }
+
+  return totalRows;
+}
+
 // ── 薬局エクスポート ──────────────────────────────────────
 
 const PHARMACY_HEADERS = [
@@ -66,16 +113,11 @@ export async function exportPharmaciesCsv(
   _options: CsvExportOptions = {},
 ): Promise<number> {
   const batchSize = _options.batchSize ?? BATCH_SIZE;
-  writeBom(writer);
-  writeHeader(writer, PHARMACY_HEADERS);
-
-  let offset = 0;
-  let totalRows = 0;
-
-  try {
-     
-    while (true) {
-      const rows = await db.select({
+  return runCsvExport({
+    writer,
+    headers: PHARMACY_HEADERS,
+    batchSize,
+    fetchRows: (offset, limit) => db.select({
         id: pharmacies.id,
         email: pharmacies.email,
         name: pharmacies.name,
@@ -92,42 +134,27 @@ export async function exportPharmaciesCsv(
       })
         .from(pharmacies)
         .orderBy(desc(pharmacies.createdAt))
-        .limit(batchSize)
-        .offset(offset);
-
-      if (rows.length === 0) break;
-
-      for (const row of rows) {
-        writer.write(toCsvRow([
-          row.id,
-          row.email,
-          row.name,
-          row.prefecture,
-          row.address,
-          row.postalCode,
-          row.phone,
-          row.fax,
-          row.isActive ? 'はい' : 'いいえ',
-          row.isAdmin ? 'はい' : 'いいえ',
-          row.isTestAccount ? 'はい' : 'いいえ',
-          row.verificationStatus,
-          row.createdAt,
-        ]));
-      }
-
-      totalRows += rows.length;
-      if (rows.length < batchSize) break;
-      offset += batchSize;
-    }
-  } catch (err) {
-    logger.error('CSV export pharmacies failed', {
-      error: err instanceof Error ? err.message : String(err),
-      exportedRows: totalRows,
-    });
-    throw err;
-  }
-
-  return totalRows;
+        .limit(limit)
+        .offset(offset),
+    writeRow: (targetWriter, row) => {
+      targetWriter.write(toCsvRow([
+        row.id,
+        row.email,
+        row.name,
+        row.prefecture,
+        row.address,
+        row.postalCode,
+        row.phone,
+        row.fax,
+        row.isActive ? 'はい' : 'いいえ',
+        row.isAdmin ? 'はい' : 'いいえ',
+        row.isTestAccount ? 'はい' : 'いいえ',
+        row.verificationStatus,
+        row.createdAt,
+      ]));
+    },
+    errorMessage: 'CSV export pharmacies failed',
+  });
 }
 
 // ── 交換エクスポート ──────────────────────────────────────
@@ -143,16 +170,11 @@ export async function exportExchangesCsv(
   _options: CsvExportOptions = {},
 ): Promise<number> {
   const batchSize = _options.batchSize ?? BATCH_SIZE;
-  writeBom(writer);
-  writeHeader(writer, EXCHANGE_HEADERS);
-
-  let offset = 0;
-  let totalRows = 0;
-
-  try {
-     
-    while (true) {
-      const rows = await db.select({
+  return runCsvExport({
+    writer,
+    headers: EXCHANGE_HEADERS,
+    batchSize,
+    fetchRows: (offset, limit) => db.select({
         id: exchangeProposals.id,
         pharmacyAId: exchangeProposals.pharmacyAId,
         pharmacyBId: exchangeProposals.pharmacyBId,
@@ -165,38 +187,23 @@ export async function exportExchangesCsv(
       })
         .from(exchangeProposals)
         .orderBy(desc(exchangeProposals.proposedAt))
-        .limit(batchSize)
-        .offset(offset);
-
-      if (rows.length === 0) break;
-
-      for (const row of rows) {
-        writer.write(toCsvRow([
-          row.id,
-          row.pharmacyAId,
-          row.pharmacyBId,
-          row.status,
-          row.totalValueA,
-          row.totalValueB,
-          row.valueDifference,
-          row.proposedAt,
-          row.completedAt,
-        ]));
-      }
-
-      totalRows += rows.length;
-      if (rows.length < batchSize) break;
-      offset += batchSize;
-    }
-  } catch (err) {
-    logger.error('CSV export exchanges failed', {
-      error: err instanceof Error ? err.message : String(err),
-      exportedRows: totalRows,
-    });
-    throw err;
-  }
-
-  return totalRows;
+        .limit(limit)
+        .offset(offset),
+    writeRow: (targetWriter, row) => {
+      targetWriter.write(toCsvRow([
+        row.id,
+        row.pharmacyAId,
+        row.pharmacyBId,
+        row.status,
+        row.totalValueA,
+        row.totalValueB,
+        row.valueDifference,
+        row.proposedAt,
+        row.completedAt,
+      ]));
+    },
+    errorMessage: 'CSV export exchanges failed',
+  });
 }
 
 // ── レポートエクスポート ──────────────────────────────────
@@ -210,16 +217,11 @@ export async function exportReportsCsv(
   _options: CsvExportOptions = {},
 ): Promise<number> {
   const batchSize = _options.batchSize ?? BATCH_SIZE;
-  writeBom(writer);
-  writeHeader(writer, REPORT_HEADERS);
-
-  let offset = 0;
-  let totalRows = 0;
-
-  try {
-     
-    while (true) {
-      const rows = await db.select({
+  return runCsvExport({
+    writer,
+    headers: REPORT_HEADERS,
+    batchSize,
+    fetchRows: (offset, limit) => db.select({
         id: monthlyReports.id,
         year: monthlyReports.year,
         month: monthlyReports.month,
@@ -228,32 +230,17 @@ export async function exportReportsCsv(
       })
         .from(monthlyReports)
         .orderBy(desc(monthlyReports.generatedAt))
-        .limit(batchSize)
-        .offset(offset);
-
-      if (rows.length === 0) break;
-
-      for (const row of rows) {
-        writer.write(toCsvRow([
-          row.id,
-          row.year,
-          row.month,
-          row.status,
-          row.generatedAt,
-        ]));
-      }
-
-      totalRows += rows.length;
-      if (rows.length < batchSize) break;
-      offset += batchSize;
-    }
-  } catch (err) {
-    logger.error('CSV export reports failed', {
-      error: err instanceof Error ? err.message : String(err),
-      exportedRows: totalRows,
-    });
-    throw err;
-  }
-
-  return totalRows;
+        .limit(limit)
+        .offset(offset),
+    writeRow: (targetWriter, row) => {
+      targetWriter.write(toCsvRow([
+        row.id,
+        row.year,
+        row.month,
+        row.status,
+        row.generatedAt,
+      ]));
+    },
+    errorMessage: 'CSV export reports failed',
+  });
 }

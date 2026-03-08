@@ -15,6 +15,17 @@ async function acquirePasswordResetLock(tx: PasswordResetTransaction, pharmacyId
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${PASSWORD_RESET_LOCK_NAMESPACE}, ${pharmacyId})`);
 }
 
+async function countActiveResetTokens(tx: PasswordResetTransaction, pharmacyId: number, nowIso: string): Promise<number> {
+  const activeTokenCountRows = await tx.execute<{ count: number }>(sql`
+      SELECT COUNT(*)::int AS count
+      FROM password_reset_tokens
+      WHERE pharmacy_id = ${pharmacyId}
+        AND used_at IS NULL
+        AND expires_at > ${nowIso}
+    `);
+  return Number(activeTokenCountRows.rows[0]?.count ?? 0);
+}
+
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -52,15 +63,7 @@ export async function createPasswordResetToken(email: string): Promise<{ token: 
       )
     );
 
-    const activeTokenCountRows = await tx.execute<{ count: number }>(sql`
-      SELECT COUNT(*)::int AS count
-      FROM password_reset_tokens
-      WHERE pharmacy_id = ${pharmacy.id}
-        AND used_at IS NULL
-        AND expires_at > ${nowIso}
-    `);
-
-    const activeTokenCount = Number(activeTokenCountRows.rows[0]?.count ?? 0);
+    const activeTokenCount = await countActiveResetTokens(tx, pharmacy.id, nowIso);
     if (activeTokenCount >= MAX_ACTIVE_TOKENS_PER_USER) {
       return null;
     }

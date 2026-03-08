@@ -33,8 +33,13 @@ interface LoginFieldErrors {
   password?: string;
 }
 
+interface LoginFailureState {
+  errorMessage: string;
+  redirectPath?: string;
+}
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TEST_PHARMACY_ENDPOINT = '/auth/test-pharmacies?includePassword=1';
+const TEST_PHARMACY_ENDPOINT = '/auth/test-pharmacies';
 
 function isTestLoginFeatureEnabled(): boolean {
   return resolveClientTestLoginFeatureEnabled(import.meta.env as {
@@ -54,7 +59,8 @@ function isTestPharmacyPreview(value: unknown): value is TestPharmacyPreview {
 }
 
 function normalizeTestPharmacyPassword(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  void value;
+  return '';
 }
 
 function parseTestPharmacyAccounts(payload: unknown): TestPharmacyPreview[] {
@@ -70,6 +76,40 @@ function parseTestPharmacyAccounts(payload: unknown): TestPharmacyPreview[] {
       prefecture: item.prefecture,
       password: normalizeTestPharmacyPassword(item.password),
     }));
+}
+
+function matchesTestPharmacyQuery(pharmacy: TestPharmacyPreview, normalizedQuery: string): boolean {
+  return pharmacy.name.toLowerCase().includes(normalizedQuery)
+    || pharmacy.email.toLowerCase().includes(normalizedQuery)
+    || pharmacy.prefecture.toLowerCase().includes(normalizedQuery)
+    || String(pharmacy.id).includes(normalizedQuery);
+}
+
+function resolveLoginFailureState(err: unknown, normalizedEmail: string): LoginFailureState {
+  if (err instanceof ApiError && err.status === 403) {
+    const data = err.data as { verificationStatus?: string } | undefined;
+    if (data?.verificationStatus === 'pending_verification') {
+      return {
+        errorMessage: '',
+        redirectPath: `/verification-pending?email=${encodeURIComponent(normalizedEmail)}`,
+      };
+    }
+    if (data?.verificationStatus === 'rejected') {
+      return {
+        errorMessage: 'アカウント申請が却下されました。詳細はメールをご確認ください。',
+      };
+    }
+  }
+
+  if (err instanceof ApiError && err.status === 401) {
+    return {
+      errorMessage: 'メールアドレスまたはパスワードが正しくありません',
+    };
+  }
+
+  return {
+    errorMessage: err instanceof Error ? err.message : 'ログインに失敗しました',
+  };
 }
 
 export default function LoginPage() {
@@ -93,12 +133,7 @@ export default function LoginPage() {
   const filteredTestPharmacies = useMemo(() => {
     const normalizedQuery = testPharmacyQuery.trim().toLowerCase();
     if (!normalizedQuery) return testPharmacies;
-    return testPharmacies.filter((pharmacy) => (
-      pharmacy.name.toLowerCase().includes(normalizedQuery)
-      || pharmacy.email.toLowerCase().includes(normalizedQuery)
-      || pharmacy.prefecture.toLowerCase().includes(normalizedQuery)
-      || String(pharmacy.id).includes(normalizedQuery)
-    ));
+    return testPharmacies.filter((pharmacy) => matchesTestPharmacyQuery(pharmacy, normalizedQuery));
   }, [testPharmacies, testPharmacyQuery]);
 
   const validateForm = (): boolean => {
@@ -147,22 +182,12 @@ export default function LoginPage() {
       }
       navigate('/');
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
-        const data = err.data as { verificationStatus?: string } | undefined;
-        if (data?.verificationStatus === 'pending_verification') {
-          navigate(`/verification-pending?email=${encodeURIComponent(normalizedEmail)}`);
-          return;
-        }
-        if (data?.verificationStatus === 'rejected') {
-          setError('アカウント申請が却下されました。詳細はメールをご確認ください。');
-          return;
-        }
-      }
-      if (err instanceof ApiError && err.status === 401) {
-        setError('メールアドレスまたはパスワードが正しくありません');
+      const failureState = resolveLoginFailureState(err, normalizedEmail);
+      if (failureState.redirectPath) {
+        navigate(failureState.redirectPath);
         return;
       }
-      setError(err instanceof Error ? err.message : 'ログインに失敗しました');
+      setError(failureState.errorMessage);
     } finally {
       setLoading(false);
     }

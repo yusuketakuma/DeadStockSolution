@@ -122,6 +122,20 @@ function hasRuleUpdateField(body: z.infer<typeof updateMatchingRuleSchema>): boo
   return RULE_FIELD_KEYS.some((key) => body[key] !== undefined);
 }
 
+function buildValidationErrorPayload(issue: z.ZodIssue | undefined): { error: string; field?: string | number | null } {
+  const issueField = issue?.path?.[0];
+  const field = typeof issueField === 'string' || typeof issueField === 'number' ? issueField : null;
+  return {
+    error: issue?.message ?? 'リクエスト形式が不正です',
+    field,
+  };
+}
+
+function buildMatchingRuleAuditReason(data: z.infer<typeof updateMatchingRuleSchema>): string {
+  const updatedFields = Object.keys(data).filter((key) => key !== 'expectedVersion');
+  return `マッチングルール更新: ${updatedFields.join(', ')}`;
+}
+
 // ── ルート ─────────────────────────────────────
 
 router.get('/matching-rules/profile', async (_req: AuthRequest, res: Response) => {
@@ -139,11 +153,7 @@ router.get('/matching-rules/profile', async (_req: AuthRequest, res: Response) =
 async function handleMatchingRuleUpdate(req: AuthRequest, res: Response): Promise<void> {
   const parsed = updateMatchingRuleSchema.safeParse(req.body);
   if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    res.status(400).json({
-      error: issue?.message ?? 'リクエスト形式が不正です',
-      field: issue?.path?.[0] ?? null,
-    });
+    res.status(400).json(buildValidationErrorPayload(parsed.error.issues[0]));
     return;
   }
 
@@ -169,7 +179,7 @@ async function handleMatchingRuleUpdate(req: AuthRequest, res: Response): Promis
         action: 'verify', // matching-rule-update の代替として verify を使用
         previousStatus: String(parsed.data.expectedVersion ?? 'unknown'),
         newStatus: String(updated.version),
-        reason: `マッチングルール更新: ${Object.keys(parsed.data).filter((k) => k !== 'expectedVersion').join(', ')}`,
+        reason: buildMatchingRuleAuditReason(parsed.data),
       }).catch((err) => {
         logger.error('Failed to record audit log for matching rule update', {
           error: err instanceof Error ? err.message : String(err),

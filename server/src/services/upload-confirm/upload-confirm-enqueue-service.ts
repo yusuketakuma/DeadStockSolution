@@ -15,6 +15,7 @@ import {
   isJobCancelable,
   type EnqueueUploadConfirmJobParams,
   type EnqueueUploadConfirmJobResult,
+  type UploadConfirmJobStatus,
   type UploadConfirmJobRecord,
 } from './upload-confirm-types';
 
@@ -27,6 +28,56 @@ function computeFileHash(fileBuffer: Buffer): string {
 async function encodeUploadJobFilePayload(fileBuffer: Buffer): Promise<string> {
   const compressed = await gzipAsync(fileBuffer);
   return `${COMPRESSED_PAYLOAD_PREFIX}${compressed.toString('base64')}`;
+}
+
+function buildEnqueueResult(row: {
+  id: number;
+  status: UploadConfirmJobStatus;
+  canceledAt: string | null;
+  cancelRequestedAt: string | null;
+}, deduplicated: boolean): EnqueueUploadConfirmJobResult {
+  return {
+    jobId: row.id,
+    status: row.status,
+    deduplicated,
+    cancelable: isJobCancelable(row.status, row.cancelRequestedAt, row.canceledAt),
+    canceledAt: row.canceledAt,
+  };
+}
+
+function buildNewUploadConfirmJobValues(
+  params: EnqueueUploadConfirmJobParams,
+  fileHash: string,
+  mappingJson: string,
+  encodedPayload: string,
+  requestedAtIso: string,
+  nowIso: string,
+) {
+  return {
+    pharmacyId: params.pharmacyId,
+    uploadType: params.uploadType,
+    originalFilename: params.originalFilename,
+    idempotencyKey: params.idempotencyKey ?? null,
+    fileHash,
+    headerRowIndex: params.headerRowIndex,
+    mappingJson,
+    applyMode: params.applyMode,
+    deleteMissing: params.deleteMissing,
+    deduplicated: false,
+    fileBase64: encodedPayload,
+    status: 'pending' as const,
+    attempts: 0,
+    lastError: null,
+    resultJson: null,
+    cancelRequestedAt: null,
+    canceledAt: null,
+    canceledBy: null,
+    processingStartedAt: null,
+    nextRetryAt: null,
+    completedAt: null,
+    createdAt: requestedAtIso,
+    updatedAt: nowIso,
+  };
 }
 
 function ensureIdempotentPayloadMatch(
@@ -82,13 +133,7 @@ export async function enqueueUploadConfirmJob(
             .where(eq(uploadConfirmJobs.id, existing.id));
         }
 
-        return {
-          jobId: existing.id,
-          status: existing.status,
-          deduplicated: true,
-          cancelable: isJobCancelable(existing.status, existing.cancelRequestedAt, existing.canceledAt),
-          canceledAt: existing.canceledAt,
-        };
+        return buildEnqueueResult(existing, true);
       }
     }
 
@@ -98,43 +143,15 @@ export async function enqueueUploadConfirmJob(
     const nowIso = new Date().toISOString();
     const requestedAtIso = params.requestedAtIso ?? nowIso;
 
-    const [job] = await tx.insert(uploadConfirmJobs).values({
-      pharmacyId: params.pharmacyId,
-      uploadType: params.uploadType,
-      originalFilename: params.originalFilename,
-      idempotencyKey: params.idempotencyKey ?? null,
-      fileHash,
-      headerRowIndex: params.headerRowIndex,
-      mappingJson,
-      applyMode: params.applyMode,
-      deleteMissing: params.deleteMissing,
-      deduplicated: false,
-      fileBase64: encodedPayload,
-      status: 'pending',
-      attempts: 0,
-      lastError: null,
-      resultJson: null,
-      cancelRequestedAt: null,
-      canceledAt: null,
-      canceledBy: null,
-      processingStartedAt: null,
-      nextRetryAt: null,
-      completedAt: null,
-      createdAt: requestedAtIso,
-      updatedAt: nowIso,
-    }).returning({
+    const [job] = await tx.insert(uploadConfirmJobs).values(
+      buildNewUploadConfirmJobValues(params, fileHash, mappingJson, encodedPayload, requestedAtIso, nowIso),
+    ).returning({
       id: uploadConfirmJobs.id,
       status: uploadConfirmJobs.status,
       canceledAt: uploadConfirmJobs.canceledAt,
       cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
     });
 
-    return {
-      jobId: job.id,
-      status: job.status,
-      deduplicated: false,
-      cancelable: isJobCancelable(job.status, job.cancelRequestedAt, job.canceledAt),
-      canceledAt: job.canceledAt,
-    };
+    return buildEnqueueResult(job, false);
   });
 }

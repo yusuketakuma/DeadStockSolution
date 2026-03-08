@@ -63,6 +63,30 @@ setCatchHandler(async ({ request }: { request: Request }) => {
   return Response.error();
 });
 
+function resolveSafeNotificationUrl(rawUrl: unknown): string | null {
+  if (typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = new URL(trimmed, self.location.origin);
+    if (parsed.origin !== self.location.origin) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function isMatchingWindowClientUrl(clientUrl: string, targetUrl: string): boolean {
+  try {
+    return new URL(clientUrl).toString() === targetUrl;
+  } catch {
+    return false;
+  }
+}
+
 self.addEventListener('push', (event: PushEvent) => {
   const data = event.data?.json() ?? {};
   const title = data.title ?? '通知';
@@ -80,7 +104,7 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
   event.notification.close();
 
   const notificationData = event.notification.data as { url?: string } | undefined;
-  const targetUrl = notificationData?.url;
+  const targetUrl = resolveSafeNotificationUrl(notificationData?.url);
 
   if (!targetUrl) {
     return;
@@ -89,7 +113,7 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList: readonly WindowClient[]) => {
       for (const client of clientList) {
-        if (client.url.includes(targetUrl) && 'focus' in client) {
+        if (isMatchingWindowClientUrl(client.url, targetUrl) && 'focus' in client) {
           return client.focus();
         }
       }

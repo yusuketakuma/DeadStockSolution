@@ -74,6 +74,14 @@ function buildContext(ctx: ErrorFixContext): Record<string, unknown> {
   };
 }
 
+function rememberFingerprint(fingerprint: string): void {
+  dedupCache.set(fingerprint, Date.now());
+}
+
+function forgetFingerprint(fingerprint: string): void {
+  dedupCache.delete(fingerprint);
+}
+
 export async function handoffErrorToOpenClaw(
   ctx: ErrorFixContext,
   status: number,
@@ -97,7 +105,7 @@ export async function handoffErrorToOpenClaw(
   }
 
   try {
-    dedupCache.set(fingerprint, Date.now());
+    rememberFingerprint(fingerprint);
     const requestText = buildRequestText(ctx);
     const result = await executeOpenClawHandoff({
       pharmacyId: config.pharmacyId,
@@ -106,11 +114,11 @@ export async function handoffErrorToOpenClaw(
       logLabel: 'OpenClaw error autofix handoff completed',
     });
     if (!result.accepted) {
-      dedupCache.delete(fingerprint);
+      forgetFingerprint(fingerprint);
     }
     return result;
   } catch (err) {
-    dedupCache.delete(fingerprint);
+    forgetFingerprint(fingerprint);
     logger.error('OpenClaw error autofix failed', {
       error: getErrorMessage(err),
       fingerprint,

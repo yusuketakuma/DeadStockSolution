@@ -1,12 +1,12 @@
 phase=completed
-timestamp=2026-03-06T01:07:22Z
+timestamp=2026-03-08T09:09:44Z
 agent_mode=fallback
-run_processed=4
-run_max=4
+run_processed=6
+run_max=6
 total_targets=30
-total_processed=30
+total_processed=36
 total_remaining=0
 current_rank=30
 current_source=static-heuristic
-current_target=server/src/routes/exchange-proposals.ts
-current_reason=loc=520, loops=1, awaitInLoop=0, sql=10
+current_target=server/src/services/mhlw-multi-file-fetcher.ts
+current_reason=loc=311, loops=3, awaitInLoop=3, sql=0

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AuthRequest } from '../types';
 import * as groupService from '../services/group-service';
 import { logger } from '../services/logger';
+import { parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 
@@ -39,6 +40,17 @@ function parseGroupId(value: string | string[] | undefined): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+function respondInvalidId(res: Response): void {
+  res.status(400).json({ error: '不正なIDです' });
+}
+
+function handleRouteError(res: Response, logMessage: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  logger.error(logMessage, { error: message });
+  const status = mapErrorToStatus(message);
+  res.status(status).json({ error: status >= 500 ? 'グループ操作に失敗しました' : message });
+}
+
 // ── POST / — グループ作成 ──────────────────────────────────
 
 router.post('/', async (req: AuthRequest, res: Response) => {
@@ -52,9 +64,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     const result = await groupService.createGroup(req.user!.id, parsed.data);
     res.status(201).json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Create group error', { error: message });
-    res.status(mapErrorToStatus(message)).json({ error: message });
+    handleRouteError(res, 'Create group error', err);
   }
 });
 
@@ -62,14 +72,12 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const limit = req.query.limit ? Number(req.query.limit) : undefined;
-    const offset = req.query.offset ? Number(req.query.offset) : undefined;
+    const limit = parsePositiveInt(req.query.limit) ?? undefined;
+    const offset = parsePositiveInt(req.query.offset) ?? undefined;
     const result = await groupService.listGroups(req.user!.id, { limit, offset });
     res.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('List groups error', { error: message });
-    res.status(500).json({ error: message });
+    handleRouteError(res, 'List groups error', err);
   }
 });
 
@@ -79,15 +87,13 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const groupId = parseGroupId(req.params.id);
     if (!groupId) {
-      res.status(400).json({ error: '不正なIDです' });
+      respondInvalidId(res);
       return;
     }
     const result = await groupService.getGroupDetail(groupId, req.user!.id);
     res.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Get group detail error', { error: message });
-    res.status(mapErrorToStatus(message)).json({ error: message });
+    handleRouteError(res, 'Get group detail error', err);
   }
 });
 
@@ -97,7 +103,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const groupId = parseGroupId(req.params.id);
     if (!groupId) {
-      res.status(400).json({ error: '不正なIDです' });
+      respondInvalidId(res);
       return;
     }
     const parsed = UpdateGroupBody.safeParse(req.body);
@@ -109,9 +115,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
     const result = await groupService.updateGroup(groupId, req.user!.id, parsed.data);
     res.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Update group error', { error: message });
-    res.status(mapErrorToStatus(message)).json({ error: message });
+    handleRouteError(res, 'Update group error', err);
   }
 });
 
@@ -121,15 +125,13 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const groupId = parseGroupId(req.params.id);
     if (!groupId) {
-      res.status(400).json({ error: '不正なIDです' });
+      respondInvalidId(res);
       return;
     }
     await groupService.deleteGroup(groupId, req.user!.id);
     res.status(204).send();
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Delete group error', { error: message });
-    res.status(mapErrorToStatus(message)).json({ error: message });
+    handleRouteError(res, 'Delete group error', err);
   }
 });
 
@@ -139,7 +141,7 @@ router.post('/:id/invite', async (req: AuthRequest, res: Response) => {
   try {
     const groupId = parseGroupId(req.params.id);
     if (!groupId) {
-      res.status(400).json({ error: '不正なIDです' });
+      respondInvalidId(res);
       return;
     }
     const parsed = InviteBody.safeParse(req.body);
@@ -151,9 +153,7 @@ router.post('/:id/invite', async (req: AuthRequest, res: Response) => {
     await groupService.inviteMember(groupId, req.user!.id, parsed.data.pharmacyId);
     res.status(201).json({ message: '招待を送信しました' });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Invite member error', { error: message });
-    res.status(mapErrorToStatus(message)).json({ error: message });
+    handleRouteError(res, 'Invite member error', err);
   }
 });
 
@@ -163,15 +163,13 @@ router.post('/:id/join', async (req: AuthRequest, res: Response) => {
   try {
     const groupId = parseGroupId(req.params.id);
     if (!groupId) {
-      res.status(400).json({ error: '不正なIDです' });
+      respondInvalidId(res);
       return;
     }
     await groupService.joinPublicGroup(groupId, req.user!.id);
     res.json({ message: 'グループに参加しました' });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Join group error', { error: message });
-    res.status(mapErrorToStatus(message)).json({ error: message });
+    handleRouteError(res, 'Join group error', err);
   }
 });
 
@@ -181,15 +179,13 @@ router.post('/:id/accept', async (req: AuthRequest, res: Response) => {
   try {
     const groupId = parseGroupId(req.params.id);
     if (!groupId) {
-      res.status(400).json({ error: '不正なIDです' });
+      respondInvalidId(res);
       return;
     }
     await groupService.acceptInvitation(groupId, req.user!.id);
     res.json({ message: '招待を承認しました' });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Accept invitation error', { error: message });
-    res.status(mapErrorToStatus(message)).json({ error: message });
+    handleRouteError(res, 'Accept invitation error', err);
   }
 });
 
@@ -199,15 +195,13 @@ router.post('/:id/leave', async (req: AuthRequest, res: Response) => {
   try {
     const groupId = parseGroupId(req.params.id);
     if (!groupId) {
-      res.status(400).json({ error: '不正なIDです' });
+      respondInvalidId(res);
       return;
     }
     await groupService.leaveGroup(groupId, req.user!.id);
     res.json({ message: 'グループを脱退しました' });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Leave group error', { error: message });
-    res.status(mapErrorToStatus(message)).json({ error: message });
+    handleRouteError(res, 'Leave group error', err);
   }
 });
 
@@ -218,15 +212,13 @@ router.delete('/:id/members/:pharmacyId', async (req: AuthRequest, res: Response
     const groupId = parseGroupId(req.params.id);
     const targetPharmacyId = parseGroupId(req.params.pharmacyId);
     if (!groupId || !targetPharmacyId) {
-      res.status(400).json({ error: '不正なIDです' });
+      respondInvalidId(res);
       return;
     }
     await groupService.removeMember(groupId, req.user!.id, targetPharmacyId);
     res.status(204).send();
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error('Remove member error', { error: message });
-    res.status(mapErrorToStatus(message)).json({ error: message });
+    handleRouteError(res, 'Remove member error', err);
   }
 });
 

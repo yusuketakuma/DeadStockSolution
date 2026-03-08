@@ -32,6 +32,10 @@ function resolveErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function resolveInitialCandidateKey(candidates: CameraManualCandidate[]): string {
+  return candidates[0] ? resolveCandidateKey(candidates[0]) : '';
+}
+
 interface UnmatchedManualResolverProps {
   rowId: number;
   disabled: boolean;
@@ -51,16 +55,14 @@ function UnmatchedManualResolver({
 }: UnmatchedManualResolverProps) {
   const [searchKeyword, setSearchKeyword] = useState(initialSearchKeyword);
   const [candidates, setCandidates] = useState<CameraManualCandidate[]>(initialCandidates);
-  const [selectedCandidateKey, setSelectedCandidateKey] = useState(
-    initialCandidates[0] ? resolveCandidateKey(initialCandidates[0]) : '',
-  );
+  const [selectedCandidateKey, setSelectedCandidateKey] = useState(resolveInitialCandidateKey(initialCandidates));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const searchRequestIdRef = useRef(0);
 
   useEffect(() => {
     setCandidates(initialCandidates);
-    setSelectedCandidateKey(initialCandidates[0] ? resolveCandidateKey(initialCandidates[0]) : '');
+    setSelectedCandidateKey(resolveInitialCandidateKey(initialCandidates));
   }, [initialCandidates]);
 
   useEffect(() => {

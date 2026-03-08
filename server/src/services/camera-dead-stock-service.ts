@@ -178,6 +178,71 @@ function normalizeManualCandidateSearch(search: string): string {
   return normalized;
 }
 
+function buildManualSearchWhere(search: string) {
+  const normalized = normalizeKana(search);
+  const hiragana = katakanaToHiragana(normalized);
+  const katakana = hiraganaToKatakana(normalized);
+  const likeTerms = [...new Set([search, normalized, hiragana, katakana].filter(Boolean))];
+  const likeConditions = likeTerms.flatMap((term) => {
+    const escapedLikeTerm = `%${escapeLikeWildcards(term)}%`;
+    return [
+      like(drugMaster.drugName, escapedLikeTerm),
+      like(drugMaster.genericName, escapedLikeTerm),
+    ];
+  });
+
+  if (/^[A-Z0-9]+$/i.test(search)) {
+    likeConditions.push(like(drugMaster.yjCode, `%${escapeLikeWildcards(search)}%`));
+  }
+
+  return likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
+}
+
+function buildFirstPackageByMasterId(packageRows: PackageRow[]): Map<number, PackageRow> {
+  const firstPackageByMasterId = new Map<number, PackageRow>();
+  for (const pkg of packageRows) {
+    if (!firstPackageByMasterId.has(pkg.drugMasterId)) {
+      firstPackageByMasterId.set(pkg.drugMasterId, pkg);
+    }
+  }
+  return firstPackageByMasterId;
+}
+
+function buildDeadStockInsertRows(params: {
+  pharmacyId: number;
+  uploadId: number;
+  parsedItems: ParsedCameraConfirmItem[];
+  masterById: Map<number, MasterRow>;
+  packageById: Map<number, PackageRow>;
+}) {
+  const { pharmacyId, uploadId, parsedItems, masterById, packageById } = params;
+  return parsedItems.map((item) => {
+    const master = masterById.get(item.drugMasterId)!;
+    const pkg = item.drugMasterPackageId ? packageById.get(item.drugMasterPackageId) : null;
+    const unit = master.unit ?? null;
+    const yakkaUnitPrice = toNullablePrice(master.yakkaPrice);
+    const yakkaTotal = yakkaUnitPrice !== null ? yakkaUnitPrice * item.quantity : null;
+
+    return {
+      pharmacyId,
+      uploadId,
+      drugCode: item.codeFromRaw ?? master.yjCode,
+      drugName: master.drugName,
+      drugMasterId: item.drugMasterId,
+      drugMasterPackageId: item.drugMasterPackageId ?? null,
+      packageLabel: item.packageLabel ?? pkg?.normalizedPackageLabel ?? pkg?.packageDescription ?? null,
+      quantity: item.quantity,
+      unit,
+      yakkaUnitPrice: toNumericText(yakkaUnitPrice),
+      yakkaTotal: toNumericText(yakkaTotal),
+      expirationDate: item.expirationDate,
+      expirationDateIso: item.expirationDate,
+      lotNumber: item.lotNumber,
+      isAvailable: true,
+    };
+  });
+}
+
 function resolveParsedCodeFromRaw(rawCode: string, parsedCodeCache: Map<string, string | null>): string | null {
   if (!rawCode) {
     return null;
@@ -250,21 +315,7 @@ export async function searchCameraManualCandidates(
   limitInput: unknown,
 ): Promise<CameraCodeMatch[]> {
   const normalizedSearch = normalizeManualCandidateSearch(search);
-  const normalized = normalizeKana(normalizedSearch);
-  const hiragana = katakanaToHiragana(normalized);
-  const katakana = hiraganaToKatakana(normalized);
-  const likeTerms = [...new Set([normalizedSearch, normalized, hiragana, katakana].filter(Boolean))];
-  const likeConditions = likeTerms.flatMap((term) => {
-    const escapedLikeTerm = `%${escapeLikeWildcards(term)}%`;
-    return [
-      like(drugMaster.drugName, escapedLikeTerm),
-      like(drugMaster.genericName, escapedLikeTerm),
-    ];
-  });
-  if (/^[A-Z0-9]+$/i.test(normalizedSearch)) {
-    likeConditions.push(like(drugMaster.yjCode, `%${escapeLikeWildcards(normalizedSearch)}%`));
-  }
-  const whereExpr = likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
+  const whereExpr = buildManualSearchWhere(normalizedSearch);
   if (!whereExpr) {
     return [];
   }
@@ -283,12 +334,7 @@ export async function searchCameraManualCandidates(
     .from(drugMasterPackages)
     .where(inArray(drugMasterPackages.drugMasterId, masters.map((master) => master.id)));
 
-  const firstPackageByMasterId = new Map<number, (typeof packageRows)[number]>();
-  for (const pkg of packageRows) {
-    if (!firstPackageByMasterId.has(pkg.drugMasterId)) {
-      firstPackageByMasterId.set(pkg.drugMasterId, pkg);
-    }
-  }
+  const firstPackageByMasterId = buildFirstPackageByMasterId(packageRows);
 
   return masters.map((master) => {
     const pkg = firstPackageByMasterId.get(master.id);
@@ -427,30 +473,12 @@ export async function confirmCameraDeadStockBatch(
       requestedAt: uploadRequestedAt,
     }).returning({ id: uploads.id });
 
-    const rows = parsedItems.map((item) => {
-      const master = masterById.get(item.drugMasterId)!;
-      const pkg = item.drugMasterPackageId ? packageById.get(item.drugMasterPackageId) : null;
-      const unit = master.unit ?? null;
-      const yakkaUnitPrice = toNullablePrice(master.yakkaPrice);
-      const yakkaTotal = yakkaUnitPrice !== null ? yakkaUnitPrice * item.quantity : null;
-
-      return {
-        pharmacyId,
-        uploadId: uploadRecord.id,
-        drugCode: item.codeFromRaw ?? master.yjCode,
-        drugName: master.drugName,
-        drugMasterId: item.drugMasterId,
-        drugMasterPackageId: item.drugMasterPackageId ?? null,
-        packageLabel: item.packageLabel ?? pkg?.normalizedPackageLabel ?? pkg?.packageDescription ?? null,
-        quantity: item.quantity,
-        unit,
-        yakkaUnitPrice: toNumericText(yakkaUnitPrice),
-        yakkaTotal: toNumericText(yakkaTotal),
-        expirationDate: item.expirationDate,
-        expirationDateIso: item.expirationDate,
-        lotNumber: item.lotNumber,
-        isAvailable: true,
-      };
+    const rows = buildDeadStockInsertRows({
+      pharmacyId,
+      uploadId: uploadRecord.id,
+      parsedItems,
+      masterById,
+      packageById,
     });
 
     await tx.insert(deadStockItems).values(rows);

@@ -12,6 +12,7 @@ import {
   DrugEquivalenceDuplicateError,
 } from '../services/drug-equivalence-service';
 import { logger } from '../services/logger';
+import { parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 
@@ -38,10 +39,34 @@ function parseIdParam(idStr: string | string[]): number | null {
   return id;
 }
 
+function respondInvalidId(res: Response): void {
+  res.status(400).json({ error: 'IDが不正です' });
+}
+
+function respondDrugEquivalenceNotFound(res: Response): void {
+  res.status(404).json({ error: '指定された薬品同等性が見つかりません' });
+}
+
+function handleDrugEquivalenceMutationError(
+  res: Response,
+  err: unknown,
+  operation: 'create' | 'update',
+): boolean {
+  if (err instanceof DrugEquivalenceValidationError) {
+    res.status(400).json({ error: err.message });
+    return true;
+  }
+  if (operation === 'create' && err instanceof DrugEquivalenceDuplicateError) {
+    res.status(409).json({ error: err.message });
+    return true;
+  }
+  return false;
+}
+
 router.get('/drug-equivalences', async (req: AuthRequest, res: Response) => {
   try {
-    const limit = req.query.limit ? Number(req.query.limit) : undefined;
-    const offset = req.query.offset ? Number(req.query.offset) : undefined;
+    const limit = parsePositiveInt(req.query.limit) ?? undefined;
+    const offset = parsePositiveInt(req.query.offset) ?? undefined;
     const data = await listDrugEquivalences({ limit, offset });
     res.json({ data });
   } catch (err) {
@@ -55,14 +80,14 @@ router.get('/drug-equivalences', async (req: AuthRequest, res: Response) => {
 router.get('/drug-equivalences/:id', async (req: AuthRequest, res: Response) => {
   const id = parseIdParam(req.params.id);
   if (id === null) {
-    res.status(400).json({ error: 'IDが不正です' });
+    respondInvalidId(res);
     return;
   }
 
   try {
     const data = await getDrugEquivalenceById(id);
     if (!data) {
-      res.status(404).json({ error: '指定された薬品同等性が見つかりません' });
+      respondDrugEquivalenceNotFound(res);
       return;
     }
     res.json({ data });
@@ -86,12 +111,7 @@ router.post('/drug-equivalences', adminWriteLimiter, async (req: AuthRequest, re
     const data = await createDrugEquivalence(parsed.data);
     res.status(201).json({ data });
   } catch (err) {
-    if (err instanceof DrugEquivalenceValidationError) {
-      res.status(400).json({ error: err.message });
-      return;
-    }
-    if (err instanceof DrugEquivalenceDuplicateError) {
-      res.status(409).json({ error: err.message });
+    if (handleDrugEquivalenceMutationError(res, err, 'create')) {
       return;
     }
     logger.error('Admin drug equivalence create error', {
@@ -104,7 +124,7 @@ router.post('/drug-equivalences', adminWriteLimiter, async (req: AuthRequest, re
 router.put('/drug-equivalences/:id', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
   const id = parseIdParam(req.params.id);
   if (id === null) {
-    res.status(400).json({ error: 'IDが不正です' });
+    respondInvalidId(res);
     return;
   }
 
@@ -118,13 +138,12 @@ router.put('/drug-equivalences/:id', adminWriteLimiter, async (req: AuthRequest,
   try {
     const data = await updateDrugEquivalence(id, parsed.data);
     if (!data) {
-      res.status(404).json({ error: '指定された薬品同等性が見つかりません' });
+      respondDrugEquivalenceNotFound(res);
       return;
     }
     res.json({ data });
   } catch (err) {
-    if (err instanceof DrugEquivalenceValidationError) {
-      res.status(400).json({ error: err.message });
+    if (handleDrugEquivalenceMutationError(res, err, 'update')) {
       return;
     }
     logger.error('Admin drug equivalence update error', {
@@ -137,14 +156,14 @@ router.put('/drug-equivalences/:id', adminWriteLimiter, async (req: AuthRequest,
 router.delete('/drug-equivalences/:id', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
   const id = parseIdParam(req.params.id);
   if (id === null) {
-    res.status(400).json({ error: 'IDが不正です' });
+    respondInvalidId(res);
     return;
   }
 
   try {
     const deleted = await deleteDrugEquivalence(id);
     if (!deleted) {
-      res.status(404).json({ error: '指定された薬品同等性が見つかりません' });
+      respondDrugEquivalenceNotFound(res);
       return;
     }
     res.json({ message: '薬品同等性を削除しました' });

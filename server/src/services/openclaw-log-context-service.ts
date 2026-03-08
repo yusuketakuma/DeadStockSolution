@@ -43,6 +43,12 @@ export interface OpenClawLogContext {
   };
 }
 
+interface OpenClawLogContextConfig {
+  windowHours: number;
+  failureLimit: number;
+  activityLimit: number;
+}
+
 function sanitizeDetail(detail: string | null): string | null {
   if (!detail) return null;
   const normalized = detail.replace(/\s+/g, ' ').trim();
@@ -61,11 +67,17 @@ function normalizeLogRows(rows: ContextLogRow[]): ContextLogRow[] {
   }));
 }
 
+function readOpenClawLogContextConfig(): OpenClawLogContextConfig {
+  return {
+    windowHours: parseBoundedInt(process.env.OPENCLAW_LOG_CONTEXT_WINDOW_HOURS, DEFAULT_WINDOW_HOURS, 1, 24 * 30),
+    failureLimit: parseBoundedInt(process.env.OPENCLAW_LOG_CONTEXT_RECENT_FAILURE_LIMIT, DEFAULT_RECENT_FAILURE_LIMIT, 1, 200),
+    activityLimit: parseBoundedInt(process.env.OPENCLAW_LOG_CONTEXT_RECENT_ACTIVITY_LIMIT, DEFAULT_RECENT_ACTIVITY_LIMIT, 1, 200),
+  };
+}
+
 export async function buildOpenClawLogContext(pharmacyId: number, now: Date = new Date()): Promise<OpenClawLogContext> {
-  const windowHours = parseBoundedInt(process.env.OPENCLAW_LOG_CONTEXT_WINDOW_HOURS, DEFAULT_WINDOW_HOURS, 1, 24 * 30);
-  const failureLimit = parseBoundedInt(process.env.OPENCLAW_LOG_CONTEXT_RECENT_FAILURE_LIMIT, DEFAULT_RECENT_FAILURE_LIMIT, 1, 200);
-  const activityLimit = parseBoundedInt(process.env.OPENCLAW_LOG_CONTEXT_RECENT_ACTIVITY_LIMIT, DEFAULT_RECENT_ACTIVITY_LIMIT, 1, 200);
-  const windowStartIso = new Date(now.getTime() - windowHours * 60 * 60 * 1000).toISOString();
+  const config = readOpenClawLogContextConfig();
+  const windowStartIso = new Date(now.getTime() - config.windowHours * 60 * 60 * 1000).toISOString();
 
   const failureWhereClause = and(
     eq(activityLogs.pharmacyId, pharmacyId),
@@ -106,7 +118,7 @@ export async function buildOpenClawLogContext(pharmacyId: number, now: Date = ne
     .from(activityLogs)
     .where(failureWhereClause)
     .orderBy(desc(activityLogs.createdAt))
-    .limit(failureLimit);
+    .limit(config.failureLimit);
 
   const pharmacyWhereClause = and(
     eq(activityLogs.pharmacyId, pharmacyId),
@@ -121,11 +133,11 @@ export async function buildOpenClawLogContext(pharmacyId: number, now: Date = ne
     .from(activityLogs)
     .where(pharmacyWhereClause)
     .orderBy(desc(activityLogs.createdAt))
-    .limit(activityLimit);
+    .limit(config.activityLimit);
 
   return {
     generatedAt: now.toISOString(),
-    windowHours,
+    windowHours: config.windowHours,
     monitoredImportActions: [...IMPORT_FAILURE_ACTIONS],
     importFailures: {
       total: failureTotalRow?.count ?? 0,

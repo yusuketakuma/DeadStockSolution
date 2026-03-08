@@ -301,23 +301,55 @@ function logUploadConfirmJobFailure(
   logger.warn('Upload confirm job failed and will retry', logMeta);
 }
 
+async function parseStoredJobRows(fileBase64: string): Promise<unknown[][]> {
+  const payloadBuffer = await decodeUploadJobFilePayload(fileBase64);
+  try {
+    return await parseExcelBuffer(payloadBuffer);
+  } catch {
+    throw createUploadConfirmJobError(
+      'FILE_PARSE_FAILED',
+      'アップロードファイルを解析できませんでした',
+      false,
+    );
+  }
+}
+
+async function completeUploadConfirmJob(
+  jobId: number,
+  responsePayload: Record<string, unknown>,
+  nowIso: string,
+): Promise<boolean> {
+  const [completed] = await db.update(uploadConfirmJobs)
+    .set({
+      status: 'completed',
+      lastError: null,
+      resultJson: JSON.stringify(responsePayload),
+      fileBase64: CLEARED_FILE_PAYLOAD,
+      processingStartedAt: null,
+      cancelRequestedAt: null,
+      canceledAt: null,
+      canceledBy: null,
+      completedAt: nowIso,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      eq(uploadConfirmJobs.id, jobId),
+      eq(uploadConfirmJobs.status, 'processing'),
+      isNull(uploadConfirmJobs.cancelRequestedAt),
+      isNull(uploadConfirmJobs.canceledAt),
+    ))
+    .returning({ id: uploadConfirmJobs.id });
+
+  return Boolean(completed);
+}
+
 export async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntime): Promise<void> {
   try {
     await clearUploadRowIssuesForJob(job.id);
     await assertJobNotCancellationRequested(job.id);
 
     const mapping = parseStoredMapping(job.mappingJson, job.uploadType);
-    const payloadBuffer = await decodeUploadJobFilePayload(job.fileBase64);
-    let allRows: unknown[][];
-    try {
-      allRows = await parseExcelBuffer(payloadBuffer);
-    } catch {
-      throw createUploadConfirmJobError(
-        'FILE_PARSE_FAILED',
-        'アップロードファイルを解析できませんでした',
-        false,
-      );
-    }
+    const allRows = await parseStoredJobRows(job.fileBase64);
 
     await assertJobNotCancellationRequested(job.id);
 
@@ -347,27 +379,7 @@ export async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntim
     };
 
     const nowIso = new Date().toISOString();
-    const [completed] = await db.update(uploadConfirmJobs)
-      .set({
-        status: 'completed',
-        lastError: null,
-        resultJson: JSON.stringify(responsePayload),
-        fileBase64: CLEARED_FILE_PAYLOAD,
-        processingStartedAt: null,
-        cancelRequestedAt: null,
-        canceledAt: null,
-        canceledBy: null,
-        completedAt: nowIso,
-        updatedAt: nowIso,
-      })
-      .where(and(
-        eq(uploadConfirmJobs.id, job.id),
-        eq(uploadConfirmJobs.status, 'processing'),
-        isNull(uploadConfirmJobs.cancelRequestedAt),
-        isNull(uploadConfirmJobs.canceledAt),
-      ))
-      .returning({ id: uploadConfirmJobs.id });
-
+    const completed = await completeUploadConfirmJob(job.id, responsePayload, nowIso);
     if (!completed) {
       await finalizeCancelRequestedJob(job.id, nowIso);
     }

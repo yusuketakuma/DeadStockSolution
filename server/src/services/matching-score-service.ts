@@ -75,6 +75,14 @@ export interface UsedMedIndex {
 export interface DrugMatchResult {
   score: number;
 }
+interface CandidateScoreContext {
+  valueScore: number;
+  balanceScore: number;
+  distanceScore: number;
+  nearExpiryDays: number;
+  effectiveReferenceDate: Date;
+  isGroupMember: boolean;
+}
 
 export interface PreparedDrugName {
   normalizedDrugName: string;
@@ -482,6 +490,38 @@ export function calculateSuccessRateBonus(
   return roundTo2(Math.min(successRateBonusMax, ratio * successRateBonusMax));
 }
 
+function resolveCandidateScoreContext(
+  totalA: number,
+  totalB: number,
+  diff: number,
+  distanceKm: number,
+  scoringRules: MatchingScoringRules,
+  isGroupMemberOrReferenceDate: boolean | Date,
+  referenceDate: Date,
+): CandidateScoreContext {
+  const isGroupMember = typeof isGroupMemberOrReferenceDate === 'boolean'
+    ? isGroupMemberOrReferenceDate
+    : false;
+  const effectiveReferenceDate = isGroupMemberOrReferenceDate instanceof Date
+    ? isGroupMemberOrReferenceDate
+    : referenceDate;
+  const valueScoreDivisor = Math.max(0.0001, scoringRules.valueScoreDivisor);
+  const distanceScoreDivisor = Math.max(0.0001, scoringRules.distanceScoreDivisor);
+  const nearExpiryDays = Math.max(1, Math.floor(scoringRules.nearExpiryDays));
+  const minValue = Math.min(totalA, totalB);
+
+  return {
+    valueScore: Math.min(scoringRules.valueScoreMax, minValue / valueScoreDivisor),
+    balanceScore: Math.max(0, scoringRules.balanceScoreMax - diff * scoringRules.balanceScoreDiffFactor),
+    distanceScore: distanceKm >= 9999
+      ? scoringRules.distanceScoreFallback
+      : Math.max(0, scoringRules.distanceScoreMax - distanceKm / distanceScoreDivisor),
+    nearExpiryDays,
+    effectiveReferenceDate,
+    isGroupMember,
+  };
+}
+
 export function calculateCandidateScore(
   totalA: number,
   totalB: number,
@@ -494,37 +534,39 @@ export function calculateCandidateScore(
   isGroupMemberOrReferenceDate: boolean | Date = false,
   referenceDate: Date = new Date(),
 ): number {
-  const isGroupMember = typeof isGroupMemberOrReferenceDate === 'boolean'
-    ? isGroupMemberOrReferenceDate
-    : false;
-  const effectiveReferenceDate = isGroupMemberOrReferenceDate instanceof Date
-    ? isGroupMemberOrReferenceDate
-    : referenceDate;
-  const valueScoreDivisor = Math.max(0.0001, scoringRules.valueScoreDivisor);
-  const distanceScoreDivisor = Math.max(0.0001, scoringRules.distanceScoreDivisor);
-  const nearExpiryDays = Math.max(1, Math.floor(scoringRules.nearExpiryDays));
-  const minValue = Math.min(totalA, totalB);
-  const valueScore = Math.min(scoringRules.valueScoreMax, minValue / valueScoreDivisor);
-  const balanceScore = Math.max(0, scoringRules.balanceScoreMax - diff * scoringRules.balanceScoreDiffFactor);
-  const distanceScore = distanceKm >= 9999
-    ? scoringRules.distanceScoreFallback
-    : Math.max(0, scoringRules.distanceScoreMax - distanceKm / distanceScoreDivisor);
+  const context = resolveCandidateScoreContext(
+    totalA,
+    totalB,
+    diff,
+    distanceKm,
+    scoringRules,
+    isGroupMemberOrReferenceDate,
+    referenceDate,
+  );
   const nearExpiryScore = calculateExponentialNearExpiryScore(
     [...itemsFromA, ...itemsFromB],
-    nearExpiryDays,
+    context.nearExpiryDays,
     scoringRules.nearExpiryDecayCurve,
     scoringRules.nearExpiryItemFactor,
     scoringRules.nearExpiryScoreMax,
-    effectiveReferenceDate,
+    context.effectiveReferenceDate,
   );
   const diversityScore = Math.min(
     scoringRules.diversityScoreMax,
     Math.min(itemsFromA.length, itemsFromB.length) * scoringRules.diversityItemFactor,
   );
   const favoriteScore = isFavorite ? scoringRules.favoriteBonus : 0;
-  const groupScore = isGroupMember ? scoringRules.groupBonus : 0;
+  const groupScore = context.isGroupMember ? scoringRules.groupBonus : 0;
 
-  return roundTo2(valueScore + balanceScore + distanceScore + nearExpiryScore + diversityScore + favoriteScore + groupScore);
+  return roundTo2(
+    context.valueScore
+      + context.balanceScore
+      + context.distanceScore
+      + nearExpiryScore
+      + diversityScore
+      + favoriteScore
+      + groupScore,
+  );
 }
 
 export function calculateMatchRate(itemsA: MatchItem[], itemsB: MatchItem[]): number {

@@ -100,6 +100,15 @@ function resolveRetries(): number {
   return parseBoundedInt(process.env.GITHUB_UPDATES_RETRIES, 1, MIN_RETRIES, MAX_RETRIES);
 }
 
+function buildGitHubUpdatesHeaders(token: string | undefined): Record<string, string> {
+  return {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'DeadStockSolution/updates-widget',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 function normalizeBody(value: unknown): string {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
@@ -149,12 +158,7 @@ async function fetchGitHubReleaseUpdates(repository: string): Promise<GitHubUpda
       timeoutMs,
       retry: { retries },
       redirect: 'manual',
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'DeadStockSolution/updates-widget',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: buildGitHubUpdatesHeaders(token),
     });
 
     if (response.status >= 300 && response.status < 400) {

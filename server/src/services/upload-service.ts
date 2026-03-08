@@ -67,6 +67,23 @@ function normalizeCellValue(value: unknown): unknown {
   return value;
 }
 
+function validateParsedRowSizes(rows: unknown[][]): void {
+  if (rows.length > MAX_UPLOAD_ROWS) {
+    throw new Error(`行数が上限(${MAX_UPLOAD_ROWS})を超えています`);
+  }
+
+  let totalCells = 0;
+  for (const row of rows) {
+    if (row.length > MAX_UPLOAD_COLUMNS) {
+      throw new Error(`列数が上限(${MAX_UPLOAD_COLUMNS})を超えています`);
+    }
+    totalCells += row.length;
+    if (totalCells > MAX_UPLOAD_CELLS) {
+      throw new Error(`セル数が上限(${MAX_UPLOAD_CELLS})を超えています`);
+    }
+  }
+}
+
 export async function parseExcelBuffer(buffer: Buffer): Promise<unknown[][]> {
   pruneExpiredCache();
   const isCacheableBuffer = buffer.length <= MAX_CACHEABLE_BUFFER_BYTES;
@@ -79,20 +96,8 @@ export async function parseExcelBuffer(buffer: Buffer): Promise<unknown[][]> {
   }
 
   const rows = await readXlsxFile(buffer);
-
-  if (rows.length > MAX_UPLOAD_ROWS) {
-    throw new Error(`行数が上限(${MAX_UPLOAD_ROWS})を超えています`);
-  }
-
-  let totalCells = 0;
+  validateParsedRowSizes(rows);
   const normalized = rows.map((row) => {
-    if (row.length > MAX_UPLOAD_COLUMNS) {
-      throw new Error(`列数が上限(${MAX_UPLOAD_COLUMNS})を超えています`);
-    }
-    totalCells += row.length;
-    if (totalCells > MAX_UPLOAD_CELLS) {
-      throw new Error(`セル数が上限(${MAX_UPLOAD_CELLS})を超えています`);
-    }
     return row.map((cell) => normalizeCellValue(cell));
   });
 

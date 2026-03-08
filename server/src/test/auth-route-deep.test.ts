@@ -431,7 +431,7 @@ describe('auth route deep coverage', () => {
       process.env.NODE_ENV = 'production';
       process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
       const app = createApp();
-      const res = await request(app).get('/auth/test-pharmacies?includePassword=1');
+      const res = await request(app).get('/auth/test-pharmacies');
       expect(res.status).toBe(404);
       expect(res.body).toEqual({ error: 'テストログインは無効です' });
     });

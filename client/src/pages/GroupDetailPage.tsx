@@ -24,6 +24,57 @@ interface ConfirmState {
   targetName?: string;
 }
 
+function roleLabel(role: GroupMemberRole): string {
+  switch (role) {
+    case 'owner': return 'オーナー';
+    case 'admin': return '管理者';
+    case 'member': return 'メンバー';
+  }
+}
+
+function roleBadgeBg(role: GroupMemberRole): string {
+  switch (role) {
+    case 'owner': return 'primary';
+    case 'admin': return 'warning';
+    case 'member': return 'secondary';
+  }
+}
+
+function visibilityLabel(visibility: GroupVisibility) {
+  return visibility === 'public' ? '公開' : '招待制';
+}
+
+function visibilityBadgeBg(visibility: GroupVisibility) {
+  return visibility === 'public' ? 'success' : 'secondary';
+}
+
+function buildConfirmConfig(confirmState: ConfirmState | null, groupName?: string) {
+  if (!confirmState) return { title: '', body: '', label: '', variant: 'danger' as const };
+  switch (confirmState.action) {
+    case 'delete':
+      return {
+        title: 'グループの削除',
+        body: `「${groupName}」を削除します。この操作は取り消せません。`,
+        label: '削除する',
+        variant: 'danger' as const,
+      };
+    case 'removeMember':
+      return {
+        title: 'メンバーの除外',
+        body: `薬局ID ${confirmState.targetPharmacyId} をグループから除外します。`,
+        label: '除外する',
+        variant: 'danger' as const,
+      };
+    case 'leave':
+      return {
+        title: 'グループの脱退',
+        body: `「${groupName}」から脱退します。`,
+        label: '脱退する',
+        variant: 'warning' as const,
+      };
+  }
+}
+
 export default function GroupDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -73,28 +124,6 @@ export default function GroupDetailPage() {
   const isOwner = currentMember?.role === 'owner';
   const isAdmin = currentMember?.role === 'admin';
   const canManage = isOwner || isAdmin;
-
-  const roleLabel = (role: GroupMemberRole): string => {
-    switch (role) {
-      case 'owner': return 'オーナー';
-      case 'admin': return '管理者';
-      case 'member': return 'メンバー';
-    }
-  };
-
-  const roleBadgeBg = (role: GroupMemberRole): string => {
-    switch (role) {
-      case 'owner': return 'primary';
-      case 'admin': return 'warning';
-      case 'member': return 'secondary';
-    }
-  };
-
-  const visibilityLabel = (v: GroupVisibility) =>
-    v === 'public' ? '公開' : '招待制';
-
-  const visibilityBadgeBg = (v: GroupVisibility) =>
-    v === 'public' ? 'success' : 'secondary';
 
   // メンバー招待
   const handleInviteMember = async () => {
@@ -178,35 +207,7 @@ export default function GroupDetailPage() {
     setShowEditModal(false);
   };
 
-  // 確認モーダルの文言
-  const getConfirmConfig = () => {
-    if (!confirmState) return { title: '', body: '', label: '', variant: 'danger' as const };
-    switch (confirmState.action) {
-      case 'delete':
-        return {
-          title: 'グループの削除',
-          body: `「${group?.name}」を削除します。この操作は取り消せません。`,
-          label: '削除する',
-          variant: 'danger' as const,
-        };
-      case 'removeMember':
-        return {
-          title: 'メンバーの除外',
-          body: `薬局ID ${confirmState.targetPharmacyId} をグループから除外します。`,
-          label: '除外する',
-          variant: 'danger' as const,
-        };
-      case 'leave':
-        return {
-          title: 'グループの脱退',
-          body: `「${group?.name}」から脱退します。`,
-          label: '脱退する',
-          variant: 'warning' as const,
-        };
-    }
-  };
-
-  const confirmConfig = getConfirmConfig();
+  const confirmConfig = buildConfirmConfig(confirmState, group?.name);
 
   // 読み込み中 / エラー
   if (loading) {

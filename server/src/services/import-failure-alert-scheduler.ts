@@ -120,6 +120,27 @@ function formatErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function buildCheckResult(
+  status: ImportFailureAlertCheckResult['status'],
+  threshold: number,
+  totalFailures: number,
+  webhookDelivered: boolean = false,
+): ImportFailureAlertCheckResult {
+  return { status, totalFailures, threshold, webhookDelivered };
+}
+
+function resolveCooldownResult(
+  nowMs: number,
+  cooldownMs: number,
+  threshold: number,
+  totalFailures: number,
+): ImportFailureAlertCheckResult | null {
+  if (lastAlertAtMs <= 0 || nowMs - lastAlertAtMs >= cooldownMs) {
+    return null;
+  }
+  return buildCheckResult('cooldown', threshold, totalFailures);
+}
+
 function isOptimizedLoopEnabledForImportFailureAlertScheduler(): boolean {
   const localFlag = process.env[IMPORT_FAILURE_ALERT_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV];
   if (typeof localFlag === 'string' && localFlag.trim().length > 0) {
@@ -222,6 +243,16 @@ export function getImportFailureAlertConfig(): ImportFailureAlertConfig {
   };
 }
 
+function buildAlertWebhookHeaders(config: ImportFailureAlertConfig): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (config.webhookToken) {
+    headers.Authorization = `Bearer ${config.webhookToken}`;
+  }
+  return headers;
+}
+
 async function sendAlertWebhook(
   config: ImportFailureAlertConfig,
   payload: ImportFailureAlertPayload,
@@ -230,20 +261,13 @@ async function sendAlertWebhook(
     return false;
   }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (config.webhookToken) {
-    headers.Authorization = `Bearer ${config.webhookToken}`;
-  }
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.webhookTimeoutMs);
 
   try {
     const response = await fetch(config.webhookUrl, {
       method: 'POST',
-      headers,
+      headers: buildAlertWebhookHeaders(config),
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
@@ -271,44 +295,28 @@ export async function runImportFailureAlertCheck(
   now: Date = new Date(),
 ): Promise<ImportFailureAlertCheckResult> {
   if (!config.enabled || config.monitoredActions.length === 0) {
-    return {
-      status: 'disabled',
-      totalFailures: 0,
-      threshold: config.threshold,
-      webhookDelivered: false,
-    };
+    return buildCheckResult('disabled', config.threshold, 0);
   }
 
   const nowMs = now.getTime();
   const cooldownMs = config.cooldownMinutes * 60_000;
-  if (lastAlertAtMs > 0 && nowMs - lastAlertAtMs < cooldownMs && lastAlertFailureTotal !== null) {
-    return {
-      status: 'cooldown',
-      totalFailures: lastAlertFailureTotal,
-      threshold: config.threshold,
-      webhookDelivered: false,
-    };
+  if (lastAlertFailureTotal !== null) {
+    const preThresholdCooldown = resolveCooldownResult(nowMs, cooldownMs, config.threshold, lastAlertFailureTotal);
+    if (preThresholdCooldown) {
+      return preThresholdCooldown;
+    }
   }
 
   const windowStartIso = new Date(now.getTime() - config.windowMinutes * 60_000).toISOString();
   const whereClause = buildFailureWhereClause(windowStartIso, config.monitoredActions);
   const failureTotal = await fetchFailureTotal(whereClause);
   if (failureTotal < config.threshold) {
-    return {
-      status: 'below_threshold',
-      totalFailures: failureTotal,
-      threshold: config.threshold,
-      webhookDelivered: false,
-    };
+    return buildCheckResult('below_threshold', config.threshold, failureTotal);
   }
 
-  if (lastAlertAtMs > 0 && nowMs - lastAlertAtMs < cooldownMs) {
-    return {
-      status: 'cooldown',
-      totalFailures: failureTotal,
-      threshold: config.threshold,
-      webhookDelivered: false,
-    };
+  const postThresholdCooldown = resolveCooldownResult(nowMs, cooldownMs, config.threshold, failureTotal);
+  if (postThresholdCooldown) {
+    return postThresholdCooldown;
   }
 
   const summary = await fetchFailureSummary(whereClause, failureTotal);
@@ -331,12 +339,7 @@ export async function runImportFailureAlertCheck(
     openclawAutoHandoffRequestId: autoHandoff.requestId,
   });
 
-  return {
-    status: 'alerted',
-    totalFailures: summary.totalFailures,
-    threshold: config.threshold,
-    webhookDelivered,
-  };
+  return buildCheckResult('alerted', config.threshold, summary.totalFailures, webhookDelivered);
 }
 
 async function runScheduledCheck(): Promise<void> {
@@ -358,20 +361,16 @@ async function runScheduledCheck(): Promise<void> {
   }
 }
 
+function getInitialImportFailureAlertDelay(intervalMs: number): number {
+  return Math.min(60_000, intervalMs);
+}
+
 function scheduleNextImportFailureAlertCheck(intervalMs: number, delayMs: number): void {
   if (!schedulerActive) {
     return;
   }
 
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
-
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
+  clearImportFailureAlertSchedulerHandles();
 
   schedulerTimer = setTimeout(() => {
     schedulerTimer = null;
@@ -391,14 +390,7 @@ function startLegacyImportFailureAlertIntervalScheduler(intervalMs: number): voi
     return;
   }
 
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
+  clearImportFailureAlertSchedulerHandles();
 
   schedulerTimer = setTimeout(() => {
     schedulerTimer = null;
@@ -406,7 +398,7 @@ function startLegacyImportFailureAlertIntervalScheduler(intervalMs: number): voi
       return;
     }
     void runScheduledCheck();
-  }, Math.min(60_000, intervalMs));
+  }, getInitialImportFailureAlertDelay(intervalMs));
   schedulerTimer.unref();
 
   schedulerInterval = setInterval(() => {
@@ -467,7 +459,7 @@ export function startImportFailureAlertScheduler(): void {
   const intervalMs = config.intervalMinutes * 60_000;
   schedulerActive = true;
   if (optimizedLoopEnabled) {
-    scheduleNextImportFailureAlertCheck(intervalMs, Math.min(60_000, intervalMs));
+    scheduleNextImportFailureAlertCheck(intervalMs, getInitialImportFailureAlertDelay(intervalMs));
     return;
   }
   startLegacyImportFailureAlertIntervalScheduler(intervalMs);

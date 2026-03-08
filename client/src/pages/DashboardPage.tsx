@@ -50,6 +50,24 @@ interface StatusAndRiskData {
   partialError: string;
 }
 
+function resolveSettledValue<T>(result: PromiseSettledResult<T>): T | null {
+  return result.status === 'fulfilled' ? result.value : null;
+}
+
+function buildDashboardPartialError(results: {
+  nextStatus: PromiseSettledResult<UploadStatus>;
+  nextRisk: PromiseSettledResult<PharmacyRisk>;
+}): string {
+  const errors: string[] = [];
+  if (results.nextStatus.status === 'rejected') {
+    errors.push('アップロード状況の取得に失敗しました。');
+  }
+  if (results.nextRisk.status === 'rejected') {
+    errors.push('期限リスクの取得に失敗しました。');
+  }
+  return errors.join(' ').trim();
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -71,19 +89,11 @@ export default function DashboardPage() {
       throw new Error('ダッシュボードデータの取得に失敗しました');
     }
 
-    const errors: string[] = [];
-    if (nextStatus.status === 'rejected') {
-      errors.push('アップロード状況の取得に失敗しました。');
-    }
-    if (nextRisk.status === 'rejected') {
-      errors.push('期限リスクの取得に失敗しました。');
-    }
-
     return {
-      status: nextStatus.status === 'fulfilled' ? nextStatus.value : null,
+      status: resolveSettledValue(nextStatus),
       risk: nextRisk.status === 'fulfilled' && isValidRisk(nextRisk.value) ? nextRisk.value : null,
-      alertStats: nextAlertStats.status === 'fulfilled' ? nextAlertStats.value as AlertStatsData : null,
-      partialError: errors.join(' ').trim(),
+      alertStats: resolveSettledValue(nextAlertStats),
+      partialError: buildDashboardPartialError({ nextStatus, nextRisk }),
     };
   }, []);
 

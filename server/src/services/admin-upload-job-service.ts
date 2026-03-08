@@ -69,6 +69,23 @@ export interface AdminUploadJobListResult {
   total: number;
 }
 
+interface AdminUploadJobSummaryRow {
+  id: number;
+  pharmacyId: number;
+  uploadType: UploadType;
+  originalFilename: string;
+  status: StoredUploadJobStatus;
+  applyMode: string;
+  attempts: number;
+  deduplicated: boolean;
+  cancelRequestedAt: string | null;
+  canceledAt: string | null;
+  resultJson: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  completedAt: string | null;
+}
+
 function resolveUploadJobStatus(
   status: StoredUploadJobStatus,
   cancelRequestedAt: string | null,
@@ -153,6 +170,42 @@ function createWhereConditions(filters: AdminUploadJobListFilters): SQL<unknown>
   return conditions;
 }
 
+function mapAdminUploadJobSummary(
+  row: AdminUploadJobSummaryRow,
+  pharmacyName: string | null,
+  issueCount: number,
+): AdminUploadJobSummary {
+  const result = parseResultJson(row.resultJson);
+  const partialSummary = extractPartialSummary(result);
+  const resolvedStatus = resolveUploadJobStatus(
+    row.status as StoredUploadJobStatus,
+    row.cancelRequestedAt,
+    row.canceledAt,
+  );
+  const cancelable = (row.status === 'pending' || row.status === 'processing')
+    && !row.cancelRequestedAt
+    && !row.canceledAt;
+
+  return {
+    id: row.id,
+    pharmacyId: row.pharmacyId,
+    pharmacyName,
+    uploadType: row.uploadType,
+    originalFilename: row.originalFilename,
+    status: resolvedStatus,
+    applyMode: row.applyMode as ApplyMode,
+    attempts: row.attempts,
+    deduplicated: row.deduplicated,
+    cancelable,
+    canceledAt: row.canceledAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    completedAt: row.completedAt,
+    partialSummary,
+    errorReportAvailable: resolveErrorReportAvailable(issueCount, result),
+  };
+}
+
 export async function listAdminUploadJobs(
   filters: AdminUploadJobListFilters,
 ): Promise<AdminUploadJobListResult> {
@@ -201,38 +254,11 @@ export async function listAdminUploadJobs(
 
   const issueCountMap = await getUploadRowIssueCountByJobIds(rows.map((row) => row.id));
 
-  const data: AdminUploadJobSummary[] = rows.map((row) => {
-    const result = parseResultJson(row.resultJson);
-    const partialSummary = extractPartialSummary(result);
-    const issueCount = issueCountMap.get(row.id) ?? 0;
-    const resolvedStatus = resolveUploadJobStatus(
-      row.status as StoredUploadJobStatus,
-      row.cancelRequestedAt,
-      row.canceledAt,
-    );
-    const cancelable = (row.status === 'pending' || row.status === 'processing')
-      && !row.cancelRequestedAt
-      && !row.canceledAt;
-
-    return {
-      id: row.id,
-      pharmacyId: row.pharmacyId,
-      pharmacyName: pharmacyMap.get(row.pharmacyId) ?? null,
-      uploadType: row.uploadType,
-      originalFilename: row.originalFilename,
-      status: resolvedStatus,
-      applyMode: row.applyMode as ApplyMode,
-      attempts: row.attempts,
-      deduplicated: row.deduplicated,
-      cancelable,
-      canceledAt: row.canceledAt,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      completedAt: row.completedAt,
-      partialSummary,
-      errorReportAvailable: resolveErrorReportAvailable(issueCount, result),
-    };
-  });
+  const data: AdminUploadJobSummary[] = rows.map((row) => mapAdminUploadJobSummary(
+    row,
+    pharmacyMap.get(row.pharmacyId) ?? null,
+    issueCountMap.get(row.id) ?? 0,
+  ));
 
   return {
     data,

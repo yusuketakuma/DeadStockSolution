@@ -27,6 +27,13 @@ interface DraftEnvelope<T> {
   savedAt: string; // ISO 8601
 }
 
+function clearTimer(timerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>): void {
+  if (timerRef.current !== null) {
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }
+}
+
 /**
  * localStorage キーを組み立てる
  */
@@ -119,14 +126,8 @@ export function useAutoSave<T>(
     setSavingStatus('idle');
     isFirstRender.current = true;
 
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (statusTimerRef.current !== null) {
-      clearTimeout(statusTimerRef.current);
-      statusTimerRef.current = null;
-    }
+    clearTimer(timerRef);
+    clearTimer(statusTimerRef);
   }, [storageKey]);
 
   // debounce 付きの自動保存
@@ -140,13 +141,8 @@ export function useAutoSave<T>(
     }
 
     // 前のタイマーをキャンセル
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-    }
-    if (statusTimerRef.current !== null) {
-      clearTimeout(statusTimerRef.current);
-      statusTimerRef.current = null;
-    }
+    clearTimer(timerRef);
+    clearTimer(statusTimerRef);
 
     setSavingStatus('saving');
 
@@ -168,13 +164,8 @@ export function useAutoSave<T>(
     }, debounceMs);
 
     return () => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-      }
-      if (statusTimerRef.current !== null) {
-        clearTimeout(statusTimerRef.current);
-        statusTimerRef.current = null;
-      }
+      clearTimer(timerRef);
+      clearTimer(statusTimerRef);
     };
     // JSON.stringify で変更検知（オブジェクト参照だと毎回発火するため）
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,13 +174,8 @@ export function useAutoSave<T>(
   // コンポーネントアンマウント時にタイマーをクリーンアップ
   useEffect(() => {
     return () => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-      }
-      if (statusTimerRef.current !== null) {
-        clearTimeout(statusTimerRef.current);
-        statusTimerRef.current = null;
-      }
+      clearTimer(timerRef);
+      clearTimer(statusTimerRef);
     };
   }, []);
 
@@ -208,14 +194,8 @@ export function useAutoSave<T>(
     setHasDraft(false);
     setDraftTimestamp(null);
     setSavingStatus('idle');
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (statusTimerRef.current !== null) {
-      clearTimeout(statusTimerRef.current);
-      statusTimerRef.current = null;
-    }
+    clearTimer(timerRef);
+    clearTimer(statusTimerRef);
   }, []);
 
   return {

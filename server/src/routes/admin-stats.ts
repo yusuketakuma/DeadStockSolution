@@ -20,43 +20,97 @@ import { handleAdminError } from './admin-utils';
 
 const router = Router();
 
+function parseRequestedMinutes(rawValue: unknown, fallback = 60): number {
+  const parsed = Number(rawValue);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+async function fetchAdminStatsSnapshot() {
+  const [
+    [pharmacyCount],
+    [activePharmacyCount],
+    [uploadCount],
+    [proposalCount],
+    [historyCount],
+    [pickupCount],
+    [exchangeAmount],
+  ] = await Promise.all([
+    db.select({ count: rowCount }).from(pharmacies),
+    db.select({ count: rowCount })
+      .from(pharmacies)
+      .where(eq(pharmacies.isActive, true)),
+    db.select({ count: rowCount }).from(uploads),
+    db.select({ count: rowCount }).from(exchangeProposals),
+    db.select({ count: rowCount }).from(exchangeHistory),
+    db.select({ count: rowCount })
+      .from(exchangeProposalItems)
+      .innerJoin(exchangeProposals, eq(exchangeProposalItems.proposalId, exchangeProposals.id))
+      .where(eq(exchangeProposals.status, 'completed')),
+    db.select({
+      total: sql<number>`coalesce(sum(${exchangeHistory.totalValue}), 0)`,
+    }).from(exchangeHistory),
+  ]);
+
+  return {
+    pharmacyCount: pharmacyCount.count,
+    activePharmacyCount: activePharmacyCount.count,
+    uploadCount: uploadCount.count,
+    proposalCount: proposalCount.count,
+    historyCount: historyCount.count,
+    pickupCount: pickupCount.count,
+    exchangeAmount: Number(exchangeAmount.total ?? 0),
+  };
+}
+
+async function fetchAdminAlertSnapshot(since: string) {
+  const [
+    [failedUploadJobs],
+    [stalledUploadJobs],
+    [unreadNotificationsCount],
+    [unreadMatchNotificationsCount],
+    [pendingProposalsCount],
+  ] = await Promise.all([
+    db.select({ count: rowCount })
+      .from(uploadConfirmJobs)
+      .where(and(eq(uploadConfirmJobs.status, 'failed'), gte(uploadConfirmJobs.createdAt, since))),
+    db.select({ count: rowCount })
+      .from(uploadConfirmJobs)
+      .where(and(eq(uploadConfirmJobs.status, 'pending'), gte(uploadConfirmJobs.createdAt, since))),
+    db.select({ count: rowCount })
+      .from(notifications)
+      .where(eq(notifications.isRead, false)),
+    db.select({ count: rowCount })
+      .from(matchNotifications)
+      .where(eq(matchNotifications.isRead, false)),
+    db.select({ count: rowCount })
+      .from(exchangeProposals)
+      .where(and(
+        gte(exchangeProposals.proposedAt, since),
+        sql`${exchangeProposals.status} IN ('proposed', 'accepted_a', 'accepted_b')`,
+      )),
+  ]);
+
+  return {
+    failedUploadJobs24h: failedUploadJobs.count,
+    stalledUploadJobs24h: stalledUploadJobs.count,
+    unreadNotifications: unreadNotificationsCount.count + unreadMatchNotificationsCount.count,
+    pendingProposalActions24h: pendingProposalsCount.count,
+  };
+}
 
 router.get('/stats', async (_req: AuthRequest, res: Response) => {
   try {
-    const [
-      [pharmacyCount],
-      [activePharmacyCount],
-      [uploadCount],
-      [proposalCount],
-      [historyCount],
-      [pickupCount],
-      [exchangeAmount],
-    ] = await Promise.all([
-      db.select({ count: rowCount }).from(pharmacies),
-      db.select({ count: rowCount })
-        .from(pharmacies)
-        .where(eq(pharmacies.isActive, true)),
-      db.select({ count: rowCount }).from(uploads),
-      db.select({ count: rowCount }).from(exchangeProposals),
-      db.select({ count: rowCount }).from(exchangeHistory),
-      db.select({ count: rowCount })
-        .from(exchangeProposalItems)
-        .innerJoin(exchangeProposals, eq(exchangeProposalItems.proposalId, exchangeProposals.id))
-        .where(eq(exchangeProposals.status, 'completed')),
-      db.select({
-        total: sql<number>`coalesce(sum(${exchangeHistory.totalValue}), 0)`,
-      }).from(exchangeHistory),
-    ]);
+    const snapshot = await fetchAdminStatsSnapshot();
 
     res.json({
-      totalPharmacies: pharmacyCount.count,
-      activePharmacies: activePharmacyCount.count,
-      inactivePharmacies: pharmacyCount.count - activePharmacyCount.count,
-      totalUploads: uploadCount.count,
-      totalProposals: proposalCount.count,
-      totalExchanges: historyCount.count,
-      totalPickupItems: pickupCount.count,
-      totalExchangeValue: Number(exchangeAmount.total ?? 0),
+      totalPharmacies: snapshot.pharmacyCount,
+      activePharmacies: snapshot.activePharmacyCount,
+      inactivePharmacies: snapshot.pharmacyCount - snapshot.activePharmacyCount,
+      totalUploads: snapshot.uploadCount,
+      totalProposals: snapshot.proposalCount,
+      totalExchanges: snapshot.historyCount,
+      totalPickupItems: snapshot.pickupCount,
+      totalExchangeValue: snapshot.exchangeAmount,
     });
   } catch (err) {
     handleAdminError(err, 'Admin stats error', '統計情報の取得に失敗しました', res);
@@ -67,40 +121,7 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
 router.get('/alerts', async (_req: AuthRequest, res: Response) => {
   try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-    const [
-      [failedUploadJobs],
-      [stalledUploadJobs],
-      [unreadNotificationsCount],
-      [unreadMatchNotificationsCount],
-      [pendingProposalsCount],
-    ] = await Promise.all([
-      db.select({ count: rowCount })
-        .from(uploadConfirmJobs)
-        .where(and(eq(uploadConfirmJobs.status, 'failed'), gte(uploadConfirmJobs.createdAt, since))),
-      db.select({ count: rowCount })
-        .from(uploadConfirmJobs)
-        .where(and(eq(uploadConfirmJobs.status, 'pending'), gte(uploadConfirmJobs.createdAt, since))),
-      db.select({ count: rowCount })
-        .from(notifications)
-        .where(eq(notifications.isRead, false)),
-      db.select({ count: rowCount })
-        .from(matchNotifications)
-        .where(eq(matchNotifications.isRead, false)),
-      db.select({ count: rowCount })
-        .from(exchangeProposals)
-        .where(and(
-          gte(exchangeProposals.proposedAt, since),
-          sql`${exchangeProposals.status} IN ('proposed', 'accepted_a', 'accepted_b')`,
-        )),
-    ]);
-
-    res.json({
-      failedUploadJobs24h: failedUploadJobs.count,
-      stalledUploadJobs24h: stalledUploadJobs.count,
-      unreadNotifications: unreadNotificationsCount.count + unreadMatchNotificationsCount.count,
-      pendingProposalActions24h: pendingProposalsCount.count,
-    });
+    res.json(await fetchAdminAlertSnapshot(since));
   } catch (err) {
     handleAdminError(err, 'Admin alerts error', 'アラート集計の取得に失敗しました', res);
   }
@@ -109,8 +130,7 @@ router.get('/alerts', async (_req: AuthRequest, res: Response) => {
 
 router.get('/kpis', async (req: AuthRequest, res: Response) => {
   try {
-    const minutesRaw = Number(req.query.minutes);
-    const minutes = Number.isFinite(minutesRaw) ? minutesRaw : 60;
+    const minutes = parseRequestedMinutes(req.query.minutes);
     const snapshot = await getMonitoringKpiSnapshot(minutes);
     res.json(snapshot);
   } catch (err) {
@@ -120,8 +140,7 @@ router.get('/kpis', async (req: AuthRequest, res: Response) => {
 
 router.get('/observability', async (req: AuthRequest, res: Response) => {
   try {
-    const minutesRaw = Number(req.query.minutes);
-    const minutes = Number.isFinite(minutesRaw) ? minutesRaw : 60;
+    const minutes = parseRequestedMinutes(req.query.minutes);
     const snapshot = getObservabilitySnapshot(minutes);
     res.json({
       ...snapshot,

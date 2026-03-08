@@ -15,6 +15,27 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
 
 export type PushPermissionState = 'unsupported' | 'prompt' | 'granted' | 'denied' | 'loading';
 
+function resolvePushPermissionState(subscription: PushSubscription | null): PushPermissionState {
+  if (subscription) {
+    return 'granted';
+  }
+  if (Notification.permission === 'denied') {
+    return 'denied';
+  }
+  return 'prompt';
+}
+
+function buildPushSubscriptionPayload(subscription: PushSubscription) {
+  const json = subscription.toJSON();
+  return {
+    endpoint: subscription.endpoint,
+    keys: {
+      p256dh: json.keys?.p256dh ?? '',
+      auth: json.keys?.auth ?? '',
+    },
+  };
+}
+
 interface UsePushSubscriptionReturn {
   /** 現在のプッシュ通知許可状態 */
   permissionState: PushPermissionState;
@@ -50,13 +71,7 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
       try {
         const registration = await navigator.serviceWorker.ready;
         const subscription = await registration.pushManager.getSubscription();
-        if (subscription) {
-          setPermissionState('granted');
-        } else if (Notification.permission === 'denied') {
-          setPermissionState('denied');
-        } else {
-          setPermissionState('prompt');
-        }
+        setPermissionState(resolvePushPermissionState(subscription));
       } catch {
         setPermissionState('prompt');
       }
@@ -84,14 +99,7 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
       });
 
       // 4. サーバーに購読情報を送信
-      const json = subscription.toJSON();
-      await api.post('/push/subscribe', {
-        endpoint: subscription.endpoint,
-        keys: {
-          p256dh: json.keys?.p256dh ?? '',
-          auth: json.keys?.auth ?? '',
-        },
-      });
+      await api.post('/push/subscribe', buildPushSubscriptionPayload(subscription));
 
       setPermissionState('granted');
     } catch (err) {

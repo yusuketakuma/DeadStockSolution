@@ -6,6 +6,12 @@
 
 import type { RawTimelineEvent, TimelinePriority } from '../types/timeline';
 
+function isInboundProposalEvent(event: RawTimelineEvent): boolean {
+  return event.source === 'proposal'
+    && event.type === 'proposal_proposed'
+    && (event.metadata?.isRequester === false || event.metadata?.isInbound === true);
+}
+
 /**
  * ルールベースでイベントの優先度を判定する。
  *
@@ -50,14 +56,7 @@ export function assignPriority(event: RawTimelineEvent, now: Date = new Date()):
   }
 
   // 受信提案の承認/拒否待ち
-  if (
-    event.source === 'proposal' &&
-    event.type === 'proposal_proposed' &&
-    (
-      event.metadata?.isRequester === false ||
-      event.metadata?.isInbound === true
-    )
-  ) {
+  if (isInboundProposalEvent(event)) {
     return 'high';
   }
 

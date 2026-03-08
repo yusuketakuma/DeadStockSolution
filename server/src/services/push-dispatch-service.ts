@@ -27,6 +27,27 @@ function isExpiredSubscriptionError(error: unknown): boolean {
   return statusCode === 410 || statusCode === 404;
 }
 
+function toWebPushSubscription(sub: typeof pushSubscriptions.$inferSelect) {
+  return {
+    endpoint: sub.endpoint,
+    keys: {
+      p256dh: sub.p256dh,
+      auth: sub.auth,
+    },
+  };
+}
+
+async function touchSentSubscriptions(subscriptionIds: number[]): Promise<void> {
+  await Promise.allSettled(
+    subscriptionIds.map((subId) =>
+      db
+        .update(pushSubscriptions)
+        .set({ lastUsedAt: new Date().toISOString() })
+        .where(eq(pushSubscriptions.id, subId)),
+    ),
+  );
+}
+
 /**
  * 薬局IDに紐づく全購読へプッシュ通知を送信
  *
@@ -63,16 +84,8 @@ export async function sendToPharmacy(
 
   const results = await Promise.allSettled(
     subscriptions.map(async (sub) => {
-      const pushSub = {
-        endpoint: sub.endpoint,
-        keys: {
-          p256dh: sub.p256dh,
-          auth: sub.auth,
-        },
-      };
-
       try {
-        await webpush.sendNotification(pushSub, payloadString);
+        await webpush.sendNotification(toWebPushSubscription(sub), payloadString);
         return { status: 'sent' as const, subId: sub.id };
       } catch (error) {
         if (isExpiredSubscriptionError(error)) {
@@ -108,14 +121,7 @@ export async function sendToPharmacy(
       )
       .map((r) => r.value.subId);
 
-    await Promise.allSettled(
-      sentSubIds.map((subId) =>
-        db
-          .update(pushSubscriptions)
-          .set({ lastUsedAt: new Date().toISOString() })
-          .where(eq(pushSubscriptions.id, subId)),
-      ),
-    );
+    await touchSentSubscriptions(sentSubIds);
   }
 
   return result;
@@ -148,7 +154,7 @@ export async function sendToMultiple(
     return aggregate;
   }
 
-  for (const pharmacyId of pharmacyIds) {
+  for (const pharmacyId of [...new Set(pharmacyIds)]) {
     const result = await sendToPharmacy(pharmacyId, payload);
     aggregate.sent += result.sent;
     aggregate.failed += result.failed;

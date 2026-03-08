@@ -46,23 +46,28 @@ export interface ListAuditLogsInput {
   action?: AdminAuditAction;
 }
 
+function buildAuditWhereClause(input: ListAuditLogsInput) {
+  const conditions = buildFilterConditions(input);
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
 export async function listAuditLogs(input: ListAuditLogsInput = {}): Promise<AuditLogListResponse> {
   const queryLimit = Math.min(Math.max(input.limit ?? 20, 1), 100);
   const queryOffset = Math.max(input.offset ?? 0, 0);
 
-  const conditions = buildFilterConditions(input);
+  const whereClause = buildAuditWhereClause(input);
 
   try {
     const rows = await db.select()
       .from(adminAuditLogs)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(whereClause)
       .orderBy(desc(adminAuditLogs.createdAt), desc(adminAuditLogs.id))
       .limit(queryLimit)
       .offset(queryOffset);
 
     const [countResult] = await db.select({ count: sql<number>`count(*)::int` })
       .from(adminAuditLogs)
-      .where(conditions.length > 0 ? and(...conditions) : undefined);
+      .where(whereClause);
 
     return {
       logs: rows.map(toAuditLogEntry),

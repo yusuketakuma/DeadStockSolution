@@ -89,7 +89,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   componentDidCatch(error: Error) {
-    console.error('ErrorBoundary caught an error:', error);
+    if (import.meta.env.DEV) {
+      console.error('ErrorBoundary caught an error:', error);
+    }
   }
 
   handleReload = () => {

@@ -34,6 +34,14 @@ type AdminHandoffResponse = Pick<
   'accepted' | 'connectorConfigured' | 'implementationBranch' | 'status' | 'note'
 >;
 
+type BulkPharmacyActionKind = 'verify' | 'reject';
+
+interface BulkPharmacyActionConfig {
+  nextStatus: 'verified' | 'rejected';
+  skippedStatus: 'verified' | 'rejected';
+  isActive: boolean;
+}
+
 async function collectAdminHandoffContext(
   pharmacyId: number,
   requestId: number,
@@ -323,6 +331,96 @@ function parseBulkActionBody(body: unknown): { ok: true; data: BulkPharmacyActio
   return { ok: true, data: { pharmacyIds: uniqueIds, reason: validReason } };
 }
 
+async function runBulkPharmacyStatusUpdate(
+  pharmacyIds: number[],
+  reason: string | undefined,
+  config: BulkPharmacyActionConfig,
+): Promise<BulkActionResult[]> {
+  return db.transaction(async (tx) => {
+    const targetPharmacies = await tx.select({
+      id: pharmacies.id,
+      verificationStatus: pharmacies.verificationStatus,
+    })
+      .from(pharmacies)
+      .where(inArray(pharmacies.id, pharmacyIds));
+
+    const targetMap = new Map(targetPharmacies.map((pharmacy) => [pharmacy.id, pharmacy]));
+    const results: BulkActionResult[] = [];
+
+    for (const pharmacyId of pharmacyIds) {
+      const target = targetMap.get(pharmacyId);
+      if (!target) {
+        throw new Error(`薬局ID:${pharmacyId} が見つかりません`);
+      }
+      if (target.verificationStatus === config.skippedStatus) {
+        results.push({ pharmacyId, success: true });
+        continue;
+      }
+
+      const now = new Date().toISOString();
+      await tx.update(pharmacies)
+        .set({
+          verificationStatus: config.nextStatus,
+          isActive: config.isActive,
+          verifiedAt: config.nextStatus === 'verified' ? now : null,
+          rejectionReason: config.nextStatus === 'rejected' ? reason ?? null : null,
+          updatedAt: now,
+        })
+        .where(eq(pharmacies.id, pharmacyId));
+
+      results.push({ pharmacyId, success: true });
+    }
+
+    return results;
+  });
+}
+
+function logBulkAuditFailure(action: BulkPharmacyActionKind, pharmacyId: number, err: unknown): void {
+  logger.error(`Failed to record audit log for bulk-${action}`, {
+    pharmacyId,
+    error: err instanceof Error ? err.message : String(err),
+  });
+}
+
+function writeBulkAuditLogs(
+  results: BulkActionResult[],
+  adminId: number,
+  action: BulkPharmacyActionKind,
+  reason: string | undefined,
+): void {
+  const newStatus = action === 'verify' ? 'verified' : 'rejected';
+  for (const result of results) {
+    if (!result.success) {
+      continue;
+    }
+    invalidateAuthUserCache(result.pharmacyId);
+    void recordAuditLog({
+      adminId,
+      targetPharmacyId: result.pharmacyId,
+      action,
+      previousStatus: 'pending_verification',
+      newStatus,
+      reason: reason ?? null,
+    }).catch((err) => {
+      logBulkAuditFailure(action, result.pharmacyId, err);
+    });
+  }
+}
+
+function sendBulkActionResponse(
+  res: Response,
+  pharmacyIds: number[],
+  results: BulkActionResult[],
+): void {
+  const response: BulkPharmacyActionResponse = {
+    totalRequested: pharmacyIds.length,
+    succeeded: results.filter((result) => result.success).length,
+    failed: results.filter((result) => !result.success).length,
+    results,
+  };
+  res.json(response);
+}
+
 router.post('/pharmacies/bulk-verify', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const parsed = parseBulkActionBody(req.body);
@@ -333,64 +431,12 @@ router.post('/pharmacies/bulk-verify', adminWriteLimiter, async (req: AuthReques
     const { pharmacyIds, reason } = parsed.data;
     const adminId = req.user!.id;
 
-    // トランザクション内で全件処理（全件成功 or ロールバック）
-    const results = await db.transaction(async (tx) => {
-      const targetPharmacies = await tx.select({
-        id: pharmacies.id,
-        verificationStatus: pharmacies.verificationStatus,
-      })
-        .from(pharmacies)
-        .where(inArray(pharmacies.id, pharmacyIds));
-
-      const targetMap = new Map(targetPharmacies.map((p) => [p.id, p]));
-      const bulkResults: BulkActionResult[] = [];
-
-      for (const id of pharmacyIds) {
-        const target = targetMap.get(id);
-        if (!target) {
-          throw new Error(`薬局ID:${id} が見つかりません`);
-        }
-        if (target.verificationStatus === 'verified') {
-          bulkResults.push({ pharmacyId: id, success: true });
-          continue;
-        }
-
-        const now = new Date().toISOString();
-        await tx.update(pharmacies)
-          .set({
-            verificationStatus: 'verified',
-            isActive: true,
-            verifiedAt: now,
-            rejectionReason: null,
-            updatedAt: now,
-          })
-          .where(eq(pharmacies.id, id));
-
-        bulkResults.push({ pharmacyId: id, success: true });
-      }
-
-      return bulkResults;
+    const results = await runBulkPharmacyStatusUpdate(pharmacyIds, reason, {
+      nextStatus: 'verified',
+      skippedStatus: 'verified',
+      isActive: true,
     });
-
-    // 監査ログ記録（非トランザクション）
-    for (const result of results) {
-      if (result.success) {
-        invalidateAuthUserCache(result.pharmacyId);
-        void recordAuditLog({
-          adminId,
-          targetPharmacyId: result.pharmacyId,
-          action: 'verify',
-          previousStatus: 'pending_verification',
-          newStatus: 'verified',
-          reason: reason ?? null,
-        }).catch((err) => {
-          logger.error('Failed to record audit log for bulk-verify', {
-            pharmacyId: result.pharmacyId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-      }
-    }
+    writeBulkAuditLogs(results, adminId, 'verify', reason);
 
     void writeLog('admin_bulk_verify', {
       pharmacyId: adminId,
@@ -398,13 +444,7 @@ router.post('/pharmacies/bulk-verify', adminWriteLimiter, async (req: AuthReques
       ipAddress: getClientIp(req),
     });
 
-    const response: BulkPharmacyActionResponse = {
-      totalRequested: pharmacyIds.length,
-      succeeded: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length,
-      results,
-    };
-    res.json(response);
+    sendBulkActionResponse(res, pharmacyIds, results);
   } catch (err) {
     handleAdminError(err, 'Admin bulk verify error', '一括承認に失敗しました', res);
   }
@@ -425,62 +465,12 @@ router.post('/pharmacies/bulk-reject', adminWriteLimiter, async (req: AuthReques
       return;
     }
 
-    const results = await db.transaction(async (tx) => {
-      const targetPharmacies = await tx.select({
-        id: pharmacies.id,
-        verificationStatus: pharmacies.verificationStatus,
-      })
-        .from(pharmacies)
-        .where(inArray(pharmacies.id, pharmacyIds));
-
-      const targetMap = new Map(targetPharmacies.map((p) => [p.id, p]));
-      const bulkResults: BulkActionResult[] = [];
-
-      for (const id of pharmacyIds) {
-        const target = targetMap.get(id);
-        if (!target) {
-          throw new Error(`薬局ID:${id} が見つかりません`);
-        }
-        if (target.verificationStatus === 'rejected') {
-          bulkResults.push({ pharmacyId: id, success: true });
-          continue;
-        }
-
-        const now = new Date().toISOString();
-        await tx.update(pharmacies)
-          .set({
-            verificationStatus: 'rejected',
-            isActive: false,
-            verifiedAt: null,
-            rejectionReason: reason,
-            updatedAt: now,
-          })
-          .where(eq(pharmacies.id, id));
-
-        bulkResults.push({ pharmacyId: id, success: true });
-      }
-
-      return bulkResults;
+    const results = await runBulkPharmacyStatusUpdate(pharmacyIds, reason, {
+      nextStatus: 'rejected',
+      skippedStatus: 'rejected',
+      isActive: false,
     });
-
-    for (const result of results) {
-      if (result.success) {
-        invalidateAuthUserCache(result.pharmacyId);
-        void recordAuditLog({
-          adminId,
-          targetPharmacyId: result.pharmacyId,
-          action: 'reject',
-          previousStatus: 'pending_verification',
-          newStatus: 'rejected',
-          reason,
-        }).catch((err) => {
-          logger.error('Failed to record audit log for bulk-reject', {
-            pharmacyId: result.pharmacyId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-      }
-    }
+    writeBulkAuditLogs(results, adminId, 'reject', reason);
 
     void writeLog('admin_bulk_reject', {
       pharmacyId: adminId,
@@ -488,13 +478,7 @@ router.post('/pharmacies/bulk-reject', adminWriteLimiter, async (req: AuthReques
       ipAddress: getClientIp(req),
     });
 
-    const response: BulkPharmacyActionResponse = {
-      totalRequested: pharmacyIds.length,
-      succeeded: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length,
-      results,
-    };
-    res.json(response);
+    sendBulkActionResponse(res, pharmacyIds, results);
   } catch (err) {
     handleAdminError(err, 'Admin bulk reject error', '一括却下に失敗しました', res);
   }

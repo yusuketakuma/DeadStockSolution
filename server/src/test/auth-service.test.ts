@@ -1,4 +1,5 @@
 import { afterEach, describe, it, expect } from 'vitest';
+import jwt from 'jsonwebtoken';
 import { deriveSessionVersion, hashPassword, verifyPassword, generateToken, verifyToken } from '../services/auth-service';
 
 describe('auth-service', () => {
@@ -66,6 +67,22 @@ describe('auth-service', () => {
       const token = generateToken({ id: 1, email: 'test@example.com', isAdmin: false });
       const tampered = token + 'x';
       expect(() => verifyToken(tampered)).toThrow();
+    });
+
+    it('rejects tokens signed with a different algorithm', () => {
+      const token = jwt.sign(
+        { id: 1, email: 'test@example.com', isAdmin: false },
+        'test-secret-only',
+        { algorithm: 'HS512' },
+      );
+
+      expect(() => verifyToken(token)).toThrow();
+    });
+
+    it('rejects tokens with invalid payload shape', () => {
+      const token = jwt.sign('not-an-object-payload', 'test-secret-only', { algorithm: 'HS256' });
+
+      expect(() => verifyToken(token)).toThrow('Invalid JWT payload');
     });
 
     it('throws when JWT_SECRET is missing outside test env', () => {

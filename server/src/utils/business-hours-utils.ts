@@ -49,36 +49,46 @@ function parseTimeToMinutes(time: string): number {
   return h * 60 + m;
 }
 
-function toJstDate(now: Date): Date {
-  // Use Intl.DateTimeFormat to get JST components reliably across all environments
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(now);
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value ?? '00';
-  // Create ISO string with explicit +09:00 timezone - parsed consistently in any environment
-  return new Date(`${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}+09:00`);
-}
-
-function formatJstDate(now: Date): string {
+function getJstDateParts(
+  now: Date,
+  options?: Pick<Intl.DateTimeFormatOptions, 'hour' | 'minute' | 'second' | 'hour12'>,
+): Record<'year' | 'month' | 'day' | 'hour' | 'minute' | 'second', string> {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
+    hour: options?.hour,
+    minute: options?.minute,
+    second: options?.second,
+    hour12: options?.hour12,
   });
   const parts = formatter.formatToParts(now);
-  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
-  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
-  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
-  return `${year}-${month}-${day}`;
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '00';
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: get('hour'),
+    minute: get('minute'),
+    second: get('second'),
+  };
+}
+
+function toJstDate(now: Date): Date {
+  const parts = getJstDateParts(now, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  // Create ISO string with explicit +09:00 timezone - parsed consistently in any environment
+  return new Date(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}+09:00`);
+}
+
+function formatJstDate(now: Date): string {
+  const parts = getJstDateParts(now);
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function addDaysJst(now: Date, deltaDays: number): Date {

@@ -19,6 +19,11 @@ import { useAccountForm } from '../hooks/useAccountForm';
 import { useBusinessHoursForm } from '../hooks/useBusinessHoursForm';
 import { useNotificationSettings } from '../hooks/useNotificationSettings';
 
+function clearAccountPageMessages(accountForm: Pick<ReturnType<typeof useAccountForm>, 'setError' | 'setMessage'>): void {
+  accountForm.setError('');
+  accountForm.setMessage('');
+}
+
 export default function AccountPage() {
   const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -54,8 +59,7 @@ export default function AccountPage() {
   const handleWithdrawConfirmed = async () => {
     setShowWithdrawConfirm(false);
     setWithdrawing(true);
-    accountForm.setError('');
-    accountForm.setMessage('');
+    clearAccountPageMessages(accountForm);
     try {
       await api.delete<{ message: string }>('/account', { currentPassword: withdrawPassword });
       setWithdrawPassword('');

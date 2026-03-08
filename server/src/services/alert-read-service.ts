@@ -36,6 +36,30 @@ function toAlertItem(row: typeof predictiveAlerts.$inferSelect): AlertItem {
   };
 }
 
+function buildAlertListWhereClause(pharmacyId: number, filters: ListAlertsFilters) {
+  const conditions = [eq(predictiveAlerts.pharmacyId, pharmacyId)];
+
+  if (filters.resolved === true) {
+    conditions.push(isNotNull(predictiveAlerts.resolvedAt));
+  } else if (filters.resolved === false) {
+    conditions.push(isNull(predictiveAlerts.resolvedAt));
+  }
+
+  if (filters.type) {
+    conditions.push(eq(predictiveAlerts.alertType, filters.type));
+  }
+
+  return and(...conditions);
+}
+
+function buildAlertStatsByType(rows: Array<{ alertType: PredictiveAlertType; count: number }>): Record<string, number> {
+  const byType: Record<string, number> = {};
+  for (const row of rows) {
+    byType[row.alertType] = row.count;
+  }
+  return byType;
+}
+
 // ── アラート一覧 ──────────────────────────────────
 
 export async function listAlerts(
@@ -43,20 +67,7 @@ export async function listAlerts(
   filters: ListAlertsFilters,
 ): Promise<AlertListResponse> {
   const { resolved, type, offset = 0, limit = 20 } = filters;
-
-  const conditions = [eq(predictiveAlerts.pharmacyId, pharmacyId)];
-
-  if (resolved === true) {
-    conditions.push(isNotNull(predictiveAlerts.resolvedAt));
-  } else if (resolved === false) {
-    conditions.push(isNull(predictiveAlerts.resolvedAt));
-  }
-
-  if (type) {
-    conditions.push(eq(predictiveAlerts.alertType, type));
-  }
-
-  const whereClause = and(...conditions);
+  const whereClause = buildAlertListWhereClause(pharmacyId, filters);
 
   const [totalResult, rows] = await Promise.all([
     db
@@ -129,10 +140,5 @@ export async function getAlertStats(pharmacyId: number): Promise<AlertStats> {
 
   const unresolvedCount = totalResult[0]?.value ?? 0;
 
-  const byType: Record<string, number> = {};
-  for (const row of byTypeResult) {
-    byType[row.alertType] = row.count;
-  }
-
-  return { unresolvedCount, byType };
+  return { unresolvedCount, byType: buildAlertStatsByType(byTypeResult) };
 }

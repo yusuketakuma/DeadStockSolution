@@ -30,6 +30,10 @@ type UpdateDrugMasterItem = {
   yjCode: string;
   fields: UpdateDrugMasterFields;
 };
+type DelistingPayload = {
+  codes: string[];
+  priceHistory: InsertPriceHistoryRow[];
+};
 
 interface ExistingDrugMasterForSync {
   yjCode: string;
@@ -153,6 +157,142 @@ function assertNoDuplicateYjCodes(parsedRows: ParsedDrugRow[]): ParsedDrugRow[] 
   return parsedRows;
 }
 
+function collectDrugMasterBatchChanges(params: {
+  batch: ParsedDrugRow[];
+  existingMap: Map<string, ExistingDrugMasterForSync>;
+  now: string;
+  revisionDate: string;
+  result: SyncResult;
+}): {
+  toInsert: InsertDrugMasterRow[];
+  toUpdate: UpdateDrugMasterItem[];
+  priceHistoryToInsert: InsertPriceHistoryRow[];
+} {
+  const { batch, existingMap, now, revisionDate, result } = params;
+  const toInsert: InsertDrugMasterRow[] = [];
+  const toUpdate: UpdateDrugMasterItem[] = [];
+  const priceHistoryToInsert: InsertPriceHistoryRow[] = [];
+
+  for (const row of batch) {
+    const existing = existingMap.get(row.yjCode);
+    result.itemsProcessed++;
+
+    if (!existing) {
+      toInsert.push(buildDrugMasterInsertRow(row, now));
+      priceHistoryToInsert.push(buildPriceHistoryRow({
+        yjCode: row.yjCode,
+        previousPrice: null,
+        newPrice: String(row.yakkaPrice),
+        revisionDate,
+        revisionType: 'new_listing',
+      }));
+
+      result.itemsAdded++;
+      continue;
+    }
+
+    const { priceChanged, wasDelisted, shouldUpdate } = evaluateDrugMasterUpdate(existing, row);
+    if (!shouldUpdate) {
+      continue;
+    }
+
+    toUpdate.push({
+      yjCode: row.yjCode,
+      fields: buildDrugMasterUpdateFields(row, now),
+    });
+
+    if (priceChanged) {
+      priceHistoryToInsert.push(buildPriceHistoryRow({
+        yjCode: row.yjCode,
+        previousPrice: existing.yakkaPrice,
+        newPrice: String(row.yakkaPrice),
+        revisionDate,
+        revisionType: wasDelisted ? 'new_listing' : 'price_revision',
+      }));
+    }
+
+    result.itemsUpdated++;
+  }
+
+  return { toInsert, toUpdate, priceHistoryToInsert };
+}
+
+async function applyDrugMasterBatchChanges(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  params: {
+    toInsert: InsertDrugMasterRow[];
+    toUpdate: UpdateDrugMasterItem[];
+    priceHistoryToInsert: InsertPriceHistoryRow[];
+  },
+): Promise<void> {
+  const { toInsert, toUpdate, priceHistoryToInsert } = params;
+
+  if (toInsert.length > 0) {
+    await tx.insert(drugMaster).values(toInsert);
+  }
+  if (toUpdate.length > 0) {
+    await Promise.all(
+      toUpdate.map((item) =>
+        tx.update(drugMaster)
+          .set(item.fields)
+          .where(eq(drugMaster.yjCode, item.yjCode)),
+      ),
+    );
+  }
+  if (priceHistoryToInsert.length > 0) {
+    await tx.insert(drugMasterPriceHistory).values(priceHistoryToInsert);
+  }
+}
+
+function collectDelistingPayload(
+  existingMap: Map<string, ExistingDrugMasterForSync>,
+  incomingCodes: Set<string>,
+  revisionDate: string,
+  result: SyncResult,
+): DelistingPayload {
+  const codes: string[] = [];
+  const priceHistory: InsertPriceHistoryRow[] = [];
+
+  for (const [yjCode, existing] of existingMap) {
+    if (!incomingCodes.has(yjCode) && existing.isListed) {
+      codes.push(yjCode);
+      priceHistory.push(buildPriceHistoryRow({
+        yjCode,
+        previousPrice: existing.yakkaPrice,
+        newPrice: null,
+        revisionDate,
+        revisionType: 'delisting',
+      }));
+      result.itemsDeleted++;
+    }
+  }
+
+  return { codes, priceHistory };
+}
+
+async function applyDelistingPayload(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  payload: DelistingPayload,
+  revisionDate: string,
+  now: string,
+): Promise<void> {
+  if (payload.codes.length > 0) {
+    for (let i = 0; i < payload.codes.length; i += BATCH_SIZE) {
+      const codes = payload.codes.slice(i, i + BATCH_SIZE);
+      await tx.update(drugMaster)
+        .set({ isListed: false, deletedDate: revisionDate, updatedAt: now })
+        .where(inArray(drugMaster.yjCode, codes));
+    }
+  }
+
+  if (payload.priceHistory.length > 0) {
+    for (let i = 0; i < payload.priceHistory.length; i += BATCH_SIZE) {
+      const historyBatch = payload.priceHistory.slice(i, i + BATCH_SIZE);
+      await tx.insert(drugMasterPriceHistory).values(historyBatch);
+    }
+  }
+}
+
 export async function syncDrugMaster(
   parsedRows: ParsedDrugRow[],
   syncLogId: number,
@@ -194,103 +334,18 @@ export async function syncDrugMaster(
     // バッチ処理: INSERT/UPDATE を蓄積して一括実行
     for (let i = 0; i < normalizedRows.length; i += BATCH_SIZE) {
       const batch = normalizedRows.slice(i, i + BATCH_SIZE);
-
-      const toInsert: InsertDrugMasterRow[] = [];
-      const toUpdate: UpdateDrugMasterItem[] = [];
-      const priceHistoryToInsert: InsertPriceHistoryRow[] = [];
-
-      for (const row of batch) {
-        const existing = existingMap.get(row.yjCode);
-        result.itemsProcessed++;
-
-        if (!existing) {
-          toInsert.push(buildDrugMasterInsertRow(row, now));
-          priceHistoryToInsert.push(buildPriceHistoryRow({
-            yjCode: row.yjCode,
-            previousPrice: null,
-            newPrice: String(row.yakkaPrice),
-            revisionDate,
-            revisionType: 'new_listing',
-          }));
-
-          result.itemsAdded++;
-          continue;
-        }
-
-        const { priceChanged, wasDelisted, shouldUpdate } = evaluateDrugMasterUpdate(existing, row);
-        if (!shouldUpdate) {
-          continue;
-        }
-
-        toUpdate.push({
-          yjCode: row.yjCode,
-          fields: buildDrugMasterUpdateFields(row, now),
-        });
-
-        if (priceChanged) {
-          priceHistoryToInsert.push(buildPriceHistoryRow({
-            yjCode: row.yjCode,
-            previousPrice: existing.yakkaPrice,
-            newPrice: String(row.yakkaPrice),
-            revisionDate,
-            revisionType: wasDelisted ? 'new_listing' : 'price_revision',
-          }));
-        }
-
-        result.itemsUpdated++;
-      }
-
-      // バッチ INSERT 一括実行
-      if (toInsert.length > 0) {
-        await tx.insert(drugMaster).values(toInsert);
-      }
-      // バッチ UPDATE 並列実行（N回逐次 → Promise.all でDBラウンドトリップ削減）
-      if (toUpdate.length > 0) {
-        await Promise.all(
-          toUpdate.map((item) =>
-            tx.update(drugMaster)
-              .set(item.fields)
-              .where(eq(drugMaster.yjCode, item.yjCode)),
-          ),
-        );
-      }
-      if (priceHistoryToInsert.length > 0) {
-        await tx.insert(drugMasterPriceHistory).values(priceHistoryToInsert);
-      }
-
+      const batchChanges = collectDrugMasterBatchChanges({
+        batch,
+        existingMap,
+        now,
+        revisionDate,
+        result,
+      });
+      await applyDrugMasterBatchChanges(tx, batchChanges);
     }
 
-    // ファイルに含まれない既存品目を一括で経過措置 or 削除扱いにする
-    const delistingCodes: string[] = [];
-    const delistingPriceHistory: (typeof drugMasterPriceHistory.$inferInsert)[] = [];
-    for (const [yjCode, existing] of existingMap) {
-      if (!incomingCodes.has(yjCode) && existing.isListed) {
-        delistingCodes.push(yjCode);
-        delistingPriceHistory.push(buildPriceHistoryRow({
-          yjCode,
-          previousPrice: existing.yakkaPrice,
-          newPrice: null,
-          revisionDate,
-          revisionType: 'delisting',
-        }));
-        result.itemsDeleted++;
-      }
-    }
-
-    if (delistingCodes.length > 0) {
-      // バッチで delisting UPDATE
-      for (let i = 0; i < delistingCodes.length; i += BATCH_SIZE) {
-        const codes = delistingCodes.slice(i, i + BATCH_SIZE);
-        await tx.update(drugMaster)
-          .set({ isListed: false, deletedDate: revisionDate, updatedAt: now })
-          .where(inArray(drugMaster.yjCode, codes));
-      }
-      // バッチで price history INSERT
-      for (let i = 0; i < delistingPriceHistory.length; i += BATCH_SIZE) {
-        const historyBatch = delistingPriceHistory.slice(i, i + BATCH_SIZE);
-        await tx.insert(drugMasterPriceHistory).values(historyBatch);
-      }
-    }
+    const delistingPayload = collectDelistingPayload(existingMap, incomingCodes, revisionDate, result);
+    await applyDelistingPayload(tx, delistingPayload, revisionDate, now);
 
     await tx.update(drugMasterSyncLogs)
       .set({
