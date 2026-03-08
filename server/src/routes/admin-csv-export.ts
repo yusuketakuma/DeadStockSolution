@@ -4,6 +4,7 @@
 // GET /csv/reports    — レポート一覧
 
 import { Router, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { AuthRequest } from '../types';
 import { logger } from '../services/logger';
 import {
@@ -11,6 +12,15 @@ import {
   exportExchangesCsv,
   exportReportsCsv,
 } from '../services/csv-export-service';
+
+const csvExportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'エクスポートリクエストが多すぎます。しばらく待ってからお試しください。' },
+  keyGenerator: (req) => (req as AuthRequest).user?.id?.toString() ?? req.ip ?? 'unknown',
+});
 
 const router = Router();
 
@@ -24,7 +34,7 @@ function setCsvHeaders(res: Response, filename: string): void {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 }
 
-router.get('/csv/pharmacies', async (_req: AuthRequest, res: Response) => {
+router.get('/csv/pharmacies', csvExportLimiter, async (_req: AuthRequest, res: Response) => {
   try {
     const date = formatDateForFilename();
     setCsvHeaders(res, `pharmacies-${date}.csv`);
@@ -43,7 +53,7 @@ router.get('/csv/pharmacies', async (_req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/csv/exchanges', async (_req: AuthRequest, res: Response) => {
+router.get('/csv/exchanges', csvExportLimiter, async (_req: AuthRequest, res: Response) => {
   try {
     const date = formatDateForFilename();
     setCsvHeaders(res, `exchanges-${date}.csv`);
@@ -61,7 +71,7 @@ router.get('/csv/exchanges', async (_req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/csv/reports', async (_req: AuthRequest, res: Response) => {
+router.get('/csv/reports', csvExportLimiter, async (_req: AuthRequest, res: Response) => {
   try {
     const date = formatDateForFilename();
     setCsvHeaders(res, `reports-${date}.csv`);
