@@ -27,7 +27,7 @@ import {
   type UploadRowIssueInput,
 } from './upload-row-issue-service';
 
-const INSERT_BATCH_SIZE = 500;
+import { computeOptimalBatchSize } from './upload-diff-utils';
 
 export type ApplyMode = 'replace' | 'diff' | 'partial';
 export type UploadType = 'dead_stock' | 'used_medication';
@@ -157,8 +157,9 @@ async function insertInBatches(
   totalCount: number,
   insertBatch: (start: number, end: number) => Promise<unknown>,
 ): Promise<void> {
-  for (let i = 0; i < totalCount; i += INSERT_BATCH_SIZE) {
-    await insertBatch(i, i + INSERT_BATCH_SIZE);
+  const batchSize = computeOptimalBatchSize(totalCount);
+  for (let i = 0; i < totalCount; i += batchSize) {
+    await insertBatch(i, i + batchSize);
   }
 }
 

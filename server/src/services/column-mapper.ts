@@ -34,6 +34,8 @@ const USED_MEDICATION_TYPE_HINTS = [
   'usage',
 ].map((h) => h.normalize('NFKC').toLowerCase());
 
+const ALL_KEYWORD_GROUPS = Object.values(KEYWORD_MAP);
+
 export interface UploadTypeDetectionResult {
   detectedType: 'dead_stock' | 'used_medication';
   confidence: 'high' | 'medium' | 'low';
@@ -66,15 +68,7 @@ function scoreHeaderHints(headerRow: unknown[], hints: string[]): number {
   let score = 0;
   for (const header of headers) {
     if (!header) continue;
-    for (const hint of hints) {
-      if (header === hint) {
-        score += 4;
-        continue;
-      }
-      if (header.includes(hint)) {
-        score += 2;
-      }
-    }
+    score += scoreHeaderTextAgainstHints(header, hints);
   }
   return score;
 }
@@ -87,15 +81,12 @@ function scoreDeadStockDataRows(
   const drugNameIdx = parseColumnIndex(mapping.drug_name);
   const quantityIdx = parseColumnIndex(mapping.quantity);
   const expirationIdx = parseColumnIndex(mapping.expiration_date);
-  const sampleLimit = Math.min(rows.length, startIndex + 30);
-  let score = 0;
-
-  for (let i = startIndex; i < sampleLimit; i += 1) {
-    const row = rows[i] ?? [];
+  return scoreDataRows(rows, startIndex, (row) => {
     const drugName = normalizeText(getCell(row, drugNameIdx));
     const quantity = parseNumber(getCell(row, quantityIdx));
     const expiration = normalizeText(getCell(row, expirationIdx));
 
+    let score = 0;
     if (drugName) {
       score += 1;
     }
@@ -105,9 +96,8 @@ function scoreDeadStockDataRows(
     if (expiration) {
       score += 1;
     }
-  }
-
-  return score;
+    return score;
+  });
 }
 
 function scoreUsedMedicationDataRows(
@@ -117,21 +107,83 @@ function scoreUsedMedicationDataRows(
 ): number {
   const drugNameIdx = parseColumnIndex(mapping.drug_name);
   const monthlyUsageIdx = parseColumnIndex(mapping.monthly_usage);
-  const sampleLimit = Math.min(rows.length, startIndex + 30);
-  let score = 0;
-
-  for (let i = startIndex; i < sampleLimit; i += 1) {
-    const row = rows[i] ?? [];
+  return scoreDataRows(rows, startIndex, (row) => {
     const drugName = normalizeText(getCell(row, drugNameIdx));
     const monthlyUsage = parseNumber(getCell(row, monthlyUsageIdx));
+
+    let score = 0;
     if (drugName) {
       score += 1;
     }
     if (monthlyUsage !== null && monthlyUsage >= 0) {
       score += 2;
     }
+    return score;
+  });
+}
+
+function scoreDataRows(
+  rows: unknown[][],
+  startIndex: number,
+  scoreRow: (row: unknown[]) => number,
+): number {
+  const sampleLimit = Math.min(rows.length, startIndex + 30);
+  let score = 0;
+
+  for (let i = startIndex; i < sampleLimit; i += 1) {
+    const row = rows[i] ?? [];
+    score += scoreRow(row);
   }
 
+  return score;
+}
+
+function countNonEmptyStrings(row: unknown[]): number {
+  return row.filter(
+    (cell) => cell !== null && cell !== undefined && String(cell).trim().length > 0
+  ).length;
+}
+
+function scoreRowKeywordMatches(row: unknown[]): number {
+  let keywordScore = 0;
+  for (const cell of row) {
+    const cellStr = String(cell || '').normalize('NFKC');
+    for (const keywords of ALL_KEYWORD_GROUPS) {
+      keywordScore += scoreTextAgainstKeywords(cellStr, keywords, 5, 5) > 0 ? 5 : 0;
+    }
+  }
+  return keywordScore;
+}
+
+function scoreTextAgainstKeywords(
+  text: string,
+  keywords: string[],
+  exactMatchScore: number,
+  partialMatchScore: number,
+): number {
+  let score = 0;
+  for (const keyword of keywords) {
+    if (text === keyword) {
+      return exactMatchScore;
+    }
+    if (text.includes(keyword)) {
+      score = Math.max(score, partialMatchScore);
+    }
+  }
+  return score;
+}
+
+function scoreHeaderTextAgainstHints(text: string, hints: string[]): number {
+  let score = 0;
+  for (const hint of hints) {
+    if (text === hint) {
+      score += 4;
+      continue;
+    }
+    if (text.includes(hint)) {
+      score += 2;
+    }
+  }
   return score;
 }
 
@@ -152,6 +204,11 @@ function scoreUsedMedicationMapping(mapping: ColumnMapping): number {
   return score;
 }
 
+// キーワードマッチスコアがこの閾値以上なら確実にヘッダー行として早期終了する。
+// ALL_KEYWORD_GROUPS は 8 グループ、1 グループマッチで 5 点のため、10 点 = 2 キーワードマッチ。
+// データ行（薬品名・数量・日付など）は列ヘッダーキーワードに一致しないため誤検知しない。
+const HEADER_EARLY_EXIT_THRESHOLD = 10;
+
 export function detectHeaderRow(rows: unknown[][]): number {
   let bestRow = 0;
   let bestScore = 0;
@@ -161,23 +218,19 @@ export function detectHeaderRow(rows: unknown[][]): number {
     const row = rows[i];
     if (!row) continue;
 
-    // Count non-empty string cells
-    const nonEmptyStrings = row.filter(
-      (cell) => cell !== null && cell !== undefined && String(cell).trim().length > 0
-    ).length;
-
-    // Bonus for cells that contain known keywords
-    let keywordScore = 0;
-    for (const cell of row) {
-      const cellStr = String(cell || '').normalize('NFKC');
-      for (const keywords of Object.values(KEYWORD_MAP)) {
-        if (keywords.some((kw) => cellStr.includes(kw))) {
-          keywordScore += 5;
-        }
-      }
+    // 全セルが空の行はスコア計算をスキップ
+    if (row.every((cell) => cell === null || cell === undefined || String(cell).trim() === '')) {
+      continue;
     }
 
-    const totalScore = nonEmptyStrings + keywordScore;
+    const keywordScore = scoreRowKeywordMatches(row);
+
+    // 高スコア行を見つけたら確実にヘッダーなので即返す
+    if (keywordScore >= HEADER_EARLY_EXIT_THRESHOLD) {
+      return i;
+    }
+
+    const totalScore = countNonEmptyStrings(row) + keywordScore;
     if (totalScore > bestScore) {
       bestScore = totalScore;
       bestRow = i;
@@ -203,36 +256,29 @@ export function suggestMapping(
   for (const field of fields) {
     const keywords = KEYWORD_MAP[field as FieldName];
     if (!keywords) continue;
-
-    let bestCol: string | null = null;
-    let bestScore = 0;
-
-    for (let colIdx = 0; colIdx < headers.length; colIdx++) {
-      const header = headers[colIdx];
-      if (!header) continue;
-
-      let score = 0;
-      for (const keyword of keywords) {
-        if (header === keyword) {
-          score = 10; // exact match
-          break;
-        } else if (header.includes(keyword)) {
-          score = Math.max(score, 5); // partial match
-        }
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestCol = String(colIdx);
-      }
-    }
-
-    if (bestCol !== null) {
-      mapping[field] = bestCol;
-    }
+    mapping[field] = findBestHeaderColumn(headers, keywords);
   }
 
   return mapping;
+}
+
+function findBestHeaderColumn(headers: string[], keywords: string[]): string | null {
+  let bestCol: string | null = null;
+  let bestScore = 0;
+
+  for (let colIdx = 0; colIdx < headers.length; colIdx++) {
+    const header = headers[colIdx];
+    if (!header) continue;
+
+    const score = scoreTextAgainstKeywords(header, keywords, 10, 5);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestCol = String(colIdx);
+    }
+  }
+
+  return bestCol;
 }
 
 export function detectUploadType(

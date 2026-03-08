@@ -17,6 +17,17 @@ export function buildValuesSql<T>(items: T[], buildRow: (item: T) => SQL): SQL {
 }
 
 /**
+ * Compute optimal batch size based on total row count.
+ * Larger datasets benefit from bigger batches to reduce round-trip overhead.
+ */
+export function computeOptimalBatchSize(totalCount: number): number {
+  if (totalCount <= 1_000) return 500;
+  if (totalCount <= 10_000) return 1_000;
+  if (totalCount <= 100_000) return 2_000;
+  return 5_000;
+}
+
+/**
  * Process items in batches with an async processor function.
  * Used for insert/update operations to avoid overwhelming the database.
  */
@@ -30,6 +41,14 @@ export async function processInBatches<T>(
   }
 }
 
+function isMissingExistingRow<TExisting extends { id: number }>(
+  row: TExisting,
+  seenExistingIds: Set<number>,
+  shouldInclude: (row: TExisting) => boolean,
+): boolean {
+  return shouldInclude(row) && !seenExistingIds.has(row.id);
+}
+
 /**
  * Collect IDs of rows that are missing from the incoming data.
  * Used to identify rows that should be deleted or deactivated.
@@ -40,7 +59,7 @@ export function collectMissingIds<TExisting extends { id: number }>(
   shouldInclude: (row: TExisting) => boolean = () => true,
 ): number[] {
   return existing
-    .filter((row) => shouldInclude(row) && !seenExistingIds.has(row.id))
+    .filter((row) => isMissingExistingRow(row, seenExistingIds, shouldInclude))
     .map((row) => row.id);
 }
 
@@ -55,7 +74,7 @@ export function countMissingRows<TExisting extends { id: number }>(
 ): number {
   let count = 0;
   for (const row of existing) {
-    if (shouldInclude(row) && !seenExistingIds.has(row.id)) {
+    if (isMissingExistingRow(row, seenExistingIds, shouldInclude)) {
       count += 1;
     }
   }

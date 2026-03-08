@@ -34,17 +34,16 @@
 
 ### v0.0.11 パフォーマンス改善スプリント
 
-- [ ] **T218**: insertInBatches バッチサイズ最適化
-  - 現状: 500件ずつ挿入（大規模アップロードでトランザクション長期化）
-  - 提案: 動的バッチサイズ（1000-5000件）または COPY 使用検討
-  - 優先度: Medium
-  - 影響: 10万件以上のアップロード
+- [x] **T218**: insertInBatches バッチサイズ最適化 `cc:完了` (2026-03-09)
+  - `computeOptimalBatchSize()` を `upload-diff-utils.ts` に追加（500/1K/2K/5K 動的選択）
+  - `upload-confirm-service.ts`, `upload-diff-batch.ts` を動的バッチに移行
+  - UPDATE バッチは INSERT の半分で自動計算
+  - テスト4件追加、typecheck 通過
 
-- [ ] **T219**: detectHeaderRow スキャン最適化
-  - 現状: 最大15行スキャン O(rows × headers × keywords)
-  - 提案: 早期終了条件の追加
-  - 優先度: Low
-  - 影響: 軽微（初期行のみ）
+- [x] **T219**: detectHeaderRow スキャン最適化 `cc:完了` (2026-03-09)
+  - 早期終了: キーワードスコア≥10（2キーワードマッチ）で即 return
+  - 空行スキップ: 全セル空の行はスコア計算をスキップ
+  - テスト2件追加（35→37件）、既存テスト全通過
 
 ---
 
