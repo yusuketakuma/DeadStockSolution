@@ -52,6 +52,10 @@ const MATCHING_RULE_FIELD_SPECS: Record<keyof MatchingScoringRules, RuleFieldSpe
   diversityScoreMax: { min: 0, max: 200 },
   diversityItemFactor: { min: 0, max: 100 },
   favoriteBonus: { min: 0, max: 200 },
+  groupBonus: { min: 0, max: 50, integer: true },
+  nearExpiryDecayCurve: { min: 0, max: 10 },
+  successRateBonus: { min: 0, max: 50, integer: true },
+  maxCandidates: { min: 1, max: 200, integer: true },
 } satisfies Record<keyof MatchingScoringRules, RuleFieldSpec>;
 
 const MATCHING_RULE_FIELDS = Object.keys(MATCHING_RULE_FIELD_SPECS) as Array<keyof MatchingScoringRules>;

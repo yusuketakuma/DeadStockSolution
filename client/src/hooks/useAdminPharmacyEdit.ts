@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, useMemo, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, isConflictError, isVerificationStatusError, isPartialSuccessError } from '../api/client';
 import type { AccountFormState } from '../components/account/AccountInfoForm';
@@ -140,7 +140,6 @@ export function useAdminPharmacyEdit(): UseAdminPharmacyEditReturn {
   const [hoursLoaded, setHoursLoaded] = useState(false);
   const [hoursLoadFailed, setHoursLoadFailed] = useState(false);
   const [hoursHasRemoteData, setHoursHasRemoteData] = useState(false);
-  const hoursHasRemoteDataRef = useRef(false);
   const [hoursEditing, setHoursEditing] = useState(false);
   const [hoursSaving, setHoursSaving] = useState(false);
   const [hoursMessage, setHoursMessage] = useState('');
@@ -216,14 +215,13 @@ export function useAdminPharmacyEdit(): UseAdminPharmacyEditReturn {
       setSavedSpecialHours(normalizedSpecial);
       setHoursVersion(data.version ?? 1);
       setHoursLoadFailed(false);
-      hoursHasRemoteDataRef.current = true;
       setHoursHasRemoteData(true);
       setHoursError('');
       setHoursConflict(false);
     } catch (err) {
       if (signal?.aborted) return;
       setHoursLoadFailed(true);
-      if (!hoursHasRemoteDataRef.current) {
+      if (!hoursHasRemoteData) {
         setBusinessHours([]);
         setSavedBusinessHours([]);
         setSpecialHours([]);
@@ -236,7 +234,7 @@ export function useAdminPharmacyEdit(): UseAdminPharmacyEditReturn {
         setHoursLoaded(true);
       }
     }
-  }, [hasValidId, pharmacyId]);
+  }, [hasValidId, pharmacyId, hoursHasRemoteData]);
 
   // --- Effects ---
   useEffect(() => {

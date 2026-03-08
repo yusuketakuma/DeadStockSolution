@@ -40,7 +40,7 @@ describe('SmartDigest', () => {
     const events = [makeEvent({ priority: 'critical', title: '緊急テスト案件' })];
     renderDigest({ events });
 
-    expect(screen.getByText('緊急')).toBeInTheDocument();
+    expect(screen.getByText('重要')).toBeInTheDocument();
     expect(screen.getByText('緊急テスト案件')).toBeInTheDocument();
   });
 

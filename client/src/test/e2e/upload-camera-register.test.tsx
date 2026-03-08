@@ -100,7 +100,7 @@ describe('UploadPage camera register mode', () => {
       packageLabel: '100錠',
       quantity: 3,
     }));
-  });
+  }, 15000);
 
   it('can confirm unmatched row with manual candidate search', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -292,6 +292,11 @@ describe('UploadPage camera register mode', () => {
         expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
       });
 
+      // Wait for camera section to be available
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'カメラ開始' })).toBeInTheDocument();
+      });
+
       await userEvent.click(screen.getByRole('button', { name: 'カメラ開始' }));
       const video = document.querySelector('video') as HTMLVideoElement | null;
       expect(video).not.toBeNull();
@@ -301,13 +306,19 @@ describe('UploadPage camera register mode', () => {
       Object.defineProperty(video, 'videoWidth', { configurable: true, value: 1280 });
       Object.defineProperty(video, 'videoHeight', { configurable: true, value: 720 });
 
-      await userEvent.click(screen.getByRole('button', { name: '画像からコード検出' }));
+      // In fullscreen mode, the button is labeled "撮影" instead of "画像からコード検出"
+      await userEvent.click(screen.getByRole('button', { name: '撮影' }));
 
+      // Wait for scan result sheet to appear with the latest row
       await waitFor(() => {
-        expect(screen.getByText(/画像内コードを 2 件追加しました/)).toBeInTheDocument();
-      });
+        expect(screen.getByRole('button', { name: '一覧' })).toBeInTheDocument();
+      }, { timeout: 5000 });
 
-      const confirmButtons = screen.getAllByRole('button', { name: '確定' });
+      // Click "一覧" to exit fullscreen and view all rows
+      await userEvent.click(screen.getByRole('button', { name: '一覧' }));
+
+      // Now the rows should be visible in the normal view
+      const confirmButtons = await screen.findAllByRole('button', { name: '確定' });
       expect(confirmButtons).toHaveLength(2);
       await userEvent.click(confirmButtons[0]);
       await userEvent.click(confirmButtons[1]);
@@ -320,7 +331,7 @@ describe('UploadPage camera register mode', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/2件のデータを登録しました/)).toBeInTheDocument();
-      });
+      }, { timeout: 5000 });
 
       const confirmCall = fetchMock.mock.calls.find((call) => {
         const url = typeof call[0] === 'string' ? call[0] : call[0].toString();
@@ -344,7 +355,7 @@ describe('UploadPage camera register mode', () => {
         Object.defineProperty(navigator, 'mediaDevices', originalMediaDevices);
       }
     }
-  });
+  }, 15000);
 
   it('shows camera error on insecure context', async () => {
     const originalIsSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext');

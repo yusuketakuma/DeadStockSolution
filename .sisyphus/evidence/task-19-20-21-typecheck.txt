@@ -1,0 +1,12 @@
+
+> typecheck
+> npm run typecheck --workspace=server && npm run typecheck --workspace=client
+
+
+> server@0.0.9 typecheck
+> tsc --noEmit
+
+
+> client@0.0.9 typecheck
+> tsc --noEmit
+

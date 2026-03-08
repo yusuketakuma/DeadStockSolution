@@ -3,7 +3,7 @@ import { useAsyncState } from '../hooks/useAsyncState';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
-import { Badge, Row, Col } from 'react-bootstrap';
+import { Badge, Row, Col, Accordion } from 'react-bootstrap';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -14,11 +14,12 @@ import AppField from '../components/ui/AppField';
 import AppSelect from '../components/ui/AppSelect';
 import LoadingButton from '../components/ui/LoadingButton';
 import ProposalItemsPanel from '../components/ProposalItemsPanel';
-import type { ProposalTimelineEvent } from '../utils/proposal-timeline';
-import { toViewerProposalStatusLabel } from '../utils/proposal-status';
+import type { EnrichedProposalTimelineEvent } from '../types/timeline';
 import { formatDateTimeJa } from '../utils/formatters';
 import ProposalTimeline from '../components/timeline/ProposalTimeline';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
+
 
 interface PharmacyInfo {
   id: number;
@@ -54,7 +55,7 @@ interface ProposalDetail {
   items: ProposalItem[];
   pharmacyA: PharmacyInfo;
   pharmacyB: PharmacyInfo;
-  timeline?: ProposalTimelineEvent[];
+  enrichedTimeline?: EnrichedProposalTimelineEvent[];
 }
 
 const commentTemplates = [
@@ -92,6 +93,7 @@ export default function ProposalDetailPage() {
   const [feedbackRating, setFeedbackRating] = useState('5');
   const [feedbackComment, setFeedbackComment] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [mobileTimelineKey, setMobileTimelineKey] = useState<string | null>(null);
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -305,6 +307,362 @@ ${template}` : template);
     complete: '交換完了',
   };
 
+  // 共通: 3フェーズプログレスインジケーター
+  const ProgressIndicator = () => (
+    <AppDataPanel className="mb-3" bodyClassName="py-2">
+      <div className="d-flex align-items-center justify-content-between small">
+        {[
+          { label: '仮マッチング', phase: 1 },
+          { label: '確定', phase: 2 },
+          { label: '完了', phase: 3 },
+        ].map((step, i) => (
+          <div key={step.phase} className="d-flex align-items-center flex-grow-1">
+            <div
+              className={`rounded-circle d-flex align-items-center justify-content-center ${
+                isTerminalPhase ? 'bg-secondary'
+                : phaseIndex >= step.phase ? 'bg-success' : 'bg-light border'
+              }`}
+              style={{ width: 28, height: 28, minWidth: 28, color: isTerminalPhase || phaseIndex >= step.phase ? '#fff' : '#999' }}
+            >
+              {isTerminalPhase ? '—' : phaseIndex >= step.phase ? '✓' : step.phase}
+            </div>
+            <span className={`ms-1 ${phaseIndex >= step.phase && !isTerminalPhase ? 'fw-bold' : 'text-muted'}`}>
+              {step.label}
+            </span>
+            {i < 2 && <div className={`flex-grow-1 mx-2 ${phaseIndex > step.phase && !isTerminalPhase ? 'border-success' : ''}`} style={{ borderBottom: '2px solid #dee2e6', borderColor: phaseIndex > step.phase && !isTerminalPhase ? '#198754' : undefined }} />}
+          </div>
+        ))}
+      </div>
+      <div className="text-center mt-1 small text-muted">
+        現在のステータス: <Badge bg={isTerminalPhase ? 'danger' : isCompletedPhase ? 'secondary' : isConfirmedPhase ? 'success' : 'warning'}>{statusLabel}</Badge>
+      </div>
+    </AppDataPanel>
+  );
+
+  // 共通: タイムラインセクション
+  const TimelineSection = () => (
+    <section id="proposal-timeline" style={{ scrollMarginTop: 96 }}>
+      <AppDataPanel title="進行履歴" className="mb-3" bodyClassName="small">
+        <ProposalTimeline
+          events={data.enrichedTimeline ?? []}
+          currentPharmacyId={user?.id ?? 0}
+        />
+      </AppDataPanel>
+    </section>
+  );
+
+  // モバイル用: アコーディオンでタイムラインを格納（初期折り畳み）
+  const MobileTimelineAccordion = () => (
+    <Accordion
+      activeKey={mobileTimelineKey ?? undefined}
+      onSelect={(eventKey) => {
+        const nextKey = typeof eventKey === 'string' ? eventKey : null;
+        setMobileTimelineKey((current) => (current === nextKey ? null : nextKey));
+      }}
+      className="mb-3"
+    >
+      <Accordion.Item eventKey="0">
+        <Accordion.Header>進行履歴</Accordion.Header>
+        <Accordion.Body className="p-2">
+          <ProposalTimeline
+            events={data.enrichedTimeline ?? []}
+            currentPharmacyId={user?.id ?? 0}
+          />
+        </Accordion.Body>
+      </Accordion.Item>
+    </Accordion>
+  );
+
+  // 共通: 薬局情報
+  const PharmacyInfoSection = () => (
+    <Row className="g-3 mb-3">
+      <Col md={6}>
+        <AppDataPanel title={`${pharmacyA.name} (A)`} bodyClassName="small">
+          <p>{pharmacyA.prefecture} {pharmacyA.address}</p>
+          <p>TEL: {pharmacyA.phone} / FAX: {pharmacyA.fax}</p>
+        </AppDataPanel>
+      </Col>
+      <Col md={6}>
+        <AppDataPanel title={`${pharmacyB.name} (B)`} bodyClassName="small">
+          <p>{pharmacyB.prefecture} {pharmacyB.address}</p>
+          <p>TEL: {pharmacyB.phone} / FAX: {pharmacyB.fax}</p>
+        </AppDataPanel>
+      </Col>
+    </Row>
+  );
+
+  // 共通: 交換手順
+  const ExchangeInstructions = () => (
+    <AppDataPanel title="交換手順（3フェーズ）" className="mb-3" bodyClassName="small">
+      <ol className="mb-0">
+        <li><strong>仮マッチング:</strong> 印刷用ページから交換様式を印刷し、提案元が署名/押印後に相手先FAXへ送信します。</li>
+        <li><strong>双方承認:</strong> 受信側は同意欄を記入してFAX返信し、双方がシステム上で「承認」します。</li>
+        <li><strong>確定→完了:</strong> 双方承認で確定となります。受け渡し完了後に「交換完了」を実行します。</li>
+      </ol>
+    </AppDataPanel>
+  );
+
+  // 共通: アクションボタン
+  const ActionButtons = () => (
+    <div className="d-flex gap-2 mobile-stack">
+      {canAccept && <AppButton variant="success" onClick={() => setPendingAction('accept')}>仮マッチングを承認</AppButton>}
+      {canReject && <AppButton variant="danger" onClick={() => setPendingAction('reject')}>拒否する</AppButton>}
+      {canComplete && <AppButton variant="primary" onClick={() => setPendingAction('complete')}>交換完了</AppButton>}
+    </div>
+  );
+
+  // モバイル用: sticky bottom アクションボタン
+  const MobileStickyActions = () => {
+    if (!hasStickyActions) return null;
+    return (
+      <div
+        data-testid="proposal-mobile-sticky-actions"
+        className="position-sticky bottom-0 bg-body p-2 border-top d-flex gap-2"
+        style={{ zIndex: 1000, paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        {canAccept && <AppButton variant="success" className="flex-grow-1" onClick={() => setPendingAction('accept')}>承認</AppButton>}
+        {canReject && <AppButton variant="danger" className="flex-grow-1" onClick={() => setPendingAction('reject')}>拒否</AppButton>}
+        {canComplete && <AppButton variant="primary" className="flex-grow-1" onClick={() => setPendingAction('complete')}>交換完了</AppButton>}
+      </div>
+    );
+  };
+
+  // 共通: 取引評価セクション
+  const FeedbackSection = () => {
+    if (!isCompletedPhase || user?.isAdmin) return null;
+    return (
+      <AppDataPanel title="取引評価" className="mt-3">
+        <div className="row g-2 align-items-end">
+          <div className="col-md-2">
+            <AppSelect
+              controlId="proposal-feedback-rating"
+              value={feedbackRating}
+              ariaLabel="評価"
+              onChange={(value) => setFeedbackRating(value)}
+              options={[
+                { value: '5', label: '5' },
+                { value: '4', label: '4' },
+                { value: '3', label: '3' },
+                { value: '2', label: '2' },
+                { value: '1', label: '1' },
+              ]}
+            />
+          </div>
+          <div className="col-md-7">
+            <AppField
+              controlId="proposal-feedback-comment"
+              label="コメント（任意）"
+              as="textarea"
+              rows={2}
+              maxLength={300}
+              value={feedbackComment}
+              onChange={setFeedbackComment}
+            />
+          </div>
+          <div className="col-md-3">
+            <LoadingButton
+              onClick={handleSubmitFeedback}
+              loading={feedbackSubmitting}
+              loadingLabel="登録中..."
+              className="w-100"
+            >
+              評価を登録
+            </LoadingButton>
+          </div>
+        </div>
+      </AppDataPanel>
+    );
+  };
+
+  // 共通: コメントセクション
+  const CommentList = () => (
+    <>
+      {commentsLoading ? (
+        <div className="small text-muted">コメントを読み込み中...</div>
+      ) : comments.length === 0 ? (
+        <div className="small text-muted">コメントはまだありません。</div>
+      ) : (
+        <div className="d-flex flex-column gap-2 mb-3">
+          {comments.map((comment) => (
+            <div key={comment.id} className="border rounded p-2">
+              <div className="small text-muted">
+                {comment.authorName} / {formatDateTimeJa(comment.createdAt)}
+              </div>
+              {editingCommentId === comment.id ? (
+                <div className="mt-2 d-flex flex-column gap-2">
+                  <AppField
+                    controlId={`proposal-comment-edit-${comment.id}`}
+                    label="コメント編集"
+                    as="textarea"
+                    rows={3}
+                    maxLength={1000}
+                    value={editingCommentBody}
+                    onChange={(value) => setEditingCommentBody(value)}
+                  />
+                  <div className="d-flex gap-2">
+                    <LoadingButton
+                      variant="primary"
+                      onClick={() => void handleUpdateComment(comment.id)}
+                      loading={commentUpdatingId === comment.id}
+                      loadingLabel="更新中..."
+                      disabled={!editingCommentBody.trim()}
+                    >
+                      保存
+                    </LoadingButton>
+                    <AppButton
+                      variant="outline-secondary"
+                      onClick={handleCancelEditComment}
+                      disabled={commentUpdatingId === comment.id}
+                    >
+                      キャンセル
+                    </AppButton>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div>{comment.body}</div>
+                  {comment.updatedAt && comment.createdAt && comment.updatedAt !== comment.createdAt && (
+                    <div className="small text-muted">編集済み</div>
+                  )}
+                </div>
+              )}
+              {!user?.isAdmin && comment.authorPharmacyId === user?.id && !comment.isDeleted && editingCommentId !== comment.id && (
+                <div className="d-flex gap-2 mt-2">
+                  <AppButton
+                    size="sm"
+                    variant="outline-primary"
+                    onClick={() => handleStartEditComment(comment)}
+                    disabled={commentDeletingId === comment.id}
+                  >
+                    編集
+                  </AppButton>
+                  <LoadingButton
+                    size="sm"
+                    variant="outline-danger"
+                    onClick={() => void handleDeleteComment(comment.id)}
+                    loading={commentDeletingId === comment.id}
+                    loadingLabel="削除中..."
+                  >
+                    削除
+                  </LoadingButton>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  const CommentComposer = ({ sticky = false }: { sticky?: boolean } = {}) => {
+    if (user?.isAdmin) return null;
+
+    return (
+      <div
+        data-testid={sticky ? 'proposal-mobile-comment-composer' : undefined}
+        className={sticky ? 'position-sticky bottom-0 bg-body border-top p-2 safe-area-bottom' : 'd-flex flex-column gap-2'}
+        style={sticky
+          ? {
+              zIndex: 999,
+              bottom: hasStickyActions ? 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' : '0px',
+            }
+          : undefined}
+      >
+        <div className="d-flex gap-2 flex-wrap">
+          {commentTemplates.map((template, index) => (
+            <AppButton
+              key={template}
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => handleApplyCommentTemplate(template)}
+            >
+              定型文{index + 1}
+            </AppButton>
+          ))}
+        </div>
+        <AppField
+          controlId="proposal-comment-body"
+          label="新規コメント"
+          as="textarea"
+          rows={3}
+          maxLength={1000}
+          value={commentBody}
+          onChange={(value) => setCommentBody(value)}
+        />
+        <LoadingButton
+          variant="outline-primary"
+          onClick={handleCreateComment}
+          loading={commentSubmitting}
+          loadingLabel="投稿中..."
+          disabled={!commentBody.trim()}
+        >
+          コメントを投稿
+        </LoadingButton>
+      </div>
+    );
+  };
+
+  const CommentsSection = ({ includeComposer = true }: { includeComposer?: boolean } = {}) => (
+    <AppDataPanel title="交渉メモ / コメント" className="mt-3">
+      {CommentList()}
+      {includeComposer ? CommentComposer() : null}
+    </AppDataPanel>
+  );
+
+  const hasStickyActions = canAccept || canReject || canComplete;
+
+  const DesktopLayout = () => (
+    <ScrollArea>
+      {ProgressIndicator()}
+      {TimelineSection()}
+      {PharmacyInfoSection()}
+      {ExchangeInstructions()}
+      <ProposalItemsPanel
+        items={itemsAtoB}
+        fromName={pharmacyA.name}
+        toName={pharmacyB.name}
+        totalValue={proposal.totalValueA}
+      />
+      <ProposalItemsPanel
+        items={itemsBtoA}
+        fromName={pharmacyB.name}
+        toName={pharmacyA.name}
+        totalValue={proposal.totalValueB}
+      />
+      {ActionButtons()}
+      {FeedbackSection()}
+      {CommentsSection()}
+    </ScrollArea>
+  );
+
+  const MobileLayout = () => (
+    <>
+      <ScrollArea>
+        {ProgressIndicator()}
+        {MobileTimelineAccordion()}
+        {PharmacyInfoSection()}
+        {ExchangeInstructions()}
+        <ProposalItemsPanel
+          items={itemsAtoB}
+          fromName={pharmacyA.name}
+          toName={pharmacyB.name}
+          totalValue={proposal.totalValueA}
+        />
+        <ProposalItemsPanel
+          items={itemsBtoA}
+          fromName={pharmacyB.name}
+          toName={pharmacyA.name}
+          totalValue={proposal.totalValueB}
+        />
+        {FeedbackSection()}
+        {CommentsSection({ includeComposer: false })}
+        {!user?.isAdmin ? CommentComposer({ sticky: true }) : null}
+        {(hasStickyActions || !user?.isAdmin) && <div className="sticky-footer-gap" />}
+      </ScrollArea>
+      {MobileStickyActions()}
+    </>
+  );
+
   return (
     <PageShell>
       <div className="d-flex justify-content-between align-items-center mb-3 mobile-card-header">
@@ -317,247 +675,10 @@ ${template}` : template);
       {error && <AppAlert variant="danger">{error}</AppAlert>}
       {message && <AppAlert variant="success">{message}</AppAlert>}
 
-      <ScrollArea>
-      {/* 3-phase progress indicator */}
-      <AppDataPanel className="mb-3" bodyClassName="py-2">
-          <div className="d-flex align-items-center justify-content-between small">
-            {[
-              { label: '仮マッチング', phase: 1 },
-              { label: '確定', phase: 2 },
-              { label: '完了', phase: 3 },
-            ].map((step, i) => (
-              <div key={step.phase} className="d-flex align-items-center flex-grow-1">
-                <div
-                  className={`rounded-circle d-flex align-items-center justify-content-center ${
-                    isTerminalPhase ? 'bg-secondary'
-                    : phaseIndex >= step.phase ? 'bg-success' : 'bg-light border'
-                  }`}
-                  style={{ width: 28, height: 28, minWidth: 28, color: isTerminalPhase || phaseIndex >= step.phase ? '#fff' : '#999' }}
-                >
-                  {isTerminalPhase ? '—' : phaseIndex >= step.phase ? '✓' : step.phase}
-                </div>
-                <span className={`ms-1 ${phaseIndex >= step.phase && !isTerminalPhase ? 'fw-bold' : 'text-muted'}`}>
-                  {step.label}
-                </span>
-                {i < 2 && <div className={`flex-grow-1 mx-2 ${phaseIndex > step.phase && !isTerminalPhase ? 'border-success' : ''}`} style={{ borderBottom: '2px solid #dee2e6', borderColor: phaseIndex > step.phase && !isTerminalPhase ? '#198754' : undefined }} />}
-              </div>
-            ))}
-          </div>
-          <div className="text-center mt-1 small text-muted">
-            現在のステータス: <Badge bg={isTerminalPhase ? 'danger' : isCompletedPhase ? 'secondary' : isConfirmedPhase ? 'success' : 'warning'}>{statusLabel}</Badge>
-          </div>
-      </AppDataPanel>
-
-      <section id="proposal-timeline" style={{ scrollMarginTop: 96 }}>
-        <AppDataPanel title="進行履歴" className="mb-3" bodyClassName="small">
-          <ProposalTimeline
-            events={data.timeline ?? []}
-            statusLabelFormatter={(status) => toViewerProposalStatusLabel(status, isA)}
-            emptyMessage="表示できる履歴はありません。"
-            filterAriaLabel="進行履歴フィルタ"
-          />
-        </AppDataPanel>
-      </section>
-
-      <Row className="g-3 mb-3">
-        <Col md={6}>
-          <AppDataPanel title={`${pharmacyA.name} (A)`} bodyClassName="small">
-              <p>{pharmacyA.prefecture} {pharmacyA.address}</p>
-              <p>TEL: {pharmacyA.phone} / FAX: {pharmacyA.fax}</p>
-          </AppDataPanel>
-        </Col>
-        <Col md={6}>
-          <AppDataPanel title={`${pharmacyB.name} (B)`} bodyClassName="small">
-              <p>{pharmacyB.prefecture} {pharmacyB.address}</p>
-              <p>TEL: {pharmacyB.phone} / FAX: {pharmacyB.fax}</p>
-          </AppDataPanel>
-        </Col>
-      </Row>
-
-      <AppDataPanel title="交換手順（3フェーズ）" className="mb-3" bodyClassName="small">
-          <ol className="mb-0">
-            <li><strong>仮マッチング:</strong> 印刷用ページから交換様式を印刷し、提案元が署名/押印後に相手先FAXへ送信します。</li>
-            <li><strong>双方承認:</strong> 受信側は同意欄を記入してFAX返信し、双方がシステム上で「承認」します。</li>
-            <li><strong>確定→完了:</strong> 双方承認で確定となります。受け渡し完了後に「交換完了」を実行します。</li>
-          </ol>
-      </AppDataPanel>
-
-      <ProposalItemsPanel
-        items={itemsAtoB}
-        fromName={pharmacyA.name}
-        toName={pharmacyB.name}
-        totalValue={proposal.totalValueA}
+      <AppResponsiveSwitch
+        desktop={DesktopLayout}
+        mobile={MobileLayout}
       />
-
-      <ProposalItemsPanel
-        items={itemsBtoA}
-        fromName={pharmacyB.name}
-        toName={pharmacyA.name}
-        totalValue={proposal.totalValueB}
-      />
-
-      <div className="d-flex gap-2 mobile-stack">
-        {canAccept && <AppButton variant="success" onClick={() => setPendingAction('accept')}>仮マッチングを承認</AppButton>}
-        {canReject && <AppButton variant="danger" onClick={() => setPendingAction('reject')}>拒否する</AppButton>}
-        {canComplete && <AppButton variant="primary" onClick={() => setPendingAction('complete')}>交換完了</AppButton>}
-      </div>
-
-      {isCompletedPhase && !user?.isAdmin && (
-        <AppDataPanel title="取引評価" className="mt-3">
-          <div className="row g-2 align-items-end">
-            <div className="col-md-2">
-              <AppSelect
-                controlId="proposal-feedback-rating"
-                value={feedbackRating}
-                ariaLabel="評価"
-                onChange={setFeedbackRating}
-                options={[
-                  { value: '5', label: '5' },
-                  { value: '4', label: '4' },
-                  { value: '3', label: '3' },
-                  { value: '2', label: '2' },
-                  { value: '1', label: '1' },
-                ]}
-              />
-            </div>
-            <div className="col-md-7">
-              <AppField
-                controlId="proposal-feedback-comment"
-                label="コメント（任意）"
-                as="textarea"
-                rows={2}
-                maxLength={300}
-                value={feedbackComment}
-                onChange={setFeedbackComment}
-              />
-            </div>
-            <div className="col-md-3">
-              <LoadingButton
-                onClick={handleSubmitFeedback}
-                loading={feedbackSubmitting}
-                loadingLabel="登録中..."
-                className="w-100"
-              >
-                評価を登録
-              </LoadingButton>
-            </div>
-          </div>
-        </AppDataPanel>
-      )}
-
-      <AppDataPanel title="交渉メモ / コメント" className="mt-3">
-        {commentsLoading ? (
-          <div className="small text-muted">コメントを読み込み中...</div>
-        ) : comments.length === 0 ? (
-          <div className="small text-muted">コメントはまだありません。</div>
-        ) : (
-          <div className="d-flex flex-column gap-2 mb-3">
-            {comments.map((comment) => (
-              <div key={comment.id} className="border rounded p-2">
-                <div className="small text-muted">
-                  {comment.authorName} / {formatDateTimeJa(comment.createdAt)}
-                </div>
-                {editingCommentId === comment.id ? (
-                  <div className="mt-2 d-flex flex-column gap-2">
-                    <AppField
-                      controlId={`proposal-comment-edit-${comment.id}`}
-                      label="コメント編集"
-                      as="textarea"
-                      rows={3}
-                      maxLength={1000}
-                      value={editingCommentBody}
-                      onChange={setEditingCommentBody}
-                    />
-                    <div className="d-flex gap-2">
-                      <LoadingButton
-                        variant="primary"
-                        onClick={() => void handleUpdateComment(comment.id)}
-                        loading={commentUpdatingId === comment.id}
-                        loadingLabel="更新中..."
-                        disabled={!editingCommentBody.trim()}
-                      >
-                        保存
-                      </LoadingButton>
-                      <AppButton
-                        variant="outline-secondary"
-                        onClick={handleCancelEditComment}
-                        disabled={commentUpdatingId === comment.id}
-                      >
-                        キャンセル
-                      </AppButton>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <div>{comment.body}</div>
-                    {comment.updatedAt && comment.createdAt && comment.updatedAt !== comment.createdAt && (
-                      <div className="small text-muted">編集済み</div>
-                    )}
-                  </div>
-                )}
-                {!user?.isAdmin && comment.authorPharmacyId === user?.id && !comment.isDeleted && editingCommentId !== comment.id && (
-                  <div className="d-flex gap-2 mt-2">
-                    <AppButton
-                      size="sm"
-                      variant="outline-primary"
-                      onClick={() => handleStartEditComment(comment)}
-                      disabled={commentDeletingId === comment.id}
-                    >
-                      編集
-                    </AppButton>
-                    <LoadingButton
-                      size="sm"
-                      variant="outline-danger"
-                      onClick={() => void handleDeleteComment(comment.id)}
-                      loading={commentDeletingId === comment.id}
-                      loadingLabel="削除中..."
-                    >
-                      削除
-                    </LoadingButton>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!user?.isAdmin && (
-          <div className="d-flex flex-column gap-2">
-            <div className="d-flex gap-2 flex-wrap">
-              {commentTemplates.map((template, index) => (
-                <AppButton
-                  key={template}
-                  size="sm"
-                  variant="outline-secondary"
-                  onClick={() => handleApplyCommentTemplate(template)}
-                >
-                  定型文{index + 1}
-                </AppButton>
-              ))}
-            </div>
-            <AppField
-              controlId="proposal-comment-body"
-              label="新規コメント"
-              as="textarea"
-              rows={3}
-              maxLength={1000}
-              value={commentBody}
-              onChange={setCommentBody}
-            />
-            <LoadingButton
-              variant="outline-primary"
-              onClick={handleCreateComment}
-              loading={commentSubmitting}
-              loadingLabel="投稿中..."
-              disabled={!commentBody.trim()}
-            >
-              コメントを投稿
-            </LoadingButton>
-          </div>
-        )}
-      </AppDataPanel>
-
-      </ScrollArea>
 
       <ConfirmActionModal
         show={pendingAction !== null}

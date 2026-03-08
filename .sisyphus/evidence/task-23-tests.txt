@@ -1,0 +1,84 @@
+
+> test:client
+> npm run test --workspace=client
+
+
+> client@0.0.9 test
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/Users/yusuke/DeadStockSolution-group-alert/client[39m
+
+ [32m✓[39m src/test/AlertListPage.test.tsx [2m([22m[2m13 tests[22m[2m)[22m[33m 894[2mms[22m[39m
+ [32m✓[39m src/test/e2e/proposal-detail-comments.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 817[2mms[22m[39m
+     [33m[2m✓[22m[39m allows editing own comment [33m 474[2mms[22m[39m
+ [32m✓[39m src/test/e2e/group-list-page.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[33m 966[2mms[22m[39m
+ [32m✓[39m src/test/e2e/group-detail-page.test.tsx [2m([22m[2m20 tests[22m[2m)[22m[33m 1308[2mms[22m[39m
+ [32m✓[39m src/test/e2e/dashboard.test.tsx [2m([22m[2m24 tests[22m[2m)[22m[33m 1485[2mms[22m[39m
+     [33m[2m✓[22m[39m shows github updates popover and expandable history [33m 417[2mms[22m[39m
+ [32m✓[39m src/test/e2e/upload-camera-register.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 1898[2mms[22m[39m
+     [33m[2m✓[22m[39m shows auto candidates from scanned code and requires manual confirmation [33m 692[2mms[22m[39m
+     [33m[2m✓[22m[39m can confirm unmatched row with manual candidate search [33m 626[2mms[22m[39m
+     [33m[2m✓[22m[39m captures multiple codes from a camera frame and registers them together [33m 486[2mms[22m[39m
+ [32m✓[39m src/test/e2e/inventory.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 478[2mms[22m[39m
+ [32m✓[39m src/test/e2e/routes-meta.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 308[2mms[22m[39m
+ [32m✓[39m src/test/e2e/admin-upload-jobs-page.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 466[2mms[22m[39m
+     [33m[2m✓[22m[39m loads jobs, opens detail panel, and triggers retry action [33m 303[2mms[22m[39m
+ [32m✓[39m src/test/e2e/login.test.tsx [2m([22m[2m11 tests[22m[2m)[22m[33m 2186[2mms[22m[39m
+ [32m✓[39m src/test/e2e/dashboard-timeline.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 438[2mms[22m[39m
+ [32m✓[39m src/test/hooks/usePushSubscription.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 374[2mms[22m[39m
+ [32m✓[39m src/test/e2e/register.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 2706[2mms[22m[39m
+     [33m[2m✓[22m[39m submits registration form with correct data [33m 1220[2mms[22m[39m
+     [33m[2m✓[22m[39m shows field validation errors from the server [33m 1045[2mms[22m[39m
+ [32m✓[39m src/test/components/PushNotificationSettings.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 226[2mms[22m[39m
+ [32m✓[39m src/test/e2e/matching-page-groups.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 360[2mms[22m[39m
+ [32m✓[39m src/test/components/InstallPromptBanner.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 304[2mms[22m[39m
+ [32m✓[39m src/test/e2e/upload-page.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 3103[2mms[22m[39m
+     [33m[2m✓[22m[39m shows excel and camera flows side-by-side while keeping excel validation visible [33m 413[2mms[22m[39m
+     [33m[2m✓[22m[39m submits confirm via async job endpoint and waits for completion [33m 390[2mms[22m[39m
+     [33m[2m✓[22m[39m handles deduplicated/partial summary/error report fields from job status [33m 359[2mms[22m[39m
+     [33m[2m✓[22m[39m requires acknowledgement when diff deleteMissing deactivates existing records [33m 382[2mms[22m[39m
+     [33m[2m✓[22m[39m invalidates diff preview when upload type is changed after preview [33m 510[2mms[22m[39m
+ [32m✓[39m src/test/e2e/password-reset.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 309[2mms[22m[39m
+ [32m✓[39m src/test/components/SWUpdateBanner.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 254[2mms[22m[39m
+ [32m✓[39m src/test/components/PushPermissionBanner.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[32m 247[2mms[22m[39m
+ [32m✓[39m src/test/components/MobileBottomNav.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[32m 219[2mms[22m[39m
+ [32m✓[39m src/test/e2e/pharmacy-list-groups.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 889[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/usePaginatedList.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 124[2mms[22m[39m
+ [32m✓[39m src/test/contexts/AuthContext.test.tsx [2m([22m[2m11 tests[22m[2m)[22m[32m 99[2mms[22m[39m
+ [32m✓[39m src/test/e2e/notification-polling.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 81[2mms[22m[39m
+ [32m✓[39m src/test/e2e/smart-digest.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[32m 274[2mms[22m[39m
+ [32m✓[39m src/test/e2e/timeline-event-card.test.tsx [2m([22m[2m11 tests[22m[2m)[22m[32m 67[2mms[22m[39m
+ [32m✓[39m src/test/e2e/business-hours-settings.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 56[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/usePolledFetch.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/hooks/useMatchNotificationToast.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useUploadForm.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useUploadPreview.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useAutoSave.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 80[2mms[22m[39m
+ [32m✓[39m src/test/contexts/TimelineContext.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m src/components/ui/__tests__/AppResponsiveSwitch.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useDiffSummary.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useCamera.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useBarcodeResolver.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/formatters.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 49[2mms[22m[39m
+ [32m✓[39m src/contexts/ToastContext.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 102[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useDiffPreview.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 169[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/BusinessStatusBadge.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 53[2mms[22m[39m
+ [32m✓[39m src/test/api-client.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useUploadJobPolling.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+ [32m✓[39m src/hooks/useOnboardingVisibility.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 70[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useCameraDraftRows.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 38[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/navigation.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/utils/expiry-risk.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/components/onboarding/onboardingSteps.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/proposal-timeline.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/proposal-status.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/test/e2e/proposals-pharmacies.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/test/test-login-feature.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/e2e/proposals-sort.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 2[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m54 passed[39m[22m[90m (54)[39m
+[2m      Tests [22m [1m[32m441 passed[39m[22m[90m (441)[39m
+[2m   Start at [22m 20:00:41
+[2m   Duration [22m 7.54s[2m (transform 2.05s, setup 5.83s, import 6.94s, tests 21.89s, environment 23.84s)[22m
+

@@ -201,11 +201,11 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `server/src/test/openclaw-service.test.ts` + `openclaw-service-ultra.test.ts` + `openclaw-service-coverage.test.ts` — 1,758行のテスト
 
   **Acceptance Criteria**:
-  - [ ] `wc -l server/src/services/openclaw-service.ts` → ≤40行（pure re-export barrel）
-  - [ ] 各サブモジュール ≤400行
-  - [ ] `grep -c "^export " server/src/services/openclaw-service.ts` → 分割前と同数
-  - [ ] `npm run test:server` → all pass
-  - [ ] `npm run typecheck` → 0 errors
+  - [x] `wc -l server/src/services/openclaw-service.ts` → ≤40行（pure re-export barrel）
+  - [x] 各サブモジュール ≤400行
+  - [x] `grep -c "^export " server/src/services/openclaw-service.ts` → 分割前と同数
+  - [x] `npm run test:server` → all pass
+  - [x] `npm run typecheck` → 0 errors
 
   **QA Scenarios**:
   ```
@@ -265,9 +265,9 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `server/src/services/upload-confirm/upload-confirm-processor-service.ts` — 主要consumer
 
   **Acceptance Criteria**:
-  - [ ] `wc -l server/src/services/upload-diff-service.ts` → ≤400行
-  - [ ] `npm run test:server` → all pass
-  - [ ] `npm run typecheck` → 0 errors
+  - [x] `wc -l server/src/services/upload-diff-service.ts` → ≤400行
+  - [x] `npm run test:server` → all pass
+  - [x] `npm run typecheck` → 0 errors
 
   **QA Scenarios**:
   ```
@@ -307,9 +307,9 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `server/src/routes/exchange-comments.ts` — Wave 5のhelper抽出パターン参照
 
   **Acceptance Criteria**:
-  - [ ] `wc -l server/src/routes/notifications.ts` → ≤400行
-  - [ ] `npm run test:server` → all pass
-  - [ ] `npm run typecheck` → 0 errors
+  - [x] `wc -l server/src/routes/notifications.ts` → ≤400行
+  - [x] `npm run test:server` → all pass
+  - [x] `npm run typecheck` → 0 errors
 
   **QA Scenarios**:
   ```
@@ -346,8 +346,8 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `server/src/test/auth*.test.ts` — 3テストファイル、1,633行
 
   **Acceptance Criteria**:
-  - [ ] `wc -l server/src/routes/auth.ts` → ≤400行
-  - [ ] `npm run test:server` → all pass
+  - [x] `wc -l server/src/routes/auth.ts` → ≤400行
+  - [x] `npm run test:server` → all pass
 
   **QA Scenarios**: 同 Task 3 パターン（authテスト対象）
   **Commit**: YES (groups with Task 3)
@@ -371,8 +371,8 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `server/src/test/upload-parser*.test.ts` — 779行のテスト
 
   **Acceptance Criteria**:
-  - [ ] `wc -l server/src/routes/upload-parser.ts` → ≤400行
-  - [ ] `npm run test:server` → all pass
+  - [x] `wc -l server/src/routes/upload-parser.ts` → ≤400行
+  - [x] `npm run test:server` → all pass
 
   **QA Scenarios**: 同 Task 3 パターン（upload-parserテスト対象）
   **Commit**: YES (groups with Task 3)
@@ -396,8 +396,8 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `server/src/test/admin-pharmacies-detail*.test.ts` — 1,051行のテスト
 
   **Acceptance Criteria**:
-  - [ ] `wc -l server/src/routes/admin-pharmacies-detail.ts` → ≤400行
-  - [ ] `npm run test:server` → all pass
+  - [x] `wc -l server/src/routes/admin-pharmacies-detail.ts` → ≤400行
+  - [x] `npm run test:server` → all pass
 
   **QA Scenarios**: 同 Task 3 パターン（admin-pharmacies-detailテスト対象）
   **Commit**: YES (groups with Task 3)
@@ -433,9 +433,9 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `client/src/pages/UploadPage.tsx` — 主要consumer
 
   **Acceptance Criteria**:
-  - [ ] `wc -l client/src/hooks/useUploadExcelFlow.ts` → ≤400行
-  - [ ] `npm run typecheck` → 0 errors
-  - [ ] `npm run build:client` → success
+  - [x] `wc -l client/src/hooks/useUploadExcelFlow.ts` → ≤400行
+  - [x] `npm run typecheck` → 0 errors
+  - [x] `npm run build:client` → success
 
   **QA Scenarios**:
   ```
@@ -482,9 +482,9 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `client/src/pages/AccountPage.tsx` — Wave 4で726→130行の成功例
 
   **Acceptance Criteria**:
-  - [ ] `wc -l client/src/pages/admin/AdminPharmacyEditPage.tsx` → ≤400行
-  - [ ] `npm run typecheck` → 0 errors
-  - [ ] `npm run build:client` → success
+  - [x] `wc -l client/src/pages/admin/AdminPharmacyEditPage.tsx` → ≤400行
+  - [x] `npm run typecheck` → 0 errors
+  - [x] `npm run build:client` → success
 
   **QA Scenarios**: 同 Task 7 パターン（typecheck + build + line count）
   **Commit**: YES (groups with Tasks 9-10)
@@ -507,9 +507,9 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `client/src/pages/admin/AdminLogCenterPage.tsx` — 636行、対象
 
   **Acceptance Criteria**:
-  - [ ] `wc -l client/src/pages/admin/AdminLogCenterPage.tsx` → ≤400行
-  - [ ] `npm run typecheck` → 0 errors
-  - [ ] `npm run build:client` → success
+  - [x] `wc -l client/src/pages/admin/AdminLogCenterPage.tsx` → ≤400行
+  - [x] `npm run typecheck` → 0 errors
+  - [x] `npm run build:client` → success
 
   **QA Scenarios**: 同 Task 7 パターン
   **Commit**: YES (groups with Task 8)
@@ -533,9 +533,9 @@ Max Concurrent: 4 (Waves 2 & 3)
   - `client/src/hooks/useBusinessHoursForm.ts` — 共有hook (391行)
 
   **Acceptance Criteria**:
-  - [ ] `wc -l client/src/components/account/BusinessHoursSettings.tsx` → ≤400行
-  - [ ] `npm run typecheck` → 0 errors
-  - [ ] `npm run build:client` → success
+  - [x] `wc -l client/src/components/account/BusinessHoursSettings.tsx` → ≤400行
+  - [x] `npm run typecheck` → 0 errors
+  - [x] `npm run build:client` → success
 
   **QA Scenarios**: 同 Task 7 パターン
   **Commit**: YES (groups with Task 8)
@@ -587,9 +587,9 @@ npm run build:client  # Expected: success
 ### Final Checklist
 - [x] All 10 files ≤400 lines ✅ (or exception documented)
 - [x] All exported symbols preserved ✅ in barrels
-- [ ] Pure re-export barrel pattern applied consistently
-- [ ] No function signature changes
-- [ ] No behavioral changes
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All tests pass
+- [x] Pure re-export barrel pattern applied consistently
+- [x] No function signature changes
+- [x] No behavioral changes
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All tests pass

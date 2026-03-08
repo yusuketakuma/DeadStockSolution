@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAsyncState } from '../hooks/useAsyncState';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
@@ -6,6 +6,7 @@ import AppAlert from '../components/ui/AppAlert';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
+import type { GroupListResponse, GroupDetailResponse } from '../../../server/src/types/group';
 import RequireUpload from '../components/RequireUpload';
 import { markMatchingDone, readOnboardingMatchingDone } from '../components/onboarding/onboardingSteps';
 import { useAuth } from '../contexts/AuthContext';
@@ -122,6 +123,27 @@ export default function MatchingPage() {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [candidateForProposal, setCandidateForProposal] = useState<MatchCandidate | null>(null);
   const requestedDrug = (searchParams.get('drug') ?? '').trim();
+  const [groupPharmacyIds, setGroupPharmacyIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    const fetchGroupData = async () => {
+      try {
+        const listRes = await api.get<GroupListResponse>('/groups?tab=mine');
+        if (listRes.groups.length === 0) return;
+        const details = await Promise.all(
+          listRes.groups.map((g) => api.get<GroupDetailResponse>(`/groups/${g.id}`))
+        );
+        const ids = new Set<number>();
+        for (const d of details) {
+          for (const m of d.members) ids.add(m.pharmacyId);
+        }
+        setGroupPharmacyIds(ids);
+      } catch {
+        // Silently fail - group data is supplementary
+      }
+    };
+    void fetchGroupData();
+  }, []);
 
   const displayCandidates = useMemo(() => {
     const needle = requestedDrug.toLowerCase();
@@ -235,6 +257,7 @@ export default function MatchingPage() {
                 <span>
                   <strong>{candidate.pharmacyName}</strong>
                   {candidate.isFavorite && <Badge bg="warning" text="dark" className="ms-2">お気に入り</Badge>}
+                  {groupPharmacyIds.has(candidate.pharmacyId) && <Badge bg="success" className="ms-2">グループ</Badge>}
                   <span className="small text-muted d-block">
                     TEL: {candidate.pharmacyPhone || '-'} / FAX: {candidate.pharmacyFax || '-'}
                   </span>

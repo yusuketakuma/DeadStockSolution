@@ -8,6 +8,7 @@ export interface ProposalTimelineEvent {
   actorName: string | null;
   statusFrom?: string | null;
   statusTo?: string | null;
+  eventType?: 'status_change' | 'comment' | 'feedback' | 'item_detail';
 }
 
 export const PROPOSAL_TIMELINE_FILTER_OPTIONS: Array<{

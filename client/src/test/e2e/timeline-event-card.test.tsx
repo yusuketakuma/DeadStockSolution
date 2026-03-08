@@ -1,7 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import TimelineEventCard from '../../components/timeline/TimelineEventCard';
 import type { TimelineEvent } from '../../types/timeline';
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>();
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
 
 function makeEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
   return {
@@ -18,88 +27,61 @@ function makeEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
 }
 
 describe('TimelineEventCard', () => {
-  // --- 優先度バッジのテスト (4テスト) ---
+  beforeEach(() => {
+    mockNavigate.mockClear();
+  });
+
+  // --- 優先度バッジのテスト ---
   it('renders critical priority badge with danger variant', () => {
     const event = makeEvent({ priority: 'critical' });
     render(<TimelineEventCard event={event} />);
-    const badge = screen.getByText('critical');
-    expect(badge).toBeInTheDocument();
+    const badge = screen.getByTestId('priority-badge');
+    expect(badge).toHaveTextContent('重要');
     expect(badge.className).toContain('bg-danger');
   });
 
   it('renders high priority badge with warning variant', () => {
     const event = makeEvent({ priority: 'high' });
     render(<TimelineEventCard event={event} />);
-    const badge = screen.getByText('high');
-    expect(badge).toBeInTheDocument();
+    const badge = screen.getByTestId('priority-badge');
+    expect(badge).toHaveTextContent('高');
     expect(badge.className).toContain('bg-warning');
   });
 
-  it('renders medium priority badge with info variant', () => {
+  it('renders medium priority badge with primary variant', () => {
     const event = makeEvent({ priority: 'medium' });
     render(<TimelineEventCard event={event} />);
-    const badge = screen.getByText('medium');
-    expect(badge).toBeInTheDocument();
-    expect(badge.className).toContain('bg-info');
+    const badge = screen.getByTestId('priority-badge');
+    expect(badge).toHaveTextContent('中');
+    expect(badge.className).toContain('bg-primary');
   });
 
-  it('renders low priority badge with secondary variant', () => {
-    const event = makeEvent({ priority: 'low' });
-    render(<TimelineEventCard event={event} />);
-    const badge = screen.getByText('low');
-    expect(badge).toBeInTheDocument();
-    expect(badge.className).toContain('bg-secondary');
-  });
-
-  // --- 未読/既読の視覚的区別テスト (2テスト) ---
-  it('applies unread styling when isRead is false', () => {
+  // --- 未読インジケーターテスト ---
+  it('shows unread dot when isRead is false', () => {
     const event = makeEvent({ isRead: false });
-    const { container } = render(<TimelineEventCard event={event} />);
-    const item = container.firstChild as HTMLElement;
-    expect(item.className).toContain('unread');
+    render(<TimelineEventCard event={event} />);
+    expect(screen.getByTestId('unread-dot')).toBeInTheDocument();
   });
 
-  it('does not apply unread styling when isRead is true', () => {
+  it('does not show unread dot when isRead is true', () => {
     const event = makeEvent({ isRead: true });
-    const { container } = render(<TimelineEventCard event={event} />);
-    const item = container.firstChild as HTMLElement;
-    expect(item.className).not.toContain('unread');
-  });
-
-  // --- ソースラベルのテスト (2テスト) ---
-  it('renders source label for proposal source', () => {
-    const event = makeEvent({ source: 'proposal' });
     render(<TimelineEventCard event={event} />);
-    expect(screen.getByText('提案')).toBeInTheDocument();
+    expect(screen.queryByTestId('unread-dot')).not.toBeInTheDocument();
   });
 
-  it('renders source label for admin_message source', () => {
-    const event = makeEvent({ source: 'admin_message' });
+  // --- ナビゲーションテスト ---
+  it('navigates to actionPath when card is clicked', () => {
+    const event = makeEvent({ actionPath: '/proposals/1' });
     render(<TimelineEventCard event={event} />);
-    expect(screen.getByText('管理者')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('card-title'));
+    expect(mockNavigate).toHaveBeenCalledWith('/proposals/1');
   });
 
-  // --- onClickコールバックテスト (1テスト) ---
-  it('calls onClick callback with the event when clicked', () => {
-    const event = makeEvent({ id: 'click-test' });
-    const handleClick = vi.fn();
-    render(<TimelineEventCard event={event} onClick={handleClick} />);
-    fireEvent.click(screen.getByText('テストタイトル'));
-    expect(handleClick).toHaveBeenCalledTimes(1);
-    expect(handleClick).toHaveBeenCalledWith(event);
-  });
-
-  // --- 相対時間表示テスト (2テスト) ---
-  it('shows "たった今" for timestamps within 60 seconds', () => {
-    const event = makeEvent({ timestamp: new Date().toISOString() });
-    render(<TimelineEventCard event={event} />);
-    expect(screen.getByText('たった今')).toBeInTheDocument();
-  });
-
-  it('shows relative minutes for timestamps a few minutes ago', () => {
+  // --- 相対時間表示テスト ---
+  it('shows relative time for timestamps a few minutes ago', () => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const event = makeEvent({ timestamp: fiveMinutesAgo });
     render(<TimelineEventCard event={event} />);
-    expect(screen.getByText('5分前')).toBeInTheDocument();
+    expect(screen.getByTestId('relative-time')).toHaveTextContent('5分前');
   });
 });

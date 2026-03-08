@@ -8,6 +8,8 @@ import reportsRouter from './admin-reports';
 import trustRouter from './admin-trust';
 import uploadJobsRouter from './admin-upload-jobs';
 import matchingRulesRouter from './admin-matching-rules';
+import drugEquivalencesRouter from './admin-drug-equivalences';
+import csvExportRouter from './admin-csv-export';
 
 const router = Router();
 
@@ -22,5 +24,8 @@ router.use(riskRouter);
 router.use(reportsRouter);
 router.use(pharmaciesRouter);
 router.use(uploadJobsRouter);
+router.use(drugEquivalencesRouter);
+router.use(csvExportRouter);
+router.use(drugEquivalencesRouter);
 
 export default router;

@@ -155,6 +155,7 @@ function buildCandidateFromPharmacy(params: {
   specialHoursByPharmacy: Map<number, SpecialHoursRows>;
   matchingRuleProfile: MatchingRuleProfile;
   favoriteIds: Set<number>;
+  groupMemberIds: Set<number>;
   now: Date;
   includeIsConfiguredInBusinessStatus: boolean;
 }): MatchCandidate | null {
@@ -168,6 +169,7 @@ function buildCandidateFromPharmacy(params: {
     specialHoursByPharmacy,
     matchingRuleProfile,
     favoriteIds,
+    groupMemberIds,
     now,
     includeIsConfiguredInBusinessStatus,
   } = params;
@@ -202,6 +204,7 @@ function buildCandidateFromPharmacy(params: {
   if (diff > VALUE_TOLERANCE) return null;
 
   const isFavorite = favoriteIds.has(otherPharmacy.id);
+  const isGroupMember = groupMemberIds.has(otherPharmacy.id);
   const score = calculateCandidateScore(
     totalA,
     totalB,
@@ -211,6 +214,7 @@ function buildCandidateFromPharmacy(params: {
     balancedB,
     matchingRuleProfile,
     isFavorite,
+    isGroupMember,
   );
   const matchRate = calculateMatchRate(balancedA, balancedB);
   const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id);
@@ -250,6 +254,7 @@ export function collectCandidates(params: {
   specialHoursByPharmacy: Map<number, SpecialHoursRows>;
   matchingRuleProfile: MatchingRuleProfile;
   favoriteIds: Set<number>;
+  groupMemberIds: Set<number>;
   now: Date;
   includeIsConfiguredInBusinessStatus: boolean;
 }): MatchCandidate[] {
@@ -266,6 +271,7 @@ export function collectCandidates(params: {
       businessHoursByPharmacy: params.businessHoursByPharmacy,
       specialHoursByPharmacy: params.specialHoursByPharmacy,
       favoriteIds: params.favoriteIds,
+      groupMemberIds: params.groupMemberIds,
       now: params.now,
       includeIsConfiguredInBusinessStatus: params.includeIsConfiguredInBusinessStatus,
     });

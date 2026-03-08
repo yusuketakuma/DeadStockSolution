@@ -1,0 +1,54 @@
+{
+  "task": "T6",
+  "title": "Timeline API routes with TDD",
+  "status": "PASS",
+  "timestamp": "2026-02-28T21:07:00.000Z",
+  "files_created": [
+    "server/src/routes/timeline.ts",
+    "server/src/test/timeline-route.test.ts"
+  ],
+  "files_modified": [
+    "server/src/app.ts"
+  ],
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/timeline",
+      "query": "page, limit, priority, since",
+      "response": "{ events: TimelineEvent[], total: number, page: number, limit: number }",
+      "auth": "requireLogin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/timeline/unread-count",
+      "response": "{ unreadCount: number }",
+      "auth": "requireLogin"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/timeline/mark-viewed",
+      "response": "{ success: true, viewedAt: string }",
+      "auth": "requireLogin"
+    }
+  ],
+  "tests": {
+    "file": "server/src/test/timeline-route.test.ts",
+    "count": 8,
+    "all_passed": true,
+    "cases": [
+      "GET /api/timeline returns 200 with events array, total, page, limit",
+      "GET /api/timeline?priority=critical passes priority filter to service",
+      "GET /api/timeline/unread-count returns 200 with unreadCount number",
+      "PATCH /api/timeline/mark-viewed returns 200 with success and viewedAt",
+      "GET /api/timeline without auth returns 401",
+      "GET /api/timeline/unread-count without auth returns 401",
+      "GET /api/timeline with invalid priority ignores the filter",
+      "GET /api/timeline returns 500 when service throws"
+    ]
+  },
+  "verification": {
+    "vitest": "8 passed, 0 failed",
+    "lsp_diagnostics": "0 errors on all 3 files",
+    "duration_ms": 194
+  }
+}

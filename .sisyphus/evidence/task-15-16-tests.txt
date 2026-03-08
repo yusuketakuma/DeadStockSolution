@@ -1,0 +1,113 @@
+
+> test:client
+> npm run test --workspace=client
+
+
+> client@0.0.9 test
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/Users/yusuke/DeadStockSolution-group-alert/client[39m
+
+ [32m✓[39m src/test/e2e/dashboard-timeline.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 436[2mms[22m[39m
+ [32m✓[39m src/test/e2e/proposal-detail-comments.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 789[2mms[22m[39m
+     [33m[2m✓[22m[39m allows editing own comment [33m 549[2mms[22m[39m
+ [32m✓[39m src/test/e2e/group-list-page.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[33m 894[2mms[22m[39m
+ [32m✓[39m src/test/e2e/group-detail-page.test.tsx [2m([22m[2m20 tests[22m[2m)[22m[33m 1296[2mms[22m[39m
+[90mstderr[2m | src/test/e2e/upload-camera-register.test.tsx[2m > [22m[2mUploadPage camera register mode[2m > [22m[2mcaptures multiple codes from a camera frame and registers them together
+[22m[39mRSS Expanded reader IS NOT ready for production yet! use at your own risk.
+
+ [32m✓[39m src/test/e2e/admin-upload-jobs-page.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 486[2mms[22m[39m
+     [33m[2m✓[22m[39m loads jobs, opens detail panel, and triggers retry action [33m 310[2mms[22m[39m
+ [32m✓[39m src/test/e2e/dashboard.test.tsx [2m([22m[2m24 tests[22m[2m)[22m[33m 1591[2mms[22m[39m
+     [33m[2m✓[22m[39m shows github updates popover and expandable history [33m 354[2mms[22m[39m
+ [32m✓[39m src/test/e2e/routes-meta.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 700[2mms[22m[39m
+ [32m✓[39m src/test/e2e/upload-camera-register.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 2382[2mms[22m[39m
+     [33m[2m✓[22m[39m shows auto candidates from scanned code and requires manual confirmation [33m 774[2mms[22m[39m
+     [33m[2m✓[22m[39m can confirm unmatched row with manual candidate search [33m 590[2mms[22m[39m
+     [33m[2m✓[22m[39m captures multiple codes from a camera frame and registers them together [33m 873[2mms[22m[39m
+ [32m✓[39m src/test/e2e/inventory.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 951[2mms[22m[39m
+     [33m[2m✓[22m[39m has upload link [33m 310[2mms[22m[39m
+     [33m[2m✓[22m[39m calls delete API when delete button is clicked [33m 353[2mms[22m[39m
+ [32m✓[39m src/test/e2e/login.test.tsx [2m([22m[2m11 tests[22m[2m)[22m[33m 2541[2mms[22m[39m
+     [33m[2m✓[22m[39m renders a simple login screen [33m 315[2mms[22m[39m
+     [33m[2m✓[22m[39m shows error message when login fails [33m 309[2mms[22m[39m
+     [33m[2m✓[22m[39m shows rejected-account message when login is rejected [33m 451[2mms[22m[39m
+     [33m[2m✓[22m[39m shows error when non-admin tries admin login [33m 465[2mms[22m[39m
+[90mstderr[2m | src/test/e2e/smart-digest.test.tsx[2m > [22m[2mSmartDigest[2m > [22m[2mcriticalイベントを緊急バッジ付きで表示する
+[22m[39m⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ [32m✓[39m src/test/e2e/password-reset.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 409[2mms[22m[39m
+ [32m✓[39m src/test/e2e/smart-digest.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[32m 228[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/usePaginatedList.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 144[2mms[22m[39m
+ [32m✓[39m src/test/e2e/register.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 3121[2mms[22m[39m
+     [33m[2m✓[22m[39m submits registration form with correct data [33m 1057[2mms[22m[39m
+     [33m[2m✓[22m[39m shows field validation errors from the server [33m 1577[2mms[22m[39m
+Error: useAuth must be used within an AuthProvider
+    at Module.useAuth (/Users/yusuke/DeadStockSolution-group-alert/client/src/contexts/AuthContext.tsx:102:11)
+    at TestConsumer (/Users/yusuke/DeadStockSolution-group-alert/client/src/test/contexts/AuthContext.test.tsx:22:57)
+    at renderWithHooks (/Users/yusuke/DeadStockSolution-group-alert/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/yusuke/DeadStockSolution-group-alert/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/yusuke/DeadStockSolution-group-alert/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/yusuke/DeadStockSolution-group-alert/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/yusuke/DeadStockSolution-group-alert/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/yusuke/DeadStockSolution-group-alert/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/yusuke/DeadStockSolution-group-alert/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/yusuke/DeadStockSolution-group-alert/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+Error: useAuth must be used within an AuthProvider
+    at Module.useAuth (/Users/yusuke/DeadStockSolution-group-alert/client/src/contexts/AuthContext.tsx:102:11)
+    at TestConsumer (/Users/yusuke/DeadStockSolution-group-alert/client/src/test/contexts/AuthContext.test.tsx:22:57)
+    at renderWithHooks (/Users/yusuke/DeadStockSolution-group-alert/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/yusuke/DeadStockSolution-group-alert/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/yusuke/DeadStockSolution-group-alert/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/yusuke/DeadStockSolution-group-alert/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/yusuke/DeadStockSolution-group-alert/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/yusuke/DeadStockSolution-group-alert/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/yusuke/DeadStockSolution-group-alert/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/yusuke/DeadStockSolution-group-alert/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+ [32m✓[39m src/test/contexts/AuthContext.test.tsx [2m([22m[2m11 tests[22m[2m)[22m[33m 310[2mms[22m[39m
+ [32m✓[39m src/test/e2e/notification-polling.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 113[2mms[22m[39m
+ [32m✓[39m src/test/e2e/timeline-event-card.test.tsx [2m([22m[2m11 tests[22m[2m)[22m[32m 132[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useUploadPreview.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/test/e2e/business-hours-settings.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 272[2mms[22m[39m
+ [32m✓[39m src/contexts/ToastContext.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 103[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useUploadJobPolling.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 150[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useAutoSave.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 114[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/usePolledFetch.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 175[2mms[22m[39m
+ [32m✓[39m src/hooks/useOnboardingVisibility.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 223[2mms[22m[39m
+ [32m✓[39m src/test/e2e/upload-page.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 5307[2mms[22m[39m
+     [33m[2m✓[22m[39m shows excel and camera flows side-by-side while keeping excel validation visible [33m 504[2mms[22m[39m
+     [33m[2m✓[22m[39m submits confirm via async job endpoint and waits for completion [33m 326[2mms[22m[39m
+     [33m[2m✓[22m[39m retries polling when a transient job status error occurs [33m 314[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps job id message when polling keeps failing after retry limit [33m 348[2mms[22m[39m
+     [33m[2m✓[22m[39m shows failed async job error and clears queue message [33m 444[2mms[22m[39m
+     [33m[2m✓[22m[39m handles deduplicated/partial summary/error report fields from job status [33m 505[2mms[22m[39m
+     [33m[2m✓[22m[39m requires acknowledgement when diff deleteMissing deactivates existing records [33m 779[2mms[22m[39m
+     [33m[2m✓[22m[39m invalidates diff preview when upload type is changed after preview [33m 1687[2mms[22m[39m
+ [32m✓[39m src/components/ui/__tests__/AppResponsiveSwitch.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 76[2mms[22m[39m
+ [32m✓[39m src/test/contexts/TimelineContext.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 180[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useDiffPreview.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 171[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useCameraDraftRows.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useDiffSummary.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 65[2mms[22m[39m
+ [32m✓[39m src/test/api-client.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useUploadForm.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 114[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/BusinessStatusBadge.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useBarcodeResolver.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 96[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/formatters.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32m✓[39m src/hooks/__tests__/useCamera.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/proposal-timeline.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/hooks/useMatchNotificationToast.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m src/utils/expiry-risk.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/proposal-status.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/navigation.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/components/onboarding/onboardingSteps.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/e2e/proposals-sort.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/test/test-login-feature.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/e2e/proposals-pharmacies.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 2[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m45 passed[39m[22m[90m (45)[39m
+[2m      Tests [22m [1m[32m376 passed[39m[22m[90m (376)[39m
+[2m   Start at [22m 19:35:31
+[2m   Duration [22m 9.17s[2m (transform 2.52s, setup 8.05s, import 7.79s, tests 23.81s, environment 34.70s)[22m
+

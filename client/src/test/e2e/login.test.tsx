@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useLocation } from 'react-router-dom';
 import LoginPage from '../../pages/LoginPage';
 import { renderWithProviders, mockUser } from '../helpers';
 
@@ -21,7 +22,7 @@ interface TestPharmacyPreview {
   name: string;
   email: string;
   prefecture: string;
-  password: string;
+  password?: string;
 }
 
 function setMatchMedia(matches: boolean) {
@@ -66,6 +67,11 @@ function mockUnauthFetch(options: { testPharmacies?: TestPharmacyPreview[] } = {
   return fetchMock;
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location-probe">{`${location.pathname}${location.search}`}</div>;
+}
+
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -75,7 +81,7 @@ describe('LoginPage', () => {
 
   it('renders a simple login screen', async () => {
     mockUnauthFetch();
-    renderWithProviders(<LoginPage />, { route: '/login' });
+    renderWithProviders(<><LoginPage /><LocationProbe /></>, { route: '/login' });
 
     await waitFor(() => {
       expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
@@ -92,7 +98,7 @@ describe('LoginPage', () => {
   it('switches to admin login mode', async () => {
     const user = userEvent.setup();
     mockUnauthFetch();
-    renderWithProviders(<LoginPage />, { route: '/login' });
+    renderWithProviders(<><LoginPage /><LocationProbe /></>, { route: '/login' });
 
     await user.click(screen.getByRole('button', { name: '管理者ログイン' }));
 
@@ -127,7 +133,7 @@ describe('LoginPage', () => {
       });
     }));
 
-    renderWithProviders(<LoginPage />, { route: '/login' });
+    renderWithProviders(<><LoginPage /><LocationProbe /></>, { route: '/login' });
 
     await user.type(getInputByLabel('メールアドレス'), 'wrong@example.com');
     await user.type(getInputByLabel('パスワード'), 'wrongpassword');
@@ -161,7 +167,13 @@ describe('LoginPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    renderWithProviders(<LoginPage />, { route: '/login' });
+    renderWithProviders(
+      <>
+        <LoginPage />
+        <LocationProbe />
+      </>,
+      { route: '/login' },
+    );
 
     await user.type(getInputByLabel('メールアドレス'), 'test@example.com');
     await user.type(getInputByLabel('パスワード'), 'password123');
@@ -191,7 +203,21 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('button', { name: '一覧から選ぶ' })).not.toBeInTheDocument();
   });
 
-  it('opens developer login modal and applies selected account in desktop view', async () => {
+  it('hides developer login shortcuts on production when preview flag is absent', async () => {
+    vi.stubEnv('MODE', 'production');
+    vi.stubEnv('VITE_VERCEL_ENV', 'production');
+    mockUnauthFetch();
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('開発者ログイン')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '一覧から選ぶ' })).not.toBeInTheDocument();
+  });
+
+  it('opens developer login modal and applies selected account with password in desktop view', async () => {
     const user = userEvent.setup();
     const fetchMock = mockUnauthFetch({
       testPharmacies: [
@@ -220,16 +246,16 @@ describe('LoginPage', () => {
     });
     expect(screen.getByText('テスト薬局東京店')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局札幌店')).toBeInTheDocument();
-    expect(screen.getByText('TokyoDemo!2026')).toBeInTheDocument();
     expect(
-      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies?includePassword=1')),
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies')),
     ).toBe(true);
 
-    const applyButtons = screen.getAllByRole('button', { name: 'このID/パスワードを入力' });
+    const applyButtons = screen.getAllByRole('button', { name: 'このIDを入力' });
     await user.click(applyButtons[0]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('test-tokyo@example.com');
     expect(getInputByLabel('パスワード')).toHaveValue('TokyoDemo!2026');
+    expect(screen.getByText(/メールアドレスとパスワードを入力しました。そのままログインできます。/)).toBeInTheDocument();
   });
 
   it('renders developer login modal list in mobile view', async () => {
@@ -242,7 +268,7 @@ describe('LoginPage', () => {
           name: 'テスト薬局モバイルA',
           email: 'mobile-a@example.com',
           prefecture: '愛知県',
-          password: 'MobileA!2026',
+          password: 'MobileDemo!2026',
         },
       ],
     });
@@ -252,7 +278,112 @@ describe('LoginPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('テスト薬局モバイルA')).toBeInTheDocument();
-      expect(screen.getByText('MobileA!2026')).toBeInTheDocument();
+    });
+  });
+
+  it('uses touch inputs and keeps the password toggle working in mobile view', async () => {
+    const user = userEvent.setup();
+    setMatchMedia(true);
+    mockUnauthFetch();
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await waitFor(() => {
+      expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
+    });
+
+    const emailInput = getInputByLabel('メールアドレス');
+    const passwordInput = getInputByLabel('パスワード');
+
+    expect(emailInput).toHaveClass('app-touch-input');
+    expect(passwordInput).toHaveClass('app-touch-input');
+    expect(emailInput).toHaveStyle({ minHeight: '44px', fontSize: '16px' });
+    expect(passwordInput).toHaveStyle({ minHeight: '44px', fontSize: '16px' });
+    expect(passwordInput).toHaveAttribute('type', 'password');
+
+    await user.click(screen.getByRole('button', { name: 'パスワードを表示する' }));
+    expect(getInputByLabel('パスワード')).toHaveAttribute('type', 'text');
+
+    await user.click(screen.getByRole('button', { name: 'パスワードを非表示にする' }));
+    expect(getInputByLabel('パスワード')).toHaveAttribute('type', 'password');
+  });
+
+  it('routes pending verification login attempts to verification-pending', async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/login')) {
+        return new Response(JSON.stringify({
+          error: '審査中です',
+          verificationStatus: 'pending_verification',
+        }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(
+      <>
+        <LoginPage />
+        <LocationProbe />
+      </>,
+      { route: '/login' },
+    );
+
+    await user.type(getInputByLabel('メールアドレス'), 'pending@example.com');
+    await user.type(getInputByLabel('パスワード'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'ログイン' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('/verification-pending?email=pending%40example.com');
+    });
+  });
+
+  it('shows rejected-account message when login is rejected', async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/login')) {
+        return new Response(JSON.stringify({
+          error: '却下されました',
+          verificationStatus: 'rejected',
+        }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await user.type(getInputByLabel('メールアドレス'), 'rejected@example.com');
+    await user.type(getInputByLabel('パスワード'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'ログイン' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('アカウント申請が却下されました。詳細はメールをご確認ください。')).toBeInTheDocument();
     });
   });
 

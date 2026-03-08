@@ -2,6 +2,7 @@ import { and, eq, exists, gte, inArray, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   deadStockItems,
+  groupMembers,
   pharmacies,
   pharmacyRelationships,
   uploads,
@@ -77,6 +78,55 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
     const favorites = favoriteIdsByPharmacy.get(row.pharmacyId) ?? new Set<number>();
     favorites.add(row.targetPharmacyId);
     favoriteIdsByPharmacy.set(row.pharmacyId, favorites);
+  }
+
+  const sourceGroupRowsRaw = await db.select({
+    pharmacyId: groupMembers.pharmacyId,
+    groupId: groupMembers.groupId,
+  })
+    .from(groupMembers)
+    .where(inArray(groupMembers.pharmacyId, existingSourcePharmacyIds));
+  const sourceGroupRows = Array.isArray(sourceGroupRowsRaw) ? sourceGroupRowsRaw : [];
+  const sourceGroupIdsByPharmacy = new Map<number, Set<number>>();
+  for (const row of sourceGroupRows) {
+    const groupIds = sourceGroupIdsByPharmacy.get(row.pharmacyId) ?? new Set<number>();
+    groupIds.add(row.groupId);
+    sourceGroupIdsByPharmacy.set(row.pharmacyId, groupIds);
+  }
+
+  const allSourceGroupIds = [...new Set(sourceGroupRows.map((row) => row.groupId))];
+  const allGroupMemberRowsRaw = allSourceGroupIds.length > 0
+    ? await db.select({
+      groupId: groupMembers.groupId,
+      pharmacyId: groupMembers.pharmacyId,
+    })
+      .from(groupMembers)
+      .where(inArray(groupMembers.groupId, allSourceGroupIds))
+    : [];
+  const allGroupMemberRows = Array.isArray(allGroupMemberRowsRaw) ? allGroupMemberRowsRaw : [];
+  const memberIdsByGroup = new Map<number, Set<number>>();
+  for (const row of allGroupMemberRows) {
+    const memberIds = memberIdsByGroup.get(row.groupId) ?? new Set<number>();
+    memberIds.add(row.pharmacyId);
+    memberIdsByGroup.set(row.groupId, memberIds);
+  }
+
+  const groupMemberIdsByPharmacy = new Map<number, Set<number>>();
+  for (const sourcePharmacyId of existingSourcePharmacyIds) {
+    const groupMemberIds = new Set<number>();
+    const groupIds = sourceGroupIdsByPharmacy.get(sourcePharmacyId) ?? new Set<number>();
+    for (const groupId of groupIds) {
+      const memberIds = memberIdsByGroup.get(groupId);
+      if (!memberIds) {
+        continue;
+      }
+      for (const memberPharmacyId of memberIds) {
+        if (memberPharmacyId !== sourcePharmacyId) {
+          groupMemberIds.add(memberPharmacyId);
+        }
+      }
+    }
+    groupMemberIdsByPharmacy.set(sourcePharmacyId, groupMemberIds);
   }
 
   const viablePharmacyPool = await db.select({
@@ -192,6 +242,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
     }
 
     const favoriteIds = favoriteIdsByPharmacy.get(sourcePharmacyId) ?? new Set<number>();
+    const groupMemberIds = groupMemberIdsByPharmacy.get(sourcePharmacyId) ?? new Set<number>();
     const pharmaciesWithDistance = buildPharmaciesWithDistance(
       currentPharmacy,
       viablePharmacies,
@@ -208,6 +259,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
       businessHoursByPharmacy,
       specialHoursByPharmacy,
       favoriteIds,
+      groupMemberIds,
       now,
       includeIsConfiguredInBusinessStatus: false,
     });
@@ -267,6 +319,22 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   ]);
 
   const favoriteIds = new Set(favoriteRows.map((row) => row.targetPharmacyId));
+  const sourceGroupIdSubquery = db.select({
+    groupId: groupMembers.groupId,
+  })
+    .from(groupMembers)
+    .where(eq(groupMembers.pharmacyId, pharmacyId));
+  const groupMemberRowsRaw = await db.select({
+    pharmacyId: groupMembers.pharmacyId,
+  })
+    .from(groupMembers)
+    .where(inArray(groupMembers.groupId, sourceGroupIdSubquery));
+  const groupMemberRows = Array.isArray(groupMemberRowsRaw) ? groupMemberRowsRaw : [];
+  const groupMemberIds = new Set(
+    groupMemberRows
+      .map((row) => row.pharmacyId)
+      .filter((memberPharmacyId) => memberPharmacyId !== pharmacyId),
+  );
   if (viablePharmacies.length === 0) return [];
 
   const viablePharmacyIds = viablePharmacies.map((pharmacy) => pharmacy.id);
@@ -333,6 +401,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     businessHoursByPharmacy,
     specialHoursByPharmacy,
     favoriteIds,
+    groupMemberIds,
     now,
     includeIsConfiguredInBusinessStatus: true,
   });

@@ -38,9 +38,15 @@ function isValidRisk(value: unknown): value is PharmacyRisk {
     && typeof row.bucketCounts === 'object';
 }
 
+interface AlertStatsData {
+  unresolvedCount: number;
+  byType: Record<string, number>;
+}
+
 interface StatusAndRiskData {
   status: UploadStatus | null;
   risk: PharmacyRisk | null;
+  alertStats: AlertStatsData | null;
   partialError: string;
 }
 
@@ -55,9 +61,10 @@ export default function DashboardPage() {
   } = useTimeline();
 
   const fetchStatusAndRisk = useCallback(async (_signal: AbortSignal) => {
-    const [nextStatus, nextRisk] = await Promise.allSettled([
+    const [nextStatus, nextRisk, nextAlertStats] = await Promise.allSettled([
       api.get<UploadStatus>('/upload/status', { signal: _signal }),
       api.get<PharmacyRisk>('/inventory/dead-stock/risk', { signal: _signal }),
+      api.get<AlertStatsData>('/alerts/stats', { signal: _signal }),
     ]);
 
     if (nextStatus.status === 'rejected' && nextRisk.status === 'rejected') {
@@ -75,6 +82,7 @@ export default function DashboardPage() {
     return {
       status: nextStatus.status === 'fulfilled' ? nextStatus.value : null,
       risk: nextRisk.status === 'fulfilled' && isValidRisk(nextRisk.value) ? nextRisk.value : null,
+      alertStats: nextAlertStats.status === 'fulfilled' ? nextAlertStats.value as AlertStatsData : null,
       partialError: errors.join(' ').trim(),
     };
   }, []);
@@ -82,6 +90,7 @@ export default function DashboardPage() {
   const { data, error } = useAsyncResource<StatusAndRiskData>(fetchStatusAndRisk);
   const status = data?.status ?? null;
   const risk = data?.risk ?? null;
+  const alertStats = data?.alertStats ?? null;
   const dashboardError = useMemo(
     () => timelineError || (data?.partialError ?? '') || (error ?? ''),
     [data?.partialError, error, timelineError],
@@ -162,7 +171,7 @@ export default function DashboardPage() {
           {/* Compact status strip */}
           <AppDataPanel title="アップロード状況" className="flex-shrink-0">
             <Row className="g-2 mb-2 small">
-              <Col xs={4}>
+              <Col xs={6} sm={4}>
                 <div className="dl-kpi-tile">
                   <div className="fw-semibold mb-1">デッドストックリスト</div>
                   {status?.deadStockUploaded
@@ -170,7 +179,7 @@ export default function DashboardPage() {
                     : <Badge bg="secondary">未アップロード</Badge>}
                 </div>
               </Col>
-              <Col xs={4}>
+              <Col xs={6} sm={4}>
                 <div className="dl-kpi-tile">
                   <div className="fw-semibold mb-1">医薬品使用量リスト</div>
                   {status?.usedMedicationUploaded
@@ -178,7 +187,7 @@ export default function DashboardPage() {
                     : <Badge bg="warning" text="dark">当月未アップロード</Badge>}
                 </div>
               </Col>
-              <Col xs={4}>
+              <Col xs={12} sm={4}>
                 <div className="dl-kpi-tile">
                   <div className="fw-semibold mb-1">マッチング</div>
                   {status?.usedMedicationUploaded
@@ -203,6 +212,37 @@ export default function DashboardPage() {
         </Col>
       </Row>
 
+      {/* Alert widget — below risk KPIs */}
+      {alertStats && alertStats.unresolvedCount > 0 && (
+        <AppDataPanel
+          title="予兆アラート"
+          actions={<Link to="/alerts" className="btn btn-outline-primary btn-sm py-0">全て見る</Link>}
+          className="mb-2 flex-shrink-0"
+        >
+          <Row className="g-2">
+            <Col xs={4}>
+              <div className="dl-kpi-tile dl-kpi-tile--danger">
+                <div className="dl-kpi-value">{alertStats.unresolvedCount}</div>
+                <div className="dl-kpi-label">未解決アラート</div>
+              </div>
+            </Col>
+            <Col xs={8}>
+              <div className="d-flex gap-2 flex-wrap align-items-center h-100">
+                {alertStats.byType.near_expiry ? (
+                  <Badge bg="danger">{`期限切迫 ${alertStats.byType.near_expiry}`}</Badge>
+                ) : null}
+                {alertStats.byType.excess_stock ? (
+                  <Badge bg="warning" text="dark">{`過剰在庫 ${alertStats.byType.excess_stock}`}</Badge>
+                ) : null}
+                {alertStats.byType.no_movement ? (
+                  <Badge bg="info">{`不動在庫 ${alertStats.byType.no_movement}`}</Badge>
+                ) : null}
+              </div>
+            </Col>
+          </Row>
+        </AppDataPanel>
+      )}
+
       {/* Timeline: fills remaining viewport space */}
       <DashboardTimeline
         events={events}
@@ -213,7 +253,6 @@ export default function DashboardPage() {
         selectedPriority={selectedPriority}
         onPriorityChange={setSelectedPriority}
         onLoadMore={loadMore}
-        onEventClick={handleEventClick}
         onRefresh={refreshTimeline}
         className="flex-grow-1"
       />

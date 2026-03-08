@@ -76,3 +76,17 @@ export interface SmartDigestItem {
   actionLabel: string;
   actionPath: string;
 }
+
+export interface EnrichedProposalTimelineEvent {
+  action: string;
+  label: string;
+  at: string | null;
+  actorPharmacyId?: number | null;
+  actorName?: string;
+  statusFrom?: string | null;
+  statusTo?: string | null;
+  eventType: 'status_change' | 'comment' | 'feedback' | 'item_detail';
+  commentBody?: string;
+  feedbackRating?: number | null;
+  feedbackComment?: string;
+}

@@ -95,7 +95,7 @@ describe('UploadPage', () => {
     });
 
     expect(screen.getByText('カメラ取込み')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'カメラ開始' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'カメラ取込へ移動' })).toBeInTheDocument();
     expect(screen.getByText('プレビュー失敗テスト')).toBeInTheDocument();
   });
 

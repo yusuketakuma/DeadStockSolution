@@ -190,4 +190,56 @@ describe('useCameraDraftRows', () => {
       warnings: ['second'],
     }));
   });
+
+  it('does not overwrite another row with a duplicate code during update', () => {
+    const onInfo = vi.fn();
+    const onError = vi.fn();
+    const resolved = buildResolved();
+
+    const { result } = renderHook(() => useCameraDraftRows({ onInfo, onError }));
+
+    act(() => {
+      result.current.appendOrUpdateRow('CODE-001', resolved, [buildCandidate()]);
+      result.current.appendOrUpdateRow('CODE-002', resolved, [buildCandidate()]);
+    });
+
+    const secondRowId = result.current.rows[1].id;
+
+    act(() => {
+      const output = result.current.appendOrUpdateRow('CODE-001', resolved, [], secondRowId);
+      expect(output).toBe('duplicate');
+    });
+
+    expect(result.current.rows.map((row) => row.rawCode)).toEqual(['CODE-001', 'CODE-002']);
+    expect(onInfo).toHaveBeenCalledWith('同じコードは既に追加済みです: CODE-001');
+  });
+
+  it('replaces stale packageLabel with selected candidate label when user did not edit it', () => {
+    const onInfo = vi.fn();
+    const onError = vi.fn();
+    const { result } = renderHook(() => useCameraDraftRows({ onInfo, onError }));
+
+    act(() => {
+      result.current.appendOrUpdateRow('CODE-001', buildResolved(), [buildCandidate()]);
+    });
+
+    const rowId = result.current.rows[0].id;
+    const newerCandidate = buildCandidate({
+      drugMasterId: 77,
+      drugMasterPackageId: 88,
+      drugName: '差し替え薬',
+      packageLabel: 'PTP 140錠',
+    });
+
+    act(() => {
+      result.current.handleApplyManualCandidate(rowId, newerCandidate);
+    });
+
+    expect(result.current.rows[0]).toEqual(expect.objectContaining({
+      drugMasterId: 77,
+      drugMasterPackageId: 88,
+      drugName: '差し替え薬',
+      packageLabel: 'PTP 140錠',
+    }));
+  });
 });

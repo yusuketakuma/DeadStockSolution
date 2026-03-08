@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { visualizer } from 'rollup-plugin-visualizer';
+import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig, loadEnv, type PluginOption } from 'vite';
 
 type PackageJson = {
@@ -29,6 +30,21 @@ export default defineConfig(({ mode }) => {
   const appVersion = normalizeVersion(envVersion || packageJson.version);
 
   const plugins: PluginOption[] = [react()];
+
+  plugins.push(
+    VitePWA({
+      registerType: 'prompt',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      manifest: false,
+      injectManifest: {
+        globDirectory: 'dist',
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
+        globIgnores: ['**/node_modules/**/*', 'sw.js'],
+      },
+    }) as PluginOption,
+  );
 
   if (process.env.ANALYZE === 'true') {
     plugins.push(

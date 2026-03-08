@@ -1,5 +1,4 @@
 import { MatchCandidate } from '../../types';
-import { MAX_CANDIDATES } from '../matching-filter-service';
 import { sortMatchCandidatesByPriority } from '../matching-priority-service';
 import type { MatchingRuleProfile } from './matching-candidate-builder';
 
@@ -9,5 +8,5 @@ export function sortAndLimitCandidates(
   now: Date,
 ): MatchCandidate[] {
   return sortMatchCandidatesByPriority(candidates, matchingRuleProfile.nearExpiryDays, now)
-    .slice(0, MAX_CANDIDATES);
+    .slice(0, matchingRuleProfile.maxCandidates);
 }

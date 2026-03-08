@@ -1,4 +1,5 @@
-import { Badge, Form } from 'react-bootstrap';
+import { useState, useEffect } from 'react';
+import { Badge, Form, Table } from 'react-bootstrap';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
 import AppDataPanel from '../../components/ui/AppDataPanel';
@@ -8,8 +9,41 @@ import InlineLoader from '../../components/ui/InlineLoader';
 import AccountInfoForm from '../../components/account/AccountInfoForm';
 import BusinessHoursSettings from '../../components/account/BusinessHoursSettings';
 import { formatDateTimeJa } from '../../utils/formatters';
+import { api } from '../../api/client';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { useAdminPharmacyEdit } from '../../hooks/useAdminPharmacyEdit';
+
+
+interface AuditLogEntry {
+  id: number;
+  adminId: number;
+  targetPharmacyId: number;
+  action: 'verify' | 'reject' | 're-review';
+  previousStatus: string | null;
+  newStatus: string;
+  reason: string | null;
+  createdAt: string;
+}
+
+interface AuditLogsResponse {
+  logs: AuditLogEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+function formatAction(action: AuditLogEntry['action']): string {
+  switch (action) {
+    case 'verify':
+      return '承認';
+    case 'reject':
+      return '拒否';
+    case 're-review':
+      return '再審査';
+    default:
+      return action;
+  }
+}
 
 export default function AdminPharmacyEditPage() {
   const {
@@ -30,6 +64,38 @@ export default function AdminPharmacyEditPage() {
     handleSpecialTypeChange, handleSpecialDateChange, handleSpecialNoteChange,
     handleSpecialHoursChange, handleSpecialClosedChange, handleSpecial24HoursChange,
   } = useAdminPharmacyEdit();
+
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLogsLoading, setAuditLogsLoading] = useState(false);
+  const [auditLogsError, setAuditLogsError] = useState('');
+
+  useEffect(() => {
+    if (!pharmacy?.id) return;
+    const controller = new AbortController();
+    const loadAuditLogs = async () => {
+      setAuditLogsLoading(true);
+      setAuditLogsError('');
+      try {
+        const response = await api.get<AuditLogsResponse>(
+          `/admin/pharmacies/${pharmacy.id}/audit-logs`,
+          { signal: controller.signal }
+        );
+        if (!controller.signal.aborted) {
+          setAuditLogs(response.logs);
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setAuditLogsError(err instanceof Error ? err.message : '監査ログの取得に失敗しました');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setAuditLogsLoading(false);
+        }
+      }
+    };
+    void loadAuditLogs();
+    return () => controller.abort();
+  }, [pharmacy?.id]);
 
   if (!pharmacyLoaded) {
     return <InlineLoader text="薬局情報を読み込み中..." className="text-muted small" />;
@@ -186,6 +252,41 @@ export default function AdminPharmacyEditPage() {
         onSpecialClosedChange={handleSpecialClosedChange}
         onSpecial24HoursChange={handleSpecial24HoursChange}
       />
+
+      {/* 操作履歴 */}
+      <AppDataPanel className="mt-4">
+        <h5 className="mb-3">操作履歴</h5>
+        {auditLogsLoading ? (
+          <InlineLoader text="履歴を読み込み中..." className="text-muted small" />
+        ) : auditLogsError ? (
+          <AppAlert variant="danger">{auditLogsError}</AppAlert>
+        ) : auditLogs.length === 0 ? (
+          <p className="text-muted mb-0">操作履歴はありません</p>
+        ) : (
+          <Table striped bordered hover responsive size="sm">
+            <thead>
+              <tr>
+                <th>日時</th>
+                <th>アクション</th>
+                <th>変更前</th>
+                <th>変更後</th>
+                <th>理由</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditLogs.map((log) => (
+                <tr key={log.id}>
+                  <td>{formatDateTimeJa(log.createdAt)}</td>
+                  <td>{formatAction(log.action)}</td>
+                  <td>{log.previousStatus ?? '-'}</td>
+                  <td>{log.newStatus}</td>
+                  <td>{log.reason ?? '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </AppDataPanel>
       </ScrollArea>
     </PageShell>
   );

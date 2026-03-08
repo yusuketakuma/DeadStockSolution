@@ -1,0 +1,25 @@
+Task: T5 (Wave 2) timeline-service implementation
+Date: 2026-02-28
+
+Created files:
+- server/src/services/timeline-service.ts
+- server/src/services/__tests__/timeline-service.test.ts
+
+Implemented exports:
+- getTimeline
+- getTimelineUnreadCount
+- markTimelineViewed
+- getSmartDigest
+
+Verification:
+1) Test command
+   npx vitest run server/src/services/__tests__/timeline-service.test.ts
+
+Result:
+- Test Files: 1 passed
+- Tests: 8 passed
+- Exit status: 0
+
+2) LSP diagnostics
+- server/src/services/timeline-service.ts: clean
+- server/src/services/__tests__/timeline-service.test.ts: clean

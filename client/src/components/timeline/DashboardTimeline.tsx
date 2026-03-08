@@ -5,6 +5,37 @@ import InlineLoader from '../ui/InlineLoader';
 import TimelineEventCard from './TimelineEventCard';
 import type { TimelineEvent, TimelinePriority } from '../../types/timeline';
 
+function getDateLabel(timestamp: string): string {
+  const eventDate = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  if (isSameDay(eventDate, today)) return '今日';
+  if (isSameDay(eventDate, yesterday)) return '昨日';
+  return `${eventDate.getFullYear()}/${eventDate.getMonth() + 1}/${eventDate.getDate()}`;
+}
+
+function groupEventsByDate(events: TimelineEvent[]): Array<{ label: string; events: TimelineEvent[] }> {
+  const groups: Array<{ label: string; events: TimelineEvent[] }> = [];
+  let currentLabel = '';
+  for (const event of events) {
+    const label = getDateLabel(event.timestamp);
+    if (label !== currentLabel) {
+      groups.push({ label, events: [event] });
+      currentLabel = label;
+    } else {
+      groups[groups.length - 1].events.push(event);
+    }
+  }
+  return groups;
+}
+
 interface DashboardTimelineProps {
   events: TimelineEvent[];
   loading: boolean;
@@ -13,7 +44,6 @@ interface DashboardTimelineProps {
   selectedPriority: TimelinePriority | null;
   onPriorityChange: (priority: TimelinePriority | null) => void;
   onLoadMore: () => void;
-  onEventClick: (event: TimelineEvent) => void;
   onRefresh: () => void;
   error?: string;
   className?: string;
@@ -35,15 +65,11 @@ export default function DashboardTimeline({
   selectedPriority,
   onPriorityChange,
   onLoadMore,
-  onEventClick,
   onRefresh,
   error,
   className,
 }: DashboardTimelineProps) {
-  const renderedEvents = useMemo(
-    () => events.map((event) => <TimelineEventCard key={event.id} event={event} onClick={onEventClick} />),
-    [events, onEventClick],
-  );
+  const dateGroups = useMemo(() => groupEventsByDate(events), [events]);
 
   return (
     <AppCard className={`d-flex flex-column ${className ?? ''}`} style={{ minHeight: 0 }}>
@@ -90,13 +116,20 @@ export default function DashboardTimeline({
 
         {events.length > 0 && (
           <ListGroup variant="flush">
-            {renderedEvents}
+            {dateGroups.map((group) => (
+              <div key={group.label}>
+                <div data-testid="date-header" className="px-3 py-1 bg-light small fw-semibold text-muted">{group.label}</div>
+                {group.events.map((event) => (
+                  <TimelineEventCard key={event.id} event={event} />
+                ))}
+              </div>
+            ))}
           </ListGroup>
         )}
 
         {hasMore && (
           <div className="text-center py-2">
-            <Button size="sm" variant="outline-secondary" onClick={onLoadMore} disabled={loading}>
+            <Button size="sm" variant="outline-secondary" onClick={onLoadMore} disabled={loading} data-testid="load-more-button">
               もっと見る
             </Button>
           </div>

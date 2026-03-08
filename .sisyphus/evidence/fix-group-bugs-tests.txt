@@ -1,0 +1,21 @@
+ [32m✓[39m src/test/matching-snapshot-service.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-scheduler.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/test/drug-package-scheduler.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [2m[90m↓[39m[22m src/test/performance-regression.test.ts [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m
+
+[2m Test Files [22m [1m[32m252 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (253)[39m
+[2m      Tests [22m [1m[32m3979 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (3980)[39m
+[2m   Start at [22m 20:23:23
+[2m   Duration [22m 13.90s[2m (transform 6.21s, setup 0ms, import 80.77s, tests 18.33s, environment 23ms)[22m
+
+--- Client tests ---
+ [32m✓[39m src/utils/expiry-risk.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/test/test-login-feature.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/components/onboarding/onboardingSteps.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/e2e/proposals-pharmacies.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 1[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m54 passed[39m[22m[90m (54)[39m
+[2m      Tests [22m [1m[32m441 passed[39m[22m[90m (441)[39m
+[2m   Start at [22m 20:23:37
+[2m   Duration [22m 6.40s[2m (transform 2.04s, setup 4.87s, import 6.55s, tests 20.34s, environment 19.83s)[22m
+

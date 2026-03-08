@@ -102,3 +102,21 @@ export const USED_MEDICATION_FIELDS = [
   'unit',
   'yakka_unit_price',
 ] as const;
+
+// Re-export types from separate modules
+export * from './group';
+export * from './push';
+export * from './alert';
+
+export type EquivalenceType = 'brand_generic' | 'generic_generic';
+
+export interface DrugEquivalence {
+  id: number;
+  drugNameA: string;
+  drugNameB: string;
+  equivalenceType: EquivalenceType;
+  notes: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+export * from './admin';

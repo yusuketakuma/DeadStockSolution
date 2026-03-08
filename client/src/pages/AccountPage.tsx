@@ -11,6 +11,7 @@ import DraftRestoreAlert from '../components/DraftRestoreAlert';
 import AccountInfoForm from '../components/account/AccountInfoForm';
 import BusinessHoursSettings from '../components/account/BusinessHoursSettings';
 import WithdrawSection from '../components/account/WithdrawSection';
+import PushNotificationSettings from '../components/account/PushNotificationSettings';
 import AppDataPanel from '../components/ui/AppDataPanel';
 import InlineLoader from '../components/ui/InlineLoader';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
@@ -97,7 +98,7 @@ export default function AccountPage() {
       <PageShell>
         <h4 className="page-title mb-3">薬局登録情報の編集</h4>
         {accountForm.error && <AppAlert variant="danger">{accountForm.error}</AppAlert>}
-        <AppButton variant="outline-secondary" onClick={() => void accountForm.loadAccount()}>
+        <AppButton variant="outline-secondary" onClick={() => void accountForm.handleReloadAccount()}>
           再読み込み
         </AppButton>
       </PageShell>
@@ -148,6 +149,8 @@ export default function AccountPage() {
           他薬局のアップロードでマッチング候補が更新された時に通知を受け取ります。
         </Form.Text>
       </AppDataPanel>
+
+      <PushNotificationSettings />
 
       <ConflictAlert
         show={hoursForm.hoursConflict}

@@ -13,6 +13,7 @@ import { splitIntoChunks } from '../utils/array-utils';
 import { parseBoundedInt } from '../utils/number-utils';
 import { normalizeString } from '../utils/string-utils';
 import { logger } from './logger';
+import { sendToPharmacy } from './push-dispatch-service';
 
 const DEFAULT_NEAR_EXPIRY_DAYS = 45;
 const DEFAULT_EXCESS_STOCK_MONTHS = 3;
@@ -317,6 +318,27 @@ async function persistSignal(
       await tx.update(predictiveAlerts)
         .set({ notificationId: notification.id })
         .where(eq(predictiveAlerts.id, insertedAlert.id));
+    }
+
+    if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+      try {
+        await sendToPharmacy(signal.pharmacyId, {
+          title: signal.title,
+          body: signal.message,
+          data: {
+            url: '/alerts',
+            type: signal.alertType,
+            referenceId: String(insertedAlert.id),
+          },
+        });
+      } catch (error) {
+        logger.warn('Failed to dispatch predictive alert push notification', {
+          pharmacyId: signal.pharmacyId,
+          alertId: insertedAlert.id,
+          alertType: signal.alertType,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     return 'created';

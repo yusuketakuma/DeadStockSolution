@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppButton from '../../components/ui/AppButton';
 import AppAlert from '../../components/ui/AppAlert';
@@ -6,7 +6,7 @@ import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
-import { Badge } from 'react-bootstrap';
+import { Badge, Nav } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
@@ -56,6 +56,9 @@ export default function AdminPharmaciesPage() {
   const [actionError, setActionError] = useState('');
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [recalculating, setRecalculating] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all');
 
   const toggleActive = async (id: number) => {
     setActionError('');
@@ -88,13 +91,126 @@ export default function AdminPharmaciesPage() {
     }
   };
 
+  // 承認待ち件数
+  const pendingCount = useMemo(() =>
+    pharmacies.filter(p => p.verificationStatus === 'pending_verification').length,
+    [pharmacies]
+  );
+
+  // タブに応じたフィルタリング
+  const filteredPharmacies = useMemo(() =>
+    activeTab === 'pending'
+      ? pharmacies.filter(p => p.verificationStatus === 'pending_verification')
+      : pharmacies,
+    [pharmacies, activeTab]
+  );
+
+  // 選択中の薬局のうち、審査可能な（pending_verification）もののみを抽出
+  const selectablePharmacyIds = useMemo(() =>
+    filteredPharmacies.filter(p => p.verificationStatus === 'pending_verification').map(p => p.id),
+    [filteredPharmacies]
+  );
+
+  const isAllSelected = selectablePharmacyIds.length > 0 &&
+    selectablePharmacyIds.every(id => selectedIds.has(id));
+  const isPartialSelected = !isAllSelected && selectablePharmacyIds.some(id => selectedIds.has(id));
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectablePharmacyIds));
+    }
+  };
+
+  const handleBulkVerify = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkLoading(true);
+    setActionError('');
+    try {
+      const result = await api.post<{ message: string }>('/admin/pharmacies/bulk-verify', {
+        pharmacyIds: Array.from(selectedIds),
+      });
+      setMessage(result.message);
+      setSelectedIds(new Set());
+      await fetchPage(page);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '一括承認に失敗しました');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkLoading(true);
+    setActionError('');
+    try {
+      const result = await api.post<{ message: string }>('/admin/pharmacies/bulk-reject', {
+        pharmacyIds: Array.from(selectedIds),
+      });
+      setMessage(result.message);
+      setSelectedIds(new Set());
+      await fetchPage(page);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '一括拒否に失敗しました');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   return (
     <PageShell>
       <h4 className="page-title mb-3">薬局管理</h4>
-      <div className="mb-3">
+      <Nav variant="tabs" className="mb-3" activeKey={activeTab} onSelect={(k) => setActiveTab((k as 'all' | 'pending') || 'all')}>
+        <Nav.Item>
+          <Nav.Link eventKey="all">
+            全て <Badge bg="secondary">{pharmacies.length}</Badge>
+          </Nav.Link>
+        </Nav.Item>
+        <Nav.Item>
+          <Nav.Link eventKey="pending">
+            承認待ち {pendingCount > 0 && <Badge bg="warning" text="dark">{pendingCount}</Badge>}
+          </Nav.Link>
+        </Nav.Item>
+      </Nav>
+      <div className="mb-3 d-flex gap-2 flex-wrap align-items-center">
         <AppButton size="sm" variant="outline-primary" onClick={() => void recalculateTrustScores()} disabled={recalculating}>
           {recalculating ? '再計算中...' : '信頼スコアを再計算'}
         </AppButton>
+        {selectedIds.size > 0 && (
+          <>
+            <span className="text-muted small">選択中: {selectedIds.size}件</span>
+            <AppButton
+              size="sm"
+              variant="outline-success"
+              onClick={() => void handleBulkVerify()}
+              disabled={bulkLoading}
+            >
+              {bulkLoading ? '処理中...' : '一括承認'}
+            </AppButton>
+            <AppButton
+              size="sm"
+              variant="outline-danger"
+              onClick={() => void handleBulkReject()}
+              disabled={bulkLoading}
+            >
+              {bulkLoading ? '処理中...' : '一括拒否'}
+            </AppButton>
+          </>
+        )}
       </div>
       {message && <AppAlert variant="info" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {actionError && <AppAlert variant="danger" onClose={() => setActionError('')} dismissible>{actionError}</AppAlert>}
@@ -104,10 +220,10 @@ export default function AdminPharmaciesPage() {
       <ScrollArea>
       {loading ? (
         <InlineLoader text="薬局データを読み込み中..." className="text-muted small" />
-      ) : pharmacies.length === 0 ? (
+      ) : filteredPharmacies.length === 0 ? (
         <AppEmptyState
-          title="薬局データがありません"
-          description="登録が追加されるとここに表示されます。"
+          title={activeTab === 'pending' ? '承認待ちの薬局はありません' : '薬局データがありません'}
+          description={activeTab === 'pending' ? '現在、審査待ちの薬局はありません。' : '登録が追加されるとここに表示されます。'}
         />
       ) : (
         <AppResponsiveSwitch
@@ -115,6 +231,17 @@ export default function AdminPharmaciesPage() {
             <AppTable striped hover responsive>
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={el => {
+                        if (el) el.indeterminate = isPartialSelected;
+                      }}
+                      onChange={toggleSelectAll}
+                      title="全選択"
+                    />
+                  </th>
                   <th>ID</th>
                   <th>薬局名</th>
                   <th>メール</th>
@@ -130,8 +257,20 @@ export default function AdminPharmaciesPage() {
                 </tr>
               </thead>
               <tbody>
-                {pharmacies.map((p) => (
+                {filteredPharmacies.map((p) => {
+                  const isSelectable = p.verificationStatus === 'pending_verification';
+                  const isSelected = selectedIds.has(p.id);
+                  return (
                   <tr key={p.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={!isSelectable}
+                        onChange={() => toggleSelect(p.id)}
+                        title={isSelectable ? '選択' : '審査中以外は選択不可'}
+                      />
+                    </td>
                     <td>{p.id}</td>
                     <td>
                       {p.name}
@@ -177,13 +316,17 @@ export default function AdminPharmaciesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </AppTable>
           )}
           mobile={() => (
             <div className="dl-mobile-data-list">
-              {pharmacies.map((p) => (
+              {filteredPharmacies.map((p) => {
+                const isSelectable = p.verificationStatus === 'pending_verification';
+                const isSelected = selectedIds.has(p.id);
+                return (
                 <AppMobileDataCard
                   key={p.id}
                   title={`${p.name} (ID:${p.id})`}
@@ -210,7 +353,14 @@ export default function AdminPharmaciesPage() {
                     { label: '評価件数', value: formatNumberJa(p.ratingCount ?? 0) },
                   ]}
                   actions={(
-                    <div className="d-flex gap-2">
+                    <div className="d-flex gap-2 align-items-center">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={!isSelectable}
+                        onChange={() => toggleSelect(p.id)}
+                        title={isSelectable ? '選択' : '審査中以外は選択不可'}
+                      />
                       <Link
                         to={`/admin/pharmacies/${p.id}/edit`}
                         className="btn btn-outline-primary btn-sm"
@@ -228,7 +378,8 @@ export default function AdminPharmaciesPage() {
                     </div>
                   )}
                 />
-              ))}
+                );
+              })}
             </div>
           )}
         />

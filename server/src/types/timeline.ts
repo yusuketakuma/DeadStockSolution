@@ -104,3 +104,17 @@ export function toTimelineEventType(s: string): TimelineEventType {
   console.warn(`[toTimelineEventType] Unknown event type: "${s}", falling back to 'request_update'`);
   return 'request_update';
 }
+
+export interface EnrichedProposalTimelineEvent {
+  action: string;
+  label: string;
+  at: string | null;
+  actorPharmacyId?: number | null;
+  actorName?: string;
+  statusFrom?: string | null;
+  statusTo?: string | null;
+  eventType: 'status_change' | 'comment' | 'feedback' | 'item_detail';
+  commentBody?: string;
+  feedbackRating?: number | null;
+  feedbackComment?: string;
+}

@@ -3,8 +3,8 @@
  * UploadPage.tsxからポーリングロジックを抽出 (T128)
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { api } from '../api/client';
+import { useState, useRef, useCallback, useEffect, type SetStateAction } from 'react';
+import { api, ApiError } from '../api/client';
 import type {
   UploadConfirmJobResult,
   UploadConfirmJobStatusResponse,
@@ -19,7 +19,14 @@ export const UPLOAD_JOB_MAX_POLL_WAIT_MS = import.meta.env.MODE === 'test' ? 300
 export const UPLOAD_JOB_POLL_TRANSIENT_RETRY_MAX = import.meta.env.MODE === 'test' ? 1 : 3;
 
 // === 型定義 ===
-export type UploadProgressPhase = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
+export type UploadProgressPhase =
+  | 'idle'
+  | 'previewing'
+  | 'queueing'
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed';
 
 export interface UploadJobState {
   jobId: number | null;
@@ -91,8 +98,12 @@ export function resolveJobProgressPercent(status: 'pending' | 'processing', elap
 
 // === 一時的エラー判定 ===
 export function isTransientUploadJobPollingError(err: unknown): boolean {
+  if (err instanceof ApiError && [429, 502, 503, 504].includes(err.status)) {
+    return true;
+  }
   if (err instanceof Error) {
-    if (err.message.includes('network') || err.message.includes('timeout')) {
+    const message = err.message.toLowerCase();
+    if (message.includes('network') || message.includes('timeout') || message.includes('temporary upstream error')) {
       return true;
     }
   }
@@ -129,6 +140,7 @@ export function useUploadJobPolling() {
   const [jobState, setJobState] = useState<UploadJobState>(UPLOAD_JOB_INITIAL_STATE);
   const [progress, setProgress] = useState<UploadProgressState>(UPLOAD_PROGRESS_IDLE);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
 
   const controllerRef = useRef<AbortController | null>(null);
 
@@ -147,6 +159,7 @@ export function useUploadJobPolling() {
       controllerRef.current.abort();
       controllerRef.current = null;
     }
+    setIsPolling(false);
     setIsCancelling(false);
     setProgress(UPLOAD_PROGRESS_IDLE);
   }, []);
@@ -163,6 +176,7 @@ export function useUploadJobPolling() {
     }
     controllerRef.current = new AbortController();
     const controller = controllerRef.current;
+    setIsPolling(true);
 
     const pollingStartedAt = Date.now();
     let transientPollFailures = 0;
@@ -180,6 +194,7 @@ export function useUploadJobPolling() {
         });
       } catch (pollErr) {
         if (controller.signal.aborted) {
+          setIsPolling(false);
           return { result: null, error: null, wasAborted: true };
         }
 
@@ -192,12 +207,14 @@ export function useUploadJobPolling() {
           await waitForNextPoll(controller.signal, retryIntervalMs);
           continue;
         }
-
+        setJobState((prev) => ({ ...prev, status: null, cancelable: false }));
+        setIsPolling(false);
         return { result: null, error: pollErr as Error, wasAborted: false };
       }
 
       transientPollFailures = 0;
       if (controller.signal.aborted) {
+        setIsPolling(false);
         return { result: null, error: null, wasAborted: true };
       }
 
@@ -220,17 +237,25 @@ export function useUploadJobPolling() {
 
       if (job.status === 'completed') {
         if (!job.result) {
+          setIsPolling(false);
           return { result: null, error: new Error('アップロード処理結果の取得に失敗しました'), wasAborted: false };
         }
+        setIsPolling(false);
         return { result: job.result, error: null, wasAborted: false };
       }
       if (job.status === 'failed') {
+        setJobState((prev) => ({ ...prev, status: null, cancelable: false }));
+        setIsPolling(false);
         return { result: null, error: new Error(job.lastError || 'アップロード処理に失敗しました'), wasAborted: false };
       }
       if (job.status === 'canceled' || job.status === 'cancelled') {
+        setJobState((prev) => ({ ...prev, status: null, cancelable: false }));
+        setIsPolling(false);
         return { result: null, error: new Error(job.lastError || 'アップロード処理はキャンセルされました'), wasAborted: false };
       }
       if (job.status !== 'pending' && job.status !== 'processing') {
+        setJobState((prev) => ({ ...prev, status: null, cancelable: false }));
+        setIsPolling(false);
         return { result: null, error: new Error('アップロード処理状態の取得に失敗しました'), wasAborted: false };
       }
 
@@ -246,6 +271,7 @@ export function useUploadJobPolling() {
       onProgress?.(newProgress);
 
       if (elapsedMs > UPLOAD_JOB_MAX_POLL_WAIT_MS) {
+        setIsPolling(false);
         return {
           result: null,
           error: new Error(`アップロード処理の待機時間が長くなっています（ジョブID: ${jobId}）。時間をおいて再確認してください。`),
@@ -257,6 +283,7 @@ export function useUploadJobPolling() {
       await waitForNextPoll(controller.signal, intervalMs);
     }
 
+    setIsPolling(false);
     return { result: null, error: null, wasAborted: true };
   }, []);
 
@@ -280,17 +307,27 @@ export function useUploadJobPolling() {
     setProgress(UPLOAD_PROGRESS_IDLE);
   }, [cancelPolling]);
 
+  const setJob = useCallback((nextState: SetStateAction<UploadJobState>) => {
+    setJobState(nextState);
+  }, []);
+
+  const stopPolling = cancelPolling;
+
   return {
     // 状態
+    job: jobState,
     jobState,
     progress,
     isCancelling,
+    isPolling,
     // アクション
     startPolling,
+    stopPolling,
     cancelPolling,
     cancelJob,
     reset,
     // 直接セッター（統合用）
+    setJob,
     setJobState,
     setProgress,
   };

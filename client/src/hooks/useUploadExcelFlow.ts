@@ -83,6 +83,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const fileRef = useRef<HTMLInputElement>(null);
   const navigateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmAbortRef = useRef<AbortController | null>(null);
+  const cancelFailureRef = useRef(false);
   const navigate = useNavigate();
 
   const previewFlow = useUploadPreview();
@@ -133,6 +134,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     clearPendingUploadSideEffects();
     resetExcelTransientUiState();
+    cancelFailureRef.current = false;
     setFile(e.target.files?.[0] || null);
     previewFlow.reset();
     setUploadTypeState('dead_stock');
@@ -146,6 +148,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     if (!file) return;
     clearPendingUploadSideEffects();
     clearTransientFeedback();
+    cancelFailureRef.current = false;
     jobPolling.setProgress({ phase: 'previewing', percent: 20, label: 'Excelファイルを解析しています...' });
     const nextPreview = await previewFlow.handlePreview(file);
     if (!nextPreview) { setFailed('Excel解析に失敗しました。'); return; }
@@ -164,6 +167,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
 
     clearPendingUploadSideEffects();
     clearTransientFeedback();
+    cancelFailureRef.current = false;
     setSubmitting(true);
     setCancellingJob(false);
     jobPolling.setJob(UPLOAD_JOB_INITIAL_STATE);
@@ -231,8 +235,13 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       });
       setMessage(`${enqueueResult.message}（ジョブID: ${enqueueResult.jobId}）${deduplicated ? ' 同一ジョブへ集約して処理します。' : ''}`);
 
-      const completedResult = await jobPolling.startPolling(enqueueResult.jobId, enqueueResult.status);
+      const pollingResult = await jobPolling.startPolling(enqueueResult.jobId);
       if (controller.signal.aborted) return;
+      if (pollingResult.wasAborted) return;
+      if (pollingResult.error || !pollingResult.result) {
+        throw pollingResult.error ?? new Error('アップロード処理結果の取得に失敗しました');
+      }
+      const completedResult = pollingResult.result;
 
       const failedCount = completedResult.partialSummary?.rejectedRows ?? completedResult.partialSummary?.failed ?? 0;
       const completionMessage = `${completedResult.rowCount ?? 0}件のデータを登録しました。マッチング候補の再計算と通知更新が反映されます。`;
@@ -248,7 +257,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       setShowMatchingHint(true);
 
       const shouldAutoNavigate = !completedResult.errorReportAvailable && failedCount === 0;
-      if (shouldAutoNavigate) {
+      if (shouldAutoNavigate && !cancelFailureRef.current) {
         if (navigateTimerRef.current !== null) clearTimeout(navigateTimerRef.current);
         navigateTimerRef.current = setTimeout(() => {
           navigateTimerRef.current = null;
@@ -300,15 +309,17 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
 
   const handleCancelJob = useCallback(async () => {
     if (jobPolling.job.jobId === null || !jobPolling.job.cancelable || cancellingJob) return;
-    clearPendingUploadSideEffects();
+    const currentJobId = jobPolling.job.jobId;
     setCancellingJob(true);
     setError('');
     try {
-      const result = await api.post<{ message?: string }>(`/upload/jobs/${jobPolling.job.jobId}/cancel`);
+      const result = await api.post<{ message?: string }>(`/upload/jobs/${currentJobId}/cancel`);
+      clearPendingUploadSideEffects();
       jobPolling.setJob((prev) => ({ ...prev, status: null, cancelable: false }));
       setFailed('アップロード処理をキャンセルしました。');
-      setMessage(result.message ?? `ジョブID: ${jobPolling.job.jobId} をキャンセルしました。`);
+      setMessage(result.message ?? `ジョブID: ${currentJobId} をキャンセルしました。`);
     } catch (err) {
+      cancelFailureRef.current = true;
       setError(err instanceof Error ? err.message : 'ジョブのキャンセルに失敗しました');
     } finally {
       setCancellingJob(false);

@@ -1,11 +1,10 @@
 {
-  "active_plan": "/Users/yusuke/DeadStockSolution/.sisyphus/plans/timeline-feature.md",
-  "started_at": "2026-02-28T11:40:52.969Z",
+  "active_plan": "/Users/yusuke/DeadStockSolution-mobile/.sisyphus/plans/mobile-ux.md",
+  "started_at": "2026-03-07T23:42:10.557Z",
   "session_ids": [
-    "ses_35c0fb903ffecmnRWFCZrc2Exc",
-    "ses_3440c6bb4ffeoB0171pe5v1Spv"
+    "ses_33551f1bfffeEH7bQEAd0wNAbH"
   ],
-  "plan_name": "timeline-feature",
-  "worktree_path": "/Users/yusuke/DeadStockSolution-timeline",
+  "plan_name": "mobile-ux",
+  "worktree_path": "/Users/yusuke/DeadStockSolution-mobile",
   "agent": "atlas"
 }

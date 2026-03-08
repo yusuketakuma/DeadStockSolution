@@ -1,4 +1,4 @@
-import { useMemo, useState, FormEvent, KeyboardEvent } from 'react';
+import { useMemo, useState, FormEvent, KeyboardEvent, type ChangeEvent } from 'react';
 import { Form } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAsyncState } from '../hooks/useAsyncState';
@@ -7,10 +7,10 @@ import { api, ApiError } from '../api/client';
 import AuthPageLayout from '../components/ui/AuthPageLayout';
 import AppAlert from '../components/ui/AppAlert';
 import LoadingButton from '../components/ui/LoadingButton';
-import AppField from '../components/ui/AppField';
 import AppModalShell from '../components/ui/AppModalShell';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
+import AppTouchInput from '../components/common/AppTouchInput';
 import { APP_VERSION } from '../constants/appVersion';
 import { resolveClientTestLoginFeatureEnabled } from '../features/testLoginFeature';
 
@@ -38,6 +38,8 @@ const TEST_PHARMACY_ENDPOINT = '/auth/test-pharmacies?includePassword=1';
 
 function isTestLoginFeatureEnabled(): boolean {
   return resolveClientTestLoginFeatureEnabled(import.meta.env as {
+    readonly MODE?: string;
+    readonly VITE_VERCEL_ENV?: string;
     readonly VITE_TEST_LOGIN_FEATURE_ENABLED?: string;
   });
 }
@@ -48,15 +50,26 @@ function isTestPharmacyPreview(value: unknown): value is TestPharmacyPreview {
   return typeof candidate.id === 'number'
     && typeof candidate.name === 'string'
     && typeof candidate.email === 'string'
-    && typeof candidate.prefecture === 'string'
-    && typeof candidate.password === 'string';
+    && typeof candidate.prefecture === 'string';
+}
+
+function normalizeTestPharmacyPassword(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function parseTestPharmacyAccounts(payload: unknown): TestPharmacyPreview[] {
   if (!payload || typeof payload !== 'object') return [];
   const accounts = (payload as TestPharmacyResponse).accounts;
   if (!Array.isArray(accounts)) return [];
-  return accounts.filter(isTestPharmacyPreview);
+  return accounts
+    .filter((item): item is TestPharmacyPreview & Record<string, unknown> => isTestPharmacyPreview(item))
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      email: item.email,
+      prefecture: item.prefecture,
+      password: normalizeTestPharmacyPassword(item.password),
+    }));
 }
 
 export default function LoginPage() {
@@ -197,8 +210,12 @@ export default function LoginPage() {
     setFieldErrors({});
     setCapsLockOn(false);
     setEmail(pharmacy.email);
-    setPassword(pharmacy.password);
-    setAppliedTestPharmacyMessage(`${pharmacy.name} のログイン情報を入力しました。`);
+    setPassword(pharmacy.password || '');
+    setAppliedTestPharmacyMessage(
+      pharmacy.password
+        ? `${pharmacy.name} のメールアドレスとパスワードを入力しました。そのままログインできます。`
+        : `${pharmacy.name} のメールアドレスを入力しました。パスワードは別途入力してください。`,
+    );
     setShowTestPharmacyModal(false);
   };
 
@@ -250,22 +267,25 @@ export default function LoginPage() {
 
               <form onSubmit={handleSubmit}>
                 <h2 className="h5 mb-3">{isAdminMode ? '管理者ログイン' : 'ログイン'}</h2>
-                <AppField
-                  className="mb-3"
-                  controlId="login-email"
-                  label="メールアドレス"
-                  type="email"
-                  value={email}
-                  onChange={setEmail}
-                  autoComplete="username"
-                  inputMode="email"
-                  enterKeyHint="next"
-                  required
-                  disabled={loading}
-                  placeholder="登録済みメールアドレス"
-                  isInvalid={!!fieldErrors.email}
-                  errorText={fieldErrors.email}
-                />
+                <Form.Group className="mb-3" controlId="login-email">
+                  <Form.Label>メールアドレス</Form.Label>
+                  <AppTouchInput
+                    type="email"
+                    value={email}
+                    onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setEmail(event.currentTarget.value)}
+                    autoComplete="username"
+                    inputMode="email"
+                    enterKeyHint="next"
+                    required
+                    disabled={loading}
+                    placeholder="登録済みメールアドレス"
+                    isInvalid={!!fieldErrors.email}
+                    aria-invalid={!!fieldErrors.email || undefined}
+                    aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
+                    autoFocus
+                  />
+                  {fieldErrors.email && <div id="login-email-error" className="invalid-feedback d-block">{fieldErrors.email}</div>}
+                </Form.Group>
                 <Form.Group className="mb-3">
                   <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
                     <Form.Label htmlFor="login-password" className="mb-0">パスワード</Form.Label>
@@ -275,11 +295,12 @@ export default function LoginPage() {
                       onClick={() => setShowPassword((prev) => !prev)}
                       disabled={loading}
                       aria-label={showPassword ? 'パスワードを非表示にする' : 'パスワードを表示する'}
+                      style={{ minHeight: '44px', minWidth: '60px' }}
                     >
                       {showPassword ? '非表示' : '表示'}
                     </button>
                   </div>
-                  <Form.Control
+                  <AppTouchInput
                     id="login-password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -288,10 +309,12 @@ export default function LoginPage() {
                     required
                     disabled={loading}
                     isInvalid={!!fieldErrors.password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    aria-invalid={!!fieldErrors.password || undefined}
+                    aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+                    onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setPassword(event.currentTarget.value)}
                     onKeyUp={handlePasswordKeyUp}
                   />
-                  {fieldErrors.password && <div className="invalid-feedback d-block">{fieldErrors.password}</div>}
+                  {fieldErrors.password && <div id="login-password-error" className="invalid-feedback d-block">{fieldErrors.password}</div>}
                   {capsLockOn && (
                     <div className="form-text text-warning">
                       Caps Lock が有効です。大文字入力に注意してください。
@@ -326,7 +349,7 @@ export default function LoginPage() {
                   <div className="mb-2">
                     <h3 className="h6 mb-1">開発者ログイン</h3>
                     <p className="text-muted small mb-0">
-                      テスト薬局の ID とパスワードを転記して、動作確認をすぐ始められます。
+                      テスト薬局のメールアドレスを選択して、動作確認をすぐ始められます。
                     </p>
                   </div>
                   <div className="d-flex flex-wrap gap-2">
@@ -376,7 +399,6 @@ export default function LoginPage() {
                           <th>薬局名</th>
                           <th>メールアドレス</th>
                           <th>都道府県</th>
-                          <th>パスワード</th>
                           <th className="text-end">操作</th>
                         </tr>
                       </thead>
@@ -387,14 +409,13 @@ export default function LoginPage() {
                             <td>{pharmacy.name}</td>
                             <td>{pharmacy.email}</td>
                             <td>{pharmacy.prefecture}</td>
-                            <td>{pharmacy.password}</td>
                             <td className="text-end">
                               <button
                                 type="button"
                                 className="btn btn-sm btn-primary"
                                 onClick={() => applyTestPharmacy(pharmacy)}
                               >
-                                このID/パスワードを入力
+                                このIDを入力
                               </button>
                             </td>
                           </tr>
@@ -413,7 +434,6 @@ export default function LoginPage() {
                         fields={[
                           { label: 'ID', value: pharmacy.id },
                           { label: '都道府県', value: pharmacy.prefecture },
-                          { label: 'パスワード', value: pharmacy.password },
                         ]}
                         actions={(
                           <button
@@ -421,7 +441,7 @@ export default function LoginPage() {
                             className="btn btn-primary w-100"
                             onClick={() => applyTestPharmacy(pharmacy)}
                           >
-                            このID/パスワードを入力
+                            このIDを入力
                           </button>
                         )}
                       />

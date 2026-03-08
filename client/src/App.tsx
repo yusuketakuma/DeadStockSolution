@@ -13,6 +13,8 @@ import AppScreen from './components/ui/AppScreen';
 import PageLoader from './components/ui/PageLoader';
 import { ROUTE_META, type RouteMeta } from './routes/route-config';
 import { DESIGN_PRESET_STORAGE_KEY, isDesignPresetId } from './design/genericDesignPresets';
+import SWUpdateBanner from './components/pwa/SWUpdateBanner';
+import InstallPromptBanner from './components/pwa/InstallPromptBanner';
 
 function RouteLoadingFallback() {
   return <PageLoader />;
@@ -87,6 +89,8 @@ export default function App() {
             <ErrorBoundary>
               <AppRoutes />
               <AppToastContainer />
+              <SWUpdateBanner />
+              <InstallPromptBanner />
             </ErrorBoundary>
           </ToastProvider>
         </NotificationProvider>

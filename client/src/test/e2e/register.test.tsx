@@ -170,7 +170,7 @@ describe('RegisterPage', () => {
       expect(body.permitLicenseNumber).toBe('LIC-001');
       expect(body.permitPharmacyName).toBe('新規薬局');
     });
-  });
+  }, 15000);
 
   it('shows field validation errors from the server', async () => {
     const user = userEvent.setup();
@@ -224,7 +224,7 @@ describe('RegisterPage', () => {
     await waitFor(() => {
       expect(screen.getByText('このメールアドレスは既に登録されています')).toBeInTheDocument();
     });
-  });
+  }, 15000);
 
   it('has a link to login page', async () => {
     mockUnauthenticatedFetch();

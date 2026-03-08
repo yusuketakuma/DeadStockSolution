@@ -18,15 +18,17 @@
 
 ### Phase 2: フォーム状態抽出 [refactoring]
 
-- [ ] T129: useUploadForm.ts 抽出 `cc:計画済` (2026-03-07)
-  - 抽出対象: uploadType, file, applyMode, deleteMissing, mapping, preview
+- [x] T129: useUploadForm.ts 抽出 `cc:完了` (2026-03-07)
+  - 抽出対象: uploadType, file, applyMode, deleteMissing
   - テスト要件: 状態変更・バリデーション
+  - 実績: フック作成完了、15テスト成功、既存コードへの破壊的変更なし
 
 ### Phase 3: 差分サマリー抽出 [refactoring]
 
-- [ ] T130: useDiffSummary.ts 抽出 `cc:計画済` (2026-03-07)
-  - 抽出対象: diffSummary, acknowledgeDeleteImpact
+- [x] T130: useDiffSummary.ts 抽出 `cc:完了` (2026-03-07)
+  - 抽出対象: diffSummary, acknowledgeDeleteImpact, requiresDeleteImpactAcknowledgement
   - テスト要件: 状態変更・削除影響確認
+  - 実績: フック作成完了、13テスト成功、既存コードへの破壊的変更なし
 
 ## 🟡 未着手のタスク
 

@@ -146,6 +146,20 @@ function createJoinWhereQuery(rows: unknown[]) {
   return query;
 }
 
+function createLeftJoinOrderByQuery(rows: unknown[]) {
+  const query = {
+    from: vi.fn(),
+    leftJoin: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+  };
+  query.from.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
+  query.where.mockReturnValue(query);
+  query.orderBy.mockResolvedValue(rows);
+  return query;
+}
+
 describe('exchange-proposals route coverage: POST /proposals', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -473,7 +487,9 @@ describe('exchange-proposals route coverage: GET /proposals/:id detail', () => {
       .mockImplementationOnce(() => createLimitQuery([proposal]))
       .mockImplementationOnce(() => createJoinWhereQuery(items))
       .mockImplementationOnce(() => createLimitQuery([pharmA]))
-      .mockImplementationOnce(() => createLimitQuery([pharmB]));
+      .mockImplementationOnce(() => createLimitQuery([pharmB]))
+      .mockImplementationOnce(() => createLeftJoinOrderByQuery([]))
+      .mockImplementationOnce(() => createLeftJoinOrderByQuery([]));
 
     mocks.fetchProposalTimelineActionRows.mockResolvedValueOnce([]);
     mocks.buildProposalTimeline.mockReturnValueOnce([

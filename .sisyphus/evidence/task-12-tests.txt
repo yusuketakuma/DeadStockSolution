@@ -1,0 +1,286 @@
+
+> test:server
+> npm run test --workspace=server
+
+
+> server@0.0.9 test
+> vitest run --config vitest.config.ts
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/Users/yusuke/DeadStockSolution-group-alert/server[39m
+
+ [32m✓[39m src/test/notification-route.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1127[2mms[22m[39m
+     [33m[2m✓[22m[39m GET /api/notifications/unread-count returns unread count [33m 1120[2mms[22m[39m
+ [32m✓[39m src/test/optimistic-locking.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 1130[2mms[22m[39m
+     [33m[2m✓[22m[39m should return version in GET /account response [33m 1084[2mms[22m[39m
+ [32m✓[39m src/test/scheduler-runtime-branch.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1245[2mms[22m[39m
+     [33m[2m✓[22m[39m master start: disabled branch and single-mode missing-url branch [33m 1185[2mms[22m[39m
+ [32m✓[39m src/test/auth-route.test.ts [2m([22m[2m19 tests[22m[2m)[22m[33m 1273[2mms[22m[39m
+     [33m[2m✓[22m[39m does not expose password reset token by default [33m 1159[2mms[22m[39m
+ [32m✓[39m src/test/combined-coverage-final.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 983[2mms[22m[39m
+     [33m[2m✓[22m[39m returns 500 when DB select throws [33m 950[2mms[22m[39m
+ [32m✓[39m src/test/drug-package-scheduler-ultra.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 477[2mms[22m[39m
+ [32m✓[39m src/test/github-updates-service.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 309[2mms[22m[39m
+     [33m[2m✓[22m[39m retries temporary 503 responses and succeeds [33m 303[2mms[22m[39m
+ [32m✓[39m src/test/drug-package-scheduler-deep.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 526[2mms[22m[39m
+ [32m✓[39m src/test/auth-service.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 382[2mms[22m[39m
+ [32m✓[39m src/test/auth-route-coverage.test.ts [2m([22m[2m27 tests[22m[2m)[22m[33m 410[2mms[22m[39m
+ [32m✓[39m src/test/scheduler-coverage-push.test.ts [2m([22m[2m24 tests[22m[2m)[22m[33m 1999[2mms[22m[39m
+       [33m[2m✓[22m[39m logs error and returns when validateExternalHttpsUrl fails inside background task [33m 1163[2mms[22m[39m
+ [32m✓[39m src/test/push-dispatch-service.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 264[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-scheduler-deep.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 424[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-scheduler-ultra.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 919[2mms[22m[39m
+       [33m[2m✓[22m[39m returns false when runAutoSyncIndex is already running [33m 654[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-source-state-service-extra.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 183[2mms[22m[39m
+ [32m✓[39m src/test/drug-package-scheduler-final.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 285[2mms[22m[39m
+ [32m✓[39m src/test/routes-small-gaps-ultra.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 529[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-callback-route.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 93[2mms[22m[39m
+ [32m✓[39m src/test/trust-score-service-ultra.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 221[2mms[22m[39m
+ [32m✓[39m src/test/routes-final-coverage.test.ts [2m([22m[2m41 tests[22m[2m)[22m[33m 396[2mms[22m[39m
+ [32m✓[39m src/test/group-routes.test.ts [2m([22m[2m43 tests[22m[2m)[22m[32m 274[2mms[22m[39m
+ [32m✓[39m src/test/notifications-route-deep.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 151[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-crud-ultra.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 112[2mms[22m[39m
+{"level":"info","msg":"OpenClaw handoff legacy_http success","timestamp":"2026-03-07T10:03:23.758Z","mode":"legacy_http","requestId":55,"pharmacyId":9,"idempotencyKey":"openclaw-handoff:55:9","attempt":1,"durationMs":0,"threadId":"thread-abc","status":"in_dialogue"}
+ [32m✓[39m src/test/upload-inventory-flow.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 113[2mms[22m[39m
+ [32m✓[39m src/test/coverage-final-push.test.ts [2m([22m[2m40 tests[22m[2m)[22m[32m 193[2mms[22m[39m
+{"level":"info","msg":"OpenClaw handoff legacy_http success","timestamp":"2026-03-07T10:03:23.962Z","mode":"legacy_http","requestId":77,"pharmacyId":9,"idempotencyKey":"openclaw-handoff:77:9","attempt":2,"durationMs":3,"threadId":"thread-retry","status":"in_dialogue"}
+{"level":"info","msg":"OpenClaw handoff deduplicated by in-flight key","timestamp":"2026-03-07T10:03:23.966Z","mode":"legacy_http","requestId":88,"pharmacyId":9,"idempotencyKey":"openclaw-handoff:88:9"}
+{"level":"info","msg":"OpenClaw handoff legacy_http success","timestamp":"2026-03-07T10:03:23.966Z","mode":"legacy_http","requestId":88,"pharmacyId":9,"idempotencyKey":"openclaw-handoff:88:9","attempt":1,"durationMs":0,"threadId":"thread-dedupe","status":"in_dialogue"}
+{"level":"info","msg":"OpenClaw handoff legacy_http success","timestamp":"2026-03-07T10:03:23.966Z","mode":"legacy_http","requestId":99,"pharmacyId":3,"idempotencyKey":"openclaw-handoff:99:3","attempt":1,"durationMs":0,"threadId":"thread-cache","status":"in_dialogue"}
+{"level":"info","msg":"OpenClaw handoff cache hit","timestamp":"2026-03-07T10:03:23.966Z","mode":"legacy_http","requestId":99,"pharmacyId":3,"idempotencyKey":"openclaw-handoff:99:3"}
+ [32m✓[39m src/test/openclaw-service.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 212[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-scheduler-final.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 191[2mms[22m[39m
+ [32m✓[39m src/test/business-hours-route-deep.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 171[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-sync-route-deep.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 176[2mms[22m[39m
+ [32m✓[39m src/test/internal-vercel-deploy-events-route-ultra.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 66[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-source-state-service.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 149[2mms[22m[39m
+ [32m✓[39m src/test/test-pharmacy-schema.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 233[2mms[22m[39m
+ [32m✓[39m src/test/upload-service-coverage.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 99[2mms[22m[39m
+ [32m✓[39m src/test/performance-scale-indexes.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 229[2mms[22m[39m
+ [32m✓[39m src/test/notifications-route-coverage.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 165[2mms[22m[39m
+ [32m✓[39m src/test/admin-upload-jobs-route-coverage.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 84[2mms[22m[39m
+ [32m✓[39m src/test/upload-service-ultra.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+ [32m✓[39m src/test/push-routes.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 81[2mms[22m[39m
+ [32m✓[39m src/test/exchange-subroutes.test.ts [2m([22m[2m35 tests[22m[2m)[22m[32m 181[2mms[22m[39m
+ [32m✓[39m src/test/upload-parser-route-coverage.test.ts [2m([22m[2m33 tests[22m[2m)[22m[32m 188[2mms[22m[39m
+ [32m✓[39m src/test/inventory-route.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 132[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-sync-route-ultra.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 164[2mms[22m[39m
+ [32m✓[39m src/test/notifications-route.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m src/test/account-route-coverage.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 108[2mms[22m[39m
+ [32m✓[39m src/test/account-route-deep.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 141[2mms[22m[39m
+ [32m✓[39m src/test/admin-pharmacies-detail-deep.test.ts [2m([22m[2m39 tests[22m[2m)[22m[32m 169[2mms[22m[39m
+ [32m✓[39m src/test/admin-pharmacies-subroutes.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 188[2mms[22m[39m
+ [32m✓[39m src/test/pharmacies-route.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 69[2mms[22m[39m
+ [32m✓[39m src/test/admin-pharmacies-verify.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m src/test/internal-upload-jobs-route.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m src/test/http-utils-ultra.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 87[2mms[22m[39m
+ [32m✓[39m src/test/upload-route.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 142[2mms[22m[39m
+ [32m✓[39m src/test/exchange-comments-route-coverage.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 138[2mms[22m[39m
+ [32m✓[39m src/test/alert-routes.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 132[2mms[22m[39m
+ [32m✓[39m src/test/error-handler.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 93[2mms[22m[39m
+ [32m✓[39m src/test/admin-upload-jobs-route.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 58[2mms[22m[39m
+ [32m✓[39m src/test/admin-pharmacies-actions-ultra.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 143[2mms[22m[39m
+ [32m✓[39m src/test/auth-route-deep.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 138[2mms[22m[39m
+ [32m✓[39m src/test/pharmacies-route-coverage.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 122[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-log-push-service-coverage.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 72[2mms[22m[39m
+ [32m✓[39m src/test/admin-pharmacies-actions-coverage.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 149[2mms[22m[39m
+ [32m✓[39m src/test/exchange-proposals-route-coverage.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 189[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-sync-route-coverage.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 120[2mms[22m[39m
+ [32m✓[39m src/test/admin-pharmacies-detail-coverage.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 155[2mms[22m[39m
+ [32m✓[39m src/test/timeline-route.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 85[2mms[22m[39m
+ [32m✓[39m src/test/upload-confirm-job-service-deep.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m src/test/business-hours-utils.test.ts [2m([22m[2m41 tests[22m[2m)[22m[32m 49[2mms[22m[39m
+ [32m✓[39m src/test/notifications-route-ultra.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 180[2mms[22m[39m
+ [32m✓[39m src/test/business-hours-route.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 90[2mms[22m[39m
+ [32m✓[39m src/test/http-utils.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 69[2mms[22m[39m
+ [32m✓[39m src/test/admin-matching-rules-route.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m src/test/admin-stats-coverage.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 110[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-route.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 82[2mms[22m[39m
+ [32m✓[39m src/test/admin-reports-route.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 115[2mms[22m[39m
+ [32m✓[39m src/test/internal-vercel-deploy-events-route.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m src/test/expiry-risk-service-final.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/test/upload-validation-final.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 106[2mms[22m[39m
+ [32m✓[39m src/test/exchange-route-priority.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 50[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-route-coverage.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 161[2mms[22m[39m
+ [32m✓[39m src/test/postal-code.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 43[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-crud-route.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 154[2mms[22m[39m
+ [32m✓[39m src/test/admin-pharmacies-list-extra.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/test/verification-route.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 160[2mms[22m[39m
+ [32m✓[39m src/test/admin-trust-route.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m src/test/gs1-parser.test.ts [2m([22m[2m53 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m src/test/matching-service-deep.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 80[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-parser-service-deep.test.ts [2m([22m[2m35 tests[22m[2m)[22m[32m 50[2mms[22m[39m
+ [32m✓[39m src/test/updates-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 63[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-parser-ultra.test.ts [2m([22m[2m41 tests[22m[2m)[22m[32m 38[2mms[22m[39m
+ [32m✓[39m src/test/services-small-gaps-ultra.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m src/test/notification-service-ultra.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/test/statistics-route.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 38[2mms[22m[39m
+ [32m✓[39m src/test/admin-route.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 80[2mms[22m[39m
+ [32m✓[39m src/test/pharmacy-verification-service-final.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m src/test/group-service.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 52[2mms[22m[39m
+ [32m✓[39m src/test/internal-monthly-reports-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m src/test/internal-monitoring-route.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 47[2mms[22m[39m
+ [32m✓[39m src/test/request-logger.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m src/test/validators.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/internal-matching-refresh-route.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-parser-coverage.test.ts [2m([22m[2m40 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-service-ultra.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/test/mhlw-index-scraper-coverage.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/test/request-logger-middleware.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/test/exchange-service-ultra.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/test/mhlw-index-scraper-deep.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/test/upload-confirm-job-service-final.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-sync-deep.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/test/csrf-middleware.test.ts [2m([22m[2m45 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/test/timeline-aggregators-coverage.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m src/test/business-hours-utils-ultra.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m src/test/security-headers.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m src/test/health-endpoint.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m src/test/coverage-push-matching-notif.test.ts [2m([22m[2m84 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/test/internal-predictive-alerts-route.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m src/test/mhlw-multi-file-fetcher.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m src/test/monthly-report-scheduler.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/test/network-utils-ultra.test.ts [2m([22m[2m43 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m src/test/network-utils-final.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/test/upload-confirm-job-service-ultra.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 56[2mms[22m[39m
+ [32m✓[39m src/test/import-failure-alert-scheduler-final.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 56[2mms[22m[39m
+ [32m✓[39m src/test/log-service-coverage.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/network-utils.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/error-code-service-coverage.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/matching-refresh-scheduler.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/test/network-utils-coverage.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-service-deep.test.ts [2m([22m[2m58 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/test/matching-score-service-ultra.test.ts [2m([22m[2m43 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/test/upload-confirm-job-service-coverage.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/test/services-final-coverage.test.ts [2m([22m[2m66 tests[22m[2m)[22m[32m 81[2mms[22m[39m
+ [32m✓[39m src/test/error-handler-middleware.test.ts [2m([22m[2m41 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m src/test/matching-score-deep.test.ts [2m([22m[2m37 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/test/csv-line-length-security.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/test/exchange-service-final.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/test/exchange-service-coverage.test.ts [2m([22m[2m33 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/test/auth-middleware-coverage.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/admin-upload-job-service.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m src/test/matching-refresh-service-coverage.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+{"level":"info","msg":"Pharmacy verification callback processed","timestamp":"2026-03-07T10:03:33.024Z","pharmacyId":1,"verificationStatus":"verified","approved":true,"requestId":10}
+{"level":"info","msg":"Pharmacy verification callback processed","timestamp":"2026-03-07T10:03:33.027Z","pharmacyId":1,"verificationStatus":"rejected","approved":false,"requestId":10}
+ [32m✓[39m src/test/pharmacy-verification-callback-service.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/matching-snapshot-service-coverage.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m src/test/upload-confirm-service.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/import-failure-alert-scheduler-ultra.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/test/log-center-service-coverage.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 38[2mms[22m[39m
+ [32m✓[39m src/test/upload-confirm-job-service.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/test/matching-score-service-coverage.test.ts [2m([22m[2m55 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-parser.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/test/observability-service.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/test/import-failure-alert-deep.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/test/upload-confirm-service-ultra.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/matching-service-final.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/matching-rule-service-deep.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m src/test/auth-middleware-ultra.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/notification-service.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/trust-score-service.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/test/logger-branches.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m src/test/matching-refresh-service-final.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/matching-score-service-final.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m src/test/import-failure-alert-scheduler-coverage.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-command-service-coverage.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m src/test/password-reset-service.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/test/matching-service-coverage.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/mhlw-index-scraper.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/upload-row-issue-service.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/test/geocode-service.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/test/matching-score-service.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/test/timeline-service.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m src/test/system-event-service-ultra.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/test/matching-service-ultra.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m src/test/proposal-timeline-service.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/openapi-contract.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/test/timeline-unread-counts.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/import-failure-alert-scheduler.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/test/auth-middleware-deep.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+{"level":"info","msg":"Sent 1 error log alerts to OpenClaw","timestamp":"2026-03-07T10:03:35.227Z"}
+ [32m✓[39m src/test/openclaw-log-push-service.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-auto-handoff-service.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/test/package-utils-ultra.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/monthly-report-service.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 75[2mms[22m[39m
+ [32m✓[39m src/test/log-center-service.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/network-utils-deep.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 48[2mms[22m[39m
+ [32m✓[39m src/test/logger-feature-flags.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/proposal-priority-deep.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/upload-validation-ultra.test.ts [2m([22m[2m54 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/alert-read-service.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/test/upload-validation-route-coverage.test.ts [2m([22m[2m47 tests[22m[2m)[22m[32m 79[2mms[22m[39m
+ [32m✓[39m src/test/notification-service-deep.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-enrichment.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-scheduler-coverage.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/camera-dead-stock-service.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/matching-filter-service.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/test/data-extractor.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/test/array-utils.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/push-subscription-service.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/test/timeline-aggregators.test.ts [2m([22m[2m39 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/test/expiry-risk-service.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/logger.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/test/mhlw-source-fetch-coverage.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/test/proposal-priority-service.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/job-retry-utils.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/upload-validation-deep.test.ts [2m([22m[2m43 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/test/notification-service-final.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/test/monthly-report-service-final.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/matching-priority-service.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/timeline-priority-engine.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/pharmacy-verification-integration.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-lookup-service.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/error-fix-context.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/error-code-service.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/test-login-feature-config.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/test/number-utils.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/matching-refresh-service.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-sync-service.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/test/matching-score-group-bonus.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-log-context-service.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/matching-rule-service.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/column-mapper.test.ts [2m([22m[2m33 tests[22m[2m)[22m[32m 37[2mms[22m[39m
+ [32m✓[39m src/test/exchange-service.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/env-config.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/upload-middleware.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/string-utils.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/csrf.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/test/crypto-utils.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/test/misc-services-final.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/source-update-detection.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/upload-diff-service.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/test/path-utils.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/monitoring-kpi-service.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/test/registration-screening-service.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-sync-service-coverage.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/upload-diff-utils.test.ts [2m([22m[2m49 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/drug-package-scheduler-coverage.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/kana-utils.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/trust-proxy.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/notification-service-extra.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-command-service.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/geo-utils.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/test/monitoring-kpi-alert-scheduler.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/prefectures.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/auth-middleware.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/test/request-utils.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/openclaw-error-autofix-service.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/test/matching-service.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/test/cursor-pagination.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/admin-upload-job-service-final.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/test/database-url-config.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/package-utils.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/matching-refresh-service-ultra.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/test/timeline-types.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/test/matching-snapshot-service.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/pharmacy-verification-service.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/test/drug-package-scheduler.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/test/drug-master-scheduler.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [2m[90m↓[39m[22m src/test/performance-regression.test.ts [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m
+
+[2m Test Files [22m [1m[32m251 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (252)[39m
+[2m      Tests [22m [1m[32m3971 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (3972)[39m
+[2m   Start at [22m 19:03:19
+[2m   Duration [22m 19.36s[2m (transform 7.36s, setup 0ms, import 121.56s, tests 23.45s, environment 37ms)[22m
+

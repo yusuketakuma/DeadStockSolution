@@ -218,7 +218,7 @@ export default function Header({ onToggleSidebar }: Props) {
               className="me-2"
               style={{ cursor: 'pointer' }}
               onClick={() => navigate('/')}
-              title={`${unreadCount}件の未読通知`}
+              title={`${unreadCount}件の未読`}
             >
               {unreadCount > 99 ? '99+' : unreadCount}
             </Badge>

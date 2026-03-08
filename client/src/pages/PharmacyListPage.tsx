@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
+import type { GroupListResponse, GroupDetailResponse } from '../../../server/src/types/group';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import SearchInput from '../components/SearchInput';
@@ -55,6 +56,12 @@ interface RelationshipsResponse {
   blocked: RelationshipItem[];
 }
 
+interface GroupInfo {
+  id: number;
+  name: string;
+  memberPharmacyIds: number[];
+}
+
 export default function PharmacyListPage() {
   const { user } = useAuth();
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
@@ -66,6 +73,8 @@ export default function PharmacyListPage() {
   const [sortBy, setSortBy] = useState('');
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
   const [blockedIds, setBlockedIds] = useState<Set<number>>(new Set());
+  const [myGroups, setMyGroups] = useState<GroupInfo[]>([]);
+  const [groupFilter, setGroupFilter] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingBlockId, setPendingBlockId] = useState<number | null>(null);
@@ -78,6 +87,23 @@ export default function PharmacyListPage() {
       setBlockedIds(new Set(data.blocked.map((r) => r.targetPharmacyId)));
     } catch {
       // Silently fail - relationships are supplementary
+    }
+  }, []);
+
+  const fetchGroupData = useCallback(async () => {
+    try {
+      const listRes = await api.get<GroupListResponse>('/groups?tab=mine');
+      if (listRes.groups.length === 0) return;
+      const details = await Promise.all(
+        listRes.groups.map((g) => api.get<GroupDetailResponse>(`/groups/${g.id}`))
+      );
+      setMyGroups(details.map((d) => ({
+        id: d.id,
+        name: d.name,
+        memberPharmacyIds: d.members.map((m) => m.pharmacyId),
+      })));
+    } catch {
+      // Silently fail - group data is supplementary
     }
   }, []);
 
@@ -101,6 +127,43 @@ export default function PharmacyListPage() {
 
   useEffect(() => { void fetchData(page); }, [page, fetchData]);
   useEffect(() => { fetchRelationships(); }, [fetchRelationships]);
+  useEffect(() => { void fetchGroupData(); }, [fetchGroupData]);
+
+  const groupPharmacyIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const g of myGroups) {
+      for (const id of g.memberPharmacyIds) ids.add(id);
+    }
+    return ids;
+  }, [myGroups]);
+
+  const pharmacyGroupNames = useMemo(() => {
+    const map = new Map<number, string[]>();
+    for (const g of myGroups) {
+      for (const id of g.memberPharmacyIds) {
+        const existing = map.get(id) ?? [];
+        existing.push(g.name);
+        map.set(id, existing);
+      }
+    }
+    return map;
+  }, [myGroups]);
+
+  const displayedPharmacies = useMemo(() => {
+    if (!groupFilter) return pharmacies;
+    const gid = Number(groupFilter);
+    const group = myGroups.find((g) => g.id === gid);
+    if (!group) return pharmacies;
+    const memberSet = new Set(group.memberPharmacyIds);
+    return pharmacies.filter((p) => memberSet.has(p.id));
+  }, [pharmacies, groupFilter, myGroups]);
+
+  const getGroupBadgeText = (pharmacyId: number): string => {
+    const names = pharmacyGroupNames.get(pharmacyId);
+    if (!names || names.length === 0) return 'グループ';
+    if (names.length === 1) return names[0];
+    return 'グループ';
+  };
 
   const handleSearch = (q: string) => {
     setPage(1);
@@ -160,7 +223,7 @@ export default function PharmacyListPage() {
       <h4 className="page-title mb-3">登録薬局一覧</h4>
 
       <Row className="mb-3 g-2">
-        <Col md={5}>
+        <Col md={4}>
           <div className="d-flex gap-2">
             <div className="flex-grow-1">
               <SearchInput
@@ -174,7 +237,7 @@ export default function PharmacyListPage() {
             <AppButton variant="primary" onClick={() => handleSearch(searchInput)}>検索</AppButton>
           </div>
         </Col>
-        <Col md={4}>
+        <Col md={3}>
           <AppSelect
             value={prefecture}
             ariaLabel="都道府県で絞り込み"
@@ -184,6 +247,15 @@ export default function PharmacyListPage() {
           />
         </Col>
         <Col md={3}>
+          <AppSelect
+            value={groupFilter}
+            ariaLabel="グループで絞り込み"
+            onChange={setGroupFilter}
+            placeholder="全グループ"
+            options={myGroups.map((g) => ({ value: String(g.id), label: g.name }))}
+          />
+        </Col>
+        <Col md={2}>
           <AppSelect
             value={sortBy}
             ariaLabel="並び順"
@@ -201,10 +273,10 @@ export default function PharmacyListPage() {
         <AppAlert variant="danger" dismissible onClose={() => setMessage('')}>{message}</AppAlert>
       ) : loading ? (
         <InlineLoader text="薬局一覧を読み込み中..." className="text-muted small" />
-      ) : pharmacies.length === 0 ? (
+      ) : displayedPharmacies.length === 0 ? (
         <AppEmptyState
-          title={search ? `「${search}」に一致する薬局が見つかりません` : '薬局が見つかりません'}
-          description={search ? '検索条件を変更して再度お試しください。' : undefined}
+          title={search ? `「${search}」に一致する薬局が見つかりません` : groupFilter ? 'このグループに属する薬局が見つかりません' : '薬局が見つかりません'}
+          description={search ? '検索条件を変更して再度お試しください。' : groupFilter ? 'グループフィルターを解除してお試しください。' : undefined}
         />
       ) : (
         <AppResponsiveSwitch
@@ -224,12 +296,13 @@ export default function PharmacyListPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pharmacies.map((p) => (
+                  {displayedPharmacies.map((p) => (
                     <tr key={p.id} className={blockedIds.has(p.id) ? 'table-secondary' : ''}>
                       <td>
                         {p.name}
                         {favoriteIds.has(p.id) && <Badge bg="warning" className="ms-1" text="dark">お気に入り</Badge>}
                         {blockedIds.has(p.id) && <Badge bg="dark" className="ms-1">ブロック</Badge>}
+                        {groupPharmacyIds.has(p.id) && <Badge bg="success" className="ms-1">{getGroupBadgeText(p.id)}</Badge>}
                       </td>
                       <td>{p.prefecture}</td>
                       <td className="small">{p.address}</td>
@@ -275,7 +348,7 @@ export default function PharmacyListPage() {
           )}
           mobile={() => (
             <div className="dl-mobile-data-list">
-              {pharmacies.map((p) => (
+              {displayedPharmacies.map((p) => (
                 <AppMobileDataCard
                   key={p.id}
                   className={blockedIds.has(p.id) ? 'border-secondary-subtle bg-light' : undefined}
@@ -286,6 +359,7 @@ export default function PharmacyListPage() {
                       {favoriteIds.has(p.id) && <Badge bg="warning" text="dark">お気に入り</Badge>}
                       {blockedIds.has(p.id) && <Badge bg="dark">ブロック</Badge>}
                       {p.distance !== null ? <Badge bg="info">{p.distance}km</Badge> : null}
+                      {groupPharmacyIds.has(p.id) && <Badge bg="success">{getGroupBadgeText(p.id)}</Badge>}
                     </>
                   )}
                   fields={[

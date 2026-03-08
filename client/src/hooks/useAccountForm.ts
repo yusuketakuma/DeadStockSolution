@@ -131,6 +131,7 @@ export function useAccountForm({ userId, refreshUser }: UseAccountFormOptions): 
     try {
       const data = await api.get<AccountData>('/account', { signal });
       if (signal?.aborted) return;
+      setError('');
       setAccount(data);
       setForm((prev) => ({
         ...prev,
