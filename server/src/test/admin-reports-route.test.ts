@@ -143,4 +143,25 @@ describe('admin reports routes', () => {
     expect(json.header['content-type']).toContain('application/json');
     expect(json.text).toBe('{"year":2026,"month":3}');
   });
+
+  it('handles unexpected errors in list/generate/download', async () => {
+    const app = createApp();
+
+    mocks.listMonthlyReports.mockRejectedValueOnce(new Error('list failed'));
+    const listRes = await request(app).get('/api/admin/reports/monthly');
+    expect(listRes.status).toBe(500);
+
+    mocks.validateYearMonth.mockReturnValue(undefined);
+    mocks.generateMonthlyReport.mockRejectedValueOnce(new Error('generate failed'));
+    const genRes = await request(app)
+      .post('/api/admin/reports/monthly/generate')
+      .send({ year: 2026, month: 2 });
+    expect(genRes.status).toBe(500);
+
+    mocks.getMonthlyReportById.mockRejectedValueOnce(new Error('download failed'));
+    const dlRes = await request(app).get('/api/admin/reports/monthly/10/download');
+    expect(dlRes.status).toBe(500);
+
+    expect(mocks.loggerError).toHaveBeenCalled();
+  });
 });

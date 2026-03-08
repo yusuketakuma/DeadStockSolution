@@ -74,4 +74,22 @@ describe('GET /api/auth/verification-status', () => {
       error: 'メールアドレスを指定してください',
     });
   });
+
+  it('returns 500 when database query throws', async () => {
+    const query = {
+      from: vi.fn(),
+      where: vi.fn(),
+      limit: vi.fn(),
+    };
+    query.from.mockReturnValue(query);
+    query.where.mockReturnValue(query);
+    query.limit.mockRejectedValue(new Error('db failed'));
+    mocks.db.select.mockReturnValue(query);
+
+    const app = createApp();
+    const response = await request(app).get('/api/auth/verification-status?email=test@example.com');
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('審査ステータスの取得に失敗しました');
+  });
 });

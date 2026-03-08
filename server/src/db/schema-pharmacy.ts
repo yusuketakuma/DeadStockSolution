@@ -106,3 +106,28 @@ export const inventorySearchPreferences = pgTable('inventory_search_preferences'
   idxInventorySearchPreferencesPharmacy: uniqueIndex('idx_inventory_search_preferences_pharmacy')
     .on(table.pharmacyId),
 }));
+
+export const subscriptionPlanValues = ['light', 'standard', 'enterprise'] as const;
+export type SubscriptionPlan = (typeof subscriptionPlanValues)[number];
+
+export const subscriptionStatusValues = ['active', 'past_due', 'canceled', 'incomplete', 'incomplete_expired', 'trialing', 'unpaid', 'paused'] as const;
+export type SubscriptionStatus = (typeof subscriptionStatusValues)[number];
+
+export const subscriptions = pgTable('subscriptions', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  stripeSubscriptionId: text('stripe_subscription_id').notNull().unique(),
+  stripeCustomerId: text('stripe_customer_id').notNull(),
+  planType: text('plan_type').$type<SubscriptionPlan>().notNull(),
+  status: text('status').$type<SubscriptionStatus>().notNull(),
+  currentPeriodStart: timestamp('current_period_start', { mode: 'string' }),
+  currentPeriodEnd: timestamp('current_period_end', { mode: 'string' }),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+  canceledAt: timestamp('canceled_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxSubscriptionsPharmacyId: index('idx_subscriptions_pharmacy_id').on(table.pharmacyId),
+  idxSubscriptionsStripeCustomerId: index('idx_subscriptions_stripe_customer_id').on(table.stripeCustomerId),
+  idxSubscriptionsStatus: index('idx_subscriptions_status').on(table.status),
+}));

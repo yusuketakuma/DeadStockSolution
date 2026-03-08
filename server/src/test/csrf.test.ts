@@ -1,19 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
-import { csrfProtection, ensureCsrfCookie } from '../middleware/csrf';
+import { csrfProtection, ensureCsrfCookie, clearCsrfCookie } from '../middleware/csrf';
 
 function createResponseMock() {
   const status = vi.fn();
   const json = vi.fn();
   const cookie = vi.fn();
+  const clearCookie = vi.fn();
   const res = {
     status,
     json,
     cookie,
+    clearCookie,
   } as unknown as Response;
   status.mockReturnValue(res);
   json.mockReturnValue(res);
-  return { res, status, json, cookie };
+  return { res, status, json, cookie, clearCookie };
 }
 
 function createRequestMock(overrides: Partial<Request> = {}): Request {
@@ -135,5 +137,49 @@ describe('csrf middleware', () => {
     expect(next).not.toHaveBeenCalled();
     expect(status).toHaveBeenCalledWith(403);
     expect(json).toHaveBeenCalledWith({ error: 'CSRFトークンが無効です。再読み込みしてください' });
+  });
+
+  it('blocks authenticated request when csrf header is missing', () => {
+    const req = createRequestMock({
+      cookies: {
+        token: 'auth-cookie',
+        csrfToken: 'cookie-token',
+      },
+      header: ((_: string) => '') as Request['header'],
+    });
+    const { res, status, json } = createResponseMock();
+    const next = vi.fn() as unknown as NextFunction;
+
+    csrfProtection(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(403);
+    expect(json).toHaveBeenCalledWith({ error: 'CSRFトークンが無効です。再読み込みしてください' });
+  });
+
+  it('falls back when csrf cookie is not a string', () => {
+    const req = createRequestMock({
+      cookies: {
+        token: 'auth-cookie',
+        csrfToken: { invalid: true } as unknown as string,
+      },
+      header: ((name: string) => (name === 'x-csrf-token' ? 'anything' : '')) as Request['header'],
+    });
+    const { res, status, json } = createResponseMock();
+    const next = vi.fn() as unknown as NextFunction;
+
+    csrfProtection(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(403);
+    expect(json).toHaveBeenCalledWith({ error: 'CSRFトークンが無効です。再読み込みしてください' });
+  });
+
+  it('clears csrf cookie', () => {
+    const { res, clearCookie } = createResponseMock();
+
+    clearCsrfCookie(res);
+
+    expect(clearCookie).toHaveBeenCalledWith('csrfToken');
   });
 });

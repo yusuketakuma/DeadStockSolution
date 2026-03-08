@@ -50,4 +50,38 @@ describe('http-utils', () => {
 
     await expect(downloadResponseBuffer(response, 1024)).rejects.toThrow('File too large');
   });
+
+  it('continues retry even when response body cancel rejects', async () => {
+    const cancelMock = vi.fn().mockRejectedValue(new Error('cancel failed'));
+    const retryableResponse = {
+      status: 503,
+      body: {
+        cancel: cancelMock,
+      },
+    } as unknown as Response;
+
+    const successResponse = new Response('ok', { status: 200 });
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(retryableResponse)
+      .mockResolvedValueOnce(successResponse);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const res = await fetchWithTimeout('https://example.com/retry', {
+      timeoutMs: 200,
+      retry: { retries: 1, baseDelayMs: 1, maxDelayMs: 5 },
+    });
+
+    expect(res.status).toBe(200);
+    expect(cancelMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to generic request failed when retries is NaN', async () => {
+    await expect(fetchWithTimeout('https://example.com/invalid', {
+      timeoutMs: 100,
+      retry: {
+        retries: Number.NaN as unknown as number,
+      },
+    })).rejects.toThrow('request failed');
+  });
 });
