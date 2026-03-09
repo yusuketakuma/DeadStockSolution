@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.10] - 2026-03-09
+
+### Added
+
+- **グループ機能**: 薬局グループの作成・管理・メンバー招待機能（GroupListPage, GroupDetailPage, group-service, group-routes）
+- **グループアラート**: グループ内の在庫アラート表示・フィルタ・通知（AlertListPage, alerts-route, alert-read-service）
+- **PWA対応**: Service Worker（sw.ts）、オフラインページ、manifest.json、インストールプロンプト（InstallPromptBanner）、SW更新通知（SWUpdateBanner）
+- **プッシュ通知**: Web Push購読管理（usePushSubscription）、プッシュ通知設定UI（PushNotificationSettings）、プッシュ許可バナー（PushPermissionBanner）、サーバー側push-dispatch-service・push-routes
+- **マッチングスコア改善**: ランカーエンジン、同等性ボーナス、有効期限減衰、グループボーナス、成功率スコアの各スコアリングモジュール追加
+- **医薬品同等性管理**: 医薬品同等性の管理者ページ・サービス・APIルート追加
+- **マッチングルール管理**: マッチングルールの管理者設定ページ追加
+- **Sentry→OpenClaw自動修正連携**: Sentryエラーを検知しOpenClaw経由で自動修正を実行する統合パイプライン（T213-T217）、openclaw-error-autofix-service、error-fix-context
+- **CSVエクスポートレート制限**: CSVエクスポートエンドポイントへのレート制限追加（admin-csv-export-route）
+- **CSVファイルサイズ・行数制限**: DoS防止のためのCSVアップロードサイズ・行数バリデーション
+- **カメラ撮影コンポーネント分割**: CameraViewport、DraftRowList、ScanResultSheet に分割、useCamera・useCameraDraftRows・useBarcodeResolver フック抽出
+- **フロントエンドフック大量抽出**: useUploadJobPolling（T128）、useUploadForm、useUploadPreview、useDiffPreview、useDiffSummary、useUploadExcelFlow、useAccountForm、useAdminPharmacyEdit、useBusinessHoursForm、useNotificationSettings、useAutoSave、useSWUpdate
+- **営業時間設定コンポーネント分割**: RegularHoursSection、SpecialHoursSection に分割
+- **モバイルボトムナビ**: MobileBottomNav コンポーネント追加
+- **インフラ・DX改善スプリント（T201-T212）**: Dependabot設定、Lighthouse CI、husky commit-msg/pre-commit フック、Sentry設定（client/server）
+- **タイプ定義追加**: admin.ts、alert.ts、group.ts、push.ts、timeline.ts の型ファイル新設
+- **ユーティリティ追加**: api-error.ts（構造化APIエラー）、email-utils.ts、error-utils.ts、type-guards.ts、validators.ts
+- **ルート補助モジュール**: auth-helpers.ts、notifications-helpers.ts、response-helpers.ts、admin-pharmacies-detail-helpers.ts
+- **エラーメッセージ・バリデーション定数**: errorMessages.ts、validationMessages.ts、constants/index.ts
+- **LoadingOverlay**: ローディングオーバーレイUIコンポーネント
+- **AppTouchInput**: タッチ操作対応入力コンポーネント
+- **テスト大幅追加（40+ファイル）**: group-routes、group-service、alert-routes、alert-read-service、alert-push-integration、push-routes、push-subscription-service、push-dispatch-service、matching-ranker、matching-score-*（4ファイル）、drug-equivalence-service、admin-drug-equivalences-route、admin-matching-rules-validation、openclaw-error-autofix-service、error-fix-context、camera-dead-stock-service、compute-optimal-batch-size、csrf-middleware、csv-export-service、error-handler-middleware、health-endpoint、monitoring-kpi-alert-scheduler、request-logger-middleware、security-headers、sentry、upload-middleware、api-error、audit-log-service、exchange-proposals-timeline、timeline-aggregators、DashboardTimeline、ProposalTimeline、SmartDigest、TimelineEventCard、TimelineContext、AuthContext、useBarcodeResolver、useCamera、useCameraDraftRows、useDiffPreview、useDiffSummary、useUploadForm、useUploadJobPolling、useUploadPreview、usePushSubscription、InstallPromptBanner、MobileBottomNav、PushNotificationSettings、PushPermissionBanner、SWUpdateBanner、sw、AlertListPage、group-detail-page、group-list-page、matching-page-groups、pharmacy-list-groups、admin-exchanges-page-mobile、admin-logs-page-mobile、admin-upload-jobs-page-mobile
+
+### Fixed
+
+- **レスポンシブ対応**: GroupDetail、AlertList、Dashboard のモバイルビューポート修正
+- **テストログイン復元**: テストログイン自動入力と単一カラムレイアウトの復元
+- **テスト薬局パスワード**: テストモード有効時のパスワード返却を修正
+- **Vercelインストール**: Vercelインストール時のhusky スキップ対応（VERCEL環境変数検出）
+- **テストアカウントセキュリティ**: テストアカウントの平文パスワード永続化・露出を停止
+- **本番テストログイン無効化**: Vercel本番環境でのテストログインをデフォルト無効に変更
+- **ESLint警告抑制**: cleanup useEffect の exhaustive-deps 警告を修正
+- **ログインリダイレクトテスト**: 正しいセレクタを使用するよう修正
+- **自動スキャン**: safe autofix の適用（3件: 2026-03-06 14:16, 2026-03-07 04:13, 2026-03-07 06:18 JST）
+
+### Changed
+
+- **サーバーリファクタリング Wave 4-6**: exchange-comments・exchange-service の共通ヘルパー抽出、isRecord 共有型ガード・Zodスキーマ修正
+- **フロントエンドリファクタリング Wave 4**: UploadPage・AccountPage からカスタムフックを抽出し責務分離
+- **OpenClawハンドオフ統合**: 共有ハンドオフエグゼキュータの抽出・ユーティリティ重複排除
+- **ハンドオフメッセージ改善**: ハンドオフメッセージング、ヘルスステータス表示、差分プレビュー中断処理の改善
+- **Sentry統合簡素化**: Sentryインテグレーションとチャンク分割の簡素化
+- **アップロードパフォーマンス**: 動的バッチサイズ調整（compute-optimal-batch-size）、detectHeaderRow の早期終了最適化（T218, T219）
+- **Phase 7 コード簡素化**: レビュー後のPhase 7コードリファクタリング
+- **CameraDeadStockRegisterPanel**: 1,391行→コンポーネント・フック分割で大幅簡素化
+- **BusinessHoursSettings**: サブコンポーネント分割とフック抽出で可読性向上
+- **AdminPharmacyEditPage**: useAdminPharmacyEdit フック抽出で658行のロジック分離
+- **ProposalDetailPage**: ProposalTimeline・TimelineEventCard の大幅改善（643行差分）
+- **タイムラインコンポーネント**: DashboardTimeline、SmartDigest の改善
+- **管理画面改善**: AdminLogCenterPage（345行差分）、AdminPharmaciesPage、AdminDashboardPage の強化
+- **ルート設定拡張**: 12ルート追加（グループ、アラート、PWA関連）
+- **CI設定更新**: ci.yml 修正、Lighthouse CI ワークフロー追加
+- **vercel.json**: 20行のルーティング設定追加
+
 ## [0.0.9] - 2026-03-06
 
 ### Added
@@ -264,6 +322,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview DB同期とテストアカウントパスワード更新
 - 本番環境でのCORS同一ホストオリジンチェック
 
+[0.0.10]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.8...v0.0.9
 [0.0.7]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.5...v0.0.6
