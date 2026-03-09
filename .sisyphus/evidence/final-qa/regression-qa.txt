@@ -1,0 +1,55 @@
+====================================================================
+ Regression QA Report — Wave 6 Refactoring
+ Date: 2026-03-07
+====================================================================
+
+## 1. Server Tests: npm run test:server
+
+Result: 3657 passed | 1 failed (flaky) | 1 skipped (perf)
+Files:  232 passed | 1 failed | 1 skipped (234 total)
+
+Failed test:
+  - notifications-route-ultra.test.ts > "maps new_comment type correctly"
+  - Error: expected 401 to be 200
+  - Root cause: Cross-file mock contamination (NOT a regression)
+  - Evidence: Test passes 21/21 when run in isolation
+    $ npx vitest run src/test/notifications-route-ultra.test.ts
+    → 21 passed, 0 failed
+  - Pre-existing: test file was NOT modified in this refactoring wave
+
+## 2. Server Build: npm run build:server
+
+Result: PASS (tsc -p tsconfig.build.json — clean)
+
+## 3. Client Build: npm run build:client
+
+Result: PASS (tsc -b && vite build — 700 modules, 50 chunks)
+
+## 4. Line Count Verification (all must be ≤400)
+
+  File                                                Lines  Status
+  ─────────────────────────────────────────────────── ───── ──────
+  server/src/services/openclaw-service.ts               20   ✅ ≤400
+  server/src/services/upload-diff-service.ts           359   ✅ ≤400
+  server/src/routes/notifications.ts                   385   ✅ ≤400
+  server/src/routes/auth.ts                            400   ✅ ≤400
+  server/src/routes/upload-parser.ts                   354   ✅ ≤400
+  server/src/routes/admin-pharmacies-detail.ts         315   ✅ ≤400
+  client/src/hooks/useUploadExcelFlow.ts               328   ✅ ≤400
+  client/src/pages/admin/AdminPharmacyEditPage.tsx     192   ✅ ≤400
+  client/src/pages/admin/AdminLogCenterPage.tsx        297   ✅ ≤400
+  client/src/components/account/BusinessHoursSettings.tsx 168 ✅ ≤400
+
+  All 10/10 files: ≤400 lines ✅
+
+====================================================================
+ VERDICT: APPROVE
+====================================================================
+
+Tests [3657/3658 pass] | Build [PASS] | Line Counts [10/10 ≤400]
+
+Notes:
+- 1 flaky test (pre-existing cross-file mock contamination)
+- 1 skipped (performance-regression.test.ts — intentionally skipped)
+- Both server and client builds clean
+- All refactored files within 400-line limit

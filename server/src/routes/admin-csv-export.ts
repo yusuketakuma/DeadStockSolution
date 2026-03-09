@@ -4,7 +4,7 @@
 // GET /csv/reports    — レポート一覧
 
 import { Router, Response } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { AuthRequest } from '../types';
 import { logger } from '../services/logger';
 import {
@@ -19,7 +19,10 @@ const csvExportLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'エクスポートリクエストが多すぎます。しばらく待ってからお試しください。' },
-  keyGenerator: (req) => (req as AuthRequest).user?.id?.toString() ?? req.ip ?? 'unknown',
+  keyGenerator: (req) => {
+    const userId = (req as AuthRequest).user?.id;
+    return userId ? `user:${userId}` : ipKeyGenerator(req.ip ?? 'unknown');
+  },
 });
 
 const router = Router();

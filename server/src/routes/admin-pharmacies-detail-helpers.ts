@@ -36,6 +36,12 @@ export type PharmacyUpdatePayload = Partial<{
   version: number | SQL;
 }>;
 
+type UniquePharmacyUpdateCheck = {
+  value: string;
+  findExistingId: (value: string) => Promise<number | null>;
+  error: string;
+};
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -276,7 +282,7 @@ export async function ensureUniquePharmacyUpdates(
   id: number,
   updates: PharmacyUpdatePayload,
 ): Promise<string | null> {
-  const uniqueChecks = [
+  const uniqueChecks: UniquePharmacyUpdateCheck[] = [
     typeof updates.email === 'string'
       ? {
         value: updates.email,
@@ -291,17 +297,14 @@ export async function ensureUniquePharmacyUpdates(
         error: 'この薬局開設許可番号は既に登録されています',
       }
       : null,
-  ];
+  ].filter((check): check is UniquePharmacyUpdateCheck => check !== null);
 
-  for (const check of uniqueChecks) {
-    if (!check) continue;
+  const conflictErrors = await Promise.all(uniqueChecks.map(async (check) => {
     const existingId = await check.findExistingId(check.value);
-    if (existingId !== null && existingId !== id) {
-      return check.error;
-    }
-  }
+    return existingId !== null && existingId !== id ? check.error : null;
+  }));
 
-  return null;
+  return conflictErrors.find((error): error is string => error !== null) ?? null;
 }
 
 export async function applyGeocodedCoordinates(

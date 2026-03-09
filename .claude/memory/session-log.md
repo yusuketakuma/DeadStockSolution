@@ -505,3 +505,196 @@
 - （必要に応じて追記）
 
 ---
+
+## セッション: 2026-03-08T08:58:44Z
+
+- session_id: `session-1772960279`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-08T08:57:59Z`
+- ended_at: `2026-03-08T08:58:44Z`
+- duration_minutes: 540
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
+
+## セッション: 2026-03-08T21:36:33Z
+
+- session_id: `session-1773005701`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-08T21:35:01Z`
+- ended_at: `2026-03-08T21:36:33Z`
+- duration_minutes: 541
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
+
+## セッション: 2026-03-08T21:37:18Z
+
+- session_id: `session-1773005812`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-08T21:36:52Z`
+- ended_at: `2026-03-08T21:37:18Z`
+- duration_minutes: 540
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
+
+## セッション: 2026-03-08T23:59:42Z
+
+- session_id: `session-1773014003`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-08T23:53:23Z`
+- ended_at: `2026-03-08T23:59:42Z`
+- duration_minutes: 546
+- changes: 6
+- important_changes: 2
+
+### 変更ファイル
+- `/Users/yusuke/.codex/config.toml`
+- `/Users/yusuke/.codex/AGENTS.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/SKILL.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/OPERATING_CONTRACT.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/compact_prompt.txt`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/templates/Plans.md`
+
+### 重要な変更（important=true）
+- `/Users/yusuke/.codex/AGENTS.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/templates/Plans.md`
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
+
+## セッション: 2026-03-09T03:44:48Z
+
+- session_id: `session-1773027132`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-09T03:32:12Z`
+- ended_at: `2026-03-09T03:44:48Z`
+- duration_minutes: 552
+- changes: 38
+- important_changes: 2
+
+### 変更ファイル
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/agents/openai.yaml`
+- `/Users/yusuke/.agents/README.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/SKILL.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/OPERATING_CONTRACT.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/compact_prompt.txt`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/templates/harness.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/templates/Plans.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/templates/runlog.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/docs/setup.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/docs/workflow.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/docs/troubleshooting.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/docs/codex-long-running-notes.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/docs/codex-migration-0.112.0.md`
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/docs/typescript-scan-defaults.md`
+- `/Users/yusuke/.agents/state/README.md`
+- `/Users/yusuke/.agents/log/README.md`
+- `/Users/yusuke/.agents/codex/README.md`
+- `/Users/yusuke/.agents/runtime/README.md`
+- `/Users/yusuke/.agents/codex/agents/planner.toml`
+- `/Users/yusuke/.agents/codex/agents/explorer.toml`
+- `/Users/yusuke/.agents/codex/agents/explorer_spark.toml`
+- `/Users/yusuke/.agents/codex/agents/docs_researcher.toml`
+- `/Users/yusuke/.agents/codex/agents/docs_researcher_spark.toml`
+- `/Users/yusuke/.agents/codex/agents/scan_reader.toml`
+- `/Users/yusuke/.agents/codex/agents/worker.toml`
+- `/Users/yusuke/.agents/codex/agents/worker_heavy.toml`
+- `/Users/yusuke/.agents/codex/agents/review_scan_triage.toml`
+- `/Users/yusuke/.agents/codex/agents/review_reuse.toml`
+- `/Users/yusuke/.agents/codex/agents/review_security.toml`
+- `/Users/yusuke/.agents/codex/agents/review_quality.toml`
+- `/Users/yusuke/.agents/codex/agents/review_performance.toml`
+- `/Users/yusuke/.agents/codex/agents/review_ux.toml`
+- `/Users/yusuke/.agents/codex/agents/monitor.toml`
+- `/Users/yusuke/.agents/codex/agents/monitor_spark.toml`
+- `/Users/yusuke/.codex/rules/default.rules`
+- `/Users/yusuke/.codex/config.toml`
+- `/Users/yusuke/.codex/AGENTS.md`
+- `/Users/yusuke/.agents/tools/notify-moshi.sh`
+
+### 重要な変更（important=true）
+- `/Users/yusuke/.agents/skills/multi-repo-dev-workflow/resources/templates/Plans.md`
+- `/Users/yusuke/.codex/AGENTS.md`
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
+
+## セッション: 2026-03-09T03:46:13Z
+
+- session_id: `session-1773027966`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-09T03:46:06Z`
+- ended_at: `2026-03-09T03:46:13Z`
+- duration_minutes: 540
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---
+
+## セッション: 2026-03-09T03:48:37Z
+
+- session_id: `session-1773028100`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-09T03:48:20Z`
+- ended_at: `2026-03-09T03:48:37Z`
+- duration_minutes: 540
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+- （必要に応じて追記）
+
+---

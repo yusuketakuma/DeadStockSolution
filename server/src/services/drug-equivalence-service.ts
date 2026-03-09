@@ -55,7 +55,7 @@ function validateInput(input: CreateDrugEquivalenceInput): void {
   }
 }
 
-function normalizeDrugName(value: string): string {
+function trimDrugName(value: string): string {
   return value.trim();
 }
 
@@ -90,8 +90,8 @@ async function checkDuplicate(drugNameA: string, drugNameB: string): Promise<voi
 
 export async function createDrugEquivalence(input: CreateDrugEquivalenceInput): Promise<DrugEquivalence> {
   validateInput(input);
-  const trimmedA = normalizeDrugName(input.drugNameA);
-  const trimmedB = normalizeDrugName(input.drugNameB);
+  const trimmedA = trimDrugName(input.drugNameA);
+  const trimmedB = trimDrugName(input.drugNameB);
 
   await checkDuplicate(trimmedA, trimmedB);
 
@@ -111,6 +111,7 @@ export async function createDrugEquivalence(input: CreateDrugEquivalenceInput): 
     throw new Error('薬品同等性の登録に失敗しました');
   }
 
+  cachedEquivalenceMap = null;
   logger.info('Drug equivalence created', { id: inserted.id, drugNameA: trimmedA, drugNameB: trimmedB });
   return toResponse(inserted);
 }
@@ -147,10 +148,10 @@ export async function updateDrugEquivalence(
   };
 
   if (input.drugNameA !== undefined) {
-    updateData.drugNameA = normalizeDrugName(input.drugNameA);
+    updateData.drugNameA = trimDrugName(input.drugNameA);
   }
   if (input.drugNameB !== undefined) {
-    updateData.drugNameB = normalizeDrugName(input.drugNameB);
+    updateData.drugNameB = trimDrugName(input.drugNameB);
   }
   if (input.equivalenceType !== undefined) {
     if (!VALID_EQUIVALENCE_TYPES.has(input.equivalenceType)) {
@@ -171,6 +172,7 @@ export async function updateDrugEquivalence(
     return null;
   }
 
+  cachedEquivalenceMap = null;
   logger.info('Drug equivalence updated', { id });
   return toResponse(updated);
 }
@@ -184,22 +186,43 @@ export async function deleteDrugEquivalence(id: number): Promise<boolean> {
     return false;
   }
 
+  cachedEquivalenceMap = null;
   logger.info('Drug equivalence deleted', { id });
   return true;
 }
 
+const EQUIVALENCE_MAP_TTL_MS = 30 * 60 * 1000; // 30 minutes
+let cachedEquivalenceMap: Map<string, string[]> | null = null;
+let cachedEquivalenceMapAt = 0;
+let pendingFetch: Promise<Map<string, string[]>> | null = null;
+
 export async function fetchEquivalenceMap(): Promise<Map<string, string[]>> {
-  const rows = await db.select().from(drugEquivalences);
-  const map = new Map<string, string[]>();
-  for (const row of rows) {
-    const existingA = map.get(row.drugNameA) ?? [];
-    existingA.push(row.drugNameB);
-    map.set(row.drugNameA, existingA);
-    const existingB = map.get(row.drugNameB) ?? [];
-    existingB.push(row.drugNameA);
-    map.set(row.drugNameB, existingB);
+  const now = Date.now();
+  if (cachedEquivalenceMap && now - cachedEquivalenceMapAt < EQUIVALENCE_MAP_TTL_MS) {
+    return cachedEquivalenceMap;
   }
-  return map;
+
+  if (pendingFetch) return pendingFetch;
+
+  pendingFetch = (async () => {
+    const rows = await db.select().from(drugEquivalences);
+    const map = new Map<string, string[]>();
+    for (const row of rows) {
+      const existingA = map.get(row.drugNameA) ?? [];
+      existingA.push(row.drugNameB);
+      map.set(row.drugNameA, existingA);
+      const existingB = map.get(row.drugNameB) ?? [];
+      existingB.push(row.drugNameA);
+      map.set(row.drugNameB, existingB);
+    }
+
+    cachedEquivalenceMap = map;
+    cachedEquivalenceMapAt = Date.now();
+    pendingFetch = null;
+    return map;
+  })();
+
+  return pendingFetch;
 }
 
 export async function findEquivalentDrugNames(drugName: string): Promise<string[]> {

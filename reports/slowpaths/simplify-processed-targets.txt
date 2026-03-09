@@ -39,3 +39,5 @@ server/src/routes/auth-helpers.ts
 client/src/hooks/useCamera.ts
 server/src/services/column-mapper.ts
 server/src/services/mhlw-multi-file-fetcher.ts
+server/src/routes/admin-pharmacies-detail-helpers.ts
+server/src/routes/drug-master-sync.ts

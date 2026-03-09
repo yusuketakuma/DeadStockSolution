@@ -25,6 +25,7 @@ const PRICE_COMPARISON_EPSILON = 0.001;
 
 type InsertDrugMasterRow = typeof drugMaster.$inferInsert;
 type InsertPriceHistoryRow = typeof drugMasterPriceHistory.$inferInsert;
+type InsertPackageRow = typeof drugMasterPackages.$inferInsert;
 type UpdateDrugMasterFields = Omit<InsertDrugMasterRow, 'yjCode' | 'id' | 'createdAt'>;
 type UpdateDrugMasterItem = {
   yjCode: string;
@@ -33,6 +34,19 @@ type UpdateDrugMasterItem = {
 type DelistingPayload = {
   codes: string[];
   priceHistory: InsertPriceHistoryRow[];
+};
+type ExistingPackage = {
+  id: number;
+  drugMasterId: number;
+  gs1Code: string | null;
+  janCode: string | null;
+  hotCode: string | null;
+  packageDescription: string | null;
+  packageQuantity: number | null;
+  packageUnit: string | null;
+  normalizedPackageLabel: string | null;
+  packageForm: string | null;
+  isLoosePackage: boolean;
 };
 
 interface ExistingDrugMasterForSync {
@@ -49,6 +63,22 @@ interface ExistingDrugMasterForSync {
   listedDate: string | null;
   transitionDeadline: string | null;
   deletedDate: string | null;
+}
+
+interface PackageBucket {
+  byGs1: Map<string, ExistingPackage>;
+  byJan: Map<string, ExistingPackage>;
+  byHot: Map<string, ExistingPackage>;
+}
+
+interface PackageLookupState {
+  yjToId: Map<string, number>;
+  buckets: Map<number, PackageBucket>;
+}
+
+interface PackageMutationCounts {
+  added: number;
+  updated: number;
 }
 
 function buildDrugMasterInsertRow(row: ParsedDrugRow, now: string): InsertDrugMasterRow {
@@ -135,6 +165,207 @@ function normalizePackage(row: ParsedPackageRow) {
     packageQuantity: row.packageQuantity,
     packageUnit: row.packageUnit,
   });
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
+async function fetchDrugMasterIdMap(parsedRows: ParsedPackageRow[]): Promise<Map<string, number>> {
+  const yjCodes = unique(parsedRows.map((row) => row.yjCode));
+  if (yjCodes.length === 0) {
+    return new Map();
+  }
+
+  const masterItems = await db.select({ id: drugMaster.id, yjCode: drugMaster.yjCode })
+    .from(drugMaster)
+    .where(inArray(drugMaster.yjCode, yjCodes));
+  return new Map(masterItems.map((item) => [item.yjCode, item.id]));
+}
+
+async function fetchExistingPackages(drugMasterIds: number[]) {
+  if (drugMasterIds.length === 0) {
+    return [];
+  }
+
+  return db.select({
+    id: drugMasterPackages.id,
+    drugMasterId: drugMasterPackages.drugMasterId,
+    gs1Code: drugMasterPackages.gs1Code,
+    janCode: drugMasterPackages.janCode,
+    hotCode: drugMasterPackages.hotCode,
+    packageDescription: drugMasterPackages.packageDescription,
+    packageQuantity: drugMasterPackages.packageQuantity,
+    packageUnit: drugMasterPackages.packageUnit,
+    normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
+    packageForm: drugMasterPackages.packageForm,
+    isLoosePackage: drugMasterPackages.isLoosePackage,
+  })
+    .from(drugMasterPackages)
+    .where(inArray(drugMasterPackages.drugMasterId, drugMasterIds));
+}
+
+function createPackageBucket(): PackageBucket {
+  return {
+    byGs1: new Map(),
+    byJan: new Map(),
+    byHot: new Map(),
+  };
+}
+
+function ensurePackageBucket(
+  buckets: Map<number, PackageBucket>,
+  drugMasterId: number,
+): PackageBucket {
+  const existing = buckets.get(drugMasterId);
+  if (existing) {
+    return existing;
+  }
+
+  const created = createPackageBucket();
+  buckets.set(drugMasterId, created);
+  return created;
+}
+
+function addPackageToBuckets(buckets: Map<number, PackageBucket>, pkg: ExistingPackage): void {
+  const bucket = ensurePackageBucket(buckets, pkg.drugMasterId);
+  if (pkg.gs1Code) bucket.byGs1.set(pkg.gs1Code, pkg);
+  if (pkg.janCode) bucket.byJan.set(pkg.janCode, pkg);
+  if (pkg.hotCode) bucket.byHot.set(pkg.hotCode, pkg);
+}
+
+function removePackageFromBuckets(buckets: Map<number, PackageBucket>, pkg: ExistingPackage): void {
+  const bucket = buckets.get(pkg.drugMasterId);
+  if (!bucket) return;
+  if (pkg.gs1Code) bucket.byGs1.delete(pkg.gs1Code);
+  if (pkg.janCode) bucket.byJan.delete(pkg.janCode);
+  if (pkg.hotCode) bucket.byHot.delete(pkg.hotCode);
+}
+
+function findExistingPackage(
+  buckets: Map<number, PackageBucket>,
+  drugMasterId: number,
+  row: ParsedPackageRow,
+): ExistingPackage | null {
+  const bucket = buckets.get(drugMasterId);
+  if (!bucket) return null;
+  if (row.gs1Code) {
+    const hit = bucket.byGs1.get(row.gs1Code);
+    if (hit) return hit;
+  }
+  if (row.janCode) {
+    const hit = bucket.byJan.get(row.janCode);
+    if (hit) return hit;
+  }
+  if (row.hotCode) {
+    const hit = bucket.byHot.get(row.hotCode);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function buildPackageLookupState(
+  yjToId: Map<string, number>,
+  existingPackages: ExistingPackage[],
+): PackageLookupState {
+  const buckets = new Map<number, PackageBucket>();
+  for (const pkg of existingPackages) {
+    addPackageToBuckets(buckets, pkg);
+  }
+  return { yjToId, buckets };
+}
+
+function buildPackageUpdateValues(row: ParsedPackageRow, existingPkg: ExistingPackage) {
+  const normalized = normalizePackage(row);
+  return {
+    gs1Code: row.gs1Code ?? existingPkg.gs1Code,
+    janCode: row.janCode ?? existingPkg.janCode,
+    hotCode: row.hotCode ?? existingPkg.hotCode,
+    packageDescription: row.packageDescription ?? existingPkg.packageDescription,
+    packageQuantity: row.packageQuantity ?? existingPkg.packageQuantity,
+    packageUnit: row.packageUnit ?? existingPkg.packageUnit,
+    normalizedPackageLabel: normalized.normalizedPackageLabel ?? existingPkg.normalizedPackageLabel,
+    packageForm: normalized.packageForm ?? existingPkg.packageForm,
+    isLoosePackage: normalized.isLoosePackage,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildPackageInsertRow(drugMasterId: number, row: ParsedPackageRow): InsertPackageRow {
+  const normalized = normalizePackage(row);
+  return {
+    drugMasterId,
+    gs1Code: row.gs1Code,
+    janCode: row.janCode,
+    hotCode: row.hotCode,
+    packageDescription: row.packageDescription,
+    packageQuantity: row.packageQuantity,
+    packageUnit: row.packageUnit,
+    normalizedPackageLabel: normalized.normalizedPackageLabel,
+    packageForm: normalized.packageForm,
+    isLoosePackage: normalized.isLoosePackage,
+  };
+}
+
+async function insertPackageBatch(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  buckets: Map<number, PackageBucket>,
+  toInsert: InsertPackageRow[],
+): Promise<void> {
+  if (toInsert.length === 0) {
+    return;
+  }
+
+  const created = await tx.insert(drugMasterPackages).values(toInsert).returning({
+    id: drugMasterPackages.id,
+    drugMasterId: drugMasterPackages.drugMasterId,
+    gs1Code: drugMasterPackages.gs1Code,
+    janCode: drugMasterPackages.janCode,
+    hotCode: drugMasterPackages.hotCode,
+    packageDescription: drugMasterPackages.packageDescription,
+    packageQuantity: drugMasterPackages.packageQuantity,
+    packageUnit: drugMasterPackages.packageUnit,
+    normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
+    packageForm: drugMasterPackages.packageForm,
+    isLoosePackage: drugMasterPackages.isLoosePackage,
+  });
+
+  for (const pkg of created) {
+    addPackageToBuckets(buckets, pkg);
+  }
+}
+
+async function syncPackageBatch(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  batch: ParsedPackageRow[],
+  lookup: PackageLookupState,
+  counts: PackageMutationCounts,
+): Promise<void> {
+  const toInsert: InsertPackageRow[] = [];
+
+  for (const row of batch) {
+    const drugMasterId = lookup.yjToId.get(row.yjCode);
+    if (!drugMasterId) continue;
+
+    const existingPkg = findExistingPackage(lookup.buckets, drugMasterId, row);
+    if (!existingPkg) {
+      toInsert.push(buildPackageInsertRow(drugMasterId, row));
+      counts.added++;
+      continue;
+    }
+
+    const nextValues = buildPackageUpdateValues(row, existingPkg);
+    await tx.update(drugMasterPackages)
+      .set(nextValues)
+      .where(eq(drugMasterPackages.id, existingPkg.id));
+
+    removePackageFromBuckets(lookup.buckets, existingPkg);
+    const { updatedAt: _updatedAt, ...cacheValues } = nextValues;
+    addPackageToBuckets(lookup.buckets, { ...existingPkg, ...cacheValues });
+    counts.updated++;
+  }
+
+  await insertPackageBatch(tx, lookup.buckets, toInsert);
 }
 
 function assertNoDuplicateYjCodes(parsedRows: ParsedDrugRow[]): ParsedDrugRow[] {
@@ -363,172 +594,19 @@ export async function syncDrugMaster(
 export async function syncPackageData(
   parsedRows: ParsedPackageRow[],
 ): Promise<{ added: number; updated: number }> {
-  let added = 0;
-  let updated = 0;
-
-  // YJコード → drug_master.id のマップを構築（必要なコードだけフィルター）
-  const yjCodes = [...new Set(parsedRows.map((r) => r.yjCode))];
-  const masterItems = yjCodes.length > 0
-    ? await db.select({ id: drugMaster.id, yjCode: drugMaster.yjCode })
-        .from(drugMaster)
-        .where(inArray(drugMaster.yjCode, yjCodes))
-    : [];
-  const yjToId = new Map(masterItems.map((m) => [m.yjCode, m.id]));
-
-  const relevantMasterIds = [...new Set(masterItems.map((m) => m.id))];
-  const existingPackages = relevantMasterIds.length > 0
-    ? await db.select({
-      id: drugMasterPackages.id,
-      drugMasterId: drugMasterPackages.drugMasterId,
-      gs1Code: drugMasterPackages.gs1Code,
-      janCode: drugMasterPackages.janCode,
-      hotCode: drugMasterPackages.hotCode,
-      packageDescription: drugMasterPackages.packageDescription,
-      packageQuantity: drugMasterPackages.packageQuantity,
-      packageUnit: drugMasterPackages.packageUnit,
-      normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
-      packageForm: drugMasterPackages.packageForm,
-      isLoosePackage: drugMasterPackages.isLoosePackage,
-    })
-      .from(drugMasterPackages)
-      .where(inArray(drugMasterPackages.drugMasterId, relevantMasterIds))
-    : [];
-
-  type ExistingPackage = (typeof existingPackages)[number];
-  interface PackageBucket {
-    byGs1: Map<string, ExistingPackage>;
-    byJan: Map<string, ExistingPackage>;
-    byHot: Map<string, ExistingPackage>;
-  }
-
-  const buckets = new Map<number, PackageBucket>();
-  function ensureBucket(drugMasterId: number): PackageBucket {
-    const existing = buckets.get(drugMasterId);
-    if (existing) return existing;
-    const created: PackageBucket = {
-      byGs1: new Map(),
-      byJan: new Map(),
-      byHot: new Map(),
-    };
-    buckets.set(drugMasterId, created);
-    return created;
-  }
-
-  function addToBucket(pkg: ExistingPackage): void {
-    const bucket = ensureBucket(pkg.drugMasterId);
-    if (pkg.gs1Code) bucket.byGs1.set(pkg.gs1Code, pkg);
-    if (pkg.janCode) bucket.byJan.set(pkg.janCode, pkg);
-    if (pkg.hotCode) bucket.byHot.set(pkg.hotCode, pkg);
-  }
-
-  function removeFromBucket(pkg: ExistingPackage): void {
-    const bucket = buckets.get(pkg.drugMasterId);
-    if (!bucket) return;
-    if (pkg.gs1Code) bucket.byGs1.delete(pkg.gs1Code);
-    if (pkg.janCode) bucket.byJan.delete(pkg.janCode);
-    if (pkg.hotCode) bucket.byHot.delete(pkg.hotCode);
-  }
-
-  function findExistingPackage(drugMasterId: number, row: ParsedPackageRow): ExistingPackage | null {
-    const bucket = buckets.get(drugMasterId);
-    if (!bucket) return null;
-    if (row.gs1Code) {
-      const hit = bucket.byGs1.get(row.gs1Code);
-      if (hit) return hit;
-    }
-    if (row.janCode) {
-      const hit = bucket.byJan.get(row.janCode);
-      if (hit) return hit;
-    }
-    if (row.hotCode) {
-      const hit = bucket.byHot.get(row.hotCode);
-      if (hit) return hit;
-    }
-    return null;
-  }
-
-  for (const pkg of existingPackages) {
-    addToBucket(pkg);
-  }
+  const counts: PackageMutationCounts = { added: 0, updated: 0 };
+  const yjToId = await fetchDrugMasterIdMap(parsedRows);
+  const existingPackages = await fetchExistingPackages(unique([...yjToId.values()]));
+  const lookup = buildPackageLookupState(yjToId, existingPackages);
 
   await db.transaction(async (tx) => {
     for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
       const batch = parsedRows.slice(i, i + BATCH_SIZE);
-      type InsertPackageRow = typeof drugMasterPackages.$inferInsert;
-      const toInsert: InsertPackageRow[] = [];
-
-      for (const row of batch) {
-        const drugMasterId = yjToId.get(row.yjCode);
-        if (!drugMasterId) continue;
-        const normalized = normalizePackage(row);
-
-        const existingPkg = findExistingPackage(drugMasterId, row);
-
-        if (existingPkg) {
-          const nextValues = {
-            gs1Code: row.gs1Code ?? existingPkg.gs1Code,
-            janCode: row.janCode ?? existingPkg.janCode,
-            hotCode: row.hotCode ?? existingPkg.hotCode,
-            packageDescription: row.packageDescription ?? existingPkg.packageDescription,
-            packageQuantity: row.packageQuantity ?? existingPkg.packageQuantity,
-            packageUnit: row.packageUnit ?? existingPkg.packageUnit,
-            normalizedPackageLabel: normalized.normalizedPackageLabel ?? existingPkg.normalizedPackageLabel,
-            packageForm: normalized.packageForm ?? existingPkg.packageForm,
-            isLoosePackage: normalized.isLoosePackage,
-            updatedAt: new Date().toISOString(),
-          };
-
-          await tx.update(drugMasterPackages)
-            .set(nextValues)
-            .where(eq(drugMasterPackages.id, existingPkg.id));
-
-          removeFromBucket(existingPkg);
-          const { updatedAt: _updatedAt, ...cacheValues } = nextValues;
-          addToBucket({ ...existingPkg, ...cacheValues });
-
-          updated++;
-        } else {
-          toInsert.push({
-            drugMasterId,
-            gs1Code: row.gs1Code,
-            janCode: row.janCode,
-            hotCode: row.hotCode,
-            packageDescription: row.packageDescription,
-            packageQuantity: row.packageQuantity,
-            packageUnit: row.packageUnit,
-            normalizedPackageLabel: normalized.normalizedPackageLabel,
-            packageForm: normalized.packageForm,
-            isLoosePackage: normalized.isLoosePackage,
-          });
-
-          added++;
-        }
-      }
-
-      // バッチ INSERT 一括実行
-      if (toInsert.length > 0) {
-        const created = await tx.insert(drugMasterPackages).values(toInsert).returning({
-          id: drugMasterPackages.id,
-          drugMasterId: drugMasterPackages.drugMasterId,
-          gs1Code: drugMasterPackages.gs1Code,
-          janCode: drugMasterPackages.janCode,
-          hotCode: drugMasterPackages.hotCode,
-          packageDescription: drugMasterPackages.packageDescription,
-          packageQuantity: drugMasterPackages.packageQuantity,
-          packageUnit: drugMasterPackages.packageUnit,
-          normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
-          packageForm: drugMasterPackages.packageForm,
-          isLoosePackage: drugMasterPackages.isLoosePackage,
-        });
-
-        for (const pkg of created) {
-          addToBucket(pkg);
-        }
-      }
+      await syncPackageBatch(tx, batch, lookup, counts);
     }
   });
 
-  return { added, updated };
+  return counts;
 }
 
 export async function createSyncLog(syncType: string, sourceDescription: string, triggeredBy: number | null) {

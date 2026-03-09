@@ -3,9 +3,9 @@
   "parent_session_id": null,
   "state": "stopped",
   "started_at": "2026-03-09T03:48:20Z",
-  "updated_at": "2026-03-09T03:50:35Z",
-  "event_seq": 4,
-  "last_event_id": "event-000004",
+  "updated_at": "2026-03-09T03:48:37Z",
+  "event_seq": 2,
+  "last_event_id": "event-000002",
   "state_version": 1,
   "cwd": "/Users/yusuke/DeadStockSolution",
   "project_name": "DeadStockSolution",
@@ -27,19 +27,11 @@
     "max_state_retries": 3,
     "retry_backoff_seconds": 10
   },
-  "prompt_seq": 4,
-  "intent": "semantic",
-  "last_message_length": 69,
-  "last_message_hash": "379ec0b12266c776",
+  "prompt_seq": 1,
+  "intent": "literal",
+  "last_message_length": 589,
+  "last_message_hash": "f6b962e164ad947e",
   "ended_at": "2026-03-09T03:48:37Z",
   "duration_minutes": 540,
-  "memory_logged": true,
-  "changes_this_session": [
-    {
-      "file": "/Users/yusuke/.codex/config.toml",
-      "action": "Edit",
-      "timestamp": "2026-03-09T03:50:35Z",
-      "important": false
-    }
-  ]
+  "memory_logged": true
 }

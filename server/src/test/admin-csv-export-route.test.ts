@@ -28,6 +28,7 @@ vi.mock('../services/csv-export-service', () => ({
 
 vi.mock('express-rate-limit', () => ({
   default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  ipKeyGenerator: (ip: string) => ip,
 }));
 
 // admin.ts が全サブルーターを読み込むため、他の依存もモック

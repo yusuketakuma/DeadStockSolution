@@ -1,16 +1,16 @@
 {
   "phase": "completed",
-  "timestamp": "2026-03-06T01:07:22Z",
+  "timestamp": "2026-03-08T22:32:53Z",
   "agentMode": "fallback",
-  "runProcessed": 4,
-  "runMax": 4,
+  "runProcessed": 2,
+  "runMax": 2,
   "totalTargets": 30,
-  "totalProcessed": 30,
+  "totalProcessed": 38,
   "totalRemaining": 0,
   "current": {
     "rank": "30",
     "source": "static-heuristic",
-    "target": "server/src/routes/exchange-proposals.ts",
-    "reason": "loc=520, loops=1, awaitInLoop=0, sql=10"
+    "target": "server/src/routes/drug-master-sync.ts",
+    "reason": "loc=539, loops=1, awaitInLoop=1, sql=1"
   }
 }

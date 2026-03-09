@@ -23,11 +23,14 @@ vi.mock('drizzle-orm', () => ({
 vi.mock('../utils/package-utils', () => ({
   normalizePackageInfo: vi.fn().mockReturnValue({
     normalizedPackageLabel: 'normalized-label',
-    packageForm: 'tablet',
+    packageForm: 'ptp',
     isLoosePackage: false,
+    quantity: 10,
+    unit: '錠',
   }),
 }));
 
+import { normalizePackageInfo } from '../utils/package-utils';
 import { syncDrugMaster, syncPackageData, createSyncLog, completeSyncLog } from '../services/drug-master-sync-service';
 
 interface ExistingDrugRow {
@@ -67,6 +70,13 @@ function createTxMock(existingRows: ExistingDrugRow[]) {
 describe('drug-master-sync-service additional coverage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(normalizePackageInfo).mockReturnValue({
+      normalizedPackageLabel: 'normalized-label',
+      packageForm: 'ptp',
+      isLoosePackage: false,
+      quantity: 10,
+      unit: '錠',
+    });
   });
 
   describe('syncDrugMaster', () => {
@@ -352,6 +362,99 @@ describe('drug-master-sync-service additional coverage', () => {
       const result = await syncPackageData([]);
       expect(result.added).toBe(0);
       expect(result.updated).toBe(0);
+    });
+
+    it('updates matched packages and inserts new ones in the same batch', async () => {
+      const existingPackage = {
+        id: 1,
+        drugMasterId: 10,
+        gs1Code: 'GS1-EXISTING',
+        janCode: null,
+        hotCode: null,
+        packageDescription: 'old-desc',
+        packageQuantity: '10',
+        packageUnit: '錠',
+        normalizedPackageLabel: 'old-label',
+        packageForm: 'capsule',
+        isLoosePackage: true,
+      };
+
+      mocks.db.select
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: 10, yjCode: 'YJ001' }]),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([existingPackage]),
+          }),
+        });
+
+      const updateWhere = vi.fn().mockResolvedValue(undefined);
+      const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
+      const update = vi.fn().mockReturnValue({ set: updateSet });
+
+      const insertedRows = [{
+        id: 2,
+        drugMasterId: 10,
+        gs1Code: 'GS1-NEW',
+        janCode: null,
+        hotCode: null,
+        packageDescription: 'new-desc',
+        packageQuantity: '20',
+        packageUnit: '錠',
+        normalizedPackageLabel: 'normalized-label',
+        packageForm: 'ptp',
+        isLoosePackage: false,
+      }];
+      const returning = vi.fn().mockResolvedValue(insertedRows);
+      const insertValues = vi.fn().mockReturnValue({ returning });
+      const insert = vi.fn().mockReturnValue({ values: insertValues });
+
+      const tx = { update, insert };
+      mocks.db.transaction.mockImplementation(
+        async (callback: (trx: typeof tx) => Promise<unknown>) => callback(tx),
+      );
+
+      const result = await syncPackageData([
+        {
+          yjCode: 'YJ001',
+          gs1Code: 'GS1-EXISTING',
+          janCode: null,
+          hotCode: null,
+          packageDescription: 'updated-desc',
+          packageQuantity: 15,
+          packageUnit: '錠',
+        },
+        {
+          yjCode: 'YJ001',
+          gs1Code: 'GS1-NEW',
+          janCode: null,
+          hotCode: null,
+          packageDescription: 'new-desc',
+          packageQuantity: 20,
+          packageUnit: '錠',
+        },
+      ]);
+
+      expect(result).toEqual({ added: 1, updated: 1 });
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(insert).toHaveBeenCalledTimes(1);
+      expect(insertValues).toHaveBeenCalledWith([
+        {
+          drugMasterId: 10,
+          gs1Code: 'GS1-NEW',
+          janCode: null,
+          hotCode: null,
+          packageDescription: 'new-desc',
+          packageQuantity: 20,
+          packageUnit: '錠',
+          normalizedPackageLabel: 'normalized-label',
+          packageForm: 'ptp',
+          isLoosePackage: false,
+        },
+      ]);
     });
   });
 });

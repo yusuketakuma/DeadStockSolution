@@ -43,8 +43,6 @@ type PharmacyLocation = {
   longitude: number | null;
 };
 
-type ViablePharmacy = ViablePharmacyRow;
-
 type FavoriteRow = {
   pharmacyId: number;
   targetPharmacyId: number;
@@ -246,9 +244,11 @@ async function buildBatchMatchingIndexes(
   ]);
 
   const allDeadStockIds = uniqueNumbers(allDeadStockRows.map((row) => row.id));
-  const reservedByItemId = await fetchReservationMap(allDeadStockIds);
+  const [reservedByItemId, { businessHoursByPharmacy, specialHoursByPharmacy }] = await Promise.all([
+    fetchReservationMap(allDeadStockIds),
+    fetchBusinessHoursMaps(viablePharmacyIds),
+  ]);
   const adjustedAllDeadStock = applyReservationsToStockRows(allDeadStockRows, reservedByItemId);
-  const { businessHoursByPharmacy, specialHoursByPharmacy } = await fetchBusinessHoursMaps(viablePharmacyIds);
 
   return {
     ...buildMatchingIndexes(
@@ -263,7 +263,7 @@ async function buildBatchMatchingIndexes(
 function buildCandidatesForSource(params: {
   currentPharmacy: PharmacyLocation;
   sourcePharmacyId: number;
-  viablePharmacies: ViablePharmacy[];
+  viablePharmacies: ViablePharmacyRow[];
   favoriteIds: Set<number>;
   groupMemberIds: Set<number>;
   preparedDeadStockByPharmacy: MatchingIndexes['preparedDeadStockByPharmacy'];
