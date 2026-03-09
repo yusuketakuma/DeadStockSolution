@@ -3,6 +3,8 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import AppScreen from './ui/AppScreen';
 import { useMatchNotificationToast } from '../hooks/useMatchNotificationToast';
+import MobileBottomNav from './layout/MobileBottomNav';
+import './layout/MobileBottomNav.css';
 
 interface Props {
   children: React.ReactNode;
@@ -30,6 +32,7 @@ export default function Layout({ children }: Props) {
           </footer>
         </main>
       </div>
+      <MobileBottomNav />
     </div>
   );
 }

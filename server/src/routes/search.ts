@@ -22,6 +22,17 @@ function sanitizeQuery(value: unknown): string | undefined {
   return sanitized.slice(0, 100);
 }
 
+function buildKanaLikeTerms(rawQuery: string): string[] {
+  const normalized = normalizeKana(rawQuery);
+  const hiragana = katakanaToHiragana(normalized);
+  const katakana = hiraganaToKatakana(normalized);
+  return [...new Set([normalized, hiragana, katakana])];
+}
+
+function buildEscapedLikeConditions<T>(terms: string[], resolver: (escapedTerm: string) => T): T[] {
+  return terms.map((term) => resolver(escapeLikeWildcards(term)));
+}
+
 // Drug name suggestions for incremental search
 router.get('/drugs', async (req: AuthRequest, res: Response) => {
   try {
@@ -31,13 +42,10 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const query = normalizeKana(rawQuery);
-    const hiragana = katakanaToHiragana(query);
-    const katakana = hiraganaToKatakana(query);
-
-    // Build OR conditions for original, hiragana, and katakana variants
-    const likeTerms = new Set([query, hiragana, katakana]);
-    const conditions = [...likeTerms].map((term) => like(deadStockItems.drugName, `%${escapeLikeWildcards(term)}%`));
+    const conditions = buildEscapedLikeConditions(
+      buildKanaLikeTerms(rawQuery),
+      (term) => like(deadStockItems.drugName, `%${term}%`),
+    );
 
     const results = await db.selectDistinct({
       drugName: deadStockItems.drugName,
@@ -65,12 +73,10 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const query = normalizeKana(rawQuery);
-    const hiragana = katakanaToHiragana(query);
-    const katakana = hiraganaToKatakana(query);
-
-    const likeTerms = new Set([query, hiragana, katakana]);
-    const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${escapeLikeWildcards(term)}%`));
+    const nameConditions = buildEscapedLikeConditions(
+      buildKanaLikeTerms(rawQuery),
+      (term) => like(drugMaster.drugName, `%${term}%`),
+    );
 
     // YJコード検索にも対応
     const isCodeSearch = /^[A-Z0-9]+$/i.test(rawQuery.trim());
@@ -109,12 +115,10 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const query = normalizeKana(rawQuery);
-    const hiragana = katakanaToHiragana(query);
-    const katakana = hiraganaToKatakana(query);
-
-    const likeTerms = new Set([query, hiragana, katakana]);
-    const conditions = [...likeTerms].map((term) => like(pharmacies.name, `%${escapeLikeWildcards(term)}%`));
+    const conditions = buildEscapedLikeConditions(
+      buildKanaLikeTerms(rawQuery),
+      (term) => like(pharmacies.name, `%${term}%`),
+    );
 
     const results = await db.selectDistinct({
       name: pharmacies.name,

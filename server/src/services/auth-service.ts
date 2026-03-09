@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { JwtPayload } from '../types';
 
 const SALT_ROUNDS = 10;
+const JWT_ALGORITHM = 'HS256';
 export const JWT_SECRET_MISSING_ERROR_MESSAGE = 'JWT_SECRET environment variable is not set';
 export const JWT_SECRET_WEAK_ERROR_MESSAGE = 'JWT_SECRET is too weak';
 const JWT_SECRET_MIN_LENGTH = 32;
@@ -61,10 +62,31 @@ export function deriveSessionVersion(passwordHash: string): string {
     .slice(0, 32);
 }
 
+function isJwtPayload(value: unknown): value is JwtPayload {
+  if (!value || typeof value !== 'object') return false;
+
+  const candidate = value as Record<string, unknown>;
+  if (!Number.isInteger(candidate.id) || (candidate.id as number) <= 0) return false;
+  if (typeof candidate.email !== 'string' || candidate.email.trim().length === 0) return false;
+  if (typeof candidate.isAdmin !== 'boolean') return false;
+  if (
+    candidate.sessionVersion !== undefined
+    && (typeof candidate.sessionVersion !== 'string' || candidate.sessionVersion.trim().length === 0)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 export function generateToken(payload: JwtPayload): string {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: '24h' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '24h', algorithm: JWT_ALGORITHM });
 }
 
 export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, getJwtSecret()) as JwtPayload;
+  const decoded = jwt.verify(token, getJwtSecret(), { algorithms: [JWT_ALGORITHM] });
+  if (!isJwtPayload(decoded)) {
+    throw new Error('Invalid JWT payload');
+  }
+  return decoded;
 }

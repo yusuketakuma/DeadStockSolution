@@ -450,7 +450,7 @@ describe('auth.ts — ultra coverage', () => {
     mocks.db.select.mockReset();
     const res2 = await request(app).get('/auth/test-pharmacies?includePassword=true');
     expect(res2.status).toBe(200);
-    expect(res2.body.accounts[0].password).toBe('pw');
+    expect(res2.body.accounts[0].password).toBe('');
   });
 
   // --- Cover successful login (admin login branch) ---

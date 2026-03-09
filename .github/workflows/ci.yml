@@ -63,7 +63,7 @@ jobs:
       - name: Run OpenAPI contract test
         run: npm run test:openapi-contract --workspace=server
 
-      - name: Audit production dependencies
+      - name: Audit production dependencies (moderate+)
         run: npm run audit:prod
 
       - name: Performance regression guard (server)

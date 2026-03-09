@@ -160,6 +160,30 @@ function parseJsonSafe(value: unknown): unknown {
   }
 }
 
+function buildZeroCondition() {
+  return sql`1 = 0`;
+}
+
+function buildActivityLevelCondition(level: NonNullable<LogCenterQuery['level']>) {
+  if (level === 'critical') return buildZeroCondition();
+  if (level === 'error') return sql`coalesce(${activityLogs.detail}, '') like '失敗|%'`;
+  if (level === 'warning') {
+    return sql`coalesce(${activityLogs.detail}, '') not like '失敗|%' and ${activityLogs.action} in ('login_failed', 'password_reset_failed')`;
+  }
+  if (level === 'info') {
+    return sql`coalesce(${activityLogs.detail}, '') not like '失敗|%' and ${activityLogs.action} not in ('login_failed', 'password_reset_failed')`;
+  }
+  return buildZeroCondition();
+}
+
+function buildSyncLevelCondition(level: NonNullable<LogCenterQuery['level']>) {
+  if (level === 'critical') return buildZeroCondition();
+  if (level === 'error') return sql`${drugMasterSyncLogs.status} = 'failed'`;
+  if (level === 'warning') return sql`${drugMasterSyncLogs.status} = 'partial'`;
+  if (level === 'info') return sql`${drugMasterSyncLogs.status} not in ('failed', 'partial')`;
+  return buildZeroCondition();
+}
+
 // ── ソーステーブル設定 ──────────────────────────────────
 
 const SOURCE_TABLE_CONFIG = {
@@ -241,53 +265,13 @@ function buildLevelCondition(
   }
 
   if (source === 'activity_logs') {
-    if (level === 'critical') {
-      const condition = sql`1 = 0`;
-      levelConditionCache.set(cacheKey, condition);
-      return condition;
-    }
-    if (level === 'error') {
-      const condition = sql`coalesce(${activityLogs.detail}, '') like '失敗|%'`;
-      levelConditionCache.set(cacheKey, condition);
-      return condition;
-    }
-    if (level === 'warning') {
-      const condition = sql`coalesce(${activityLogs.detail}, '') not like '失敗|%' and ${activityLogs.action} in ('login_failed', 'password_reset_failed')`;
-      levelConditionCache.set(cacheKey, condition);
-      return condition;
-    }
-    if (level === 'info') {
-      const condition = sql`coalesce(${activityLogs.detail}, '') not like '失敗|%' and ${activityLogs.action} not in ('login_failed', 'password_reset_failed')`;
-      levelConditionCache.set(cacheKey, condition);
-      return condition;
-    }
-    const condition = sql`1 = 0`;
+    const condition = buildActivityLevelCondition(level);
     levelConditionCache.set(cacheKey, condition);
     return condition;
   }
 
   if (source === 'drug_master_sync_logs') {
-    if (level === 'critical') {
-      const condition = sql`1 = 0`;
-      levelConditionCache.set(cacheKey, condition);
-      return condition;
-    }
-    if (level === 'error') {
-      const condition = sql`${drugMasterSyncLogs.status} = 'failed'`;
-      levelConditionCache.set(cacheKey, condition);
-      return condition;
-    }
-    if (level === 'warning') {
-      const condition = sql`${drugMasterSyncLogs.status} = 'partial'`;
-      levelConditionCache.set(cacheKey, condition);
-      return condition;
-    }
-    if (level === 'info') {
-      const condition = sql`${drugMasterSyncLogs.status} not in ('failed', 'partial')`;
-      levelConditionCache.set(cacheKey, condition);
-      return condition;
-    }
-    const condition = sql`1 = 0`;
+    const condition = buildSyncLevelCondition(level);
     levelConditionCache.set(cacheKey, condition);
     return condition;
   }
@@ -327,6 +311,41 @@ function compareEntryTimestampDesc(left: NormalizedLogEntry, right: NormalizedLo
   if (left.timestamp > right.timestamp) return -1;
   if (left.timestamp < right.timestamp) return 1;
   return 0;
+}
+
+function toNumericCount(value: unknown): number {
+  return Number(value ?? 0);
+}
+
+function buildLogSummaryResult(params: {
+  activityRow: { total?: unknown; today?: unknown } | undefined;
+  systemRow: { total?: unknown; today?: unknown; errors?: unknown; warnings?: unknown } | undefined;
+  syncRow: { total?: unknown; today?: unknown; failed?: unknown; partial?: unknown } | undefined;
+}): LogSummary {
+  const activityTotal = toNumericCount(params.activityRow?.total);
+  const systemTotal = toNumericCount(params.systemRow?.total);
+  const syncTotal = toNumericCount(params.syncRow?.total);
+  const total = activityTotal + systemTotal + syncTotal;
+  const errors = toNumericCount(params.systemRow?.errors) + toNumericCount(params.syncRow?.failed);
+  const warnings = toNumericCount(params.systemRow?.warnings) + toNumericCount(params.syncRow?.partial);
+  const today = toNumericCount(params.activityRow?.today) + toNumericCount(params.systemRow?.today) + toNumericCount(params.syncRow?.today);
+
+  return {
+    total,
+    errors,
+    warnings,
+    today,
+    bySeverity: {
+      error: errors,
+      warning: warnings,
+      info: total - errors - warnings,
+    },
+    bySource: {
+      activity_logs: activityTotal,
+      system_events: systemTotal,
+      drug_master_sync_logs: syncTotal,
+    },
+  };
 }
 
 function mergeEntriesForPage(
@@ -435,29 +454,9 @@ export async function getLogSummary(): Promise<LogSummary> {
     }).from(drugMasterSyncLogs).then((r) => r[0]),
   ]);
 
-  const activityTotal = Number(activityRow?.total ?? 0);
-  const systemTotal = Number(systemRow?.total ?? 0);
-  const syncTotal = Number(syncRow?.total ?? 0);
-  const total = activityTotal + systemTotal + syncTotal;
-
-  const errors = Number(systemRow?.errors ?? 0) + Number(syncRow?.failed ?? 0);
-  const warnings = Number(systemRow?.warnings ?? 0) + Number(syncRow?.partial ?? 0);
-  const today = Number(activityRow?.today ?? 0) + Number(systemRow?.today ?? 0) + Number(syncRow?.today ?? 0);
-
-  return {
-    total,
-    errors,
-    warnings,
-    today,
-    bySeverity: {
-      error: errors,
-      warning: warnings,
-      info: total - errors - warnings,
-    },
-    bySource: {
-      activity_logs: activityTotal,
-      system_events: systemTotal,
-      drug_master_sync_logs: syncTotal,
-    },
-  };
+  return buildLogSummaryResult({
+    activityRow,
+    systemRow,
+    syncRow,
+  });
 }

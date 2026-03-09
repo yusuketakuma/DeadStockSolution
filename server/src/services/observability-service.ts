@@ -39,6 +39,22 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.max(0, Math.min(index, sorted.length - 1))];
 }
 
+function buildSlowPathStats(pathMap: Map<string, number[]>): SlowPathStat[] {
+  return [...pathMap.entries()]
+    .map(([path, durationsMs]) => {
+      const sortedDurations = durationsMs.slice().sort((a, b) => a - b);
+      const avg = sortedDurations.reduce((sum, value) => sum + value, 0) / sortedDurations.length;
+      return {
+        path,
+        count: sortedDurations.length,
+        avgLatencyMs: roundTo2(avg),
+        p95LatencyMs: roundTo2(percentile(sortedDurations, 95)),
+      };
+    })
+    .sort((a, b) => b.p95LatencyMs - a.p95LatencyMs || b.count - a.count)
+    .slice(0, 5);
+}
+
 export function recordRequestMetric(metric: RequestMetric): void {
   metrics[nextWriteIndex] = metric;
   nextWriteIndex = (nextWriteIndex + 1) % MAX_METRICS;
@@ -85,19 +101,7 @@ export function getObservabilitySnapshot(windowMinutesRaw: number = 60): Observa
   const p95LatencyMs = roundTo2(percentile(durations, 95));
   const errorRate5xx = totalRequests === 0 ? 0 : roundTo2((errors5xx / totalRequests) * 100);
 
-  const topSlowPaths = [...pathMap.entries()]
-    .map(([path, durationsMs]) => {
-      const sortedDurations = durationsMs.slice().sort((a, b) => a - b);
-      const avg = sortedDurations.reduce((sum, value) => sum + value, 0) / sortedDurations.length;
-      return {
-        path,
-        count: sortedDurations.length,
-        avgLatencyMs: roundTo2(avg),
-        p95LatencyMs: roundTo2(percentile(sortedDurations, 95)),
-      };
-    })
-    .sort((a, b) => b.p95LatencyMs - a.p95LatencyMs || b.count - a.count)
-    .slice(0, 5);
+  const topSlowPaths = buildSlowPathStats(pathMap);
 
   return {
     windowMinutes,

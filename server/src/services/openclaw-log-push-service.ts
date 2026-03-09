@@ -65,6 +65,27 @@ const logPushStats: LogPushStats = {
   retried: 0,
 };
 
+function scheduleSeverityFlush(severity: Severity): void {
+  flushTimers[severity] = setTimeout(() => {
+    flushTimers[severity] = null;
+    flushBuffer(severity).catch(err => {
+      logger.error(`Failed to flush ${severity} log alerts`, { error: String(err) });
+    });
+  }, FLUSH_INTERVALS[severity]);
+}
+
+function requeueRetryableEntries(severity: Severity, entries: PendingEntry[]): void {
+  const retryable = entries.filter((entry) => entry._retries < 3);
+  logPushStats.retried += retryable.length;
+  for (const entry of retryable) {
+    entry._retries += 1;
+  }
+  buffers[severity].unshift(...retryable);
+  if (buffers[severity].length > MAX_BUFFER_SIZE) {
+    buffers[severity].length = MAX_BUFFER_SIZE;
+  }
+}
+
 export function enqueueLogAlert(entry: LogAlertEntry): void {
   if (!isEnabled()) return;
   logPushStats.enqueued += 1;
@@ -87,12 +108,7 @@ export function enqueueLogAlert(entry: LogAlertEntry): void {
 
   // Schedule flush if not already scheduled
   if (!flushTimers[severity]) {
-    flushTimers[severity] = setTimeout(() => {
-      flushTimers[severity] = null;
-      flushBuffer(severity).catch(err => {
-        logger.error(`Failed to flush ${severity} log alerts`, { error: String(err) });
-      });
-    }, FLUSH_INTERVALS[severity]);
+    scheduleSeverityFlush(severity);
   }
 }
 
@@ -108,15 +124,7 @@ export async function flushBuffer(severity: Severity): Promise<void> {
     logger.info(`Sent ${entries.length} ${severity} log alerts to OpenClaw`);
   } catch (err) {
     logPushStats.failed += entries.length;
-    // Re-add entries for retry, up to 3 times each
-    const retryable = entries.filter(e => e._retries < 3);
-    logPushStats.retried += retryable.length;
-    for (const e of retryable) e._retries += 1;
-    buffers[severity].unshift(...retryable);
-    // Enforce cap after re-add to prevent unbounded growth
-    if (buffers[severity].length > MAX_BUFFER_SIZE) {
-      buffers[severity].length = MAX_BUFFER_SIZE;
-    }
+    requeueRetryableEntries(severity, entries);
     logger.error('Failed to send log alerts to OpenClaw', { error: String(err), count: entries.length });
   }
 }

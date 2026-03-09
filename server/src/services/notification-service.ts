@@ -121,6 +121,21 @@ async function getAdminUnreadCount(pharmacyId: number): Promise<number> {
   return toCount(adminUnreadRow?.count);
 }
 
+async function countUnreadSources(pharmacyId: number): Promise<{
+  notificationsUnread: number;
+  adminUnread: number;
+  matchUnread: number;
+}> {
+  const matchUnreadPromise = getMatchUnreadCount(pharmacyId);
+  const [matchUnread, notificationsUnread, adminUnread] = await Promise.all([
+    matchUnreadPromise,
+    getUnreadCount(pharmacyId),
+    getAdminUnreadCount(pharmacyId),
+  ]);
+
+  return { notificationsUnread, adminUnread, matchUnread };
+}
+
 async function getMatchUnreadCount(pharmacyId: number): Promise<number> {
   const [matchUnreadRow] = await db.select({ count: rowCount })
     .from(matchNotifications)
@@ -231,13 +246,7 @@ export async function getDashboardUnreadCount(pharmacyId: number): Promise<numbe
     return cached;
   }
 
-  const matchUnreadPromise = getMatchUnreadCount(pharmacyId);
-  const [matchUnread, notificationsUnread, adminUnread] = await Promise.all([
-    matchUnreadPromise,
-    getUnreadCount(pharmacyId),
-    getAdminUnreadCount(pharmacyId),
-  ]);
-
+  const { notificationsUnread, adminUnread, matchUnread } = await countUnreadSources(pharmacyId);
   const totalUnread = notificationsUnread + adminUnread + matchUnread;
   setCachedDashboardUnreadCount(pharmacyId, totalUnread);
   return totalUnread;
@@ -291,7 +300,6 @@ export async function markAllDashboardAsRead(pharmacyId: number): Promise<number
     const notificationCount = await markNotificationsAsRead(tx, pharmacyId);
     const matchUpdateCount = await markMatchNotificationsAsRead(tx, pharmacyId);
     const adminMessageReadCount = await markAdminMessagesAsRead(tx, pharmacyId);
-
     return notificationCount + matchUpdateCount + adminMessageReadCount;
   });
   invalidateDashboardUnreadCacheIfNeeded(pharmacyId, total);

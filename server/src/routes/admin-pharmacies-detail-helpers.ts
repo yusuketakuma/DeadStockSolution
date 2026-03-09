@@ -36,6 +36,12 @@ export type PharmacyUpdatePayload = Partial<{
   version: number | SQL;
 }>;
 
+type UniquePharmacyUpdateCheck = {
+  value: string;
+  findExistingId: (value: string) => Promise<number | null>;
+  error: string;
+};
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -180,39 +186,24 @@ export function setTestAccountPasswordUpdate(updates: PharmacyUpdatePayload, val
 
 export function buildPharmacyUpdatePayload(body: Record<string, unknown>): InputValidationResult<PharmacyUpdatePayload> {
   const updates: PharmacyUpdatePayload = {};
+  const validators = [
+    () => setEmailUpdate(updates, body.email),
+    () => setTrimmedStringUpdate(updates, 'name', body.name, 100, '薬局名は1〜100文字で入力してください'),
+    () => setPostalCodeUpdate(updates, body.postalCode),
+    () => setTrimmedStringUpdate(updates, 'address', body.address, 255, '住所は1〜255文字で入力してください'),
+    () => setTrimmedStringUpdate(updates, 'phone', body.phone, 30, '電話番号が不正です'),
+    () => setTrimmedStringUpdate(updates, 'fax', body.fax, 30, 'FAX番号が不正です'),
+    () => setTrimmedStringUpdate(updates, 'licenseNumber', body.licenseNumber, 50, '薬局開設許可番号が不正です'),
+    () => setTrimmedStringUpdate(updates, 'prefecture', body.prefecture, 10, '都道府県が不正です'),
+    () => setBooleanUpdate(updates, 'isActive', body.isActive, '有効状態フラグが不正です'),
+    () => setBooleanUpdate(updates, 'isTestAccount', body.isTestAccount, 'テストアカウントフラグが不正です'),
+    () => setTestAccountPasswordUpdate(updates, body.testAccountPassword),
+  ];
 
-  const emailError = setEmailUpdate(updates, body.email);
-  if (emailError) return { ok: false, error: emailError };
-
-  const nameError = setTrimmedStringUpdate(updates, 'name', body.name, 100, '薬局名は1〜100文字で入力してください');
-  if (nameError) return { ok: false, error: nameError };
-
-  const postalCodeError = setPostalCodeUpdate(updates, body.postalCode);
-  if (postalCodeError) return { ok: false, error: postalCodeError };
-
-  const addressError = setTrimmedStringUpdate(updates, 'address', body.address, 255, '住所は1〜255文字で入力してください');
-  if (addressError) return { ok: false, error: addressError };
-
-  const phoneError = setTrimmedStringUpdate(updates, 'phone', body.phone, 30, '電話番号が不正です');
-  if (phoneError) return { ok: false, error: phoneError };
-
-  const faxError = setTrimmedStringUpdate(updates, 'fax', body.fax, 30, 'FAX番号が不正です');
-  if (faxError) return { ok: false, error: faxError };
-
-  const licenseNumberError = setTrimmedStringUpdate(updates, 'licenseNumber', body.licenseNumber, 50, '薬局開設許可番号が不正です');
-  if (licenseNumberError) return { ok: false, error: licenseNumberError };
-
-  const prefectureError = setTrimmedStringUpdate(updates, 'prefecture', body.prefecture, 10, '都道府県が不正です');
-  if (prefectureError) return { ok: false, error: prefectureError };
-
-  const isActiveError = setBooleanUpdate(updates, 'isActive', body.isActive, '有効状態フラグが不正です');
-  if (isActiveError) return { ok: false, error: isActiveError };
-
-  const isTestAccountError = setBooleanUpdate(updates, 'isTestAccount', body.isTestAccount, 'テストアカウントフラグが不正です');
-  if (isTestAccountError) return { ok: false, error: isTestAccountError };
-
-  const testAccountPasswordError = setTestAccountPasswordUpdate(updates, body.testAccountPassword);
-  if (testAccountPasswordError) return { ok: false, error: testAccountPasswordError };
+  for (const validate of validators) {
+    const error = validate();
+    if (error) return { ok: false, error };
+  }
 
   return { ok: true, value: updates };
 }
@@ -291,21 +282,29 @@ export async function ensureUniquePharmacyUpdates(
   id: number,
   updates: PharmacyUpdatePayload,
 ): Promise<string | null> {
-  if (typeof updates.email === 'string') {
-    const existingEmailId = await findPharmacyIdByEmail(updates.email);
-    if (existingEmailId !== null && existingEmailId !== id) {
-      return 'このメールアドレスは既に登録されています';
-    }
-  }
+  const uniqueChecks: UniquePharmacyUpdateCheck[] = [
+    typeof updates.email === 'string'
+      ? {
+        value: updates.email,
+        findExistingId: findPharmacyIdByEmail,
+        error: 'このメールアドレスは既に登録されています',
+      }
+      : null,
+    typeof updates.licenseNumber === 'string'
+      ? {
+        value: updates.licenseNumber,
+        findExistingId: findPharmacyIdByLicenseNumber,
+        error: 'この薬局開設許可番号は既に登録されています',
+      }
+      : null,
+  ].filter((check): check is UniquePharmacyUpdateCheck => check !== null);
 
-  if (typeof updates.licenseNumber === 'string') {
-    const existingLicenseId = await findPharmacyIdByLicenseNumber(updates.licenseNumber);
-    if (existingLicenseId !== null && existingLicenseId !== id) {
-      return 'この薬局開設許可番号は既に登録されています';
-    }
-  }
+  const conflictErrors = await Promise.all(uniqueChecks.map(async (check) => {
+    const existingId = await check.findExistingId(check.value);
+    return existingId !== null && existingId !== id ? check.error : null;
+  }));
 
-  return null;
+  return conflictErrors.find((error): error is string => error !== null) ?? null;
 }
 
 export async function applyGeocodedCoordinates(

@@ -12,7 +12,27 @@ import {
 } from './useUploadJobPolling';
 import { type DiffSummary, type UploadType, resolvePartialSummaryEntries } from '../pages/upload/upload-job-utils';
 
-interface UploadConfirmAsyncResponse { message: string; jobId: number; status: 'pending' | 'processing'; deduplicated?: boolean }
+interface UploadConfirmQueuedResponse {
+  message: string;
+  jobId: number;
+  status: 'pending' | 'processing';
+  deduplicated?: boolean;
+  partialSummary?: null;
+  errorReportAvailable?: boolean;
+}
+
+interface UploadConfirmSyncFallbackResponse {
+  message: string;
+  jobId: null;
+  status: 'completed_sync_fallback';
+  deduplicated?: boolean;
+  rowCount: number;
+  uploadId: number;
+  partialSummary?: UploadJobState['partialSummary'];
+  errorReportAvailable?: boolean;
+}
+
+type UploadConfirmAsyncResponse = UploadConfirmQueuedResponse | UploadConfirmSyncFallbackResponse;
 interface UploadMutationFormDataOptions {
   file: File; uploadType: UploadType; headerRowIndex: number; applyMode: 'replace' | 'diff';
   deleteMissing: boolean; mapping: Record<string, string | null>;
@@ -52,6 +72,21 @@ function resolvePossiblyRunningJobMessage(jobId: number | null): string {
   return `ジョブは継続中の可能性があります（ジョブID: ${jobId ?? '不明'}）。時間をおいて再確認してください。`;
 }
 
+function resolveUploadDestination(uploadType: UploadType): string {
+  return uploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication';
+}
+
+function shouldAutoNavigateAfterUpload(errorReportAvailable: boolean | undefined, failedCount: number): boolean {
+  return !errorReportAvailable && failedCount === 0;
+}
+
+function buildUploadCompletionMessage(rowCount: number, failedCount: number, deduplicated: boolean): string {
+  const completionMessage = `${rowCount}件のデータを登録しました。マッチング候補の再計算と通知更新が反映されます。`;
+  const partialMessage = failedCount > 0 ? ` 一部データの取込に失敗しました（${failedCount}件）。` : '';
+  const deduplicateMessage = deduplicated ? ' 同一内容の重複送信はジョブに集約されました。' : '';
+  return `${completionMessage}${partialMessage}${deduplicateMessage}`;
+}
+
 export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const [uploadType, setUploadTypeState] = useState<UploadType>('dead_stock');
   const [file, setFile] = useState<File | null>(null);
@@ -63,6 +98,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const fileRef = useRef<HTMLInputElement>(null);
   const navigateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmAbortRef = useRef<AbortController | null>(null);
+  const cancelFailureRef = useRef(false);
   const navigate = useNavigate();
 
   const previewFlow = useUploadPreview();
@@ -83,6 +119,16 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     jobPolling.stopPolling();
     if (navigateTimerRef.current !== null) { clearTimeout(navigateTimerRef.current); navigateTimerRef.current = null; }
   }, [jobPolling]);
+
+  const scheduleCompletionNavigation = useCallback((nextUploadType: UploadType) => {
+    if (navigateTimerRef.current !== null) {
+      clearTimeout(navigateTimerRef.current);
+    }
+    navigateTimerRef.current = setTimeout(() => {
+      navigateTimerRef.current = null;
+      navigate(resolveUploadDestination(nextUploadType));
+    }, UPLOAD_COMPLETE_NAVIGATE_DELAY_MS);
+  }, [navigate]);
 
   const resetDiffPreviewState = useCallback(() => { diffPreviewFlow.resetDiffPreviewState(); }, [diffPreviewFlow]);
   const resetExcelTransientUiState = useCallback(() => {
@@ -113,6 +159,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     clearPendingUploadSideEffects();
     resetExcelTransientUiState();
+    cancelFailureRef.current = false;
     setFile(e.target.files?.[0] || null);
     previewFlow.reset();
     setUploadTypeState('dead_stock');
@@ -126,6 +173,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     if (!file) return;
     clearPendingUploadSideEffects();
     clearTransientFeedback();
+    cancelFailureRef.current = false;
     jobPolling.setProgress({ phase: 'previewing', percent: 20, label: 'Excelファイルを解析しています...' });
     const nextPreview = await previewFlow.handlePreview(file);
     if (!nextPreview) { setFailed('Excel解析に失敗しました。'); return; }
@@ -144,6 +192,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
 
     clearPendingUploadSideEffects();
     clearTransientFeedback();
+    cancelFailureRef.current = false;
     setSubmitting(true);
     setCancellingJob(false);
     jobPolling.setJob(UPLOAD_JOB_INITIAL_STATE);
@@ -170,6 +219,30 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       });
       if (controller.signal.aborted) return;
 
+      if (enqueueResult.status === 'completed_sync_fallback') {
+        const failedCount = enqueueResult.partialSummary?.rejectedRows ?? enqueueResult.partialSummary?.failed ?? 0;
+        const partialMessage = failedCount > 0 ? ` 一部データの取込に失敗しました（${failedCount}件）。` : '';
+        setMessage(`${enqueueResult.message}${partialMessage}`);
+        jobPolling.setJob({
+          ...UPLOAD_JOB_INITIAL_STATE,
+          partialSummary: enqueueResult.partialSummary ?? null,
+          errorReportAvailable: Boolean(enqueueResult.errorReportAvailable),
+        });
+        jobPolling.setProgress({ phase: 'completed', percent: 100, label: 'アップロード処理が完了しました。' });
+        diffPreviewFlow.setDiffSummary(null);
+        diffPreviewFlow.setAcknowledgeDeleteImpact(false);
+        previewFlow.setPreview(null);
+        setFile(null);
+        if (fileRef.current) fileRef.current.value = '';
+        setShowMatchingHint(true);
+
+        const shouldAutoNavigate = shouldAutoNavigateAfterUpload(enqueueResult.errorReportAvailable, failedCount);
+        if (shouldAutoNavigate) {
+          scheduleCompletionNavigation(submittedUploadType);
+        }
+        return;
+      }
+
       currentJobId = enqueueResult.jobId;
       const deduplicated = Boolean(enqueueResult.deduplicated);
       jobPolling.setJob({
@@ -183,14 +256,20 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       });
       setMessage(`${enqueueResult.message}（ジョブID: ${enqueueResult.jobId}）${deduplicated ? ' 同一ジョブへ集約して処理します。' : ''}`);
 
-      const completedResult = await jobPolling.startPolling(enqueueResult.jobId, enqueueResult.status);
+      const pollingResult = await jobPolling.startPolling(enqueueResult.jobId);
       if (controller.signal.aborted) return;
+      if (pollingResult.wasAborted) return;
+      if (pollingResult.error || !pollingResult.result) {
+        throw pollingResult.error ?? new Error('アップロード処理結果の取得に失敗しました');
+      }
+      const completedResult = pollingResult.result;
 
       const failedCount = completedResult.partialSummary?.rejectedRows ?? completedResult.partialSummary?.failed ?? 0;
-      const completionMessage = `${completedResult.rowCount ?? 0}件のデータを登録しました。マッチング候補の再計算と通知更新が反映されます。`;
-      const partialMessage = failedCount > 0 ? ` 一部データの取込に失敗しました（${failedCount}件）。` : '';
-      const deduplicateMessage = completedResult.deduplicated ? ' 同一内容の重複送信はジョブに集約されました。' : '';
-      setMessage(`${completionMessage}${partialMessage}${deduplicateMessage}`);
+      setMessage(buildUploadCompletionMessage(
+        completedResult.rowCount ?? 0,
+        failedCount,
+        Boolean(completedResult.deduplicated),
+      ));
 
       diffPreviewFlow.setDiffSummary(completedResult.diffSummary ?? null);
       diffPreviewFlow.setAcknowledgeDeleteImpact(false);
@@ -199,13 +278,9 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       if (fileRef.current) fileRef.current.value = '';
       setShowMatchingHint(true);
 
-      const shouldAutoNavigate = !completedResult.errorReportAvailable && failedCount === 0;
-      if (shouldAutoNavigate) {
-        if (navigateTimerRef.current !== null) clearTimeout(navigateTimerRef.current);
-        navigateTimerRef.current = setTimeout(() => {
-          navigateTimerRef.current = null;
-          navigate(submittedUploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication');
-        }, UPLOAD_COMPLETE_NAVIGATE_DELAY_MS);
+      const shouldAutoNavigate = shouldAutoNavigateAfterUpload(completedResult.errorReportAvailable, failedCount);
+      if (shouldAutoNavigate && !cancelFailureRef.current) {
+        scheduleCompletionNavigation(submittedUploadType);
       }
     } catch (err) {
       if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return;
@@ -242,8 +317,8 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     diffPreviewFlow,
     file,
     jobPolling,
-    navigate,
     previewFlow,
+    scheduleCompletionNavigation,
     setFailed,
     uploadType,
   ]);
@@ -252,15 +327,17 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
 
   const handleCancelJob = useCallback(async () => {
     if (jobPolling.job.jobId === null || !jobPolling.job.cancelable || cancellingJob) return;
-    clearPendingUploadSideEffects();
+    const currentJobId = jobPolling.job.jobId;
     setCancellingJob(true);
     setError('');
     try {
-      const result = await api.post<{ message?: string }>(`/upload/jobs/${jobPolling.job.jobId}/cancel`);
+      const result = await api.post<{ message?: string }>(`/upload/jobs/${currentJobId}/cancel`);
+      clearPendingUploadSideEffects();
       jobPolling.setJob((prev) => ({ ...prev, status: null, cancelable: false }));
       setFailed('アップロード処理をキャンセルしました。');
-      setMessage(result.message ?? `ジョブID: ${jobPolling.job.jobId} をキャンセルしました。`);
+      setMessage(result.message ?? `ジョブID: ${currentJobId} をキャンセルしました。`);
     } catch (err) {
+      cancelFailureRef.current = true;
       setError(err instanceof Error ? err.message : 'ジョブのキャンセルに失敗しました');
     } finally {
       setCancellingJob(false);
@@ -284,6 +361,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
       confirmAbortRef.current = null;
       jobPolling.stopPolling();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobPolling.stopPolling]);
 
   return {

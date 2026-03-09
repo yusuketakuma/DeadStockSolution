@@ -52,6 +52,11 @@ interface ActionProposalRow {
   pharmacyBId: number;
   status: ProposalStatus;
 }
+interface ProposalValueSummary {
+  totalValueA: number;
+  totalValueB: number;
+  valueDifference: number;
+}
 
 async function createNotificationSafely(input: NotificationInput): Promise<void> {
   const created = await createNotification(input);
@@ -159,6 +164,39 @@ function validateAndMapProposalItems(params: {
 
 function getOtherPartyId(pharmacyAId: number, pharmacyBId: number, pharmacyId: number): number {
   return pharmacyAId === pharmacyId ? pharmacyBId : pharmacyAId;
+}
+
+function buildStockMap(rows: ProposalStockRow[]): Map<number, ProposalStockRow> {
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+function buildReservedByStockId(
+  rows: Array<{ deadStockItemId: number; reservedQty: number | string | null }>,
+): Map<number, number> {
+  const reservedByStockId = new Map<number, number>();
+  for (const row of rows) {
+    reservedByStockId.set(row.deadStockItemId, Number(row.reservedQty ?? 0));
+  }
+  return reservedByStockId;
+}
+
+function calculateProposalValues(
+  validatedA: ValidatedProposalItem[],
+  validatedB: ValidatedProposalItem[],
+): ProposalValueSummary {
+  const totalValueA = roundTo2(validatedA.reduce((sum, item) => sum + item.yakkaValue, 0));
+  const totalValueB = roundTo2(validatedB.reduce((sum, item) => sum + item.yakkaValue, 0));
+  const valueDifference = roundTo2(Math.abs(totalValueA - totalValueB));
+  return { totalValueA, totalValueB, valueDifference };
+}
+
+function assertProposalValues(summary: ProposalValueSummary): void {
+  if (Math.min(summary.totalValueA, summary.totalValueB) < MIN_EXCHANGE_VALUE) {
+    throw new Error('交換金額が最低金額に達していません');
+  }
+  if (summary.valueDifference > VALUE_TOLERANCE) {
+    throw new Error('交換金額差が許容範囲を超えています');
+  }
 }
 
 async function notifyProposalEvent(
@@ -286,6 +324,55 @@ async function findActionProposal(tx: TransactionClient, proposalId: number): Pr
   return proposal;
 }
 
+async function claimCompletedProposal(
+  tx: TransactionClient,
+  proposalId: number,
+  completedAt: string,
+): Promise<{
+  pharmacyAId: number;
+  pharmacyBId: number;
+  totalValueA: string | null;
+  totalValueB: string | null;
+}> {
+  const [claimedProposal] = await tx.update(exchangeProposals)
+    .set({ status: 'completed', completedAt })
+    .where(and(
+      eq(exchangeProposals.id, proposalId),
+      eq(exchangeProposals.status, 'confirmed'),
+    ))
+    .returning({
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      pharmacyBId: exchangeProposals.pharmacyBId,
+      totalValueA: exchangeProposals.totalValueA,
+      totalValueB: exchangeProposals.totalValueB,
+    });
+
+  if (!claimedProposal) {
+    throw new Error('状態が変更されたため、操作を完了できません。再読み込みしてください');
+  }
+
+  return claimedProposal;
+}
+
+async function getProposalItemsForCompletion(
+  tx: TransactionClient,
+  proposalId: number,
+): Promise<Array<{ deadStockItemId: number; fromPharmacyId: number; quantity: number }>> {
+  const items = await tx.select({
+    deadStockItemId: exchangeProposalItems.deadStockItemId,
+    fromPharmacyId: exchangeProposalItems.fromPharmacyId,
+    quantity: exchangeProposalItems.quantity,
+  })
+    .from(exchangeProposalItems)
+    .where(eq(exchangeProposalItems.proposalId, proposalId));
+
+  if (items.length === 0) {
+    throw new Error('提案アイテムが存在しません');
+  }
+
+  return items;
+}
+
 function assertActionPermission(proposal: Pick<ActionProposalRow, 'pharmacyAId' | 'pharmacyBId'>, pharmacyId: number): void {
   const isParty = proposal.pharmacyAId === pharmacyId || proposal.pharmacyBId === pharmacyId;
   if (!isParty) {
@@ -350,10 +437,7 @@ export async function createProposal(
       .from(deadStockItems)
       .where(inArray(deadStockItems.id, sortedUniqueIds));
 
-    const stockMap = new Map<number, ProposalStockRow>();
-    for (const row of stockRows) {
-      stockMap.set(row.id, row);
-    }
+    const stockMap = buildStockMap(stockRows);
 
     const reservationRows = sortedUniqueIds.length > 0
       ? await tx.select({
@@ -368,10 +452,7 @@ export async function createProposal(
         ))
         .groupBy(deadStockReservations.deadStockItemId)
       : [];
-    const reservedByStockId = new Map<number, number>();
-    for (const row of reservationRows) {
-      reservedByStockId.set(row.deadStockItemId, Number(row.reservedQty ?? 0));
-    }
+    const reservedByStockId = buildReservedByStockId(reservationRows);
 
     const validatedA = validateAndMapProposalItems({
       items: candidate.itemsFromA,
@@ -393,24 +474,16 @@ export async function createProposal(
       toPharmacyId: pharmacyAId,
     });
 
-    const totalValueA = roundTo2(validatedA.reduce((sum, item) => sum + item.yakkaValue, 0));
-    const totalValueB = roundTo2(validatedB.reduce((sum, item) => sum + item.yakkaValue, 0));
-    const valueDifference = roundTo2(Math.abs(totalValueA - totalValueB));
-
-    if (Math.min(totalValueA, totalValueB) < MIN_EXCHANGE_VALUE) {
-      throw new Error('交換金額が最低金額に達していません');
-    }
-    if (valueDifference > VALUE_TOLERANCE) {
-      throw new Error('交換金額差が許容範囲を超えています');
-    }
+    const values = calculateProposalValues(validatedA, validatedB);
+    assertProposalValues(values);
 
     const [proposal] = await tx.insert(exchangeProposals).values({
       pharmacyAId,
       pharmacyBId: candidate.pharmacyBId,
       status: 'proposed',
-      totalValueA: String(totalValueA),
-      totalValueB: String(totalValueB),
-      valueDifference: String(valueDifference),
+      totalValueA: String(values.totalValueA),
+      totalValueB: String(values.totalValueB),
+      valueDifference: String(values.valueDifference),
     }).returning({ id: exchangeProposals.id });
 
     await tx.insert(exchangeProposalItems).values(
@@ -521,34 +594,8 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
     assertActionPermission(proposal, pharmacyId);
 
     const completedAt = new Date().toISOString();
-    const [claimedProposal] = await tx.update(exchangeProposals)
-      .set({ status: 'completed', completedAt })
-      .where(and(
-        eq(exchangeProposals.id, proposalId),
-        eq(exchangeProposals.status, 'confirmed'),
-      ))
-      .returning({
-        pharmacyAId: exchangeProposals.pharmacyAId,
-        pharmacyBId: exchangeProposals.pharmacyBId,
-        totalValueA: exchangeProposals.totalValueA,
-        totalValueB: exchangeProposals.totalValueB,
-      });
-
-    if (!claimedProposal) {
-      throw new Error('状態が変更されたため、操作を完了できません。再読み込みしてください');
-    }
-
-    const items = await tx.select({
-      deadStockItemId: exchangeProposalItems.deadStockItemId,
-      fromPharmacyId: exchangeProposalItems.fromPharmacyId,
-      quantity: exchangeProposalItems.quantity,
-    })
-      .from(exchangeProposalItems)
-      .where(eq(exchangeProposalItems.proposalId, proposalId));
-
-    if (items.length === 0) {
-      throw new Error('提案アイテムが存在しません');
-    }
+    const claimedProposal = await claimCompletedProposal(tx, proposalId, completedAt);
+    const items = await getProposalItemsForCompletion(tx, proposalId);
 
     await validateAndUpdateStock(tx, items);
 

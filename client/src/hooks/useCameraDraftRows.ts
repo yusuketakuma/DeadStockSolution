@@ -17,6 +17,7 @@ export interface DraftRow {
   drugMasterPackageId: number | null;
   drugName: string;
   packageLabel: string;
+  packageLabelEdited: boolean;
   expirationDate: string;
   lotNumber: string;
   quantity: string;
@@ -53,6 +54,7 @@ function toDraftRow(
     drugMasterPackageId: null,
     drugName: '',
     packageLabel: resolved.match?.packageLabel ?? '',
+    packageLabelEdited: false,
     expirationDate: resolved.parsed.expirationDate ?? '',
     lotNumber: resolved.parsed.lotNumber ?? '',
     quantity: '',
@@ -105,7 +107,11 @@ export function useCameraDraftRows({ onInfo, onError }: UseCameraDraftRowsOption
     field: K,
     value: DraftRow[K],
   ) => {
-    updateRow(rowId, (row) => ({ ...row, [field]: value }));
+    updateRow(rowId, (row) => ({
+      ...row,
+      [field]: value,
+      ...(field === 'packageLabel' ? { packageLabelEdited: true } : {}),
+    }));
   }, [updateRow]);
 
   const appendOrUpdateRow = useCallback((
@@ -115,6 +121,10 @@ export function useCameraDraftRows({ onInfo, onError }: UseCameraDraftRowsOption
     rowId?: number,
   ): AppendOrUpdateRowResult => {
     if (rowId !== undefined) {
+      if (rowsRef.current.some((row) => row.id !== rowId && row.rawCode === rawCode)) {
+        onInfo(`同じコードは既に追加済みです: ${rawCode}`);
+        return 'duplicate';
+      }
       updateRow(rowId, (row) => {
         const quantity = row.quantity;
         const merged = toDraftRow(row.id, rawCode, resolved, candidateOptions);
@@ -150,7 +160,9 @@ export function useCameraDraftRows({ onInfo, onError }: UseCameraDraftRowsOption
         drugMasterId: candidate.drugMasterId,
         drugMasterPackageId: candidate.drugMasterPackageId,
         drugName: candidate.drugName,
-        packageLabel: row.packageLabel || candidate.packageLabel || '',
+        packageLabel: row.packageLabelEdited && row.packageLabel
+          ? row.packageLabel
+          : (candidate.packageLabel ?? row.packageLabel ?? ''),
         unit: candidate.unit ?? row.unit,
         warnings,
       };
@@ -169,6 +181,7 @@ export function useCameraDraftRows({ onInfo, onError }: UseCameraDraftRowsOption
       drugMasterPackageId: null,
       drugName: '',
       packageLabel: '',
+      packageLabelEdited: false,
       expirationDate: '',
       lotNumber: '',
       unit: '',

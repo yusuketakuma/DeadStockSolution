@@ -26,7 +26,14 @@ const AdminRiskPage = lazy(() => import('../pages/admin/AdminRiskPage'));
 const AdminMonthlyReportsPage = lazy(() => import('../pages/admin/AdminMonthlyReportsPage'));
 const AdminDrugMasterPage = lazy(() => import('../pages/admin/AdminDrugMasterPage'));
 const AdminOpenClawPage = lazy(() => import('../pages/admin/AdminOpenClawPage'));
+
 const AdminUploadJobsPage = lazy(() => import('../pages/admin/AdminUploadJobsPage'));
+const AdminMatchingRulesPage = lazy(() => import('../pages/admin/AdminMatchingRulesPage'));
+const AdminDrugEquivalencesPage = lazy(() => import('../pages/admin/AdminDrugEquivalencesPage'));
+const GroupListPage = lazy(() => import('../pages/GroupListPage'));
+const GroupDetailPage = lazy(() => import('../pages/GroupDetailPage'));
+const AlertListPage = lazy(() => import('../pages/AlertListPage'));
+
 
 type RouteComponent = ComponentType | LazyExoticComponent<ComponentType>;
 
@@ -70,6 +77,9 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/exchange-history', access: 'protected', useLayout: true, component: ExchangeHistoryPage },
   { path: '/pharmacies', access: 'protected', useLayout: true, component: PharmacyListPage },
   { path: '/statistics', access: 'protected', useLayout: true, component: StatisticsPage },
+  { path: '/groups', access: 'protected', useLayout: true, component: GroupListPage },
+  { path: '/groups/:id', access: 'protected', useLayout: true, component: GroupDetailPage },
+  { path: '/alerts', access: 'protected', useLayout: true, component: AlertListPage },
 
   { path: '/admin', access: 'protected', adminOnly: true, useLayout: true, component: AdminDashboardPage },
   { path: '/admin/risk', access: 'protected', adminOnly: true, useLayout: true, component: AdminRiskPage },
@@ -81,4 +91,6 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/admin/log-center', access: 'protected', adminOnly: true, useLayout: true, component: AdminLogCenterPage },
   { path: '/admin/drug-master', access: 'protected', adminOnly: true, useLayout: true, component: AdminDrugMasterPage },
   { path: '/admin/openclaw', access: 'protected', adminOnly: true, useLayout: true, component: AdminOpenClawPage },
+  { path: '/admin/matching-rules', access: 'protected', adminOnly: true, useLayout: true, component: AdminMatchingRulesPage },
+  { path: '/admin/drug-equivalences', access: 'protected', adminOnly: true, useLayout: true, component: AdminDrugEquivalencesPage },
 ]);

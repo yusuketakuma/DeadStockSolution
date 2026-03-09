@@ -92,6 +92,31 @@ export function logUploadFailure(
   });
 }
 
+function sendBadRequest(res: Response, error: string): null {
+  res.status(400).json({ error });
+  return null;
+}
+
+function handleUploadMiddlewareError(req: Request, res: Response, err: unknown): null {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      logUploadFailure(req, 'file_upload', 'file_too_large', { code: err.code });
+      return sendBadRequest(res, `ファイルサイズは${MAX_UPLOAD_SIZE / (1024 * 1024)}MB以下にしてください`);
+    }
+    logUploadFailure(req, 'file_upload', 'multer_error', { code: err.code, error: err.message });
+    return sendBadRequest(res, 'アップロードに失敗しました');
+  }
+
+  if (err instanceof Error) {
+    logUploadFailure(req, 'file_upload', 'file_filter_rejected', { error: err.message });
+    return sendBadRequest(res, err.message);
+  }
+
+  logger.warn('Upload rejected by unknown error', () => getBaseContext(req));
+  logUploadFailure(req, 'file_upload', 'unknown_upload_error');
+  return sendBadRequest(res, 'アップロードに失敗しました');
+}
+
 const upload = createMemorySingleFileUpload({
   maxUploadSize: MAX_UPLOAD_SIZE,
   allowedExtensions: ALLOWED_EXTENSIONS,
@@ -105,27 +130,7 @@ export function uploadSingleFile(req: Request, res: Response, next: NextFunction
       next();
       return;
     }
-
-    if (err instanceof multer.MulterError) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        logUploadFailure(req, 'file_upload', 'file_too_large', { code: err.code });
-        res.status(400).json({ error: `ファイルサイズは${MAX_UPLOAD_SIZE / (1024 * 1024)}MB以下にしてください` });
-        return;
-      }
-      logUploadFailure(req, 'file_upload', 'multer_error', { code: err.code, error: err.message });
-      res.status(400).json({ error: 'アップロードに失敗しました' });
-      return;
-    }
-
-    if (err instanceof Error) {
-      logUploadFailure(req, 'file_upload', 'file_filter_rejected', { error: err.message });
-      res.status(400).json({ error: err.message });
-      return;
-    }
-
-    logger.warn('Upload rejected by unknown error', () => getBaseContext(req));
-    logUploadFailure(req, 'file_upload', 'unknown_upload_error');
-    res.status(400).json({ error: 'アップロードに失敗しました' });
+    handleUploadMiddlewareError(req, res, err);
   });
 }
 
@@ -191,8 +196,7 @@ export function parseUploadType(raw: unknown): UploadType | null {
 
 export function getUploadFileOrReject(req: AuthRequest, res: Response): Express.Multer.File | null {
   if (!req.file) {
-    res.status(400).json({ error: 'ファイルが選択されていません' });
-    return null;
+    return sendBadRequest(res, 'ファイルが選択されていません');
   }
   return req.file;
 }
@@ -200,8 +204,7 @@ export function getUploadFileOrReject(req: AuthRequest, res: Response): Express.
 export function getUploadTypeOrReject(req: AuthRequest, res: Response): UploadType | null {
   const uploadType = parseUploadType(req.body.uploadType);
   if (!uploadType) {
-    res.status(400).json({ error: 'アップロードタイプを指定してください' });
-    return null;
+    return sendBadRequest(res, 'アップロードタイプを指定してください');
   }
   return uploadType;
 }
@@ -218,11 +221,9 @@ export async function parseExcelRowsOrReject(
     const reason = getErrorMessage(err);
     logUploadFailure(req, phase, 'parse_failed', { error: reason });
     if (reason.includes('上限')) {
-      res.status(400).json({ error: reason });
-      return null;
+      return sendBadRequest(res, reason);
     }
-    res.status(400).json({ error: 'ファイルの解析に失敗しました。xlsx形式を確認してください' });
-    return null;
+    return sendBadRequest(res, 'ファイルの解析に失敗しました。xlsx形式を確認してください');
   }
 }
 
@@ -232,15 +233,13 @@ export function parseHeaderRowIndexOrReject(req: AuthRequest, res: Response): nu
     : '';
   if (!/^\d+$/.test(headerRowRaw)) {
     logUploadFailure(req, 'confirm', 'invalid_header_row_format', { headerRowIndex: headerRowRaw });
-    res.status(400).json({ error: 'ヘッダー行指定が不正です' });
-    return null;
+    return sendBadRequest(res, 'ヘッダー行指定が不正です');
   }
 
   const headerRowIndex = Number(headerRowRaw);
   if (!Number.isSafeInteger(headerRowIndex)) {
     logUploadFailure(req, 'confirm', 'invalid_header_row_value', { headerRowIndex });
-    res.status(400).json({ error: 'ヘッダー行指定が不正です' });
-    return null;
+    return sendBadRequest(res, 'ヘッダー行指定が不正です');
   }
 
   return headerRowIndex;

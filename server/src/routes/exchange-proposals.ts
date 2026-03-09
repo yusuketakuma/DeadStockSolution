@@ -7,6 +7,9 @@ import {
   exchangeProposalItems,
   deadStockItems,
   pharmacies,
+  activityLogs,
+  proposalComments,
+  exchangeFeedback,
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
@@ -22,6 +25,7 @@ import {
 } from '../services/proposal-timeline-service';
 import { parseExchangeIdOrBadRequest } from './exchange-utils';
 import { getErrorMessage } from '../middleware/error-handler';
+import type { EnrichedProposalTimelineEvent } from '../types/timeline';
 
 const router = Router();
 
@@ -468,12 +472,75 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
       includeStatusTransitions: true,
     });
 
+    // Fetch comments for enriched timeline
+    const commentRows = await db.select({
+      id: proposalComments.id,
+      body: proposalComments.body,
+      createdAt: proposalComments.createdAt,
+      authorPharmacyId: proposalComments.authorPharmacyId,
+      authorName: pharmacies.name,
+    })
+      .from(proposalComments)
+      .leftJoin(pharmacies, eq(proposalComments.authorPharmacyId, pharmacies.id))
+      .where(eq(proposalComments.proposalId, id))
+      .orderBy(asc(proposalComments.createdAt));
+
+    // Fetch feedback for enriched timeline
+    const feedbackRows = await db.select({
+      id: exchangeFeedback.id,
+      rating: exchangeFeedback.rating,
+      comment: exchangeFeedback.comment,
+      createdAt: exchangeFeedback.createdAt,
+      fromPharmacyId: exchangeFeedback.fromPharmacyId,
+      fromName: pharmacies.name,
+    })
+      .from(exchangeFeedback)
+      .leftJoin(pharmacies, eq(exchangeFeedback.fromPharmacyId, pharmacies.id))
+      .where(eq(exchangeFeedback.proposalId, id))
+      .orderBy(asc(exchangeFeedback.createdAt));
+
+    // Build enriched timeline combining status changes, comments, and feedback
+    const enrichedTimeline: EnrichedProposalTimelineEvent[] = [
+      // Re-map existing timeline events as status_change
+      ...timeline.map((e) => ({
+        ...e,
+        eventType: 'status_change' as const,
+      })),
+      // Comment events
+      ...commentRows.map((c) => ({
+        action: 'comment_added',
+        label: 'コメント追加',
+        at: c.createdAt,
+        actorPharmacyId: c.authorPharmacyId,
+        actorName: c.authorName ?? '不明',
+        eventType: 'comment' as const,
+        commentBody: c.body,
+      })),
+      // Feedback events
+      ...feedbackRows.map((f) => ({
+        action: 'feedback_submitted',
+        label: '評価登録',
+        at: f.createdAt,
+        actorPharmacyId: f.fromPharmacyId,
+        actorName: f.fromName ?? '不明',
+        eventType: 'feedback' as const,
+        feedbackRating: f.rating,
+        feedbackComment: f.comment ?? undefined,
+      })),
+    ].sort((a, b) => {
+      if (!a.at && !b.at) return 0;
+      if (!a.at) return 1;
+      if (!b.at) return -1;
+      return new Date(b.at).getTime() - new Date(a.at).getTime();
+    });
+
     res.json({
       proposal,
       items,
       pharmacyA: { id: proposal.pharmacyAId, ...pharmA },
       pharmacyB: { id: proposal.pharmacyBId, ...pharmB },
       timeline,
+      enrichedTimeline,
     });
   } catch (err) {
     logger.error('Proposal detail error:', { error: getErrorMessage(err) });

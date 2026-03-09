@@ -72,6 +72,68 @@ export function clearStatisticsSummaryCacheForTests(): void {
   statisticsSummaryCache.clear();
 }
 
+function buildStatisticsSummaryPayload(params: {
+  uploadStats: Array<{ uploadType: string; count: number; lastDate: string | null }>;
+  deadStockStats: Array<{ count: number; totalValue: string | number | null }>;
+  riskDetail: Awaited<ReturnType<typeof getPharmacyRiskDetail>> | null;
+  proposalStats: Array<{ sent: unknown; received: unknown; completed: unknown; pendingAction: unknown }>;
+  exchangeStats: Array<{ totalCount: number; totalValue: string | number | null; partnerCount: number }>;
+  matchSnapshot: Array<{ candidateCount: number | string | null }>;
+  trustScore: Array<{ trustScore: string | number | null; ratingCount: number; positiveRate: string | number | null }>;
+  feedbackReceived: Array<{ avgRating: number | null; count: number }>;
+  favoriteCount: Array<{ count: number }>;
+  activeAlertCount: Array<{ count: number }>;
+}) {
+  const dsUpload = params.uploadStats.find((upload) => upload.uploadType === 'dead_stock');
+  const umUpload = params.uploadStats.find((upload) => upload.uploadType === 'used_medication');
+  const ts = params.trustScore[0];
+  const fb = params.feedbackReceived[0];
+  const ps = params.proposalStats[0];
+  const es = params.exchangeStats[0];
+
+  return {
+    uploads: {
+      deadStockCount: dsUpload?.count ?? 0,
+      usedMedicationCount: umUpload?.count ?? 0,
+      lastDeadStockUpload: dsUpload?.lastDate ?? null,
+      lastUsedMedicationUpload: umUpload?.lastDate ?? null,
+    },
+    inventory: {
+      deadStockItems: params.deadStockStats[0]?.count ?? 0,
+      deadStockTotalValue: Number(params.deadStockStats[0]?.totalValue ?? 0),
+      riskScore: params.riskDetail?.riskScore ?? 0,
+      bucketCounts: params.riskDetail?.bucketCounts ?? null,
+    },
+    proposals: {
+      sent: Number(ps?.sent ?? 0),
+      received: Number(ps?.received ?? 0),
+      completed: Number(ps?.completed ?? 0),
+      pendingAction: Number(ps?.pendingAction ?? 0),
+    },
+    exchanges: {
+      totalCount: es?.totalCount ?? 0,
+      totalValue: Number(es?.totalValue ?? 0),
+    },
+    matching: {
+      candidateCount: params.matchSnapshot[0]?.candidateCount ?? 0,
+    },
+    trust: {
+      score: Number(ts?.trustScore ?? 60),
+      ratingCount: ts?.ratingCount ?? 0,
+      positiveRate: Number(ts?.positiveRate ?? 0),
+      avgRatingReceived: fb?.avgRating ?? 0,
+      feedbackCount: fb?.count ?? 0,
+    },
+    network: {
+      favoriteCount: params.favoriteCount[0]?.count ?? 0,
+      tradingPartnerCount: es?.partnerCount ?? 0,
+    },
+    alerts: {
+      activeCount: params.activeAlertCount[0]?.count ?? 0,
+    },
+  };
+}
+
 router.use(requireLogin);
 
 router.get('/summary', async (req: AuthRequest, res: Response) => {
@@ -209,54 +271,18 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
         ),
     ]);
 
-    const dsUpload = uploadStats.find((u) => u.uploadType === 'dead_stock');
-    const umUpload = uploadStats.find((u) => u.uploadType === 'used_medication');
-    const ts = trustScore[0];
-    const fb = feedbackReceived[0];
-    const ps = proposalStats[0];
-    const es = exchangeStats[0];
-
-    const payload = {
-      uploads: {
-        deadStockCount: dsUpload?.count ?? 0,
-        usedMedicationCount: umUpload?.count ?? 0,
-        lastDeadStockUpload: dsUpload?.lastDate ?? null,
-        lastUsedMedicationUpload: umUpload?.lastDate ?? null,
-      },
-      inventory: {
-        deadStockItems: deadStockStats[0]?.count ?? 0,
-        deadStockTotalValue: Number(deadStockStats[0]?.totalValue ?? 0),
-        riskScore: riskDetail?.riskScore ?? 0,
-        bucketCounts: riskDetail?.bucketCounts ?? null,
-      },
-      proposals: {
-        sent: Number(ps?.sent ?? 0),
-        received: Number(ps?.received ?? 0),
-        completed: Number(ps?.completed ?? 0),
-        pendingAction: Number(ps?.pendingAction ?? 0),
-      },
-      exchanges: {
-        totalCount: es?.totalCount ?? 0,
-        totalValue: Number(es?.totalValue ?? 0),
-      },
-      matching: {
-        candidateCount: matchSnapshot[0]?.candidateCount ?? 0,
-      },
-      trust: {
-        score: Number(ts?.trustScore ?? 60),
-        ratingCount: ts?.ratingCount ?? 0,
-        positiveRate: Number(ts?.positiveRate ?? 0),
-        avgRatingReceived: fb?.avgRating ?? 0,
-        feedbackCount: fb?.count ?? 0,
-      },
-      network: {
-        favoriteCount: favoriteCount[0]?.count ?? 0,
-        tradingPartnerCount: es?.partnerCount ?? 0,
-      },
-      alerts: {
-        activeCount: activeAlertCount[0]?.count ?? 0,
-      },
-    };
+    const payload = buildStatisticsSummaryPayload({
+      uploadStats,
+      deadStockStats,
+      riskDetail,
+      proposalStats,
+      exchangeStats,
+      matchSnapshot,
+      trustScore,
+      feedbackReceived,
+      favoriteCount,
+      activeAlertCount,
+    });
     setCachedStatisticsSummary(pharmacyId, payload, nowMs);
     res.json(payload);
   } catch (err) {

@@ -27,6 +27,34 @@ function toMonthStart(year: number, month: number): Date {
   return new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
 }
 
+function buildMonthRange(year: number, month: number) {
+  const start = toMonthStart(year, month);
+  const end = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+  };
+}
+
+function buildExpiryWindow(now: Date = new Date()) {
+  const todayDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return {
+    todayIsoDate: todayDate.toISOString().slice(0, 10),
+    nearExpiryLimit: new Date(todayDate.getTime() + (120 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10),
+  };
+}
+
+function toMetricNumber(value: unknown): number {
+  return Number(value ?? 0);
+}
+
+async function countByWhere(table: typeof exchangeProposals | typeof exchangeHistory | typeof uploads | typeof deadStockItems, whereClause: ReturnType<typeof and>) {
+  const [row] = await db.select({ count: sql<number>`count(*)` })
+    .from(table)
+    .where(whereClause);
+  return Number(row?.count ?? 0);
+}
+
 export function resolveDefaultTargetMonth(now: Date = new Date()): { year: number; month: number } {
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth() + 1;
@@ -48,93 +76,68 @@ export function validateYearMonth(year: number, month: number): void {
 export async function buildMonthlyReportMetrics(year: number, month: number): Promise<MonthlyReportMetrics> {
   validateYearMonth(year, month);
 
-  const start = toMonthStart(year, month);
-  const end = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-  const startIso = start.toISOString();
-  const endIso = end.toISOString();
-
-  const today = new Date();
-  const todayDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  const nearExpiryLimit = new Date(todayDate.getTime() + (120 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
-  const todayIsoDate = todayDate.toISOString().slice(0, 10);
+  const { startIso, endIso } = buildMonthRange(year, month);
+  const { todayIsoDate, nearExpiryLimit } = buildExpiryWindow();
 
   const [
-    [proposalCountRow],
-    [rejectedCountRow],
-    [confirmedCountRow],
-    [historyCountRow],
+    proposalCount,
+    rejectedProposalCount,
+    confirmedProposalCount,
+    completedExchangeCount,
     [totalExchangeValueRow],
-    [uploadCountRow],
-    [deadStockUploadCountRow],
-    [usedMedUploadCountRow],
-    [nearExpiryCountRow],
-    [expiredCountRow],
+    uploadCount,
+    deadStockUploadCount,
+    usedMedicationUploadCount,
+    nearExpiryItemCount,
+    expiredItemCount,
   ] = await Promise.all([
-    db.select({ count: sql<number>`count(*)` })
-      .from(exchangeProposals)
-      .where(and(
-        gte(exchangeProposals.proposedAt, startIso),
-        lt(exchangeProposals.proposedAt, endIso),
-      )),
-    db.select({ count: sql<number>`count(*)` })
-      .from(exchangeProposals)
-      .where(and(
-        gte(exchangeProposals.proposedAt, startIso),
-        lt(exchangeProposals.proposedAt, endIso),
-        eq(exchangeProposals.status, 'rejected'),
-      )),
-    db.select({ count: sql<number>`count(*)` })
-      .from(exchangeProposals)
-      .where(and(
-        gte(exchangeProposals.proposedAt, startIso),
-        lt(exchangeProposals.proposedAt, endIso),
-        eq(exchangeProposals.status, 'confirmed'),
-      )),
-    db.select({ count: sql<number>`count(*)` })
-      .from(exchangeHistory)
-      .where(and(
-        gte(exchangeHistory.completedAt, startIso),
-        lt(exchangeHistory.completedAt, endIso),
-      )),
+    countByWhere(exchangeProposals, and(
+      gte(exchangeProposals.proposedAt, startIso),
+      lt(exchangeProposals.proposedAt, endIso),
+    )),
+    countByWhere(exchangeProposals, and(
+      gte(exchangeProposals.proposedAt, startIso),
+      lt(exchangeProposals.proposedAt, endIso),
+      eq(exchangeProposals.status, 'rejected'),
+    )),
+    countByWhere(exchangeProposals, and(
+      gte(exchangeProposals.proposedAt, startIso),
+      lt(exchangeProposals.proposedAt, endIso),
+      eq(exchangeProposals.status, 'confirmed'),
+    )),
+    countByWhere(exchangeHistory, and(
+      gte(exchangeHistory.completedAt, startIso),
+      lt(exchangeHistory.completedAt, endIso),
+    )),
     db.select({ total: sql<number>`coalesce(sum(${exchangeHistory.totalValue}), 0)` })
       .from(exchangeHistory)
       .where(and(
         gte(exchangeHistory.completedAt, startIso),
         lt(exchangeHistory.completedAt, endIso),
       )),
-    db.select({ count: sql<number>`count(*)` })
-      .from(uploads)
-      .where(and(
-        gte(uploads.createdAt, startIso),
-        lt(uploads.createdAt, endIso),
-      )),
-    db.select({ count: sql<number>`count(*)` })
-      .from(uploads)
-      .where(and(
-        gte(uploads.createdAt, startIso),
-        lt(uploads.createdAt, endIso),
-        eq(uploads.uploadType, 'dead_stock'),
-      )),
-    db.select({ count: sql<number>`count(*)` })
-      .from(uploads)
-      .where(and(
-        gte(uploads.createdAt, startIso),
-        lt(uploads.createdAt, endIso),
-        eq(uploads.uploadType, 'used_medication'),
-      )),
-    db.select({ count: sql<number>`count(*)` })
-      .from(deadStockItems)
-      .where(and(
-        eq(deadStockItems.isAvailable, true),
-        gte(deadStockItems.expirationDateIso, todayIsoDate),
-        lte(deadStockItems.expirationDateIso, nearExpiryLimit),
-      )),
-    db.select({ count: sql<number>`count(*)` })
-      .from(deadStockItems)
-      .where(and(
-        eq(deadStockItems.isAvailable, true),
-        lt(deadStockItems.expirationDateIso, todayIsoDate),
-      )),
+    countByWhere(uploads, and(
+      gte(uploads.createdAt, startIso),
+      lt(uploads.createdAt, endIso),
+    )),
+    countByWhere(uploads, and(
+      gte(uploads.createdAt, startIso),
+      lt(uploads.createdAt, endIso),
+      eq(uploads.uploadType, 'dead_stock'),
+    )),
+    countByWhere(uploads, and(
+      gte(uploads.createdAt, startIso),
+      lt(uploads.createdAt, endIso),
+      eq(uploads.uploadType, 'used_medication'),
+    )),
+    countByWhere(deadStockItems, and(
+      eq(deadStockItems.isAvailable, true),
+      gte(deadStockItems.expirationDateIso, todayIsoDate),
+      lte(deadStockItems.expirationDateIso, nearExpiryLimit),
+    )),
+    countByWhere(deadStockItems, and(
+      eq(deadStockItems.isAvailable, true),
+      lt(deadStockItems.expirationDateIso, todayIsoDate),
+    )),
   ]);
 
   return {
@@ -142,16 +145,16 @@ export async function buildMonthlyReportMetrics(year: number, month: number): Pr
     month,
     periodStart: startIso,
     periodEnd: endIso,
-    proposalCount: Number(proposalCountRow?.count ?? 0),
-    completedExchangeCount: Number(historyCountRow?.count ?? 0),
-    rejectedProposalCount: Number(rejectedCountRow?.count ?? 0),
-    confirmedProposalCount: Number(confirmedCountRow?.count ?? 0),
-    totalExchangeValue: to2(Number(totalExchangeValueRow?.total ?? 0)),
-    uploadCount: Number(uploadCountRow?.count ?? 0),
-    deadStockUploadCount: Number(deadStockUploadCountRow?.count ?? 0),
-    usedMedicationUploadCount: Number(usedMedUploadCountRow?.count ?? 0),
-    nearExpiryItemCount: Number(nearExpiryCountRow?.count ?? 0),
-    expiredItemCount: Number(expiredCountRow?.count ?? 0),
+    proposalCount,
+    completedExchangeCount,
+    rejectedProposalCount,
+    confirmedProposalCount,
+    totalExchangeValue: to2(toMetricNumber(totalExchangeValueRow?.total)),
+    uploadCount,
+    deadStockUploadCount,
+    usedMedicationUploadCount,
+    nearExpiryItemCount,
+    expiredItemCount,
   };
 }
 
@@ -225,7 +228,7 @@ export async function listMonthlyReports(page: number, limit: number): Promise<{
 
   return {
     data: rows,
-    total: Number(totalRow?.count ?? 0),
+    total: toMetricNumber(totalRow?.count),
   };
 }
 
@@ -260,8 +263,8 @@ function escapeCsv(value: unknown): string {
   return raw;
 }
 
-export function monthlyReportToCsv(metrics: MonthlyReportMetrics): string {
-  const rows: Array<[string, string | number]> = [
+function buildMonthlyReportCsvRows(metrics: MonthlyReportMetrics): Array<[string, string | number]> {
+  return [
     ['year', metrics.year],
     ['month', metrics.month],
     ['periodStart', metrics.periodStart],
@@ -277,9 +280,11 @@ export function monthlyReportToCsv(metrics: MonthlyReportMetrics): string {
     ['nearExpiryItemCount', metrics.nearExpiryItemCount],
     ['expiredItemCount', metrics.expiredItemCount],
   ];
+}
 
+export function monthlyReportToCsv(metrics: MonthlyReportMetrics): string {
   return [
     'key,value',
-    ...rows.map(([key, value]) => `${escapeCsv(key)},${escapeCsv(value)}`),
+    ...buildMonthlyReportCsvRows(metrics).map(([key, value]) => `${escapeCsv(key)},${escapeCsv(value)}`),
   ].join('\n');
 }

@@ -10,6 +10,20 @@ import { DeadStockRow } from './matching-data-fetcher';
 export type UsedMedIndex = ReturnType<typeof buildUsedMedIndex>;
 export type PreparedStockRow = { stock: DeadStockRow; preparedDrugName: PreparedDrugName };
 
+function prepareDeadStockRow(
+  stock: DeadStockRow,
+  preparedDrugNameCache: Map<string, PreparedDrugName>,
+): PreparedStockRow {
+  const cached = preparedDrugNameCache.get(stock.drugName);
+  if (cached) {
+    return { stock, preparedDrugName: cached };
+  }
+
+  const preparedDrugName = prepareDrugName(stock.drugName);
+  preparedDrugNameCache.set(stock.drugName, preparedDrugName);
+  return { stock, preparedDrugName };
+}
+
 export function applyReservationsToStockRows(
   rows: DeadStockRow[],
   reservedByItemId: Map<number, number>,
@@ -63,16 +77,9 @@ export function buildPreparedDeadStockByPharmacy(
   for (const [pharmacyId, rows] of rowsByPharmacy.entries()) {
     if (rows.length === 0) continue;
 
-    const preparedRows: PreparedStockRow[] = rows.map((stock) => {
-      const cached = preparedDrugNameCache.get(stock.drugName);
-      if (cached) {
-        return { stock, preparedDrugName: cached };
-      }
-
-      const preparedDrugName = prepareDrugName(stock.drugName);
-      preparedDrugNameCache.set(stock.drugName, preparedDrugName);
-      return { stock, preparedDrugName };
-    });
+    const preparedRows: PreparedStockRow[] = rows.map((stock) =>
+      prepareDeadStockRow(stock, preparedDrugNameCache),
+    );
 
     preparedByPharmacy.set(pharmacyId, preparedRows);
   }

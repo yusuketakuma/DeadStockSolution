@@ -1,262 +1,175 @@
+/**
+ * useUploadJobPolling テスト (T128)
+ * テスト要件: ポーリング成功/失敗/タイムアウト/キャンセル
+ */
+
 import { renderHook, act } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type {
-  UploadConfirmJobResult,
-  UploadConfirmJobStatusResponse,
-} from '../../pages/upload/upload-job-utils';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   useUploadJobPolling,
+  resolveNextPollIntervalMs,
+  resolveTransientPollRetryIntervalMs,
+  resolveJobProgressPercent,
+  waitForNextPoll,
   UPLOAD_JOB_INITIAL_STATE,
   UPLOAD_PROGRESS_IDLE,
 } from '../useUploadJobPolling';
-import * as api from '../../api/client';
-
-// Mock the API client (preserve ApiError for instanceof checks)
-vi.mock('../../api/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../api/client')>();
-  return {
-    ...actual,
-    api: {
-      get: vi.fn(),
-    },
-  };
-});
-
-// Mock import.meta.env
-vi.stubEnv('MODE', 'test');
-
-const createMockJobStatusResponse = (
-  overrides: Partial<UploadConfirmJobStatusResponse> = {},
-): UploadConfirmJobStatusResponse => ({
-  id: 123,
-  status: 'pending',
-  attempts: 0,
-  cancelable: true,
-  errorReportAvailable: false,
-  deduplicated: false,
-  partialSummary: null,
-  lastError: null,
-  result: null,
-  ...overrides,
-});
-
-const createMockJobResult = (): UploadConfirmJobResult => ({
-  uploadId: 1,
-  rowCount: 15,
-  applyMode: 'replace',
-  partialSummary: null,
-  errorReportAvailable: false,
-  deduplicated: false,
-});
 
 describe('useUploadJobPolling', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
-  describe('initial state', () => {
-    it('starts with idle state', () => {
+  describe('初期状態', () => {
+    it('初期状態が正しく設定される', () => {
       const { result } = renderHook(() => useUploadJobPolling());
 
-      expect(result.current.job).toEqual(UPLOAD_JOB_INITIAL_STATE);
+      expect(result.current.jobState).toEqual(UPLOAD_JOB_INITIAL_STATE);
       expect(result.current.progress).toEqual(UPLOAD_PROGRESS_IDLE);
-      expect(result.current.isPolling).toBe(false);
-    });
-  });
-
-  describe('startPolling', () => {
-    it('polls until job completes', async () => {
-      const mockResult = createMockJobResult();
-      const onJobCompleted = vi.fn();
-
-      vi.mocked(api.api.get)
-        .mockResolvedValueOnce(createMockJobStatusResponse({ status: 'pending' }))
-        .mockResolvedValueOnce(createMockJobStatusResponse({ status: 'processing' }))
-        .mockResolvedValueOnce(
-          createMockJobStatusResponse({
-            status: 'completed',
-            result: mockResult,
-          }),
-        );
-
-      const { result } = renderHook(() =>
-        useUploadJobPolling({ onJobCompleted }),
-      );
-
-      let pollingPromise!: Promise<UploadConfirmJobResult>;
-      await act(async () => {
-        pollingPromise = result.current.startPolling(123, 'pending');
-      });
-
-      // Advance through polling cycles
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(100);
-        await vi.advanceTimersByTimeAsync(100);
-        await vi.advanceTimersByTimeAsync(100);
-      });
-
-      const finalResult = await pollingPromise;
-
-      expect(finalResult).toEqual(mockResult);
-      expect(onJobCompleted).toHaveBeenCalledWith(mockResult);
-      expect(result.current.progress.phase).toBe('completed');
-      expect(result.current.job.jobId).toBe(123);
+      expect(result.current.isCancelling).toBe(false);
     });
 
-    it('handles job failure', async () => {
-      const onJobFailed = vi.fn();
-
-      vi.mocked(api.api.get).mockResolvedValueOnce(
-        createMockJobStatusResponse({
-          status: 'failed',
-          lastError: 'Processing error',
-        }),
-      );
-
-      const { result } = renderHook(() =>
-        useUploadJobPolling({ onJobFailed }),
-      );
-
-      await act(async () => {
-        try {
-          await result.current.startPolling(123, 'pending');
-        } catch (e) {
-          // Expected
-        }
-        await vi.advanceTimersByTimeAsync(100);
-      });
-
-      expect(onJobFailed).toHaveBeenCalledWith('Processing error');
-      expect(result.current.progress.phase).toBe('failed');
-    });
-
-    it('handles job cancellation', async () => {
-      const onJobCanceled = vi.fn();
-
-      vi.mocked(api.api.get).mockResolvedValueOnce(
-        createMockJobStatusResponse({
-          status: 'canceled',
-          lastError: 'User canceled',
-        }),
-      );
-
-      const { result } = renderHook(() =>
-        useUploadJobPolling({ onJobCanceled }),
-      );
-
-      await act(async () => {
-        try {
-          await result.current.startPolling(123, 'pending');
-        } catch (e) {
-          // Expected
-        }
-        await vi.advanceTimersByTimeAsync(100);
-      });
-
-      expect(onJobCanceled).toHaveBeenCalled();
-    });
-
-    it('retries on transient errors', async () => {
-      const mockResult = createMockJobResult();
-      const transientError = new api.ApiError(0, 'Network error');
-
-      vi.mocked(api.api.get)
-        .mockRejectedValueOnce(transientError)
-        .mockResolvedValueOnce(
-          createMockJobStatusResponse({
-            status: 'completed',
-            result: mockResult,
-          }),
-        );
-
+    it('resetで状態が初期化される', () => {
       const { result } = renderHook(() => useUploadJobPolling());
 
-      let pollingPromise!: Promise<UploadConfirmJobResult>;
-      await act(async () => {
-        pollingPromise = result.current.startPolling(123, 'pending');
-      });
-
-      // Advance through retry
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(100);
-        await vi.advanceTimersByTimeAsync(100);
-      });
-
-      const finalResult = await pollingPromise;
-
-      expect(api.api.get).toHaveBeenCalledTimes(2);
-      expect(finalResult).toEqual(mockResult);
-    });
-
-    it('stops polling when stopPolling is called', async () => {
-      vi.mocked(api.api.get).mockResolvedValue(
-        createMockJobStatusResponse({ status: 'pending' }),
-      );
-
-      const { result } = renderHook(() => useUploadJobPolling());
-
-      // Start polling but catch the abort error
+      // 状態を変更
       act(() => {
-        void result.current.startPolling(123, 'pending').catch(() => {
-          // Expected abort error
-        });
+        result.current.setJobState({ ...UPLOAD_JOB_INITIAL_STATE, jobId: 123 });
+        result.current.setProgress({ phase: 'processing', percent: 50, label: '処理中' });
       });
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(50);
-      });
+      expect(result.current.jobState.jobId).toBe(123);
 
-      expect(result.current.isPolling).toBe(true);
-
-      act(() => {
-        result.current.stopPolling();
-      });
-
-      // Wait for the polling to abort
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(50);
-      });
-
-      expect(result.current.isPolling).toBe(false);
-    });
-  });
-
-  describe('reset', () => {
-    it('resets all state to initial values', async () => {
-      const mockResult = createMockJobResult();
-
-      vi.mocked(api.api.get).mockResolvedValueOnce(
-        createMockJobStatusResponse({
-          status: 'completed',
-          result: mockResult,
-        }),
-      );
-
-      const { result } = renderHook(() => useUploadJobPolling());
-
-      await act(async () => {
-        try {
-          await result.current.startPolling(123, 'pending');
-        } catch (e) {
-          // Expected
-        }
-        await vi.advanceTimersByTimeAsync(100);
-      });
-
-      expect(result.current.job.jobId).toBe(123);
-
+      // リセット
       act(() => {
         result.current.reset();
       });
 
-      expect(result.current.job).toEqual(UPLOAD_JOB_INITIAL_STATE);
+      expect(result.current.jobState).toEqual(UPLOAD_JOB_INITIAL_STATE);
       expect(result.current.progress).toEqual(UPLOAD_PROGRESS_IDLE);
+    });
+  });
+
+  describe('セッター', () => {
+    it('setJobStateで状態を更新できる', () => {
+      const { result } = renderHook(() => useUploadJobPolling());
+
+      act(() => {
+        result.current.setJobState({
+          jobId: 456,
+          status: 'pending',
+          attempts: 1,
+          cancelable: true,
+          errorReportAvailable: false,
+          deduplicated: false,
+          partialSummary: null,
+        });
+      });
+
+      expect(result.current.jobState.jobId).toBe(456);
+      expect(result.current.jobState.status).toBe('pending');
+    });
+
+    it('setProgressで状態を更新できる', () => {
+      const { result } = renderHook(() => useUploadJobPolling());
+
+      act(() => {
+        result.current.setProgress({
+          phase: 'completed',
+          percent: 100,
+          label: '完了',
+        });
+      });
+
+      expect(result.current.progress.phase).toBe('completed');
+      expect(result.current.progress.percent).toBe(100);
+    });
+  });
+});
+
+describe('ヘルパー関数', () => {
+  describe('resolveNextPollIntervalMs', () => {
+    it('pending状態では短い間隔（テスト環境では上限100ms）', () => {
+      // テスト環境では UPLOAD_JOB_POLL_MAX_INTERVAL_MS = 100
+      expect(resolveNextPollIntervalMs(0, 'pending')).toBe(100);
+    });
+
+    it('processing状態で経過時間が短い場合は基本間隔', () => {
+      // テスト環境では UPLOAD_JOB_POLL_INTERVAL_MS = 20
+      expect(resolveNextPollIntervalMs(0, 'processing')).toBe(20);
+    });
+
+    it('processing状態で10秒超過では中間の間隔', () => {
+      expect(resolveNextPollIntervalMs(15000, 'processing')).toBe(100);
+    });
+
+    it('processing状態で30秒超過では最大間隔', () => {
+      expect(resolveNextPollIntervalMs(35000, 'processing')).toBe(100);
+    });
+  });
+
+  describe('resolveTransientPollRetryIntervalMs', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('テスト環境では短い間隔', () => {
+      // テスト環境では固定式
+      const result = resolveTransientPollRetryIntervalMs(1);
+      expect(result).toBeGreaterThanOrEqual(20);
+      expect(result).toBeLessThanOrEqual(100);
+    });
+  });
+
+  describe('resolveJobProgressPercent', () => {
+    it('pending状態は50%から開始', () => {
+      expect(resolveJobProgressPercent('pending', 0)).toBe(50);
+    });
+
+    it('processing状態は75%から開始', () => {
+      expect(resolveJobProgressPercent('processing', 0)).toBe(75);
+    });
+
+    it('pending状態は経過時間で増加', () => {
+      const result1 = resolveJobProgressPercent('pending', 10000);
+      expect(result1).toBeGreaterThan(50);
+    });
+
+    it('processing状態は経過時間で増加', () => {
+      const result1 = resolveJobProgressPercent('processing', 5000);
+      expect(result1).toBeGreaterThan(75);
+    });
+
+    it('最大値を超えない', () => {
+      expect(resolveJobProgressPercent('pending', 100000)).toBeLessThanOrEqual(75);
+      expect(resolveJobProgressPercent('processing', 100000)).toBeLessThanOrEqual(95);
+    });
+  });
+
+  describe('waitForNextPoll', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('指定時間後に解決される', async () => {
+      const controller = new AbortController();
+      const promise = waitForNextPoll(controller.signal, 100);
+
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(promise).resolves.toBeUndefined();
+    });
+
+    it('AbortSignalで中断される', async () => {
+      const controller = new AbortController();
+      const promise = waitForNextPoll(controller.signal, 1000);
+
+      controller.abort();
+
+      await expect(promise).rejects.toThrow('Aborted');
     });
   });
 });

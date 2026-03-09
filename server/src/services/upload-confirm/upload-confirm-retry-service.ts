@@ -13,6 +13,33 @@ import {
   type RetryUploadConfirmJobResult,
 } from './upload-confirm-types';
 
+function assertJobRetryable(existing: { status: string; fileBase64: string | null }): void {
+  if (!(existing.status === 'failed' || existing.status === 'completed')) {
+    throw createRetryUnavailableError('再試行できるのは completed / failed 状態のジョブのみです');
+  }
+
+  if (!existing.fileBase64) {
+    throw createRetryUnavailableError('元ファイルが保持されていないため再試行できません');
+  }
+}
+
+function buildRetryResetPayload(nowIso: string) {
+  return {
+    status: 'pending' as const,
+    attempts: 0,
+    lastError: null,
+    resultJson: null,
+    deduplicated: false,
+    cancelRequestedAt: null,
+    canceledAt: null,
+    canceledBy: null,
+    processingStartedAt: null,
+    nextRetryAt: null,
+    completedAt: null,
+    updatedAt: nowIso,
+  };
+}
+
 export async function retryUploadConfirmJobByAdmin(jobId: number): Promise<RetryUploadConfirmJobResult | null> {
   return db.transaction(async (tx) => {
     const existing = await fetchUploadConfirmJobById(jobId, tx);
@@ -20,13 +47,7 @@ export async function retryUploadConfirmJobByAdmin(jobId: number): Promise<Retry
       return null;
     }
 
-    if (!(existing.status === 'failed' || existing.status === 'completed')) {
-      throw createRetryUnavailableError('再試行できるのは completed / failed 状態のジョブのみです');
-    }
-
-    if (!existing.fileBase64) {
-      throw createRetryUnavailableError('元ファイルが保持されていないため再試行できません');
-    }
+    assertJobRetryable(existing);
 
     if (existing.idempotencyKey) {
       const [activeWithSameKey] = await tx.select({
@@ -52,20 +73,7 @@ export async function retryUploadConfirmJobByAdmin(jobId: number): Promise<Retry
     await clearUploadRowIssuesForJob(existing.id, tx);
 
     const [updated] = await tx.update(uploadConfirmJobs)
-      .set({
-        status: 'pending',
-        attempts: 0,
-        lastError: null,
-        resultJson: null,
-        deduplicated: false,
-        cancelRequestedAt: null,
-        canceledAt: null,
-        canceledBy: null,
-        processingStartedAt: null,
-        nextRetryAt: null,
-        completedAt: null,
-        updatedAt: nowIso,
-      })
+      .set(buildRetryResetPayload(nowIso))
       .where(eq(uploadConfirmJobs.id, existing.id))
       .returning({
         id: uploadConfirmJobs.id,

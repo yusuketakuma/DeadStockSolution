@@ -18,6 +18,21 @@ import {
   type UploadConfirmJobView,
 } from './upload-confirm-types';
 
+function buildClaimProcessingPayload(nowIso: string) {
+  return {
+    status: 'processing' as const,
+    processingStartedAt: nowIso,
+    updatedAt: nowIso,
+  };
+}
+
+function resolveApplyMode(applyMode: string): ApplyMode {
+  if (applyMode === 'replace' || applyMode === 'diff' || applyMode === 'partial') {
+    return applyMode;
+  }
+  throw new Error(`ジョブ内のapplyModeが不正です: ${applyMode}`);
+}
+
 export async function ensureUploadConfirmQueueHasCapacity(pharmacyId: number): Promise<void> {
   await db.transaction(async (tx) => {
     await assertUploadConfirmQueueCapacityWithLocks(pharmacyId, tx);
@@ -28,11 +43,7 @@ export async function processUploadConfirmJobById(jobId: number): Promise<boolea
   const nowIso = new Date().toISOString();
   const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
   const [claimed] = await db.update(uploadConfirmJobs)
-    .set({
-      status: 'processing',
-      processingStartedAt: nowIso,
-      updatedAt: nowIso,
-    })
+    .set(buildClaimProcessingPayload(nowIso))
     .where(and(
       eq(uploadConfirmJobs.id, jobId),
       eq(uploadConfirmJobs.status, 'pending'),
@@ -59,14 +70,10 @@ export async function processUploadConfirmJobById(jobId: number): Promise<boolea
 
   if (!claimed) return false;
 
-  if (claimed.applyMode !== 'replace' && claimed.applyMode !== 'diff' && claimed.applyMode !== 'partial') {
-    throw new Error(`ジョブ内のapplyModeが不正です: ${claimed.applyMode}`);
-  }
-
   await processClaimedUploadConfirmJob({
     ...claimed,
     status: 'processing',
-    applyMode: claimed.applyMode as ApplyMode,
+    applyMode: resolveApplyMode(claimed.applyMode),
   });
   return true;
 }

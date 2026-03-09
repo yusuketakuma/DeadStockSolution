@@ -153,3 +153,57 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* ===== Mobile UX Utilities ===== */
+
+/* タップハイライト無効化 */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* モバイル/デスクトップ表示制御 */
+.mobile-only {
+  display: none !important;
+}
+
+.desktop-only {
+  display: block !important;
+}
+
+@media (max-width: 991.98px) {
+  .mobile-only {
+    display: block !important;
+  }
+
+  .desktop-only {
+    display: none !important;
+  }
+}
+
+/* スティッキーフッターギャップ（safe-area対応） */
+.sticky-footer-gap {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* AppTouchInput 基本スタイル */
+.app-touch-input {
+  font-size: 16px; /* iOS ズーム防止 */
+  min-height: 44px; /* タップターゲット */
+  padding: 0 12px;
+}
+
+/* タッチフレンドリーボタン */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* セーフエリア対応コンテナ */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}

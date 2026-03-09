@@ -46,6 +46,89 @@ interface ValidatedDiscoveredFile {
   resolvedAddresses: string[];
 }
 
+function partitionSettledResults<T>(
+  results: PromiseSettledResult<T>[],
+): { fulfilled: T[]; rejected: PromiseRejectedResult[] } {
+  const fulfilled: T[] = [];
+  const rejected: PromiseRejectedResult[] = [];
+
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      fulfilled.push(result.value);
+      continue;
+    }
+    rejected.push(result);
+  }
+
+  return { fulfilled, rejected };
+}
+
+function buildSourceStateUpdate(
+  result: Pick<FileProcessResult | DownloadedFileResult, 'url' | 'contentHash' | 'changed'> & { category: string },
+  lastCheckedAt: string,
+) {
+  return {
+    url: result.url,
+    contentHash: result.contentHash,
+    lastCheckedAt,
+    lastChangedAt: result.changed ? lastCheckedAt : undefined,
+    metadataJson: JSON.stringify({ fileCategory: result.category }),
+  };
+}
+
+async function parseDownloadedFiles(successResults: DownloadedFileResult[]): Promise<FileProcessResult[]> {
+  return Promise.all(successResults.map(async (fileResult) => ({
+    category: fileResult.category,
+    url: fileResult.url,
+    contentHash: fileResult.contentHash,
+    changed: fileResult.changed,
+    rows: await parseMhlwDrugFile(fileResult.url, fileResult.contentType, fileResult.buffer),
+  })));
+}
+
+function mergeParsedRows(parsedResults: FileProcessResult[]): ParsedDrugRow[] {
+  return parsedResults.flatMap(({ rows }) => rows);
+}
+
+function assertRequiredCategories(indexResult: MhlwIndexResult): void {
+  const foundCategories = new Set(indexResult.files.map((file) => file.category));
+  const missingCategories = DRUG_CATEGORIES.filter((category) => !foundCategories.has(category));
+  if (missingCategories.length === 0) {
+    return;
+  }
+  if (!allowPartialIndexSync()) {
+    throw new Error(
+      `MHLW必須カテゴリが不足しています: ${missingCategories.join(', ')} ` +
+      '(必要であれば DRUG_MASTER_ALLOW_PARTIAL_INDEX_SYNC=true で一時的に許可)',
+    );
+  }
+  logger.warn('MHLW multi-file sync: some categories not found', {
+    missing: missingCategories,
+    found: Array.from(foundCategories),
+    allowPartialIndexSync: true,
+  });
+}
+
+async function loadExistingSourceStateMap(): Promise<Map<string, SourceState>> {
+  const existingStates = new Map<string, SourceState>();
+  const allFileStates = await getSourceStatesByPrefix('drug:file:');
+  for (const state of allFileStates) {
+    existingStates.set(state.sourceKey, state);
+  }
+  return existingStates;
+}
+
+async function updateFileSourceStates(
+  results: Array<Pick<FileProcessResult | DownloadedFileResult, 'category' | 'url' | 'contentHash' | 'changed'>>,
+  timestamp: string,
+): Promise<void> {
+  await Promise.all(
+    results.map((result) =>
+      upsertSourceState(sourceKeyForFile(result.category), buildSourceStateUpdate(result, timestamp)),
+    ),
+  );
+}
+
 
 /**
  * 1ファイルをダウンロード → ハッシュ比較まで実行
@@ -140,29 +223,10 @@ export async function runMultiFileSync(): Promise<MultiFileSyncResult> {
     throw new Error('インデックスページから Excel ファイルが見つかりません');
   }
 
-  // カテゴリの検証（4カテゴリ全てが揃っているか警告）
-  const foundCategories = new Set(indexResult.files.map((f) => f.category));
-  const missingCategories = DRUG_CATEGORIES.filter((c) => !foundCategories.has(c));
-  if (missingCategories.length > 0) {
-    if (!allowPartialIndexSync()) {
-      throw new Error(
-        `MHLW必須カテゴリが不足しています: ${missingCategories.join(', ')} ` +
-        '(必要であれば DRUG_MASTER_ALLOW_PARTIAL_INDEX_SYNC=true で一時的に許可)',
-      );
-    }
-    logger.warn('MHLW multi-file sync: some categories not found', {
-      missing: missingCategories,
-      found: Array.from(foundCategories),
-      allowPartialIndexSync: true,
-    });
-  }
+  assertRequiredCategories(indexResult);
 
   // 既存のソース状態を一括取得（N+1 → 1 クエリ）
-  const existingStates = new Map<string, SourceState>();
-  const allFileStates = await getSourceStatesByPrefix('drug:file:');
-  for (const state of allFileStates) {
-    existingStates.set(state.sourceKey, state);
-  }
+  const existingStates = await loadExistingSourceStateMap();
 
   // 全ファイルを HTTPS + DNS ピンニング対象として検証
   const validatedFiles = await Promise.all(indexResult.files.map((file) => validateDiscoveredFileUrl(file)));
@@ -190,19 +254,13 @@ export async function runMultiFileSync(): Promise<MultiFileSyncResult> {
     );
 
     // 全体中止チェック: 1つでも失敗したら中止
-    const failures = results.filter(
-      (r): r is PromiseRejectedResult => r.status === 'rejected',
-    );
+    const { fulfilled: successResults, rejected: failures } = partitionSettledResults(results);
     if (failures.length > 0) {
       const errorMessages = failures.map((f) => getErrorMessage(f.reason));
       throw new Error(
         `ファイル処理に失敗 (${failures.length}/${indexResult.files.length}件): ${errorMessages.join('; ')}`,
       );
     }
-
-    const successResults = results.map(
-      (r) => (r as PromiseFulfilledResult<DownloadedFileResult>).value,
-    );
 
     // 全て変更なしなら同期不要
     const hasAnyChange = successResults.some((r) => r.changed);
@@ -211,15 +269,7 @@ export async function runMultiFileSync(): Promise<MultiFileSyncResult> {
 
       // lastCheckedAt だけ更新
       const now = new Date().toISOString();
-      await Promise.all(
-        successResults.map((r) =>
-          upsertSourceState(sourceKeyForFile(r.category), {
-            url: r.url,
-            contentHash: r.contentHash,
-            lastCheckedAt: now,
-          }),
-        ),
-      );
+      await updateFileSourceStates(successResults, now);
 
       return {
         indexUrl: indexResult.indexUrl,
@@ -229,23 +279,8 @@ export async function runMultiFileSync(): Promise<MultiFileSyncResult> {
     }
 
     // 1件でも変更がある場合は、未変更カテゴリも含めて全量をパースして同期する
-    const parsedResults: FileProcessResult[] = [];
-    for (const fileResult of successResults) {
-      const rows = await parseMhlwDrugFile(fileResult.url, fileResult.contentType, fileResult.buffer);
-      parsedResults.push({
-        category: fileResult.category,
-        url: fileResult.url,
-        contentHash: fileResult.contentHash,
-        changed: fileResult.changed,
-        rows,
-      });
-    }
-
-    // マージ
-    const mergedRows: ParsedDrugRow[] = [];
-    for (const { rows } of parsedResults) {
-      mergedRows.push(...rows);
-    }
+    const parsedResults = await parseDownloadedFiles(successResults);
+    const mergedRows = mergeParsedRows(parsedResults);
 
     if (mergedRows.length === 0) {
       throw new Error('全ファイルから有効なデータが見つかりません');
@@ -270,17 +305,7 @@ export async function runMultiFileSync(): Promise<MultiFileSyncResult> {
 
       // Step 6: 成功時に状態を更新
       const now = new Date().toISOString();
-      await Promise.all(
-        parsedResults.map((r) =>
-          upsertSourceState(sourceKeyForFile(r.category), {
-            url: r.url,
-            contentHash: r.contentHash,
-            lastCheckedAt: now,
-            lastChangedAt: r.changed ? now : undefined,
-            metadataJson: JSON.stringify({ fileCategory: r.category }),
-          }),
-        ),
-      );
+      await updateFileSourceStates(parsedResults, now);
 
       logger.info('MHLW multi-file sync: completed successfully', {
         processed: syncResult.itemsProcessed,

@@ -19,6 +19,7 @@ import { logger } from '../services/logger';
 import { getErrorMessage } from '../middleware/error-handler';
 import { eqEmailCaseInsensitive } from '../utils/email-utils';
 import { emailSchema } from '../utils/validators';
+import { sendBadRequest, sendConflict } from './response-helpers';
 
 // パスワード変更用レート制限: 10回/時/ユーザー
 const passwordChangeLimiter = rateLimit({
@@ -59,6 +60,42 @@ function parseOptionalTrimmedString(value: unknown, maxLength: number): string |
 async function selectFirst<T>(rowsPromise: PromiseLike<T[]>): Promise<T | null> {
   const rows = await rowsPromise;
   return rows[0] ?? null;
+}
+
+function assignOptionalTrimmedUpdate(
+  updates: Record<string, unknown>,
+  field: string,
+  value: unknown,
+  maxLength: number,
+  errorMessage: string,
+): string | null {
+  const normalized = parseOptionalTrimmedString(value, maxLength);
+  if (normalized === null) {
+    return errorMessage;
+  }
+  if (normalized !== undefined) {
+    updates[field] = normalized;
+  }
+  return null;
+}
+
+async function loadLatestAccountConflictData(pharmacyId: number) {
+  return selectFirst(db.select({
+    id: pharmacies.id,
+    email: pharmacies.email,
+    name: pharmacies.name,
+    postalCode: pharmacies.postalCode,
+    address: pharmacies.address,
+    phone: pharmacies.phone,
+    fax: pharmacies.fax,
+    licenseNumber: pharmacies.licenseNumber,
+    prefecture: pharmacies.prefecture,
+    matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled,
+    version: pharmacies.version,
+  })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, pharmacyId))
+    .limit(1));
 }
 
 router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
@@ -119,7 +156,7 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     // version バリデーション
     const parsedVersion = parseVersion(version);
     if (parsedVersion === null) {
-      res.status(400).json({ error: 'バージョン情報が不正です' });
+      sendBadRequest(res, 'バージョン情報が不正です');
       return;
     }
 
@@ -149,47 +186,41 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
 
     if (email !== undefined) {
       if (typeof email !== 'string') {
-        res.status(400).json({ error: 'メールアドレスが不正です' });
+        sendBadRequest(res, 'メールアドレスが不正です');
         return;
       }
       const normalizedEmail = email.trim().toLowerCase();
       const parsedEmail = emailSchema.safeParse(normalizedEmail);
       if (!parsedEmail.success) {
-        res.status(400).json({ error: parsedEmail.error.issues[0]?.message ?? 'メールアドレスが不正です' });
+        sendBadRequest(res, parsedEmail.error.issues[0]?.message ?? 'メールアドレスが不正です');
         return;
       }
       updates.email = normalizedEmail;
     }
 
-    const normalizedName = parseOptionalTrimmedString(name, 100);
-    if (normalizedName === null) {
-        res.status(400).json({ error: '薬局名は1〜100文字で入力してください' });
-        return;
-    }
-    if (normalizedName !== undefined) {
-      updates.name = normalizedName;
+    const nameError = assignOptionalTrimmedUpdate(updates, 'name', name, 100, '薬局名は1〜100文字で入力してください');
+    if (nameError) {
+      sendBadRequest(res, nameError);
+      return;
     }
 
     if (postalCode !== undefined) {
       if (typeof postalCode !== 'string') {
-        res.status(400).json({ error: '郵便番号が不正です' });
+        sendBadRequest(res, '郵便番号が不正です');
         return;
       }
       const normalized = postalCode.replace(/[-ー－\s]/g, '');
       if (!/^\d{7}$/.test(normalized)) {
-        res.status(400).json({ error: '郵便番号は7桁の数字で入力してください' });
+        sendBadRequest(res, '郵便番号は7桁の数字で入力してください');
         return;
       }
       updates.postalCode = normalized;
     }
 
-    const normalizedAddress = parseOptionalTrimmedString(address, 255);
-    if (normalizedAddress === null) {
-        res.status(400).json({ error: '住所は1〜255文字で入力してください' });
-        return;
-    }
-    if (normalizedAddress !== undefined) {
-      updates.address = normalizedAddress;
+    const addressError = assignOptionalTrimmedUpdate(updates, 'address', address, 255, '住所は1〜255文字で入力してください');
+    if (addressError) {
+      sendBadRequest(res, addressError);
+      return;
     }
 
     // 住所または都道府県が変更された場合、再ジオコーディング
@@ -199,61 +230,55 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       const fullAddress = `${newPrefecture}${newAddress}`;
       const coords = await geocodeAddress(fullAddress);
       if (!coords) {
-        res.status(400).json({ error: '住所から位置情報を特定できませんでした。正しい住所を入力してください' });
+        sendBadRequest(res, '住所から位置情報を特定できませんでした。正しい住所を入力してください');
         return;
       }
       updates.latitude = coords.lat;
       updates.longitude = coords.lng;
     }
 
-    const normalizedPhone = parseOptionalTrimmedString(phone, 30);
-    if (normalizedPhone === null) {
-        res.status(400).json({ error: '電話番号が不正です' });
-        return;
-    }
-    if (normalizedPhone !== undefined) {
-      updates.phone = normalizedPhone;
+    const phoneError = assignOptionalTrimmedUpdate(updates, 'phone', phone, 30, '電話番号が不正です');
+    if (phoneError) {
+      sendBadRequest(res, phoneError);
+      return;
     }
 
-    const normalizedFax = parseOptionalTrimmedString(fax, 30);
-    if (normalizedFax === null) {
-        res.status(400).json({ error: 'FAX番号が不正です' });
-        return;
-    }
-    if (normalizedFax !== undefined) {
-      updates.fax = normalizedFax;
+    const faxError = assignOptionalTrimmedUpdate(updates, 'fax', fax, 30, 'FAX番号が不正です');
+    if (faxError) {
+      sendBadRequest(res, faxError);
+      return;
     }
 
-    const normalizedPrefecture = parseOptionalTrimmedString(prefecture, 10);
-    if (normalizedPrefecture === null) {
-        res.status(400).json({ error: '都道府県が不正です' });
-        return;
-    }
-    if (normalizedPrefecture !== undefined) {
-      updates.prefecture = normalizedPrefecture;
+    const prefectureError = assignOptionalTrimmedUpdate(updates, 'prefecture', prefecture, 10, '都道府県が不正です');
+    if (prefectureError) {
+      sendBadRequest(res, prefectureError);
+      return;
     }
 
-    const normalizedLicenseNumber = parseOptionalTrimmedString(licenseNumber, 50);
-    if (normalizedLicenseNumber === null) {
-        res.status(400).json({ error: '薬局開設許可番号が不正です' });
-        return;
-    }
-    if (normalizedLicenseNumber !== undefined) {
-      updates.licenseNumber = normalizedLicenseNumber;
+    const licenseNumberError = assignOptionalTrimmedUpdate(
+      updates,
+      'licenseNumber',
+      licenseNumber,
+      50,
+      '薬局開設許可番号が不正です',
+    );
+    if (licenseNumberError) {
+      sendBadRequest(res, licenseNumberError);
+      return;
     }
 
     if (testAccountPassword !== undefined) {
       if (!currentAccount.isTestAccount) {
-        res.status(400).json({ error: 'テストアカウントではないため表示用パスワードは設定できません' });
+        sendBadRequest(res, 'テストアカウントではないため表示用パスワードは設定できません');
         return;
       }
       if (typeof testAccountPassword !== 'string') {
-        res.status(400).json({ error: 'テストアカウントの表示用パスワードが不正です' });
+        sendBadRequest(res, 'テストアカウントの表示用パスワードが不正です');
         return;
       }
       const normalizedTestAccountPassword = testAccountPassword.trim();
       if (normalizedTestAccountPassword.length === 0 || normalizedTestAccountPassword.length > 100) {
-        res.status(400).json({ error: 'テストアカウントの表示用パスワードは1〜100文字で入力してください' });
+        sendBadRequest(res, 'テストアカウントの表示用パスワードは1〜100文字で入力してください');
         return;
       }
       updates.testAccountPassword = normalizedTestAccountPassword;
@@ -261,7 +286,7 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
 
     if (matchingAutoNotifyEnabled !== undefined) {
       if (typeof matchingAutoNotifyEnabled !== 'boolean') {
-        res.status(400).json({ error: '通知設定の値が不正です' });
+        sendBadRequest(res, '通知設定の値が不正です');
         return;
       }
       updates.matchingAutoNotifyEnabled = matchingAutoNotifyEnabled;
@@ -283,23 +308,23 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     ]);
 
     if (existingEmailRows.length > 0 && existingEmailRows[0].id !== req.user!.id) {
-      res.status(409).json({ error: 'このメールアドレスは既に登録されています' });
+      sendConflict(res, 'このメールアドレスは既に登録されています');
       return;
     }
 
     if (existingLicenseRows.length > 0 && existingLicenseRows[0].id !== req.user!.id) {
-      res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
+      sendConflict(res, 'この薬局開設許可番号は既に登録されています');
       return;
     }
 
     if (newPassword !== undefined && newPassword !== '') {
       if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 100) {
-        res.status(400).json({ error: '新しいパスワードは8〜100文字で入力してください' });
+        sendBadRequest(res, '新しいパスワードは8〜100文字で入力してください');
         return;
       }
 
       if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
-        res.status(400).json({ error: '現在のパスワードを入力してください' });
+        sendBadRequest(res, '現在のパスワードを入力してください');
         return;
       }
 
@@ -314,14 +339,11 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
 
       const valid = await verifyPassword(currentPassword, passwordRow.passwordHash);
       if (!valid) {
-        res.status(400).json({ error: '現在のパスワードが正しくありません' });
+        sendBadRequest(res, '現在のパスワードが正しくありません');
         return;
       }
 
       updates.passwordHash = await hashPassword(newPassword);
-      if (currentAccount.isTestAccount) {
-        updates.testAccountPassword = newPassword;
-      }
     }
 
     if (currentAccount.isTestAccount) {
@@ -329,7 +351,7 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
         ? updates.testAccountPassword
         : currentAccount.testAccountPassword;
       if (typeof nextTestAccountPassword !== 'string' || nextTestAccountPassword.trim().length === 0) {
-        res.status(400).json({ error: 'テストアカウントには表示用パスワードの設定が必要です' });
+        sendBadRequest(res, 'テストアカウントには表示用パスワードの設定が必要です');
         return;
       }
     }
@@ -356,23 +378,7 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
 
     // 更新行数 0 = 楽観的ロック競合
     if (updateResult.length === 0) {
-      // 最新データを取得して 409 レスポンスに含める
-      const latestAccount = await selectFirst(db.select({
-        id: pharmacies.id,
-        email: pharmacies.email,
-        name: pharmacies.name,
-        postalCode: pharmacies.postalCode,
-        address: pharmacies.address,
-        phone: pharmacies.phone,
-        fax: pharmacies.fax,
-        licenseNumber: pharmacies.licenseNumber,
-        prefecture: pharmacies.prefecture,
-        matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled,
-        version: pharmacies.version,
-      })
-        .from(pharmacies)
-        .where(eq(pharmacies.id, req.user!.id))
-        .limit(1));
+      const latestAccount = await loadLatestAccountConflictData(req.user!.id);
 
       res.status(409).json({
         error: '他のデバイスまたはタブで更新されています。最新データを確認してください',
@@ -448,7 +454,7 @@ router.delete('/', requireLogin, accountDeletionLimiter, async (req: AuthRequest
       ? req.body.currentPassword
       : '';
     if (!currentPassword) {
-      res.status(400).json({ error: '退会には現在のパスワードが必要です' });
+      sendBadRequest(res, '退会には現在のパスワードが必要です');
       return;
     }
 
@@ -464,7 +470,7 @@ router.delete('/', requireLogin, accountDeletionLimiter, async (req: AuthRequest
 
     const valid = await verifyPassword(currentPassword, passwordRow.passwordHash);
     if (!valid) {
-      res.status(400).json({ error: '現在のパスワードが正しくありません' });
+      sendBadRequest(res, '現在のパスワードが正しくありません');
       return;
     }
 

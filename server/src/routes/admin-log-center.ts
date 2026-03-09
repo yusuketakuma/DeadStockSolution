@@ -34,6 +34,35 @@ function parseLogLevel(raw: unknown): LogCenterQuery['level'] | null | undefined
   return normalized;
 }
 
+function parseLogDateRange(query: AuthRequest['query']): { range?: Pick<LogCenterQuery, 'from' | 'to'>; error?: string } {
+  if (!query.from && !query.to) {
+    return {};
+  }
+
+  const fromDate = query.from ? parseTimestamp(query.from) : null;
+  const toDate = query.to ? parseTimestamp(query.to) : null;
+
+  if (query.from && fromDate === null) {
+    return { error: 'from パラメータが不正な日時形式です' };
+  }
+  if (query.to && toDate === null) {
+    return { error: 'to パラメータが不正な日時形式です' };
+  }
+  if (fromDate && toDate && fromDate > toDate) {
+    return { error: 'from は to 以前の日時を指定してください' };
+  }
+  if (fromDate && toDate && toDate.getTime() - fromDate.getTime() > MAX_SPAN_MS) {
+    return { error: '指定できる期間は最大90日です' };
+  }
+
+  return {
+    range: {
+      from: fromDate?.toISOString(),
+      to: toDate?.toISOString(),
+    },
+  };
+}
+
 // GET /api/admin/log-center
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
@@ -62,34 +91,16 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       const pid = parsePositiveInt(req.query.pharmacyId);
       if (pid) query.pharmacyId = pid;
     }
-    if (req.query.from || req.query.to) {
-      const fromDate = req.query.from ? parseTimestamp(req.query.from) : null;
-      const toDate = req.query.to ? parseTimestamp(req.query.to) : null;
-
-      // ISO 8601 形式チェック
-      if (req.query.from && fromDate === null) {
-        res.status(400).json({ error: 'from パラメータが不正な日時形式です' });
-        return;
-      }
-      if (req.query.to && toDate === null) {
-        res.status(400).json({ error: 'to パラメータが不正な日時形式です' });
-        return;
-      }
-
-      // from ≤ to の検証
-      if (fromDate && toDate && fromDate > toDate) {
-        res.status(400).json({ error: 'from は to 以前の日時を指定してください' });
-        return;
-      }
-
-      // 最大スパン 90日の検証
-      if (fromDate && toDate && toDate.getTime() - fromDate.getTime() > MAX_SPAN_MS) {
-        res.status(400).json({ error: '指定できる期間は最大90日です' });
-        return;
-      }
-
-      if (fromDate) query.from = fromDate.toISOString();
-      if (toDate) query.to = toDate.toISOString();
+    const { range, error } = parseLogDateRange(req.query);
+    if (error) {
+      res.status(400).json({ error });
+      return;
+    }
+    if (range?.from) {
+      query.from = range.from;
+    }
+    if (range?.to) {
+      query.to = range.to;
     }
 
     const result = await queryLogs(query);

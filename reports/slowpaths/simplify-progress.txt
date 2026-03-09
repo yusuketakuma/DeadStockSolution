@@ -1,12 +1,12 @@
 phase=completed
-timestamp=2026-03-06T01:07:22Z
+timestamp=2026-03-08T22:32:53Z
 agent_mode=fallback
-run_processed=4
-run_max=4
+run_processed=2
+run_max=2
 total_targets=30
-total_processed=30
+total_processed=38
 total_remaining=0
 current_rank=30
 current_source=static-heuristic
-current_target=server/src/routes/exchange-proposals.ts
-current_reason=loc=520, loops=1, awaitInLoop=0, sql=10
+current_target=server/src/routes/drug-master-sync.ts
+current_reason=loc=539, loops=1, awaitInLoop=1, sql=1

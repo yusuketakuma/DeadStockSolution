@@ -296,6 +296,53 @@ export function invalidateAdminRiskSnapshotCache(): void {
   adminRiskSnapshotCache = null;
 }
 
+function getCachedUserRiskDetail(pharmacyId: number): PharmacyRiskDetail | null {
+  const cached = userRiskCache.get(pharmacyId);
+  if (!cached || cached.expiresAt <= Date.now()) {
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedUserRiskDetail(pharmacyId: number, value: PharmacyRiskDetail): PharmacyRiskDetail {
+  userRiskCache.set(pharmacyId, { expiresAt: Date.now() + USER_RISK_CACHE_TTL_MS, value });
+  return value;
+}
+
+async function loadPharmacyOrThrow(pharmacyId: number) {
+  const [pharmacy] = await db.select({
+    id: pharmacies.id,
+    name: pharmacies.name,
+  })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, pharmacyId))
+    .limit(1);
+
+  if (!pharmacy) {
+    throw ApiError.notFound('薬局が見つかりません');
+  }
+
+  return pharmacy;
+}
+
+async function loadAvailableRiskRows(pharmacyId: number): Promise<RiskRow[]> {
+  return db.select({
+    id: deadStockItems.id,
+    pharmacyId: deadStockItems.pharmacyId,
+    drugName: deadStockItems.drugName,
+    quantity: deadStockItems.quantity,
+    unit: deadStockItems.unit,
+    yakkaTotal: deadStockItems.yakkaTotal,
+    expirationDate: deadStockItems.expirationDate,
+    expirationDateIso: deadStockItems.expirationDateIso,
+  })
+    .from(deadStockItems)
+    .where(and(
+      eq(deadStockItems.pharmacyId, pharmacyId),
+      eq(deadStockItems.isAvailable, true),
+    ));
+}
+
 async function loadAdminRiskSnapshot(forceRefresh: boolean = false): Promise<AdminRiskSnapshot> {
   const now = Date.now();
   if (!forceRefresh && adminRiskSnapshotCache && adminRiskSnapshotCache.expiresAt > now) {
@@ -363,38 +410,13 @@ async function loadAdminRiskSnapshot(forceRefresh: boolean = false): Promise<Adm
 }
 
 export async function getPharmacyRiskDetail(pharmacyId: number): Promise<PharmacyRiskDetail> {
-  const cached = userRiskCache.get(pharmacyId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
+  const cached = getCachedUserRiskDetail(pharmacyId);
+  if (cached) {
+    return cached;
   }
 
-  const [pharmacy] = await db.select({
-    id: pharmacies.id,
-    name: pharmacies.name,
-  })
-    .from(pharmacies)
-    .where(eq(pharmacies.id, pharmacyId))
-    .limit(1);
-
-  if (!pharmacy) {
-    throw ApiError.notFound('薬局が見つかりません');
-  }
-
-  const rows = await db.select({
-    id: deadStockItems.id,
-    pharmacyId: deadStockItems.pharmacyId,
-    drugName: deadStockItems.drugName,
-    quantity: deadStockItems.quantity,
-    unit: deadStockItems.unit,
-    yakkaTotal: deadStockItems.yakkaTotal,
-    expirationDate: deadStockItems.expirationDate,
-    expirationDateIso: deadStockItems.expirationDateIso,
-  })
-    .from(deadStockItems)
-    .where(and(
-      eq(deadStockItems.pharmacyId, pharmacyId),
-      eq(deadStockItems.isAvailable, true),
-    ));
+  const pharmacy = await loadPharmacyOrThrow(pharmacyId);
+  const rows = await loadAvailableRiskRows(pharmacyId);
 
   const todayUtc = getTodayUtc();
   const { summary, topRiskItems } = aggregatePharmacyRisk(rows, pharmacy.id, pharmacy.name, todayUtc);
@@ -408,9 +430,7 @@ export async function getPharmacyRiskDetail(pharmacyId: number): Promise<Pharmac
     computedAt: new Date().toISOString(),
   };
 
-  userRiskCache.set(pharmacyId, { expiresAt: Date.now() + USER_RISK_CACHE_TTL_MS, value: result });
-
-  return result;
+  return setCachedUserRiskDetail(pharmacyId, result);
 }
 
 export async function getAdminRiskOverview(): Promise<AdminRiskOverview> {

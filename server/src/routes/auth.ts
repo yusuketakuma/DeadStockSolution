@@ -381,16 +381,18 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
     const cacheControlValue = getCacheControlValue(includePassword);
 
     // キャッシュが有効ならDBアクセスをスキップ
-    if (isCacheValid(testPharmacyCache)) {
+    if (!includePassword && isCacheValid(testPharmacyCache)) {
       sendTestPharmacyResponse(res, testPharmacyCache!.rows, includePassword, cacheControlValue);
       return;
     }
 
-    const rows = await loadTestPharmacyRows(res, isTestAccountColumnAvailable, setIsTestAccountColumnAvailable);
+    const rows = await loadTestPharmacyRows(res, setIsTestAccountColumnAvailable, includePassword);
     if (!rows) {
       return;
     }
-    setTestPharmacyCache({ expiresAt: Date.now() + TEST_PHARMACY_CACHE_TTL_MS, rows });
+    if (!includePassword) {
+      setTestPharmacyCache({ expiresAt: Date.now() + TEST_PHARMACY_CACHE_TTL_MS, rows });
+    }
 
     sendTestPharmacyResponse(res, rows, includePassword, cacheControlValue);
   } catch (err) {

@@ -16,9 +16,13 @@ function formatQuantity(value: number): string {
   return String(rounded);
 }
 
+function normalizePackageText(value: string): string {
+  return value.normalize('NFKC').replace(/\s+/g, '');
+}
+
 function normalizeUnit(raw: string | null): string | null {
   if (!raw) return null;
-  const normalized = raw.normalize('NFKC').replace(/\s+/g, '');
+  const normalized = normalizePackageText(raw);
   if (!normalized) return null;
 
   if (/^(cap|capsule|cp|カプセル)$/i.test(normalized)) return 'カプセル';

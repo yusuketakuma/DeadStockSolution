@@ -1,0 +1,87 @@
+
+> build:client
+> npm run build --workspace=client
+
+
+> client@0.0.9 build
+> tsc -b && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 1000 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                         1.33 kB │ gzip:   0.62 kB
+dist/assets/ProposalPrintPage-CcZ3IivF.css              1.80 kB │ gzip:   0.62 kB
+dist/assets/index-DV7-UJc7.css                        260.13 kB │ gzip:  37.39 kB
+dist/assets/vendor-sentry-BXZD6F8O.js                   0.04 kB │ gzip:   0.06 kB
+dist/assets/vendor-forms-BXZD6F8O.js                    0.04 kB │ gzip:   0.06 kB
+dist/assets/AppTable-eD7CSybG.js                        0.08 kB │ gzip:   0.09 kB
+dist/assets/AppControl-k0Cs6446.js                      0.20 kB │ gzip:   0.17 kB
+dist/assets/PageShell-DIX7JUho.js                       0.32 kB │ gzip:   0.19 kB
+dist/assets/ErrorRetryAlert-C_YV4NB1.js                 0.37 kB │ gzip:   0.30 kB
+dist/assets/AppKpiCard-DtNIDixk.js                      0.43 kB │ gzip:   0.27 kB
+dist/assets/AppDataPanel-CDTkNWtF.js                    0.44 kB │ gzip:   0.27 kB
+dist/assets/ConfirmActionModal-BqV-Xu_2.js              0.58 kB │ gzip:   0.40 kB
+dist/assets/AppEmptyState-9Yr0-ZeM.js                   0.58 kB │ gzip:   0.34 kB
+dist/assets/AppDataTable-BQnJ1XOi.js                    0.70 kB │ gzip:   0.45 kB
+dist/assets/BusinessStatusBadge-CS5AqCg_.js             0.73 kB │ gzip:   0.42 kB
+dist/assets/upload-job-utils-CivYFOJb.js                0.78 kB │ gzip:   0.56 kB
+dist/assets/useAsyncResource-UYeIib30.js                0.80 kB │ gzip:   0.48 kB
+dist/assets/proposal-status-Dz1Zbmlw.js                 0.86 kB │ gzip:   0.41 kB
+dist/assets/Pagination-Do7aXgyl.js                      0.91 kB │ gzip:   0.51 kB
+dist/assets/onboardingSteps-BU8cfWXH.js                 1.38 kB │ gzip:   0.71 kB
+dist/assets/usePaginatedList-D5zVAZ0i.js                1.41 kB │ gzip:   0.74 kB
+dist/assets/ProposalTimeline-_lkPf7Ra.js                2.00 kB │ gzip:   1.03 kB
+dist/assets/SearchInput-BNmR5Z27.js                     2.13 kB │ gzip:   1.15 kB
+dist/assets/ExchangeHistoryPage-DTctrnkG.js             2.42 kB │ gzip:   1.17 kB
+dist/assets/UsedMedicationListPage-CTpc9M9U.js          2.45 kB │ gzip:   1.22 kB
+dist/assets/useAutoSave-DW6F-JWQ.js                     2.69 kB │ gzip:   1.14 kB
+dist/assets/InventoryBrowsePage-py4OAA7i.js             3.69 kB │ gzip:   1.75 kB
+dist/assets/AdminRiskPage-CpLqchu6.js                   3.73 kB │ gzip:   1.55 kB
+dist/assets/AdminMonthlyReportsPage-BHw3zwMH.js         3.95 kB │ gzip:   1.67 kB
+dist/assets/AdminExchangesPage-cEwdaeox.js              4.42 kB │ gzip:   1.82 kB
+dist/assets/AdminOpenClawPage-DM6OI5CZ.js               5.33 kB │ gzip:   2.17 kB
+dist/assets/AdminPharmaciesPage-dmmSKu67.js             5.36 kB │ gzip:   1.98 kB
+dist/assets/StatisticsPage-CV5QHm1s.js                  5.38 kB │ gzip:   1.81 kB
+dist/assets/workbox-window.prod.es5-BIl4cyR9.js         5.76 kB │ gzip:   2.37 kB
+dist/assets/GroupListPage-BbVWhBiv.js                   6.02 kB │ gzip:   2.36 kB
+dist/assets/ProposalsPage-ByJhug66.js                   6.25 kB │ gzip:   2.63 kB
+dist/assets/DeadStockListPage-8nhe14gG.js               6.49 kB │ gzip:   2.69 kB
+dist/assets/ProposalPrintPage-D5A8vnFE.js               6.70 kB │ gzip:   2.01 kB
+dist/assets/GroupDetailPage-CfwohMO8.js                 7.92 kB │ gzip:   2.82 kB
+dist/assets/AlertListPage-B604WYr9.js                   8.08 kB │ gzip:   2.91 kB
+dist/assets/AdminUploadJobsPage-Dwr5mlz1.js             8.38 kB │ gzip:   3.21 kB
+dist/assets/PharmacyListPage-B5lZewPg.js                9.02 kB │ gzip:   3.30 kB
+dist/assets/MatchingPage-C5ujQVGa.js                   10.11 kB │ gzip:   3.83 kB
+dist/assets/AdminDashboardPage-Bw7Kekkv.js             10.81 kB │ gzip:   3.53 kB
+dist/assets/ProposalDetailPage-DLH8SSzt.js             12.52 kB │ gzip:   4.64 kB
+dist/assets/AdminLogCenterPage-DC9XR0B7.js             12.84 kB │ gzip:   3.76 kB
+dist/assets/DashboardPage-mZdTrNFx.js                  13.60 kB │ gzip:   4.55 kB
+dist/assets/AdminPharmacyEditPage-D4UOlhzM.js          14.30 kB │ gzip:   4.74 kB
+dist/assets/BusinessHoursSettings-Bsb_ZfIu.js          17.08 kB │ gzip:   4.56 kB
+dist/assets/AccountPage-BLKgCEwR.js                    17.75 kB │ gzip:   5.93 kB
+dist/assets/UploadPage-CfRFiSK1.js                     24.36 kB │ gzip:   7.86 kB
+dist/assets/AdminDrugMasterPage-D9IaGg_z.js            26.35 kB │ gzip:   7.07 kB
+dist/assets/index-CxRg8RKO.js                          67.28 kB │ gzip:  21.53 kB
+dist/assets/vendor-bootstrap-BuXo5Fi7.js               90.46 kB │ gzip:  30.72 kB
+dist/assets/vendor-react-DuzTfs7Z.js                  164.22 kB │ gzip:  53.92 kB
+dist/assets/CameraDeadStockRegisterPanel-C0goGpDZ.js  432.31 kB │ gzip: 115.62 kB
+✓ built in 1.26s
+
+PWA v1.2.0
+Building src/sw.ts service worker ("es" format)...
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 77 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/sw.mjs  24.54 kB │ gzip: 8.10 kB
+✓ built in 54ms
+
+PWA v1.2.0
+mode      injectManifest
+format:   es
+precache  66 entries (1273.34 KiB)
+files generated
+  dist/sw.js

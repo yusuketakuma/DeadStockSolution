@@ -13,8 +13,7 @@ import InlineLoader from '../../components/ui/InlineLoader';
 import AppModalShell from '../../components/ui/AppModalShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa, formatYen } from '../../utils/formatters';
-import { proposalStatusLabel } from '../../utils/proposal-status';
-import type { ProposalTimelineEvent } from '../../utils/proposal-timeline';
+import type { EnrichedProposalTimelineEvent } from '../../types/timeline';
 import ProposalTimeline from '../../components/timeline/ProposalTimeline';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
@@ -59,7 +58,7 @@ export default function AdminExchangesPage() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [comments, setComments] = useState<ProposalComment[]>([]);
   const [commentsError, setCommentsError] = useState('');
-  const [timeline, setTimeline] = useState<ProposalTimelineEvent[]>([]);
+  const [timeline, setTimeline] = useState<EnrichedProposalTimelineEvent[]>([]);
   const [timelineError, setTimelineError] = useState('');
 
   const openComments = async (proposalId: number) => {
@@ -72,7 +71,7 @@ export default function AdminExchangesPage() {
     setTimelineError('');
     const [commentResult, timelineResult] = await Promise.allSettled([
       api.get<{ data: ProposalComment[] }>(`/admin/exchanges/${proposalId}/comments`),
-      api.get<{ data: ProposalTimelineEvent[] }>(`/admin/exchanges/${proposalId}/timeline`),
+      api.get<{ data: EnrichedProposalTimelineEvent[] }>(`/admin/exchanges/${proposalId}/timeline`),
     ]);
 
     if (commentResult.status === 'fulfilled') {
@@ -185,9 +184,7 @@ export default function AdminExchangesPage() {
               {timelineError && <AppAlert variant="warning" className="small py-2">{timelineError}</AppAlert>}
               <ProposalTimeline
                 events={timeline}
-                statusLabelFormatter={proposalStatusLabel}
-                filterAriaLabel="管理者向け進行履歴フィルタ"
-                emptyMessage="履歴はありません。"
+                currentPharmacyId={0}
               />
             </div>
 

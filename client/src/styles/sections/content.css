@@ -142,6 +142,13 @@
 @media (max-width: 991.98px) {
   .dl-kpi-tile {
     padding: 0.5rem 0.3rem;
+    overflow: hidden;
+    word-break: break-word;
+  }
+
+  .dl-kpi-tile .badge {
+    white-space: normal;
+    word-break: break-word;
   }
 
   .dl-kpi-value {

@@ -84,6 +84,27 @@ function normalizeDetailResponse(payload: UploadJobRow | UploadJobDetailResponse
   return payload;
 }
 
+function buildUploadJobsParams(input: {
+  page: number;
+  statusFilter: JobStatusFilter;
+  uploadTypeFilter: UploadTypeFilter;
+  keyword: string;
+}): string {
+  const params = new URLSearchParams({
+    page: String(input.page),
+    limit: '30',
+  });
+  if (input.statusFilter !== 'all') params.set('status', input.statusFilter);
+  if (input.uploadTypeFilter !== 'all') params.set('uploadType', input.uploadTypeFilter);
+  if (input.keyword) params.set('keyword', input.keyword);
+  return params.toString();
+}
+
+function resolveUploadJobActionMessage(action: 'retry' | 'cancel', message?: string): string {
+  if (message) return message;
+  return action === 'retry' ? 'ジョブを再実行しました' : 'ジョブをキャンセルしました';
+}
+
 export default function AdminUploadJobsPage() {
   const [statusFilter, setStatusFilter] = useState<JobStatusFilter>('all');
   const [uploadTypeFilter, setUploadTypeFilter] = useState<UploadTypeFilter>('all');
@@ -99,14 +120,13 @@ export default function AdminUploadJobsPage() {
   const normalizedKeyword = useMemo(() => keyword.trim(), [keyword]);
 
   const fetchJobs = useCallback((targetPage: number, signal?: AbortSignal) => {
-    const params = new URLSearchParams({
-      page: String(targetPage),
-      limit: '30',
+    const params = buildUploadJobsParams({
+      page: targetPage,
+      statusFilter,
+      uploadTypeFilter,
+      keyword: normalizedKeyword,
     });
-    if (statusFilter !== 'all') params.set('status', statusFilter);
-    if (uploadTypeFilter !== 'all') params.set('uploadType', uploadTypeFilter);
-    if (normalizedKeyword) params.set('keyword', normalizedKeyword);
-    return api.get<UploadJobsResponse>(`/admin/upload-jobs?${params.toString()}`, { signal });
+    return api.get<UploadJobsResponse>(`/admin/upload-jobs?${params}`, { signal });
   }, [normalizedKeyword, statusFilter, uploadTypeFilter]);
 
   const {
@@ -176,7 +196,7 @@ export default function AdminUploadJobsPage() {
       const result = action === 'cancel'
         ? await api.patch<{ message?: string }>(`/admin/upload-jobs/${jobId}/cancel`)
         : await api.post<{ message?: string }>(`/admin/upload-jobs/${jobId}/retry`);
-      setMessage(result.message ?? (action === 'retry' ? 'ジョブを再実行しました' : 'ジョブをキャンセルしました'));
+      setMessage(resolveUploadJobActionMessage(action, result.message));
       await Promise.all([
         fetchPage(page),
         selectedJobId === jobId ? fetchJobDetail(jobId) : Promise.resolve(),

@@ -38,6 +38,26 @@ let checkRunning = false;
 let lastAlertAtMs = 0;
 let lastAlertFingerprint = '';
 
+function clearSchedulerHandles(): void {
+  if (schedulerTimer) {
+    clearTimeout(schedulerTimer);
+    schedulerTimer = null;
+  }
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+  }
+}
+
+function scheduleInitialCheck(delayMs: number): void {
+  schedulerTimer = setTimeout(() => {
+    schedulerTimer = null;
+    if (!schedulerActive) return;
+    void runScheduledCheck();
+  }, delayMs);
+  schedulerTimer.unref();
+}
+
 function buildAlertFingerprint(snapshot: MonitoringKpiSnapshot): string {
   return JSON.stringify(snapshot.breaches);
 }
@@ -119,7 +139,22 @@ function buildMonitoringAlertEnv(): NodeJS.ProcessEnv {
   };
 }
 
+const SAFE_CLI_PATH_PATTERN = /^[a-zA-Z0-9/_.-]+$/;
+
+function isValidCliPath(cliPath: string): boolean {
+  if (cliPath.length === 0 || cliPath.length > 256) return false;
+  if (!SAFE_CLI_PATH_PATTERN.test(cliPath)) return false;
+  if (cliPath.includes('..')) return false;
+  return true;
+}
+
 async function sendAlertMessage(config: MonitoringKpiAlertConfig, snapshot: MonitoringKpiSnapshot): Promise<boolean> {
+  if (!isValidCliPath(config.openclawCliPath)) {
+    logger.error('Monitoring KPI alert: invalid openclawCliPath — refusing to execute', {
+      openclawCliPath: config.openclawCliPath.slice(0, 64),
+    });
+    return false;
+  }
   try {
     const message = buildAlertMessage(snapshot);
     await execFileAsync(config.openclawCliPath, [
@@ -201,21 +236,8 @@ async function runScheduledCheck(): Promise<void> {
 
 function scheduleWithTimeoutThenInterval(intervalMs: number): void {
   if (!schedulerActive) return;
-
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-
-  schedulerTimer = setTimeout(() => {
-    schedulerTimer = null;
-    void runScheduledCheck();
-  }, 1500);
-  schedulerTimer.unref();
+  clearSchedulerHandles();
+  scheduleInitialCheck(1500);
 
   schedulerInterval = setInterval(() => {
     if (!schedulerActive) return;
@@ -226,22 +248,8 @@ function scheduleWithTimeoutThenInterval(intervalMs: number): void {
 
 function scheduleWithImmediateLoop(intervalMs: number): void {
   if (!schedulerActive) return;
-
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
-
-  schedulerTimer = setTimeout(() => {
-    schedulerTimer = null;
-    if (!schedulerActive) return;
-    void runScheduledCheck();
-  }, 1500);
-  schedulerTimer.unref();
+  clearSchedulerHandles();
+  scheduleInitialCheck(1500);
 
   schedulerInterval = setInterval(() => {
     if (!schedulerActive) return;
@@ -287,15 +295,7 @@ export function startMonitoringKpiAlertScheduler(): void {
 export function stopMonitoringKpiAlertScheduler(): void {
   const wasActive = schedulerActive || schedulerTimer !== null || schedulerInterval !== null;
   schedulerActive = false;
-
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
+  clearSchedulerHandles();
 
   if (wasActive) {
     logger.info('Monitoring KPI alert: scheduler stopped');
@@ -307,13 +307,5 @@ export function resetMonitoringKpiAlertSchedulerForTests(): void {
   checkRunning = false;
   lastAlertAtMs = 0;
   lastAlertFingerprint = '';
-
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
+  clearSchedulerHandles();
 }

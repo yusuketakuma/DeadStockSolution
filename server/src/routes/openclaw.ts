@@ -65,6 +65,61 @@ function parseJsonObject(rawValue: string | null | undefined): Record<string, un
   }
 }
 
+function respondUnauthorizedWebhook(res: Response): void {
+  res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+}
+
+function buildOpenClawUpdatePayload(
+  status: OpenClawStatus,
+  threadId: string | null,
+  summary: string | null,
+  current: {
+    openclawThreadId: string | null;
+    openclawSummary: string | null;
+  },
+) {
+  return {
+    openclawStatus: status,
+    openclawThreadId: threadId ?? current.openclawThreadId,
+    openclawSummary: summary ?? current.openclawSummary,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function applyPharmacyVerificationCallback(params: {
+  current: {
+    pharmacyId: number;
+    requestText: string;
+  };
+  requestId: number;
+  summary: string | null;
+}): Promise<void> {
+  const requestContent = parseJsonObject(params.current.requestText);
+  if (!requestContent || !isVerificationRequestType(requestContent.type)) {
+    return;
+  }
+
+  const verificationData = parseJsonObject(params.summary);
+  if (!verificationData || typeof verificationData.approved !== 'boolean') {
+    logger.warn('Skipped pharmacy verification callback due to invalid summary payload', {
+      requestId: params.requestId,
+      pharmacyId: params.current.pharmacyId,
+      summaryProvided: Boolean(params.summary),
+    });
+    return;
+  }
+
+  const callbackResult = await processVerificationCallback({
+    pharmacyId: params.current.pharmacyId,
+    requestId: params.requestId,
+    approved: verificationData.approved,
+    reason: typeof verificationData.reason === 'string' ? verificationData.reason : '',
+  });
+  if (callbackResult.applied) {
+    invalidateAuthUserCache(params.current.pharmacyId);
+  }
+}
+
 router.post('/callback', callbackLimiter, async (req, res: Response) => {
   try {
     if (!isOpenClawWebhookConfigured()) {
@@ -81,7 +136,7 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
     });
 
     if (!isAuthorized) {
-      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+      respondUnauthorizedWebhook(res);
       return;
     }
 
@@ -89,7 +144,7 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       receivedSignature: signature,
       receivedTimestamp: timestamp,
     })) {
-      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+      respondUnauthorizedWebhook(res);
       return;
     }
 
@@ -141,18 +196,13 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       receivedTimestamp: timestamp,
     });
     if (!replayAccepted) {
-      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+      respondUnauthorizedWebhook(res);
       return;
     }
 
     try {
       await db.transaction(async (tx) => {
-        const updatePayload = {
-          openclawStatus: status,
-          openclawThreadId: threadId ?? current.openclawThreadId,
-          openclawSummary: summary ?? current.openclawSummary,
-          updatedAt: new Date().toISOString(),
-        };
+        const updatePayload = buildOpenClawUpdatePayload(status, threadId, summary, current);
 
         if (status !== 'completed') {
           await tx.update(userRequests)
@@ -199,27 +249,11 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
     // Process pharmacy verification callback if applicable
     if (status === 'completed') {
       try {
-        const requestContent = parseJsonObject(current.requestText);
-        if (requestContent && isVerificationRequestType(requestContent.type)) {
-          const verificationData = parseJsonObject(summary);
-          if (!verificationData || typeof verificationData.approved !== 'boolean') {
-            logger.warn('Skipped pharmacy verification callback due to invalid summary payload', {
-              requestId,
-              pharmacyId: current.pharmacyId,
-              summaryProvided: Boolean(summary),
-            });
-          } else {
-            const callbackResult = await processVerificationCallback({
-              pharmacyId: current.pharmacyId,
-              requestId,
-              approved: verificationData.approved,
-              reason: typeof verificationData.reason === 'string' ? verificationData.reason : '',
-            });
-            if (callbackResult.applied) {
-              invalidateAuthUserCache(current.pharmacyId);
-            }
-          }
-        }
+        await applyPharmacyVerificationCallback({
+          current,
+          requestId,
+          summary,
+        });
       } catch (verificationErr) {
         logger.error('Pharmacy verification callback processing failed', {
           requestId,

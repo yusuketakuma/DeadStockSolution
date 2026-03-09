@@ -87,6 +87,13 @@ function buildCursorFromEvent(event: TimelineSortable): TimelineCursor {
   return { timestamp: event.timestamp, id: event.id };
 }
 
+function filterEventsByCursor(events: TimelineEvent[], cursor: TimelineCursor | null): TimelineEvent[] {
+  if (!cursor) {
+    return events;
+  }
+  return events.filter((event) => compareTimelineOrder(event, cursor) > 0);
+}
+
 function buildNextCursor(events: TimelineEvent[], hasMore: boolean): string | null {
   if (!hasMore || events.length === 0) return null;
   const tail = events[events.length - 1];
@@ -165,9 +172,7 @@ export async function getTimeline(
   // timestamp 降順ソート
   enriched.sort(compareTimelineOrder);
 
-  const filteredForCursor = cursor
-    ? enriched.filter((event) => compareTimelineOrder(event, cursor) > 0)
-    : enriched;
+  const filteredForCursor = filterEventsByCursor(enriched, cursor);
   const total = enriched.length;
 
   const hasMore = filteredForCursor.length > limit;

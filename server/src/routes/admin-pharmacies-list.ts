@@ -19,6 +19,32 @@ import { sendPaginated, parseListPagination, handleAdminError } from './admin-ut
 
 const router = Router();
 
+function buildConnectorMetadata() {
+  return {
+    configured: isOpenClawConnectorConfigured(),
+    webhookConfigured: isOpenClawWebhookConfigured(),
+    implementationBranch: getOpenClawImplementationBranch(),
+  };
+}
+
+function mapExchangeHistoryRows(
+  rows: Array<{
+    id: number;
+    proposalId: number | null;
+    pharmacyAId: number;
+    pharmacyBId: number;
+    totalValue: string | null;
+    completedAt: string | null;
+  }>,
+  pharmacyMap: Map<number, string>,
+) {
+  return rows.map((row) => ({
+    ...row,
+    pharmacyAName: pharmacyMap.get(row.pharmacyAId) ?? '',
+    pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
+  }));
+}
+
 router.get('/pharmacies/options', async (_req: AuthRequest, res: Response) => {
   try {
     const rows = await db.select({
@@ -97,12 +123,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
     const pharmacyMap = new Map(pharmacyRows.map((row) => [row.id, row.name]));
     const [total] = await db.select({ count: rowCount }).from(exchangeHistory);
 
-    const mappedRows = rows.map((row) => ({
-      ...row,
-      pharmacyAName: pharmacyMap.get(row.pharmacyAId) ?? '',
-      pharmacyBName: pharmacyMap.get(row.pharmacyBId) ?? '',
-    }));
-    sendPaginated(res, mappedRows, page, limit, total.count);
+    sendPaginated(res, mapExchangeHistoryRows(rows, pharmacyMap), page, limit, total.count);
   } catch (err) {
     handleAdminError(err, 'Admin history error', '交換履歴の取得に失敗しました', res);
   }
@@ -162,11 +183,7 @@ router.get('/requests', async (req: AuthRequest, res: Response) => {
 
     const [total] = await db.select({ count: rowCount }).from(userRequests);
     sendPaginated(res, rows, page, limit, total.count, {
-      connector: {
-        configured: isOpenClawConnectorConfigured(),
-        webhookConfigured: isOpenClawWebhookConfigured(),
-        implementationBranch: getOpenClawImplementationBranch(),
-      },
+      connector: buildConnectorMetadata(),
     });
   } catch (err) {
     handleAdminError(err, 'Admin user requests list error', '要望一覧の取得に失敗しました', res);

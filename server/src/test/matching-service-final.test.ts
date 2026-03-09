@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     select: vi.fn(),
   },
   getActiveMatchingRuleProfile: vi.fn(),
+  fetchEquivalenceMap: vi.fn(),
   sortMatchCandidatesByPriority: vi.fn((candidates: unknown[]) => candidates),
   getBusinessHoursStatus: vi.fn(() => ({
     isOpen: true,
@@ -29,6 +30,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../config/database', () => ({
   db: mocks.db,
+}));
+
+vi.mock('../services/drug-equivalence-service', () => ({
+  fetchEquivalenceMap: mocks.fetchEquivalenceMap,
 }));
 
 vi.mock('../services/matching-rule-service', () => ({
@@ -65,6 +70,7 @@ const DEFAULT_PROFILE = { ...DEFAULT_MATCHING_SCORING_RULES };
 
 function setupDefaultProfile() {
   mocks.getActiveMatchingRuleProfile.mockResolvedValue(DEFAULT_PROFILE);
+  mocks.fetchEquivalenceMap.mockResolvedValue(new Map());
 }
 
 // Builder helpers

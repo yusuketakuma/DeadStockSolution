@@ -46,6 +46,44 @@ function getConfiguredSourceUrl(): string {
   return process.env.DRUG_MASTER_SOURCE_URL?.trim() || '';
 }
 
+function clearSchedulerHandle(handle: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null, clearer: typeof clearTimeout): null {
+  if (handle) {
+    clearer(handle);
+  }
+  return null;
+}
+
+function buildEmptySyncResult() {
+  return { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 };
+}
+
+function buildSingleSourceFetchOptions() {
+  return {
+    sourceKey: SOURCE_KEY_SINGLE,
+    retries: FETCH_RETRIES,
+    headers: DRUG_MASTER_HEADERS,
+  };
+}
+
+function getInitialDrugMasterRunDelay(): number {
+  return Math.min(60_000, CHECK_INTERVAL_MS);
+}
+
+function hasUnchangedDrugMasterContent(
+  updateCheck: { compareByContentHash?: boolean; previousContentHash?: string | null },
+  contentHash: string,
+): boolean {
+  return Boolean(
+    updateCheck.compareByContentHash
+    && updateCheck.previousContentHash
+    && updateCheck.previousContentHash === contentHash,
+  );
+}
+
+function describeConfiguredDrugMasterSource(sourceMode: SourceMode, sourceUrl: string): string {
+  return sourceMode === 'single' ? summarizeSourceUrl(sourceUrl) : 'MHLW portal auto-discovery';
+}
+
 
 function isOptimizedLoopEnabledForDrugMasterScheduler(): boolean {
   const localFlag = process.env[DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV];
@@ -143,7 +181,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
     logger.info('Drug master auto-sync: checking for updates', { source: summarizeSourceUrl(sourceUrl) });
 
     // 1. 更新チェック
-    const fetchOpts = { sourceKey: SOURCE_KEY_SINGLE, retries: FETCH_RETRIES, headers: DRUG_MASTER_HEADERS };
+    const fetchOpts = buildSingleSourceFetchOptions();
     const updateCheck = await checkForUpdates(sourceUrl, pinnedDispatcher, fetchOpts);
 
     if (!updateCheck.hasUpdate) {
@@ -158,11 +196,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
     const { buffer, contentType } = await downloadFile(sourceUrl, pinnedDispatcher, fetchOpts);
     const contentHash = sha256(buffer);
 
-    if (
-      updateCheck.compareByContentHash
-      && updateCheck.previousContentHash
-      && updateCheck.previousContentHash === contentHash
-    ) {
+    if (hasUnchangedDrugMasterContent(updateCheck, contentHash)) {
       logger.info('Drug master auto-sync: no updates detected by content-hash fallback');
       await persistSingleSourceState(sourceUrl, { ...updateCheck, contentHash }, false);
       return;
@@ -177,7 +211,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
 
       if (parsedRows.length === 0) {
         await completeSyncLog(syncLog.id, 'failed',
-          { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 },
+          buildEmptySyncResult(),
           'ダウンロードしたファイルから有効なデータが見つかりません');
         logger.warn('Drug master auto-sync: no valid data rows found in downloaded file');
         return;
@@ -201,7 +235,7 @@ async function runAutoSyncWithSource(sourceUrl: string): Promise<void> {
     } catch (syncErr) {
       const errorMsg = getErrorMessage(syncErr);
       await completeSyncLog(syncLog.id, 'failed',
-        { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 },
+        buildEmptySyncResult(),
         errorMsg);
       logger.error('Drug master auto-sync: sync failed', { error: errorMsg });
     }
@@ -224,15 +258,7 @@ function scheduleNextDrugMasterRun(delayMs: number, mode: 'initial' | 'scheduled
     return;
   }
 
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
-
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
+  clearDrugMasterSchedulerHandles();
 
   schedulerTimer = setTimeout(() => {
     schedulerTimer = null;
@@ -252,14 +278,7 @@ function startLegacyDrugMasterIntervalScheduler(): void {
     return;
   }
 
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
+  clearDrugMasterSchedulerHandles();
 
   schedulerTimer = setTimeout(() => {
     schedulerTimer = null;
@@ -267,7 +286,7 @@ function startLegacyDrugMasterIntervalScheduler(): void {
       return;
     }
     void runAutoSyncSafely('initial');
-  }, Math.min(60_000, CHECK_INTERVAL_MS));
+  }, getInitialDrugMasterRunDelay());
   schedulerTimer.unref();
 
   schedulerInterval = setInterval(() => {
@@ -280,14 +299,8 @@ function startLegacyDrugMasterIntervalScheduler(): void {
 }
 
 function clearDrugMasterSchedulerHandles(): void {
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
-  }
-  if (schedulerInterval) {
-    clearInterval(schedulerInterval);
-    schedulerInterval = null;
-  }
+  schedulerTimer = clearSchedulerHandle(schedulerTimer, clearTimeout);
+  schedulerInterval = clearSchedulerHandle(schedulerInterval, clearInterval);
 }
 
 /**
@@ -318,13 +331,13 @@ export function startDrugMasterScheduler(): void {
   logger.info('Drug master auto-sync: starting scheduler', {
     intervalHours: CHECK_INTERVAL_HOURS,
     sourceMode,
-    source: sourceMode === 'single' ? summarizeSourceUrl(sourceUrl) : 'MHLW portal auto-discovery',
+    source: describeConfiguredDrugMasterSource(sourceMode, sourceUrl),
     loopMode: optimizedLoopEnabled ? 'timeout-chain' : 'legacy-interval',
   });
 
   schedulerActive = true;
   if (optimizedLoopEnabled) {
-    scheduleNextDrugMasterRun(Math.min(60_000, CHECK_INTERVAL_MS), 'initial');
+    scheduleNextDrugMasterRun(getInitialDrugMasterRunDelay(), 'initial');
     return;
   }
   startLegacyDrugMasterIntervalScheduler();

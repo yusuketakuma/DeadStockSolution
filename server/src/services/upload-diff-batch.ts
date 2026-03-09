@@ -1,11 +1,8 @@
 import { and, eq, inArray, sql, type InferInsertModel } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, usedMedicationItems } from '../db/schema';
-import { buildValuesSql, processInBatches, toNullableDecimalString } from './upload-diff-utils';
+import { buildValuesSql, computeOptimalBatchSize, processInBatches, toNullableDecimalString } from './upload-diff-utils';
 import { type PreparedDeadStockDiffInput, type UsedMedicationDiffInput } from './upload-diff-builders';
-
-const DIFF_INSERT_BATCH_SIZE = 500;
-const DIFF_UPDATE_BATCH_SIZE = 250;
 
 type UploadDiffTx = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete' | 'execute'>;
 type DeadStockInsertRow = InferInsertModel<typeof deadStockItems>;
@@ -41,15 +38,45 @@ export interface UsedMedicationExistingRow {
 }
 
 export async function insertDeadStockInBatches(tx: UploadDiffTx, rows: DeadStockInsertRow[]): Promise<void> {
-  await processInBatches(rows, DIFF_INSERT_BATCH_SIZE, async (batch) => {
+  await processInBatches(rows, computeOptimalBatchSize(rows.length), async (batch) => {
     await tx.insert(deadStockItems).values(batch);
   });
 }
 
 export async function insertUsedMedicationInBatches(tx: UploadDiffTx, rows: UsedMedicationInsertRow[]): Promise<void> {
-  await processInBatches(rows, DIFF_INSERT_BATCH_SIZE, async (batch) => {
+  await processInBatches(rows, computeOptimalBatchSize(rows.length), async (batch) => {
     await tx.insert(usedMedicationItems).values(batch);
   });
+}
+
+function buildDeadStockUpdateRowsSql(batch: Array<{ current: DeadStockExistingRow; item: PreparedDeadStockDiffInput }>, uploadId: number) {
+  return buildValuesSql(batch, ({ current, item }) => sql`(
+    ${current.id},
+    ${uploadId},
+    ${item.drugMasterId ?? null},
+    ${item.drugMasterPackageId ?? null},
+    ${item.packageLabel ?? null},
+    ${item.quantity},
+    ${item.unit},
+    ${toNullableDecimalString(item.yakkaUnitPrice)},
+    ${toNullableDecimalString(item.yakkaTotal)},
+    ${item.expirationDate},
+    ${item.normalizedDate},
+    ${item.lotNumber}
+  )`);
+}
+
+function buildUsedMedicationUpdateRowsSql(batch: Array<{ current: UsedMedicationExistingRow; item: UsedMedicationDiffInput }>, uploadId: number) {
+  return buildValuesSql(batch, ({ current, item }) => sql`(
+    ${current.id},
+    ${uploadId},
+    ${item.drugMasterId ?? null},
+    ${item.drugMasterPackageId ?? null},
+    ${item.packageLabel ?? null},
+    ${item.monthlyUsage},
+    ${item.unit},
+    ${toNullableDecimalString(item.yakkaUnitPrice)}
+  )`);
 }
 
 export async function updateDeadStockInBatches(
@@ -58,21 +85,8 @@ export async function updateDeadStockInBatches(
   uploadId: number,
   updatedPairs: Array<{ current: DeadStockExistingRow; item: PreparedDeadStockDiffInput }>,
 ): Promise<void> {
-  await processInBatches(updatedPairs, DIFF_UPDATE_BATCH_SIZE, async (batch) => {
-    const updateRowsSql = buildValuesSql(batch, ({ current, item }) => sql`(
-      ${current.id},
-      ${uploadId},
-      ${item.drugMasterId ?? null},
-      ${item.drugMasterPackageId ?? null},
-      ${item.packageLabel ?? null},
-      ${item.quantity},
-      ${item.unit},
-      ${toNullableDecimalString(item.yakkaUnitPrice)},
-      ${toNullableDecimalString(item.yakkaTotal)},
-      ${item.expirationDate},
-      ${item.normalizedDate},
-      ${item.lotNumber}
-    )`);
+  await processInBatches(updatedPairs, Math.floor(computeOptimalBatchSize(updatedPairs.length) / 2), async (batch) => {
+    const updateRowsSql = buildDeadStockUpdateRowsSql(batch, uploadId);
 
     await tx.execute(sql`
       WITH updates (
@@ -118,17 +132,8 @@ export async function updateUsedMedicationInBatches(
   uploadId: number,
   updatedPairs: Array<{ current: UsedMedicationExistingRow; item: UsedMedicationDiffInput }>,
 ): Promise<void> {
-  await processInBatches(updatedPairs, DIFF_UPDATE_BATCH_SIZE, async (batch) => {
-    const updateRowsSql = buildValuesSql(batch, ({ current, item }) => sql`(
-      ${current.id},
-      ${uploadId},
-      ${item.drugMasterId ?? null},
-      ${item.drugMasterPackageId ?? null},
-      ${item.packageLabel ?? null},
-      ${item.monthlyUsage},
-      ${item.unit},
-      ${toNullableDecimalString(item.yakkaUnitPrice)}
-    )`);
+  await processInBatches(updatedPairs, Math.floor(computeOptimalBatchSize(updatedPairs.length) / 2), async (batch) => {
+    const updateRowsSql = buildUsedMedicationUpdateRowsSql(batch, uploadId);
 
     await tx.execute(sql`
       WITH updates (

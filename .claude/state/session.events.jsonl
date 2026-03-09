@@ -1,66 +1,8 @@
-{"type":"session.start","ts":"2026-03-06T03:02:47Z","state":"initialized","data":{"cc_session_id":"39d3b9a3-248f-4097-b0b6-61eb1c02a0d4"}}
-{"id":"event-000001","type":"session.resume","ts":"2026-03-06T03:02:47Z","state":"initialized"}
-{"id":"event-000002","type":"tool.bash","ts":"2026-03-06T03:03:21Z","state":"initialized","data":{"command":"git status --short"}}
-{"id":"event-000003","type":"tool.bash","ts":"2026-03-06T03:03:21Z","state":"initialized","data":{"command":"git branch --show-current"}}
-{"id":"event-000004","type":"tool.bash","ts":"2026-03-06T03:03:22Z","state":"initialized","data":{"command":"cat VERSION 2>/dev/null || jq -r '.version' package.json 2>/dev/null || echo "NO_VERSION""}}
-{"id":"event-000005","type":"tool.bash","ts":"2026-03-06T03:03:23Z","state":"initialized","data":{"command":"git log --oneline -10"}}
-{"id":"event-000006","type":"tool.bash","ts":"2026-03-06T03:03:24Z","state":"initialized","data":{"command":"command -v gh &>/dev/null && echo "gh: available" || echo "gh: not available""}}
-{"id":"event-000007","type":"tool.bash","ts":"2026-03-06T03:03:28Z","state":"initialized","data":{"command":"jq -r '.version // "null"' /Users/yusuke/DeadStockSolution/package.json"}}
-{"id":"event-000008","type":"session.stop","ts":"2026-03-06T03:03:44Z","state":"stopped"}
-{"id":"event-000009","type":"tool.bash","ts":"2026-03-06T03:06:08Z","state":"stopped","data":{"command":"git log v0.0.7..HEAD --oneline 2>/dev/null || git log --oneline -20"}}
-{"id":"event-000010","type":"tool.bash","ts":"2026-03-06T03:06:08Z","state":"stopped","data":{"command":"git tag -l 'v0.0.*' | sort -V"}}
-{"id":"event-000011","type":"tool.bash","ts":"2026-03-06T03:06:10Z","state":"stopped","data":{"command":"gh run list --branch preview --limit 3 --json status,conclusion,headBranch 2>/dev/null || echo "CI check skipped""}}
-{"id":"event-000012","type":"tool.bash","ts":"2026-03-06T03:06:19Z","state":"stopped","data":{"command":"git log v0.0.8..HEAD --oneline"}}
-{"id":"event-000013","type":"tool.bash","ts":"2026-03-06T03:06:20Z","state":"stopped","data":{"command":"gh run list --branch preview --limit 2 --json conclusion,name,url,createdAt"}}
-{"id":"event-000014","type":"tool.bash","ts":"2026-03-06T03:06:24Z","state":"stopped","data":{"command":"gh run view 22746745194 --json jobs --jq '.jobs[] | select(.conclusion=="failure") | {name, conclusion}' 2>/dev/null | head -20"}}
-{"id":"event-000015","type":"tool.bash","ts":"2026-03-06T03:06:30Z","state":"stopped","data":{"command":"gh run view 22746745194 --log-failed 2>/dev/null | tail -40"}}
-{"id":"event-000016","type":"tool.bash","ts":"2026-03-06T03:06:37Z","state":"stopped","data":{"command":"gh run view 22746745194 --log-failed 2>/dev/null | grep -E '(FAIL|Error|AssertionError|expected|received|✗|×)' | head -20"}}
-{"id":"event-000017","type":"tool.edit","ts":"2026-03-06T03:07:42Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/CHANGELOG.md"}}
-{"id":"event-000018","type":"tool.edit","ts":"2026-03-06T03:07:47Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/CHANGELOG.md"}}
-{"id":"event-000019","type":"tool.bash","ts":"2026-03-06T03:07:52Z","state":"stopped","data":{"command":"git add CHANGELOG.md && git commit -m "$(cat <<'EOF'
-chore: release v0.0.9
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
-EOF
-)""}}
-{"id":"event-000020","type":"tool.bash","ts":"2026-03-06T03:07:56Z","state":"stopped","data":{"command":"git tag -a "v0.0.9" -m "Release v0.0.9""}}
-{"id":"event-000021","type":"tool.bash","ts":"2026-03-06T03:09:17Z","state":"stopped","data":{"command":"git log v0.0.8..HEAD --format="%H %s" | head -20"}}
-{"id":"event-000022","type":"tool.bash","ts":"2026-03-06T03:09:21Z","state":"stopped","data":{"command":"git diff v0.0.8..HEAD --stat | tail -20"}}
-{"id":"event-000023","type":"tool.bash","ts":"2026-03-06T03:09:22Z","state":"stopped","data":{"command":"git log v0.0.8..HEAD --format="%s" --no-merges | grep -v "^chore:" | sort"}}
-{"id":"event-000024","type":"tool.bash","ts":"2026-03-06T03:09:25Z","state":"stopped","data":{"command":"git diff v0.0.8..HEAD --stat | head -60"}}
-{"id":"event-000025","type":"tool.bash","ts":"2026-03-06T03:09:30Z","state":"stopped","data":{"command":"git diff v0.0.8..HEAD --stat | grep -E '\.(ts|tsx|css|html)' | grep -v '\.claude/' | grep -v '\.codex/' | grep -v 'node_modules' | grep -v 'tasks/'"}}
-{"id":"event-000026","type":"tool.bash","ts":"2026-03-06T03:09:33Z","state":"stopped","data":{"command":"git diff v0.0.8..HEAD --stat | tail -1"}}
-{"id":"event-000027","type":"tool.edit","ts":"2026-03-06T03:10:06Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/CHANGELOG.md"}}
-{"id":"event-000027","type":"tool.bash","ts":"2026-03-06T03:10:10Z","state":"stopped","data":{"command":"git add CHANGELOG.md && git commit --amend --no-edit"}}
-{"id":"event-000028","type":"tool.bash","ts":"2026-03-06T03:10:14Z","state":"stopped","data":{"command":"git tag -d v0.0.9 && git tag -a "v0.0.9" -m "Release v0.0.9""}}
-{"id":"event-000029","type":"tool.bash","ts":"2026-03-06T03:10:53Z","state":"stopped","data":{"command":"git push origin preview --tags"}}
-{"id":"event-000030","type":"tool.bash","ts":"2026-03-06T03:11:17Z","state":"stopped","data":{"command":"gh release create "v0.0.9" \
-  --title "v0.0.9 — カメラ登録・サインイン刷新・大規模リファクタリング" \
-  --notes "$(cat <<'EOF'
-## What's Changed
-
-**カメラによるデッドストック一括登録、サインインフロー刷新、サーバー大規模リファクタリングを含む大型アップデート（260ファイル、+14,695/-6,2"}}
-{"id":"event-000031","type":"tool.bash","ts":"2026-03-06T03:11:24Z","state":"stopped","data":{"command":"curl -s -X POST https://api.getmoshi.app/api/webhook \
-  -H "Content-Type: application/json" \
-  -d '{"token": "qGli1ov22jEY3PEtuI5qGXPJegjvRrFD", "title": "Done", "message": "v0.0.9 リリース完了 — カメラ登録・サイ"}}
-{"id":"event-000032","type":"tool.bash","ts":"2026-03-06T03:13:36Z","state":"stopped","data":{"command":"grep -r "0\.0\." --include="*.ts" --include="*.tsx" --include="*.json" -l /Users/yusuke/DeadStockSolution/client/src/ /Users/yusuke/DeadStockSolution/server/src/ 2>/dev/null | head -10"}}
-{"id":"event-000033","type":"tool.edit","ts":"2026-03-06T03:13:57Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/client/package.json"}}
-{"id":"event-000033","type":"tool.edit","ts":"2026-03-06T03:14:05Z","state":"stopped","data":{"file_path":"/Users/yusuke/DeadStockSolution/server/package.json"}}
-{"id":"event-000034","type":"tool.bash","ts":"2026-03-06T03:14:09Z","state":"stopped","data":{"command":"git add client/package.json server/package.json && git commit -m "$(cat <<'EOF'
-chore: bump version to 0.0.9
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
-EOF
-)""}}
-{"id":"event-000035","type":"tool.bash","ts":"2026-03-06T03:14:14Z","state":"stopped","data":{"command":"git push origin preview"}}
-{"id":"event-000036","type":"tool.bash","ts":"2026-03-06T03:21:55Z","state":"stopped","data":{"command":"git log main..preview --oneline | head -20"}}
-{"id":"event-000037","type":"tool.bash","ts":"2026-03-06T03:22:04Z","state":"stopped","data":{"command":"git stash && git checkout main && git merge preview --no-edit && git push origin main && git checkout preview && git stash pop"}}
-{"id":"event-000038","type":"tool.skill","ts":"2026-03-06T03:34:22Z","state":"stopped"}
-{"id":"event-000039","type":"tool.bash","ts":"2026-03-06T03:37:07Z","state":"stopped","data":{"command":"cat ~/.claude/settings.json 2>/dev/null | head -30"}}
-{"id":"event-000040","type":"tool.bash","ts":"2026-03-06T03:37:11Z","state":"stopped","data":{"command":"cat ~/.claude/settings.json 2>/dev/null"}}
-{"id":"event-000041","type":"tool.bash","ts":"2026-03-06T03:37:29Z","state":"stopped","data":{"command":"npx @_davideast/stitch-mcp --version 2>/dev/null || echo "not installed yet""}}
-{"id":"event-000042","type":"tool.bash","ts":"2026-03-06T03:37:37Z","state":"stopped","data":{"command":"npx @_davideast/stitch-mcp init --help 2>/dev/null | head -20"}}
-{"id":"event-000043","type":"tool.bash","ts":"2026-03-06T03:37:41Z","state":"stopped","data":{"command":"npx @_davideast/stitch-mcp init --client 2>&1 | head -20"}}
-{"id":"event-000044","type":"tool.bash","ts":"2026-03-06T03:37:58Z","state":"stopped","data":{"command":"ls ~/.stitch-mcp/ 2>/dev/null || echo "no stitch config dir""}}
-{"id":"event-000045","type":"tool.bash","ts":"2026-03-06T03:41:58Z","state":"stopped","data":{"command":"find ~ -maxdepth 3 -name "*stitch*" -not -path "*/node_modules/*" -not -path "*/.npm*" 2>/dev/null | head -20"}}
-{"id":"event-000046","type":"tool.bash","ts":"2026-03-06T03:42:04Z","state":"stopped","data":{"command":"claude mcp list 2>/dev/null | grep -i stitch || echo "stitch not found in MCP list""}}
+{"type":"session.start","ts":"2026-03-09T03:48:20Z","state":"initialized","data":{"cc_session_id":"550f8689-02cc-4c81-b3a9-3bb3c037b5ed"}}
+{"id":"event-000001","type":"session.resume","ts":"2026-03-09T03:48:20Z","state":"initialized"}
+{"id":"event-000002","type":"session.stop","ts":"2026-03-09T03:48:37Z","state":"stopped"}
+{"id":"event-000003","type":"tool.bash","ts":"2026-03-09T03:50:13Z","state":"stopped","data":{"command":"ls -la /Users/yusuke/.codex/"}}
+{"id":"event-000004","type":"tool.edit","ts":"2026-03-09T03:50:35Z","state":"stopped","data":{"file_path":"/Users/yusuke/.codex/config.toml"}}
+{"id":"event-000005","type":"tool.bash","ts":"2026-03-09T04:25:57Z","state":"stopped","data":{"command":"git diff --name-only --diff-filter=U"}}
+{"id":"event-000006","type":"tool.bash","ts":"2026-03-09T04:26:01Z","state":"stopped","data":{"command":"git diff --name-only --diff-filter=U | xargs git checkout preview -- "}}
+{"id":"event-000007","type":"tool.bash","ts":"2026-03-09T04:26:03Z","state":"stopped","data":{"command":"git diff --name-only --diff-filter=U"}}

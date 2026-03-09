@@ -33,3 +33,11 @@ server/src/routes/pharmacies.ts
 
 server/src/services/upload-confirm/upload-confirm-query-service.ts
 server/src/routes/exchange-comments.ts
+server/src/services/group-service.ts
+server/src/routes/admin-pharmacies-actions.ts
+server/src/routes/auth-helpers.ts
+client/src/hooks/useCamera.ts
+server/src/services/column-mapper.ts
+server/src/services/mhlw-multi-file-fetcher.ts
+server/src/routes/admin-pharmacies-detail-helpers.ts
+server/src/routes/drug-master-sync.ts

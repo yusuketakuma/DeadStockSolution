@@ -10,6 +10,22 @@ import AppField from '../components/ui/AppField';
 const PASSWORD_ALPHA_PATTERN = /[a-zA-Z]/;
 const PASSWORD_DIGIT_PATTERN = /\d/;
 
+function resolvePasswordValidationError(newPassword: string, confirmPassword: string): string | null {
+  if (newPassword !== confirmPassword) {
+    return 'パスワードが一致しません';
+  }
+  if (newPassword.length < 8) {
+    return 'パスワードは8文字以上で入力してください';
+  }
+  if (!PASSWORD_ALPHA_PATTERN.test(newPassword)) {
+    return 'パスワードにはアルファベットを含めてください';
+  }
+  if (!PASSWORD_DIGIT_PATTERN.test(newPassword)) {
+    return 'パスワードには数字を含めてください';
+  }
+  return null;
+}
+
 export default function PasswordResetPage() {
   const [searchParams] = useSearchParams();
   const tokenFromUrl = searchParams.get('token') || '';
@@ -49,20 +65,9 @@ export default function PasswordResetPage() {
     setError('');
     setSuccess('');
 
-    if (newPassword !== confirmPassword) {
-      setError('パスワードが一致しません');
-      return;
-    }
-    if (newPassword.length < 8) {
-      setError('パスワードは8文字以上で入力してください');
-      return;
-    }
-    if (!PASSWORD_ALPHA_PATTERN.test(newPassword)) {
-      setError('パスワードにはアルファベットを含めてください');
-      return;
-    }
-    if (!PASSWORD_DIGIT_PATTERN.test(newPassword)) {
-      setError('パスワードには数字を含めてください');
+    const validationError = resolvePasswordValidationError(newPassword, confirmPassword);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 

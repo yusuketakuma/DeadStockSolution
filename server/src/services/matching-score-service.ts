@@ -27,6 +27,10 @@ export interface MatchingScoringRules {
   diversityScoreMax: number;
   diversityItemFactor: number;
   favoriteBonus: number;
+  groupBonus: number;
+  nearExpiryDecayCurve: number;
+  successRateBonus: number;
+  maxCandidates: number;
 }
 
 export const DEFAULT_MATCHING_SCORING_RULES: MatchingScoringRules = {
@@ -44,6 +48,10 @@ export const DEFAULT_MATCHING_SCORING_RULES: MatchingScoringRules = {
   diversityScoreMax: 10,
   diversityItemFactor: 1.5,
   favoriteBonus: 15,
+  groupBonus: 10,
+  nearExpiryDecayCurve: 0,
+  successRateBonus: 0,
+  maxCandidates: 30,
 };
 
 export interface UsedMedRow {
@@ -66,6 +74,14 @@ export interface UsedMedIndex {
 
 export interface DrugMatchResult {
   score: number;
+}
+interface CandidateScoreContext {
+  valueScore: number;
+  balanceScore: number;
+  distanceScore: number;
+  nearExpiryDays: number;
+  effectiveReferenceDate: Date;
+  isGroupMember: boolean;
 }
 
 export interface PreparedDrugName {
@@ -293,6 +309,60 @@ export function findBestDrugMatch(
   return result;
 }
 
+const EQUIVALENCE_MATCH_SCORE = 0.95;
+
+/**
+ * 同等性マップを考慮した薬品名マッチング。
+ * equivalenceMap: 薬品名 → 同等薬品名のリスト (bidirectional)
+ * 通常の文字列類似度に加え、同等性登録済みペアには高スコアを付与。
+ */
+export function findBestDrugMatchWithEquivalences(
+  drugName: string | PreparedDrugName,
+  index: UsedMedIndex,
+  cache: Map<string, DrugMatchResult>,
+  equivalenceMap: Map<string, string[]>,
+): DrugMatchResult {
+  // Start with normal matching
+  const baseResult = findBestDrugMatch(drugName, index, cache);
+
+  // If already perfect match or no equivalence data, return base
+  if (baseResult.score >= EQUIVALENCE_MATCH_SCORE || equivalenceMap.size === 0) {
+    return baseResult;
+  }
+
+  const preparedDrugName = typeof drugName === 'string' ? prepareDrugName(drugName) : drugName;
+  const { normalizedDrugName } = preparedDrugName;
+  if (!normalizedDrugName) return baseResult;
+
+  // Check equivalence: look up all equivalent names for input drug
+  let bestScore = baseResult.score;
+  for (const [registeredName, equivalents] of equivalenceMap) {
+    // Check if input drug name contains or is contained by a registered name
+    if (!normalizedDrugName.includes(registeredName) && !registeredName.includes(normalizedDrugName)) {
+      continue;
+    }
+
+    // For each equivalent, check if it matches any used med
+    for (const equivName of equivalents) {
+      const equivPrepared = prepareDrugName(equivName);
+      const equivResult = findBestDrugMatch(equivPrepared, index, cache);
+      if (equivResult.score > 0.3) {
+        // Boost: if equivalent drug is found in used meds, give high score
+        const boostedScore = Math.max(equivResult.score, EQUIVALENCE_MATCH_SCORE);
+        bestScore = Math.max(bestScore, boostedScore);
+      }
+    }
+  }
+
+  if (bestScore > baseResult.score) {
+    const result = { score: bestScore };
+    setLimitedCacheEntry(cache, normalizedDrugName, result, MAX_DRUG_MATCH_CACHE_SIZE);
+    return result;
+  }
+
+  return baseResult;
+}
+
 const parsedExpiryCache = new Map<string, Date | null>();
 
 export function toStartOfDay(date: Date): Date {
@@ -355,6 +425,103 @@ export function getNearExpiryCount(
   return count;
 }
 
+/**
+ * 指数減衰による期限スコア計算。
+ * curve=0: 線形（従来互換: count * itemFactor）
+ * curve>0: exp(curve * (1 - daysRemaining/nearExpiryDays)) の合計 * itemFactor
+ * 期限が近いほどスコアが急激に上昇する。
+ * daysRemaining=0 → weight=exp(curve), daysRemaining=nearExpiryDays → weight=1
+ */
+export function calculateExponentialNearExpiryScore(
+  items: MatchItem[],
+  nearExpiryDays: number,
+  nearExpiryDecayCurve: number,
+  nearExpiryItemFactor: number,
+  nearExpiryScoreMax: number,
+  referenceDate: Date,
+): number {
+  if (nearExpiryDecayCurve <= 0) {
+    // Linear mode (backward compatible)
+    return Math.min(
+      nearExpiryScoreMax,
+      getNearExpiryCount(items, nearExpiryDays, referenceDate) * nearExpiryItemFactor,
+    );
+  }
+
+  const today = toStartOfDay(referenceDate);
+  const thresholdDays = Math.max(1, Math.floor(nearExpiryDays));
+  let totalWeight = 0;
+
+  for (const item of items) {
+    const expiry = getItemExpiryDate(item);
+    if (!expiry) continue;
+    const expiryDay = toStartOfDay(expiry);
+    const diffDays = Math.floor((expiryDay.getTime() - today.getTime()) / MS_PER_DAY);
+    if (diffDays < 0 || diffDays > thresholdDays) continue;
+
+    // Exponential boost: closer to expiry → higher weight
+    // At daysRemaining=0: weight = exp(curve) (max boost)
+    // At daysRemaining=thresholdDays: weight = exp(0) = 1 (same as linear)
+    const ratio = diffDays / thresholdDays;
+    const weight = Math.exp(nearExpiryDecayCurve * (1 - ratio));
+    totalWeight += weight;
+  }
+
+  return Math.min(nearExpiryScoreMax, totalWeight * nearExpiryItemFactor);
+}
+
+/**
+ * 過去の交換成功回数に基づくボーナス。
+ * 対数スケール: log2(successCount + 1) / log2(cap) * maxBonus
+ * successCount=0 → 0, successCount増加→減速的に上昇、capで飽和
+ */
+export function calculateSuccessRateBonus(
+  successCount: number,
+  successRateBonusMax: number,
+): number {
+  if (successRateBonusMax <= 0) return 0;
+  const safeCount = Math.max(0, Math.floor(successCount));
+  if (safeCount === 0) return 0;
+
+  // Logarithmic scale: diminishing returns with more successes
+  // Cap at ~20 successes for full bonus
+  const LOG_CAP = 20;
+  const ratio = Math.log2(safeCount + 1) / Math.log2(LOG_CAP + 1);
+  return roundTo2(Math.min(successRateBonusMax, ratio * successRateBonusMax));
+}
+
+function resolveCandidateScoreContext(
+  totalA: number,
+  totalB: number,
+  diff: number,
+  distanceKm: number,
+  scoringRules: MatchingScoringRules,
+  isGroupMemberOrReferenceDate: boolean | Date,
+  referenceDate: Date,
+): CandidateScoreContext {
+  const isGroupMember = typeof isGroupMemberOrReferenceDate === 'boolean'
+    ? isGroupMemberOrReferenceDate
+    : false;
+  const effectiveReferenceDate = isGroupMemberOrReferenceDate instanceof Date
+    ? isGroupMemberOrReferenceDate
+    : referenceDate;
+  const valueScoreDivisor = Math.max(0.0001, scoringRules.valueScoreDivisor);
+  const distanceScoreDivisor = Math.max(0.0001, scoringRules.distanceScoreDivisor);
+  const nearExpiryDays = Math.max(1, Math.floor(scoringRules.nearExpiryDays));
+  const minValue = Math.min(totalA, totalB);
+
+  return {
+    valueScore: Math.min(scoringRules.valueScoreMax, minValue / valueScoreDivisor),
+    balanceScore: Math.max(0, scoringRules.balanceScoreMax - diff * scoringRules.balanceScoreDiffFactor),
+    distanceScore: distanceKm >= 9999
+      ? scoringRules.distanceScoreFallback
+      : Math.max(0, scoringRules.distanceScoreMax - distanceKm / distanceScoreDivisor),
+    nearExpiryDays,
+    effectiveReferenceDate,
+    isGroupMember,
+  };
+}
+
 export function calculateCandidateScore(
   totalA: number,
   totalB: number,
@@ -364,31 +531,42 @@ export function calculateCandidateScore(
   itemsFromB: MatchItem[],
   scoringRules: MatchingScoringRules = DEFAULT_MATCHING_SCORING_RULES,
   isFavorite: boolean = false,
+  isGroupMemberOrReferenceDate: boolean | Date = false,
   referenceDate: Date = new Date(),
 ): number {
-  const valueScoreDivisor = Math.max(0.0001, scoringRules.valueScoreDivisor);
-  const distanceScoreDivisor = Math.max(0.0001, scoringRules.distanceScoreDivisor);
-  const nearExpiryDays = Math.max(1, Math.floor(scoringRules.nearExpiryDays));
-  const minValue = Math.min(totalA, totalB);
-  const valueScore = Math.min(scoringRules.valueScoreMax, minValue / valueScoreDivisor);
-  const balanceScore = Math.max(0, scoringRules.balanceScoreMax - diff * scoringRules.balanceScoreDiffFactor);
-  const distanceScore = distanceKm >= 9999
-    ? scoringRules.distanceScoreFallback
-    : Math.max(0, scoringRules.distanceScoreMax - distanceKm / distanceScoreDivisor);
-  const nearExpiryScore = Math.min(
+  const context = resolveCandidateScoreContext(
+    totalA,
+    totalB,
+    diff,
+    distanceKm,
+    scoringRules,
+    isGroupMemberOrReferenceDate,
+    referenceDate,
+  );
+  const nearExpiryScore = calculateExponentialNearExpiryScore(
+    [...itemsFromA, ...itemsFromB],
+    context.nearExpiryDays,
+    scoringRules.nearExpiryDecayCurve,
+    scoringRules.nearExpiryItemFactor,
     scoringRules.nearExpiryScoreMax,
-    (
-      getNearExpiryCount(itemsFromA, nearExpiryDays, referenceDate)
-      + getNearExpiryCount(itemsFromB, nearExpiryDays, referenceDate)
-    ) * scoringRules.nearExpiryItemFactor,
+    context.effectiveReferenceDate,
   );
   const diversityScore = Math.min(
     scoringRules.diversityScoreMax,
     Math.min(itemsFromA.length, itemsFromB.length) * scoringRules.diversityItemFactor,
   );
   const favoriteScore = isFavorite ? scoringRules.favoriteBonus : 0;
+  const groupScore = context.isGroupMember ? scoringRules.groupBonus : 0;
 
-  return roundTo2(valueScore + balanceScore + distanceScore + nearExpiryScore + diversityScore + favoriteScore);
+  return roundTo2(
+    context.valueScore
+      + context.balanceScore
+      + context.distanceScore
+      + nearExpiryScore
+      + diversityScore
+      + favoriteScore
+      + groupScore,
+  );
 }
 
 export function calculateMatchRate(itemsA: MatchItem[], itemsB: MatchItem[]): number {

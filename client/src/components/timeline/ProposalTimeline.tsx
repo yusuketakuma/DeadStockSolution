@@ -1,98 +1,171 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import type { EnrichedProposalTimelineEvent } from '../../types/timeline';
+import AppCard from '../ui/AppCard';
+import AppEmptyState from '../ui/AppEmptyState';
 import AppSelect from '../ui/AppSelect';
-import { formatDateTimeJa } from '../../utils/formatters';
-import {
-  filterProposalTimelineEvents,
-  PROPOSAL_TIMELINE_FILTER_OPTIONS,
-  type ProposalTimelineEvent,
-  type ProposalTimelineFilter,
-} from '../../utils/proposal-timeline';
+
+const EVENT_ICON: Record<EnrichedProposalTimelineEvent['eventType'], string> = {
+  status_change: '🔄',
+  comment: '💬',
+  feedback: '⭐',
+  item_detail: '📋',
+};
+
+function formatTimestamp(at: string | null): string {
+  if (!at) return '日時不明';
+  return new Date(at).toLocaleString('ja-JP');
+}
+
+function truncate(text: string, maxLen = 60): string {
+  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text;
+}
+
+function getNextStepMessage(events: EnrichedProposalTimelineEvent[]): string | null {
+  if (events.length === 0) return null;
+  const lastAction = events[events.length - 1].action;
+
+  if (lastAction.includes('proposal_approved')) return '承認済みです。決済手続きへ進んでください。';
+  if (lastAction.includes('proposal_rejected')) return '提案が拒否されました。';
+  if (lastAction.includes('proposed')) return '承認または拒否を待っています。';
+  return null;
+}
+
+function getEventKey(event: EnrichedProposalTimelineEvent, index: number): string {
+  return [
+    event.action,
+    event.at ?? 'pending',
+    event.actorPharmacyId ?? 'anonymous',
+    event.label,
+    index,
+  ].join(':');
+}
+
+function StarRating({ rating }: { rating: number }) {
+  return (
+    <span aria-label={`評価${rating}点`} data-testid="star-rating">
+      {'⭐'.repeat(Math.max(0, Math.min(5, rating)))}
+    </span>
+  );
+}
 
 interface ProposalTimelineProps {
-  events: ProposalTimelineEvent[];
-  statusLabelFormatter?: (status: string) => string;
-  emptyMessage?: string;
-  filterAriaLabel?: string;
+  events: EnrichedProposalTimelineEvent[];
+  currentPharmacyId: number;
 }
 
-function resolveActionMarker(action: string): string {
-  if (action === 'proposal_accept') return 'OK';
-  if (action === 'proposal_reject') return 'NO';
-  if (action === 'proposal_complete') return 'END';
-  if (action === 'proposal_created') return 'NEW';
-  return 'UPD';
-}
+export default function ProposalTimeline({ events }: ProposalTimelineProps) {
+  const [filter, setFilter] = useState<'all' | 'decision'>('all');
+  const filteredEvents = filter === 'all'
+    ? events
+    : events.filter((e) => ['proposal_accept', 'proposal_reject', 'proposal_complete'].includes(e.action));
+  const nextStep = getNextStepMessage(events);
 
-export default function ProposalTimeline({
-  events,
-  statusLabelFormatter,
-  emptyMessage = '履歴はありません。',
-  filterAriaLabel = '進行履歴フィルタ',
-}: ProposalTimelineProps) {
-  const [filter, setFilter] = useState<ProposalTimelineFilter>('all');
-
-  const filtered = useMemo(
-    () => filterProposalTimelineEvents(events, filter),
-    [events, filter],
-  );
+  if (events.length === 0) {
+    return <AppEmptyState title="履歴はありません" />;
+  }
 
   return (
-    <div>
+    <div data-testid="proposal-timeline">
       <div className="mb-2" style={{ maxWidth: 280 }}>
         <AppSelect
           controlId="proposal-timeline-filter"
           value={filter}
-          ariaLabel={filterAriaLabel}
-          onChange={(value) => setFilter(value as ProposalTimelineFilter)}
-          options={PROPOSAL_TIMELINE_FILTER_OPTIONS}
+          ariaLabel="進行履歴フィルタ"
+          onChange={(value) => setFilter(value as 'all' | 'decision')}
+          options={[
+            { value: 'all', label: 'すべて表示' },
+            { value: 'decision', label: '承認/拒否/完了のみ' },
+          ]}
         />
       </div>
-      {filtered.length === 0 ? (
-        <div className="small text-muted">{emptyMessage}</div>
-      ) : (
-        <ul className="list-unstyled mb-0">
-          {filtered.map((event, idx) => {
-            const isLast = idx === filtered.length - 1;
-            return (
-              <li key={`${event.action}-${event.at ?? 'na'}-${idx}`} className={isLast ? '' : 'pb-3'}>
-                <div className="d-flex gap-2">
-                  <div className="d-flex flex-column align-items-center">
-                    <span
-                      className="rounded-circle border text-center small fw-semibold bg-light"
-                      style={{ minWidth: 40, height: 24, lineHeight: '22px' }}
-                    >
-                      {resolveActionMarker(event.action)}
-                    </span>
-                    {!isLast && (
-                      <span
-                        className="border-start mt-1"
-                        style={{ minHeight: 24 }}
-                        aria-hidden
-                      />
+      <div style={{ position: 'relative', paddingLeft: '28px' }}>
+        {/* Vertical line */}
+        <div
+          style={{
+            position: 'absolute',
+            left: '10px',
+            top: '6px',
+            bottom: '6px',
+            borderLeft: '2px solid #dee2e6',
+          }}
+        />
+
+        {filteredEvents.length === 0 ? (
+          <div className="text-muted">表示できる履歴はありません。</div>
+        ) : filteredEvents.map((event, i) => {
+          const isCompleted = event.at !== null;
+          const icon = EVENT_ICON[event.eventType];
+          const isLast = i === filteredEvents.length - 1;
+
+          return (
+            <div
+              key={getEventKey(event, i)}
+              style={{ position: 'relative', marginBottom: isLast ? 0 : '20px' }}
+              data-testid="timeline-node"
+            >
+              {/* Node dot */}
+              <div
+                style={{
+                  position: 'absolute',
+                  left: '-22px',
+                  top: '4px',
+                  width: '14px',
+                  height: '14px',
+                  borderRadius: '50%',
+                  backgroundColor: isCompleted ? '#0d6efd' : 'white',
+                  border: '2px solid #0d6efd',
+                }}
+                data-testid={isCompleted ? 'node-completed' : 'node-pending'}
+              />
+
+              <div>
+                <div className="d-flex align-items-center gap-2 mb-1">
+                  <span aria-label={`icon-${event.eventType}`}>{icon}</span>
+                  <strong>{event.label}</strong>
+                  <span className="text-muted small">
+                    — {event.actorName ?? '不明'}
+                  </span>
+                </div>
+
+                <div className="text-muted small mb-1">
+                  {formatTimestamp(event.at)}
+                </div>
+
+                {event.eventType === 'comment' && event.commentBody && (
+                  <div
+                    className="small bg-light p-2 rounded"
+                    data-testid="comment-preview"
+                  >
+                    {truncate(event.commentBody)}
+                  </div>
+                )}
+
+                {event.eventType === 'feedback' && event.feedbackRating != null && (
+                  <div className="small mb-1">
+                    <StarRating rating={event.feedbackRating} />
+                    {event.feedbackComment && (
+                      <span className="text-muted ms-2">{truncate(event.feedbackComment)}</span>
                     )}
                   </div>
-                  <div className="flex-grow-1">
-                    <div className="d-flex align-items-center gap-2 flex-wrap">
-                      <strong>{event.label}</strong>
-                      {event.statusFrom && event.statusTo && (
-                        <span className="small text-muted">
-                          [
-                          {statusLabelFormatter ? statusLabelFormatter(event.statusFrom) : event.statusFrom}
-                          {' -> '}
-                          {statusLabelFormatter ? statusLabelFormatter(event.statusTo) : event.statusTo}
-                          ]
-                        </span>
-                      )}
-                    </div>
-                    <div className="small text-muted">
-                      {event.actorName ?? '不明'} / {formatDateTimeJa(event.at, '日時不明')}
-                    </div>
+                )}
+
+                {event.statusFrom && event.statusTo && (
+                  <div className="text-muted small">
+                    [{event.statusFrom} → {event.statusTo}]
                   </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {nextStep && (
+        <AppCard className="mt-3 border-primary" data-testid="next-step-indicator">
+          <AppCard.Body className="py-2 small">
+            <strong>次のステップ:</strong> {nextStep}
+          </AppCard.Body>
+        </AppCard>
       )}
     </div>
   );

@@ -49,6 +49,14 @@ function shouldRetryError(err: unknown): boolean {
   return err instanceof Error;
 }
 
+function resolveRetryConfig(retry: RetryOptions | undefined) {
+  const retries = Math.max(0, retry?.retries ?? 0);
+  const baseDelayMs = Math.max(10, retry?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
+  const maxDelayMs = Math.max(baseDelayMs, retry?.maxDelayMs ?? DEFAULT_MAX_DELAY_MS);
+  const retryOnStatuses = retry?.retryOnStatuses ?? DEFAULT_RETRYABLE_STATUSES;
+  return { retries, baseDelayMs, maxDelayMs, retryOnStatuses };
+}
+
 async function fetchOnceWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const externalSignal = options.signal;
@@ -95,11 +103,7 @@ export async function fetchWithTimeout(url: string, options: FetchWithTimeoutOpt
     retry,
     ...requestInit
   } = options;
-
-  const retries = Math.max(0, retry?.retries ?? 0);
-  const baseDelayMs = Math.max(10, retry?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
-  const maxDelayMs = Math.max(baseDelayMs, retry?.maxDelayMs ?? DEFAULT_MAX_DELAY_MS);
-  const retryOnStatuses = retry?.retryOnStatuses ?? DEFAULT_RETRYABLE_STATUSES;
+  const { retries, baseDelayMs, maxDelayMs, retryOnStatuses } = resolveRetryConfig(retry);
 
   let lastError: unknown;
 

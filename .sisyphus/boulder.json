@@ -1,11 +1,10 @@
 {
-  "active_plan": "/Users/yusuke/DeadStockSolution/.sisyphus/plans/timeline-feature.md",
-  "started_at": "2026-02-28T11:40:52.969Z",
+  "active_plan": "/Users/yusuke/DeadStockSolution/.sisyphus/plans/nighttime-refactor.md",
+  "started_at": "2026-03-08T17:37:48.642Z",
   "session_ids": [
-    "ses_35c0fb903ffecmnRWFCZrc2Exc",
-    "ses_3440c6bb4ffeoB0171pe5v1Spv"
+    "ses_33204608dffetAMwVM9nDi6IpS"
   ],
-  "plan_name": "timeline-feature",
-  "worktree_path": "/Users/yusuke/DeadStockSolution-timeline",
-  "agent": "atlas"
+  "plan_name": "nighttime-refactor",
+  "agent": "atlas",
+  "worktree_path": "/Users/yusuke/DeadStockSolution-nighttime-refactor"
 }

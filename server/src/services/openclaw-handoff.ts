@@ -39,6 +39,37 @@ const execFileAsync = promisify(execFile);
 export type { OpenClawHandoffInput } from './openclaw-handoff-helpers';
 export type { GatewaySendInput } from './openclaw-handoff-helpers';
 
+function buildCliExecEnv() {
+  return {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    USER: process.env.USER,
+    LANG: process.env.LANG ?? 'en_US.UTF-8',
+  };
+}
+
+function buildGatewayCliMessage(
+  input: OpenClawHandoffInput,
+  idempotencyKey: string,
+): string {
+  const sanitizedRequestText = sanitizeCliMessage(input.requestText);
+  const sections = [
+    'あなたはDeadStockSolutionのOpenClaw連携エージェントです。',
+    `要望ID: ${input.requestId}`,
+    `薬局ID: ${input.pharmacyId}`,
+    `冪等キー: ${idempotencyKey}`,
+    `要望: ${sanitizedRequestText}`,
+  ];
+
+  if (input.context && Object.keys(input.context).length > 0) {
+    const serializedContext = sanitizeCliMessage(JSON.stringify(input.context, null, 2), 6000);
+    sections.push(`追加コンテキスト(JSON):\n${serializedContext}`);
+  }
+
+  sections.push('次の形式で短く返答してください: 1) 受領確認 2) 初動方針 3) 次アクション');
+  return sections.join('\n');
+}
+
 async function handoffViaGatewayCli(
   config: OpenClawConfig,
   input: OpenClawHandoffInput,
@@ -46,15 +77,7 @@ async function handoffViaGatewayCli(
 ): Promise<OpenClawHandoffResult> {
   const timeoutSeconds = getGatewayTimeoutSeconds();
   const maxAttempts = getRetryMaxAttempts();
-  const sanitizedRequestText = sanitizeCliMessage(input.requestText);
-  const message = [
-    'あなたはDeadStockSolutionのOpenClaw連携エージェントです。',
-    `要望ID: ${input.requestId}`,
-    `薬局ID: ${input.pharmacyId}`,
-    `冪等キー: ${idempotencyKey}`,
-    `要望: ${sanitizedRequestText}`,
-    '次の形式で短く返答してください: 1) 受領確認 2) 初動方針 3) 次アクション',
-  ].join('\n');
+  const message = buildGatewayCliMessage(input, idempotencyKey);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const startedAt = Date.now();
@@ -71,12 +94,7 @@ async function handoffViaGatewayCli(
       const { stdout } = await execFileAsync(config.cliPath, args, {
         timeout: timeoutSeconds * 1000 + 3000,
         maxBuffer: 2 * 1024 * 1024,
-        env: {
-          PATH: process.env.PATH,
-          HOME: process.env.HOME,
-          USER: process.env.USER,
-          LANG: process.env.LANG ?? 'en_US.UTF-8',
-        },
+        env: buildCliExecEnv(),
       });
 
       let payload: OpenClawCliAgentResponse = {};
@@ -172,7 +190,13 @@ async function handoffViaLegacyHttp(
         signal: controller.signal,
       });
 
-      const payload = await response.json().catch(() => ({} as OpenClawHandoffResponseBody)) as OpenClawHandoffResponseBody;
+      const payload = await response.json().catch((jsonErr: unknown) => {
+        logger.warn('OpenClaw handoff: failed to parse response JSON', {
+          error: jsonErr instanceof Error ? jsonErr.message : String(jsonErr),
+          statusCode: response.status,
+        });
+        return {} as OpenClawHandoffResponseBody;
+      }) as OpenClawHandoffResponseBody;
 
       if (!response.ok) {
         const retryable = isRetryableStatus(response.status) && attempt < maxAttempts;
@@ -264,12 +288,7 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
     const { stdout } = await execFileAsync(config.cliPath, args, {
       timeout: timeoutSeconds * 1000 + 3000,
       maxBuffer: 2 * 1024 * 1024,
-      env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
-        USER: process.env.USER,
-        LANG: process.env.LANG ?? 'en_US.UTF-8',
-      },
+      env: buildCliExecEnv(),
     });
 
     let parsed: Record<string, unknown> = {};

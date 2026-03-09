@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -9,6 +9,7 @@ import {
   proposalComments,
 } from '../db/schema';
 import { AuthRequest } from '../types';
+import type { BulkPharmacyActionRequest, BulkPharmacyActionResponse, BulkActionResult } from '../types/admin';
 import { parsePositiveInt } from '../utils/request-utils';
 import { isSafeInternalPath } from '../utils/path-utils';
 import { rowCount } from '../utils/db-utils';
@@ -25,11 +26,21 @@ import {
 } from '../services/proposal-timeline-service';
 import { adminWriteLimiter } from './admin-write-limiter';
 import { sendPaginated, parseListPagination, parseIdOrBadRequest, getErrorMessage, handleAdminError } from './admin-utils';
+import { invalidateAuthUserCache } from '../middleware/auth';
+import { recordAuditLog } from '../services/audit-log-service';
 
 type AdminHandoffResponse = Pick<
   OpenClawHandoffResult,
   'accepted' | 'connectorConfigured' | 'implementationBranch' | 'status' | 'note'
 >;
+
+type BulkPharmacyActionKind = 'verify' | 'reject';
+
+interface BulkPharmacyActionConfig {
+  nextStatus: 'verified' | 'rejected';
+  skippedStatus: 'verified' | 'rejected';
+  isActive: boolean;
+}
 
 async function collectAdminHandoffContext(
   pharmacyId: number,
@@ -296,6 +307,180 @@ router.post('/requests/:id/handoff', adminWriteLimiter, async (req: AuthRequest,
     sendAdminHandoffResponse(res, handoff);
   } catch (err) {
     handleAdminError(err, 'Admin user request handoff error', '再連携に失敗しました', res);
+  }
+});
+
+// ── 一括操作 ───────────────────────────────────────────────
+
+function parseBulkActionBody(body: unknown): { ok: true; data: BulkPharmacyActionRequest } | { ok: false; error: string } {
+  if (typeof body !== 'object' || body === null) {
+    return { ok: false, error: 'リクエスト形式が不正です' };
+  }
+  const { pharmacyIds, reason } = body as Record<string, unknown>;
+  if (!Array.isArray(pharmacyIds) || pharmacyIds.length === 0) {
+    return { ok: false, error: '対象薬局IDを1つ以上指定してください' };
+  }
+  if (pharmacyIds.length > 100) {
+    return { ok: false, error: '一括操作は最大100件までです' };
+  }
+  if (!pharmacyIds.every((id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0)) {
+    return { ok: false, error: '薬局IDは正の整数で指定してください' };
+  }
+  const uniqueIds = [...new Set(pharmacyIds)];
+  const validReason = typeof reason === 'string' && reason.trim().length > 0 ? reason.trim() : undefined;
+  return { ok: true, data: { pharmacyIds: uniqueIds, reason: validReason } };
+}
+
+async function runBulkPharmacyStatusUpdate(
+  pharmacyIds: number[],
+  reason: string | undefined,
+  config: BulkPharmacyActionConfig,
+): Promise<BulkActionResult[]> {
+  return db.transaction(async (tx) => {
+    const targetPharmacies = await tx.select({
+      id: pharmacies.id,
+      verificationStatus: pharmacies.verificationStatus,
+    })
+      .from(pharmacies)
+      .where(inArray(pharmacies.id, pharmacyIds));
+
+    const targetMap = new Map(targetPharmacies.map((pharmacy) => [pharmacy.id, pharmacy]));
+    const results: BulkActionResult[] = [];
+
+    for (const pharmacyId of pharmacyIds) {
+      const target = targetMap.get(pharmacyId);
+      if (!target) {
+        throw new Error(`薬局ID:${pharmacyId} が見つかりません`);
+      }
+      if (target.verificationStatus === config.skippedStatus) {
+        results.push({ pharmacyId, success: true });
+        continue;
+      }
+
+      const now = new Date().toISOString();
+      await tx.update(pharmacies)
+        .set({
+          verificationStatus: config.nextStatus,
+          isActive: config.isActive,
+          verifiedAt: config.nextStatus === 'verified' ? now : null,
+          rejectionReason: config.nextStatus === 'rejected' ? reason ?? null : null,
+          updatedAt: now,
+        })
+        .where(eq(pharmacies.id, pharmacyId));
+
+      results.push({ pharmacyId, success: true });
+    }
+
+    return results;
+  });
+}
+
+function logBulkAuditFailure(action: BulkPharmacyActionKind, pharmacyId: number, err: unknown): void {
+  logger.error(`Failed to record audit log for bulk-${action}`, {
+    pharmacyId,
+    error: err instanceof Error ? err.message : String(err),
+  });
+}
+
+function writeBulkAuditLogs(
+  results: BulkActionResult[],
+  adminId: number,
+  action: BulkPharmacyActionKind,
+  reason: string | undefined,
+): void {
+  const newStatus = action === 'verify' ? 'verified' : 'rejected';
+  for (const result of results) {
+    if (!result.success) {
+      continue;
+    }
+    invalidateAuthUserCache(result.pharmacyId);
+    void recordAuditLog({
+      adminId,
+      targetPharmacyId: result.pharmacyId,
+      action,
+      previousStatus: 'pending_verification',
+      newStatus,
+      reason: reason ?? null,
+    }).catch((err) => {
+      logBulkAuditFailure(action, result.pharmacyId, err);
+    });
+  }
+}
+
+function sendBulkActionResponse(
+  res: Response,
+  pharmacyIds: number[],
+  results: BulkActionResult[],
+): void {
+  const response: BulkPharmacyActionResponse = {
+    totalRequested: pharmacyIds.length,
+    succeeded: results.filter((result) => result.success).length,
+    failed: results.filter((result) => !result.success).length,
+    results,
+  };
+  res.json(response);
+}
+
+router.post('/pharmacies/bulk-verify', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const parsed = parseBulkActionBody(req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+    const { pharmacyIds, reason } = parsed.data;
+    const adminId = req.user!.id;
+
+    const results = await runBulkPharmacyStatusUpdate(pharmacyIds, reason, {
+      nextStatus: 'verified',
+      skippedStatus: 'verified',
+      isActive: true,
+    });
+    writeBulkAuditLogs(results, adminId, 'verify', reason);
+
+    void writeLog('admin_bulk_verify', {
+      pharmacyId: adminId,
+      detail: `一括承認: ${pharmacyIds.length}件`,
+      ipAddress: getClientIp(req),
+    });
+
+    sendBulkActionResponse(res, pharmacyIds, results);
+  } catch (err) {
+    handleAdminError(err, 'Admin bulk verify error', '一括承認に失敗しました', res);
+  }
+});
+
+router.post('/pharmacies/bulk-reject', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const parsed = parseBulkActionBody(req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+    const { pharmacyIds, reason } = parsed.data;
+    const adminId = req.user!.id;
+
+    if (!reason) {
+      res.status(400).json({ error: '却下理由は必須です' });
+      return;
+    }
+
+    const results = await runBulkPharmacyStatusUpdate(pharmacyIds, reason, {
+      nextStatus: 'rejected',
+      skippedStatus: 'rejected',
+      isActive: false,
+    });
+    writeBulkAuditLogs(results, adminId, 'reject', reason);
+
+    void writeLog('admin_bulk_reject', {
+      pharmacyId: adminId,
+      detail: `一括却下: ${pharmacyIds.length}件 理由: ${reason}`,
+      ipAddress: getClientIp(req),
+    });
+
+    sendBulkActionResponse(res, pharmacyIds, results);
+  } catch (err) {
+    handleAdminError(err, 'Admin bulk reject error', '一括却下に失敗しました', res);
   }
 });
 

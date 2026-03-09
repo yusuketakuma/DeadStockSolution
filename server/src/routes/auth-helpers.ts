@@ -4,7 +4,7 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { ensureTestPharmacyColumnsAtStartup } from '../config/test-pharmacy-schema';
 import { pharmacies, pharmacyRegistrationReviews, userRequests } from '../db/schema';
-import { eqEmailCaseInsensitive, normalizeEmail } from '../utils/email-utils';
+import { eqEmailCaseInsensitive } from '../utils/email-utils';
 import { emailSchema, passwordSchema } from '../utils/validators';
 import { isJwtSecretMissingError, verifyToken, deriveSessionVersion } from '../services/auth-service';
 import { resolveServerTestLoginFeatureEnabled } from '../config/test-login-feature';
@@ -40,6 +40,8 @@ export type TestPharmacyPreviewRow = {
   password: string | null;
 };
 
+type TestPharmacyRowWithoutPassword = Omit<TestPharmacyPreviewRow, 'password'>;
+
 export function createAuthLimiter(max: number, error: string) {
   return rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -58,6 +60,10 @@ export function isTestLoginFeatureEnabled(): boolean {
   });
 }
 
+function canExposeTestPharmacyPasswords(): boolean {
+  return process.env.EXPOSE_TEST_PHARMACY_PASSWORDS === 'true';
+}
+
 export function handleAuthConfigurationError(context: string, err: unknown, res: Response): boolean {
   if (!isJwtSecretMissingError(err)) {
     return false;
@@ -73,13 +79,13 @@ export function handleAuthConfigurationError(context: string, err: unknown, res:
 export function extractUniqueViolationConstraint(err: unknown): string | null {
   if (!err || typeof err !== 'object') return null;
 
-  const code = String((err as { code?: unknown }).code ?? '');
+  const code = readErrorString(err, 'code');
   if (code !== '23505') return null;
 
-  const constraint = String((err as { constraint?: unknown }).constraint ?? '').toLowerCase();
+  const constraint = readErrorString(err, 'constraint').toLowerCase();
   if (constraint) return constraint;
 
-  const message = String((err as { message?: unknown }).message ?? '');
+  const message = readErrorString(err, 'message');
   const matched = message.match(/unique constraint "([^"]+)"/i);
   return matched?.[1]?.toLowerCase() ?? '';
 }
@@ -94,12 +100,10 @@ export function extractErrorCode(err: unknown): string | null {
 }
 
 export function includesIsTestAccountToken(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const message = String((err as { message?: unknown }).message ?? '').toLowerCase();
-  if (message.includes('is_test_account') || message.includes('test_account_password')) {
-    return true;
-  }
-  return includesIsTestAccountToken((err as { cause?: unknown }).cause);
+  return findErrorChainMatch(
+    err,
+    (message) => message.includes('is_test_account') || message.includes('test_account_password'),
+  );
 }
 
 export function isMissingTestPharmacyColumnError(err: unknown): boolean {
@@ -111,6 +115,59 @@ export function mapLegacyAuthMeRows(rows: LegacyAuthMeRow[]): AuthMeRow[] {
     ...row,
     isTestAccount: false,
   }));
+}
+
+async function withMissingTestPharmacyColumnFallback<T>(
+  operation: () => Promise<T>,
+  onMissingColumn: (err: unknown) => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (err) {
+    if (!isMissingTestPharmacyColumnError(err)) {
+      throw err;
+    }
+    return onMissingColumn(err);
+  }
+}
+
+function getValidationIssueMessage(error: { issues: Array<{ message: string }> } | undefined): string {
+  return error?.issues[0]?.message ?? '入力値が不正です';
+}
+
+function readErrorString(err: unknown, key: 'code' | 'constraint' | 'message'): string {
+  if (!err || typeof err !== 'object') {
+    return '';
+  }
+  return String((err as Record<string, unknown>)[key] ?? '');
+}
+
+function findErrorChainMatch(
+  err: unknown,
+  matcher: (message: string) => boolean,
+): boolean {
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
+
+  if (matcher(readErrorString(err, 'message').toLowerCase())) {
+    return true;
+  }
+
+  return findErrorChainMatch((err as { cause?: unknown }).cause, matcher);
+}
+
+function validateSchemaValue(
+  value: string,
+  schema: {
+    safeParse: (input: string) => { success: boolean; error?: { issues: Array<{ message: string }> } };
+  },
+): { valid: boolean; error?: string } {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    return { valid: false, error: getValidationIssueMessage(result.error) };
+  }
+  return { valid: true };
 }
 
 export async function selectLegacyAuthMeRows(pharmacyId: number): Promise<LegacyAuthMeRow[]> {
@@ -177,7 +234,20 @@ export function sendTestPharmacyResponse(
   });
 }
 
-export async function selectFlaggedTestPharmacyRows(): Promise<TestPharmacyPreviewRow[]> {
+async function selectFlaggedTestPharmacyRowsWithoutPasswords(): Promise<TestPharmacyRowWithoutPassword[]> {
+  return db.select({
+    id: pharmacies.id,
+    name: pharmacies.name,
+    email: pharmacies.email,
+    prefecture: pharmacies.prefecture,
+  })
+    .from(pharmacies)
+    .where(eq(pharmacies.isTestAccount, true))
+    .orderBy(asc(pharmacies.id))
+    .limit(TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS);
+}
+
+async function selectFlaggedTestPharmacyRowsWithPasswords(): Promise<TestPharmacyPreviewRow[]> {
   return db.select({
     id: pharmacies.id,
     name: pharmacies.name,
@@ -191,6 +261,18 @@ export async function selectFlaggedTestPharmacyRows(): Promise<TestPharmacyPrevi
     .limit(TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS);
 }
 
+export async function selectFlaggedTestPharmacyRows(includePassword: boolean): Promise<TestPharmacyPreviewRow[]> {
+  if (includePassword) {
+    return selectFlaggedTestPharmacyRowsWithPasswords();
+  }
+
+  const rows = await selectFlaggedTestPharmacyRowsWithoutPasswords();
+  return rows.map((row) => ({
+    ...row,
+    password: null,
+  }));
+}
+
 export async function loadAuthMeRows(
   pharmacyId: number,
   isTestAccountColumnAvailable: boolean | null,
@@ -200,61 +282,71 @@ export async function loadAuthMeRows(
     return mapLegacyAuthMeRows(await selectLegacyAuthMeRows(pharmacyId));
   }
 
-  try {
-    const rows = await selectCurrentAuthMeRows(pharmacyId);
-    setIsTestAccountColumnAvailable(true);
-    return rows;
-  } catch (err) {
-    if (!isMissingTestPharmacyColumnError(err)) {
-      throw err;
-    }
+  return withMissingTestPharmacyColumnFallback(
+    async () => {
+      const rows = await selectCurrentAuthMeRows(pharmacyId);
+      setIsTestAccountColumnAvailable(true);
+      return rows;
+    },
+    async (err) => {
+      setIsTestAccountColumnAvailable(false);
+      logger.warn('is_test_account column is not available yet; fallback to legacy /auth/me response', {
+        error: getErrorMessage(err),
+      });
+      return mapLegacyAuthMeRows(await selectLegacyAuthMeRows(pharmacyId));
+    },
+  );
+}
 
-    setIsTestAccountColumnAvailable(false);
-    logger.warn('is_test_account column is not available yet; fallback to legacy /auth/me response', {
-      error: getErrorMessage(err),
-    });
-    return mapLegacyAuthMeRows(await selectLegacyAuthMeRows(pharmacyId));
-  }
+async function selectTestPharmacyRowsWithEnsure(
+  setIsTestAccountColumnAvailable: (val: boolean) => void,
+  includePassword: boolean,
+): Promise<TestPharmacyPreviewRow[] | null> {
+  return withMissingTestPharmacyColumnFallback(
+    async () => {
+      const rows = await selectFlaggedTestPharmacyRows(includePassword);
+      setIsTestAccountColumnAvailable(true);
+      return rows;
+    },
+    async (err) => {
+      logger.warn('test pharmacy columns are missing', {
+        error: getErrorMessage(err),
+      });
+      const ensured = await ensureTestPharmacyColumnsAtStartup();
+      if (!ensured) {
+        setIsTestAccountColumnAvailable(false);
+        return null;
+      }
+
+      return withMissingTestPharmacyColumnFallback(
+        async () => {
+          const healedRows = await selectFlaggedTestPharmacyRows(includePassword);
+          setIsTestAccountColumnAvailable(true);
+          return healedRows;
+        },
+        async (retryErr) => {
+          setIsTestAccountColumnAvailable(false);
+          logger.warn('test pharmacy columns remain unavailable after ensure', {
+            error: getErrorMessage(retryErr),
+          });
+          return null;
+        },
+      );
+    },
+  );
 }
 
 export async function loadTestPharmacyRows(
   res: Response,
-  isTestAccountColumnAvailable: boolean | null,
   setIsTestAccountColumnAvailable: (val: boolean) => void,
+  includePassword: boolean,
 ): Promise<TestPharmacyPreviewRow[] | null> {
-  try {
-    const rows = await selectFlaggedTestPharmacyRows();
-    setIsTestAccountColumnAvailable(true);
-    return rows;
-  } catch (err) {
-    if (!isMissingTestPharmacyColumnError(err)) {
-      throw err;
-    }
-
-    logger.warn('test pharmacy columns are missing', {
-      error: getErrorMessage(err),
-    });
-    const ensured = await ensureTestPharmacyColumnsAtStartup();
-    if (ensured) {
-      try {
-        const healedRows = await selectFlaggedTestPharmacyRows();
-        setIsTestAccountColumnAvailable(true);
-        return healedRows;
-      } catch (retryErr) {
-        if (!isMissingTestPharmacyColumnError(retryErr)) {
-          throw retryErr;
-        }
-
-        logger.warn('test pharmacy columns remain unavailable after ensure', {
-          error: retryErr instanceof Error ? retryErr.message : String(retryErr),
-        });
-      }
-    }
-
+  const rows = await selectTestPharmacyRowsWithEnsure(setIsTestAccountColumnAvailable, includePassword);
+  if (rows === null) {
     setIsTestAccountColumnAvailable(false);
     res.status(503).json({ error: 'テスト薬局機能のDBスキーマが未適用です。マイグレーションを実行してください' });
-    return null;
   }
+  return rows;
 }
 
 export async function checkExistingPharmacy(
@@ -359,7 +451,8 @@ export function extractPharmacyIdFromToken(token: string): number | null {
 }
 
 export function parseIncludePasswordQuery(includePasswordRaw: unknown): boolean {
-  return includePasswordRaw === '1' || includePasswordRaw === 'true';
+  return canExposeTestPharmacyPasswords()
+    && (includePasswordRaw === '1' || includePasswordRaw === 'true');
 }
 
 export function getCacheControlValue(includePassword: boolean): string {
@@ -439,19 +532,11 @@ export function buildPasswordResetCompleteResponse() {
 }
 
 export function validateEmail(email: string): { valid: boolean; error?: string } {
-  const result = emailSchema.safeParse(email);
-  if (!result.success) {
-    return { valid: false, error: result.error.issues[0].message };
-  }
-  return { valid: true };
+  return validateSchemaValue(email, emailSchema);
 }
 
 export function validatePassword(password: string): { valid: boolean; error?: string } {
-  const result = passwordSchema.safeParse(password);
-  if (!result.success) {
-    return { valid: false, error: result.error.issues[0].message };
-  }
-  return { valid: true };
+  return validateSchemaValue(password, passwordSchema);
 }
 
 export function buildCsrfTokenResponse(token: string) {

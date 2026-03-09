@@ -127,7 +127,7 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('今日のアクション')).toBeInTheDocument();
+      expect(screen.getByText('今日やること')).toBeInTheDocument();
     });
   });
 
@@ -624,7 +624,8 @@ describe('Layout with Sidebar navigation', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('ダッシュボード')).toBeInTheDocument();
+      const sidebar = screen.getByRole('navigation', { name: 'メインナビゲーション' });
+      expect(sidebar).toBeInTheDocument();
     });
     expect(screen.getAllByText('アップロード').length).toBeGreaterThan(0);
     expect(screen.getByText('デッドストックリスト')).toBeInTheDocument();

@@ -1,0 +1,8 @@
+client/src/routes/route-config.tsx:30:const GroupListPage = lazy(() => import('../pages/GroupListPage'));
+client/src/routes/route-config.tsx:31:const GroupDetailPage = lazy(() => import('../pages/GroupDetailPage'));
+client/src/routes/route-config.tsx:32:const AlertListPage = lazy(() => import('../pages/AlertListPage'));
+client/src/routes/route-config.tsx:77:  { path: '/groups', access: 'protected', useLayout: true, component: GroupListPage },
+client/src/routes/route-config.tsx:78:  { path: '/groups/:id', access: 'protected', useLayout: true, component: GroupDetailPage },
+client/src/routes/route-config.tsx:79:  { path: '/alerts', access: 'protected', useLayout: true, component: AlertListPage },
+client/src/components/Sidebar.tsx:21:      { to: '/groups', label: 'グループ' },
+client/src/components/Sidebar.tsx:22:      { to: '/alerts', label: 'アラート' },

@@ -36,6 +36,7 @@ export const openclawStatusEnum = pgEnum('openclaw_status_enum', [
   'completed',
 ]);
 export const drugMasterSyncStatusEnum = pgEnum('drug_master_sync_status_enum', ['running', 'success', 'failed', 'partial']);
+
 export const drugMasterRevisionTypeEnum = pgEnum('drug_master_revision_type_enum', ['price_revision', 'new_listing', 'delisting', 'transition']);
 export const specialBusinessHoursTypeEnum = pgEnum('special_business_hours_type_enum', [
   'holiday_closed',
@@ -44,6 +45,9 @@ export const specialBusinessHoursTypeEnum = pgEnum('special_business_hours_type_
   'special_open',
 ]);
 export const monthlyReportStatusEnum = pgEnum('monthly_report_status_enum', ['success', 'failed']);
+export const pharmacyGroupVisibilityEnum = pgEnum('pharmacy_group_visibility_enum', ['public', 'invite_only']);
+export const groupMemberRoleEnum = pgEnum('group_member_role_enum', ['owner', 'admin', 'member']);
+export const equivalenceTypeEnum = pgEnum('equivalence_type_enum', ['brand_generic', 'generic_generic']);
 export const systemEventSourceValues = ['runtime_error', 'unhandled_rejection', 'uncaught_exception', 'vercel_deploy'] as const;
 export type SystemEventSource = (typeof systemEventSourceValues)[number];
 export const systemEventLevelValues = ['info', 'warning', 'error'] as const;
@@ -307,6 +311,30 @@ export const adminMessageReads = pgTable('admin_message_reads', {
     .on(table.messageId, table.pharmacyId),
 }));
 
+// ── 管理者監査ログ ──────────────────────────────────────
+
+export const adminAuditActionValues = ['verify', 'reject', 're-review'] as const;
+export type AdminAuditAction = (typeof adminAuditActionValues)[number];
+
+export const adminAuditLogs = pgTable('admin_audit_logs', {
+  id: serial('id').primaryKey(),
+  adminId: integer('admin_id').notNull().references(() => pharmacies.id),
+  targetPharmacyId: integer('target_pharmacy_id').notNull().references(() => pharmacies.id),
+  action: text('action').$type<AdminAuditAction>().notNull(),
+  previousStatus: text('previous_status'),
+  newStatus: text('new_status').notNull(),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  idxAdminAuditLogsAdminCreated: index('idx_admin_audit_logs_admin_created')
+    .on(table.adminId, table.createdAt),
+  idxAdminAuditLogsTargetCreated: index('idx_admin_audit_logs_target_created')
+    .on(table.targetPharmacyId, table.createdAt),
+  idxAdminAuditLogsActionCreated: index('idx_admin_audit_logs_action_created')
+    .on(table.action, table.createdAt),
+  chkAdminAuditAction: check('chk_admin_audit_action', sql`${table.action} IN ('verify', 'reject', 're-review')`),
+}));
+
 export const userRequests = pgTable('user_requests', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
@@ -483,6 +511,8 @@ export const drugMasterSyncLogs = pgTable('drug_master_sync_logs', {
   idxSyncLogsStartedAt: index('idx_sync_logs_started_at').on(table.startedAt),
 }));
 
+
+
 // ── アクティビティログ ──────────────────────────────────
 
 export const activityLogs = pgTable('activity_logs', {
@@ -604,6 +634,32 @@ export const pharmacyRelationships = pgTable('pharmacy_relationships', {
     .on(table.pharmacyId, table.targetPharmacyId),
   chkNotSelfRelationship: check('chk_not_self_relationship', sql`${table.pharmacyId} != ${table.targetPharmacyId}`),
 }));
+
+export const pharmacyGroups = pgTable('pharmacy_groups', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  visibility: pharmacyGroupVisibilityEnum('visibility').notNull().default('invite_only'),
+  ownerPharmacyId: integer('owner_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ([
+  index('idx_pharmacy_groups_owner').on(table.ownerPharmacyId),
+  index('idx_pharmacy_groups_visibility').on(table.visibility),
+]));
+
+export const groupMembers = pgTable('group_members', {
+  id: serial('id').primaryKey(),
+  groupId: integer('group_id').notNull().references(() => pharmacyGroups.id, { onDelete: 'cascade' }),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  role: groupMemberRoleEnum('role').notNull().default('member'),
+  joinedAt: timestamp('joined_at', { mode: 'string' }).defaultNow(),
+}, (table) => ([
+  uniqueIndex('idx_group_members_unique').on(table.groupId, table.pharmacyId),
+  index('idx_group_members_group').on(table.groupId),
+  index('idx_group_members_pharmacy').on(table.pharmacyId),
+]));
+
 
 // ── マッチング予約・通知 ─────────────────────────────────
 
@@ -751,6 +807,10 @@ export const matchingRuleProfiles = pgTable('matching_rule_profiles', {
   diversityScoreMax: real('diversity_score_max').notNull().default(10),
   diversityItemFactor: real('diversity_item_factor').notNull().default(1.5),
   favoriteBonus: real('favorite_bonus').notNull().default(15),
+  groupBonus: integer('group_bonus').notNull().default(10),
+  nearExpiryDecayCurve: real('near_expiry_decay_curve').notNull().default(0),
+  successRateBonus: integer('success_rate_bonus').notNull().default(0),
+  maxCandidates: integer('max_candidates').notNull().default(30),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
@@ -776,12 +836,35 @@ export const matchingRuleProfiles = pgTable('matching_rule_profiles', {
   chkMatchingRuleDiversityScoreMax: check('chk_matching_rule_diversity_score_max', sql`${table.diversityScoreMax} >= 0`),
   chkMatchingRuleDiversityItemFactor: check('chk_matching_rule_diversity_item_factor', sql`${table.diversityItemFactor} >= 0`),
   chkMatchingRuleFavoriteBonus: check('chk_matching_rule_favorite_bonus', sql`${table.favoriteBonus} >= 0`),
+  chkMatchingRuleGroupBonus: check('chk_matching_rule_group_bonus', sql`${table.groupBonus} >= 0 AND ${table.groupBonus} <= 50`),
   chkMatchingRuleVersion: check('chk_matching_rule_version', sql`${table.version} >= 1`),
+  chkMatchingRuleNearExpiryDecayCurve: check('chk_matching_rule_near_expiry_decay_curve', sql`${table.nearExpiryDecayCurve} >= 0 AND ${table.nearExpiryDecayCurve} <= 10`),
+  chkMatchingRuleSuccessRateBonus: check('chk_matching_rule_success_rate_bonus', sql`${table.successRateBonus} >= 0 AND ${table.successRateBonus} <= 50`),
+  chkMatchingRuleMaxCandidates: check('chk_matching_rule_max_candidates', sql`${table.maxCandidates} >= 1 AND ${table.maxCandidates} <= 200`),
+}));
+
+export const drugEquivalences = pgTable('drug_equivalences', {
+  id: serial('id').primaryKey(),
+  drugNameA: text('drug_name_a').notNull(),
+  drugNameB: text('drug_name_b').notNull(),
+  equivalenceType: equivalenceTypeEnum('equivalence_type').notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxDrugEquivalencesDrugNameA: index('idx_drug_equivalences_drug_name_a')
+    .on(table.drugNameA),
+  idxDrugEquivalencesDrugNameB: index('idx_drug_equivalences_drug_name_b')
+    .on(table.drugNameB),
+  idxDrugEquivalencesType: index('idx_drug_equivalences_type')
+    .on(table.equivalenceType),
+  idxDrugEquivalencesUniquePair: uniqueIndex('idx_drug_equivalences_unique_pair')
+    .on(table.drugNameA, table.drugNameB),
 }));
 
 // ── 通知 ──────────────────────────────────────────────────
 
-export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment', 'request_update'] as const;
+export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment', 'request_update', 'group_invitation', 'group_join', 'group_leave', 'alert_near_expiry', 'alert_excess_stock', 'alert_resolved'] as const;
 export type NotificationType = (typeof notificationTypeValues)[number];
 
 export const notificationReferenceTypeValues = ['proposal', 'match', 'comment', 'request'] as const;
@@ -828,6 +911,22 @@ export const predictiveAlerts = pgTable('predictive_alerts', {
     .on(table.pharmacyId, table.dedupeKey),
   chkPredictiveAlertsType: check('chk_predictive_alerts_type', sql`${table.alertType} IN ('near_expiry', 'excess_stock')`),
 }));
+
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  endpoint: text('endpoint').notNull(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { mode: 'string' }),
+}, (table) => ([
+  uniqueIndex('idx_push_subscriptions_unique').on(table.pharmacyId, table.endpoint),
+  index('idx_push_subscriptions_pharmacy').on(table.pharmacyId),
+  index('idx_push_subscriptions_created').on(table.createdAt),
+]));
+
 
 // ── 医薬品マスターソース状態 ──────────────────────────────
 

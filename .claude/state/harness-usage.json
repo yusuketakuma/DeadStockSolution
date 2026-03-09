@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-03-06T03:34:22.460Z",
+  "updatedAt": "2026-03-09T03:48:20.414Z",
   "skills": {
     "parallel-workflows": {
       "count": 1,
@@ -11,12 +11,24 @@
       "lastUsed": "2026-02-27T16:55:05.205Z"
     },
     "harness-setup": {
-      "count": 1,
-      "lastUsed": "2026-03-06T01:41:19.536Z"
+      "count": 2,
+      "lastUsed": "2026-03-08T21:35:21.226Z"
     },
     "brainstorming": {
+      "count": 2,
+      "lastUsed": "2026-03-07T01:20:13.240Z"
+    },
+    "harness-work": {
       "count": 1,
-      "lastUsed": "2026-03-06T03:34:22.459Z"
+      "lastUsed": "2026-03-07T00:48:03.603Z"
+    },
+    "harness-plan": {
+      "count": 1,
+      "lastUsed": "2026-03-07T00:48:37.883Z"
+    },
+    "writing-plans": {
+      "count": 1,
+      "lastUsed": "2026-03-07T01:24:55.294Z"
     }
   },
   "commands": {
@@ -45,8 +57,8 @@
       "lastUsed": "2026-02-25T04:21:25.400Z"
     },
     "breezing": {
-      "count": 5,
-      "lastUsed": "2026-03-01T01:55:08.778Z"
+      "count": 8,
+      "lastUsed": "2026-03-08T21:51:57.731Z"
     },
     "plan-with-agent": {
       "count": 1,
@@ -57,20 +69,20 @@
       "lastUsed": "2026-02-25T22:05:53.341Z"
     },
     "harness-review": {
-      "count": 1,
-      "lastUsed": "2026-02-26T04:16:08.273Z"
+      "count": 2,
+      "lastUsed": "2026-03-07T02:20:08.587Z"
     },
     "release-har": {
       "count": 1,
       "lastUsed": "2026-02-26T13:56:03.848Z"
     },
     "simplify": {
-      "count": 7,
-      "lastUsed": "2026-03-05T11:36:44.646Z"
+      "count": 11,
+      "lastUsed": "2026-03-08T22:10:52.347Z"
     },
     "harness-setup": {
-      "count": 2,
-      "lastUsed": "2026-03-05T11:36:17.578Z"
+      "count": 3,
+      "lastUsed": "2026-03-07T02:21:58.799Z"
     },
     "init": {
       "count": 1,
@@ -79,6 +91,22 @@
     "harness-release": {
       "count": 1,
       "lastUsed": "2026-03-06T03:03:11.230Z"
+    },
+    "writing-plans": {
+      "count": 1,
+      "lastUsed": "2026-03-07T02:22:04.607Z"
+    },
+    "harness-work": {
+      "count": 1,
+      "lastUsed": "2026-03-08T21:37:06.362Z"
+    },
+    "review": {
+      "count": 1,
+      "lastUsed": "2026-03-08T22:09:05.394Z"
+    },
+    "harness-sync": {
+      "count": 1,
+      "lastUsed": "2026-03-08T22:10:14.734Z"
     }
   },
   "agents": {
@@ -101,9 +129,9 @@
   },
   "hooks": {
     "session-init": {
-      "triggered": 35,
+      "triggered": 44,
       "blocked": 0,
-      "lastTriggered": "2026-03-06T03:02:47.637Z"
+      "lastTriggered": "2026-03-09T03:48:20.414Z"
     }
   }
 }

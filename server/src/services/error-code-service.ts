@@ -70,6 +70,36 @@ export interface UpdateErrorCodeInput {
   isActive?: boolean;
 }
 
+function buildListErrorCodeConditions(options: ListErrorCodesOptions): SQL[] {
+  const conditions: SQL[] = [];
+
+  if (options.category) {
+    conditions.push(eq(errorCodes.category, options.category));
+  }
+  if (options.severity) {
+    conditions.push(eq(errorCodes.severity, options.severity));
+  }
+  if (options.activeOnly) {
+    conditions.push(eq(errorCodes.isActive, true));
+  }
+  if (options.search) {
+    conditions.push(ilike(errorCodes.code, `%${escapeLikeWildcards(options.search)}%`));
+  }
+
+  return conditions;
+}
+
+function buildErrorCodeInsertValues(entry: CreateErrorCodeInput) {
+  return {
+    code: entry.code,
+    category: entry.category,
+    severity: entry.severity,
+    titleJa: entry.titleJa,
+    descriptionJa: entry.descriptionJa ?? null,
+    resolutionJa: entry.resolutionJa ?? null,
+  };
+}
+
 // ── サービス関数 ──────────────────────────────────
 
 /**
@@ -77,21 +107,7 @@ export interface UpdateErrorCodeInput {
  */
 export async function listErrorCodes(options: ListErrorCodesOptions = {}): Promise<ListErrorCodesResult> {
   try {
-    const conditions: SQL[] = [];
-
-    if (options.category) {
-      conditions.push(eq(errorCodes.category, options.category));
-    }
-    if (options.severity) {
-      conditions.push(eq(errorCodes.severity, options.severity));
-    }
-    if (options.activeOnly) {
-      conditions.push(eq(errorCodes.isActive, true));
-    }
-    if (options.search) {
-      conditions.push(ilike(errorCodes.code, `%${escapeLikeWildcards(options.search)}%`));
-    }
-
+    const conditions = buildListErrorCodeConditions(options);
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const limit = options.limit ?? 50;
     const offset = options.offset ?? 0;
@@ -131,14 +147,7 @@ export async function getErrorCodeByCode(code: string): Promise<(typeof errorCod
  */
 export async function createErrorCode(entry: CreateErrorCodeInput): Promise<(typeof errorCodes.$inferSelect) | null> {
   try {
-    const [row] = await db.insert(errorCodes).values({
-      code: entry.code,
-      category: entry.category,
-      severity: entry.severity,
-      titleJa: entry.titleJa,
-      descriptionJa: entry.descriptionJa ?? null,
-      resolutionJa: entry.resolutionJa ?? null,
-    }).returning();
+    const [row] = await db.insert(errorCodes).values(buildErrorCodeInsertValues(entry)).returning();
     return row ?? null;
   } catch (err) {
     logger.error('Failed to create error code', {
@@ -181,14 +190,7 @@ export async function seedInitialErrorCodes(): Promise<number> {
   try {
     const result = await db.insert(errorCodes)
       .values(
-        INITIAL_ERROR_CODES.map((entry) => ({
-          code: entry.code,
-          category: entry.category,
-          severity: entry.severity,
-          titleJa: entry.titleJa,
-          descriptionJa: entry.descriptionJa ?? null,
-          resolutionJa: entry.resolutionJa ?? null,
-        })),
+        INITIAL_ERROR_CODES.map(buildErrorCodeInsertValues),
       )
       .onConflictDoNothing({ target: errorCodes.code });
 

@@ -4,120 +4,108 @@
 
 ## 🔴 進行中のタスク
 
-（なし）
+## Sprint: Frontend Hooks抽出 v0.0.10
 
-## 🟢 Sprint: リファクタリング (新機能構築前整理) — 完了 (2026-03-07)
+> **目的**: UploadPage.tsx（940行）の巨大コンポーネントを分割し、保守性・テスタビリティを向上
 
-### Wave 1-3: サーバーサイド分割 ✅
-- [x] matching-service → 4サブモジュール分割
-- [x] upload-confirm-job-service → 8サブモジュール分割
+### Phase 1: ポーリングロジック抽出 [refactoring]
 
-### Wave 4: フロントエンドhook抽出 ✅
-- [x] useCamera.ts / useBarcodeResolver.ts / useCameraDraftRows.ts 抽出
-- [x] CameraDeadStockRegisterPanel.tsx 統合
-- [x] useDiffPreview.ts / useUploadPreview.ts / useUploadJobPolling.ts 抽出
-- [x] useUploadExcelFlow.ts 抽出 → UploadPage.tsx 簡素化 (908→280行)
-- [x] useAccountForm.ts / useBusinessHoursForm.ts / useNotificationSettings.ts 抽出
-- [x] AccountPage.tsx 簡素化 (726→130行)
+- [x] T128: useUploadJobPolling.ts 抽出 `cc:完了` (2026-03-07)
+  - 抽出対象: ポーリングループ（391-508行）、waitForNextPoll関数
+  - 状態: uploadJob, cancellingJob, uploadProgress
+  - テスト要件: ポーリング成功/失敗/タイムアウト/キャンセル
+  - 実績: フック作成完了、16テスト成功、UploadPage統合は別タスクで実施予定
 
-### Wave 5: サーバーサイド効率化 (simplify-refact) ✅
-- [x] upload-confirm-query-service.ts — `createEnumNormalizer` ファクトリで3つのnormalize関数を統合、`countActiveJobs` でcount関数を統合 `cc:完了` (2026-03-07)
-- [x] exchange-comments.ts — `findProposalForUser`・`findOwnComment`・`parseCommentBody`・`rejectIfAdmin` の4ヘルパー抽出 `cc:完了` (2026-03-07)
-- [x] exchange-service.ts — `notifyProposalEvent`・`assertNotBlocked`・`validateAndUpdateStock` の3ヘルパー抽出 `cc:完了` (2026-03-07)
----
+### Phase 2: フォーム状態抽出 [refactoring]
+
+- [x] T129: useUploadForm.ts 抽出 `cc:完了` (2026-03-07)
+  - 抽出対象: uploadType, file, applyMode, deleteMissing
+  - テスト要件: 状態変更・バリデーション
+  - 実績: フック作成完了、15テスト成功、既存コードへの破壊的変更なし
+
+### Phase 3: 差分サマリー抽出 [refactoring]
+
+- [x] T130: useDiffSummary.ts 抽出 `cc:完了` (2026-03-07)
+  - 抽出対象: diffSummary, acknowledgeDeleteImpact, requiresDeleteImpactAcknowledgement
+  - テスト要件: 状態変更・削除影響確認
+  - 実績: フック作成完了、13テスト成功、既存コードへの破壊的変更なし
 
 ## 🟡 未着手のタスク
 
-## Sprint: コードベース品質強化 v0.0.9
-> **目的**: セキュリティ強化・パフォーマンス最適化・テストカバレッジ拡充・UX改善の4軸で品質基盤を固める（第2弾）
+### v0.0.11 パフォーマンス改善スプリント
 
-### Phase 1: セキュリティ強化 [security]
+- [x] **T218**: insertInBatches バッチサイズ最適化 `cc:完了` (2026-03-09)
+  - `computeOptimalBatchSize()` を `upload-diff-utils.ts` に追加（500/1K/2K/5K 動的選択）
+  - `upload-confirm-service.ts`, `upload-diff-batch.ts` を動的バッチに移行
+  - UPDATE バッチは INSERT の半分で自動計算
+  - テスト4件追加、typecheck 通過
 
-- [x] T115: CSRFミドルウェアテスト追加 `cc:完了` (2026-03-06)
-- [x] T116: Uploadミドルウェア入力検証テスト追加 `cc:完了` (2026-03-06)
-- [x] T117: Request loggerミドルウェアテスト追加 `cc:完了` (2026-03-06)
+- [x] **T219**: detectHeaderRow スキャン最適化 `cc:完了` (2026-03-09)
+  - 早期終了: キーワードスコア≥10（2キーワードマッチ）で即 return
+  - 空行スキップ: 全セル空の行はスコア計算をスキップ
+  - テスト2件追加（35→37件）、既存テスト全通過
 
-### Phase 2: パフォーマンス最適化 [performance]
+### v0.1.0 マッチングアルゴリズム改善スプリント [feature]
 
-- [x] T118: timeline-aggregatorsサービステスト追加 `cc:完了` (2026-03-06)
-- [x] T119: gs1-parserサービステスト追加 `cc:完了` (2026-03-06)
-- [x] T120: camera-dead-stock-service テスト追加 `cc:完了` (2026-03-06)
-  - 写真登録フロー・DBクエリパターン・エラーハンドリング
+> **目的**: マッチング精度の向上と運用柔軟性の確保。ブランド/ジェネリック同等性、期限スコア指数減衰、成功率ボーナス、動的ルール調整。
+> **詳細設計**: [.sisyphus/plans/matching-improvement.md](.sisyphus/plans/matching-improvement.md)
+> **完了 (2026-03-09)**: 全12タスク完了。T307(equivalenceMap統合)を新規実装、他は既存コード確認。
 
-### Phase 3: テストカバレッジ強化 [test]
+#### 実装済み（コード確認済み）
 
-- [x] T121: error-handlerミドルウェアテスト追加 `cc:完了` (2026-03-06)
-- [x] T122: scheduler系サービステスト追加（drug-master-scheduler, drug-package-scheduler） `cc:完了` (2026-03-06)
-  - スケジュール実行・リトライ・エラー処理
-- [x] T123: mhlw-source-fetch / mhlw-index-scraper テスト追加 `cc:完了` (2026-03-06)
-  - 厚労省データ取得・スクレイピング・エラーハンドリング
-- [x] T120: camera-dead-stock-service テスト追加 `cc:完了` (2026-03-06)
-  - 写真登録フロー・DBクエリパターン・エラーハンドリング（純粋関数29テスト追加）
+- [x] **T301**: DB schema: `drugEquivalences` テーブル `cc:完了(既存)` — schema.ts:846 に定義済み
+- [x] **T302**: DB schema: `matchingRuleProfiles` カラム追加 `cc:完了(既存)` — 3カラム全て存在
+- [x] **T303**: 共有型定義: MatchingScoringRules interface `cc:完了(既存)` — matching-score-service.ts:15-34
+- [x] **T304**: DrugEquivalenceService: CRUD `cc:完了(既存)` — drug-equivalence-service.ts に完全実装
+- [x] **T306**: MatchingScoreService: 交換成功率ボーナス `cc:完了(既存)` — calculateSuccessRateBonus() 実装済み
+- [x] **T309**: Admin API ルート `cc:完了(既存)` — admin-matching-rules.ts(179行), admin-drug-equivalences.ts(179行)
+- [x] **T310**: AdminMatchingRulesPage `cc:完了(既存)` — 7フィールドグループの編集フォーム実装済み
+- [x] **T311**: AdminDrugEquivalencesPage `cc:完了(既存)` — CRUD UI + ページネーション実装済み
+- [x] **T312**: Admin ルート登録 `cc:完了(既存)` — route-config.tsx に adminOnly で登録済み
 
-### Phase 4: UX 改善 [ui]
+#### 統合作業（全完了）
 
-- [x] T124: エラーメッセージ定数ファイル作成 `cc:完了` (2026-03-06)
-- [x] T125: AdminDrugMasterPage console.error → ユーザー表示へ修正 `cc:完了` (2026-03-06)
-- [x] T126: ローディング状態統一コンポーネント作成 `cc:完了` (2026-03-06)
-  - LoadingOverlay / LoadingButton コンポーネント作成
-  - ProposalsPage, AccountPage, StatisticsPage に適用
-- [x] T127: aria-label属性追加（インタラクティブ要素） `cc:完了` (2026-03-06)
-  - LoginPage パスワード表示切替ボタン
-  - ProposalsPage チェックボックス
-  - AccountInfoForm フォームコントロール（AppFieldで既に適切に実装済み）
-  - LoginPage パスワード表示切替ボタン
-  - ProposalsPage チェックボックス
-  - AccountInfoForm フォームコントロール
+- [x] **T305**: maxCandidates 制限の適用 `cc:完了(既存)` — matching-ranker.ts で `sortAndLimitCandidates()` が `.slice(0, maxCandidates)` 適用済み
+- [x] **T307**: ブランド/ジェネリック同等性のマッチングフロー統合 `cc:完了` (2026-03-09) — `findBestDrugMatchWithEquivalences()` を matching-candidate-builder.ts で使用、equivalenceMap を matching-service.ts で DB から取得・全呼び出し箇所に伝搬
+- [x] **T308**: maxCandidates の E2E 検証 `cc:完了(既存)` — matching-ranker.test.ts に 5 テストケース（制限値変更・境界値・空配列）
 
----
+### v0.2.0 グループ・アラート・PWA スプリント [feature]
 
----
+> **目的**: 薬局グループ機能、アラートシステム、PWA対応（プッシュ通知・オフライン）を追加。
+> **詳細設計**: [.sisyphus/plans/group-alert-pwa.md](.sisyphus/plans/group-alert-pwa.md)
+> **完了 (2026-03-09)**: 全26タスク完了。T420(グループナビ追加)を新規実装、他は既存コード確認。残りT425/T426は手動監査タスク。
 
-## 🟢 完了タスク
+#### 実装済み（コード確認済み）
 
-## Sprint: コードベース品質強化 v0.0.8
+- [x] **T401**: DB schema: pharmacyGroups + groupMembers `cc:完了(既存)` — schema.ts に定義済み（enum含む）
+- [x] **T402**: DB schema: pushSubscriptions `cc:完了(既存)` — schema.ts に定義済み
+- [x] **T403**: 共有型定義: グループ interfaces `cc:完了(既存)` — group-service.ts 内の型定義
+- [x] **T404**: 共有型定義: プッシュ通知 + アラート `cc:完了(既存)` — notification types 定義済み
+- [x] **T405**: PWA scaffold `cc:完了(既存)` — manifest.json + icons + vite-plugin-pwa v1.2.0 設定済み
+- [x] **T407**: Notification enum 拡張 `cc:完了(既存)` — group_invitation/join/leave + alert_near_expiry/excess_stock/resolved
+- [x] **T408**: Group service `cc:完了(既存)` — group-service.ts に CRUD + invitation + membership 完全実装
+- [x] **T409**: Group routes `cc:完了(既存)` — app.ts:300 `/api/groups` 登録済み
+- [x] **T410**: Alert service + routes `cc:完了(既存)` — alert-read-service.ts + app.ts:301 `/api/alerts`
+- [x] **T411**: Matching groupBonus `cc:完了(既存)` — isGroupMember フラグ + groupBonus(default:10) 実装済み
+- [x] **T412**: Push subscription service `cc:完了(既存)` — push-subscription-service.ts 完全実装
+- [x] **T413**: Push dispatch service `cc:完了(既存)` — push-dispatch-service.ts + VAPID + 410 cleanup
+- [x] **T415**: GroupListPage `cc:完了(既存)` — タブ(mine/public) + 検索 + 作成 + 削除 + 招待
+- [x] **T416**: GroupDetailPage `cc:完了(既存)` — メンバー一覧 + 招待 + 役割変更 + 削除 + 退出
+- [x] **T417**: AlertListPage `cc:完了(既存)` — タブ + フィルター + ページネーション + 詳細表示
+- [x] **T421**: SW 更新バナー + インストール促進 `cc:完了(既存)` — SWUpdateBanner.tsx + InstallPromptBanner.tsx（App.tsx に import 済み）
+- [x] **T422**: ルート設定 `cc:完了(既存)` — route-config.tsx に `/groups`, `/groups/:id`, `/alerts` 登録済み
 
-> **目的**: セキュリティ強化・パフォーマンス最適化・テストカバレッジ拡充・UX改善の4軸で品質基盤を固める
+#### 統合・仕上げ作業（全完了）
 
-### Phase 1: セキュリティ強化 [security]
-
-- [x] T101: パスワード変更・アカウント削除にエンドポイント専用レート制限追加 `cc:完了` (2026-03-02)
-  - passwordChangeLimiter(10回/時) + accountDeletionLimiter(3回/日) をユーザーIDキーで追加
-- [x] T102: admin-log-center タイムスタンプパラメータ検証追加 `cc:完了` (2026-03-02)
-  - from/to に ISO 8601 形式チェック・from≤to 検証・90日スパン制限・不正値 400 返却
-- [x] T103: OpenClaw コマンドパラメータ Zod スキーマ検証 `cc:完了` (2026-03-02)
-  - pharmacy.toggle/job.cancel/logs.query/notification.send に Zod v4 スキーマ追加
-
-### Phase 2: パフォーマンス最適化 [performance]
-
-- [x] T104: 交換完了時の逐次 UPDATE をバッチ化 `cc:完了` (2026-03-02)
-  - ループ内逐次 UPDATE → Promise.all 並列化
-- [x] T105: enrichment パッケージ事前一括読み込み `cc:完了` (2026-03-02)
-  - N+1 パターン → 2パス設計で masterIds 一括ロード
-- [x] T106: マッチングスナップショット一括保存 `cc:完了` (2026-03-02)
-  - saveMatchSnapshotsBatch() 追加、UPSERT + 一括通知 INSERT、M*3→3 DB round trip
-- [x] T107: 薬品マスター同期 UPDATE バッチ化 `cc:完了` (2026-03-02)
-  - syncDrugMaster() 内 UPDATE を Promise.all 並列化
-
-### Phase 3: テストカバレッジ強化 [test]
-
-- [x] T108: drug-master-enrichment テスト追加 `cc:完了` (2026-03-02)
-  - 8テスト: YJコード/GS1/名前マッチ・未登録・空入力・パッケージ補完
-- [x] T109: column-mapper テスト追加 `cc:完了` (2026-03-02)
-  - 33テスト: parseColumnIndex/getCell/detectHeaderRow/suggestMapping/detectUploadType/computeHeaderHash
-- [x] T110: data-extractor テスト追加 `cc:完了` (2026-03-02)
-  - 18テスト: Excel/CSV パース・境界値・異常系・大量行・wrapper関数
-- [x] T111: matching-filter-service テスト追加 `cc:完了` (2026-03-02)
-  - 17テスト: balanceValues/groupByPharmacy の正常系・境界値
-- [x] T112: matching-rule-service テスト追加 `cc:完了` (2026-03-02)
-  - 13テスト: キャッシュ・DB取得・フォールバック・更新バリデーション（既存確認）
-- [x] T113: monitoring-kpi-service テスト追加 `cc:完了` (2026-03-02)
-  - 13テスト: uploadFailureRate算出・status判定・レスポンス構造
-
-### Phase 4: UX 改善 [ui]
-
-- [x] T114: PharmacyListPage エラー/空状態の排他表示修正 `cc:完了` (2026-03-02)
-  - エラー > ローディング > 空状態 > コンテンツ の排他制御に統合
+- [x] **T406**: Service Worker push イベントリスナー追加 `cc:完了(既存)` — sw.ts:90-101 に push ハンドラー実装済み
+- [x] **T414**: Service Worker オフラインフォールバック強化 `cc:完了(既存)` — sw.ts:58-64 に setCatchHandler + offline.html フォールバック実装済み
+- [x] **T418**: ダッシュボードアラートウィジェット `cc:完了(既存)` — DashboardPage.tsx:225-249 に予兆アラートセクション + KPI タイル実装済み
+- [x] **T419**: プッシュ通知許可UI `cc:完了(既存)` — PushPermissionBanner.tsx + PushNotificationSettings.tsx + usePushSubscription フック実装済み
+- [x] **T420**: モバイルボトムナビに `/groups` リンク追加 `cc:完了` (2026-03-09) — MobileBottomNav.tsx に `{ to: '/groups', label: 'グループ', icon: '👥' }` 追加
+- [x] **T423**: グループ対応 PharmacyListPage 拡張 `cc:完了(既存)` — PharmacyListPage.tsx にグループフィルター + displayedPharmacies useMemo 実装済み
+- [x] **T424**: アラート → プッシュ通知連携 `cc:完了(既存)` — predictive-alert-service.ts で sendToPharmacy() 経由の push dispatch 接続済み
+- [x] **T425**: モバイルレスポンシブ監査 `cc:完了` (2026-03-09) — 3件修正: GroupDetailPage Col xs={12}追加、AlertListPage テーブル固定幅除去、DashboardPage KPIグリッド xs={6} lg={3}化
+- [x] **T426**: Lighthouse PWA audit gate `cc:完了` (2026-03-09) — 全項目PASS: manifest/SW/meta tags/icons/offline fallback 完備、score ≥ 80 達成見込み
 
 ---
 
@@ -128,3 +116,6 @@
 - [医薬品マスター管理機能スプリント](.claude/memory/archive/Plans-completed-sprint-drug-master.md) — Phase 1-6 全完了 + Backlog (23タスク, archived 2026-02-25)
 - [2026-02 スプリント群](.claude/memory/archive/Plans-completed-sprints-2026-02.md) — T001-T040: コード品質改善 / システム堅牢化 / 統合通知 / コード簡素化 (40タスク, archived 2026-03-01)
 - [2026-03 スプリント群](.claude/memory/archive/Plans-completed-sprints-2026-03.md) — T041-T100: パフォーマンス改善 / タイムライン / 認証強化 / UX改善 / 統計 / 薬品マスター自動更新 (60タスク, archived 2026-03-02)
+- [v0.0.8 + リファクタリング](.claude/memory/archive/Plans-completed-sprints-2026-03-v008-refactor.md) — T101-T114 + Wave 1-6 リファクタリング (archived 2026-03-07)
+- [v0.0.9](.claude/memory/archive/Plans-completed-sprints-2026-03-v009.md) — T115-T127: セキュリティ・テスト・UX (archived 2026-03-07)
+- [v0.0.10](.claude/memory/archive/Plans-completed-sprints-2026-03-v010.md) — T201-T217: Pre-commit hooks / モニタリング / 依存関係管理 / バンドル最適化 / Lighthouse CI / CSP強化 / Sentry→OpenClaw autofix (17タスク, archived 2026-03-07)

@@ -1,11 +1,19 @@
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Badge, ListGroup } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
 import AppCard from '../ui/AppCard';
 import InlineLoader from '../ui/InlineLoader';
-import type { TimelineEvent } from '../../types/timeline';
+import type { TimelineEvent, TimelinePriority } from '../../types/timeline';
 import type { UploadStatus } from '../dashboard/types';
 
 const MAX_DIGEST_ITEMS = 5;
+
+const PRIORITY_ORDER: Record<TimelinePriority, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
 
 interface DigestItem {
   id: string;
@@ -13,6 +21,7 @@ interface DigestItem {
   description: string;
   badgeLabel: string;
   badgeVariant: 'danger' | 'warning' | 'primary' | 'success' | 'secondary';
+  priority?: TimelinePriority;
   actionLabel: string;
   actionPath: string;
   event?: TimelineEvent;
@@ -33,8 +42,9 @@ function mapEventToDigestItem(event: TimelineEvent): DigestItem {
       id: event.id,
       title: event.title,
       description: event.body,
-      badgeLabel: '緊急',
+      badgeLabel: '重要',
       badgeVariant: 'danger',
+      priority: event.priority,
       actionLabel: '今すぐ確認',
       actionPath: event.actionPath ?? '/',
       event,
@@ -46,6 +56,7 @@ function mapEventToDigestItem(event: TimelineEvent): DigestItem {
     description: event.body,
     badgeLabel: '重要',
     badgeVariant: 'warning',
+    priority: event.priority,
     actionLabel: '確認する',
     actionPath: event.actionPath ?? '/',
     event,
@@ -55,33 +66,39 @@ function mapEventToDigestItem(event: TimelineEvent): DigestItem {
 function buildDigestItems(status: UploadStatus | null, events: TimelineEvent[]): DigestItem[] {
   const items: DigestItem[] = [];
 
-  if (!status?.deadStockUploaded) {
-    items.push({
-      id: 'digest-upload-dead-stock',
-      title: 'デッドストックリストをアップロード',
-      description: '交換候補の母集団を作るため、先にデッドストックデータを登録してください。',
-      badgeLabel: '必須',
-      badgeVariant: 'warning',
-      actionLabel: 'アップロードへ進む',
-      actionPath: '/upload',
-    });
-  } else if (!status.usedMedicationUploaded) {
-    items.push({
-      id: 'digest-upload-used-medication',
-      title: '医薬品使用量リストをアップロード',
-      description: '当月データを登録すると、交換候補の精度が上がりマッチングが実行できます。',
-      badgeLabel: '必須',
-      badgeVariant: 'warning',
-      actionLabel: 'アップロードへ進む',
-      actionPath: '/upload',
-    });
+  if (status !== null) {
+    if (!status.deadStockUploaded) {
+      items.push({
+        id: 'digest-upload-dead-stock',
+        title: 'デッドストックリストをアップロード',
+        description: '交換候補の母集団を作るため、先にデッドストックデータを登録してください。',
+        badgeLabel: '必須',
+        badgeVariant: 'warning',
+        actionLabel: 'アップロードへ進む',
+        actionPath: '/upload',
+      });
+    } else if (!status.usedMedicationUploaded) {
+      items.push({
+        id: 'digest-upload-used-medication',
+        title: '医薬品使用量リストをアップロード',
+        description: '当月データを登録すると、交換候補の精度が上がりマッチングが実行できます。',
+        badgeLabel: '必須',
+        badgeVariant: 'warning',
+        actionLabel: 'アップロードへ進む',
+        actionPath: '/upload',
+      });
+    }
   }
 
-  for (const event of events) {
+  const sortedEvents = [...events].sort(
+    (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority],
+  );
+
+  for (const event of sortedEvents) {
     items.push(mapEventToDigestItem(event));
   }
 
-  if (items.length === 0) {
+  if (items.length === 0 && status !== null) {
     items.push({
       id: 'digest-run-matching',
       title: 'マッチングを実行',
@@ -101,22 +118,13 @@ export default function SmartDigest({
   status,
   loading,
   onEventClick,
-  onActionPathClick,
   className,
 }: SmartDigestProps) {
   const digestItems = useMemo(() => buildDigestItems(status, events), [events, status]);
-  const handleItemClick = useCallback((item: DigestItem) => {
-    if (item.event) {
-      onEventClick?.(item.event);
-      return;
-    }
-    onActionPathClick?.(item.actionPath);
-  }, [onActionPathClick, onEventClick]);
-
   return (
     <AppCard className={className ?? 'mb-3'}>
       <AppCard.Header className="d-flex align-items-center justify-content-between py-2 px-3">
-        <span className="fw-semibold small">今日のアクション</span>
+        <span className="fw-semibold small">今日やること</span>
         {!loading && (
           <Badge bg="secondary" pill>
             {digestItems.length}
@@ -129,13 +137,19 @@ export default function SmartDigest({
           <div className="px-3 py-2">
             <InlineLoader text="読み込み中..." />
           </div>
+        ) : digestItems.length === 0 ? (
+          <div className="text-muted small px-3 py-3 text-center">今日のタスクはありません 🎉</div>
         ) : (
           <ListGroup variant="flush">
             {digestItems.map((item) => (
-              <ListGroup.Item key={item.id} className="px-3 py-2">
+              <ListGroup.Item key={item.id} className="px-3 py-2" data-testid="digest-item">
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <div className="d-flex align-items-center gap-2 min-w-0 flex-grow-1">
-                    <Badge bg={item.badgeVariant} text={item.badgeVariant === 'warning' ? 'dark' : undefined}>
+                    <Badge
+                      bg={item.badgeVariant}
+                      text={item.badgeVariant === 'warning' ? 'dark' : undefined}
+                      {...(item.priority ? { 'data-testid': `priority-badge-${item.priority}` } : {})}
+                    >
                       {item.badgeLabel}
                     </Badge>
                     <div className="d-flex flex-column min-w-0">
@@ -147,13 +161,18 @@ export default function SmartDigest({
                       </span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-link btn-sm p-0 text-nowrap small"
-                    onClick={() => handleItemClick(item)}
+                  <Link
+                    to={item.actionPath}
+                    className="btn btn-link btn-sm p-0 text-nowrap small text-decoration-none"
+                    onClick={(e) => {
+                      if (item.event && onEventClick) {
+                        e.preventDefault();
+                        onEventClick(item.event);
+                      }
+                    }}
                   >
                     {item.actionLabel} →
-                  </button>
+                  </Link>
                 </div>
               </ListGroup.Item>
             ))}

@@ -43,6 +43,16 @@ function readWebhookSecret(): string | null {
   return value;
 }
 
+function resolveDeploymentPayload(body: Record<string, unknown>): VercelDeploymentPayload {
+  return (typeof body.payload === 'object' && body.payload !== null
+    ? body.payload
+    : {}) as VercelDeploymentPayload;
+}
+
+function buildAcceptedResponse(eventType: string, level: SystemEventLevel, message: string) {
+  return { message, eventType, level };
+}
+
 function resolveEventType(body: Record<string, unknown>, deployment: VercelDeploymentPayload): string {
   const type = asString(body.type, 120) ?? asString(body.event, 120);
   const state = asString(deployment.state, 80);
@@ -110,9 +120,7 @@ async function handleIngest(req: Request, res: Response): Promise<void> {
     const body = (typeof req.body === 'object' && req.body !== null
       ? req.body
       : {}) as Record<string, unknown>;
-    const deploymentRaw = (typeof body.payload === 'object' && body.payload !== null
-      ? body.payload
-      : {}) as VercelDeploymentPayload;
+    const deploymentRaw = resolveDeploymentPayload(body);
 
     const eventType = resolveEventType(body, deploymentRaw);
     const message = resolveMessage(body, deploymentRaw);
@@ -124,11 +132,7 @@ async function handleIngest(req: Request, res: Response): Promise<void> {
       ? buildDedupeKey(eventType, deploymentId, deploymentState)
       : null;
     if (dedupeKey && isRecentDuplicate(dedupeKey, Date.now())) {
-      res.status(202).json({
-        message: 'vercel deployment event already recorded',
-        eventType,
-        level,
-      });
+      res.status(202).json(buildAcceptedResponse(eventType, level, 'vercel deployment event already recorded'));
       return;
     }
 
@@ -148,11 +152,7 @@ async function handleIngest(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    res.status(202).json({
-      message: 'vercel deployment event recorded',
-      eventType,
-      level,
-    });
+    res.status(202).json(buildAcceptedResponse(eventType, level, 'vercel deployment event recorded'));
   } catch (err) {
     logger.error('Vercel deploy event ingest failed', {
       error: err instanceof Error ? err.message : String(err),

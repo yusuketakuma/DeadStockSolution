@@ -16,6 +16,78 @@ import { logger } from '../services/logger';
 
 const router = Router();
 
+function buildDrugMasterListConditions(
+  search: string | undefined,
+  statusFilter: string | undefined,
+  categoryFilter: string | undefined,
+) {
+  const conditions = [];
+
+  if (statusFilter === 'listed') {
+    conditions.push(eq(drugMaster.isListed, true));
+  } else if (statusFilter === 'delisted') {
+    conditions.push(eq(drugMaster.isListed, false));
+  } else if (statusFilter === 'transition') {
+    conditions.push(and(
+      eq(drugMaster.isListed, true),
+      isNotNull(drugMaster.transitionDeadline),
+    ));
+  }
+
+  if (categoryFilter) {
+    conditions.push(eq(drugMaster.category, categoryFilter));
+  }
+
+  if (search) {
+    const normalized = normalizeKana(search);
+    const hiragana = katakanaToHiragana(normalized);
+    const katakana = hiraganaToKatakana(normalized);
+    const likeTerms = new Set([normalized, hiragana, katakana]);
+    const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${escapeLikeWildcards(term)}%`));
+    const genericConditions = [...likeTerms].map((term) => like(drugMaster.genericName, `%${escapeLikeWildcards(term)}%`));
+    const allSearchConditions = [...nameConditions, ...genericConditions];
+
+    if (/^[A-Z0-9]+$/i.test(search.trim())) {
+      allSearchConditions.push(like(drugMaster.yjCode, `%${escapeLikeWildcards(search.trim())}%`));
+    }
+
+    conditions.push(or(...allSearchConditions));
+  }
+
+  return conditions;
+}
+
+function buildDrugMasterUpdatePayload(body: Record<string, unknown>) {
+  const updates: Record<string, unknown> = {};
+
+  if (typeof body.drugName === 'string' && body.drugName.trim()) {
+    updates.drugName = body.drugName.trim().slice(0, 500);
+  }
+  if (body.genericName !== undefined) {
+    updates.genericName = typeof body.genericName === 'string' ? body.genericName.trim().slice(0, 500) || null : null;
+  }
+  if (body.specification !== undefined) {
+    updates.specification = typeof body.specification === 'string' ? body.specification.trim().slice(0, 200) || null : null;
+  }
+  if (body.unit !== undefined) {
+    updates.unit = typeof body.unit === 'string' ? body.unit.trim().slice(0, 50) || null : null;
+  }
+  if (typeof body.yakkaPrice === 'number' && body.yakkaPrice >= 0) {
+    updates.yakkaPrice = body.yakkaPrice;
+  }
+  if (body.manufacturer !== undefined) {
+    updates.manufacturer = typeof body.manufacturer === 'string' ? body.manufacturer.trim().slice(0, 200) || null : null;
+  }
+  if (typeof body.isListed === 'boolean') {
+    updates.isListed = body.isListed;
+  }
+  if (body.transitionDeadline !== undefined) {
+    updates.transitionDeadline = typeof body.transitionDeadline === 'string' ? body.transitionDeadline.trim() || null : null;
+  }
+
+  return updates;
+}
+
 // ── 統計情報 ──────────────────────────────────────
 
 router.get('/stats', async (_req: AuthRequest, res: Response) => {
@@ -39,43 +111,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const statusFilter = req.query.status as string | undefined; // listed / transition / delisted / all
     const categoryFilter = normalizeSearchTerm(req.query.category);
 
-    const conditions = [];
-
-    // ステータスフィルター
-    if (statusFilter === 'listed') {
-      conditions.push(eq(drugMaster.isListed, true));
-    } else if (statusFilter === 'delisted') {
-      conditions.push(eq(drugMaster.isListed, false));
-    } else if (statusFilter === 'transition') {
-      conditions.push(and(
-        eq(drugMaster.isListed, true),
-        isNotNull(drugMaster.transitionDeadline),
-      ));
-    }
-
-    // カテゴリフィルター
-    if (categoryFilter) {
-      conditions.push(eq(drugMaster.category, categoryFilter));
-    }
-
-    // 検索
-    if (search) {
-      const normalized = normalizeKana(search);
-      const hiragana = katakanaToHiragana(normalized);
-      const katakana = hiraganaToKatakana(normalized);
-      const likeTerms = new Set([normalized, hiragana, katakana]);
-      const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${escapeLikeWildcards(term)}%`));
-      const genericConditions = [...likeTerms].map((term) => like(drugMaster.genericName, `%${escapeLikeWildcards(term)}%`));
-      const allSearchConditions = [...nameConditions, ...genericConditions];
-
-      // YJコード検索
-      if (/^[A-Z0-9]+$/i.test(search.trim())) {
-        allSearchConditions.push(like(drugMaster.yjCode, `%${escapeLikeWildcards(search.trim())}%`));
-      }
-
-      conditions.push(or(...allSearchConditions));
-    }
-
+    const conditions = buildDrugMasterListConditions(search, statusFilter, categoryFilter);
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const [totalResult] = await db.select({ value: rowCount })
@@ -154,33 +190,8 @@ router.put('/detail/:yjCode', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const body = req.body;
-    const updates: Record<string, unknown> = {};
-
-    if (typeof body.drugName === 'string' && body.drugName.trim()) {
-      updates.drugName = body.drugName.trim().slice(0, 500);
-    }
-    if (body.genericName !== undefined) {
-      updates.genericName = typeof body.genericName === 'string' ? body.genericName.trim().slice(0, 500) || null : null;
-    }
-    if (body.specification !== undefined) {
-      updates.specification = typeof body.specification === 'string' ? body.specification.trim().slice(0, 200) || null : null;
-    }
-    if (body.unit !== undefined) {
-      updates.unit = typeof body.unit === 'string' ? body.unit.trim().slice(0, 50) || null : null;
-    }
-    if (typeof body.yakkaPrice === 'number' && body.yakkaPrice >= 0) {
-      updates.yakkaPrice = body.yakkaPrice;
-    }
-    if (body.manufacturer !== undefined) {
-      updates.manufacturer = typeof body.manufacturer === 'string' ? body.manufacturer.trim().slice(0, 200) || null : null;
-    }
-    if (typeof body.isListed === 'boolean') {
-      updates.isListed = body.isListed;
-    }
-    if (body.transitionDeadline !== undefined) {
-      updates.transitionDeadline = typeof body.transitionDeadline === 'string' ? body.transitionDeadline.trim() || null : null;
-    }
+    const body = req.body as Record<string, unknown>;
+    const updates = buildDrugMasterUpdatePayload(body);
 
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: '更新するフィールドが指定されていません' });

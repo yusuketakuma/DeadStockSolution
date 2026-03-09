@@ -100,16 +100,35 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   unknown: '不明',
 };
 
+function buildAdminLogsParams(input: {
+  page: number;
+  actionFilter: string;
+  resultFilter: 'all' | 'failure';
+  keyword: string;
+}): string {
+  const params = new URLSearchParams({ page: String(input.page), limit: '50' });
+  if (input.actionFilter) params.set('action', input.actionFilter);
+  if (input.resultFilter === 'failure') params.set('result', 'failure');
+  if (input.keyword.trim()) params.set('keyword', input.keyword.trim());
+  return params.toString();
+}
+
+function getActionBadgeMeta(action: string): { label: string; variant: string } {
+  return ACTION_LABELS[action] ?? { label: action, variant: 'secondary' };
+}
+
 export default function AdminLogsPage() {
   const [actionFilter, setActionFilter] = useState('');
   const [resultFilter, setResultFilter] = useState<'all' | 'failure'>('all');
   const [keyword, setKeyword] = useState('');
   const initializedFilterRef = useRef(false);
   const fetchLogs = useCallback((targetPage: number, signal?: AbortSignal) => {
-    const params = new URLSearchParams({ page: String(targetPage), limit: '50' });
-    if (actionFilter) params.set('action', actionFilter);
-    if (resultFilter === 'failure') params.set('result', 'failure');
-    if (keyword.trim()) params.set('keyword', keyword.trim());
+    const params = buildAdminLogsParams({
+      page: targetPage,
+      actionFilter,
+      resultFilter,
+      keyword,
+    });
     return api.get<LogsResponse>(`/admin/logs?${params}`, { signal });
   }, [actionFilter, resultFilter, keyword]);
 
@@ -146,11 +165,8 @@ export default function AdminLogsPage() {
   const failureByReason = response?.summary?.failureByReason ?? [];
 
   const getActionBadge = (action: string) => {
-    const info = ACTION_LABELS[action];
-    if (info) {
-      return <Badge bg={info.variant}>{info.label}</Badge>;
-    }
-    return <Badge bg="secondary">{action}</Badge>;
+    const info = getActionBadgeMeta(action);
+    return <Badge bg={info.variant}>{info.label}</Badge>;
   };
 
   const formatDetail = (detail: string | null) => {

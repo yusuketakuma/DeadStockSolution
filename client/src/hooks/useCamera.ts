@@ -100,6 +100,99 @@ function resolveCaptureResultInfo(addedCount: number): string {
   return `画像内コードを ${addedCount} 件追加しました。候補を確認して医薬品を確定してください。`;
 }
 
+function getCameraStartBlocker(videoElement: HTMLVideoElement | null): string | null {
+  if (!videoElement) {
+    return 'カメラ初期化に失敗しました';
+  }
+  if (!window.isSecureContext) {
+    return 'カメラ利用にはHTTPS接続が必要です';
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return 'このブラウザはカメラ機能に対応していません';
+  }
+  return null;
+}
+
+function prepareFrameCanvas(
+  videoElement: HTMLVideoElement,
+  existingCanvas: HTMLCanvasElement | null,
+): HTMLCanvasElement {
+  if (videoElement.videoWidth < 2 || videoElement.videoHeight < 2) {
+    throw new Error('カメラ映像を準備中です。少し待って再実行してください。');
+  }
+
+  const canvas = existingCanvas ?? document.createElement('canvas');
+  canvas.width = videoElement.videoWidth;
+  canvas.height = videoElement.videoHeight;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('カメラ画像の解析準備に失敗しました');
+  }
+
+  context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+async function detectWithBarcodeDetector(
+  canvas: HTMLCanvasElement,
+  normalizeCodeInput: (value: string) => string,
+  detector: BarcodeDetectorLike,
+): Promise<string[]> {
+  const detected = await detector.detect(canvas);
+  return [...new Set(
+    detected
+      .map((item) => normalizeCodeInput(item.rawValue ?? ''))
+      .filter((code) => code.length > 0),
+  )];
+}
+
+function detectWithZxingCanvas(
+  canvas: HTMLCanvasElement,
+  normalizeCodeInput: (value: string) => string,
+): string[] {
+  try {
+    const reader = createReader();
+    const result = reader.decodeFromCanvas(canvas);
+    const fallbackCode = normalizeCodeInput(result.getText());
+    return fallbackCode ? [fallbackCode] : [];
+  } catch (err) {
+    if (err instanceof NotFoundException) {
+      return [];
+    }
+    throw err;
+  }
+}
+
+async function startReaderWithFallback(
+  reader: BrowserMultiFormatReader,
+  videoElement: HTMLVideoElement,
+  onDecode: NonNullable<Parameters<BrowserMultiFormatReader['decodeFromConstraints']>[2]>,
+): Promise<IScannerControls> {
+  try {
+    return await reader.decodeFromConstraints(CAMERA_CONSTRAINTS_PREFERRED, videoElement, onDecode);
+  } catch (error) {
+    if (!isOverconstrainedError(error)) {
+      throw error;
+    }
+    return reader.decodeFromConstraints(CAMERA_CONSTRAINTS_FALLBACK, videoElement, onDecode);
+  }
+}
+
+async function resolveDetectedCodes(
+  codes: string[],
+  onResolveCode: (code: string) => Promise<AppendOrUpdateRowResult | null>,
+): Promise<number> {
+  let addedCount = 0;
+  for (const code of codes) {
+    const result = await onResolveCode(code);
+    if (result === 'added') {
+      addedCount += 1;
+    }
+  }
+  return addedCount;
+}
+
 interface UseCameraOptions {
   resolving: boolean;
   submitting: boolean;
@@ -197,48 +290,25 @@ export function useCamera({
     if (!videoElement) {
       throw new Error('カメラ映像が取得できません');
     }
-    if (videoElement.videoWidth < 2 || videoElement.videoHeight < 2) {
-      throw new Error('カメラ映像を準備中です。少し待って再実行してください。');
-    }
-
-    const canvas = frameCanvasRef.current ?? document.createElement('canvas');
+    const canvas = prepareFrameCanvas(videoElement, frameCanvasRef.current);
     frameCanvasRef.current = canvas;
-    canvas.width = videoElement.videoWidth;
-    canvas.height = videoElement.videoHeight;
-
-    const context = canvas.getContext('2d');
-    if (!context) {
-      throw new Error('カメラ画像の解析準備に失敗しました');
-    }
-    context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
 
     const detectorCtor = getBarcodeDetectorConstructor();
     if (detectorCtor) {
       if (!barcodeDetectorRef.current) {
         barcodeDetectorRef.current = new detectorCtor({ formats: BARCODE_DETECTOR_FORMATS });
       }
-      const detected = await barcodeDetectorRef.current.detect(canvas);
-      const detectedCodes = [...new Set(
-        detected
-          .map((item) => normalizeCodeInput(item.rawValue ?? ''))
-          .filter((code) => code.length > 0),
-      )];
+      const detectedCodes = await detectWithBarcodeDetector(
+        canvas,
+        normalizeCodeInput,
+        barcodeDetectorRef.current,
+      );
       if (detectedCodes.length > 0) {
         return detectedCodes;
       }
     }
 
-    try {
-      const reader = createReader();
-      const result = reader.decodeFromCanvas(canvas);
-      const fallbackCode = normalizeCodeInput(result.getText());
-      return fallbackCode ? [fallbackCode] : [];
-    } catch (err) {
-      if (err instanceof NotFoundException) {
-        return [];
-      }
-      throw err;
-    }
+    return detectWithZxingCanvas(canvas, normalizeCodeInput);
   }, [normalizeCodeInput]);
 
   const drainPendingCodes = useCallback(async (sessionId: number) => {
@@ -288,16 +358,14 @@ export function useCamera({
 
   const handleStartCamera = useCallback(async () => {
     if (cameraActive || cameraBusy) return;
-    if (!videoRef.current) {
+    const videoElement = videoRef.current;
+    const startBlocker = getCameraStartBlocker(videoElement);
+    if (startBlocker) {
+      setCameraErrorState(startBlocker);
+      return;
+    }
+    if (!videoElement) {
       setCameraErrorState('カメラ初期化に失敗しました');
-      return;
-    }
-    if (!window.isSecureContext) {
-      setCameraErrorState('カメラ利用にはHTTPS接続が必要です');
-      return;
-    }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraErrorState('このブラウザはカメラ機能に対応していません');
       return;
     }
 
@@ -321,15 +389,7 @@ export function useCamera({
         }
       };
 
-      let controls: IScannerControls;
-      try {
-        controls = await reader.decodeFromConstraints(CAMERA_CONSTRAINTS_PREFERRED, videoRef.current, onDecode);
-      } catch (error) {
-        if (!isOverconstrainedError(error)) {
-          throw error;
-        }
-        controls = await reader.decodeFromConstraints(CAMERA_CONSTRAINTS_FALLBACK, videoRef.current, onDecode);
-      }
+      const controls = await startReaderWithFallback(reader, videoElement, onDecode);
 
       controlsRef.current = controls;
       setTorchSupported(typeof controls.switchTorch === 'function');
@@ -375,13 +435,7 @@ export function useCamera({
         return;
       }
 
-      let addedCount = 0;
-      for (const code of codes) {
-        const result = await onResolveCode(code);
-        if (result === 'added') {
-          addedCount += 1;
-        }
-      }
+      const addedCount = await resolveDetectedCodes(codes, onResolveCode);
       onInfo(resolveCaptureResultInfo(addedCount));
     } catch (err) {
       onError(resolveErrorMessage(err, '画像からのコード検出に失敗しました'));

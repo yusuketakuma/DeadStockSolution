@@ -21,6 +21,17 @@ export interface MhlwIndexResult {
   files: DiscoveredFile[];
 }
 
+interface PinnedDispatcherContext {
+  hostname: string;
+  dispatcher: FetchDispatcher;
+  close: () => Promise<void>;
+}
+
+interface PinnedTargetValidation {
+  hostname: string;
+  resolvedAddresses: string[];
+}
+
 function validateMhlwHost(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -36,6 +47,60 @@ function resolveRelativeUrl(base: string, relative: string): string {
   } catch {
     return '';
   }
+}
+
+function collectValidatedCandidates(html: string, baseUrl: string, pattern: RegExp): string[] {
+  let match: RegExpExecArray | null;
+  const candidates: string[] = [];
+  while ((match = pattern.exec(html)) !== null) {
+    const resolved = resolveRelativeUrl(baseUrl, match[1]);
+    if (resolved && validateMhlwHost(resolved)) {
+      candidates.push(resolved);
+    }
+  }
+  return candidates;
+}
+
+function selectLatestCandidate(candidates: string[]): string | null {
+  if (candidates.length === 0) {
+    return null;
+  }
+  candidates.sort((a, b) => {
+    const numA = (a.match(/\d{8}/) || ['0'])[0];
+    const numB = (b.match(/\d{8}/) || ['0'])[0];
+    return numB.localeCompare(numA);
+  });
+  return candidates[0];
+}
+
+function dedupeFilesByCategory(results: DiscoveredFile[]): DiscoveredFile[] {
+  const seen = new Set<string>();
+  return results.filter((file) => {
+    if (seen.has(file.category)) return false;
+    seen.add(file.category);
+    return true;
+  });
+}
+
+async function createPinnedDispatcherContext(url: string, errorLabel: string): Promise<PinnedDispatcherContext> {
+  const validated = await validatePinnedTarget(url, errorLabel);
+  const pinnedAgent = createPinnedDnsAgent(validated.hostname, validated.resolvedAddresses);
+  return {
+    hostname: validated.hostname,
+    dispatcher: pinnedAgent as unknown as FetchDispatcher,
+    close: () => pinnedAgent.close().catch(() => undefined),
+  };
+}
+
+async function validatePinnedTarget(url: string, errorLabel: string): Promise<PinnedTargetValidation> {
+  const validated = await validateExternalHttpsUrl(url);
+  if (!validated.ok) {
+    throw new Error(`${errorLabel} URL の検証に失敗: ${validated.reason}`);
+  }
+  return {
+    hostname: validated.hostname ?? new URL(url).hostname,
+    resolvedAddresses: validated.resolvedAddresses,
+  };
 }
 
 const CATEGORY_MAP: Record<string, DrugCategory> = {
@@ -91,37 +156,15 @@ async function fetchHtml(url: string, dispatcher?: FetchDispatcher): Promise<str
 export function extractLatestIndexUrl(html: string, baseUrl: string): string | null {
   // パターン: /topics/YYYY/MM/tp{date}-01_01.html 等
   const linkPattern = /href=["']([^"']*\/topics\/\d{4}\/\d{2}\/tp\d+-01[^"']*\.html)["']/gi;
-  let match: RegExpExecArray | null;
-  const candidates: string[] = [];
-
-  while ((match = linkPattern.exec(html)) !== null) {
-    const resolved = resolveRelativeUrl(baseUrl, match[1]);
-    if (resolved && validateMhlwHost(resolved)) {
-      candidates.push(resolved);
-    }
-  }
+  const candidates = collectValidatedCandidates(html, baseUrl, linkPattern);
 
   if (candidates.length === 0) {
     // フォールバック: 薬価基準関連リンクを広く探す
     const broadPattern = /href=["']([^"']*(?:yakka|薬価)[^"']*\.html)["']/gi;
-    while ((match = broadPattern.exec(html)) !== null) {
-      const resolved = resolveRelativeUrl(baseUrl, match[1]);
-      if (resolved && validateMhlwHost(resolved)) {
-        candidates.push(resolved);
-      }
-    }
+    candidates.push(...collectValidatedCandidates(html, baseUrl, broadPattern));
   }
 
-  if (candidates.length === 0) return null;
-
-  // 日付が最も新しいものを選択（URL内の数値で比較）
-  candidates.sort((a, b) => {
-    const numA = (a.match(/\d{8}/) || ['0'])[0];
-    const numB = (b.match(/\d{8}/) || ['0'])[0];
-    return numB.localeCompare(numA);
-  });
-
-  return candidates[0];
+  return selectLatestCandidate(candidates);
 }
 
 /**
@@ -154,13 +197,7 @@ export function extractExcelUrls(html: string, baseUrl: string): DiscoveredFile[
     }
   }
 
-  // 重複カテゴリを除去（最初に見つかったものを優先）
-  const seen = new Set<string>();
-  return results.filter((f) => {
-    if (seen.has(f.category)) return false;
-    seen.add(f.category);
-    return true;
-  });
+  return dedupeFilesByCategory(results);
 }
 
 /**
@@ -176,21 +213,12 @@ export async function discoverMhlwExcelUrls(portalUrl: string = MHLW_PORTAL_URL)
     throw new Error(`ポータル URL のホスト名が *.mhlw.go.jp ではありません: ${portalUrl}`);
   }
 
-  const validated = await validateExternalHttpsUrl(portalUrl);
-  if (!validated.ok) {
-    throw new Error(`ポータル URL の検証に失敗: ${validated.reason}`);
-  }
-
-  const pinnedAgent = createPinnedDnsAgent(
-    validated.hostname ?? new URL(portalUrl).hostname,
-    validated.resolvedAddresses,
-  );
-  const dispatcher = pinnedAgent as unknown as FetchDispatcher;
+  const portalContext = await createPinnedDispatcherContext(portalUrl, 'ポータル');
 
   try {
     // Step 1: 親ポータルを取得
     logger.info('MHLW index scraper: fetching portal page', { url: portalUrl });
-    const portalHtml = await fetchHtml(portalUrl, dispatcher);
+    const portalHtml = await fetchHtml(portalUrl, portalContext.dispatcher);
 
     // Step 2: 最新インデックスページ URL を発見
     const indexUrl = extractLatestIndexUrl(portalHtml, portalUrl);
@@ -201,20 +229,17 @@ export async function discoverMhlwExcelUrls(portalUrl: string = MHLW_PORTAL_URL)
     logger.info('MHLW index scraper: found index page', { indexUrl });
 
     // Step 3: インデックスページを取得（HTTPS + DNS pinning を再検証、同一ホストならエージェント再利用）
-    const indexValidated = await validateExternalHttpsUrl(indexUrl);
-    if (!indexValidated.ok) {
-      throw new Error(`インデックスページ URL の検証に失敗: ${indexValidated.reason}`);
-    }
-    const portalHostname = validated.hostname ?? new URL(portalUrl).hostname;
-    const indexHostname = indexValidated.hostname ?? new URL(indexUrl).hostname;
-    const sameHost = portalHostname === indexHostname;
-    const indexPinnedAgent = sameHost
+    const indexValidation = await validatePinnedTarget(indexUrl, 'インデックスページ');
+    const sameHost = portalContext.hostname === indexValidation.hostname;
+    const indexContext = sameHost
       ? null
-      : createPinnedDnsAgent(indexHostname, indexValidated.resolvedAddresses);
-    const indexDispatcher = sameHost ? dispatcher : indexPinnedAgent as unknown as FetchDispatcher;
+      : createPinnedDnsAgent(indexValidation.hostname, indexValidation.resolvedAddresses);
 
     try {
-      const indexHtml = await fetchHtml(indexUrl, indexDispatcher);
+      const indexHtml = await fetchHtml(
+        indexUrl,
+        sameHost ? portalContext.dispatcher : indexContext as unknown as FetchDispatcher,
+      );
 
       // Step 4: Excel URL を抽出
       const files = extractExcelUrls(indexHtml, indexUrl);
@@ -227,9 +252,11 @@ export async function discoverMhlwExcelUrls(portalUrl: string = MHLW_PORTAL_URL)
 
       return { indexUrl, files };
     } finally {
-      if (indexPinnedAgent) await indexPinnedAgent.close().catch(() => undefined);
+      if (indexContext) {
+        await indexContext.close().catch(() => undefined);
+      }
     }
   } finally {
-    await pinnedAgent.close().catch(() => undefined);
+    await portalContext.close();
   }
 }

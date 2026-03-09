@@ -2,7 +2,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv } from 'vite';
+import { visualizer } from 'rollup-plugin-visualizer';
+import { VitePWA } from 'vite-plugin-pwa';
+import { defineConfig, loadEnv, type PluginOption } from 'vite';
 
 type PackageJson = {
   version?: string;
@@ -27,10 +29,51 @@ export default defineConfig(({ mode }) => {
   const envVersion = env.VITE_APP_VERSION?.trim();
   const appVersion = normalizeVersion(envVersion || packageJson.version);
 
+  const plugins: PluginOption[] = [react()];
+
+  plugins.push(
+    VitePWA({
+      registerType: 'prompt',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      manifest: false,
+      injectManifest: {
+        globDirectory: 'dist',
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
+        globIgnores: ['**/node_modules/**/*', 'sw.js'],
+      },
+    }) as PluginOption,
+  );
+
+  if (process.env.ANALYZE === 'true') {
+    plugins.push(
+      visualizer({
+        template: 'treemap',
+        filename: 'stats.html',
+        gzipSize: true,
+        open: false,
+      }) as PluginOption,
+    );
+  }
+
   return {
-    plugins: [react()],
+    plugins,
     define: {
       __APP_VERSION__: JSON.stringify(appVersion),
+    },
+    build: {
+      chunkSizeWarningLimit: 500,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-bootstrap': ['react-bootstrap', 'bootstrap'],
+            'vendor-forms': ['@hookform/resolvers', 'react-hook-form', 'zod'],
+            'vendor-sentry': ['@sentry/react'],
+          },
+        },
+      },
     },
     server: {
       host: '127.0.0.1',

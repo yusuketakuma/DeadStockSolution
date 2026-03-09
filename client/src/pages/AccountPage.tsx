@@ -11,12 +11,18 @@ import DraftRestoreAlert from '../components/DraftRestoreAlert';
 import AccountInfoForm from '../components/account/AccountInfoForm';
 import BusinessHoursSettings from '../components/account/BusinessHoursSettings';
 import WithdrawSection from '../components/account/WithdrawSection';
+import PushNotificationSettings from '../components/account/PushNotificationSettings';
 import AppDataPanel from '../components/ui/AppDataPanel';
 import InlineLoader from '../components/ui/InlineLoader';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { useAccountForm } from '../hooks/useAccountForm';
 import { useBusinessHoursForm } from '../hooks/useBusinessHoursForm';
 import { useNotificationSettings } from '../hooks/useNotificationSettings';
+
+function clearAccountPageMessages(accountForm: Pick<ReturnType<typeof useAccountForm>, 'setError' | 'setMessage'>): void {
+  accountForm.setError('');
+  accountForm.setMessage('');
+}
 
 export default function AccountPage() {
   const { user, refreshUser, logout } = useAuth();
@@ -53,8 +59,7 @@ export default function AccountPage() {
   const handleWithdrawConfirmed = async () => {
     setShowWithdrawConfirm(false);
     setWithdrawing(true);
-    accountForm.setError('');
-    accountForm.setMessage('');
+    clearAccountPageMessages(accountForm);
     try {
       await api.delete<{ message: string }>('/account', { currentPassword: withdrawPassword });
       setWithdrawPassword('');
@@ -97,7 +102,7 @@ export default function AccountPage() {
       <PageShell>
         <h4 className="page-title mb-3">薬局登録情報の編集</h4>
         {accountForm.error && <AppAlert variant="danger">{accountForm.error}</AppAlert>}
-        <AppButton variant="outline-secondary" onClick={() => void accountForm.loadAccount()}>
+        <AppButton variant="outline-secondary" onClick={() => void accountForm.handleReloadAccount()}>
           再読み込み
         </AppButton>
       </PageShell>
@@ -148,6 +153,8 @@ export default function AccountPage() {
           他薬局のアップロードでマッチング候補が更新された時に通知を受け取ります。
         </Form.Text>
       </AppDataPanel>
+
+      <PushNotificationSettings />
 
       <ConflictAlert
         show={hoursForm.hoursConflict}

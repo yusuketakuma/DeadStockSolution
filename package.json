@@ -28,18 +28,30 @@
     "typecheck": "npm run typecheck --workspace=server && npm run typecheck --workspace=client",
     "typecheck:server": "npm run typecheck --workspace=server",
     "typecheck:client": "npm run typecheck --workspace=client",
-    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "audit:prod": "npm audit --omit=dev --audit-level=moderate",
+    "analyze:client": "ANALYZE=true npm run build --workspace=client",
     "deploy:preview": "sh scripts/vercel-deploy-preview.sh",
     "deploy:prod": "sh scripts/vercel-deploy-prod.sh",
+    "check:bundle-size": "npm run build --workspace=client && node scripts/check-bundle-size.mjs",
     "quality:gate": "bash scripts/quality-gate.sh",
-    "quality:gate:notify": "OPENCLAW_NOTIFY_TARGET=${OPENCLAW_NOTIFY_TARGET:--5103716630} bash scripts/quality-gate.sh"
+    "quality:gate:notify": "OPENCLAW_NOTIFY_TARGET=${OPENCLAW_NOTIFY_TARGET:--5103716630} bash scripts/quality-gate.sh",
+    "prepare": "node scripts/prepare.mjs",
+    "lighthouse": "npm run build:client && npx lhci autorun"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": "eslint --fix"
   },
   "devDependencies": {
+    "@lhci/cli": "^0.14.0",
+    "@commitlint/cli": "^20.4.3",
+    "@commitlint/config-conventional": "^20.4.3",
     "@eslint/js": "^9.39.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.4.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.2",
     "typescript-eslint": "^8.46.3"
   }
 }

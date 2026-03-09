@@ -99,6 +99,30 @@ interface MessagesResponse {
   data: AdminMessage[];
 }
 
+function resolveSettledValue<T>(result: PromiseSettledResult<T>): T | null {
+  return result.status === 'fulfilled' ? result.value : null;
+}
+
+function countRejectedResults(results: ReadonlyArray<PromiseSettledResult<unknown>>): number {
+  return results.filter((result) => result.status === 'rejected').length;
+}
+
+function buildAdminMessagePayload(input: {
+  targetType: 'all' | 'pharmacy';
+  targetPharmacyId: string;
+  title: string;
+  body: string;
+  actionPath: string;
+}) {
+  return {
+    targetType: input.targetType,
+    targetPharmacyId: input.targetType === 'pharmacy' ? Number(input.targetPharmacyId) : null,
+    title: input.title,
+    body: input.body,
+    actionPath: input.actionPath || null,
+  };
+}
+
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [riskOverview, setRiskOverview] = useState<RiskOverview | null>(null);
@@ -130,17 +154,23 @@ export default function AdminDashboardPage() {
       api.get<MessagesResponse>('/admin/messages?page=1&limit=10'),
     ]);
 
-    if (statsResult.status === 'fulfilled') setStats(statsResult.value);
-    if (riskResult.status === 'fulfilled') setRiskOverview(riskResult.value);
-    if (observabilityResult.status === 'fulfilled') setObservability(observabilityResult.value);
-    if (alertsResult.status === 'fulfilled') setAlertsSummary(alertsResult.value);
-    if (kpisResult.status === 'fulfilled') setMonitoringKpis(kpisResult.value);
-    if (pharmacyResult.status === 'fulfilled') setPharmacies(pharmacyResult.value.data);
-    if (messagesResult.status === 'fulfilled') setMessages(messagesResult.value.data);
+    const statsValue = resolveSettledValue(statsResult);
+    const riskValue = resolveSettledValue(riskResult);
+    const observabilityValue = resolveSettledValue(observabilityResult);
+    const alertsValue = resolveSettledValue(alertsResult);
+    const kpisValue = resolveSettledValue(kpisResult);
+    const pharmacyValue = resolveSettledValue(pharmacyResult);
+    const messagesValue = resolveSettledValue(messagesResult);
 
-    const failures = [statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult]
-      .filter((r) => r.status === 'rejected');
-    if (failures.length > 0) {
+    if (statsValue) setStats(statsValue);
+    if (riskValue) setRiskOverview(riskValue);
+    if (observabilityValue) setObservability(observabilityValue);
+    if (alertsValue) setAlertsSummary(alertsValue);
+    if (kpisValue) setMonitoringKpis(kpisValue);
+    if (pharmacyValue) setPharmacies(pharmacyValue.data);
+    if (messagesValue) setMessages(messagesValue.data);
+
+    if (countRejectedResults([statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult]) > 0) {
       setError('一部のデータの取得に失敗しました');
     }
     setLoading(false);
@@ -156,13 +186,13 @@ export default function AdminDashboardPage() {
     setError('');
     setMessage('');
     try {
-      await api.post('/admin/messages', {
+      await api.post('/admin/messages', buildAdminMessagePayload({
         targetType,
-        targetPharmacyId: targetType === 'pharmacy' ? Number(targetPharmacyId) : null,
+        targetPharmacyId,
         title,
         body,
-        actionPath: actionPath || null,
-      });
+        actionPath,
+      }));
       setMessage('加盟薬局へメッセージを送信しました');
       setTitle('');
       setBody('');

@@ -93,6 +93,26 @@ describe('detectHeaderRow', () => {
     const result = detectHeaderRow(rows);
     expect(result).toBeLessThan(10);
   });
+
+  it('高スコアのヘッダー行を見つけたら早期終了する', () => {
+    // ヘッダー行がインデックス 2 にある。インデックス 3 以降は走査されないことを確認するため、
+    // インデックス 3 以降により多くのキーワードが含まれていても 2 を返す（早期終了しているから）。
+    const rows = [
+      ['メモ1', 'メモ2'],
+      ['備考', '作成日'],
+      ['薬品名', '数量', '使用期限'], // 3 キーワードマッチ → スコア 15 で早期終了
+      ['薬品名', '数量', '使用期限', '単位', '薬価', 'ロット'], // より多いキーワードだが走査されない
+    ];
+    expect(detectHeaderRow(rows)).toBe(2);
+  });
+
+  it('全セルが空の行はスキップされる', () => {
+    const rows = [
+      [null, undefined, ''],
+      ['薬品名', '数量'],
+    ];
+    expect(detectHeaderRow(rows)).toBe(1);
+  });
 });
 
 describe('suggestMapping', () => {

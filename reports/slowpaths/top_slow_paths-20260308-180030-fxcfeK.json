@@ -1,0 +1,275 @@
+{
+  "count": 30,
+  "targets": [
+    {
+      "rank": 1,
+      "source": "static-heuristic",
+      "id": "server/src/services/drug-master-sync-service.ts",
+      "file": "server/src/services/drug-master-sync-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=503, loops=10, awaitInLoop=7, sql=23",
+      "score": 163.09
+    },
+    {
+      "rank": 2,
+      "source": "static-heuristic",
+      "id": "server/src/services/exchange-service.ts",
+      "file": "server/src/services/exchange-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=568, loops=4, awaitInLoop=4, sql=21",
+      "score": 134.74
+    },
+    {
+      "rank": 3,
+      "source": "static-heuristic",
+      "id": "server/src/services/drug-master-enrichment.ts",
+      "file": "server/src/services/drug-master-enrichment.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=406, loops=13, awaitInLoop=6, sql=6",
+      "score": 125.58
+    },
+    {
+      "rank": 4,
+      "source": "static-heuristic",
+      "id": "server/src/services/matching-service.ts",
+      "file": "server/src/services/matching-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=411, loops=8, awaitInLoop=5, sql=19",
+      "score": 123.23
+    },
+    {
+      "rank": 5,
+      "source": "static-heuristic",
+      "id": "server/src/services/matching-refresh-service.ts",
+      "file": "server/src/services/matching-refresh-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=395, loops=5, awaitInLoop=5, sql=22",
+      "score": 122.05
+    },
+    {
+      "rank": 6,
+      "source": "static-heuristic",
+      "id": "server/src/services/drug-master-parser-service.ts",
+      "file": "server/src/services/drug-master-parser-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=538, loops=14, awaitInLoop=2, sql=0",
+      "score": 109.64
+    },
+    {
+      "rank": 7,
+      "source": "static-heuristic",
+      "id": "server/src/services/group-service.ts",
+      "file": "server/src/services/group-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=550, loops=0, awaitInLoop=0, sql=24",
+      "score": 104.6
+    },
+    {
+      "rank": 8,
+      "source": "static-heuristic",
+      "id": "server/src/routes/admin-pharmacies-actions.ts",
+      "file": "server/src/routes/admin-pharmacies-actions.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=504, loops=4, awaitInLoop=3, sql=14",
+      "score": 103.32
+    },
+    {
+      "rank": 9,
+      "source": "static-heuristic",
+      "id": "server/src/db/migrate-legacy.ts",
+      "file": "server/src/db/migrate-legacy.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=386, loops=2, awaitInLoop=2, sql=16",
+      "score": 87.38
+    },
+    {
+      "rank": 10,
+      "source": "static-heuristic",
+      "id": "server/src/services/predictive-alert-service.ts",
+      "file": "server/src/services/predictive-alert-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=456, loops=6, awaitInLoop=3, sql=7",
+      "score": 84.98
+    },
+    {
+      "rank": 11,
+      "source": "static-heuristic",
+      "id": "server/src/test/integration/helpers/test-db.ts",
+      "file": "server/src/test/integration/helpers/test-db.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=282, loops=9, awaitInLoop=4, sql=5",
+      "score": 84.66
+    },
+    {
+      "rank": 12,
+      "source": "static-heuristic",
+      "id": "server/src/services/matching-score-service.ts",
+      "file": "server/src/services/matching-score-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=537, loops=12, awaitInLoop=0, sql=1",
+      "score": 82.51
+    },
+    {
+      "rank": 13,
+      "source": "static-heuristic",
+      "id": "server/src/services/camera-dead-stock-service.ts",
+      "file": "server/src/services/camera-dead-stock-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=468, loops=2, awaitInLoop=1, sql=10",
+      "score": 79.34
+    },
+    {
+      "rank": 14,
+      "source": "static-heuristic",
+      "id": "server/src/routes/business-hours.ts",
+      "file": "server/src/routes/business-hours.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=445, loops=2, awaitInLoop=1, sql=10",
+      "score": 78.85
+    },
+    {
+      "rank": 15,
+      "source": "static-heuristic",
+      "id": "server/src/routes/account.ts",
+      "file": "server/src/routes/account.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=490, loops=0, awaitInLoop=0, sql=12",
+      "score": 76.9
+    },
+    {
+      "rank": 16,
+      "source": "static-heuristic",
+      "id": "server/src/services/notification-service.ts",
+      "file": "server/src/services/notification-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=300, loops=1, awaitInLoop=1, sql=19",
+      "score": 72.1
+    },
+    {
+      "rank": 17,
+      "source": "static-heuristic",
+      "id": "server/src/services/matching-snapshot-service.ts",
+      "file": "server/src/services/matching-snapshot-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=421, loops=2, awaitInLoop=2, sql=15",
+      "score": 70.53
+    },
+    {
+      "rank": 18,
+      "source": "static-heuristic",
+      "id": "server/src/services/expiry-risk-service.ts",
+      "file": "server/src/services/expiry-risk-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=461, loops=5, awaitInLoop=2, sql=4",
+      "score": 68.53
+    },
+    {
+      "rank": 19,
+      "source": "static-heuristic",
+      "id": "server/src/routes/exchange-proposals.ts",
+      "file": "server/src/routes/exchange-proposals.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=588, loops=1, awaitInLoop=0, sql=12",
+      "score": 66.04
+    },
+    {
+      "rank": 20,
+      "source": "static-heuristic",
+      "id": "server/src/services/upload-confirm-service.ts",
+      "file": "server/src/services/upload-confirm-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=387, loops=2, awaitInLoop=2, sql=9",
+      "score": 64.81
+    },
+    {
+      "rank": 21,
+      "source": "static-heuristic",
+      "id": "server/src/routes/notifications.ts",
+      "file": "server/src/routes/notifications.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=386, loops=4, awaitInLoop=1, sql=12",
+      "score": 64.28
+    },
+    {
+      "rank": 22,
+      "source": "static-heuristic",
+      "id": "server/src/routes/auth-helpers.ts",
+      "file": "server/src/routes/auth-helpers.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=651, loops=0, awaitInLoop=0, sql=11",
+      "score": 61.73
+    },
+    {
+      "rank": 23,
+      "source": "static-heuristic",
+      "id": "server/src/services/upload-confirm/upload-confirm-query-service.ts",
+      "file": "server/src/services/upload-confirm/upload-confirm-query-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=359, loops=1, awaitInLoop=1, sql=14",
+      "score": 60.37
+    },
+    {
+      "rank": 24,
+      "source": "static-heuristic",
+      "id": "server/src/services/matching-rule-service.ts",
+      "file": "server/src/services/matching-rule-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=342, loops=2, awaitInLoop=1, sql=10",
+      "score": 60.36
+    },
+    {
+      "rank": 25,
+      "source": "static-heuristic",
+      "id": "server/src/routes/exchange-comments.ts",
+      "file": "server/src/routes/exchange-comments.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=329, loops=0, awaitInLoop=0, sql=13",
+      "score": 58.47
+    },
+    {
+      "rank": 26,
+      "source": "static-heuristic",
+      "id": "server/src/services/timeline-aggregators.ts",
+      "file": "server/src/services/timeline-aggregators.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=688, loops=1, awaitInLoop=0, sql=11",
+      "score": 58.14
+    },
+    {
+      "rank": 27,
+      "source": "static-heuristic",
+      "id": "server/src/services/upload-row-issue-service.ts",
+      "file": "server/src/services/upload-row-issue-service.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=251, loops=4, awaitInLoop=2, sql=10",
+      "score": 57.83
+    },
+    {
+      "rank": 28,
+      "source": "static-heuristic",
+      "id": "client/src/hooks/useCamera.ts",
+      "file": "client/src/hooks/useCamera.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=415, loops=2, awaitInLoop=1, sql=1",
+      "score": 56.15
+    },
+    {
+      "rank": 29,
+      "source": "static-heuristic",
+      "id": "server/src/services/column-mapper.ts",
+      "file": "server/src/services/column-mapper.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=276, loops=11, awaitInLoop=0, sql=1",
+      "score": 55.78
+    },
+    {
+      "rank": 30,
+      "source": "static-heuristic",
+      "id": "server/src/services/mhlw-multi-file-fetcher.ts",
+      "file": "server/src/services/mhlw-multi-file-fetcher.ts",
+      "hotPath": "file-hotspot",
+      "reason": "loc=311, loops=3, awaitInLoop=3, sql=0",
+      "score": 54.23
+    }
+  ]
+}

@@ -21,7 +21,7 @@ type ProposalTimelineEventMock = ProposalTimelineEvent;
 
 interface ProposalDetailFetchOptions {
   status?: string;
-  timeline?: ProposalTimelineEventMock[];
+  timeline?: Omit<ProposalTimelineEventMock, 'eventType'>[];
 }
 
 function setMatchMedia(matches: boolean) {
@@ -73,7 +73,7 @@ function createProposalDetailFetch(
       address: 'B',
       prefecture: '神奈川県',
     },
-    timeline: options.timeline,
+    enrichedTimeline: options.timeline?.map((e) => ({ ...e, eventType: 'status_change' as const })),
   };
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -123,6 +123,7 @@ describe('ProposalDetailPage comment actions', () => {
   });
 
   it('allows editing own comment', async () => {
+    const user = userEvent.setup();
     const commentsState: ProposalCommentMock[] = [
       {
         id: 101,
@@ -161,17 +162,19 @@ describe('ProposalDetailPage comment actions', () => {
 
     const editButtons = screen.getAllByRole('button', { name: '編集' });
     expect(editButtons).toHaveLength(1);
-    await userEvent.click(editButtons[0]);
+    await user.click(editButtons[0]);
 
-    const editField = screen.getByLabelText('コメント編集');
-    await userEvent.clear(editField);
-    await userEvent.type(editField, '更新コメント');
-    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await user.clear(screen.getByRole('textbox', { name: 'コメント編集' }));
+    await user.type(screen.getByRole('textbox', { name: 'コメント編集' }), 'updated comment');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '保存' })).not.toBeDisabled();
+    });
+    await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(screen.getByText('コメントを更新しました')).toBeInTheDocument();
     });
-    expect(screen.getByText('更新コメント')).toBeInTheDocument();
+    expect(screen.getByText('updated comment')).toBeInTheDocument();
   });
 
 
@@ -236,6 +239,48 @@ describe('ProposalDetailPage timeline', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     setMatchMedia(false);
+  });
+
+  it('uses the mobile accordion and sticky footer composer layout on small screens', async () => {
+    const commentsState: ProposalCommentMock[] = [];
+    setMatchMedia(true);
+    createProposalDetailFetch(commentsState, {
+      status: 'confirmed',
+      timeline: [
+        {
+          action: 'proposal_created',
+          label: '仮マッチング作成',
+          at: '2026-03-01T00:00:00.000Z',
+          actorPharmacyId: 1,
+          actorName: 'テスト薬局',
+          statusFrom: null,
+          statusTo: 'proposed',
+        },
+      ],
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/proposals/:id" element={<ProposalDetailPage />} />
+      </Routes>,
+      { route: '/proposals/1' },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '進行履歴' })).toBeInTheDocument();
+    });
+
+    const accordionButton = screen.getByRole('button', { name: '進行履歴' });
+    expect(accordionButton).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('proposal-mobile-comment-composer')).toBeInTheDocument();
+    expect(screen.getByTestId('proposal-mobile-sticky-actions')).toBeInTheDocument();
+
+    await userEvent.click(accordionButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '進行履歴' })).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('仮マッチング作成')).toBeInTheDocument();
+    });
   });
 
   it('renders timeline events and filters decision actions', async () => {

@@ -107,6 +107,10 @@ function riskScoreVariant(score: number): string {
   return 'text-success';
 }
 
+function hasAttentionSection(summary: StatisticsSummary): boolean {
+  return summary.proposals.pendingAction > 0 || summary.alerts.activeCount > 0;
+}
+
 function BucketRiskBadges({ buckets }: { buckets: BucketCounts }) {
   const hasRisk = buckets.expired > 0 || buckets.within30 > 0 || buckets.within60 > 0 || buckets.within90 > 0;
 
@@ -153,7 +157,7 @@ export default function StatisticsPage() {
       {loading && <InlineLoader text="統計データを読み込み中..." />}
       {error && <div className="alert alert-danger">{error}</div>}
       {/* アクション待ち・アラート */}
-      {(summary.proposals.pendingAction > 0 || summary.alerts.activeCount > 0) && (
+      {hasAttentionSection(summary) && (
         <AppDataPanel title="要対応" className="mb-3">
           <Row className="g-3">
             {summary.proposals.pendingAction > 0 && (

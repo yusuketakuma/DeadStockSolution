@@ -1,91 +1,141 @@
-import { memo } from 'react';
-import { Badge, ListGroup } from 'react-bootstrap';
-import { formatRelativeTime } from '../../utils/formatters';
+import { Badge } from 'react-bootstrap';
+import { useNavigate } from 'react-router-dom';
 import type { TimelineEvent, TimelinePriority, TimelineSource } from '../../types/timeline';
+import AppCard from '../ui/AppCard';
+import AppMobileDataCard from '../ui/AppMobileDataCard';
+import AppResponsiveSwitch from '../ui/AppResponsiveSwitch';
 
-// ソースラベルのマッピング
-const SOURCE_LABELS: Record<TimelineSource, string> = {
-  proposal: '提案',
-  comment: 'コメント',
-  match: '候補',
-  upload: 'アップロード',
-  admin_message: '管理者',
-  exchange_history: '履歴',
-  expiry_risk: '期限',
-  notification: '通知',
-  feedback: '評価',
-  activity: '操作',
+const SOURCE_ICON: Record<TimelineSource, string> = {
+  proposal: '↔️',
+  comment: '💬',
+  match: '🔍',
+  upload: '📦',
+  admin_message: '📢',
+  exchange_history: '✅',
+  expiry_risk: '⚠️',
+  notification: '🔔',
+  activity: '📋',
+  feedback: '⭐',
 };
 
-// 優先度バリアントのマッピング
-const PRIORITY_VARIANTS: Record<TimelinePriority, string> = {
+const PRIORITY_VARIANT: Record<TimelinePriority, string> = {
   critical: 'danger',
   high: 'warning',
-  medium: 'info',
+  medium: 'primary',
   low: 'secondary',
 };
 
-interface TimelineEventCardProps {
-  event: TimelineEvent;
-  onClick?: (event: TimelineEvent) => void;
+const PRIORITY_LABEL: Record<TimelinePriority, string> = {
+  critical: '重要',
+  high: '高',
+  medium: '中',
+  low: '低',
+};
+
+function getRelativeTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 60) return `${diffMins}分前`;
+  if (diffHours < 24) return `${diffHours}時間前`;
+  if (diffDays === 1) return '昨日';
+  if (diffDays < 7) return `${diffDays}日前`;
+  return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
-export default memo(function TimelineEventCard({ event, onClick }: TimelineEventCardProps) {
-  const sourceLabel = SOURCE_LABELS[event.source];
-  const priorityVariant = PRIORITY_VARIANTS[event.priority];
-  const isUnread = !event.isRead;
+interface TimelineEventCardProps {
+  event: TimelineEvent;
+}
+
+export default function TimelineEventCard({ event }: TimelineEventCardProps) {
+  const navigate = useNavigate();
 
   const handleClick = () => {
-    if (onClick) {
-      onClick(event);
+    if (event.actionPath) {
+      navigate(event.actionPath);
     }
   };
 
-  return (
-    <ListGroup.Item
-      action={!!onClick}
-      onClick={handleClick}
-      className={[
-        'd-flex',
-        'justify-content-between',
-        'align-items-start',
-        'gap-2',
-        'py-2',
-        isUnread ? 'unread bg-light border-start border-primary border-3' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-    >
-      <div className="flex-grow-1 min-w-0">
-        {/* バッジ行 */}
-        <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-          <Badge bg="secondary" className="fw-normal">
-            {sourceLabel}
-          </Badge>
-          <Badge bg={priorityVariant} text={priorityVariant === 'warning' ? 'dark' : undefined}>
-            {event.priority}
-          </Badge>
-        </div>
+  const icon = SOURCE_ICON[event.source] ?? '📌';
+  const priorityVariant = PRIORITY_VARIANT[event.priority];
+  const priorityLabel = PRIORITY_LABEL[event.priority];
+  const relativeTime = getRelativeTime(event.timestamp);
 
-        {/* タイトル */}
-        <div className="fw-semibold text-truncate">{event.title}</div>
-
-        {/* 本文（2行まで）*/}
-        <div
-          className="small text-muted"
-          style={{
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}
-        >
-          {event.body}
-        </div>
-
-        {/* 相対時間 */}
-        <div className="small text-muted mt-1">{formatRelativeTime(event.timestamp)}</div>
-      </div>
-    </ListGroup.Item>
+  const priorityBadge = (
+    <Badge bg={priorityVariant} data-testid="priority-badge">
+      {priorityLabel}
+    </Badge>
   );
-});
+
+  const unreadDot = !event.isRead ? (
+    <span
+      data-testid="unread-dot"
+      style={{
+        display: 'inline-block',
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        backgroundColor: '#0d6efd',
+        marginRight: 4,
+        verticalAlign: 'middle',
+      }}
+    />
+  ) : null;
+
+  return (
+    <AppResponsiveSwitch
+      mobile={
+        <AppMobileDataCard
+          title={
+            <span
+              onClick={handleClick}
+              style={{ cursor: event.actionPath ? 'pointer' : 'default' }}
+              data-testid="card-title"
+            >
+              {unreadDot}
+              <span className={event.isRead ? '' : 'fw-bold'}>{icon} {event.title}</span>
+            </span>
+          }
+          subtitle={<span className="text-muted small">{event.body}</span>}
+          badges={priorityBadge}
+          fields={[{ label: '時刻', value: <span data-testid="relative-time">{relativeTime}</span> }]}
+          className="mb-2"
+        />
+      }
+      desktop={
+        <AppCard
+          className="mb-2"
+          style={{ cursor: event.actionPath ? 'pointer' : 'default' }}
+          onClick={handleClick}
+          data-testid="desktop-card"
+        >
+          <AppCard.Body className="py-2">
+            <div className="d-flex align-items-center gap-2">
+              <span aria-label={`icon-${event.source}`} style={{ fontSize: '1.1em' }}>{icon}</span>
+              <div className="flex-grow-1 overflow-hidden">
+                <div className="d-flex align-items-center gap-2">
+                  {unreadDot}
+                  <span
+                    className={`text-truncate ${event.isRead ? '' : 'fw-bold'}`}
+                    data-testid="card-title"
+                  >
+                    {event.title}
+                  </span>
+                </div>
+                <div className="text-muted small text-truncate">{event.body}</div>
+              </div>
+              <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                <span className="text-muted small" data-testid="relative-time">{relativeTime}</span>
+                {priorityBadge}
+              </div>
+            </div>
+          </AppCard.Body>
+        </AppCard>
+      }
+    />
+  );
+}

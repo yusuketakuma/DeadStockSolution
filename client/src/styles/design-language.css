@@ -93,9 +93,17 @@ body[data-design-preset='high-legibility'] {
   grid-template-columns: 1.4fr 1fr;
 }
 
+.dl-auth-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .dl-auth-main {
   padding: 1.25rem 1.25rem 1rem;
   border-right: 1px solid var(--dl-border);
+}
+
+.dl-auth-grid-single .dl-auth-main {
+  border-right: 0;
 }
 
 .dl-auth-aside {

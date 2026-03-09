@@ -1,3 +1,6 @@
+import { initSentry } from './config/sentry';
+initSentry();
+
 import express, { Request } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -13,6 +16,7 @@ import inventoryRoutes from './routes/inventory';
 import exchangeRoutes from './routes/exchange';
 import pharmaciesRoutes from './routes/pharmacies';
 import notificationsRoutes from './routes/notifications';
+import timelineRoutes from './routes/timeline';
 import requestsRoutes from './routes/requests';
 import openclawRoutes from './routes/openclaw';
 import businessHoursRoutes from './routes/business-hours';
@@ -28,11 +32,14 @@ import internalUploadJobsRoutes from './routes/internal-upload-jobs';
 import internalMonitoringRoutes from './routes/internal-monitoring';
 import internalPredictiveAlertsRoutes from './routes/internal-predictive-alerts';
 import internalVercelDeployEventsRoutes from './routes/internal-vercel-deploy-events';
-import timelineRoutes from './routes/timeline';
 import statisticsRoutes from './routes/statistics';
+import groupsRoutes from './routes/groups';
+import alertsRoutes from './routes/alerts';
+import pushRoutes from './routes/push';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { csrfProtection } from './middleware/csrf';
+import { requireLogin } from './middleware/auth';
 import { db } from './config/database';
 import { sql } from 'drizzle-orm';
 import { logger } from './services/logger';
@@ -41,6 +48,19 @@ import { resolveTrustProxySetting } from './utils/trust-proxy';
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', resolveTrustProxySetting());
+
+/**
+ * Sentry DSN からホスト部分を抽出して connectSrc に追加するためのヘルパー。
+ * 例: "https://abc@o123.ingest.sentry.io/456" → "https://o123.ingest.sentry.io"
+ */
+function extractSentryOrigin(dsn: string): string | null {
+  try {
+    const url = new URL(dsn);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
+}
 
 function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/\/$/, '');
@@ -96,6 +116,33 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+// Report-To ヘッダー: CSP_REPORT_URI が設定されている場合のみ出力（Helmet より前に配置）
+const cspReportUri = process.env.CSP_REPORT_URI ?? null;
+if (cspReportUri) {
+  app.use((_req, res, next) => {
+    res.setHeader(
+      'Report-To',
+      JSON.stringify({
+        group: 'csp-endpoint',
+        max_age: 10886400,
+        endpoints: [{ url: cspReportUri }],
+      }),
+    );
+    next();
+  });
+}
+
+// connectSrc: SENTRY_DSN が設定されている場合は Sentry のオリジンを追加
+const connectSrcDirective: string[] = ["'self'"];
+const sentryDsn = process.env.SENTRY_DSN ?? null;
+if (sentryDsn) {
+  const sentryOrigin = extractSentryOrigin(sentryDsn);
+  if (sentryOrigin) {
+    connectSrcDirective.push(sentryOrigin);
+  }
+}
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -103,14 +150,30 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'"],
+      connectSrc: connectSrcDirective,
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: [],
+      ...(cspReportUri
+        ? {
+            reportUri: [cspReportUri],
+            reportTo: ['csp-endpoint'],
+          }
+        : {}),
     },
   },
   crossOriginEmbedderPolicy: false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
+// Permissions-Policy は Helmet が直接サポートしていないためカスタムミドルウェアで追加
+// camera=(self): カメラは自分のオリジンからのみ許可（バーコードスキャン機能で使用）
+app.use((_req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()');
+  next();
+});
 app.use(compression({
   threshold: 1024,
 }));
@@ -127,6 +190,57 @@ app.use(cookieParser());
 
 // Request logging
 app.use(requestLogger);
+
+// Health check endpoints (before rate limiter — no rate limiting needed)
+const HEALTH_CHECK_DB_TIMEOUT_MS = 5_000;
+
+app.get('/api/health', async (_req, res) => {
+  const start = Date.now();
+  let dbStatus: 'ok' | 'error' = 'ok';
+  let dbResponseTime: number | null = null;
+
+  try {
+    await Promise.race([
+      db.execute(sql`SELECT 1`),
+      new Promise((_resolve, reject) =>
+        setTimeout(() => reject(new Error('Health check DB query timed out')), HEALTH_CHECK_DB_TIMEOUT_MS),
+      ),
+    ]);
+    dbResponseTime = Date.now() - start;
+  } catch (err) {
+    dbStatus = 'error';
+    dbResponseTime = Date.now() - start;
+    logger.error('Health check: database connection failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  const overallStatus = dbStatus === 'ok' ? 'ok' : 'degraded';
+
+  res.status(dbStatus === 'ok' ? 200 : 503).json({
+    status: overallStatus,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    db: { status: dbStatus, responseTime: dbResponseTime },
+    version: process.env.npm_package_version ?? '0.0.0',
+  });
+});
+
+app.get('/api/health/ready', async (_req, res) => {
+  try {
+    await Promise.race([
+      db.execute(sql`SELECT 1`),
+      new Promise((_resolve, reject) =>
+        setTimeout(() => reject(new Error('Readiness check DB query timed out')), HEALTH_CHECK_DB_TIMEOUT_MS),
+      ),
+    ]);
+    res.status(200).json({ ready: true });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.error('Readiness check: database connection failed', { error: reason });
+    res.status(503).json({ ready: false });
+  }
+});
 
 const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -166,6 +280,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/exchange', exchangeRoutes);
 app.use('/api/pharmacies', pharmaciesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/timeline', timelineRoutes);
 app.use('/api/requests', requestsRoutes);
 app.use('/api/openclaw', openclawRoutes);
 app.use('/api/openclaw/commands', openclawCommandsRoutes);
@@ -181,36 +296,10 @@ app.use('/api/internal/upload-jobs', internalUploadJobsRoutes);
 app.use('/api/internal/monitoring', internalMonitoringRoutes);
 app.use('/api/internal/predictive-alerts', internalPredictiveAlertsRoutes);
 app.use('/api/internal/vercel', internalVercelDeployEventsRoutes);
-app.use('/api/timeline', timelineRoutes);
 app.use('/api/statistics', statisticsRoutes);
-
-// Health check with DB connectivity
-app.get('/api/health', async (_req, res) => {
-  const checks: Record<string, string> = {
-    server: 'ok',
-    database: 'unknown',
-  };
-
-  try {
-    await db.execute(sql`SELECT 1`);
-    checks.database = 'ok';
-  } catch (err) {
-    checks.database = 'error';
-    logger.error('Health check: database connection failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  const allOk = Object.values(checks).every((v) => v === 'ok');
-  const status = allOk ? 'ok' : 'degraded';
-
-  res.status(allOk ? 200 : 503).json({
-    status,
-    timestamp: new Date().toISOString(),
-    checks,
-    uptime: process.uptime(),
-  });
-});
+app.use('/api/groups', requireLogin, groupsRoutes);
+app.use('/api/alerts', requireLogin, alertsRoutes);
+app.use('/api/push', pushRoutes);
 
 app.use(errorHandler);
 

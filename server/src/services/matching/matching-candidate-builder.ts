@@ -5,7 +5,7 @@ import {
   calculateCandidateScore,
   calculateMatchRate,
   DrugMatchResult,
-  findBestDrugMatch,
+  findBestDrugMatchWithEquivalences,
   isExpiredDate,
   roundTo2,
 } from '../matching-score-service';
@@ -43,6 +43,7 @@ function buildMatchItems(
   usedMedIndex: UsedMedIndex,
   matchCache: Map<string, DrugMatchResult>,
   nameMatchThreshold: number,
+  equivalenceMap: Map<string, string[]>,
 ): MatchItem[] {
   const items: MatchItem[] = [];
 
@@ -53,7 +54,7 @@ function buildMatchItems(
     const expirySource = stock.expirationDateIso ?? stock.expirationDate;
     if (isExpiredDate(expirySource)) continue;
 
-    const match = findBestDrugMatch(preparedDrugName, usedMedIndex, matchCache);
+    const match = findBestDrugMatchWithEquivalences(preparedDrugName, usedMedIndex, matchCache, equivalenceMap);
     if (match.score < nameMatchThreshold) continue;
 
     items.push({
@@ -145,6 +146,13 @@ function buildCandidateBusinessStatus(
   };
 }
 
+function resolveBalancedCandidateValues(itemsFromA: MatchItem[], itemsFromB: MatchItem[]) {
+  const { balancedA, balancedB, totalA, totalB } = balanceValues(itemsFromA, itemsFromB);
+  const minValue = Math.min(totalA, totalB);
+  const diff = roundTo2(Math.abs(totalA - totalB));
+  return { balancedA, balancedB, totalA, totalB, minValue, diff };
+}
+
 function buildCandidateFromPharmacy(params: {
   otherPharmacy: PharmacyWithDistance;
   myPreparedDeadStock: PreparedStockRow[];
@@ -155,8 +163,10 @@ function buildCandidateFromPharmacy(params: {
   specialHoursByPharmacy: Map<number, SpecialHoursRows>;
   matchingRuleProfile: MatchingRuleProfile;
   favoriteIds: Set<number>;
+  groupMemberIds: Set<number>;
   now: Date;
   includeIsConfiguredInBusinessStatus: boolean;
+  equivalenceMap: Map<string, string[]>;
 }): MatchCandidate | null {
   const {
     otherPharmacy,
@@ -168,8 +178,10 @@ function buildCandidateFromPharmacy(params: {
     specialHoursByPharmacy,
     matchingRuleProfile,
     favoriteIds,
+    groupMemberIds,
     now,
     includeIsConfiguredInBusinessStatus,
+    equivalenceMap,
   } = params;
 
   const theirPreparedDeadStock = preparedDeadStockByPharmacy.get(otherPharmacy.id) ?? [];
@@ -183,25 +195,24 @@ function buildCandidateFromPharmacy(params: {
     theirUsedMedIndex,
     myToTheirCache,
     matchingRuleProfile.nameMatchThreshold,
+    equivalenceMap,
   );
   const itemsFromB = buildMatchItems(
     theirPreparedDeadStock,
     myUsedMedIndex,
     theirToMyCache,
     matchingRuleProfile.nameMatchThreshold,
+    equivalenceMap,
   );
   if (itemsFromA.length === 0 || itemsFromB.length === 0) return null;
 
-  const { balancedA, balancedB, totalA, totalB } = balanceValues(itemsFromA, itemsFromB);
+  const { balancedA, balancedB, totalA, totalB, minValue, diff } = resolveBalancedCandidateValues(itemsFromA, itemsFromB);
   if (balancedA.length === 0 || balancedB.length === 0) return null;
-
-  const minValue = Math.min(totalA, totalB);
   if (minValue < MIN_EXCHANGE_VALUE) return null;
-
-  const diff = roundTo2(Math.abs(totalA - totalB));
   if (diff > VALUE_TOLERANCE) return null;
 
   const isFavorite = favoriteIds.has(otherPharmacy.id);
+  const isGroupMember = groupMemberIds.has(otherPharmacy.id);
   const score = calculateCandidateScore(
     totalA,
     totalB,
@@ -211,6 +222,7 @@ function buildCandidateFromPharmacy(params: {
     balancedB,
     matchingRuleProfile,
     isFavorite,
+    isGroupMember,
   );
   const matchRate = calculateMatchRate(balancedA, balancedB);
   const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id);
@@ -250,8 +262,10 @@ export function collectCandidates(params: {
   specialHoursByPharmacy: Map<number, SpecialHoursRows>;
   matchingRuleProfile: MatchingRuleProfile;
   favoriteIds: Set<number>;
+  groupMemberIds: Set<number>;
   now: Date;
   includeIsConfiguredInBusinessStatus: boolean;
+  equivalenceMap: Map<string, string[]>;
 }): MatchCandidate[] {
   const candidates: MatchCandidate[] = [];
 
@@ -266,8 +280,10 @@ export function collectCandidates(params: {
       businessHoursByPharmacy: params.businessHoursByPharmacy,
       specialHoursByPharmacy: params.specialHoursByPharmacy,
       favoriteIds: params.favoriteIds,
+      groupMemberIds: params.groupMemberIds,
       now: params.now,
       includeIsConfiguredInBusinessStatus: params.includeIsConfiguredInBusinessStatus,
+      equivalenceMap: params.equivalenceMap,
     });
     if (!candidate) continue;
     candidates.push(candidate);

@@ -1,0 +1,1 @@
+2026-03-07: Created implementation plan for Matching Algorithm Improvement. Defined 3 waves (Foundation, Backend, Frontend) and 12 tasks to address brand/generic equivalence, exponential decay for expiry, success rate bonus, and dynamic candidate count.

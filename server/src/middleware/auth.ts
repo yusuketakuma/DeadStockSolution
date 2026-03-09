@@ -94,6 +94,18 @@ function sendInactiveAccountResponse(res: Response, verificationStatus: Verifica
   }
 }
 
+function sendInvalidSessionResponse(res: Response): void {
+  res.status(401).json({ error: 'セッションが無効です。再度ログインしてください' });
+}
+
+function assignAuthenticatedUser(req: AuthRequest, user: Pick<CachedAuthUser, 'id' | 'email' | 'isAdmin'>): void {
+  req.user = {
+    id: user.id,
+    email: user.email,
+    isAdmin: user.isAdmin,
+  };
+}
+
 export async function requireLogin(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   const token = req.cookies?.token;
 
@@ -106,11 +118,11 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
   try {
     payload = verifyToken(token);
   } catch {
-    res.status(401).json({ error: 'セッションが無効です。再度ログインしてください' });
+    sendInvalidSessionResponse(res);
     return;
   }
   if (typeof payload.sessionVersion !== 'string' || payload.sessionVersion.length === 0) {
-    res.status(401).json({ error: 'セッションが無効です。再度ログインしてください' });
+    sendInvalidSessionResponse(res);
     return;
   }
 
@@ -118,18 +130,14 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
     const cached = getCachedAuthUser(payload.id);
     if (cached) {
       if (cached.sessionVersion !== payload.sessionVersion) {
-        res.status(401).json({ error: 'セッションが無効です。再度ログインしてください' });
+        sendInvalidSessionResponse(res);
         return;
       }
       if (!cached.isActive) {
         sendInactiveAccountResponse(res, cached.verificationStatus, cached.rejectionReason);
         return;
       }
-      req.user = {
-        id: cached.id,
-        email: cached.email,
-        isAdmin: cached.isAdmin,
-      };
+      assignAuthenticatedUser(req, cached);
       next();
       return;
     }
@@ -157,7 +165,7 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
     }
     const sessionVersion = deriveSessionVersion(rows[0].passwordHash);
     if (sessionVersion !== payload.sessionVersion) {
-      res.status(401).json({ error: 'セッションが無効です。再度ログインしてください' });
+      sendInvalidSessionResponse(res);
       return;
     }
 
@@ -171,11 +179,11 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
       rejectionReason: rows[0].rejectionReason,
     });
 
-    req.user = {
+    assignAuthenticatedUser(req, {
       id: rows[0].id,
       email: rows[0].email,
       isAdmin: rows[0].isAdmin ?? false,
-    };
+    });
 
     next();
   } catch {

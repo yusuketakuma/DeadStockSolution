@@ -18,6 +18,8 @@ const NAV_GROUPS = [
       { to: '/proposals', label: 'マッチング一覧' },
       { to: '/exchange-history', label: '交換履歴' },
       { to: '/statistics', label: '統計' },
+      { to: '/groups', label: 'グループ' },
+      { to: '/alerts', label: 'アラート' },
     ],
   },
   {
@@ -40,7 +42,9 @@ const ADMIN_ITEMS = [
   { to: '/admin/pharmacies', label: '薬局管理' },
   { to: '/admin/openclaw', label: 'OpenClaw連携' },
   { to: '/admin/drug-master', label: '医薬品マスター' },
+  { to: '/admin/matching-rules', label: 'マッチングルール' },
   { to: '/admin/log-center', label: 'ログセンター' },
+  { to: '/admin/drug-equivalences', label: '薬品同等性マスター' },
 ];
 
 function SidebarLink({
