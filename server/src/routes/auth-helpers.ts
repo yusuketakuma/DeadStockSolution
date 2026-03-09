@@ -61,11 +61,7 @@ export function isTestLoginFeatureEnabled(): boolean {
 }
 
 function canExposeTestPharmacyPasswords(): boolean {
-  const nodeEnv = (process.env.NODE_ENV ?? '').trim().toLowerCase();
-  const vercelEnv = (process.env.VERCEL_ENV ?? '').trim().toLowerCase();
-  return process.env.EXPOSE_TEST_PHARMACY_PASSWORDS === 'true'
-    && nodeEnv !== 'production'
-    && vercelEnv !== 'preview';
+  return process.env.EXPOSE_TEST_PHARMACY_PASSWORDS === 'true';
 }
 
 export function handleAuthConfigurationError(context: string, err: unknown, res: Response): boolean {

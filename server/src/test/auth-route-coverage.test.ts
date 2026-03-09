@@ -183,6 +183,7 @@ function createTransactionMock(pharmacyId: number, reviewId: number, verificatio
 
 describe('auth routes — additional coverage', () => {
   const originalNodeEnv = process.env.NODE_ENV;
+  const originalVercelEnv = process.env.VERCEL_ENV;
   const originalExposeToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN;
   const originalExposeTestPharmacyPasswords = process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
   const originalTestLoginFeatureEnabled = process.env.TEST_LOGIN_FEATURE_ENABLED;
@@ -190,6 +191,7 @@ describe('auth routes — additional coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NODE_ENV = 'test';
+    delete process.env.VERCEL_ENV;
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
     delete process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
     delete process.env.TEST_LOGIN_FEATURE_ENABLED;
@@ -198,6 +200,11 @@ describe('auth routes — additional coverage', () => {
 
   afterEach(() => {
     process.env.NODE_ENV = originalNodeEnv ?? 'test';
+    if (originalVercelEnv === undefined) {
+      delete process.env.VERCEL_ENV;
+    } else {
+      process.env.VERCEL_ENV = originalVercelEnv;
+    }
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = originalExposeToken ?? 'false';
     if (originalExposeTestPharmacyPasswords === undefined) {
       delete process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
@@ -599,7 +606,7 @@ describe('auth routes — additional coverage', () => {
       expect(res.body.accounts[0].password).toBe('');
     });
 
-    it('does not return password when includePassword=true in production-like environments', async () => {
+    it('does not return password when includePassword=true but password exposure is disabled', async () => {
       mocks.db.select.mockReturnValue(createSelectChain([
         { id: 1, name: 'テスト薬局', email: 'test@example.com', prefecture: '東京都', password: 'Secret123' },
       ]));
@@ -646,6 +653,38 @@ describe('auth routes — additional coverage', () => {
       expect(secondRes.status).toBe(200);
       expect(secondRes.body.accounts[0].password).toBe('SecondSecret456');
       expect(mocks.db.select).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns password on preview when password exposure is enabled', async () => {
+      process.env.VERCEL_ENV = 'preview';
+      process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'true';
+      mocks.db.select.mockReturnValue(createSelectChain([
+        { id: 1, name: 'テスト薬局', email: 'test@example.com', prefecture: '東京都', password: 'PreviewSecret123' },
+      ]));
+      const app = await createFreshApp();
+
+      const res = await request(app)
+        .get('/api/auth/test-pharmacies?includePassword=true');
+
+      expect(res.status).toBe(200);
+      expect(res.body.accounts[0].password).toBe('PreviewSecret123');
+    });
+
+    it('returns password in production when password exposure is enabled', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.VERCEL_ENV = 'production';
+      process.env.TEST_LOGIN_FEATURE_ENABLED = 'true';
+      process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'true';
+      mocks.db.select.mockReturnValue(createSelectChain([
+        { id: 1, name: 'テスト薬局', email: 'test@example.com', prefecture: '東京都', password: 'ProdSecret123' },
+      ]));
+      const app = await createFreshApp();
+
+      const res = await request(app)
+        .get('/api/auth/test-pharmacies?includePassword=true');
+
+      expect(res.status).toBe(200);
+      expect(res.body.accounts[0].password).toBe('ProdSecret123');
     });
   });
 });
