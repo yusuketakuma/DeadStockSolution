@@ -35,7 +35,7 @@
     "check:bundle-size": "npm run build --workspace=client && node scripts/check-bundle-size.mjs",
     "quality:gate": "bash scripts/quality-gate.sh",
     "quality:gate:notify": "OPENCLAW_NOTIFY_TARGET=${OPENCLAW_NOTIFY_TARGET:--5103716630} bash scripts/quality-gate.sh",
-    "prepare": "husky",
+    "prepare": "node scripts/prepare.mjs",
     "lighthouse": "npm run build:client && npx lhci autorun"
   },
   "lint-staged": {
