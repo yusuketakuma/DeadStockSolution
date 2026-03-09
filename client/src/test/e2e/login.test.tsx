@@ -217,7 +217,7 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('button', { name: '一覧から選ぶ' })).not.toBeInTheDocument();
   });
 
-  it('opens developer login modal and applies selected account email in desktop view', async () => {
+  it('opens developer login modal and applies selected account credentials in desktop view', async () => {
     const user = userEvent.setup();
     const fetchMock = mockUnauthFetch({
       testPharmacies: [
@@ -247,15 +247,15 @@ describe('LoginPage', () => {
     expect(screen.getByText('テスト薬局東京店')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局札幌店')).toBeInTheDocument();
     expect(
-      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies')),
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies?includePassword=true')),
     ).toBe(true);
 
     const applyButtons = screen.getAllByRole('button', { name: 'このIDを入力' });
     await user.click(applyButtons[0]);
 
     expect(getInputByLabel('メールアドレス')).toHaveValue('test-tokyo@example.com');
-    expect(getInputByLabel('パスワード')).toHaveValue('');
-    expect(screen.getByText(/メールアドレスを入力しました。パスワードは別途入力してください。/)).toBeInTheDocument();
+    expect(getInputByLabel('パスワード')).toHaveValue('TokyoDemo!2026');
+    expect(screen.getByText(/メールアドレスとパスワードを入力しました。そのままログインできます。/)).toBeInTheDocument();
   });
 
   it('renders developer login modal list in mobile view', async () => {

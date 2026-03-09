@@ -40,6 +40,7 @@ interface LoginFailureState {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TEST_PHARMACY_ENDPOINT = '/auth/test-pharmacies';
+const TEST_PHARMACY_PASSWORD_QUERY = '?includePassword=true';
 
 function isTestLoginFeatureEnabled(): boolean {
   return resolveClientTestLoginFeatureEnabled(import.meta.env as {
@@ -59,8 +60,7 @@ function isTestPharmacyPreview(value: unknown): value is TestPharmacyPreview {
 }
 
 function normalizeTestPharmacyPassword(value: unknown): string {
-  void value;
-  return '';
+  return typeof value === 'string' ? value : '';
 }
 
 function parseTestPharmacyAccounts(payload: unknown): TestPharmacyPreview[] {
@@ -206,7 +206,7 @@ export default function LoginPage() {
     if (!forceRefresh && testPharmacies.length > 0) return testPharmacies;
     setTestPharmacyLoading(true);
     try {
-      const response = await api.get<TestPharmacyResponse>(TEST_PHARMACY_ENDPOINT);
+      const response = await api.get<TestPharmacyResponse>(`${TEST_PHARMACY_ENDPOINT}${TEST_PHARMACY_PASSWORD_QUERY}`);
       const accounts = parseTestPharmacyAccounts(response);
       setTestPharmacies(accounts);
       setTestPharmacyError('');

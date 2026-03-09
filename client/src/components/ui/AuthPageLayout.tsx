@@ -9,12 +9,14 @@ interface AuthPageLayoutProps {
 }
 
 export default function AuthPageLayout({ main, aside, footerNote }: AuthPageLayoutProps) {
+  const gridClassName = aside ? 'dl-auth-grid' : 'dl-auth-grid dl-auth-grid-single';
+
   return (
     <div className="dl-auth-page d-flex align-items-center">
       <a href="#auth-main-content" className="dl-skip-link">フォームへスキップ</a>
       <Container className="dl-auth-shell">
         <AppCard className="dl-auth-card">
-          <div className="dl-auth-grid">
+          <div className={gridClassName}>
             <main id="auth-main-content" className="dl-auth-main" tabIndex={-1}>{main}</main>
             {aside && <aside className="dl-auth-aside">{aside}</aside>}
           </div>
