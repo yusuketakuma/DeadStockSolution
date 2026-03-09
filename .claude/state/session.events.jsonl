@@ -3,3 +3,6 @@
 {"id":"event-000002","type":"session.stop","ts":"2026-03-09T03:48:37Z","state":"stopped"}
 {"id":"event-000003","type":"tool.bash","ts":"2026-03-09T03:50:13Z","state":"stopped","data":{"command":"ls -la /Users/yusuke/.codex/"}}
 {"id":"event-000004","type":"tool.edit","ts":"2026-03-09T03:50:35Z","state":"stopped","data":{"file_path":"/Users/yusuke/.codex/config.toml"}}
+{"id":"event-000005","type":"tool.bash","ts":"2026-03-09T04:25:57Z","state":"stopped","data":{"command":"git diff --name-only --diff-filter=U"}}
+{"id":"event-000006","type":"tool.bash","ts":"2026-03-09T04:26:01Z","state":"stopped","data":{"command":"git diff --name-only --diff-filter=U | xargs git checkout preview -- "}}
+{"id":"event-000007","type":"tool.bash","ts":"2026-03-09T04:26:03Z","state":"stopped","data":{"command":"git diff --name-only --diff-filter=U"}}
