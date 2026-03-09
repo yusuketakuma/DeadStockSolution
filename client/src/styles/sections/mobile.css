@@ -25,17 +25,17 @@
 
 @media (max-width: 991.98px) {
   :root {
-    --header-height: 96px;
+    --header-height: 72px;
   }
 
   .app-header {
     align-items: stretch;
-    gap: 0.4rem;
-    padding: 0.45rem 0.75rem;
+    gap: 0.25rem;
+    padding: 0.35rem 0.75rem;
   }
 
   .app-header-main {
-    min-height: 42px;
+    min-height: 36px;
   }
 
   .app-header-brand {
@@ -82,8 +82,8 @@
 
 @media (max-width: 991.98px) {
   .content-container {
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
   }
 
   .page-title {
@@ -189,14 +189,15 @@ html {
 /* AppTouchInput 基本スタイル */
 .app-touch-input {
   font-size: 16px; /* iOS ズーム防止 */
-  min-height: 44px; /* タップターゲット */
-  padding: 0 12px;
+  min-height: 48px; /* タップターゲット */
+  padding: 0.5rem 12px;
+  border-radius: 8px;
 }
 
 /* タッチフレンドリーボタン */
 .touch-target {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 48px;
+  min-height: 48px;
 }
 
 /* セーフエリア対応コンテナ */

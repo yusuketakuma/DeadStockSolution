@@ -15,8 +15,9 @@
 }
 
 .page-title {
+  font-family: "BIZ UDPGothic", "Noto Sans JP", sans-serif;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
 }
 
 .login-title-wrap {
@@ -104,16 +105,17 @@
 
 /* KPI tile */
 .dl-kpi-tile {
-  background: var(--dl-app-surface-muted, #f8fbfe);
-  border: 1px solid var(--dl-app-border, #d8e3ee);
-  border-radius: 10px;
-  padding: 0.6rem 0.4rem;
+  background: var(--dl-app-surface-muted, #f8fafc);
+  border: 1px solid var(--dl-app-border, #dce4ed);
+  border-radius: 12px;
+  padding: 0.75rem 0.5rem;
   text-align: center;
-  transition: box-shadow 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .dl-kpi-tile:hover {
-  box-shadow: 0 2px 8px rgba(22, 50, 74, 0.08);
+  box-shadow: 0 4px 12px rgba(22, 50, 74, 0.08);
+  transform: translateY(-1px);
 }
 
 .dl-kpi-value {

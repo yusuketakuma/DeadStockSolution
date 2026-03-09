@@ -4,6 +4,38 @@
 
 ## 🔴 進行中のタスク
 
+### Sprint: デザイン刷新 v0.3.0 [feature]
+
+> **目的**: プロフェッショナル・メディカルデザインに刷新。BIZ UDPGothic採用、プリセット1つに統合、折りたたみサイドバー、PC/モバイル同等品質。
+> **方針**: デザインシステム（CSS変数+共通コンポーネント）を一括刷新し全ページに波及。
+
+#### Phase A: デザインシステムコア [P]
+
+- [x] **T501**: デザイントークン刷新 + プリセット統合 `cc:完了` (2026-03-09)
+  - design-language.css: :root変数更新（カラー微調整、フォント変更、影・角丸）
+  - 3プリセットCSS削除（clinical-contrast, neutral-business, high-legibility）
+  - .app-theme内プリセット上書きCSS削除
+  - genericDesignPresets.ts: 単一プリセット化
+  - App.tsx: プリセット選択ロジック簡素化
+  - content.css: KPIタイル・テーブル・カード・ボタン・フォームの洗練
+
+#### Phase B: レイアウト刷新 [P] depends:T501
+
+- [x] **T502**: 折りたたみサイドバー + ヘッダー刷新 `cc:完了` (2026-03-09)
+  - Sidebar.tsx: 折りたたみトグル追加、アイコンモード（60px）、localStorage記憶
+  - Layout.tsx: sidebarCollapsed状態管理
+  - layout-sidebar.css: 折りたたみ時スタイル（60px、アイコンのみ、ホバー展開）
+  - Header.tsx: 余白・フォントサイズ調整
+  - header.css: グラデーション洗練、クイックアクションスタイル改善
+
+#### Phase C: モバイル + 認証ページ [P] depends:T501
+
+- [x] **T503**: モバイル対応強化 + 認証ページ刷新 `cc:完了` (2026-03-09)
+  - mobile.css: ヘッダー高さ最適化、コンテンツpadding改善、タッチターゲット統一
+  - MobileBottomNav.tsx/css: デザイン洗練（アクティブ状態強調、アイコンSVG化検討）
+  - AuthPageLayout.tsx: フォント適用、角丸・影の統一
+  - design-language.css: 認証ページセクションのフォント更新
+
 ## Sprint: Frontend Hooks抽出 v0.0.10
 
 > **目的**: UploadPage.tsx（940行）の巨大コンポーネントを分割し、保守性・テスタビリティを向上

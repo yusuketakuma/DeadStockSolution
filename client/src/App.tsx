@@ -12,7 +12,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AppScreen from './components/ui/AppScreen';
 import PageLoader from './components/ui/PageLoader';
 import { ROUTE_META, type RouteMeta } from './routes/route-config';
-import { DESIGN_PRESET_STORAGE_KEY, isDesignPresetId } from './design/genericDesignPresets';
 import SWUpdateBanner from './components/pwa/SWUpdateBanner';
 import InstallPromptBanner from './components/pwa/InstallPromptBanner';
 
@@ -74,10 +73,7 @@ function AppRoutes() {
 export default function App() {
   useEffect(() => {
     document.body.classList.add('app-theme-root');
-    let stored: string | null = null;
-    try { stored = window.localStorage.getItem(DESIGN_PRESET_STORAGE_KEY); } catch { /* SSR/test */ }
-    const preset = isDesignPresetId(stored) ? stored : 'clinical-calm';
-    document.body.setAttribute('data-design-preset', preset);
+    document.body.setAttribute('data-design-preset', 'clinical-calm');
     return () => document.body.classList.remove('app-theme-root');
   }, []);
 

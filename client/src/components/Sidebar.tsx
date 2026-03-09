@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 const NAV_GROUPS = [
@@ -47,30 +49,66 @@ const ADMIN_ITEMS = [
   { to: '/admin/drug-equivalences', label: '薬品同等性マスター' },
 ];
 
+const ICON_MAP: Record<string, string> = {
+  '/': '📊',
+  '/upload': '📤',
+  '/matching': '🔗',
+  '/proposals': '📋',
+  '/exchange-history': '🔄',
+  '/statistics': '📈',
+  '/groups': '👥',
+  '/alerts': '🔔',
+  '/inventory/dead-stock': '📦',
+  '/inventory/used-medication': '💊',
+  '/inventory/browse': '🔍',
+  '/pharmacies': '🏥',
+  '/admin': '⚙️',
+  '/admin/risk': '⚠️',
+  '/admin/reports': '📊',
+  '/admin/exchanges': '🔄',
+  '/admin/upload-jobs': '📥',
+  '/admin/pharmacies': '🏥',
+  '/admin/openclaw': '🔌',
+  '/admin/drug-master': '💊',
+  '/admin/matching-rules': '📐',
+  '/admin/log-center': '📜',
+  '/admin/drug-equivalences': '🔀',
+  '/account': '👤',
+};
+
 function SidebarLink({
   to,
   label,
   onNavigate,
   end = false,
+  collapsed = false,
 }: {
   to: string;
   label: string;
   onNavigate?: () => void;
   end?: boolean;
+  collapsed?: boolean;
 }) {
+  const icon = ICON_MAP[to] ?? '📄';
   return (
     <NavLink
       to={to}
       end={end}
       className={({ isActive }: { isActive: boolean }) => `sidebar-link nav-link${isActive ? ' active' : ''}`}
       onClick={() => onNavigate?.()}
+      title={collapsed ? label : undefined}
     >
-      {label}
+      <span className="sidebar-link-icon" aria-hidden="true">{icon}</span>
+      {!collapsed && <span className="sidebar-link-label">{label}</span>}
     </NavLink>
   );
 }
 
-function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+function SidebarContent({ onNavigate, collapsed = false, onToggleCollapse }: {
+  onNavigate?: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+}) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -85,7 +123,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <Nav className="flex-column flex-grow-1 pt-2">
         {NAV_GROUPS.map((group) => (
           <div key={group.title} className="sidebar-group">
-            <div className="sidebar-group-title">{group.title}</div>
+            {!collapsed && <div className="sidebar-group-title">{group.title}</div>}
             {group.items.map((item) => (
               <SidebarLink
                 key={item.to}
@@ -93,13 +131,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 label={item.label}
                 onNavigate={onNavigate}
                 end={item.end}
+                collapsed={collapsed}
               />
             ))}
           </div>
         ))}
         {user?.isAdmin && (
           <div className="sidebar-group">
-            <div className="sidebar-group-title">管理者</div>
+            {!collapsed && <div className="sidebar-group-title">管理者</div>}
             {ADMIN_ITEMS.map((item) => (
               <SidebarLink
                 key={item.to}
@@ -107,6 +146,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 label={item.label}
                 onNavigate={onNavigate}
                 end={item.end}
+                collapsed={collapsed}
               />
             ))}
           </div>
@@ -114,20 +154,38 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </Nav>
 
       <div className="sidebar-footer border-top p-3">
-        <SidebarLink to="/account" label={user?.name ?? 'アカウント'} onNavigate={onNavigate} />
-        <AppButton variant="outline-secondary" size="sm" className="w-100 mt-2" onClick={handleLogout}>
-          ログアウト
-        </AppButton>
+        <SidebarLink to="/account" label={user?.name ?? 'アカウント'} onNavigate={onNavigate} collapsed={collapsed} />
+        {!collapsed && (
+          <AppButton variant="outline-secondary" size="sm" className="w-100 mt-2" onClick={handleLogout}>
+            ログアウト
+          </AppButton>
+        )}
+        {onToggleCollapse && (
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            onClick={onToggleCollapse}
+            aria-label={collapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
+            title={collapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              {collapsed
+                ? <polyline points="6 3 11 8 6 13" />
+                : <polyline points="10 3 5 8 10 13" />
+              }
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-export default function Sidebar({ isOpen, onClose }: Props) {
+export default function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }: Props) {
   return (
     <>
-      <aside className="sidebar-desktop d-none d-lg-flex" role="navigation" aria-label="メインナビゲーション">
-        <SidebarContent />
+      <aside className={`sidebar-desktop d-none d-lg-flex${collapsed ? ' sidebar-desktop--collapsed' : ''}`} role="navigation" aria-label="メインナビゲーション">
+        <SidebarContent collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
       </aside>
 
       <Offcanvas show={isOpen} onHide={onClose} className="sidebar-mobile d-lg-none" placement="start" aria-label="モバイルナビゲーション">

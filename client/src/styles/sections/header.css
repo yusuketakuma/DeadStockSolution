@@ -1,15 +1,16 @@
 :root {
-  --app-bg: #f6f8fc;
+  --app-bg: #f5f7fa;
   --sidebar-width: 240px;
+  --sidebar-width-collapsed: 60px;
   --header-height: 56px;
-  --sidebar-bg: #1e293b;
+  --sidebar-bg: #173852;
   --sidebar-text: #cbd5e1;
-  --sidebar-active-bg: #334155;
-  --sidebar-hover-bg: #273548;
+  --sidebar-active-bg: #24597d;
+  --sidebar-hover-bg: #1e4969;
 }
 
 body {
-  font-family: 'Noto Sans JP', 'Inter', sans-serif;
+  font-family: 'BIZ UDPGothic', 'Noto Sans JP', sans-serif;
   background: var(--app-bg);
 }
 
@@ -50,11 +51,11 @@ body {
   display: inline-flex;
   align-items: baseline;
   gap: 0.45rem;
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #fff;
   text-decoration: none;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
 }
 
 .app-header-brand:hover {
@@ -252,13 +253,13 @@ body {
 .app-header-quick-link {
   display: inline-flex;
   align-items: center;
-  padding: 0.35rem 0.6rem;
-  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.55);
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
   text-decoration: none;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
   line-height: 1.2;
 }

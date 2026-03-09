@@ -4,14 +4,16 @@
   left: 0;
   right: 0;
   z-index: 1030;
-  background-color: var(--bs-body-bg, #fff);
-  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--dl-app-border, #dce4ed);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .mobile-bottom-nav-inner {
   display: flex;
-  height: 56px;
+  height: 60px;
 }
 
 .mobile-bottom-nav-item {
@@ -25,37 +27,49 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: 4px 2px;
+  padding: 6px 2px;
   text-decoration: none;
-  color: var(--bs-secondary-color, #6c757d);
-  transition: color 0.15s ease-in-out;
+  color: var(--dl-app-text-muted, #5a7186);
+  transition: color 0.15s ease;
 }
 
 .mobile-bottom-nav-link.active {
-  color: var(--bs-primary, #0d6efd);
+  color: var(--dl-app-primary, #0a6699);
+}
+
+.mobile-bottom-nav-link.active .mobile-bottom-nav-icon svg {
+  stroke-width: 2.5;
 }
 
 .mobile-bottom-nav-icon {
   position: relative;
-  font-size: 1.25rem;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.mobile-bottom-nav-icon svg {
+  display: block;
 }
 
 .mobile-bottom-nav-badge {
   position: absolute;
-  top: -6px;
-  right: -10px;
-  font-size: 0.6rem;
-  min-width: 16px;
-  height: 16px;
-  line-height: 16px;
-  padding: 0 4px;
+  top: -4px;
+  right: -8px;
+  font-size: 0.55rem;
+  min-width: 14px;
+  height: 14px;
+  line-height: 14px;
+  padding: 0 3px;
 }
 
 .mobile-bottom-nav-label {
-  font-size: 0.625rem;
+  font-size: 0.65rem;
+  font-weight: 500;
   line-height: 1.2;
-  margin-top: 2px;
+  margin-top: 3px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -65,6 +79,6 @@
 /* Prevent content from being hidden behind bottom nav on mobile */
 @media (max-width: 991.98px) {
   .app-main {
-    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   }
 }

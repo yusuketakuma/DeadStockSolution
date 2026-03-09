@@ -1,17 +1,17 @@
 :root {
-  --dl-bg: #f2f6fb;
+  --dl-bg: #f5f7fa;
   --dl-surface: #ffffff;
-  --dl-surface-muted: #f7fafc;
-  --dl-border: #d6e0ea;
+  --dl-surface-muted: #f8fafc;
+  --dl-border: #dce4ed;
   --dl-text: #102a43;
-  --dl-text-muted: #486581;
-  --dl-primary: #0b6ea8;
-  --dl-primary-strong: #085a8a;
-  --dl-danger-soft: #fde8e8;
-  --dl-danger-border: #f5b5b5;
-  --dl-success-soft: #e8f7ef;
-  --dl-success-border: #a8e1bf;
-  --dl-shadow: 0 10px 30px rgba(16, 42, 67, 0.08);
+  --dl-text-muted: #5a7186;
+  --dl-primary: #0a6699;
+  --dl-primary-strong: #074d7a;
+  --dl-danger-soft: #fef2f2;
+  --dl-danger-border: #fca5a5;
+  --dl-success-soft: #ecfdf5;
+  --dl-success-border: #86efac;
+  --dl-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(16,42,67,0.06);
   --dl-radius-lg: 16px;
   --dl-radius-md: 12px;
   --dl-focus-ring: #2f80ed;
@@ -35,34 +35,6 @@
   top: 0.75rem;
 }
 
-body[data-design-preset='clinical-contrast'] {
-  --dl-bg: #edf4fa;
-  --dl-border: #afc3d8;
-  --dl-text: #0d2437;
-  --dl-text-muted: #3f5d78;
-  --dl-primary: #006093;
-  --dl-primary-strong: #004d75;
-}
-
-body[data-design-preset='neutral-business'] {
-  --dl-bg: #f5f7fa;
-  --dl-border: #d1dce6;
-  --dl-text: #1b2b3b;
-  --dl-text-muted: #5d7086;
-  --dl-primary: #2a5fa8;
-  --dl-primary-strong: #204b85;
-}
-
-body[data-design-preset='high-legibility'] {
-  --dl-bg: #f4f7fb;
-  --dl-border: #93aac0;
-  --dl-text: #0f2233;
-  --dl-text-muted: #3d566e;
-  --dl-primary: #005e9e;
-  --dl-primary-strong: #00497b;
-  --dl-focus-ring: #006fbb;
-}
-
 .dl-auth-page {
   min-height: 100dvh;
   background:
@@ -71,7 +43,7 @@ body[data-design-preset='high-legibility'] {
     var(--dl-bg);
   padding: 1.25rem 0.75rem;
   color: var(--dl-text);
-  font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  font-family: "BIZ UDPGothic", "Noto Sans JP", sans-serif;
 }
 
 .dl-auth-shell {
@@ -736,64 +708,19 @@ body[data-design-preset='high-legibility'] {
 
 /* ===== App-wide Design Language (protected screens) ===== */
 .app-theme {
-  --dl-app-bg: #f4f7fb;
+  --dl-app-bg: #f5f7fa;
   --dl-app-surface: #ffffff;
-  --dl-app-surface-muted: #f8fbfe;
-  --dl-app-border: #d8e3ee;
+  --dl-app-surface-muted: #f8fafc;
+  --dl-app-border: #dce4ed;
   --dl-app-text: #16324a;
-  --dl-app-text-muted: #5f7a92;
-  --dl-app-primary: #0a6a9f;
-  --dl-app-primary-strong: #07557f;
+  --dl-app-text-muted: #5a7186;
+  --dl-app-primary: #0a6699;
+  --dl-app-primary-strong: #074d7a;
   --dl-app-header: #0d5d8c;
   --dl-app-sidebar: #173852;
   --dl-app-sidebar-hover: #1e4969;
   --dl-app-sidebar-active: #24597d;
-  --dl-app-shadow: 0 8px 24px rgba(22, 50, 74, 0.08);
-}
-
-body[data-design-preset='clinical-contrast'] .app-theme {
-  --dl-app-bg: #eef3f8;
-  --dl-app-surface: #ffffff;
-  --dl-app-surface-muted: #f4f8fc;
-  --dl-app-border: #a9bccf;
-  --dl-app-text: #0b2438;
-  --dl-app-text-muted: #3f5f7c;
-  --dl-app-primary: #005c8a;
-  --dl-app-primary-strong: #004768;
-  --dl-app-header: #0a4d74;
-  --dl-app-sidebar: #102f45;
-  --dl-app-sidebar-hover: #18425f;
-  --dl-app-sidebar-active: #1f5374;
-}
-
-body[data-design-preset='neutral-business'] .app-theme {
-  --dl-app-bg: #f6f7f9;
-  --dl-app-surface: #ffffff;
-  --dl-app-surface-muted: #f2f4f7;
-  --dl-app-border: #d2d9e2;
-  --dl-app-text: #1b2a3a;
-  --dl-app-text-muted: #5f7287;
-  --dl-app-primary: #245ea8;
-  --dl-app-primary-strong: #1a4a84;
-  --dl-app-header: #214a7a;
-  --dl-app-sidebar: #27384a;
-  --dl-app-sidebar-hover: #33495f;
-  --dl-app-sidebar-active: #3d5873;
-}
-
-body[data-design-preset='high-legibility'] .app-theme {
-  --dl-app-bg: #f3f6fa;
-  --dl-app-surface: #ffffff;
-  --dl-app-surface-muted: #f4f7fb;
-  --dl-app-border: #93aac0;
-  --dl-app-text: #0f2233;
-  --dl-app-text-muted: #3d566e;
-  --dl-app-primary: #005e9e;
-  --dl-app-primary-strong: #00497b;
-  --dl-app-header: #0a4b75;
-  --dl-app-sidebar: #12334a;
-  --dl-app-sidebar-hover: #1a4968;
-  --dl-app-sidebar-active: #24597d;
+  --dl-app-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(22,50,74,0.06);
 }
 
 .app-theme .app-main {
@@ -854,7 +781,7 @@ body[data-design-preset='high-legibility'] .app-theme {
 
 .dl-app-screen .card {
   border: 1px solid var(--dl-app-border);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--dl-app-shadow);
   background: var(--dl-app-surface);
 }
@@ -868,8 +795,8 @@ body[data-design-preset='high-legibility'] .app-theme {
 .dl-app-screen .table {
   --bs-table-bg: #ffffff;
   --bs-table-border-color: var(--dl-app-border);
-  --bs-table-striped-bg: #f8fbff;
-  --bs-table-hover-bg: #eff7ff;
+  --bs-table-striped-bg: transparent;
+  --bs-table-hover-bg: #f0f6ff;
 }
 
 .dl-app-screen .table > :not(caption) > * > * {
@@ -890,6 +817,11 @@ body[data-design-preset='high-legibility'] .app-theme {
   --bs-btn-border-color: var(--dl-app-primary);
   --bs-btn-hover-bg: var(--dl-app-primary);
   --bs-btn-hover-border-color: var(--dl-app-primary);
+}
+
+.dl-app-screen .btn {
+  border-radius: 8px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .dl-app-screen .form-control,
@@ -1053,7 +985,7 @@ body[data-design-preset='high-legibility'] .app-theme {
 /* Portal-rendered components (Modal / Popover / Offcanvas) */
 body.app-theme-root .modal-content {
   border: 1px solid var(--dl-app-border);
-  border-radius: 14px;
+  border-radius: 16px;
   box-shadow: var(--dl-app-shadow);
 }
 

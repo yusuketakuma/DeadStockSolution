@@ -10,16 +10,40 @@ interface Props {
   children: React.ReactNode;
 }
 
+const SIDEBAR_COLLAPSED_KEY = 'dss.sidebar-collapsed';
+
 export default function Layout({ children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   useMatchNotificationToast();
 
+  const toggleSidebarCollapse = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch { /* ignore */ }
+      return next;
+    });
+  };
+
   return (
-    <div className="app-layout app-theme">
+    <div className={`app-layout app-theme${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <a href="#app-main-content" className="dl-skip-link">メインコンテンツへスキップ</a>
       <Header onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />
       <div className="app-body">
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapse}
+        />
         <main id="app-main-content" className="app-main" tabIndex={-1}>
           <div className="content-container py-3 px-3">
             <AppScreen>{children}</AppScreen>
