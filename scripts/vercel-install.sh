@@ -12,9 +12,10 @@ else
   exit 1
 fi
 
-# Remove cached node_modules to avoid stale platform-specific binaries
-# (Vercel build cache may restore macOS binaries on Linux)
-rm -rf "$ROOT_DIR/node_modules" "$ROOT_DIR/client/node_modules"
+# Workaround for npm optional-deps bug (https://github.com/npm/cli/issues/4828):
+# npm ci with workspaces doesn't install platform-specific optional deps like
+# @rollup/rollup-linux-x64-gnu when lockfile was generated on macOS.
+# Fix: delete node_modules + lockfile, then do a fresh npm install.
+rm -rf "$ROOT_DIR/node_modules" "$ROOT_DIR/client/node_modules" "$ROOT_DIR/package-lock.json"
 
-# Clean install with devDependencies for build toolchain (tsc/vite)
-npm ci --prefix "$ROOT_DIR" --workspace=client --include=dev --include-workspace-root=false --no-audit --no-fund
+npm install --prefix "$ROOT_DIR" --workspace=client --include=dev --include-workspace-root=false --no-audit --no-fund
