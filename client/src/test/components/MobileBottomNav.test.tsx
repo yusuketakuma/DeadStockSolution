@@ -59,10 +59,11 @@ describe('MobileBottomNav', () => {
   it('renders all nav items', () => {
     renderWithProviders(<MobileBottomNav />, { route: '/' });
 
-    expect(screen.getByText('ダッシュボード')).toBeInTheDocument();
+    expect(screen.getByText('ホーム')).toBeInTheDocument();
     expect(screen.getByText('マッチング')).toBeInTheDocument();
     expect(screen.getByText('提案')).toBeInTheDocument();
     expect(screen.getByText('アラート')).toBeInTheDocument();
+    expect(screen.getByText('グループ')).toBeInTheDocument();
   });
 
   it('has mobile navigation role and aria-label', () => {
@@ -76,7 +77,7 @@ describe('MobileBottomNav', () => {
   it('highlights active route for dashboard', () => {
     renderWithProviders(<MobileBottomNav />, { route: '/' });
 
-    const dashLink = screen.getByText('ダッシュボード').closest('a');
+    const dashLink = screen.getByText('ホーム').closest('a');
     expect(dashLink).toHaveClass('active');
   });
 

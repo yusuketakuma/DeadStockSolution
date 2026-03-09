@@ -1,11 +1,10 @@
-import type { ReactNode } from 'react';
 import { Modal } from 'react-bootstrap';
 
 interface AppModalShellProps {
   show: boolean;
-  title: ReactNode;
-  children: ReactNode;
-  footer?: ReactNode;
+  title: React.ReactNode;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
   onHide?: () => void;
   closeButton?: boolean;
   centered?: boolean;

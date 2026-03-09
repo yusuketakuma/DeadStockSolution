@@ -1,12 +1,11 @@
 import { Button } from 'react-bootstrap';
 import type { ButtonProps } from 'react-bootstrap';
-import type { ReactNode } from 'react';
 import InlineLoader from './InlineLoader';
 
 interface LoadingButtonProps extends Omit<ButtonProps, 'children'> {
   loading: boolean;
   loadingLabel: string;
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 export default function LoadingButton({

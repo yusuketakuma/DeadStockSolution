@@ -1,10 +1,9 @@
-import type { ReactNode } from 'react';
 import { Card } from 'react-bootstrap';
 
 interface AppDataPanelProps {
-  title?: ReactNode;
-  actions?: ReactNode;
-  children: ReactNode;
+  title?: React.ReactNode;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
   className?: string;
   bodyClassName?: string;
 }

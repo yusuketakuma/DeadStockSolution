@@ -1,4 +1,4 @@
-import { Suspense, useEffect, type ReactElement } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -19,7 +19,7 @@ function RouteLoadingFallback() {
   return <PageLoader />;
 }
 
-function withRouteSuspense(element: ReactElement): ReactElement {
+function withRouteSuspense(element: React.ReactElement): React.JSX.Element {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       {element}
@@ -27,7 +27,7 @@ function withRouteSuspense(element: ReactElement): ReactElement {
   );
 }
 
-function renderRouteElement(route: RouteMeta, authenticated: boolean): ReactElement {
+function renderRouteElement(route: RouteMeta, authenticated: boolean): React.ReactElement {
   const Screen = route.component;
 
   if (route.access === 'public') {

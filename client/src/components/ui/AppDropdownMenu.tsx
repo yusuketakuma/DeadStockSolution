@@ -1,5 +1,4 @@
 import { Dropdown } from 'react-bootstrap';
-import type { ReactNode } from 'react';
 
 export interface AppDropdownItem {
   key: string;
@@ -17,7 +16,7 @@ interface AppDropdownMenuProps {
   items: AppDropdownItem[];
   align?: 'start' | 'end';
   className?: string;
-  icon?: ReactNode;
+  icon?: React.ReactNode;
 }
 
 export default function AppDropdownMenu({

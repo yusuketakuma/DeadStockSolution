@@ -39,7 +39,7 @@ interface UploadMutationFormDataOptions {
 }
 
 export interface UseUploadExcelFlowReturn {
-  file: File | null; fileRef: React.RefObject<HTMLInputElement>; handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  file: File | null; fileRef: React.RefObject<HTMLInputElement | null>; handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   preview: PreviewResponse | null; uploadType: UploadType; setUploadType: (type: UploadType) => void;
   loading: boolean; error: string; message: string; showMatchingHint: boolean;
   applyMode: 'replace' | 'diff'; setApplyMode: (mode: 'replace' | 'diff') => void; deleteMissing: boolean; setDeleteMissing: (value: boolean) => void;

@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import AppCard from './AppCard';
 import AppButton from './AppButton';
@@ -8,7 +7,7 @@ interface AppEmptyStateProps {
   description?: string;
   actionLabel?: string;
   actionTo?: string;
-  action?: ReactNode;
+  action?: React.ReactNode;
   className?: string;
 }
 

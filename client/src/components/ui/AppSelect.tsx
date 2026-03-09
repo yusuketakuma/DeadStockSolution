@@ -1,4 +1,4 @@
-import { useId, type ChangeEvent, type ReactNode } from 'react';
+import { useId, type ChangeEvent } from 'react';
 import { Form } from 'react-bootstrap';
 
 export interface AppSelectOption {
@@ -22,7 +22,7 @@ interface AppSelectProps {
   isInvalid?: boolean;
   errorText?: string;
   helpText?: string;
-  children?: ReactNode;
+  children?: React.ReactNode;
 }
 
 function SelectBody({
