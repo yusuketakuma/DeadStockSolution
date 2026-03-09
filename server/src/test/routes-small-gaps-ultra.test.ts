@@ -440,6 +440,7 @@ describe('auth.ts — ultra coverage', () => {
 
   // --- Cover /test-pharmacies cache hit with data ---
   it('GET /test-pharmacies — serves from cache on second request', async () => {
+    process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'false';
     mocks.db.select.mockReturnValueOnce(selectChainWithOrderBy([
       { id: 1, name: 'Test Pharmacy', email: 'test@example.com', prefecture: 'Tokyo', password: 'pw' },
     ]));
@@ -447,10 +448,12 @@ describe('auth.ts — ultra coverage', () => {
     const res1 = await request(app).get('/auth/test-pharmacies');
     expect(res1.status).toBe(200);
 
+    // Second request should hit cache (no DB call needed)
     mocks.db.select.mockReset();
-    const res2 = await request(app).get('/auth/test-pharmacies?includePassword=true');
+    const res2 = await request(app).get('/auth/test-pharmacies');
     expect(res2.status).toBe(200);
     expect(res2.body.accounts[0].password).toBe('');
+    delete process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
   });
 
   // --- Cover successful login (admin login branch) ---

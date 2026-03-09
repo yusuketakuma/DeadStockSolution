@@ -110,6 +110,7 @@ describe('auth routes', () => {
   const originalTestLoginFeatureEnabled = process.env.TEST_LOGIN_FEATURE_ENABLED;
   const originalVercelEnv = process.env.VERCEL_ENV;
   const originalVitest = process.env.VITEST;
+  const originalExposeTestPharmacyPasswords = process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -117,6 +118,7 @@ describe('auth routes', () => {
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
     delete process.env.TEST_LOGIN_FEATURE_ENABLED;
     delete process.env.VERCEL_ENV;
+    delete process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
     mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
     mocks.authService.isJwtSecretMissingError.mockImplementation(
       (err: unknown) => err instanceof Error && err.message === 'JWT_SECRET environment variable is not set'
@@ -151,6 +153,12 @@ describe('auth routes', () => {
       delete process.env.VITEST;
     } else {
       process.env.VITEST = originalVitest;
+    }
+
+    if (originalExposeTestPharmacyPasswords === undefined) {
+      delete process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
+    } else {
+      process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = originalExposeTestPharmacyPasswords;
     }
   });
 
@@ -350,10 +358,10 @@ describe('auth routes', () => {
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('disables test login endpoint by default when VERCEL_ENV=production', async () => {
+  it('disables test login endpoint when TEST_LOGIN_FEATURE_ENABLED=false', async () => {
     process.env.NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
-    delete process.env.TEST_LOGIN_FEATURE_ENABLED;
+    process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
     const app = await createApp();
 
     const res = await request(app).get('/api/auth/test-pharmacies');
@@ -376,11 +384,11 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).toEqual({
       accounts: [
         {
-          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: '',
+          id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026',
         },
       ],
     });
@@ -466,21 +474,22 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/test-pharmacies?includePassword=1');
 
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).toEqual({
       accounts: [{
         id: 1,
         name: 'テスト薬局東京店',
         email: 'test-tokyo@example.com',
         prefecture: '東京都',
-        password: '',
+        password: 'TokyoDemo!2026',
       }],
     });
     expect(mocks.db.select).toHaveBeenCalledTimes(2);
     expect(mocks.db.execute).toHaveBeenCalledTimes(2);
   });
 
-  it('does not expose test pharmacy passwords even when includePassword is requested in preview', async () => {
+  it('does not expose test pharmacy passwords when EXPOSE_TEST_PHARMACY_PASSWORDS=false', async () => {
+    process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'false';
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
       { id: 2, name: 'テスト薬局札幌店', email: 'test-sapporo@example.com', prefecture: '北海道', password: 'SapporoDemo!2026' },
@@ -533,7 +542,8 @@ describe('auth routes', () => {
     ]);
   });
 
-  it('does not use DB password value in preview response', async () => {
+  it('does not use DB password value when EXPOSE_TEST_PHARMACY_PASSWORDS=false', async () => {
+    process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'false';
     const selectChain = createSelectChain([
       { id: 7, name: 'デモ薬局', email: 'demo@example.com', prefecture: '福岡県', password: 'DemoPass!999' },
     ]);

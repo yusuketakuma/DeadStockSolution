@@ -607,6 +607,7 @@ describe('auth routes — additional coverage', () => {
     });
 
     it('does not return password when includePassword=true but password exposure is disabled', async () => {
+      process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'false';
       mocks.db.select.mockReturnValue(createSelectChain([
         { id: 1, name: 'テスト薬局', email: 'test@example.com', prefecture: '東京都', password: 'Secret123' },
       ]));
