@@ -203,7 +203,7 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('button', { name: '一覧から選ぶ' })).not.toBeInTheDocument();
   });
 
-  it('hides developer login shortcuts on production when preview flag is absent', async () => {
+  it('shows developer login shortcuts on production even when preview flag is absent', async () => {
     vi.stubEnv('MODE', 'production');
     vi.stubEnv('VITE_VERCEL_ENV', 'production');
     mockUnauthFetch();
@@ -213,8 +213,8 @@ describe('LoginPage', () => {
       expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
 
-    expect(screen.queryByText('開発者ログイン')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '一覧から選ぶ' })).not.toBeInTheDocument();
+    expect(screen.queryByText('開発者ログイン')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '一覧から選ぶ' })).toBeInTheDocument();
   });
 
   it('opens developer login modal and applies selected account credentials in desktop view', async () => {
