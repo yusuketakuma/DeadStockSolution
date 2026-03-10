@@ -277,6 +277,32 @@ describe('AuthContext', () => {
       });
     });
   });
+
+  describe('unmount safety', () => {
+    it('unmount後に初期refreshが解決してもstate更新しない', async () => {
+      let resolveGet: ((value: unknown) => void) | undefined;
+      mockApi.get.mockImplementation(() => new Promise((resolve) => {
+        resolveGet = resolve;
+      }));
+
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const rendered = renderAuthContext();
+
+      rendered.unmount();
+
+      resolveGet?.({
+        id: 1,
+        email: 'late@example.com',
+        name: 'late',
+        prefecture: '東京都',
+        isAdmin: false,
+      });
+
+      await Promise.resolve();
+      expect(consoleError).not.toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
+  });
 });
 
 describe('useAuth', () => {

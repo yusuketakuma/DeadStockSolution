@@ -35,7 +35,4 @@ export const timelineApi = {
 
   markViewed: () =>
     api.patch<{ success: boolean }>('/timeline/mark-viewed'),
-
-  getDigest: () =>
-    api.get<{ events: import('../types/timeline').TimelineEvent[] }>('/timeline/digest'),
 };

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 
-export const APP_RESPONSIVE_MOBILE_QUERY = '(max-width: 991.98px)';
+const APP_RESPONSIVE_MOBILE_QUERY = '(max-width: 991.98px)';
 
 interface AppResponsiveSwitchProps {
   desktop: ReactNode | (() => ReactNode);

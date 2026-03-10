@@ -51,7 +51,7 @@ afterEach(() => {
 
 describe('双方ポーリング統合', () => {
   it('/notifications/unread-count は呼ばれない', async () => {
-    renderHookWithProviders(() => useNotifications());
+    renderHookWithProviders(() => useNotifications(), { enableLiveTimeline: true });
 
     await act(async () => {
       await Promise.resolve();
@@ -65,7 +65,7 @@ describe('双方ポーリング統合', () => {
   });
 
   it('60秒後にポーリングしても /notifications/unread-count は呼ばれない', async () => {
-    renderHookWithProviders(() => useNotifications());
+    renderHookWithProviders(() => useNotifications(), { enableLiveTimeline: true });
 
     await act(async () => {
       await Promise.resolve();
@@ -84,8 +84,8 @@ describe('双方ポーリング統合', () => {
   });
 
   it('useNotifications().unreadCount と useTimeline().unreadCount が同一の値を返す', async () => {
-    const { result: notifResult } = renderHookWithProviders(() => useNotifications());
-    const { result: timelineResult } = renderHookWithProviders(() => useTimeline());
+    const { result: notifResult } = renderHookWithProviders(() => useNotifications(), { enableLiveTimeline: true });
+    const { result: timelineResult } = renderHookWithProviders(() => useTimeline(), { enableLiveTimeline: true });
 
     await act(async () => {
       await Promise.resolve();

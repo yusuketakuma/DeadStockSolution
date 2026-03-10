@@ -49,21 +49,47 @@ const TimelineContext = createContext<TimelineContextValue>({
 
 const PAGE_LIMIT = 20;
 
-export function TimelineProvider({ children }: { children: ReactNode }) {
+interface TimelineProviderInitialState {
+  events?: TimelineEvent[];
+  total?: number;
+  hasMore?: boolean;
+  loading?: boolean;
+  error?: string;
+  digestEvents?: TimelineEvent[];
+  digestLoading?: boolean;
+  unreadCount?: number;
+  selectedPriority?: TimelinePriority | null;
+}
+
+interface TimelineProviderProps {
+  children: ReactNode;
+  initialState?: TimelineProviderInitialState;
+  disableBootstrap?: boolean;
+  disableUnreadPolling?: boolean;
+}
+
+export function TimelineProvider({
+  children,
+  initialState,
+  disableBootstrap = false,
+  disableUnreadPolling = false,
+}: TimelineProviderProps) {
   const { user } = useAuth();
 
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [total, setTotal] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [events, setEvents] = useState<TimelineEvent[]>(initialState?.events ?? []);
+  const [total, setTotal] = useState(initialState?.total ?? 0);
+  const [hasMore, setHasMore] = useState(initialState?.hasMore ?? false);
+  const [loading, setLoading] = useState(initialState?.loading ?? false);
+  const [error, setError] = useState(initialState?.error ?? '');
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [selectedPriority, setSelectedPriority] = useState<TimelinePriority | null>(null);
+  const [selectedPriority, setSelectedPriority] = useState<TimelinePriority | null>(
+    initialState?.selectedPriority ?? null,
+  );
 
-  const [digestEvents, setDigestEvents] = useState<TimelineEvent[]>([]);
-  const [digestLoading, setDigestLoading] = useState(false);
+  const [digestEvents, setDigestEvents] = useState<TimelineEvent[]>(initialState?.digestEvents ?? []);
+  const [digestLoading, setDigestLoading] = useState(initialState?.digestLoading ?? false);
 
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(initialState?.unreadCount ?? 0);
 
   const fetchTimeline = useCallback(async (
     cursor: string | undefined,
@@ -133,9 +159,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const refreshTimeline = useCallback(async () => {
+    if (disableBootstrap) return;
     setNextCursor(null);
     await fetchBootstrap(selectedPriority);
-  }, [fetchBootstrap, selectedPriority]);
+  }, [disableBootstrap, fetchBootstrap, selectedPriority]);
 
   const markViewed = useCallback(async () => {
     if (!user) return;
@@ -156,11 +183,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setSelectedPriority(priority);
     setNextCursor(null);
     setEvents([]);
+    if (disableBootstrap) {
+      return;
+    }
     void fetchBootstrap(priority);
-  }, [fetchBootstrap]);
+  }, [disableBootstrap, fetchBootstrap]);
 
   // ポーリング（スロットル込み）
-  usePolledFetch(fetchUnreadCount, { enabled: !!user });
+  usePolledFetch(fetchUnreadCount, { enabled: !!user && !disableUnreadPolling });
 
   // 初回フェッチ + ログアウト時リセット（user 変更時のみ発火）
   useEffect(() => {
@@ -175,9 +205,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    if (disableBootstrap) {
+      return;
+    }
+
     void refreshTimeline();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [disableBootstrap, user]);
 
   const value = useMemo<TimelineContextValue>(() => ({
     events,

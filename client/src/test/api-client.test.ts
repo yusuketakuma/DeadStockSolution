@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, api, hasVerificationStatusPayload, isConflictError, setAuthExpiredHandler } from '../api/client';
+import { ApiError, api, isConflictError, setAuthExpiredHandler } from '../api/client';
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -116,11 +116,4 @@ describe('api client', () => {
     expect(isConflictError(new Error('x'))).toBe(false);
   });
 
-  it('safely identifies verification payloads from unknown json values', () => {
-    expect(hasVerificationStatusPayload(null)).toBe(false);
-    expect(hasVerificationStatusPayload('pending_verification')).toBe(false);
-    expect(hasVerificationStatusPayload(403)).toBe(false);
-    expect(hasVerificationStatusPayload({ verificationStatus: 123 })).toBe(false);
-    expect(hasVerificationStatusPayload({ verificationStatus: 'pending_verification' })).toBe(true);
-  });
 });

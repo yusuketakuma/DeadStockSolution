@@ -1,3 +1,5 @@
+import { logger } from '../services/logger';
+
 export type TimelinePriority = 'critical' | 'high' | 'medium' | 'low';
 
 export type TimelineSource =
@@ -101,7 +103,7 @@ export function toTimelineEventType(s: string): TimelineEventType {
   if (TIMELINE_EVENT_TYPES.has(s as TimelineEventType)) {
     return s as TimelineEventType;
   }
-  console.warn(`[toTimelineEventType] Unknown event type: "${s}", falling back to 'request_update'`);
+  logger.warn(`Unknown timeline event type, falling back to request_update`, { unknownType: s });
   return 'request_update';
 }
 

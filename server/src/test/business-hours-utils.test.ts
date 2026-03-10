@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getBusinessHoursStatus, formatDayHours } from '../utils/business-hours-utils';
+import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 
 /**
  * Create a Date object that represents the given JST time.
@@ -384,32 +384,5 @@ describe('getBusinessHoursStatus', () => {
       expect(status.isOpen).toBe(true);
       expect(status.todayHours).toEqual({ openTime: '22:00', closeTime: '03:00' });
     });
-  });
-});
-
-describe('formatDayHours', () => {
-  it('formats open hours', () => {
-    expect(formatDayHours({ dayOfWeek: 1, openTime: '09:00', closeTime: '18:00', isClosed: false }))
-      .toBe('09:00〜18:00');
-  });
-
-  it('formats closed day', () => {
-    expect(formatDayHours({ dayOfWeek: 0, openTime: null, closeTime: null, isClosed: true }))
-      .toBe('定休日');
-  });
-
-  it('formats day with null times as closed', () => {
-    expect(formatDayHours({ dayOfWeek: 0, openTime: null, closeTime: null, isClosed: false }))
-      .toBe('定休日');
-  });
-
-  it('formats overnight hours', () => {
-    expect(formatDayHours({ dayOfWeek: 1, openTime: '22:00', closeTime: '06:00', isClosed: false }))
-      .toBe('22:00〜06:00');
-  });
-
-  it('formats 24-hour day', () => {
-    expect(formatDayHours({ dayOfWeek: 1, openTime: null, closeTime: null, isClosed: false, is24Hours: true }))
-      .toBe('24時間営業');
   });
 });

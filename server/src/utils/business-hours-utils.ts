@@ -279,16 +279,3 @@ export function getBusinessHoursStatus(
     todayHours: { openTime: todayEntry.openTime, closeTime: todayEntry.closeTime },
   };
 }
-
-/**
- * Format business hours for a given day.
- */
-export function formatDayHours(entry: BusinessHourEntry): string {
-  if (entry.isClosed || (!entry.is24Hours && (!entry.openTime || !entry.closeTime))) {
-    return '定休日';
-  }
-  if (entry.is24Hours) {
-    return '24時間営業';
-  }
-  return `${entry.openTime}〜${entry.closeTime}`;
-}

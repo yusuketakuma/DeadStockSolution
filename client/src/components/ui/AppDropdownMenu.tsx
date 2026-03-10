@@ -1,6 +1,6 @@
 import { Dropdown } from 'react-bootstrap';
 
-export interface AppDropdownItem {
+interface AppDropdownItem {
   key: string;
   label: string;
   onClick?: () => void;

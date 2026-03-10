@@ -514,12 +514,12 @@ describe('import-failure-alert-scheduler-final', () => {
       expect(config.webhookUrlError).toBeNull();
     });
 
-    it('marks http://[::1] as insecure (brackets prevent ::1 match)', () => {
+    it('allows http://[::1] webhook as localhost loopback', () => {
       process.env.IMPORT_FAILURE_ALERT_WEBHOOK_URL = 'http://[::1]:3000/hook';
 
       const config = getImportFailureAlertConfig();
-      // hostname is '[::1]' with brackets, isLocalhostHost checks '::1' without brackets
-      expect(config.webhookUrlError).toBe('insecure');
+      expect(config.webhookUrlError).toBeNull();
+      expect(config.webhookUrl).toContain('[::1]:3000');
     });
   });
 });

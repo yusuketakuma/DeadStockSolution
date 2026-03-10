@@ -180,7 +180,7 @@ describe('DashboardPage', () => {
         unreadCount: 0,
       },
     });
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<DashboardPage />, { enableLiveTimeline: true });
 
     await waitFor(() => {
       expect(screen.getByText('交換提案が届いています')).toBeInTheDocument();
@@ -214,7 +214,7 @@ describe('DashboardPage', () => {
         unreadCount: 0,
       },
     });
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<DashboardPage />, { enableLiveTimeline: true });
 
     await waitFor(() => {
       expect(screen.getByText('候補が更新されました')).toBeInTheDocument();
@@ -302,7 +302,8 @@ describe('Layout with Sidebar navigation', () => {
     }));
 
     renderWithProviders(
-      <Layout><div>Test Content</div></Layout>
+      <Layout><div>Test Content</div></Layout>,
+      { authUser: mockUser },
     );
 
     await waitFor(() => {
@@ -389,7 +390,8 @@ describe('Layout with Sidebar navigation', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderWithProviders(
-      <Layout><div>Test Content</div></Layout>
+      <Layout><div>Test Content</div></Layout>,
+      { authUser: mockAdminUser },
     );
 
     await waitFor(() => {
@@ -480,7 +482,8 @@ describe('Layout with Sidebar navigation', () => {
     }));
 
     renderWithProviders(
-      <Layout><div>Test Content</div></Layout>
+      <Layout><div>Test Content</div></Layout>,
+      { authUser: mockAdminUser },
     );
 
     await waitFor(() => {
@@ -539,7 +542,8 @@ describe('Layout with Sidebar navigation', () => {
     }));
 
     renderWithProviders(
-      <Layout><div>Test Content</div></Layout>
+      <Layout><div>Test Content</div></Layout>,
+      { authUser: mockAdminUser },
     );
 
     await waitFor(() => {
@@ -594,7 +598,8 @@ describe('Layout with Sidebar navigation', () => {
     }));
 
     renderWithProviders(
-      <Layout><div>Test Content</div></Layout>
+      <Layout><div>Test Content</div></Layout>,
+      { authUser: mockAdminUser },
     );
 
     await waitFor(() => {

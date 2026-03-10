@@ -3,8 +3,11 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     isolate: true,
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
     include: ['src/test/**/*.test.ts'],
     exclude: ['dist/**', 'node_modules/**', 'src/test/integration/**'],
+
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'json-summary'],

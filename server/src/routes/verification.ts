@@ -1,11 +1,12 @@
 import { Router, Response, Request } from 'express';
-import { db } from '../config/database';
-import { pharmacies } from '../db/schema';
 import { handleRouteError } from '../middleware/error-handler';
-import { eqEmailCaseInsensitive, normalizeEmail } from '../utils/email-utils';
 
 const router = Router();
 
+/**
+ * メール列挙攻撃を防止するため、常に同一レスポンスを返す。
+ * 実際の審査ステータスはメール通知またはログイン試行で確認する。
+ */
 router.get('/verification-status', async (req: Request, res: Response) => {
   try {
     const email = req.query.email;
@@ -14,24 +15,10 @@ router.get('/verification-status', async (req: Request, res: Response) => {
       return;
     }
 
-    const normalizedEmail = normalizeEmail(email);
-
-    const [pharmacy] = await db.select({
-      verificationStatus: pharmacies.verificationStatus,
-      rejectionReason: pharmacies.rejectionReason,
-    })
-      .from(pharmacies)
-      .where(eqEmailCaseInsensitive(pharmacies.email, normalizedEmail))
-      .limit(1);
-
-    if (!pharmacy) {
-      res.status(404).json({ error: 'アカウントが見つかりません' });
-      return;
-    }
-
+    // Anti-enumeration: 未登録/審査中/承認済み/却下 すべて同一レスポンス
     res.json({
-      verificationStatus: pharmacy.verificationStatus,
-      rejectionReason: pharmacy.rejectionReason,
+      verificationStatus: 'pending_verification',
+      rejectionReason: null,
     });
   } catch (error) {
     handleRouteError(error, 'Verification status error', '審査ステータスの取得に失敗しました', res);

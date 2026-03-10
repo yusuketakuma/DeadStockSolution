@@ -19,7 +19,7 @@ interface QuickAction {
   label: string;
 }
 
-export interface GitHubUpdateItem {
+interface GitHubUpdateItem {
   id: string;
   tag: string;
   title: string;

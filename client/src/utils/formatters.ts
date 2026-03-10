@@ -49,25 +49,3 @@ export function truncatePreview(value: unknown, maxLength = 180, fallback = '-')
   if (!normalized) return fallback;
   return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}...`;
 }
-
-/**
- * 相対時間を日本語で返す
- * 例: 「たった今」「5分前」「2時間前」「昨日」「3日前」
- */
-export function formatRelativeTime(timestamp: string): string {
-  const now = Date.now();
-  const then = new Date(timestamp).getTime();
-  if (Number.isNaN(then)) return timestamp;
-
-  const diffMs = now - then;
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffSec < 60) return 'たった今';
-  if (diffMin < 60) return `${diffMin}分前`;
-  if (diffHours < 24) return `${diffHours}時間前`;
-  if (diffDays === 1) return '昨日';
-  return `${diffDays}日前`;
-}

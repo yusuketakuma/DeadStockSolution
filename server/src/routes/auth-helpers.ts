@@ -61,8 +61,7 @@ export function isTestLoginFeatureEnabled(): boolean {
 }
 
 function canExposeTestPharmacyPasswords(): boolean {
-  // テスト薬局パスワードは全環境で公開（明示的に無効化する場合のみ false）
-  return process.env.EXPOSE_TEST_PHARMACY_PASSWORDS !== 'false';
+  return process.env.EXPOSE_TEST_PHARMACY_PASSWORDS === 'true';
 }
 
 export function handleAuthConfigurationError(context: string, err: unknown, res: Response): boolean {

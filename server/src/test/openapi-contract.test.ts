@@ -48,7 +48,7 @@ const REQUIRED_OPERATIONS: ContractRequirement[] = [
   { path: '/api/statistics/summary', method: 'get', statuses: ['200', '500'] },
   { path: '/api/requests', method: 'post', statuses: ['201', '400', '401'] },
   { path: '/api/requests/me', method: 'get', statuses: ['200', '401'] },
-  { path: '/api/auth/verification-status', method: 'get', statuses: ['200', '400', '404'] },
+  { path: '/api/auth/verification-status', method: 'get', statuses: ['200', '400'] },
   { path: '/api/inventory/dead-stock/risk', method: 'get', statuses: ['200', '404', '500'] },
   { path: '/api/inventory/dead-stock/camera/resolve', method: 'post', statuses: ['200', '400', '500'] },
   { path: '/api/inventory/dead-stock/camera/manual-candidates', method: 'get', statuses: ['200', '400', '500'] },

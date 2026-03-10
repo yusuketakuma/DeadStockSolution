@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getBusinessHoursStatus, formatDayHours, type SpecialBusinessHourEntry } from '../utils/business-hours-utils';
+import { getBusinessHoursStatus, type SpecialBusinessHourEntry } from '../utils/business-hours-utils';
 
 describe('business-hours-utils ultra coverage', () => {
   // Cover: specialHoursOrNow as Date (second argument is Date, not array)
@@ -206,29 +206,6 @@ describe('business-hours-utils ultra coverage', () => {
       const monday12pm = new Date('2026-02-23T12:00:00');
       const status = getBusinessHoursStatus(weeklyHours, specialHours, monday12pm);
       expect(status.is24Hours).toBe(true);
-    });
-  });
-
-  // Cover: formatDayHours with is24Hours but isClosed also true (isClosed takes precedence)
-  describe('formatDayHours edge cases', () => {
-    it('returns 定休日 when isClosed=true even if is24Hours=true', () => {
-      expect(formatDayHours({
-        dayOfWeek: 0,
-        openTime: null,
-        closeTime: null,
-        isClosed: true,
-        is24Hours: true,
-      })).toBe('定休日');
-    });
-
-    it('returns 定休日 when openTime is null and not 24h and not explicitly closed', () => {
-      expect(formatDayHours({
-        dayOfWeek: 0,
-        openTime: null,
-        closeTime: '18:00',
-        isClosed: false,
-        is24Hours: false,
-      })).toBe('定休日');
     });
   });
 

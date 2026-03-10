@@ -1,21 +1,14 @@
 import express from 'express';
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const mocks = vi.hoisted(() => ({
-  db: {
-    select: vi.fn(),
-  },
-  loggerError: vi.fn(),
-}));
+import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/database', () => ({
-  db: mocks.db,
+  db: { select: vi.fn() },
 }));
 
 vi.mock('../services/logger', () => ({
   logger: {
-    error: mocks.loggerError,
+    error: vi.fn(),
     warn: vi.fn(),
     info: vi.fn(),
     debug: vi.fn(),
@@ -32,18 +25,6 @@ vi.mock('drizzle-orm', () => ({
 
 import verificationRouter from '../routes/verification';
 
-function createLimitQuery(result: unknown) {
-  const query = {
-    from: vi.fn(),
-    where: vi.fn(),
-    limit: vi.fn(),
-  };
-  query.from.mockReturnValue(query);
-  query.where.mockReturnValue(query);
-  query.limit.mockResolvedValue(result);
-  return query;
-}
-
 function createApp() {
   const app = express();
   app.use('/api/auth', verificationRouter);
@@ -51,18 +32,9 @@ function createApp() {
 }
 
 describe('GET /api/auth/verification-status', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('returns pending status for pending_verification pharmacy', async () => {
-    const query = createLimitQuery([
-      { verificationStatus: 'pending_verification', rejectionReason: null },
-    ]);
-    mocks.db.select.mockReturnValue(query);
-
+  it('returns uniform pending_verification for any email (anti-enumeration)', async () => {
     const app = createApp();
-    const response = await request(app).get('/api/auth/verification-status?email=test@example.com');
+    const response = await request(app).get('/api/auth/verification-status?email=any@example.com');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -71,33 +43,26 @@ describe('GET /api/auth/verification-status', () => {
     });
   });
 
-  it('returns verified status for verified pharmacy', async () => {
-    const query = createLimitQuery([
-      { verificationStatus: 'verified', rejectionReason: null },
-    ]);
-    mocks.db.select.mockReturnValue(query);
-
+  it('returns same response regardless of email value', async () => {
     const app = createApp();
-    const response = await request(app).get('/api/auth/verification-status?email=verified@example.com');
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      verificationStatus: 'verified',
-      rejectionReason: null,
-    });
+    const emails = ['unknown@example.com', 'verified@pharmacy.jp', 'rejected@pharmacy.jp'];
+    for (const email of emails) {
+      const response = await request(app).get(`/api/auth/verification-status?email=${email}`);
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        verificationStatus: 'pending_verification',
+        rejectionReason: null,
+      });
+    }
   });
 
-  it('returns 404 for unknown email', async () => {
-    const query = createLimitQuery([]);
-    mocks.db.select.mockReturnValue(query);
-
+  it('does not query the database', async () => {
+    const { db } = await import('../config/database');
     const app = createApp();
-    const response = await request(app).get('/api/auth/verification-status?email=unknown@example.com');
+    await request(app).get('/api/auth/verification-status?email=test@example.com');
 
-    expect(response.status).toBe(404);
-    expect(response.body).toEqual({
-      error: 'アカウントが見つかりません',
-    });
+    expect(db.select).not.toHaveBeenCalled();
   });
 
   it('returns 400 when email is missing', async () => {

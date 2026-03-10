@@ -2,6 +2,16 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
+// Keep in sync with useCamera.ts ZXING_RSS_WARNING
+const ZXING_RSS_WARNING = 'RSS Expanded reader IS NOT ready for production yet! use at your own risk.';
+const originalConsoleWarn = console.warn.bind(console);
+vi.spyOn(console, 'warn').mockImplementation((message?: unknown, ...args: unknown[]) => {
+  if (message === ZXING_RSS_WARNING) {
+    return;
+  }
+  originalConsoleWarn(message, ...args);
+});
+
 afterEach(() => {
   cleanup();
 });

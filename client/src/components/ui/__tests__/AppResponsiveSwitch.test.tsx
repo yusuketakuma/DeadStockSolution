@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import AppResponsiveSwitch, { APP_RESPONSIVE_MOBILE_QUERY } from '../AppResponsiveSwitch';
+import AppResponsiveSwitch from '../AppResponsiveSwitch';
 
 function setMatchMedia(matches: boolean) {
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
@@ -66,7 +66,7 @@ describe('AppResponsiveSwitch', () => {
     expect(screen.queryByText('desktop-view')).not.toBeInTheDocument();
     expect(desktop).not.toHaveBeenCalled();
     expect(mobile).toHaveBeenCalledTimes(1);
-    expect(window.matchMedia).toHaveBeenCalledWith(APP_RESPONSIVE_MOBILE_QUERY);
+    expect(window.matchMedia).toHaveBeenCalledWith('(max-width: 991.98px)');
   });
 
   it('switches content when viewport match state changes', async () => {

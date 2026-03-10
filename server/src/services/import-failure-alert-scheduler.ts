@@ -3,6 +3,7 @@ import { db } from '../config/database';
 import { activityLogs } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
+import { normalizeHttpsOrLoopbackHttpUrl } from '../utils/url-config';
 import { logger } from './logger';
 import { handoffImportFailureAlertToOpenClaw } from './openclaw-auto-handoff-service';
 
@@ -75,32 +76,12 @@ let isRunning = false;
 let lastAlertAtMs = 0;
 let lastAlertFailureTotal: number | null = null;
 
-function isLocalhostHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase();
-  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
-}
-
 function normalizeWebhookUrl(webhookUrlRaw: string): { value: string; error: WebhookUrlError | null } {
-  const trimmed = webhookUrlRaw.trim();
-  if (!trimmed) {
-    return { value: '', error: null };
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return { value: '', error: 'invalid' };
-  }
-
-  const protocol = parsed.protocol.toLowerCase();
-  if (protocol === 'https:' || (protocol === 'http:' && isLocalhostHost(parsed.hostname))) {
-    parsed.search = '';
-    parsed.hash = '';
-    return { value: parsed.toString(), error: null };
-  }
-
-  return { value: '', error: 'insecure' };
+  const normalized = normalizeHttpsOrLoopbackHttpUrl(webhookUrlRaw, { allowEmpty: true });
+  return {
+    value: normalized.value,
+    error: normalized.error === 'missing' ? null : normalized.error,
+  };
 }
 
 function parseMonitoredActions(raw: string | undefined): string[] {

@@ -17,6 +17,7 @@ interface BarcodeDetectorConstructorLike {
 
 const SCAN_DUPLICATE_SUPPRESS_MS = 1500;
 const CAMERA_ERROR_UPDATE_MIN_INTERVAL_MS = 1200;
+const ZXING_RSS_WARNING = 'RSS Expanded reader IS NOT ready for production yet! use at your own risk.';
 
 const BARCODE_DETECTOR_FORMATS = [
   'data_matrix',
@@ -60,10 +61,21 @@ const POSSIBLE_FORMATS = [
 function createReader(): BrowserMultiFormatReader {
   const hints = new Map<DecodeHintType, unknown>();
   hints.set(DecodeHintType.POSSIBLE_FORMATS, POSSIBLE_FORMATS);
-  return new BrowserMultiFormatReader(hints, {
-    delayBetweenScanAttempts: 180,
-    delayBetweenScanSuccess: 600,
-  });
+  const currentWarn = console.warn;
+  console.warn = (message?: unknown, ...args: unknown[]) => {
+    if (message === ZXING_RSS_WARNING) {
+      return;
+    }
+    currentWarn(message, ...args);
+  };
+  try {
+    return new BrowserMultiFormatReader(hints, {
+      delayBetweenScanAttempts: 180,
+      delayBetweenScanSuccess: 600,
+    });
+  } finally {
+    console.warn = currentWarn;
+  }
 }
 
 function getBarcodeDetectorConstructor(): BarcodeDetectorConstructorLike | null {

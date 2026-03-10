@@ -150,7 +150,7 @@ function validateAndMapProposalItems(params: {
     const availableQty = Number(stock.quantity) - (reservedByStockId.get(item.deadStockItemId) ?? 0);
     if (item.quantity > availableQty) throw new Error('提案数量が利用可能在庫数を超えています');
     const unitPrice = Number(stock.yakkaUnitPrice);
-    if (!unitPrice || unitPrice <= 0) throw new Error('薬価が設定されていない在庫は提案できません');
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error('薬価が設定されていない在庫は提案できません');
 
     return {
       deadStockItemId: item.deadStockItemId,

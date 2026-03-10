@@ -52,17 +52,8 @@ describe('logger branch coverage', () => {
     expect(String(errSpy.mock.calls[0][0])).toContain('"level":"warn"');
   });
 
-  it('eagerly evaluates callback payload when LOGGER_LAZY_PAYLOAD_ENABLED=false', async () => {
-    const payloadFn = vi.fn(() => ({ eager: true }));
-    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'error', LOGGER_LAZY_PAYLOAD_ENABLED: 'false' });
-    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    logger.info('suppressed-info', payloadFn);
-    expect(payloadFn).toHaveBeenCalledTimes(1);
-    expect(outSpy).not.toHaveBeenCalled();
-  });
-
   it('resolves plain object payload for info log', async () => {
-    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'info', LOGGER_LAZY_PAYLOAD_ENABLED: 'false' });
+    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'info' });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
     logger.info('object-payload', { key: 'value' });
@@ -71,8 +62,8 @@ describe('logger branch coverage', () => {
     expect(String(outSpy.mock.calls[0][0])).toContain('"key":"value"');
   });
 
-  it('does not evaluate callback payload for suppressed levels when lazy payload is enabled', async () => {
-    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'error', LOGGER_LAZY_PAYLOAD_ENABLED: 'true' });
+  it('does not evaluate callback payload for suppressed levels', async () => {
+    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'error' });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const debugPayload = vi.fn(() => ({ d: true }));
@@ -94,31 +85,8 @@ describe('logger branch coverage', () => {
     expect(String(errSpy.mock.calls[0][0])).toContain('"level":"error"');
   });
 
-  it('eagerly evaluates callback payload for all levels when lazy payload is disabled', async () => {
-    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'error', LOGGER_LAZY_PAYLOAD_ENABLED: 'false' });
-    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const debugPayload = vi.fn(() => ({ d: true }));
-    const infoPayload = vi.fn(() => ({ i: true }));
-    const warnPayload = vi.fn(() => ({ w: true }));
-    const errorPayload = vi.fn(() => ({ e: true }));
-
-    logger.debug('debug-suppressed', debugPayload);
-    logger.info('info-suppressed', infoPayload);
-    logger.warn('warn-suppressed', warnPayload);
-    logger.error('error-visible', errorPayload);
-
-    expect(debugPayload).toHaveBeenCalledTimes(1);
-    expect(infoPayload).toHaveBeenCalledTimes(1);
-    expect(warnPayload).toHaveBeenCalledTimes(1);
-    expect(errorPayload).toHaveBeenCalledTimes(1);
-    expect(outSpy).not.toHaveBeenCalled();
-    expect(errSpy).toHaveBeenCalledOnce();
-    expect(String(errSpy.mock.calls[0][0])).toContain('"level":"error"');
-  });
-
   it('handles undefined payloads for all levels', async () => {
-    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'debug', LOGGER_LAZY_PAYLOAD_ENABLED: 'true' });
+    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'debug' });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
@@ -131,14 +99,25 @@ describe('logger branch coverage', () => {
     expect(errSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('treats invalid LOGGER_LAZY_PAYLOAD_ENABLED as default true', async () => {
-    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'error', LOGGER_LAZY_PAYLOAD_ENABLED: 'invalid' });
-    const payloadFn = vi.fn(() => ({ hidden: true }));
+  it('does not throw when suppressed payload callback fails', async () => {
+    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'error' });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-    logger.info('suppressed-info', payloadFn);
-
-    expect(payloadFn).not.toHaveBeenCalled();
+    expect(() => logger.info('suppressed-info', () => {
+      throw new Error('payload exploded');
+    })).not.toThrow();
     expect(outSpy).not.toHaveBeenCalled();
+  });
+
+  it('emits fallback metadata when visible payload callback fails', async () => {
+    const logger = await importLoggerWithEnv({ LOG_LEVEL: 'info' });
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    logger.info('visible-info', () => {
+      throw new Error('payload exploded');
+    });
+
+    expect(outSpy).toHaveBeenCalledOnce();
+    expect(String(outSpy.mock.calls[0][0])).toContain('"logPayloadResolveError":"payload exploded"');
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom';
 import SmartDigest from '../../components/timeline/SmartDigest';
 import type { TimelineEvent } from '../../types/timeline';
 import type { UploadStatus } from '../../components/dashboard/types';
@@ -27,9 +27,12 @@ function renderDigest(props: Partial<Parameters<typeof SmartDigest>[0]> = {}) {
     lastDeadStockUpload: '2026-03-01T00:00:00Z',
     lastUsedMedicationUpload: '2026-03-01T00:00:00Z',
   };
+  const routerProps: MemoryRouterProps = {
+    future: { v7_startTransition: true, v7_relativeSplatPath: true },
+  };
 
   return render(
-    <MemoryRouter>
+    <MemoryRouter {...routerProps}>
       <SmartDigest events={[]} status={defaultStatus} loading={false} {...props} />
     </MemoryRouter>
   );

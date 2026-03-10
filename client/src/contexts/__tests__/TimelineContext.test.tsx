@@ -21,11 +21,29 @@ function createEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
   };
 }
 
-function createWrapper() {
+function createWrapper(options?: {
+  disableBootstrap?: boolean;
+  disableUnreadPolling?: boolean;
+}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <AuthProvider>
-        <TimelineProvider>{children}</TimelineProvider>
+      <AuthProvider
+        initialUser={{
+          id: 1,
+          email: 'test@example.com',
+          name: 'テスト',
+          prefecture: '東京都',
+          isAdmin: false,
+        }}
+        initialLoading={false}
+        disableInitialRefresh
+      >
+        <TimelineProvider
+          disableBootstrap={options?.disableBootstrap}
+          disableUnreadPolling={options?.disableUnreadPolling}
+        >
+          {children}
+        </TimelineProvider>
       </AuthProvider>
     );
   };
@@ -81,7 +99,7 @@ describe('TimelineContext', () => {
 
   it('TimelineProvider renders children', () => {
     setupTimelineFetchMock();
-    const wrapper = createWrapper();
+    const wrapper = createWrapper({ disableBootstrap: true, disableUnreadPolling: true });
 
     const { result } = renderHook(() => useTimeline(), { wrapper });
 
@@ -90,7 +108,7 @@ describe('TimelineContext', () => {
 
   it('useTimeline returns initial values', () => {
     setupTimelineFetchMock();
-    const wrapper = createWrapper();
+    const wrapper = createWrapper({ disableBootstrap: true, disableUnreadPolling: true });
 
     const { result } = renderHook(() => useTimeline(), { wrapper });
 

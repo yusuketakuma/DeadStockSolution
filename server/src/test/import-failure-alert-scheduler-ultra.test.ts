@@ -141,17 +141,15 @@ describe('import-failure-alert-scheduler-ultra', () => {
     }
   });
 
-  // ── normalizeWebhookUrl: http://[::1] (IPv6 bracket notation not matched as localhost) ──
+  // ── normalizeWebhookUrl: http://[::1] localhost allowance ──
   describe('normalizeWebhookUrl with IPv6 bracket notation', () => {
-    it('treats http://[::1] as insecure because brackets prevent localhost match', () => {
+    it('treats http://[::1] as loopback localhost', () => {
       process.env.IMPORT_FAILURE_ALERT_WEBHOOK_URL = 'http://[::1]:3000/hook';
 
       const config = getImportFailureAlertConfig();
 
-      // new URL('http://[::1]:3000/hook').hostname === '[::1]' (with brackets)
-      // isLocalhostHost checks for '::1' without brackets, so this is classified as insecure
-      expect(config.webhookUrlError).toBe('insecure');
-      expect(config.webhookUrl).toBe('');
+      expect(config.webhookUrlError).toBeNull();
+      expect(config.webhookUrl).toBe('http://[::1]:3000/hook');
     });
   });
 

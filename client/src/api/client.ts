@@ -124,7 +124,7 @@ async function fetchWithTimeout(
   }
 }
 
-export function hasVerificationStatusPayload(data: unknown): data is { verificationStatus: string } {
+function hasVerificationStatusPayload(data: unknown): data is { verificationStatus: string } {
   return data != null
     && typeof data === 'object'
     && 'verificationStatus' in data

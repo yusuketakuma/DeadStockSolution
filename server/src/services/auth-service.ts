@@ -16,9 +16,15 @@ const WEAK_JWT_SECRET_VALUES = new Set([
   'secret',
 ]);
 
+function hasLowEntropy(secret: string): boolean {
+  const uniqueChars = new Set(secret).size;
+  return uniqueChars < 10;
+}
+
 function isWeakJwtSecret(secret: string): boolean {
   if (secret.length < JWT_SECRET_MIN_LENGTH) return true;
-  return WEAK_JWT_SECRET_VALUES.has(secret.toLowerCase());
+  if (WEAK_JWT_SECRET_VALUES.has(secret.toLowerCase())) return true;
+  return hasLowEntropy(secret);
 }
 
 function getJwtSecret(): string {

@@ -375,6 +375,7 @@ describe('auth routes', () => {
     process.env.NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'preview';
     delete process.env.TEST_LOGIN_FEATURE_ENABLED;
+    process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'true';
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
     ]);
@@ -459,6 +460,7 @@ describe('auth routes', () => {
   it('recovers test pharmacy preview after ensuring missing columns', async () => {
     process.env.NODE_ENV = 'production';
     process.env.TEST_LOGIN_FEATURE_ENABLED = 'true';
+    process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'true';
     const missingColumnError = Object.assign(new Error('column "is_test_account" does not exist'), { code: '42703' });
     const missingColumnChain = createRejectedSelectChain(missingColumnError);
     const healedRows = [

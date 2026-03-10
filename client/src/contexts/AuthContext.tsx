@@ -36,9 +36,21 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+interface AuthProviderProps {
+  children: React.ReactNode;
+  initialUser?: User | null;
+  initialLoading?: boolean;
+  disableInitialRefresh?: boolean;
+}
+
+export function AuthProvider({
+  children,
+  initialUser = null,
+  initialLoading = true,
+  disableInitialRefresh = false,
+}: AuthProviderProps) {
+  const [user, setUser] = useState<User | null>(initialUser);
+  const [loading, setLoading] = useState(initialLoading);
   const skipNextRefreshRef = React.useRef(false);
 
   const refreshUser = useCallback(async () => {
@@ -55,8 +67,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refreshUser().finally(() => setLoading(false));
-  }, [refreshUser]);
+    if (disableInitialRefresh) {
+      setLoading(false);
+      return;
+    }
+    void refreshUser().finally(() => setLoading(false));
+  }, [disableInitialRefresh, refreshUser]);
 
   // Auto-logout when session expires
   useEffect(() => {

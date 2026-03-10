@@ -1,3 +1,5 @@
+import { normalizeHttpsOrLoopbackHttpUrl } from '../utils/url-config';
+
 export type OpenClawStatus = 'pending_handoff' | 'in_dialogue' | 'implementing' | 'completed';
 type OpenClawBaseUrlError = 'missing' | 'invalid' | 'insecure';
 type OpenClawConnectorMode = 'legacy_http' | 'gateway_cli';
@@ -43,37 +45,11 @@ export interface OpenClawHandoffResult {
   note: string;
 }
 
-function stripTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
-
-function isLocalhostHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase();
-  return normalized === 'localhost'
-    || normalized === '127.0.0.1'
-    || normalized === '::1'
-    || normalized === '[::1]';
-}
-
 function normalizeBaseUrl(baseUrlRaw: string): { value: string; error: OpenClawBaseUrlError | null } {
-  const trimmed = baseUrlRaw.trim();
-  if (!trimmed) return { value: '', error: 'missing' };
-
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return { value: '', error: 'invalid' };
-  }
-
-  const protocol = parsed.protocol.toLowerCase();
-  if (protocol === 'https:' || (protocol === 'http:' && isLocalhostHost(parsed.hostname))) {
-    parsed.search = '';
-    parsed.hash = '';
-    return { value: stripTrailingSlash(parsed.toString()), error: null };
-  }
-
-  return { value: '', error: 'insecure' };
+  return normalizeHttpsOrLoopbackHttpUrl(baseUrlRaw, {
+    allowEmpty: false,
+    stripTrailingSlash: true,
+  });
 }
 
 function resolveOpenClawConnectorMode(): OpenClawConnectorMode {
