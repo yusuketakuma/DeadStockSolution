@@ -60,6 +60,7 @@ const ROUTE_BASELINE = [
     tags: ['Auth'],
     responses: [
       { status: '200', description: 'Current user response', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '503', description: 'Current user service unavailable', schemaRef: '#/components/schemas/GenericResponse' },
     ],
   },
   {

@@ -13,8 +13,14 @@ type TestLoginClientEnv = {
  */
 export function resolveClientTestLoginFeatureEnabled(env: TestLoginClientEnv): boolean {
   const raw = env.VITE_TEST_LOGIN_FEATURE_ENABLED?.trim().toLowerCase();
+  if (raw === 'true') return true;
   if (raw === 'false') return false;
 
-  // テスト薬局ログインは全環境で有効（production含む）
-  return true;
+  if (env.VITE_VERCEL_ENV?.trim().toLowerCase() === 'preview') {
+    return true;
+  }
+
+  return env.MODE?.trim().toLowerCase() === 'production'
+    ? false
+    : true;
 }

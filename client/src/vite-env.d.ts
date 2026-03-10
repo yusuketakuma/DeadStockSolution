@@ -4,6 +4,7 @@
 /// <reference types="vite-plugin-pwa/info" />
 
 declare const __APP_VERSION__: string;
+declare const __VERCEL_ENV__: string;
 
 interface ImportMetaEnv {
   readonly VITE_APP_VERSION?: string;

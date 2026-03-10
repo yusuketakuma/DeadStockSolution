@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   verifyToken: vi.fn(),
   deriveSessionVersion: vi.fn(),
+  isJwtSecretMissingError: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -24,6 +25,7 @@ vi.mock('../config/database', () => ({
 vi.mock('../services/auth-service', () => ({
   verifyToken: mocks.verifyToken,
   deriveSessionVersion: mocks.deriveSessionVersion,
+  isJwtSecretMissingError: mocks.isJwtSecretMissingError,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -66,6 +68,7 @@ describe('auth middleware deep coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearAuthUserCacheForTests();
+    mocks.isJwtSecretMissingError.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -204,7 +207,7 @@ describe('auth middleware deep coverage', () => {
 
   // ── requireLogin: db error ──
 
-  it('returns 500 when database query throws', async () => {
+  it('returns 503 when database query throws because dependency is unavailable', async () => {
     mocks.verifyToken.mockReturnValueOnce({
       id: 1,
       email: 'a@b.com',
@@ -224,9 +227,9 @@ describe('auth middleware deep coverage', () => {
     await requireLogin(req as never, res as never, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.status).toHaveBeenCalledWith(503);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      error: '認証処理中にエラーが発生しました',
+      error: '認証サービスが一時的に利用できません。しばらくしてから再試行してください',
     }));
   });
 

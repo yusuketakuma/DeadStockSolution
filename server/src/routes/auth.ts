@@ -24,6 +24,7 @@ import {
   createAuthLimiter,
   isTestLoginFeatureEnabled,
   handleAuthConfigurationError,
+  handleDependencyServiceUnavailable,
   extractUniqueViolationConstraint,
   isMissingTestPharmacyColumnError,
   mapLegacyAuthMeRows,
@@ -366,6 +367,14 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
 
     res.json(rows[0]);
   } catch (err) {
+    if (handleDependencyServiceUnavailable(
+      'Get me',
+      err,
+      res,
+      'ユーザー情報を現在取得できません。しばらくしてから再試行してください',
+    )) {
+      return;
+    }
     handleRouteError(err, 'Get me error', 'ユーザー情報の取得に失敗しました', res);
   }
 });
@@ -396,7 +405,15 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
 
     sendTestPharmacyResponse(res, rows, includePassword, cacheControlValue);
   } catch (err) {
-    handleRouteError(err, 'Get test pharmacies error', 'テスト薬局情報の取得に失敗しました', res);
+    if (handleDependencyServiceUnavailable(
+      'Get test pharmacies',
+      err,
+      res,
+      'テスト薬局情報を現在取得できません。しばらくしてから再試行してください',
+    )) {
+      return;
+    }
+    handleRouteError(err, 'Get test pharmacies error', 'テスト薬局情報の取得に失敗しました', res, 503);
   }
 });
 export default router;

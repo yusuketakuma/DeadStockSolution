@@ -1877,6 +1877,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Current user service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
           }
         }
       }

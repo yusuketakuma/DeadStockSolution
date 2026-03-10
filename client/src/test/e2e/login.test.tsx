@@ -203,9 +203,8 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('button', { name: '一覧から選ぶ' })).not.toBeInTheDocument();
   });
 
-  it('shows developer login shortcuts on production even when preview flag is absent', async () => {
-    vi.stubEnv('MODE', 'production');
-    vi.stubEnv('VITE_VERCEL_ENV', 'production');
+  it('shows developer login shortcuts when explicitly enabled in production', async () => {
+    vi.stubEnv('VITE_TEST_LOGIN_FEATURE_ENABLED', 'true');
     mockUnauthFetch();
     renderWithProviders(<LoginPage />, { route: '/login' });
 

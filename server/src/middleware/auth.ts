@@ -2,7 +2,8 @@ import { Response, NextFunction } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
-import { deriveSessionVersion, verifyToken } from '../services/auth-service';
+import { deriveSessionVersion, isJwtSecretMissingError, verifyToken } from '../services/auth-service';
+import { isDependencyServiceUnavailableError } from '../routes/auth-helpers';
 import { AuthRequest } from '../types';
 import { VerificationStatus } from '../services/pharmacy-verification-service';
 
@@ -98,6 +99,10 @@ function sendInvalidSessionResponse(res: Response): void {
   res.status(401).json({ error: 'セッションが無効です。再度ログインしてください' });
 }
 
+function sendAuthConfigurationResponse(res: Response): void {
+  res.status(503).json({ error: '認証設定が未完了です。管理者に連絡してください' });
+}
+
 function assignAuthenticatedUser(req: AuthRequest, user: Pick<CachedAuthUser, 'id' | 'email' | 'isAdmin'>): void {
   req.user = {
     id: user.id,
@@ -117,7 +122,11 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
   let payload: ReturnType<typeof verifyToken>;
   try {
     payload = verifyToken(token);
-  } catch {
+  } catch (err) {
+    if (isJwtSecretMissingError(err)) {
+      sendAuthConfigurationResponse(res);
+      return;
+    }
     sendInvalidSessionResponse(res);
     return;
   }
@@ -186,7 +195,15 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
     });
 
     next();
-  } catch {
+  } catch (err) {
+    if (isJwtSecretMissingError(err)) {
+      sendAuthConfigurationResponse(res);
+      return;
+    }
+    if (isDependencyServiceUnavailableError(err)) {
+      res.status(503).json({ error: '認証サービスが一時的に利用できません。しばらくしてから再試行してください' });
+      return;
+    }
     res.status(500).json({ error: '認証処理中にエラーが発生しました' });
   }
 }

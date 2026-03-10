@@ -153,6 +153,25 @@ function createSelectChain(rows: unknown[]) {
   return chain;
 }
 
+function createRejectedSelectChain(error: Error & { code?: string }) {
+  const rejected = Promise.reject(error);
+  rejected.catch(() => undefined);
+  const chain = {
+    from: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+    limit: vi.fn(),
+    then: rejected.then.bind(rejected),
+    catch: rejected.catch.bind(rejected),
+    finally: rejected.finally.bind(rejected),
+  };
+  chain.from.mockReturnValue(chain);
+  chain.where.mockReturnValue(chain);
+  chain.orderBy.mockReturnValue(chain);
+  chain.limit.mockReturnValue(chain);
+  return chain;
+}
+
 function createTransactionMock(pharmacyId: number, reviewId: number, verificationRequestId: number) {
   mocks.db.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
     let insertCallCount = 0;
@@ -563,6 +582,21 @@ describe('auth routes — additional coverage', () => {
       expect(res.status).toBe(404);
       expect(res.body.error).toContain('ユーザーが見つかりません');
     });
+
+    it('returns 503 when user lookup hits transient DB failure', async () => {
+      mocks.db.select.mockReturnValue(createRejectedSelectChain(
+        Object.assign(new Error('connect timeout while reaching Neon'), { code: 'ETIMEDOUT' }),
+      ));
+      const app = createApp();
+
+      const res = await request(app)
+        .get('/api/auth/me');
+
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({
+        error: 'ユーザー情報を現在取得できません。しばらくしてから再試行してください',
+      });
+    });
   });
 
   describe('GET /test-pharmacies', () => {
@@ -686,6 +720,22 @@ describe('auth routes — additional coverage', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.accounts[0].password).toBe('ProdSecret123');
+    });
+
+    it('returns 503 when preview query hits transient DB failure', async () => {
+      process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'true';
+      mocks.db.select.mockReturnValue(createRejectedSelectChain(
+        Object.assign(new Error('fetch failed'), { code: '08006' }),
+      ));
+      const app = await createFreshApp();
+
+      const res = await request(app)
+        .get('/api/auth/test-pharmacies?includePassword=true');
+
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({
+        error: 'テスト薬局情報を現在取得できません。しばらくしてから再試行してください',
+      });
     });
   });
 });

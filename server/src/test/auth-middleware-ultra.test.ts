@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   verifyToken: vi.fn(),
   deriveSessionVersion: vi.fn(),
+  isJwtSecretMissingError: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -15,6 +16,7 @@ vi.mock('../config/database', () => ({
 vi.mock('../services/auth-service', () => ({
   verifyToken: mocks.verifyToken,
   deriveSessionVersion: mocks.deriveSessionVersion,
+  isJwtSecretMissingError: mocks.isJwtSecretMissingError,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -57,6 +59,7 @@ describe('auth-middleware-ultra', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     clearAuthUserCacheForTests();
+    mocks.isJwtSecretMissingError.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -308,7 +311,7 @@ describe('auth-middleware-ultra', () => {
 
   // ── requireLogin: DB error catch branch ──
   describe('requireLogin — DB error catch', () => {
-    it('returns 500 when DB select rejects', async () => {
+    it('returns 503 when DB select rejects because dependency is unavailable', async () => {
       mocks.verifyToken.mockReturnValueOnce({
         id: 70,
         email: 'error@test.com',
@@ -328,9 +331,9 @@ describe('auth-middleware-ultra', () => {
       await requireLogin(req as never, res as never, next);
 
       expect(next).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: '認証処理中にエラーが発生しました' }),
+        expect.objectContaining({ error: '認証サービスが一時的に利用できません。しばらくしてから再試行してください' }),
       );
     });
 

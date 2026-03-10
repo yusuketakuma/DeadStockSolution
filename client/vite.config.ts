@@ -61,6 +61,7 @@ export default defineConfig(({ mode }) => {
     plugins,
     define: {
       __APP_VERSION__: JSON.stringify(appVersion),
+      __VERCEL_ENV__: JSON.stringify(env.VERCEL_ENV?.trim() || env.VITE_VERCEL_ENV?.trim() || ''),
     },
     build: {
       chunkSizeWarningLimit: 500,

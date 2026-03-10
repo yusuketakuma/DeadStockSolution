@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   verifyToken: vi.fn(),
   deriveSessionVersion: vi.fn(),
+  isJwtSecretMissingError: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -15,6 +16,7 @@ vi.mock('../config/database', () => ({
 vi.mock('../services/auth-service', () => ({
   verifyToken: mocks.verifyToken,
   deriveSessionVersion: mocks.deriveSessionVersion,
+  isJwtSecretMissingError: mocks.isJwtSecretMissingError,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -60,6 +62,7 @@ describe('auth middleware cache', () => {
     vi.clearAllMocks();
     clearAuthUserCacheForTests();
     process.env.NODE_ENV = 'development';
+    mocks.isJwtSecretMissingError.mockReturnValue(false);
   });
 
   afterEach(() => {

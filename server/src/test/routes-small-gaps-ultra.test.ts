@@ -53,8 +53,8 @@ const mocks = vi.hoisted(() => ({
   ensureCsrfCookie: vi.fn(() => 'csrf'),
   generateCsrfToken: vi.fn(() => 'csrf'),
   // error-handler
-  handleRouteError: vi.fn((_err: unknown, _ctx: string, msg: string, res: Response) => {
-    res.status(500).json({ error: msg });
+  handleRouteError: vi.fn((_err: unknown, _ctx: string, msg: string, res: Response, status = 500) => {
+    res.status(status).json({ error: msg });
   }),
   // openclaw
   handoffToOpenClaw: vi.fn(async () => undefined),
@@ -249,8 +249,8 @@ function resetDefaultMocks() {
   mocks.handoffToOpenClaw.mockResolvedValue(undefined);
   mocks.createPasswordResetToken.mockResolvedValue({ token: 'a'.repeat(64) });
   mocks.resetPasswordWithToken.mockResolvedValue({ success: true, pharmacyId: 1 });
-  mocks.handleRouteError.mockImplementation((_e: unknown, _c: string, msg: string, res: Response) => {
-    res.status(500).json({ error: msg });
+  mocks.handleRouteError.mockImplementation((_e: unknown, _c: string, msg: string, res: Response, status = 500) => {
+    res.status(status).json({ error: msg });
   });
   mocks.getClientIp.mockReturnValue('127.0.0.1');
   mocks.ensureCsrfCookie.mockReturnValue('csrf');
@@ -354,11 +354,11 @@ describe('auth.ts — ultra coverage', () => {
   });
 
   // --- Cover /me error catch ---
-  it('GET /me — returns 500 on non-column-missing error', async () => {
+  it('GET /me — returns 503 on non-column-missing error', async () => {
     mocks.db.select.mockReturnValue(selectChainLimitRejects(new Error('connection error')));
     const app = await createAuthApp();
     const res = await request(app).get('/auth/me');
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(503);
   });
 
   it('GET /test-pharmacies — returns 503 when columns are missing', async () => {
@@ -386,11 +386,11 @@ describe('auth.ts — ultra coverage', () => {
   });
 
   // --- Cover /test-pharmacies error catch ---
-  it('GET /test-pharmacies — returns 500 on non-column-missing error', async () => {
+  it('GET /test-pharmacies — returns 503 on non-column-missing error', async () => {
     mocks.db.select.mockReturnValue(selectChainOrderByRejects(new Error('unexpected')));
     const app = await createAuthApp();
     const res = await request(app).get('/auth/test-pharmacies');
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(503);
   });
 
   // --- Cover register with auth configuration error ---

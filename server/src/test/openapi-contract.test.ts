@@ -18,7 +18,7 @@ const REQUIRED_OPERATIONS: ContractRequirement[] = [
   { path: '/api/auth/password-reset/request', method: 'post', statuses: ['200', '400'] },
   { path: '/api/auth/password-reset/confirm', method: 'post', statuses: ['200', '400'] },
   { path: '/api/auth/test-pharmacies', method: 'get', statuses: ['200', '404', '503'] },
-  { path: '/api/auth/me', method: 'get', statuses: ['200'] },
+  { path: '/api/auth/me', method: 'get', statuses: ['200', '503'] },
   { path: '/api/account', method: 'get', statuses: ['200'] },
   { path: '/api/account', method: 'put', statuses: ['200', '400', '409'] },
   { path: '/api/account', method: 'delete', statuses: ['200', '400', '404'] },

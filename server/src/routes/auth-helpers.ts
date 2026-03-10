@@ -76,6 +76,50 @@ export function handleAuthConfigurationError(context: string, err: unknown, res:
   return true;
 }
 
+function readErrorLikeString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+export function isDependencyServiceUnavailableError(err: unknown): boolean {
+  const code = extractErrorCode(err)?.toUpperCase() ?? '';
+  if (code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === 'ENOTFOUND' || code === 'ETIMEDOUT') {
+    return true;
+  }
+
+  return findErrorChainMatch(err, (message) => {
+    const normalized = message.toLowerCase();
+    return normalized.includes('connection refused')
+      || normalized.includes('connection lost')
+      || normalized.includes('connection error')
+      || normalized.includes('database connection failed')
+      || normalized.includes('db connection failed')
+      || normalized.includes('db connection lost')
+      || normalized.includes('db unavailable')
+      || normalized.includes('service unavailable')
+      || normalized.includes('timeout')
+      || normalized.includes('fetch failed')
+      || normalized.includes('socket hang up')
+      || normalized.includes('postgres url is not configured');
+  });
+}
+
+export function handleDependencyServiceUnavailable(
+  context: string,
+  err: unknown,
+  res: Response,
+  message: string,
+): boolean {
+  if (!isDependencyServiceUnavailableError(err)) {
+    return false;
+  }
+
+  logger.error(`${context} dependency unavailable`, {
+    error: readErrorLikeString((err as { message?: unknown })?.message) || getErrorMessage(err),
+  });
+  res.status(503).json({ error: message });
+  return true;
+}
+
 export function extractUniqueViolationConstraint(err: unknown): string | null {
   if (!err || typeof err !== 'object') return null;
 

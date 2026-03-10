@@ -25,10 +25,10 @@ describe('resolveClientTestLoginFeatureEnabled', () => {
     })).toBe(true);
   });
 
-  it('enables by default on production builds', () => {
+  it('disables by default on production builds', () => {
     expect(resolveClientTestLoginFeatureEnabled({
       MODE: 'production',
       VITE_VERCEL_ENV: 'production',
-    })).toBe(true);
+    })).toBe(false);
   });
 });

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   verifyToken: vi.fn(),
   deriveSessionVersion: vi.fn(),
+  isJwtSecretMissingError: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -16,6 +17,7 @@ vi.mock('../config/database', () => ({
 vi.mock('../services/auth-service', () => ({
   verifyToken: mocks.verifyToken,
   deriveSessionVersion: mocks.deriveSessionVersion,
+  isJwtSecretMissingError: mocks.isJwtSecretMissingError,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -72,6 +74,7 @@ describe('auth middleware (coverage)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearAuthUserCacheForTests();
+    mocks.isJwtSecretMissingError.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -121,6 +124,26 @@ describe('auth middleware (coverage)', () => {
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({ error: 'セッションが無効です。再度ログインしてください' }),
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should return 503 when token verification fails due to JWT config', async () => {
+      const error = new Error('JWT_SECRET environment variable is not set');
+      mocks.verifyToken.mockImplementation(() => {
+        throw error;
+      });
+      mocks.isJwtSecretMissingError.mockImplementation((candidate: unknown) => candidate === error);
+
+      const req = createReq('bad-token');
+      const res = createRes();
+      const next = vi.fn();
+
+      await requireLogin(req as never, res as never, next);
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: '認証設定が未完了です。管理者に連絡してください' }),
       );
       expect(next).not.toHaveBeenCalled();
     });
@@ -374,7 +397,7 @@ describe('auth middleware (coverage)', () => {
       expect(req.user?.isAdmin).toBe(false);
     });
 
-    it('should return 500 when DB query throws', async () => {
+    it('should return 503 when DB query throws because dependency is unavailable', async () => {
       mocks.verifyToken.mockReturnValue({
         id: 7,
         email: 'error@example.com',
@@ -391,9 +414,44 @@ describe('auth middleware (coverage)', () => {
 
       await requireLogin(req as never, res as never, next);
 
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: '認証処理中にエラーが発生しました' }),
+        expect.objectContaining({ error: '認証サービスが一時的に利用できません。しばらくしてから再試行してください' }),
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should return 503 when session version derivation fails due to JWT config', async () => {
+      const error = new Error('JWT_SECRET is too weak');
+      mocks.verifyToken.mockReturnValue({
+        id: 8,
+        email: 'config@example.com',
+        isAdmin: false,
+        sessionVersion: 'sv1',
+      });
+      mocks.select.mockImplementation(() => createSelectQuery([{
+        id: 8,
+        email: 'config@example.com',
+        isAdmin: false,
+        isActive: true,
+        passwordHash: 'hashed',
+        verificationStatus: 'verified',
+        rejectionReason: null,
+      }]));
+      mocks.deriveSessionVersion.mockImplementation(() => {
+        throw error;
+      });
+      mocks.isJwtSecretMissingError.mockImplementation((candidate: unknown) => candidate === error);
+
+      const req = createReq('valid-token');
+      const res = createRes();
+      const next = vi.fn();
+
+      await requireLogin(req as never, res as never, next);
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: '認証設定が未完了です。管理者に連絡してください' }),
       );
       expect(next).not.toHaveBeenCalled();
     });

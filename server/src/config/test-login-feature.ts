@@ -13,8 +13,14 @@ type TestLoginEnv = {
  */
 export function resolveServerTestLoginFeatureEnabled(env: TestLoginEnv = process.env as TestLoginEnv): boolean {
   const raw = env.TEST_LOGIN_FEATURE_ENABLED?.trim().toLowerCase();
+  if (raw === 'true') return true;
   if (raw === 'false') return false;
 
-  // テスト薬局ログインは全環境で有効（production含む）
-  return true;
+  if (env.VERCEL_ENV?.trim().toLowerCase() === 'preview') {
+    return true;
+  }
+
+  return env.NODE_ENV?.trim().toLowerCase() === 'production'
+    ? false
+    : true;
 }
