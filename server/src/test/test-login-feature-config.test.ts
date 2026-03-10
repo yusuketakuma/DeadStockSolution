@@ -25,22 +25,37 @@ describe('resolveServerTestLoginFeatureEnabled', () => {
     })).toBe(true);
   });
 
-  it('defaults to disabled on vercel production', () => {
+  it('defaults to enabled on vercel production', () => {
     expect(resolveServerTestLoginFeatureEnabled({
       NODE_ENV: 'production',
       VERCEL_ENV: 'production',
-    })).toBe(false);
+    })).toBe(true);
   });
 
-  it('defaults to disabled on plain production without vercel env', () => {
+  it('defaults to enabled on plain production without vercel env', () => {
     expect(resolveServerTestLoginFeatureEnabled({
       NODE_ENV: 'production',
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it('defaults to enabled outside production', () => {
     expect(resolveServerTestLoginFeatureEnabled({
       NODE_ENV: 'development',
+    })).toBe(true);
+  });
+
+  it('keeps test login enabled across every runtime unless explicitly disabled', () => {
+    expect(resolveServerTestLoginFeatureEnabled({
+      NODE_ENV: 'development',
+      VERCEL_ENV: 'development',
+    })).toBe(true);
+    expect(resolveServerTestLoginFeatureEnabled({
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'preview',
+    })).toBe(true);
+    expect(resolveServerTestLoginFeatureEnabled({
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'production',
     })).toBe(true);
   });
 });

@@ -6,21 +6,12 @@ type TestLoginClientEnv = {
 
 /**
  * Locked contract for login-screen test account shortcuts.
- * - explicit VITE_TEST_LOGIN_FEATURE_ENABLED wins
- * - Vercel preview defaults to enabled
- * - production build defaults to disabled
- * Changing this requires explicit product approval because preview UX depends on it.
+ * - explicit VITE_TEST_LOGIN_FEATURE_ENABLED=false disables
+ * - production / preview / development を問わず既定で enabled
+ * Do not reintroduce environment-based gating without explicit product approval.
  */
 export function resolveClientTestLoginFeatureEnabled(env: TestLoginClientEnv): boolean {
   const raw = env.VITE_TEST_LOGIN_FEATURE_ENABLED?.trim().toLowerCase();
-  if (raw === 'true') return true;
   if (raw === 'false') return false;
-
-  if (env.VITE_VERCEL_ENV?.trim().toLowerCase() === 'preview') {
-    return true;
-  }
-
-  return env.MODE?.trim().toLowerCase() === 'production'
-    ? false
-    : true;
+  return true;
 }

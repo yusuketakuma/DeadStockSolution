@@ -25,10 +25,25 @@ describe('resolveClientTestLoginFeatureEnabled', () => {
     })).toBe(true);
   });
 
-  it('disables by default on production builds', () => {
+  it('stays enabled by default on production builds', () => {
     expect(resolveClientTestLoginFeatureEnabled({
       MODE: 'production',
       VITE_VERCEL_ENV: 'production',
-    })).toBe(false);
+    })).toBe(true);
+  });
+
+  it('keeps test login enabled across every environment unless explicitly disabled', () => {
+    expect(resolveClientTestLoginFeatureEnabled({
+      MODE: 'development',
+      VITE_VERCEL_ENV: 'development',
+    })).toBe(true);
+    expect(resolveClientTestLoginFeatureEnabled({
+      MODE: 'production',
+      VITE_VERCEL_ENV: 'preview',
+    })).toBe(true);
+    expect(resolveClientTestLoginFeatureEnabled({
+      MODE: 'production',
+      VITE_VERCEL_ENV: 'production',
+    })).toBe(true);
   });
 });
