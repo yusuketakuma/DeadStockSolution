@@ -12,7 +12,7 @@ else
   exit 1
 fi
 
-# Single npm ci — preserves lockfile so Vercel node_modules cache is effective.
-# Platform-specific optional deps (e.g. @rollup/rollup-linux-x64-gnu) are
-# resolved by Vercel running npm ci on linux, matching the deploy target.
-npm ci --prefix "$ROOT_DIR" --no-audit --no-fund
+# npm install (not ci) — resolves platform-specific optional deps for the
+# deploy target (linux x64) even when lockfile was generated on macOS.
+# Keeps existing node_modules so Vercel cache is still effective.
+npm install --prefix "$ROOT_DIR" --no-audit --no-fund
