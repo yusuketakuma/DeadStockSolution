@@ -297,6 +297,19 @@ describe('cleanupUploadConfirmJobs', () => {
     expect(result).toBe(2);
     expect(mocks.db.delete).toHaveBeenCalled();
   });
+
+  it('uses default batch size when called without arguments', async () => {
+    const chain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([]),
+    };
+    mocks.db.select.mockReturnValue(chain);
+    // Called without arguments — invokes getCleanupBatchSize() default parameter
+    const result = await cleanupUploadConfirmJobs();
+    expect(result).toBe(0);
+  });
 });
 
 describe('processPendingUploadConfirmJobs', () => {
