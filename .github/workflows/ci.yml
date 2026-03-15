@@ -13,9 +13,72 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  integration-upload-flows:
+  lint-typecheck:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  test-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test coverage server
+        run: npm run test:coverage:server
+
+      - name: Performance regression guard
+        run: npm run test:perf:server
+
+  test-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test coverage client
+        run: npm run test:coverage:client
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -33,9 +96,9 @@ jobs:
         run: npm run test:integration:server
 
   verify:
-    needs: integration-upload-flows
+    needs: [lint-typecheck, test-server, test-client, integration]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -49,14 +112,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run quality gate
-        env:
-          QUALITY_GATE_READ_ONLY: '1'
-          QUALITY_GATE_SKIP_SYNC: '1'
-          QUALITY_GATE_SKIP_INSTALL: '1'
-          QUALITY_GATE_ALLOW_DIRTY: '1'
-        run: npm run quality:gate
-
       - name: Check OpenAPI contract
         run: npm run openapi:check
 
@@ -66,17 +121,8 @@ jobs:
       - name: Audit production dependencies (moderate+)
         run: npm run audit:prod
 
-      - name: Performance regression guard (server)
-        run: npm run test:perf:server
-
       - name: Build server
         run: npm run build:server
 
       - name: Build client
         run: npm run build:client
-
-      - name: Test coverage server
-        run: npm run test:coverage:server
-
-      - name: Test coverage client
-        run: npm run test:coverage:client

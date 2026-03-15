@@ -1,5 +1,8 @@
 # DeadStockSolution
 
+[![CI](https://github.com/yusuketakuma/DeadStockSolution/actions/workflows/ci.yml/badge.svg)](https://github.com/yusuketakuma/DeadStockSolution/actions/workflows/ci.yml)
+[![Lighthouse CI](https://github.com/yusuketakuma/DeadStockSolution/actions/workflows/lighthouse.yml/badge.svg)](https://github.com/yusuketakuma/DeadStockSolution/actions/workflows/lighthouse.yml)
+
 ## システム紹介
 
 DeadStockSolution は、薬局間のデッドストック交換を支援する業務システムです。  
