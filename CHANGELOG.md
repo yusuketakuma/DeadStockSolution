@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.11] - 2026-03-16
+
+### テーマ: 開発者ログインの本番対応・ビルド高速化・CI刷新
+
+**テスト薬局でのワンクリックログインが本番環境でも使えるようになりました。CIは4倍速く、デプロイも軽量化。**
+
+---
+
+#### 1. テスト薬局ログインが本番で使えるように
+
+**今まで**: ログインページの「開発者ログイン」からテスト薬局を選んでも、500エラーが出てログインできませんでした。テスト薬局のパスワードも表示されず、手入力が必要でした。
+
+**今後**: 5つのテスト薬局（東京・大阪・愛知・福岡・北海道）がデプロイ時に自動登録されます。「一覧から選ぶ」でテスト薬局を選択すると、メールアドレスとパスワードがワンクリックで入力されます。
+
+| テスト薬局 | 地域 |
+|-----------|------|
+| テスト薬局A | 東京都 |
+| テスト薬局B | 大阪府 |
+| テスト薬局C | 愛知県 |
+| テスト薬局D | 福岡県 |
+| テスト薬局E | 北海道 |
+
+#### 2. CIが並列実行で高速化
+
+**今まで**: CIは全ステップが直列実行。lint → typecheck → テスト → ビルドを1つのジョブで順番に処理していたため、1箇所の失敗でも全体が遅延していました。
+
+**今後**: lint-typecheck / server テスト / client テスト / 統合テストの4ジョブが同時に走ります。全部通った後にビルド検証が実行されます。README にCIバッジも追加しました。
+
+#### 3. クライアントビルドが高速化 (SWC)
+
+**今まで**: Vite の React プラグインに Babel を使用。JavaScript ベースの変換で、ビルドのたびに数秒の待ち時間がありました。
+
+**今後**: Rust ベースの SWC に切り替え。JSX/TSX の変換が 2〜3 倍速くなりました。
+
+#### 4. 認証エラー (500) の解消
+
+**今まで**: `/api/auth/me` や `/api/auth/test-pharmacies` にアクセスすると 500 エラー。原因は `express-rate-limit` v8 がモジュール読み込み時にエラーをスローし、認証関連の全機能が停止していました。
+
+**今後**: 不要なカスタム設定を削除して修正。認証エンドポイントが正常に動作します。
+
+#### 5. コードベースの大規模整理
+
+**今まで**: `schema.ts` に全テーブル定義が集中 (1000行超)。サービスファイルも巨大で、変更時の影響が把握しにくい状態でした。
+
+**今後**: スキーマを9ファイル、サービスを10以上のヘルパーに分割。コードレビューと保守が容易になりました。テストは4593件すべてパスしています。
+
+---
+
 ## [0.0.10] - 2026-03-09
 
 ### Added
@@ -322,6 +370,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview DB同期とテストアカウントパスワード更新
 - 本番環境でのCORS同一ホストオリジンチェック
 
+[0.0.11]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.8...v0.0.9
 [0.0.7]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.6...v0.0.7
