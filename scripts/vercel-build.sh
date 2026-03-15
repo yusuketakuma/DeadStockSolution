@@ -14,14 +14,14 @@ fi
 
 CLIENT_DIR="$ROOT_DIR/client"
 
+# Build client (Vite + SWC)
 (
   cd "$CLIENT_DIR"
   npm run build
 )
 
-# After client build succeeds, install only server production dependencies.
-# This avoids carrying server devDependencies in deploy artifacts.
-npm ci --prefix "$ROOT_DIR" --workspace=server --omit=dev --include-workspace-root=false --no-audit --no-fund
+# Prune server devDependencies for smaller serverless function
+npm prune --prefix "$ROOT_DIR" --workspace=server --omit=dev --no-audit --no-fund 2>/dev/null || true
 
 if [ "$START_DIR" != "$CLIENT_DIR" ]; then
   rm -rf "$START_DIR/dist"

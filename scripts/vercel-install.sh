@@ -12,10 +12,7 @@ else
   exit 1
 fi
 
-# Workaround for npm optional-deps bug (https://github.com/npm/cli/issues/4828):
-# npm ci with workspaces doesn't install platform-specific optional deps like
-# @rollup/rollup-linux-x64-gnu when lockfile was generated on macOS.
-# Fix: delete node_modules + lockfile, then do a fresh npm install.
-rm -rf "$ROOT_DIR/node_modules" "$ROOT_DIR/client/node_modules" "$ROOT_DIR/package-lock.json"
-
-npm install --prefix "$ROOT_DIR" --workspace=client --include=dev --include-workspace-root=false --no-audit --no-fund
+# Single npm ci — preserves lockfile so Vercel node_modules cache is effective.
+# Platform-specific optional deps (e.g. @rollup/rollup-linux-x64-gnu) are
+# resolved by Vercel running npm ci on linux, matching the deploy target.
+npm ci --prefix "$ROOT_DIR" --no-audit --no-fund

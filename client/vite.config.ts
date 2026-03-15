@@ -1,7 +1,7 @@
 /// <reference types="vitest" />
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import react from '@vitejs/plugin-react';
+import react from '@vitejs/plugin-react-swc';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig, loadEnv, type PluginOption } from 'vite';
