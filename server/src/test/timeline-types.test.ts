@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TIMELINE_EVENT_TYPES, toTimelineEventType } from '../types/timeline';
+import { TIMELINE_EVENT_TYPES } from '../types/timeline';
+import { toTimelineEventType } from '../utils/timeline-utils';
 
 describe('TIMELINE_EVENT_TYPES', () => {
   const eventTypes: ReadonlySet<string> = TIMELINE_EVENT_TYPES;
@@ -20,6 +21,9 @@ describe('TIMELINE_EVENT_TYPES', () => {
     expect(eventTypes.has('proposal_cancelled')).toBe(true);
     expect(eventTypes.has('proposal_received')).toBe(true);
     expect(eventTypes.has('proposal_status_changed')).toBe(true);
+    expect(eventTypes.has('alert_near_expiry')).toBe(true);
+    expect(eventTypes.has('alert_excess_stock')).toBe(true);
+    expect(eventTypes.has('alert_resolved')).toBe(true);
     expect(eventTypes.has('upload_dead_stock')).toBe(true);
     expect(eventTypes.has('upload_used_medication')).toBe(true);
     expect(eventTypes.has('request_update')).toBe(true);
@@ -37,6 +41,7 @@ describe('toTimelineEventType', () => {
     expect(toTimelineEventType('match_update')).toBe('match_update');
     expect(toTimelineEventType('new_comment')).toBe('new_comment');
     expect(toTimelineEventType('proposal_received')).toBe('proposal_received');
+    expect(toTimelineEventType('alert_near_expiry')).toBe('alert_near_expiry');
     expect(toTimelineEventType('upload_dead_stock')).toBe('upload_dead_stock');
     expect(toTimelineEventType('request_update')).toBe('request_update');
   });

@@ -6,10 +6,10 @@ import * as schema from '../../db/schema';
 
 // Mock the db module to use our test db
 let testDb: TestDb;
-let createProposal: (typeof import('../../services/exchange-service'))['createProposal'];
-let acceptProposal: (typeof import('../../services/exchange-service'))['acceptProposal'];
-let rejectProposal: (typeof import('../../services/exchange-service'))['rejectProposal'];
-let completeProposal: (typeof import('../../services/exchange-service'))['completeProposal'];
+let createProposal: (typeof import('../../services/exchange-execution-service'))['createProposal'];
+let acceptProposal: (typeof import('../../services/exchange-execution-service'))['acceptProposal'];
+let rejectProposal: (typeof import('../../services/exchange-execution-service'))['rejectProposal'];
+let completeProposal: (typeof import('../../services/exchange-execution-service'))['completeProposal'];
 vi.mock('../../config/database', () => ({
   get db() { return testDb; },
 }));
@@ -27,7 +27,7 @@ vi.mock('../../services/logger', () => ({
 beforeAll(async () => {
   testDb = await getTestDb();
   ({ createProposal, acceptProposal, rejectProposal, completeProposal } =
-    await import('../../services/exchange-service'));
+    await import('../../services/exchange-execution-service'));
 }, 30_000);
 
 afterAll(async () => {

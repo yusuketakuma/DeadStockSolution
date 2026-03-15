@@ -19,17 +19,9 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import {
-  decodeCsvBuffer,
-  parseMhlwCsvData,
-  parseMhlwExcelData,
-  parsePackageCsvData,
-  parsePackageExcelData,
-  parsePackageXmlData,
-  parsePackageZipData,
-  parseYjCode,
-  parseMhlwDrugFile,
-} from '../services/drug-master-parser-service';
+import { decodeCsvBuffer, parseYjCode } from '../services/drug-master-parser-service';
+import { parseMhlwExcelData, parseMhlwCsvData, parseMhlwDrugFile } from '../services/drug-master-parser-mhlw';
+import { parsePackageCsvData, parsePackageExcelData, parsePackageXmlData, parsePackageZipData } from '../services/drug-master-parser-package';
 
 describe('drug-master-parser-ultra', () => {
   beforeEach(() => {

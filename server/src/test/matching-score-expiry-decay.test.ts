@@ -3,8 +3,8 @@ import {
   calculateCandidateScore,
   DEFAULT_MATCHING_SCORING_RULES,
   getNearExpiryCount,
-  MatchingScoringRules,
 } from '../services/matching-score-service';
+import type { MatchingScoringRules } from '../types/matching';
 import { MatchItem } from '../types';
 
 function createItemWithExpiry(daysFromNow: number, referenceDate: Date = new Date()): MatchItem {

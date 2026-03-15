@@ -11,7 +11,8 @@ import {
   createSyncLog,
   completeSyncLog,
 } from './drug-master-service';
-import { parseMhlwDrugFile, type ParsedDrugRow } from './drug-master-parser-service';
+import { parseMhlwDrugFile } from './drug-master-parser-mhlw';
+import type { ParsedDrugRow } from './drug-master-parser-service';
 import { logger } from './logger';
 import { createPinnedDnsAgent, validateExternalHttpsUrl } from '../utils/network-utils';
 import { downloadResponseBuffer, fetchWithTimeout, MHLW_MAX_DOWNLOAD_SIZE, MHLW_FETCH_TIMEOUT_MS, MHLW_DEFAULT_FETCH_RETRIES, type FetchDispatcher } from '../utils/http-utils';

@@ -2,77 +2,19 @@ import { decodeCursor, encodeCursor } from '../utils/cursor-pagination';
 import { sanitizeInternalPath } from '../utils/path-utils';
 import { logger } from '../services/logger';
 import { isPositiveSafeInteger } from '../utils/request-utils';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update' | 'new_comment';
-
-export interface NoticeItem {
-  id: string;
-  type: NoticeType;
-  title: string;
-  body: string;
-  actionPath: string;
-  actionLabel: string;
-  createdAt: string | null;
-  deadlineAt: string | null;
-  unread: boolean;
-  priority: number;
-}
-
-export interface NoticeCursor {
-  id: string;
-  priority: number;
-  createdAt: string | null;
-}
-
-export interface MatchDiffJson {
-  addedPharmacyIds?: unknown;
-  removedPharmacyIds?: unknown;
-  beforeCount?: unknown;
-  afterCount?: unknown;
-}
+import type {
+  NoticeType,
+  NoticeItem,
+  NoticeCursor,
+  MatchDiffJson,
+  ProposalNotificationLink,
+  AdminMessageRow,
+  NotificationRowForProposalLink,
+  NotificationNoticeRow,
+} from '../types/notification';
 
 export interface PostgresErrorLike {
   code?: string;
-}
-
-export interface ProposalNotificationLink {
-  id: number;
-  isRead: boolean;
-  createdAt: string | null;
-}
-
-export interface AdminMessageRow {
-  id: number;
-  title: string;
-  body: string;
-  actionPath: string | null;
-  createdAt: string | null;
-}
-
-export interface ProposalRow {
-  id: number;
-  pharmacyAId: number;
-  pharmacyBId: number;
-  status: string;
-  proposedAt: string | null;
-}
-
-export interface NotificationRowForProposalLink {
-  id: number;
-  type: string;
-  referenceType: string | null;
-  referenceId: number | null;
-  isRead: boolean;
-  createdAt: string | null;
-}
-
-export interface NotificationNoticeRow extends NotificationRowForProposalLink {
-  title: string;
-  message: string;
 }
 
 // ============================================================================
@@ -114,6 +56,7 @@ export function parseNoticeCursor(raw: unknown): NoticeCursor | null {
 
 export function resolveNotificationType(type: string): NoticeType | null {
   if (type === 'new_comment') return 'new_comment';
+  if (type === 'alert_near_expiry' || type === 'alert_excess_stock' || type === 'alert_resolved') return 'alert';
   if (type === 'proposal_received' || type === 'proposal_status_changed' || type === 'request_update') return 'status_update';
   return null;
 }
@@ -182,6 +125,7 @@ export function toAdminMessageNotice(message: AdminMessageRow, unread: boolean):
 }
 
 export function resolveNotificationActionPath(referenceType: string | null, referenceId: number | null): string {
+  if (referenceType === 'alert') return '/alerts';
   if (referenceType === 'match') return '/matching';
   if ((referenceType === 'proposal' || referenceType === 'comment') && referenceId) {
     return `/proposals/${referenceId}`;
@@ -203,11 +147,13 @@ export function notificationToNotice(n: NotificationNoticeRow): NoticeItem | nul
     title: n.title,
     body: n.message,
     actionPath: resolveNotificationActionPath(n.referenceType, n.referenceId),
-    actionLabel: '確認する',
+    actionLabel: noticeType === 'alert' ? 'アラートを確認' : '確認する',
     createdAt: n.createdAt,
     deadlineAt: null,
     unread: !n.isRead,
-    priority: n.isRead ? 5 : 3,
+    priority: noticeType === 'alert'
+      ? (n.isRead ? 4 : 2)
+      : (n.isRead ? 5 : 3),
   };
 }
 
@@ -384,7 +330,7 @@ export function buildNoticeSummary(notices: NoticeItem[]): { unreadMessages: num
     if (item.type === 'admin_message' && item.unread) {
       unreadMessages += 1;
     }
-    if (item.unread && (item.type === 'inbound_request' || item.type === 'status_update' || item.type === 'match_update')) {
+    if (item.unread && (item.type === 'inbound_request' || item.type === 'status_update' || item.type === 'match_update' || item.type === 'alert')) {
       actionableRequests += 1;
     }
   }

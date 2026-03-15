@@ -3,12 +3,13 @@ import {
   createSyncLog,
   completeSyncLog,
 } from './drug-master-service';
-import { parseMhlwDrugFile } from './drug-master-parser-service';
+import { parseMhlwDrugFile } from './drug-master-parser-mhlw';
 import { logger } from './logger';
 import { createPinnedDnsAgent, validateExternalHttpsUrl } from '../utils/network-utils';
 import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
 import { summarizeSourceUrl, MHLW_DEFAULT_FETCH_RETRIES, type FetchDispatcher } from '../utils/http-utils';
 import { getErrorMessage } from '../middleware/error-handler';
+import { clearSchedulerHandle } from './scheduler-utils';
 import { sha256 } from '../utils/crypto-utils';
 import { persistSourceHeaders, SOURCE_KEY_SINGLE } from './drug-master-source-state-service';
 import { runMultiFileSync } from './mhlw-multi-file-fetcher';
@@ -46,12 +47,6 @@ function getConfiguredSourceUrl(): string {
   return process.env.DRUG_MASTER_SOURCE_URL?.trim() || '';
 }
 
-function clearSchedulerHandle(handle: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null, clearer: typeof clearTimeout): null {
-  if (handle) {
-    clearer(handle);
-  }
-  return null;
-}
 
 function buildEmptySyncResult() {
   return { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 };

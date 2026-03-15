@@ -1,6 +1,6 @@
 import { MatchCandidate } from '../../types';
 import { sortMatchCandidatesByPriority } from '../matching-priority-service';
-import type { MatchingRuleProfile } from './matching-candidate-builder';
+import type { MatchingRuleProfile } from '../../types/matching';
 
 export function sortAndLimitCandidates(
   candidates: MatchCandidate[],

@@ -1,14 +1,9 @@
 import {
   buildUsedMedIndex,
-  PreparedDrugName,
   prepareDrugName,
   roundTo2,
-  UsedMedRow,
 } from '../matching-score-service';
-import { DeadStockRow } from './matching-data-fetcher';
-
-export type UsedMedIndex = ReturnType<typeof buildUsedMedIndex>;
-export type PreparedStockRow = { stock: DeadStockRow; preparedDrugName: PreparedDrugName };
+import type { DeadStockRow, PreparedDrugName, PreparedStockRow, UsedMedIndex, UsedMedRow } from '../../types/matching';
 
 function prepareDeadStockRow(
   stock: DeadStockRow,

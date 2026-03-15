@@ -77,6 +77,7 @@ import {
   PASSWORD_RESET_RESPONSE_JITTER_MS,
   registerLimiter,
   loginLimiter,
+  passwordResetLimiter,
   testPharmacyPreviewLimiter,
   isTestAccountColumnAvailable,
   testPharmacyCache,
@@ -84,10 +85,8 @@ import {
   setIsTestAccountColumnAvailable,
   TEST_PHARMACY_CACHE_TTL_MS,
   TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS,
-  type AuthMeRow,
-  type LegacyAuthMeRow,
-  type TestPharmacyPreviewRow,
 } from './auth-helpers';
+import type { AuthMeRow, LegacyAuthMeRow, TestPharmacyPreviewRow } from '../types';
 import { sleep } from '../utils/http-utils';
 import { eqEmailCaseInsensitive, normalizeEmail } from '../utils/email-utils';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
@@ -280,7 +279,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/password-reset/request', passwordResetLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const requestStartedAt = Date.now();
     const email = typeof req.body?.email === 'string' ? normalizeEmail(req.body.email) : '';
@@ -305,7 +304,7 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
   }
 });
 
-router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/password-reset/confirm', passwordResetLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';

@@ -17,6 +17,30 @@ export interface AuthRequest extends Request {
   user?: AuthUser;
 }
 
+export type AuthMeRow = {
+  id: number;
+  email: string;
+  name: string;
+  postalCode: string;
+  address: string;
+  phone: string;
+  fax: string;
+  licenseNumber: string;
+  prefecture: string;
+  isAdmin: boolean | null;
+  isTestAccount: boolean;
+};
+
+export type LegacyAuthMeRow = Omit<AuthMeRow, 'isTestAccount'>;
+
+export type TestPharmacyPreviewRow = {
+  id: number;
+  name: string;
+  email: string;
+  prefecture: string;
+  password: string | null;
+};
+
 export interface ColumnMapping {
   [fieldName: string]: string | null;
 }
@@ -120,3 +144,4 @@ export interface DrugEquivalence {
   updatedAt: string | null;
 }
 export * from './admin';
+export * from './notification';

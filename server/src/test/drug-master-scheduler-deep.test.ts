@@ -47,7 +47,7 @@ vi.mock('../services/drug-master-service', () => ({
   completeSyncLog: mocks.completeSyncLog,
 }));
 
-vi.mock('../services/drug-master-parser-service', () => ({
+vi.mock('../services/drug-master-parser-mhlw', () => ({
   parseMhlwDrugFile: mocks.parseMhlwDrugFile,
 }));
 

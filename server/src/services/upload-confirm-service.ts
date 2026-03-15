@@ -27,7 +27,7 @@ import {
   type UploadRowIssueInput,
 } from './upload-row-issue-service';
 
-import { computeOptimalBatchSize } from './upload-diff-utils';
+import { computeOptimalBatchSize, processInBatches } from './upload-diff-utils';
 
 export type ApplyMode = 'replace' | 'diff' | 'partial';
 export type UploadType = 'dead_stock' | 'used_medication';
@@ -153,16 +153,6 @@ function toUsedMedicationInsertRow(
   };
 }
 
-async function insertInBatches(
-  totalCount: number,
-  insertBatch: (start: number, end: number) => Promise<unknown>,
-): Promise<void> {
-  const batchSize = computeOptimalBatchSize(totalCount);
-  for (let i = 0; i < totalCount; i += batchSize) {
-    await insertBatch(i, i + batchSize);
-  }
-}
-
 function toUploadRowIssueInputs(issues: UploadExtractionIssue[]): UploadRowIssueInput[] {
   return issues.map((issue) => ({
     rowNumber: issue.rowNumber,
@@ -252,9 +242,9 @@ async function replaceUploadItems<TSource, TInsertRow>(
   if (sourceRows.length === 0) return;
 
   const preparedRows = sourceRows.map(toInsertRow);
-  await insertInBatches(preparedRows.length, (start, end) =>
-    insertRows(preparedRows.slice(start, end))
-  );
+  await processInBatches(preparedRows, computeOptimalBatchSize(preparedRows.length), async (batch) => {
+    await insertRows(batch);
+  });
 }
 
 export async function runUploadConfirm(

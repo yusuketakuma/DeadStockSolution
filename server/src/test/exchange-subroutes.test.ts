@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   rejectProposal: vi.fn(),
   completeProposal: vi.fn(),
   recalculateTrustScoreForPharmacy: vi.fn(),
+  invalidateStatisticsSummaryCacheForPharmacies: vi.fn(),
   createNotification: vi.fn(),
   writeLog: vi.fn(),
   loggerError: vi.fn(),
@@ -29,7 +30,7 @@ vi.mock('../config/database', () => ({
   db: mocks.db,
 }));
 
-vi.mock('../services/exchange-service', () => ({
+vi.mock('../services/exchange-execution-service', () => ({
   createProposal: vi.fn(),
   acceptProposal: mocks.acceptProposal,
   rejectProposal: mocks.rejectProposal,
@@ -46,6 +47,10 @@ vi.mock('../services/matching-refresh-service', () => ({
 
 vi.mock('../services/trust-score-service', () => ({
   recalculateTrustScoreForPharmacy: mocks.recalculateTrustScoreForPharmacy,
+}));
+
+vi.mock('../routes/statistics', () => ({
+  invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
 }));
 
 vi.mock('../services/notification-service', () => ({
@@ -244,7 +249,7 @@ describe('exchange sub-routes: bulk action', () => {
     expect(response.body.summary).toEqual({ total: 2, success: 1, failed: 1 });
     expect(response.body.results).toEqual([
       expect.objectContaining({ id: 10, ok: true, status: 'confirmed' }),
-      expect.objectContaining({ id: 11, ok: false, error: '対象を処理できませんでした' }),
+      expect.objectContaining({ id: 11, ok: false, error: 'マッチングが見つかりません' }),
     ]);
   });
 
@@ -280,6 +285,7 @@ describe('exchange sub-routes: feedback', () => {
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ message: '取引評価を登録しました' });
     expect(mocks.recalculateTrustScoreForPharmacy).toHaveBeenCalledWith(5);
+    expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([2, 5]);
   });
 
   it('POST /proposals/:id/feedback returns 400 for invalid id', async () => {

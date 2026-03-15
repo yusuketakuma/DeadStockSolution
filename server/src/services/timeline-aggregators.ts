@@ -11,7 +11,8 @@ import {
   exchangeHistory,
   deadStockItems,
 } from '../db/schema';
-import { type DbClient, type RawTimelineEvent, toTimelineEventType } from '../types/timeline';
+import { type DbClient, type RawTimelineEvent } from '../types/timeline';
+import { toTimelineEventType } from '../utils/timeline-utils';
 
 // ── マッピング関数（テスト可能な純粋関数として分離） ──────
 
@@ -65,6 +66,8 @@ export function mapNotificationToEvent(row: {
   let actionPath = '/';
   if (row.referenceType === 'proposal' && row.referenceId) {
     actionPath = `/proposals/${row.referenceId}`;
+  } else if (row.referenceType === 'alert') {
+    actionPath = '/alerts';
   } else if (row.referenceType === 'match') {
     actionPath = '/matching';
   }

@@ -11,6 +11,11 @@ const mocks = vi.hoisted(() => ({
   },
   or: vi.fn(() => ({})),
   createNotification: vi.fn(),
+  invalidateStatisticsSummaryCacheForPharmacies: vi.fn(),
+}));
+
+vi.mock('../routes/statistics', () => ({
+  invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
 }));
 
 vi.mock('../config/database', () => ({
@@ -33,7 +38,7 @@ vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { acceptProposal, rejectProposal, completeProposal, createProposal } from '../services/exchange-service';
+import { acceptProposal, rejectProposal, completeProposal, createProposal } from '../services/exchange-execution-service';
 
 describe('exchange-service ultra coverage', () => {
   beforeEach(() => {
@@ -75,10 +80,11 @@ describe('exchange-service ultra coverage', () => {
         }])),
         update: vi.fn().mockImplementation(() => createUpdateReturningQuery([{ id: 100 }])),
       };
-      mocks.db.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<string>) => cb(tx));
+      mocks.db.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<{ newStatus: string; pharmacyAId: number; pharmacyBId: number }>) => cb(tx));
 
       const result = await acceptProposal(100, 1);
       expect(result).toBe('accepted_a');
+      expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([1, 2]);
     });
 
     it('advances proposed -> accepted_b when pharmacy B accepts', async () => {
@@ -239,10 +245,11 @@ describe('exchange-service ultra coverage', () => {
         update: vi.fn().mockImplementation(() => createUpdateReturningQuery([{ id: 100 }])),
         delete: vi.fn().mockReturnValue(deleteQuery),
       };
-      mocks.db.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<void>) => cb(tx));
+      mocks.db.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<{ pharmacyAId: number; pharmacyBId: number }>) => cb(tx));
 
       await rejectProposal(100, 1);
       expect(tx.delete).toHaveBeenCalled();
+      expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([1, 2]);
       expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
         pharmacyId: 2,
         type: 'proposal_status_changed',
@@ -425,5 +432,56 @@ describe('exchange-service ultra coverage', () => {
         itemsFromB: [{ deadStockItemId: 2, quantity: 1 }],
       })).rejects.toThrow('交換先薬局が見つからないか、無効です');
     });
+  });
+});
+
+describe('exchange-service ultra invalidation follow-up', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.createNotification.mockResolvedValue(true);
+  });
+
+  it('invalidates statistics caches after a successful completion', async () => {
+    const tx = {
+      select: vi.fn()
+        .mockImplementationOnce(() => createSelectQuery([{
+          pharmacyAId: 1,
+          pharmacyBId: 2,
+          status: 'confirmed',
+          totalValueA: '10000',
+          totalValueB: '10000',
+        }]))
+        .mockImplementationOnce(() => {
+          const q = { from: vi.fn(), where: vi.fn() };
+          q.from.mockReturnValue(q);
+          q.where.mockResolvedValue([{ deadStockItemId: 7, fromPharmacyId: 1, quantity: 1 }]);
+          return q;
+        })
+        .mockImplementationOnce(() => {
+          const q = { from: vi.fn(), where: vi.fn() };
+          q.from.mockReturnValue(q);
+          q.where.mockResolvedValue([{ id: 7, pharmacyId: 1, quantity: 5, isAvailable: true }]);
+          return q;
+        }),
+      update: vi.fn()
+        .mockImplementationOnce(() => createUpdateReturningQuery([{
+          pharmacyAId: 1,
+          pharmacyBId: 2,
+          totalValueA: '10000',
+          totalValueB: '10000',
+        }]))
+        .mockImplementationOnce(() => createUpdateReturningQuery([{ id: 7 }])),
+      insert: vi.fn().mockImplementation(() => ({
+        values: vi.fn(() => ({
+          returning: vi.fn().mockResolvedValue([{ id: 500 }]),
+        })),
+      })),
+      delete: vi.fn().mockImplementation(() => createDeleteQuery()),
+    };
+    mocks.db.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx));
+
+    await completeProposal(100, 1);
+
+    expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([1, 2]);
   });
 });

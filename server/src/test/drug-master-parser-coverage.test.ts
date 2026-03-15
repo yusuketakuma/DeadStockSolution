@@ -1,16 +1,9 @@
 import AdmZip from 'adm-zip';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  parseMhlwExcelData,
-  parseMhlwCsvData,
-  parsePackageExcelData,
-  parsePackageCsvData,
-  parsePackageXmlData,
-  parsePackageZipData,
-  parseYjCode,
-  decodeCsvBuffer,
-  parseMhlwDrugFile,
-} from '../services/drug-master-parser-service';
+import { parseYjCode, decodeCsvBuffer } from '../services/drug-master-parser-service';
+import { parseMhlwExcelData, parseMhlwCsvData } from '../services/drug-master-parser-mhlw';
+import { parsePackageExcelData, parsePackageCsvData, parsePackageXmlData, parsePackageZipData } from '../services/drug-master-parser-package';
+import { parseMhlwDrugFile } from '../services/drug-master-parser-mhlw';
 
 vi.mock('../services/upload-service', () => ({
   parseExcelBuffer: vi.fn().mockImplementation(async (buffer: Buffer) => {

@@ -14,31 +14,11 @@ import {
 import type { getBusinessHoursStatus } from '../../utils/business-hours-utils';
 import { groupByPharmacy } from '../matching-filter-service';
 
-export interface DeadStockRow {
-  id: number;
-  pharmacyId: number;
-  drugName: string;
-  quantity: number;
-  unit: string | null;
-  yakkaUnitPrice: number | string | null;
-  expirationDate: string | null;
-  expirationDateIso: string | null;
-  lotNumber: string | null;
-  createdAt: string | null;
-}
-
-export interface ViablePharmacyRow {
-  id: number;
-  name: string;
-  phone: string | null;
-  fax: string | null;
-  latitude: number | null;
-  longitude: number | null;
-}
-
-export interface PharmacyWithDistance extends ViablePharmacyRow {
-  distance: number;
-}
+import type {
+  DeadStockRow,
+  PharmacyWithDistance,
+  ViablePharmacyRow,
+} from '../../types/matching';
 
 export type BusinessHoursRows = Parameters<typeof getBusinessHoursStatus>[0];
 export type SpecialHoursRows = Exclude<Parameters<typeof getBusinessHoursStatus>[1], Date>;

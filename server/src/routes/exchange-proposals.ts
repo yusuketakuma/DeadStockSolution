@@ -13,7 +13,7 @@ import {
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
-import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-service';
+import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-execution-service';
 import { parsePagination, isPositiveSafeInteger } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
@@ -91,34 +91,29 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-function sanitizeBulkActionErrorMessage(err: unknown): string {
+function sanitizeProposalError(err: unknown): { status: number; message: string } {
   const message = err instanceof Error ? err.message : '';
-  const hiddenDetailTokens = [
-    '見つかりません',
-    'アクセス権限',
-    'アクセスする権限',
-    '承認できる状態',
-    '拒否できる状態',
-    '状態が変更された',
-    '完了できません',
+  const errorMappings: Array<{ tokens: string[]; status: number; message: string }> = [
+    {
+      tokens: ['見つかりません', 'アクセス権限', 'アクセスする権限'],
+      status: 404,
+      message: 'マッチングが見つかりません',
+    },
+    {
+      tokens: ['状態が変更された'],
+      status: 409,
+      message: '状態が変更されたため、再読み込みして再試行してください',
+    },
+    {
+      tokens: ['承認できる状態', '拒否できる状態', '完了できません'],
+      status: 400,
+      message: '対象を処理できませんでした',
+    },
   ];
-  if (hiddenDetailTokens.some((token) => message.includes(token))) {
-    return '対象を処理できませんでした';
-  }
-  return '操作に失敗しました';
-}
-
-function sanitizeProposalActionError(err: unknown): { status: number; message: string } {
-  const message = err instanceof Error ? err.message : '';
-  if (
-    message.includes('見つかりません')
-    || message.includes('アクセス権限')
-    || message.includes('アクセスする権限')
-  ) {
-    return { status: 404, message: 'マッチングが見つかりません' };
-  }
-  if (message.includes('状態が変更された')) {
-    return { status: 409, message: '状態が変更されたため、再読み込みして再試行してください' };
+  for (const mapping of errorMappings) {
+    if (mapping.tokens.some((token) => message.includes(token))) {
+      return { status: mapping.status, message: mapping.message };
+    }
   }
   return { status: 400, message: '操作に失敗しました' };
 }
@@ -148,7 +143,7 @@ async function handleProposalAction<TResult>(
     });
     res.json(config.buildResponse(result));
   } catch (err) {
-    const failure = sanitizeProposalActionError(err);
+    const failure = sanitizeProposalError(err);
     res.status(failure.status).json({ error: failure.message });
   }
 }
@@ -241,7 +236,7 @@ router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) =>
           actorId,
           error: getErrorMessage(err),
         });
-        return { id, ok: false, error: sanitizeBulkActionErrorMessage(err) };
+        return { id, ok: false, error: sanitizeProposalError(err).message };
       }
     });
 

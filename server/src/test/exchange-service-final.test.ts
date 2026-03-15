@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
     transaction: vi.fn(),
   },
   createNotification: vi.fn(),
+  invalidateStatisticsSummaryCacheForPharmacies: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
@@ -51,7 +52,11 @@ vi.mock('../services/logger', () => ({
   logger: mocks.logger,
 }));
 
-import { completeProposal, createProposal } from '../services/exchange-service';
+vi.mock('../routes/statistics', () => ({
+  invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
+}));
+
+import { completeProposal, createProposal } from '../services/exchange-execution-service';
 
 // ── Tests ──────────────────────────────────────────────────────────
 
@@ -116,6 +121,7 @@ describe('exchange-service-final', () => {
       expect(tx.insert).toHaveBeenCalled();
       // Verify deadStockReservations were deleted
       expect(tx.delete).toHaveBeenCalled();
+      expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([1, 2]);
     });
 
     it('throws when stock not found in stockMap (!stock branch)', async () => {
@@ -407,6 +413,7 @@ describe('exchange-service-final', () => {
       });
 
       expect(proposalId).toBe(42);
+      expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([1, 2]);
       expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
         pharmacyId: 2,
         type: 'proposal_received',

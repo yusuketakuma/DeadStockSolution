@@ -1,16 +1,10 @@
 import { MatchItem } from '../types';
 import { roundTo2 } from './matching-score-service';
+import type { BalancedValueResult } from '../types/matching';
 
 export const MIN_EXCHANGE_VALUE = 10000;
 export const VALUE_TOLERANCE = 10;
 export const MAX_CANDIDATES = 30;
-
-export interface BalancedValueResult {
-  balancedA: MatchItem[];
-  balancedB: MatchItem[];
-  totalA: number;
-  totalB: number;
-}
 
 function filterPositiveQuantityItems(items: MatchItem[]): MatchItem[] {
   return items.filter((item) => item.quantity > 0);

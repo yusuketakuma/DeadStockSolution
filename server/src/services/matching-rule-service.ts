@@ -1,8 +1,9 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { matchingRuleProfiles } from '../db/schema';
-import { DEFAULT_MATCHING_SCORING_RULES, MatchingScoringRules } from './matching-score-service';
+import { DEFAULT_MATCHING_SCORING_RULES } from './matching-score-service';
 import { logger } from './logger';
+import type { MatchingRuleProfile, MatchingRuleProfileUpdateInput, MatchingScoringRules } from '../types/matching';
 
 const ACTIVE_PROFILE_CACHE_TTL_MS = 60_000;
 const DEFAULT_PROFILE_NAME = 'default';
@@ -19,20 +20,6 @@ interface RuleFieldSpec {
 
 export class MatchingRuleValidationError extends Error {}
 export class MatchingRuleVersionConflictError extends Error {}
-
-export interface MatchingRuleProfile extends MatchingScoringRules {
-  id: number;
-  profileName: string;
-  isActive: boolean;
-  version: number;
-  createdAt: string | null;
-  updatedAt: string | null;
-  source: 'database' | 'default_fallback';
-}
-
-export interface MatchingRuleProfileUpdateInput extends Partial<MatchingScoringRules> {
-  expectedVersion?: number;
-}
 
 let cachedProfile: MatchingRuleProfile | null = null;
 let cacheExpiresAt = 0;

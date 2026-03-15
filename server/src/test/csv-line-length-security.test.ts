@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseMhlwCsvData, parsePackageCsvData } from '../services/drug-master-parser-service';
+import { parseMhlwCsvData } from '../services/drug-master-parser-mhlw';
+import { parsePackageCsvData } from '../services/drug-master-parser-package';
 
 const MAX_CSV_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_CSV_ROWS = 100000; // 10万行

@@ -64,6 +64,61 @@
 
 ## 🟡 未着手のタスク
 
+### Sprint: コードリファクタリング v0.4.0 [refactoring]
+
+> **目的**: サービス層の整理と型定義の統一。重複パターン削除、巨大サービス分割、client/server間の型共有改善。
+> **方針**: 機能変更なし。既存テストが全て通ることを各タスク完了条件とする。
+
+#### Phase 1: 型定義統一 [P]
+
+- [x] **T601**: Timeline型の共通化（client/server重複解消） `cc:完了` (2026-03-15)
+  - toTimelineEventType を server/src/utils/timeline-utils.ts に移動（logger依存分離）
+  - client tsconfig.json に @server-types paths 追加
+  - client/src/types/timeline.ts を re-export パターンに変更（5共通型）
+  - client固有型（TimelineResponse拡張, TimelineUnreadResponse等）はローカル維持
+
+- [x] **T602**: サービス層インライン型の集約 `cc:完了` (2026-03-15)
+  - types/matching.ts 新規作成、11型を7サービスファイルから集約
+  - MatchingRuleProfile二重定義を統一（interface版を正、ReturnType派生を削除）
+  - re-export で後方互換維持、全4359テスト通過
+
+- [x] **T603**: ルートヘルパーのインライン型集約 `cc:完了` (2026-03-15)
+  - notifications-helpers.ts: 9型 → types/notification.ts に移動、re-export で後方互換維持
+  - auth-helpers.ts: AuthMeRow等3型 → types/index.ts に移動、re-export で後方互換維持
+  - upload-parser/admin-pharmacies: ReturnType/Drizzle派生型のため移動不可 → スキップ
+
+#### Phase 2: サービス層共通パターン抽出 [P]
+
+- [x] **T604**: スケジューラ共通ヘルパー抽出 `cc:完了` (2026-03-15)
+  - scheduler-utils.ts 新規作成（clearSchedulerHandle 共通化）
+  - drug-master-scheduler, drug-package-scheduler の2ファイルのみ対象（他4ファイルはパターン差異あり）
+
+- [x] **T605**: バッチ処理の共通化 `cc:完了` (2026-03-15)
+  - upload-confirm-service.ts の insertInBatches を既存 processInBatches に統一
+  - splitIntoChunks は既に array-utils.ts で一元化済み（追加作業不要）
+
+#### Phase 3: 巨大サービス分割 depends:T602
+
+- [x] **T606**: log-center-service.ts 分割 `cc:完了` (2026-03-15)
+  - log-center-issue-service.ts に3関数(updateLogIssueState/recordLogIssueAutoEscalation/getLogIssueHistory)を分離
+  - 共有ヘルパー5関数をexport化、import パス全箇所直接更新
+
+- [x] **T607**: exchange-service.ts 分割（632行） `cc:完了` (2026-03-15)
+  - exchange-validation-service.ts + exchange-execution-service.ts に分割
+  - 現状: 提案バリデーション + 実行 + 通知 + 履歴が混在
+  - 分割案: ExchangeProposalValidator, ExchangeExecutor, ExchangeNotificationService
+
+- [x] **T608**: drug-master-parser-service.ts 分割（544行） `cc:完了` (2026-03-15)
+  - 共通ユーティリティ(parser-service) + MHLW(parser-mhlw) + Package(parser-package) に3分割
+  - 現状: MHLW Excel, OpenClaw XML, テキスト の3パーサーが1ファイル
+  - 分割案: services/drug-master/parser/ 配下にフォーマット別パーサー
+
+#### Phase 4: エラーハンドリング統一
+
+- [x] **T609**: エラーハンドリングパターン調査 `cc:完了` (2026-03-15)
+  - 調査結果: 全catch{}パターンが正当な用途（JSON.parse安全ガード/URL検証/非重要副作用）
+  - 実質的な不整合なし、変更不要と判断
+
 ### v0.0.11 パフォーマンス改善スプリント
 
 - [x] **T218**: insertInBatches バッチサイズ最適化 `cc:完了` (2026-03-09)

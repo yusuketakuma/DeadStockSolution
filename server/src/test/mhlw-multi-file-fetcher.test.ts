@@ -41,7 +41,7 @@ vi.mock('../services/upload-service', () => ({
   parseExcelBuffer: vi.fn().mockResolvedValue([['header1', 'header2']]),
 }));
 
-vi.mock('../services/drug-master-parser-service', () => ({
+vi.mock('../services/drug-master-parser-mhlw', () => ({
   parseMhlwDrugFile: vi.fn().mockResolvedValue([
     { drugCode: '0001', drugName: 'テスト薬', unitPrice: 100, unit: '錠' },
   ]),
@@ -132,7 +132,7 @@ describe('mhlw-multi-file-fetcher', () => {
     });
 
     // Each category returns 2 parsed rows via parseMhlwDrugFile
-    const { parseMhlwDrugFile } = await import('../services/drug-master-parser-service');
+    const { parseMhlwDrugFile } = await import('../services/drug-master-parser-mhlw');
     vi.mocked(parseMhlwDrugFile).mockResolvedValue([
       { yjCode: 'YJ001', drugName: 'テスト薬A', unitPrice: 100, unit: '錠' },
       { yjCode: 'YJ002', drugName: 'テスト薬B', unitPrice: 200, unit: '錠' },
@@ -274,7 +274,7 @@ describe('mhlw-multi-file-fetcher', () => {
       .mockResolvedValueOnce(changedBuffer)
       .mockResolvedValueOnce(unchangedBuffer);
 
-    const { parseMhlwDrugFile } = await import('../services/drug-master-parser-service');
+    const { parseMhlwDrugFile } = await import('../services/drug-master-parser-mhlw');
     vi.mocked(parseMhlwDrugFile)
       .mockResolvedValueOnce([
         { yjCode: 'YJ100', drugName: '変更薬', unitPrice: 100, unit: '錠' },

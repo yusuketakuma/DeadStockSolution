@@ -4,31 +4,25 @@ import { haversineDistance } from '../../utils/geo-utils';
 import {
   calculateCandidateScore,
   calculateMatchRate,
-  DrugMatchResult,
   findBestDrugMatchWithEquivalences,
   isExpiredDate,
   roundTo2,
 } from '../matching-score-service';
+import type { DrugMatchResult, MatchingRuleProfile, PharmacyWithDistance, PreparedStockRow, UsedMedIndex, ViablePharmacyRow } from '../../types/matching';
 import {
   balanceValues,
   MIN_EXCHANGE_VALUE,
   VALUE_TOLERANCE,
 } from '../matching-filter-service';
-import type { getActiveMatchingRuleProfile } from '../matching-rule-service';
 import {
   BusinessHoursRows,
-  PharmacyWithDistance,
   SpecialHoursRows,
-  ViablePharmacyRow,
 } from './matching-data-fetcher';
-import { PreparedStockRow, UsedMedIndex } from './matching-data-preparer';
 
 const DISTANCE_FALLBACK = 9999;
 const MAX_COMPARISON_PHARMACIES_PER_SOURCE = resolveComparisonPharmacyLimit(
   process.env.MATCHING_MAX_COMPARISON_PHARMACIES_PER_SOURCE,
 );
-
-export type MatchingRuleProfile = Awaited<ReturnType<typeof getActiveMatchingRuleProfile>>;
 
 function resolveComparisonPharmacyLimit(value: string | undefined): number {
   const parsed = Number(value);

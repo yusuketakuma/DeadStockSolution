@@ -12,10 +12,8 @@ import {
   roundTo2,
   setLimitedCacheEntry,
   toStartOfDay,
-  type DrugMatchResult,
-  type MatchingScoringRules,
-  type UsedMedRow,
 } from '../services/matching-score-service';
+import type { DrugMatchResult, MatchingScoringRules, UsedMedRow } from '../types/matching';
 import { MatchItem } from '../types';
 
 function createItem(overrides: Partial<MatchItem> = {}): MatchItem {

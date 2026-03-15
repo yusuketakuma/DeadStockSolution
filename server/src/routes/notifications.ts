@@ -13,13 +13,15 @@ import {
   markAsRead,
   markAllDashboardAsRead,
 } from '../services/notification-service';
-import {
+import type {
   NoticeItem,
   NoticeCursor,
   AdminMessageRow,
   ProposalRow,
   NotificationRowForProposalLink,
   NotificationNoticeRow,
+} from '../types/notification';
+import {
   NOTICE_RESULT_LIMIT,
   SOURCE_NOTICE_FETCH_LIMIT,
   PROPOSAL_NOTICE_LIMIT,

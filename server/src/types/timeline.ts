@@ -1,5 +1,3 @@
-import { logger } from '../services/logger';
-
 export type TimelinePriority = 'critical' | 'high' | 'medium' | 'low';
 
 export type TimelineSource =
@@ -30,6 +28,9 @@ export type TimelineEventType =
   | 'proposal_cancelled'
   | 'proposal_received'
   | 'proposal_status_changed'
+  | 'alert_near_expiry'
+  | 'alert_excess_stock'
+  | 'alert_resolved'
   | 'upload_dead_stock'
   | 'upload_used_medication'
   | 'request_update';
@@ -94,18 +95,13 @@ export const TIMELINE_EVENT_TYPES = new Set<TimelineEventType>([
   'proposal_cancelled',
   'proposal_received',
   'proposal_status_changed',
+  'alert_near_expiry',
+  'alert_excess_stock',
+  'alert_resolved',
   'upload_dead_stock',
   'upload_used_medication',
   'request_update',
 ]);
-
-export function toTimelineEventType(s: string): TimelineEventType {
-  if (TIMELINE_EVENT_TYPES.has(s as TimelineEventType)) {
-    return s as TimelineEventType;
-  }
-  logger.warn(`Unknown timeline event type, falling back to request_update`, { unknownType: s });
-  return 'request_update';
-}
 
 export interface EnrichedProposalTimelineEvent {
   action: string;

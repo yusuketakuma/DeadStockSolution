@@ -17,7 +17,10 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "incremental": true,
-    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo"
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
+    "paths": {
+      "@server-types/*": ["../server/src/types/*"]
+    }
   },
   "include": ["src"]
 }

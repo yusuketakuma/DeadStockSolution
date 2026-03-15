@@ -1,6 +1,15 @@
 import { distance as levenshtein } from 'fastest-levenshtein';
 import { normalizeString } from '../utils/string-utils';
 import { MatchItem } from '../types';
+import type {
+  DrugMatchResult,
+  MatchingScoringRules,
+  PreparedDrugName,
+  UsedMedIndex,
+  UsedMedName,
+  UsedMedRow,
+} from '../types/matching';
+
 
 const MAX_DRUG_MATCH_CACHE_SIZE = 2000;
 const MAX_PARSED_EXPIRY_CACHE_SIZE = 5000;
@@ -11,27 +20,6 @@ const SPARSE_CANDIDATE_THRESHOLD = 25;
 const NEAR_LENGTH_CANDIDATE_LIMIT = 200;
 const NEAR_LENGTH_WINDOW = 2;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-export interface MatchingScoringRules {
-  nameMatchThreshold: number;
-  valueScoreMax: number;
-  valueScoreDivisor: number;
-  balanceScoreMax: number;
-  balanceScoreDiffFactor: number;
-  distanceScoreMax: number;
-  distanceScoreDivisor: number;
-  distanceScoreFallback: number;
-  nearExpiryScoreMax: number;
-  nearExpiryItemFactor: number;
-  nearExpiryDays: number;
-  diversityScoreMax: number;
-  diversityItemFactor: number;
-  favoriteBonus: number;
-  groupBonus: number;
-  nearExpiryDecayCurve: number;
-  successRateBonus: number;
-  maxCandidates: number;
-}
 
 export const DEFAULT_MATCHING_SCORING_RULES: MatchingScoringRules = {
   nameMatchThreshold: 0.7,
@@ -54,27 +42,6 @@ export const DEFAULT_MATCHING_SCORING_RULES: MatchingScoringRules = {
   maxCandidates: 30,
 };
 
-export interface UsedMedRow {
-  pharmacyId: number;
-  drugName: string;
-}
-
-export interface UsedMedName {
-  normalizedName: string;
-  tokenSet: Set<string>;
-  length: number;
-}
-
-export interface UsedMedIndex {
-  exactNames: Set<string>;
-  names: UsedMedName[];
-  tokenIndex: Map<string, number[]>;
-  lengthBuckets: Map<number, number[]>;
-}
-
-export interface DrugMatchResult {
-  score: number;
-}
 interface CandidateScoreContext {
   valueScore: number;
   balanceScore: number;
@@ -82,11 +49,6 @@ interface CandidateScoreContext {
   nearExpiryDays: number;
   effectiveReferenceDate: Date;
   isGroupMember: boolean;
-}
-
-export interface PreparedDrugName {
-  normalizedDrugName: string;
-  tokenSet: Set<string>;
 }
 
 export function setLimitedCacheEntry<T>(cache: Map<string, T>, key: string, value: T, maxSize: number): void {

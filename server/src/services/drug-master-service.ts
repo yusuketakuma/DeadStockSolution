@@ -1,15 +1,12 @@
-// ファサード: 後方互換のため、分割した各サービスを re-export する
 export type { ParsedDrugRow, ParsedPackageRow } from './drug-master-parser-service';
+export { parseYjCode, decodeCsvBuffer } from './drug-master-parser-service';
+export { parseMhlwExcelData, parseMhlwCsvData } from './drug-master-parser-mhlw';
 export {
-  parseYjCode,
-  parseMhlwExcelData,
-  decodeCsvBuffer,
-  parseMhlwCsvData,
   parsePackageCsvData,
   parsePackageXmlData,
   parsePackageZipData,
   parsePackageExcelData,
-} from './drug-master-parser-service';
+} from './drug-master-parser-package';
 
 export type { SyncResult } from './drug-master-sync-service';
 export {

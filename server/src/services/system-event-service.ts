@@ -1,7 +1,9 @@
 import { db } from '../config/database';
 import { systemEvents, type SystemEventLevel, type SystemEventSource } from '../db/schema';
 import { logger } from './logger';
-import { enqueueLogAlert } from './openclaw-log-push-service';
+import { dispatchLogAlert } from './openclaw-log-push-service';
+import { getLogEntryById, getLogInsightForEntry } from './log-center-service';
+import { recordLogIssueAutoEscalation } from './log-center-issue-service';
 
 interface SystemEventInput {
   source: SystemEventSource;
@@ -19,6 +21,11 @@ interface HttpErrorSnapshotInput {
   status: number;
   requestId?: string;
   errorCode?: string;
+  sourceLocation?: string | null;
+  tenant?: {
+    pharmacyId?: number | null;
+    pharmacyEmail?: string | null;
+  };
 }
 
 const MAX_MESSAGE_LENGTH = 2000;
@@ -46,28 +53,50 @@ function toDetailJson(detail: unknown): string | null {
 
 export async function recordSystemEvent(input: SystemEventInput): Promise<boolean> {
   try {
-    await db.insert(systemEvents).values({
+    const occurredAt = input.occurredAt ?? new Date().toISOString();
+    const [inserted] = await db.insert(systemEvents).values({
       source: input.source,
       level: input.level ?? 'error',
       eventType: sanitizeMessage(input.eventType),
       message: sanitizeMessage(input.message),
       detailJson: toDetailJson(input.detail),
       errorCode: input.errorCode ?? null,
-      occurredAt: input.occurredAt ?? new Date().toISOString(),
-    });
+      occurredAt,
+    }).returning({ id: systemEvents.id });
 
     // Forward errors/warnings to OpenClaw
     const effectiveLevel = input.level ?? 'error';
     if (effectiveLevel === 'error' || effectiveLevel === 'warning') {
       try {
-        enqueueLogAlert({
+        const entry = inserted?.id ? await getLogEntryById('system_events', inserted.id) : null;
+        const insight = entry ? await getLogInsightForEntry(entry) : null;
+        const result = await dispatchLogAlert({
           source: 'system_events',
           severity: effectiveLevel === 'error' ? 'error' : 'warning',
-          errorCode: input.errorCode ?? null,
-          message: sanitizeMessage(input.message),
-          logId: 0,
-          occurredAt: input.occurredAt ?? new Date().toISOString(),
+          errorCode: entry?.errorCode ?? input.errorCode ?? null,
+          message: entry?.message ?? sanitizeMessage(input.message),
+          logId: inserted?.id ?? 0,
+          occurredAt: entry?.timestamp ?? occurredAt,
+          detail: entry?.detail ?? input.detail,
+          codeLocation: entry?.codeLocation ?? null,
+          tenant: entry ? {
+            pharmacyId: entry.tenant.pharmacyId,
+            pharmacyName: entry.tenant.pharmacyName,
+            pharmacyEmail: entry.tenant.pharmacyEmail,
+          } : undefined,
+          whatHappened: entry?.whatHappened ?? null,
+          improvementSuggestion: entry?.improvementSuggestion ?? null,
+          recurrenceCount: insight?.count,
+          impactedTenantCount: insight?.impactedTenantCount,
         });
+        if (result.mode === 'auto_escalated' && inserted?.id) {
+          await recordLogIssueAutoEscalation({
+            source: 'system_events',
+            logId: inserted.id,
+            reasonCodes: result.reasonCodes,
+            note: 'system event auto escalation',
+          });
+        }
       } catch {
         // Log push should never break event recording
       }
@@ -91,9 +120,16 @@ export async function recordHttpUnhandledError(input: HttpErrorSnapshotInput): P
     eventType: 'http_unhandled_error',
     message: `${input.method} ${input.path} -> ${input.status}`,
     detail: {
+      method: input.method,
+      path: input.path,
       status: input.status,
       requestId: input.requestId ?? null,
       code: input.errorCode ?? null,
+      sourceLocation: input.sourceLocation ?? null,
+      tenant: {
+        pharmacyId: input.tenant?.pharmacyId ?? null,
+        pharmacyEmail: input.tenant?.pharmacyEmail ?? null,
+      },
     },
   });
 }

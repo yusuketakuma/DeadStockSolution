@@ -9,21 +9,19 @@ import {
   usedMedicationItems,
 } from '../db/schema';
 import { MatchCandidate } from '../types';
+import type { DeadStockRow, MatchingRuleProfile, UsedMedRow, ViablePharmacyRow } from '../types/matching';
 import { groupByPharmacy } from './matching-filter-service';
 import { getActiveMatchingRuleProfile } from './matching-rule-service';
-import { UsedMedRow } from './matching-score-service';
 import {
   buildPharmaciesWithDistance,
   collectCandidates,
 } from './matching/matching-candidate-builder';
 import {
-  DeadStockRow,
   DEAD_STOCK_SELECT_FIELDS,
   fetchBusinessHoursMaps,
   fetchReservationMap,
   fetchViablePharmacies,
   USED_MED_SELECT_FIELDS,
-  ViablePharmacyRow,
 } from './matching/matching-data-fetcher';
 import {
   applyReservationsToStockRows,
@@ -58,7 +56,6 @@ type GroupMemberRow = {
   pharmacyId: number;
 };
 
-type MatchingRuleProfile = Awaited<ReturnType<typeof getActiveMatchingRuleProfile>>;
 type MatchingIndexes = ReturnType<typeof buildMatchingIndexes>;
 
 function uniqueNumbers(values: number[]): number[] {

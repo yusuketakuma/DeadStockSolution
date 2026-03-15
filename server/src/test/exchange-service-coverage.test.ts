@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   },
   or: vi.fn(() => ({})),
   createNotification: vi.fn().mockResolvedValue(true),
+  invalidateStatisticsSummaryCacheForPharmacies: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
@@ -37,12 +38,16 @@ vi.mock('../services/logger', () => ({
   logger: mocks.logger,
 }));
 
+vi.mock('../routes/statistics', () => ({
+  invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
+}));
+
 import {
   createProposal,
   acceptProposal,
   rejectProposal,
   completeProposal,
-} from '../services/exchange-service';
+} from '../services/exchange-execution-service';
 
 describe('exchange-service coverage', () => {
   beforeEach(() => {
@@ -305,6 +310,7 @@ describe('exchange-service coverage', () => {
         pharmacyId: 2,
         type: 'proposal_status_changed',
       }));
+      expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([1, 2]);
     });
   });
 
@@ -387,6 +393,7 @@ describe('exchange-service coverage', () => {
         pharmacyId: 1, // other party
         type: 'proposal_status_changed',
       }));
+      expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([1, 2]);
     });
 
     it('logs warning when notification fails', async () => {

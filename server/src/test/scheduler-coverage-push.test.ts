@@ -42,7 +42,7 @@ vi.mock('../services/drug-master-service', () => ({
   syncPackageData: mocks.syncPackageData,
 }));
 
-vi.mock('../services/drug-master-parser-service', () => ({
+vi.mock('../services/drug-master-parser-mhlw', () => ({
   parseMhlwDrugFile: mocks.parseMhlwDrugFile,
 }));
 

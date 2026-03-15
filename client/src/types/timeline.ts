@@ -1,50 +1,15 @@
-export type TimelinePriority = 'critical' | 'high' | 'medium' | 'low';
+// 共通型は server から re-export（Single Source of Truth）
+export type {
+  TimelinePriority,
+  TimelineSource,
+  TimelineEventType,
+  TimelineEvent,
+  EnrichedProposalTimelineEvent,
+} from '@server-types/timeline';
 
-export type TimelineSource =
-  | 'notification'
-  | 'activity'
-  | 'match'
-  | 'proposal'
-  | 'comment'
-  | 'feedback'
-  | 'upload'
-  | 'admin_message'
-  | 'exchange_history'
-  | 'expiry_risk';
+import type { TimelineEvent } from '@server-types/timeline';
 
-export type TimelineEventType =
-  | 'match_update'
-  | 'new_comment'
-  | 'exchange_feedback'
-  | 'admin_message'
-  | 'exchange_completed'
-  | 'near_expiry'
-  | 'proposal_proposed'
-  | 'proposal_accepted_a'
-  | 'proposal_accepted_b'
-  | 'proposal_confirmed'
-  | 'proposal_rejected'
-  | 'proposal_completed'
-  | 'proposal_cancelled'
-  | 'proposal_received'
-  | 'proposal_status_changed'
-  | 'upload_dead_stock'
-  | 'upload_used_medication'
-  | 'request_update';
-
-export interface TimelineEvent {
-  id: string;
-  source: TimelineSource;
-  type: TimelineEventType;
-  title: string;
-  body: string;
-  timestamp: string;
-  priority: TimelinePriority;
-  isRead: boolean;
-  actionPath?: string;
-  metadata?: Record<string, unknown>;
-}
-
+// client 固有の型（server 側と構造が異なるためローカル定義）
 export interface TimelineResponse {
   events: TimelineEvent[];
   total: number;
@@ -75,18 +40,4 @@ export interface SmartDigestItem {
   event: TimelineEvent;
   actionLabel: string;
   actionPath: string;
-}
-
-export interface EnrichedProposalTimelineEvent {
-  action: string;
-  label: string;
-  at: string | null;
-  actorPharmacyId?: number | null;
-  actorName?: string;
-  statusFrom?: string | null;
-  statusTo?: string | null;
-  eventType: 'status_change' | 'comment' | 'feedback' | 'item_detail';
-  commentBody?: string;
-  feedbackRating?: number | null;
-  feedbackComment?: string;
 }

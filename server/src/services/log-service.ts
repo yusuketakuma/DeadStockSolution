@@ -1,7 +1,9 @@
 import { db } from '../config/database';
 import { activityLogs } from '../db/schema';
 import { logger } from './logger';
-import { enqueueLogAlert } from './openclaw-log-push-service';
+import { dispatchLogAlert } from './openclaw-log-push-service';
+import { getLogEntryById, getLogInsightForEntry } from './log-center-service';
+import { recordLogIssueAutoEscalation } from './log-center-issue-service';
 
 export type LogAction =
   | 'login'
@@ -56,7 +58,8 @@ export async function writeLog(
       }
     })();
 
-    await db.insert(activityLogs).values({
+    const occurredAt = new Date().toISOString();
+    const [inserted] = await db.insert(activityLogs).values({
       pharmacyId: options.pharmacyId ?? null,
       action,
       detail: options.detail ?? null,
@@ -67,21 +70,44 @@ export async function writeLog(
       metadataJson,
       ipAddress: options.ipAddress ?? null,
       errorCode: options.errorCode ?? null,
-    });
+      createdAt: occurredAt,
+    }).returning({ id: activityLogs.id });
 
     // Forward failures to OpenClaw
     const isFailure = options.detail?.startsWith('失敗|') ?? false;
     const isFailedAction = action === 'login_failed' || action === 'password_reset_failed';
     if (isFailure || isFailedAction) {
       try {
-        enqueueLogAlert({
+        const entry = inserted?.id ? await getLogEntryById('activity_logs', inserted.id) : null;
+        const insight = entry ? await getLogInsightForEntry(entry) : null;
+        const result = await dispatchLogAlert({
           source: 'activity_logs',
           severity: isFailure ? 'error' : 'warning',
-          errorCode: options.errorCode ?? null,
-          message: `[${action}] ${options.detail ?? ''}`.trim(),
-          logId: 0,
-          occurredAt: new Date().toISOString(),
+          errorCode: entry?.errorCode ?? options.errorCode ?? null,
+          message: entry?.message ?? `[${action}] ${options.detail ?? ''}`.trim(),
+          logId: inserted?.id ?? 0,
+          occurredAt: entry?.timestamp ?? occurredAt,
+          detail: entry?.detail ?? metadataJson,
+          codeLocation: entry?.codeLocation ?? null,
+          tenant: entry ? {
+            pharmacyId: entry.tenant.pharmacyId,
+            pharmacyName: entry.tenant.pharmacyName,
+            pharmacyEmail: entry.tenant.pharmacyEmail,
+          } : undefined,
+          whatHappened: entry?.whatHappened ?? null,
+          improvementSuggestion: entry?.improvementSuggestion ?? null,
+          recurrenceCount: insight?.count,
+          impactedTenantCount: insight?.impactedTenantCount,
         });
+        if (result.mode === 'auto_escalated' && inserted?.id) {
+          await recordLogIssueAutoEscalation({
+            source: 'activity_logs',
+            logId: inserted.id,
+            actorPharmacyId: options.pharmacyId ?? null,
+            reasonCodes: result.reasonCodes,
+            note: 'activity log auto escalation',
+          });
+        }
       } catch {
         // Log push should never break the main flow
       }

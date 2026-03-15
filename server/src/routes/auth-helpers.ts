@@ -16,29 +16,7 @@ import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verific
 export const TEST_PHARMACY_CACHE_TTL_MS = 60_000;
 export const TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS = 5;
 
-export type AuthMeRow = {
-  id: number;
-  email: string;
-  name: string;
-  postalCode: string;
-  address: string;
-  phone: string;
-  fax: string;
-  licenseNumber: string;
-  prefecture: string;
-  isAdmin: boolean | null;
-  isTestAccount: boolean;
-};
-
-export type LegacyAuthMeRow = Omit<AuthMeRow, 'isTestAccount'>;
-
-export type TestPharmacyPreviewRow = {
-  id: number;
-  name: string;
-  email: string;
-  prefecture: string;
-  password: string | null;
-};
+import type { AuthMeRow, LegacyAuthMeRow, TestPharmacyPreviewRow } from '../types';
 
 type TestPharmacyRowWithoutPassword = Omit<TestPharmacyPreviewRow, 'password'>;
 
@@ -643,6 +621,7 @@ export const PASSWORD_RESET_RESPONSE_JITTER_MS = process.env.NODE_ENV === 'test'
 // Auth limiters
 export const registerLimiter = createAuthLimiter(5, '登録試行回数が多すぎます。しばらくしてから再試行してください');
 export const loginLimiter = createAuthLimiter(10, 'ログイン試行回数が多すぎます。しばらくしてから再試行してください');
+export const passwordResetLimiter = createAuthLimiter(3, 'パスワードリセット試行回数が多すぎます。しばらくしてから再試行してください');
 export const testPharmacyPreviewLimiter = createAuthLimiter(30, 'テスト薬局情報の取得回数が多すぎます。しばらくしてから再試行してください');
 
 // Test pharmacy cache state
