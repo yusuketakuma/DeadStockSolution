@@ -14,6 +14,12 @@ fi
 
 CLIENT_DIR="$ROOT_DIR/client"
 
+# Seed test pharmacy accounts if configured (idempotent upsert)
+if [ -n "${TEST_PHARMACY_SEED_JSON:-}" ]; then
+  echo "[vercel-build] Seeding test pharmacy accounts..."
+  npx --prefix "$ROOT_DIR" tsx "$ROOT_DIR/server/src/db/seed-test-pharmacy-accounts.ts" || echo "[vercel-build] Warning: test pharmacy seeding failed (non-fatal)"
+fi
+
 # Build client (Vite + SWC)
 (
   cd "$CLIENT_DIR"
