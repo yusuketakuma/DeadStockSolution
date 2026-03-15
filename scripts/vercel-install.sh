@@ -12,7 +12,10 @@ else
   exit 1
 fi
 
-# npm install (not ci) — resolves platform-specific optional deps for the
-# deploy target (linux x64) even when lockfile was generated on macOS.
-# Keeps existing node_modules so Vercel cache is still effective.
+# Workaround for npm optional-deps bug (https://github.com/npm/cli/issues/4828):
+# Vercel build cache may contain macOS node_modules missing linux-specific
+# optional deps like @rollup/rollup-linux-x64-gnu. Delete node_modules only
+# (keep lockfile for faster resolution) then install fresh for linux.
+rm -rf "$ROOT_DIR/node_modules" "$ROOT_DIR/client/node_modules" "$ROOT_DIR/server/node_modules"
+
 npm install --prefix "$ROOT_DIR" --no-audit --no-fund
