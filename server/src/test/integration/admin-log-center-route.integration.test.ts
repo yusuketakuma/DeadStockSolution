@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { getTestDb, resetTestDb, closeTestDb, type TestDb } from './helpers/test-db';
 import { makePharmacy, makeActivityLog, resetFactorySeq } from './helpers/factories';
-import { makeAuthCookie } from './helpers/auth-helper';
+import { makeAuthCookie, makeCsrfPair } from './helpers/auth-helper';
 import * as schema from '../../db/schema';
 import request from 'supertest';
 
@@ -9,6 +9,9 @@ import request from 'supertest';
 
 let testDb: TestDb;
 let app: (typeof import('../../app'))['default'];
+const openClawMocks = vi.hoisted(() => ({
+  escalateLogAlertToOpenClaw: vi.fn(),
+}));
 
 vi.mock('../../config/database', () => ({
   get db() { return testDb; },
@@ -21,6 +24,14 @@ vi.mock('../../services/logger', () => ({
 vi.mock('../../services/observability-service', () => ({
   recordRequestMetric: vi.fn(),
 }));
+
+vi.mock('../../services/openclaw-log-push-service', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../services/openclaw-log-push-service')>();
+  return {
+    ...original,
+    escalateLogAlertToOpenClaw: openClawMocks.escalateLogAlertToOpenClaw,
+  };
+});
 
 // ── セットアップ ──────────────────────────────────────────
 
@@ -36,6 +47,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetTestDb();
   resetFactorySeq();
+  openClawMocks.escalateLogAlertToOpenClaw.mockReset();
 });
 
 // ── ヘルパー: テストデータ作成 ──────────────────────────────
@@ -143,6 +155,48 @@ describe('GET /api/admin/log-center', () => {
     for (const entry of res.body.data) {
       expect(entry.source).toBe('system_events');
     }
+  });
+
+  it('エラーの要約・推定コード位置・改善方法・テナント情報を返す', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    const tenant = await makePharmacy(testDb, {
+      isAdmin: false,
+      name: 'テナント薬局',
+      email: 'tenant-log@example.com',
+    });
+    await makeSystemEvent({
+      eventType: 'http_unhandled_error',
+      message: 'POST /api/account -> 500',
+      errorCode: 'SYSTEM_INTERNAL_ERROR',
+      detailJson: JSON.stringify({
+        path: '/api/account',
+        status: 500,
+        stack: 'Error: boom\n    at route (/Users/yusuke/DeadStockSolution/server/src/routes/account.ts:451:13)',
+        tenant: {
+          pharmacyId: tenant.id,
+          pharmacyEmail: tenant.email,
+        },
+      }),
+    });
+    const cookie = makeAuthCookie(admin);
+
+    const res = await request(app)
+      .get('/api/admin/log-center?source=system_events')
+      .set('Cookie', [cookie]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0]).toEqual(expect.objectContaining({
+      whatHappened: expect.stringContaining('/api/account'),
+      codeLocation: 'server/src/routes/account.ts:451:13',
+      improvementSuggestion: expect.stringContaining('例外スタック'),
+      tenant: expect.objectContaining({
+        pharmacyId: tenant.id,
+        pharmacyName: tenant.name,
+        pharmacyEmail: tenant.email,
+        tenantLabel: tenant.name,
+      }),
+      errorCodeMeta: null,
+    }));
   });
 
   it('複数ソースをカンマ区切りでフィルタリングできる', async () => {
@@ -424,5 +478,219 @@ describe('GET /api/admin/log-center/summary', () => {
     expect(res.body.total).toBe(0);
     expect(res.body.errors).toBe(0);
     expect(res.body.warnings).toBe(0);
+  });
+});
+
+describe('GET /api/admin/log-center/insights', () => {
+  it('returns grouped recurrence and tenant-impact summary', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    const tenantA = await makePharmacy(testDb, { name: 'テナントA' });
+    const tenantB = await makePharmacy(testDb, { name: 'テナントB' });
+    await makeSystemEvent({
+      eventType: 'http_unhandled_error',
+      message: 'POST /api/account -> 500',
+      errorCode: 'SYSTEM_INTERNAL_ERROR',
+      detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: tenantA.id } }),
+    });
+    await makeSystemEvent({
+      eventType: 'http_unhandled_error',
+      message: 'POST /api/account -> 500',
+      errorCode: 'SYSTEM_INTERNAL_ERROR',
+      detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: tenantB.id } }),
+    });
+    const cookie = makeAuthCookie(admin);
+
+    const res = await request(app)
+      .get('/api/admin/log-center/insights')
+      .set('Cookie', [cookie]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.repeatedErrorCount).toBeGreaterThanOrEqual(1);
+    expect(res.body.impactedTenantCount).toBe(2);
+    expect(res.body.topIssues[0]).toEqual(expect.objectContaining({
+      count: 2,
+      impactedTenantCount: 2,
+      codeLocation: 'server/src/routes/account.ts',
+    }));
+  });
+
+  it('supports minOccurrences filtering', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    const tenant = await makePharmacy(testDb, { name: 'テナントC' });
+    await makeSystemEvent({
+      eventType: 'http_unhandled_error',
+      message: 'POST /api/account -> 500',
+      errorCode: 'SYSTEM_INTERNAL_ERROR',
+      detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: tenant.id } }),
+    });
+    const cookie = makeAuthCookie(admin);
+
+    const res = await request(app)
+      .get('/api/admin/log-center/insights?minOccurrences=2')
+      .set('Cookie', [cookie]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.topIssues).toEqual([]);
+  });
+});
+
+describe('GET /api/admin/log-center/export', () => {
+  it('exports filtered logs as CSV', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    await makeActivityLog(testDb, { action: 'upload', detail: 'CSV export test' });
+    const cookie = makeAuthCookie(admin);
+
+    const res = await request(app)
+      .get('/api/admin/log-center/export?source=activity_logs&format=csv')
+      .set('Cookie', [cookie]);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text).toContain('"source"');
+    expect(res.text).toContain('"activity_logs"');
+  });
+});
+
+describe('POST /api/admin/log-center/openclaw', () => {
+  it('escalates an enriched log entry to OpenClaw', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    const tenant = await makePharmacy(testDb, { name: '通知対象薬局', email: 'notify@example.com' });
+    const event = await makeSystemEvent({
+      eventType: 'http_unhandled_error',
+      message: 'POST /api/account -> 500',
+      errorCode: 'SYSTEM_INTERNAL_ERROR',
+      detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: tenant.id } }),
+    });
+    const cookie = makeAuthCookie(admin);
+    const csrf = makeCsrfPair();
+
+    const res = await request(app)
+      .post('/api/admin/log-center/openclaw')
+      .set('Cookie', [cookie, csrf.cookie])
+      .set('x-csrf-token', csrf.header)
+      .send({
+        source: 'system_events',
+        logId: event.id,
+        note: 'tenant impact confirmed',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(expect.objectContaining({
+      ok: true,
+      escalated: true,
+      source: 'system_events',
+      logId: event.id,
+    }));
+    expect(openClawMocks.escalateLogAlertToOpenClaw).toHaveBeenCalledWith(
+      expect.objectContaining({
+        codeLocation: 'server/src/routes/account.ts',
+        tenant: expect.objectContaining({
+          pharmacyId: tenant.id,
+          pharmacyName: tenant.name,
+        }),
+      }),
+      'tenant impact confirmed',
+    );
+  });
+
+  it('returns 404 when the target log does not exist', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    const cookie = makeAuthCookie(admin);
+    const csrf = makeCsrfPair();
+
+    const res = await request(app)
+      .post('/api/admin/log-center/openclaw')
+      .set('Cookie', [cookie, csrf.cookie])
+      .set('x-csrf-token', csrf.header)
+      .send({
+        source: 'system_events',
+        logId: 999999,
+      });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('PATCH /api/admin/log-center/status', () => {
+  it('updates workflow status and returns history', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    const event = await makeSystemEvent({
+      eventType: 'http_unhandled_error',
+      message: 'POST /api/account -> 500',
+      errorCode: 'SYSTEM_INTERNAL_ERROR',
+      detailJson: JSON.stringify({ path: '/api/account', status: 500 }),
+    });
+    const cookie = makeAuthCookie(admin);
+    const csrf = makeCsrfPair();
+
+    const res = await request(app)
+      .patch('/api/admin/log-center/status')
+      .set('Cookie', [cookie, csrf.cookie])
+      .set('x-csrf-token', csrf.header)
+      .send({
+        source: 'system_events',
+        logId: event.id,
+        status: 'investigating',
+        note: 'owner assigned',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(expect.objectContaining({
+      ok: true,
+      source: 'system_events',
+      logId: event.id,
+      currentState: expect.objectContaining({
+        status: 'investigating',
+        note: 'owner assigned',
+      }),
+    }));
+    expect(res.body.history[0]).toEqual(expect.objectContaining({
+      kind: 'status_update',
+      status: 'investigating',
+      note: 'owner assigned',
+      actor: expect.objectContaining({
+        pharmacyId: admin.id,
+        pharmacyEmail: admin.email,
+      }),
+    }));
+  });
+});
+
+describe('GET /api/admin/log-center/status-history', () => {
+  it('returns status and auto-escalation history for a log', async () => {
+    const admin = await makePharmacy(testDb, { isAdmin: true });
+    const event = await makeSystemEvent({
+      eventType: 'http_unhandled_error',
+      message: 'POST /api/account -> 500',
+      errorCode: 'SYSTEM_INTERNAL_ERROR',
+      detailJson: JSON.stringify({ path: '/api/account', status: 500 }),
+    });
+    const cookie = makeAuthCookie(admin);
+    const csrf = makeCsrfPair();
+
+    await request(app)
+      .patch('/api/admin/log-center/status')
+      .set('Cookie', [cookie, csrf.cookie])
+      .set('x-csrf-token', csrf.header)
+      .send({
+        source: 'system_events',
+        logId: event.id,
+        status: 'resolved',
+        note: 'fixed in test',
+      })
+      .expect(200);
+
+    const historyRes = await request(app)
+      .get(`/api/admin/log-center/status-history?source=system_events&logId=${event.id}`)
+      .set('Cookie', [cookie]);
+
+    expect(historyRes.status).toBe(200);
+    expect(historyRes.body.history).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'status_update',
+        status: 'resolved',
+        note: 'fixed in test',
+      }),
+    ]));
   });
 });

@@ -17,60 +17,21 @@ import { AuthRequest } from '../types';
 import { getPharmacyRiskDetail } from '../services/expiry-risk-service';
 import { logger } from '../services/logger';
 
+import {
+  invalidateStatisticsSummaryCache,
+  invalidateStatisticsSummaryCacheForPharmacies,
+  clearStatisticsSummaryCacheForTests,
+  getCachedStatisticsSummary,
+  setCachedStatisticsSummary,
+} from '../services/statistics-cache-service';
+
+export {
+  invalidateStatisticsSummaryCache,
+  invalidateStatisticsSummaryCacheForPharmacies,
+  clearStatisticsSummaryCacheForTests,
+};
+
 const router = Router();
-const DEFAULT_STATS_SUMMARY_CACHE_TTL_MS = 300_000;
-const MAX_STATS_SUMMARY_CACHE_TTL_MS = 30 * 60_000;
-const STATS_SUMMARY_CACHE_MAX_ENTRIES = 1_000;
-const statisticsSummaryCache = new Map<number, {
-  expiresAtMs: number;
-  payload: unknown;
-}>();
-
-function resolveStatsSummaryCacheTtlMs(): number {
-  const raw = Number(process.env.STATISTICS_SUMMARY_CACHE_TTL_MS ?? DEFAULT_STATS_SUMMARY_CACHE_TTL_MS);
-  if (!Number.isFinite(raw)) return DEFAULT_STATS_SUMMARY_CACHE_TTL_MS;
-  return Math.max(0, Math.min(MAX_STATS_SUMMARY_CACHE_TTL_MS, Math.floor(raw)));
-}
-
-function pruneStatisticsSummaryCache(nowMs: number): void {
-  for (const [pharmacyId, entry] of statisticsSummaryCache.entries()) {
-    if (entry.expiresAtMs <= nowMs) {
-      statisticsSummaryCache.delete(pharmacyId);
-    }
-  }
-
-  while (statisticsSummaryCache.size > STATS_SUMMARY_CACHE_MAX_ENTRIES) {
-    const oldestKey = statisticsSummaryCache.keys().next().value;
-    if (typeof oldestKey !== 'number') break;
-    statisticsSummaryCache.delete(oldestKey);
-  }
-}
-
-function getCachedStatisticsSummary(pharmacyId: number, nowMs: number): unknown | null {
-  const ttlMs = resolveStatsSummaryCacheTtlMs();
-  if (ttlMs <= 0) return null;
-  const cached = statisticsSummaryCache.get(pharmacyId);
-  if (!cached) return null;
-  if (cached.expiresAtMs <= nowMs) {
-    statisticsSummaryCache.delete(pharmacyId);
-    return null;
-  }
-  return cached.payload;
-}
-
-function setCachedStatisticsSummary(pharmacyId: number, payload: unknown, nowMs: number): void {
-  const ttlMs = resolveStatsSummaryCacheTtlMs();
-  if (ttlMs <= 0) return;
-  pruneStatisticsSummaryCache(nowMs);
-  statisticsSummaryCache.set(pharmacyId, {
-    expiresAtMs: nowMs + ttlMs,
-    payload,
-  });
-}
-
-export function clearStatisticsSummaryCacheForTests(): void {
-  statisticsSummaryCache.clear();
-}
 
 function buildStatisticsSummaryPayload(params: {
   uploadStats: Array<{ uploadType: string; count: number; lastDate: string | null }>;

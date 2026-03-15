@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useTimeline } from './TimelineContext';
 
 interface NotificationContextValue {
@@ -14,8 +14,12 @@ const NotificationContext = createContext<NotificationContextValue>({
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { unreadCount, refreshUnreadCount } = useTimeline();
 
+  const value = useMemo(() => ({
+    unreadCount, refreshCount: refreshUnreadCount
+  }), [unreadCount, refreshUnreadCount]);
+
   return (
-    <NotificationContext.Provider value={{ unreadCount, refreshCount: refreshUnreadCount }}>
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );

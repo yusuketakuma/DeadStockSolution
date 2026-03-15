@@ -20,7 +20,7 @@ vi.mock('drizzle-orm', () => ({
   sql: vi.fn(() => ({})),
 }));
 
-import { completeProposal, createProposal } from '../services/exchange-service';
+import { completeProposal, createProposal } from '../services/exchange-execution-service';
 
 describe('exchange-service', () => {
   beforeEach(() => {

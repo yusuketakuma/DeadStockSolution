@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   verifyToken: vi.fn(),
   deriveSessionVersion: vi.fn(),
   isJwtSecretMissingError: vi.fn(),
+  isDependencyServiceUnavailableError: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -30,6 +31,11 @@ vi.mock('../services/auth-service', () => ({
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
+  sql: {},
+}));
+
+vi.mock('../routes/auth-helpers', () => ({
+  isDependencyServiceUnavailableError: mocks.isDependencyServiceUnavailableError,
 }));
 
 import { clearAuthUserCacheForTests, requireLogin, requireAdmin } from '../middleware/auth';
@@ -69,6 +75,7 @@ describe('auth middleware deep coverage', () => {
     vi.clearAllMocks();
     clearAuthUserCacheForTests();
     mocks.isJwtSecretMissingError.mockReturnValue(false);
+    mocks.isDependencyServiceUnavailableError.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -219,6 +226,7 @@ describe('auth middleware deep coverage', () => {
     failQuery.then = (onFulfilled, onRejected) =>
       Promise.reject(new Error('db connection lost')).then(onFulfilled, onRejected);
     mocks.select.mockImplementation(() => failQuery);
+    mocks.isDependencyServiceUnavailableError.mockReturnValue(true);
 
     const req = { cookies: { token: 'tok' } } as { cookies: { token: string }; user?: unknown };
     const res = createRes();

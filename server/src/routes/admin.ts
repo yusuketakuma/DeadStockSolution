@@ -26,6 +26,5 @@ router.use(pharmaciesRouter);
 router.use(uploadJobsRouter);
 router.use(drugEquivalencesRouter);
 router.use(csvExportRouter);
-router.use(drugEquivalencesRouter);
 
 export default router;

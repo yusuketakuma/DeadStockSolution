@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
     update: vi.fn(),
+    transaction: vi.fn(),
   },
   hashPassword: vi.fn(),
   verifyPassword: vi.fn(),
@@ -79,6 +80,7 @@ vi.mock('../utils/validators', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
   and: vi.fn(() => ({})),
+  isNull: vi.fn(() => ({})),
   sql: vi.fn(() => ({})),
 }));
 
@@ -126,10 +128,18 @@ const TEST_ACCOUNT = {
 describe('account routes — deep coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.db.transaction.mockImplementation(async (callback: (tx: typeof mocks.db) => Promise<unknown>) => callback(mocks.db));
     mocks.detectChangedReverificationFields.mockReturnValue([]);
     mocks.generateToken.mockReturnValue('new-token');
     mocks.deriveSessionVersion.mockReturnValue('sv1');
   });
+
+  function createMutationQuery() {
+    const query = { set: vi.fn(), where: vi.fn() };
+    query.set.mockReturnValue(query);
+    query.where.mockResolvedValue(undefined);
+    return query;
+  }
 
   describe('PUT / — password change flow', () => {
     it('changes password successfully', async () => {
@@ -139,9 +149,11 @@ describe('account routes — deep coverage', () => {
         .mockReturnValueOnce(createLimitQuery([{ passwordHash: 'old-hash' }]));
       mocks.verifyPassword.mockResolvedValue(true);
       mocks.hashPassword.mockResolvedValue('new-hash');
-      mocks.db.update.mockReturnValue(createUpdateQuery([{
-        id: 1, version: 2, email: 'test@example.com', isAdmin: false, isActive: true, passwordHash: 'new-hash',
-      }]));
+      mocks.db.update
+        .mockReturnValueOnce(createUpdateQuery([{
+          id: 1, version: 2, email: 'test@example.com', isAdmin: false, isActive: true, passwordHash: 'new-hash',
+        }]))
+        .mockReturnValueOnce(createMutationQuery());
 
       const res = await request(app)
         .put('/api/account')
@@ -150,6 +162,8 @@ describe('account routes — deep coverage', () => {
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('更新しました');
       expect(mocks.hashPassword).toHaveBeenCalledWith('NewPassword123');
+      expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
+      expect(mocks.db.update).toHaveBeenCalledTimes(2);
     });
 
     it('returns 400 when current password is wrong during password change', async () => {
@@ -187,15 +201,18 @@ describe('account routes — deep coverage', () => {
         .mockReturnValueOnce(createLimitQuery([{ passwordHash: 'old-hash' }]));
       mocks.verifyPassword.mockResolvedValue(true);
       mocks.hashPassword.mockResolvedValue('new-hash');
-      mocks.db.update.mockReturnValue(createUpdateQuery([{
-        id: 1, version: 2, email: 'test@example.com', isAdmin: false, isActive: true, passwordHash: 'new-hash',
-      }]));
+      mocks.db.update
+        .mockReturnValueOnce(createUpdateQuery([{
+          id: 1, version: 2, email: 'test@example.com', isAdmin: false, isActive: true, passwordHash: 'new-hash',
+        }]))
+        .mockReturnValueOnce(createMutationQuery());
 
       const res = await request(app)
         .put('/api/account')
         .send({ newPassword: 'NewPassword123', currentPassword: 'OldPassword123', version: 1 });
 
       expect(res.status).toBe(200);
+      expect(mocks.db.update).toHaveBeenCalledTimes(2);
     });
   });
 

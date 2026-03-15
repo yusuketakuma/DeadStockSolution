@@ -19,6 +19,24 @@ function makeEvent(overrides: Partial<RawTimelineEvent>): RawTimelineEvent {
 // 固定のnow: 2026-03-01T12:00:00.000Z を使用
 const NOW = new Date('2026-03-01T12:00:00.000Z');
 
+describe('Medium: 予測アラート通知', () => {
+  it('source=notification, type=alert_near_expiry の場合はmedium', () => {
+    const event = makeEvent({
+      source: 'notification',
+      type: 'alert_near_expiry',
+    });
+    expect(assignPriority(event, NOW)).toBe('medium');
+  });
+
+  it('source=notification, type=alert_excess_stock の場合はmedium', () => {
+    const event = makeEvent({
+      source: 'notification',
+      type: 'alert_excess_stock',
+    });
+    expect(assignPriority(event, NOW)).toBe('medium');
+  });
+});
+
 describe('timeline-priority-engine', () => {
   // ============================================================
   // Critical priority
@@ -160,6 +178,24 @@ describe('timeline-priority-engine', () => {
       });
       // デフォルトはlow
       expect(assignPriority(event, NOW)).toBe('low');
+    });
+  });
+
+  describe('Medium: アラート通知', () => {
+    it('source=notification, type=alert_near_expiry の場合はmedium', () => {
+      const event = makeEvent({
+        source: 'notification',
+        type: 'alert_near_expiry',
+      });
+      expect(assignPriority(event, NOW)).toBe('medium');
+    });
+
+    it('source=notification, type=alert_excess_stock の場合はmedium', () => {
+      const event = makeEvent({
+        source: 'notification',
+        type: 'alert_excess_stock',
+      });
+      expect(assignPriority(event, NOW)).toBe('medium');
     });
   });
 

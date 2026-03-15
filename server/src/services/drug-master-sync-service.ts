@@ -6,6 +6,7 @@ import {
   drugMasterPriceHistory,
   drugMasterSyncLogs,
 } from '../db/schema';
+import { invalidateDrugMasterLookupCache } from './drug-master-lookup-service';
 import { normalizePackageInfo } from '../utils/package-utils';
 import { ParsedDrugRow, ParsedPackageRow } from './drug-master-parser-service';
 
@@ -632,4 +633,8 @@ export async function completeSyncLog(logId: number, status: 'success' | 'failed
       completedAt: new Date().toISOString(),
     })
     .where(eq(drugMasterSyncLogs.id, logId));
+
+  if (status === 'success' || status === 'partial') {
+    invalidateDrugMasterLookupCache();
+  }
 }

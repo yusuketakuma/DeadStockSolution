@@ -5,10 +5,15 @@ const mocks = vi.hoisted(() => ({
     select: vi.fn(),
     update: vi.fn(),
   },
+  invalidateDashboardUnreadCache: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
   db: mocks.db,
+}));
+
+vi.mock('../services/notification-service', () => ({
+  invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -50,6 +55,12 @@ function createUpdateReturningResult(result: unknown) {
   const where = vi.fn().mockReturnValue({ returning });
   const set = vi.fn().mockReturnValue({ where });
   return { set, where, returning };
+}
+
+function createUpdateWhereResult(result: unknown) {
+  const where = vi.fn().mockResolvedValue(result);
+  const set = vi.fn().mockReturnValue({ where });
+  return { set, where };
 }
 
 const BASE_ALERT = {
@@ -184,6 +195,24 @@ describe('alert-read-service', () => {
 
       expect(result).toBeDefined();
       expect(result!.resolvedAt).toBe('2025-03-01T00:00:00.000Z');
+    });
+
+    it('linked notification があれば既読化して unread cache を無効化する', async () => {
+      const resolved = { ...BASE_ALERT, notificationId: 77, resolvedAt: '2025-03-01T00:00:00.000Z' };
+      const alertUpdate = createUpdateReturningResult([resolved]);
+      const notificationUpdate = createUpdateWhereResult(undefined);
+      mocks.db.update
+        .mockReturnValueOnce(alertUpdate)
+        .mockReturnValueOnce(notificationUpdate);
+
+      const result = await resolveAlert(1, 10);
+
+      expect(result).toBeDefined();
+      expect(mocks.db.update).toHaveBeenCalledTimes(2);
+      expect(notificationUpdate.set).toHaveBeenCalledWith(expect.objectContaining({
+        isRead: true,
+      }));
+      expect(mocks.invalidateDashboardUnreadCache).toHaveBeenCalledWith(10);
     });
 
     it('存在しないアラートは null を返す', async () => {

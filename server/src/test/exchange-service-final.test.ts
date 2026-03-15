@@ -52,7 +52,7 @@ vi.mock('../services/logger', () => ({
   logger: mocks.logger,
 }));
 
-vi.mock('../routes/statistics', () => ({
+vi.mock('../services/statistics-cache-service', () => ({
   invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
 }));
 

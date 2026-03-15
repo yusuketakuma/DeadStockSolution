@@ -119,6 +119,7 @@ async function createBusinessHoursApp() {
 describe('Optimistic Locking - Account Update', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.db.transaction.mockImplementation(async (callback: (tx: typeof mocks.db) => Promise<unknown>) => callback(mocks.db));
   });
 
   it('should return version in GET /account response', async () => {

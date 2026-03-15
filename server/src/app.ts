@@ -1,7 +1,7 @@
 import { initSentry } from './config/sentry';
 initSentry();
 
-import express, { Request } from 'express';
+import express, { Request, RequestHandler } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import compression from 'compression';
@@ -48,6 +48,28 @@ import { resolveTrustProxySetting } from './utils/trust-proxy';
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', resolveTrustProxySetting());
+
+const API_PREFIXES = ['/api', '/api/v1'] as const;
+const API_BASE_PATH_PATTERN = /^\/api(?:\/v1)?(?:\/|$)/;
+
+function registerApiRoute(path: string, ...handlers: RequestHandler[]): void {
+  for (const prefix of API_PREFIXES) {
+    app.use(`${prefix}${path}`, ...handlers);
+  }
+}
+
+function isOpenclawRawBodyRoute(url?: string): boolean {
+  if (!url) {
+    return false;
+  }
+
+  return (
+    url.startsWith('/api/openclaw/callback')
+    || url.startsWith('/api/openclaw/commands')
+    || url.startsWith('/api/v1/openclaw/callback')
+    || url.startsWith('/api/v1/openclaw/commands')
+  );
+}
 
 /**
  * Sentry DSN からホスト部分を抽出して connectSrc に追加するためのヘルパー。
@@ -181,7 +203,7 @@ app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buf) => {
     // rawBody is required for OpenClaw webhook HMAC verification.
-    if (req.url?.startsWith('/api/openclaw/callback') || req.url?.startsWith('/api/openclaw/commands')) {
+    if (isOpenclawRawBodyRoute(req.url)) {
       (req as Request).rawBody = buf.toString('utf8');
     }
   },
@@ -194,7 +216,7 @@ app.use(requestLogger);
 // Health check endpoints (before rate limiter — no rate limiting needed)
 const HEALTH_CHECK_DB_TIMEOUT_MS = 5_000;
 
-app.get('/api/health', async (_req, res) => {
+const healthHandler: RequestHandler = async (_req, res) => {
   const start = Date.now();
   let dbStatus: 'ok' | 'error' = 'ok';
   let dbResponseTime: number | null = null;
@@ -224,9 +246,9 @@ app.get('/api/health', async (_req, res) => {
     db: { status: dbStatus, responseTime: dbResponseTime },
     version: process.env.npm_package_version ?? '0.0.0',
   });
-});
+};
 
-app.get('/api/health/ready', async (_req, res) => {
+const readinessHandler: RequestHandler = async (_req, res) => {
   try {
     await Promise.race([
       db.execute(sql`SELECT 1`),
@@ -240,7 +262,12 @@ app.get('/api/health/ready', async (_req, res) => {
     logger.error('Readiness check: database connection failed', { error: reason });
     res.status(503).json({ ready: false });
   }
-});
+};
+
+for (const prefix of API_PREFIXES) {
+  app.get(`${prefix}/health`, healthHandler);
+  app.get(`${prefix}/health/ready`, readinessHandler);
+}
 
 const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -250,7 +277,7 @@ const apiRateLimiter = rateLimit({
   skip: (req) => req.method === 'OPTIONS',
   message: { error: 'リクエストが集中しています。しばらくしてから再試行してください' },
 });
-app.use('/api', apiRateLimiter);
+app.use(API_BASE_PATH_PATTERN, apiRateLimiter);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -268,38 +295,38 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use('/api', csrfProtection);
+app.use(API_BASE_PATH_PATTERN, csrfProtection);
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/auth', verificationRoutes);
-app.use('/api/account', accountRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/exchange', exchangeRoutes);
-app.use('/api/pharmacies', pharmaciesRoutes);
-app.use('/api/notifications', notificationsRoutes);
-app.use('/api/timeline', timelineRoutes);
-app.use('/api/requests', requestsRoutes);
-app.use('/api/openclaw', openclawRoutes);
-app.use('/api/openclaw/commands', openclawCommandsRoutes);
-app.use('/api/business-hours', businessHoursRoutes);
-app.use('/api/search', searchRoutes);
-app.use('/api/admin/drug-master', drugMasterRoutes);
-app.use('/api/admin/error-codes', adminErrorCodesRoutes);
-app.use('/api/admin/log-center', adminLogCenterRoutes);
-app.use('/api/updates', updatesRoutes);
-app.use('/api/internal/matching-refresh', internalMatchingRefreshRoutes);
-app.use('/api/internal/monthly-reports', internalMonthlyReportsRoutes);
-app.use('/api/internal/upload-jobs', internalUploadJobsRoutes);
-app.use('/api/internal/monitoring', internalMonitoringRoutes);
-app.use('/api/internal/predictive-alerts', internalPredictiveAlertsRoutes);
-app.use('/api/internal/vercel', internalVercelDeployEventsRoutes);
-app.use('/api/statistics', statisticsRoutes);
-app.use('/api/groups', requireLogin, groupsRoutes);
-app.use('/api/alerts', requireLogin, alertsRoutes);
-app.use('/api/push', pushRoutes);
+registerApiRoute('/auth', authRoutes);
+registerApiRoute('/auth', verificationRoutes);
+registerApiRoute('/account', accountRoutes);
+registerApiRoute('/admin', adminRoutes);
+registerApiRoute('/upload', uploadRoutes);
+registerApiRoute('/inventory', inventoryRoutes);
+registerApiRoute('/exchange', exchangeRoutes);
+registerApiRoute('/pharmacies', pharmaciesRoutes);
+registerApiRoute('/notifications', notificationsRoutes);
+registerApiRoute('/timeline', timelineRoutes);
+registerApiRoute('/requests', requestsRoutes);
+registerApiRoute('/openclaw', openclawRoutes);
+registerApiRoute('/openclaw/commands', openclawCommandsRoutes);
+registerApiRoute('/business-hours', businessHoursRoutes);
+registerApiRoute('/search', searchRoutes);
+registerApiRoute('/admin/drug-master', drugMasterRoutes);
+registerApiRoute('/admin/error-codes', adminErrorCodesRoutes);
+registerApiRoute('/admin/log-center', adminLogCenterRoutes);
+registerApiRoute('/updates', updatesRoutes);
+registerApiRoute('/internal/matching-refresh', internalMatchingRefreshRoutes);
+registerApiRoute('/internal/monthly-reports', internalMonthlyReportsRoutes);
+registerApiRoute('/internal/upload-jobs', internalUploadJobsRoutes);
+registerApiRoute('/internal/monitoring', internalMonitoringRoutes);
+registerApiRoute('/internal/predictive-alerts', internalPredictiveAlertsRoutes);
+registerApiRoute('/internal/vercel', internalVercelDeployEventsRoutes);
+registerApiRoute('/statistics', statisticsRoutes);
+registerApiRoute('/groups', requireLogin, groupsRoutes);
+registerApiRoute('/alerts', requireLogin, alertsRoutes);
+registerApiRoute('/push', pushRoutes);
 
 app.use(errorHandler);
 

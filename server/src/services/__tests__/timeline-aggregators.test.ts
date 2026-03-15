@@ -89,6 +89,7 @@ describe('timeline-aggregators', () => {
       const db = createDbMock([]);
       await expect(fetchNotificationEvents(db, 1)).resolves.toEqual([]);
     });
+
   });
 
   describe('fetchMatchEvents', () => {

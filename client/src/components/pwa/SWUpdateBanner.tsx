@@ -6,7 +6,7 @@ import { useSWUpdate } from '../../hooks/useSWUpdate';
  * registerType: 'prompt' 前提で、新しいSWが待機中のとき表示
  */
 export default function SWUpdateBanner() {
-  const { needsUpdate, updateSW } = useSWUpdate();
+  const { needsUpdate, isUpdating, updateSW } = useSWUpdate();
 
   if (!needsUpdate) return null;
 
@@ -18,8 +18,8 @@ export default function SWUpdateBanner() {
     >
       <div className="d-flex align-items-center justify-content-between gap-2">
         <span>新しいバージョンがあります。更新しますか？</span>
-        <Button variant="primary" size="sm" onClick={updateSW}>
-          更新する
+        <Button variant="primary" size="sm" onClick={updateSW} disabled={isUpdating}>
+          {isUpdating ? '更新中...' : '更新する'}
         </Button>
       </div>
     </Alert>

@@ -8,6 +8,7 @@ const mockUpdateSW = vi.fn();
 vi.mock('../../hooks/useSWUpdate', () => ({
   useSWUpdate: vi.fn(() => ({
     needsUpdate: false,
+    isUpdating: false,
     updateSW: mockUpdateSW,
   })),
 }));
@@ -27,6 +28,7 @@ describe('SWUpdateBanner', () => {
   it('shows update banner when needsUpdate is true', () => {
     vi.mocked(useSWUpdate).mockReturnValue({
       needsUpdate: true,
+      isUpdating: false,
       updateSW: mockUpdateSW,
     });
 
@@ -39,6 +41,7 @@ describe('SWUpdateBanner', () => {
     const user = userEvent.setup();
     vi.mocked(useSWUpdate).mockReturnValue({
       needsUpdate: true,
+      isUpdating: false,
       updateSW: mockUpdateSW,
     });
 

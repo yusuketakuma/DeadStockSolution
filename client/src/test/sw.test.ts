@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const registerRoute = vi.fn();
+
 vi.mock('workbox-expiration', () => ({
   ExpirationPlugin: class ExpirationPlugin {},
 }));
@@ -10,13 +12,12 @@ vi.mock('workbox-precaching', () => ({
 }));
 
 vi.mock('workbox-routing', () => ({
-  registerRoute: vi.fn(),
+  registerRoute,
   setCatchHandler: vi.fn(),
 }));
 
 vi.mock('workbox-strategies', () => ({
   CacheFirst: class CacheFirst {},
-  StaleWhileRevalidate: class StaleWhileRevalidate {},
 }));
 
 type NotificationClickHandler = (event: NotificationEvent) => void;
@@ -28,6 +29,7 @@ describe('service worker notification clicks', () => {
 
   beforeEach(async () => {
     vi.resetModules();
+    registerRoute.mockReset();
     notificationClickHandler = undefined;
     matchAll = vi.fn();
     openWindow = vi.fn();
@@ -72,6 +74,14 @@ describe('service worker notification clicks', () => {
     } as unknown as NotificationEvent;
 
     return { event, close, waitUntil };
+  }
+
+  function routeMatchesRequest(url: string, request: Pick<Request, 'destination' | 'method' | 'mode'>): boolean {
+    const parsedUrl = new URL(url);
+    return registerRoute.mock.calls.some(([matcher]) => {
+      if (typeof matcher !== 'function') return false;
+      return matcher({ url: parsedUrl, request });
+    });
   }
 
   it('rejects cross-origin notification URLs', () => {
@@ -125,5 +135,19 @@ describe('service worker notification clicks', () => {
 
     expect(focus).toHaveBeenCalledTimes(1);
     expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it('does not cache private API requests', () => {
+    expect(routeMatchesRequest('https://app.example/api/admin/logs', {
+      destination: '',
+      method: 'GET',
+      mode: 'same-origin',
+    })).toBe(false);
+
+    expect(routeMatchesRequest('https://app.example/api/account', {
+      destination: '',
+      method: 'GET',
+      mode: 'same-origin',
+    })).toBe(false);
   });
 });

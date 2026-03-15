@@ -3,8 +3,8 @@ import {
   buildUsedMedIndex,
   findBestDrugMatch,
   findBestDrugMatchWithEquivalences,
-  DrugMatchResult,
 } from '../services/matching-score-service';
+import type { DrugMatchResult } from '../types/matching';
 
 describe('Brand/Generic equivalence matching', () => {
   const usedMedRows = [

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateCandidateScore,
   DEFAULT_MATCHING_SCORING_RULES,
-  type MatchingScoringRules,
 } from '../services/matching-score-service';
+import type { MatchingScoringRules } from '../types/matching';
 import { MatchItem } from '../types';
 
 function createItem(): MatchItem {

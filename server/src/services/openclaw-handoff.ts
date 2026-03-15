@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getErrorMessage } from '../middleware/error-handler';
+import { buildSafeCliEnv, isSafeCliPath } from '../utils/cli-exec';
 import { sleep } from '../utils/http-utils';
 import { logger } from './logger';
 import {
@@ -39,15 +40,6 @@ const execFileAsync = promisify(execFile);
 export type { OpenClawHandoffInput } from './openclaw-handoff-helpers';
 export type { GatewaySendInput } from './openclaw-handoff-helpers';
 
-function buildCliExecEnv() {
-  return {
-    PATH: process.env.PATH,
-    HOME: process.env.HOME,
-    USER: process.env.USER,
-    LANG: process.env.LANG ?? 'en_US.UTF-8',
-  };
-}
-
 function buildGatewayCliMessage(
   input: OpenClawHandoffInput,
   idempotencyKey: string,
@@ -75,6 +67,16 @@ async function handoffViaGatewayCli(
   input: OpenClawHandoffInput,
   idempotencyKey: string,
 ): Promise<OpenClawHandoffResult> {
+  if (!isSafeCliPath(config.cliPath)) {
+    logger.error('OpenClaw handoff gateway_cli refused unsafe cliPath', {
+      mode: config.mode,
+      requestId: input.requestId,
+      pharmacyId: input.pharmacyId,
+      cliPath: config.cliPath.slice(0, 64),
+    });
+    return buildHandoffFailure(config, 'OpenClaw Gateway CLI path が不正です。管理者に連絡してください。');
+  }
+
   const timeoutSeconds = getGatewayTimeoutSeconds();
   const maxAttempts = getRetryMaxAttempts();
   const message = buildGatewayCliMessage(input, idempotencyKey);
@@ -94,7 +96,7 @@ async function handoffViaGatewayCli(
       const { stdout } = await execFileAsync(config.cliPath, args, {
         timeout: timeoutSeconds * 1000 + 3000,
         maxBuffer: 2 * 1024 * 1024,
-        env: buildCliExecEnv(),
+        env: buildSafeCliEnv(),
       });
 
       let payload: OpenClawCliAgentResponse = {};
@@ -275,6 +277,14 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
   const config = getOpenClawConfig();
 
   if (config.mode === 'gateway_cli') {
+    if (!isSafeCliPath(config.cliPath)) {
+      logger.error('OpenClaw gateway send refused unsafe cliPath', {
+        mode: config.mode,
+        cliPath: config.cliPath.slice(0, 64),
+      });
+      throw new Error('OpenClaw Gateway CLI path is invalid');
+    }
+
     const timeoutSeconds = getGatewayTimeoutSeconds();
     const args = [
       'agent',
@@ -288,7 +298,7 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
     const { stdout } = await execFileAsync(config.cliPath, args, {
       timeout: timeoutSeconds * 1000 + 3000,
       maxBuffer: 2 * 1024 * 1024,
-      env: buildCliExecEnv(),
+      env: buildSafeCliEnv(),
     });
 
     let parsed: Record<string, unknown> = {};

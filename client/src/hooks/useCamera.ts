@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BarcodeFormat, DecodeHintType, NotFoundException } from '@zxing/library';
-import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser';
 import type { AppendOrUpdateRowResult } from './useBarcodeResolver';
+import type { ScannerControlsLike, ZxingDecodeCallback } from '../lib/zxing-camera';
 
 interface DetectedBarcodeLike {
   rawValue?: string;
@@ -17,7 +16,6 @@ interface BarcodeDetectorConstructorLike {
 
 const SCAN_DUPLICATE_SUPPRESS_MS = 1500;
 const CAMERA_ERROR_UPDATE_MIN_INTERVAL_MS = 1200;
-const ZXING_RSS_WARNING = 'RSS Expanded reader IS NOT ready for production yet! use at your own risk.';
 
 const BARCODE_DETECTOR_FORMATS = [
   'data_matrix',
@@ -30,68 +28,9 @@ const BARCODE_DETECTOR_FORMATS = [
   'qr_code',
 ];
 
-const CAMERA_CONSTRAINTS_PREFERRED: MediaStreamConstraints = {
-  audio: false,
-  video: {
-    facingMode: { ideal: 'environment' },
-    width: { ideal: 1280, max: 1920 },
-    height: { ideal: 720, max: 1080 },
-    frameRate: { ideal: 24, max: 30 },
-  },
-};
-
-const CAMERA_CONSTRAINTS_FALLBACK: MediaStreamConstraints = {
-  audio: false,
-  video: {
-    facingMode: { ideal: 'environment' },
-  },
-};
-
-const POSSIBLE_FORMATS = [
-  BarcodeFormat.DATA_MATRIX,
-  BarcodeFormat.CODE_128,
-  BarcodeFormat.EAN_13,
-  BarcodeFormat.EAN_8,
-  BarcodeFormat.ITF,
-  BarcodeFormat.RSS_14,
-  BarcodeFormat.RSS_EXPANDED,
-  BarcodeFormat.QR_CODE,
-];
-
-function createReader(): BrowserMultiFormatReader {
-  const hints = new Map<DecodeHintType, unknown>();
-  hints.set(DecodeHintType.POSSIBLE_FORMATS, POSSIBLE_FORMATS);
-  const currentWarn = console.warn;
-  console.warn = (message?: unknown, ...args: unknown[]) => {
-    if (message === ZXING_RSS_WARNING) {
-      return;
-    }
-    currentWarn(message, ...args);
-  };
-  try {
-    return new BrowserMultiFormatReader(hints, {
-      delayBetweenScanAttempts: 180,
-      delayBetweenScanSuccess: 600,
-    });
-  } finally {
-    console.warn = currentWarn;
-  }
-}
-
 function getBarcodeDetectorConstructor(): BarcodeDetectorConstructorLike | null {
   const maybe = (globalThis as { BarcodeDetector?: unknown }).BarcodeDetector;
   return typeof maybe === 'function' ? maybe as BarcodeDetectorConstructorLike : null;
-}
-
-function isOverconstrainedError(error: unknown): boolean {
-  if (error instanceof DOMException) {
-    return error.name === 'OverconstrainedError';
-  }
-  if (typeof error === 'object' && error !== null && 'name' in error) {
-    const { name } = error as { name?: unknown };
-    return name === 'OverconstrainedError';
-  }
-  return false;
 }
 
 function resolveCameraStartErrorMessage(error: unknown): string {
@@ -159,36 +98,13 @@ async function detectWithBarcodeDetector(
   )];
 }
 
-function detectWithZxingCanvas(
-  canvas: HTMLCanvasElement,
-  normalizeCodeInput: (value: string) => string,
-): string[] {
-  try {
-    const reader = createReader();
-    const result = reader.decodeFromCanvas(canvas);
-    const fallbackCode = normalizeCodeInput(result.getText());
-    return fallbackCode ? [fallbackCode] : [];
-  } catch (err) {
-    if (err instanceof NotFoundException) {
-      return [];
-    }
-    throw err;
-  }
-}
+let zxingCameraModulePromise: Promise<typeof import('../lib/zxing-camera')> | null = null;
 
-async function startReaderWithFallback(
-  reader: BrowserMultiFormatReader,
-  videoElement: HTMLVideoElement,
-  onDecode: NonNullable<Parameters<BrowserMultiFormatReader['decodeFromConstraints']>[2]>,
-): Promise<IScannerControls> {
-  try {
-    return await reader.decodeFromConstraints(CAMERA_CONSTRAINTS_PREFERRED, videoElement, onDecode);
-  } catch (error) {
-    if (!isOverconstrainedError(error)) {
-      throw error;
-    }
-    return reader.decodeFromConstraints(CAMERA_CONSTRAINTS_FALLBACK, videoElement, onDecode);
+function loadZxingCameraModule() {
+  if (!zxingCameraModulePromise) {
+    zxingCameraModulePromise = import('../lib/zxing-camera');
   }
+  return zxingCameraModulePromise;
 }
 
 async function resolveDetectedCodes(
@@ -230,7 +146,7 @@ export function useCamera({
   const [torchBusy, setTorchBusy] = useState(false);
   const [frameCapturing, setFrameCapturing] = useState(false);
 
-  const controlsRef = useRef<IScannerControls | null>(null);
+  const controlsRef = useRef<ScannerControlsLike | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const barcodeDetectorRef = useRef<BarcodeDetectorLike | null>(null);
@@ -320,6 +236,7 @@ export function useCamera({
       }
     }
 
+    const { detectWithZxingCanvas } = await loadZxingCameraModule();
     return detectWithZxingCanvas(canvas, normalizeCodeInput);
   }, [normalizeCodeInput]);
 
@@ -387,11 +304,9 @@ export function useCamera({
     try {
       const sessionId = cameraSessionRef.current + 1;
       cameraSessionRef.current = sessionId;
+      const { NotFoundException, createReader, startReaderWithFallback } = await loadZxingCameraModule();
       const reader = createReader();
-      type DecodeCallback = NonNullable<Parameters<typeof reader.decodeFromConstraints>[2]>;
-      type DecodeResult = Parameters<DecodeCallback>[0];
-      type DecodeError = Parameters<DecodeCallback>[1];
-      const onDecode = (result: DecodeResult, decodeError: DecodeError) => {
+      const onDecode: ZxingDecodeCallback = (result, decodeError) => {
         if (result) {
           void handleDecodedFromCamera(result.getText(), sessionId);
           return;

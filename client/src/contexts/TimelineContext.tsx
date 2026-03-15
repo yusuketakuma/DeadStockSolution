@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { timelineApi } from '../api/timeline';
 import { usePolledFetch } from '../hooks/usePolledFetch';
@@ -48,6 +48,7 @@ const TimelineContext = createContext<TimelineContextValue>({
 });
 
 const PAGE_LIMIT = 20;
+const MAX_TIMELINE_EVENTS = 200;
 
 interface TimelineProviderInitialState {
   events?: TimelineEvent[];
@@ -91,12 +92,19 @@ export function TimelineProvider({
 
   const [unreadCount, setUnreadCount] = useState(initialState?.unreadCount ?? 0);
 
+  // AbortController で進行中リクエストをキャンセル可能にする
+  const abortRef = useRef<AbortController | null>(null);
+
   const fetchTimeline = useCallback(async (
     cursor: string | undefined,
     priority: TimelinePriority | null,
     append: boolean,
   ) => {
     if (!user) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError('');
     try {
@@ -106,24 +114,36 @@ export function TimelineProvider({
       if (cursor) params.cursor = cursor;
       if (priority) params.priority = priority;
 
-      const data = await timelineApi.getTimeline(params);
+      const data = await timelineApi.getTimeline(params, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       if (append) {
-        setEvents((prev) => [...prev, ...data.events]);
+        setEvents((prev) => {
+          const combined = [...prev, ...data.events];
+          return combined.length > MAX_TIMELINE_EVENTS
+            ? combined.slice(-MAX_TIMELINE_EVENTS)
+            : combined;
+        });
       } else {
         setEvents(data.events);
         setTotal(data.total);
       }
       setHasMore(data.hasMore);
       setNextCursor(data.nextCursor ?? data.pagination?.nextCursor ?? null);
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError('タイムラインの取得に失敗しました');
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setLoading(false);
     }
   }, [user]);
 
   const fetchBootstrap = useCallback(async (priority: TimelinePriority | null) => {
     if (!user) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setDigestLoading(true);
     setError('');
@@ -133,16 +153,19 @@ export function TimelineProvider({
       };
       if (priority) params.priority = priority;
 
-      const data = await timelineApi.getBootstrap(params);
+      const data = await timelineApi.getBootstrap(params, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setEvents(data.timeline.events);
       setTotal(data.timeline.total);
       setHasMore(data.timeline.hasMore);
       setNextCursor(data.timeline.nextCursor ?? data.timeline.pagination?.nextCursor ?? null);
       setDigestEvents(data.digest.events);
       setUnreadCount(data.unreadCount);
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError('タイムラインの取得に失敗しました');
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setLoading(false);
       setDigestLoading(false);
     }
@@ -195,6 +218,8 @@ export function TimelineProvider({
   // 初回フェッチ + ログアウト時リセット（user 変更時のみ発火）
   useEffect(() => {
     if (!user) {
+      abortRef.current?.abort();
+      abortRef.current = null;
       setEvents([]);
       setDigestEvents([]);
       setUnreadCount(0);
@@ -210,6 +235,11 @@ export function TimelineProvider({
     }
 
     void refreshTimeline();
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+    // refreshTimeline は意図的に除外: user 変更時のみ bootstrap を発火させるため
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disableBootstrap, user]);
 

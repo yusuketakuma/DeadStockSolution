@@ -65,6 +65,25 @@ describe('mapNotificationToEvent', () => {
     expect(event.isRead).toBe(true);
   });
 
+  it('alertタイプの通知は/alertsパスに変換する', () => {
+    const row = {
+      id: 4,
+      type: 'alert_near_expiry',
+      title: '期限切迫在庫の予兆があります',
+      message: '在庫を確認してください。',
+      referenceType: 'alert',
+      referenceId: 77,
+      isRead: false,
+      createdAt: '2026-01-02T10:00:00.000Z',
+    };
+
+    const event = mapNotificationToEvent(row);
+
+    expect(event.type).toBe('alert_near_expiry');
+    expect(event.actionPath).toBe('/alerts');
+    expect(event.metadata).toMatchObject({ referenceType: 'alert', referenceId: 77 });
+  });
+
   it('referenceTypeが不明の場合はデフォルトの/パスを使用する', () => {
     const row = {
       id: 3,

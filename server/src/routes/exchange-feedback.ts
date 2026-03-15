@@ -9,6 +9,7 @@ import { AuthRequest } from '../types';
 import { recalculateTrustScoreForPharmacy } from '../services/trust-score-service';
 import { logger } from '../services/logger';
 import { parseExchangeIdOrBadRequest } from './exchange-utils';
+import { invalidateStatisticsSummaryCacheForPharmacies } from '../services/statistics-cache-service';
 
 const router = Router();
 
@@ -79,6 +80,7 @@ router.post('/proposals/:id/feedback', async (req: AuthRequest, res: Response) =
     });
 
     await recalculateTrustScoreForPharmacy(targetPharmacyId);
+    invalidateStatisticsSummaryCacheForPharmacies([actorId, targetPharmacyId]);
 
     res.status(201).json({ message: '取引評価を登録しました' });
   } catch (err) {

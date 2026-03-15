@@ -28,11 +28,11 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const pharmacyId = req.user!.id;
     const resolved = parseResolved(req.query.resolved as string | undefined);
-    const type = req.query.type as string | undefined;
+    const type = (req.query.type ?? req.query.alertType) as string | undefined;
     const offset = parsePositiveInt(req.query.offset) ?? 0;
     const limit = parsePositiveInt(req.query.limit) ?? 20;
 
-    // alertType バリデーション
+    // type バリデーション (`alertType` は後方互換 alias として受ける)
     if (type && !(predictiveAlertTypeValues as readonly string[]).includes(type)) {
       res.status(400).json({ error: `不正なアラートタイプです: ${type}` });
       return;

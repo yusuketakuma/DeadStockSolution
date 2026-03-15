@@ -1,9 +1,8 @@
-import { useCallback } from 'react';
 import { Container, Row, Col, Badge } from 'react-bootstrap';
 import AppKpiCard from '../components/ui/AppKpiCard';
 import AppDataPanel from '../components/ui/AppDataPanel';
-import { useAsyncResource } from '../hooks/useAsyncResource';
 import { api } from '../api/client';
+import { useApiQuery } from '../hooks/useApiQuery';
 import { formatYen, formatDateJa } from '../utils/formatters';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import InlineLoader from '../components/ui/InlineLoader';
@@ -143,19 +142,22 @@ function StatisticsShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function StatisticsPage() {
-  const fetcher = useCallback(
-    (signal: AbortSignal) => api.get<StatisticsSummary>('/statistics/summary', { signal }),
-    [],
+  const {
+    data,
+    error,
+    isLoading: loading,
+  } = useApiQuery(
+    ['statistics-summary'],
+    ({ signal }) => api.get<StatisticsSummary>('/statistics/summary', { signal }),
   );
-
-  const { data, error, loading } = useAsyncResource(fetcher);
+  const queryError = error instanceof Error ? error.message : '';
   const summary = data ?? EMPTY_STATS;
   const buckets = summary.inventory.bucketCounts;
 
   return (
-    <StatisticsShell>
-      {loading && <InlineLoader text="統計データを読み込み中..." />}
-      {error && <div className="alert alert-danger">{error}</div>}
+      <StatisticsShell>
+        {loading && <InlineLoader text="統計データを読み込み中..." />}
+        {queryError && <div className="alert alert-danger">{queryError}</div>}
       {/* アクション待ち・アラート */}
       {hasAttentionSection(summary) && (
         <AppDataPanel title="要対応" className="mb-3">

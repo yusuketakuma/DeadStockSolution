@@ -1,7 +1,8 @@
 import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../config/database';
-import { predictiveAlerts, type PredictiveAlertType } from '../db/schema';
+import { notifications, predictiveAlerts, type PredictiveAlertType } from '../db/schema';
 import type { AlertItem, AlertListResponse, AlertStats } from '../types/alert';
+import { invalidateDashboardUnreadCache } from './notification-service';
 
 // ── 型定義 ──────────────────────────────────
 
@@ -113,14 +114,28 @@ export async function resolveAlert(
   id: number,
   pharmacyId: number,
 ): Promise<AlertItem | null> {
+  const now = new Date().toISOString();
   const rows = await db
     .update(predictiveAlerts)
-    .set({ resolvedAt: new Date().toISOString() })
+    .set({ resolvedAt: now })
     .where(and(eq(predictiveAlerts.id, id), eq(predictiveAlerts.pharmacyId, pharmacyId)))
     .returning();
 
   if (rows.length === 0) return null;
-  return toAlertItem(rows[0]);
+
+  const resolvedAlert = rows[0];
+  if (resolvedAlert.notificationId) {
+    await db
+      .update(notifications)
+      .set({ isRead: true, readAt: now })
+      .where(and(
+        eq(notifications.id, resolvedAlert.notificationId),
+        eq(notifications.pharmacyId, pharmacyId),
+      ));
+    invalidateDashboardUnreadCache(pharmacyId);
+  }
+
+  return toAlertItem(resolvedAlert);
 }
 
 // ── アラート統計 ──────────────────────────────────

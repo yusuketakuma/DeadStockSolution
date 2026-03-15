@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
-    "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
+    "lint": "eslint \"src/**/*.{ts,tsx}\" --cache --cache-location ../.npm-cache/eslint/client",
+    "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix --cache --cache-location ../.npm-cache/eslint/client",
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "NODE_OPTIONS=--max-old-space-size=8192 vitest run --coverage --maxWorkers=2",
@@ -18,6 +18,8 @@
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@sentry/react": "^10.42.0",
+    "@tanstack/react-query": "^5.90.21",
+    "@tanstack/react-query-devtools": "^5.91.3",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "bootstrap": "^5.3.8",

@@ -23,7 +23,7 @@ interface UsePaginatedListReturn<TItem, TResponse extends PaginatedResponse<TIte
   pagination: TResponse['pagination'] | null;
   loading: boolean;
   error: string;
-  fetchPage: (targetPage: number) => Promise<void>;
+  fetchPage: (targetPage: number, options?: { force?: boolean }) => Promise<void>;
   retry: () => void;
   invalidateCache: () => void;
 }
@@ -53,9 +53,10 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
     responseCacheRef.current.clear();
   }, [fetcher]);
 
-  const fetchPage = useCallback(async (targetPage: number) => {
+  const fetchPage = useCallback(async (targetPage: number, options?: { force?: boolean }) => {
     const cached = responseCacheRef.current.get(targetPage);
-    if (cached) {
+    const force = options?.force ?? false;
+    if (cached && !force) {
       setResponse(cached);
       setItems(cached.data);
       setPagination(cached.pagination);
@@ -104,7 +105,7 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
 
   const retry = useCallback(() => {
     responseCacheRef.current.clear();
-    void fetchPage(page);
+    void fetchPage(page, { force: true });
   }, [fetchPage, page]);
 
   useEffect(() => {

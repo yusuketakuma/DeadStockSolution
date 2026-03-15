@@ -4,7 +4,10 @@ const mocks = vi.hoisted(() => ({
   db: {
     insert: vi.fn(),
   },
-  enqueueLogAlert: vi.fn(),
+  dispatchLogAlert: vi.fn(),
+  getLogEntryById: vi.fn(),
+  getLogInsightForEntry: vi.fn(),
+  recordLogIssueAutoEscalation: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -16,7 +19,13 @@ vi.mock('../services/logger', () => ({
 }));
 
 vi.mock('../services/openclaw-log-push-service', () => ({
-  enqueueLogAlert: mocks.enqueueLogAlert,
+  dispatchLogAlert: mocks.dispatchLogAlert,
+}));
+
+vi.mock('../services/log-center-service', () => ({
+  getLogEntryById: mocks.getLogEntryById,
+  getLogInsightForEntry: mocks.getLogInsightForEntry,
+  recordLogIssueAutoEscalation: mocks.recordLogIssueAutoEscalation,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -33,15 +42,21 @@ import {
 
 function createInsertChain() {
   return {
-    values: vi.fn().mockResolvedValue(undefined),
+    values: vi.fn(),
+    returning: vi.fn().mockResolvedValue([{ id: 101 }]),
   };
 }
 
 describe('system-event-service ultra coverage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mocks.db.insert.mockReturnValue(createInsertChain());
-    mocks.enqueueLogAlert.mockReturnValue(undefined);
+    const chain = createInsertChain();
+    chain.values.mockReturnValue(chain);
+    mocks.db.insert.mockReturnValue(chain);
+    mocks.dispatchLogAlert.mockResolvedValue({ mode: 'enqueued', reasonCodes: [] });
+    mocks.getLogEntryById.mockResolvedValue(null);
+    mocks.getLogInsightForEntry.mockResolvedValue(null);
+    mocks.recordLogIssueAutoEscalation.mockResolvedValue(undefined);
   });
 
   describe('recordSystemEvent', () => {
@@ -63,7 +78,7 @@ describe('system-event-service ultra coverage', () => {
         message: 'warning message',
       } as never);
       expect(result).toBe(true);
-      expect(mocks.enqueueLogAlert).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mocks.dispatchLogAlert).toHaveBeenCalledWith(expect.objectContaining({
         severity: 'warning',
       }));
     });
@@ -76,7 +91,7 @@ describe('system-event-service ultra coverage', () => {
         message: 'info message',
       } as never);
       expect(result).toBe(true);
-      expect(mocks.enqueueLogAlert).not.toHaveBeenCalled();
+      expect(mocks.dispatchLogAlert).not.toHaveBeenCalled();
     });
 
     it('returns false when db insert fails', async () => {
@@ -177,10 +192,8 @@ describe('system-event-service ultra coverage', () => {
       expect(result).toBe(true);
     });
 
-    it('does not fail when enqueueLogAlert throws', async () => {
-      mocks.enqueueLogAlert.mockImplementation(() => {
-        throw new Error('push fail');
-      });
+    it('does not fail when dispatchLogAlert throws', async () => {
+      mocks.dispatchLogAlert.mockRejectedValue(new Error('push fail'));
       const result = await recordSystemEvent({
         source: 'runtime_error',
         level: 'error',

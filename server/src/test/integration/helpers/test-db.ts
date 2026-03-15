@@ -78,24 +78,22 @@ const DRIZZLE_DIR = path.resolve(__dirname, '../../../../drizzle');
 function getLatestSnapshot(): Snapshot {
   if (snapshotCache) return snapshotCache;
 
-  const journalPath = path.join(DRIZZLE_DIR, 'meta', '_journal.json');
-  const journal = JSON.parse(fs.readFileSync(journalPath, 'utf-8')) as {
-    entries: Array<{ idx: number; tag: string }>;
-  };
+  const metaDir = path.join(DRIZZLE_DIR, 'meta');
+  const snapshotFiles = fs.readdirSync(metaDir)
+    .map((name) => {
+      const match = name.match(/^(\d+)_snapshot\.json$/);
+      return match ? { name, idx: Number(match[1]) } : null;
+    })
+    .filter((entry): entry is { name: string; idx: number } => entry != null)
+    .sort((a, b) => b.idx - a.idx);
 
-  const sorted = [...journal.entries].sort((a, b) => b.idx - a.idx);
-  for (const entry of sorted) {
-    const snapshotPath = path.join(
-      DRIZZLE_DIR,
-      'meta',
-      `${String(entry.idx).padStart(4, '0')}_snapshot.json`,
-    );
-    if (fs.existsSync(snapshotPath)) {
-      snapshotCache = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8')) as Snapshot;
-      return snapshotCache;
-    }
+  for (const file of snapshotFiles) {
+    const snapshotPath = path.join(metaDir, file.name);
+    snapshotCache = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8')) as Snapshot;
+    return snapshotCache;
   }
-  throw new Error('No Drizzle snapshot found');
+
+  throw new Error(`No Drizzle snapshot found in ${metaDir}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -122,6 +120,13 @@ function buildColumnDef(col: SnapshotColumn): string {
 
 function quoteIdentifier(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function quoteQualifiedIdentifier(identifier: string): string {
+  return identifier
+    .split('.')
+    .map((part) => quoteIdentifier(part))
+    .join('.');
 }
 
 function joinQuoted(columns: string[]): string {
@@ -265,7 +270,7 @@ export async function resetTestDb(): Promise<void> {
   const tableNames = getResetTableNames();
   if (tableNames.length === 0) return;
 
-  const tables = tableNames.map(quoteIdentifier).join(', ');
+  const tables = tableNames.map(quoteQualifiedIdentifier).join(', ');
   await db.execute(sql.raw(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE`));
 }
 

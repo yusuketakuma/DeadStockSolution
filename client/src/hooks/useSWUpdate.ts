@@ -3,11 +3,13 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 
 interface SWUpdateState {
   needsUpdate: boolean;
+  isUpdating: boolean;
   updateSW: () => void;
 }
 
 export function useSWUpdate(): SWUpdateState {
   const [needsUpdate, setNeedsUpdate] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const { needRefresh, updateServiceWorker } = useRegisterSW({
     onRegistered() {
       // SW registered
@@ -27,12 +29,14 @@ export function useSWUpdate(): SWUpdateState {
   }, [needRefresh]);
 
   const updateSW = () => {
+    setIsUpdating(true);
     setNeedsUpdate(false);
     updateServiceWorker(true);
   };
 
   return {
     needsUpdate,
+    isUpdating,
     updateSW,
   };
 }

@@ -67,11 +67,38 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 500,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-            'vendor-bootstrap': ['react-bootstrap', 'bootstrap'],
-            'vendor-forms': ['@hookform/resolvers', 'react-hook-form', 'zod'],
-            'vendor-sentry': ['@sentry/react'],
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('@tanstack/react-query')) {
+                return 'vendor-query';
+              }
+              if (id.includes('@zxing/')) {
+                return 'vendor-zxing';
+              }
+              if (id.includes('@sentry/')) {
+                return 'vendor-sentry';
+              }
+              if (id.includes('react-bootstrap') || id.includes('bootstrap')) {
+                return 'vendor-bootstrap';
+              }
+              if (
+                id.includes('@hookform/resolvers') ||
+                id.includes('react-hook-form') ||
+                id.includes('zod')
+              ) {
+                return 'vendor-forms';
+              }
+              if (
+                id.includes('/react/') ||
+                id.includes('/react-dom/') ||
+                id.includes('react-router-dom')
+              ) {
+                return 'vendor-react';
+              }
+            }
+            if (id.includes('/pages/admin/')) {
+              return 'admin-pages';
+            }
           },
         },
       },

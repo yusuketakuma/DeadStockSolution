@@ -31,17 +31,16 @@ const mockAlertList = {
   alerts: [
     makeAlert({ id: 1, alertType: 'near_expiry', title: '期限切迫在庫の予兆があります' }),
     makeAlert({ id: 2, alertType: 'excess_stock', title: '過剰在庫の予兆があります' }),
-    makeAlert({ id: 3, alertType: 'no_movement', title: '長期不動在庫の予兆があります' }),
   ],
-  total: 3,
+  total: 2,
   offset: 0,
   limit: 20,
-  unresolvedCount: 3,
+  unresolvedCount: 2,
 };
 
 const mockAlertStats = {
-  unresolvedCount: 3,
-  byType: { near_expiry: 1, excess_stock: 1, no_movement: 1 },
+  unresolvedCount: 2,
+  byType: { near_expiry: 1, excess_stock: 1 },
 };
 
 const mockResolvedList = {
@@ -91,7 +90,6 @@ describe('AlertListPage', () => {
     await waitFor(() => {
       expect(screen.getByText('期限切迫在庫の予兆があります')).toBeInTheDocument();
       expect(screen.getByText('過剰在庫の予兆があります')).toBeInTheDocument();
-      expect(screen.getByText('長期不動在庫の予兆があります')).toBeInTheDocument();
     });
   });
 
@@ -100,7 +98,6 @@ describe('AlertListPage', () => {
     await waitFor(() => {
       expect(screen.getByText('期限切迫')).toBeInTheDocument();
       expect(screen.getByText('過剰在庫')).toBeInTheDocument();
-      expect(screen.getByText('不動在庫')).toBeInTheDocument();
     });
   });
 
@@ -278,7 +275,7 @@ describe('AlertListPage', () => {
       const calls = mockFetch.mock.calls.map(([url]) =>
         typeof url === 'string' ? url : url.toString()
       );
-      expect(calls.some((u: string) => u.includes('alertType=near_expiry'))).toBe(true);
+      expect(calls.some((u: string) => u.includes('type=near_expiry'))).toBe(true);
     });
   });
 });

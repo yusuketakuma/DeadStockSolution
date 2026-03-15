@@ -60,7 +60,7 @@ vi.mock('drizzle-orm', () => ({
   lte: vi.fn(() => ({})),
   notInArray: vi.fn(() => ({})),
   or: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
+  sql: Object.assign(vi.fn(() => ({})), { raw: vi.fn(() => ({})), join: vi.fn(() => ({})) }),
 }));
 
 import { processPendingMatchingRefreshJobs, triggerMatchingRefreshOnUpload } from '../services/matching-refresh-service';

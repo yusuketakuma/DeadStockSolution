@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
     update: vi.fn(),
+    transaction: vi.fn(),
   },
   hashPassword: vi.fn(),
   verifyPassword: vi.fn(),
@@ -86,6 +87,7 @@ vi.mock('../utils/validators', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
   and: vi.fn(() => ({})),
+  isNull: vi.fn(() => ({})),
   sql: vi.fn(() => ({})),
 }));
 
@@ -129,6 +131,7 @@ function createUpdateQuery(result: unknown[] = [{ id: 1, version: 2, email: 'tes
 describe('account routes — additional coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.db.transaction.mockImplementation(async (callback: (tx: typeof mocks.db) => Promise<unknown>) => callback(mocks.db));
     mocks.detectChangedReverificationFields.mockReturnValue([]);
     mocks.generateToken.mockReturnValue('new-token');
     mocks.deriveSessionVersion.mockReturnValue('sv1');

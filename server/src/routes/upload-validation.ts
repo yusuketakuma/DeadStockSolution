@@ -4,6 +4,7 @@ import { AuthRequest, ColumnMapping, DEAD_STOCK_FIELDS, USED_MEDICATION_FIELDS }
 import { suggestMapping } from '../services/column-mapper';
 import { logger } from '../services/logger';
 import { writeLog, getClientIp } from '../services/log-service';
+import { parseInWorker, WORKER_PARSE_MIN_BYTES } from '../services/parse-worker-service';
 import { parseExcelBuffer } from '../services/upload-service';
 import { getErrorMessage } from '../middleware/error-handler';
 import { createMemorySingleFileUpload } from '../middleware/upload-middleware';
@@ -216,6 +217,10 @@ export async function parseExcelRowsOrReject(
   fileBuffer: Buffer,
 ): Promise<unknown[][] | null> {
   try {
+    if (fileBuffer.length > WORKER_PARSE_MIN_BYTES) {
+      const result = await parseInWorker(fileBuffer, { format: 'xlsx' });
+      return result.rows;
+    }
     return await parseExcelBuffer(fileBuffer);
   } catch (err) {
     const reason = getErrorMessage(err);

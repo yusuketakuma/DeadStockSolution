@@ -90,6 +90,59 @@ function createTxInsertNotificationReturning(notificationId: number | null) {
   return { values };
 }
 
+it('runPredictiveAlertsJob persists alert notifications with alert routing metadata', async () => {
+  vi.resetAllMocks();
+  vi.stubEnv('VAPID_PUBLIC_KEY', 'test-public-key');
+  vi.stubEnv('VAPID_PRIVATE_KEY', 'test-private-key');
+
+  const activePharmaciesQuery = createSelectWhereResult([{ id: 10 }]);
+  const nearExpiryQuery = createSelectWhereGroupByResult([
+    { pharmacyId: 10, itemCount: 2, totalValue: 1200, nearestExpiryDate: '2026-03-15' },
+  ]);
+  const stockRowsQuery = createSelectWhereResult([]);
+  const usageRowsQuery = createSelectWhereResult([]);
+  let txRef: {
+    insert: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  } | null = null;
+
+  mocks.db.select
+    .mockReturnValueOnce({ from: activePharmaciesQuery.from })
+    .mockReturnValueOnce({ from: nearExpiryQuery.from })
+    .mockReturnValueOnce({ from: stockRowsQuery.from })
+    .mockReturnValueOnce({ from: usageRowsQuery.from });
+
+  mocks.db.transaction.mockImplementation(async (callback: (tx: {
+    insert: typeof mocks.db.insert;
+    update: typeof mocks.db.update;
+  }) => Promise<'created' | 'duplicate'>) => {
+    const tx = {
+      insert: vi.fn()
+        .mockReturnValueOnce(createTxInsertAlertReturning(501))
+        .mockReturnValueOnce(createTxInsertNotificationReturning(900)),
+      update: vi.fn().mockReturnValue(createUpdateReturningResult([{ id: 501 }])),
+    };
+    txRef = tx;
+    return callback(tx);
+  });
+
+  await runPredictiveAlertsJob({
+    now: new Date('2026-03-01T00:00:00.000Z'),
+    nearExpiryDays: 45,
+    excessStockMonths: 3,
+  });
+
+  expect(txRef).not.toBeNull();
+  const notificationInsertQuery = txRef!.insert.mock.results[1]?.value as { values: ReturnType<typeof vi.fn> };
+  expect(txRef!.insert).toHaveBeenCalledTimes(2);
+  expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
+    pharmacyId: 10,
+    type: 'alert_near_expiry',
+    referenceType: 'alert',
+    referenceId: 501,
+  }));
+});
+
 describe('alert/group push integration', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -111,14 +164,18 @@ describe('alert/group push integration', () => {
       .mockReturnValueOnce({ from: stockRowsQuery.from })
       .mockReturnValueOnce({ from: usageRowsQuery.from });
 
+    const alertInsertQuery = createTxInsertAlertReturning(501);
+    const notificationInsertQuery = createTxInsertNotificationReturning(900);
+    const txInsert = vi.fn()
+      .mockReturnValueOnce(alertInsertQuery)
+      .mockReturnValueOnce(notificationInsertQuery);
+
     mocks.db.transaction.mockImplementation(async (callback: (tx: {
       insert: typeof mocks.db.insert;
       update: typeof mocks.db.update;
     }) => Promise<'created' | 'duplicate'>) => {
       const tx = {
-        insert: vi.fn()
-          .mockReturnValueOnce(createTxInsertAlertReturning(501))
-          .mockReturnValueOnce(createTxInsertNotificationReturning(900)),
+        insert: txInsert,
         update: vi.fn().mockReturnValue(createUpdateReturningResult([{ id: 501 }])),
       };
       return callback(tx);
@@ -131,6 +188,12 @@ describe('alert/group push integration', () => {
     });
 
     expect(mocks.sendToPharmacy).toHaveBeenCalledTimes(1);
+    expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
+      pharmacyId: 10,
+      type: 'alert_near_expiry',
+      referenceType: 'alert',
+      referenceId: 501,
+    }));
     expect(mocks.sendToPharmacy).toHaveBeenCalledWith(
       10,
       expect.objectContaining({
@@ -161,14 +224,18 @@ describe('alert/group push integration', () => {
       .mockReturnValueOnce({ from: stockRowsQuery.from })
       .mockReturnValueOnce({ from: usageRowsQuery.from });
 
+    const alertInsertQuery = createTxInsertAlertReturning(777);
+    const notificationInsertQuery = createTxInsertNotificationReturning(888);
+    const txInsert = vi.fn()
+      .mockReturnValueOnce(alertInsertQuery)
+      .mockReturnValueOnce(notificationInsertQuery);
+
     mocks.db.transaction.mockImplementation(async (callback: (tx: {
       insert: typeof mocks.db.insert;
       update: typeof mocks.db.update;
     }) => Promise<'created' | 'duplicate'>) => {
       const tx = {
-        insert: vi.fn()
-          .mockReturnValueOnce(createTxInsertAlertReturning(777))
-          .mockReturnValueOnce(createTxInsertNotificationReturning(888)),
+        insert: txInsert,
         update: vi.fn().mockReturnValue(createUpdateReturningResult([{ id: 777 }])),
       };
       return callback(tx);
@@ -176,6 +243,11 @@ describe('alert/group push integration', () => {
 
     await runPredictiveAlertsJob({ now: new Date('2026-03-01T00:00:00.000Z') });
 
+    expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'alert_near_expiry',
+      referenceType: 'alert',
+      referenceId: 777,
+    }));
     expect(mocks.sendToPharmacy).not.toHaveBeenCalled();
   });
 

@@ -1332,6 +1332,40 @@ const ROUTE_BASELINE = [
     ],
   },
   {
+    path: '/api/admin/log-center/insights',
+    method: 'get',
+    operationId: 'getAdminLogCenterInsights',
+    summary: 'Get admin log center recurrence insights',
+    tags: ['Admin'],
+    responses: [
+      { status: '200', description: 'Admin log center insights response', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '400', description: 'Invalid admin log center insights query', schemaRef: '#/components/schemas/GenericResponse' },
+    ],
+  },
+  {
+    path: '/api/admin/log-center/export',
+    method: 'get',
+    operationId: 'exportAdminLogCenter',
+    summary: 'Export admin log center entries',
+    tags: ['Admin'],
+    responses: [
+      { status: '200', description: 'Admin log center export response', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '400', description: 'Invalid admin log center export query', schemaRef: '#/components/schemas/GenericResponse' },
+    ],
+  },
+  {
+    path: '/api/admin/log-center/openclaw',
+    method: 'post',
+    operationId: 'postAdminLogCenterOpenClaw',
+    summary: 'Escalate admin log center entry to OpenClaw',
+    tags: ['Admin'],
+    responses: [
+      { status: '200', description: 'Admin log center OpenClaw escalation response', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '400', description: 'Invalid admin log center OpenClaw escalation payload', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '404', description: 'Admin log center entry not found', schemaRef: '#/components/schemas/GenericResponse' },
+    ],
+  },
+  {
     path: '/api/admin/drug-master/stats',
     method: 'get',
     operationId: 'getAdminDrugMasterStats',

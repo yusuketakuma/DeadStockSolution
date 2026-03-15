@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   invalidateStatisticsSummaryCacheForPharmacies: vi.fn(),
 }));
 
-vi.mock('../routes/statistics', () => ({
+vi.mock('../services/statistics-cache-service', () => ({
   invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
 }));
 

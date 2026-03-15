@@ -269,6 +269,21 @@ describe('openclaw-service-ultra', () => {
       expect(result.note).toContain('Gateway CLI');
     });
 
+    it('refuses unsafe CLI paths before exec', async () => {
+      setCliEnv();
+      process.env.OPENCLAW_CLI_PATH = '../bin/openclaw';
+
+      const result = await handoffToOpenClaw({
+        requestId: 1051,
+        pharmacyId: 5,
+        requestText: 'unsafe cli path test',
+      });
+
+      expect(result.accepted).toBe(false);
+      expect(result.note).toContain('CLI path');
+      expect(mocks.execFileAsync).not.toHaveBeenCalled();
+    });
+
     it('retries CLI on failure when retry is available', async () => {
       setCliEnv();
       process.env.OPENCLAW_RETRY_MAX = '1';
@@ -395,6 +410,17 @@ describe('openclaw-service-ultra', () => {
 
       // Falls back to stdout.slice(0, 500)
       expect(result.summary).toBe('raw text output');
+    });
+
+    it('throws when gateway_cli path is unsafe', async () => {
+      setCliEnv();
+      process.env.OPENCLAW_CLI_PATH = '../bin/openclaw';
+
+      await expect(sendToOpenClawGateway({
+        agentId: 'test-agent',
+        message: 'test message',
+      })).rejects.toThrow('OpenClaw Gateway CLI path is invalid');
+      expect(mocks.execFileAsync).not.toHaveBeenCalled();
     });
   });
 

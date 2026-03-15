@@ -16,6 +16,8 @@ import {
   getBufferSize,
   clearBuffer,
   buildAlertPayload,
+  buildOpenClawLogAlertMessage,
+  escalateLogAlertToOpenClaw,
 } from '../services/openclaw-log-push-service';
 
 const originalLogPushEnabled = process.env.OPENCLAW_LOG_PUSH_ENABLED;
@@ -81,6 +83,44 @@ describe('openclaw-log-push-service', () => {
       expect(mocks.sendToOpenClawGateway).toHaveBeenCalledTimes(1);
       expect(getBufferSize('error')).toBe(0);
     });
+
+    it('sends a manual escalation with operator note', async () => {
+      process.env.OPENCLAW_LOG_PUSH_ENABLED = 'true';
+      mocks.getOpenClawConfig.mockReturnValue({
+        mode: 'gateway_cli',
+        cliPath: '/usr/local/bin/openclaw',
+        baseUrl: '',
+        baseUrlError: null,
+        apiKey: '',
+        agentId: 'agent-1',
+        webhookSecret: '',
+        implementationBranch: 'review',
+      });
+      mocks.sendToOpenClawGateway.mockResolvedValue({ summary: 'ok' });
+
+      await escalateLogAlertToOpenClaw({
+        source: 'system_events',
+        severity: 'error',
+        errorCode: 'SYSTEM_INTERNAL_ERROR',
+        message: 'Gateway CLI test',
+        whatHappened: '内部エラー',
+        codeLocation: 'server/src/routes/account.ts',
+        improvementSuggestion: '例外処理を見直してください。',
+        tenant: { pharmacyId: 7, pharmacyName: 'Tenant 7' },
+        logId: 10,
+        occurredAt: '2026-03-02T10:00:00Z',
+        recurrenceCount: 3,
+        impactedTenantCount: 2,
+      }, 'night-watch');
+
+      expect(mocks.sendToOpenClawGateway).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'agent-1',
+        message: expect.stringContaining('[Operator note]'),
+        metadata: expect.objectContaining({
+          impactedTenantCount: 2,
+        }),
+      }));
+    });
   });
 
   describe('buildAlertPayload', () => {
@@ -113,6 +153,31 @@ describe('openclaw-log-push-service', () => {
     it('should handle empty entries', () => {
       const payload = buildAlertPayload('warning', []);
       expect(payload.logs).toHaveLength(0);
+    });
+
+    it('builds a detailed OpenClaw message', () => {
+      const payload = buildAlertPayload('error', [
+        {
+          source: 'system_events',
+          severity: 'error',
+          errorCode: 'SYSTEM_INTERNAL_ERROR',
+          message: 'Test error',
+          whatHappened: '内部エラー',
+          codeLocation: 'server/src/routes/account.ts',
+          improvementSuggestion: '例外処理を見直してください。',
+          tenant: { pharmacyId: 5, pharmacyName: 'Tenant 5' },
+          recurrenceCount: 4,
+          logId: 1,
+          occurredAt: '2026-03-02T10:00:00Z',
+        },
+      ]);
+
+      const message = buildOpenClawLogAlertMessage(payload);
+
+      expect(message).toContain('再発中の論点');
+      expect(message).toContain('Tenant 5');
+      expect(message).toContain('server/src/routes/account.ts');
+      expect(message).toContain('recurrence=4');
     });
   });
 

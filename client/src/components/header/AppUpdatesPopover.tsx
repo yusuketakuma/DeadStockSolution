@@ -4,6 +4,11 @@ import InlineLoader from '../ui/InlineLoader';
 import type { GitHubUpdatesResponse } from '../Header';
 import { formatDateJa, formatDateTimeJa, truncatePreview } from '../../utils/formatters';
 
+/** GitHub API テキストから HTML タグを除去（XSS 防御） */
+function sanitizeText(input: string): string {
+  return input.replace(/<[^>]*>/g, '').trim();
+}
+
 function formatUpdateDate(value: string | null): string {
   return formatDateJa(value, '日付不明');
 }
@@ -101,18 +106,18 @@ export default function AppUpdatesPopover({
                     rel="noopener noreferrer"
                     className="app-updates-item-title"
                   >
-                    <span className="app-updates-item-tag">{latestUpdate.tag}</span>
-                    <span>{latestUpdate.title}</span>
+                    <span className="app-updates-item-tag">{sanitizeText(latestUpdate.tag)}</span>
+                    <span>{sanitizeText(latestUpdate.title)}</span>
                   </a>
                 ) : (
                   <div className="app-updates-item-title">
-                    <span className="app-updates-item-tag">{latestUpdate.tag}</span>
-                    <span>{latestUpdate.title}</span>
+                    <span className="app-updates-item-tag">{sanitizeText(latestUpdate.tag)}</span>
+                    <span>{sanitizeText(latestUpdate.title)}</span>
                   </div>
                 )}
                 <small className="text-muted">{formatUpdateDate(latestUpdate.publishedAt)}</small>
                 {latestUpdate.body && (
-                  <p className="app-updates-item-body">{truncatePreview(latestUpdate.body, 180, '')}</p>
+                  <p className="app-updates-item-body">{truncatePreview(sanitizeText(latestUpdate.body), 180, '')}</p>
                 )}
               </div>
             )}
@@ -162,13 +167,13 @@ export default function AppUpdatesPopover({
                                 rel="noopener noreferrer"
                                 className="app-updates-item-title"
                               >
-                                <span className="app-updates-item-tag">{item.tag}</span>
-                                <span>{item.title}</span>
+                                <span className="app-updates-item-tag">{sanitizeText(item.tag)}</span>
+                                <span>{sanitizeText(item.title)}</span>
                               </a>
                             ) : (
                               <div className="app-updates-item-title">
-                                <span className="app-updates-item-tag">{item.tag}</span>
-                                <span>{item.title}</span>
+                                <span className="app-updates-item-tag">{sanitizeText(item.tag)}</span>
+                                <span>{sanitizeText(item.title)}</span>
                               </div>
                             )}
                             <small className="text-muted">{formatUpdateDate(item.publishedAt)}</small>

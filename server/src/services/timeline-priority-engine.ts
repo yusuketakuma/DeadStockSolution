@@ -74,6 +74,13 @@ export function assignPriority(event: RawTimelineEvent, now: Date = new Date()):
     return 'medium';
   }
 
+  if (
+    event.source === 'notification'
+    && (event.type === 'alert_near_expiry' || event.type === 'alert_excess_stock')
+  ) {
+    return 'medium';
+  }
+
   // 新規コメント受信通知
   if (event.source === 'notification' && event.type === 'new_comment') {
     return 'medium';

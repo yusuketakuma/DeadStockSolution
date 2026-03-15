@@ -66,16 +66,40 @@ function readDraft<T>(key: string): DraftEnvelope<T> | null {
   }
 }
 
+/** 機密フィールド名パターン（localStorage に保存しない） */
+const SENSITIVE_FIELD_PATTERNS = ['password', 'secret', 'token', 'apiKey', 'creditCard'];
+
+/** 下書き最大サイズ（100KB） */
+const MAX_DRAFT_SIZE_BYTES = 100 * 1024;
+
+/**
+ * オブジェクトから機密フィールドを除外する
+ */
+function stripSensitiveFields<T>(data: T): T {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return data;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    if (SENSITIVE_FIELD_PATTERNS.some((p) => key.toLowerCase().includes(p))) continue;
+    result[key] = value;
+  }
+  return result as T;
+}
+
 /**
  * localStorage に下書きを保存する
+ *
+ * 注意: localStorage は暗号化されません。機密フィールド（password 等）は自動除外されます。
  */
 function writeDraft<T>(key: string, data: T): boolean {
+  const sanitized = stripSensitiveFields(data);
   const envelope: DraftEnvelope<T> = {
-    data,
+    data: sanitized,
     savedAt: new Date().toISOString(),
   };
   try {
-    localStorage.setItem(key, JSON.stringify(envelope));
+    const serialized = JSON.stringify(envelope);
+    if (new Blob([serialized]).size > MAX_DRAFT_SIZE_BYTES) return false;
+    localStorage.setItem(key, serialized);
     return true;
   } catch {
     return false;

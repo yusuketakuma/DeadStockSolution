@@ -1,25 +1,23 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useAsyncState } from '../hooks/useAsyncState';
-import AppButton from '../components/ui/AppButton';
-import AppAlert from '../components/ui/AppAlert';
-import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
-import { Badge, Row, Col, Accordion } from 'react-bootstrap';
+import { Row, Col, Accordion } from 'react-bootstrap';
 import { useParams, Link, useLocation } from 'react-router-dom';
+import { useAsyncState } from '../hooks/useAsyncState';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
-import ConfirmActionModal from '../components/ConfirmActionModal';
+import AppAlert from '../components/ui/AppAlert';
+import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import PageLoader from '../components/ui/PageLoader';
 import AppDataPanel from '../components/ui/AppDataPanel';
-import AppField from '../components/ui/AppField';
-import AppSelect from '../components/ui/AppSelect';
-import LoadingButton from '../components/ui/LoadingButton';
 import ProposalItemsPanel from '../components/ProposalItemsPanel';
-import type { EnrichedProposalTimelineEvent } from '../types/timeline';
-import { formatDateTimeJa } from '../utils/formatters';
 import ProposalTimeline from '../components/timeline/ProposalTimeline';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-
+import ConfirmActionModal from '../components/ConfirmActionModal';
+import { ProposalProgressIndicator } from '../components/proposal/ProposalProgressIndicator';
+import { ProposalFeedbackSection } from '../components/proposal/ProposalFeedbackSection';
+import { ProposalCommentSection, type ProposalComment } from '../components/proposal/ProposalCommentSection';
+import { ProposalActionButtons, ProposalMobileStickyActions } from '../components/proposal/ProposalActions';
+import type { EnrichedProposalTimelineEvent } from '../types/timeline';
 
 interface PharmacyInfo {
   id: number;
@@ -56,22 +54,6 @@ interface ProposalDetail {
   pharmacyA: PharmacyInfo;
   pharmacyB: PharmacyInfo;
   enrichedTimeline?: EnrichedProposalTimelineEvent[];
-}
-
-const commentTemplates = [
-  '内容確認しました。問題なければこのまま進めます。',
-  '数量・期限を再確認したいので、対象明細の最新情報共有をお願いします。',
-  'FAX送信済みです。到着確認をお願いします。',
-];
-
-interface ProposalComment {
-  id: number;
-  authorPharmacyId: number;
-  authorName: string;
-  body: string;
-  isDeleted: boolean;
-  createdAt: string | null;
-  updatedAt: string | null;
 }
 
 function resolveProposalStatusMeta(proposal: ProposalDetail['proposal'], currentUserId: number | undefined) {
@@ -176,6 +158,11 @@ export default function ProposalDetailPage() {
     [items, proposalForItems],
   );
 
+  const handleApplyCommentTemplate = useCallback((template: string) => {
+    const trimmed = commentBody.trim();
+    setCommentBody(trimmed ? `${trimmed}\n${template}` : template);
+  }, [commentBody]);
+
   if (loading && !data) return <PageLoader />;
   if (!data) {
     return (
@@ -203,7 +190,6 @@ export default function ProposalDetailPage() {
     : proposal.status === 'rejected' ? '拒否'
     : proposal.status === 'cancelled' ? 'キャンセル'
     : proposal.status;
-
 
   const handleAction = async () => {
     if (!pendingAction) return;
@@ -313,51 +299,14 @@ export default function ProposalDetailPage() {
     }
   };
 
-  const handleApplyCommentTemplate = (template: string) => {
-    const trimmed = commentBody.trim();
-    setCommentBody(trimmed ? `${trimmed}
-${template}` : template);
-  };
-
   const actionLabelMap: Record<'accept' | 'reject' | 'complete', string> = {
     accept: '承認',
     reject: '拒否',
     complete: '交換完了',
   };
 
-  // 共通: 3フェーズプログレスインジケーター
-  const ProgressIndicator = () => (
-    <AppDataPanel className="mb-3" bodyClassName="py-2">
-      <div className="d-flex align-items-center justify-content-between small">
-        {[
-          { label: '仮マッチング', phase: 1 },
-          { label: '確定', phase: 2 },
-          { label: '完了', phase: 3 },
-        ].map((step, i) => (
-          <div key={step.phase} className="d-flex align-items-center flex-grow-1">
-            <div
-              className={`rounded-circle d-flex align-items-center justify-content-center ${
-                isTerminalPhase ? 'bg-secondary'
-                : phaseIndex >= step.phase ? 'bg-success' : 'bg-light border'
-              }`}
-              style={{ width: 28, height: 28, minWidth: 28, color: isTerminalPhase || phaseIndex >= step.phase ? '#fff' : '#999' }}
-            >
-              {isTerminalPhase ? '—' : phaseIndex >= step.phase ? '✓' : step.phase}
-            </div>
-            <span className={`ms-1 ${phaseIndex >= step.phase && !isTerminalPhase ? 'fw-bold' : 'text-muted'}`}>
-              {step.label}
-            </span>
-            {i < 2 && <div className={`flex-grow-1 mx-2 ${phaseIndex > step.phase && !isTerminalPhase ? 'border-success' : ''}`} style={{ borderBottom: '2px solid #dee2e6', borderColor: phaseIndex > step.phase && !isTerminalPhase ? '#198754' : undefined }} />}
-          </div>
-        ))}
-      </div>
-      <div className="text-center mt-1 small text-muted">
-        現在のステータス: <Badge bg={isTerminalPhase ? 'danger' : isCompletedPhase ? 'secondary' : isConfirmedPhase ? 'success' : 'warning'}>{statusLabel}</Badge>
-      </div>
-    </AppDataPanel>
-  );
+  const hasStickyActions = canAccept || canReject || canComplete;
 
-  // 共通: タイムラインセクション
   const TimelineSection = () => (
     <section id="proposal-timeline" style={{ scrollMarginTop: 96 }}>
       <AppDataPanel title="進行履歴" className="mb-3" bodyClassName="small">
@@ -369,7 +318,6 @@ ${template}` : template);
     </section>
   );
 
-  // モバイル用: アコーディオンでタイムラインを格納（初期折り畳み）
   const MobileTimelineAccordion = () => (
     <Accordion
       activeKey={mobileTimelineKey ?? undefined}
@@ -391,7 +339,6 @@ ${template}` : template);
     </Accordion>
   );
 
-  // 共通: 薬局情報
   const PharmacyInfoSection = () => (
     <Row className="g-3 mb-3">
       <Col md={6}>
@@ -409,7 +356,6 @@ ${template}` : template);
     </Row>
   );
 
-  // 共通: 交換手順
   const ExchangeInstructions = () => (
     <AppDataPanel title="交換手順（3フェーズ）" className="mb-3" bodyClassName="small">
       <ol className="mb-0">
@@ -420,218 +366,15 @@ ${template}` : template);
     </AppDataPanel>
   );
 
-  // 共通: アクションボタン
-  const ActionButtons = () => (
-    <div className="d-flex gap-2 mobile-stack">
-      {canAccept && <AppButton variant="success" onClick={() => setPendingAction('accept')}>仮マッチングを承認</AppButton>}
-      {canReject && <AppButton variant="danger" onClick={() => setPendingAction('reject')}>拒否する</AppButton>}
-      {canComplete && <AppButton variant="primary" onClick={() => setPendingAction('complete')}>交換完了</AppButton>}
-    </div>
-  );
-
-  // モバイル用: sticky bottom アクションボタン
-  const MobileStickyActions = () => {
-    if (!hasStickyActions) return null;
-    return (
-      <div
-        data-testid="proposal-mobile-sticky-actions"
-        className="position-sticky bottom-0 bg-body p-2 border-top d-flex gap-2"
-        style={{ zIndex: 1000, paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
-      >
-        {canAccept && <AppButton variant="success" className="flex-grow-1" onClick={() => setPendingAction('accept')}>承認</AppButton>}
-        {canReject && <AppButton variant="danger" className="flex-grow-1" onClick={() => setPendingAction('reject')}>拒否</AppButton>}
-        {canComplete && <AppButton variant="primary" className="flex-grow-1" onClick={() => setPendingAction('complete')}>交換完了</AppButton>}
-      </div>
-    );
-  };
-
-  // 共通: 取引評価セクション
-  const FeedbackSection = () => {
-    if (!isCompletedPhase || user?.isAdmin) return null;
-    return (
-      <AppDataPanel title="取引評価" className="mt-3">
-        <div className="row g-2 align-items-end">
-          <div className="col-md-2">
-            <AppSelect
-              controlId="proposal-feedback-rating"
-              value={feedbackRating}
-              ariaLabel="評価"
-              onChange={(value) => setFeedbackRating(value)}
-              options={[
-                { value: '5', label: '5' },
-                { value: '4', label: '4' },
-                { value: '3', label: '3' },
-                { value: '2', label: '2' },
-                { value: '1', label: '1' },
-              ]}
-            />
-          </div>
-          <div className="col-md-7">
-            <AppField
-              controlId="proposal-feedback-comment"
-              label="コメント（任意）"
-              as="textarea"
-              rows={2}
-              maxLength={300}
-              value={feedbackComment}
-              onChange={setFeedbackComment}
-            />
-          </div>
-          <div className="col-md-3">
-            <LoadingButton
-              onClick={handleSubmitFeedback}
-              loading={feedbackSubmitting}
-              loadingLabel="登録中..."
-              className="w-100"
-            >
-              評価を登録
-            </LoadingButton>
-          </div>
-        </div>
-      </AppDataPanel>
-    );
-  };
-
-  // 共通: コメントセクション
-  const CommentList = () => (
-    <>
-      {commentsLoading ? (
-        <div className="small text-muted">コメントを読み込み中...</div>
-      ) : comments.length === 0 ? (
-        <div className="small text-muted">コメントはまだありません。</div>
-      ) : (
-        <div className="d-flex flex-column gap-2 mb-3">
-          {comments.map((comment) => (
-            <div key={comment.id} className="border rounded p-2">
-              <div className="small text-muted">
-                {comment.authorName} / {formatDateTimeJa(comment.createdAt)}
-              </div>
-              {editingCommentId === comment.id ? (
-                <div className="mt-2 d-flex flex-column gap-2">
-                  <AppField
-                    controlId={`proposal-comment-edit-${comment.id}`}
-                    label="コメント編集"
-                    as="textarea"
-                    rows={3}
-                    maxLength={1000}
-                    value={editingCommentBody}
-                    onChange={(value) => setEditingCommentBody(value)}
-                  />
-                  <div className="d-flex gap-2">
-                    <LoadingButton
-                      variant="primary"
-                      onClick={() => void handleUpdateComment(comment.id)}
-                      loading={commentUpdatingId === comment.id}
-                      loadingLabel="更新中..."
-                      disabled={!editingCommentBody.trim()}
-                    >
-                      保存
-                    </LoadingButton>
-                    <AppButton
-                      variant="outline-secondary"
-                      onClick={handleCancelEditComment}
-                      disabled={commentUpdatingId === comment.id}
-                    >
-                      キャンセル
-                    </AppButton>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div>{comment.body}</div>
-                  {comment.updatedAt && comment.createdAt && comment.updatedAt !== comment.createdAt && (
-                    <div className="small text-muted">編集済み</div>
-                  )}
-                </div>
-              )}
-              {!user?.isAdmin && comment.authorPharmacyId === user?.id && !comment.isDeleted && editingCommentId !== comment.id && (
-                <div className="d-flex gap-2 mt-2">
-                  <AppButton
-                    size="sm"
-                    variant="outline-primary"
-                    onClick={() => handleStartEditComment(comment)}
-                    disabled={commentDeletingId === comment.id}
-                  >
-                    編集
-                  </AppButton>
-                  <LoadingButton
-                    size="sm"
-                    variant="outline-danger"
-                    onClick={() => void handleDeleteComment(comment.id)}
-                    loading={commentDeletingId === comment.id}
-                    loadingLabel="削除中..."
-                  >
-                    削除
-                  </LoadingButton>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  );
-
-  const CommentComposer = ({ sticky = false }: { sticky?: boolean } = {}) => {
-    if (user?.isAdmin) return null;
-
-    return (
-      <div
-        data-testid={sticky ? 'proposal-mobile-comment-composer' : undefined}
-        className={sticky ? 'position-sticky bottom-0 bg-body border-top p-2 safe-area-bottom' : 'd-flex flex-column gap-2'}
-        style={sticky
-          ? {
-              zIndex: 999,
-              bottom: hasStickyActions ? 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' : '0px',
-            }
-          : undefined}
-      >
-        <div className="d-flex gap-2 flex-wrap">
-          {commentTemplates.map((template, index) => (
-            <AppButton
-              key={template}
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => handleApplyCommentTemplate(template)}
-            >
-              定型文{index + 1}
-            </AppButton>
-          ))}
-        </div>
-        <AppField
-          controlId="proposal-comment-body"
-          label="新規コメント"
-          as="textarea"
-          rows={3}
-          maxLength={1000}
-          value={commentBody}
-          onChange={(value) => setCommentBody(value)}
-        />
-        <LoadingButton
-          variant="outline-primary"
-          onClick={handleCreateComment}
-          loading={commentSubmitting}
-          loadingLabel="投稿中..."
-          disabled={!commentBody.trim()}
-        >
-          コメントを投稿
-        </LoadingButton>
-      </div>
-    );
-  };
-
-  const CommentsSection = ({ includeComposer = true }: { includeComposer?: boolean } = {}) => (
-    <AppDataPanel title="交渉メモ / コメント" className="mt-3">
-      {CommentList()}
-      {includeComposer ? CommentComposer() : null}
-    </AppDataPanel>
-  );
-
-  const hasStickyActions = canAccept || canReject || canComplete;
-
   const DesktopLayout = () => (
     <ScrollArea>
-      {ProgressIndicator()}
+      <ProposalProgressIndicator
+        isTerminalPhase={isTerminalPhase}
+        isConfirmedPhase={isConfirmedPhase}
+        isCompletedPhase={isCompletedPhase}
+        phaseIndex={phaseIndex}
+        statusLabel={statusLabel}
+      />
       {TimelineSection()}
       {PharmacyInfoSection()}
       {ExchangeInstructions()}
@@ -647,16 +390,58 @@ ${template}` : template);
         toName={pharmacyA.name}
         totalValue={proposal.totalValueB}
       />
-      {ActionButtons()}
-      {FeedbackSection()}
-      {CommentsSection()}
+      <ProposalActionButtons
+        canAccept={canAccept}
+        canReject={canReject}
+        canComplete={canComplete}
+        onAccept={() => setPendingAction('accept')}
+        onReject={() => setPendingAction('reject')}
+        onComplete={() => setPendingAction('complete')}
+      />
+      <ProposalFeedbackSection
+        isCompletedPhase={isCompletedPhase}
+        isAdmin={user?.isAdmin ?? false}
+        feedbackRating={feedbackRating}
+        feedbackComment={feedbackComment}
+        feedbackSubmitting={feedbackSubmitting}
+        onRatingChange={setFeedbackRating}
+        onCommentChange={setFeedbackComment}
+        onSubmit={handleSubmitFeedback}
+      />
+      <ProposalCommentSection
+        comments={comments}
+        commentsLoading={commentsLoading}
+        currentUserId={user?.id}
+        isAdmin={user?.isAdmin ?? false}
+        commentBody={commentBody}
+        commentSubmitting={commentSubmitting}
+        editingCommentId={editingCommentId}
+        editingCommentBody={editingCommentBody}
+        commentUpdatingId={commentUpdatingId}
+        commentDeletingId={commentDeletingId}
+        hasStickyActions={hasStickyActions}
+        onStartEdit={handleStartEditComment}
+        onCancelEdit={handleCancelEditComment}
+        onUpdateComment={handleUpdateComment}
+        onDeleteComment={handleDeleteComment}
+        onEditingCommentBodyChange={setEditingCommentBody}
+        onCommentBodyChange={setCommentBody}
+        onSubmit={handleCreateComment}
+        onApplyTemplate={handleApplyCommentTemplate}
+      />
     </ScrollArea>
   );
 
   const MobileLayout = () => (
     <>
       <ScrollArea>
-        {ProgressIndicator()}
+        <ProposalProgressIndicator
+          isTerminalPhase={isTerminalPhase}
+          isConfirmedPhase={isConfirmedPhase}
+          isCompletedPhase={isCompletedPhase}
+          phaseIndex={phaseIndex}
+          statusLabel={statusLabel}
+        />
         {MobileTimelineAccordion()}
         {PharmacyInfoSection()}
         {ExchangeInstructions()}
@@ -672,12 +457,73 @@ ${template}` : template);
           toName={pharmacyA.name}
           totalValue={proposal.totalValueB}
         />
-        {FeedbackSection()}
-        {CommentsSection({ includeComposer: false })}
-        {!user?.isAdmin ? CommentComposer({ sticky: true }) : null}
+        <ProposalFeedbackSection
+          isCompletedPhase={isCompletedPhase}
+          isAdmin={user?.isAdmin ?? false}
+          feedbackRating={feedbackRating}
+          feedbackComment={feedbackComment}
+          feedbackSubmitting={feedbackSubmitting}
+          onRatingChange={setFeedbackRating}
+          onCommentChange={setFeedbackComment}
+          onSubmit={handleSubmitFeedback}
+        />
+        <ProposalCommentSection
+          comments={comments}
+          commentsLoading={commentsLoading}
+          currentUserId={user?.id}
+          isAdmin={user?.isAdmin ?? false}
+          commentBody={commentBody}
+          commentSubmitting={commentSubmitting}
+          editingCommentId={editingCommentId}
+          editingCommentBody={editingCommentBody}
+          commentUpdatingId={commentUpdatingId}
+          commentDeletingId={commentDeletingId}
+          includeComposer={false}
+          hasStickyActions={hasStickyActions}
+          onStartEdit={handleStartEditComment}
+          onCancelEdit={handleCancelEditComment}
+          onUpdateComment={handleUpdateComment}
+          onDeleteComment={handleDeleteComment}
+          onEditingCommentBodyChange={setEditingCommentBody}
+          onCommentBodyChange={setCommentBody}
+          onSubmit={handleCreateComment}
+          onApplyTemplate={handleApplyCommentTemplate}
+        />
+        {!user?.isAdmin ? (
+          <ProposalCommentSection
+            comments={comments}
+            commentsLoading={commentsLoading}
+            currentUserId={user?.id}
+            isAdmin={user?.isAdmin ?? false}
+            commentBody={commentBody}
+            commentSubmitting={commentSubmitting}
+            editingCommentId={editingCommentId}
+            editingCommentBody={editingCommentBody}
+            commentUpdatingId={commentUpdatingId}
+            commentDeletingId={commentDeletingId}
+            sticky
+            hasStickyActions={hasStickyActions}
+            onStartEdit={handleStartEditComment}
+            onCancelEdit={handleCancelEditComment}
+            onUpdateComment={handleUpdateComment}
+            onDeleteComment={handleDeleteComment}
+            onEditingCommentBodyChange={setEditingCommentBody}
+            onCommentBodyChange={setCommentBody}
+            onSubmit={handleCreateComment}
+            onApplyTemplate={handleApplyCommentTemplate}
+          />
+        ) : null}
         {(hasStickyActions || !user?.isAdmin) && <div className="sticky-footer-gap" />}
       </ScrollArea>
-      {MobileStickyActions()}
+      <ProposalMobileStickyActions
+        hasStickyActions={hasStickyActions}
+        canAccept={canAccept}
+        canReject={canReject}
+        canComplete={canComplete}
+        onAccept={() => setPendingAction('accept')}
+        onReject={() => setPendingAction('reject')}
+        onComplete={() => setPendingAction('complete')}
+      />
     </>
   );
 

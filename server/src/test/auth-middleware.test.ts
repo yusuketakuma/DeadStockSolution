@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   verifyToken: vi.fn(),
   deriveSessionVersion: vi.fn(),
   isJwtSecretMissingError: vi.fn(),
+  isDependencyServiceUnavailableError: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -21,6 +22,11 @@ vi.mock('../services/auth-service', () => ({
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
+  sql: {},
+}));
+
+vi.mock('../routes/auth-helpers', () => ({
+  isDependencyServiceUnavailableError: mocks.isDependencyServiceUnavailableError,
 }));
 
 import { clearAuthUserCacheForTests, invalidateAuthUserCache, requireLogin } from '../middleware/auth';
@@ -63,6 +69,7 @@ describe('auth middleware cache', () => {
     clearAuthUserCacheForTests();
     process.env.NODE_ENV = 'development';
     mocks.isJwtSecretMissingError.mockReturnValue(false);
+    mocks.isDependencyServiceUnavailableError.mockReturnValue(false);
   });
 
   afterEach(() => {

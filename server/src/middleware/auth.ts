@@ -1,5 +1,5 @@
 import { Response, NextFunction } from 'express';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { deriveSessionVersion, isJwtSecretMissingError, verifyToken } from '../services/auth-service';
@@ -30,6 +30,53 @@ const AUTH_USER_CACHE_TTL_MS = Number.isFinite(parsedAuthUserCacheTtl) && parsed
 const authUserCache = new Map<number, CachedAuthUser>();
 let authUserCacheWrites = 0;
 
+type AuthUserRow = {
+  id: number;
+  email: string;
+  isAdmin: boolean | null;
+  isActive: boolean;
+  passwordHash: string;
+  verificationStatus: string | null;
+  rejectionReason: string | null;
+};
+
+type PreparedPharmacyAuthUserById = {
+  execute(params: { pharmacyId: number }): Promise<AuthUserRow[]>;
+};
+
+let prepared_pharmacy_auth_user_by_id: PreparedPharmacyAuthUserById | null = null;
+
+function bindParam<T>(name: string): T {
+  const placeholderFn = (sql as typeof sql & { placeholder?: (placeholderName: string) => unknown }).placeholder;
+  if (typeof placeholderFn === 'function') {
+    return placeholderFn(name) as T;
+  }
+  return name as T;
+}
+
+function getPreparedPharmacyAuthUserById(): PreparedPharmacyAuthUserById | null {
+  const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
+  if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') return null;
+  if (prepared_pharmacy_auth_user_by_id) return prepared_pharmacy_auth_user_by_id;
+  const query = db.select({
+    id: pharmacies.id,
+    email: pharmacies.email,
+    isAdmin: pharmacies.isAdmin,
+    isActive: pharmacies.isActive,
+    passwordHash: pharmacies.passwordHash,
+    verificationStatus: pharmacies.verificationStatus,
+    rejectionReason: pharmacies.rejectionReason,
+  })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, bindParam<number>('pharmacyId')))
+    .limit(1);
+  if (typeof (query as { prepare?: unknown }).prepare === 'function') {
+    prepared_pharmacy_auth_user_by_id = (query as { prepare(name: string): PreparedPharmacyAuthUserById })
+      .prepare('prepared_pharmacy_auth_user_by_id');
+  }
+  return prepared_pharmacy_auth_user_by_id;
+}
+
 function isAuthUserCacheEnabled(): boolean {
   return process.env.NODE_ENV !== 'test' && AUTH_USER_CACHE_TTL_MS > 0;
 }
@@ -42,6 +89,9 @@ function getCachedAuthUser(userId: number): CachedAuthUser | null {
     authUserCache.delete(userId);
     return null;
   }
+  // LRU: delete + re-insert で Map 末尾へ移動（最近使用済みに）
+  authUserCache.delete(userId);
+  authUserCache.set(userId, cached);
   return cached;
 }
 
@@ -151,18 +201,21 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
       return;
     }
 
-    const rows = await db.select({
-      id: pharmacies.id,
-      email: pharmacies.email,
-      isAdmin: pharmacies.isAdmin,
-      isActive: pharmacies.isActive,
-      passwordHash: pharmacies.passwordHash,
-      verificationStatus: pharmacies.verificationStatus,
-      rejectionReason: pharmacies.rejectionReason,
-    })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, payload.id))
-      .limit(1);
+    const prepared = getPreparedPharmacyAuthUserById();
+    const rows = prepared
+      ? await prepared.execute({ pharmacyId: payload.id })
+      : await db.select({
+        id: pharmacies.id,
+        email: pharmacies.email,
+        isAdmin: pharmacies.isAdmin,
+        isActive: pharmacies.isActive,
+        passwordHash: pharmacies.passwordHash,
+        verificationStatus: pharmacies.verificationStatus,
+        rejectionReason: pharmacies.rejectionReason,
+      })
+        .from(pharmacies)
+        .where(eq(pharmacies.id, payload.id))
+        .limit(1);
 
     if (rows.length === 0) {
       res.status(401).json({ error: 'アカウントが無効です。再度ログインしてください' });

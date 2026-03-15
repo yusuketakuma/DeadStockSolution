@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import AppTable from '../components/ui/AppTable';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { Link } from 'react-router-dom';
@@ -7,7 +8,7 @@ import AppEmptyState from '../components/ui/AppEmptyState';
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-import { usePaginatedList } from '../hooks/usePaginatedList';
+import { useApiQuery } from '../hooks/useApiQuery';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface UsedMedicationItem {
@@ -25,21 +26,21 @@ interface ListResponse {
 }
 
 export default function UsedMedicationListPage() {
+  const [page, setPage] = useState(1);
   const {
-    items,
-    page,
-    setPage,
-    totalPages,
-    pagination,
-    loading,
+    data,
+    isLoading: loading,
     error,
-    retry,
-  } = usePaginatedList<UsedMedicationItem, ListResponse>((targetPage, signal) =>
-    api.get<ListResponse>(`/inventory/used-medication?page=${targetPage}`, { signal }),
-    { errorMessage: '医薬品使用量一覧の取得に失敗しました' },
+    refetch,
+  } = useApiQuery(
+    ['used-medication-list', page],
+    ({ signal }) => api.get<ListResponse>(`/inventory/used-medication?page=${page}`, { signal }),
   );
 
-  const total = pagination?.total ?? 0;
+  const items = data?.data ?? [];
+  const totalPages = data?.pagination.totalPages ?? 1;
+  const total = data?.pagination.total ?? 0;
+  const queryError = error instanceof Error ? error.message : '';
 
   return (
     <PageShell>
@@ -48,14 +49,14 @@ export default function UsedMedicationListPage() {
         <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
       </div>
 
-      {error && (
-        <ErrorRetryAlert error={error} onRetry={() => void retry()} />
+      {queryError && (
+        <ErrorRetryAlert error={queryError} onRetry={() => void refetch()} />
       )}
 
       <ScrollArea>
       {loading ? (
         <InlineLoader text="医薬品使用量一覧を読み込み中..." className="text-muted small" />
-      ) : error ? null : items.length === 0 ? (
+      ) : queryError ? null : items.length === 0 ? (
         <AppEmptyState
           title="医薬品使用量データがありません"
           description="Excelファイルをアップロードすると一覧に表示されます。"

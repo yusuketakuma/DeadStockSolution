@@ -51,7 +51,7 @@ vi.mock('../services/matching-service', () => ({
   findMatches: mocks.findMatches,
 }));
 
-vi.mock('../services/exchange-service', () => ({
+vi.mock('../services/exchange-execution-service', () => ({
   createProposal: mocks.createProposal,
   acceptProposal: mocks.acceptProposal,
   rejectProposal: mocks.rejectProposal,

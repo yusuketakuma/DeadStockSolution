@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Badge, ButtonGroup } from 'react-bootstrap';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
@@ -11,7 +11,7 @@ import AppEmptyState from '../components/ui/AppEmptyState';
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-import { usePaginatedList } from '../hooks/usePaginatedList';
+import { useApiQuery } from '../hooks/useApiQuery';
 import { useToast } from '../contexts/ToastContext';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
@@ -65,23 +65,22 @@ export default function DeadStockListPage() {
   const [actionError, setActionError] = useState('');
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
   const [sortByExpiry, setSortByExpiry] = useState(false);
-
-  const fetchDeadStock = useCallback((targetPage: number, signal?: AbortSignal) =>
-    api.get<ListResponse>(`/inventory/dead-stock?page=${targetPage}`, { signal }), []);
+  const [page, setPage] = useState(1);
 
   const {
-    items,
-    page,
-    setPage,
-    totalPages,
-    pagination,
-    loading,
+    data,
+    isLoading: loading,
     error,
-    retry,
-  } = usePaginatedList<DeadStockItem, ListResponse>(fetchDeadStock, {
-    errorMessage: 'デッドストック一覧の取得に失敗しました',
-  });
-  const total = pagination?.total ?? 0;
+    refetch,
+  } = useApiQuery(
+    ['dead-stock-list', page],
+    ({ signal }) => api.get<ListResponse>(`/inventory/dead-stock?page=${page}`, { signal }),
+  );
+
+  const items = useMemo(() => data?.data ?? [], [data?.data]);
+  const totalPages = data?.pagination.totalPages ?? 1;
+  const total = data?.pagination.total ?? 0;
+  const queryError = error instanceof Error ? error.message : '';
 
   const handleDeleteConfirmed = async () => {
     if (pendingDeleteId === null) return;
@@ -90,7 +89,7 @@ export default function DeadStockListPage() {
     try {
       await api.delete(`/inventory/dead-stock/${pendingDeleteId}`);
       showSuccess('削除しました');
-      retry();
+      await refetch();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '削除に失敗しました');
     } finally {
@@ -156,8 +155,8 @@ export default function DeadStockListPage() {
         </div>
       )}
 
-      {(error || actionError) && (
-        <ErrorRetryAlert error={error || actionError || ''} onRetry={error ? () => void retry() : undefined} />
+      {(queryError || actionError) && (
+        <ErrorRetryAlert error={queryError || actionError || ''} onRetry={queryError ? () => void refetch() : undefined} />
       )}
 
       <ScrollArea>

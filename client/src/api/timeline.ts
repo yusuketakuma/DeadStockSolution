@@ -24,14 +24,14 @@ function buildQuery(params: TimelineParams): string {
 }
 
 export const timelineApi = {
-  getTimeline: (params: TimelineParams = {}) =>
-    api.get<TimelineResponse>(`/timeline${buildQuery(params)}`),
+  getTimeline: (params: TimelineParams = {}, options?: { signal?: AbortSignal }) =>
+    api.get<TimelineResponse>(`/timeline${buildQuery(params)}`, { signal: options?.signal }),
 
-  getBootstrap: (params: TimelineParams = {}) =>
-    api.get<TimelineBootstrapResponse>(`/timeline/bootstrap${buildQuery(params)}`),
+  getBootstrap: (params: TimelineParams = {}, options?: { signal?: AbortSignal }) =>
+    api.get<TimelineBootstrapResponse>(`/timeline/bootstrap${buildQuery(params)}`, { signal: options?.signal }),
 
-  getUnreadCount: () =>
-    api.get<TimelineUnreadResponse>('/timeline/unread-count'),
+  getUnreadCount: (options?: { signal?: AbortSignal }) =>
+    api.get<TimelineUnreadResponse>('/timeline/unread-count', { signal: options?.signal }),
 
   markViewed: () =>
     api.patch<{ success: boolean }>('/timeline/mark-viewed'),

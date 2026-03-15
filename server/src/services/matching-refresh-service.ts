@@ -4,6 +4,7 @@ import { pharmacies, deadStockItems, matchingRefreshJobs, usedMedicationItems, u
 import { splitIntoChunks } from '../utils/array-utils';
 import { getNextRetryIso, getStaleBeforeIso } from '../utils/job-retry-utils';
 import { parseBooleanFlag } from '../utils/number-utils';
+import { refreshDrugAvailabilitySummary } from '../db/materialized-views';
 import { findMatches, findMatchesBatch } from './matching-service';
 import { logger } from './logger';
 import { getErrorMessage } from '../middleware/error-handler';
@@ -385,7 +386,11 @@ async function processPendingRefreshJobs(limit: number): Promise<number> {
 
 export async function processPendingMatchingRefreshJobs(limit: number = RETRY_BATCH_SIZE): Promise<number> {
   if (!AUTO_RECOMPUTE_ENABLED) return 0;
-  return processPendingRefreshJobs(limit);
+  const processed = await processPendingRefreshJobs(limit);
+  if (processed > 0) {
+    await refreshDrugAvailabilitySummary();
+  }
+  return processed;
 }
 
 async function withTransactionExecutor<T>(

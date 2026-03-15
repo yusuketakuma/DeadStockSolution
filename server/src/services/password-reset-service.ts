@@ -10,6 +10,7 @@ const MAX_ACTIVE_TOKENS_PER_USER = 3;
 const PASSWORD_RESET_LOCK_NAMESPACE = 24011;
 
 type PasswordResetTransaction = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete' | 'execute'>;
+type PasswordResetTokenInvalidationTarget = Pick<typeof db, 'update'>;
 
 async function acquirePasswordResetLock(tx: PasswordResetTransaction, pharmacyId: number): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${PASSWORD_RESET_LOCK_NAMESPACE}, ${pharmacyId})`);
@@ -28,6 +29,19 @@ async function countActiveResetTokens(tx: PasswordResetTransaction, pharmacyId: 
 
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+export async function invalidateActivePasswordResetTokens(
+  tx: PasswordResetTokenInvalidationTarget,
+  pharmacyId: number,
+  usedAt: string,
+): Promise<void> {
+  await tx.update(passwordResetTokens)
+    .set({ usedAt })
+    .where(and(
+      eq(passwordResetTokens.pharmacyId, pharmacyId),
+      isNull(passwordResetTokens.usedAt),
+    ));
 }
 
 export function generateResetToken(): string {
@@ -126,12 +140,7 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
     const passwordHash = await hashPassword(newPassword);
 
     // Invalidate ALL remaining unused tokens for this user.
-    await tx.update(passwordResetTokens)
-      .set({ usedAt: now })
-      .where(and(
-        eq(passwordResetTokens.pharmacyId, consumed.pharmacyId),
-        isNull(passwordResetTokens.usedAt),
-      ));
+    await invalidateActivePasswordResetTokens(tx, consumed.pharmacyId, now);
 
     await tx.update(pharmacies)
       .set({

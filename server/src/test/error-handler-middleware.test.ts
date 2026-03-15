@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     sentryEventId: 'evt-123',
     timestamp: '2026-01-01T00:00:00.000Z',
   }),
+  extractSourceLocation: vi.fn(() => null),
   handoffErrorToOpenClaw: vi.fn().mockResolvedValue({
     triggered: false,
     accepted: false,
@@ -39,6 +40,7 @@ vi.mock('../config/sentry', () => ({
 
 vi.mock('../services/error-fix-context', () => ({
   buildErrorFixContext: mocks.buildErrorFixContext,
+  extractSourceLocation: mocks.extractSourceLocation,
 }));
 
 vi.mock('../services/openclaw-error-autofix-service', () => ({
@@ -408,6 +410,11 @@ describe('error-handler middleware', () => {
         status: 500,
         requestId: 'req-789',
         errorCode: 'DB_CONNECTION_FAILED',
+        sourceLocation: null,
+        tenant: {
+          pharmacyId: null,
+          pharmacyEmail: null,
+        },
       });
     });
 
@@ -430,7 +437,33 @@ describe('error-handler middleware', () => {
         status: 500,
         requestId: undefined,
         errorCode: undefined,
+        sourceLocation: null,
+        tenant: {
+          pharmacyId: null,
+          pharmacyEmail: null,
+        },
       });
+    });
+
+    it('records tenant context when authenticated user is present', () => {
+      const err = new Error('tenant scoped error') as Error & { status?: number };
+      err.status = 500;
+      const req = createReq({
+        path: '/api/account',
+      } as Partial<Request>) as Request & { user: { id: number; email: string } };
+      req.user = { id: 42, email: 'tenant@example.com' };
+      const res = createRes();
+      const next = vi.fn() as NextFunction;
+
+      errorHandler(err, req, res, next);
+
+      expect(mocks.recordHttpUnhandledError).toHaveBeenCalledWith(expect.objectContaining({
+        path: '/api/account',
+        tenant: {
+          pharmacyId: 42,
+          pharmacyEmail: 'tenant@example.com',
+        },
+      }));
     });
 
     it('handles 400 status code correctly', () => {

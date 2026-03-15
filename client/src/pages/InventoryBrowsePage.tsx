@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
@@ -10,7 +10,7 @@ import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/Bus
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-import { usePaginatedList } from '../hooks/usePaginatedList';
+import { useApiQuery } from '../hooks/useApiQuery';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface BrowseItem {
@@ -33,40 +33,31 @@ interface BrowseResponse {
 }
 
 export default function InventoryBrowsePage() {
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const initializedSearchRef = useRef(false);
-
-  const fetchBrowse = useCallback((targetPage: number, signal?: AbortSignal) => {
-    const params = new URLSearchParams({ page: String(targetPage) });
-    if (search) params.set('search', search);
-    return api.get<BrowseResponse>(`/inventory/browse?${params}`, { signal });
-  }, [search]);
 
   const {
-    items,
-    page,
-    setPage,
-    totalPages,
-    loading,
+    data,
+    isLoading: loading,
     error,
-    fetchPage,
-    retry,
-  } = usePaginatedList<BrowseItem, BrowseResponse>(fetchBrowse, {
-    errorMessage: '在庫データの取得に失敗しました',
-  });
+    refetch,
+  } = useApiQuery(
+    ['inventory-browse', page, search],
+    ({ signal }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      if (search) params.set('search', search);
+      return api.get<BrowseResponse>(`/inventory/browse?${params}`, { signal });
+    },
+  );
+
+  const items = data?.data ?? [];
+  const totalPages = data?.pagination.totalPages ?? 1;
+  const queryError = error instanceof Error ? error.message : '';
 
   useEffect(() => {
-    if (!initializedSearchRef.current) {
-      initializedSearchRef.current = true;
-      return;
-    }
-    if (page !== 1) {
-      setPage(1);
-      return;
-    }
-    void fetchPage(1);
-  }, [fetchPage, page, setPage, search]);
+    setPage(1);
+  }, [search]);
 
   const handleSearch = (q: string) => {
     setSearch(q);
@@ -74,8 +65,8 @@ export default function InventoryBrowsePage() {
   return (
     <PageShell>
       <h4 className="page-title mb-3">全薬局の在庫参照</h4>
-      {error && (
-        <ErrorRetryAlert error={error} onRetry={() => void retry()} />
+      {queryError && (
+        <ErrorRetryAlert error={queryError} onRetry={() => void refetch()} />
       )}
 
       <div className="mb-3 d-flex gap-2 mobile-stack">

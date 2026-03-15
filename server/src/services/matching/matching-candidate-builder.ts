@@ -161,6 +161,8 @@ function buildCandidateFromPharmacy(params: {
   now: Date;
   includeIsConfiguredInBusinessStatus: boolean;
   equivalenceMap: Map<string, string[]>;
+  myToTheirCache: Map<string, DrugMatchResult>;
+  theirToMyCache: Map<string, DrugMatchResult>;
 }): MatchCandidate | null {
   const {
     otherPharmacy,
@@ -176,14 +178,14 @@ function buildCandidateFromPharmacy(params: {
     now,
     includeIsConfiguredInBusinessStatus,
     equivalenceMap,
+    myToTheirCache,
+    theirToMyCache,
   } = params;
 
   const theirPreparedDeadStock = preparedDeadStockByPharmacy.get(otherPharmacy.id) ?? [];
   const theirUsedMedIndex = usedMedIndexByPharmacy.get(otherPharmacy.id);
   if (theirPreparedDeadStock.length === 0 || !theirUsedMedIndex) return null;
 
-  const myToTheirCache = new Map<string, DrugMatchResult>();
-  const theirToMyCache = new Map<string, DrugMatchResult>();
   const itemsFromA = buildMatchItems(
     myPreparedDeadStock,
     theirUsedMedIndex,
@@ -246,6 +248,74 @@ function buildCandidateFromPharmacy(params: {
   };
 }
 
+function isStockEligibleForMatch(stock: PreparedStockRow['stock']): boolean {
+  const price = Number(stock.yakkaUnitPrice);
+  if (!price || price <= 0) return false;
+
+  const expirySource = stock.expirationDateIso ?? stock.expirationDate;
+  return !isExpiredDate(expirySource);
+}
+
+function precomputeGlobalDrugMatches(params: {
+  pharmaciesWithDistance: PharmacyWithDistance[];
+  preparedDeadStockByPharmacy: Map<number, PreparedStockRow[]>;
+  myUsedMedIndex: UsedMedIndex;
+  nameMatchThreshold: number;
+  equivalenceMap: Map<string, string[]>;
+}): {
+  pharmaciesWithInboundMatches: Set<number>;
+  globalDrugMatchCache: Map<string, DrugMatchResult>;
+} {
+  const candidatePharmacyIds = new Set(params.pharmaciesWithDistance.map((pharmacy) => pharmacy.id));
+  const drugToPharmacies = new Map<string, {
+    preparedDrugName: PreparedStockRow['preparedDrugName'];
+    pharmacyIds: Set<number>;
+  }>();
+
+  for (const [pharmacyId, preparedStocks] of params.preparedDeadStockByPharmacy.entries()) {
+    if (!candidatePharmacyIds.has(pharmacyId)) continue;
+
+    for (const { stock, preparedDrugName } of preparedStocks) {
+      if (!isStockEligibleForMatch(stock)) continue;
+      const key = preparedDrugName.normalizedDrugName;
+      if (!key) continue;
+
+      const existing = drugToPharmacies.get(key);
+      if (existing) {
+        existing.pharmacyIds.add(pharmacyId);
+        continue;
+      }
+
+      drugToPharmacies.set(key, {
+        preparedDrugName,
+        pharmacyIds: new Set<number>([pharmacyId]),
+      });
+    }
+  }
+
+  const globalDrugMatchCache = new Map<string, DrugMatchResult>();
+  const pharmaciesWithInboundMatches = new Set<number>();
+
+  for (const { preparedDrugName, pharmacyIds } of drugToPharmacies.values()) {
+    const match = findBestDrugMatchWithEquivalences(
+      preparedDrugName,
+      params.myUsedMedIndex,
+      globalDrugMatchCache,
+      params.equivalenceMap,
+    );
+    if (match.score < params.nameMatchThreshold) continue;
+
+    for (const pharmacyId of pharmacyIds) {
+      pharmaciesWithInboundMatches.add(pharmacyId);
+    }
+  }
+
+  return {
+    pharmaciesWithInboundMatches,
+    globalDrugMatchCache,
+  };
+}
+
 export function collectCandidates(params: {
   pharmaciesWithDistance: PharmacyWithDistance[];
   myPreparedDeadStock: PreparedStockRow[];
@@ -262,8 +332,20 @@ export function collectCandidates(params: {
   equivalenceMap: Map<string, string[]>;
 }): MatchCandidate[] {
   const candidates: MatchCandidate[] = [];
+  const { pharmaciesWithInboundMatches, globalDrugMatchCache } = precomputeGlobalDrugMatches({
+    pharmaciesWithDistance: params.pharmaciesWithDistance,
+    preparedDeadStockByPharmacy: params.preparedDeadStockByPharmacy,
+    myUsedMedIndex: params.myUsedMedIndex,
+    nameMatchThreshold: params.matchingRuleProfile.nameMatchThreshold,
+    equivalenceMap: params.equivalenceMap,
+  });
+  if (pharmaciesWithInboundMatches.size === 0) {
+    return candidates;
+  }
 
   for (const otherPharmacy of params.pharmaciesWithDistance) {
+    if (!pharmaciesWithInboundMatches.has(otherPharmacy.id)) continue;
+
     const candidate = buildCandidateFromPharmacy({
       otherPharmacy,
       myPreparedDeadStock: params.myPreparedDeadStock,
@@ -278,6 +360,8 @@ export function collectCandidates(params: {
       now: params.now,
       includeIsConfiguredInBusinessStatus: params.includeIsConfiguredInBusinessStatus,
       equivalenceMap: params.equivalenceMap,
+      myToTheirCache: new Map<string, DrugMatchResult>(),
+      theirToMyCache: globalDrugMatchCache,
     });
     if (!candidate) continue;
     candidates.push(candidate);

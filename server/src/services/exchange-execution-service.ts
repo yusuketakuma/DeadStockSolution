@@ -10,7 +10,7 @@ import {
 } from '../db/schema';
 import { createNotification } from './notification-service';
 import { logger } from './logger';
-import { invalidateStatisticsSummaryCacheForPharmacies } from '../routes/statistics';
+import { invalidateStatisticsSummaryCacheForPharmacies } from './statistics-cache-service';
 import {
   assertActionPermission,
   assertNotBlocked,

@@ -14,7 +14,7 @@ import Pagination from '../components/Pagination';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 // ── 型定義 ──────────────────────────────────────
-type AlertType = 'near_expiry' | 'excess_stock' | 'no_movement';
+type AlertType = 'near_expiry' | 'excess_stock';
 
 interface AlertItem {
   id: number;
@@ -52,13 +52,11 @@ interface AffectedItem {
 const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   near_expiry: '期限切迫',
   excess_stock: '過剰在庫',
-  no_movement: '不動在庫',
 };
 
 const ALERT_TYPE_VARIANTS: Record<AlertType, string> = {
   near_expiry: 'danger',
   excess_stock: 'warning',
-  no_movement: 'info',
 };
 
 const PAGE_SIZE = 20;
@@ -106,7 +104,7 @@ function buildAlertsQuery(page: number, resolvedTab: 'unresolved' | 'resolved', 
     limit: String(PAGE_SIZE),
   });
   if (alertTypeFilter) {
-    params.set('alertType', alertTypeFilter);
+    params.set('type', alertTypeFilter);
   }
   return params.toString();
 }
@@ -410,7 +408,6 @@ export default function AlertListPage() {
               <option value="">すべてのタイプ</option>
               <option value="near_expiry">期限切迫</option>
               <option value="excess_stock">過剰在庫</option>
-              <option value="no_movement">不動在庫</option>
             </Form.Select>
           </Col>
           <Col xs="auto" className="text-muted small">

@@ -43,7 +43,11 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import statisticsRouter, { clearStatisticsSummaryCacheForTests } from '../routes/statistics';
+import statisticsRouter from '../routes/statistics';
+import {
+  clearStatisticsSummaryCacheForTests,
+  invalidateStatisticsSummaryCache,
+} from '../services/statistics-cache-service';
 
 function createApp() {
   const app = express();
@@ -199,6 +203,25 @@ describe('statistics routes', () => {
     expect(second.status).toBe(200);
     expect(mocks.db.select).toHaveBeenCalledTimes(9);
     expect(mocks.getPharmacyRiskDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('GET /api/statistics/summary refetches after explicit cache invalidation', async () => {
+    const app = createApp();
+    mockSummarySelectSequence();
+    mocks.getPharmacyRiskDetail.mockResolvedValue({
+      riskScore: 40,
+      bucketCounts: null,
+    });
+
+    const first = await request(app).get('/api/statistics/summary');
+    invalidateStatisticsSummaryCache(1);
+    mockSummarySelectSequence();
+    const second = await request(app).get('/api/statistics/summary');
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(mocks.db.select).toHaveBeenCalledTimes(18);
+    expect(mocks.getPharmacyRiskDetail).toHaveBeenCalledTimes(2);
   });
 
   it('GET /api/statistics/summary returns 500 when aggregation query fails', async () => {

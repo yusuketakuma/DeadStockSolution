@@ -4,8 +4,8 @@ import {
   DEFAULT_MATCHING_SCORING_RULES,
   getNearExpiryCount,
   isExpiredDate,
-  type MatchingScoringRules,
 } from '../services/matching-score-service';
+import type { MatchingScoringRules } from '../types/matching';
 import { MatchItem } from '../types';
 
 function createItem(expirationDate: string | null, expirationDateIso?: string | null): MatchItem {

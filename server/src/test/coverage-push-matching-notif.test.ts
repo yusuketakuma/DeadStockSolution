@@ -682,6 +682,7 @@ describe('notifications.ts — internal helper functions (reimplemented for cove
   describe('resolveNotificationType', () => {
     function resolveNotificationType(type: string): string | null {
       if (type === 'new_comment') return 'new_comment';
+      if (type === 'alert_near_expiry' || type === 'alert_excess_stock' || type === 'alert_resolved') return 'alert';
       if (type === 'proposal_received' || type === 'proposal_status_changed' || type === 'request_update') return 'status_update';
       return null;
     }
@@ -702,6 +703,13 @@ describe('notifications.ts — internal helper functions (reimplemented for cove
       expect(resolveNotificationType('request_update')).toBe('status_update');
     });
 
+
+    it('maps predictive alert notification types to alert', () => {
+      expect(resolveNotificationType('alert_near_expiry')).toBe('alert');
+      expect(resolveNotificationType('alert_excess_stock')).toBe('alert');
+      expect(resolveNotificationType('alert_resolved')).toBe('alert');
+    });
+
     it('returns null for unknown type', () => {
       expect(resolveNotificationType('unknown')).toBeNull();
       expect(resolveNotificationType('')).toBeNull();
@@ -711,6 +719,7 @@ describe('notifications.ts — internal helper functions (reimplemented for cove
   // ── resolveNotificationActionPath ──
   describe('resolveNotificationActionPath', () => {
     function resolveNotificationActionPath(referenceType: string | null, referenceId: number | null): string {
+      if (referenceType === 'alert') return '/alerts';
       if (referenceType === 'match') return '/matching';
       if ((referenceType === 'proposal' || referenceType === 'comment') && referenceId) {
         return `/proposals/${referenceId}`;
@@ -718,6 +727,11 @@ describe('notifications.ts — internal helper functions (reimplemented for cove
       if (referenceType === 'request') return '/';
       return '/';
     }
+
+
+    it('returns /alerts for alert reference type', () => {
+      expect(resolveNotificationActionPath('alert', 501)).toBe('/alerts');
+    });
 
     it('returns /matching for match reference type', () => {
       expect(resolveNotificationActionPath('match', null)).toBe('/matching');

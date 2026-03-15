@@ -1,4 +1,6 @@
 import React, { Suspense, useEffect } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -11,9 +13,21 @@ import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppScreen from './components/ui/AppScreen';
 import PageLoader from './components/ui/PageLoader';
+import RouteErrorBoundary from './components/ui/RouteErrorBoundary';
 import { ROUTE_META, type RouteMeta } from './routes/route-config';
 import SWUpdateBanner from './components/pwa/SWUpdateBanner';
 import InstallPromptBanner from './components/pwa/InstallPromptBanner';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      retry: 1,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
 
 function RouteLoadingFallback() {
   return <PageLoader />;
@@ -21,9 +35,11 @@ function RouteLoadingFallback() {
 
 function withRouteSuspense(element: React.ReactElement): React.JSX.Element {
   return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      {element}
-    </Suspense>
+    <RouteErrorBoundary>
+      <Suspense fallback={<RouteLoadingFallback />}>
+        {element}
+      </Suspense>
+    </RouteErrorBoundary>
   );
 }
 
@@ -78,20 +94,23 @@ export default function App() {
   }, []);
 
   const content = (
-    <AuthProvider>
-      <TimelineProvider>
-        <NotificationProvider>
-          <ToastProvider>
-            <ErrorBoundary>
-              <AppRoutes />
-              <AppToastContainer />
-              <SWUpdateBanner />
-              <InstallPromptBanner />
-            </ErrorBoundary>
-          </ToastProvider>
-        </NotificationProvider>
-      </TimelineProvider>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TimelineProvider>
+          <NotificationProvider>
+            <ToastProvider>
+              <ErrorBoundary>
+                <AppRoutes />
+                <AppToastContainer />
+                <SWUpdateBanner />
+                <InstallPromptBanner />
+              </ErrorBoundary>
+            </ToastProvider>
+          </NotificationProvider>
+        </TimelineProvider>
+      </AuthProvider>
+      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+    </QueryClientProvider>
   );
 
   if (isSentryEnabled()) {

@@ -1,5 +1,4 @@
-import { and, eq, exists, gte, inArray, or } from 'drizzle-orm';
-import { db } from '../config/database';
+import { and, eq, exists, gte, inArray, or, sql } from 'drizzle-orm';
 import {
   deadStockItems,
   groupMembers,
@@ -18,6 +17,7 @@ import {
 } from './matching/matching-candidate-builder';
 import {
   DEAD_STOCK_SELECT_FIELDS,
+  fetchAvailableDeadStockByPharmacy,
   fetchBusinessHoursMaps,
   fetchReservationMap,
   fetchViablePharmacies,
@@ -33,6 +33,7 @@ import {
 } from './matching/matching-data-preparer';
 import { sortAndLimitCandidates } from './matching/matching-ranker';
 import { fetchEquivalenceMap } from './drug-equivalence-service';
+import { getServiceDeps, type ServiceDependencies } from './service-container';
 
 type PharmacyLocation = {
   id: number;
@@ -57,6 +58,70 @@ type GroupMemberRow = {
 };
 
 type MatchingIndexes = ReturnType<typeof buildMatchingIndexes>;
+
+type PreparedPharmacyLocationById = {
+  execute(params: { pharmacyId: number }): Promise<PharmacyLocation[]>;
+};
+
+let preparedPharmacyLocationById: PreparedPharmacyLocationById | null = null;
+
+function bindParam<T>(name: string): T {
+  const placeholderFn = (sql as typeof sql & { placeholder?: (placeholderName: string) => unknown }).placeholder;
+  if (typeof placeholderFn === 'function') {
+    return placeholderFn(name) as T;
+  }
+  return name as T;
+}
+
+function getPreparedPharmacyLocationById(deps: ServiceDependencies): PreparedPharmacyLocationById | null {
+  const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
+  if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') {
+    return null;
+  }
+  if (deps.db !== getServiceDeps().db) {
+    return null;
+  }
+  if (preparedPharmacyLocationById) {
+    return preparedPharmacyLocationById;
+  }
+
+  const query = deps.db.select({
+    id: pharmacies.id,
+    name: pharmacies.name,
+    latitude: pharmacies.latitude,
+    longitude: pharmacies.longitude,
+  })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, bindParam<number>('pharmacyId')))
+    .limit(1);
+
+  if (typeof (query as { prepare?: unknown }).prepare === 'function') {
+    preparedPharmacyLocationById = (query as { prepare(name: string): PreparedPharmacyLocationById })
+      .prepare('prepared_pharmacy_location_by_id');
+  }
+
+  return preparedPharmacyLocationById;
+}
+
+async function fetchPharmacyLocationById(
+  pharmacyId: number,
+  deps: ServiceDependencies = getServiceDeps(),
+): Promise<PharmacyLocation[]> {
+  const prepared = getPreparedPharmacyLocationById(deps);
+  if (prepared) {
+    return prepared.execute({ pharmacyId });
+  }
+
+  return deps.db.select({
+    id: pharmacies.id,
+    name: pharmacies.name,
+    latitude: pharmacies.latitude,
+    longitude: pharmacies.longitude,
+  })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, pharmacyId))
+    .limit(1);
+}
 
 function uniqueNumbers(values: number[]): number[] {
   return [...new Set(values)];
@@ -137,8 +202,11 @@ function buildGroupMemberIdsByPharmacy(
   return groupMemberIdsByPharmacy;
 }
 
-async function fetchFavoriteIdsByPharmacy(sourcePharmacyIds: number[]): Promise<Map<number, Set<number>>> {
-  const favoriteRows = await db.select({
+async function fetchFavoriteIdsByPharmacy(
+  sourcePharmacyIds: number[],
+  deps: ServiceDependencies,
+): Promise<Map<number, Set<number>>> {
+  const favoriteRows = await deps.db.select({
     pharmacyId: pharmacyRelationships.pharmacyId,
     targetPharmacyId: pharmacyRelationships.targetPharmacyId,
   })
@@ -151,8 +219,11 @@ async function fetchFavoriteIdsByPharmacy(sourcePharmacyIds: number[]): Promise<
   return buildFavoriteIdsByPharmacy(favoriteRows);
 }
 
-async function fetchGroupMemberIdsByPharmacy(sourcePharmacyIds: number[]): Promise<Map<number, Set<number>>> {
-  const sourceGroupRowsRaw = await db.select({
+async function fetchGroupMemberIdsByPharmacy(
+  sourcePharmacyIds: number[],
+  deps: ServiceDependencies,
+): Promise<Map<number, Set<number>>> {
+  const sourceGroupRowsRaw = await deps.db.select({
     pharmacyId: groupMembers.pharmacyId,
     groupId: groupMembers.groupId,
   })
@@ -163,7 +234,7 @@ async function fetchGroupMemberIdsByPharmacy(sourcePharmacyIds: number[]): Promi
 
   const allSourceGroupIds = uniqueNumbers(sourceGroupRows.map((row) => row.groupId));
   const allGroupMemberRowsRaw = allSourceGroupIds.length > 0
-    ? await db.select({
+    ? await deps.db.select({
       groupId: groupMembers.groupId,
       pharmacyId: groupMembers.pharmacyId,
     })
@@ -179,10 +250,13 @@ async function fetchGroupMemberIdsByPharmacy(sourcePharmacyIds: number[]): Promi
   );
 }
 
-async function fetchBatchSourceContext(sourcePharmacyIds: number[]) {
+async function fetchBatchSourceContext(
+  sourcePharmacyIds: number[],
+  deps: ServiceDependencies = getServiceDeps(),
+) {
   const [favoriteIdsByPharmacy, groupMemberIdsByPharmacy] = await Promise.all([
-    fetchFavoriteIdsByPharmacy(sourcePharmacyIds),
-    fetchGroupMemberIdsByPharmacy(sourcePharmacyIds),
+    fetchFavoriteIdsByPharmacy(sourcePharmacyIds, deps),
+    fetchGroupMemberIdsByPharmacy(sourcePharmacyIds, deps),
   ]);
 
   return {
@@ -194,9 +268,10 @@ async function fetchBatchSourceContext(sourcePharmacyIds: number[]) {
 async function fetchBlockedPairsForSources(
   sourcePharmacyIds: number[],
   viablePharmacyIds: number[],
+  deps: ServiceDependencies = getServiceDeps(),
 ) {
   const blockedRelationshipRows = sourcePharmacyIds.length > 0 && viablePharmacyIds.length > 0
-    ? await db.select({
+    ? await deps.db.select({
       pharmacyId: pharmacyRelationships.pharmacyId,
       targetPharmacyId: pharmacyRelationships.targetPharmacyId,
     })
@@ -222,19 +297,20 @@ async function fetchBlockedPairsForSources(
 async function buildBatchMatchingIndexes(
   allRelevantPharmacyIds: number[],
   viablePharmacyIds: number[],
+  deps: ServiceDependencies = getServiceDeps(),
 ): Promise<MatchingIndexes & {
   businessHoursByPharmacy: Awaited<ReturnType<typeof fetchBusinessHoursMaps>>['businessHoursByPharmacy'];
   specialHoursByPharmacy: Awaited<ReturnType<typeof fetchBusinessHoursMaps>>['specialHoursByPharmacy'];
 }> {
   const [allDeadStockRows, allUsedMedRows] = await Promise.all([
-    db.select(DEAD_STOCK_SELECT_FIELDS)
+    deps.db.select(DEAD_STOCK_SELECT_FIELDS)
       .from(deadStockItems)
       .where(and(
         inArray(deadStockItems.pharmacyId, allRelevantPharmacyIds),
         eq(deadStockItems.isAvailable, true),
       ))
       .orderBy(deadStockItems.id),
-    db.select(USED_MED_SELECT_FIELDS)
+    deps.db.select(USED_MED_SELECT_FIELDS)
       .from(usedMedicationItems)
       .where(inArray(usedMedicationItems.pharmacyId, allRelevantPharmacyIds))
       .orderBy(usedMedicationItems.id),
@@ -306,13 +382,16 @@ function buildCandidatesForSource(params: {
   return sortAndLimitCandidates(candidates, params.matchingRuleProfile, params.now);
 }
 
-async function fetchSingleGroupMemberIds(pharmacyId: number): Promise<Set<number>> {
-  const sourceGroupIdSubquery = db.select({
+async function fetchSingleGroupMemberIds(
+  pharmacyId: number,
+  deps: ServiceDependencies = getServiceDeps(),
+): Promise<Set<number>> {
+  const sourceGroupIdSubquery = deps.db.select({
     groupId: groupMembers.groupId,
   })
     .from(groupMembers)
     .where(eq(groupMembers.pharmacyId, pharmacyId));
-  const groupMemberRowsRaw = await db.select({
+  const groupMemberRowsRaw = await deps.db.select({
     pharmacyId: groupMembers.pharmacyId,
   })
     .from(groupMembers)
@@ -331,19 +410,20 @@ async function buildSingleMatchingIndexes(
   viablePharmacyIds: number[],
   myDeadStock: DeadStockRow[],
   myUsedMeds: UsedMedRow[],
+  deps: ServiceDependencies = getServiceDeps(),
 ): Promise<(MatchingIndexes & {
   businessHoursByPharmacy: Awaited<ReturnType<typeof fetchBusinessHoursMaps>>['businessHoursByPharmacy'];
   specialHoursByPharmacy: Awaited<ReturnType<typeof fetchBusinessHoursMaps>>['specialHoursByPharmacy'];
 }) | null> {
   const [allOtherDeadStock, allOtherUsedMeds] = await Promise.all([
-    db.select(DEAD_STOCK_SELECT_FIELDS)
+    deps.db.select(DEAD_STOCK_SELECT_FIELDS)
       .from(deadStockItems)
       .where(and(
         inArray(deadStockItems.pharmacyId, viablePharmacyIds),
         eq(deadStockItems.isAvailable, true),
       ))
       .orderBy(deadStockItems.id),
-    db.select(USED_MED_SELECT_FIELDS)
+    deps.db.select(USED_MED_SELECT_FIELDS)
       .from(usedMedicationItems)
       .where(inArray(usedMedicationItems.pharmacyId, viablePharmacyIds))
       .orderBy(usedMedicationItems.id),
@@ -374,7 +454,10 @@ async function buildSingleMatchingIndexes(
   };
 }
 
-export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<number, MatchCandidate[]>> {
+export async function findMatchesBatch(
+  pharmacyIds: number[],
+  deps: ServiceDependencies = getServiceDeps(),
+): Promise<Map<number, MatchCandidate[]>> {
   const sourcePharmacyIds = uniqueNumbers(pharmacyIds);
   const matchesByPharmacy = new Map<number, MatchCandidate[]>();
   if (sourcePharmacyIds.length === 0) return matchesByPharmacy;
@@ -386,7 +469,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
     fetchEquivalenceMap(),
   ]);
 
-  const currentPharmacies = await db.select({
+  const currentPharmacies = await deps.db.select({
     id: pharmacies.id,
     name: pharmacies.name,
     latitude: pharmacies.latitude,
@@ -403,9 +486,9 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
   );
   if (existingSourcePharmacyIds.length === 0) return matchesByPharmacy;
 
-  const { favoriteIdsByPharmacy, groupMemberIdsByPharmacy } = await fetchBatchSourceContext(existingSourcePharmacyIds);
+  const { favoriteIdsByPharmacy, groupMemberIdsByPharmacy } = await fetchBatchSourceContext(existingSourcePharmacyIds, deps);
 
-  const viablePharmacyPool = await db.select({
+  const viablePharmacyPool = await deps.db.select({
     id: pharmacies.id,
     name: pharmacies.name,
     phone: pharmacies.phone,
@@ -417,7 +500,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
     .where(and(
       eq(pharmacies.isActive, true),
       exists(
-        db.select({ id: uploads.id })
+        deps.db.select({ id: uploads.id })
           .from(uploads)
           .where(and(
             eq(uploads.pharmacyId, pharmacies.id),
@@ -426,7 +509,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
           )),
       ),
       exists(
-        db.select({ id: deadStockItems.id })
+        deps.db.select({ id: deadStockItems.id })
           .from(deadStockItems)
           .where(and(
             eq(deadStockItems.pharmacyId, pharmacies.id),
@@ -434,14 +517,14 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
           )),
       ),
       exists(
-        db.select({ id: usedMedicationItems.id })
+        deps.db.select({ id: usedMedicationItems.id })
           .from(usedMedicationItems)
           .where(eq(usedMedicationItems.pharmacyId, pharmacies.id)),
       ),
     ));
 
   const viablePharmacyPoolIds = viablePharmacyPool.map((pharmacy) => pharmacy.id);
-  const blockedPairs = await fetchBlockedPairsForSources(existingSourcePharmacyIds, viablePharmacyPoolIds);
+  const blockedPairs = await fetchBlockedPairsForSources(existingSourcePharmacyIds, viablePharmacyPoolIds, deps);
   const {
     preparedDeadStockByPharmacy,
     usedMedIndexByPharmacy,
@@ -450,6 +533,7 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
   } = await buildBatchMatchingIndexes(
     uniqueNumbers([...existingSourcePharmacyIds, ...viablePharmacyPoolIds]),
     viablePharmacyPoolIds,
+    deps,
   );
 
   for (const sourcePharmacyId of existingSourcePharmacyIds) {
@@ -481,32 +565,21 @@ export async function findMatchesBatch(pharmacyIds: number[]): Promise<Map<numbe
   return matchesByPharmacy;
 }
 
-export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]> {
+export async function findMatches(
+  pharmacyId: number,
+  deps: ServiceDependencies = getServiceDeps(),
+): Promise<MatchCandidate[]> {
   const [matchingRuleProfile, [currentPharmacy], equivalenceMap] = await Promise.all([
     getActiveMatchingRuleProfile(),
-    db.select({
-      id: pharmacies.id,
-      name: pharmacies.name,
-      latitude: pharmacies.latitude,
-      longitude: pharmacies.longitude,
-    })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, pharmacyId))
-      .limit(1),
+    fetchPharmacyLocationById(pharmacyId, deps),
     fetchEquivalenceMap(),
   ]);
 
   if (!currentPharmacy) throw new Error('薬局が見つかりません');
 
   const [myDeadStock, myUsedMeds] = await Promise.all([
-    db.select(DEAD_STOCK_SELECT_FIELDS)
-      .from(deadStockItems)
-      .where(and(
-        eq(deadStockItems.pharmacyId, pharmacyId),
-        eq(deadStockItems.isAvailable, true),
-      ))
-      .orderBy(deadStockItems.id),
-    db.select(USED_MED_SELECT_FIELDS)
+    fetchAvailableDeadStockByPharmacy(pharmacyId),
+    deps.db.select(USED_MED_SELECT_FIELDS)
       .from(usedMedicationItems)
       .where(eq(usedMedicationItems.pharmacyId, pharmacyId))
       .orderBy(usedMedicationItems.id),
@@ -519,7 +592,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
   const now = new Date();
   const firstOfMonth = getFirstOfMonthIso(now);
   const [favoriteRows, viablePharmacies, groupMemberIds] = await Promise.all([
-    db.select({
+    deps.db.select({
       targetPharmacyId: pharmacyRelationships.targetPharmacyId,
     })
       .from(pharmacyRelationships)
@@ -528,7 +601,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
         eq(pharmacyRelationships.relationshipType, 'favorite'),
       )),
     fetchViablePharmacies(pharmacyId, firstOfMonth),
-    fetchSingleGroupMemberIds(pharmacyId),
+    fetchSingleGroupMemberIds(pharmacyId, deps),
   ]);
 
   if (viablePharmacies.length === 0) return [];
@@ -539,6 +612,7 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     viablePharmacies.map((pharmacy) => pharmacy.id),
     myDeadStock,
     myUsedMeds,
+    deps,
   );
   if (!matchingIndexes) {
     return [];
@@ -559,4 +633,11 @@ export async function findMatches(pharmacyId: number): Promise<MatchCandidate[]>
     includeIsConfiguredInBusinessStatus: true,
     equivalenceMap,
   });
+}
+
+export function createMatchingService(deps: ServiceDependencies = getServiceDeps()) {
+  return {
+    findMatchesBatch: (pharmacyIds: number[]) => findMatchesBatch(pharmacyIds, deps),
+    findMatches: (pharmacyId: number) => findMatches(pharmacyId, deps),
+  };
 }

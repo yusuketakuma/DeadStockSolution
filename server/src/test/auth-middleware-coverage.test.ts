@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   verifyToken: vi.fn(),
   deriveSessionVersion: vi.fn(),
   isJwtSecretMissingError: vi.fn(),
+  isDependencyServiceUnavailableError: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -22,6 +23,11 @@ vi.mock('../services/auth-service', () => ({
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
+  sql: {},
+}));
+
+vi.mock('../routes/auth-helpers', () => ({
+  isDependencyServiceUnavailableError: mocks.isDependencyServiceUnavailableError,
 }));
 
 import {
@@ -75,6 +81,7 @@ describe('auth middleware (coverage)', () => {
     vi.clearAllMocks();
     clearAuthUserCacheForTests();
     mocks.isJwtSecretMissingError.mockReturnValue(false);
+    mocks.isDependencyServiceUnavailableError.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -407,6 +414,7 @@ describe('auth middleware (coverage)', () => {
       mocks.select.mockImplementation(() => {
         throw new Error('DB connection failed');
       });
+      mocks.isDependencyServiceUnavailableError.mockReturnValue(true);
 
       const req = createReq('valid-token');
       const res = createRes();

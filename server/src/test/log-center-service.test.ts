@@ -42,6 +42,9 @@ describe('log-center-service', () => {
         expect(entry.pharmacyId).toBe(10);
         expect(entry.timestamp).toBe('2026-03-01T10:00:00.000Z');
         expect(entry.category).toBe('dead_stock');
+        expect(entry.whatHappened).toBe('ファイル形式が不正です');
+        expect(entry.codeLocation).toBe('server/src/routes/upload.ts');
+        expect(entry.tenant.pharmacyId).toBe(10);
       });
 
       it('should detect warning level for login_failed action', () => {
@@ -59,6 +62,7 @@ describe('log-center-service', () => {
 
         expect(entry.level).toBe('warning');
         expect(entry.message).toBe('[login_failed] パスワード不一致');
+        expect(entry.codeLocation).toBe('server/src/routes/auth.ts');
       });
 
       it('should detect warning level for password_reset_failed action', () => {
@@ -93,6 +97,7 @@ describe('log-center-service', () => {
         expect(entry.level).toBe('info');
         expect(entry.message).toBe('[login] ログイン成功');
         expect(entry.detail).toEqual({ browser: 'Chrome' });
+        expect(entry.codeLocation).toBe('server/src/routes/auth.ts');
       });
 
       it('should use action as category when resourceType is null', () => {
@@ -183,6 +188,7 @@ describe('log-center-service', () => {
         expect(entry.detail).toEqual({ stack: 'Error at ...' });
         expect(entry.timestamp).toBe('2026-03-01T10:30:00.000Z');
         expect(entry.pharmacyId).toBeNull();
+        expect(entry.whatHappened).toBe('Cannot read property of undefined');
       });
 
       it('should handle warning level events', () => {
@@ -234,6 +240,30 @@ describe('log-center-service', () => {
         const entry = normalizeLogEntry('system_events', row);
 
         expect(entry.detail).toEqual(detailObj);
+      });
+
+      it('should derive code location and tenant from http detail payload', () => {
+        const row = {
+          id: 104,
+          source: 'runtime_error',
+          level: 'error',
+          eventType: 'http_unhandled_error',
+          message: 'POST /api/account -> 500',
+          detailJson: JSON.stringify({
+            path: '/api/account',
+            status: 500,
+            stack: 'Error: boom\n    at handler (/Users/yusuke/DeadStockSolution/server/src/routes/account.ts:451:13)',
+            tenant: { pharmacyId: 22, pharmacyEmail: 'tenant@example.com' },
+          }),
+          occurredAt: '2026-03-01T13:30:00.000Z',
+        };
+
+        const entry = normalizeLogEntry('system_events', row);
+
+        expect(entry.pharmacyId).toBe(22);
+        expect(entry.tenant.pharmacyEmail).toBe('tenant@example.com');
+        expect(entry.codeLocation).toBe('server/src/routes/account.ts:451:13');
+        expect(entry.whatHappened).toBe('/api/account で HTTP 500 エラーが発生しました');
       });
     });
 

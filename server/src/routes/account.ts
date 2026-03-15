@@ -20,6 +20,8 @@ import { getErrorMessage } from '../middleware/error-handler';
 import { eqEmailCaseInsensitive } from '../utils/email-utils';
 import { emailSchema } from '../utils/validators';
 import { sendBadRequest, sendConflict } from './response-helpers';
+import { invalidateActivePasswordResetTokens } from '../services/password-reset-service';
+import { setAuthCookie } from './auth-helpers';
 
 // パスワード変更用レート制限: 10回/時/ユーザー
 const passwordChangeLimiter = rateLimit({
@@ -364,17 +366,27 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     updates.version = sql`${pharmacies.version} + 1`;
 
     // 楽観的ロック: id と version の両方が一致する場合のみ更新
-    const updateResult = await db.update(pharmacies)
-      .set(updates)
-      .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, parsedVersion)))
-      .returning({
-        id: pharmacies.id,
-        email: pharmacies.email,
-        isAdmin: pharmacies.isAdmin,
-        isActive: pharmacies.isActive,
-        passwordHash: pharmacies.passwordHash,
-        version: pharmacies.version,
-      });
+    const passwordChanged = typeof updates.passwordHash === 'string';
+    const updateTimestamp = String(updates.updatedAt);
+    const updateResult = await db.transaction(async (tx) => {
+      const rows = await tx.update(pharmacies)
+        .set(updates)
+        .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, parsedVersion)))
+        .returning({
+          id: pharmacies.id,
+          email: pharmacies.email,
+          isAdmin: pharmacies.isAdmin,
+          isActive: pharmacies.isActive,
+          passwordHash: pharmacies.passwordHash,
+          version: pharmacies.version,
+        });
+
+      if (rows.length > 0 && passwordChanged) {
+        await invalidateActivePasswordResetTokens(tx, req.user!.id, updateTimestamp);
+      }
+
+      return rows;
+    });
 
     // 更新行数 0 = 楽観的ロック競合
     if (updateResult.length === 0) {
@@ -405,12 +417,7 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       sessionVersion: deriveSessionVersion(updatedPharmacy.passwordHash),
     });
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000,
-    });
+    setAuthCookie(res, token, process.env.NODE_ENV === 'production');
 
     // 再認証トリガー: 対象フィールドが実際に変更された場合のみ
     if (hasReverificationField) {

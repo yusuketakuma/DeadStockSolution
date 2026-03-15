@@ -6,6 +6,7 @@ import {
   drugMasterPriceHistory,
   drugMasterSyncLogs,
 } from '../db/schema';
+import { createCache } from './cache-service';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 import { normalizePackageInfo } from '../utils/package-utils';
 
@@ -20,6 +21,116 @@ export interface DrugMasterStats {
 }
 
 type DrugMasterTextColumn = typeof drugMaster.drugName | typeof drugMaster.genericName;
+type DrugMasterRow = typeof drugMaster.$inferSelect;
+type DrugDetailRow = DrugMasterRow & {
+  packages: Array<ReturnType<typeof normalizePackageRow>>;
+  priceHistory: Array<typeof drugMasterPriceHistory.$inferSelect>;
+};
+
+const DRUG_MASTER_LOOKUP_CACHE = createCache<DrugMasterRow | null>({
+  ttlMs: 86_400_000,
+  maxEntries: 10_000,
+  name: 'drug_master_lookup',
+});
+const DRUG_MASTER_LOOKUP_CACHE_ENABLED = process.env.NODE_ENV !== 'test';
+
+const DRUG_DETAIL_CACHE = createCache<DrugDetailRow | null>({
+  ttlMs: 86_400_000,
+  maxEntries: 10_000,
+  name: 'drug_detail_lookup',
+});
+
+type PreparedDrugMasterById = {
+  execute(params: { drugMasterId: number }): Promise<DrugMasterRow[]>;
+};
+
+type PreparedDrugMasterByCode = {
+  execute(params: { yjCode: string }): Promise<DrugMasterRow[]>;
+};
+
+let prepared_drug_master_by_id: PreparedDrugMasterById | null = null;
+let prepared_drug_master_by_code: PreparedDrugMasterByCode | null = null;
+
+function bindParam<T>(name: string): T {
+  const placeholderFn = (sql as typeof sql & { placeholder?: (placeholderName: string) => unknown }).placeholder;
+  if (typeof placeholderFn === 'function') {
+    return placeholderFn(name) as T;
+  }
+  return name as T;
+}
+
+function getPreparedDrugMasterById(): PreparedDrugMasterById | null {
+  const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
+  if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') return null;
+  if (prepared_drug_master_by_id) return prepared_drug_master_by_id;
+  const query = db.select()
+    .from(drugMaster)
+    .where(eq(drugMaster.id, bindParam<number>('drugMasterId')))
+    .limit(1);
+  if (typeof (query as { prepare?: unknown }).prepare === 'function') {
+    prepared_drug_master_by_id = (query as { prepare(name: string): PreparedDrugMasterById })
+      .prepare('prepared_drug_master_by_id');
+  }
+  return prepared_drug_master_by_id;
+}
+
+function getPreparedDrugMasterByCode(): PreparedDrugMasterByCode | null {
+  const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
+  if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') return null;
+  if (prepared_drug_master_by_code) return prepared_drug_master_by_code;
+  const query = db.select()
+    .from(drugMaster)
+    .where(eq(drugMaster.yjCode, bindParam<string>('yjCode')))
+    .limit(1);
+  if (typeof (query as { prepare?: unknown }).prepare === 'function') {
+    prepared_drug_master_by_code = (query as { prepare(name: string): PreparedDrugMasterByCode })
+      .prepare('prepared_drug_master_by_code');
+  }
+  return prepared_drug_master_by_code;
+}
+
+function drugCodeCacheKey(code: string): string {
+  return `code:${code}`;
+}
+
+function drugMasterIdCacheKey(drugMasterId: number): string {
+  return `id:${drugMasterId}`;
+}
+
+function primeDrugMasterLookupCache(code: string, value: DrugMasterRow | null): void {
+  if (!DRUG_MASTER_LOOKUP_CACHE_ENABLED) return;
+  DRUG_MASTER_LOOKUP_CACHE.set(drugCodeCacheKey(code), value);
+  if (value) {
+    DRUG_MASTER_LOOKUP_CACHE.set(drugMasterIdCacheKey(value.id), value);
+  }
+}
+
+async function fetchDrugMasterById(drugMasterId: number): Promise<DrugMasterRow | null> {
+  const cacheKey = drugMasterIdCacheKey(drugMasterId);
+  if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
+    const cached = DRUG_MASTER_LOOKUP_CACHE.get(cacheKey);
+    if (cached !== undefined) return cached;
+  }
+
+  const prepared = getPreparedDrugMasterById();
+  const master = prepared
+    ? await prepared.execute({ drugMasterId })
+    : await db.select().from(drugMaster).where(eq(drugMaster.id, drugMasterId)).limit(1);
+  const resolved = master[0] ?? null;
+  if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
+    DRUG_MASTER_LOOKUP_CACHE.set(cacheKey, resolved);
+    if (resolved) {
+      DRUG_MASTER_LOOKUP_CACHE.set(drugCodeCacheKey(resolved.yjCode), resolved);
+    }
+  }
+  return resolved;
+}
+
+export function invalidateDrugMasterLookupCache(): void {
+  if (!DRUG_MASTER_LOOKUP_CACHE_ENABLED) return;
+  DRUG_MASTER_LOOKUP_CACHE.invalidateAll();
+  DRUG_DETAIL_CACHE.invalidateAll();
+}
 
 // ── 検索・照会 ──────────────────────────────────────
 
@@ -99,13 +210,21 @@ export async function searchDrugMaster(query: string, limit: number = 20) {
 
 export async function lookupByCode(code: string) {
   const cleaned = code.replace(/[\s\-]/g, '').normalize('NFKC');
+  const codeCacheKey = drugCodeCacheKey(cleaned);
+  if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
+    const cachedByCode = DRUG_MASTER_LOOKUP_CACHE.get(codeCacheKey);
+    if (cachedByCode !== undefined) return cachedByCode;
+  }
 
   // YJコード（12桁）直接検索
-  const byYj = await db.select()
-    .from(drugMaster)
-    .where(eq(drugMaster.yjCode, cleaned))
-    .limit(1);
-  if (byYj[0]) return byYj[0];
+  const prepared = getPreparedDrugMasterByCode();
+  const byYj = prepared
+    ? await prepared.execute({ yjCode: cleaned })
+    : await db.select().from(drugMaster).where(eq(drugMaster.yjCode, cleaned)).limit(1);
+  if (byYj[0]) {
+    primeDrugMasterLookupCache(cleaned, byYj[0]);
+    return byYj[0];
+  }
 
   // GS1/JAN/HOTコードで包装テーブルを検索
   const pkgResult = await db.select({
@@ -120,13 +239,14 @@ export async function lookupByCode(code: string) {
     .limit(1);
 
   if (pkgResult[0]) {
-    const master = await db.select()
-      .from(drugMaster)
-      .where(eq(drugMaster.id, pkgResult[0].drugMasterId))
-      .limit(1);
-    return master[0] || null;
+    const master = await fetchDrugMasterById(pkgResult[0].drugMasterId);
+    primeDrugMasterLookupCache(cleaned, master);
+    return master;
   }
 
+  if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
+    DRUG_MASTER_LOOKUP_CACHE.set(codeCacheKey, null);
+  }
   return null;
 }
 
@@ -155,8 +275,19 @@ export async function getDrugMasterStats(): Promise<DrugMasterStats> {
 }
 
 export async function getDrugDetail(yjCode: string) {
+  const detailCacheKey = drugCodeCacheKey(yjCode);
+  if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
+    const cachedDetail = DRUG_DETAIL_CACHE.get(detailCacheKey);
+    if (cachedDetail !== undefined) return cachedDetail;
+  }
+
   const [drug] = await db.select().from(drugMaster).where(eq(drugMaster.yjCode, yjCode));
-  if (!drug) return null;
+  if (!drug) {
+    if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
+      DRUG_DETAIL_CACHE.set(detailCacheKey, null);
+    }
+    return null;
+  }
 
   const packageRows = await db.select().from(drugMasterPackages)
     .where(eq(drugMasterPackages.drugMasterId, drug.id));
@@ -166,7 +297,11 @@ export async function getDrugDetail(yjCode: string) {
     .where(eq(drugMasterPriceHistory.yjCode, yjCode))
     .orderBy(desc(drugMasterPriceHistory.revisionDate));
 
-  return { ...drug, packages, priceHistory };
+  const detail = { ...drug, packages, priceHistory };
+  if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
+    DRUG_DETAIL_CACHE.set(detailCacheKey, detail);
+  }
+  return detail;
 }
 
 export async function getSyncLogs(limit: number = 20) {

@@ -79,6 +79,58 @@ function createApp() {
   return app;
 }
 
+describe('notifications-route-ultra alert follow-up', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.db.select.mockImplementation(() => createSelectQuery([]));
+    mocks.db.update.mockImplementation(() => ({
+      set: vi.fn(() => ({
+        where: vi.fn().mockResolvedValue(undefined),
+      })),
+    }));
+    mocks.db.insert.mockImplementation(() => ({
+      values: vi.fn(() => ({
+        onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
+      })),
+    }));
+    mocks.getDashboardUnreadCount.mockResolvedValue(0);
+    mocks.markAsRead.mockResolvedValue(true);
+    mocks.markAllDashboardAsRead.mockResolvedValue(0);
+  });
+
+  it('maps predictive alert notifications to alert notices and /alerts', async () => {
+    const app = createApp();
+
+    mocks.db.select
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([{
+        id: 401,
+        pharmacyId: 1,
+        type: 'alert_near_expiry',
+        title: '期限切迫在庫の予兆があります',
+        message: '2件の在庫が45日以内に期限到来予定です。',
+        referenceType: 'alert',
+        referenceId: 88,
+        isRead: false,
+        readAt: null,
+        createdAt: '2026-03-01T00:00:00.000Z',
+      }]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]));
+
+    const res = await request(app).get('/api/notifications');
+    expect(res.status).toBe(200);
+    const alertNotice = res.body.notices.find((n: { type: string }) => n.type === 'alert');
+    expect(alertNotice).toBeDefined();
+    expect(alertNotice.actionPath).toBe('/alerts');
+    expect(alertNotice.actionLabel).toBe('アラートを確認');
+  });
+});
+
 describe('notifications-route-ultra', () => {
   beforeEach(() => {
     vi.resetAllMocks();

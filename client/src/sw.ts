@@ -3,7 +3,7 @@
 import { ExpirationPlugin } from 'workbox-expiration';
 import { precacheAndRoute, matchPrecache } from 'workbox-precaching';
 import { registerRoute, setCatchHandler } from 'workbox-routing';
-import { CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { CacheFirst } from 'workbox-strategies';
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<string | { url: string; revision: string | null }> };
 
@@ -20,23 +20,6 @@ registerRoute(
     plugins: [
       new ExpirationPlugin({
         maxAgeSeconds: 30 * 24 * 60 * 60,
-      }),
-    ],
-  })
-);
-
-registerRoute(
-  ({ url, request }: { url: URL; request: Request }) =>
-    request.method === 'GET' &&
-    url.pathname.startsWith('/api/') &&
-    !url.pathname.startsWith('/api/auth/') &&
-    !url.pathname.startsWith('/api/push/') &&
-    !url.pathname.includes('/api/csrf-token'),
-  new StaleWhileRevalidate({
-    cacheName: 'api-responses',
-    plugins: [
-      new ExpirationPlugin({
-        maxEntries: 50,
       }),
     ],
   })

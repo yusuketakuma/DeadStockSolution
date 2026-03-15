@@ -2,6 +2,7 @@ import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { exchangeFeedback, pharmacyTrustScores, pharmacies } from '../db/schema';
 import { logger } from './logger';
+import { createCache } from './cache-service';
 
 export interface TrustScoreRow {
   pharmacyId: number;
@@ -20,7 +21,53 @@ interface AggregateRow {
 
 const PRIOR_MEAN = 3;
 const PRIOR_WEIGHT = 5;
+const TRUST_SCORE_LOOKUP_CACHE = createCache<TrustScoreRow | null>({
+  ttlMs: 3_600_000,
+  maxEntries: 5_000,
+  name: 'trust_score_lookup',
+});
 let trustScoreRecalcJob: { startedAt: string; promise: Promise<void> } | null = null;
+
+function trustScoreCacheKey(pharmacyId: number): string {
+  return String(pharmacyId);
+}
+
+function normalizeTrustScoreRow(row: {
+  pharmacyId: number;
+  trustScore: string | number | null;
+  ratingCount: number | null;
+  positiveRate: string | number | null;
+  updatedAt: string | null;
+}): TrustScoreRow {
+  return {
+    pharmacyId: row.pharmacyId,
+    trustScore: Number(row.trustScore ?? 60),
+    ratingCount: Number(row.ratingCount ?? 0),
+    positiveRate: Number(row.positiveRate ?? 0),
+    updatedAt: row.updatedAt,
+  };
+}
+
+export async function getTrustScoreByPharmacyId(pharmacyId: number): Promise<TrustScoreRow | null> {
+  const cacheKey = trustScoreCacheKey(pharmacyId);
+  const cached = TRUST_SCORE_LOOKUP_CACHE.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const [row] = await db.select({
+    pharmacyId: pharmacyTrustScores.pharmacyId,
+    trustScore: pharmacyTrustScores.trustScore,
+    ratingCount: pharmacyTrustScores.ratingCount,
+    positiveRate: pharmacyTrustScores.positiveRate,
+    updatedAt: pharmacyTrustScores.updatedAt,
+  })
+    .from(pharmacyTrustScores)
+    .where(eq(pharmacyTrustScores.pharmacyId, pharmacyId))
+    .limit(1);
+
+  const resolved = row ? normalizeTrustScoreRow(row) : null;
+  TRUST_SCORE_LOOKUP_CACHE.set(cacheKey, resolved);
+  return resolved;
+}
 
 function to2(value: number): number {
   return Math.round(value * 100) / 100;
@@ -105,6 +152,7 @@ export async function recalculateTrustScores(targetPharmacyIds?: number[]): Prom
       target: [pharmacyTrustScores.pharmacyId],
       set: record,
     });
+    TRUST_SCORE_LOOKUP_CACHE.invalidate(trustScoreCacheKey(pharmacy.id));
   }
 }
 
@@ -175,6 +223,7 @@ export async function listTrustScores(page: number, limit: number): Promise<{ da
       trustScore: pharmacyTrustScores.trustScore,
       ratingCount: pharmacyTrustScores.ratingCount,
       positiveRate: pharmacyTrustScores.positiveRate,
+      updatedAt: pharmacyTrustScores.updatedAt,
     })
       .from(pharmacies)
       .leftJoin(pharmacyTrustScores, eq(pharmacyTrustScores.pharmacyId, pharmacies.id))
@@ -185,15 +234,25 @@ export async function listTrustScores(page: number, limit: number): Promise<{ da
   ]);
 
   return {
-    data: rows.map((row) => ({
-      ...row,
+    data: rows.map((row) => {
+      TRUST_SCORE_LOOKUP_CACHE.set(trustScoreCacheKey(row.id), normalizeTrustScoreRow({
+        pharmacyId: row.id,
+        trustScore: row.trustScore,
+        ratingCount: row.ratingCount,
+        positiveRate: row.positiveRate,
+        updatedAt: row.updatedAt,
+      }));
+
+      return {
+        ...row,
       isActive: Boolean(row.isActive),
       isAdmin: Boolean(row.isAdmin),
       isTestAccount: Boolean(row.isTestAccount),
       trustScore: Number(row.trustScore ?? 60),
       ratingCount: Number(row.ratingCount ?? 0),
       positiveRate: Number(row.positiveRate ?? 0),
-    })),
+      };
+    }),
     total: Number(totalRow?.count ?? 0),
   };
 }

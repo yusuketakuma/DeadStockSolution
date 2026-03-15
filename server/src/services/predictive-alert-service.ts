@@ -20,7 +20,6 @@ const DEFAULT_EXCESS_STOCK_MONTHS = 3;
 const DEFAULT_PHARMACY_BATCH_SIZE = 200;
 const DEFAULT_SIGNAL_PERSIST_CONCURRENCY = 8;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
-const PREDICTIVE_ALERT_NOTIFICATION_TYPE: NotificationType = 'proposal_status_changed';
 
 interface NearExpiryAggregate {
   pharmacyId: number;
@@ -157,6 +156,13 @@ function buildExcessStockSignal(row: ExcessStockAggregate, excessStockMonths: nu
       excessStockMonths,
     },
   };
+}
+
+function resolvePredictiveAlertNotificationType(alertType: PredictiveAlertType): NotificationType {
+  if (alertType === 'near_expiry') {
+    return 'alert_near_expiry';
+  }
+  return 'alert_excess_stock';
 }
 
 function buildPredictiveAlertJobContext(
@@ -373,11 +379,11 @@ async function persistSignal(
     const [notification] = await tx.insert(notifications)
       .values({
         pharmacyId: signal.pharmacyId,
-        type: PREDICTIVE_ALERT_NOTIFICATION_TYPE,
+        type: resolvePredictiveAlertNotificationType(signal.alertType),
         title: signal.title,
         message: signal.message,
-        referenceType: 'match',
-        referenceId: null,
+        referenceType: 'alert',
+        referenceId: insertedAlert.id,
       })
       .returning({ id: notifications.id });
 

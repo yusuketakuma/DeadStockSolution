@@ -146,6 +146,20 @@ describe('alert routes', () => {
       });
     });
 
+    it('200 — legacy alertType フィルタ alias', async () => {
+      mocks.listAlerts.mockResolvedValue({ alerts: [], total: 0, offset: 0, limit: 20, unresolvedCount: 0 });
+      const app = createApp();
+
+      await request(app).get('/api/alerts?alertType=near_expiry');
+
+      expect(mocks.listAlerts).toHaveBeenCalledWith(1, {
+        resolved: undefined,
+        type: 'near_expiry',
+        offset: 0,
+        limit: 20,
+      });
+    });
+
     it('200 — offset/limit パラメータ', async () => {
       mocks.listAlerts.mockResolvedValue({ alerts: [], total: 0, offset: 10, limit: 5, unresolvedCount: 0 });
       const app = createApp();

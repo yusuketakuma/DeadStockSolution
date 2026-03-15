@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { api } from '../api/client';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { api, ApiError } from '../api/client';
 import { setAuthExpiredHandler } from '../api/client';
 
 interface User {
@@ -61,8 +61,12 @@ export function AuthProvider({
     try {
       const data = await api.get<User>('/auth/me');
       setUser(data);
-    } catch {
-      setUser(null);
+    } catch (err) {
+      // 401 (認証切れ) の場合のみユーザー状態をクリア
+      // 5xx/ネットワークエラー時はセッション維持（一時的障害の可能性）
+      if (err instanceof ApiError && err.status === 401) {
+        setUser(null);
+      }
     }
   }, []);
 
@@ -82,31 +86,44 @@ export function AuthProvider({
     return () => setAuthExpiredHandler(() => {});
   }, []);
 
-  const login = async (email: string, password: string): Promise<User> => {
+  const login = useCallback(async (email: string, password: string): Promise<User> => {
     const data = await api.post<User>('/auth/login', { email, password });
     skipNextRefreshRef.current = true;
     setUser(data);
     return data;
-  };
+  }, []);
 
-  const register = async (data: RegisterData) => {
+  const register = useCallback(async (data: RegisterData) => {
     await api.post('/auth/register', data);
-    // 審査制のためトークンは返されない。setUser は呼ばない。
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout');
     } catch (err) {
       console.warn('Logout request failed, clearing local auth state only');
     } finally {
-      // ローカル状態は必ず破棄して fail-open logout を防ぐ
       setUser(null);
+      try {
+        localStorage.removeItem('dss.currentPath');
+        localStorage.removeItem('dss.previousPath');
+        localStorage.removeItem('installPromptSnoozed');
+        const keysToRemove = Object.keys(localStorage).filter(
+          (key) => key.startsWith('draft:') || key.startsWith('dss.onboarding.'),
+        );
+        keysToRemove.forEach((key) => localStorage.removeItem(key));
+      } catch {
+        // localStorage may be unavailable in private browsing
+      }
     }
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    user, loading, login, register, logout, refreshUser
+  }), [user, loading, login, register, logout, refreshUser]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

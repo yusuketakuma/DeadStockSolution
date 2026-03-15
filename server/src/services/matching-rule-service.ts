@@ -3,9 +3,10 @@ import { db } from '../config/database';
 import { matchingRuleProfiles } from '../db/schema';
 import { DEFAULT_MATCHING_SCORING_RULES } from './matching-score-service';
 import { logger } from './logger';
+import { createCache } from './cache-service';
 import type { MatchingRuleProfile, MatchingRuleProfileUpdateInput, MatchingScoringRules } from '../types/matching';
 
-const ACTIVE_PROFILE_CACHE_TTL_MS = 60_000;
+const ACTIVE_PROFILE_CACHE_KEY = 'active_profile';
 const DEFAULT_PROFILE_NAME = 'default';
 
 interface PostgresErrorLike {
@@ -21,8 +22,11 @@ interface RuleFieldSpec {
 export class MatchingRuleValidationError extends Error {}
 export class MatchingRuleVersionConflictError extends Error {}
 
-let cachedProfile: MatchingRuleProfile | null = null;
-let cacheExpiresAt = 0;
+const activeProfileCache = createCache<MatchingRuleProfile>({
+  ttlMs: 3_600_000,
+  maxEntries: 10,
+  name: 'matching_rule_active_profile',
+});
 
 const MATCHING_RULE_FIELD_SPECS: Record<keyof MatchingScoringRules, RuleFieldSpec> = {
   nameMatchThreshold: { min: 0, max: 1 },
@@ -150,8 +154,7 @@ function toProfile(
 }
 
 function storeCache(profile: MatchingRuleProfile): MatchingRuleProfile {
-  cachedProfile = profile;
-  cacheExpiresAt = Date.now() + ACTIVE_PROFILE_CACHE_TTL_MS;
+  activeProfileCache.set(ACTIVE_PROFILE_CACHE_KEY, profile);
   return profile;
 }
 
@@ -216,8 +219,11 @@ async function ensureActiveProfileRow(): Promise<typeof matchingRuleProfiles.$in
 }
 
 export async function getActiveMatchingRuleProfile(forceRefresh: boolean = false): Promise<MatchingRuleProfile> {
-  if (!forceRefresh && cachedProfile && cacheExpiresAt > Date.now()) {
-    return cachedProfile;
+  if (!forceRefresh) {
+    const cached = activeProfileCache.get(ACTIVE_PROFILE_CACHE_KEY);
+    if (cached) {
+      return cached;
+    }
   }
 
   try {
@@ -309,6 +315,7 @@ export async function updateActiveMatchingRuleProfile(input: MatchingRuleProfile
       throw new Error('更新後のマッチングルールが不正です');
     }
 
+    activeProfileCache.invalidate(ACTIVE_PROFILE_CACHE_KEY);
     return storeCache(toProfile(updated, normalizedRules));
   } catch (err) {
     if (err instanceof MatchingRuleValidationError || err instanceof MatchingRuleVersionConflictError) {
@@ -323,6 +330,5 @@ export async function updateActiveMatchingRuleProfile(input: MatchingRuleProfile
 }
 
 export function resetMatchingRuleProfileCacheForTest(): void {
-  cachedProfile = null;
-  cacheExpiresAt = 0;
+  activeProfileCache.invalidateAll();
 }

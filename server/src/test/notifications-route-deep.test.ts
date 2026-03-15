@@ -404,6 +404,41 @@ describe('notifications route deep coverage', () => {
     });
   });
 
+  describe('GET /api/notifications - alert notification', () => {
+    it('renders alert notice linked to /alerts', async () => {
+      const app = createApp();
+      const notification = {
+        id: 71,
+        pharmacyId: 1,
+        type: 'alert_near_expiry',
+        title: '期限切迫在庫の予兆があります',
+        message: '在庫を確認してください',
+        referenceType: 'alert',
+        referenceId: 901,
+        isRead: false,
+        readAt: null,
+        createdAt: '2026-03-01T00:00:00.000Z',
+      };
+
+      let callCount = 0;
+      mocks.db.select.mockImplementation(() => {
+        callCount++;
+        if (callCount === 6) return createSelectQuery([notification]);
+        return createSelectQuery([]);
+      });
+
+      const res = await request(app).get('/api/notifications');
+      expect(res.status).toBe(200);
+      expect(res.body.notices).toHaveLength(1);
+      expect(res.body.notices[0].type).toBe('alert');
+      expect(res.body.notices[0].actionPath).toBe('/alerts');
+      expect(res.body.notices[0].actionLabel).toBe('アラートを確認');
+      expect(res.body.summary).toEqual(expect.objectContaining({
+        actionableRequests: 1,
+      }));
+    });
+  });
+
   // ── GET / with unsupported notification type (skipped) ──
 
   describe('GET /api/notifications - unsupported type', () => {

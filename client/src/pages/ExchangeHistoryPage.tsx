@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
-import { usePaginatedList } from '../hooks/usePaginatedList';
+import { useApiQuery } from '../hooks/useApiQuery';
 import { Link } from 'react-router-dom';
 import { formatDateJa, formatYen } from '../utils/formatters';
 import AppDataTable from '../components/ui/AppDataTable';
@@ -34,18 +35,20 @@ function timelineDetailTo(proposalId: number) {
 
 export default function ExchangeHistoryPage() {
   const { user } = useAuth();
+  const [page, setPage] = useState(1);
   const {
-    items,
-    page,
-    setPage,
-    totalPages,
-    loading,
+    data,
+    isLoading: loading,
     error,
-    retry,
-  } = usePaginatedList<HistoryItem, HistoryResponse>((targetPage, signal) =>
-    api.get<HistoryResponse>(`/exchange/history?page=${targetPage}`, { signal }),
-    { errorMessage: '交換履歴の取得に失敗しました' },
+    refetch,
+  } = useApiQuery(
+    ['exchange-history', page],
+    ({ signal }) => api.get<HistoryResponse>(`/exchange/history?page=${page}`, { signal }),
   );
+
+  const items = data?.data ?? [];
+  const totalPages = data?.pagination.totalPages ?? 1;
+  const queryError = error instanceof Error ? error.message : '';
 
   return (
     <PageShell>
@@ -53,8 +56,8 @@ export default function ExchangeHistoryPage() {
       <ScrollArea>
       <AppDataTable
         loading={loading}
-        error={error}
-        onRetry={() => void retry()}
+        error={queryError}
+        onRetry={() => void refetch()}
         loadingText="交換履歴を読み込み中..."
         isEmpty={items.length === 0}
         emptyTitle="交換履歴はまだありません"

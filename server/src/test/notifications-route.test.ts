@@ -61,6 +61,45 @@ function createApp() {
   return app;
 }
 
+it('GET /api/notifications maps predictive alerts to alert notices routed to /alerts', async () => {
+  const app = createApp();
+  const notificationRows = [{
+    id: 7001,
+    pharmacyId: 1,
+    type: 'alert_near_expiry',
+    title: '期限切迫在庫の予兆があります',
+    message: '2件の在庫が期限到来予定です。',
+    referenceType: 'alert',
+    referenceId: 55,
+    isRead: false,
+    readAt: null,
+    createdAt: '2026-02-26T04:00:00.000Z',
+  }];
+
+  mocks.db.select
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery(notificationRows));
+
+  const response = await request(app).get('/api/notifications');
+
+  expect(response.status).toBe(200);
+  expect(response.body.notices).toHaveLength(1);
+  expect(response.body.notices[0]).toEqual(expect.objectContaining({
+    id: 'notification-7001',
+    type: 'alert',
+    actionPath: '/alerts',
+    actionLabel: 'アラートを確認',
+  }));
+  expect(response.body.summary).toEqual(expect.objectContaining({
+    actionableRequests: 1,
+    total: 1,
+  }));
+});
+
 describe('notifications routes /matches/:id/read', () => {
   beforeEach(() => {
     vi.clearAllMocks();

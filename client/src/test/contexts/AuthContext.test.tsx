@@ -1,16 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { AuthProvider, useAuth } from '../../contexts/AuthContext';
-import { api } from '../../api/client';
+import { api, ApiError } from '../../api/client';
 
 // APIクライアントをモック
-vi.mock('../../api/client', () => ({
-  api: {
-    get: vi.fn(),
-    post: vi.fn(),
-  },
-  setAuthExpiredHandler: vi.fn(),
-}));
+vi.mock('../../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/client')>();
+  return {
+    ...actual,
+    api: {
+      get: vi.fn(),
+      post: vi.fn(),
+    },
+    setAuthExpiredHandler: vi.fn(),
+  };
+});
 
 const mockApi = vi.mocked(api);
 const mockSetAuthExpiredHandler = vi.mocked(
@@ -239,7 +243,7 @@ describe('AuthContext', () => {
       });
     });
 
-    it('refreshUser失敗でuserがnullになる', async () => {
+    it('refreshUser 401エラーでuserがnullになる', async () => {
       const mockUser = {
         id: 1,
         email: 'test@example.com',
@@ -250,7 +254,7 @@ describe('AuthContext', () => {
 
       mockApi.get
         .mockResolvedValueOnce(mockUser)
-        .mockRejectedValueOnce(new Error('Session expired'));
+        .mockRejectedValueOnce(new ApiError(401, 'Unauthorized'));
 
       renderAuthContext();
 
@@ -263,6 +267,32 @@ describe('AuthContext', () => {
       await waitFor(() => {
         expect(screen.getByTestId('user').textContent).toBe('null');
       });
+    });
+
+    it('refreshUser 5xxエラーでuserが維持される', async () => {
+      const mockUser = {
+        id: 1,
+        email: 'test@example.com',
+        name: 'テスト薬局',
+        prefecture: '東京都',
+        isAdmin: false,
+      };
+
+      mockApi.get
+        .mockResolvedValueOnce(mockUser)
+        .mockRejectedValueOnce(new ApiError(500, 'Internal Server Error'));
+
+      renderAuthContext();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading').textContent).toBe('false');
+      });
+
+      screen.getByTestId('refresh').click();
+
+      // 5xxエラーではユーザー状態がクリアされない
+      await new Promise((r) => setTimeout(r, 50));
+      expect(screen.getByTestId('user').textContent).not.toBe('null');
     });
   });
 

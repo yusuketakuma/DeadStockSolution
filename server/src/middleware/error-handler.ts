@@ -3,7 +3,7 @@ import { captureException } from '../config/sentry';
 import { getErrorMessage } from '../utils/error-utils';
 import { logger } from '../services/logger';
 import { recordHttpUnhandledError } from '../services/system-event-service';
-import { buildErrorFixContext } from '../services/error-fix-context';
+import { buildErrorFixContext, extractSourceLocation } from '../services/error-fix-context';
 import { handoffErrorToOpenClaw } from '../services/openclaw-error-autofix-service';
 
 export { getErrorMessage } from '../utils/error-utils';
@@ -78,12 +78,17 @@ function resolveResponseCode(err: HttpLikeError, status: number): string {
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   const httpErr = err as HttpLikeError;
   const status = resolveStatusCode(httpErr);
+  const authUser = (req as Request & {
+    user?: { id?: number; email?: string | null };
+  }).user;
   const requestId = (req as Request & { requestId?: string }).requestId
     ?? (typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined);
   const eventId = captureException(err);
+  const stack = resolveLogStack(httpErr, status);
+  const sourceLocation = extractSourceLocation(stack ?? undefined);
   logger.error('Unhandled error', {
     error: resolveLogMessage(httpErr, status),
-    stack: resolveLogStack(httpErr, status),
+    stack,
     method: req.method,
     path: req.path,
     status,
@@ -95,6 +100,11 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     status,
     requestId,
     errorCode: typeof httpErr.code === 'string' ? httpErr.code : undefined,
+    sourceLocation: sourceLocation ? `${sourceLocation.file}:${sourceLocation.line}` : null,
+    tenant: {
+      pharmacyId: typeof authUser?.id === 'number' ? authUser.id : null,
+      pharmacyEmail: typeof authUser?.email === 'string' ? authUser.email : null,
+    },
   });
 
   // 5xx の場合のみ OpenClaw 自動修正ハンドオフ（非ブロック）

@@ -40,7 +40,4 @@ declare module 'workbox-strategies' {
   export class CacheFirst {
     constructor(config?: { cacheName?: string; plugins?: object[] });
   }
-  export class StaleWhileRevalidate {
-    constructor(config?: { cacheName?: string; plugins?: object[] });
-  }
 }

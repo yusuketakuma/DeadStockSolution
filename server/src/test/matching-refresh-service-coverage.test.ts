@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
     lte: vi.fn((a: unknown, b: unknown) => ({ _lte: [a, b] })),
     notInArray: vi.fn((a: unknown, b: unknown) => ({ _notInArray: [a, b] })),
     or: vi.fn((...args: unknown[]) => ({ _or: args })),
-    sql: vi.fn(() => ({})),
+    sql: Object.assign(vi.fn(() => ({})), { raw: vi.fn(() => ({})), join: vi.fn(() => ({})) }),
   },
   splitIntoChunks: vi.fn((arr: unknown[], size: number) => {
     const result: unknown[][] = [];

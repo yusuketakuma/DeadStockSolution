@@ -42,6 +42,7 @@ const MAX_LIMIT = 50;
 const DIGEST_PER_TABLE_LIMIT = 100;
 const CURSOR_FETCH_FACTOR = 4;
 const CURSOR_PER_TABLE_LIMIT_MAX = 200;
+const DEFAULT_FETCH_CONCURRENCY = 4;
 
 interface TimelineSortable {
   timestamp: string;
@@ -120,17 +121,29 @@ async function fetchAllEvents(
   perTableLimit?: number,
   before?: string,
 ): Promise<RawTimelineEvent[]> {
-  const results = await Promise.all([
-    fetchNotificationEvents(db, pharmacyId, since, perTableLimit, before),
-    fetchMatchEvents(db, pharmacyId, since, perTableLimit, before),
-    fetchProposalEvents(db, pharmacyId, since, perTableLimit, before),
-    fetchCommentEvents(db, pharmacyId, since, perTableLimit, before),
-    fetchFeedbackEvents(db, pharmacyId, since, perTableLimit, before),
-    fetchUploadEvents(db, pharmacyId, since, perTableLimit, before),
-    fetchAdminMessageEvents(db, pharmacyId, since, perTableLimit, before),
-    fetchExchangeHistoryEvents(db, pharmacyId, since, perTableLimit, before),
-    fetchExpiryRiskEvents(db, pharmacyId, perTableLimit, before),
-  ]);
+  const configuredConcurrency = Number.parseInt(process.env.TIMELINE_FETCH_CONCURRENCY ?? '', 10);
+  const concurrency = Number.isInteger(configuredConcurrency) && configuredConcurrency > 0
+    ? configuredConcurrency
+    : DEFAULT_FETCH_CONCURRENCY;
+
+  const tasks = [
+    () => fetchNotificationEvents(db, pharmacyId, since, perTableLimit, before),
+    () => fetchMatchEvents(db, pharmacyId, since, perTableLimit, before),
+    () => fetchProposalEvents(db, pharmacyId, since, perTableLimit, before),
+    () => fetchCommentEvents(db, pharmacyId, since, perTableLimit, before),
+    () => fetchFeedbackEvents(db, pharmacyId, since, perTableLimit, before),
+    () => fetchUploadEvents(db, pharmacyId, since, perTableLimit, before),
+    () => fetchAdminMessageEvents(db, pharmacyId, since, perTableLimit, before),
+    () => fetchExchangeHistoryEvents(db, pharmacyId, since, perTableLimit, before),
+    () => fetchExpiryRiskEvents(db, pharmacyId, perTableLimit, before),
+  ];
+
+  const results: RawTimelineEvent[][] = [];
+  for (let index = 0; index < tasks.length; index += concurrency) {
+    const batch = tasks.slice(index, index + concurrency);
+    const batchResults = await Promise.all(batch.map((task) => task()));
+    results.push(...batchResults);
+  }
 
   return results.flat();
 }

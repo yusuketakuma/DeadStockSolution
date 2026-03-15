@@ -49,7 +49,7 @@ vi.mock('../services/trust-score-service', () => ({
   recalculateTrustScoreForPharmacy: mocks.recalculateTrustScoreForPharmacy,
 }));
 
-vi.mock('../routes/statistics', () => ({
+vi.mock('../services/statistics-cache-service', () => ({
   invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
 }));
 

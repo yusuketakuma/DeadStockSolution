@@ -18,8 +18,8 @@ import {
   findBestDrugMatch,
   prepareDrugName,
   calculateMatchRate,
-  type UsedMedRow,
 } from '../services/matching-score-service';
+import type { UsedMedRow } from '../types/matching';
 import type { MatchItem } from '../types';
 
 describe('matching-score-service-final', () => {
