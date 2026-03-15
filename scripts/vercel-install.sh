@@ -13,9 +13,10 @@ else
 fi
 
 # Workaround for npm optional-deps bug (https://github.com/npm/cli/issues/4828):
-# Vercel build cache may contain macOS node_modules missing linux-specific
-# optional deps like @rollup/rollup-linux-x64-gnu. Delete node_modules only
-# (keep lockfile for faster resolution) then install fresh for linux.
-rm -rf "$ROOT_DIR/node_modules" "$ROOT_DIR/client/node_modules" "$ROOT_DIR/server/node_modules"
+# lockfile generated on macOS omits linux-specific optional deps like
+# @rollup/rollup-linux-x64-gnu. Must delete both lockfile and node_modules
+# so npm install resolves platform deps from scratch.
+rm -rf "$ROOT_DIR/node_modules" "$ROOT_DIR/client/node_modules" "$ROOT_DIR/server/node_modules" "$ROOT_DIR/package-lock.json"
 
+# Install all workspaces at once (client + server + root devDeps)
 npm install --prefix "$ROOT_DIR" --no-audit --no-fund
