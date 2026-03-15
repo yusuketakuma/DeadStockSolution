@@ -27,7 +27,6 @@ export function createAuthLimiter(max: number, error: string, windowMs: number =
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { error },
-    keyGenerator: (req) => req.ip || 'unknown',
   });
 }
 
