@@ -35,6 +35,25 @@ interface ActionProposalRow {
   status: ProposalStatus;
 }
 
+interface ProposalWithTotalsRow extends ActionProposalRow {
+  totalValueA: string | null;
+  totalValueB: string | null;
+}
+
+interface ProposalPartiesResult {
+  pharmacyAId: number;
+  pharmacyBId: number;
+}
+
+interface CreateProposalTxResult {
+  proposalId: number;
+  itemCount: number;
+}
+
+interface AcceptProposalTxResult extends ProposalPartiesResult {
+  newStatus: ProposalStatus;
+}
+
 async function createNotificationSafely(input: NotificationInput): Promise<void> {
   const created = await createNotification(input);
   if (created) return;
@@ -68,10 +87,25 @@ function getOtherPartyId(pharmacyAId: number, pharmacyBId: number, pharmacyId: n
 }
 
 async function findActionProposal(tx: TransactionClient, proposalId: number): Promise<ActionProposalRow> {
+  const proposal = await findProposalWithTotals(tx, proposalId);
+
+  return {
+    pharmacyAId: proposal.pharmacyAId,
+    pharmacyBId: proposal.pharmacyBId,
+    status: proposal.status,
+  };
+}
+
+async function findProposalWithTotals(
+  tx: TransactionClient,
+  proposalId: number,
+): Promise<ProposalWithTotalsRow> {
   const [proposal] = await tx.select({
     pharmacyAId: exchangeProposals.pharmacyAId,
     pharmacyBId: exchangeProposals.pharmacyBId,
     status: exchangeProposals.status,
+    totalValueA: exchangeProposals.totalValueA,
+    totalValueB: exchangeProposals.totalValueB,
   })
     .from(exchangeProposals)
     .where(eq(exchangeProposals.id, proposalId))
@@ -82,6 +116,30 @@ async function findActionProposal(tx: TransactionClient, proposalId: number): Pr
   }
 
   return proposal;
+}
+
+async function deleteProposalReservations(tx: TransactionClient, proposalId: number): Promise<void> {
+  await tx.delete(deadStockReservations)
+    .where(eq(deadStockReservations.proposalId, proposalId));
+}
+
+function resolveAcceptStatus(proposal: ActionProposalRow, pharmacyId: number): ProposalStatus {
+  const isA = proposal.pharmacyAId === pharmacyId;
+  const isB = proposal.pharmacyBId === pharmacyId;
+
+  if (proposal.status === 'proposed') {
+    return isA ? 'accepted_a' : 'accepted_b';
+  }
+
+  if (proposal.status === 'accepted_a' && isB) {
+    return 'confirmed';
+  }
+
+  if (proposal.status === 'accepted_b' && isA) {
+    return 'confirmed';
+  }
+
+  throw new Error('この仮マッチングは現在承認できる状態ではありません');
 }
 
 async function updateProposalStatusWithOptimisticLock(
@@ -157,7 +215,7 @@ export async function createProposal(
   rawCandidate: unknown,
 ): Promise<number> {
   const candidate = parseCandidate(pharmacyAId, rawCandidate);
-  const result = await db.transaction(async (tx) => {
+  const result: CreateProposalTxResult = await db.transaction(async (tx): Promise<CreateProposalTxResult> => {
     const [pharmacyB] = await tx.select({ id: pharmacies.id, isActive: pharmacies.isActive })
       .from(pharmacies)
       .where(eq(pharmacies.id, candidate.pharmacyBId))
@@ -169,8 +227,9 @@ export async function createProposal(
 
     await assertNotBlocked(tx, pharmacyAId, candidate.pharmacyBId);
 
-    const allIds = [...candidate.itemsFromA, ...candidate.itemsFromB].map((item) => item.deadStockItemId);
-    const sortedUniqueIds = [...new Set(allIds)].sort((a, b) => a - b);
+    const sortedUniqueIds = [...new Set(
+      [...candidate.itemsFromA, ...candidate.itemsFromB].map((item) => item.deadStockItemId),
+    )].sort((a, b) => a - b);
 
     if (sortedUniqueIds.length === 0) {
       throw new Error('提案対象の在庫がありません');
@@ -195,19 +254,17 @@ export async function createProposal(
 
     const stockMap = buildStockMap(stockRows);
 
-    const reservationRows = sortedUniqueIds.length > 0
-      ? await tx.select({
-        deadStockItemId: deadStockReservations.deadStockItemId,
-        reservedQty: sql<number>`coalesce(sum(${deadStockReservations.reservedQuantity}), 0)`,
-      })
-        .from(deadStockReservations)
-        .innerJoin(exchangeProposals, eq(deadStockReservations.proposalId, exchangeProposals.id))
-        .where(and(
-          inArray(deadStockReservations.deadStockItemId, sortedUniqueIds),
-          inArray(exchangeProposals.status, RESERVATION_ACTIVE_STATUSES),
-        ))
-        .groupBy(deadStockReservations.deadStockItemId)
-      : [];
+    const reservationRows = await tx.select({
+      deadStockItemId: deadStockReservations.deadStockItemId,
+      reservedQty: sql<number>`coalesce(sum(${deadStockReservations.reservedQuantity}), 0)`,
+    })
+      .from(deadStockReservations)
+      .innerJoin(exchangeProposals, eq(deadStockReservations.proposalId, exchangeProposals.id))
+      .where(and(
+        inArray(deadStockReservations.deadStockItemId, sortedUniqueIds),
+        inArray(exchangeProposals.status, RESERVATION_ACTIVE_STATUSES),
+      ))
+      .groupBy(deadStockReservations.deadStockItemId);
     const reservedByStockId = buildReservedByStockId(reservationRows);
 
     const validatedA = validateAndMapProposalItems({
@@ -242,8 +299,10 @@ export async function createProposal(
       valueDifference: String(values.valueDifference),
     }).returning({ id: exchangeProposals.id });
 
+    const allValidatedItems = [...validatedA, ...validatedB];
+
     await tx.insert(exchangeProposalItems).values(
-      [...validatedA, ...validatedB].map((item) => ({
+      allValidatedItems.map((item) => ({
         proposalId: proposal.id,
         deadStockItemId: item.deadStockItemId,
         fromPharmacyId: item.fromPharmacyId,
@@ -254,7 +313,7 @@ export async function createProposal(
     );
 
     await tx.insert(deadStockReservations).values(
-      [...validatedA, ...validatedB].map((item) => ({
+      allValidatedItems.map((item) => ({
         deadStockItemId: item.deadStockItemId,
         proposalId: proposal.id,
         reservedQuantity: item.quantity,
@@ -274,24 +333,10 @@ export async function createProposal(
 }
 
 export async function acceptProposal(proposalId: number, pharmacyId: number): Promise<string> {
-  const result = await db.transaction(async (tx) => {
+  const result: AcceptProposalTxResult = await db.transaction(async (tx): Promise<AcceptProposalTxResult> => {
     const proposal = await findActionProposal(tx, proposalId);
-
-    const isA = proposal.pharmacyAId === pharmacyId;
-    const isB = proposal.pharmacyBId === pharmacyId;
     assertActionPermission(proposal, pharmacyId);
-
-    let newStatus: ProposalStatus;
-
-    if (proposal.status === 'proposed') {
-      newStatus = isA ? 'accepted_a' : 'accepted_b';
-    } else if (proposal.status === 'accepted_a' && isB) {
-      newStatus = 'confirmed';
-    } else if (proposal.status === 'accepted_b' && isA) {
-      newStatus = 'confirmed';
-    } else {
-      throw new Error('この仮マッチングは現在承認できる状態ではありません');
-    }
+    const newStatus = resolveAcceptStatus(proposal, pharmacyId);
 
     if (!canTransition(proposal.status, newStatus)) {
       throw new Error('この仮マッチングは現在承認できる状態ではありません');
@@ -320,7 +365,7 @@ export async function acceptProposal(proposalId: number, pharmacyId: number): Pr
 }
 
 export async function rejectProposal(proposalId: number, pharmacyId: number): Promise<void> {
-  const result = await db.transaction(async (tx) => {
+  const result: ProposalPartiesResult = await db.transaction(async (tx): Promise<ProposalPartiesResult> => {
     const proposal = await findActionProposal(tx, proposalId);
     assertActionPermission(proposal, pharmacyId);
 
@@ -330,8 +375,7 @@ export async function rejectProposal(proposalId: number, pharmacyId: number): Pr
 
     await updateProposalStatusWithOptimisticLock(tx, proposalId, proposal.status, 'rejected');
 
-    await tx.delete(deadStockReservations)
-      .where(eq(deadStockReservations.proposalId, proposalId));
+    await deleteProposalReservations(tx, proposalId);
 
     const rejectOtherPartyId = getOtherPartyId(proposal.pharmacyAId, proposal.pharmacyBId, pharmacyId);
 
@@ -345,19 +389,8 @@ export async function rejectProposal(proposalId: number, pharmacyId: number): Pr
 }
 
 export async function completeProposal(proposalId: number, pharmacyId: number): Promise<void> {
-  const result = await db.transaction(async (tx) => {
-    const [proposal] = await tx.select({
-      pharmacyAId: exchangeProposals.pharmacyAId,
-      pharmacyBId: exchangeProposals.pharmacyBId,
-      status: exchangeProposals.status,
-      totalValueA: exchangeProposals.totalValueA,
-      totalValueB: exchangeProposals.totalValueB,
-    })
-      .from(exchangeProposals)
-      .where(eq(exchangeProposals.id, proposalId))
-      .limit(1);
-
-    if (!proposal) throw new Error('マッチングが見つかりません');
+  const result: ProposalPartiesResult = await db.transaction(async (tx): Promise<ProposalPartiesResult> => {
+    const proposal = await findProposalWithTotals(tx, proposalId);
     if (proposal.status !== 'confirmed') throw new Error('このマッチングはまだ確定されていません');
     assertActionPermission(proposal, pharmacyId);
 
@@ -376,8 +409,7 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
       completedAt,
     });
 
-    await tx.delete(deadStockReservations)
-      .where(eq(deadStockReservations.proposalId, proposalId));
+    await deleteProposalReservations(tx, proposalId);
     return {
       pharmacyAId: claimedProposal.pharmacyAId,
       pharmacyBId: claimedProposal.pharmacyBId,

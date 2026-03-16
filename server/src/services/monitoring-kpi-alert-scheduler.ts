@@ -13,6 +13,7 @@ const DEFAULT_COOLDOWN_MINUTES = 30;
 const DEFAULT_OPENCLAW_CLI_PATH = 'openclaw';
 const DEFAULT_ALERT_CHANNEL = 'telegram';
 const DEFAULT_ALERT_TARGET = '';
+const MONITORING_ALERT_TIMEOUT_MS = 15_000 as const;
 const SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'SCHEDULER_OPTIMIZED_LOOP_ENABLED';
 const MONITORING_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'MONITORING_KPI_ALERT_SCHEDULER_OPTIMIZED_LOOP_ENABLED';
 
@@ -150,7 +151,7 @@ async function sendAlertMessage(config: MonitoringKpiAlertConfig, snapshot: Moni
       '--message',
       message,
     ], {
-      timeout: 15000,
+      timeout: MONITORING_ALERT_TIMEOUT_MS,
       maxBuffer: 1024 * 1024,
       env: buildSafeCliEnv(),
     });

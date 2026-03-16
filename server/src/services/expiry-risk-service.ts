@@ -163,11 +163,76 @@ interface PharmacyRiskAccumulator {
   bucketCounts: RiskBucketCounts;
 }
 
+interface RiskLevelCounts {
+  highRiskPharmacies: number;
+  mediumRiskPharmacies: number;
+  lowRiskPharmacies: number;
+}
+
 function createPharmacyRiskAccumulator(): PharmacyRiskAccumulator {
   return {
     totalItems: 0,
     bucketCounts: createEmptyBuckets(),
   };
+}
+
+function createRiskLevelCounts(): RiskLevelCounts {
+  return {
+    highRiskPharmacies: 0,
+    mediumRiskPharmacies: 0,
+    lowRiskPharmacies: 0,
+  };
+}
+
+function addItemToAccumulator(
+  accumulator: PharmacyRiskAccumulator,
+  bucket: keyof RiskBucketCounts,
+): void {
+  accumulator.totalItems += 1;
+  addBucketCount(accumulator.bucketCounts, bucket);
+}
+
+function getOrCreateAccumulator(
+  accumulators: Map<number, PharmacyRiskAccumulator>,
+  pharmacyId: number,
+): PharmacyRiskAccumulator {
+  const existing = accumulators.get(pharmacyId);
+  if (existing) {
+    return existing;
+  }
+
+  const created = createPharmacyRiskAccumulator();
+  accumulators.set(pharmacyId, created);
+  return created;
+}
+
+function addRiskLevelCount(riskLevelCounts: RiskLevelCounts, riskScore: number): void {
+  if (riskScore >= 65) {
+    riskLevelCounts.highRiskPharmacies += 1;
+    return;
+  }
+
+  if (riskScore >= 35) {
+    riskLevelCounts.mediumRiskPharmacies += 1;
+    return;
+  }
+
+  riskLevelCounts.lowRiskPharmacies += 1;
+}
+
+function calculateAdminRiskStats(summaries: PharmacyRiskSummary[]): {
+  riskLevelCounts: RiskLevelCounts;
+  totalRiskScore: number;
+} {
+  const riskLevelCounts = createRiskLevelCounts();
+  let totalRiskScore = 0;
+
+  for (const summary of summaries) {
+    totalRiskScore += summary.riskScore;
+    addRiskLevelCount(riskLevelCounts, summary.riskScore);
+  }
+
+  return { riskLevelCounts, totalRiskScore };
 }
 
 function resolveDaysUntilExpiry(
@@ -265,21 +330,36 @@ function aggregatePharmacyRisk(
   todayUtc: Date,
   topRiskLimit: number = TOP_RISK_ITEMS_LIMIT,
 ): { summary: PharmacyRiskSummary; topRiskItems: ExpiryRiskItem[] } {
-  const bucketCounts = createEmptyBuckets();
+  const accumulator = createPharmacyRiskAccumulator();
   const topRiskItems: ExpiryRiskItem[] = [];
-  let totalItems = 0;
+
+  if (rows.length === 0) {
+    return {
+      summary: buildPharmacyRiskSummary(
+        pharmacyId,
+        pharmacyName,
+        accumulator.bucketCounts,
+        accumulator.totalItems,
+      ),
+      topRiskItems,
+    };
+  }
 
   for (const row of rows) {
     const item = buildRiskItem(row, todayUtc, pharmacyName);
-    addBucketCount(bucketCounts, item.bucket);
-    totalItems += 1;
+    addItemToAccumulator(accumulator, item.bucket);
     if (topRiskLimit > 0) {
       collectTopRiskItems(topRiskItems, item, topRiskLimit);
     }
   }
 
   return {
-    summary: buildPharmacyRiskSummary(pharmacyId, pharmacyName, bucketCounts, totalItems),
+    summary: buildPharmacyRiskSummary(
+      pharmacyId,
+      pharmacyName,
+      accumulator.bucketCounts,
+      accumulator.totalItems,
+    ),
     topRiskItems,
   };
 }
@@ -309,7 +389,7 @@ function setCachedUserRiskDetail(pharmacyId: number, value: PharmacyRiskDetail):
   return value;
 }
 
-async function loadPharmacyOrThrow(pharmacyId: number) {
+async function loadPharmacyOrThrow(pharmacyId: number): Promise<{ id: number; name: string }> {
   const [pharmacy] = await db.select({
     id: pharmacies.id,
     name: pharmacies.name,
@@ -381,10 +461,8 @@ async function loadAdminRiskSnapshot(forceRefresh: boolean = false): Promise<Adm
       row.expirationDate,
       todayUtc,
     );
-    const accumulator = accumulators.get(row.pharmacyId) ?? createPharmacyRiskAccumulator();
-    accumulator.totalItems += 1;
-    addBucketCount(accumulator.bucketCounts, bucket);
-    accumulators.set(row.pharmacyId, accumulator);
+    const accumulator = getOrCreateAccumulator(accumulators, row.pharmacyId);
+    addItemToAccumulator(accumulator, bucket);
   }
 
   const totalBucketCounts = createEmptyBuckets();
@@ -436,29 +514,27 @@ export async function getPharmacyRiskDetail(pharmacyId: number): Promise<Pharmac
 export async function getAdminRiskOverview(): Promise<AdminRiskOverview> {
   const snapshot = await loadAdminRiskSnapshot();
   const totalPharmacies = snapshot.summaries.length;
-  let highRiskPharmacies = 0;
-  let mediumRiskPharmacies = 0;
-  let lowRiskPharmacies = 0;
-  let totalRiskScore = 0;
-
-  for (const summary of snapshot.summaries) {
-    totalRiskScore += summary.riskScore;
-    if (summary.riskScore >= 65) {
-      highRiskPharmacies += 1;
-    } else if (summary.riskScore >= 35) {
-      mediumRiskPharmacies += 1;
-    } else {
-      lowRiskPharmacies += 1;
-    }
+  if (totalPharmacies === 0) {
+    return {
+      totalPharmacies: 0,
+      highRiskPharmacies: 0,
+      mediumRiskPharmacies: 0,
+      lowRiskPharmacies: 0,
+      avgRiskScore: 0,
+      totalBucketCounts: snapshot.totalBucketCounts,
+      topHighRiskPharmacies: [],
+      computedAt: snapshot.computedAt,
+    };
   }
 
-  const avgRiskScore = totalPharmacies > 0 ? to2(totalRiskScore / totalPharmacies) : 0;
+  const { riskLevelCounts, totalRiskScore } = calculateAdminRiskStats(snapshot.summaries);
+  const avgRiskScore = to2(totalRiskScore / totalPharmacies);
 
   return {
     totalPharmacies,
-    highRiskPharmacies,
-    mediumRiskPharmacies,
-    lowRiskPharmacies,
+    highRiskPharmacies: riskLevelCounts.highRiskPharmacies,
+    mediumRiskPharmacies: riskLevelCounts.mediumRiskPharmacies,
+    lowRiskPharmacies: riskLevelCounts.lowRiskPharmacies,
     avgRiskScore,
     totalBucketCounts: snapshot.totalBucketCounts,
     topHighRiskPharmacies: snapshot.summaries.slice(0, TOP_HIGH_RISK_SUMMARIES_LIMIT),

@@ -1,6 +1,6 @@
 import { desc, eq, and, isNull, isNotNull, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../config/database';
-import { predictiveAlerts, pharmacies } from '../db/schema';
+import { predictiveAlerts, pharmacies, type PredictiveAlertType } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 
 export interface AlertListParams {
@@ -14,7 +14,7 @@ export interface AlertListParams {
 export async function listAlerts(params: AlertListParams) {
   const conditions: SQL[] = [];
   if (params.alertType) {
-    conditions.push(eq(predictiveAlerts.alertType, params.alertType as any));
+    conditions.push(eq(predictiveAlerts.alertType, params.alertType as PredictiveAlertType));
   }
   if (params.resolved === 'true') {
     conditions.push(isNotNull(predictiveAlerts.resolvedAt));

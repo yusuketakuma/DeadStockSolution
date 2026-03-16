@@ -4,6 +4,8 @@ import { notifications, predictiveAlerts, type PredictiveAlertType } from '../db
 import type { AlertItem, AlertListResponse, AlertStats } from '../types/alert';
 import { invalidateDashboardUnreadCache } from './notification-service';
 
+const DEFAULT_ALERT_PAGE_SIZE = 20 as const;
+
 // ── 型定義 ──────────────────────────────────
 
 export interface ListAlertsFilters {
@@ -67,7 +69,7 @@ export async function listAlerts(
   pharmacyId: number,
   filters: ListAlertsFilters,
 ): Promise<AlertListResponse> {
-  const { resolved, type, offset = 0, limit = 20 } = filters;
+  const { resolved, offset = 0, limit = DEFAULT_ALERT_PAGE_SIZE } = filters;
   const whereClause = buildAlertListWhereClause(pharmacyId, filters);
 
   const [totalResult, rows] = await Promise.all([

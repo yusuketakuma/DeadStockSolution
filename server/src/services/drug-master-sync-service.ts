@@ -27,6 +27,9 @@ const PRICE_COMPARISON_EPSILON = 0.001;
 type InsertDrugMasterRow = typeof drugMaster.$inferInsert;
 type InsertPriceHistoryRow = typeof drugMasterPriceHistory.$inferInsert;
 type InsertPackageRow = typeof drugMasterPackages.$inferInsert;
+type SyncLogRow = typeof drugMasterSyncLogs.$inferSelect;
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type PackageUpdateValues = Omit<InsertPackageRow, 'drugMasterId'> & { updatedAt: string };
 type UpdateDrugMasterFields = Omit<InsertDrugMasterRow, 'yjCode' | 'id' | 'createdAt'>;
 type UpdateDrugMasterItem = {
   yjCode: string;
@@ -82,25 +85,45 @@ interface PackageMutationCounts {
   updated: number;
 }
 
+const PACKAGE_CODE_CONFIG = [
+  { rowField: 'gs1Code', bucketField: 'byGs1' },
+  { rowField: 'janCode', bucketField: 'byJan' },
+  { rowField: 'hotCode', bucketField: 'byHot' },
+] as const;
+
+async function processInBatches<T>(
+  items: T[],
+  batchSize: number,
+  processor: (batch: T[]) => Promise<void>,
+): Promise<void> {
+  for (let i = 0; i < items.length; i += batchSize) {
+    await processor(items.slice(i, i + batchSize));
+  }
+}
+
 function buildDrugMasterInsertRow(row: ParsedDrugRow, now: string): InsertDrugMasterRow {
+  const fields = buildDrugMasterMutableFields(row);
   return {
     yjCode: row.yjCode,
-    drugName: row.drugName,
-    genericName: row.genericName,
-    specification: row.specification,
-    unit: row.unit,
-    yakkaPrice: String(row.yakkaPrice),
-    manufacturer: row.manufacturer,
-    category: row.category,
-    therapeuticCategory: row.therapeuticCategory,
+    ...fields,
     isListed: true,
-    listedDate: row.listedDate,
-    transitionDeadline: row.transitionDeadline,
     updatedAt: now,
   };
 }
 
 function buildDrugMasterUpdateFields(row: ParsedDrugRow, now: string): UpdateDrugMasterFields {
+  const fields = buildDrugMasterMutableFields(row);
+  return {
+    ...fields,
+    isListed: true,
+    deletedDate: null,
+    updatedAt: now,
+  };
+}
+
+function buildDrugMasterMutableFields(
+  row: ParsedDrugRow,
+): Omit<UpdateDrugMasterFields, 'isListed' | 'deletedDate' | 'updatedAt'> {
   return {
     drugName: row.drugName,
     genericName: row.genericName,
@@ -110,11 +133,8 @@ function buildDrugMasterUpdateFields(row: ParsedDrugRow, now: string): UpdateDru
     manufacturer: row.manufacturer,
     category: row.category,
     therapeuticCategory: row.therapeuticCategory,
-    isListed: true,
     listedDate: row.listedDate,
     transitionDeadline: row.transitionDeadline,
-    deletedDate: null,
-    updatedAt: now,
   };
 }
 
@@ -160,7 +180,7 @@ function evaluateDrugMasterUpdate(existing: ExistingDrugMasterForSync, row: Pars
   return { priceChanged, wasDelisted, shouldUpdate };
 }
 
-function normalizePackage(row: ParsedPackageRow) {
+function normalizePackage(row: ParsedPackageRow): ReturnType<typeof normalizePackageInfo> {
   return normalizePackageInfo({
     packageDescription: row.packageDescription,
     packageQuantity: row.packageQuantity,
@@ -184,7 +204,7 @@ async function fetchDrugMasterIdMap(parsedRows: ParsedPackageRow[]): Promise<Map
   return new Map(masterItems.map((item) => [item.yjCode, item.id]));
 }
 
-async function fetchExistingPackages(drugMasterIds: number[]) {
+async function fetchExistingPackages(drugMasterIds: number[]): Promise<ExistingPackage[]> {
   if (drugMasterIds.length === 0) {
     return [];
   }
@@ -230,17 +250,21 @@ function ensurePackageBucket(
 
 function addPackageToBuckets(buckets: Map<number, PackageBucket>, pkg: ExistingPackage): void {
   const bucket = ensurePackageBucket(buckets, pkg.drugMasterId);
-  if (pkg.gs1Code) bucket.byGs1.set(pkg.gs1Code, pkg);
-  if (pkg.janCode) bucket.byJan.set(pkg.janCode, pkg);
-  if (pkg.hotCode) bucket.byHot.set(pkg.hotCode, pkg);
+  for (const config of PACKAGE_CODE_CONFIG) {
+    const code = pkg[config.rowField];
+    if (!code) continue;
+    bucket[config.bucketField].set(code, pkg);
+  }
 }
 
 function removePackageFromBuckets(buckets: Map<number, PackageBucket>, pkg: ExistingPackage): void {
   const bucket = buckets.get(pkg.drugMasterId);
   if (!bucket) return;
-  if (pkg.gs1Code) bucket.byGs1.delete(pkg.gs1Code);
-  if (pkg.janCode) bucket.byJan.delete(pkg.janCode);
-  if (pkg.hotCode) bucket.byHot.delete(pkg.hotCode);
+  for (const config of PACKAGE_CODE_CONFIG) {
+    const code = pkg[config.rowField];
+    if (!code) continue;
+    bucket[config.bucketField].delete(code);
+  }
 }
 
 function findExistingPackage(
@@ -250,18 +274,14 @@ function findExistingPackage(
 ): ExistingPackage | null {
   const bucket = buckets.get(drugMasterId);
   if (!bucket) return null;
-  if (row.gs1Code) {
-    const hit = bucket.byGs1.get(row.gs1Code);
+  for (const config of PACKAGE_CODE_CONFIG) {
+    const code = row[config.rowField] ?? null;
+    if (!code) continue;
+
+    const hit = bucket[config.bucketField].get(code);
     if (hit) return hit;
   }
-  if (row.janCode) {
-    const hit = bucket.byJan.get(row.janCode);
-    if (hit) return hit;
-  }
-  if (row.hotCode) {
-    const hit = bucket.byHot.get(row.hotCode);
-    if (hit) return hit;
-  }
+
   return null;
 }
 
@@ -276,7 +296,7 @@ function buildPackageLookupState(
   return { yjToId, buckets };
 }
 
-function buildPackageUpdateValues(row: ParsedPackageRow, existingPkg: ExistingPackage) {
+function buildPackageUpdateValues(row: ParsedPackageRow, existingPkg: ExistingPackage): PackageUpdateValues {
   const normalized = normalizePackage(row);
   return {
     gs1Code: row.gs1Code ?? existingPkg.gs1Code,
@@ -309,7 +329,7 @@ function buildPackageInsertRow(drugMasterId: number, row: ParsedPackageRow): Ins
 }
 
 async function insertPackageBatch(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tx: Transaction,
   buckets: Map<number, PackageBucket>,
   toInsert: InsertPackageRow[],
 ): Promise<void> {
@@ -337,7 +357,7 @@ async function insertPackageBatch(
 }
 
 async function syncPackageBatch(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tx: Transaction,
   batch: ParsedPackageRow[],
   lookup: PackageLookupState,
   counts: PackageMutationCounts,
@@ -450,7 +470,7 @@ function collectDrugMasterBatchChanges(params: {
 }
 
 async function applyDrugMasterBatchChanges(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tx: Transaction,
   params: {
     toInsert: InsertDrugMasterRow[];
     toUpdate: UpdateDrugMasterItem[];
@@ -486,42 +506,42 @@ function collectDelistingPayload(
   const priceHistory: InsertPriceHistoryRow[] = [];
 
   for (const [yjCode, existing] of existingMap) {
-    if (!incomingCodes.has(yjCode) && existing.isListed) {
-      codes.push(yjCode);
-      priceHistory.push(buildPriceHistoryRow({
-        yjCode,
-        previousPrice: existing.yakkaPrice,
-        newPrice: null,
-        revisionDate,
-        revisionType: 'delisting',
-      }));
-      result.itemsDeleted++;
+    if (incomingCodes.has(yjCode) || !existing.isListed) {
+      continue;
     }
+
+    codes.push(yjCode);
+    priceHistory.push(buildPriceHistoryRow({
+      yjCode,
+      previousPrice: existing.yakkaPrice,
+      newPrice: null,
+      revisionDate,
+      revisionType: 'delisting',
+    }));
+    result.itemsDeleted++;
   }
 
   return { codes, priceHistory };
 }
 
 async function applyDelistingPayload(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tx: Transaction,
   payload: DelistingPayload,
   revisionDate: string,
   now: string,
 ): Promise<void> {
   if (payload.codes.length > 0) {
-    for (let i = 0; i < payload.codes.length; i += BATCH_SIZE) {
-      const codes = payload.codes.slice(i, i + BATCH_SIZE);
+    await processInBatches(payload.codes, BATCH_SIZE, async (codes) => {
       await tx.update(drugMaster)
         .set({ isListed: false, deletedDate: revisionDate, updatedAt: now })
         .where(inArray(drugMaster.yjCode, codes));
-    }
+    });
   }
 
   if (payload.priceHistory.length > 0) {
-    for (let i = 0; i < payload.priceHistory.length; i += BATCH_SIZE) {
-      const historyBatch = payload.priceHistory.slice(i, i + BATCH_SIZE);
+    await processInBatches(payload.priceHistory, BATCH_SIZE, async (historyBatch) => {
       await tx.insert(drugMasterPriceHistory).values(historyBatch);
-    }
+    });
   }
 }
 
@@ -544,7 +564,6 @@ export async function syncDrugMaster(
 
     // 全既存YJコードを取得
     const existingItems = await tx.select({
-      id: drugMaster.id,
       yjCode: drugMaster.yjCode,
       drugName: drugMaster.drugName,
       genericName: drugMaster.genericName,
@@ -560,12 +579,19 @@ export async function syncDrugMaster(
       deletedDate: drugMaster.deletedDate,
     }).from(drugMaster);
 
-    const existingMap = new Map(existingItems.map((item) => [item.yjCode, item as ExistingDrugMasterForSync]));
+    const existingMap = new Map<string, ExistingDrugMasterForSync>(
+      existingItems.map((item) => [
+        item.yjCode,
+        {
+          ...item,
+          isListed: Boolean(item.isListed),
+        },
+      ]),
+    );
     const incomingCodes = new Set(normalizedRows.map((r) => r.yjCode));
 
     // バッチ処理: INSERT/UPDATE を蓄積して一括実行
-    for (let i = 0; i < normalizedRows.length; i += BATCH_SIZE) {
-      const batch = normalizedRows.slice(i, i + BATCH_SIZE);
+    await processInBatches(normalizedRows, BATCH_SIZE, async (batch) => {
       const batchChanges = collectDrugMasterBatchChanges({
         batch,
         existingMap,
@@ -574,7 +600,7 @@ export async function syncDrugMaster(
         result,
       });
       await applyDrugMasterBatchChanges(tx, batchChanges);
-    }
+    });
 
     const delistingPayload = collectDelistingPayload(existingMap, incomingCodes, revisionDate, result);
     await applyDelistingPayload(tx, delistingPayload, revisionDate, now);
@@ -601,16 +627,19 @@ export async function syncPackageData(
   const lookup = buildPackageLookupState(yjToId, existingPackages);
 
   await db.transaction(async (tx) => {
-    for (let i = 0; i < parsedRows.length; i += BATCH_SIZE) {
-      const batch = parsedRows.slice(i, i + BATCH_SIZE);
+    await processInBatches(parsedRows, BATCH_SIZE, async (batch) => {
       await syncPackageBatch(tx, batch, lookup, counts);
-    }
+    });
   });
 
   return counts;
 }
 
-export async function createSyncLog(syncType: string, sourceDescription: string, triggeredBy: number | null) {
+export async function createSyncLog(
+  syncType: string,
+  sourceDescription: string,
+  triggeredBy: number | null,
+): Promise<SyncLogRow> {
   const [log] = await db.insert(drugMasterSyncLogs).values({
     syncType,
     sourceDescription,
@@ -621,7 +650,12 @@ export async function createSyncLog(syncType: string, sourceDescription: string,
   return log;
 }
 
-export async function completeSyncLog(logId: number, status: 'success' | 'failed' | 'partial', result: SyncResult, errorMessage?: string) {
+export async function completeSyncLog(
+  logId: number,
+  status: 'success' | 'failed' | 'partial',
+  result: SyncResult,
+  errorMessage?: string,
+): Promise<void> {
   await db.update(drugMasterSyncLogs)
     .set({
       status,

@@ -22,9 +22,37 @@ export interface DrugMasterStats {
 
 type DrugMasterTextColumn = typeof drugMaster.drugName | typeof drugMaster.genericName;
 type DrugMasterRow = typeof drugMaster.$inferSelect;
+type DrugMasterSearchRow = Pick<DrugMasterRow,
+  | 'id'
+  | 'yjCode'
+  | 'drugName'
+  | 'genericName'
+  | 'specification'
+  | 'unit'
+  | 'yakkaPrice'
+  | 'manufacturer'
+  | 'category'
+  | 'isListed'
+  | 'transitionDeadline'
+>;
+type DrugMasterPackageRow = typeof drugMasterPackages.$inferSelect;
+type DrugMasterPriceHistoryRow = typeof drugMasterPriceHistory.$inferSelect;
+type DrugMasterSyncLogRow = typeof drugMasterSyncLogs.$inferSelect;
+type DrugMasterUpdateInput = {
+  drugName?: string;
+  genericName?: string | null;
+  specification?: string | null;
+  unit?: string | null;
+  yakkaPrice?: number;
+  manufacturer?: string | null;
+  category?: string | null;
+  therapeuticCategory?: string | null;
+  isListed?: boolean;
+  transitionDeadline?: string | null;
+};
 type DrugDetailRow = DrugMasterRow & {
   packages: Array<ReturnType<typeof normalizePackageRow>>;
-  priceHistory: Array<typeof drugMasterPriceHistory.$inferSelect>;
+  priceHistory: DrugMasterPriceHistoryRow[];
 };
 
 const DRUG_MASTER_LOOKUP_CACHE = createCache<DrugMasterRow | null>({
@@ -146,7 +174,7 @@ function resolveSearchTerms(query: string): string[] {
   return [...new Set([normalized, hiragana, katakana])];
 }
 
-function buildLikeConditions(column: DrugMasterTextColumn, terms: string[]) {
+function buildLikeConditions(column: DrugMasterTextColumn, terms: string[]): Array<ReturnType<typeof like>> {
   return terms.map((term) => like(column, `%${escapeLikePattern(term)}%`));
 }
 
@@ -154,7 +182,11 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function normalizePackageRow(pkg: typeof drugMasterPackages.$inferSelect) {
+function normalizePackageRow(pkg: DrugMasterPackageRow): DrugMasterPackageRow & {
+  normalizedPackageLabel: string | null;
+  packageForm: string | null;
+  isLoosePackage: boolean;
+} {
   const normalized = normalizePackageInfo({
     packageDescription: pkg.packageDescription,
     packageQuantity: pkg.packageQuantity,
@@ -168,17 +200,43 @@ function normalizePackageRow(pkg: typeof drugMasterPackages.$inferSelect) {
   };
 }
 
-async function countDrugMasterRows(whereClause?: ReturnType<typeof eq> | ReturnType<typeof and>) {
+async function countDrugMasterRows(whereClause?: ReturnType<typeof eq> | ReturnType<typeof and>): Promise<number> {
   const [result] = whereClause
     ? await db.select({ value: count() }).from(drugMaster).where(whereClause)
     : await db.select({ value: count() }).from(drugMaster);
   return result.value;
 }
 
-export async function searchDrugMaster(query: string, limit: number = 20) {
+function clampLimit(limit: number): number {
+  return Math.min(Math.max(limit, 1), 100);
+}
+
+async function findDrugMasterByYjCode(yjCode: string): Promise<DrugMasterRow | null> {
+  const prepared = getPreparedDrugMasterByCode();
+  const rows = prepared
+    ? await prepared.execute({ yjCode })
+    : await db.select().from(drugMaster).where(eq(drugMaster.yjCode, yjCode)).limit(1);
+  return rows[0] ?? null;
+}
+
+async function findDrugMasterIdByPackageCode(code: string): Promise<number | null> {
+  const pkgResult = await db.select({
+    drugMasterId: drugMasterPackages.drugMasterId,
+  })
+    .from(drugMasterPackages)
+    .where(or(
+      eq(drugMasterPackages.gs1Code, code),
+      eq(drugMasterPackages.janCode, code),
+      eq(drugMasterPackages.hotCode, code),
+    ))
+    .limit(1);
+  return pkgResult[0]?.drugMasterId ?? null;
+}
+
+export async function searchDrugMaster(query: string, limit: number = 20): Promise<DrugMasterSearchRow[]> {
   if (!query.trim()) return [];
 
-  const safeLimit = Math.min(Math.max(limit, 1), 100);
+  const safeLimit = clampLimit(limit);
   const likeTerms = resolveSearchTerms(query);
   const nameConditions = buildLikeConditions(drugMaster.drugName, likeTerms);
   const genericConditions = buildLikeConditions(drugMaster.genericName, likeTerms);
@@ -208,7 +266,7 @@ export async function searchDrugMaster(query: string, limit: number = 20) {
     .limit(safeLimit);
 }
 
-export async function lookupByCode(code: string) {
+export async function lookupByCode(code: string): Promise<DrugMasterRow | null> {
   const cleaned = code.replace(/[\s\-]/g, '').normalize('NFKC');
   const codeCacheKey = drugCodeCacheKey(cleaned);
   if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
@@ -217,37 +275,24 @@ export async function lookupByCode(code: string) {
   }
 
   // YJコード（12桁）直接検索
-  const prepared = getPreparedDrugMasterByCode();
-  const byYj = prepared
-    ? await prepared.execute({ yjCode: cleaned })
-    : await db.select().from(drugMaster).where(eq(drugMaster.yjCode, cleaned)).limit(1);
-  if (byYj[0]) {
-    primeDrugMasterLookupCache(cleaned, byYj[0]);
-    return byYj[0];
+  const byYj = await findDrugMasterByYjCode(cleaned);
+  if (byYj) {
+    primeDrugMasterLookupCache(cleaned, byYj);
+    return byYj;
   }
 
   // GS1/JAN/HOTコードで包装テーブルを検索
-  const pkgResult = await db.select({
-    drugMasterId: drugMasterPackages.drugMasterId,
-  })
-    .from(drugMasterPackages)
-    .where(or(
-      eq(drugMasterPackages.gs1Code, cleaned),
-      eq(drugMasterPackages.janCode, cleaned),
-      eq(drugMasterPackages.hotCode, cleaned),
-    ))
-    .limit(1);
-
-  if (pkgResult[0]) {
-    const master = await fetchDrugMasterById(pkgResult[0].drugMasterId);
-    primeDrugMasterLookupCache(cleaned, master);
-    return master;
+  const drugMasterId = await findDrugMasterIdByPackageCode(cleaned);
+  if (drugMasterId === null) {
+    if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
+      DRUG_MASTER_LOOKUP_CACHE.set(codeCacheKey, null);
+    }
+    return null;
   }
 
-  if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
-    DRUG_MASTER_LOOKUP_CACHE.set(codeCacheKey, null);
-  }
-  return null;
+  const master = await fetchDrugMasterById(drugMasterId);
+  primeDrugMasterLookupCache(cleaned, master);
+  return master;
 }
 
 export async function getDrugMasterStats(): Promise<DrugMasterStats> {
@@ -274,7 +319,7 @@ export async function getDrugMasterStats(): Promise<DrugMasterStats> {
   };
 }
 
-export async function getDrugDetail(yjCode: string) {
+export async function getDrugDetail(yjCode: string): Promise<DrugDetailRow | null> {
   const detailCacheKey = drugCodeCacheKey(yjCode);
   if (DRUG_MASTER_LOOKUP_CACHE_ENABLED) {
     const cachedDetail = DRUG_DETAIL_CACHE.get(detailCacheKey);
@@ -304,26 +349,15 @@ export async function getDrugDetail(yjCode: string) {
   return detail;
 }
 
-export async function getSyncLogs(limit: number = 20) {
-  const safeLimit = Math.min(Math.max(limit, 1), 100);
+export async function getSyncLogs(limit: number = 20): Promise<DrugMasterSyncLogRow[]> {
+  const safeLimit = clampLimit(limit);
   return db.select()
     .from(drugMasterSyncLogs)
     .orderBy(desc(drugMasterSyncLogs.startedAt))
     .limit(safeLimit);
 }
 
-export async function updateDrugMasterItem(yjCode: string, updates: {
-  drugName?: string;
-  genericName?: string | null;
-  specification?: string | null;
-  unit?: string | null;
-  yakkaPrice?: number;
-  manufacturer?: string | null;
-  category?: string | null;
-  therapeuticCategory?: string | null;
-  isListed?: boolean;
-  transitionDeadline?: string | null;
-}) {
+export async function updateDrugMasterItem(yjCode: string, updates: DrugMasterUpdateInput): Promise<DrugMasterRow | null> {
   const { yakkaPrice, ...rest } = updates;
   const setValues: Record<string, unknown> = { ...rest, updatedAt: nowIso() };
   if (yakkaPrice !== undefined) {

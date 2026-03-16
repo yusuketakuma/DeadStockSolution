@@ -57,6 +57,8 @@ interface PackageRow {
   janCode?: string | null;
 }
 
+type ManualSearchWhereExpr = ReturnType<typeof like> | ReturnType<typeof or>;
+
 const MAX_CAMERA_BATCH_COUNT = 200;
 const MAX_CAMERA_QUANTITY = 100_000;
 const CAMERA_QUANTITY_SCALE = 1000;
@@ -179,7 +181,7 @@ function normalizeManualCandidateSearch(search: string): string {
   return normalized;
 }
 
-function buildManualSearchWhere(search: string) {
+function buildManualSearchWhere(search: string): ManualSearchWhereExpr {
   const normalized = normalizeKana(search);
   const hiragana = katakanaToHiragana(normalized);
   const katakana = hiraganaToKatakana(normalized);
@@ -215,7 +217,7 @@ function buildDeadStockInsertRows(params: {
   parsedItems: ParsedCameraConfirmItem[];
   masterById: Map<number, MasterRow>;
   packageById: Map<number, PackageRow>;
-}) {
+}): Array<typeof deadStockItems.$inferInsert> {
   const { pharmacyId, uploadId, parsedItems, masterById, packageById } = params;
   return parsedItems.map((item) => {
     const master = masterById.get(item.drugMasterId)!;
@@ -242,6 +244,20 @@ function buildDeadStockInsertRows(params: {
       isAvailable: true,
     };
   });
+}
+
+async function findPackagesByMasterIds(drugMasterIds: number[]): Promise<PackageRow[]> {
+  if (drugMasterIds.length === 0) return [];
+  return db.select(PACKAGE_MATCH_FIELDS)
+    .from(drugMasterPackages)
+    .where(inArray(drugMasterPackages.drugMasterId, drugMasterIds));
+}
+
+async function findPackagesByIds(packageIds: number[]): Promise<PackageRow[]> {
+  if (packageIds.length === 0) return [];
+  return db.select(PACKAGE_SUMMARY_FIELDS)
+    .from(drugMasterPackages)
+    .where(inArray(drugMasterPackages.id, packageIds));
 }
 
 function resolveParsedCodeFromRaw(rawCode: string, parsedCodeCache: Map<string, string | null>): string | null {
@@ -291,26 +307,24 @@ export async function resolveCameraMatchByCode(parsed: ParsedCameraCode): Promis
     }
   }
 
-  if (parsed.yjCode) {
-    const [masterRow] = await db.select(MASTER_ROW_FIELDS)
-      .from(drugMaster)
-      .where(eq(drugMaster.yjCode, parsed.yjCode))
-      .limit(1);
-
-    if (!masterRow) {
-      // YJ完全一致なし: YJ先頭7桁（同成分）でファジーマッチ
-      return resolveByYjPrefix7(parsed.yjCode);
-    }
-
-    const [pkg] = await db.select(PACKAGE_MATCH_FIELDS)
-      .from(drugMasterPackages)
-      .where(eq(drugMasterPackages.drugMasterId, masterRow.id))
-      .limit(1);
-
-    return buildCameraCodeMatch(masterRow, pkg ?? null);
+  if (!parsed.yjCode) {
+    return null;
   }
 
-  return null;
+  const [masterRow] = await db.select(MASTER_ROW_FIELDS)
+    .from(drugMaster)
+    .where(eq(drugMaster.yjCode, parsed.yjCode))
+    .limit(1);
+  if (!masterRow) {
+    // YJ完全一致なし: YJ先頭7桁（同成分）でファジーマッチ
+    return resolveByYjPrefix7(parsed.yjCode);
+  }
+
+  const [pkg] = await db.select(PACKAGE_MATCH_FIELDS)
+    .from(drugMasterPackages)
+    .where(eq(drugMasterPackages.drugMasterId, masterRow.id))
+    .limit(1);
+  return buildCameraCodeMatch(masterRow, pkg ?? null);
 }
 
 /**
@@ -330,16 +344,8 @@ async function resolveByYjPrefix7(yjCode: string): Promise<CameraCodeMatch | nul
   if (candidates.length === 0) return null;
 
   // 全候補の包装情報を一括取得
-  const allPackages = await db.select(PACKAGE_MATCH_FIELDS)
-    .from(drugMasterPackages)
-    .where(inArray(drugMasterPackages.drugMasterId, candidates.map((c) => c.id)));
-
-  const packageByMasterId = new Map<number, (typeof allPackages)[0]>();
-  for (const pkg of allPackages) {
-    if (!packageByMasterId.has(pkg.drugMasterId)) {
-      packageByMasterId.set(pkg.drugMasterId, pkg);
-    }
-  }
+  const allPackages = await findPackagesByMasterIds(candidates.map((candidate) => candidate.id));
+  const packageByMasterId = buildFirstPackageByMasterId(allPackages);
 
   // 包装情報がある品目を優先して返す
   for (const candidate of candidates) {
@@ -357,9 +363,6 @@ export async function searchCameraManualCandidates(
 ): Promise<CameraCodeMatch[]> {
   const normalizedSearch = normalizeManualCandidateSearch(search);
   const whereExpr = buildManualSearchWhere(normalizedSearch);
-  if (!whereExpr) {
-    return [];
-  }
 
   const limit = normalizeManualCandidateLimit(limitInput);
   const masters = await db.select(MASTER_ROW_FIELDS)
@@ -370,11 +373,7 @@ export async function searchCameraManualCandidates(
   if (masters.length === 0) {
     return [];
   }
-
-  const packageRows = await db.select(PACKAGE_MATCH_FIELDS)
-    .from(drugMasterPackages)
-    .where(inArray(drugMasterPackages.drugMasterId, masters.map((master) => master.id)));
-
+  const packageRows = await findPackagesByMasterIds(masters.map((master) => master.id));
   const firstPackageByMasterId = buildFirstPackageByMasterId(packageRows);
 
   return masters.map((master) => {
@@ -465,14 +464,15 @@ function assertMasterAndPackageConsistency(
     if (!master) {
       throw new Error(`行${item.rowNumber}: 医薬品マスタが見つかりません`);
     }
-    if (item.drugMasterPackageId !== null) {
-      const pkg = packageById.get(item.drugMasterPackageId);
-      if (!pkg) {
-        throw new Error(`行${item.rowNumber}: 包装単位マスタが見つかりません`);
-      }
-      if (pkg.drugMasterId !== item.drugMasterId) {
-        throw new Error(`行${item.rowNumber}: 包装単位が医薬品と一致しません`);
-      }
+    if (item.drugMasterPackageId === null) {
+      continue;
+    }
+    const pkg = packageById.get(item.drugMasterPackageId);
+    if (!pkg) {
+      throw new Error(`行${item.rowNumber}: 包装単位マスタが見つかりません`);
+    }
+    if (pkg.drugMasterId !== item.drugMasterId) {
+      throw new Error(`行${item.rowNumber}: 包装単位が医薬品と一致しません`);
     }
   }
 }
@@ -484,19 +484,16 @@ export async function confirmCameraDeadStockBatch(
   const parsedItems = parseCameraConfirmItems(rawItems);
 
   const masterIds = [...new Set(parsedItems.map((item) => item.drugMasterId))];
-  const masterRows = await db.select(MASTER_ROW_FIELDS)
-    .from(drugMaster)
-    .where(inArray(drugMaster.id, masterIds));
-  const masterById = buildMasterById(masterRows);
-
   const packageIds = [...new Set(parsedItems
     .map((item) => item.drugMasterPackageId)
     .filter((id): id is number => typeof id === 'number'))];
-  const packageRows = packageIds.length > 0
-    ? await db.select(PACKAGE_SUMMARY_FIELDS)
-      .from(drugMasterPackages)
-      .where(inArray(drugMasterPackages.id, packageIds))
-    : [];
+  const [masterRows, packageRows] = await Promise.all([
+    db.select(MASTER_ROW_FIELDS)
+      .from(drugMaster)
+      .where(inArray(drugMaster.id, masterIds)),
+    findPackagesByIds(packageIds),
+  ]);
+  const masterById = buildMasterById(masterRows);
   const packageById = buildPackageById(packageRows);
   assertMasterAndPackageConsistency(parsedItems, masterById, packageById);
 

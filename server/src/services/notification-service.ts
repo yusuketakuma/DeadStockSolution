@@ -26,6 +26,18 @@ interface PostgresErrorLike {
 type NotificationSqlExecutor = Pick<ServiceDependencies['db'], 'execute'>;
 type CountRow = { count?: number | string | null };
 type ExistsRow = { exists?: boolean | string | number | null };
+type NotificationListItem = typeof notifications.$inferSelect;
+
+interface NotificationService {
+  createNotification(input: CreateNotificationInput): Promise<{ id: number } | null>;
+  getUnreadCount(pharmacyId: number): Promise<number>;
+  getDashboardUnreadCount(pharmacyId: number): Promise<number>;
+  getNotifications(pharmacyId: number, page?: number, limit?: number): Promise<{ rows: NotificationListItem[]; total: number }>;
+  markAsRead(notificationId: number, pharmacyId: number): Promise<boolean>;
+  markAllAsRead(pharmacyId: number): Promise<number>;
+  markAllDashboardAsRead(pharmacyId: number): Promise<number>;
+  invalidateDashboardUnreadCache(pharmacyId: number): void;
+}
 
 function isUndefinedTableError(err: unknown): err is PostgresErrorLike {
   return typeof err === 'object' && err !== null && (err as PostgresErrorLike).code === '42P01';
@@ -40,6 +52,24 @@ function toBoolean(value: unknown): boolean {
 
 function toCount(value: unknown): number {
   return Number(value ?? 0);
+}
+
+function getCountFromRows(rows: CountRow[]): number {
+  return toCount(rows[0]?.count);
+}
+
+function getExistsFromRows(rows: ExistsRow[]): boolean {
+  return toBoolean(rows[0]?.exists);
+}
+
+async function executeCountSql(executor: NotificationSqlExecutor, query: ReturnType<typeof sql>): Promise<number> {
+  const rowsResult = await executor.execute<CountRow>(query);
+  return getCountFromRows(rowsResult.rows);
+}
+
+async function executeExistsSql(executor: NotificationSqlExecutor, query: ReturnType<typeof sql>): Promise<boolean> {
+  const rowsResult = await executor.execute<ExistsRow>(query);
+  return getExistsFromRows(rowsResult.rows);
 }
 
 const DASHBOARD_UNREAD_CACHE_TTL_MS = 15_000;
@@ -65,25 +95,22 @@ function getPreparedNotificationUnreadCountByPharmacy(
   deps: ServiceDependencies,
 ): PreparedNotificationUnreadCountByPharmacy | null {
   const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
-  if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') {
-    return null;
-  }
-  if (deps.db !== getServiceDeps().db) {
-    return null;
-  }
-  if (prepared_notification_unread_count_by_pharmacy) {
-    return prepared_notification_unread_count_by_pharmacy;
-  }
+  if (process.env.NODE_ENV === 'test') return null;
+  if (typeof placeholderFn !== 'function') return null;
+  if (deps.db !== getServiceDeps().db) return null;
+  if (prepared_notification_unread_count_by_pharmacy) return prepared_notification_unread_count_by_pharmacy;
+
   const query = deps.db.select({ value: count() })
     .from(notifications)
     .where(and(
       eq(notifications.pharmacyId, bindParam<number>('pharmacyId')),
       eq(notifications.isRead, false),
     ));
-  if (typeof (query as { prepare?: unknown }).prepare === 'function') {
-    prepared_notification_unread_count_by_pharmacy = (query as { prepare(name: string): PreparedNotificationUnreadCountByPharmacy })
-      .prepare('prepared_notification_unread_count_by_pharmacy');
-  }
+
+  if (typeof (query as { prepare?: unknown }).prepare !== 'function') return null;
+
+  prepared_notification_unread_count_by_pharmacy = (query as { prepare(name: string): PreparedNotificationUnreadCountByPharmacy })
+    .prepare('prepared_notification_unread_count_by_pharmacy');
   return prepared_notification_unread_count_by_pharmacy;
 }
 
@@ -127,7 +154,7 @@ function invalidateDashboardUnreadCacheIfNeeded(pharmacyId: number, affectedCoun
 }
 
 async function markNotificationsAsRead(executor: NotificationSqlExecutor, pharmacyId: number): Promise<number> {
-  const updatedRows = await executor.execute<CountRow>(sql`
+  return executeCountSql(executor, sql`
     WITH updated AS (
       UPDATE notifications
       SET is_read = true, read_at = now()
@@ -136,7 +163,6 @@ async function markNotificationsAsRead(executor: NotificationSqlExecutor, pharma
     )
     SELECT COUNT(*)::int AS count FROM updated
   `);
-  return toCount(updatedRows.rows[0]?.count);
 }
 
 async function getAdminUnreadCount(
@@ -199,11 +225,9 @@ async function getMatchUnreadCount(pharmacyId: number, deps: ServiceDependencies
 }
 
 async function hasMatchNotificationsTable(executor: NotificationSqlExecutor): Promise<boolean> {
-  const matchTableExistsRows = await executor.execute<ExistsRow>(sql`
+  return executeExistsSql(executor, sql`
     SELECT to_regclass('public.match_notifications') IS NOT NULL AS exists
   `);
-
-  return toBoolean(matchTableExistsRows.rows[0]?.exists);
 }
 
 async function markMatchNotificationsAsRead(
@@ -214,7 +238,7 @@ async function markMatchNotificationsAsRead(
     return 0;
   }
 
-  const matchUpdateRows = await executor.execute<CountRow>(sql`
+  return executeCountSql(executor, sql`
     WITH updated AS (
       UPDATE match_notifications
       SET is_read = true
@@ -223,15 +247,13 @@ async function markMatchNotificationsAsRead(
     )
     SELECT COUNT(*)::int AS count FROM updated
   `);
-
-  return toCount(matchUpdateRows.rows[0]?.count);
 }
 
 async function markAdminMessagesAsRead(
   executor: NotificationSqlExecutor,
   pharmacyId: number,
 ): Promise<number> {
-  const insertedAdminReadRows = await executor.execute<CountRow>(sql`
+  return executeCountSql(executor, sql`
     WITH inserted AS (
       INSERT INTO admin_message_reads (message_id, pharmacy_id)
       SELECT m.id, ${pharmacyId}
@@ -248,8 +270,6 @@ async function markAdminMessagesAsRead(
     )
     SELECT COUNT(*)::int AS count FROM inserted
   `);
-
-  return toCount(insertedAdminReadRows.rows[0]?.count);
 }
 
 export async function createNotification(
@@ -309,7 +329,7 @@ export async function getNotifications(
   page: number = 1,
   limit: number = 20,
   deps: ServiceDependencies = getServiceDeps(),
-): Promise<{ rows: typeof notifications.$inferSelect[]; total: number }> {
+): Promise<{ rows: NotificationListItem[]; total: number }> {
   const offset = (page - 1) * limit;
 
   const [countResult] = await deps.db.select({ value: count() })
@@ -366,7 +386,7 @@ export async function markAllDashboardAsRead(
   return total;
 }
 
-export function createNotificationService(deps: ServiceDependencies = getServiceDeps()) {
+export function createNotificationService(deps: ServiceDependencies = getServiceDeps()): NotificationService {
   return {
     createNotification: (input: CreateNotificationInput) => createNotification(input, deps),
     getUnreadCount: (pharmacyId: number) => getUnreadCount(pharmacyId, deps),

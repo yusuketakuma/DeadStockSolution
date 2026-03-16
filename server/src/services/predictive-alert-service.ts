@@ -54,6 +54,7 @@ interface PredictiveAlertCounters {
   nearExpiryAlerts: number;
   excessStockAlerts: number;
 }
+
 interface PredictiveAlertJobContext {
   now: Date;
   nearExpiryDays: number;
@@ -127,6 +128,30 @@ function resolveStockMatchKey(row: {
   const normalizedName = normalizeString(row.drugName);
   if (!normalizedName) return null;
   return `name:${normalizedName}`;
+}
+
+function evaluateExcessStock(
+  stockAggregate: StockQuantityAggregate,
+  monthlyUsage: number,
+  excessStockMonths: number,
+): { hasExcess: boolean; excessValue: number } {
+  const thresholdQty = monthlyUsage * excessStockMonths;
+  if (stockAggregate.quantity <= thresholdQty) {
+    return { hasExcess: false, excessValue: 0 };
+  }
+
+  const excessQty = stockAggregate.quantity - thresholdQty;
+  const avgUnitPrice = stockAggregate.quantity > 0
+    ? stockAggregate.totalValue / stockAggregate.quantity
+    : 0;
+  if (avgUnitPrice <= 0) {
+    return { hasExcess: true, excessValue: 0 };
+  }
+
+  return {
+    hasExcess: true,
+    excessValue: excessQty * avgUnitPrice,
+  };
 }
 
 function buildNearExpirySignal(row: NearExpiryAggregate, nearExpiryDays: number): PredictiveAlertSignal {
@@ -213,13 +238,17 @@ async function persistSignalsForBatch(
   signalPersistConcurrency: number,
   counters: PredictiveAlertCounters,
 ): Promise<void> {
-  for (const signalBatch of splitIntoChunks(signals, signalPersistConcurrency)) {
-    const settled = await Promise.allSettled(signalBatch.map((signal) => persistSignal(signal, dedupeDateKey)));
+  const signalBatches = splitIntoChunks(signals, signalPersistConcurrency);
+  const settledBatches = await Promise.all(
+    signalBatches.map((signalBatch) => Promise.allSettled(signalBatch.map((signal) => persistSignal(signal, dedupeDateKey)))),
+  );
+  settledBatches.forEach((settled, batchIndex) => {
+    const signalBatch = signalBatches[batchIndex];
     settled.forEach((result, index) => {
       const signal = signalBatch[index];
       applyPersistedSignalResult(counters, signal, result);
     });
-  }
+  });
 }
 
 async function fetchNearExpiryAggregates(
@@ -301,13 +330,13 @@ async function fetchExcessStockAggregates(
   }
 
   const stockByPharmacyAndKey = new Map<number, Map<string, StockQuantityAggregate>>();
-
   for (const stockRow of stockRows) {
     const key = resolveStockMatchKey(stockRow);
     if (!key) continue;
 
     const stockQuantity = Number(stockRow.quantity ?? 0);
     if (!isFinitePositiveNumber(stockQuantity)) continue;
+
     const unitPrice = Number(stockRow.yakkaUnitPrice ?? 0);
     const stockValue = isFinitePositiveNumber(unitPrice) ? stockQuantity * unitPrice : 0;
     const byKey = getOrInitMapValue(stockByPharmacyAndKey, stockRow.pharmacyId, () => new Map<string, StockQuantityAggregate>());
@@ -321,7 +350,8 @@ async function fetchExcessStockAggregates(
   for (const [pharmacyId, stockByKey] of stockByPharmacyAndKey.entries()) {
     const usageByKey = usageByPharmacyAndKey.get(pharmacyId);
     if (!usageByKey) continue;
-    const current = aggregates.get(pharmacyId) ?? {
+
+    const current: ExcessStockAggregate = {
       pharmacyId,
       itemCount: 0,
       totalExcessValue: 0,
@@ -331,18 +361,13 @@ async function fetchExcessStockAggregates(
       const monthlyUsage = usageByKey.get(key);
       if (!monthlyUsage || monthlyUsage <= 0) continue;
 
-      const thresholdQty = monthlyUsage * excessStockMonths;
-      if (stockAggregate.quantity <= thresholdQty) continue;
-
-      const excessQty = stockAggregate.quantity - thresholdQty;
-      const avgUnitPrice = stockAggregate.quantity > 0
-        ? stockAggregate.totalValue / stockAggregate.quantity
-        : 0;
-      const excessValue = avgUnitPrice > 0 ? excessQty * avgUnitPrice : 0;
+      const evaluation = evaluateExcessStock(stockAggregate, monthlyUsage, excessStockMonths);
+      if (!evaluation.hasExcess) continue;
 
       current.itemCount += 1;
-      current.totalExcessValue = to2(current.totalExcessValue + excessValue);
+      current.totalExcessValue = to2(current.totalExcessValue + evaluation.excessValue);
     }
+
     if (current.itemCount > 0) {
       aggregates.set(pharmacyId, current);
     }
@@ -393,25 +418,27 @@ async function persistSignal(
         .where(eq(predictiveAlerts.id, insertedAlert.id));
     }
 
-    if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-      try {
-        await sendToPharmacy(signal.pharmacyId, {
-          title: signal.title,
-          body: signal.message,
-          data: {
-            url: '/alerts',
-            type: signal.alertType,
-            referenceId: String(insertedAlert.id),
-          },
-        });
-      } catch (error) {
-        logger.warn('Failed to dispatch predictive alert push notification', {
-          pharmacyId: signal.pharmacyId,
-          alertId: insertedAlert.id,
-          alertType: signal.alertType,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+    if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+      return 'created';
+    }
+
+    try {
+      await sendToPharmacy(signal.pharmacyId, {
+        title: signal.title,
+        body: signal.message,
+        data: {
+          url: '/alerts',
+          type: signal.alertType,
+          referenceId: String(insertedAlert.id),
+        },
+      });
+    } catch (error) {
+      logger.warn('Failed to dispatch predictive alert push notification', {
+        pharmacyId: signal.pharmacyId,
+        alertId: insertedAlert.id,
+        alertType: signal.alertType,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     return 'created';

@@ -25,6 +25,8 @@ const PACKAGE_XML_KEYWORDS: Record<string, string[]> = {
   packageUnit: ['包装単位名', '単位'],
 };
 
+type XmlFieldOptions = { excludeIfKeyIncludes?: string[] };
+
 function normalizeXmlKey(key: string): string {
   return key.normalize('NFKC').toLowerCase().replace(/[\s_\-（）()【】\[\]\/]/g, '');
 }
@@ -38,48 +40,49 @@ function toXmlStringValue(value: unknown): string | null {
   if (typeof value !== 'object') return null;
 
   const record = value as Record<string, unknown>;
-  for (const key of ['#text', '_text', 'text']) {
+  const textKeys = ['#text', '_text', 'text'];
+  for (const key of textKeys) {
     const val = record[key];
-    if (typeof val === 'string') {
-      const text = val.trim();
-      if (text) return text;
-    }
+    if (typeof val !== 'string') continue;
+    const text = val.trim();
+    if (text) return text;
   }
   return null;
+}
+
+function getXmlKeyScore(key: string, normalizedKeyword: string): number {
+  if (key === normalizedKeyword) return 100;
+  if (key.endsWith(normalizedKeyword)) return 80;
+  if (key.includes(normalizedKeyword)) return 60;
+  return -1;
+}
+
+function shouldExcludeXmlKey(key: string, options?: XmlFieldOptions): boolean {
+  if (!options?.excludeIfKeyIncludes?.length) return false;
+  return options.excludeIfKeyIncludes.some((kw) => key.includes(normalizeXmlKey(kw)));
 }
 
 function pickXmlField(
   obj: Record<string, unknown>,
   keywords: string[],
-  options?: { excludeIfKeyIncludes?: string[] },
+  options?: XmlFieldOptions,
 ): string | null {
   let bestValue: string | null = null;
   let bestScore = -1;
+  const normalizedKeywords = keywords.map((keyword) => normalizeXmlKey(keyword));
 
   for (const [rawKey, rawValue] of Object.entries(obj)) {
     const key = normalizeXmlKey(rawKey);
-    if (options?.excludeIfKeyIncludes?.some((kw) => key.includes(normalizeXmlKey(kw)))) {
-      continue;
-    }
+    if (shouldExcludeXmlKey(key, options)) continue;
 
-    for (const keyword of keywords) {
-      const normalizedKeyword = normalizeXmlKey(keyword);
-      let score = -1;
-      if (key === normalizedKeyword) {
-        score = 100;
-      } else if (key.endsWith(normalizedKeyword)) {
-        score = 80;
-      } else if (key.includes(normalizedKeyword)) {
-        score = 60;
-      }
+    for (const normalizedKeyword of normalizedKeywords) {
+      const score = getXmlKeyScore(key, normalizedKeyword);
+      if (score <= bestScore) continue;
 
-      if (score > bestScore) {
-        const value = toXmlStringValue(rawValue);
-        if (value) {
-          bestScore = score;
-          bestValue = value;
-        }
-      }
+      const value = toXmlStringValue(rawValue);
+      if (!value) continue;
+      bestScore = score;
+      bestValue = value;
     }
   }
   return bestValue;
@@ -179,6 +182,35 @@ function parsePackageZipEntry(entryName: string, entryBuffer: Buffer): Promise<P
   return [];
 }
 
+function buildPackageRowFromExcelRow(
+  row: unknown[],
+  mapping: Record<string, number | undefined>,
+  yjCode: string,
+): ParsedPackageRow {
+  return {
+    yjCode,
+    gs1Code: getCell(row, mapping.gs1Code),
+    janCode: getCell(row, mapping.janCode),
+    hotCode: getCell(row, mapping.hotCode),
+    packageDescription: getCell(row, mapping.packageDescription),
+    packageQuantity: parseNumber(getCell(row, mapping.packageQuantity)),
+    packageUnit: getCell(row, mapping.packageUnit),
+  };
+}
+
+function pushIfHasAnyPackageCode(results: ParsedPackageRow[], row: ParsedPackageRow): void {
+  if (!row.gs1Code && !row.janCode && !row.hotCode) return;
+  results.push(row);
+}
+
+function pushGs1VariantRow(
+  results: ParsedPackageRow[],
+  baseRow: ParsedPackageRow,
+  gs1Code: string,
+): void {
+  results.push({ ...baseRow, gs1Code, janCode: null });
+}
+
 export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackageRow[]> {
   const zip = new AdmZip(buffer);
   const rows: ParsedPackageRow[] = [];
@@ -187,8 +219,7 @@ export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackage
   const entries = zip.getEntries();
   for (let idx = 0; idx < entries.length; idx++) {
     const entry = entries[idx];
-    if (entry.isDirectory) continue;
-    if (entry.entryName.includes('..')) continue;
+    if (entry.isDirectory || entry.entryName.includes('..')) continue;
 
     if (entry.header.size > MAX_ZIP_ENTRY_SIZE) {
       logger.warn(`Skipping oversized ZIP entry: ${entry.entryName} (${entry.header.size} bytes)`);
@@ -238,29 +269,21 @@ export function parsePackageExcelData(rows: unknown[][]): ParsedPackageRow[] {
     const yjCode = parseYjCode(getCell(row, mapping.yjCode));
     if (!yjCode) continue;
 
-    const gs1Code = getCell(row, mapping.gs1Code);
-    const janCode = getCell(row, mapping.janCode);
-    const hotCode = getCell(row, mapping.hotCode);
-    const packageDescription = getCell(row, mapping.packageDescription);
-    const packageQuantity = parseNumber(getCell(row, mapping.packageQuantity));
-    const packageUnit = getCell(row, mapping.packageUnit);
+    const baseRow = buildPackageRowFromExcelRow(row, mapping, yjCode);
 
     // メインの販売包装単位コード
-    if (gs1Code || janCode || hotCode) {
-      results.push({ yjCode, gs1Code, janCode, hotCode, packageDescription, packageQuantity, packageUnit });
-    }
+    pushIfHasAnyPackageCode(results, baseRow);
 
     // medhot: 調剤包装単位コード（販売包装単位コードと異なる場合のみ追加）
     const dispensingCode = getCell(row, extraMapping.dispensingUnitCode);
-    if (dispensingCode && dispensingCode !== gs1Code) {
-      results.push({ yjCode, gs1Code: dispensingCode, janCode: null, hotCode, packageDescription, packageQuantity, packageUnit });
+    if (dispensingCode && dispensingCode !== baseRow.gs1Code) {
+      pushGs1VariantRow(results, baseRow, dispensingCode);
     }
 
     // medhot: 元梱包装単位コード（販売包装単位コードと異なる場合のみ追加）
     const outerCode = getCell(row, extraMapping.outerPackageCode);
-    if (outerCode && outerCode !== gs1Code && outerCode !== dispensingCode) {
-      results.push({ yjCode, gs1Code: outerCode, janCode: null, hotCode, packageDescription, packageQuantity, packageUnit });
-    }
+    if (!outerCode || outerCode === baseRow.gs1Code || outerCode === dispensingCode) continue;
+    pushGs1VariantRow(results, baseRow, outerCode);
   }
   return results;
 }

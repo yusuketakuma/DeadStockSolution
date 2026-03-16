@@ -19,10 +19,6 @@ interface DeadStockRow extends BaseRow {
   lotNumber: string | null;
 }
 
-interface UsedMedRow extends BaseRow {
-  monthlyUsage: number | null;
-}
-
 export interface MasterCandidate {
   drugMasterId: number;
   drugName: string;
@@ -109,6 +105,29 @@ function createLookupState(): DrugMasterLookupState {
   };
 }
 
+function toMasterMatchInfo(
+  master: MasterRecord,
+  drugMasterPackageId: number | null,
+  packageLabel: string | null,
+): MasterMatchInfo {
+  return {
+    id: master.id,
+    yakkaPrice: master.yakkaPrice,
+    unit: master.unit,
+    drugMasterPackageId,
+    packageLabel,
+  };
+}
+
+function addCodePackageCandidate(
+  packageByCode: Map<string, PackageCandidate>,
+  code: string | null,
+  candidate: PackageCandidate,
+): void {
+  if (!code) return;
+  packageByCode.set(normalizeDrugCode(code), candidate);
+}
+
 function toPackageCandidate(pkg: {
   id: number;
   drugMasterId: number;
@@ -182,6 +201,59 @@ async function loadPackageCandidatesForMasterIds(
     state.packageCandidatesByMaster.set(id, grouped.get(id) ?? []);
     state.loadedPackageCandidateMasterIds.add(id);
   }
+}
+
+function collectMasterIdsNeedingPackages<T extends BaseRow>(
+  rows: T[],
+  masterInfoByRow: (MasterMatchInfo | null)[],
+): number[] {
+  const masterIds = new Set<number>();
+  for (let index = 0; index < rows.length; index += 1) {
+    const masterInfo = masterInfoByRow[index];
+    if (!masterInfo || masterInfo.drugMasterPackageId || !rows[index].unit) {
+      continue;
+    }
+    masterIds.add(masterInfo.id);
+  }
+  return [...masterIds];
+}
+
+function scoreNameMatch(
+  normalizedSearch: string,
+  normalizedTarget: string,
+): { matchType: MasterCandidate['matchType']; score: number } {
+  if (normalizedTarget === normalizedSearch) {
+    return { matchType: 'exact_name', score: 100 };
+  }
+  if (normalizedTarget.includes(normalizedSearch)) {
+    return {
+      matchType: 'fuzzy_name',
+      score: 80 - Math.min(30, Math.abs(normalizedTarget.length - normalizedSearch.length)),
+    };
+  }
+  if (normalizedSearch.includes(normalizedTarget)) {
+    return {
+      matchType: 'fuzzy_name',
+      score: 70 - Math.min(30, Math.abs(normalizedTarget.length - normalizedSearch.length)),
+    };
+  }
+
+  const minLen = Math.min(normalizedSearch.length, normalizedTarget.length);
+  let commonPrefix = 0;
+  for (let i = 0; i < minLen; i += 1) {
+    if (normalizedSearch[i] !== normalizedTarget[i]) {
+      break;
+    }
+    commonPrefix += 1;
+  }
+  if (commonPrefix < 3) {
+    return { matchType: 'none', score: 0 };
+  }
+
+  return {
+    matchType: 'fuzzy_name',
+    score: 40 + commonPrefix * 2,
+  };
 }
 
 function findPackageByUnit(
@@ -258,13 +330,7 @@ async function populateCodeLookup(
 
   for (const row of matchedMasterRows) {
     const master = storeMasterRecord(state, row);
-    state.codeCache.set(row.yjCode, {
-      id: master.id,
-      yakkaPrice: master.yakkaPrice,
-      unit: master.unit,
-      drugMasterPackageId: null,
-      packageLabel: null,
-    });
+    state.codeCache.set(row.yjCode, toMasterMatchInfo(master, null, null));
   }
 
   const unresolvedCodes = normalizedCodes.filter((code) => !state.codeCache.has(code));
@@ -295,9 +361,9 @@ async function populateCodeLookup(
 
   for (const pkg of matchedPackages) {
     const candidate = toPackageCandidate(pkg);
-    if (pkg.gs1Code) packageByCode.set(normalizeDrugCode(pkg.gs1Code), candidate);
-    if (pkg.janCode) packageByCode.set(normalizeDrugCode(pkg.janCode), candidate);
-    if (pkg.hotCode) packageByCode.set(normalizeDrugCode(pkg.hotCode), candidate);
+    addCodePackageCandidate(packageByCode, pkg.gs1Code, candidate);
+    addCodePackageCandidate(packageByCode, pkg.janCode, candidate);
+    addCodePackageCandidate(packageByCode, pkg.hotCode, candidate);
     packageMasterIds.add(candidate.drugMasterId);
   }
 
@@ -311,7 +377,6 @@ async function populateCodeLookup(
     })
       .from(drugMaster)
       .where(inArray(drugMaster.id, unresolvedMasterIds));
-
     for (const row of packageMasterRows) {
       storeMasterRecord(state, row);
     }
@@ -323,13 +388,14 @@ async function populateCodeLookup(
     const master = state.masterById.get(packageCandidate.drugMasterId);
     if (!master) continue;
 
-    state.codeCache.set(code, {
-      id: master.id,
-      yakkaPrice: master.yakkaPrice,
-      unit: master.unit,
-      drugMasterPackageId: packageCandidate.id,
-      packageLabel: packageCandidate.normalizedPackageLabel ?? packageCandidate.packageDescription,
-    });
+    state.codeCache.set(
+      code,
+      toMasterMatchInfo(
+        master,
+        packageCandidate.id,
+        packageCandidate.normalizedPackageLabel ?? packageCandidate.packageDescription,
+      ),
+    );
   }
 }
 
@@ -345,7 +411,7 @@ async function resolveMasterInfoByRow<T extends BaseRow>(
     return codeCache.get(normalizeDrugCode(drugCode)) ?? null;
   };
 
-  const loadNameCache = async () => {
+  const loadNameCache = async (): Promise<void> => {
     if (masterByNormalizedName) return;
     const all = await db.select({
       id: drugMaster.id,
@@ -383,9 +449,12 @@ async function resolveMasterInfoByRow<T extends BaseRow>(
   };
 
   const masterInfoByRow = rows.map((row) => resolveByCode(row.drugCode));
-  const unresolvedNameIndexes = masterInfoByRow
-    .map((masterInfo, index) => (masterInfo ? -1 : index))
-    .filter((index) => index >= 0);
+  const unresolvedNameIndexes: number[] = [];
+  for (let index = 0; index < masterInfoByRow.length; index += 1) {
+    if (!masterInfoByRow[index]) {
+      unresolvedNameIndexes.push(index);
+    }
+  }
 
   if (unresolvedNameIndexes.length > 0) {
     await loadNameCache();
@@ -403,15 +472,8 @@ async function enrichRowsWithResolvedInfo<T extends BaseRow>(
   masterInfoByRow: (MasterMatchInfo | null)[],
   state: DrugMasterLookupState,
 ): Promise<EnrichedRow<T>[]> {
-  const masterIdsNeedingPackages = new Set<number>();
-  for (let index = 0; index < rows.length; index += 1) {
-    const masterInfo = masterInfoByRow[index];
-    const row = rows[index];
-    if (masterInfo && !masterInfo.drugMasterPackageId && row.unit) {
-      masterIdsNeedingPackages.add(masterInfo.id);
-    }
-  }
-  await loadPackageCandidatesForMasterIds(state, [...masterIdsNeedingPackages]);
+  const masterIdsNeedingPackages = collectMasterIdsNeedingPackages(rows, masterInfoByRow);
+  await loadPackageCandidatesForMasterIds(state, masterIdsNeedingPackages);
 
   return rows.map((row, index) => {
     const masterInfo = masterInfoByRow[index];
@@ -419,16 +481,12 @@ async function enrichRowsWithResolvedInfo<T extends BaseRow>(
       ? findPackageByUnit(state.packageCandidatesByMaster, masterInfo.id, row.unit)
       : null;
 
-    const matchConfidence: 'exact' | 'fuzzy' | 'none' = masterInfo
-      ? (row.drugCode ? 'exact' : 'fuzzy')
-      : 'none';
-
     const enriched: EnrichedRow<T> = {
       ...row,
       drugMasterId: masterInfo?.id ?? null,
       drugMasterPackageId: packageInfo?.id ?? masterInfo?.drugMasterPackageId ?? null,
       packageLabel: resolvePackageLabel(packageInfo, masterInfo),
-      matchConfidence,
+      matchConfidence: masterInfo ? (row.drugCode ? 'exact' : 'fuzzy') : 'none',
     };
 
     if (masterInfo) {
@@ -465,33 +523,7 @@ export async function searchMasterCandidates(
   for (const row of filtered) {
     const rowNormalized = normalizeString(row.drugName);
     if (!rowNormalized) continue;
-
-    let matchType: MasterCandidate['matchType'] = 'none';
-    let score = 0;
-
-    if (rowNormalized === normalized) {
-      matchType = 'exact_name';
-      score = 100;
-    } else if (rowNormalized.includes(normalized)) {
-      matchType = 'fuzzy_name';
-      score = 80 - Math.min(30, Math.abs(rowNormalized.length - normalized.length));
-    } else if (normalized.includes(rowNormalized)) {
-      matchType = 'fuzzy_name';
-      score = 70 - Math.min(30, Math.abs(rowNormalized.length - normalized.length));
-    } else {
-      // 先頭一致
-      const minLen = Math.min(normalized.length, rowNormalized.length);
-      let commonPrefix = 0;
-      for (let i = 0; i < minLen; i++) {
-        if (normalized[i] === rowNormalized[i]) commonPrefix++;
-        else break;
-      }
-      if (commonPrefix >= 3) {
-        matchType = 'fuzzy_name';
-        score = 40 + commonPrefix * 2;
-      }
-    }
-
+    const { matchType, score } = scoreNameMatch(normalized, rowNormalized);
     if (matchType !== 'none') {
       scored.push({
         drugMasterId: row.id,

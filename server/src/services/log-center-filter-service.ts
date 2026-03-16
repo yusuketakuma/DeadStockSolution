@@ -135,14 +135,20 @@ function getNumberValue(record: Record<string, unknown>, key: string): number | 
   return null;
 }
 
-function extractTenantContext(detail: unknown, fallbackPharmacyId: number | null) {
-  const detailRecord = toUnknownRecord(detail);
+function extractTenantCandidateRecord(detailRecord: Record<string, unknown>): Record<string, unknown> {
   const tenantRecord = getNestedRecord(detailRecord, 'tenant');
-  const tenantPharmacyId = getNumberValue(tenantRecord ?? detailRecord, 'pharmacyId');
+  if (tenantRecord) return tenantRecord;
+  return detailRecord;
+}
+
+function extractTenantContext(detail: unknown, fallbackPharmacyId: number | null): NormalizedLogEntry['tenant'] {
+  const detailRecord = toUnknownRecord(detail);
+  const tenantRecord = extractTenantCandidateRecord(detailRecord);
+  const tenantPharmacyId = getNumberValue(tenantRecord, 'pharmacyId');
   const pharmacyId = fallbackPharmacyId ?? tenantPharmacyId;
-  const pharmacyName = getStringValue(tenantRecord ?? detailRecord, 'pharmacyName');
-  const pharmacyEmail = getStringValue(tenantRecord ?? detailRecord, 'pharmacyEmail')
-    ?? getStringValue(tenantRecord ?? detailRecord, 'email');
+  const pharmacyName = getStringValue(tenantRecord, 'pharmacyName');
+  const pharmacyEmail = getStringValue(tenantRecord, 'pharmacyEmail')
+    ?? getStringValue(tenantRecord, 'email');
 
   return {
     pharmacyId,
@@ -310,7 +316,7 @@ export function mergeTenantLabel(input: {
   pharmacyId: number | null;
   pharmacyName: string | null;
   pharmacyEmail: string | null;
-}) {
+}): string | null {
   return input.pharmacyName ?? (input.pharmacyId != null ? `薬局 #${input.pharmacyId}` : input.pharmacyEmail);
 }
 
@@ -340,6 +346,44 @@ export function normalizeLogEntry(source: LogSource, row: Record<string, unknown
   }
 }
 
+function createNormalizedEntryBase(input: {
+  id: number;
+  source: LogSource;
+  level: LogLevel;
+  category: string;
+  errorCode: string | null;
+  message: string;
+  detail: unknown;
+  pharmacyId: number | null;
+  timestamp: string;
+  tenant: NormalizedLogEntry['tenant'];
+}): NormalizedLogEntry {
+  return {
+    id: input.id,
+    source: input.source,
+    level: input.level,
+    category: input.category,
+    errorCode: input.errorCode,
+    message: input.message,
+    detail: input.detail,
+    pharmacyId: input.pharmacyId,
+    timestamp: input.timestamp,
+    whatHappened: '',
+    codeLocation: null,
+    improvementSuggestion: null,
+    tenant: input.tenant,
+    errorCodeMeta: null,
+    operatorState: createDefaultOperatorState(),
+  };
+}
+
+function finalizeNormalizedEntry(entry: NormalizedLogEntry): NormalizedLogEntry {
+  entry.codeLocation = inferCodeLocation(entry);
+  entry.whatHappened = buildFallbackWhatHappened(entry);
+  entry.improvementSuggestion = buildFallbackImprovementSuggestion(entry);
+  return entry;
+}
+
 function normalizeActivityLog(row: Record<string, unknown>): NormalizedLogEntry {
   const action = String(row.action ?? '');
   const detail = row.detail != null ? String(row.detail) : '';
@@ -354,7 +398,7 @@ function normalizeActivityLog(row: Record<string, unknown>): NormalizedLogEntry 
     level = 'warning';
   }
 
-  const entry: NormalizedLogEntry = {
+  const entry = createNormalizedEntryBase({
     id: Number(row.id),
     source: 'activity_logs',
     level,
@@ -364,18 +408,10 @@ function normalizeActivityLog(row: Record<string, unknown>): NormalizedLogEntry 
     detail: metadata,
     pharmacyId: tenant.pharmacyId,
     timestamp: String(row.createdAt ?? ''),
-    whatHappened: '',
-    codeLocation: null,
-    improvementSuggestion: null,
     tenant,
-    errorCodeMeta: null,
-    operatorState: createDefaultOperatorState(),
-  };
+  });
 
-  entry.codeLocation = inferCodeLocation(entry);
-  entry.whatHappened = buildFallbackWhatHappened(entry);
-  entry.improvementSuggestion = buildFallbackImprovementSuggestion(entry);
-  return entry;
+  return finalizeNormalizedEntry(entry);
 }
 
 const VALID_LEVELS = new Set<NormalizedLogEntry['level']>(['critical', 'error', 'warning', 'info']);
@@ -389,7 +425,7 @@ function normalizeSystemEvent(row: Record<string, unknown>): NormalizedLogEntry 
   const detail = parseJsonSafe(row.detailJson);
   const tenant = extractTenantContext(detail, null);
 
-  const entry: NormalizedLogEntry = {
+  const entry = createNormalizedEntryBase({
     id: Number(row.id),
     source: 'system_events',
     level,
@@ -399,18 +435,10 @@ function normalizeSystemEvent(row: Record<string, unknown>): NormalizedLogEntry 
     detail,
     pharmacyId: tenant.pharmacyId,
     timestamp: String(row.occurredAt ?? ''),
-    whatHappened: '',
-    codeLocation: null,
-    improvementSuggestion: null,
     tenant,
-    errorCodeMeta: null,
-    operatorState: createDefaultOperatorState(),
-  };
+  });
 
-  entry.codeLocation = inferCodeLocation(entry);
-  entry.whatHappened = buildFallbackWhatHappened(entry);
-  entry.improvementSuggestion = buildFallbackImprovementSuggestion(entry);
-  return entry;
+  return finalizeNormalizedEntry(entry);
 }
 
 function normalizeSyncLog(row: Record<string, unknown>): NormalizedLogEntry {
@@ -428,7 +456,7 @@ function normalizeSyncLog(row: Record<string, unknown>): NormalizedLogEntry {
     level = 'warning';
   }
 
-  const entry: NormalizedLogEntry = {
+  const entry = createNormalizedEntryBase({
     id: Number(row.id),
     source: 'drug_master_sync_logs',
     level,
@@ -444,18 +472,10 @@ function normalizeSyncLog(row: Record<string, unknown>): NormalizedLogEntry {
     },
     pharmacyId: tenant.pharmacyId,
     timestamp: String(row.startedAt ?? ''),
-    whatHappened: '',
-    codeLocation: null,
-    improvementSuggestion: null,
     tenant,
-    errorCodeMeta: null,
-    operatorState: createDefaultOperatorState(),
-  };
+  });
 
-  entry.codeLocation = inferCodeLocation(entry);
-  entry.whatHappened = buildFallbackWhatHappened(entry);
-  entry.improvementSuggestion = buildFallbackImprovementSuggestion(entry);
-  return entry;
+  return finalizeNormalizedEntry(entry);
 }
 
 export function parseJsonSafe(value: unknown): unknown {
@@ -468,11 +488,11 @@ export function parseJsonSafe(value: unknown): unknown {
   }
 }
 
-function buildZeroCondition() {
+function buildZeroCondition(): ReturnType<typeof sql> {
   return sql`1 = 0`;
 }
 
-function buildActivityLevelCondition(level: NonNullable<LogCenterQuery['level']>) {
+function buildActivityLevelCondition(level: NonNullable<LogCenterQuery['level']>): ReturnType<typeof sql> {
   if (level === 'critical') return buildZeroCondition();
   if (level === 'error') return sql`coalesce(${activityLogs.detail}, '') like '失敗|%'`;
   if (level === 'warning') {
@@ -484,7 +504,7 @@ function buildActivityLevelCondition(level: NonNullable<LogCenterQuery['level']>
   return buildZeroCondition();
 }
 
-function buildSyncLevelCondition(level: NonNullable<LogCenterQuery['level']>) {
+function buildSyncLevelCondition(level: NonNullable<LogCenterQuery['level']>): ReturnType<typeof sql> {
   if (level === 'critical') return buildZeroCondition();
   if (level === 'error') return sql`${drugMasterSyncLogs.status} = 'failed'`;
   if (level === 'warning') return sql`${drugMasterSyncLogs.status} = 'partial'`;
@@ -561,9 +581,12 @@ function buildLevelCondition(
 
 const levelConditionCache = new Map<string, ReturnType<typeof sql> | null>();
 
-export function buildSourceConditions(source: LogSource, query: LogCenterQuery) {
+export function buildSourceConditions(
+  source: LogSource,
+  query: LogCenterQuery,
+): { config: typeof SOURCE_TABLE_CONFIG[LogSource]; where: ReturnType<typeof and> | undefined } {
   const config = SOURCE_TABLE_CONFIG[source];
-  const conditions = [];
+  const conditions: Array<ReturnType<typeof eq> | ReturnType<typeof gte> | ReturnType<typeof lte> | ReturnType<typeof or> | ReturnType<typeof sql>> = [];
 
   if (query.pharmacyId != null && config.pharmacyIdCol) {
     conditions.push(eq(config.pharmacyIdCol, query.pharmacyId));

@@ -65,14 +65,27 @@ function getMaxActiveJobsGlobal(): number {
   );
 }
 
+function buildNotCanceledCondition(): ReturnType<typeof and> {
+  return and(
+    isNull(uploadConfirmJobs.cancelRequestedAt),
+    isNull(uploadConfirmJobs.canceledAt),
+  );
+}
+
+function buildRetryReadyCondition(nowIso: string): ReturnType<typeof or> {
+  return or(
+    isNull(uploadConfirmJobs.nextRetryAt),
+    lte(uploadConfirmJobs.nextRetryAt, nowIso),
+  );
+}
+
 async function countActiveJobs(
   executor: Pick<typeof db, 'select'> = db,
   pharmacyId?: number,
 ): Promise<number> {
   const conditions = [
     inArray(uploadConfirmJobs.status, ACTIVE_JOB_STATUSES),
-    isNull(uploadConfirmJobs.cancelRequestedAt),
-    isNull(uploadConfirmJobs.canceledAt),
+    buildNotCanceledCondition(),
   ];
   if (pharmacyId !== undefined) {
     conditions.push(eq(uploadConfirmJobs.pharmacyId, pharmacyId));
@@ -238,15 +251,15 @@ export async function assertJobNotCancellationRequested(jobId: number): Promise<
     .where(eq(uploadConfirmJobs.id, jobId))
     .limit(1);
 
-  if (row?.canceledAt || row?.cancelRequestedAt) {
+  if (!row) return;
+  if (row.canceledAt || row.cancelRequestedAt) {
     throw createUploadConfirmJobError('JOB_CANCELED', '管理者によりジョブがキャンセルされました', false);
   }
 }
 
-function buildClaimableStatusCondition(staleBeforeIso: string) {
+function buildClaimableStatusCondition(staleBeforeIso: string): ReturnType<typeof and> {
   return and(
-    isNull(uploadConfirmJobs.cancelRequestedAt),
-    isNull(uploadConfirmJobs.canceledAt),
+    buildNotCanceledCondition(),
     or(
       eq(uploadConfirmJobs.status, 'pending'),
       and(
@@ -263,14 +276,13 @@ function buildClaimableStatusCondition(staleBeforeIso: string) {
 function buildNoOtherActiveProcessingCondition(
   candidateId: number,
   staleBeforeIso: string,
-) {
+): ReturnType<typeof notExists> {
   return notExists(
     db.select({ id: uploadConfirmJobs.id })
       .from(uploadConfirmJobs)
       .where(and(
         eq(uploadConfirmJobs.status, 'processing'),
-        isNull(uploadConfirmJobs.cancelRequestedAt),
-        isNull(uploadConfirmJobs.canceledAt),
+        buildNotCanceledCondition(),
         gte(uploadConfirmJobs.processingStartedAt, staleBeforeIso),
         ne(uploadConfirmJobs.id, candidateId),
       )),
@@ -280,7 +292,7 @@ function buildNoOtherActiveProcessingCondition(
 function buildClaimStatusMatchCondition(
   candidateStatus: 'pending' | 'processing',
   staleBeforeIso: string,
-) {
+): ReturnType<typeof eq> | ReturnType<typeof or> {
   if (candidateStatus === 'pending') {
     return eq(uploadConfirmJobs.status, 'pending');
   }
@@ -290,17 +302,43 @@ function buildClaimStatusMatchCondition(
   );
 }
 
+function buildClaimCandidateCondition(
+  staleBeforeIso: string,
+  nowIso: string,
+): ReturnType<typeof and> {
+  return and(
+    buildClaimableStatusCondition(staleBeforeIso),
+    lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
+    buildRetryReadyCondition(nowIso),
+  );
+}
+
+function buildClaimUpdateCondition(
+  candidateId: number,
+  candidateStatus: 'pending' | 'processing',
+  candidateAttempts: number,
+  staleBeforeIso: string,
+  nowIso: string,
+): ReturnType<typeof and> {
+  return and(
+    eq(uploadConfirmJobs.id, candidateId),
+    buildNotCanceledCondition(),
+    eq(uploadConfirmJobs.status, candidateStatus),
+    eq(uploadConfirmJobs.attempts, candidateAttempts),
+    lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
+    buildRetryReadyCondition(nowIso),
+    buildNoOtherActiveProcessingCondition(candidateId, staleBeforeIso),
+    buildClaimStatusMatchCondition(candidateStatus, staleBeforeIso),
+  );
+}
+
 export async function claimPendingUploadConfirmJob(): Promise<UploadConfirmJobRuntime | null> {
   for (let attempt = 0; attempt < CLAIM_CONTENTION_RETRY_LIMIT; attempt += 1) {
     const nowIso = new Date().toISOString();
     const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
     const [candidate] = await db.select(JOB_RUNTIME_COLUMNS)
       .from(uploadConfirmJobs)
-      .where(and(
-        buildClaimableStatusCondition(staleBeforeIso),
-        lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
-        or(isNull(uploadConfirmJobs.nextRetryAt), lte(uploadConfirmJobs.nextRetryAt, nowIso)),
-      ))
+      .where(buildClaimCandidateCondition(staleBeforeIso, nowIso))
       .orderBy(
         asc(uploadConfirmJobs.createdAt),
         asc(uploadConfirmJobs.id),
@@ -317,16 +355,12 @@ export async function claimPendingUploadConfirmJob(): Promise<UploadConfirmJobRu
         processingStartedAt: nowIso,
         updatedAt: nowIso,
       })
-      .where(and(
-        eq(uploadConfirmJobs.id, candidate.id),
-        isNull(uploadConfirmJobs.cancelRequestedAt),
-        isNull(uploadConfirmJobs.canceledAt),
-        eq(uploadConfirmJobs.status, candidateStatus),
-        eq(uploadConfirmJobs.attempts, candidate.attempts),
-        lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
-        or(isNull(uploadConfirmJobs.nextRetryAt), lte(uploadConfirmJobs.nextRetryAt, nowIso)),
-        buildNoOtherActiveProcessingCondition(candidate.id, staleBeforeIso),
-        buildClaimStatusMatchCondition(candidateStatus, staleBeforeIso),
+      .where(buildClaimUpdateCondition(
+        candidate.id,
+        candidateStatus,
+        candidate.attempts,
+        staleBeforeIso,
+        nowIso,
       ))
       .returning(JOB_RUNTIME_COLUMNS);
 
