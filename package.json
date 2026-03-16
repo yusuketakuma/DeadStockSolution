@@ -37,7 +37,9 @@
     "quality:gate": "bash scripts/quality-gate.sh",
     "quality:gate:notify": "OPENCLAW_NOTIFY_TARGET=${OPENCLAW_NOTIFY_TARGET:--5103716630} bash scripts/quality-gate.sh",
     "prepare": "node scripts/prepare.mjs",
-    "lighthouse": "npm run build:client && npx lhci autorun"
+    "lighthouse": "npm run build:client && npx lhci autorun",
+    "remotion": "npx remotion studio remotion/src/index.ts",
+    "remotion:render": "npx remotion render remotion/src/index.ts ProductVideo out/video.mp4"
   },
   "lint-staged": {
     "*.{ts,tsx}": "eslint --fix"
@@ -49,8 +51,12 @@
     "react-dom": "$react-dom"
   },
   "dependencies": {
+    "@remotion/cli": "^4.0.435",
+    "@remotion/transitions": "^4.0.435",
+    "@remotion/zod-types": "^4.0.435",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "remotion": "^4.0.435"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.3",
