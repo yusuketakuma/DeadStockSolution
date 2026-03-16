@@ -7,7 +7,6 @@ import {
   exchangeProposalItems,
   deadStockItems,
   pharmacies,
-  activityLogs,
   proposalComments,
   exchangeFeedback,
 } from '../db/schema';
@@ -78,7 +77,7 @@ async function mapWithConcurrency<T, R>(
   const workerCount = Math.max(1, Math.min(concurrency, items.length));
   let nextIndex = 0;
 
-  async function worker() {
+  async function worker(): Promise<void> {
     while (true) {
       const current = nextIndex;
       nextIndex += 1;
@@ -125,6 +124,41 @@ interface ProposalActionHandlerConfig<TResult> {
   buildResponse: (result: TResult) => Record<string, unknown>;
 }
 
+interface BulkActionResult {
+  id: number;
+  ok: boolean;
+  status?: string;
+  message?: string;
+  error?: string;
+}
+
+interface ProposalDetailPharmacyRow {
+  name: string | null;
+  phone: string | null;
+  fax: string | null;
+  address: string | null;
+  prefecture: string | null;
+}
+
+interface ProposalPrintPharmacyRow extends ProposalDetailPharmacyRow {
+  licenseNumber: string | null;
+}
+
+type ProposalData = {
+  proposal: typeof exchangeProposals.$inferSelect;
+  items: Array<{
+    id: number;
+    deadStockItemId: number;
+    fromPharmacyId: number;
+    toPharmacyId: number;
+    quantity: number;
+    yakkaValue: string | null;
+    drugName: string;
+    unit: string | null;
+    yakkaUnitPrice: string | null;
+  }>;
+};
+
 async function handleProposalAction<TResult>(
   req: AuthRequest,
   res: Response,
@@ -148,8 +182,124 @@ async function handleProposalAction<TResult>(
   }
 }
 
-// Find matching candidates
-router.post('/find', findLimiter, async (req: AuthRequest, res: Response) => {
+async function runBulkAction(
+  action: BulkActionType,
+  id: number,
+  actorId: number,
+): Promise<BulkActionResult> {
+  try {
+    if (action === 'accept') {
+      const nextStatus = await acceptProposal(id, actorId);
+      return {
+        id,
+        ok: true,
+        status: nextStatus,
+        message: nextStatus === 'confirmed'
+          ? '仮マッチングが確定しました'
+          : '承認しました（相手薬局の承認待ち）',
+      };
+    }
+
+    await rejectProposal(id, actorId);
+    return {
+      id,
+      ok: true,
+      status: 'rejected',
+      message: '拒否しました',
+    };
+  } catch (err) {
+    logger.warn('Bulk proposal action item failed', {
+      proposalId: id,
+      action,
+      actorId,
+      error: getErrorMessage(err),
+    });
+    return { id, ok: false, error: sanitizeProposalError(err).message };
+  }
+}
+
+async function fetchProposalData(proposalId: number, pharmacyId: number): Promise<ProposalData | null> {
+  const [proposal] = await db.select()
+    .from(exchangeProposals)
+    .where(and(
+      eq(exchangeProposals.id, proposalId),
+      or(
+        eq(exchangeProposals.pharmacyAId, pharmacyId),
+        eq(exchangeProposals.pharmacyBId, pharmacyId),
+      ),
+    ))
+    .limit(1);
+
+  if (!proposal) return null;
+
+  const items = await db.select({
+    id: exchangeProposalItems.id,
+    deadStockItemId: exchangeProposalItems.deadStockItemId,
+    fromPharmacyId: exchangeProposalItems.fromPharmacyId,
+    toPharmacyId: exchangeProposalItems.toPharmacyId,
+    quantity: exchangeProposalItems.quantity,
+    yakkaValue: exchangeProposalItems.yakkaValue,
+    drugName: deadStockItems.drugName,
+    unit: deadStockItems.unit,
+    yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
+  })
+    .from(exchangeProposalItems)
+    .innerJoin(deadStockItems, eq(exchangeProposalItems.deadStockItemId, deadStockItems.id))
+    .where(eq(exchangeProposalItems.proposalId, proposalId));
+
+  return { proposal, items };
+}
+
+async function fetchProposalDetailPharmacies(
+  proposal: { pharmacyAId: number; pharmacyBId: number },
+): Promise<[ProposalDetailPharmacyRow | undefined, ProposalDetailPharmacyRow | undefined]> {
+  const detailFields = {
+    name: pharmacies.name,
+    phone: pharmacies.phone,
+    fax: pharmacies.fax,
+    address: pharmacies.address,
+    prefecture: pharmacies.prefecture,
+  };
+
+  const [[pharmA], [pharmB]] = await Promise.all([
+    db.select(detailFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
+    db.select(detailFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
+  ]);
+
+  return [pharmA, pharmB];
+}
+
+async function fetchProposalPrintPharmacies(
+  proposal: { pharmacyAId: number; pharmacyBId: number },
+): Promise<[ProposalPrintPharmacyRow | undefined, ProposalPrintPharmacyRow | undefined]> {
+  const printFields = {
+    name: pharmacies.name,
+    phone: pharmacies.phone,
+    fax: pharmacies.fax,
+    address: pharmacies.address,
+    prefecture: pharmacies.prefecture,
+    licenseNumber: pharmacies.licenseNumber,
+  };
+
+  const [[pharmA], [pharmB]] = await Promise.all([
+    db.select(printFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
+    db.select(printFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
+  ]);
+
+  return [pharmA, pharmB];
+}
+
+function compareTimelineAtDesc(
+  a: { at?: string | Date | null },
+  b: { at?: string | Date | null },
+): number {
+  if (!a.at && !b.at) return 0;
+  if (!a.at) return 1;
+  if (!b.at) return -1;
+  return new Date(b.at).getTime() - new Date(a.at).getTime();
+}
+
+const handleFind = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const candidates = await findMatches(req.user!.id);
     res.json({ candidates });
@@ -160,10 +310,9 @@ router.post('/find', findLimiter, async (req: AuthRequest, res: Response) => {
       : (err instanceof Error ? err.message : 'マッチングに失敗しました');
     res.status(500).json({ error: message });
   }
-});
+};
 
-// Create proposal from selected candidate
-router.post('/proposals', async (req: AuthRequest, res: Response) => {
+const handleCreateProposal = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const candidate = req.body?.candidate;
     if (!candidate || typeof candidate !== 'object') {
@@ -185,10 +334,9 @@ router.post('/proposals', async (req: AuthRequest, res: Response) => {
     }
     res.status(500).json({ error: '仮マッチングの作成に失敗しました' });
   }
-});
+};
 
-// Bulk accept/reject proposals
-router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) => {
+const handleBulkAction = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const action = parseBulkAction(req.body?.action);
     const ids = parseBulkIds(req.body?.ids);
@@ -203,42 +351,11 @@ router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) =>
     }
 
     const actorId = req.user!.id;
-    const results: Array<{
-      id: number;
-      ok: boolean;
-      status?: string;
-      message?: string;
-      error?: string;
-    }> = await mapWithConcurrency(ids, BULK_ACTION_CONCURRENCY, async (id) => {
-      try {
-        if (action === 'accept') {
-          const nextStatus = await acceptProposal(id, actorId);
-          return {
-            id,
-            ok: true,
-            status: nextStatus,
-            message: nextStatus === 'confirmed'
-              ? '仮マッチングが確定しました'
-              : '承認しました（相手薬局の承認待ち）',
-          };
-        }
-        await rejectProposal(id, actorId);
-        return {
-          id,
-          ok: true,
-          status: 'rejected',
-          message: '拒否しました',
-        };
-      } catch (err) {
-        logger.warn('Bulk proposal action item failed', {
-          proposalId: id,
-          action,
-          actorId,
-          error: getErrorMessage(err),
-        });
-        return { id, ok: false, error: sanitizeProposalError(err).message };
-      }
-    });
+    const results = await mapWithConcurrency(
+      ids,
+      BULK_ACTION_CONCURRENCY,
+      (id) => runBulkAction(action, id, actorId),
+    );
 
     const successCount = results.filter((row) => row.ok).length;
     res.json({
@@ -254,10 +371,9 @@ router.post('/proposals/bulk-action', async (req: AuthRequest, res: Response) =>
     logger.error('Bulk proposal action error', { error: getErrorMessage(err) });
     res.status(500).json({ error: '一括操作に失敗しました' });
   }
-});
+};
 
-// Accept proposal (single action endpoint kept for backward compatibility with detail page)
-router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => {
+const handleAcceptProposal = async (req: AuthRequest, res: Response): Promise<void> => {
   await handleProposalAction(req, res, {
     logAction: 'proposal_accept',
     run: acceptProposal,
@@ -269,30 +385,27 @@ router.post('/proposals/:id/accept', async (req: AuthRequest, res: Response) => 
       status,
     }),
   });
-});
+};
 
-// Reject proposal (single action endpoint kept for backward compatibility with detail page)
-router.post('/proposals/:id/reject', async (req: AuthRequest, res: Response) => {
+const handleRejectProposal = async (req: AuthRequest, res: Response): Promise<void> => {
   await handleProposalAction(req, res, {
     logAction: 'proposal_reject',
     run: rejectProposal,
     buildLogDetail: (proposalId) => `proposalId=${proposalId}|status=rejected`,
     buildResponse: () => ({ message: '仮マッチングを拒否しました' }),
   });
-});
+};
 
-// Complete exchange (single action endpoint kept for backward compatibility with detail page)
-router.post('/proposals/:id/complete', async (req: AuthRequest, res: Response) => {
+const handleCompleteProposal = async (req: AuthRequest, res: Response): Promise<void> => {
   await handleProposalAction(req, res, {
     logAction: 'proposal_complete',
     run: completeProposal,
     buildLogDetail: (proposalId) => `proposalId=${proposalId}|status=completed`,
     buildResponse: () => ({ message: '交換を完了しました' }),
   });
-});
+};
 
-// Pending action count (lightweight badge endpoint)
-router.get('/proposals/pending-count', async (req: AuthRequest, res: Response) => {
+const handlePendingCount = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const pharmacyId = req.user!.id;
     const [result] = await db.select({ count: rowCount })
@@ -313,10 +426,9 @@ router.get('/proposals/pending-count', async (req: AuthRequest, res: Response) =
     logger.error('Pending proposal count error', { error: err instanceof Error ? err.message : String(err) });
     res.status(500).json({ error: '要対応件数の取得に失敗しました' });
   }
-});
+};
 
-// List my proposals
-router.get('/proposals', async (req: AuthRequest, res: Response) => {
+const handleListProposals = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const sort = typeof req.query.sort === 'string' ? req.query.sort : 'recent';
     const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, {
@@ -422,41 +534,9 @@ router.get('/proposals', async (req: AuthRequest, res: Response) => {
     logger.error('List proposals error:', { error: getErrorMessage(err) });
     res.status(500).json({ error: 'マッチング一覧の取得に失敗しました' });
   }
-});
+};
 
-async function fetchProposalData(proposalId: number, pharmacyId: number) {
-  const [proposal] = await db.select()
-    .from(exchangeProposals)
-    .where(and(
-      eq(exchangeProposals.id, proposalId),
-      or(
-        eq(exchangeProposals.pharmacyAId, pharmacyId),
-        eq(exchangeProposals.pharmacyBId, pharmacyId),
-      ),
-    ))
-    .limit(1);
-
-  if (!proposal) return null;
-
-  const items = await db.select({
-    id: exchangeProposalItems.id,
-    deadStockItemId: exchangeProposalItems.deadStockItemId,
-    fromPharmacyId: exchangeProposalItems.fromPharmacyId,
-    toPharmacyId: exchangeProposalItems.toPharmacyId,
-    quantity: exchangeProposalItems.quantity,
-    yakkaValue: exchangeProposalItems.yakkaValue,
-    drugName: deadStockItems.drugName,
-    unit: deadStockItems.unit,
-    yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
-  })
-    .from(exchangeProposalItems)
-    .innerJoin(deadStockItems, eq(exchangeProposalItems.deadStockItemId, deadStockItems.id))
-    .where(eq(exchangeProposalItems.proposalId, proposalId));
-
-  return { proposal, items };
-}
-// Proposal detail
-router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
+const handleProposalDetail = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const id = parseExchangeIdOrBadRequest(res, req.params.id);
     if (!id) return;
@@ -470,17 +550,7 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
 
     const { proposal, items } = data;
 
-    // Get pharmacy info
-    const [[pharmA], [pharmB]] = await Promise.all([
-      db.select({
-        name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,
-        address: pharmacies.address, prefecture: pharmacies.prefecture,
-      }).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
-      db.select({
-        name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,
-        address: pharmacies.address, prefecture: pharmacies.prefecture,
-      }).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
-    ]);
+    const [pharmA, pharmB] = await fetchProposalDetailPharmacies(proposal);
 
     const actionRows = await fetchProposalTimelineActionRows(id);
     const timeline = buildProposalTimeline({
@@ -546,12 +616,7 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
         feedbackRating: f.rating,
         feedbackComment: f.comment ?? undefined,
       })),
-    ].sort((a, b) => {
-      if (!a.at && !b.at) return 0;
-      if (!a.at) return 1;
-      if (!b.at) return -1;
-      return new Date(b.at).getTime() - new Date(a.at).getTime();
-    });
+    ].sort(compareTimelineAtDesc);
 
     res.json({
       proposal,
@@ -565,10 +630,9 @@ router.get('/proposals/:id', async (req: AuthRequest, res: Response) => {
     logger.error('Proposal detail error:', { error: getErrorMessage(err) });
     res.status(500).json({ error: 'マッチング詳細の取得に失敗しました' });
   }
-});
+};
 
-// Print data
-router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
+const handlePrintProposal = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const id = parseExchangeIdOrBadRequest(res, req.params.id);
     if (!id) return;
@@ -582,14 +646,7 @@ router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
 
     const { proposal, items } = data;
 
-    const printFields = {
-      name: pharmacies.name, phone: pharmacies.phone, fax: pharmacies.fax,
-      address: pharmacies.address, prefecture: pharmacies.prefecture, licenseNumber: pharmacies.licenseNumber,
-    };
-    const [[pharmA], [pharmB]] = await Promise.all([
-      db.select(printFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyAId)).limit(1),
-      db.select(printFields).from(pharmacies).where(eq(pharmacies.id, proposal.pharmacyBId)).limit(1),
-    ]);
+    const [pharmA, pharmB] = await fetchProposalPrintPharmacies(proposal);
 
     res.json({
       proposal,
@@ -601,6 +658,36 @@ router.get('/proposals/:id/print', async (req: AuthRequest, res: Response) => {
     logger.error('Print data error:', { error: getErrorMessage(err) });
     res.status(500).json({ error: '印刷データの取得に失敗しました' });
   }
-});
+};
+
+// Find matching candidates
+router.post('/find', findLimiter, handleFind);
+
+// Create proposal from selected candidate
+router.post('/proposals', handleCreateProposal);
+
+// Bulk accept/reject proposals
+router.post('/proposals/bulk-action', handleBulkAction);
+
+// Accept proposal (single action endpoint kept for backward compatibility with detail page)
+router.post('/proposals/:id/accept', handleAcceptProposal);
+
+// Reject proposal (single action endpoint kept for backward compatibility with detail page)
+router.post('/proposals/:id/reject', handleRejectProposal);
+
+// Complete exchange (single action endpoint kept for backward compatibility with detail page)
+router.post('/proposals/:id/complete', handleCompleteProposal);
+
+// Pending action count (lightweight badge endpoint)
+router.get('/proposals/pending-count', handlePendingCount);
+
+// List my proposals
+router.get('/proposals', handleListProposals);
+
+// Proposal detail
+router.get('/proposals/:id', handleProposalDetail);
+
+// Print data
+router.get('/proposals/:id/print', handlePrintProposal);
 
 export default router;

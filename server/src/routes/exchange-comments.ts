@@ -12,6 +12,7 @@ import { parsePagination } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
 import { parseExchangeIdOrBadRequest } from './exchange-utils';
+import { ApiError } from '../utils/api-error';
 
 // Helper: Find proposal where user is party A or B
 async function findProposalForUser(proposalId: number, userId: number) {
@@ -53,10 +54,10 @@ async function findOwnComment(commentId: number, proposalId: number, userId: num
 function parseCommentBody(rawBody: unknown): string {
   const body = typeof rawBody === 'string' ? rawBody.trim() : '';
   if (!body) {
-    throw new Error('EMPTY_BODY');
+    throw new ApiError(400, 'EMPTY_BODY', 'EMPTY_BODY');
   }
   if (body.length > 1000) {
-    throw new Error('BODY_TOO_LONG');
+    throw new ApiError(400, 'BODY_TOO_LONG', 'BODY_TOO_LONG');
   }
   return body;
 }
@@ -151,11 +152,11 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
     try {
       body = parseCommentBody(req.body?.body);
     } catch (err) {
-      if (err instanceof Error && err.message === 'EMPTY_BODY') {
+      if (err instanceof ApiError && err.code === 'EMPTY_BODY') {
         res.status(400).json({ error: 'コメント本文を入力してください' });
         return;
       }
-      if (err instanceof Error && err.message === 'BODY_TOO_LONG') {
+      if (err instanceof ApiError && err.code === 'BODY_TOO_LONG') {
         res.status(400).json({ error: 'コメントは1000文字以内で入力してください' });
         return;
       }
@@ -182,10 +183,10 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
         if (Number.isFinite(latestPostedAtMs)) {
           const elapsedMs = Date.now() - latestPostedAtMs;
           if (elapsedMs < COMMENT_POST_MIN_INTERVAL_MS) {
-            throw new Error('RATE_LIMIT_SHORT_INTERVAL');
+            throw new ApiError(429, 'RATE_LIMIT_SHORT_INTERVAL', 'RATE_LIMIT_SHORT_INTERVAL');
           }
           if (latestOwnComment.body.trim() === body && elapsedMs < COMMENT_DUPLICATE_WINDOW_MS) {
-            throw new Error('RATE_LIMIT_DUPLICATE_BODY');
+            throw new ApiError(429, 'RATE_LIMIT_DUPLICATE_BODY', 'RATE_LIMIT_DUPLICATE_BODY');
           }
         }
       }
@@ -207,7 +208,7 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
         createdAt: proposalComments.createdAt,
         updatedAt: proposalComments.updatedAt,
       });
-      if (!inserted) throw new Error('COMMENT_INSERT_FAILED');
+      if (!inserted) throw new ApiError(500, 'COMMENT_INSERT_FAILED', 'COMMENT_INSERT_FAILED');
       return inserted;
     });
 
@@ -232,12 +233,12 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
 
     res.status(201).json({ message: 'コメントを投稿しました', comment: saved });
   } catch (err) {
-    if (err instanceof Error && err.message === 'RATE_LIMIT_SHORT_INTERVAL') {
+    if (err instanceof ApiError && err.code === 'RATE_LIMIT_SHORT_INTERVAL') {
       res.setHeader('Retry-After', String(Math.ceil(COMMENT_POST_MIN_INTERVAL_MS / 1000)));
       res.status(429).json({ error: '短時間での連続投稿はできません。少し待ってから投稿してください。' });
       return;
     }
-    if (err instanceof Error && err.message === 'RATE_LIMIT_DUPLICATE_BODY') {
+    if (err instanceof ApiError && err.code === 'RATE_LIMIT_DUPLICATE_BODY') {
       res.status(429).json({ error: '同じ内容の連続投稿はできません。' });
       return;
     }
@@ -269,11 +270,11 @@ router.patch('/proposals/:id/comments/:commentId', async (req: AuthRequest, res:
     try {
       body = parseCommentBody(req.body?.body);
     } catch (err) {
-      if (err instanceof Error && err.message === 'EMPTY_BODY') {
+      if (err instanceof ApiError && err.code === 'EMPTY_BODY') {
         res.status(400).json({ error: 'コメント本文を入力してください' });
         return;
       }
-      if (err instanceof Error && err.message === 'BODY_TOO_LONG') {
+      if (err instanceof ApiError && err.code === 'BODY_TOO_LONG') {
         res.status(400).json({ error: 'コメントは1000文字以内で入力してください' });
         return;
       }

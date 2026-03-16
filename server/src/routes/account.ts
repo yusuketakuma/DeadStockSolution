@@ -29,7 +29,7 @@ const passwordChangeLimiter = rateLimit({
   max: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => `user:${(req as AuthRequest).user?.id ?? 'anonymous'}`,
+  keyGenerator: (req): string => `user:${(req as AuthRequest).user?.id ?? 'anonymous'}`,
   message: { error: 'アカウント更新の試行回数が多すぎます。しばらくして再試行してください' },
 });
 
@@ -39,11 +39,15 @@ const accountDeletionLimiter = rateLimit({
   max: 3,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => `user:${(req as AuthRequest).user?.id ?? 'anonymous'}`,
+  keyGenerator: (req): string => `user:${(req as AuthRequest).user?.id ?? 'anonymous'}`,
   message: { error: 'アカウント削除の試行回数が多すぎます。しばらくして再試行してください' },
 });
 
 const router = Router();
+
+type AccountUpdates = Record<string, unknown>;
+type PasswordRow = { passwordHash: string | null };
+type ConflictLookupRow = { id: number };
 
 function parseVersion(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) return null;
@@ -64,8 +68,12 @@ async function selectFirst<T>(rowsPromise: PromiseLike<T[]>): Promise<T | null> 
   return rows[0] ?? null;
 }
 
+function sendAccountNotFound(res: Response): void {
+  res.status(404).json({ error: 'アカウントが見つかりません' });
+}
+
 function assignOptionalTrimmedUpdate(
-  updates: Record<string, unknown>,
+  updates: AccountUpdates,
   field: string,
   value: unknown,
   maxLength: number,
@@ -81,7 +89,19 @@ function assignOptionalTrimmedUpdate(
   return null;
 }
 
-async function loadLatestAccountConflictData(pharmacyId: number) {
+async function loadLatestAccountConflictData(pharmacyId: number): Promise<{
+  id: number;
+  email: string;
+  name: string;
+  postalCode: string;
+  address: string;
+  phone: string;
+  fax: string;
+  licenseNumber: string;
+  prefecture: string;
+  matchingAutoNotifyEnabled: boolean;
+  version: number;
+} | null> {
   return selectFirst(db.select({
     id: pharmacies.id,
     email: pharmacies.email,
@@ -100,30 +120,124 @@ async function loadLatestAccountConflictData(pharmacyId: number) {
     .limit(1));
 }
 
-router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
+async function loadAccountForView(pharmacyId: number): Promise<{
+  id: number;
+  email: string;
+  name: string;
+  postalCode: string;
+  address: string;
+  phone: string;
+  fax: string;
+  licenseNumber: string;
+  prefecture: string;
+  isAdmin: boolean | null;
+  isTestAccount: boolean;
+  matchingAutoNotifyEnabled: boolean;
+  version: number;
+  createdAt: string | null;
+} | null> {
+  return selectFirst(db.select({
+    id: pharmacies.id,
+    email: pharmacies.email,
+    name: pharmacies.name,
+    postalCode: pharmacies.postalCode,
+    address: pharmacies.address,
+    phone: pharmacies.phone,
+    fax: pharmacies.fax,
+    licenseNumber: pharmacies.licenseNumber,
+    prefecture: pharmacies.prefecture,
+    isAdmin: pharmacies.isAdmin,
+    isTestAccount: pharmacies.isTestAccount,
+    matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled,
+    version: pharmacies.version,
+    createdAt: pharmacies.createdAt,
+  })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, pharmacyId))
+    .limit(1));
+}
+
+async function loadAccountForUpdate(pharmacyId: number): Promise<{
+  id: number;
+  email: string;
+  name: string;
+  postalCode: string;
+  address: string;
+  phone: string;
+  fax: string;
+  licenseNumber: string;
+  prefecture: string;
+  isTestAccount: boolean;
+  testAccountPassword: string | null;
+  verificationRequestId: number | null;
+} | null> {
+  return selectFirst(db.select({
+    id: pharmacies.id,
+    email: pharmacies.email,
+    name: pharmacies.name,
+    postalCode: pharmacies.postalCode,
+    address: pharmacies.address,
+    phone: pharmacies.phone,
+    fax: pharmacies.fax,
+    licenseNumber: pharmacies.licenseNumber,
+    prefecture: pharmacies.prefecture,
+    isTestAccount: pharmacies.isTestAccount,
+    testAccountPassword: pharmacies.testAccountPassword,
+    verificationRequestId: pharmacies.verificationRequestId,
+  })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, pharmacyId))
+    .limit(1));
+}
+
+async function loadPasswordRow(pharmacyId: number): Promise<PasswordRow | null> {
+  return selectFirst(db.select({ passwordHash: pharmacies.passwordHash })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, pharmacyId))
+    .limit(1));
+}
+
+async function verifyCurrentPasswordForAccount(
+  pharmacyId: number,
+  currentPassword: unknown,
+  res: Response,
+  missingPasswordMessage: string,
+): Promise<boolean> {
+  if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
+    sendBadRequest(res, missingPasswordMessage);
+    return false;
+  }
+
+  const passwordRow = await loadPasswordRow(pharmacyId);
+  if (!passwordRow) {
+    sendAccountNotFound(res);
+    return false;
+  }
+
+  if (!passwordRow.passwordHash) {
+    sendBadRequest(res, 'パスワードが設定されていません。SSO でログインしてください');
+    return false;
+  }
+
+  const valid = await verifyPassword(currentPassword, passwordRow.passwordHash);
+  if (!valid) {
+    sendBadRequest(res, '現在のパスワードが正しくありません');
+    return false;
+  }
+
+  return true;
+}
+
+function isConflictWithAnotherAccount(rows: ConflictLookupRow[], pharmacyId: number): boolean {
+  return rows.length > 0 && rows[0].id !== pharmacyId;
+}
+
+router.get('/', requireLogin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const account = await selectFirst(db.select({
-      id: pharmacies.id,
-      email: pharmacies.email,
-      name: pharmacies.name,
-      postalCode: pharmacies.postalCode,
-      address: pharmacies.address,
-      phone: pharmacies.phone,
-      fax: pharmacies.fax,
-      licenseNumber: pharmacies.licenseNumber,
-      prefecture: pharmacies.prefecture,
-      isAdmin: pharmacies.isAdmin,
-      isTestAccount: pharmacies.isTestAccount,
-      matchingAutoNotifyEnabled: pharmacies.matchingAutoNotifyEnabled,
-      version: pharmacies.version,
-      createdAt: pharmacies.createdAt,
-    })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, req.user!.id))
-      .limit(1));
+    const account = await loadAccountForView(req.user!.id);
 
     if (!account) {
-      res.status(404).json({ error: 'アカウントが見つかりません' });
+      sendAccountNotFound(res);
       return;
     }
 
@@ -136,7 +250,7 @@ router.get('/', requireLogin, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, res: Response) => {
+router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   let latestVersion: number | null = null;
   try {
     const {
@@ -162,29 +276,13 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       return;
     }
 
-    const currentAccount = await selectFirst(db.select({
-      id: pharmacies.id,
-      email: pharmacies.email,
-      name: pharmacies.name,
-      postalCode: pharmacies.postalCode,
-      address: pharmacies.address,
-      phone: pharmacies.phone,
-      fax: pharmacies.fax,
-      licenseNumber: pharmacies.licenseNumber,
-      prefecture: pharmacies.prefecture,
-      isTestAccount: pharmacies.isTestAccount,
-      testAccountPassword: pharmacies.testAccountPassword,
-      verificationRequestId: pharmacies.verificationRequestId,
-    })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, req.user!.id))
-      .limit(1));
+    const currentAccount = await loadAccountForUpdate(req.user!.id);
     if (!currentAccount) {
-      res.status(404).json({ error: 'アカウントが見つかりません' });
+      sendAccountNotFound(res);
       return;
     }
 
-    const updates: Record<string, unknown> = {};
+    const updates: AccountUpdates = {};
 
     if (email !== undefined) {
       if (typeof email !== 'string') {
@@ -309,12 +407,12 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
         : Promise.resolve([]),
     ]);
 
-    if (existingEmailRows.length > 0 && existingEmailRows[0].id !== req.user!.id) {
+    if (isConflictWithAnotherAccount(existingEmailRows as ConflictLookupRow[], req.user!.id)) {
       sendConflict(res, 'このメールアドレスは既に登録されています');
       return;
     }
 
-    if (existingLicenseRows.length > 0 && existingLicenseRows[0].id !== req.user!.id) {
+    if (isConflictWithAnotherAccount(existingLicenseRows as ConflictLookupRow[], req.user!.id)) {
       sendConflict(res, 'この薬局開設許可番号は既に登録されています');
       return;
     }
@@ -325,27 +423,13 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
         return;
       }
 
-      if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
-        sendBadRequest(res, '現在のパスワードを入力してください');
-        return;
-      }
-
-      const passwordRow = await selectFirst(db.select({ passwordHash: pharmacies.passwordHash })
-        .from(pharmacies)
-        .where(eq(pharmacies.id, req.user!.id))
-        .limit(1));
-      if (!passwordRow) {
-        res.status(404).json({ error: 'アカウントが見つかりません' });
-        return;
-      }
-
-      if (!passwordRow.passwordHash) {
-        sendBadRequest(res, 'パスワードが設定されていません。SSO でログインしてください');
-        return;
-      }
-      const valid = await verifyPassword(currentPassword, passwordRow.passwordHash);
-      if (!valid) {
-        sendBadRequest(res, '現在のパスワードが正しくありません');
+      const isCurrentPasswordValid = await verifyCurrentPasswordForAccount(
+        req.user!.id,
+        currentPassword,
+        res,
+        '現在のパスワードを入力してください',
+      );
+      if (!isCurrentPasswordValid) {
         return;
       }
 
@@ -372,7 +456,15 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     // 楽観的ロック: id と version の両方が一致する場合のみ更新
     const passwordChanged = typeof updates.passwordHash === 'string';
     const updateTimestamp = String(updates.updatedAt);
-    const updateResult = await db.transaction(async (tx) => {
+    const updateResult = await db.transaction(async (tx): Promise<Array<{
+      id: number;
+      email: string;
+      isAdmin: boolean | null;
+      isActive: boolean | null;
+      passwordHash: string | null;
+      workosUserId: string | null;
+      version: number;
+    }>> => {
       const rows = await tx.update(pharmacies)
         .set(updates)
         .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, parsedVersion)))
@@ -461,33 +553,19 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
   }
 });
 
-router.delete('/', requireLogin, accountDeletionLimiter, async (req: AuthRequest, res: Response) => {
+router.delete('/', requireLogin, accountDeletionLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const currentPassword = typeof req.body?.currentPassword === 'string'
       ? req.body.currentPassword
       : '';
-    if (!currentPassword) {
-      sendBadRequest(res, '退会には現在のパスワードが必要です');
-      return;
-    }
 
-    const passwordRow = await selectFirst(db.select({ passwordHash: pharmacies.passwordHash })
-      .from(pharmacies)
-      .where(eq(pharmacies.id, req.user!.id))
-      .limit(1));
-
-    if (!passwordRow) {
-      res.status(404).json({ error: 'アカウントが見つかりません' });
-      return;
-    }
-
-    if (!passwordRow.passwordHash) {
-      sendBadRequest(res, 'パスワードが設定されていません。SSO でログインしてください');
-      return;
-    }
-    const valid = await verifyPassword(currentPassword, passwordRow.passwordHash);
-    if (!valid) {
-      sendBadRequest(res, '現在のパスワードが正しくありません');
+    const isCurrentPasswordValid = await verifyCurrentPasswordForAccount(
+      req.user!.id,
+      currentPassword,
+      res,
+      '退会には現在のパスワードが必要です',
+    );
+    if (!isCurrentPasswordValid) {
       return;
     }
 

@@ -42,6 +42,14 @@ interface BulkPharmacyActionConfig {
   isActive: boolean;
 }
 
+interface BulkActionRouteConfig {
+  action: BulkPharmacyActionKind;
+  config: BulkPharmacyActionConfig;
+  requireReason: boolean;
+  logEvent: 'admin_bulk_verify' | 'admin_bulk_reject';
+  logDetail: (count: number, reason: string | undefined) => string;
+}
+
 async function collectAdminHandoffContext(
   pharmacyId: number,
   requestId: number,
@@ -59,18 +67,14 @@ async function collectAdminHandoffContext(
   }
 }
 
-function buildAdminHandoffResponse(handoff: OpenClawHandoffResult): AdminHandoffResponse {
-  return {
+function sendAdminHandoffResponse(res: Response, handoff: OpenClawHandoffResult): void {
+  const handoffPayload: AdminHandoffResponse = {
     accepted: handoff.accepted,
     connectorConfigured: handoff.connectorConfigured,
     implementationBranch: handoff.implementationBranch,
     status: handoff.status,
     note: handoff.note,
   };
-}
-
-function sendAdminHandoffResponse(res: Response, handoff: OpenClawHandoffResult): void {
-  const handoffPayload = buildAdminHandoffResponse(handoff);
   if (handoff.accepted) {
     res.json({
       message: 'OpenClawへ再連携しました',
@@ -85,9 +89,17 @@ function sendAdminHandoffResponse(res: Response, handoff: OpenClawHandoffResult)
   });
 }
 
+function logAdminWriteAction(req: AuthRequest, adminId: number, event: 'admin_send_message' | 'admin_bulk_verify' | 'admin_bulk_reject', detail: string): void {
+  void writeLog(event, {
+    pharmacyId: adminId,
+    detail,
+    ipAddress: getClientIp(req),
+  });
+}
+
 const router = Router();
 
-router.get('/exchanges', async (req: AuthRequest, res: Response) => {
+router.get('/exchanges', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { page, limit, offset } = parseListPagination(req);
 
@@ -105,7 +117,7 @@ router.get('/exchanges', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/exchanges/:proposalId/comments', async (req: AuthRequest, res: Response) => {
+router.get('/exchanges/:proposalId/comments', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const proposalId = parseIdOrBadRequest(res, req.params.proposalId);
     if (!proposalId) return;
@@ -145,8 +157,7 @@ router.get('/exchanges/:proposalId/comments', async (req: AuthRequest, res: Resp
   }
 });
 
-
-router.get('/exchanges/:proposalId/timeline', async (req: AuthRequest, res: Response) => {
+router.get('/exchanges/:proposalId/timeline', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const proposalId = parseIdOrBadRequest(res, req.params.proposalId);
     if (!proposalId) return;
@@ -185,7 +196,7 @@ router.get('/exchanges/:proposalId/timeline', async (req: AuthRequest, res: Resp
   }
 });
 
-router.post('/messages', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/messages', adminWriteLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const targetType = req.body.targetType as 'all' | 'pharmacy';
     const targetPharmacyIdRaw = req.body.targetPharmacyId;
@@ -235,8 +246,10 @@ router.post('/messages', adminWriteLimiter, async (req: AuthRequest, res: Respon
       return;
     }
 
+    const adminId = req.user!.id;
+
     await db.insert(adminMessages).values({
-      senderAdminId: req.user!.id,
+      senderAdminId: adminId,
       targetType,
       targetPharmacyId,
       title,
@@ -244,11 +257,12 @@ router.post('/messages', adminWriteLimiter, async (req: AuthRequest, res: Respon
       actionPath: actionPath || null,
     });
 
-    void writeLog('admin_send_message', {
-      pharmacyId: req.user!.id,
-      detail: `メッセージ送信: ${title} (対象: ${targetType === 'all' ? '全体' : `薬局ID:${targetPharmacyId}`})`,
-      ipAddress: getClientIp(req),
-    });
+    logAdminWriteAction(
+      req,
+      adminId,
+      'admin_send_message',
+      `メッセージ送信: ${title} (対象: ${targetType === 'all' ? '全体' : `薬局ID:${targetPharmacyId}`})`,
+    );
 
     res.status(201).json({ message: '加盟薬局へメッセージを送信しました' });
   } catch (err) {
@@ -256,7 +270,7 @@ router.post('/messages', adminWriteLimiter, async (req: AuthRequest, res: Respon
   }
 });
 
-router.post('/requests/:id/handoff', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/requests/:id/handoff', adminWriteLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const requestId = parseIdOrBadRequest(res, req.params.id);
     if (!requestId) return;
@@ -375,13 +389,6 @@ async function runBulkPharmacyStatusUpdate(
   });
 }
 
-function logBulkAuditFailure(action: BulkPharmacyActionKind, pharmacyId: number, err: unknown): void {
-  logger.error(`Failed to record audit log for bulk-${action}`, {
-    pharmacyId,
-    error: err instanceof Error ? err.message : String(err),
-  });
-}
-
 function writeBulkAuditLogs(
   results: BulkActionResult[],
   adminId: number,
@@ -402,16 +409,35 @@ function writeBulkAuditLogs(
       newStatus,
       reason: reason ?? null,
     }).catch((err) => {
-      logBulkAuditFailure(action, result.pharmacyId, err);
+      logger.error(`Failed to record audit log for bulk-${action}`, {
+        pharmacyId: result.pharmacyId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
   }
 }
 
-function sendBulkActionResponse(
+async function handleBulkPharmacyAction(
+  req: AuthRequest,
   res: Response,
-  pharmacyIds: number[],
-  results: BulkActionResult[],
-): void {
+  routeConfig: BulkActionRouteConfig,
+): Promise<void> {
+  const parsed = parseBulkActionBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+
+  const { pharmacyIds, reason } = parsed.data;
+  if (routeConfig.requireReason && !reason) {
+    res.status(400).json({ error: '却下理由は必須です' });
+    return;
+  }
+
+  const adminId = req.user!.id;
+  const results = await runBulkPharmacyStatusUpdate(pharmacyIds, reason, routeConfig.config);
+  writeBulkAuditLogs(results, adminId, routeConfig.action, reason);
+  logAdminWriteAction(req, adminId, routeConfig.logEvent, routeConfig.logDetail(pharmacyIds.length, reason));
   const response: BulkPharmacyActionResponse = {
     totalRequested: pharmacyIds.length,
     succeeded: results.filter((result) => result.success).length,
@@ -421,64 +447,37 @@ function sendBulkActionResponse(
   res.json(response);
 }
 
-router.post('/pharmacies/bulk-verify', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/pharmacies/bulk-verify', adminWriteLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const parsed = parseBulkActionBody(req.body);
-    if (!parsed.ok) {
-      res.status(400).json({ error: parsed.error });
-      return;
-    }
-    const { pharmacyIds, reason } = parsed.data;
-    const adminId = req.user!.id;
-
-    const results = await runBulkPharmacyStatusUpdate(pharmacyIds, reason, {
-      nextStatus: 'verified',
-      skippedStatus: 'verified',
-      isActive: true,
+    await handleBulkPharmacyAction(req, res, {
+      action: 'verify',
+      config: {
+        nextStatus: 'verified',
+        skippedStatus: 'verified',
+        isActive: true,
+      },
+      requireReason: false,
+      logEvent: 'admin_bulk_verify',
+      logDetail: (count) => `一括承認: ${count}件`,
     });
-    writeBulkAuditLogs(results, adminId, 'verify', reason);
-
-    void writeLog('admin_bulk_verify', {
-      pharmacyId: adminId,
-      detail: `一括承認: ${pharmacyIds.length}件`,
-      ipAddress: getClientIp(req),
-    });
-
-    sendBulkActionResponse(res, pharmacyIds, results);
   } catch (err) {
     handleAdminError(err, 'Admin bulk verify error', '一括承認に失敗しました', res);
   }
 });
 
-router.post('/pharmacies/bulk-reject', adminWriteLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/pharmacies/bulk-reject', adminWriteLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const parsed = parseBulkActionBody(req.body);
-    if (!parsed.ok) {
-      res.status(400).json({ error: parsed.error });
-      return;
-    }
-    const { pharmacyIds, reason } = parsed.data;
-    const adminId = req.user!.id;
-
-    if (!reason) {
-      res.status(400).json({ error: '却下理由は必須です' });
-      return;
-    }
-
-    const results = await runBulkPharmacyStatusUpdate(pharmacyIds, reason, {
-      nextStatus: 'rejected',
-      skippedStatus: 'rejected',
-      isActive: false,
+    await handleBulkPharmacyAction(req, res, {
+      action: 'reject',
+      config: {
+        nextStatus: 'rejected',
+        skippedStatus: 'rejected',
+        isActive: false,
+      },
+      requireReason: true,
+      logEvent: 'admin_bulk_reject',
+      logDetail: (count, reason) => `一括却下: ${count}件 理由: ${reason}`,
     });
-    writeBulkAuditLogs(results, adminId, 'reject', reason);
-
-    void writeLog('admin_bulk_reject', {
-      pharmacyId: adminId,
-      detail: `一括却下: ${pharmacyIds.length}件 理由: ${reason}`,
-      ipAddress: getClientIp(req),
-    });
-
-    sendBulkActionResponse(res, pharmacyIds, results);
   } catch (err) {
     handleAdminError(err, 'Admin bulk reject error', '一括却下に失敗しました', res);
   }

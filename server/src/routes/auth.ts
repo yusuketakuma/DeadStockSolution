@@ -86,6 +86,8 @@ import { handoffToOpenClaw } from '../services/openclaw-service';
 const router = Router();
 
 const ONBOARDING_COOKIE_NAME = 'onboarding_token';
+type AuthRouteHandler = (req: AuthRequest, res: Response) => void | Promise<void>;
+type OnboardingClaims = NonNullable<ReturnType<typeof verifyOnboardingToken>>;
 
 if (process.env.NODE_ENV !== 'test' && EXPOSE_PASSWORD_RESET_TOKEN) {
   throw new Error('EXPOSE_PASSWORD_RESET_TOKEN=true は test 環境でのみ許可されています');
@@ -95,28 +97,70 @@ if (process.env.NODE_ENV !== 'test' && EXPOSE_PASSWORD_RESET_TOKEN) {
 // WorkOS AuthKit endpoints
 // ---------------------------------------------------------------------------
 
-// GET /auth/login — WorkOS AuthKit ログインURLを返す
-router.get('/login', (_req: AuthRequest, res: Response) => {
-  try {
-    const url = getAuthorizationUrl('sign-in');
-    res.json({ url });
-  } catch (err) {
-    handleRouteError(err, 'WorkOS login URL error', 'ログインURLの生成に失敗しました', res);
+function createAuthKitUrlHandler(
+  screenHint: 'sign-in' | 'sign-up',
+  logContext: string,
+  userMessage: string,
+): AuthRouteHandler {
+  return (_req: AuthRequest, res: Response): void => {
+    try {
+      const url = getAuthorizationUrl(screenHint);
+      res.json({ url });
+    } catch (err) {
+      handleRouteError(err, logContext, userMessage, res);
+    }
+  };
+}
+
+function getOnboardingClaimsOrRespond(
+  req: AuthRequest,
+  res: Response,
+  missingMessage: string,
+  invalidMessage: string,
+): OnboardingClaims | null {
+  const token = typeof req.cookies?.[ONBOARDING_COOKIE_NAME] === 'string' ? req.cookies[ONBOARDING_COOKIE_NAME] : '';
+  if (!token) {
+    res.status(401).json({ error: missingMessage });
+    return null;
   }
-});
+
+  const claims = verifyOnboardingToken(token);
+  if (!claims) {
+    res.status(401).json({ error: invalidMessage });
+    return null;
+  }
+
+  return claims;
+}
+
+function handleRegistrationUniqueConstraint(err: unknown, res: Response): boolean {
+  const uniqueConstraint = extractUniqueViolationConstraint(err);
+  if (uniqueConstraint === null) {
+    return false;
+  }
+
+  if (uniqueConstraint.includes('license')) {
+    res.status(409).json(buildLicenseAlreadyRegisteredResponse());
+    return true;
+  }
+
+  if (uniqueConstraint.includes('email')) {
+    res.status(409).json(buildEmailAlreadyRegisteredResponse());
+    return true;
+  }
+
+  res.status(409).json({ error: 'この情報は既に登録されています' });
+  return true;
+}
+
+// GET /auth/login — WorkOS AuthKit ログインURLを返す
+router.get('/login', createAuthKitUrlHandler('sign-in', 'WorkOS login URL error', 'ログインURLの生成に失敗しました'));
 
 // GET /auth/register — WorkOS AuthKit サインアップURLを返す
-router.get('/register', (_req: AuthRequest, res: Response) => {
-  try {
-    const url = getAuthorizationUrl('sign-up');
-    res.json({ url });
-  } catch (err) {
-    handleRouteError(err, 'WorkOS register URL error', '登録URLの生成に失敗しました', res);
-  }
-});
+router.get('/register', createAuthKitUrlHandler('sign-up', 'WorkOS register URL error', '登録URLの生成に失敗しました'));
 
 // GET /auth/callback — WorkOS AuthKit からのコールバック処理
-router.get('/callback', async (req: AuthRequest, res: Response) => {
+router.get('/callback', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const code = typeof req.query.code === 'string' ? req.query.code : '';
     if (!code) {
@@ -182,28 +226,31 @@ router.get('/callback', async (req: AuthRequest, res: Response) => {
 });
 
 // GET /auth/onboarding-info — Onboarding トークンからユーザー情報を返す
-router.get('/onboarding-info', (req: AuthRequest, res: Response) => {
-  const token = typeof req.cookies?.[ONBOARDING_COOKIE_NAME] === 'string' ? req.cookies[ONBOARDING_COOKIE_NAME] : '';
-  if (!token) {
-    res.status(401).json({ error: 'Onboardingセッションが無効です。再度ログインしてください' });
-    return;
-  }
-  const claims = verifyOnboardingToken(token);
+router.get('/onboarding-info', (req: AuthRequest, res: Response): void => {
+  const claims = getOnboardingClaimsOrRespond(
+    req,
+    res,
+    'Onboardingセッションが無効です。再度ログインしてください',
+    'Onboardingセッションが期限切れです。再度ログインしてください',
+  );
   if (!claims) {
-    res.status(401).json({ error: 'Onboardingセッションが期限切れです。再度ログインしてください' });
     return;
   }
+
   res.json({ email: claims.email, workosUserId: claims.workosUserId });
 });
 
 // POST /auth/complete-registration — WorkOS認証済みユーザーの薬局情報登録
-router.post('/complete-registration', registerLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/complete-registration', registerLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     // C2修正: リクエストbodyではなくonboarding cookieからWorkOS情報を取得
-    const onboardingToken = typeof req.cookies?.[ONBOARDING_COOKIE_NAME] === 'string' ? req.cookies[ONBOARDING_COOKIE_NAME] : '';
-    const claims = verifyOnboardingToken(onboardingToken);
+    const claims = getOnboardingClaimsOrRespond(
+      req,
+      res,
+      'Onboardingセッションが無効です。再度ログインしてください',
+      'Onboardingセッションが無効です。再度ログインしてください',
+    );
     if (!claims) {
-      res.status(401).json({ error: 'Onboardingセッションが無効です。再度ログインしてください' });
       return;
     }
     const { workosUserId, email } = claims;
@@ -320,17 +367,7 @@ router.post('/complete-registration', registerLimiter, async (req: AuthRequest, 
       return;
     }
 
-    const uniqueConstraint = extractUniqueViolationConstraint(err);
-    if (uniqueConstraint !== null) {
-      if (uniqueConstraint.includes('license')) {
-        res.status(409).json(buildLicenseAlreadyRegisteredResponse());
-        return;
-      }
-      if (uniqueConstraint.includes('email')) {
-        res.status(409).json(buildEmailAlreadyRegisteredResponse());
-        return;
-      }
-      res.status(409).json({ error: 'この情報は既に登録されています' });
+    if (handleRegistrationUniqueConstraint(err, res)) {
       return;
     }
 
@@ -342,7 +379,7 @@ router.post('/complete-registration', registerLimiter, async (req: AuthRequest, 
 // Legacy endpoints (maintained for backward compatibility during migration)
 // ---------------------------------------------------------------------------
 
-router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/register', registerLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const errors = validateRegistration(req.body);
     if (errors.length > 0) {
@@ -451,17 +488,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
       return;
     }
 
-    const uniqueConstraint = extractUniqueViolationConstraint(err);
-    if (uniqueConstraint !== null) {
-      if (uniqueConstraint.includes('license')) {
-        res.status(409).json(buildLicenseAlreadyRegisteredResponse());
-        return;
-      }
-      if (uniqueConstraint.includes('email')) {
-        res.status(409).json(buildEmailAlreadyRegisteredResponse());
-        return;
-      }
-      res.status(409).json({ error: 'この情報は既に登録されています' });
+    if (handleRegistrationUniqueConstraint(err, res)) {
       return;
     }
 
@@ -469,7 +496,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
   }
 });
 
-router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/login', loginLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const errors = validateLogin(req.body);
     if (errors.length > 0) {
@@ -525,7 +552,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/password-reset/request', passwordResetLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/password-reset/request', passwordResetLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const requestStartedAt = Date.now();
     const email = typeof req.body?.email === 'string' ? normalizeEmail(req.body.email) : '';
@@ -549,7 +576,7 @@ router.post('/password-reset/request', passwordResetLimiter, async (req: AuthReq
   }
 });
 
-router.post('/password-reset/confirm', passwordResetLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/password-reset/confirm', passwordResetLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
@@ -578,7 +605,7 @@ router.post('/password-reset/confirm', passwordResetLimiter, async (req: AuthReq
   }
 });
 
-router.post('/logout', (req: AuthRequest, res: Response) => {
+router.post('/logout', (req: AuthRequest, res: Response): void => {
   const token = typeof req.cookies?.token === 'string' ? req.cookies.token : '';
   const pharmacyId = extractPharmacyIdFromToken(token);
 
@@ -595,12 +622,12 @@ router.post('/logout', (req: AuthRequest, res: Response) => {
   res.json(buildLogoutResponse());
 });
 
-router.get('/csrf-token', (req: AuthRequest, res: Response) => {
+router.get('/csrf-token', (req: AuthRequest, res: Response): void => {
   const token = ensureCsrfCookie(req, res);
   res.json(buildCsrfTokenResponse(token));
 });
 
-router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
+router.get('/me', requireLogin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const rows = await loadAuthMeRows(req.user!.id, isTestAccountColumnAvailable, setIsTestAccountColumnAvailable);
 
@@ -623,7 +650,7 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthRequest, res: Response) => {
+router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!isTestLoginFeatureEnabled()) {
       res.status(404).json(buildTestLoginDisabledResponse());

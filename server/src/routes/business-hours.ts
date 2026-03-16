@@ -6,6 +6,7 @@ import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { logger } from '../services/logger';
 import { sendBadRequest } from './response-helpers';
+import { ApiError } from '../utils/api-error';
 
 const router = Router();
 router.use(requireLogin);
@@ -34,6 +35,34 @@ const SPECIAL_HOUR_FIELDS = {
   note: pharmacySpecialHours.note,
 } as const;
 type SpecialType = typeof SPECIAL_TYPES[number];
+type WeeklyBusinessHourRow = Pick<
+  typeof pharmacyBusinessHours.$inferSelect,
+  'dayOfWeek' | 'openTime' | 'closeTime' | 'isClosed' | 'is24Hours'
+>;
+type SpecialBusinessHourRow = Pick<
+  typeof pharmacySpecialHours.$inferSelect,
+  'id' | 'specialType' | 'startDate' | 'endDate' | 'openTime' | 'closeTime' | 'isClosed' | 'is24Hours' | 'note'
+>;
+type WeeklyBusinessHourValue = Pick<
+  typeof pharmacyBusinessHours.$inferInsert,
+  'pharmacyId' | 'dayOfWeek' | 'openTime' | 'closeTime' | 'isClosed' | 'is24Hours'
+>;
+type SpecialBusinessHourValue = Pick<
+  typeof pharmacySpecialHours.$inferInsert,
+  'pharmacyId' | 'specialType' | 'startDate' | 'endDate' | 'openTime' | 'closeTime' | 'isClosed' | 'is24Hours' | 'note' | 'updatedAt'
+>;
+type BusinessHoursSettings = {
+  hours: WeeklyBusinessHourRow[];
+  specialHours: SpecialBusinessHourRow[];
+  version: number;
+};
+type BusinessHoursUpdatePayload = {
+  weekly: BusinessHourInput[];
+  special: SpecialHourInput[];
+  specialProvided: boolean;
+  version: number;
+};
+type RouteHandler = (req: AuthRequest, res: Response) => Promise<void>;
 
 export interface BusinessHourInput {
   dayOfWeek: number;
@@ -73,6 +102,17 @@ function validateTimeRange(
   return { openTime, closeTime };
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function isSpecialType(value: unknown): value is SpecialType {
+  return typeof value === 'string' && SPECIAL_TYPES.some((specialType) => specialType === value);
+}
+
 function isValidVersion(value: unknown): value is number {
   return typeof value === 'number'
     && Number.isInteger(value)
@@ -86,21 +126,21 @@ function parsePositiveInteger(value: unknown): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-async function fetchWeeklyBusinessHours(pharmacyId: number) {
+async function fetchWeeklyBusinessHours(pharmacyId: number): Promise<WeeklyBusinessHourRow[]> {
   return db.select(WEEKLY_HOUR_FIELDS)
     .from(pharmacyBusinessHours)
     .where(eq(pharmacyBusinessHours.pharmacyId, pharmacyId))
     .orderBy(pharmacyBusinessHours.dayOfWeek);
 }
 
-async function fetchSpecialBusinessHours(pharmacyId: number) {
+async function fetchSpecialBusinessHours(pharmacyId: number): Promise<SpecialBusinessHourRow[]> {
   return db.select(SPECIAL_HOUR_FIELDS)
     .from(pharmacySpecialHours)
     .where(eq(pharmacySpecialHours.pharmacyId, pharmacyId))
     .orderBy(pharmacySpecialHours.startDate, pharmacySpecialHours.endDate, pharmacySpecialHours.id);
 }
 
-function buildWeeklyBusinessHourValues(pharmacyId: number, hours: BusinessHourInput[]) {
+function buildWeeklyBusinessHourValues(pharmacyId: number, hours: BusinessHourInput[]): WeeklyBusinessHourValue[] {
   return hours.map((hour) => ({
     pharmacyId,
     dayOfWeek: hour.dayOfWeek,
@@ -111,7 +151,11 @@ function buildWeeklyBusinessHourValues(pharmacyId: number, hours: BusinessHourIn
   }));
 }
 
-function buildSpecialBusinessHourValues(pharmacyId: number, hours: SpecialHourInput[], updatedAt: string) {
+function buildSpecialBusinessHourValues(
+  pharmacyId: number,
+  hours: SpecialHourInput[],
+  updatedAt: string,
+): SpecialBusinessHourValue[] {
   return hours.map((hour) => ({
     pharmacyId,
     specialType: hour.specialType,
@@ -135,53 +179,12 @@ export function validateBusinessHours(hours: unknown): { valid: BusinessHourInpu
   }
 
   const validated: BusinessHourInput[] = [];
-  for (const h of hours) {
-    if (typeof h !== 'object' || h === null) {
-      return { error: '営業時間のフォーマットが不正です' };
+  for (const raw of hours) {
+    const validation = validateBusinessHourEntry(raw);
+    if ('error' in validation) {
+      return validation;
     }
-    const { dayOfWeek, openTime, closeTime, isClosed, is24Hours } = h as Record<string, unknown>;
-
-    if (typeof dayOfWeek !== 'number' || dayOfWeek < 0 || dayOfWeek > 6 || !Number.isInteger(dayOfWeek)) {
-      return { error: '曜日の値が不正です' };
-    }
-
-    if (typeof isClosed !== 'boolean' || typeof is24Hours !== 'boolean') {
-      return { error: `${DAY_NAMES[dayOfWeek]}の営業フラグが不正です` };
-    }
-
-    // Mutual exclusion: isClosed and is24Hours cannot both be true
-    if (isClosed && is24Hours) {
-      return { error: `${DAY_NAMES[dayOfWeek]}の定休日と24時間営業は同時に設定できません` };
-    }
-
-    if (isClosed) {
-      validated.push({ dayOfWeek, openTime: null, closeTime: null, isClosed: true, is24Hours: false });
-      continue;
-    }
-
-    if (is24Hours) {
-      validated.push({ dayOfWeek, openTime: null, closeTime: null, isClosed: false, is24Hours: true });
-      continue;
-    }
-
-    const timeRange = validateTimeRange(
-      openTime,
-      closeTime,
-      `${DAY_NAMES[dayOfWeek]}の開店時間が不正です（HH:MM形式で入力してください）`,
-      `${DAY_NAMES[dayOfWeek]}の閉店時間が不正です（HH:MM形式で入力してください）`,
-      `${DAY_NAMES[dayOfWeek]}の開店時間と閉店時間が同じです`,
-    );
-    if ('error' in timeRange) {
-      return timeRange;
-    }
-
-    validated.push({
-      dayOfWeek,
-      openTime: timeRange.openTime,
-      closeTime: timeRange.closeTime,
-      isClosed: false,
-      is24Hours: false,
-    });
+    validated.push(validation);
   }
 
   // Check for duplicate days
@@ -191,6 +194,56 @@ export function validateBusinessHours(hours: unknown): { valid: BusinessHourInpu
   }
 
   return { valid: validated };
+}
+
+function validateBusinessHourEntry(raw: unknown): BusinessHourInput | { error: string } {
+  const entry = asRecord(raw);
+  if (!entry) {
+    return { error: '営業時間のフォーマットが不正です' };
+  }
+
+  const dayOfWeek = entry.dayOfWeek;
+  if (typeof dayOfWeek !== 'number' || dayOfWeek < 0 || dayOfWeek > 6 || !Number.isInteger(dayOfWeek)) {
+    return { error: '曜日の値が不正です' };
+  }
+
+  const dayName = DAY_NAMES[dayOfWeek];
+  const isClosed = entry.isClosed;
+  const is24Hours = entry.is24Hours;
+  if (typeof isClosed !== 'boolean' || typeof is24Hours !== 'boolean') {
+    return { error: `${dayName}の営業フラグが不正です` };
+  }
+
+  if (isClosed && is24Hours) {
+    return { error: `${dayName}の定休日と24時間営業は同時に設定できません` };
+  }
+
+  if (isClosed) {
+    return { dayOfWeek, openTime: null, closeTime: null, isClosed: true, is24Hours: false };
+  }
+
+  if (is24Hours) {
+    return { dayOfWeek, openTime: null, closeTime: null, isClosed: false, is24Hours: true };
+  }
+
+  const timeRange = validateTimeRange(
+    entry.openTime,
+    entry.closeTime,
+    `${dayName}の開店時間が不正です（HH:MM形式で入力してください）`,
+    `${dayName}の閉店時間が不正です（HH:MM形式で入力してください）`,
+    `${dayName}の開店時間と閉店時間が同じです`,
+  );
+  if ('error' in timeRange) {
+    return timeRange;
+  }
+
+  return {
+    dayOfWeek,
+    openTime: timeRange.openTime,
+    closeTime: timeRange.closeTime,
+    isClosed: false,
+    is24Hours: false,
+  };
 }
 
 function isValidDateString(value: string): boolean {
@@ -215,85 +268,98 @@ export function validateSpecialBusinessHours(
 
   const validated: SpecialHourInput[] = [];
   for (const raw of specialHours) {
-    if (typeof raw !== 'object' || raw === null) {
-      return { error: '特例営業時間のフォーマットが不正です' };
+    const entryResult = validateSpecialBusinessHourEntry(raw);
+    if ('error' in entryResult) {
+      return entryResult;
     }
-    const {
-      specialType,
-      startDate,
-      endDate,
-      openTime,
-      closeTime,
-      isClosed,
-      is24Hours,
-      note,
-    } = raw as Record<string, unknown>;
-
-    if (typeof specialType !== 'string' || !SPECIAL_TYPES.includes(specialType as SpecialType)) {
-      return { error: '特例営業時間の種別が不正です' };
-    }
-
-    if (typeof startDate !== 'string' || !isValidDateString(startDate)) {
-      return { error: '特例営業時間の開始日が不正です（YYYY-MM-DD形式）' };
-    }
-    if (typeof endDate !== 'string' || !isValidDateString(endDate)) {
-      return { error: '特例営業時間の終了日が不正です（YYYY-MM-DD形式）' };
-    }
-    if (startDate > endDate) {
-      return { error: '特例営業時間の開始日と終了日の順序が不正です' };
-    }
-
-    if (typeof isClosed !== 'boolean' || typeof is24Hours !== 'boolean') {
-      return { error: '特例営業時間のフラグが不正です' };
-    }
-    if (isClosed && is24Hours) {
-      return { error: '特例営業時間で休業日と24時間営業は同時に指定できません' };
-    }
-
-    if (specialType !== 'special_open') {
-      if (!isClosed || is24Hours) {
-        return { error: '休業系の特例営業時間は休業設定のみ指定できます' };
-      }
-    }
-
-    let normalizedOpenTime: string | null = null;
-    let normalizedCloseTime: string | null = null;
-    if (specialType === 'special_open' && !isClosed && !is24Hours) {
-      const timeRange = validateTimeRange(
-        openTime,
-        closeTime,
-        '特例営業時間の開店時間が不正です（HH:MM形式）',
-        '特例営業時間の閉店時間が不正です（HH:MM形式）',
-        '特例営業時間の開店時間と閉店時間が同じです',
-      );
-      if ('error' in timeRange) {
-        return timeRange;
-      }
-      normalizedOpenTime = timeRange.openTime;
-      normalizedCloseTime = timeRange.closeTime;
-    }
-
-    if (note !== undefined && note !== null && typeof note !== 'string') {
-      return { error: '特例営業時間のメモが不正です' };
-    }
-    const normalizedNote = typeof note === 'string' ? note.trim() : null;
-    if (normalizedNote && normalizedNote.length > 200) {
-      return { error: '特例営業時間のメモは200文字以内で入力してください' };
-    }
-
-    validated.push({
-      specialType: specialType as SpecialType,
-      startDate,
-      endDate,
-      openTime: normalizedOpenTime,
-      closeTime: normalizedCloseTime,
-      isClosed: specialType === 'special_open' ? isClosed : true,
-      is24Hours: specialType === 'special_open' ? is24Hours : false,
-      note: normalizedNote || null,
-    });
+    validated.push(entryResult);
   }
 
   return { valid: validated, provided: true };
+}
+
+function validateSpecialBusinessHourEntry(raw: unknown): SpecialHourInput | { error: string } {
+  const entry = asRecord(raw);
+  if (!entry) {
+    return { error: '特例営業時間のフォーマットが不正です' };
+  }
+
+  if (!isSpecialType(entry.specialType)) {
+    return { error: '特例営業時間の種別が不正です' };
+  }
+  const specialType = entry.specialType;
+
+  const startDate = entry.startDate;
+  if (typeof startDate !== 'string' || !isValidDateString(startDate)) {
+    return { error: '特例営業時間の開始日が不正です（YYYY-MM-DD形式）' };
+  }
+
+  const endDate = entry.endDate;
+  if (typeof endDate !== 'string' || !isValidDateString(endDate)) {
+    return { error: '特例営業時間の終了日が不正です（YYYY-MM-DD形式）' };
+  }
+  if (startDate > endDate) {
+    return { error: '特例営業時間の開始日と終了日の順序が不正です' };
+  }
+
+  const isClosed = entry.isClosed;
+  const is24Hours = entry.is24Hours;
+  if (typeof isClosed !== 'boolean' || typeof is24Hours !== 'boolean') {
+    return { error: '特例営業時間のフラグが不正です' };
+  }
+  if (isClosed && is24Hours) {
+    return { error: '特例営業時間で休業日と24時間営業は同時に指定できません' };
+  }
+
+  if (specialType !== 'special_open' && (!isClosed || is24Hours)) {
+    return { error: '休業系の特例営業時間は休業設定のみ指定できます' };
+  }
+
+  let normalizedOpenTime: string | null = null;
+  let normalizedCloseTime: string | null = null;
+  if (specialType === 'special_open' && !isClosed && !is24Hours) {
+    const timeRange = validateTimeRange(
+      entry.openTime,
+      entry.closeTime,
+      '特例営業時間の開店時間が不正です（HH:MM形式）',
+      '特例営業時間の閉店時間が不正です（HH:MM形式）',
+      '特例営業時間の開店時間と閉店時間が同じです',
+    );
+    if ('error' in timeRange) {
+      return timeRange;
+    }
+    normalizedOpenTime = timeRange.openTime;
+    normalizedCloseTime = timeRange.closeTime;
+  }
+
+  const normalizedNoteResult = normalizeSpecialNote(entry.note);
+  if ('error' in normalizedNoteResult) {
+    return normalizedNoteResult;
+  }
+
+  return {
+    specialType,
+    startDate,
+    endDate,
+    openTime: normalizedOpenTime,
+    closeTime: normalizedCloseTime,
+    isClosed: specialType === 'special_open' ? isClosed : true,
+    is24Hours: specialType === 'special_open' ? is24Hours : false,
+    note: normalizedNoteResult.note,
+  };
+}
+
+function normalizeSpecialNote(note: unknown): { note: string | null } | { error: string } {
+  if (note !== undefined && note !== null && typeof note !== 'string') {
+    return { error: '特例営業時間のメモが不正です' };
+  }
+
+  const normalizedNote = typeof note === 'string' ? note.trim() : null;
+  if (normalizedNote && normalizedNote.length > 200) {
+    return { error: '特例営業時間のメモは200文字以内で入力してください' };
+  }
+
+  return { note: normalizedNote || null };
 }
 
 function unwrapSettled<T>(result: PromiseSettledResult<T>): T {
@@ -305,7 +371,7 @@ function unwrapSettled<T>(result: PromiseSettledResult<T>): T {
 
 function parseBusinessHoursUpdatePayload(
   body: Record<string, unknown>,
-): { weekly: BusinessHourInput[]; special: SpecialHourInput[]; specialProvided: boolean; version: number } | { error: string } {
+): BusinessHoursUpdatePayload | { error: string } {
   const weeklyResult = validateBusinessHours(body.hours);
   if ('error' in weeklyResult) {
     return { error: weeklyResult.error };
@@ -336,7 +402,7 @@ function parseBusinessHoursUpdatePayload(
  * アカウント情報更新でも version がインクリメントされるため、
  * 営業時間以外の変更でも 409 が発生しうる（意図的な設計）。
  */
-export async function fetchBusinessHourSettings(pharmacyId: number) {
+export async function fetchBusinessHourSettings(pharmacyId: number): Promise<BusinessHoursSettings> {
   const [hoursResult, specialHoursRowsResult, pharmacyRowsResult] = await Promise.allSettled([
     fetchWeeklyBusinessHours(pharmacyId),
     fetchSpecialBusinessHours(pharmacyId),
@@ -350,7 +416,7 @@ export async function fetchBusinessHourSettings(pharmacyId: number) {
   const pharmacyRows = unwrapSettled(pharmacyRowsResult);
 
   if (pharmacyRows.length === 0) {
-    throw new Error('薬局が見つかりません');
+    throw new ApiError(404, '薬局が見つかりません', 'NOT_FOUND');
   }
 
   return {
@@ -360,36 +426,65 @@ export async function fetchBusinessHourSettings(pharmacyId: number) {
   };
 }
 
+function getCurrentPharmacyId(req: AuthRequest): number {
+  return req.user!.id;
+}
+
+function handleRouteError(errorLogMessage: string, responseErrorMessage: string, err: unknown, res: Response): void {
+  const errorMessage = err instanceof Error ? err.message : String(err);
+  logger.error(errorLogMessage, { error: errorMessage });
+  res.status(500).json({ error: responseErrorMessage });
+}
+
+function withRouteErrorHandling(
+  errorLogMessage: string,
+  responseErrorMessage: string,
+  handler: RouteHandler,
+): RouteHandler {
+  return async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      await handler(req, res);
+    } catch (err) {
+      handleRouteError(errorLogMessage, responseErrorMessage, err, res);
+    }
+  };
+}
+
 // Get current pharmacy's business hours
-router.get('/', async (req: AuthRequest, res: Response) => {
-  try {
-    res.json(await fetchWeeklyBusinessHours(req.user!.id));
-  } catch (err) {
-    logger.error('Get business hours error:', { error: (err as Error).message });
-    res.status(500).json({ error: '営業時間の取得に失敗しました' });
-  }
-});
+const getCurrentBusinessHoursHandler: RouteHandler = withRouteErrorHandling(
+  'Get business hours error:',
+  '営業時間の取得に失敗しました',
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const pharmacyId = getCurrentPharmacyId(req);
+    res.json(await fetchWeeklyBusinessHours(pharmacyId));
+  },
+);
+router.get('/', getCurrentBusinessHoursHandler);
 
 // Get current pharmacy's weekly + special business hours
-router.get('/settings', async (req: AuthRequest, res: Response) => {
-  try {
-    const data = await fetchBusinessHourSettings(req.user!.id);
+const getBusinessHourSettingsHandler: RouteHandler = withRouteErrorHandling(
+  'Get business hour settings error:',
+  '営業時間設定の取得に失敗しました',
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const pharmacyId = getCurrentPharmacyId(req);
+    const data = await fetchBusinessHourSettings(pharmacyId);
     res.json(data);
-  } catch (err) {
-    logger.error('Get business hour settings error:', { error: (err as Error).message });
-    res.status(500).json({ error: '営業時間設定の取得に失敗しました' });
-  }
-});
+  },
+);
+router.get('/settings', getBusinessHourSettingsHandler);
 
 // Set/update current pharmacy's business hours
-router.put('/', async (req: AuthRequest, res: Response) => {
-  try {
+const updateBusinessHoursHandler: RouteHandler = withRouteErrorHandling(
+  'Update business hours error:',
+  '営業時間の更新に失敗しました',
+  async (req: AuthRequest, res: Response): Promise<void> => {
     const parsed = parseBusinessHoursUpdatePayload(req.body as Record<string, unknown>);
     if ('error' in parsed) {
       sendBadRequest(res, parsed.error);
       return;
     }
 
+    const pharmacyId = getCurrentPharmacyId(req);
     // 楽観的ロック付きトランザクション
     const result = await db.transaction(async (tx) => {
       // pharmacies テーブルの version をチェック＆インクリメント
@@ -398,7 +493,7 @@ router.put('/', async (req: AuthRequest, res: Response) => {
           version: sql`${pharmacies.version} + 1`,
           updatedAt: new Date().toISOString(),
         })
-        .where(and(eq(pharmacies.id, req.user!.id), eq(pharmacies.version, parsed.version)))
+        .where(and(eq(pharmacies.id, pharmacyId), eq(pharmacies.version, parsed.version)))
         .returning({ version: pharmacies.version });
 
       if (versionUpdate.length === 0) {
@@ -406,17 +501,17 @@ router.put('/', async (req: AuthRequest, res: Response) => {
       }
 
       await tx.delete(pharmacyBusinessHours)
-        .where(eq(pharmacyBusinessHours.pharmacyId, req.user!.id));
+        .where(eq(pharmacyBusinessHours.pharmacyId, pharmacyId));
 
-      await tx.insert(pharmacyBusinessHours).values(buildWeeklyBusinessHourValues(req.user!.id, parsed.weekly));
+      await tx.insert(pharmacyBusinessHours).values(buildWeeklyBusinessHourValues(pharmacyId, parsed.weekly));
 
       if (parsed.specialProvided) {
         await tx.delete(pharmacySpecialHours)
-          .where(eq(pharmacySpecialHours.pharmacyId, req.user!.id));
+          .where(eq(pharmacySpecialHours.pharmacyId, pharmacyId));
 
         if (parsed.special.length > 0) {
           await tx.insert(pharmacySpecialHours).values(
-            buildSpecialBusinessHourValues(req.user!.id, parsed.special, new Date().toISOString()),
+            buildSpecialBusinessHourValues(pharmacyId, parsed.special, new Date().toISOString()),
           );
         }
       }
@@ -426,7 +521,7 @@ router.put('/', async (req: AuthRequest, res: Response) => {
 
     if (result.conflict) {
       // 最新の営業時間データを取得して 409 レスポンスに含める
-      const latestData = await fetchBusinessHourSettings(req.user!.id);
+      const latestData = await fetchBusinessHourSettings(pharmacyId);
 
       res.status(409).json({
         error: '他のデバイスまたはタブで更新されています。最新データを確認してください',
@@ -436,15 +531,15 @@ router.put('/', async (req: AuthRequest, res: Response) => {
     }
 
     res.json({ message: '営業時間を更新しました', version: result.newVersion });
-  } catch (err) {
-    logger.error('Update business hours error:', { error: (err as Error).message });
-    res.status(500).json({ error: '営業時間の更新に失敗しました' });
-  }
-});
+  },
+);
+router.put('/', updateBusinessHoursHandler);
 
 // Get another pharmacy's business hours
-  router.get('/:pharmacyId', async (req: AuthRequest, res: Response) => {
-  try {
+const getOtherPharmacyBusinessHoursHandler: RouteHandler = withRouteErrorHandling(
+  'Get pharmacy business hours error:',
+  '営業時間の取得に失敗しました',
+  async (req: AuthRequest, res: Response): Promise<void> => {
     const pharmacyId = parsePositiveInteger(req.params.pharmacyId);
     if (pharmacyId === null) {
       sendBadRequest(res, '不正なIDです');
@@ -452,10 +547,8 @@ router.put('/', async (req: AuthRequest, res: Response) => {
     }
 
     res.json(await fetchWeeklyBusinessHours(pharmacyId));
-  } catch (err) {
-    logger.error('Get pharmacy business hours error:', { error: (err as Error).message });
-    res.status(500).json({ error: '営業時間の取得に失敗しました' });
-  }
-});
+  },
+);
+router.get('/:pharmacyId', getOtherPharmacyBusinessHoursHandler);
 
 export default router;

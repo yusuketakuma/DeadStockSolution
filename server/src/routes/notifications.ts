@@ -15,10 +15,8 @@ import {
 } from '../services/notification-service';
 import type {
   NoticeItem,
-  NoticeCursor,
   AdminMessageRow,
   ProposalRow,
-  NotificationRowForProposalLink,
   NotificationNoticeRow,
 } from '../types/notification';
 import {
@@ -46,177 +44,241 @@ import {
 const router = Router();
 router.use(requireLogin);
 
-router.get('/', async (req: AuthRequest, res: Response) => {
+const proposalSelect = {
+  id: exchangeProposals.id,
+  pharmacyAId: exchangeProposals.pharmacyAId,
+  pharmacyBId: exchangeProposals.pharmacyBId,
+  status: exchangeProposals.status,
+  proposedAt: exchangeProposals.proposedAt,
+};
+
+const messageSelect = {
+  id: adminMessages.id,
+  title: adminMessages.title,
+  body: adminMessages.body,
+  actionPath: adminMessages.actionPath,
+  createdAt: adminMessages.createdAt,
+};
+
+const matchSelect = {
+  id: matchNotifications.id,
+  triggerPharmacyId: matchNotifications.triggerPharmacyId,
+  triggerUploadType: matchNotifications.triggerUploadType,
+  candidateCountBefore: matchNotifications.candidateCountBefore,
+  candidateCountAfter: matchNotifications.candidateCountAfter,
+  diffJson: matchNotifications.diffJson,
+  isRead: matchNotifications.isRead,
+  createdAt: matchNotifications.createdAt,
+};
+
+const notificationSelect = {
+  id: notificationsTable.id,
+  type: notificationsTable.type,
+  title: notificationsTable.title,
+  message: notificationsTable.message,
+  referenceType: notificationsTable.referenceType,
+  referenceId: notificationsTable.referenceId,
+  isRead: notificationsTable.isRead,
+  createdAt: notificationsTable.createdAt,
+};
+
+const validateIdParam = (res: Response, idParam: string | string[] | undefined): number | null => {
+  const normalized = typeof idParam === 'string' ? idParam : undefined;
+  const id = parsePositiveInt(normalized);
+  if (id) {
+    return id;
+  }
+  res.status(400).json({ error: '不正なIDです' });
+  return null;
+};
+
+const fetchProposalRows = (pharmacyId: number): Promise<ProposalRow[]> => Promise.all([
+    db.select(proposalSelect)
+      .from(exchangeProposals)
+      .where(and(
+        eq(exchangeProposals.pharmacyAId, pharmacyId),
+        inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
+      ))
+      .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
+      .limit(PROPOSAL_NOTICE_LIMIT),
+    db.select(proposalSelect)
+      .from(exchangeProposals)
+      .where(and(
+        eq(exchangeProposals.pharmacyBId, pharmacyId),
+        inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
+      ))
+      .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
+      .limit(PROPOSAL_NOTICE_LIMIT),
+  ]).then(([proposalsA, proposalsB]) => mergeDedupSortByTimestamp(
+    proposalsA,
+    proposalsB,
+    (row) => row.proposedAt,
+    PROPOSAL_NOTICE_LIMIT,
+  ));
+
+const fetchAdminMessageRows = (pharmacyId: number): Promise<AdminMessageRow[]> => Promise.all([
+    db.select(messageSelect)
+      .from(adminMessages)
+      .where(eq(adminMessages.targetType, 'all'))
+      .orderBy(desc(adminMessages.createdAt), desc(adminMessages.id))
+      .limit(SOURCE_NOTICE_FETCH_LIMIT),
+    db.select(messageSelect)
+      .from(adminMessages)
+      .where(and(
+        eq(adminMessages.targetType, 'pharmacy'),
+        eq(adminMessages.targetPharmacyId, pharmacyId),
+      ))
+      .orderBy(desc(adminMessages.createdAt), desc(adminMessages.id))
+      .limit(SOURCE_NOTICE_FETCH_LIMIT),
+  ]).then(([messagesAll, messagesPharmacy]) => mergeDedupSortByTimestamp(
+    messagesAll,
+    messagesPharmacy,
+    (row) => row.createdAt,
+    SOURCE_NOTICE_FETCH_LIMIT,
+  ));
+
+const fetchMatchRows = async (pharmacyId: number) => {
+  try {
+    return await db.select(matchSelect)
+      .from(matchNotifications)
+      .where(eq(matchNotifications.pharmacyId, pharmacyId))
+      .orderBy(desc(matchNotifications.createdAt), desc(matchNotifications.id))
+      .limit(MATCH_NOTICE_LIMIT);
+  } catch (err) {
+    if (!isUndefinedTableError(err)) {
+      throw err;
+    }
+    logger.warn('match_notifications query failed (table may not exist)', {
+      error: getErrorMessage(err),
+    });
+    return [];
+  }
+};
+
+const fetchNotificationRows = (pharmacyId: number): Promise<NotificationNoticeRow[]> => db.select(notificationSelect)
+  .from(notificationsTable)
+  .where(eq(notificationsTable.pharmacyId, pharmacyId))
+  .orderBy(desc(notificationsTable.createdAt), desc(notificationsTable.id))
+  .limit(SOURCE_NOTICE_FETCH_LIMIT);
+
+const fetchReadMessageIdSet = async (messageRows: AdminMessageRow[], pharmacyId: number): Promise<Set<number>> => {
+  const messageIds = messageRows.map((message) => message.id);
+  if (messageIds.length === 0) {
+    return new Set<number>();
+  }
+
+  const messageReadRows = await db.select({ messageId: adminMessageReads.messageId })
+    .from(adminMessageReads)
+    .where(and(
+      inArray(adminMessageReads.messageId, messageIds),
+      eq(adminMessageReads.pharmacyId, pharmacyId),
+    ));
+
+  return new Set(messageReadRows.map((row) => row.messageId));
+};
+
+const fetchTriggerPharmacyNameById = async (
+  triggerPharmacyIds: number[],
+): Promise<Map<number, string>> => {
+  if (triggerPharmacyIds.length === 0) {
+    return new Map<number, string>();
+  }
+
+  const triggerPharmacyRows = await db.select({ id: pharmacies.id, name: pharmacies.name })
+    .from(pharmacies)
+    .where(inArray(pharmacies.id, triggerPharmacyIds));
+
+  return new Map(triggerPharmacyRows.map((row) => [row.id, row.name]));
+};
+
+const buildNotices = (
+  pharmacyId: number,
+  proposalRows: ProposalRow[],
+  messageRows: AdminMessageRow[],
+  matchRows: Awaited<ReturnType<typeof fetchMatchRows>>,
+  notificationRows: NotificationNoticeRow[],
+  readMessageIdSet: Set<number>,
+  triggerPharmacyNameById: Map<number, string>,
+): NoticeItem[] => {
+  const notices: NoticeItem[] = [];
+  const mappedProposalReferenceIds = new Set<number>();
+  const latestProposalNotificationById = buildLatestProposalNotificationMap(notificationRows);
+
+  for (const proposal of proposalRows) {
+    const linkedNotification = latestProposalNotificationById.get(proposal.id);
+    const item = proposalActionNotice(proposal, pharmacyId, linkedNotification);
+    if (!item) {
+      continue;
+    }
+    notices.push(item);
+    if (linkedNotification) {
+      mappedProposalReferenceIds.add(proposal.id);
+    }
+  }
+
+  for (const message of messageRows) {
+    notices.push(toAdminMessageNotice(message, !readMessageIdSet.has(message.id)));
+  }
+
+  for (const row of matchRows) {
+    notices.push(matchUpdateNotice(
+      row,
+      pharmacyId,
+      triggerPharmacyNameById.get(row.triggerPharmacyId) ?? null,
+    ));
+  }
+
+  for (const notification of notificationRows) {
+    if (
+      notification.referenceType === 'proposal'
+      && PROPOSAL_EVENT_NOTIFICATION_TYPES.has(notification.type)
+      && notification.referenceId
+      && mappedProposalReferenceIds.has(notification.referenceId)
+    ) {
+      continue;
+    }
+
+    const notice = notificationToNotice(notification);
+    if (notice) {
+      notices.push(notice);
+    }
+  }
+
+  notices.sort(compareNoticeOrder);
+  return notices;
+};
+
+router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const pharmacyId = req.user!.id;
     const limit = Math.min(parsePositiveInt(req.query.limit) ?? NOTICE_RESULT_LIMIT, MAX_NOTICE_PAGE_LIMIT);
     const cursor = parseNoticeCursor(req.query.cursor);
-    const proposalSelect = {
-      id: exchangeProposals.id,
-      pharmacyAId: exchangeProposals.pharmacyAId,
-      pharmacyBId: exchangeProposals.pharmacyBId,
-      status: exchangeProposals.status,
-      proposedAt: exchangeProposals.proposedAt,
-    };
-    const messageSelect = {
-      id: adminMessages.id,
-      title: adminMessages.title,
-      body: adminMessages.body,
-      actionPath: adminMessages.actionPath,
-      createdAt: adminMessages.createdAt,
-    };
-    const notificationSelect = {
-      id: notificationsTable.id,
-      type: notificationsTable.type,
-      title: notificationsTable.title,
-      message: notificationsTable.message,
-      referenceType: notificationsTable.referenceType,
-      referenceId: notificationsTable.referenceId,
-      isRead: notificationsTable.isRead,
-      createdAt: notificationsTable.createdAt,
-    };
-
-    // 全6クエリを完全並列実行（直列→並列で約50%高速化）
-    const [proposalsA, proposalsB, messagesAll, messagesPharmacy, matchRows, notificationRows] = await Promise.all([
-      db.select(proposalSelect)
-        .from(exchangeProposals)
-        .where(and(
-          eq(exchangeProposals.pharmacyAId, pharmacyId),
-          inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
-        ))
-        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
-        .limit(PROPOSAL_NOTICE_LIMIT),
-      db.select(proposalSelect)
-        .from(exchangeProposals)
-        .where(and(
-          eq(exchangeProposals.pharmacyBId, pharmacyId),
-          inArray(exchangeProposals.status, PROPOSAL_NOTICE_STATUSES),
-        ))
-        .orderBy(desc(exchangeProposals.proposedAt), desc(exchangeProposals.id))
-        .limit(PROPOSAL_NOTICE_LIMIT),
-      db.select(messageSelect)
-        .from(adminMessages)
-        .where(eq(adminMessages.targetType, 'all'))
-        .orderBy(desc(adminMessages.createdAt), desc(adminMessages.id))
-        .limit(SOURCE_NOTICE_FETCH_LIMIT),
-      db.select(messageSelect)
-        .from(adminMessages)
-        .where(and(
-          eq(adminMessages.targetType, 'pharmacy'),
-          eq(adminMessages.targetPharmacyId, pharmacyId),
-        ))
-        .orderBy(desc(adminMessages.createdAt), desc(adminMessages.id))
-        .limit(SOURCE_NOTICE_FETCH_LIMIT),
-      (async () => {
-        try {
-          return await db.select({
-            id: matchNotifications.id,
-            triggerPharmacyId: matchNotifications.triggerPharmacyId,
-            triggerUploadType: matchNotifications.triggerUploadType,
-            candidateCountBefore: matchNotifications.candidateCountBefore,
-            candidateCountAfter: matchNotifications.candidateCountAfter,
-            diffJson: matchNotifications.diffJson,
-            isRead: matchNotifications.isRead,
-            createdAt: matchNotifications.createdAt,
-          })
-            .from(matchNotifications)
-            .where(eq(matchNotifications.pharmacyId, pharmacyId))
-            .orderBy(desc(matchNotifications.createdAt), desc(matchNotifications.id))
-            .limit(MATCH_NOTICE_LIMIT);
-        } catch (err) {
-          if (!isUndefinedTableError(err)) {
-            throw err;
-          }
-          logger.warn('match_notifications query failed (table may not exist)', {
-            error: getErrorMessage(err),
-          });
-          return [];
-        }
-      })(),
-      db.select(notificationSelect)
-        .from(notificationsTable)
-        .where(eq(notificationsTable.pharmacyId, pharmacyId))
-        .orderBy(desc(notificationsTable.createdAt), desc(notificationsTable.id))
-        .limit(SOURCE_NOTICE_FETCH_LIMIT),
+    const [proposalRows, messageRows, matchRows, notificationRows] = await Promise.all([
+      fetchProposalRows(pharmacyId),
+      fetchAdminMessageRows(pharmacyId),
+      fetchMatchRows(pharmacyId),
+      fetchNotificationRows(pharmacyId),
     ]);
 
-    const proposalRows: ProposalRow[] = mergeDedupSortByTimestamp(
-      proposalsA,
-      proposalsB,
-      (row) => row.proposedAt,
-      PROPOSAL_NOTICE_LIMIT,
-    );
-    const messageRows: AdminMessageRow[] = mergeDedupSortByTimestamp(
-      messagesAll,
-      messagesPharmacy,
-      (row) => row.createdAt,
-      SOURCE_NOTICE_FETCH_LIMIT,
-    );
-
-    const latestProposalNotificationById = buildLatestProposalNotificationMap(notificationRows);
-
-    // messageReads と triggerPharmacy names を並列取得
-    const messageIds = messageRows.map((message) => message.id);
+    const readMessageIdSetPromise = fetchReadMessageIdSet(messageRows, pharmacyId);
     const triggerPharmacyIds = [...new Set(matchRows.map((row) => row.triggerPharmacyId))];
+    const triggerPharmacyNameByIdPromise = fetchTriggerPharmacyNameById(triggerPharmacyIds);
 
-    const [messageReadRows, triggerPharmacyRows] = await Promise.all([
-      messageIds.length > 0
-        ? db.select({ messageId: adminMessageReads.messageId })
-          .from(adminMessageReads)
-          .where(and(
-            inArray(adminMessageReads.messageId, messageIds),
-            eq(adminMessageReads.pharmacyId, pharmacyId),
-          ))
-        : Promise.resolve([]),
-      triggerPharmacyIds.length > 0
-        ? db.select({ id: pharmacies.id, name: pharmacies.name })
-          .from(pharmacies)
-          .where(inArray(pharmacies.id, triggerPharmacyIds))
-        : Promise.resolve([]),
+    const [readMessageIdSet, triggerPharmacyNameById] = await Promise.all([
+      readMessageIdSetPromise,
+      triggerPharmacyNameByIdPromise,
     ]);
 
-    const readMessageIdSet = new Set(messageReadRows.map((row) => row.messageId));
+    const notices = buildNotices(
+      pharmacyId,
+      proposalRows,
+      messageRows,
+      matchRows,
+      notificationRows,
+      readMessageIdSet,
+      triggerPharmacyNameById,
+    );
 
-    const notices: NoticeItem[] = [];
-    const mappedProposalReferenceIds = new Set<number>();
-
-    for (const proposal of proposalRows) {
-      const linkedNotification = latestProposalNotificationById.get(proposal.id);
-      const item = proposalActionNotice(proposal, pharmacyId, linkedNotification);
-      if (item) notices.push(item);
-      if (item && linkedNotification) {
-        mappedProposalReferenceIds.add(proposal.id);
-      }
-    }
-
-    for (const message of messageRows) {
-      const unread = !readMessageIdSet.has(message.id);
-      notices.push(toAdminMessageNotice(message, unread));
-    }
-
-    const triggerPharmacyNameById = new Map(triggerPharmacyRows.map((row) => [row.id, row.name]));
-    for (const row of matchRows) {
-      notices.push(matchUpdateNotice(
-        row,
-        pharmacyId,
-        triggerPharmacyNameById.get(row.triggerPharmacyId) ?? null,
-      ));
-    }
-
-    for (const n of notificationRows) {
-      if (
-        n.referenceType === 'proposal'
-        && PROPOSAL_EVENT_NOTIFICATION_TYPES.has(n.type)
-        && n.referenceId
-        && mappedProposalReferenceIds.has(n.referenceId)
-      ) {
-        continue;
-      }
-      const notice = notificationToNotice(n);
-      if (notice) notices.push(notice);
-    }
-
-    notices.sort(compareNoticeOrder);
     const startIndex = resolveNoticeStartIndex(notices, cursor);
     const pagedNotices = notices.slice(startIndex, startIndex + limit);
     const hasMore = startIndex + limit < notices.length;
@@ -252,11 +314,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
+router.post('/messages/:id/read', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const id = parsePositiveInt(req.params.id);
+    const id = validateIdParam(res, req.params.id);
     if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
       return;
     }
 
@@ -299,11 +360,10 @@ router.post('/messages/:id/read', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/matches/:id/read', async (req: AuthRequest, res: Response) => {
+router.post('/matches/:id/read', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const id = parsePositiveInt(req.params.id);
+    const id = validateIdParam(res, req.params.id);
     if (!id) {
-      res.status(400).json({ error: '不正なIDです' });
       return;
     }
 
@@ -340,7 +400,7 @@ router.post('/matches/:id/read', async (req: AuthRequest, res: Response) => {
 });
 
 // GET /api/notifications/unread-count
-router.get('/unread-count', async (req: AuthRequest, res: Response) => {
+router.get('/unread-count', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const pharmacyId = req.user!.id;
     const unreadCount = await getDashboardUnreadCount(pharmacyId);
@@ -352,7 +412,7 @@ router.get('/unread-count', async (req: AuthRequest, res: Response) => {
 });
 
 // PATCH /api/notifications/read-all (/:id/read より先に定義すること)
-const markAllReadHandler = async (req: AuthRequest, res: Response) => {
+const markAllReadHandler = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const count = await markAllDashboardAsRead(req.user!.id);
     res.json({ message: `${count}件を既読にしました`, count });
@@ -364,11 +424,10 @@ const markAllReadHandler = async (req: AuthRequest, res: Response) => {
 router.patch('/read-all', markAllReadHandler);
 
 // PATCH /api/notifications/:id/read
-const markReadHandler = async (req: AuthRequest, res: Response) => {
+const markReadHandler = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const notificationId = parsePositiveInt(req.params.id);
+    const notificationId = validateIdParam(res, req.params.id);
     if (!notificationId) {
-      res.status(400).json({ error: '不正なIDです' });
       return;
     }
     const success = await markAsRead(notificationId, req.user!.id);

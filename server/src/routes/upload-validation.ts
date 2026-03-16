@@ -8,6 +8,7 @@ import { parseInWorker, WORKER_PARSE_MIN_BYTES } from '../services/parse-worker-
 import { parseExcelBuffer } from '../services/upload-service';
 import { getErrorMessage } from '../middleware/error-handler';
 import { createMemorySingleFileUpload } from '../middleware/upload-middleware';
+import { ApiError } from '../utils/api-error';
 
 export const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
 export const MAX_MAPPING_KEYS = 30;
@@ -137,17 +138,17 @@ export function uploadSingleFile(req: Request, res: Response, next: NextFunction
 
 export function parseMapping(raw: unknown, uploadType: UploadType): ColumnMapping {
   if (typeof raw !== 'string') {
-    throw new Error('mapping形式が不正です');
+    throw new ApiError(400, 'mapping形式が不正です', 'VALIDATION_ERROR');
   }
 
   const parsed: unknown = JSON.parse(raw);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('mapping形式が不正です');
+    throw new ApiError(400, 'mapping形式が不正です', 'VALIDATION_ERROR');
   }
 
   const entries = Object.entries(parsed as Record<string, unknown>);
   if (entries.length > MAX_MAPPING_KEYS) {
-    throw new Error('mappingの項目数が多すぎます');
+    throw new ApiError(400, 'mappingの項目数が多すぎます', 'VALIDATION_ERROR');
   }
 
   const allowedFields = uploadType === 'dead_stock' ? DEAD_STOCK_FIELD_SET : USED_MEDICATION_FIELD_SET;
@@ -181,10 +182,10 @@ export function parseMapping(raw: unknown, uploadType: UploadType): ColumnMappin
   }
 
   if (!sanitized.drug_name) {
-    throw new Error('薬剤名カラムの割り当てが必要です');
+    throw new ApiError(400, '薬剤名カラムの割り当てが必要です', 'VALIDATION_ERROR');
   }
   if (uploadType === 'dead_stock' && !sanitized.quantity) {
-    throw new Error('数量カラムの割り当てが必要です');
+    throw new ApiError(400, '数量カラムの割り当てが必要です', 'VALIDATION_ERROR');
   }
 
   return sanitized;
@@ -266,14 +267,14 @@ export function validateMappingAgainstHeader(
 ): void {
   const headerLength = Array.isArray(headerRow) ? headerRow.length : 0;
   if (headerLength <= 0) {
-    throw new Error('ヘッダー行が不正です');
+    throw new ApiError(400, 'ヘッダー行が不正です', 'VALIDATION_ERROR');
   }
 
   for (const [field, value] of Object.entries(mapping) as Array<[string, string | null]>) {
     if (value === null) continue;
     const colIndex = parseMappingColumnIndex(value);
     if (colIndex === null || colIndex < 0 || colIndex >= headerLength) {
-      throw new Error(`${resolveMappingFieldLabel(field)}カラムの割り当てが見出し範囲外です`);
+      throw new ApiError(400, `${resolveMappingFieldLabel(field)}カラムの割り当てが見出し範囲外です`, 'VALIDATION_ERROR');
     }
   }
 }
