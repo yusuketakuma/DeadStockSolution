@@ -6,13 +6,13 @@ import { logger } from './logger';
 import { detectHeaderRow, getCell, parseYjCode, decodeCsvBuffer, parseCsvContent, type ParsedPackageRow } from './drug-master-parser-service';
 
 const PACKAGE_HEADER_KEYWORDS: Record<string, string[]> = {
-  yjCode: ['薬価基準収載医薬品コード', 'YJコード', '医薬品コード'],
+  yjCode: ['薬価基準収載医薬品コード', 'YJコード', '医薬品コード', '薬価コード'],
   gs1Code: ['GS1コード', 'GS1', 'GTIN', '販売包装単位コード'],
-  janCode: ['JANコード', 'JAN'],
-  hotCode: ['HOTコード', 'HOT', 'HOT番号'],
-  packageDescription: ['包装', '包装規格', '包装単位', '包装形態'],
-  packageQuantity: ['包装数量', '入数', '数量'],
-  packageUnit: ['単位', '包装単位名'],
+  janCode: ['JANコード', 'JAN', '物流用JANコード'],
+  hotCode: ['HOTコード', 'HOT', 'HOT番号', '基準番号'],
+  packageDescription: ['包装', '包装規格', '包装単位', '包装形態', '調剤包装単位名称'],
+  packageQuantity: ['包装数量', '入数', '数量', '包装単位数'],
+  packageUnit: ['単位', '包装単位名', '包装単位数単位'],
 };
 
 const PACKAGE_XML_KEYWORDS: Record<string, string[]> = {
@@ -215,11 +215,20 @@ export async function parsePackageZipData(buffer: Buffer): Promise<ParsedPackage
   return dedupePackageRows(rows);
 }
 
+// medhot 形式で複数GS1列を展開するための追加キーワード
+const MEDHOT_EXTRA_GS1_KEYWORDS: Record<string, string[]> = {
+  dispensingUnitCode: ['調剤包装単位コード'],
+  outerPackageCode: ['元梱包装単位コード'],
+};
+
 export function parsePackageExcelData(rows: unknown[][]): ParsedPackageRow[] {
   const { rowIndex, mapping } = detectHeaderRow(rows, PACKAGE_HEADER_KEYWORDS);
   if (mapping.yjCode === undefined) {
     throw new Error('包装単位データのフォーマットを検出できません。YJコードの列が必要です。');
   }
+
+  // medhot 形式の追加GS1列を検出
+  const { mapping: extraMapping } = detectHeaderRow(rows, MEDHOT_EXTRA_GS1_KEYWORDS);
 
   const results: ParsedPackageRow[] = [];
   for (let i = rowIndex + 1; i < rows.length; i++) {
@@ -232,17 +241,26 @@ export function parsePackageExcelData(rows: unknown[][]): ParsedPackageRow[] {
     const gs1Code = getCell(row, mapping.gs1Code);
     const janCode = getCell(row, mapping.janCode);
     const hotCode = getCell(row, mapping.hotCode);
-    if (!gs1Code && !janCode && !hotCode) continue;
+    const packageDescription = getCell(row, mapping.packageDescription);
+    const packageQuantity = parseNumber(getCell(row, mapping.packageQuantity));
+    const packageUnit = getCell(row, mapping.packageUnit);
 
-    results.push({
-      yjCode,
-      gs1Code,
-      janCode,
-      hotCode,
-      packageDescription: getCell(row, mapping.packageDescription),
-      packageQuantity: parseNumber(getCell(row, mapping.packageQuantity)),
-      packageUnit: getCell(row, mapping.packageUnit),
-    });
+    // メインの販売包装単位コード
+    if (gs1Code || janCode || hotCode) {
+      results.push({ yjCode, gs1Code, janCode, hotCode, packageDescription, packageQuantity, packageUnit });
+    }
+
+    // medhot: 調剤包装単位コード（販売包装単位コードと異なる場合のみ追加）
+    const dispensingCode = getCell(row, extraMapping.dispensingUnitCode);
+    if (dispensingCode && dispensingCode !== gs1Code) {
+      results.push({ yjCode, gs1Code: dispensingCode, janCode: null, hotCode, packageDescription, packageQuantity, packageUnit });
+    }
+
+    // medhot: 元梱包装単位コード（販売包装単位コードと異なる場合のみ追加）
+    const outerCode = getCell(row, extraMapping.outerPackageCode);
+    if (outerCode && outerCode !== gs1Code && outerCode !== dispensingCode) {
+      results.push({ yjCode, gs1Code: outerCode, janCode: null, hotCode, packageDescription, packageQuantity, packageUnit });
+    }
   }
   return results;
 }
