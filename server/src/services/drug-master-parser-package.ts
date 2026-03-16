@@ -12,7 +12,7 @@ const PACKAGE_HEADER_KEYWORDS: Record<string, string[]> = {
   hotCode: ['HOTコード', 'HOT', 'HOT番号', '基準番号'],
   packageDescription: ['包装', '包装規格', '包装単位', '包装形態', '調剤包装単位名称'],
   packageQuantity: ['包装数量', '入数', '数量', '包装単位数'],
-  packageUnit: ['単位', '包装単位名', '包装単位数単位'],
+  packageUnit: ['包装単位数単位', '包装単位名', '包装単位単位', '単位'],
 };
 
 const PACKAGE_XML_KEYWORDS: Record<string, string[]> = {
