@@ -38,6 +38,7 @@ export const DEAD_STOCK_SELECT_FIELDS = {
   drugName: deadStockItems.drugName,
   quantity: deadStockItems.quantity,
   unit: deadStockItems.unit,
+  packageLabel: deadStockItems.packageLabel,
   yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
   expirationDate: deadStockItems.expirationDate,
   expirationDateIso: deadStockItems.expirationDateIso,

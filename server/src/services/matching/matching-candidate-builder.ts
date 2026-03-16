@@ -1,6 +1,7 @@
 import { MatchCandidate, MatchItem } from '../../types';
 import { getBusinessHoursStatus } from '../../utils/business-hours-utils';
 import { haversineDistance } from '../../utils/geo-utils';
+import { classifyPackageFormFromUnit, arePackageFormsCompatible } from '../../utils/package-utils';
 import {
   calculateCandidateScore,
   calculateMatchRate,
@@ -56,6 +57,7 @@ function buildMatchItems(
       drugName: stock.drugName,
       quantity: stock.quantity,
       unit: stock.unit,
+      packageForm: classifyPackageFormFromUnit(stock.packageLabel ?? stock.unit),
       yakkaUnitPrice: price,
       yakkaValue: roundTo2(price * stock.quantity),
       expirationDate: stock.expirationDate,
@@ -67,6 +69,56 @@ function buildMatchItems(
   }
 
   return items;
+}
+
+/**
+ * A/Bの品目ペアで包装形態の互換性をチェックし、非互換な品目を除外する。
+ *
+ * ルール:
+ * - 同一薬品名（正規化後）でA側がPTP、B側がバラ → 両方除外
+ * - 包装形態が不明（null）の場合は互換扱い（除外しない）
+ * - 100T PTP ↔ 1000T PTP は互換（包装数量は無視、形態のみ比較）
+ */
+function filterByPackageCompatibility(
+  itemsA: MatchItem[],
+  itemsB: MatchItem[],
+): { itemsFromA: MatchItem[]; itemsFromB: MatchItem[] } {
+  // B側の薬品名→包装形態マップ（同一薬品名で複数形態がある場合は全て保持）
+  const bFormsByDrug = new Map<string, Set<string>>();
+  for (const item of itemsB) {
+    const key = item.drugName.normalize('NFKC').toLowerCase();
+    const forms = bFormsByDrug.get(key) ?? new Set<string>();
+    if (item.packageForm) forms.add(item.packageForm);
+    bFormsByDrug.set(key, forms);
+  }
+
+  const aFormsByDrug = new Map<string, Set<string>>();
+  for (const item of itemsA) {
+    const key = item.drugName.normalize('NFKC').toLowerCase();
+    const forms = aFormsByDrug.get(key) ?? new Set<string>();
+    if (item.packageForm) forms.add(item.packageForm);
+    aFormsByDrug.set(key, forms);
+  }
+
+  // A品目: B側に同一薬品名があり、包装形態が非互換なら除外
+  const filteredA = itemsA.filter((item) => {
+    if (!item.packageForm) return true;
+    const key = item.drugName.normalize('NFKC').toLowerCase();
+    const bForms = bFormsByDrug.get(key);
+    if (!bForms || bForms.size === 0) return true; // B側に形態情報なし→許容
+    return [...bForms].some((bf) => arePackageFormsCompatible(item.packageForm as any, bf as any));
+  });
+
+  // B品目: A側に同一薬品名があり、包装形態が非互換なら除外
+  const filteredB = itemsB.filter((item) => {
+    if (!item.packageForm) return true;
+    const key = item.drugName.normalize('NFKC').toLowerCase();
+    const aForms = aFormsByDrug.get(key);
+    if (!aForms || aForms.size === 0) return true;
+    return [...aForms].some((af) => arePackageFormsCompatible(item.packageForm as any, af as any));
+  });
+
+  return { itemsFromA: filteredA, itemsFromB: filteredB };
 }
 
 function clampPharmacyComparisonPool<T extends { id: number }>(
@@ -186,20 +238,24 @@ function buildCandidateFromPharmacy(params: {
   const theirUsedMedIndex = usedMedIndexByPharmacy.get(otherPharmacy.id);
   if (theirPreparedDeadStock.length === 0 || !theirUsedMedIndex) return null;
 
-  const itemsFromA = buildMatchItems(
+  const rawItemsFromA = buildMatchItems(
     myPreparedDeadStock,
     theirUsedMedIndex,
     myToTheirCache,
     matchingRuleProfile.nameMatchThreshold,
     equivalenceMap,
   );
-  const itemsFromB = buildMatchItems(
+  const rawItemsFromB = buildMatchItems(
     theirPreparedDeadStock,
     myUsedMedIndex,
     theirToMyCache,
     matchingRuleProfile.nameMatchThreshold,
     equivalenceMap,
   );
+  if (rawItemsFromA.length === 0 || rawItemsFromB.length === 0) return null;
+
+  // 包装形態互換性フィルタ: A/Bで同一薬品名の品目間で包装形態が非互換な場合は除外
+  const { itemsFromA, itemsFromB } = filterByPackageCompatibility(rawItemsFromA, rawItemsFromB);
   if (itemsFromA.length === 0 || itemsFromB.length === 0) return null;
 
   const { balancedA, balancedB, totalA, totalB, minValue, diff } = resolveBalancedCandidateValues(itemsFromA, itemsFromB);

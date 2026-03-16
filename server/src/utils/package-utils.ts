@@ -100,6 +100,59 @@ export function normalizePackageInfo(input: {
   };
 }
 
+/**
+ * unit フィールド（CSVアップロード由来）から包装形態を推定する。
+ * "10PTP", "100錠バラ", "SP", "1000T" 等を分類。
+ */
+export function classifyPackageFormFromUnit(unit: string | null): PackageForm {
+  if (!unit) return null;
+  const normalized = normalizePackageText(unit).toLowerCase();
+  if (!normalized) return null;
+
+  // バラ判定（最優先: PTPをバラした品はバラ扱い）
+  if (/バラ|ばら/i.test(normalized)) return 'loose';
+  if (/散$|散剤|顆粒|細粒|ドライシロップ|ds$/i.test(normalized)) return 'loose';
+
+  // PTP/SP/ヒート/シート
+  if (/ptp|sp$|ヒート|シート|プレス/i.test(normalized)) return 'ptp';
+
+  // 瓶・ボトル
+  if (/瓶|ボトル|bottle/i.test(normalized)) return 'bottle';
+
+  // 分包・スティック
+  if (/分包|sachet|stick|スティック/i.test(normalized)) return 'sachet';
+
+  // バイアル
+  if (/バイアル|vial/i.test(normalized)) return 'vial';
+
+  // アンプル・管・シリンジ
+  if (/アンプル|ampoule|ampule|管|シリンジ|syringe/i.test(normalized)) return 'ampoule';
+
+  // 貼付剤
+  if (/貼付|テープ|パッチ|patch|tape/i.test(normalized)) return 'other';
+
+  // 数字+T のみ（例: "100T", "1000T"）→ 包装数量のみで形態不明
+  if (/^\d+t$/i.test(normalized)) return null;
+
+  return null;
+}
+
+/**
+ * 2つの包装形態がマッチング互換かどうかを判定する。
+ *
+ * ルール:
+ * - 両方 null → 互換（判定不能のため許容）
+ * - 片方 null → 互換（判定不能のため許容）
+ * - 両方同じ形態 → 互換
+ * - 異なる形態 → 非互換
+ *
+ * 重要: PTP ↔ loose は非互換（PTPをバラした品はバラのみマッチ）
+ */
+export function arePackageFormsCompatible(formA: PackageForm, formB: PackageForm): boolean {
+  if (formA === null || formB === null) return true;
+  return formA === formB;
+}
+
 function normalizeLooseHint(value: string): boolean {
   const normalized = value.normalize('NFKC');
   return /バラ/.test(normalized);

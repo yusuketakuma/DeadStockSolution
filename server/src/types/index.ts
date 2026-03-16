@@ -101,6 +101,7 @@ export interface MatchItem {
   drugName: string;
   quantity: number;
   unit: string | null;
+  packageForm?: string | null;
   yakkaUnitPrice: number;
   yakkaValue: number;
   expirationDate?: string | null;

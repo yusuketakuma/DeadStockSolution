@@ -89,6 +89,7 @@ export interface DeadStockRow {
   drugName: string;
   quantity: number;
   unit: string | null;
+  packageLabel: string | null;
   yakkaUnitPrice: number | string | null;
   expirationDate: string | null;
   expirationDateIso: string | null;
