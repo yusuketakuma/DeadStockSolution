@@ -296,7 +296,8 @@ export async function resolveCameraMatchByCode(parsed: ParsedCameraCode): Promis
       .limit(1);
 
     if (!masterRow) {
-      return null;
+      // YJ完全一致なし: YJ先頭7桁（同成分）でファジーマッチ
+      return resolveByYjPrefix7(parsed.yjCode);
     }
 
     const [pkg] = await db.select(PACKAGE_MATCH_FIELDS)
@@ -308,6 +309,35 @@ export async function resolveCameraMatchByCode(parsed: ParsedCameraCode): Promis
   }
 
   return null;
+}
+
+/**
+ * YJコード先頭7桁（同成分レベル）でファジーマッチ。
+ * 完全一致する品目がDBに無い場合に、同成分の別規格・別メーカー品を候補として返す。
+ */
+async function resolveByYjPrefix7(yjCode: string): Promise<CameraCodeMatch | null> {
+  if (yjCode.length < 7) return null;
+  const yjPrefix7 = yjCode.slice(0, 7);
+
+  // 同成分で包装情報がある品目を優先
+  const candidates = await db.select(MASTER_ROW_FIELDS)
+    .from(drugMaster)
+    .where(like(drugMaster.yjCode, `${escapeLikeWildcards(yjPrefix7)}%`))
+    .limit(10);
+
+  if (candidates.length === 0) return null;
+
+  // 包装情報がある品目を優先して返す
+  for (const candidate of candidates) {
+    const [pkg] = await db.select(PACKAGE_MATCH_FIELDS)
+      .from(drugMasterPackages)
+      .where(eq(drugMasterPackages.drugMasterId, candidate.id))
+      .limit(1);
+    if (pkg) return buildCameraCodeMatch(candidate, pkg);
+  }
+
+  // 包装なしでも成分一致の最初の品目を返す
+  return buildCameraCodeMatch(candidates[0], null);
 }
 
 export async function searchCameraManualCandidates(
