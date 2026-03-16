@@ -230,6 +230,22 @@ async function runPackageAutoSyncWithSource(sourceUrl: string): Promise<void> {
         added: result.added,
         updated: result.updated,
       });
+
+      // パッケージ同期後に HOT マスターを補完
+      try {
+        const { syncHotMasterCodes } = await import('./hot-master-sync-service');
+        const hotResult = await syncHotMasterCodes();
+        if (hotResult.updated > 0 || hotResult.created > 0) {
+          logger.info('Drug package auto-sync: HOT master post-sync', {
+            hotUpdated: hotResult.updated,
+            hotCreated: hotResult.created,
+          });
+        }
+      } catch (hotErr) {
+        logger.warn('Drug package auto-sync: HOT master post-sync failed (non-fatal)', {
+          error: getErrorMessage(hotErr),
+        });
+      }
     } catch (syncErr) {
       const errorMsg = getErrorMessage(syncErr);
       await completeSyncLog(syncLog.id, 'failed', emptyResult, errorMsg);

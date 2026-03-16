@@ -73,6 +73,7 @@ export const SOURCE_KEY_SINGLE = 'drug:single';
 export const SOURCE_KEY_INDEX = 'drug:index_page';
 /** 包装単位 */
 export const SOURCE_KEY_PACKAGE = 'package:main';
+export const SOURCE_KEY_HOT_MASTER = 'hot:medis';
 /** 薬価基準: カテゴリファイル別キー */
 export function sourceKeyForFile(category: string): string {
   return `drug:file:${category}`;
