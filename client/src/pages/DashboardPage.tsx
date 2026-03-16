@@ -12,7 +12,7 @@ import DashboardTimeline from '../components/timeline/DashboardTimeline';
 import OnboardingGuide from '../components/onboarding/OnboardingGuide';
 import { useOnboardingVisibility } from '../hooks/useOnboardingVisibility';
 import type { TimelineEvent } from '../types/timeline';
-import PageShell from '../components/ui/PageShell';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 interface PharmacyRisk {
   totalItems: number;
@@ -121,6 +121,7 @@ export default function DashboardPage() {
 
   return (
     <PageShell>
+      <ScrollArea>
       {showOnboarding && (
         <OnboardingGuide status={status} onDismiss={dismissOnboarding} />
       )}
@@ -266,6 +267,7 @@ export default function DashboardPage() {
         onRefresh={refreshTimeline}
         className="flex-grow-1"
       />
+      </ScrollArea>
     </PageShell>
   );
 }

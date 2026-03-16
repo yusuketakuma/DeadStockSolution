@@ -121,21 +121,6 @@ function SidebarContent({ onNavigate, collapsed = false, onToggleCollapse }: {
   return (
     <div className="sidebar-content d-flex flex-column h-100">
       <Nav className="flex-column flex-grow-1 pt-2">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.title} className="sidebar-group">
-            {!collapsed && <div className="sidebar-group-title">{group.title}</div>}
-            {group.items.map((item) => (
-              <SidebarLink
-                key={item.to}
-                to={item.to}
-                label={item.label}
-                onNavigate={onNavigate}
-                end={item.end}
-                collapsed={collapsed}
-              />
-            ))}
-          </div>
-        ))}
         {user?.isAdmin && (
           <div className="sidebar-group">
             {!collapsed && <div className="sidebar-group-title">管理者</div>}
@@ -151,6 +136,21 @@ function SidebarContent({ onNavigate, collapsed = false, onToggleCollapse }: {
             ))}
           </div>
         )}
+        {NAV_GROUPS.map((group) => (
+          <div key={group.title} className="sidebar-group">
+            {!collapsed && <div className="sidebar-group-title">{group.title}</div>}
+            {group.items.map((item) => (
+              <SidebarLink
+                key={item.to}
+                to={item.to}
+                label={item.label}
+                onNavigate={onNavigate}
+                end={item.end}
+                collapsed={collapsed}
+              />
+            ))}
+          </div>
+        ))}
       </Nav>
 
       <div className="sidebar-footer border-top p-3">

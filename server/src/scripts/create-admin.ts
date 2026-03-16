@@ -7,8 +7,14 @@ import { pharmacies } from '../db/schema';
 import { hashPassword } from '../services/auth-service';
 import { eq } from 'drizzle-orm';
 
-const ADMIN_EMAIL = 'admin@admin.com';
-const ADMIN_PASSWORD = 'admin1234';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'admin@admin.com';
+const ADMIN_PASSWORD: string = process.env.ADMIN_PASSWORD ?? '';
+
+if (!ADMIN_PASSWORD) {
+  console.error('❌ ADMIN_PASSWORD 環境変数を設定してください');
+  console.error('   例: ADMIN_PASSWORD=yourpassword npx tsx src/scripts/create-admin.ts');
+  process.exit(1);
+}
 
 async function createAdmin() {
   console.log('🔧 管理者アカウント作成中...');
