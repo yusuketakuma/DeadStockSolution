@@ -137,14 +137,24 @@ export function extractDeadStockRowsWithIssues(
       continue;
     }
 
+    const drugCode = getStringValue(row, m.drugCodeIdx);
+    const unit = getStringValue(row, m.unitIdx);
     const yakkaUnitPrice = getNumberValue(row, m.yakkaUnitPriceIdx);
     const yakkaTotal = yakkaUnitPrice !== null ? yakkaUnitPrice * quantity : null;
 
+    // 警告（行は取込むが品質注意）
+    if (!drugCode) {
+      issues.push(createIssue(i, 'MISSING_DRUG_CODE', '薬品コード未入力: マスター自動紐付けが行われないため、薬価・単位・包装の自動補完が制限されます', row));
+    }
+    if (!unit && !drugCode) {
+      issues.push(createIssue(i, 'MISSING_UNIT_NO_CODE', '単位・薬品コードが両方未入力: 包装形態（PTP/バラ）の自動判定ができません', row));
+    }
+
     rows.push({
-      drugCode: getStringValue(row, m.drugCodeIdx),
+      drugCode,
       drugName,
       quantity,
-      unit: getStringValue(row, m.unitIdx),
+      unit,
       yakkaUnitPrice,
       yakkaTotal,
       expirationDate: getStringValue(row, m.expirationDateIdx),
@@ -190,8 +200,13 @@ export function extractUsedMedicationRowsWithIssues(
       continue;
     }
 
+    const usedDrugCode = getStringValue(row, m.drugCodeIdx);
+    if (!usedDrugCode) {
+      issues.push(createIssue(i, 'MISSING_DRUG_CODE', '薬品コード未入力: マスター自動紐付けが制限されます', row));
+    }
+
     rows.push({
-      drugCode: getStringValue(row, m.drugCodeIdx),
+      drugCode: usedDrugCode,
       drugName,
       monthlyUsage: getNumberValue(row, m.monthlyUsageIdx),
       unit: getStringValue(row, m.unitIdx),

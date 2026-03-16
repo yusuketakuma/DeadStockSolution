@@ -125,6 +125,98 @@ export default function UploadPage() {
       </AppCard>
 
       <AppCard className="mb-3">
+        <AppCard.Header>Excel 必須項目ガイド</AppCard.Header>
+        <AppCard.Body>
+          <div className="small">
+            <h6 className="fw-bold mb-2">デッドストックリスト</h6>
+            <table className="table table-sm table-bordered mb-3">
+              <thead className="table-light">
+                <tr>
+                  <th style={{ width: '25%' }}>列名</th>
+                  <th style={{ width: '15%' }}>必須</th>
+                  <th>説明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="fw-bold">薬品名</td>
+                  <td><span className="badge bg-danger">必須</span></td>
+                  <td>医薬品の名称。マッチングの基本キーです</td>
+                </tr>
+                <tr>
+                  <td className="fw-bold">数量</td>
+                  <td><span className="badge bg-danger">必須</span></td>
+                  <td>在庫数量（0より大きい数値）</td>
+                </tr>
+                <tr>
+                  <td className="fw-bold">薬品コード</td>
+                  <td><span className="badge bg-warning text-dark">強く推奨</span></td>
+                  <td>YJコード・JANコード・GS1コード等。入力すると薬価・単位・包装形態が自動設定されます</td>
+                </tr>
+                <tr>
+                  <td>単位</td>
+                  <td><span className="badge bg-info text-dark">推奨</span></td>
+                  <td>錠・PTP・バラ等。薬品コードがあれば自動補完されます。包装形態の区別に使用します</td>
+                </tr>
+                <tr>
+                  <td>薬価単価</td>
+                  <td><span className="badge bg-info text-dark">推奨</span></td>
+                  <td>薬品コードがあればマスターから自動設定されます</td>
+                </tr>
+                <tr>
+                  <td>使用期限</td>
+                  <td><span className="badge bg-secondary">任意</span></td>
+                  <td>期限切れ品の自動除外・期限間近品の優先マッチに使用</td>
+                </tr>
+                <tr>
+                  <td>ロット番号</td>
+                  <td><span className="badge bg-secondary">任意</span></td>
+                  <td>トレーサビリティ用の参考情報</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h6 className="fw-bold mb-2">使用実績リスト</h6>
+            <table className="table table-sm table-bordered mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th style={{ width: '25%' }}>列名</th>
+                  <th style={{ width: '15%' }}>必須</th>
+                  <th>説明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="fw-bold">薬品名</td>
+                  <td><span className="badge bg-danger">必須</span></td>
+                  <td>マッチング相手側のキーとなる医薬品名</td>
+                </tr>
+                <tr>
+                  <td className="fw-bold">薬品コード</td>
+                  <td><span className="badge bg-warning text-dark">強く推奨</span></td>
+                  <td>マスター紐付けの精度を大幅に向上します</td>
+                </tr>
+                <tr>
+                  <td>月間使用量</td>
+                  <td><span className="badge bg-secondary">任意</span></td>
+                  <td>将来の需要予測に使用予定</td>
+                </tr>
+                <tr>
+                  <td>単位</td>
+                  <td><span className="badge bg-info text-dark">推奨</span></td>
+                  <td>薬品コードがあれば自動補完されます</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="small text-muted mt-2">
+            薬品コードを入力すると、薬価・単位・包装形態（PTP/バラ等）が医薬品マスターから自動設定されます。
+            PTP包装品とバラ品は区別してマッチングされるため、正確な包装情報が重要です。
+          </div>
+        </AppCard.Body>
+      </AppCard>
+
+      <AppCard className="mb-3">
         <AppCard.Body>
           <Form onSubmit={flow.handlePreview}>
             <Form.Group className="mb-3" controlId="upload-file">
