@@ -66,7 +66,7 @@ function buildDrugMasterListParams(input: {
 }): string {
   const params = new URLSearchParams({
     page: String(input.page),
-    limit: '30',
+    limit: '100',
   });
   if (input.search) params.set('search', input.search);
   if (input.statusFilter) params.set('status', input.statusFilter);
@@ -434,8 +434,8 @@ export default function AdminDrugMasterPage() {
         onOpenDetail={openDetail}
         onOpenEdit={openEdit}
       />
-      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+      </ScrollArea>
 
       <DrugMasterDetailModal
         detail={detail}

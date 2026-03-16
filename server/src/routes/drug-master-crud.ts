@@ -106,7 +106,7 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
 
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, { defaultLimit: 30, maxLimit: 100 });
+    const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, { defaultLimit: 100, maxLimit: 500 });
     const search = normalizeSearchTerm(req.query.search);
     const statusFilter = req.query.status as string | undefined; // listed / transition / delisted / all
     const categoryFilter = normalizeSearchTerm(req.query.category);

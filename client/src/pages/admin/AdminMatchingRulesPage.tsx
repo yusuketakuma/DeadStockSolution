@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Form, Row, Spinner } from 'react-bootstrap';
 import { api } from '../../api/client';
-import PageShell from '../../components/ui/PageShell';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface MatchingRuleProfile {
   id: number;
@@ -186,6 +186,7 @@ export default function AdminMatchingRulesPage() {
         </div>
       )}
 
+      <ScrollArea>
       {FIELD_GROUPS.map((group) => (
         <Card key={group.title} className="mb-3">
           <Card.Header className="fw-semibold">{group.title}</Card.Header>
@@ -232,6 +233,7 @@ export default function AdminMatchingRulesPage() {
           リセット
         </Button>
       </div>
+      </ScrollArea>
     </PageShell>
   );
 }

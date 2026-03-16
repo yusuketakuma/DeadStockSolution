@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import { api } from '../../api/client';
-import PageShell from '../../components/ui/PageShell';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface DrugEquivalence {
   id: number;
@@ -153,6 +153,7 @@ export default function AdminDrugEquivalencesPage() {
       {error && <Alert variant="danger" dismissible onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert variant="success" dismissible onClose={() => setSuccess('')}>{success}</Alert>}
 
+      <ScrollArea>
       {loading ? (
         <div className="text-center py-5">
           <Spinner animation="border" size="sm" /> 読み込み中...
@@ -200,6 +201,7 @@ export default function AdminDrugEquivalencesPage() {
           </Table>
         </Card>
       )}
+      </ScrollArea>
 
       {/* Create/Edit Modal */}
       <Modal show={showModal} onHide={closeFormModal}>
