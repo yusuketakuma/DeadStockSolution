@@ -28,11 +28,22 @@ export function getClientId(): string {
 }
 
 function getRedirectUri(): string {
-  const uri = process.env.WORKOS_REDIRECT_URI;
-  if (!uri) {
-    throw new Error('WORKOS_REDIRECT_URI environment variable is not set');
+  // 明示的に設定されていればそちらを優先
+  const explicit = process.env.WORKOS_REDIRECT_URI;
+  if (explicit) {
+    return explicit;
   }
-  return uri;
+
+  // Vercel 環境では VERCEL_URL から動的に構築
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl) {
+    return `https://${vercelUrl}/api/auth/callback`;
+  }
+
+  throw new Error(
+    'WORKOS_REDIRECT_URI environment variable is not set. ' +
+    'Set WORKOS_REDIRECT_URI or deploy on Vercel (VERCEL_URL is auto-set).',
+  );
 }
 
 export function getAuthorizationUrl(screenHint?: 'sign-up' | 'sign-in'): string {
