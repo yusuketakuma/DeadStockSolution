@@ -77,6 +77,13 @@ export function validateLogin(body: Record<string, unknown>): ValidationError[] 
   return zodToValidationErrors(loginSchema.safeParse(body));
 }
 
+/** WorkOS onboarding 用: email/password を除いた薬局情報バリデーション */
+const onboardingRegistrationSchema = registrationSchema.omit({ email: true, password: true });
+
+export function validateOnboardingRegistration(body: Record<string, unknown>): ValidationError[] {
+  return zodToValidationErrors(onboardingRegistrationSchema.safeParse(body));
+}
+
 export { emailSchema, passwordSchema, registrationSchema, loginSchema };
 
 // Camera scan request schemas

@@ -8,7 +8,7 @@ import {
   verifyPassword,
   generateToken,
 } from '../services/auth-service';
-import { validateRegistration, validateLogin } from '../utils/validators';
+import { validateRegistration, validateLogin, validateOnboardingRegistration } from '../utils/validators';
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 import { requireLogin, invalidateAuthUserCache } from '../middleware/auth';
@@ -207,6 +207,13 @@ router.post('/complete-registration', registerLimiter, async (req: AuthRequest, 
       return;
     }
     const { workosUserId, email } = claims;
+
+    // 入力バリデーション（email/password 以外の薬局情報）
+    const validationErrors = validateOnboardingRegistration(req.body);
+    if (validationErrors.length > 0) {
+      res.status(400).json(buildValidationErrorResponse(validationErrors));
+      return;
+    }
 
     const {
       name,

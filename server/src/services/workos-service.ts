@@ -165,8 +165,15 @@ export interface OnboardingClaims {
 
 const ONBOARDING_TOKEN_PREFIX = 'onboarding:';
 
+function getOnboardingJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim();
+  if (secret) return secret;
+  if (process.env.NODE_ENV === 'test') return 'test-secret-only';
+  throw new Error('JWT_SECRET environment variable is not set');
+}
+
 export function generateOnboardingToken(claims: OnboardingClaims): string {
-  const secret = process.env.JWT_SECRET || 'test-secret-only';
+  const secret = getOnboardingJwtSecret();
   return jwt.sign(
     { sub: ONBOARDING_TOKEN_PREFIX + claims.workosUserId, email: claims.email },
     secret,
@@ -176,7 +183,7 @@ export function generateOnboardingToken(claims: OnboardingClaims): string {
 
 export function verifyOnboardingToken(token: string): OnboardingClaims | null {
   try {
-    const secret = process.env.JWT_SECRET || 'test-secret-only';
+    const secret = getOnboardingJwtSecret();
     const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as { sub?: string; email?: string };
     if (typeof decoded.sub !== 'string' || !decoded.sub.startsWith(ONBOARDING_TOKEN_PREFIX)) return null;
     if (typeof decoded.email !== 'string' || decoded.email.trim().length === 0) return null;
