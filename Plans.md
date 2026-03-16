@@ -10,6 +10,20 @@
 
 （なし）
 
+## 🟢 完了タスク
+
+### サーバーサイド コード簡素化リファクタリング (v0.0.14) — 完了 (2026-03-17)
+
+> 38ファイルの簡素化リファクタリングを3コミットに分割してコミット
+
+- [x] T701-T707: 全38ファイルのリファクタリング コミット `cc:完了`
+  - `a155e8c` — services (matching, auth, admin, group, scripts, DB) 14ファイル
+  - `71b1d96` — services (drug-master, alert, notification, exchange, camera, log) 16ファイル
+  - `459d536` — routes (auth, account, business-hours等) 8ファイル
+- [x] T708: 統合検証 `cc:完了`
+  - typecheck: 全パス
+  - test:server: 4610テスト全パス（279ファイル）
+
 ---
 
 ## 📦 アーカイブ
