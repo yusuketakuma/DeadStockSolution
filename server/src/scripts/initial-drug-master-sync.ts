@@ -11,7 +11,7 @@ import iconv from 'iconv-lite';
 import AdmZip from 'adm-zip';
 import { db } from '../config/database';
 import { drugMaster, drugMasterPackages, drugMasterSyncLogs } from '../db/schema';
-import { eq, isNull, sql } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { discoverMhlwExcelUrls } from '../services/mhlw-index-scraper';
 import { parseMhlwDrugFile } from '../services/drug-master-parser-mhlw';
 import { parsePackageCsvData } from '../services/drug-master-parser-package';
@@ -19,6 +19,27 @@ import { decodeCsvBuffer } from '../services/drug-master-parser-service';
 import { syncDrugMaster, syncPackageData, completeSyncLog } from '../services/drug-master-sync-service';
 import { createPinnedDnsAgent, validateExternalHttpsUrl } from '../utils/network-utils';
 import { fetchWithTimeout, type FetchDispatcher } from '../utils/http-utils';
+
+type SyncCounts = {
+  itemsProcessed: number;
+  itemsAdded: number;
+  itemsUpdated: number;
+  itemsDeleted: number;
+};
+
+type SyncType = 'auto_mhlw' | 'package_auto';
+
+type MhlwFileParseResult = {
+  category: string;
+  rows: Awaited<ReturnType<typeof parseMhlwDrugFile>>;
+};
+
+const ZERO_SYNC_COUNTS: SyncCounts = {
+  itemsProcessed: 0,
+  itemsAdded: 0,
+  itemsUpdated: 0,
+  itemsDeleted: 0,
+};
 
 async function download(url: string): Promise<{ buffer: Buffer; contentType: string | null }> {
   const validated = await validateExternalHttpsUrl(url);
@@ -38,7 +59,75 @@ async function download(url: string): Promise<{ buffer: Buffer; contentType: str
   return { buffer: Buffer.from(await res.arrayBuffer()), contentType: res.headers.get('content-type') };
 }
 
-async function main() {
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function parseHotMasterLine(line: string): string[] {
+  if (!line) {
+    return [''];
+  }
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (ch === ',' && !inQuotes) {
+      values.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  values.push(current);
+  return values;
+}
+
+async function createSyncLog(syncType: SyncType, sourceDescription: string): Promise<number> {
+  const [syncLog] = await db
+    .insert(drugMasterSyncLogs)
+    .values({
+      syncType,
+      sourceDescription,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+    })
+    .returning({ id: drugMasterSyncLogs.id });
+  return syncLog.id;
+}
+
+async function completeSyncLogWithHandling(
+  syncLogId: number,
+  counts: SyncCounts,
+): Promise<void> {
+  await completeSyncLog(syncLogId, 'success', counts);
+}
+
+async function failSyncLogWithHandling(syncLogId: number, err: unknown): Promise<never> {
+  const message = getErrorMessage(err);
+  await completeSyncLog(syncLogId, 'failed', ZERO_SYNC_COUNTS, message);
+  console.error(`  FAILED: ${message}`);
+  throw err;
+}
+
+async function parseMhlwFiles(
+  files: Awaited<ReturnType<typeof discoverMhlwExcelUrls>>['files'],
+): Promise<MhlwFileParseResult[]> {
+  return Promise.all(
+    files.map(async (file): Promise<MhlwFileParseResult> => {
+      process.stdout.write(`  [${file.category}] ダウンロード+パース中... `);
+      const { buffer, contentType } = await download(file.url);
+      const rows = await parseMhlwDrugFile(file.url, contentType, buffer);
+      console.log(`${rows.length} 件`);
+      return { category: file.category, rows };
+    }),
+  );
+}
+
+async function main(): Promise<void> {
   console.log('=== 初回マスターデータ一括同期 ===');
   console.log('');
 
@@ -47,36 +136,24 @@ async function main() {
   const indexResult = await discoverMhlwExcelUrls();
   console.log(`発見ファイル: ${indexResult.files.length} カテゴリ`);
 
-  const allDrugRows: Awaited<ReturnType<typeof parseMhlwDrugFile>> = [];
-  for (const file of indexResult.files) {
-    process.stdout.write(`  [${file.category}] ダウンロード+パース中... `);
-    const { buffer, contentType } = await download(file.url);
-    const rows = await parseMhlwDrugFile(file.url, contentType, buffer);
-    allDrugRows.push(...rows);
-    console.log(`${rows.length} 件`);
-  }
+  const mhlwRowsByFile = await parseMhlwFiles(indexResult.files);
+  const allDrugRows = mhlwRowsByFile.flatMap((result) => result.rows);
   console.log(`  合計: ${allDrugRows.length} 品目`);
 
-  // 同期ログ作成
-  const [drugSyncLog] = await db.insert(drugMasterSyncLogs).values({
-    syncType: 'auto_mhlw',
-    sourceDescription: `初回一括同期: MHLW薬価基準4カテゴリ (${indexResult.indexUrl})`,
-    status: 'running',
-    startedAt: new Date().toISOString(),
-  }).returning();
-  console.log(`  同期ログ #${drugSyncLog.id} 作成`);
+  const drugSyncLogId = await createSyncLog(
+    'auto_mhlw',
+    `初回一括同期: MHLW薬価基準4カテゴリ (${indexResult.indexUrl})`,
+  );
+  console.log(`  同期ログ #${drugSyncLogId} 作成`);
 
   const today = new Date().toISOString().slice(0, 10);
   try {
     console.log('  DB書込中...');
-    const drugResult = await syncDrugMaster(allDrugRows, drugSyncLog.id, today);
-    await completeSyncLog(drugSyncLog.id, 'success', drugResult);
+    const drugResult = await syncDrugMaster(allDrugRows, drugSyncLogId, today);
+    await completeSyncLogWithHandling(drugSyncLogId, drugResult);
     console.log(`  完了: processed=${drugResult.itemsProcessed} added=${drugResult.itemsAdded} updated=${drugResult.itemsUpdated} deleted=${drugResult.itemsDeleted}`);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    await completeSyncLog(drugSyncLog.id, 'failed', { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 }, msg);
-    console.error(`  FAILED: ${msg}`);
-    throw err;
+    await failSyncLogWithHandling(drugSyncLogId, err);
   }
 
   // ===== Phase 2: MEDIS medhot 包装単位データ =====
@@ -112,18 +189,16 @@ async function main() {
   const pkgRows = [...pkgRows2, ...supplementRows];
   console.log(`  結合: ${pkgRows.length} 件 (ファイル1補完: +${supplementRows.length})`);
 
-  const [pkgSyncLog] = await db.insert(drugMasterSyncLogs).values({
-    syncType: 'package_auto',
-    sourceDescription: `初回一括同期: MEDIS medhot包装単位 (${packageUrl2.split('/').pop()})`,
-    status: 'running',
-    startedAt: new Date().toISOString(),
-  }).returning();
-  console.log(`  同期ログ #${pkgSyncLog.id} 作成`);
+  const pkgSyncLogId = await createSyncLog(
+    'package_auto',
+    `初回一括同期: MEDIS medhot包装単位 (${packageUrl2.split('/').pop()})`,
+  );
+  console.log(`  同期ログ #${pkgSyncLogId} 作成`);
 
   try {
     console.log('  DB書込中...');
     const pkgResult = await syncPackageData(pkgRows);
-    await completeSyncLog(pkgSyncLog.id, 'success', {
+    await completeSyncLogWithHandling(pkgSyncLogId, {
       itemsProcessed: pkgRows.length,
       itemsAdded: pkgResult.added,
       itemsUpdated: pkgResult.updated,
@@ -131,10 +206,7 @@ async function main() {
     });
     console.log(`  完了: processed=${pkgRows.length} added=${pkgResult.added} updated=${pkgResult.updated}`);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    await completeSyncLog(pkgSyncLog.id, 'failed', { itemsProcessed: 0, itemsAdded: 0, itemsUpdated: 0, itemsDeleted: 0 }, msg);
-    console.error(`  FAILED: ${msg}`);
-    throw err;
+    await failSyncLogWithHandling(pkgSyncLogId, err);
   }
 
   // ===== Phase 3: MEDIS HOTコードマスターから HOT 補完 =====
@@ -157,19 +229,13 @@ async function main() {
     // YJ→HOT13 マッピング構築
     const yjToHot = new Map<string, string>();
     for (let i = 1; i < hotLines.length; i++) {
-      const vals: string[] = [];
-      let cur = '', inQ = false;
-      for (const ch of hotLines[i]) {
-        if (ch === '"') { inQ = !inQ; continue; }
-        if (ch === ',' && !inQ) { vals.push(cur); cur = ''; continue; }
-        cur += ch;
-      }
-      vals.push(cur);
+      const vals = parseHotMasterLine(hotLines[i]);
       const hot13 = (vals[0] || '').trim();
       const yj = (vals[6] || '').trim();
-      if (hot13 && yj && !yjToHot.has(yj)) {
-        yjToHot.set(yj, hot13);
+      if (!hot13 || !yj || yjToHot.has(yj)) {
+        continue;
       }
+      yjToHot.set(yj, hot13);
     }
     console.log(`  YJ→HOT マッピング: ${yjToHot.size} 件`);
 
@@ -189,29 +255,41 @@ async function main() {
     const BATCH = 500;
     for (let i = 0; i < packagesWithoutHot.length; i += BATCH) {
       const batch = packagesWithoutHot.slice(i, i + BATCH);
+      const updates: Array<Promise<unknown>> = [];
       for (const pkg of batch) {
         const yj = idToYj.get(pkg.drugMasterId);
-        if (!yj) continue;
+        if (!yj) {
+          continue;
+        }
         const hot = yjToHot.get(yj);
-        if (!hot) continue;
-        await db.update(drugMasterPackages)
-          .set({ hotCode: hot })
-          .where(eq(drugMasterPackages.id, pkg.id));
-        hotUpdated++;
+        if (!hot) {
+          continue;
+        }
+        updates.push(
+          db
+            .update(drugMasterPackages)
+            .set({ hotCode: hot })
+            .where(eq(drugMasterPackages.id, pkg.id)),
+        );
       }
+      if (updates.length === 0) {
+        continue;
+      }
+      await Promise.all(updates);
+      hotUpdated += updates.length;
     }
     console.log(`  HOT補完: ${hotUpdated} 件更新`);
   } catch (err) {
-    console.log(`  HOT補完スキップ: ${err instanceof Error ? err.message : err}`);
+    console.log(`  HOT補完スキップ: ${getErrorMessage(err)}`);
   }
 
   console.log('');
   console.log('=== 初回同期完了 ===');
 }
 
-main().then(() => {
+main().then((): void => {
   process.exit(0);
-}).catch((err) => {
-  console.error('致命的エラー:', err instanceof Error ? err.message : err);
+}).catch((err: unknown): void => {
+  console.error('致命的エラー:', getErrorMessage(err));
   process.exit(1);
 });

@@ -1,6 +1,6 @@
 import { desc, eq, and, SQL } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacyRelationships, pharmacies } from '../db/schema';
+import { pharmacyRelationshipTypeEnum, pharmacyRelationships, pharmacies } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 
 export interface RelationshipListParams {
@@ -14,7 +14,10 @@ export interface RelationshipListParams {
 export async function listRelationships(params: RelationshipListParams) {
   const conditions: SQL[] = [];
   if (params.relationshipType) {
-    conditions.push(eq(pharmacyRelationships.relationshipType, params.relationshipType as any));
+    conditions.push(eq(
+      pharmacyRelationships.relationshipType,
+      params.relationshipType as (typeof pharmacyRelationshipTypeEnum.enumValues)[number],
+    ));
   }
   if (params.pharmacyId) {
     conditions.push(eq(pharmacyRelationships.pharmacyId, params.pharmacyId));

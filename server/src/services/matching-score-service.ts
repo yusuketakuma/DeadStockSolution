@@ -20,6 +20,8 @@ const SPARSE_CANDIDATE_THRESHOLD = 25;
 const NEAR_LENGTH_CANDIDATE_LIMIT = 200;
 const NEAR_LENGTH_WINDOW = 2;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MIN_SCORE_DIVISOR = 0.0001;
+const SUCCESS_RATE_LOG_CAP = 20;
 
 export const DEFAULT_MATCHING_SCORING_RULES: MatchingScoringRules = {
   nameMatchThreshold: 0.7,
@@ -63,6 +65,10 @@ export function setLimitedCacheEntry<T>(cache: Map<string, T>, key: string, valu
 
 export function roundTo2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function hasContainmentRelationship(left: string, right: string): boolean {
+  return left.includes(right) || right.includes(left);
 }
 
 function normalizeDrugName(name: string): string {
@@ -146,7 +152,7 @@ function computeNameSimilarity(
 
   if (!normalizedA || !normalizedB) return 0;
   if (normalizedA === normalizedB) return 1;
-  if (normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA)) return 0.9;
+  if (hasContainmentRelationship(normalizedA, normalizedB)) return 0.9;
 
   const tokenScore = jaccardScore(tokensA, nameB.tokenSet);
   const maxLen = Math.max(normalizedA.length, normalizedB.length);
@@ -272,6 +278,36 @@ export function findBestDrugMatch(
 }
 
 const EQUIVALENCE_MATCH_SCORE = 0.95;
+const EQUIVALENCE_CANDIDATE_FLOOR_SCORE = 0.3;
+
+function resolveEquivalenceBoostScore(
+  normalizedDrugName: string,
+  index: UsedMedIndex,
+  cache: Map<string, DrugMatchResult>,
+  equivalenceMap: Map<string, string[]>,
+  initialScore: number,
+): number {
+  let bestScore = initialScore;
+
+  for (const [registeredName, equivalents] of equivalenceMap) {
+    if (!hasContainmentRelationship(normalizedDrugName, registeredName)) {
+      continue;
+    }
+
+    for (const equivName of equivalents) {
+      const equivPrepared = prepareDrugName(equivName);
+      const equivResult = findBestDrugMatch(equivPrepared, index, cache);
+      if (equivResult.score <= EQUIVALENCE_CANDIDATE_FLOOR_SCORE) {
+        continue;
+      }
+
+      const boostedScore = Math.max(equivResult.score, EQUIVALENCE_MATCH_SCORE);
+      bestScore = Math.max(bestScore, boostedScore);
+    }
+  }
+
+  return bestScore;
+}
 
 /**
  * 同等性マップを考慮した薬品名マッチング。
@@ -296,25 +332,13 @@ export function findBestDrugMatchWithEquivalences(
   const { normalizedDrugName } = preparedDrugName;
   if (!normalizedDrugName) return baseResult;
 
-  // Check equivalence: look up all equivalent names for input drug
-  let bestScore = baseResult.score;
-  for (const [registeredName, equivalents] of equivalenceMap) {
-    // Check if input drug name contains or is contained by a registered name
-    if (!normalizedDrugName.includes(registeredName) && !registeredName.includes(normalizedDrugName)) {
-      continue;
-    }
-
-    // For each equivalent, check if it matches any used med
-    for (const equivName of equivalents) {
-      const equivPrepared = prepareDrugName(equivName);
-      const equivResult = findBestDrugMatch(equivPrepared, index, cache);
-      if (equivResult.score > 0.3) {
-        // Boost: if equivalent drug is found in used meds, give high score
-        const boostedScore = Math.max(equivResult.score, EQUIVALENCE_MATCH_SCORE);
-        bestScore = Math.max(bestScore, boostedScore);
-      }
-    }
-  }
+  const bestScore = resolveEquivalenceBoostScore(
+    normalizedDrugName,
+    index,
+    cache,
+    equivalenceMap,
+    baseResult.score,
+  );
 
   if (bestScore > baseResult.score) {
     const result = { score: bestScore };
@@ -404,9 +428,10 @@ export function calculateExponentialNearExpiryScore(
 ): number {
   if (nearExpiryDecayCurve <= 0) {
     // Linear mode (backward compatible)
-    return Math.min(
+    return calculateCappedItemScore(
+      getNearExpiryCount(items, nearExpiryDays, referenceDate),
+      nearExpiryItemFactor,
       nearExpiryScoreMax,
-      getNearExpiryCount(items, nearExpiryDays, referenceDate) * nearExpiryItemFactor,
     );
   }
 
@@ -429,7 +454,7 @@ export function calculateExponentialNearExpiryScore(
     totalWeight += weight;
   }
 
-  return Math.min(nearExpiryScoreMax, totalWeight * nearExpiryItemFactor);
+  return calculateCappedItemScore(totalWeight, nearExpiryItemFactor, nearExpiryScoreMax);
 }
 
 /**
@@ -447,9 +472,39 @@ export function calculateSuccessRateBonus(
 
   // Logarithmic scale: diminishing returns with more successes
   // Cap at ~20 successes for full bonus
-  const LOG_CAP = 20;
-  const ratio = Math.log2(safeCount + 1) / Math.log2(LOG_CAP + 1);
+  const ratio = Math.log2(safeCount + 1) / Math.log2(SUCCESS_RATE_LOG_CAP + 1);
   return roundTo2(Math.min(successRateBonusMax, ratio * successRateBonusMax));
+}
+
+function sanitizeDivisor(divisor: number): number {
+  return Math.max(MIN_SCORE_DIVISOR, divisor);
+}
+
+function calculateCappedLinearScore(value: number, divisor: number, maxScore: number): number {
+  return Math.min(maxScore, value / sanitizeDivisor(divisor));
+}
+
+function calculateCappedDifferenceScore(maxScore: number, difference: number, factor: number): number {
+  return Math.max(0, maxScore - difference * factor);
+}
+
+function calculateDistanceComponentScore(
+  distanceKm: number,
+  scoringRules: MatchingScoringRules,
+): number {
+  if (distanceKm >= 9999) {
+    return scoringRules.distanceScoreFallback;
+  }
+
+  return calculateCappedDifferenceScore(
+    scoringRules.distanceScoreMax,
+    distanceKm,
+    1 / sanitizeDivisor(scoringRules.distanceScoreDivisor),
+  );
+}
+
+function calculateCappedItemScore(itemCount: number, itemFactor: number, maxScore: number): number {
+  return Math.min(maxScore, itemCount * itemFactor);
 }
 
 function resolveCandidateScoreContext(
@@ -467,17 +522,17 @@ function resolveCandidateScoreContext(
   const effectiveReferenceDate = isGroupMemberOrReferenceDate instanceof Date
     ? isGroupMemberOrReferenceDate
     : referenceDate;
-  const valueScoreDivisor = Math.max(0.0001, scoringRules.valueScoreDivisor);
-  const distanceScoreDivisor = Math.max(0.0001, scoringRules.distanceScoreDivisor);
   const nearExpiryDays = Math.max(1, Math.floor(scoringRules.nearExpiryDays));
   const minValue = Math.min(totalA, totalB);
 
   return {
-    valueScore: Math.min(scoringRules.valueScoreMax, minValue / valueScoreDivisor),
-    balanceScore: Math.max(0, scoringRules.balanceScoreMax - diff * scoringRules.balanceScoreDiffFactor),
-    distanceScore: distanceKm >= 9999
-      ? scoringRules.distanceScoreFallback
-      : Math.max(0, scoringRules.distanceScoreMax - distanceKm / distanceScoreDivisor),
+    valueScore: calculateCappedLinearScore(minValue, scoringRules.valueScoreDivisor, scoringRules.valueScoreMax),
+    balanceScore: calculateCappedDifferenceScore(
+      scoringRules.balanceScoreMax,
+      diff,
+      scoringRules.balanceScoreDiffFactor,
+    ),
+    distanceScore: calculateDistanceComponentScore(distanceKm, scoringRules),
     nearExpiryDays,
     effectiveReferenceDate,
     isGroupMember,
@@ -513,9 +568,10 @@ export function calculateCandidateScore(
     scoringRules.nearExpiryScoreMax,
     context.effectiveReferenceDate,
   );
-  const diversityScore = Math.min(
+  const diversityScore = calculateCappedItemScore(
+    Math.min(itemsFromA.length, itemsFromB.length),
+    scoringRules.diversityItemFactor,
     scoringRules.diversityScoreMax,
-    Math.min(itemsFromA.length, itemsFromB.length) * scoringRules.diversityItemFactor,
   );
   const favoriteScore = isFavorite ? scoringRules.favoriteBonus : 0;
   const groupScore = context.isGroupMember ? scoringRules.groupBonus : 0;

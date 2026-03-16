@@ -1,4 +1,4 @@
-import { and, asc, eq, exists, gte, inArray, isNull, lt, lte, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, eq, exists, gte, inArray, isNull, lt, lte, notInArray, or, sql, type SQLWrapper } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies, deadStockItems, matchingRefreshJobs, usedMedicationItems, uploads } from '../db/schema';
 import { splitIntoChunks } from '../utils/array-utils';
@@ -72,15 +72,15 @@ function getCurrentMonthStartIso(): string {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
-function buildClaimEligibilityConditions(nowIso: string, staleBeforeIso: string) {
+function buildClaimEligibilityConditions(nowIso: string, staleBeforeIso: string): SQLWrapper[] {
   return [
     lt(matchingRefreshJobs.attempts, MAX_JOB_ATTEMPTS),
-    or(isNull(matchingRefreshJobs.nextRetryAt), lte(matchingRefreshJobs.nextRetryAt, nowIso)),
-    or(isNull(matchingRefreshJobs.processingStartedAt), lt(matchingRefreshJobs.processingStartedAt, staleBeforeIso)),
+    or(isNull(matchingRefreshJobs.nextRetryAt), lte(matchingRefreshJobs.nextRetryAt, nowIso))!,
+    or(isNull(matchingRefreshJobs.processingStartedAt), lt(matchingRefreshJobs.processingStartedAt, staleBeforeIso))!,
   ];
 }
 
-type ClaimConditions = ReturnType<typeof buildClaimEligibilityConditions>;
+type ClaimConditions = SQLWrapper[];
 
 function recordPharmacyRefreshFailure(
   failedPharmacyIds: number[],
@@ -174,9 +174,7 @@ async function buildSnapshotEntries(
 
   for (const pharmacyId of pharmacyIdChunk) {
     try {
-      const candidates = matchesByPharmacy?.has(pharmacyId)
-        ? matchesByPharmacy.get(pharmacyId) ?? []
-        : await findMatches(pharmacyId);
+      const candidates = await resolveCandidatesForPharmacy(matchesByPharmacy, pharmacyId);
       snapshotEntries.push({
         pharmacyId,
         triggerPharmacyId,
@@ -190,6 +188,74 @@ async function buildSnapshotEntries(
   }
 
   return snapshotEntries;
+}
+
+async function resolveCandidatesForPharmacy(
+  matchesByPharmacy: Map<number, MatchCandidates> | null,
+  pharmacyId: number,
+): Promise<MatchCandidates> {
+  if (!matchesByPharmacy) {
+    return findMatches(pharmacyId);
+  }
+
+  if (!matchesByPharmacy.has(pharmacyId)) {
+    return findMatches(pharmacyId);
+  }
+
+  return matchesByPharmacy.get(pharmacyId) ?? [];
+}
+
+function buildQueuedJobState(
+  uploadType: MatchingRefreshUploadType,
+  scheduledAtIso: string,
+  nowIso: string,
+): {
+  uploadType: MatchingRefreshUploadType;
+  attempts: number;
+  processingStartedAt: null;
+  nextRetryAt: string;
+  lastError: null;
+  updatedAt: string;
+} {
+  return {
+    uploadType,
+    attempts: 0,
+    processingStartedAt: null,
+    nextRetryAt: scheduledAtIso,
+    lastError: null,
+    updatedAt: nowIso,
+  };
+}
+
+async function deleteRefreshJobsByIds(
+  executor: JobQueueExecutor,
+  jobIds: number[],
+): Promise<void> {
+  if (jobIds.length === 0) return;
+
+  await executor.delete(matchingRefreshJobs)
+    .where(inArray(matchingRefreshJobs.id, jobIds));
+}
+
+function logRefreshJobAttemptOutcome(job: RefreshJob, nextAttempts: number, errorMessage: string): void {
+  if (nextAttempts >= MAX_JOB_ATTEMPTS) {
+    logger.error('Matching refresh job reached max attempts', {
+      jobId: job.id,
+      triggerPharmacyId: job.triggerPharmacyId,
+      uploadType: job.uploadType,
+      attempts: nextAttempts,
+      error: errorMessage,
+    });
+    return;
+  }
+
+  logger.warn('Matching refresh job attempt failed and will retry later', {
+    jobId: job.id,
+    triggerPharmacyId: job.triggerPharmacyId,
+    uploadType: job.uploadType,
+    attempts: nextAttempts,
+    error: errorMessage,
+  });
 }
 
 async function persistSnapshotEntries(
@@ -343,23 +409,7 @@ async function processOneRefreshJob(job: RefreshJob): Promise<boolean> {
       })
       .where(eq(matchingRefreshJobs.id, job.id));
 
-    if (nextAttempts >= MAX_JOB_ATTEMPTS) {
-      logger.error('Matching refresh job reached max attempts', {
-        jobId: job.id,
-        triggerPharmacyId: job.triggerPharmacyId,
-        uploadType: job.uploadType,
-        attempts: nextAttempts,
-        error: errorMessage,
-      });
-    } else {
-      logger.warn('Matching refresh job attempt failed and will retry later', {
-        jobId: job.id,
-        triggerPharmacyId: job.triggerPharmacyId,
-        uploadType: job.uploadType,
-        attempts: nextAttempts,
-        error: errorMessage,
-      });
-    }
+    logRefreshJobAttemptOutcome(job, nextAttempts, errorMessage);
 
     return false;
   }
@@ -374,11 +424,12 @@ async function processPendingRefreshJobs(limit: number): Promise<number> {
     if (!job) break;
 
     const success = await processOneRefreshJob(job);
-    if (success) {
-      processed += 1;
-    } else {
+    if (!success) {
       failedInThisRun.push(job.id);
+      continue;
     }
+
+    processed += 1;
   }
 
   return processed;
@@ -434,26 +485,16 @@ async function reuseKeeperJob(
   executor: JobQueueExecutor,
   keeper: WaitingRefreshJob,
   waitingRows: WaitingRefreshJob[],
-  params: { triggerPharmacyId: number; uploadType: MatchingRefreshUploadType },
+  uploadType: MatchingRefreshUploadType,
   scheduledAtIso: string,
   nowIso: string,
 ): Promise<void> {
   await executor.update(matchingRefreshJobs)
-    .set({
-      uploadType: params.uploadType,
-      attempts: 0,
-      processingStartedAt: null,
-      nextRetryAt: scheduledAtIso,
-      lastError: null,
-      updatedAt: nowIso,
-    })
+    .set(buildQueuedJobState(uploadType, scheduledAtIso, nowIso))
     .where(eq(matchingRefreshJobs.id, keeper.id));
 
   const redundantIds = waitingRows.slice(1).map((row) => row.id);
-  if (redundantIds.length > 0) {
-    await executor.delete(matchingRefreshJobs)
-      .where(inArray(matchingRefreshJobs.id, redundantIds));
-  }
+  await deleteRefreshJobsByIds(executor, redundantIds);
 }
 
 async function insertRefreshJob(
@@ -464,12 +505,7 @@ async function insertRefreshJob(
 ): Promise<void> {
   await executor.insert(matchingRefreshJobs).values({
     triggerPharmacyId: params.triggerPharmacyId,
-    uploadType: params.uploadType,
-    attempts: 0,
-    processingStartedAt: null,
-    nextRetryAt: scheduledAtIso,
-    lastError: null,
-    updatedAt: nowIso,
+    ...buildQueuedJobState(params.uploadType, scheduledAtIso, nowIso),
   });
 }
 
@@ -494,7 +530,7 @@ export async function triggerMatchingRefreshOnUpload(params: {
     const keeper = waitingRows[0];
 
     if (keeper) {
-      await reuseKeeperJob(tx, keeper, waitingRows, params, scheduledAtIso, nowIso);
+      await reuseKeeperJob(tx, keeper, waitingRows, params.uploadType, scheduledAtIso, nowIso);
       return;
     }
 

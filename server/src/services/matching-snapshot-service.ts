@@ -78,6 +78,63 @@ interface MatchNotificationValue {
 }
 
 type SnapshotDbExecutor = Pick<typeof db, 'select' | 'insert' | 'update'>;
+type SnapshotMutationExecutor = Pick<typeof db, 'insert' | 'update'>;
+
+function selectSnapshotColumns() {
+  return {
+    id: matchCandidateSnapshots.id,
+    pharmacyId: matchCandidateSnapshots.pharmacyId,
+    candidateHash: matchCandidateSnapshots.candidateHash,
+    candidateCount: matchCandidateSnapshots.candidateCount,
+    topCandidatesJson: matchCandidateSnapshots.topCandidatesJson,
+  };
+}
+
+async function fetchSnapshotByPharmacyId(
+  executor: SnapshotDbExecutor,
+  pharmacyId: number,
+): Promise<StoredSnapshotRow | undefined> {
+  const [snapshot] = await executor.select(selectSnapshotColumns())
+    .from(matchCandidateSnapshots)
+    .where(eq(matchCandidateSnapshots.pharmacyId, pharmacyId))
+    .limit(1);
+
+  return snapshot;
+}
+
+async function fetchSnapshotsByPharmacyIds(
+  executor: SnapshotDbExecutor,
+  pharmacyIds: number[],
+): Promise<StoredSnapshotRow[]> {
+  if (pharmacyIds.length === 0) {
+    return [];
+  }
+
+  return executor.select(selectSnapshotColumns())
+    .from(matchCandidateSnapshots)
+    .where(inArray(matchCandidateSnapshots.pharmacyId, pharmacyIds));
+}
+
+async function insertMatchNotifications(
+  executor: SnapshotMutationExecutor,
+  values: MatchNotificationValue | MatchNotificationValue[],
+): Promise<void> {
+  if (Array.isArray(values) && values.length === 0) {
+    return;
+  }
+
+  const insertQuery = executor.insert(matchNotifications);
+  if (Array.isArray(values)) {
+    await insertQuery.values(values).onConflictDoNothing({
+      target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
+    });
+    return;
+  }
+
+  await insertQuery.values(values).onConflictDoNothing({
+    target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
+  });
+}
 
 function safeNumber(value: number | undefined): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return 0;
@@ -276,15 +333,7 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
   const next = createSnapshotPayload(candidates);
   const snapshotSetValue = createSnapshotSetValue(next, new Date().toISOString());
 
-  const [current] = await db.select({
-    id: matchCandidateSnapshots.id,
-    candidateHash: matchCandidateSnapshots.candidateHash,
-    candidateCount: matchCandidateSnapshots.candidateCount,
-    topCandidatesJson: matchCandidateSnapshots.topCandidatesJson,
-  })
-    .from(matchCandidateSnapshots)
-    .where(eq(matchCandidateSnapshots.pharmacyId, pharmacyId))
-    .limit(1);
+  const current = await fetchSnapshotByPharmacyId(db, pharmacyId);
 
   const beforeCount = getStoredCandidateCount(current);
   const changed = hasSnapshotChanged(current, next);
@@ -300,20 +349,30 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
     });
   }
 
-  if (changed) {
-    if (await resolveShouldNotify(pharmacyId, notifyEnabled)) {
-      await db.insert(matchNotifications).values(createMatchNotificationValue({
-        pharmacyId,
-        triggerPharmacyId,
-        triggerUploadType,
-        beforeCount,
-        beforeTopCandidatesJson: current?.topCandidatesJson,
-        next,
-      })).onConflictDoNothing({
-        target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
-      });
-    }
+  if (!changed) {
+    return {
+      changed,
+      beforeCount,
+      afterCount: next.candidateCount,
+    };
   }
+
+  if (!await resolveShouldNotify(pharmacyId, notifyEnabled)) {
+    return {
+      changed,
+      beforeCount,
+      afterCount: next.candidateCount,
+    };
+  }
+
+  await insertMatchNotifications(db, createMatchNotificationValue({
+    pharmacyId,
+    triggerPharmacyId,
+    triggerUploadType,
+    beforeCount,
+    beforeTopCandidatesJson: current?.topCandidatesJson,
+    next,
+  }));
 
   return {
     changed,
@@ -340,19 +399,11 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
 }>): Promise<{ changedCount: number }> {
   if (entries.length === 0) return { changedCount: 0 };
 
-  const runBatchSave = async (executor: SnapshotDbExecutor) => {
+  const runBatchSave = async (executor: SnapshotDbExecutor): Promise<{ changedCount: number }> => {
     const allPharmacyIds = entries.map((entry) => entry.pharmacyId);
     const now = new Date().toISOString();
 
-    const existingRows = await executor.select({
-      id: matchCandidateSnapshots.id,
-      pharmacyId: matchCandidateSnapshots.pharmacyId,
-      candidateHash: matchCandidateSnapshots.candidateHash,
-      candidateCount: matchCandidateSnapshots.candidateCount,
-      topCandidatesJson: matchCandidateSnapshots.topCandidatesJson,
-    })
-      .from(matchCandidateSnapshots)
-      .where(inArray(matchCandidateSnapshots.pharmacyId, allPharmacyIds));
+    const existingRows = await fetchSnapshotsByPharmacyIds(executor, allPharmacyIds);
 
     const existingMap = new Map(existingRows.map((row) => [row.pharmacyId, row]));
 
@@ -392,6 +443,10 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
         },
       });
 
+    if (changedEntries.length === 0) {
+      return { changedCount: 0 };
+    }
+
     const notificationValues: MatchNotificationValue[] = [];
     for (const { entry, next, existing } of changedEntries) {
       if (!entry.notifyEnabled) continue;
@@ -406,13 +461,7 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
       }));
     }
 
-    if (notificationValues.length > 0) {
-      await executor.insert(matchNotifications)
-        .values(notificationValues)
-        .onConflictDoNothing({
-          target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
-        });
-    }
+    await insertMatchNotifications(executor, notificationValues);
 
     return { changedCount: changedEntries.length };
   };

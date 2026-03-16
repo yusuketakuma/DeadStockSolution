@@ -2,7 +2,7 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createClient, type Client } from '@libsql/client';
-import { sql } from 'drizzle-orm';
+import { sql, type InferInsertModel } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/neon-serverless/migrator';
 import { db } from '../config/database';
 import { logger } from '../services/logger';
@@ -21,6 +21,7 @@ import {
 import { applyPerformanceScaleIndexes } from './performance-scale-indexes';
 
 type LegacyRow = Record<string, unknown>;
+type DbInsertTable = Parameters<typeof db.insert>[0];
 
 const uploadTypes = new Set(['dead_stock', 'used_medication'] as const);
 const exchangeStatuses = new Set([
@@ -188,6 +189,23 @@ async function migrateTable<T>(
   await insertChunked(tableName, rows.map(mapper), inserter);
 }
 
+function createOnConflictDoNothingInserter<TTable extends DbInsertTable>(
+  table: TTable,
+): (chunk: InferInsertModel<TTable>[]) => Promise<void> {
+  return async (chunk: InferInsertModel<TTable>[]): Promise<void> => {
+    await db.insert(table).values(chunk).onConflictDoNothing();
+  };
+}
+
+async function maybeClearTargetData(): Promise<void> {
+  if (process.env.LEGACY_MIGRATION_MODE !== 'replace') {
+    return;
+  }
+
+  logger.info('LEGACY_MIGRATION_MODE=replace detected. Target tables will be truncated first.');
+  await clearTargetData();
+}
+
 async function syncSequence(tableName: string): Promise<void> {
   await db.execute(sql.raw(`
     SELECT setval(
@@ -216,16 +234,11 @@ async function clearTargetData(): Promise<void> {
   `));
 }
 
-async function main() {
+async function main(): Promise<void> {
   logger.info('Running PostgreSQL schema migration...');
   await migrate(db, { migrationsFolder: './drizzle' });
   await applyPerformanceScaleIndexes();
-
-  const replaceMode = process.env.LEGACY_MIGRATION_MODE === 'replace';
-  if (replaceMode) {
-    logger.info('LEGACY_MIGRATION_MODE=replace detected. Target tables will be truncated first.');
-    await clearTargetData();
-  }
+  await maybeClearTargetData();
 
   const { url, authToken } = resolveLegacyUrl();
   logger.info(`Using legacy source: ${url.startsWith('file:') ? url : '[remote]'}`);
@@ -250,9 +263,7 @@ async function main() {
       isActive: toNullableBoolean(row.is_active) ?? true,
       createdAt: toOptionalString(row.created_at),
       updatedAt: toOptionalString(row.updated_at),
-    }), async (chunk) => {
-      await db.insert(pharmacies).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(pharmacies));
 
     await migrateTable(legacy, 'uploads', (row) => ({
       id: toNumber(row.id, 'uploads.id'),
@@ -262,9 +273,7 @@ async function main() {
       columnMapping: toNullableString(row.column_mapping),
       rowCount: toNullableNumber(row.row_count),
       createdAt: toOptionalString(row.created_at),
-    }), async (chunk) => {
-      await db.insert(uploads).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(uploads));
 
     await migrateTable(legacy, 'dead_stock_items', (row) => ({
       id: toNumber(row.id, 'dead_stock_items.id'),
@@ -280,9 +289,7 @@ async function main() {
       lotNumber: toNullableString(row.lot_number),
       isAvailable: toNullableBoolean(row.is_available) ?? true,
       createdAt: toOptionalString(row.created_at),
-    }), async (chunk) => {
-      await db.insert(deadStockItems).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(deadStockItems));
 
     await migrateTable(legacy, 'used_medication_items', (row) => ({
       id: toNumber(row.id, 'used_medication_items.id'),
@@ -294,9 +301,7 @@ async function main() {
       unit: toNullableString(row.unit),
       yakkaUnitPrice: toNullableNumericString(row.yakka_unit_price),
       createdAt: toOptionalString(row.created_at),
-    }), async (chunk) => {
-      await db.insert(usedMedicationItems).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(usedMedicationItems));
 
     await migrateTable(legacy, 'exchange_proposals', (row) => ({
       id: toNumber(row.id, 'exchange_proposals.id'),
@@ -308,9 +313,7 @@ async function main() {
       valueDifference: toNullableNumericString(row.value_difference),
       proposedAt: toOptionalString(row.proposed_at),
       completedAt: toNullableString(row.completed_at),
-    }), async (chunk) => {
-      await db.insert(exchangeProposals).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(exchangeProposals));
 
     await migrateTable(legacy, 'exchange_proposal_items', (row) => ({
       id: toNumber(row.id, 'exchange_proposal_items.id'),
@@ -320,9 +323,7 @@ async function main() {
       toPharmacyId: toNumber(row.to_pharmacy_id, 'exchange_proposal_items.to_pharmacy_id'),
       quantity: toNumber(row.quantity, 'exchange_proposal_items.quantity'),
       yakkaValue: toNullableNumericString(row.yakka_value),
-    }), async (chunk) => {
-      await db.insert(exchangeProposalItems).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(exchangeProposalItems));
 
     await migrateTable(legacy, 'exchange_history', (row) => ({
       id: toNumber(row.id, 'exchange_history.id'),
@@ -331,9 +332,7 @@ async function main() {
       pharmacyBId: toNumber(row.pharmacy_b_id, 'exchange_history.pharmacy_b_id'),
       totalValue: toNullableNumericString(row.total_value),
       completedAt: toOptionalString(row.completed_at),
-    }), async (chunk) => {
-      await db.insert(exchangeHistory).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(exchangeHistory));
 
     await migrateTable(legacy, 'column_mapping_templates', (row) => ({
       id: toNumber(row.id, 'column_mapping_templates.id'),
@@ -342,9 +341,7 @@ async function main() {
       headerHash: toStringValue(row.header_hash, 'column_mapping_templates.header_hash'),
       mapping: toStringValue(row.mapping, 'column_mapping_templates.mapping'),
       createdAt: toOptionalString(row.created_at),
-    }), async (chunk) => {
-      await db.insert(columnMappingTemplates).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(columnMappingTemplates));
 
     await migrateTable(legacy, 'admin_messages', (row) => ({
       id: toNumber(row.id, 'admin_messages.id'),
@@ -355,18 +352,14 @@ async function main() {
       body: toStringValue(row.body, 'admin_messages.body'),
       actionPath: toNullableString(row.action_path),
       createdAt: toOptionalString(row.created_at),
-    }), async (chunk) => {
-      await db.insert(adminMessages).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(adminMessages));
 
     await migrateTable(legacy, 'admin_message_reads', (row) => ({
       id: toNumber(row.id, 'admin_message_reads.id'),
       messageId: toNumber(row.message_id, 'admin_message_reads.message_id'),
       pharmacyId: toNumber(row.pharmacy_id, 'admin_message_reads.pharmacy_id'),
       readAt: toOptionalString(row.read_at),
-    }), async (chunk) => {
-      await db.insert(adminMessageReads).values(chunk).onConflictDoNothing();
-    });
+    }), createOnConflictDoNothingInserter(adminMessageReads));
 
     for (const tableName of SEQUENCE_TABLE_NAMES) {
       await syncSequence(tableName);

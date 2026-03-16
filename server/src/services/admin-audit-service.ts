@@ -1,6 +1,6 @@
 import { desc, eq, and, SQL } from 'drizzle-orm';
 import { db } from '../config/database';
-import { adminAuditLogs, pharmacies } from '../db/schema';
+import { adminAuditLogs, pharmacies, type AdminAuditAction } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 
 export interface AuditListParams {
@@ -13,7 +13,7 @@ export interface AuditListParams {
 export async function listAuditLogs(params: AuditListParams) {
   const conditions: SQL[] = [];
   if (params.action) {
-    conditions.push(eq(adminAuditLogs.action, params.action as any));
+    conditions.push(eq(adminAuditLogs.action, params.action as AdminAuditAction));
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 

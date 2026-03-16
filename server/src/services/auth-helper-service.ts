@@ -20,6 +20,65 @@ import type { AuthMeRow, LegacyAuthMeRow, TestPharmacyPreviewRow } from '../type
 
 type TestPharmacyRowWithoutPassword = Omit<TestPharmacyPreviewRow, 'password'>;
 
+type MessageResponse = { message: string };
+type ErrorResponse = { error: string };
+type CsrfTokenResponse = { csrfToken: string };
+type ValidationErrorResponse = { errors: unknown[] };
+
+type LoginResponse = {
+  id: number;
+  email: string;
+  name: string;
+  prefecture: string;
+  isAdmin: boolean | null;
+};
+
+type PasswordResetResponse = MessageResponse & {
+  token?: string;
+};
+
+type RegistrationRejectionResponse = {
+  error: string;
+  screening: {
+    score: number;
+    mismatches: unknown[];
+    reviewId: number;
+  };
+};
+
+type RegistrationSuccessResponse = {
+  message: string;
+  verificationStatus: 'pending_verification';
+  pharmacyId: number;
+};
+
+type RegistrationScreening = {
+  approved: boolean;
+  screeningScore: number;
+  reasons: string[];
+  mismatches: unknown[];
+};
+
+type RegistrationProcessResult =
+  | {
+    approved: false;
+    reviewId: number;
+  }
+  | {
+    approved: true;
+    reviewId: number;
+    pharmacyId: number;
+    verificationRequestId: number;
+  };
+
+function buildErrorResponse(error: string): ErrorResponse {
+  return { error };
+}
+
+function buildMessageResponse(message: string): MessageResponse {
+  return { message };
+}
+
 export function createAuthLimiter(max: number, error: string, windowMs: number = 15 * 60 * 1000) {
   return rateLimit({
     windowMs,
@@ -229,7 +288,10 @@ export async function selectCurrentAuthMeRows(pharmacyId: number): Promise<AuthM
     .limit(1);
 }
 
-export function formatTestPharmacyAccounts(rows: TestPharmacyPreviewRow[], includePassword: boolean) {
+export function formatTestPharmacyAccounts(
+  rows: TestPharmacyPreviewRow[],
+  includePassword: boolean,
+): Array<{ id: number; name: string; email: string; prefecture: string; password: string }> {
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
@@ -423,7 +485,7 @@ export function buildLoginResponse(pharmacy: {
   name: string;
   prefecture: string;
   isAdmin: boolean | null;
-}) {
+}): LoginResponse {
   return {
     id: pharmacy.id,
     email: pharmacy.email,
@@ -451,10 +513,14 @@ export async function calculatePasswordResetDelay(
 export function buildPasswordResetResponse(
   shouldExposeToken: boolean,
   result?: { token: string; pharmacyName: string } | null,
-) {
+): PasswordResetResponse {
+  if (!shouldExposeToken || !result) {
+    return buildMessageResponse('パスワードリセットの手続きを受け付けました');
+  }
+
   return {
-    message: 'パスワードリセットの手続きを受け付けました',
-    ...(shouldExposeToken && result ? { token: result.token } : {}),
+    ...buildMessageResponse('パスワードリセットの手続きを受け付けました'),
+    token: result.token,
   };
 }
 
@@ -490,7 +556,7 @@ export function isCacheValid(
 export function buildRegistrationRejectionResponse(
   screening: { screeningScore: number; mismatches: unknown[] },
   reviewId: number,
-) {
+): RegistrationRejectionResponse {
   return {
     error: '登録情報と薬局開設許可証情報が一致しないため、登録できません',
     screening: {
@@ -501,9 +567,11 @@ export function buildRegistrationRejectionResponse(
   };
 }
 
-export function buildRegistrationSuccessResponse(pharmacyId: number) {
+export function buildRegistrationSuccessResponse(pharmacyId: number): RegistrationSuccessResponse {
+  const message = '登録申請を受け付けました。審査完了後にメールでお知らせします。';
+
   return {
-    message: '登録申請を受け付けました。審査完了後にメールでお知らせします。',
+    message,
     verificationStatus: 'pending_verification',
     pharmacyId,
   };
@@ -554,8 +622,8 @@ export function buildTokenPayload(pharmacy: {
   };
 }
 
-export function buildPasswordResetCompleteResponse() {
-  return { message: 'パスワードをリセットしました。新しいパスワードでログインしてください' };
+export function buildPasswordResetCompleteResponse(): MessageResponse {
+  return buildMessageResponse('パスワードをリセットしました。新しいパスワードでログインしてください');
 }
 
 export function validateEmail(email: string): { valid: boolean; error?: string } {
@@ -566,53 +634,53 @@ export function validatePassword(password: string): { valid: boolean; error?: st
   return validateSchemaValue(password, passwordSchema);
 }
 
-export function buildCsrfTokenResponse(token: string) {
+export function buildCsrfTokenResponse(token: string): CsrfTokenResponse {
   return { csrfToken: token };
 }
 
-export function buildLogoutResponse() {
-  return { message: 'ログアウトしました' };
+export function buildLogoutResponse(): MessageResponse {
+  return buildMessageResponse('ログアウトしました');
 }
 
-export function buildUserNotFoundResponse() {
-  return { error: 'ユーザーが見つかりません' };
+export function buildUserNotFoundResponse(): ErrorResponse {
+  return buildErrorResponse('ユーザーが見つかりません');
 }
 
-export function buildTestLoginDisabledResponse() {
-  return { error: 'テストログインは無効です' };
+export function buildTestLoginDisabledResponse(): ErrorResponse {
+  return buildErrorResponse('テストログインは無効です');
 }
 
-export function buildEmailAlreadyRegisteredResponse() {
-  return { error: 'このメールアドレスは既に登録されています' };
+export function buildEmailAlreadyRegisteredResponse(): ErrorResponse {
+  return buildErrorResponse('このメールアドレスは既に登録されています');
 }
 
-export function buildLicenseAlreadyRegisteredResponse() {
-  return { error: 'この薬局開設許可番号は既に登録されています' };
+export function buildLicenseAlreadyRegisteredResponse(): ErrorResponse {
+  return buildErrorResponse('この薬局開設許可番号は既に登録されています');
 }
 
-export function buildInvalidAddressResponse() {
+export function buildInvalidAddressResponse(): { errors: Array<{ field: 'address'; message: string }> } {
   return {
     errors: [{ field: 'address', message: '住所から位置情報を特定できませんでした。正しい住所を入力してください' }],
   };
 }
 
-export function buildInvalidResetTokenResponse() {
-  return { error: 'リセットトークンが無効です' };
+export function buildInvalidResetTokenResponse(): ErrorResponse {
+  return buildErrorResponse('リセットトークンが無効です');
 }
 
-export function buildInvalidPasswordResetResponse() {
-  return { error: 'リセットトークンが無効または期限切れです' };
+export function buildInvalidPasswordResetResponse(): ErrorResponse {
+  return buildErrorResponse('リセットトークンが無効または期限切れです');
 }
 
-export function buildInactiveAccountResponse() {
-  return { error: 'このアカウントは無効になっています' };
+export function buildInactiveAccountResponse(): ErrorResponse {
+  return buildErrorResponse('このアカウントは無効になっています');
 }
 
-export function buildInvalidCredentialsResponse() {
-  return { error: 'メールアドレスまたはパスワードが正しくありません' };
+export function buildInvalidCredentialsResponse(): ErrorResponse {
+  return buildErrorResponse('メールアドレスまたはパスワードが正しくありません');
 }
 
-export function buildValidationErrorResponse(errors: unknown[]) {
+export function buildValidationErrorResponse(errors: unknown[]): ValidationErrorResponse {
   return { errors };
 }
 
@@ -649,8 +717,12 @@ export function setIsTestAccountColumnAvailable(val: boolean): void {
 // Password reset request validation
 export function validatePasswordResetRequest(email: string): { valid: boolean; error?: string } {
   if (!email) {
-    return { valid: false, error: 'メールアドレスを入力してください' };
+    return {
+      valid: false,
+      ...buildErrorResponse('メールアドレスを入力してください'),
+    };
   }
+
   const emailValidation = validateEmail(email);
   if (!emailValidation.valid) {
     return { valid: false, error: emailValidation.error };
@@ -661,8 +733,12 @@ export function validatePasswordResetRequest(email: string): { valid: boolean; e
 // Password reset confirm validation
 export function validatePasswordResetConfirm(token: string, newPassword: string): { valid: boolean; error?: string } {
   if (!validateResetToken(token)) {
-    return { valid: false, error: 'invalid_token' };
+    return {
+      valid: false,
+      ...buildErrorResponse('invalid_token'),
+    };
   }
+
   const passwordValidation = validatePassword(newPassword);
   if (!passwordValidation.valid) {
     return { valid: false, error: passwordValidation.error };
@@ -673,8 +749,12 @@ export function validatePasswordResetConfirm(token: string, newPassword: string)
 // Login helper
 export function validateLoginInput(email: string, password: string): { valid: boolean; error?: string } {
   if (!email || !password) {
-    return { valid: false, error: 'メールアドレスとパスワードを入力してください' };
+    return {
+      valid: false,
+      ...buildErrorResponse('メールアドレスとパスワードを入力してください'),
+    };
   }
+
   return { valid: true };
 }
 
@@ -693,8 +773,8 @@ export async function executeRegistrationProcess(
   permitPharmacyName: string,
   permitAddress: string,
   coords: { lat: number; lng: number },
-  screening: any,
-) {
+  screening: RegistrationScreening,
+): Promise<RegistrationProcessResult> {
   return db.transaction(async (tx) => {
     const [review] = await tx.insert(pharmacyRegistrationReviews).values({
       email: normalizedEmail,

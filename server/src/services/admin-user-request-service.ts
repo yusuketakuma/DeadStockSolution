@@ -1,6 +1,6 @@
 import { desc, eq, and, gte, lte, SQL } from 'drizzle-orm';
 import { db } from '../config/database';
-import { userRequests, pharmacies } from '../db/schema';
+import { openclawStatusEnum, userRequests, pharmacies } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 
 export interface UserRequestListParams {
@@ -16,7 +16,10 @@ export interface UserRequestListParams {
 export async function listUserRequests(params: UserRequestListParams) {
   const conditions: SQL[] = [];
   if (params.status) {
-    conditions.push(eq(userRequests.openclawStatus, params.status as any));
+    conditions.push(eq(
+      userRequests.openclawStatus,
+      params.status as (typeof openclawStatusEnum.enumValues)[number],
+    ));
   }
   if (params.pharmacyId) {
     conditions.push(eq(userRequests.pharmacyId, params.pharmacyId));

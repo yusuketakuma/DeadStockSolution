@@ -9,6 +9,8 @@ import { clearBuffer } from './openclaw-log-push-service';
 import { resetObservabilityMetrics } from './observability-service';
 import { getErrorMessage } from '../middleware/error-handler';
 
+const DEFAULT_COMMAND_PAGE_SIZE = 50 as const;
+
 // ── Zod スキーマ定義 ──────────────────────────────────────────
 
 const pharmacyToggleSchema = z.object({
@@ -376,6 +378,6 @@ export async function executeCommand(request: CommandRequest, signature: string)
 
 // ── 履歴取得 ──────────────────────────────────────────
 
-export async function listCommandHistory(limit = 50, offset = 0) {
+export async function listCommandHistory(limit: number = DEFAULT_COMMAND_PAGE_SIZE, offset = 0) {
   return db.select().from(openclawCommands).orderBy(desc(openclawCommands.receivedAt)).limit(Math.min(limit, 200)).offset(offset);
 }

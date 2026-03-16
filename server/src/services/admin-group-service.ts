@@ -1,6 +1,6 @@
 import { desc, eq, and, sql, SQL } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacyGroups, groupMembers, pharmacies } from '../db/schema';
+import { pharmacyGroupVisibilityEnum, pharmacyGroups, groupMembers, pharmacies } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 
 export interface GroupListParams {
@@ -13,7 +13,10 @@ export interface GroupListParams {
 export async function listGroups(params: GroupListParams) {
   const conditions: SQL[] = [];
   if (params.visibility) {
-    conditions.push(eq(pharmacyGroups.visibility, params.visibility as any));
+    conditions.push(eq(
+      pharmacyGroups.visibility,
+      params.visibility as (typeof pharmacyGroupVisibilityEnum.enumValues)[number],
+    ));
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 

@@ -8,6 +8,7 @@ import type { MatchingRuleProfile, MatchingRuleProfileUpdateInput, MatchingScori
 
 const ACTIVE_PROFILE_CACHE_KEY = 'active_profile';
 const DEFAULT_PROFILE_NAME = 'default';
+const VERSION_CONFLICT_ERROR_MESSAGE = 'マッチングルールが更新済みです。再取得してから再実行してください';
 
 interface PostgresErrorLike {
   code?: string;
@@ -18,6 +19,10 @@ interface RuleFieldSpec {
   max: number;
   integer?: boolean;
 }
+
+type MatchingRuleProfileRow = typeof matchingRuleProfiles.$inferSelect;
+type MatchingRuleProfileInsertValues = typeof matchingRuleProfiles.$inferInsert;
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class MatchingRuleValidationError extends Error {}
 export class MatchingRuleVersionConflictError extends Error {}
@@ -68,21 +73,23 @@ function toFiniteNumber(value: unknown): number | null {
 
 function validateRange(
   name: string,
-  value: number,
+  value: unknown,
   min: number,
   max: number,
   integer: boolean = false,
 ): number {
-  if (!Number.isFinite(value)) {
+  const numericValue = typeof value === 'number' ? value : Number.NaN;
+
+  if (!Number.isFinite(numericValue)) {
     throw new MatchingRuleValidationError(`${name} は数値で指定してください`);
   }
-  if (integer && !Number.isInteger(value)) {
+  if (integer && !Number.isInteger(numericValue)) {
     throw new MatchingRuleValidationError(`${name} は整数で指定してください`);
   }
-  if (value < min || value > max) {
+  if (numericValue < min || numericValue > max) {
     throw new MatchingRuleValidationError(`${name} は ${min} 以上 ${max} 以下で指定してください`);
   }
-  return value;
+  return numericValue;
 }
 
 function buildFallbackProfile(): MatchingRuleProfile {
@@ -105,10 +112,10 @@ function validateRuleField(
 ): number {
   const spec = MATCHING_RULE_FIELD_SPECS[field];
   const numericValue = coerceNumber ? (toFiniteNumber(value) ?? Number.NaN) : value;
-  return validateRange(field, numericValue as number, spec.min, spec.max, spec.integer ?? false);
+  return validateRange(field, numericValue, spec.min, spec.max, spec.integer ?? false);
 }
 
-function buildDefaultProfileInsertValues(now: string): typeof matchingRuleProfiles.$inferInsert {
+function buildDefaultProfileInsertValues(now: string): MatchingRuleProfileInsertValues {
   return {
     profileName: DEFAULT_PROFILE_NAME,
     isActive: true,
@@ -120,10 +127,10 @@ function buildDefaultProfileInsertValues(now: string): typeof matchingRuleProfil
 }
 
 function normalizeRulesFromDbRow(
-  row: typeof matchingRuleProfiles.$inferSelect,
+  row: MatchingRuleProfileRow,
 ): MatchingScoringRules | null {
   try {
-    const normalized = {} as MatchingScoringRules;
+    const normalized: MatchingScoringRules = { ...DEFAULT_MATCHING_SCORING_RULES };
     for (const field of MATCHING_RULE_FIELDS) {
       normalized[field] = validateRuleField(field, row[field], true);
     }
@@ -138,7 +145,7 @@ function normalizeRulesFromDbRow(
 }
 
 function toProfile(
-  row: typeof matchingRuleProfiles.$inferSelect,
+  row: MatchingRuleProfileRow,
   rules: MatchingScoringRules,
 ): MatchingRuleProfile {
   return {
@@ -176,32 +183,73 @@ function hasAnyRuleField(input: MatchingRuleProfileUpdateInput): boolean {
   return MATCHING_RULE_FIELDS.some((field) => input[field] !== undefined);
 }
 
-async function ensureActiveProfileRow(): Promise<typeof matchingRuleProfiles.$inferSelect | null> {
-  const [currentActive] = await db.select()
+async function selectActiveProfileRow(reader: Pick<DbTransaction, 'select'>): Promise<MatchingRuleProfileRow | null> {
+  const [currentActive] = await reader.select()
     .from(matchingRuleProfiles)
     .where(eq(matchingRuleProfiles.isActive, true))
     .limit(1);
+
+  return currentActive ?? null;
+}
+
+async function selectFirstProfileRow(reader: Pick<DbTransaction, 'select'>): Promise<MatchingRuleProfileRow | null> {
+  const [firstRow] = await reader.select()
+    .from(matchingRuleProfiles)
+    .orderBy(asc(matchingRuleProfiles.id))
+    .limit(1);
+
+  return firstRow ?? null;
+}
+
+async function insertDefaultProfileIfMissing(writer: Pick<DbTransaction, 'insert'>): Promise<void> {
+  await writer.insert(matchingRuleProfiles)
+    .values(buildDefaultProfileInsertValues(new Date().toISOString()))
+    .onConflictDoNothing({ target: matchingRuleProfiles.profileName });
+}
+
+function validateExpectedVersion(expectedVersion: number | undefined): void {
+  if (expectedVersion === undefined) {
+    return;
+  }
+
+  validateRange('expectedVersion', expectedVersion, 1, 1_000_000, true);
+}
+
+function ensureExpectedVersionMatches(currentVersion: number, expectedVersion: number | undefined): void {
+  if (expectedVersion === undefined) {
+    return;
+  }
+  if (currentVersion !== expectedVersion) {
+    throw new MatchingRuleVersionConflictError(VERSION_CONFLICT_ERROR_MESSAGE);
+  }
+}
+
+function rethrowKnownUpdateErrors(err: unknown): never {
+  if (err instanceof MatchingRuleValidationError || err instanceof MatchingRuleVersionConflictError) {
+    throw err;
+  }
+
+  logger.error('Failed to update matching rule profile', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+  throw new Error('マッチングルールの更新に失敗しました');
+}
+
+async function ensureActiveProfileRow(): Promise<MatchingRuleProfileRow | null> {
+  const currentActive = await selectActiveProfileRow(db);
 
   if (currentActive) {
     return currentActive;
   }
 
-  await db.insert(matchingRuleProfiles)
-    .values(buildDefaultProfileInsertValues(new Date().toISOString()))
-    .onConflictDoNothing({ target: matchingRuleProfiles.profileName });
+  await insertDefaultProfileIfMissing(db);
 
-  const [activeAfterInsert] = await db.select()
-    .from(matchingRuleProfiles)
-    .where(eq(matchingRuleProfiles.isActive, true))
-    .limit(1);
+  const activeAfterInsert = await selectActiveProfileRow(db);
   if (activeAfterInsert) {
     return activeAfterInsert;
   }
 
-  const [firstRow] = await db.select()
-    .from(matchingRuleProfiles)
-    .orderBy(asc(matchingRuleProfiles.id))
-    .limit(1);
+  const firstRow = await selectFirstProfileRow(db);
 
   if (!firstRow) {
     return null;
@@ -216,6 +264,16 @@ async function ensureActiveProfileRow(): Promise<typeof matchingRuleProfiles.$in
     .returning();
 
   return updatedFirst ?? firstRow;
+}
+
+async function ensureActiveProfileRowInTransaction(tx: DbTransaction): Promise<MatchingRuleProfileRow | null> {
+  const currentActive = await selectActiveProfileRow(tx);
+  if (currentActive) {
+    return currentActive;
+  }
+
+  await insertDefaultProfileIfMissing(tx);
+  return selectActiveProfileRow(tx);
 }
 
 export async function getActiveMatchingRuleProfile(forceRefresh: boolean = false): Promise<MatchingRuleProfile> {
@@ -256,40 +314,19 @@ export async function updateActiveMatchingRuleProfile(input: MatchingRuleProfile
     throw new MatchingRuleValidationError('更新対象のスコア設定が指定されていません');
   }
 
-  if (input.expectedVersion !== undefined) {
-    validateRange('expectedVersion', input.expectedVersion, 1, 1_000_000, true);
-  }
+  validateExpectedVersion(input.expectedVersion);
 
   const normalizedPatch = normalizeRulesForUpdate(input);
 
   try {
     const updated = await db.transaction(async (tx) => {
-      const [currentActive] = await tx.select()
-        .from(matchingRuleProfiles)
-        .where(eq(matchingRuleProfiles.isActive, true))
-        .limit(1);
-
-      let current = currentActive;
-      if (!current) {
-        const now = new Date().toISOString();
-        await tx.insert(matchingRuleProfiles)
-          .values(buildDefaultProfileInsertValues(now))
-          .onConflictDoNothing({ target: matchingRuleProfiles.profileName });
-
-        const [activeAfterInsert] = await tx.select()
-          .from(matchingRuleProfiles)
-          .where(eq(matchingRuleProfiles.isActive, true))
-          .limit(1);
-        current = activeAfterInsert;
-      }
+      const current = await ensureActiveProfileRowInTransaction(tx);
 
       if (!current) {
         throw new MatchingRuleValidationError('有効なマッチングルールプロファイルが存在しません');
       }
 
-      if (input.expectedVersion !== undefined && current.version !== input.expectedVersion) {
-        throw new MatchingRuleVersionConflictError('マッチングルールが更新済みです。再取得してから再実行してください');
-      }
+      ensureExpectedVersionMatches(current.version, input.expectedVersion);
 
       const [updatedRow] = await tx.update(matchingRuleProfiles)
         .set({
@@ -304,7 +341,7 @@ export async function updateActiveMatchingRuleProfile(input: MatchingRuleProfile
         .returning();
 
       if (!updatedRow) {
-        throw new MatchingRuleVersionConflictError('マッチングルールが更新済みです。再取得してから再実行してください');
+        throw new MatchingRuleVersionConflictError(VERSION_CONFLICT_ERROR_MESSAGE);
       }
 
       return updatedRow;
@@ -318,14 +355,7 @@ export async function updateActiveMatchingRuleProfile(input: MatchingRuleProfile
     activeProfileCache.invalidate(ACTIVE_PROFILE_CACHE_KEY);
     return storeCache(toProfile(updated, normalizedRules));
   } catch (err) {
-    if (err instanceof MatchingRuleValidationError || err instanceof MatchingRuleVersionConflictError) {
-      throw err;
-    }
-
-    logger.error('Failed to update matching rule profile', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    throw new Error('マッチングルールの更新に失敗しました');
+    rethrowKnownUpdateErrors(err);
   }
 }
 

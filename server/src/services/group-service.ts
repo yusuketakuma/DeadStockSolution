@@ -29,7 +29,12 @@ interface MemberListResponse {
   limit: number;
 }
 
+interface NotificationIdRow {
+  id: number;
+}
+
 const DEFAULT_LIMIT = 20;
+const GROUP_MEMBER_BATCH_LIMIT = 1000 as const;
 
 function hasPushDispatchConfig(): boolean {
   return Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
@@ -96,7 +101,14 @@ async function countGroupMembers(groupId: number): Promise<number> {
   return allMembers.length;
 }
 
-async function findUnreadGroupInvitation(groupId: number, pharmacyId: number) {
+function memberCondition(groupId: number, pharmacyId: number): ReturnType<typeof and> {
+  return and(
+    eq(groupMembers.groupId, groupId),
+    eq(groupMembers.pharmacyId, pharmacyId),
+  );
+}
+
+async function findUnreadGroupInvitation(groupId: number, pharmacyId: number): Promise<NotificationIdRow | null> {
   const [invitation] = await db.select({ id: notifications.id })
     .from(notifications)
     .where(and(
@@ -168,12 +180,44 @@ async function getGroupById(groupId: number): Promise<PharmacyGroupRow> {
 async function getMembership(groupId: number, pharmacyId: number): Promise<GroupMemberRow | null> {
   const [membership] = await db.select()
     .from(groupMembers)
-    .where(and(
-      eq(groupMembers.groupId, groupId),
-      eq(groupMembers.pharmacyId, pharmacyId),
-    ));
+    .where(memberCondition(groupId, pharmacyId));
 
   return membership ?? null;
+}
+
+async function assertNotMember(groupId: number, pharmacyId: number): Promise<void> {
+  const membership = await getMembership(groupId, pharmacyId);
+  if (membership) {
+    throw new Error('既にグループメンバーです');
+  }
+}
+
+async function getUnreadInvitationOrThrow(groupId: number, pharmacyId: number): Promise<NotificationIdRow> {
+  const invitation = await findUnreadGroupInvitation(groupId, pharmacyId);
+  if (!invitation) {
+    throw new Error('有効な招待が見つかりません');
+  }
+  return invitation;
+}
+
+async function deleteMembershipOrThrow(groupId: number, pharmacyId: number, errorMessage: string): Promise<void> {
+  const deleted = await db.delete(groupMembers)
+    .where(memberCondition(groupId, pharmacyId))
+    .returning({ id: groupMembers.id });
+
+  if (deleted.length === 0) {
+    throw new Error(errorMessage);
+  }
+}
+
+function dedupeAndSortGroups(ownGroups: PharmacyGroupRow[], publicGroups: PharmacyGroupRow[]): PharmacyGroupRow[] {
+  const deduped = [...ownGroups, ...publicGroups].reduce<Map<number, PharmacyGroupRow>>((map, group) => {
+    map.set(group.id, group);
+    return map;
+  }, new Map());
+
+  return [...deduped.values()]
+    .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
 }
 
 async function getActorRole(groupId: number, pharmacyId: number): Promise<GroupMemberRole> {
@@ -254,7 +298,7 @@ export async function updateGroup(
     throw new Error('グループ更新に失敗しました');
   }
 
-  const membersResponse = await listMembers(groupId, pharmacyId, { limit: 1000, offset: 0 });
+  const membersResponse = await listMembers(groupId, pharmacyId, { limit: GROUP_MEMBER_BATCH_LIMIT, offset: 0 });
   return {
     ...toGroup(updatedGroup),
     members: membersResponse.members,
@@ -296,13 +340,7 @@ export async function listGroups(pharmacyId: number, filters: ListGroupFilters =
     ))
     : await db.select().from(pharmacyGroups).where(eq(pharmacyGroups.visibility, 'public'));
 
-  const deduped = [...ownGroups, ...publicGroups].reduce<Map<number, PharmacyGroupRow>>((map, group) => {
-    map.set(group.id, group);
-    return map;
-  }, new Map());
-
-  const groups = [...deduped.values()]
-    .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+  const groups = dedupeAndSortGroups(ownGroups, publicGroups);
 
   return {
     groups: groups.slice(offset, offset + limit).map(toGroup),
@@ -367,10 +405,7 @@ export async function inviteMember(
   const inviterRole = await getActorRole(groupId, inviterPharmacyId);
   ensureOwnerOrAdmin(inviterRole);
 
-  const inviteeMembership = await getMembership(groupId, inviteePharmacyId);
-  if (inviteeMembership) {
-    throw new Error('既にグループメンバーです');
-  }
+  await assertNotMember(groupId, inviteePharmacyId);
 
   const existingInvitation = await findUnreadGroupInvitation(groupId, inviteePharmacyId);
   if (existingInvitation) {
@@ -398,15 +433,8 @@ export async function inviteMember(
 }
 
 export async function acceptInvitation(groupId: number, pharmacyId: number): Promise<void> {
-  const membership = await getMembership(groupId, pharmacyId);
-  if (membership) {
-    throw new Error('既にグループメンバーです');
-  }
-
-  const invitation = await findUnreadGroupInvitation(groupId, pharmacyId);
-  if (!invitation) {
-    throw new Error('有効な招待が見つかりません');
-  }
+  await assertNotMember(groupId, pharmacyId);
+  const invitation = await getUnreadInvitationOrThrow(groupId, pharmacyId);
 
   await createGroupMemberOrThrow(groupId, pharmacyId, 'member');
   await markNotificationAsRead(invitation.id);
@@ -421,20 +449,14 @@ export async function joinPublicGroup(groupId: number, pharmacyId: number): Prom
     throw new Error('公開グループではないため参加できません');
   }
 
-  const membership = await getMembership(groupId, pharmacyId);
-  if (membership) {
-    throw new Error('既にグループメンバーです');
-  }
+  await assertNotMember(groupId, pharmacyId);
 
   await createGroupMemberOrThrow(groupId, pharmacyId, 'member');
   await notifyGroupOwnerMembershipChange(group.ownerPharmacyId, pharmacyId, groupId, 'group_joined');
 }
 
 export async function declineInvitation(groupId: number, pharmacyId: number): Promise<void> {
-  const invitation = await findUnreadGroupInvitation(groupId, pharmacyId);
-  if (!invitation) {
-    throw new Error('有効な招待が見つかりません');
-  }
+  const invitation = await getUnreadInvitationOrThrow(groupId, pharmacyId);
 
   await markNotificationAsRead(invitation.id);
 }
@@ -459,16 +481,7 @@ export async function removeMember(
     throw new Error('オーナーは削除できません');
   }
 
-  const deleted = await db.delete(groupMembers)
-    .where(and(
-      eq(groupMembers.groupId, groupId),
-      eq(groupMembers.pharmacyId, targetPharmacyId),
-    ))
-    .returning({ id: groupMembers.id });
-
-  if (deleted.length === 0) {
-    throw new Error('メンバー削除に失敗しました');
-  }
+  await deleteMembershipOrThrow(groupId, targetPharmacyId, 'メンバー削除に失敗しました');
 }
 
 export async function leaveGroup(groupId: number, pharmacyId: number): Promise<void> {
@@ -480,16 +493,7 @@ export async function leaveGroup(groupId: number, pharmacyId: number): Promise<v
     throw new Error('オーナーはグループを脱退できません');
   }
 
-  const deleted = await db.delete(groupMembers)
-    .where(and(
-      eq(groupMembers.groupId, groupId),
-      eq(groupMembers.pharmacyId, pharmacyId),
-    ))
-    .returning({ id: groupMembers.id });
-
-  if (deleted.length === 0) {
-    throw new Error('グループ脱退に失敗しました');
-  }
+  await deleteMembershipOrThrow(groupId, pharmacyId, 'グループ脱退に失敗しました');
 
   const group = await getGroupById(groupId);
   await notifyGroupOwnerMembershipChange(group.ownerPharmacyId, pharmacyId, groupId, 'group_left');

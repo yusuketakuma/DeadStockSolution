@@ -42,11 +42,6 @@ type PharmacyLocation = {
   longitude: number | null;
 };
 
-type FavoriteRow = {
-  pharmacyId: number;
-  targetPharmacyId: number;
-};
-
 type GroupMembershipRow = {
   pharmacyId: number;
   groupId: number;
@@ -58,12 +53,24 @@ type GroupMemberRow = {
 };
 
 type MatchingIndexes = ReturnType<typeof buildMatchingIndexes>;
+type BlockedPairSet = ReturnType<typeof buildBlockedPairSet>;
+type BatchSourceContext = {
+  favoriteIdsByPharmacy: Map<number, Set<number>>;
+  groupMemberIdsByPharmacy: Map<number, Set<number>>;
+};
 
 type PreparedPharmacyLocationById = {
   execute(params: { pharmacyId: number }): Promise<PharmacyLocation[]>;
 };
 
 let preparedPharmacyLocationById: PreparedPharmacyLocationById | null = null;
+
+const PHARMACY_LOCATION_SELECT_FIELDS = {
+  id: pharmacies.id,
+  name: pharmacies.name,
+  latitude: pharmacies.latitude,
+  longitude: pharmacies.longitude,
+} as const;
 
 function bindParam<T>(name: string): T {
   const placeholderFn = (sql as typeof sql & { placeholder?: (placeholderName: string) => unknown }).placeholder;
@@ -86,10 +93,7 @@ function getPreparedPharmacyLocationById(deps: ServiceDependencies): PreparedPha
   }
 
   const query = deps.db.select({
-    id: pharmacies.id,
-    name: pharmacies.name,
-    latitude: pharmacies.latitude,
-    longitude: pharmacies.longitude,
+    ...PHARMACY_LOCATION_SELECT_FIELDS,
   })
     .from(pharmacies)
     .where(eq(pharmacies.id, bindParam<number>('pharmacyId')))
@@ -113,10 +117,7 @@ async function fetchPharmacyLocationById(
   }
 
   return deps.db.select({
-    id: pharmacies.id,
-    name: pharmacies.name,
-    latitude: pharmacies.latitude,
-    longitude: pharmacies.longitude,
+    ...PHARMACY_LOCATION_SELECT_FIELDS,
   })
     .from(pharmacies)
     .where(eq(pharmacies.id, pharmacyId))
@@ -125,6 +126,100 @@ async function fetchPharmacyLocationById(
 
 function uniqueNumbers(values: number[]): number[] {
   return [...new Set(values)];
+}
+
+function groupToSet<T>(
+  rows: T[],
+  keyFn: (row: T) => number,
+  valueFn: (row: T) => number,
+): Map<number, Set<number>> {
+  const grouped = new Map<number, Set<number>>();
+  for (const row of rows) {
+    const key = keyFn(row);
+    const values = grouped.get(key) ?? new Set<number>();
+    values.add(valueFn(row));
+    grouped.set(key, values);
+  }
+  return grouped;
+}
+
+async function fetchActiveDeadStockRowsByPharmacyIds(
+  pharmacyIds: number[],
+  deps: ServiceDependencies,
+): Promise<DeadStockRow[]> {
+  if (pharmacyIds.length === 0) {
+    return [];
+  }
+
+  return deps.db.select(DEAD_STOCK_SELECT_FIELDS)
+    .from(deadStockItems)
+    .where(and(
+      inArray(deadStockItems.pharmacyId, pharmacyIds),
+      eq(deadStockItems.isAvailable, true),
+    ))
+    .orderBy(deadStockItems.id);
+}
+
+async function fetchUsedMedRowsByPharmacyIds(
+  pharmacyIds: number[],
+  deps: ServiceDependencies,
+): Promise<UsedMedRow[]> {
+  if (pharmacyIds.length === 0) {
+    return [];
+  }
+
+  return deps.db.select(USED_MED_SELECT_FIELDS)
+    .from(usedMedicationItems)
+    .where(inArray(usedMedicationItems.pharmacyId, pharmacyIds))
+    .orderBy(usedMedicationItems.id);
+}
+
+function ensureMapKeysWithEmptySets(
+  groupedMap: Map<number, Set<number>>,
+  keys: number[],
+): Map<number, Set<number>> {
+  for (const key of keys) {
+    if (!groupedMap.has(key)) {
+      groupedMap.set(key, new Set<number>());
+    }
+  }
+  return groupedMap;
+}
+
+async function fetchGroupMembershipRowsByPharmacyIds(
+  pharmacyIds: number[],
+  deps: ServiceDependencies,
+): Promise<GroupMembershipRow[]> {
+  if (pharmacyIds.length === 0) {
+    return [];
+  }
+
+  const rows = await deps.db.select({
+    pharmacyId: groupMembers.pharmacyId,
+    groupId: groupMembers.groupId,
+  })
+    .from(groupMembers)
+    .where(inArray(groupMembers.pharmacyId, pharmacyIds));
+
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function fetchGroupMemberRowsByGroupIds(
+  groupIds: number[],
+  deps: ServiceDependencies,
+): Promise<GroupMemberRow[]> {
+  if (groupIds.length === 0) {
+    return [];
+  }
+
+  const rows = await deps.db.select({
+    groupId: groupMembers.groupId,
+    pharmacyId: groupMembers.pharmacyId,
+  })
+    .from(groupMembers)
+    .where(inArray(groupMembers.groupId, groupIds));
+
+  return Array.isArray(rows) ? rows : [];
 }
 
 function buildCurrentPharmacyById(currentPharmacies: PharmacyLocation[]): Map<number, PharmacyLocation> {
@@ -147,61 +242,6 @@ function resolveExistingSourcePharmacyIds(
   return existingSourcePharmacyIds;
 }
 
-function buildFavoriteIdsByPharmacy(favoriteRows: FavoriteRow[]): Map<number, Set<number>> {
-  const favoriteIdsByPharmacy = new Map<number, Set<number>>();
-  for (const row of favoriteRows) {
-    const favorites = favoriteIdsByPharmacy.get(row.pharmacyId) ?? new Set<number>();
-    favorites.add(row.targetPharmacyId);
-    favoriteIdsByPharmacy.set(row.pharmacyId, favorites);
-  }
-  return favoriteIdsByPharmacy;
-}
-
-function buildGroupIdsByPharmacy(sourceGroupRows: GroupMembershipRow[]): Map<number, Set<number>> {
-  const sourceGroupIdsByPharmacy = new Map<number, Set<number>>();
-  for (const row of sourceGroupRows) {
-    const groupIds = sourceGroupIdsByPharmacy.get(row.pharmacyId) ?? new Set<number>();
-    groupIds.add(row.groupId);
-    sourceGroupIdsByPharmacy.set(row.pharmacyId, groupIds);
-  }
-  return sourceGroupIdsByPharmacy;
-}
-
-function buildMemberIdsByGroup(rows: GroupMemberRow[]): Map<number, Set<number>> {
-  const memberIdsByGroup = new Map<number, Set<number>>();
-  for (const row of rows) {
-    const memberIds = memberIdsByGroup.get(row.groupId) ?? new Set<number>();
-    memberIds.add(row.pharmacyId);
-    memberIdsByGroup.set(row.groupId, memberIds);
-  }
-  return memberIdsByGroup;
-}
-
-function buildGroupMemberIdsByPharmacy(
-  sourcePharmacyIds: number[],
-  sourceGroupIdsByPharmacy: Map<number, Set<number>>,
-  memberIdsByGroup: Map<number, Set<number>>,
-): Map<number, Set<number>> {
-  const groupMemberIdsByPharmacy = new Map<number, Set<number>>();
-
-  for (const sourcePharmacyId of sourcePharmacyIds) {
-    const groupMemberIds = new Set<number>();
-    const groupIds = sourceGroupIdsByPharmacy.get(sourcePharmacyId) ?? new Set<number>();
-    for (const groupId of groupIds) {
-      const memberIds = memberIdsByGroup.get(groupId);
-      if (!memberIds) continue;
-      for (const memberPharmacyId of memberIds) {
-        if (memberPharmacyId !== sourcePharmacyId) {
-          groupMemberIds.add(memberPharmacyId);
-        }
-      }
-    }
-    groupMemberIdsByPharmacy.set(sourcePharmacyId, groupMemberIds);
-  }
-
-  return groupMemberIdsByPharmacy;
-}
-
 async function fetchFavoriteIdsByPharmacy(
   sourcePharmacyIds: number[],
   deps: ServiceDependencies,
@@ -216,44 +256,70 @@ async function fetchFavoriteIdsByPharmacy(
       eq(pharmacyRelationships.relationshipType, 'favorite'),
     ));
 
-  return buildFavoriteIdsByPharmacy(favoriteRows);
+  return groupToSet(
+    favoriteRows,
+    (row) => row.pharmacyId,
+    (row) => row.targetPharmacyId,
+  );
 }
 
 async function fetchGroupMemberIdsByPharmacy(
   sourcePharmacyIds: number[],
   deps: ServiceDependencies,
 ): Promise<Map<number, Set<number>>> {
-  const sourceGroupRowsRaw = await deps.db.select({
-    pharmacyId: groupMembers.pharmacyId,
-    groupId: groupMembers.groupId,
-  })
-    .from(groupMembers)
-    .where(inArray(groupMembers.pharmacyId, sourcePharmacyIds));
-  const sourceGroupRows = Array.isArray(sourceGroupRowsRaw) ? sourceGroupRowsRaw : [];
-  const sourceGroupIdsByPharmacy = buildGroupIdsByPharmacy(sourceGroupRows);
+  if (sourcePharmacyIds.length === 0) {
+    return new Map<number, Set<number>>();
+  }
+
+  const sourceGroupRows = await fetchGroupMembershipRowsByPharmacyIds(sourcePharmacyIds, deps);
+  const sourceGroupIdsByPharmacy = groupToSet(
+    sourceGroupRows,
+    (row) => row.pharmacyId,
+    (row) => row.groupId,
+  );
 
   const allSourceGroupIds = uniqueNumbers(sourceGroupRows.map((row) => row.groupId));
-  const allGroupMemberRowsRaw = allSourceGroupIds.length > 0
-    ? await deps.db.select({
-      groupId: groupMembers.groupId,
-      pharmacyId: groupMembers.pharmacyId,
-    })
-      .from(groupMembers)
-      .where(inArray(groupMembers.groupId, allSourceGroupIds))
-    : [];
-  const allGroupMemberRows = Array.isArray(allGroupMemberRowsRaw) ? allGroupMemberRowsRaw : [];
+  const allGroupMemberRows = await fetchGroupMemberRowsByGroupIds(allSourceGroupIds, deps);
+  const memberIdsByGroup = groupToSet(
+    allGroupMemberRows,
+    (row) => row.groupId,
+    (row) => row.pharmacyId,
+  );
 
-  return buildGroupMemberIdsByPharmacy(
+  const groupMemberRowsBySource: Array<{ pharmacyId: number; memberPharmacyId: number }> = [];
+  for (const sourcePharmacyId of sourcePharmacyIds) {
+    const sourceGroupIds = sourceGroupIdsByPharmacy.get(sourcePharmacyId);
+    if (!sourceGroupIds) {
+      continue;
+    }
+
+    for (const sourceGroupId of sourceGroupIds) {
+      const memberPharmacyIds = memberIdsByGroup.get(sourceGroupId);
+      if (!memberPharmacyIds) {
+        continue;
+      }
+      for (const memberPharmacyId of memberPharmacyIds) {
+        if (memberPharmacyId !== sourcePharmacyId) {
+          groupMemberRowsBySource.push({ pharmacyId: sourcePharmacyId, memberPharmacyId });
+        }
+      }
+    }
+  }
+
+  return ensureMapKeysWithEmptySets(
+    groupToSet(
+      groupMemberRowsBySource,
+      (row) => row.pharmacyId,
+      (row) => row.memberPharmacyId,
+    ),
     sourcePharmacyIds,
-    sourceGroupIdsByPharmacy,
-    buildMemberIdsByGroup(allGroupMemberRows),
   );
 }
 
 async function fetchBatchSourceContext(
   sourcePharmacyIds: number[],
   deps: ServiceDependencies = getServiceDeps(),
-) {
+): Promise<BatchSourceContext> {
   const [favoriteIdsByPharmacy, groupMemberIdsByPharmacy] = await Promise.all([
     fetchFavoriteIdsByPharmacy(sourcePharmacyIds, deps),
     fetchGroupMemberIdsByPharmacy(sourcePharmacyIds, deps),
@@ -269,27 +335,29 @@ async function fetchBlockedPairsForSources(
   sourcePharmacyIds: number[],
   viablePharmacyIds: number[],
   deps: ServiceDependencies = getServiceDeps(),
-) {
-  const blockedRelationshipRows = sourcePharmacyIds.length > 0 && viablePharmacyIds.length > 0
-    ? await deps.db.select({
-      pharmacyId: pharmacyRelationships.pharmacyId,
-      targetPharmacyId: pharmacyRelationships.targetPharmacyId,
-    })
-      .from(pharmacyRelationships)
-      .where(and(
-        eq(pharmacyRelationships.relationshipType, 'blocked'),
-        or(
-          and(
-            inArray(pharmacyRelationships.pharmacyId, sourcePharmacyIds),
-            inArray(pharmacyRelationships.targetPharmacyId, viablePharmacyIds),
-          ),
-          and(
-            inArray(pharmacyRelationships.pharmacyId, viablePharmacyIds),
-            inArray(pharmacyRelationships.targetPharmacyId, sourcePharmacyIds),
-          ),
+): Promise<BlockedPairSet> {
+  if (sourcePharmacyIds.length === 0 || viablePharmacyIds.length === 0) {
+    return buildBlockedPairSet([]);
+  }
+
+  const blockedRelationshipRows = await deps.db.select({
+    pharmacyId: pharmacyRelationships.pharmacyId,
+    targetPharmacyId: pharmacyRelationships.targetPharmacyId,
+  })
+    .from(pharmacyRelationships)
+    .where(and(
+      eq(pharmacyRelationships.relationshipType, 'blocked'),
+      or(
+        and(
+          inArray(pharmacyRelationships.pharmacyId, sourcePharmacyIds),
+          inArray(pharmacyRelationships.targetPharmacyId, viablePharmacyIds),
         ),
-      ))
-    : [];
+        and(
+          inArray(pharmacyRelationships.pharmacyId, viablePharmacyIds),
+          inArray(pharmacyRelationships.targetPharmacyId, sourcePharmacyIds),
+        ),
+      ),
+    ));
 
   return buildBlockedPairSet(blockedRelationshipRows);
 }
@@ -303,17 +371,8 @@ async function buildBatchMatchingIndexes(
   specialHoursByPharmacy: Awaited<ReturnType<typeof fetchBusinessHoursMaps>>['specialHoursByPharmacy'];
 }> {
   const [allDeadStockRows, allUsedMedRows] = await Promise.all([
-    deps.db.select(DEAD_STOCK_SELECT_FIELDS)
-      .from(deadStockItems)
-      .where(and(
-        inArray(deadStockItems.pharmacyId, allRelevantPharmacyIds),
-        eq(deadStockItems.isAvailable, true),
-      ))
-      .orderBy(deadStockItems.id),
-    deps.db.select(USED_MED_SELECT_FIELDS)
-      .from(usedMedicationItems)
-      .where(inArray(usedMedicationItems.pharmacyId, allRelevantPharmacyIds))
-      .orderBy(usedMedicationItems.id),
+    fetchActiveDeadStockRowsByPharmacyIds(allRelevantPharmacyIds, deps),
+    fetchUsedMedRowsByPharmacyIds(allRelevantPharmacyIds, deps),
   ]);
 
   const allDeadStockIds = uniqueNumbers(allDeadStockRows.map((row) => row.id));
@@ -416,17 +475,8 @@ async function buildSingleMatchingIndexes(
   specialHoursByPharmacy: Awaited<ReturnType<typeof fetchBusinessHoursMaps>>['specialHoursByPharmacy'];
 }) | null> {
   const [allOtherDeadStock, allOtherUsedMeds] = await Promise.all([
-    deps.db.select(DEAD_STOCK_SELECT_FIELDS)
-      .from(deadStockItems)
-      .where(and(
-        inArray(deadStockItems.pharmacyId, viablePharmacyIds),
-        eq(deadStockItems.isAvailable, true),
-      ))
-      .orderBy(deadStockItems.id),
-    deps.db.select(USED_MED_SELECT_FIELDS)
-      .from(usedMedicationItems)
-      .where(inArray(usedMedicationItems.pharmacyId, viablePharmacyIds))
-      .orderBy(usedMedicationItems.id),
+    fetchActiveDeadStockRowsByPharmacyIds(viablePharmacyIds, deps),
+    fetchUsedMedRowsByPharmacyIds(viablePharmacyIds, deps),
   ]);
 
   const allDeadStockIds = uniqueNumbers([...myDeadStock, ...allOtherDeadStock].map((row) => row.id));
@@ -470,10 +520,7 @@ export async function findMatchesBatch(
   ]);
 
   const currentPharmacies = await deps.db.select({
-    id: pharmacies.id,
-    name: pharmacies.name,
-    latitude: pharmacies.latitude,
-    longitude: pharmacies.longitude,
+    ...PHARMACY_LOCATION_SELECT_FIELDS,
   })
     .from(pharmacies)
     .where(inArray(pharmacies.id, sourcePharmacyIds));
@@ -579,10 +626,7 @@ export async function findMatches(
 
   const [myDeadStock, myUsedMeds] = await Promise.all([
     fetchAvailableDeadStockByPharmacy(pharmacyId),
-    deps.db.select(USED_MED_SELECT_FIELDS)
-      .from(usedMedicationItems)
-      .where(eq(usedMedicationItems.pharmacyId, pharmacyId))
-      .orderBy(usedMedicationItems.id),
+    fetchUsedMedRowsByPharmacyIds([pharmacyId], deps),
   ]);
 
   if (myDeadStock.length === 0 || myUsedMeds.length === 0) {
@@ -635,7 +679,12 @@ export async function findMatches(
   });
 }
 
-export function createMatchingService(deps: ServiceDependencies = getServiceDeps()) {
+export function createMatchingService(
+  deps: ServiceDependencies = getServiceDeps(),
+): {
+  findMatchesBatch: (pharmacyIds: number[]) => Promise<Map<number, MatchCandidate[]>>;
+  findMatches: (pharmacyId: number) => Promise<MatchCandidate[]>;
+} {
   return {
     findMatchesBatch: (pharmacyIds: number[]) => findMatchesBatch(pharmacyIds, deps),
     findMatches: (pharmacyId: number) => findMatches(pharmacyId, deps),
