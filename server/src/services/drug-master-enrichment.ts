@@ -22,10 +22,21 @@ interface UsedMedRow extends BaseRow {
   monthlyUsage: number | null;
 }
 
+export interface MasterCandidate {
+  drugMasterId: number;
+  drugName: string;
+  yjCode: string;
+  yakkaPrice: number;
+  unit: string | null;
+  matchType: 'exact_code' | 'exact_name' | 'fuzzy_name' | 'none';
+}
+
 type EnrichedRow<T> = T & {
   drugMasterId: number | null;
   drugMasterPackageId: number | null;
   packageLabel: string | null;
+  matchConfidence: 'exact' | 'fuzzy' | 'none';
+  candidates?: MasterCandidate[];
 };
 
 interface MasterMatchInfo {
@@ -70,6 +81,7 @@ function toEmptyEnrichedRow<T extends BaseRow>(row: T): EnrichedRow<T> {
     drugMasterId: null,
     drugMasterPackageId: null,
     packageLabel: null,
+    matchConfidence: 'none',
   };
 }
 
@@ -406,11 +418,16 @@ async function enrichRowsWithResolvedInfo<T extends BaseRow>(
       ? findPackageByUnit(state.packageCandidatesByMaster, masterInfo.id, row.unit)
       : null;
 
-    const enriched = {
+    const matchConfidence: 'exact' | 'fuzzy' | 'none' = masterInfo
+      ? (row.drugCode ? 'exact' : 'exact')
+      : 'none';
+
+    const enriched: EnrichedRow<T> = {
       ...row,
       drugMasterId: masterInfo?.id ?? null,
       drugMasterPackageId: packageInfo?.id ?? masterInfo?.drugMasterPackageId ?? null,
       packageLabel: resolvePackageLabel(packageInfo, masterInfo),
+      matchConfidence,
     };
 
     if (masterInfo) {
@@ -419,6 +436,74 @@ async function enrichRowsWithResolvedInfo<T extends BaseRow>(
 
     return enriched;
   });
+}
+
+/**
+ * 薬品名であいまい検索し、候補リストを返す。
+ * アップロード時に紐付けできなかった行に対して、ユーザーが正しい品目を選択するために使用。
+ */
+export async function searchMasterCandidates(
+  drugName: string,
+  limit: number = 10,
+): Promise<MasterCandidate[]> {
+  const normalized = normalizeString(drugName);
+  if (!normalized || normalized.length < 2) return [];
+
+  const all = await db.select({
+    id: drugMaster.id,
+    drugName: drugMaster.drugName,
+    yjCode: drugMaster.yjCode,
+    yakkaPrice: drugMaster.yakkaPrice,
+    unit: drugMaster.unit,
+  }).from(drugMaster);
+
+  const scored: Array<MasterCandidate & { score: number }> = [];
+
+  for (const row of all) {
+    const rowNormalized = normalizeString(row.drugName);
+    if (!rowNormalized) continue;
+
+    let matchType: MasterCandidate['matchType'] = 'none';
+    let score = 0;
+
+    if (rowNormalized === normalized) {
+      matchType = 'exact_name';
+      score = 100;
+    } else if (rowNormalized.includes(normalized)) {
+      matchType = 'fuzzy_name';
+      score = 80 - Math.min(30, Math.abs(rowNormalized.length - normalized.length));
+    } else if (normalized.includes(rowNormalized)) {
+      matchType = 'fuzzy_name';
+      score = 70 - Math.min(30, Math.abs(rowNormalized.length - normalized.length));
+    } else {
+      // 先頭一致
+      const minLen = Math.min(normalized.length, rowNormalized.length);
+      let commonPrefix = 0;
+      for (let i = 0; i < minLen; i++) {
+        if (normalized[i] === rowNormalized[i]) commonPrefix++;
+        else break;
+      }
+      if (commonPrefix >= 3) {
+        matchType = 'fuzzy_name';
+        score = 40 + commonPrefix * 2;
+      }
+    }
+
+    if (matchType !== 'none') {
+      scored.push({
+        drugMasterId: row.id,
+        drugName: row.drugName,
+        yjCode: row.yjCode,
+        yakkaPrice: toNum(row.yakkaPrice),
+        unit: row.unit,
+        matchType,
+        score,
+      });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map(({ score: _score, ...rest }) => rest);
 }
 
 /**

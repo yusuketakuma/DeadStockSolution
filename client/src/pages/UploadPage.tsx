@@ -7,6 +7,7 @@ import AppControl from '../components/ui/AppControl';
 import AppCard from '../components/ui/AppCard';
 import AppButton from '../components/ui/AppButton';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import EnrichmentPreview from '../components/upload/EnrichmentPreview';
 import { resolveUploadTypeLabel } from './upload/upload-job-utils';
 import { useUploadExcelFlow } from '../hooks/useUploadExcelFlow';
 
@@ -296,6 +297,20 @@ export default function UploadPage() {
                 </tbody>
               </table>
             </div>
+            {flow.hasPreviewRows && flow.preview && (() => {
+              const typeMapping = flow.preview.suggestedMappingByType?.[flow.uploadType] ?? flow.preview.suggestedMapping ?? {};
+              const numericMapping: Record<string, number | null> = {};
+              for (const [key, val] of Object.entries(typeMapping)) {
+                numericMapping[key] = val !== null && val !== undefined ? Number(val) : null;
+              }
+              return (
+                <EnrichmentPreview
+                  previewRows={flow.preview.rows}
+                  mapping={numericMapping}
+                />
+              );
+            })()}
+
             {!flow.hasPreviewRows && (
               <AppAlert variant="warning" className="small">
                 プレビューに取込対象の行が見つかりません。ファイル内容を確認してください。
