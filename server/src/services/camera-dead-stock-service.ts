@@ -74,6 +74,7 @@ const PACKAGE_MATCH_FIELDS = {
   drugMasterId: drugMasterPackages.drugMasterId,
   gs1Code: drugMasterPackages.gs1Code,
   janCode: drugMasterPackages.janCode,
+  hotCode: drugMasterPackages.hotCode,
   packageDescription: drugMasterPackages.packageDescription,
   normalizedPackageLabel: drugMasterPackages.normalizedPackageLabel,
 } as const;
@@ -278,6 +279,24 @@ export async function resolveCameraMatchByCode(parsed: ParsedCameraCode): Promis
 
     if (packageRows.length > 0) {
       const pkg = packageRows[0];
+      const [masterRow] = await db.select(MASTER_ROW_FIELDS)
+        .from(drugMaster)
+        .where(eq(drugMaster.id, pkg.drugMasterId))
+        .limit(1);
+
+      if (masterRow) {
+        return buildCameraCodeMatch(masterRow, pkg);
+      }
+    }
+
+    // GS1/JAN で見つからない場合: HOTコードで検索（麻薬等の特殊品目対応）
+    const hotPackageRows = await db.select(PACKAGE_MATCH_FIELDS)
+      .from(drugMasterPackages)
+      .where(inArray(drugMasterPackages.hotCode, gtinCandidates))
+      .limit(5);
+
+    if (hotPackageRows.length > 0) {
+      const pkg = hotPackageRows[0];
       const [masterRow] = await db.select(MASTER_ROW_FIELDS)
         .from(drugMaster)
         .where(eq(drugMaster.id, pkg.drugMasterId))
