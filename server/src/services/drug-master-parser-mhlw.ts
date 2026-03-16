@@ -10,12 +10,18 @@ function extractUnitFromSpecification(specification: string | null): string | nu
   if (!specification) return null;
   const normalized = specification.normalize('NFKC').replace(/\s+/g, '');
 
-  // 末尾の日本語単位: "10mg1錠" → "錠", "500mL1袋" → "袋"
-  const jpMatch = normalized.match(/(錠|カプセル|包|袋|瓶|本|枚|個|管|キット|筒|シリンジ|瓶\(税込\))$/);
+  // 括弧付き補足を除去して末尾単位を取る: "500mg1瓶(溶解液付)" → "500mg1瓶"
+  const withoutParens = normalized.replace(/[（(][^）)]*[）)]$/g, '');
+
+  // 末尾の日本語単位
+  const jpMatch = withoutParens.match(/(錠|カプセル|包|袋|瓶|本|枚|個|管|キット|筒|丸|シリンジ|缶|カセット|シート|セット|吸入)$/);
   if (jpMatch) return jpMatch[1];
 
+  // "バイアル" が含まれていれば瓶扱い
+  if (/バイアル/.test(withoutParens)) return '瓶';
+
   // 末尾の英語/計量単位: "1g" → "g", "10mL" → "mL"
-  const enMatch = normalized.match(/(g|mg|μg|mL|L)$/i);
+  const enMatch = withoutParens.match(/(g|mg|μg|mL|L)$/i);
   if (enMatch) {
     const u = enMatch[1];
     if (/^ml$/i.test(u)) return 'mL';
