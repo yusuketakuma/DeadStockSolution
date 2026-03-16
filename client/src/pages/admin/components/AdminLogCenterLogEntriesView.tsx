@@ -250,7 +250,7 @@ export const LogEntriesView = memo(function LogEntriesView({
         </div>
       </div>
 
-      <div className="page-scroll-area">
+      <div>
         {loading ? (
           <InlineLoader text="ログを読み込み中..." className="text-muted small mb-3" />
         ) : items.length === 0 ? (

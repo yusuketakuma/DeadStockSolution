@@ -221,13 +221,20 @@ export default function AdminDashboardPage() {
       )}
 
       <AppDataPanel title="運用クイック導線" className="mb-3" bodyClassName="d-flex gap-2 flex-wrap mobile-stack">
-          <Link to="/admin/openclaw" className="btn btn-sm btn-primary">OpenClaw連携を確認</Link>
+          <Link to="/admin/openclaw" className="btn btn-sm btn-primary">OpenClaw連携</Link>
           <Link to="/admin/risk" className="btn btn-sm btn-outline-danger">期限リスク分析</Link>
           <Link to="/admin/reports" className="btn btn-sm btn-outline-success">月次レポート</Link>
           <Link to="/admin/upload-jobs" className="btn btn-sm btn-outline-warning">取込ジョブ管理</Link>
-          <Link to="/admin/drug-master" className="btn btn-sm btn-outline-primary">医薬品マスター管理</Link>
-          <Link to="/admin/pharmacies" className="btn btn-sm btn-outline-secondary">加盟薬局管理</Link>
-          <Link to="/admin/logs" className="btn btn-sm btn-outline-secondary">操作ログを見る</Link>
+          <Link to="/admin/drug-master" className="btn btn-sm btn-outline-primary">医薬品マスター</Link>
+          <Link to="/admin/pharmacies" className="btn btn-sm btn-outline-secondary">薬局管理</Link>
+          <Link to="/admin/groups" className="btn btn-sm btn-outline-info">グループ管理</Link>
+          <Link to="/admin/user-requests" className="btn btn-sm btn-outline-info">ユーザーリクエスト</Link>
+          <Link to="/admin/alerts" className="btn btn-sm btn-outline-warning">アラート管理</Link>
+          <Link to="/admin/notifications" className="btn btn-sm btn-outline-secondary">通知・配信</Link>
+          <Link to="/admin/audit" className="btn btn-sm btn-outline-dark">監査ログ</Link>
+          <Link to="/admin/pharmacy-health" className="btn btn-sm btn-outline-success">薬局ヘルス</Link>
+          <Link to="/admin/matching-performance" className="btn btn-sm btn-outline-primary">マッチング性能</Link>
+          <Link to="/admin/upload-quality" className="btn btn-sm btn-outline-danger">アップロード品質</Link>
       </AppDataPanel>
 
       <Row className="g-3 mb-3">

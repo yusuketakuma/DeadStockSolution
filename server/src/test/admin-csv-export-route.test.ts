@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   exportPharmaciesCsv: vi.fn(),
   exportExchangesCsv: vi.fn(),
   exportReportsCsv: vi.fn(),
+  exportLogsCsv: vi.fn(),
+  exportRiskCsv: vi.fn(),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -24,6 +26,8 @@ vi.mock('../services/csv-export-service', () => ({
   exportPharmaciesCsv: mocks.exportPharmaciesCsv,
   exportExchangesCsv: mocks.exportExchangesCsv,
   exportReportsCsv: mocks.exportReportsCsv,
+  exportLogsCsv: mocks.exportLogsCsv,
+  exportRiskCsv: mocks.exportRiskCsv,
 }));
 
 vi.mock('express-rate-limit', () => ({

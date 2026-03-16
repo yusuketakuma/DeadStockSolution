@@ -2,14 +2,15 @@
 // ストリーミング CSV 生成（UTF-8 with BOM）。
 // Excel 文字化け防止のため BOM を先頭に付与する。
 
-import { desc, eq } from 'drizzle-orm';
+import { desc } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
   exchangeProposals,
-  exchangeHistory,
   monthlyReports,
 } from '../db/schema';
+import { activityLogs } from '../db/schema-admin';
+import { deadStockItems } from '../db/schema-inventory';
 import { logger } from './logger';
 
 // ── 定数 ──────────────────────────────────────────────────
@@ -242,5 +243,83 @@ export async function exportReportsCsv(
       ]));
     },
     errorMessage: 'CSV export reports failed',
+  });
+}
+
+// ── ログエクスポート ──────────────────────────────────────
+
+const LOG_HEADERS = ['ID', '薬局ID', 'アクション', '詳細', '日時'];
+
+export async function exportLogsCsv(
+  writer: CsvWriter,
+  _options: CsvExportOptions = {},
+): Promise<number> {
+  const batchSize = _options.batchSize ?? BATCH_SIZE;
+  return runCsvExport({
+    writer,
+    headers: LOG_HEADERS,
+    batchSize,
+    fetchRows: (offset, limit) => db.select({
+        id: activityLogs.id,
+        pharmacyId: activityLogs.pharmacyId,
+        action: activityLogs.action,
+        detail: activityLogs.detail,
+        createdAt: activityLogs.createdAt,
+      })
+        .from(activityLogs)
+        .orderBy(desc(activityLogs.createdAt))
+        .limit(limit)
+        .offset(offset),
+    writeRow: (targetWriter, row) => {
+      targetWriter.write(toCsvRow([
+        row.id,
+        row.pharmacyId,
+        row.action,
+        row.detail,
+        row.createdAt,
+      ]));
+    },
+    errorMessage: 'CSV export logs failed',
+  });
+}
+
+// ── リスク（期限間近デッドストック）エクスポート ──────────
+
+const RISK_HEADERS = ['ID', '薬局ID', '医薬品名', '数量', '有効期限', '薬価単価', '登録日'];
+
+export async function exportRiskCsv(
+  writer: CsvWriter,
+  _options: CsvExportOptions = {},
+): Promise<number> {
+  const batchSize = _options.batchSize ?? BATCH_SIZE;
+  return runCsvExport({
+    writer,
+    headers: RISK_HEADERS,
+    batchSize,
+    fetchRows: (offset, limit) => db.select({
+        id: deadStockItems.id,
+        pharmacyId: deadStockItems.pharmacyId,
+        drugName: deadStockItems.drugName,
+        quantity: deadStockItems.quantity,
+        expiryDate: deadStockItems.expirationDateIso,
+        yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
+        createdAt: deadStockItems.createdAt,
+      })
+        .from(deadStockItems)
+        .orderBy(desc(deadStockItems.createdAt))
+        .limit(limit)
+        .offset(offset),
+    writeRow: (targetWriter, row) => {
+      targetWriter.write(toCsvRow([
+        row.id,
+        row.pharmacyId,
+        row.drugName,
+        row.quantity,
+        row.expiryDate,
+        row.yakkaUnitPrice,
+        row.createdAt,
+      ]));
+    },
+    errorMessage: 'CSV export risk failed',
   });
 }

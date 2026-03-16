@@ -7,7 +7,7 @@ import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import { Badge } from 'react-bootstrap';
-import { api } from '../../api/client';
+import { api, buildApiUrl } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppModalShell from '../../components/ui/AppModalShell';
@@ -91,7 +91,12 @@ export default function AdminExchangesPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">交換履歴（管理者）</h4>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h4 className="page-title mb-0">交換履歴（管理者）</h4>
+        <a href={buildApiUrl('/admin/csv/exchanges')} className="btn btn-outline-secondary btn-sm" download>
+          CSVエクスポート
+        </a>
+      </div>
       {error && (
         <ErrorRetryAlert error={error} onRetry={() => void retry()} />
       )}

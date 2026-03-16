@@ -39,7 +39,7 @@ import pushRoutes from './routes/push';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { csrfProtection } from './middleware/csrf';
-import { requireLogin } from './middleware/auth';
+import { requireLogin, rejectAdmin } from './middleware/auth';
 import { db } from './config/database';
 import { sql } from 'drizzle-orm';
 import { logger } from './services/logger';
@@ -304,31 +304,40 @@ registerApiRoute('/auth', authRoutes);
 registerApiRoute('/auth', verificationRoutes);
 registerApiRoute('/account', accountRoutes);
 registerApiRoute('/admin', adminRoutes);
-registerApiRoute('/upload', uploadRoutes);
-registerApiRoute('/inventory', inventoryRoutes);
-registerApiRoute('/exchange', exchangeRoutes);
-registerApiRoute('/pharmacies', pharmaciesRoutes);
+// User-only routes (admin accounts are blocked)
+registerApiRoute('/upload', rejectAdmin, uploadRoutes);
+registerApiRoute('/inventory', rejectAdmin, inventoryRoutes);
+registerApiRoute('/exchange', rejectAdmin, exchangeRoutes);
+registerApiRoute('/pharmacies', rejectAdmin, pharmaciesRoutes);
+registerApiRoute('/requests', rejectAdmin, requestsRoutes);
+registerApiRoute('/business-hours', rejectAdmin, businessHoursRoutes);
+registerApiRoute('/search', rejectAdmin, searchRoutes);
+registerApiRoute('/statistics', rejectAdmin, statisticsRoutes);
+registerApiRoute('/groups', requireLogin, rejectAdmin, groupsRoutes);
+registerApiRoute('/alerts', requireLogin, rejectAdmin, alertsRoutes);
+registerApiRoute('/push', rejectAdmin, pushRoutes);
+
+// Shared routes (both admin and user)
 registerApiRoute('/notifications', notificationsRoutes);
 registerApiRoute('/timeline', timelineRoutes);
-registerApiRoute('/requests', requestsRoutes);
+registerApiRoute('/updates', updatesRoutes);
+
+// OpenClaw (webhook callbacks need access regardless)
 registerApiRoute('/openclaw', openclawRoutes);
 registerApiRoute('/openclaw/commands', openclawCommandsRoutes);
-registerApiRoute('/business-hours', businessHoursRoutes);
-registerApiRoute('/search', searchRoutes);
+
+// Admin-only routes
 registerApiRoute('/admin/drug-master', drugMasterRoutes);
 registerApiRoute('/admin/error-codes', adminErrorCodesRoutes);
 registerApiRoute('/admin/log-center', adminLogCenterRoutes);
-registerApiRoute('/updates', updatesRoutes);
+
+// Internal routes
 registerApiRoute('/internal/matching-refresh', internalMatchingRefreshRoutes);
 registerApiRoute('/internal/monthly-reports', internalMonthlyReportsRoutes);
 registerApiRoute('/internal/upload-jobs', internalUploadJobsRoutes);
 registerApiRoute('/internal/monitoring', internalMonitoringRoutes);
 registerApiRoute('/internal/predictive-alerts', internalPredictiveAlertsRoutes);
 registerApiRoute('/internal/vercel', internalVercelDeployEventsRoutes);
-registerApiRoute('/statistics', statisticsRoutes);
-registerApiRoute('/groups', requireLogin, groupsRoutes);
-registerApiRoute('/alerts', requireLogin, alertsRoutes);
-registerApiRoute('/push', pushRoutes);
 
 app.use(errorHandler);
 

@@ -2,15 +2,20 @@
 // GET /csv/pharmacies — 薬局一覧
 // GET /csv/exchanges  — 交換一覧
 // GET /csv/reports    — レポート一覧
+// GET /csv/logs       — ログ一覧
+// GET /csv/risk       — リスク一覧
 
-import { Router, Response } from 'express';
+import { Router, Response, RequestHandler } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { AuthRequest } from '../types';
 import { logger } from '../services/logger';
+import type { CsvWriter } from '../services/csv-export-service';
 import {
   exportPharmaciesCsv,
   exportExchangesCsv,
   exportReportsCsv,
+  exportLogsCsv,
+  exportRiskCsv,
 } from '../services/csv-export-service';
 
 const csvExportLimiter = rateLimit({
@@ -37,59 +42,34 @@ function setCsvHeaders(res: Response, filename: string): void {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 }
 
-router.get('/csv/pharmacies', csvExportLimiter, async (_req: AuthRequest, res: Response) => {
-  try {
-    const date = formatDateForFilename();
-    setCsvHeaders(res, `pharmacies-${date}.csv`);
-    await exportPharmaciesCsv(res);
-    res.end();
-  } catch (err) {
-    logger.error('CSV export pharmacies route error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    // ストリーミング開始後はステータスコード変更不可の場合がある
-    if (!res.headersSent) {
-      res.status(500).json({ error: '薬局CSVの出力に失敗しました' });
-    } else {
+function createCsvExportHandler(
+  exportFn: (writer: CsvWriter) => Promise<number>,
+  filenamePrefix: string,
+  errorMessageJa: string,
+): RequestHandler {
+  return async (_req: AuthRequest, res: Response) => {
+    try {
+      const date = formatDateForFilename();
+      setCsvHeaders(res, `${filenamePrefix}-${date}.csv`);
+      await exportFn(res);
       res.end();
+    } catch (err) {
+      logger.error(`CSV export ${filenamePrefix} route error`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      if (!res.headersSent) {
+        res.status(500).json({ error: errorMessageJa });
+      } else {
+        res.end();
+      }
     }
-  }
-});
+  };
+}
 
-router.get('/csv/exchanges', csvExportLimiter, async (_req: AuthRequest, res: Response) => {
-  try {
-    const date = formatDateForFilename();
-    setCsvHeaders(res, `exchanges-${date}.csv`);
-    await exportExchangesCsv(res);
-    res.end();
-  } catch (err) {
-    logger.error('CSV export exchanges route error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    if (!res.headersSent) {
-      res.status(500).json({ error: '交換CSVの出力に失敗しました' });
-    } else {
-      res.end();
-    }
-  }
-});
-
-router.get('/csv/reports', csvExportLimiter, async (_req: AuthRequest, res: Response) => {
-  try {
-    const date = formatDateForFilename();
-    setCsvHeaders(res, `reports-${date}.csv`);
-    await exportReportsCsv(res);
-    res.end();
-  } catch (err) {
-    logger.error('CSV export reports route error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'レポートCSVの出力に失敗しました' });
-    } else {
-      res.end();
-    }
-  }
-});
+router.get('/csv/pharmacies', csvExportLimiter, createCsvExportHandler(exportPharmaciesCsv, 'pharmacies', '薬局CSVの出力に失敗しました'));
+router.get('/csv/exchanges', csvExportLimiter, createCsvExportHandler(exportExchangesCsv, 'exchanges', '交換CSVの出力に失敗しました'));
+router.get('/csv/reports', csvExportLimiter, createCsvExportHandler(exportReportsCsv, 'reports', 'レポートCSVの出力に失敗しました'));
+router.get('/csv/logs', csvExportLimiter, createCsvExportHandler(exportLogsCsv, 'logs', 'ログCSVの出力に失敗しました'));
+router.get('/csv/risk', csvExportLimiter, createCsvExportHandler(exportRiskCsv, 'risk', 'リスクCSVの出力に失敗しました'));
 
 export default router;

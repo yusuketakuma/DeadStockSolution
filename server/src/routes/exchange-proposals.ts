@@ -291,6 +291,30 @@ router.post('/proposals/:id/complete', async (req: AuthRequest, res: Response) =
   });
 });
 
+// Pending action count (lightweight badge endpoint)
+router.get('/proposals/pending-count', async (req: AuthRequest, res: Response) => {
+  try {
+    const pharmacyId = req.user!.id;
+    const [result] = await db.select({ count: rowCount })
+      .from(exchangeProposals)
+      .where(and(
+        or(
+          eq(exchangeProposals.pharmacyAId, pharmacyId),
+          eq(exchangeProposals.pharmacyBId, pharmacyId),
+        ),
+        sql`(
+          (${exchangeProposals.status} = 'proposed' AND ${exchangeProposals.pharmacyBId} = ${pharmacyId})
+          OR (${exchangeProposals.status} = 'accepted_a' AND ${exchangeProposals.pharmacyBId} = ${pharmacyId})
+          OR (${exchangeProposals.status} = 'accepted_b' AND ${exchangeProposals.pharmacyAId} = ${pharmacyId})
+        )`,
+      ));
+    res.json({ pendingCount: result.count });
+  } catch (err) {
+    logger.error('Pending proposal count error', { error: err instanceof Error ? err.message : String(err) });
+    res.status(500).json({ error: '要対応件数の取得に失敗しました' });
+  }
+});
+
 // List my proposals
 router.get('/proposals', async (req: AuthRequest, res: Response) => {
   try {

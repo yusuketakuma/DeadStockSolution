@@ -62,7 +62,7 @@ function renderRouteElement(route: RouteMeta, authenticated: boolean): React.Rea
         </AppScreen>
       </div>
     );
-  return <ProtectedRoute adminOnly={route.adminOnly}>{protectedContent}</ProtectedRoute>;
+  return <ProtectedRoute adminOnly={route.adminOnly} userOnly={route.userOnly}>{protectedContent}</ProtectedRoute>;
 }
 
 function AppRoutes() {

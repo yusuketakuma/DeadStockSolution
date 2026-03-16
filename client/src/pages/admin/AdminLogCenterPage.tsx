@@ -6,8 +6,9 @@ import AppCard from '../../components/ui/AppCard';
 import AppSelect from '../../components/ui/AppSelect';
 import AppTable from '../../components/ui/AppTable';
 import LazyTab from '../../components/ui/LazyTab';
-import { api } from '../../api/client';
+import { api, buildApiUrl } from '../../api/client';
 import { formatDateTimeJa } from '../../utils/formatters';
+import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import ErrorCodesTab from './components/ErrorCodesTab';
 import CommandHistoryTab from './components/CommandHistoryTab';
 import { SummaryCards, InsightCards } from './components/AdminLogCenterSummaryCards';
@@ -144,8 +145,13 @@ export default function AdminLogCenterPage() {
   }, []);
 
   return (
-    <div className="page-viewport">
-      <h4 className="page-title mb-3">ログセンター</h4>
+    <PageShell>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h4 className="page-title mb-0">ログセンター</h4>
+        <a href={buildApiUrl('/admin/csv/logs')} className="btn btn-outline-secondary btn-sm" download>
+          CSVエクスポート
+        </a>
+      </div>
 
       {summaryError && (
         <AppAlert variant="warning" className="mb-3">
@@ -163,6 +169,7 @@ export default function AdminLogCenterPage() {
         </AppAlert>
       )}
 
+      <ScrollArea>
       <SummaryCards summary={summary} />
       <InsightCards insights={insights} />
       <Row className="g-2 mb-3">
@@ -269,6 +276,7 @@ export default function AdminLogCenterPage() {
           </LazyTab>
         </Tab>
       </Tabs>
-    </div>
+      </ScrollArea>
+    </PageShell>
   );
 }

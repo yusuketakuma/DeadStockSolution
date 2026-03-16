@@ -274,3 +274,11 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
   }
   next();
 }
+
+export function rejectAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
+  if (req.user?.isAdmin) {
+    res.status(403).json({ error: '管理者アカウントではこの機能を利用できません。一般ユーザーアカウントでログインしてください' });
+    return;
+  }
+  next();
+}

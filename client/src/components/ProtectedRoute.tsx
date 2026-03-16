@@ -5,9 +5,10 @@ import PageLoader from './ui/PageLoader';
 interface Props {
   children: React.ReactNode;
   adminOnly?: boolean;
+  userOnly?: boolean;
 }
 
-export default function ProtectedRoute({ children, adminOnly = false }: Props) {
+export default function ProtectedRoute({ children, adminOnly = false, userOnly = false }: Props) {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -20,6 +21,10 @@ export default function ProtectedRoute({ children, adminOnly = false }: Props) {
 
   if (adminOnly && !user.isAdmin) {
     return <Navigate to="/" replace />;
+  }
+
+  if (userOnly && user.isAdmin) {
+    return <Navigate to="/admin" replace />;
   }
 
   return <>{children}</>;

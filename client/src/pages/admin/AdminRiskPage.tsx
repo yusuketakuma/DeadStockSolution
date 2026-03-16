@@ -7,7 +7,7 @@ import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import InlineLoader from '../../components/ui/InlineLoader';
 import Pagination from '../../components/Pagination';
-import { api } from '../../api/client';
+import { api, buildApiUrl } from '../../api/client';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatCountJa, formatNumberJa } from '../../utils/formatters';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
@@ -97,7 +97,12 @@ export default function AdminRiskPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">期限切れリスク分析</h4>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h4 className="page-title mb-0">期限切れリスク分析</h4>
+        <a href={buildApiUrl('/admin/csv/risk')} className="btn btn-outline-secondary btn-sm" download>
+          CSVエクスポート
+        </a>
+      </div>
       {hasError && (
         <ErrorRetryAlert error={mergedErrorMessage} onRetry={handleRetry} />
       )}

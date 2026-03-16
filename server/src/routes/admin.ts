@@ -10,6 +10,18 @@ import uploadJobsRouter from './admin-upload-jobs';
 import matchingRulesRouter from './admin-matching-rules';
 import drugEquivalencesRouter from './admin-drug-equivalences';
 import csvExportRouter from './admin-csv-export';
+import userRequestsRouter from './admin-user-requests';
+import groupsRouter from './admin-groups';
+import alertsRouter from './admin-alerts';
+import bulkActionsRouter from './admin-bulk-actions';
+import relationshipsRouter from './admin-relationships';
+import notificationsRouter from './admin-notifications';
+import openclawCommandsRouter from './admin-openclaw-commands';
+import pharmacyHealthRouter from './admin-pharmacy-health';
+import matchingPerformanceRouter from './admin-matching-performance';
+import uploadQualityRouter from './admin-upload-quality';
+import auditRouter from './admin-audit';
+import businessHoursRouter from './admin-business-hours';
 
 const router = Router();
 
@@ -26,5 +38,17 @@ router.use(pharmaciesRouter);
 router.use(uploadJobsRouter);
 router.use(drugEquivalencesRouter);
 router.use(csvExportRouter);
+router.use(userRequestsRouter);
+router.use(groupsRouter);
+router.use(alertsRouter);
+router.use(bulkActionsRouter);
+router.use(relationshipsRouter);
+router.use(notificationsRouter);
+router.use(openclawCommandsRouter);
+router.use(pharmacyHealthRouter);
+router.use(matchingPerformanceRouter);
+router.use(uploadQualityRouter);
+router.use(auditRouter);
+router.use(businessHoursRouter);
 
 export default router;

@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
+  adminAuditLogs,
   pharmacies,
   pharmacyBusinessHours,
   pharmacySpecialHours,
@@ -309,6 +310,32 @@ router.post('/pharmacies/:id/verify', adminWriteLimiter, async (req: AuthRequest
     });
   } catch (err) {
     handleAdminError(err, 'Admin pharmacy verify error', '審査処理に失敗しました', res);
+  }
+});
+
+router.get('/pharmacies/:id/audit-logs', async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parseIdOrBadRequest(res, req.params.id);
+    if (!id) return;
+
+    const logs = await db.select({
+      id: adminAuditLogs.id,
+      adminId: adminAuditLogs.adminId,
+      targetPharmacyId: adminAuditLogs.targetPharmacyId,
+      action: adminAuditLogs.action,
+      previousStatus: adminAuditLogs.previousStatus,
+      newStatus: adminAuditLogs.newStatus,
+      reason: adminAuditLogs.reason,
+      createdAt: adminAuditLogs.createdAt,
+    })
+      .from(adminAuditLogs)
+      .where(eq(adminAuditLogs.targetPharmacyId, id))
+      .orderBy(desc(adminAuditLogs.createdAt))
+      .limit(100);
+
+    res.json({ logs, total: logs.length, page: 1, pageSize: logs.length });
+  } catch (err) {
+    handleAdminError(err, 'Admin pharmacy audit logs error', '監査ログの取得に失敗しました', res);
   }
 });
 
