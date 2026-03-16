@@ -1,7 +1,7 @@
 import { MatchCandidate, MatchItem } from '../../types';
 import { getBusinessHoursStatus } from '../../utils/business-hours-utils';
 import { haversineDistance } from '../../utils/geo-utils';
-import { classifyPackageFormFromUnit, arePackageFormsCompatible } from '../../utils/package-utils';
+import { classifyPackageFormFromUnit, arePackageFormsCompatible, type PackageForm } from '../../utils/package-utils';
 import {
   calculateCandidateScore,
   calculateMatchRate,
@@ -106,7 +106,7 @@ function filterByPackageCompatibility(
     const key = item.drugName.normalize('NFKC').toLowerCase();
     const bForms = bFormsByDrug.get(key);
     if (!bForms || bForms.size === 0) return true; // B側に形態情報なし→許容
-    return [...bForms].some((bf) => arePackageFormsCompatible(item.packageForm as any, bf as any));
+    return [...bForms].some((bf) => arePackageFormsCompatible(item.packageForm as PackageForm, bf as PackageForm));
   });
 
   // B品目: A側に同一薬品名があり、包装形態が非互換なら除外
@@ -115,7 +115,7 @@ function filterByPackageCompatibility(
     const key = item.drugName.normalize('NFKC').toLowerCase();
     const aForms = aFormsByDrug.get(key);
     if (!aForms || aForms.size === 0) return true;
-    return [...aForms].some((af) => arePackageFormsCompatible(item.packageForm as any, af as any));
+    return [...aForms].some((af) => arePackageFormsCompatible(item.packageForm as PackageForm, af as PackageForm));
   });
 
   return { itemsFromA: filteredA, itemsFromB: filteredB };

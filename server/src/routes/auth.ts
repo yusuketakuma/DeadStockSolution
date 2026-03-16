@@ -7,7 +7,6 @@ import {
   hashPassword,
   verifyPassword,
   generateToken,
-  deriveSessionVersion,
 } from '../services/auth-service';
 import { validateRegistration, validateLogin } from '../utils/validators';
 import { geocodeAddress } from '../services/geocode-service';
@@ -86,6 +85,8 @@ import { handoffToOpenClaw } from '../services/openclaw-service';
 
 const router = Router();
 
+const ONBOARDING_COOKIE_NAME = 'onboarding_token';
+
 if (process.env.NODE_ENV !== 'test' && EXPOSE_PASSWORD_RESET_TOKEN) {
   throw new Error('EXPOSE_PASSWORD_RESET_TOKEN=true は test 環境でのみ許可されています');
 }
@@ -134,7 +135,7 @@ router.get('/callback', async (req: AuthRequest, res: Response) => {
         workosUserId: authResult.user.id,
         email: authResult.user.email,
       });
-      res.cookie('onboarding_token', onboardingToken, {
+      res.cookie(ONBOARDING_COOKIE_NAME, onboardingToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -157,7 +158,7 @@ router.get('/callback', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const tokenPayload = buildWorkosTokenPayload(pharmacy);
+    const tokenPayload = buildTokenPayload(pharmacy);
     const token = generateToken(tokenPayload);
     invalidateAuthUserCache(pharmacy.id);
 
@@ -182,7 +183,7 @@ router.get('/callback', async (req: AuthRequest, res: Response) => {
 
 // GET /auth/onboarding-info — Onboarding トークンからユーザー情報を返す
 router.get('/onboarding-info', (req: AuthRequest, res: Response) => {
-  const token = typeof req.cookies?.onboarding_token === 'string' ? req.cookies.onboarding_token : '';
+  const token = typeof req.cookies?.[ONBOARDING_COOKIE_NAME] === 'string' ? req.cookies[ONBOARDING_COOKIE_NAME] : '';
   if (!token) {
     res.status(401).json({ error: 'Onboardingセッションが無効です。再度ログインしてください' });
     return;
@@ -199,7 +200,7 @@ router.get('/onboarding-info', (req: AuthRequest, res: Response) => {
 router.post('/complete-registration', registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
     // C2修正: リクエストbodyではなくonboarding cookieからWorkOS情報を取得
-    const onboardingToken = typeof req.cookies?.onboarding_token === 'string' ? req.cookies.onboarding_token : '';
+    const onboardingToken = typeof req.cookies?.[ONBOARDING_COOKIE_NAME] === 'string' ? req.cookies[ONBOARDING_COOKIE_NAME] : '';
     const claims = verifyOnboardingToken(onboardingToken);
     if (!claims) {
       res.status(401).json({ error: 'Onboardingセッションが無効です。再度ログインしてください' });
@@ -664,25 +665,6 @@ function getClientBaseUrl(): string {
     return `https://${process.env.VERCEL_URL}`;
   }
   return 'http://localhost:5173';
-}
-
-function buildWorkosTokenPayload(pharmacy: {
-  id: number;
-  email: string;
-  isAdmin: boolean | null;
-  workosUserId: string | null;
-  passwordHash: string | null;
-}) {
-  const sessionVersion = pharmacy.passwordHash
-    ? deriveSessionVersion(pharmacy.passwordHash)
-    : `workos:${pharmacy.workosUserId ?? ''}`;
-  return {
-    id: pharmacy.id,
-    email: pharmacy.email,
-    isAdmin: pharmacy.isAdmin ?? false,
-    sessionVersion,
-    workosUserId: pharmacy.workosUserId ?? undefined,
-  };
 }
 
 export default router;

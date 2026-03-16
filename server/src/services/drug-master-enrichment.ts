@@ -1,6 +1,7 @@
 import { db } from '../config/database';
-import { inArray, or } from 'drizzle-orm';
+import { inArray, like, or } from 'drizzle-orm';
 import { drugMaster, drugMasterPackages } from '../db/schema';
+import { escapeLikeWildcards } from '../utils/request-utils';
 import { normalizeString } from '../utils/string-utils';
 import { normalizePackageInfo, scorePackageMatch } from '../utils/package-utils';
 
@@ -419,7 +420,7 @@ async function enrichRowsWithResolvedInfo<T extends BaseRow>(
       : null;
 
     const matchConfidence: 'exact' | 'fuzzy' | 'none' = masterInfo
-      ? (row.drugCode ? 'exact' : 'exact')
+      ? (row.drugCode ? 'exact' : 'fuzzy')
       : 'none';
 
     const enriched: EnrichedRow<T> = {
@@ -449,17 +450,19 @@ export async function searchMasterCandidates(
   const normalized = normalizeString(drugName);
   if (!normalized || normalized.length < 2) return [];
 
-  const all = await db.select({
+  const escapedSearch = escapeLikeWildcards(normalized);
+  const filtered = await db.select({
     id: drugMaster.id,
     drugName: drugMaster.drugName,
     yjCode: drugMaster.yjCode,
     yakkaPrice: drugMaster.yakkaPrice,
     unit: drugMaster.unit,
-  }).from(drugMaster);
+  }).from(drugMaster)
+    .where(like(drugMaster.drugName, `%${escapedSearch}%`));
 
   const scored: Array<MasterCandidate & { score: number }> = [];
 
-  for (const row of all) {
+  for (const row of filtered) {
     const rowNormalized = normalizeString(row.drugName);
     if (!rowNormalized) continue;
 

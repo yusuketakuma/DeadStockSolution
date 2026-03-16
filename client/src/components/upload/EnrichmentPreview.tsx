@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { api, ApiError } from '../../api/client';
 import AppAlert from '../ui/AppAlert';
 import AppButton from '../ui/AppButton';
@@ -38,6 +38,8 @@ export default function EnrichmentPreview({ previewRows, mapping }: EnrichmentPr
   const [error, setError] = useState('');
   const [candidateMap, setCandidateMap] = useState<Map<number, MasterCandidate[]>>(new Map());
   const [loadingCandidates, setLoadingCandidates] = useState<Set<number>>(new Set());
+  const loadingCandidatesRef = useRef(loadingCandidates);
+  loadingCandidatesRef.current = loadingCandidates;
 
   const drugNameIdx = mapping.drug_name;
   const drugCodeIdx = mapping.drug_code;
@@ -68,7 +70,7 @@ export default function EnrichmentPreview({ previewRows, mapping }: EnrichmentPr
   }, [previewRows, drugNameIdx, drugCodeIdx, unitIdx]);
 
   const handleSearchCandidates = useCallback(async (rowIndex: number, drugName: string) => {
-    if (loadingCandidates.has(rowIndex)) return;
+    if (loadingCandidatesRef.current.has(rowIndex)) return;
     setLoadingCandidates((prev) => new Set(prev).add(rowIndex));
     try {
       const result = await api.get<{ candidates: MasterCandidate[] }>(
@@ -88,7 +90,7 @@ export default function EnrichmentPreview({ previewRows, mapping }: EnrichmentPr
         return next;
       });
     }
-  }, [loadingCandidates]);
+  }, []);
 
   return (
     <div className="mb-3">
@@ -168,9 +170,6 @@ export default function EnrichmentPreview({ previewRows, mapping }: EnrichmentPr
                             {c.unit && <span className="text-muted">({c.unit})</span>}
                           </div>
                         ))}
-                        {candidates.length === 0 && (
-                          <div className="text-muted">候補が見つかりませんでした</div>
-                        )}
                       </td>
                     </tr>
                   );

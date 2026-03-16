@@ -93,23 +93,23 @@ export function AuthProvider({
     return data;
   }, []);
 
-  // WorkOS AuthKit redirect for login
-  const loginRedirect = useCallback(() => {
-    api.get<{ url: string }>('/auth/login').then(({ url }) => {
+  const redirectToWorkOS = useCallback((path: string) => {
+    api.get<{ url: string }>(path).then(({ url }) => {
       window.location.href = url;
     }).catch(() => {
-      // Fallback: if WorkOS URL generation fails, stay on login page
+      // Fallback: if WorkOS URL generation fails, stay on current page
     });
   }, []);
 
+  // WorkOS AuthKit redirect for login
+  const loginRedirect = useCallback(() => {
+    redirectToWorkOS('/auth/login');
+  }, [redirectToWorkOS]);
+
   // WorkOS AuthKit redirect for registration
   const registerRedirect = useCallback(() => {
-    api.get<{ url: string }>('/auth/register').then(({ url }) => {
-      window.location.href = url;
-    }).catch(() => {
-      // Fallback
-    });
-  }, []);
+    redirectToWorkOS('/auth/register');
+  }, [redirectToWorkOS]);
 
   // Legacy registration (maintained during migration)
   const register = useCallback(async (data: RegisterData) => {

@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
 import AppAlert from '../components/ui/AppAlert';
 import { Form, ProgressBar } from 'react-bootstrap';
 import AppSelect from '../components/ui/AppSelect';
@@ -21,6 +21,16 @@ function scrollToFlow(id: 'upload-excel-flow' | 'upload-camera-flow') {
 
 export default function UploadPage() {
   const flow = useUploadExcelFlow();
+
+  const enrichmentMapping = useMemo(() => {
+    if (!flow.preview) return null;
+    const typeMapping = flow.preview.suggestedMappingByType?.[flow.uploadType] ?? flow.preview.suggestedMapping ?? {};
+    const numericMapping: Record<string, number | null> = {};
+    for (const [key, val] of Object.entries(typeMapping)) {
+      numericMapping[key] = val !== null && val !== undefined ? Number(val) : null;
+    }
+    return numericMapping;
+  }, [flow.preview, flow.uploadType]);
 
   return (
     <PageShell>
@@ -297,19 +307,12 @@ export default function UploadPage() {
                 </tbody>
               </table>
             </div>
-            {flow.hasPreviewRows && flow.preview && (() => {
-              const typeMapping = flow.preview.suggestedMappingByType?.[flow.uploadType] ?? flow.preview.suggestedMapping ?? {};
-              const numericMapping: Record<string, number | null> = {};
-              for (const [key, val] of Object.entries(typeMapping)) {
-                numericMapping[key] = val !== null && val !== undefined ? Number(val) : null;
-              }
-              return (
-                <EnrichmentPreview
-                  previewRows={flow.preview.rows}
-                  mapping={numericMapping}
-                />
-              );
-            })()}
+            {flow.hasPreviewRows && flow.preview && enrichmentMapping && (
+              <EnrichmentPreview
+                previewRows={flow.preview.rows}
+                mapping={enrichmentMapping}
+              />
+            )}
 
             {!flow.hasPreviewRows && (
               <AppAlert variant="warning" className="small">

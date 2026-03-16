@@ -274,29 +274,12 @@ export async function resolveCameraMatchByCode(parsed: ParsedCameraCode): Promis
       .where(or(
         inArray(drugMasterPackages.gs1Code, gtinCandidates),
         inArray(drugMasterPackages.janCode, gtinCandidates),
+        inArray(drugMasterPackages.hotCode, gtinCandidates),
       ))
       .limit(5);
 
     if (packageRows.length > 0) {
       const pkg = packageRows[0];
-      const [masterRow] = await db.select(MASTER_ROW_FIELDS)
-        .from(drugMaster)
-        .where(eq(drugMaster.id, pkg.drugMasterId))
-        .limit(1);
-
-      if (masterRow) {
-        return buildCameraCodeMatch(masterRow, pkg);
-      }
-    }
-
-    // GS1/JAN で見つからない場合: HOTコードで検索（麻薬等の特殊品目対応）
-    const hotPackageRows = await db.select(PACKAGE_MATCH_FIELDS)
-      .from(drugMasterPackages)
-      .where(inArray(drugMasterPackages.hotCode, gtinCandidates))
-      .limit(5);
-
-    if (hotPackageRows.length > 0) {
-      const pkg = hotPackageRows[0];
       const [masterRow] = await db.select(MASTER_ROW_FIELDS)
         .from(drugMaster)
         .where(eq(drugMaster.id, pkg.drugMasterId))
@@ -346,12 +329,21 @@ async function resolveByYjPrefix7(yjCode: string): Promise<CameraCodeMatch | nul
 
   if (candidates.length === 0) return null;
 
+  // 全候補の包装情報を一括取得
+  const allPackages = await db.select(PACKAGE_MATCH_FIELDS)
+    .from(drugMasterPackages)
+    .where(inArray(drugMasterPackages.drugMasterId, candidates.map((c) => c.id)));
+
+  const packageByMasterId = new Map<number, (typeof allPackages)[0]>();
+  for (const pkg of allPackages) {
+    if (!packageByMasterId.has(pkg.drugMasterId)) {
+      packageByMasterId.set(pkg.drugMasterId, pkg);
+    }
+  }
+
   // 包装情報がある品目を優先して返す
   for (const candidate of candidates) {
-    const [pkg] = await db.select(PACKAGE_MATCH_FIELDS)
-      .from(drugMasterPackages)
-      .where(eq(drugMasterPackages.drugMasterId, candidate.id))
-      .limit(1);
+    const pkg = packageByMasterId.get(candidate.id);
     if (pkg) return buildCameraCodeMatch(candidate, pkg);
   }
 
