@@ -2,6 +2,30 @@ import { parseExcelBuffer } from './upload-service';
 import { detectHeaderRow, getCell, parseYjCode, decodeCsvBuffer, assertCsvLimits, parseCsvLine, type ParsedDrugRow } from './drug-master-parser-service';
 import { parseNumber } from '../utils/string-utils';
 
+/**
+ * 規格単位文字列（例: "10mg1錠", "500mL1袋", "1g"）から薬価単位を抽出する。
+ * MHLW Excel は「単位」列がないため specification から補完する。
+ */
+function extractUnitFromSpecification(specification: string | null): string | null {
+  if (!specification) return null;
+  const normalized = specification.normalize('NFKC').replace(/\s+/g, '');
+
+  // 末尾の日本語単位: "10mg1錠" → "錠", "500mL1袋" → "袋"
+  const jpMatch = normalized.match(/(錠|カプセル|包|袋|瓶|本|枚|個|管|キット|筒|シリンジ|瓶\(税込\))$/);
+  if (jpMatch) return jpMatch[1];
+
+  // 末尾の英語/計量単位: "1g" → "g", "10mL" → "mL"
+  const enMatch = normalized.match(/(g|mg|μg|mL|L)$/i);
+  if (enMatch) {
+    const u = enMatch[1];
+    if (/^ml$/i.test(u)) return 'mL';
+    if (/^l$/i.test(u)) return 'L';
+    return u;
+  }
+
+  return null;
+}
+
 const MHLW_HEADER_KEYWORDS: Record<string, string[]> = {
   yjCode: ['薬価基準収載医薬品コード', 'YJコード', '医薬品コード', '収載コード', 'コード'],
   drugName: ['品名', '品目名称', '医薬品名', '名称', '商品名'],
@@ -47,12 +71,16 @@ export function parseMhlwExcelData(rows: unknown[][]): ParsedDrugRow[] {
 
     if (!yjCode || !drugName || yakkaPrice === null || yakkaPrice < 0) continue;
 
+    const specification = getCell(row, mapping.specification);
+    const rawUnit = getCell(row, mapping.unit);
+    const unit = rawUnit || extractUnitFromSpecification(specification);
+
     results.push({
       yjCode,
       drugName,
       genericName: getCell(row, mapping.genericName),
-      specification: getCell(row, mapping.specification),
-      unit: getCell(row, mapping.unit),
+      specification,
+      unit,
       yakkaPrice,
       manufacturer: getCell(row, mapping.manufacturer),
       category: getCell(row, mapping.category),
