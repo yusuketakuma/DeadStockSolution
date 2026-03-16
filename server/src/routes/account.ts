@@ -19,7 +19,7 @@ import { logger } from '../services/logger';
 import { getErrorMessage } from '../middleware/error-handler';
 import { eqEmailCaseInsensitive } from '../utils/email-utils';
 import { emailSchema } from '../utils/validators';
-import { sendBadRequest, sendConflict } from './response-helpers';
+import { sendBadRequest, sendConflict, sendNotFound } from './response-helpers';
 import { invalidateActivePasswordResetTokens } from '../services/password-reset-service';
 import { setAuthCookie } from './auth-helpers';
 
@@ -68,8 +68,8 @@ async function selectFirst<T>(rowsPromise: PromiseLike<T[]>): Promise<T | null> 
   return rows[0] ?? null;
 }
 
-function sendAccountNotFound(res: Response): void {
-  res.status(404).json({ error: 'アカウントが見つかりません' });
+function sendAccountNotFound(res: Response): null {
+  return sendNotFound(res, 'アカウントが見つかりません');
 }
 
 function assignOptionalTrimmedUpdate(

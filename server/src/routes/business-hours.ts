@@ -7,6 +7,7 @@ import { AuthRequest } from '../types';
 import { logger } from '../services/logger';
 import { sendBadRequest } from './response-helpers';
 import { ApiError } from '../utils/api-error';
+import { isRecord } from '../utils/type-guards';
 
 const router = Router();
 router.use(requireLogin);
@@ -102,12 +103,6 @@ function validateTimeRange(
   return { openTime, closeTime };
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
 
 function isSpecialType(value: unknown): value is SpecialType {
   return typeof value === 'string' && SPECIAL_TYPES.some((specialType) => specialType === value);
@@ -197,7 +192,7 @@ export function validateBusinessHours(hours: unknown): { valid: BusinessHourInpu
 }
 
 function validateBusinessHourEntry(raw: unknown): BusinessHourInput | { error: string } {
-  const entry = asRecord(raw);
+  const entry = isRecord(raw) ? raw : null;
   if (!entry) {
     return { error: '営業時間のフォーマットが不正です' };
   }
@@ -279,7 +274,7 @@ export function validateSpecialBusinessHours(
 }
 
 function validateSpecialBusinessHourEntry(raw: unknown): SpecialHourInput | { error: string } {
-  const entry = asRecord(raw);
+  const entry = isRecord(raw) ? raw : null;
   if (!entry) {
     return { error: '特例営業時間のフォーマットが不正です' };
   }
