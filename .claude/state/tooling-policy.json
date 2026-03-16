@@ -19,7 +19,7 @@
   },
   "mcp": {
     "configured": null,
-    "disabled": null,
+    "disabled": 1,
     "enabled_estimate": null,
     "sources": []
   },
@@ -30,6 +30,6 @@
   },
   "skills": {
     "index": [],
-    "decision_required": true
+    "decision_required": false
   }
 }

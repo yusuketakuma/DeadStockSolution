@@ -1,45 +1,32 @@
 {
-  "session_id": "session-1773028100",
+  "session_id": "session-1773663254",
   "parent_session_id": null,
-  "state": "stopped",
-  "started_at": "2026-03-09T03:48:20Z",
-  "updated_at": "2026-03-09T04:48:03Z",
-  "event_seq": 9,
-  "last_event_id": "event-000009",
+  "state": "initialized",
+  "started_at": "2026-03-16T12:14:14Z",
+  "updated_at": "2026-03-16T12:19:39Z",
+  "event_seq": 10,
+  "last_event_id": "event-000010",
   "state_version": 1,
   "cwd": "/Users/yusuke/DeadStockSolution",
   "project_name": "DeadStockSolution",
-  "resumed_at": "2026-03-09T03:48:20Z",
+  "resumed_at": "2026-03-16T12:14:14Z",
   "git": {
     "branch": "preview",
-    "uncommitted_changes": 60,
-    "last_commit": "13c107e"
+    "uncommitted_changes": 54,
+    "last_commit": "7bb2adb"
   },
   "plans": {
     "exists": true,
-    "last_modified": 1773007686,
+    "last_modified": 1773589943,
     "wip_tasks": 0,
     "todo_tasks": 0,
     "pending_tasks": 0,
-    "completed_tasks": 43
+    "completed_tasks": 0
   },
   "orchestration": {
     "max_state_retries": 3,
     "retry_backoff_seconds": 10
   },
-  "prompt_seq": 4,
-  "intent": "semantic",
-  "last_message_length": 69,
-  "last_message_hash": "379ec0b12266c776",
-  "ended_at": "2026-03-09T03:48:37Z",
-  "duration_minutes": 540,
-  "memory_logged": true,
-  "changes_this_session": [
-    {
-      "file": "/Users/yusuke/.codex/config.toml",
-      "action": "Edit",
-      "timestamp": "2026-03-09T03:50:35Z",
-      "important": false
-    }
-  ]
+  "prompt_seq": 1,
+  "intent": "literal"
 }

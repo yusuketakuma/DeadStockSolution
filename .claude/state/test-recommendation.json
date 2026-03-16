@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-03-08T22:14:29Z",
-  "changed_file": "server/src/services/matching-service.ts",
+  "timestamp": "2026-03-16T12:11:52Z",
+  "changed_file": "server/src/services/workos-service.ts",
   "test_command": "npm test",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

@@ -28,3 +28,7 @@
 {"event":"teammate_idle","teammate":"impl-2","team":"breezing-notif","timestamp":"2026-02-26T12:08:39Z"}
 {"event":"teammate_idle","teammate":"impl-1","team":"breezing-notif","timestamp":"2026-02-26T12:08:54Z"}
 {"event":"teammate_idle","teammate":"impl-1","team":"breezing-notif","timestamp":"2026-02-26T12:09:23Z"}
+{"event":"task_completed","teammate":"","task_id":"3","subject":"Phase 2: フロントエンド改修","description":"AuthContext改修、LoginPage/RegisterPage リダイレクト化、CallbackPage/OnboardingPage 新規作成、ルーティング更新","agent_id":"","agent_type":"","timestamp":"2026-03-15T23:21:34Z"}
+{"event":"task_completed","teammate":"","task_id":"4","subject":"Phase 3: 移行スクリプト作成","description":"既存ユーザーをWorkOSに一括移行するスクリプト作成","agent_id":"","agent_type":"","timestamp":"2026-03-15T23:22:38Z"}
+{"event":"task_completed","teammate":"","task_id":"5","subject":"Phase 4: Legacy認証の廃止","description":"bcrypt/password-reset コード削除、テスト更新","agent_id":"","agent_type":"","timestamp":"2026-03-15T23:22:46Z"}
+{"event":"task_completed","teammate":"","task_id":"7","subject":"MEDIS medhot パーサー対応 + 環境変数設定","description":"medhot.medd.jp の包装単位CSV（44列、Shift_JIS）を既存パーサーで取り込めるようカラムマッピングを追加し、DRUG_PACKAGE_SOURCE_URL を設定する","agent_id":"","agent_type":"","timestamp":"2026-03-16T07:36:22Z"}

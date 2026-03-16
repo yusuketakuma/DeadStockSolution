@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-03-03T09:34:39Z",
-  "trigger_command": "git push origin preview && git push origin v0.0.8",
+  "timestamp": "2026-03-15T16:21:43Z",
+  "trigger_command": "git push origin preview && git checkout main && git merge preview --no-edit && git push origin main && git checkout preview",
   "status": "completed",
   "conclusion": "failure"
 }

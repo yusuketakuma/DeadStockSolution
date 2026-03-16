@@ -10,3 +10,5 @@
 {"event":"task_completed","teammate":"impl-1","task_id":"4","subject":"T040: エラー分類ロジック構造化（utility作成）","description":"## 概要\\nadmin-utils.ts の handleAdminError 相当の汎用エラーハンドラを作成し、主要ルートのインラインエラーハンドリングを統一する。\\n\\n## owns\\n- `serv","timestamp":"2026-02-28T06:31:56Z"}
 {"event":"teammate_idle","teammate":"impl-1","team":"breezing-simplify-refactoring","timestamp":"2026-02-28T06:32:14Z"}
 {"event":"teammate_idle","teammate":"reviewer","team":"breezing-simplify-refactoring","timestamp":"2026-02-28T06:39:30Z"}
+{"event":"task_completed","teammate":"","task_id":"2","subject":"Phase 1: バックエンド WorkOS 統合","description":"WorkOS サービス作成、認証ルート改修、callback/complete-registration エンドポイント、ミドルウェア改修","agent_id":"","agent_type":"","timestamp":"2026-03-15T23:17:24Z"}
+{"event":"task_completed","teammate":"","task_id":"6","subject":"テスト・型チェック・Lint通過","description":"npm run typecheck && npm run lint && npm run test 通過確認","agent_id":"","agent_type":"","timestamp":"2026-03-15T23:27:39Z"}
