@@ -1,5 +1,6 @@
 import { WorkOS } from '@workos-inc/node';
 import { eq } from 'drizzle-orm';
+import jwt from 'jsonwebtoken';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { eqEmailCaseInsensitive } from '../utils/email-utils';
@@ -109,7 +110,15 @@ export async function findOrLinkPharmacy(workosUser: WorkOSAuthResult['user']): 
     return { pharmacy: existingByWorkos, isNewUser: false };
   }
 
-  // 2. email で検索して自動リンク
+  // 2. email で検索して自動リンク（emailVerified 必須）
+  if (!workosUser.emailVerified) {
+    logger.warn('WorkOS user email not verified, skipping auto-link', {
+      workosUserId: workosUser.id,
+      email: workosUser.email,
+    });
+    return { pharmacy: null, isNewUser: true };
+  }
+
   const existingByEmail = await findPharmacyByEmailForLinking(workosUser.email);
   if (existingByEmail) {
     await linkWorkosUserToPharmacy(existingByEmail.id, workosUser.id);
@@ -143,6 +152,41 @@ export async function createPasswordReset(email: string): Promise<string> {
   const workos = getWorkOS();
   const result = await workos.userManagement.createPasswordReset({ email });
   return result.id;
+}
+
+/**
+ * Onboarding トークン: WorkOS 認証済み・薬局未登録ユーザー用の短期JWT。
+ * 通常の JwtPayload (id > 0) とは異なり、workosUserId + email のみを保持する。
+ */
+export interface OnboardingClaims {
+  workosUserId: string;
+  email: string;
+}
+
+const ONBOARDING_TOKEN_PREFIX = 'onboarding:';
+
+export function generateOnboardingToken(claims: OnboardingClaims): string {
+  const secret = process.env.JWT_SECRET || 'test-secret-only';
+  return jwt.sign(
+    { sub: ONBOARDING_TOKEN_PREFIX + claims.workosUserId, email: claims.email },
+    secret,
+    { expiresIn: '30m', algorithm: 'HS256' },
+  );
+}
+
+export function verifyOnboardingToken(token: string): OnboardingClaims | null {
+  try {
+    const secret = process.env.JWT_SECRET || 'test-secret-only';
+    const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as { sub?: string; email?: string };
+    if (typeof decoded.sub !== 'string' || !decoded.sub.startsWith(ONBOARDING_TOKEN_PREFIX)) return null;
+    if (typeof decoded.email !== 'string' || decoded.email.trim().length === 0) return null;
+    return {
+      workosUserId: decoded.sub.slice(ONBOARDING_TOKEN_PREFIX.length),
+      email: decoded.email,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // テスト用: WorkOS インスタンスをリセット

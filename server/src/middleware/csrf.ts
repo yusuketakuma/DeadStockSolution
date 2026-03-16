@@ -8,6 +8,7 @@ const EXEMPT_PATHS = new Set([
   '/auth/login',
   '/auth/register',
   '/auth/callback',
+  '/auth/onboarding-info',
   '/auth/complete-registration',
   '/auth/password-reset/request',
   '/auth/password-reset/confirm',

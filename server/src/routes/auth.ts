@@ -22,6 +22,8 @@ import {
   getAuthorizationUrl,
   authenticateWithCode,
   findOrLinkPharmacy,
+  generateOnboardingToken,
+  verifyOnboardingToken,
 } from '../services/workos-service';
 import {
   isTestLoginFeatureEnabled,
@@ -127,15 +129,17 @@ router.get('/callback', async (req: AuthRequest, res: Response) => {
 
     if (isNewUser || !pharmacy) {
       // 新規ユーザー: WorkOS で認証済みだが薬局未登録
-      // 一時的なセッショントークンを発行して onboarding に誘導
-      const tempToken = generateToken({
-        id: 0, // 薬局未登録なので仮のID
-        email: authResult.user.email,
-        isAdmin: false,
+      // 専用 onboarding トークンを発行（通常のauth cookieとは別名）
+      const onboardingToken = generateOnboardingToken({
         workosUserId: authResult.user.id,
-        sessionVersion: 'onboarding',
+        email: authResult.user.email,
       });
-      setAuthCookie(res, tempToken, process.env.NODE_ENV === 'production');
+      res.cookie('onboarding_token', onboardingToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 30 * 60 * 1000, // 30分
+      });
 
       const clientBaseUrl = getClientBaseUrl();
       res.redirect(`${clientBaseUrl}/onboarding`);
@@ -176,12 +180,34 @@ router.get('/callback', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /auth/onboarding-info — Onboarding トークンからユーザー情報を返す
+router.get('/onboarding-info', (req: AuthRequest, res: Response) => {
+  const token = typeof req.cookies?.onboarding_token === 'string' ? req.cookies.onboarding_token : '';
+  if (!token) {
+    res.status(401).json({ error: 'Onboardingセッションが無効です。再度ログインしてください' });
+    return;
+  }
+  const claims = verifyOnboardingToken(token);
+  if (!claims) {
+    res.status(401).json({ error: 'Onboardingセッションが期限切れです。再度ログインしてください' });
+    return;
+  }
+  res.json({ email: claims.email, workosUserId: claims.workosUserId });
+});
+
 // POST /auth/complete-registration — WorkOS認証済みユーザーの薬局情報登録
 router.post('/complete-registration', registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
+    // C2修正: リクエストbodyではなくonboarding cookieからWorkOS情報を取得
+    const onboardingToken = typeof req.cookies?.onboarding_token === 'string' ? req.cookies.onboarding_token : '';
+    const claims = verifyOnboardingToken(onboardingToken);
+    if (!claims) {
+      res.status(401).json({ error: 'Onboardingセッションが無効です。再度ログインしてください' });
+      return;
+    }
+    const { workosUserId, email } = claims;
+
     const {
-      workosUserId,
-      email,
       name,
       postalCode,
       address,
@@ -193,11 +219,6 @@ router.post('/complete-registration', registerLimiter, async (req: AuthRequest, 
       permitPharmacyName,
       permitAddress,
     } = req.body;
-
-    if (!workosUserId || !email) {
-      res.status(400).json({ error: 'WorkOS認証情報が不足しています' });
-      return;
-    }
 
     const normalizedEmail = normalizeEmail(email);
 

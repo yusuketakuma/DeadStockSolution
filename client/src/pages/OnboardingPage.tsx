@@ -1,4 +1,4 @@
-import { useMemo, useState, FormEvent } from 'react';
+import { useEffect, useMemo, useState, FormEvent } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError, type FieldError } from '../api/client';
@@ -47,12 +47,12 @@ export default function OnboardingPage() {
   const [infoLoading, setInfoLoading] = useState(true);
   const navigate = useNavigate();
 
-  // onboarding ページロード時に JWT から WorkOS 情報を取得
-  useState(() => {
-    api.get<{ email: string; workosUserId?: string }>('/auth/me')
+  // onboarding ページロード時に onboarding トークンから WorkOS 情報を取得
+  useEffect(() => {
+    api.get<{ email: string; workosUserId: string }>('/auth/onboarding-info')
       .then((data) => {
-        if (data.email) {
-          setWorkosInfo({ workosUserId: (data as { workosUserId?: string }).workosUserId ?? '', email: data.email });
+        if (data.email && data.workosUserId) {
+          setWorkosInfo({ workosUserId: data.workosUserId, email: data.email });
         } else {
           navigate('/login');
         }
@@ -61,7 +61,7 @@ export default function OnboardingPage() {
         navigate('/login');
       })
       .finally(() => setInfoLoading(false));
-  });
+  }, [navigate]);
 
   const handleChange = (field: keyof OnboardingForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -84,11 +84,8 @@ export default function OnboardingPage() {
     setFieldErrors([]);
     setLoading(true);
     try {
-      await api.post('/auth/complete-registration', {
-        ...form,
-        workosUserId: workosInfo.workosUserId,
-        email: workosInfo.email,
-      });
+      // workosUserId/email はサーバー側で onboarding cookie から取得（C2修正）
+      await api.post('/auth/complete-registration', form);
       navigate(`/verification-pending?email=${encodeURIComponent(workosInfo.email)}`);
     } catch (err) {
       if (err instanceof ApiError && err.fieldErrors && err.fieldErrors.length > 0) {
