@@ -28,7 +28,7 @@ export function makeAuthHeader(
 export interface AuthCookiePharmacy {
   id: number;
   email: string;
-  passwordHash: string;
+  passwordHash: string | null;
   isAdmin?: boolean | null;
 }
 
@@ -41,7 +41,7 @@ export function deriveSessionVersion(passwordHash: string): string {
 }
 
 export function makeAuthCookie(pharmacy: AuthCookiePharmacy): string {
-  const sessionVersion = deriveSessionVersion(pharmacy.passwordHash);
+  const sessionVersion = deriveSessionVersion(pharmacy.passwordHash ?? '');
   const token = jwt.sign(
     {
       id: pharmacy.id,

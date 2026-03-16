@@ -34,8 +34,9 @@ type AuthUserRow = {
   id: number;
   email: string;
   isAdmin: boolean | null;
-  isActive: boolean;
-  passwordHash: string;
+  isActive: boolean | null;
+  passwordHash: string | null;
+  workosUserId: string | null;
   verificationStatus: string | null;
   rejectionReason: string | null;
 };
@@ -64,6 +65,7 @@ function getPreparedPharmacyAuthUserById(): PreparedPharmacyAuthUserById | null 
     isAdmin: pharmacies.isAdmin,
     isActive: pharmacies.isActive,
     passwordHash: pharmacies.passwordHash,
+    workosUserId: pharmacies.workosUserId,
     verificationStatus: pharmacies.verificationStatus,
     rejectionReason: pharmacies.rejectionReason,
   })
@@ -210,6 +212,7 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
         isAdmin: pharmacies.isAdmin,
         isActive: pharmacies.isActive,
         passwordHash: pharmacies.passwordHash,
+        workosUserId: pharmacies.workosUserId,
         verificationStatus: pharmacies.verificationStatus,
         rejectionReason: pharmacies.rejectionReason,
       })
@@ -225,7 +228,10 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
       sendInactiveAccountResponse(res, rows[0].verificationStatus as VerificationStatus, rows[0].rejectionReason);
       return;
     }
-    const sessionVersion = deriveSessionVersion(rows[0].passwordHash);
+    const { passwordHash: rowPasswordHash, workosUserId: rowWorkosUserId } = rows[0];
+    const sessionVersion = rowPasswordHash
+      ? deriveSessionVersion(rowPasswordHash)
+      : `workos:${rowWorkosUserId ?? ''}`;
     if (sessionVersion !== payload.sessionVersion) {
       sendInvalidSessionResponse(res);
       return;
@@ -235,7 +241,7 @@ export async function requireLogin(req: AuthRequest, res: Response, next: NextFu
       id: rows[0].id,
       email: rows[0].email,
       isAdmin: rows[0].isAdmin ?? false,
-      isActive: rows[0].isActive,
+      isActive: rows[0].isActive ?? true,
       sessionVersion,
       verificationStatus: rows[0].verificationStatus as VerificationStatus,
       rejectionReason: rows[0].rejectionReason,

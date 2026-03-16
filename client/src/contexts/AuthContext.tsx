@@ -14,6 +14,8 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
+  loginRedirect: () => void;
+  registerRedirect: () => void;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -62,8 +64,6 @@ export function AuthProvider({
       const data = await api.get<User>('/auth/me');
       setUser(data);
     } catch (err) {
-      // 401 (認証切れ) の場合のみユーザー状態をクリア
-      // 5xx/ネットワークエラー時はセッション維持（一時的障害の可能性）
       if (err instanceof ApiError && err.status === 401) {
         setUser(null);
       }
@@ -78,7 +78,6 @@ export function AuthProvider({
     void refreshUser().finally(() => setLoading(false));
   }, [disableInitialRefresh, refreshUser]);
 
-  // Auto-logout when session expires
   useEffect(() => {
     setAuthExpiredHandler(() => {
       setUser(null);
@@ -86,6 +85,7 @@ export function AuthProvider({
     return () => setAuthExpiredHandler(() => {});
   }, []);
 
+  // Legacy password-based login (maintained during migration)
   const login = useCallback(async (email: string, password: string): Promise<User> => {
     const data = await api.post<User>('/auth/login', { email, password });
     skipNextRefreshRef.current = true;
@@ -93,6 +93,25 @@ export function AuthProvider({
     return data;
   }, []);
 
+  // WorkOS AuthKit redirect for login
+  const loginRedirect = useCallback(() => {
+    api.get<{ url: string }>('/auth/login').then(({ url }) => {
+      window.location.href = url;
+    }).catch(() => {
+      // Fallback: if WorkOS URL generation fails, stay on login page
+    });
+  }, []);
+
+  // WorkOS AuthKit redirect for registration
+  const registerRedirect = useCallback(() => {
+    api.get<{ url: string }>('/auth/register').then(({ url }) => {
+      window.location.href = url;
+    }).catch(() => {
+      // Fallback
+    });
+  }, []);
+
+  // Legacy registration (maintained during migration)
   const register = useCallback(async (data: RegisterData) => {
     await api.post('/auth/register', data);
   }, []);
@@ -119,8 +138,8 @@ export function AuthProvider({
   }, []);
 
   const value = useMemo(() => ({
-    user, loading, login, register, logout, refreshUser
-  }), [user, loading, login, register, logout, refreshUser]);
+    user, loading, login, loginRedirect, registerRedirect, register, logout, refreshUser
+  }), [user, loading, login, loginRedirect, registerRedirect, register, logout, refreshUser]);
 
   return (
     <AuthContext.Provider value={value}>

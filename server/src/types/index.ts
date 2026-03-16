@@ -5,6 +5,7 @@ export interface JwtPayload {
   email: string;
   isAdmin: boolean;
   sessionVersion?: string;
+  workosUserId?: string;
 }
 
 export interface AuthUser {

@@ -89,8 +89,8 @@ describe('LoginPage', () => {
 
     expect(screen.getByRole('button', { name: '通常ログイン' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '管理者ログイン' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'ログイン' })).toBeInTheDocument();
-    expect(screen.getByText('新規登録はこちら')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ログイン / 新規登録' })).toBeInTheDocument();
+    expect(screen.getByText('メールアドレス・パスワードでログイン')).toBeInTheDocument();
     expect(screen.getByText('開発者ログイン')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '一覧から選ぶ' })).toBeInTheDocument();
   });
@@ -135,6 +135,11 @@ describe('LoginPage', () => {
 
     renderWithProviders(<><LoginPage /><LocationProbe /></>, { route: '/login' });
 
+    await user.click(screen.getByText('メールアドレス・パスワードでログイン'));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: 'メール・パスワードログイン' })).toBeInTheDocument();
+    });
+
     await user.type(getInputByLabel('メールアドレス'), 'wrong@example.com');
     await user.type(getInputByLabel('パスワード'), 'wrongpassword');
     await user.click(screen.getByRole('button', { name: 'ログイン' }));
@@ -174,6 +179,11 @@ describe('LoginPage', () => {
       </>,
       { route: '/login' },
     );
+
+    await user.click(screen.getByText('メールアドレス・パスワードでログイン'));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: 'メール・パスワードログイン' })).toBeInTheDocument();
+    });
 
     await user.type(getInputByLabel('メールアドレス'), 'test@example.com');
     await user.type(getInputByLabel('パスワード'), 'password123');
@@ -290,6 +300,11 @@ describe('LoginPage', () => {
       expect(screen.getByText('薬局デッドストック交換システム')).toBeInTheDocument();
     });
 
+    await user.click(screen.getByText('メールアドレス・パスワードでログイン'));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: 'メール・パスワードログイン' })).toBeInTheDocument();
+    });
+
     const emailInput = getInputByLabel('メールアドレス');
     const passwordInput = getInputByLabel('パスワード');
 
@@ -340,6 +355,11 @@ describe('LoginPage', () => {
       { route: '/login' },
     );
 
+    await user.click(screen.getByText('メールアドレス・パスワードでログイン'));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: 'メール・パスワードログイン' })).toBeInTheDocument();
+    });
+
     await user.type(getInputByLabel('メールアドレス'), 'pending@example.com');
     await user.type(getInputByLabel('パスワード'), 'password123');
     await user.click(screen.getByRole('button', { name: 'ログイン' }));
@@ -376,6 +396,11 @@ describe('LoginPage', () => {
     }));
 
     renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await user.click(screen.getByText('メールアドレス・パスワードでログイン'));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: 'メール・パスワードログイン' })).toBeInTheDocument();
+    });
 
     await user.type(getInputByLabel('メールアドレス'), 'rejected@example.com');
     await user.type(getInputByLabel('パスワード'), 'password123');

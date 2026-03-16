@@ -257,8 +257,8 @@ describe('Route meta integration', () => {
     const { container } = renderAppAtRoute('/');
 
     await waitFor(() => {
-      const loginHeading = container.querySelector('h2.h5');
-      expect(loginHeading?.textContent).toBe('ログイン');
+      const loginHeading = container.querySelector('h1.h3');
+      expect(loginHeading?.textContent).toBe('薬局デッドストック交換システム');
     });
   });
 
@@ -267,8 +267,8 @@ describe('Route meta integration', () => {
     const { container } = renderAppAtRoute('/admin');
 
     await waitFor(() => {
-      const loginHeading = container.querySelector('h2.h5');
-      expect(loginHeading?.textContent).toBe('ログイン');
+      const loginHeading = container.querySelector('h1.h3');
+      expect(loginHeading?.textContent).toBe('薬局デッドストック交換システム');
     });
   });
 

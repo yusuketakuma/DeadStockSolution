@@ -339,6 +339,10 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
         return;
       }
 
+      if (!passwordRow.passwordHash) {
+        sendBadRequest(res, 'パスワードが設定されていません。SSO でログインしてください');
+        return;
+      }
       const valid = await verifyPassword(currentPassword, passwordRow.passwordHash);
       if (!valid) {
         sendBadRequest(res, '現在のパスワードが正しくありません');
@@ -378,6 +382,7 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
           isAdmin: pharmacies.isAdmin,
           isActive: pharmacies.isActive,
           passwordHash: pharmacies.passwordHash,
+          workosUserId: pharmacies.workosUserId,
           version: pharmacies.version,
         });
 
@@ -410,11 +415,12 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     }
 
     // Regenerate token from current DB state
+    const { passwordHash: ph, workosUserId: wid } = updatedPharmacy;
     const token = generateToken({
       id: updatedPharmacy.id,
       email: updatedPharmacy.email,
       isAdmin: updatedPharmacy.isAdmin ?? false,
-      sessionVersion: deriveSessionVersion(updatedPharmacy.passwordHash),
+      sessionVersion: ph ? deriveSessionVersion(ph) : `workos:${wid ?? ''}`,
     });
 
     setAuthCookie(res, token, process.env.NODE_ENV === 'production');
@@ -475,6 +481,10 @@ router.delete('/', requireLogin, accountDeletionLimiter, async (req: AuthRequest
       return;
     }
 
+    if (!passwordRow.passwordHash) {
+      sendBadRequest(res, 'パスワードが設定されていません。SSO でログインしてください');
+      return;
+    }
     const valid = await verifyPassword(currentPassword, passwordRow.passwordHash);
     if (!valid) {
       sendBadRequest(res, '現在のパスワードが正しくありません');

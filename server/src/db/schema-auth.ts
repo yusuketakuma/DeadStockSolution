@@ -12,7 +12,8 @@ import {
 export const pharmacies = pgTable('pharmacies', {
   id: serial('id').primaryKey(),
   email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  passwordHash: text('password_hash'),
+  workosUserId: text('workos_user_id').unique(),
   name: text('name').notNull(),
   postalCode: text('postal_code').notNull(),
   address: text('address').notNull(),

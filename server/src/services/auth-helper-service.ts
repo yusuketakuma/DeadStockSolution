@@ -539,13 +539,18 @@ export function buildTokenPayload(pharmacy: {
   id: number;
   email: string;
   isAdmin: boolean | null;
-  passwordHash: string;
+  passwordHash: string | null;
+  workosUserId?: string | null;
 }) {
+  const sessionVersion = pharmacy.passwordHash
+    ? deriveSessionVersion(pharmacy.passwordHash)
+    : `workos:${pharmacy.workosUserId ?? ''}`;
   return {
     id: pharmacy.id,
     email: pharmacy.email,
     isAdmin: pharmacy.isAdmin ?? false,
-    sessionVersion: deriveSessionVersion(pharmacy.passwordHash),
+    sessionVersion,
+    workosUserId: pharmacy.workosUserId ?? undefined,
   };
 }
 
@@ -676,7 +681,7 @@ export function validateLoginInput(email: string, password: string): { valid: bo
 // Registration process helper - handles the core registration logic
 export async function executeRegistrationProcess(
   normalizedEmail: string,
-  passwordHash: string,
+  passwordHash: string | null,
   name: string,
   normalizedPostalCode: string,
   prefecture: string,

@@ -67,6 +67,8 @@ function createMockAuthContext(user: ReturnType<typeof createMockUser> | null) {
     user,
     loading: false,
     login: vi.fn(),
+    loginRedirect: vi.fn(),
+    registerRedirect: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),
     refreshUser: vi.fn(),

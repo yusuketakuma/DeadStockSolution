@@ -7,6 +7,8 @@ const CSRF_HEADER_NAME = 'x-csrf-token';
 const EXEMPT_PATHS = new Set([
   '/auth/login',
   '/auth/register',
+  '/auth/callback',
+  '/auth/complete-registration',
   '/auth/password-reset/request',
   '/auth/password-reset/confirm',
   '/auth/csrf-token',

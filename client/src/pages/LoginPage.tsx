@@ -1,6 +1,6 @@
 import { useMemo, useState, FormEvent, KeyboardEvent, type ChangeEvent } from 'react';
 import { Form } from 'react-bootstrap';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAsyncState } from '../hooks/useAsyncState';
 import { useAuth } from '../contexts/AuthContext';
 import { api, ApiError } from '../api/client';
@@ -112,8 +112,16 @@ function resolveLoginFailureState(err: unknown, normalizedEmail: string): LoginF
   };
 }
 
+function resolveCallbackError(errorParam: string | null): string {
+  if (errorParam === 'auth_failed') return '認証に失敗しました。再度お試しください。';
+  if (errorParam === 'inactive') return 'アカウントが無効です。';
+  return '';
+}
+
 export default function LoginPage() {
   const testLoginFeatureEnabled = isTestLoginFeatureEnabled();
+  const [searchParams] = useSearchParams();
+  const callbackError = resolveCallbackError(searchParams.get('error'));
   const [mode, setMode] = useState<LoginMode>('user');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -126,8 +134,9 @@ export default function LoginPage() {
   const [testPharmacyQuery, setTestPharmacyQuery] = useState('');
   const [appliedTestPharmacyMessage, setAppliedTestPharmacyMessage] = useState('');
   const [testPharmacies, setTestPharmacies] = useState<TestPharmacyPreview[]>([]);
+  const [showLegacyLogin, setShowLegacyLogin] = useState(false);
   const { loading, setLoading, error, setError } = useAsyncState();
-  const { login, logout } = useAuth();
+  const { login, loginRedirect, logout } = useAuth();
   const navigate = useNavigate();
 
   const filteredTestPharmacies = useMemo(() => {
@@ -234,6 +243,7 @@ export default function LoginPage() {
     setError('');
     setFieldErrors({});
     setCapsLockOn(false);
+    setShowLegacyLogin(true);
     setEmail(pharmacy.email);
     setPassword(pharmacy.password || '');
     setAppliedTestPharmacyMessage(
@@ -287,87 +297,116 @@ export default function LoginPage() {
                 </button>
               </div>
 
+              {callbackError && <AppAlert variant="danger" className="mb-3">{callbackError}</AppAlert>}
               {error && <AppAlert variant="danger" className="mb-3">{error}</AppAlert>}
               {appliedTestPharmacyMessage && <AppAlert variant="success" className="mb-3">{appliedTestPharmacyMessage}</AppAlert>}
 
-              <form onSubmit={handleSubmit}>
-                <h2 className="h5 mb-3">{isAdminMode ? '管理者ログイン' : 'ログイン'}</h2>
-                <Form.Group className="mb-3" controlId="login-email">
-                  <Form.Label>メールアドレス</Form.Label>
-                  <AppTouchInput
-                    type="email"
-                    value={email}
-                    onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setEmail(event.currentTarget.value)}
-                    autoComplete="username"
-                    inputMode="email"
-                    enterKeyHint="next"
-                    required
+              {/* WorkOS AuthKit ログインボタン */}
+              {!isAdminMode && !showLegacyLogin && (
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    className="btn btn-primary w-100 py-3"
+                    onClick={loginRedirect}
                     disabled={loading}
-                    placeholder="登録済みメールアドレス"
-                    isInvalid={!!fieldErrors.email}
-                    aria-invalid={!!fieldErrors.email || undefined}
-                    aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
-                    autoFocus
-                  />
-                  {fieldErrors.email && <div id="login-email-error" className="invalid-feedback d-block">{fieldErrors.email}</div>}
-                </Form.Group>
-                <Form.Group className="mb-3">
-                  <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
-                    <Form.Label htmlFor="login-password" className="mb-0">パスワード</Form.Label>
+                  >
+                    ログイン / 新規登録
+                  </button>
+                  <div className="text-center mt-3">
                     <button
                       type="button"
-                      className="btn btn-sm btn-outline-secondary"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      disabled={loading}
-                      aria-label={showPassword ? 'パスワードを非表示にする' : 'パスワードを表示する'}
-                      style={{ minHeight: '44px', minWidth: '60px' }}
+                      className="btn btn-link btn-sm text-muted"
+                      onClick={() => setShowLegacyLogin(true)}
                     >
-                      {showPassword ? '非表示' : '表示'}
+                      メールアドレス・パスワードでログイン
                     </button>
                   </div>
-                  <AppTouchInput
-                    id="login-password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    autoComplete="current-password"
-                    enterKeyHint="go"
-                    required
-                    disabled={loading}
-                    isInvalid={!!fieldErrors.password}
-                    aria-invalid={!!fieldErrors.password || undefined}
-                    aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
-                    onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setPassword(event.currentTarget.value)}
-                    onKeyUp={handlePasswordKeyUp}
-                  />
-                  {fieldErrors.password && <div id="login-password-error" className="invalid-feedback d-block">{fieldErrors.password}</div>}
-                  {capsLockOn && (
-                    <div className="form-text text-warning">
-                      Caps Lock が有効です。大文字入力に注意してください。
-                    </div>
-                  )}
-                </Form.Group>
+                </div>
+              )}
 
-                <LoadingButton
-                  type="submit"
-                  variant={isAdminMode ? 'dark' : 'primary'}
-                  className="w-100"
-                  loading={loading}
-                  loadingLabel="ログイン中..."
-                >
-                  {isAdminMode ? '管理者ログイン' : 'ログイン'}
-                </LoadingButton>
-              </form>
+              {/* Legacy password login form */}
+              {(isAdminMode || showLegacyLogin) && (
+                <>
+                  <form onSubmit={handleSubmit}>
+                    <h2 className="h5 mb-3">{isAdminMode ? '管理者ログイン' : 'メール・パスワードログイン'}</h2>
+                    <Form.Group className="mb-3" controlId="login-email">
+                      <Form.Label>メールアドレス</Form.Label>
+                      <AppTouchInput
+                        type="email"
+                        value={email}
+                        onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setEmail(event.currentTarget.value)}
+                        autoComplete="username"
+                        inputMode="email"
+                        enterKeyHint="next"
+                        required
+                        disabled={loading}
+                        placeholder="登録済みメールアドレス"
+                        isInvalid={!!fieldErrors.email}
+                        aria-invalid={!!fieldErrors.email || undefined}
+                        aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
+                        autoFocus
+                      />
+                      {fieldErrors.email && <div id="login-email-error" className="invalid-feedback d-block">{fieldErrors.email}</div>}
+                    </Form.Group>
+                    <Form.Group className="mb-3">
+                      <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                        <Form.Label htmlFor="login-password" className="mb-0">パスワード</Form.Label>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => setShowPassword((prev) => !prev)}
+                          disabled={loading}
+                          aria-label={showPassword ? 'パスワードを非表示にする' : 'パスワードを表示する'}
+                          style={{ minHeight: '44px', minWidth: '60px' }}
+                        >
+                          {showPassword ? '非表示' : '表示'}
+                        </button>
+                      </div>
+                      <AppTouchInput
+                        id="login-password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        autoComplete="current-password"
+                        enterKeyHint="go"
+                        required
+                        disabled={loading}
+                        isInvalid={!!fieldErrors.password}
+                        aria-invalid={!!fieldErrors.password || undefined}
+                        aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+                        onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setPassword(event.currentTarget.value)}
+                        onKeyUp={handlePasswordKeyUp}
+                      />
+                      {fieldErrors.password && <div id="login-password-error" className="invalid-feedback d-block">{fieldErrors.password}</div>}
+                      {capsLockOn && (
+                        <div className="form-text text-warning">
+                          Caps Lock が有効です。大文字入力に注意してください。
+                        </div>
+                      )}
+                    </Form.Group>
 
-              <div className="d-flex flex-wrap gap-3 mt-3">
-                {!isAdminMode && (
-                  <Link to="/register" className="small text-decoration-none">
-                    新規登録はこちら
-                  </Link>
-                )}
-                <span className="small text-muted">
-                  {isAdminMode ? '管理者アカウントでログインしてください。' : '通常アカウントで業務画面に入ります。'}
-                </span>
-              </div>
+                    <LoadingButton
+                      type="submit"
+                      variant={isAdminMode ? 'dark' : 'primary'}
+                      className="w-100"
+                      loading={loading}
+                      loadingLabel="ログイン中..."
+                    >
+                      {isAdminMode ? '管理者ログイン' : 'ログイン'}
+                    </LoadingButton>
+                  </form>
+
+                  <div className="d-flex flex-wrap gap-3 mt-3">
+                    {!isAdminMode && (
+                      <Link to="/register" className="small text-decoration-none">
+                        新規登録はこちら
+                      </Link>
+                    )}
+                    <span className="small text-muted">
+                      {isAdminMode ? '管理者アカウントでログインしてください。' : '通常アカウントで業務画面に入ります。'}
+                    </span>
+                  </div>
+                </>
+              )}
 
               {!isAdminMode && testLoginFeatureEnabled && (
                 <section className="border rounded-3 p-3 mt-4" aria-label="開発者ログイン">

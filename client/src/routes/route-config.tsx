@@ -3,7 +3,9 @@ import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import PasswordResetPage from '../pages/PasswordResetPage';
 import VerificationPendingPage from '../pages/VerificationPendingPage';
+import CallbackPage from '../pages/CallbackPage';
 
+const OnboardingPage = lazy(() => import('../pages/OnboardingPage'));
 const DashboardPage = lazy(() => import('../pages/DashboardPage'));
 const AccountPage = lazy(() => import('../pages/AccountPage'));
 const UploadPage = lazy(() => import('../pages/UploadPage'));
@@ -63,6 +65,8 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/register', access: 'public', redirectAuthenticatedTo: '/', component: RegisterPage },
   { path: '/password-reset', access: 'public', redirectAuthenticatedTo: '/', component: PasswordResetPage },
   { path: '/verification-pending', access: 'public', redirectAuthenticatedTo: '/', component: VerificationPendingPage },
+  { path: '/auth/callback', access: 'public', redirectAuthenticatedTo: '/', component: CallbackPage },
+  { path: '/onboarding', access: 'public', redirectAuthenticatedTo: '/', component: OnboardingPage },
 
   { path: '/', access: 'protected', useLayout: true, component: DashboardPage },
   { path: '/account', access: 'protected', useLayout: true, component: AccountPage },

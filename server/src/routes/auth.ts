@@ -1,17 +1,15 @@
 import { Router, Response } from 'express';
 import { db } from '../config/database';
-import { pharmacies, pharmacyRegistrationReviews, userRequests } from '../db/schema';
-import { asc, eq } from 'drizzle-orm';
-import { ensureTestPharmacyColumnsAtStartup } from '../config/test-pharmacy-schema';
+import { pharmacies } from '../db/schema';
+import { eq } from 'drizzle-orm';
 import {
   assertJwtSecretConfigured,
   hashPassword,
   verifyPassword,
   generateToken,
-  verifyToken,
   deriveSessionVersion,
 } from '../services/auth-service';
-import { validateRegistration, validateLogin, emailSchema, passwordSchema } from '../utils/validators';
+import { validateRegistration, validateLogin } from '../utils/validators';
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 import { requireLogin, invalidateAuthUserCache } from '../middleware/auth';
@@ -21,19 +19,17 @@ import { createPasswordResetToken, resetPasswordWithToken } from '../services/pa
 import { logger } from '../services/logger';
 import { handleRouteError, getErrorMessage } from '../middleware/error-handler';
 import {
-  createAuthLimiter,
+  getAuthorizationUrl,
+  authenticateWithCode,
+  findOrLinkPharmacy,
+} from '../services/workos-service';
+import {
   isTestLoginFeatureEnabled,
   handleAuthConfigurationError,
   handleDependencyServiceUnavailable,
   extractUniqueViolationConstraint,
-  isMissingTestPharmacyColumnError,
-  mapLegacyAuthMeRows,
-  selectLegacyAuthMeRows,
-  selectCurrentAuthMeRows,
   loadAuthMeRows,
-  formatTestPharmacyAccounts,
   sendTestPharmacyResponse,
-  selectFlaggedTestPharmacyRows,
   loadTestPharmacyRows,
   checkExistingPharmacy,
   normalizePostalCode,
@@ -43,7 +39,6 @@ import {
   buildLoginResponse,
   calculatePasswordResetDelay,
   buildPasswordResetResponse,
-  validateResetToken,
   extractPharmacyIdFromToken,
   parseIncludePasswordQuery,
   getCacheControlValue,
@@ -54,8 +49,6 @@ import {
   findPharmacyByEmail,
   buildTokenPayload,
   buildPasswordResetCompleteResponse,
-  validateEmail,
-  validatePassword,
   buildCsrfTokenResponse,
   buildLogoutResponse,
   buildUserNotFoundResponse,
@@ -84,20 +77,241 @@ import {
   setTestPharmacyCache,
   setIsTestAccountColumnAvailable,
   TEST_PHARMACY_CACHE_TTL_MS,
-  TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS,
 } from './auth-helpers';
-import type { AuthMeRow, LegacyAuthMeRow, TestPharmacyPreviewRow } from '../types';
-import { sleep } from '../utils/http-utils';
-import { eqEmailCaseInsensitive, normalizeEmail } from '../utils/email-utils';
+import { normalizeEmail } from '../utils/email-utils';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
-import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verification-service';
 
 const router = Router();
 
 if (process.env.NODE_ENV !== 'test' && EXPOSE_PASSWORD_RESET_TOKEN) {
   throw new Error('EXPOSE_PASSWORD_RESET_TOKEN=true は test 環境でのみ許可されています');
 }
+
+// ---------------------------------------------------------------------------
+// WorkOS AuthKit endpoints
+// ---------------------------------------------------------------------------
+
+// GET /auth/login — WorkOS AuthKit ログインURLを返す
+router.get('/login', (_req: AuthRequest, res: Response) => {
+  try {
+    const url = getAuthorizationUrl('sign-in');
+    res.json({ url });
+  } catch (err) {
+    handleRouteError(err, 'WorkOS login URL error', 'ログインURLの生成に失敗しました', res);
+  }
+});
+
+// GET /auth/register — WorkOS AuthKit サインアップURLを返す
+router.get('/register', (_req: AuthRequest, res: Response) => {
+  try {
+    const url = getAuthorizationUrl('sign-up');
+    res.json({ url });
+  } catch (err) {
+    handleRouteError(err, 'WorkOS register URL error', '登録URLの生成に失敗しました', res);
+  }
+});
+
+// GET /auth/callback — WorkOS AuthKit からのコールバック処理
+router.get('/callback', async (req: AuthRequest, res: Response) => {
+  try {
+    const code = typeof req.query.code === 'string' ? req.query.code : '';
+    if (!code) {
+      res.status(400).json({ error: '認証コードがありません' });
+      return;
+    }
+    assertJwtSecretConfigured();
+
+    const authResult = await authenticateWithCode(code);
+    const { pharmacy, isNewUser } = await findOrLinkPharmacy(authResult.user);
+
+    if (isNewUser || !pharmacy) {
+      // 新規ユーザー: WorkOS で認証済みだが薬局未登録
+      // 一時的なセッショントークンを発行して onboarding に誘導
+      const tempToken = generateToken({
+        id: 0, // 薬局未登録なので仮のID
+        email: authResult.user.email,
+        isAdmin: false,
+        workosUserId: authResult.user.id,
+        sessionVersion: 'onboarding',
+      });
+      setAuthCookie(res, tempToken, process.env.NODE_ENV === 'production');
+
+      const clientBaseUrl = getClientBaseUrl();
+      res.redirect(`${clientBaseUrl}/onboarding`);
+      return;
+    }
+
+    // 既存ユーザー: ログイン処理
+    if (!pharmacy.isActive) {
+      const clientBaseUrl = getClientBaseUrl();
+      if (pharmacy.verificationStatus === 'pending_verification') {
+        res.redirect(`${clientBaseUrl}/verification-pending?email=${encodeURIComponent(pharmacy.email)}`);
+        return;
+      }
+      res.redirect(`${clientBaseUrl}/login?error=inactive`);
+      return;
+    }
+
+    const tokenPayload = buildWorkosTokenPayload(pharmacy);
+    const token = generateToken(tokenPayload);
+    invalidateAuthUserCache(pharmacy.id);
+
+    setAuthCookie(res, token, process.env.NODE_ENV === 'production');
+    setCsrfCookie(res, generateCsrfToken());
+
+    const logAction = getLoginLogAction(pharmacy.isAdmin);
+    void writeLog(logAction, {
+      pharmacyId: pharmacy.id,
+      detail: `WorkOS ログイン: ${pharmacy.name}`,
+      ipAddress: getClientIp(req),
+    });
+
+    const clientBaseUrl = getClientBaseUrl();
+    res.redirect(clientBaseUrl);
+  } catch (err) {
+    logger.error('WorkOS callback error', { error: getErrorMessage(err) });
+    const clientBaseUrl = getClientBaseUrl();
+    res.redirect(`${clientBaseUrl}/login?error=auth_failed`);
+  }
+});
+
+// POST /auth/complete-registration — WorkOS認証済みユーザーの薬局情報登録
+router.post('/complete-registration', registerLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      workosUserId,
+      email,
+      name,
+      postalCode,
+      address,
+      phone,
+      fax,
+      licenseNumber,
+      prefecture,
+      permitLicenseNumber,
+      permitPharmacyName,
+      permitAddress,
+    } = req.body;
+
+    if (!workosUserId || !email) {
+      res.status(400).json({ error: 'WorkOS認証情報が不足しています' });
+      return;
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+
+    const { existingEmail, existingLicense } = await checkExistingPharmacy(normalizedEmail, licenseNumber);
+    if (existingEmail) {
+      res.status(409).json(buildEmailAlreadyRegisteredResponse());
+      return;
+    }
+    if (existingLicense) {
+      res.status(409).json(buildLicenseAlreadyRegisteredResponse());
+      return;
+    }
+
+    // ジオコーディング
+    const fullAddress = buildFullAddress(prefecture, address);
+    const coords = await geocodeAddress(fullAddress);
+    if (!coords) {
+      res.status(400).json(buildInvalidAddressResponse());
+      return;
+    }
+
+    // スクリーニング
+    const screening = evaluateRegistrationScreening({
+      pharmacyName: name,
+      prefecture,
+      address,
+      licenseNumber,
+      permitLicenseNumber,
+      permitPharmacyName,
+      permitAddress,
+    });
+
+    const registrationIp = getClientIp(req);
+    const normalizedPostalCode = normalizePostalCode(postalCode);
+
+    // WorkOS ユーザーなのでパスワードハッシュは不要 → null
+    const registrationResult = await executeRegistrationProcess(
+      normalizedEmail,
+      null,
+      name,
+      normalizedPostalCode,
+      prefecture,
+      address,
+      phone,
+      fax,
+      licenseNumber,
+      permitLicenseNumber,
+      permitPharmacyName,
+      permitAddress,
+      coords,
+      screening,
+    );
+
+    if (!registrationResult.approved) {
+      void writeLog('register', {
+        detail: `失敗|phase=screening|reason=permit_mismatch|score=${screening.screeningScore}`,
+        ipAddress: registrationIp,
+      });
+      res.status(403).json(buildRegistrationRejectionResponse(screening, registrationResult.reviewId));
+      return;
+    }
+
+    const pharmacyId = registrationResult.pharmacyId;
+
+    // WorkOS ユーザーIDを薬局に紐付け
+    await db.update(pharmacies)
+      .set({ workosUserId, updatedAt: new Date().toISOString() })
+      .where(eq(pharmacies.id, pharmacyId));
+
+    void writeLog('register', {
+      pharmacyId,
+      detail: `新規登録（WorkOS・審査待ち）: ${name}`,
+      ipAddress: registrationIp,
+    });
+
+    res.status(201).json(buildRegistrationSuccessResponse(pharmacyId));
+
+    // Fire-and-forget: OpenClaw verification handoff
+    handoffToOpenClaw({
+      requestId: registrationResult.verificationRequestId,
+      pharmacyId,
+      requestText: buildVerificationRequestText(name, normalizedPostalCode, prefecture, address, licenseNumber),
+    }).catch((err) => {
+      logger.error('OpenClaw verification handoff failed', () => ({
+        pharmacyId,
+        error: getErrorMessage(err),
+      }));
+    });
+  } catch (err) {
+    if (handleAuthConfigurationError('CompleteRegistration', err, res)) {
+      return;
+    }
+
+    const uniqueConstraint = extractUniqueViolationConstraint(err);
+    if (uniqueConstraint !== null) {
+      if (uniqueConstraint.includes('license')) {
+        res.status(409).json(buildLicenseAlreadyRegisteredResponse());
+        return;
+      }
+      if (uniqueConstraint.includes('email')) {
+        res.status(409).json(buildEmailAlreadyRegisteredResponse());
+        return;
+      }
+      res.status(409).json({ error: 'この情報は既に登録されています' });
+      return;
+    }
+
+    handleRouteError(err, 'Complete registration error', '登録に失敗しました', res);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Legacy endpoints (maintained for backward compatibility during migration)
+// ---------------------------------------------------------------------------
 
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
@@ -124,7 +338,6 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
     } = req.body;
     const normalizedEmail = normalizeEmail(email);
 
-    // Check existing email
     const { existingEmail, existingLicense } = await checkExistingPharmacy(normalizedEmail, licenseNumber);
 
     if (existingEmail) {
@@ -139,7 +352,6 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
 
     const passwordHash = await hashPassword(password);
 
-    // 住所からジオコーディング（都道府県+住所で検索）
     const fullAddress = buildFullAddress(prefecture, address);
     const coords = await geocodeAddress(fullAddress);
     if (!coords) {
@@ -195,7 +407,6 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
 
     res.status(201).json(buildRegistrationSuccessResponse(pharmacyId));
 
-    // Fire-and-forget: OpenClaw verification handoff
     handoffToOpenClaw({
       requestId: registrationResult.verificationRequestId,
       pharmacyId,
@@ -253,6 +464,12 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    if (!pharmacy.passwordHash) {
+      // WorkOS ユーザーはパスワードハッシュなし → WorkOS でログインを促す
+      res.status(401).json({ error: 'このアカウントはWorkOS認証に移行済みです。WorkOSログインをご利用ください' });
+      return;
+    }
+
     const valid = await verifyPassword(password, pharmacy.passwordHash);
     if (!valid) {
       void writeLog('login_failed', { detail: `ログイン失敗: ${normalizedEmail}`, ipAddress: getClientIp(req) });
@@ -292,7 +509,6 @@ router.post('/password-reset/request', passwordResetLimiter, async (req: AuthReq
     const result = await createPasswordResetToken(email);
     await calculatePasswordResetDelay(requestStartedAt, PASSWORD_RESET_MIN_RESPONSE_MS, PASSWORD_RESET_RESPONSE_JITTER_MS);
 
-    // Always return success to prevent email enumeration
     void writeLog('password_reset_request', {
       detail: 'パスワードリセット要求を受理',
       ipAddress: getClientIp(req),
@@ -388,7 +604,6 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
     const includePassword = parseIncludePasswordQuery(req.query.includePassword);
     const cacheControlValue = getCacheControlValue(includePassword);
 
-    // キャッシュが有効ならDBアクセスをスキップ
     if (!includePassword && isCacheValid(testPharmacyCache)) {
       sendTestPharmacyResponse(res, testPharmacyCache!.rows, includePassword, cacheControlValue);
       return;
@@ -415,4 +630,38 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
     handleRouteError(err, 'Get test pharmacies error', 'テスト薬局情報の取得に失敗しました', res, 503);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getClientBaseUrl(): string {
+  if (process.env.CLIENT_URL) {
+    return process.env.CLIENT_URL.replace(/\/+$/, '');
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return 'http://localhost:5173';
+}
+
+function buildWorkosTokenPayload(pharmacy: {
+  id: number;
+  email: string;
+  isAdmin: boolean | null;
+  workosUserId: string | null;
+  passwordHash: string | null;
+}) {
+  const sessionVersion = pharmacy.passwordHash
+    ? deriveSessionVersion(pharmacy.passwordHash)
+    : `workos:${pharmacy.workosUserId ?? ''}`;
+  return {
+    id: pharmacy.id,
+    email: pharmacy.email,
+    isAdmin: pharmacy.isAdmin ?? false,
+    sessionVersion,
+    workosUserId: pharmacy.workosUserId ?? undefined,
+  };
+}
+
 export default router;
