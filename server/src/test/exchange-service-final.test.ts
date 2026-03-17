@@ -1,7 +1,7 @@
 /**
  * exchange-service-final.test.ts
  * Covers uncovered lines in exchange-service.ts:
- * - completeProposal: successful full path (stock update, insert exchangeHistory, delete reservations)
+ * - completeProposal: successful full path (stock update, update completedTotalValue, delete reservations)
  * - completeProposal: !stock case (stock not in stockMap)
  * - completeProposal: stock.pharmacyId mismatch case
  * - createProposal: blocked pharmacy error
@@ -106,9 +106,9 @@ describe('exchange-service-final', () => {
         // 2nd update: stock item 11
         .mockImplementationOnce(() => createUpdateReturningQuery([{ id: 11 }]))
         // 3rd update: stock item 22
-        .mockImplementationOnce(() => createUpdateReturningQuery([{ id: 22 }]));
-
-      tx.insert.mockReturnValue(createInsertQuery());
+        .mockImplementationOnce(() => createUpdateReturningQuery([{ id: 22 }]))
+        // 4th update: completedTotalValue on exchangeProposals
+        .mockImplementationOnce(() => createUpdateReturningQuery([{ id: 100 }]));
       tx.delete.mockReturnValue(createDeleteQuery());
 
       mocks.db.transaction.mockImplementation(
@@ -117,8 +117,8 @@ describe('exchange-service-final', () => {
 
       await expect(completeProposal(100, 1)).resolves.toBeUndefined();
 
-      // Verify exchangeHistory was inserted
-      expect(tx.insert).toHaveBeenCalled();
+      // Verify completedTotalValue was updated on exchangeProposals
+      expect(tx.update).toHaveBeenCalled();
       // Verify deadStockReservations were deleted
       expect(tx.delete).toHaveBeenCalled();
       expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([1, 2]);

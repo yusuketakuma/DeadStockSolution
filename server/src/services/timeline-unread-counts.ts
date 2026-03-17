@@ -15,7 +15,6 @@ import {
   uploadJobs,
   adminMessages,
   adminMessageReads,
-  exchangeHistory,
   deadStockItems,
   pharmacies,
 } from '../db/schema';
@@ -188,19 +187,20 @@ export async function countUnreadUploads(
   ));
 }
 
-/** exchangeHistory: 常に read → completedAt > lastViewed のみ */
+/** exchangeProposals(completed): completedAt > lastViewed のみ */
 export async function countUnreadExchangeHistory(
   db: DbClient,
   pharmacyId: number,
   lastViewed: string | null,
 ): Promise<number> {
   if (!lastViewed) return 0;
-  return countRows(db, exchangeHistory, and(
+  return countRows(db, exchangeProposals, and(
+    eq(exchangeProposals.status, 'completed'),
     or(
-      eq(exchangeHistory.pharmacyAId, pharmacyId),
-      eq(exchangeHistory.pharmacyBId, pharmacyId),
+      eq(exchangeProposals.pharmacyAId, pharmacyId),
+      eq(exchangeProposals.pharmacyBId, pharmacyId),
     ),
-    gt(exchangeHistory.completedAt, lastViewed),
+    gt(exchangeProposals.completedAt, lastViewed),
   ));
 }
 
@@ -267,8 +267,9 @@ export async function countAllUnread(
             ))
         ), 0)
         + COALESCE((
-          SELECT count(*)::int FROM exchange_history
-          WHERE (pharmacy_a_id = ${pharmacyId} OR pharmacy_b_id = ${pharmacyId})
+          SELECT count(*)::int FROM exchange_proposals
+          WHERE status = 'completed'
+            AND (pharmacy_a_id = ${pharmacyId} OR pharmacy_b_id = ${pharmacyId})
             AND ${pharmacies.lastTimelineViewedAt} IS NOT NULL
             AND completed_at > ${pharmacies.lastTimelineViewedAt}
         ), 0)

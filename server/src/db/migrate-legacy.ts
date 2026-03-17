@@ -13,7 +13,6 @@ import {
   usedMedicationItems,
   exchangeProposals,
   exchangeProposalItems,
-  exchangeHistory,
   columnMappingTemplates,
   adminMessages,
   adminMessageReads,
@@ -328,14 +327,7 @@ async function main(): Promise<void> {
       yakkaValue: toNullableNumericString(row.yakka_value),
     }), createOnConflictDoNothingInserter(exchangeProposalItems));
 
-    await migrateTable(legacy, 'exchange_history', (row) => ({
-      id: toNumber(row.id, 'exchange_history.id'),
-      proposalId: toNumber(row.proposal_id, 'exchange_history.proposal_id'),
-      pharmacyAId: toNumber(row.pharmacy_a_id, 'exchange_history.pharmacy_a_id'),
-      pharmacyBId: toNumber(row.pharmacy_b_id, 'exchange_history.pharmacy_b_id'),
-      totalValue: toNullableNumericString(row.total_value),
-      completedAt: toOptionalString(row.completed_at),
-    }), createOnConflictDoNothingInserter(exchangeHistory));
+    // exchange_history table removed — data now lives in exchange_proposals.completed_total_value
 
     await migrateTable(legacy, 'column_mapping_templates', (row) => ({
       id: toNumber(row.id, 'column_mapping_templates.id'),

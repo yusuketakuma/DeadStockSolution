@@ -60,11 +60,13 @@ function createApp() {
 function paginatedQuery(rows: unknown[]) {
   const query = {
     from: vi.fn(),
+    where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
     offset: vi.fn(),
   };
   query.from.mockReturnValue(query);
+  query.where.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   query.offset.mockResolvedValue(rows);
@@ -97,7 +99,7 @@ describe('admin-pharmacies-list extra branch coverage', () => {
     const app = createApp();
     mocks.dbSelect
       .mockImplementationOnce(() => paginatedQuery([]))
-      .mockImplementationOnce(() => fromQuery([{ count: 0 }]));
+      .mockImplementationOnce(() => whereQuery([{ count: 0 }]));
 
     const res = await request(app).get('/api/admin/history');
 
@@ -130,7 +132,7 @@ describe('admin-pharmacies-list extra branch coverage', () => {
       .mockImplementationOnce(() => whereQuery([
         { id: 2, name: '薬局A' },
       ]))
-      .mockImplementationOnce(() => fromQuery([{ count: 1 }]));
+      .mockImplementationOnce(() => whereQuery([{ count: 1 }]));
 
     const res = await request(app).get('/api/admin/history');
 

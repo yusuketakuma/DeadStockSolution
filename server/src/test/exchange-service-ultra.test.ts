@@ -470,7 +470,8 @@ describe('exchange-service ultra invalidation follow-up', () => {
           totalValueA: '10000',
           totalValueB: '10000',
         }]))
-        .mockImplementationOnce(() => createUpdateReturningQuery([{ id: 7 }])),
+        .mockImplementationOnce(() => createUpdateReturningQuery([{ id: 7 }]))
+        .mockImplementationOnce(() => createUpdateReturningQuery([{ id: 100 }])),
       insert: vi.fn().mockImplementation(() => ({
         values: vi.fn(() => ({
           returning: vi.fn().mockResolvedValue([{ id: 500 }]),

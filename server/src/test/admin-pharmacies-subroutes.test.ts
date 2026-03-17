@@ -263,7 +263,7 @@ describe('admin pharmacies list routes', () => {
         { id: 2, name: '薬局A' },
         { id: 3, name: '薬局B' },
       ]))
-      .mockImplementationOnce(() => createFromQuery([{ count: 1 }]));
+      .mockImplementationOnce(() => createWhereQuery([{ count: 1 }]));
 
     const response = await request(app)
       .get('/api/admin/history');

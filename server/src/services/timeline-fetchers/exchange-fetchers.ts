@@ -2,7 +2,7 @@ import { and, desc, eq, gte, inArray, isNotNull, lte, or } from 'drizzle-orm';
 import {
   adminMessages,
   adminMessageReads,
-  exchangeHistory,
+  exchangeProposals,
   deadStockItems,
 } from '../../db/schema';
 import { type DbClient, type RawTimelineEvent } from '../../types/timeline';
@@ -212,31 +212,32 @@ export async function fetchExchangeHistoryEvents(
   limit?: number,
   before?: string,
 ): Promise<RawTimelineEvent[]> {
+  const completedFilter = eq(exchangeProposals.status, 'completed');
   const ownershipCondition = or(
-    eq(exchangeHistory.pharmacyAId, pharmacyId),
-    eq(exchangeHistory.pharmacyBId, pharmacyId),
+    eq(exchangeProposals.pharmacyAId, pharmacyId),
+    eq(exchangeProposals.pharmacyBId, pharmacyId),
   );
-  const conditions = [ownershipCondition];
+  const conditions = [completedFilter, ownershipCondition];
   appendDateRangeConditions(
     conditions,
     since,
     before,
-    (value) => gte(exchangeHistory.completedAt, value),
-    (value) => lte(exchangeHistory.completedAt, value),
+    (value) => gte(exchangeProposals.completedAt, value),
+    (value) => lte(exchangeProposals.completedAt, value),
   );
 
   let query = db
     .select({
-      id: exchangeHistory.id,
-      proposalId: exchangeHistory.proposalId,
-      pharmacyAId: exchangeHistory.pharmacyAId,
-      pharmacyBId: exchangeHistory.pharmacyBId,
-      totalValue: exchangeHistory.totalValue,
-      completedAt: exchangeHistory.completedAt,
+      id: exchangeProposals.id,
+      proposalId: exchangeProposals.id,
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      pharmacyBId: exchangeProposals.pharmacyBId,
+      totalValue: exchangeProposals.completedTotalValue,
+      completedAt: exchangeProposals.completedAt,
     })
-    .from(exchangeHistory)
+    .from(exchangeProposals)
     .where(and(...conditions))
-    .orderBy(desc(exchangeHistory.completedAt));
+    .orderBy(desc(exchangeProposals.completedAt));
   if (limit) query = query.limit(limit);
 
   const rows = await query;

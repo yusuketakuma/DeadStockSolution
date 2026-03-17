@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lt, lte, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { exchangeHistory, exchangeProposals, monthlyReports, uploadJobs, deadStockItems } from '../db/schema';
+import { exchangeProposals, monthlyReports, uploadJobs, deadStockItems } from '../db/schema';
 
 export interface MonthlyReportMetrics {
   year: number;
@@ -48,7 +48,7 @@ function toMetricNumber(value: unknown): number {
   return Number(value ?? 0);
 }
 
-async function countByWhere(table: typeof exchangeProposals | typeof exchangeHistory | typeof uploadJobs | typeof deadStockItems, whereClause: ReturnType<typeof and>) {
+async function countByWhere(table: typeof exchangeProposals | typeof uploadJobs | typeof deadStockItems, whereClause: ReturnType<typeof and>) {
   const [row] = await db.select({ count: sql<number>`count(*)` })
     .from(table)
     .where(whereClause);
@@ -105,15 +105,17 @@ export async function buildMonthlyReportMetrics(year: number, month: number): Pr
       lt(exchangeProposals.proposedAt, endIso),
       eq(exchangeProposals.status, 'confirmed'),
     )),
-    countByWhere(exchangeHistory, and(
-      gte(exchangeHistory.completedAt, startIso),
-      lt(exchangeHistory.completedAt, endIso),
+    countByWhere(exchangeProposals, and(
+      eq(exchangeProposals.status, 'completed'),
+      gte(exchangeProposals.completedAt, startIso),
+      lt(exchangeProposals.completedAt, endIso),
     )),
-    db.select({ total: sql<number>`coalesce(sum(${exchangeHistory.totalValue}), 0)` })
-      .from(exchangeHistory)
+    db.select({ total: sql<number>`coalesce(sum(${exchangeProposals.completedTotalValue}), 0)` })
+      .from(exchangeProposals)
       .where(and(
-        gte(exchangeHistory.completedAt, startIso),
-        lt(exchangeHistory.completedAt, endIso),
+        eq(exchangeProposals.status, 'completed'),
+        gte(exchangeProposals.completedAt, startIso),
+        lt(exchangeProposals.completedAt, endIso),
       )),
     countByWhere(uploadJobs, and(
       gte(uploadJobs.createdAt, startIso),

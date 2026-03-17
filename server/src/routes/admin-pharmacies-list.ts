@@ -3,7 +3,7 @@ import { desc, inArray, eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
-  exchangeHistory,
+  exchangeProposals,
   adminMessages,
   userRequests,
 } from '../db/schema';
@@ -98,15 +98,16 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
     const { page, limit, offset } = parseListPagination(req);
 
     const rows = await db.select({
-      id: exchangeHistory.id,
-      proposalId: exchangeHistory.proposalId,
-      pharmacyAId: exchangeHistory.pharmacyAId,
-      pharmacyBId: exchangeHistory.pharmacyBId,
-      totalValue: exchangeHistory.totalValue,
-      completedAt: exchangeHistory.completedAt,
+      id: exchangeProposals.id,
+      proposalId: exchangeProposals.id,
+      pharmacyAId: exchangeProposals.pharmacyAId,
+      pharmacyBId: exchangeProposals.pharmacyBId,
+      totalValue: exchangeProposals.completedTotalValue,
+      completedAt: exchangeProposals.completedAt,
     })
-      .from(exchangeHistory)
-      .orderBy(desc(exchangeHistory.completedAt))
+      .from(exchangeProposals)
+      .where(eq(exchangeProposals.status, 'completed'))
+      .orderBy(desc(exchangeProposals.completedAt))
       .limit(limit)
       .offset(offset);
 
@@ -121,7 +122,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       : [];
 
     const pharmacyMap = new Map(pharmacyRows.map((row) => [row.id, row.name]));
-    const [total] = await db.select({ count: rowCount }).from(exchangeHistory);
+    const [total] = await db.select({ count: rowCount }).from(exchangeProposals).where(eq(exchangeProposals.status, 'completed'));
 
     sendPaginated(res, mapExchangeHistoryRows(rows, pharmacyMap), page, limit, total.count);
   } catch (err) {

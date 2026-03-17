@@ -3,7 +3,6 @@ import { db } from '../config/database';
 import {
   deadStockItems,
   deadStockReservations,
-  exchangeHistory,
   exchangeProposalItems,
   exchangeProposals,
   pharmacies,
@@ -401,13 +400,9 @@ export async function completeProposal(proposalId: number, pharmacyId: number): 
     await validateAndUpdateStock(tx, items);
 
     const totalValue = Number(claimedProposal.totalValueA ?? 0) + Number(claimedProposal.totalValueB ?? 0);
-    await tx.insert(exchangeHistory).values({
-      proposalId,
-      pharmacyAId: claimedProposal.pharmacyAId,
-      pharmacyBId: claimedProposal.pharmacyBId,
-      totalValue: String(totalValue),
-      completedAt,
-    });
+    await tx.update(exchangeProposals)
+      .set({ completedTotalValue: String(totalValue) })
+      .where(eq(exchangeProposals.id, proposalId));
 
     await deleteProposalReservations(tx, proposalId);
     return {

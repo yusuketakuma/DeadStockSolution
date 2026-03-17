@@ -312,11 +312,12 @@ describe('completeProposal', () => {
     const [updatedItemB] = await testDb.select().from(schema.deadStockItems).where(eq(schema.deadStockItems.id, itemB.id));
     expect(updatedItemB.quantity).toBe(50);
 
-    // 履歴の確認
-    const history = await testDb.select().from(schema.exchangeHistory).where(eq(schema.exchangeHistory.proposalId, proposalId));
-    expect(history).toHaveLength(1);
-    expect(history[0].pharmacyAId).toBe(pharmacyA.id);
-    expect(history[0].pharmacyBId).toBe(pharmacyB.id);
+    // 完了済み提案の確認（completedTotalValue が設定されていること）
+    const [completedProposal] = await testDb.select().from(schema.exchangeProposals).where(eq(schema.exchangeProposals.id, proposalId));
+    expect(completedProposal.status).toBe('completed');
+    expect(completedProposal.completedTotalValue).not.toBeNull();
+    expect(completedProposal.pharmacyAId).toBe(pharmacyA.id);
+    expect(completedProposal.pharmacyBId).toBe(pharmacyB.id);
 
     // 予約が削除されていること
     const reservations = await testDb.select().from(schema.deadStockReservations).where(eq(schema.deadStockReservations.proposalId, proposalId));

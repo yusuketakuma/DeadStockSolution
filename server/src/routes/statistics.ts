@@ -5,7 +5,6 @@ import {
   uploadJobs,
   deadStockItems,
   exchangeProposals,
-  exchangeHistory,
   matchCandidateSnapshots,
   pharmacies,
   exchangeFeedback,
@@ -167,20 +166,23 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
           ),
         ),
 
-      // 交換完了件数・累計薬価・ユニーク取引先数 — 1クエリに統合
+      // 交換完了件数・累計薬価・ユニーク取引先数 — exchangeProposals(completed)から集計
       db
         .select({
           totalCount: count(),
-          totalValue: sum(exchangeHistory.totalValue),
+          totalValue: sum(exchangeProposals.completedTotalValue),
           partnerCount: countDistinct(
-            sql`CASE WHEN ${exchangeHistory.pharmacyAId} = ${pharmacyId} THEN ${exchangeHistory.pharmacyBId} ELSE ${exchangeHistory.pharmacyAId} END`,
+            sql`CASE WHEN ${exchangeProposals.pharmacyAId} = ${pharmacyId} THEN ${exchangeProposals.pharmacyBId} ELSE ${exchangeProposals.pharmacyAId} END`,
           ),
         })
-        .from(exchangeHistory)
+        .from(exchangeProposals)
         .where(
-          or(
-            eq(exchangeHistory.pharmacyAId, pharmacyId),
-            eq(exchangeHistory.pharmacyBId, pharmacyId),
+          and(
+            eq(exchangeProposals.status, 'completed'),
+            or(
+              eq(exchangeProposals.pharmacyAId, pharmacyId),
+              eq(exchangeProposals.pharmacyBId, pharmacyId),
+            ),
           ),
         ),
 

@@ -14,6 +14,7 @@ export const exchangeProposals = pgTable('exchange_proposals', {
   valueDifference: numeric('value_difference', { precision: 12, scale: 2 }),
   proposedAt: timestamp('proposed_at', { mode: 'string' }).defaultNow(),
   completedAt: timestamp('completed_at', { mode: 'string' }),
+  completedTotalValue: numeric('completed_total_value', { precision: 12, scale: 2 }),
 }, (table) => ({
   idxExchangeProposalsAProposed: index('idx_exchange_proposals_a_proposed')
     .on(table.pharmacyAId, table.proposedAt),
@@ -34,22 +35,6 @@ export const exchangeProposalItems = pgTable('exchange_proposal_items', {
 }, (table) => ({
   idxExchangeItemsProposal: index('idx_exchange_items_proposal').on(table.proposalId),
   chkQuantityPositive: check('chk_exchange_item_quantity', sql`${table.quantity} > 0`),
-}));
-
-export const exchangeHistory = pgTable('exchange_history', {
-  id: serial('id').primaryKey(),
-  proposalId: integer('proposal_id').notNull().references(() => exchangeProposals.id),
-  pharmacyAId: integer('pharmacy_a_id').notNull().references(() => pharmacies.id),
-  pharmacyBId: integer('pharmacy_b_id').notNull().references(() => pharmacies.id),
-  totalValue: numeric('total_value', { precision: 12, scale: 2 }),
-  completedAt: timestamp('completed_at', { mode: 'string' }).defaultNow(),
-}, (table) => ({
-  idxExchangeHistoryACompleted: index('idx_exchange_history_a_completed')
-    .on(table.pharmacyAId, table.completedAt),
-  idxExchangeHistoryBCompleted: index('idx_exchange_history_b_completed')
-    .on(table.pharmacyBId, table.completedAt),
-  idxExchangeHistoryProposal: index('idx_exchange_history_proposal')
-    .on(table.proposalId),
 }));
 
 export const proposalComments = pgTable('proposal_comments', {

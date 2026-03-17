@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { and, desc, eq, inArray, lt, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
-  exchangeHistory,
+  exchangeProposals,
   pharmacies,
 } from '../db/schema';
 import { AuthRequest } from '../types';
@@ -45,27 +45,36 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
     }
     const resolvedLimit = Math.min(cursorLimit ?? limit, 100);
     const pharmacyId = req.user!.id;
+    const completedFilter = eq(exchangeProposals.status, 'completed');
     const ownershipFilter = or(
-      eq(exchangeHistory.pharmacyAId, pharmacyId),
-      eq(exchangeHistory.pharmacyBId, pharmacyId),
+      eq(exchangeProposals.pharmacyAId, pharmacyId),
+      eq(exchangeProposals.pharmacyBId, pharmacyId),
     );
+    const baseFilter = and(completedFilter, ownershipFilter);
     const cursorFilter = cursor
       ? (cursor.completedAt === null
-          ? lt(exchangeHistory.id, cursor.id)
+          ? lt(exchangeProposals.id, cursor.id)
           : or(
-              lt(exchangeHistory.completedAt, cursor.completedAt),
+              lt(exchangeProposals.completedAt, cursor.completedAt),
               and(
-                eq(exchangeHistory.completedAt, cursor.completedAt),
-                lt(exchangeHistory.id, cursor.id),
+                eq(exchangeProposals.completedAt, cursor.completedAt),
+                lt(exchangeProposals.id, cursor.id),
               ),
             ))
       : undefined;
-    const whereClause = cursorFilter ? and(ownershipFilter, cursorFilter) : ownershipFilter;
+    const whereClause = cursorFilter ? and(baseFilter, cursorFilter) : baseFilter;
 
-    const historyQuery = db.select()
-        .from(exchangeHistory)
+    const historyQuery = db.select({
+        id: exchangeProposals.id,
+        proposalId: exchangeProposals.id,
+        pharmacyAId: exchangeProposals.pharmacyAId,
+        pharmacyBId: exchangeProposals.pharmacyBId,
+        totalValue: exchangeProposals.completedTotalValue,
+        completedAt: exchangeProposals.completedAt,
+      })
+        .from(exchangeProposals)
         .where(whereClause)
-        .orderBy(desc(exchangeHistory.completedAt), desc(exchangeHistory.id))
+        .orderBy(desc(exchangeProposals.completedAt), desc(exchangeProposals.id))
         .limit(cursor ? resolvedLimit + 1 : resolvedLimit)
         .offset(cursor ? 0 : offset);
 
@@ -74,8 +83,8 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
       cursor
         ? Promise.resolve([{ count: 0 }])
         : db.select({ count: rowCount })
-          .from(exchangeHistory)
-          .where(ownershipFilter),
+          .from(exchangeProposals)
+          .where(baseFilter),
     ]);
     const [countRow] = countRows;
 

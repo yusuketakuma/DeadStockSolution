@@ -6,7 +6,6 @@ import {
   uploadJobs,
   exchangeProposals,
   exchangeProposalItems,
-  exchangeHistory,
   notifications,
 } from '../db/schema';
 import { AuthRequest } from '../types';
@@ -39,14 +38,14 @@ async function fetchAdminStatsSnapshot() {
       .where(eq(pharmacies.isActive, true)),
     db.select({ count: rowCount }).from(uploadJobs),
     db.select({ count: rowCount }).from(exchangeProposals),
-    db.select({ count: rowCount }).from(exchangeHistory),
+    db.select({ count: rowCount }).from(exchangeProposals).where(eq(exchangeProposals.status, 'completed')),
     db.select({ count: rowCount })
       .from(exchangeProposalItems)
       .innerJoin(exchangeProposals, eq(exchangeProposalItems.proposalId, exchangeProposals.id))
       .where(eq(exchangeProposals.status, 'completed')),
     db.select({
-      total: sql<number>`coalesce(sum(${exchangeHistory.totalValue}), 0)`,
-    }).from(exchangeHistory),
+      total: sql<number>`coalesce(sum(${exchangeProposals.completedTotalValue}), 0)`,
+    }).from(exchangeProposals).where(eq(exchangeProposals.status, 'completed')),
   ]);
 
   return {
