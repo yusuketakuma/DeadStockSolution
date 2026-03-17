@@ -1,25 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, serial, text, integer, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import {
-  openclawStatusEnum,
   registrationReviewVerdictValues,
 } from './schema-common';
 import { pharmacies } from './schema-pharmacy';
-
-export const userRequests = pgTable('user_requests', {
-  id: serial('id').primaryKey(),
-  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
-  requestText: text('request_text').notNull(),
-  openclawStatus: openclawStatusEnum('openclaw_status').notNull().default('pending_handoff'),
-  openclawThreadId: text('openclaw_thread_id'),
-  openclawSummary: text('openclaw_summary'),
-  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
-  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
-}, (table) => ({
-  idxUserRequestsCreatedAt: index('idx_user_requests_created_at').on(table.createdAt),
-  idxUserRequestsPharmacyCreated: index('idx_user_requests_pharmacy_created').on(table.pharmacyId, table.createdAt),
-  idxUserRequestsStatusCreated: index('idx_user_requests_status_created').on(table.openclawStatus, table.createdAt),
-}));
 
 export const pharmacyRegistrationReviews = pgTable('pharmacy_registration_reviews', {
   id: serial('id').primaryKey(),

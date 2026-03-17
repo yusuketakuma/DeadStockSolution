@@ -1,42 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, varchar, numeric, boolean, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, varchar, boolean, timestamp, index, check } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import {
   adminAuditActionValues,
   errorCodeCategoryValues,
   errorCodeSeverityValues,
-  monthlyReportStatusEnum,
-  predictiveAlertTypeValues,
   systemEventLevelValues,
   systemEventSourceValues,
 } from './schema-common';
-import { notifications } from './schema-notification';
-
-export const pharmacyTrustScores = pgTable('pharmacy_trust_scores', {
-  pharmacyId: integer('pharmacy_id').primaryKey().references(() => pharmacies.id, { onDelete: 'cascade' }),
-  trustScore: numeric('trust_score', { precision: 5, scale: 2 }).notNull().default('60.00'),
-  ratingCount: integer('rating_count').notNull().default(0),
-  positiveRate: numeric('positive_rate', { precision: 5, scale: 2 }).notNull().default('0.00'),
-  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
-}, (table) => ({
-  idxTrustScoresUpdatedAt: index('idx_trust_scores_updated_at').on(table.updatedAt),
-}));
-
-export const monthlyReports = pgTable('monthly_reports', {
-  id: serial('id').primaryKey(),
-  year: integer('year').notNull(),
-  month: integer('month').notNull(),
-  status: monthlyReportStatusEnum('status').notNull().default('success'),
-  reportJson: text('report_json').notNull(),
-  generatedBy: integer('generated_by').references(() => pharmacies.id, { onDelete: 'set null' }),
-  generatedAt: timestamp('generated_at', { mode: 'string' }).defaultNow(),
-}, (table) => ({
-  idxMonthlyReportsYearMonthUnique: uniqueIndex('idx_monthly_reports_year_month_unique')
-    .on(table.year, table.month),
-  idxMonthlyReportsGeneratedAt: index('idx_monthly_reports_generated_at')
-    .on(table.generatedAt),
-  chkMonthlyReportsMonthRange: check('chk_monthly_reports_month_range', sql`${table.month} >= 1 AND ${table.month} <= 12`),
-}));
 
 export const adminAuditLogs = pgTable('admin_audit_logs', {
   id: serial('id').primaryKey(),
@@ -121,56 +92,4 @@ export const errorCodes = pgTable('error_codes', {
   idxErrorCodesSeverity: index('idx_error_codes_severity').on(table.severity),
   chkErrorCodesCategory: check('chk_error_codes_category', sql`${table.category} IN ('upload', 'auth', 'sync', 'system', 'openclaw')`),
   chkErrorCodesSeverity: check('chk_error_codes_severity', sql`${table.severity} IN ('critical', 'error', 'warning', 'info')`),
-}));
-
-export const openclawCommands = pgTable('openclaw_commands', {
-  id: serial('id').primaryKey(),
-  commandName: varchar('command_name', { length: 64 }).notNull(),
-  parameters: text('parameters'),
-  status: varchar('status', { length: 16 }).notNull(),
-  result: text('result'),
-  errorMessage: text('error_message'),
-  openclawThreadId: varchar('openclaw_thread_id', { length: 255 }),
-  signature: varchar('signature', { length: 255 }).notNull(),
-  receivedAt: timestamp('received_at', { mode: 'string' }).defaultNow(),
-  completedAt: timestamp('completed_at', { mode: 'string' }),
-}, (table) => ({
-  idxOpenclawCommandsReceivedAt: index('idx_openclaw_commands_received_at').on(table.receivedAt),
-  idxOpenclawCommandsStatus: index('idx_openclaw_commands_status').on(table.status),
-  idxOpenclawCommandsName: index('idx_openclaw_commands_name').on(table.commandName),
-}));
-
-export const openclawCommandWhitelist = pgTable('openclaw_command_whitelist', {
-  id: serial('id').primaryKey(),
-  commandName: varchar('command_name', { length: 64 }).unique().notNull(),
-  category: varchar('category', { length: 16 }).notNull(),
-  descriptionJa: varchar('description_ja', { length: 255 }),
-  isEnabled: boolean('is_enabled').default(true).notNull(),
-  parametersSchema: text('parameters_schema'),
-  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
-  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
-});
-
-export const predictiveAlerts = pgTable('predictive_alerts', {
-  id: serial('id').primaryKey(),
-  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
-  alertType: text('alert_type').$type<(typeof predictiveAlertTypeValues)[number]>().notNull(),
-  title: text('title').notNull(),
-  message: text('message').notNull(),
-  detailJson: text('detail_json').notNull(),
-  dedupeKey: text('dedupe_key').notNull(),
-  notificationId: integer('notification_id').references(() => notifications.id, { onDelete: 'set null' }),
-  detectedAt: timestamp('detected_at', { mode: 'string' }).notNull().defaultNow(),
-  resolvedAt: timestamp('resolved_at', { mode: 'string' }),
-  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
-}, (table) => ({
-  idxPredictiveAlertsPharmacyCreated: index('idx_predictive_alerts_pharmacy_created')
-    .on(table.pharmacyId, table.createdAt),
-  idxPredictiveAlertsUnresolved: index('idx_predictive_alerts_unresolved')
-    .on(table.pharmacyId, table.resolvedAt, table.createdAt),
-  idxPredictiveAlertsTypeDetected: index('idx_predictive_alerts_type_detected')
-    .on(table.alertType, table.detectedAt),
-  idxPredictiveAlertsDedupeUnique: uniqueIndex('idx_predictive_alerts_dedupe_unique')
-    .on(table.pharmacyId, table.dedupeKey),
-  chkPredictiveAlertsType: check('chk_predictive_alerts_type', sql`${table.alertType} IN ('near_expiry', 'excess_stock')`),
 }));

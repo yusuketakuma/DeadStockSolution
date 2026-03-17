@@ -8,8 +8,8 @@ import {
   pharmacies,
   exchangeProposals,
   monthlyReports,
+  activityLogs,
 } from '../db/schema';
-import { activityLogs } from '../db/schema-admin';
 import { deadStockItems } from '../db/schema-inventory';
 import { logger } from './logger';
 
