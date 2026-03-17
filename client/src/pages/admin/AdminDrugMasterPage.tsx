@@ -420,6 +420,7 @@ export default function AdminDrugMasterPage() {
         statusFilter={statusFilter}
         categoryFilter={categoryFilter}
         total={total}
+        loading={loading}
         onSearchInputChange={setSearchInput}
         onSearch={handleSearch}
         onStatusFilterChange={(v) => { setStatusFilter(v); setPage(1); }}

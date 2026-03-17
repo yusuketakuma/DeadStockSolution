@@ -3,6 +3,7 @@ import { Row, Col, Accordion } from 'react-bootstrap';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAsyncState } from '../hooks/useAsyncState';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { api } from '../api/client';
 import AppAlert from '../components/ui/AppAlert';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
@@ -85,9 +86,26 @@ function resolveProposalStatusMeta(proposal: ProposalDetail['proposal'], current
   };
 }
 
+/** アクションと現在ステータスから楽観的更新後のステータスを算出する。変換不能な場合は null を返す。 */
+function optimisticNextStatus(
+  action: 'accept' | 'reject' | 'complete',
+  currentStatus: string,
+  isA: boolean,
+): string | null {
+  if (action === 'reject') return 'rejected';
+  if (action === 'complete' && currentStatus === 'confirmed') return 'completed';
+  if (action === 'accept') {
+    if (currentStatus === 'proposed') return isA ? 'accepted_a' : 'accepted_b';
+    if (currentStatus === 'accepted_a' && !isA) return 'confirmed';
+    if (currentStatus === 'accepted_b' && isA) return 'confirmed';
+  }
+  return null;
+}
+
 export default function ProposalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { showError: showToastError } = useToast();
   const location = useLocation();
   const [data, setData] = useState<ProposalDetail | null>(null);
   const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
@@ -192,17 +210,30 @@ export default function ProposalDetailPage() {
     : proposal.status;
 
   const handleAction = async () => {
-    if (!pendingAction) return;
+    if (!pendingAction || !data) return;
     setError('');
     setMessage('');
     setActionSubmitting(true);
+
+    // 楽観的更新: API コール前にステータスを即座に反映する
+    const previousStatus = data.proposal.status;
+    const isA = data.proposal.pharmacyAId === user?.id;
+    const nextStatus = optimisticNextStatus(pendingAction, previousStatus, isA);
+    if (nextStatus !== null) {
+      setData((prev) => prev ? { ...prev, proposal: { ...prev.proposal, status: nextStatus } } : prev);
+    }
+    setPendingAction(null);
+
     try {
       const result = await api.post<{ message: string }>(`/exchange/proposals/${id}/${pendingAction}`);
       setMessage(result.message);
-      setPendingAction(null);
       await Promise.all([fetchDetail(), fetchComments()]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '操作に失敗しました');
+      // rollback: 楽観的更新を元のステータスに戻す
+      setData((prev) => prev ? { ...prev, proposal: { ...prev.proposal, status: previousStatus } } : prev);
+      const errorMessage = err instanceof Error ? err.message : '操作に失敗しました';
+      showToastError(errorMessage);
+      setError(errorMessage);
     } finally {
       setActionSubmitting(false);
     }
@@ -443,52 +474,84 @@ export default function ProposalDetailPage() {
           statusLabel={statusLabel}
         />
         {MobileTimelineAccordion()}
-        {PharmacyInfoSection()}
-        {ExchangeInstructions()}
-        <ProposalItemsPanel
-          items={itemsAtoB}
-          fromName={pharmacyA.name}
-          toName={pharmacyB.name}
-          totalValue={proposal.totalValueA}
-        />
-        <ProposalItemsPanel
-          items={itemsBtoA}
-          fromName={pharmacyB.name}
-          toName={pharmacyA.name}
-          totalValue={proposal.totalValueB}
-        />
-        <ProposalFeedbackSection
-          isCompletedPhase={isCompletedPhase}
-          isAdmin={user?.isAdmin ?? false}
-          feedbackRating={feedbackRating}
-          feedbackComment={feedbackComment}
-          feedbackSubmitting={feedbackSubmitting}
-          onRatingChange={setFeedbackRating}
-          onCommentChange={setFeedbackComment}
-          onSubmit={handleSubmitFeedback}
-        />
-        <ProposalCommentSection
-          comments={comments}
-          commentsLoading={commentsLoading}
-          currentUserId={user?.id}
-          isAdmin={user?.isAdmin ?? false}
-          commentBody={commentBody}
-          commentSubmitting={commentSubmitting}
-          editingCommentId={editingCommentId}
-          editingCommentBody={editingCommentBody}
-          commentUpdatingId={commentUpdatingId}
-          commentDeletingId={commentDeletingId}
-          includeComposer={false}
-          hasStickyActions={hasStickyActions}
-          onStartEdit={handleStartEditComment}
-          onCancelEdit={handleCancelEditComment}
-          onUpdateComment={handleUpdateComment}
-          onDeleteComment={handleDeleteComment}
-          onEditingCommentBodyChange={setEditingCommentBody}
-          onCommentBodyChange={setCommentBody}
-          onSubmit={handleCreateComment}
-          onApplyTemplate={handleApplyCommentTemplate}
-        />
+
+        {/* 概要 — デフォルト展開 */}
+        <Accordion defaultActiveKey="summary" className="mb-3">
+          <Accordion.Item eventKey="summary">
+            <Accordion.Header>概要（薬局情報・ステータス・総額）</Accordion.Header>
+            <Accordion.Body className="p-2">
+              {PharmacyInfoSection()}
+              {ExchangeInstructions()}
+              <div className="small text-muted mt-2">
+                <span className="me-3">A→B 合計: ¥{proposal.totalValueA.toLocaleString()}</span>
+                <span>B→A 合計: ¥{proposal.totalValueB.toLocaleString()}</span>
+              </div>
+            </Accordion.Body>
+          </Accordion.Item>
+        </Accordion>
+
+        {/* アイテム — デフォルト閉じ */}
+        <Accordion className="mb-3">
+          <Accordion.Item eventKey="items">
+            <Accordion.Header>アイテム（{pharmacyA.name} ↔ {pharmacyB.name}）</Accordion.Header>
+            <Accordion.Body className="p-2">
+              <ProposalItemsPanel
+                items={itemsAtoB}
+                fromName={pharmacyA.name}
+                toName={pharmacyB.name}
+                totalValue={proposal.totalValueA}
+              />
+              <ProposalItemsPanel
+                items={itemsBtoA}
+                fromName={pharmacyB.name}
+                toName={pharmacyA.name}
+                totalValue={proposal.totalValueB}
+              />
+            </Accordion.Body>
+          </Accordion.Item>
+        </Accordion>
+
+        {/* コメント・フィードバック — デフォルト閉じ */}
+        <Accordion className="mb-3">
+          <Accordion.Item eventKey="comments">
+            <Accordion.Header>コメント・フィードバック</Accordion.Header>
+            <Accordion.Body className="p-2">
+              <ProposalFeedbackSection
+                isCompletedPhase={isCompletedPhase}
+                isAdmin={user?.isAdmin ?? false}
+                feedbackRating={feedbackRating}
+                feedbackComment={feedbackComment}
+                feedbackSubmitting={feedbackSubmitting}
+                onRatingChange={setFeedbackRating}
+                onCommentChange={setFeedbackComment}
+                onSubmit={handleSubmitFeedback}
+              />
+              <ProposalCommentSection
+                comments={comments}
+                commentsLoading={commentsLoading}
+                currentUserId={user?.id}
+                isAdmin={user?.isAdmin ?? false}
+                commentBody={commentBody}
+                commentSubmitting={commentSubmitting}
+                editingCommentId={editingCommentId}
+                editingCommentBody={editingCommentBody}
+                commentUpdatingId={commentUpdatingId}
+                commentDeletingId={commentDeletingId}
+                includeComposer={false}
+                hasStickyActions={hasStickyActions}
+                onStartEdit={handleStartEditComment}
+                onCancelEdit={handleCancelEditComment}
+                onUpdateComment={handleUpdateComment}
+                onDeleteComment={handleDeleteComment}
+                onEditingCommentBodyChange={setEditingCommentBody}
+                onCommentBodyChange={setCommentBody}
+                onSubmit={handleCreateComment}
+                onApplyTemplate={handleApplyCommentTemplate}
+              />
+            </Accordion.Body>
+          </Accordion.Item>
+        </Accordion>
+
         {!user?.isAdmin ? (
           <ProposalCommentSection
             comments={comments}
@@ -513,7 +576,7 @@ export default function ProposalDetailPage() {
             onApplyTemplate={handleApplyCommentTemplate}
           />
         ) : null}
-        {(hasStickyActions || !user?.isAdmin) && <div className="sticky-footer-gap" />}
+        <div style={{ paddingBottom: '80px' }} />
       </ScrollArea>
       <ProposalMobileStickyActions
         hasStickyActions={hasStickyActions}

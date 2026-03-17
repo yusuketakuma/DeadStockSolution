@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Nav, Offcanvas } from 'react-bootstrap';
 import AppButton from './ui/AppButton';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
@@ -17,7 +17,7 @@ type UserBadgeKey = keyof UserBadgeCounts;
 interface UserSubGroup {
   key: string;
   subtitle: string;
-  icon: string;
+  icon: ReactNode;
   items: { to: string; label: string; end?: boolean; userBadgeKey?: UserBadgeKey }[];
 }
 
@@ -25,7 +25,7 @@ const USER_SUBGROUPS: UserSubGroup[] = [
   {
     key: 'home',
     subtitle: 'ホーム',
-    icon: '📊',
+    icon: <i className="bi bi-bar-chart" />,
     items: [
       { to: '/', label: 'ダッシュボード', end: true },
       { to: '/statistics', label: '統計' },
@@ -34,7 +34,7 @@ const USER_SUBGROUPS: UserSubGroup[] = [
   {
     key: 'inventory-upload',
     subtitle: '在庫管理',
-    icon: '📦',
+    icon: <i className="bi bi-box-seam" />,
     items: [
       { to: '/upload', label: 'アップロード' },
       { to: '/inventory/dead-stock', label: 'デッドストック' },
@@ -45,7 +45,7 @@ const USER_SUBGROUPS: UserSubGroup[] = [
   {
     key: 'matching',
     subtitle: 'マッチング・交換',
-    icon: '🔗',
+    icon: <i className="bi bi-link-45deg" />,
     items: [
       { to: '/matching', label: 'マッチング' },
       { to: '/proposals', label: 'マッチング一覧', userBadgeKey: 'pendingProposals' },
@@ -55,7 +55,7 @@ const USER_SUBGROUPS: UserSubGroup[] = [
   {
     key: 'community',
     subtitle: 'コミュニティ',
-    icon: '👥',
+    icon: <i className="bi bi-people" />,
     items: [
       { to: '/pharmacies', label: '薬局一覧' },
       { to: '/groups', label: 'グループ' },
@@ -67,7 +67,7 @@ const USER_SUBGROUPS: UserSubGroup[] = [
 interface AdminSubGroup {
   key: string;
   subtitle: string;
-  icon: string;
+  icon: ReactNode;
   items: { to: string; label: string; end?: boolean; badgeKey?: keyof AdminBadgeCounts }[];
 }
 
@@ -75,7 +75,7 @@ const ADMIN_SUBGROUPS: AdminSubGroup[] = [
   {
     key: 'overview',
     subtitle: '概要',
-    icon: '⚙️',
+    icon: <i className="bi bi-gear" />,
     items: [
       { to: '/admin', label: 'ダッシュボード', end: true },
     ],
@@ -83,7 +83,7 @@ const ADMIN_SUBGROUPS: AdminSubGroup[] = [
   {
     key: 'pharmacy-ops',
     subtitle: '薬局運用',
-    icon: '🏥',
+    icon: <i className="bi bi-hospital" />,
     items: [
       { to: '/admin/pharmacies', label: '薬局管理' },
       { to: '/admin/groups', label: 'グループ管理' },
@@ -95,7 +95,7 @@ const ADMIN_SUBGROUPS: AdminSubGroup[] = [
   {
     key: 'requests-notifications',
     subtitle: 'リクエスト・通知',
-    icon: '📩',
+    icon: <i className="bi bi-envelope-arrow-down" />,
     items: [
       { to: '/admin/user-requests', label: 'ユーザーリクエスト', badgeKey: 'pendingRequests' },
       { to: '/admin/alerts', label: 'アラート管理', badgeKey: 'unresolvedAlerts' },
@@ -105,7 +105,7 @@ const ADMIN_SUBGROUPS: AdminSubGroup[] = [
   {
     key: 'matching-exchange',
     subtitle: 'マッチング・交換',
-    icon: '🔄',
+    icon: <i className="bi bi-arrow-repeat" />,
     items: [
       { to: '/admin/exchanges', label: '交換履歴' },
       { to: '/admin/matching-rules', label: 'マッチングルール' },
@@ -115,7 +115,7 @@ const ADMIN_SUBGROUPS: AdminSubGroup[] = [
   {
     key: 'inventory-upload',
     subtitle: '在庫・取込',
-    icon: '📥',
+    icon: <i className="bi bi-inbox-arrow-down" />,
     items: [
       { to: '/admin/upload-jobs', label: '取込ジョブ管理', badgeKey: 'failedJobs' },
       { to: '/admin/upload-quality', label: 'アップロード品質' },
@@ -125,7 +125,7 @@ const ADMIN_SUBGROUPS: AdminSubGroup[] = [
   {
     key: 'drug-master',
     subtitle: '医薬品マスター',
-    icon: '💊',
+    icon: <i className="bi bi-capsule" />,
     items: [
       { to: '/admin/drug-master', label: '医薬品マスター' },
       { to: '/admin/drug-equivalences', label: '薬品同等性' },
@@ -134,7 +134,7 @@ const ADMIN_SUBGROUPS: AdminSubGroup[] = [
   {
     key: 'analytics',
     subtitle: '分析・監視',
-    icon: '📊',
+    icon: <i className="bi bi-bar-chart" />,
     items: [
       { to: '/admin/reports', label: '月次レポート' },
       { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
@@ -145,7 +145,7 @@ const ADMIN_SUBGROUPS: AdminSubGroup[] = [
   {
     key: 'openclaw',
     subtitle: 'OpenClaw',
-    icon: '🔌',
+    icon: <i className="bi bi-plug" />,
     items: [
       { to: '/admin/openclaw', label: 'OpenClaw連携' },
       { to: '/admin/openclaw-commands', label: 'コマンド管理' },
@@ -153,43 +153,43 @@ const ADMIN_SUBGROUPS: AdminSubGroup[] = [
   },
 ];
 
-const ICON_MAP: Record<string, string> = {
-  '/': '📊',
-  '/upload': '📤',
-  '/matching': '🔗',
-  '/proposals': '📋',
-  '/exchange-history': '🔄',
-  '/statistics': '📈',
-  '/groups': '👥',
-  '/alerts': '🔔',
-  '/inventory/dead-stock': '📦',
-  '/inventory/used-medication': '💊',
-  '/inventory/browse': '🔍',
-  '/pharmacies': '🏥',
-  '/admin': '⚙️',
-  '/admin/pharmacies': '🏥',
-  '/admin/groups': '👥',
-  '/admin/user-requests': '📩',
-  '/admin/alerts': '🔔',
-  '/admin/exchanges': '🔄',
-  '/admin/upload-jobs': '📥',
-  '/admin/risk': '⚠️',
-  '/admin/reports': '📊',
-  '/admin/notifications': '📡',
-  '/admin/drug-master': '💊',
-  '/admin/drug-equivalences': '🔀',
-  '/admin/matching-rules': '📐',
-  '/admin/openclaw': '🔌',
-  '/admin/openclaw-commands': '🤖',
-  '/admin/pharmacy-health': '🏥',
-  '/admin/matching-performance': '📈',
-  '/admin/upload-quality': '📋',
-  '/admin/audit': '🔍',
-  '/admin/business-hours': '🕐',
-  '/admin/bulk-actions': '📦',
-  '/admin/relationships': '🔗',
-  '/admin/log-center': '📜',
-  '/account': '👤',
+const ICON_MAP: Record<string, ReactNode> = {
+  '/': <i className="bi bi-bar-chart" />,
+  '/upload': <i className="bi bi-upload" />,
+  '/matching': <i className="bi bi-link-45deg" />,
+  '/proposals': <i className="bi bi-clipboard" />,
+  '/exchange-history': <i className="bi bi-arrow-repeat" />,
+  '/statistics': <i className="bi bi-graph-up" />,
+  '/groups': <i className="bi bi-people" />,
+  '/alerts': <i className="bi bi-bell" />,
+  '/inventory/dead-stock': <i className="bi bi-box-seam" />,
+  '/inventory/used-medication': <i className="bi bi-capsule" />,
+  '/inventory/browse': <i className="bi bi-search" />,
+  '/pharmacies': <i className="bi bi-hospital" />,
+  '/admin': <i className="bi bi-gear" />,
+  '/admin/pharmacies': <i className="bi bi-hospital" />,
+  '/admin/groups': <i className="bi bi-people" />,
+  '/admin/user-requests': <i className="bi bi-envelope-arrow-down" />,
+  '/admin/alerts': <i className="bi bi-bell" />,
+  '/admin/exchanges': <i className="bi bi-arrow-repeat" />,
+  '/admin/upload-jobs': <i className="bi bi-inbox-arrow-down" />,
+  '/admin/risk': <i className="bi bi-exclamation-triangle" />,
+  '/admin/reports': <i className="bi bi-bar-chart" />,
+  '/admin/notifications': <i className="bi bi-broadcast" />,
+  '/admin/drug-master': <i className="bi bi-capsule" />,
+  '/admin/drug-equivalences': <i className="bi bi-shuffle" />,
+  '/admin/matching-rules': <i className="bi bi-rulers" />,
+  '/admin/openclaw': <i className="bi bi-plug" />,
+  '/admin/openclaw-commands': <i className="bi bi-robot" />,
+  '/admin/pharmacy-health': <i className="bi bi-hospital" />,
+  '/admin/matching-performance': <i className="bi bi-graph-up" />,
+  '/admin/upload-quality': <i className="bi bi-clipboard" />,
+  '/admin/audit': <i className="bi bi-search" />,
+  '/admin/business-hours': <i className="bi bi-clock" />,
+  '/admin/bulk-actions': <i className="bi bi-box-seam" />,
+  '/admin/relationships': <i className="bi bi-link-45deg" />,
+  '/admin/log-center': <i className="bi bi-journal-text" />,
+  '/account': <i className="bi bi-person" />,
 };
 
 // ── Badge polling interval ───────────────────────────────
@@ -355,7 +355,7 @@ function SidebarLink({
   collapsed?: boolean;
   badge?: number;
 }) {
-  const icon = ICON_MAP[to] ?? '📄';
+  const icon = ICON_MAP[to] ?? <i className="bi bi-file-text" />;
   return (
     <NavLink
       to={to}
@@ -379,7 +379,7 @@ function SubgroupHeader({
   badgeTotal,
 }: {
   subtitle: string;
-  icon: string;
+  icon: ReactNode;
   isCollapsed: boolean;
   onToggle: () => void;
   badgeTotal: number;

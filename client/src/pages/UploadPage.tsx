@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo } from 'react';
+import { Suspense, lazy, useMemo, type ReactNode } from 'react';
 import AppAlert from '../components/ui/AppAlert';
 import { Form, ProgressBar } from 'react-bootstrap';
 import AppSelect from '../components/ui/AppSelect';
@@ -14,6 +14,71 @@ import { useUploadExcelFlow } from '../hooks/useUploadExcelFlow';
 const CameraDeadStockRegisterPanel = lazy(() => import('./upload/CameraDeadStockRegisterPanel'));
 
 const pageTitle = 'デッドストック取込（Excel / カメラ）';
+
+interface StructuredError {
+  cause: string;
+  solution: string;
+}
+
+const ERROR_PATTERNS: Array<{ match: (msg: string) => boolean; structured: StructuredError }> = [
+  {
+    match: (msg) => msg.includes('先にプレビューを実行してください'),
+    structured: {
+      cause: 'ファイルが選択されていないか、プレビューが実行されていません。',
+      solution: 'Excelファイルを選択し、「プレビュー」ボタンを押してから登録してください。',
+    },
+  },
+  {
+    match: (msg) => msg.includes('自動判定に必要な列が不足'),
+    structured: {
+      cause: '選択した取込種別に必要な列名がファイル内に見つかりませんでした。',
+      solution: '「薬品名」「数量」などの必須列が含まれているか、ページ内の「Excel 必須項目ガイド」を確認してください。',
+    },
+  },
+  {
+    match: (msg) => msg.includes('アップロード処理の受付に失敗') || msg.includes('UPLOAD_CONFIRM_QUEUE_LIMIT'),
+    structured: {
+      cause: 'サーバーのアップロード処理キューが上限に達しています。',
+      solution: 'しばらく時間をおいてから再度お試しください。問題が続く場合は管理者にお問い合わせください。',
+    },
+  },
+  {
+    match: (msg) => msg.includes('待機時間が上限を超えました') || msg.includes('待機時間が長くなっています'),
+    structured: {
+      cause: 'アップロード処理の待機時間が長くなっています。サーバーが混雑している可能性があります。',
+      solution: 'ジョブは継続中の可能性があります。時間をおいてから在庫一覧ページで取込結果を確認してください。',
+    },
+  },
+  {
+    match: (msg) => msg.includes('プレビューに失敗') || msg.includes('Excel解析'),
+    structured: {
+      cause: 'Excelファイルの解析に失敗しました。ファイル形式が正しくないか、破損している可能性があります。',
+      solution: '.xlsx 形式のファイルを使用しているか確認し、別のExcelファイルで再度お試しください。',
+    },
+  },
+];
+
+function resolveStructuredError(errorMessage: string): StructuredError | null {
+  for (const pattern of ERROR_PATTERNS) {
+    if (pattern.match(errorMessage)) {
+      return pattern.structured;
+    }
+  }
+  return null;
+}
+
+function StructuredErrorAlert({ errorMessage }: { errorMessage: string }): ReactNode {
+  const structured = resolveStructuredError(errorMessage);
+  if (!structured) {
+    return <AppAlert variant="danger">{errorMessage}</AppAlert>;
+  }
+  return (
+    <AppAlert variant="danger">
+      <div><strong>原因:</strong> {structured.cause}</div>
+      <div className="mt-1"><strong>解決策:</strong> {structured.solution}</div>
+    </AppAlert>
+  );
+}
 
 function scrollToFlow(id: 'upload-excel-flow' | 'upload-camera-flow') {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -57,7 +122,7 @@ export default function UploadPage() {
           </section>
         </AppCard.Body>
       </AppCard>
-      {flow.error && <AppAlert variant="danger">{flow.error}</AppAlert>}
+      {flow.error && <StructuredErrorAlert errorMessage={flow.error} />}
       {flow.message && <AppAlert variant="success">{flow.message}</AppAlert>}
       {flow.showMatchingHint && (
         <AppAlert variant="info">
@@ -316,12 +381,14 @@ export default function UploadPage() {
 
             {!flow.hasPreviewRows && (
               <AppAlert variant="warning" className="small">
-                プレビューに取込対象の行が見つかりません。ファイル内容を確認してください。
+                <div><strong>原因:</strong> ヘッダー行の下にデータ行が見つかりませんでした。</div>
+                <div className="mt-1"><strong>解決策:</strong> 「薬品名」「数量」列を含むデータ行がシートに存在するか確認してください。</div>
               </AppAlert>
             )}
             {!flow.hasResolvableMapping && (
               <AppAlert variant="warning" className="small">
-                選択した取込種別で必要な列を自動判定できませんでした。ファイル見出しを確認してください。
+                <div><strong>原因:</strong> 選択した取込種別に必要な列名がファイルのヘッダーから自動判定できませんでした。</div>
+                <div className="mt-1"><strong>解決策:</strong> 取込種別を切り替えるか、ページ内の「Excel 必須項目ガイド」を参照して列名を修正してください。</div>
               </AppAlert>
             )}
 

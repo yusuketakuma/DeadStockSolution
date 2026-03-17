@@ -7,9 +7,10 @@ interface ErrorDisplayProps {
   showDetails?: boolean;
   onToggleDetails?: () => void;
   onReload: () => void;
+  isDev: boolean;
 }
 
-function ErrorDisplay({ error, showDetails, onToggleDetails, onReload }: ErrorDisplayProps) {
+function ErrorDisplay({ error, showDetails, onToggleDetails, onReload, isDev }: ErrorDisplayProps) {
   return (
     <div style={{ maxWidth: '600px', width: '100%' }}>
       <AppAlert variant="danger">
@@ -22,26 +23,46 @@ function ErrorDisplay({ error, showDetails, onToggleDetails, onReload }: ErrorDi
           </p>
         </div>
 
-        <div style={{ marginBottom: error || onToggleDetails ? '1rem' : 0 }}>
-          <AppButton
-            variant="danger"
-            onClick={onReload}
-            style={{ marginRight: onToggleDetails ? '0.5rem' : 0 }}
-          >
-            ページを再読み込み
-          </AppButton>
-          {onToggleDetails && (
-            <AppButton
-              variant="outline-secondary"
-              onClick={onToggleDetails}
-              size="sm"
-            >
-              {showDetails ? '詳細を非表示' : '詳細を表示'}
-            </AppButton>
+        <div style={{ marginBottom: '1rem' }}>
+          {isDev ? (
+            <>
+              <AppButton
+                variant="danger"
+                onClick={onReload}
+                style={{ marginRight: onToggleDetails ? '0.5rem' : 0 }}
+              >
+                ページを再読み込み
+              </AppButton>
+              {onToggleDetails && (
+                <AppButton
+                  variant="outline-secondary"
+                  onClick={onToggleDetails}
+                  size="sm"
+                >
+                  {showDetails ? '詳細を非表示' : '詳細を表示'}
+                </AppButton>
+              )}
+            </>
+          ) : (
+            <>
+              <AppButton
+                variant="danger"
+                onClick={onReload}
+                style={{ marginRight: '0.5rem' }}
+              >
+                ページを再読み込み
+              </AppButton>
+              <AppButton
+                variant="outline-secondary"
+                href="/"
+              >
+                ホームに戻る
+              </AppButton>
+            </>
           )}
         </div>
 
-        {((showDetails !== undefined ? showDetails : true) && error) && (
+        {isDev && ((showDetails !== undefined ? showDetails : true) && error) && (
           <pre
             style={{
               backgroundColor: '#f5f5f5',
@@ -56,6 +77,12 @@ function ErrorDisplay({ error, showDetails, onToggleDetails, onReload }: ErrorDi
           >
             {error.message}
           </pre>
+        )}
+
+        {!isDev && (
+          <p style={{ marginBottom: 0, fontSize: '0.85rem', color: '#6c757d' }}>
+            問題が解決しない場合はサポートにお問い合わせください。
+          </p>
         )}
       </AppAlert>
     </div>
@@ -88,7 +115,11 @@ export function ErrorFallback({ error = null }: ErrorFallbackProps) {
         padding: '2rem',
       }}
     >
-      <ErrorDisplay error={error} onReload={() => window.location.reload()} />
+      <ErrorDisplay
+        error={error}
+        onReload={() => window.location.reload()}
+        isDev={import.meta.env.DEV}
+      />
     </div>
   );
 }
@@ -128,14 +159,16 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
+      const isDev = import.meta.env.DEV;
       return (
         <div className="app-theme" style={{ minHeight: '100vh' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '2rem' }}>
             <ErrorDisplay
               error={this.state.error}
               showDetails={this.state.showDetails}
-              onToggleDetails={this.toggleDetails}
+              onToggleDetails={isDev ? this.toggleDetails : undefined}
               onReload={this.handleReload}
+              isDev={isDev}
             />
           </div>
         </div>

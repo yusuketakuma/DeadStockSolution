@@ -1,9 +1,9 @@
 import { FormEvent } from 'react';
-import AppButton from '../../../components/ui/AppButton';
 import { Row, Col, Form, InputGroup } from 'react-bootstrap';
 import AppCard from '../../../components/ui/AppCard';
 import AppSelect from '../../../components/ui/AppSelect';
 import AppControl from '../../../components/ui/AppControl';
+import LoadingButton from '../../../components/ui/LoadingButton';
 
 const CATEGORY_OPTIONS = ['内用薬', '外用薬', '注射薬', '歯科用薬剤'];
 
@@ -12,6 +12,7 @@ interface DrugMasterSearchFilterProps {
   statusFilter: string;
   categoryFilter: string;
   total: number;
+  loading?: boolean;
   onSearchInputChange: (value: string) => void;
   onSearch: (e: FormEvent) => void;
   onStatusFilterChange: (value: string) => void;
@@ -23,6 +24,7 @@ export default function DrugMasterSearchFilter({
   statusFilter,
   categoryFilter,
   total,
+  loading = false,
   onSearchInputChange,
   onSearch,
   onStatusFilterChange,
@@ -40,7 +42,7 @@ export default function DrugMasterSearchFilter({
                   value={searchInput}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSearchInputChange(e.target.value)}
                 />
-                <AppButton type="submit" variant="outline-primary">検索</AppButton>
+                <LoadingButton type="submit" variant="outline-primary" loading={loading} loadingLabel="検索中...">検索</LoadingButton>
               </InputGroup>
             </Form>
           </Col>
