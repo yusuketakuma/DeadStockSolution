@@ -12,7 +12,7 @@ import Pagination from '../components/Pagination';
 import { usePaginatedList } from '../hooks/usePaginatedList';
 import AppSelect from '../components/ui/AppSelect';
 import { formatDateTimeJa, formatYen } from '../utils/formatters';
-import { proposalStatusStyle } from '../utils/proposal-status';
+import { getProposalPhaseInfo } from '../utils/proposal-status';
 import AppActionBar from '../components/ui/AppActionBar';
 import AppDataTable from '../components/ui/AppDataTable';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
@@ -237,7 +237,7 @@ export default function ProposalsPage() {
                 {proposals.map((p) => {
                   const isA = p.pharmacyAId === user?.id;
                   const otherName = isA ? p.pharmacyBName : p.pharmacyAName;
-                  const statusInfo = proposalStatusStyle(p.status);
+                  const phaseInfo = getProposalPhaseInfo(p.status, isA);
                   const selectable = canAcceptProposal(p, user?.id) || canRejectProposal(p);
 
                   return (
@@ -252,7 +252,13 @@ export default function ProposalsPage() {
                       </td>
                       <td>{p.id}</td>
                       <td>{otherName}</td>
-                      <td><Badge bg={statusInfo.variant}>{statusInfo.label}</Badge></td>
+                      <td>
+                        <div className="d-flex flex-column gap-1">
+                          <Badge bg={phaseInfo.variant}>{phaseInfo.phaseLabel}</Badge>
+                          <span className="small text-muted">あなた: {phaseInfo.yourStatus}</span>
+                          <span className="small text-muted">相手: {phaseInfo.theirStatus}</span>
+                        </div>
+                      </td>
                       <td>
                         <div className="fw-semibold">{(p.priorityScore ?? 0).toFixed(1)}</div>
                         <div className="small text-muted">{(p.priorityReasons ?? []).join(' / ')}</div>
@@ -275,7 +281,7 @@ export default function ProposalsPage() {
             {proposals.map((p) => {
               const isA = p.pharmacyAId === user?.id;
               const otherName = isA ? p.pharmacyBName : p.pharmacyAName;
-              const statusInfo = proposalStatusStyle(p.status);
+              const phaseInfo = getProposalPhaseInfo(p.status, isA);
               const selectable = canAcceptProposal(p, user?.id) || canRejectProposal(p);
 
               return (
@@ -283,7 +289,13 @@ export default function ProposalsPage() {
                   key={p.id}
                   title={`マッチング #${p.id}`}
                   subtitle={otherName}
-                  badges={<Badge bg={statusInfo.variant}>{statusInfo.label}</Badge>}
+                  badges={(
+                    <div className="d-flex flex-column gap-1 align-items-start">
+                      <Badge bg={phaseInfo.variant}>{phaseInfo.phaseLabel}</Badge>
+                      <span className="small text-muted">あなた: {phaseInfo.yourStatus}</span>
+                      <span className="small text-muted">相手: {phaseInfo.theirStatus}</span>
+                    </div>
+                  )}
                   fields={[
                     { label: '優先度', value: (p.priorityScore ?? 0).toFixed(1) },
                     { label: '優先理由', value: (p.priorityReasons ?? []).join(' / ') || '-' },
