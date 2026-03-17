@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { initSentry } from './config/sentry';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import 'bootstrap-icons/font/bootstrap-icons.css';
 import './styles/sections/header.css';
 import './styles/sections/layout-sidebar.css';
 import './styles/sections/content.css';
