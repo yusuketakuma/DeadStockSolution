@@ -32,7 +32,7 @@ vi.mock('../config/database', () => ({
 }));
 
 vi.mock('../db/schema', () => ({
-  activityLogs: {
+  events: {
     id: 'id', pharmacyId: 'pharmacyId', action: 'action',
     resourceId: 'resourceId', resourceType: 'resourceType',
     metadataJson: 'metadataJson', createdAt: 'createdAt',

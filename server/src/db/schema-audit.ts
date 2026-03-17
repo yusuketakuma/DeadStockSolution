@@ -28,7 +28,7 @@ export const adminAuditLogs = pgTable('admin_audit_logs', {
   chkAdminAuditAction: check('chk_admin_audit_action', sql`${table.action} IN ('verify', 'reject', 're-review')`),
 }));
 
-export const activityLogs = pgTable('activity_logs', {
+export const events = pgTable('activity_logs', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').references(() => pharmacies.id, { onDelete: 'set null' }),
   action: text('action').notNull(),

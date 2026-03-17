@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { activityLogs } from '../db/schema';
+import { events } from '../db/schema';
 import type { LogSource, LogIssueWorkflowStatus, LogIssueState, LogIssueHistoryEntry } from './log-center-service';
 import {
   buildLogIssueResourceId,
@@ -20,7 +20,7 @@ export async function updateLogIssueState(params: {
   actorEmail: string;
 }): Promise<LogIssueState> {
   const note = params.note?.trim() ? params.note.trim() : null;
-  await db.insert(activityLogs).values({
+  await db.insert(events).values({
     pharmacyId: params.actorPharmacyId,
     action: 'admin_log_status_update',
     detail: note ? `status=${params.status} ${note}` : `status=${params.status}`,
@@ -54,7 +54,7 @@ export async function recordLogIssueAutoEscalation(params: {
   note?: string | null;
   reasonCodes: string[];
 }): Promise<void> {
-  await db.insert(activityLogs).values({
+  await db.insert(events).values({
     pharmacyId: params.actorPharmacyId ?? null,
     action: 'admin_log_auto_escalated',
     detail: params.note?.trim() || 'auto escalation',
@@ -73,20 +73,20 @@ export async function getLogIssueHistory(source: LogSource, logId: number): Prom
   const resourceId = buildLogIssueResourceId(source, logId);
   const rows: ActivityLogRow[] = await db
     .select({
-      id: activityLogs.id,
-      pharmacyId: activityLogs.pharmacyId,
-      action: activityLogs.action,
-      resourceId: activityLogs.resourceId,
-      metadataJson: activityLogs.metadataJson,
-      createdAt: activityLogs.createdAt,
+      id: events.id,
+      pharmacyId: events.pharmacyId,
+      action: events.action,
+      resourceId: events.resourceId,
+      metadataJson: events.metadataJson,
+      createdAt: events.createdAt,
     })
-    .from(activityLogs)
+    .from(events)
     .where(and(
-      eq(activityLogs.resourceType, 'log_center_issue'),
-      eq(activityLogs.resourceId, resourceId),
-      sql`${activityLogs.action} in ('admin_log_status_update', 'admin_log_auto_escalated')`,
+      eq(events.resourceType, 'log_center_issue'),
+      eq(events.resourceId, resourceId),
+      sql`${events.action} in ('admin_log_status_update', 'admin_log_auto_escalated')`,
     ))
-    .orderBy(desc(activityLogs.createdAt), desc(activityLogs.id));
+    .orderBy(desc(events.createdAt), desc(events.id));
 
   const actorIds = [...new Set(
     rows

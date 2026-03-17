@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
-import { activityLogs, pharmacies } from '../db/schema';
+import { events, pharmacies } from '../db/schema';
 import {
   LOG_ISSUE_WORKFLOW_STATUSES,
   LOG_SOURCES,
@@ -11,7 +11,7 @@ import {
 } from './log-center-filter-service';
 
 type PharmacyRow = Pick<typeof pharmacies.$inferSelect, 'id' | 'name' | 'email'>;
-export type ActivityLogRow = Pick<typeof activityLogs.$inferSelect, 'id' | 'pharmacyId' | 'action' | 'resourceId' | 'metadataJson' | 'createdAt'>;
+export type ActivityLogRow = Pick<typeof events.$inferSelect, 'id' | 'pharmacyId' | 'action' | 'resourceId' | 'metadataJson' | 'createdAt'>;
 
 export function buildLogIssueResourceId(source: LogSource, logId: number): string {
   return `${source}:${logId}`;
@@ -70,20 +70,20 @@ export async function loadIssueStateMap(resourceIds: string[]): Promise<Map<stri
   if (resourceIds.length === 0) return new Map();
   const rows = await db
     .select({
-      id: activityLogs.id,
-      pharmacyId: activityLogs.pharmacyId,
-      action: activityLogs.action,
-      resourceId: activityLogs.resourceId,
-      metadataJson: activityLogs.metadataJson,
-      createdAt: activityLogs.createdAt,
+      id: events.id,
+      pharmacyId: events.pharmacyId,
+      action: events.action,
+      resourceId: events.resourceId,
+      metadataJson: events.metadataJson,
+      createdAt: events.createdAt,
     })
-    .from(activityLogs)
+    .from(events)
     .where(and(
-      eq(activityLogs.resourceType, 'log_center_issue'),
-      eq(activityLogs.action, 'admin_log_status_update'),
-      inArray(activityLogs.resourceId, resourceIds),
+      eq(events.resourceType, 'log_center_issue'),
+      eq(events.action, 'admin_log_status_update'),
+      inArray(events.resourceId, resourceIds),
     ))
-    .orderBy(desc(activityLogs.createdAt), desc(activityLogs.id));
+    .orderBy(desc(events.createdAt), desc(events.id));
 
   const actorIds = [...new Set(
     rows

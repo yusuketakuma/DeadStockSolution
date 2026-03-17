@@ -8,7 +8,7 @@ import {
   pharmacies,
   exchangeProposals,
   monthlyReports,
-  activityLogs,
+  events,
 } from '../db/schema';
 import { deadStockItems } from '../db/schema-inventory';
 import { logger } from './logger';
@@ -260,14 +260,14 @@ export async function exportLogsCsv(
     headers: LOG_HEADERS,
     batchSize,
     fetchRows: (offset, limit) => db.select({
-        id: activityLogs.id,
-        pharmacyId: activityLogs.pharmacyId,
-        action: activityLogs.action,
-        detail: activityLogs.detail,
-        createdAt: activityLogs.createdAt,
+        id: events.id,
+        pharmacyId: events.pharmacyId,
+        action: events.action,
+        detail: events.detail,
+        createdAt: events.createdAt,
       })
-        .from(activityLogs)
-        .orderBy(desc(activityLogs.createdAt))
+        .from(events)
+        .orderBy(desc(events.createdAt))
         .limit(limit)
         .offset(offset),
     writeRow: (targetWriter, row) => {

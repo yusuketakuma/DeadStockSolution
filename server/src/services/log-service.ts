@@ -1,5 +1,5 @@
 import { db } from '../config/database';
-import { activityLogs } from '../db/schema';
+import { events } from '../db/schema';
 import { logger } from './logger';
 import { dispatchLogAlert } from './openclaw-log-push-service';
 import { getLogEntryById, getLogInsightForEntry } from './log-center-service';
@@ -65,7 +65,7 @@ export async function writeLog(
     })();
 
     const occurredAt = new Date().toISOString();
-    const [inserted] = await db.insert(activityLogs).values({
+    const [inserted] = await db.insert(events).values({
       pharmacyId: options.pharmacyId ?? null,
       action,
       detail: options.detail ?? null,
@@ -77,7 +77,7 @@ export async function writeLog(
       ipAddress: options.ipAddress ?? null,
       errorCode: options.errorCode ?? null,
       createdAt: occurredAt,
-    }).returning({ id: activityLogs.id });
+    }).returning({ id: events.id });
 
     // Forward failures to OpenClaw
     const isFailure = options.detail?.startsWith('失敗|') ?? false;

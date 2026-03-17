@@ -139,14 +139,14 @@ export async function makeNotification(
 
 export async function makeActivityLog(
   db: TestDb,
-  overrides: Partial<typeof schema.activityLogs.$inferInsert> = {},
-): Promise<typeof schema.activityLogs.$inferSelect> {
-  const defaults: typeof schema.activityLogs.$inferInsert = {
+  overrides: Partial<typeof schema.events.$inferInsert> = {},
+): Promise<typeof schema.events.$inferSelect> {
+  const defaults: typeof schema.events.$inferInsert = {
     action: 'test_action',
     detail: 'テスト詳細',
     ...overrides,
   };
-  const [row] = await db.insert(schema.activityLogs).values(defaults).returning();
+  const [row] = await db.insert(schema.events).values(defaults).returning();
   return row;
 }
 

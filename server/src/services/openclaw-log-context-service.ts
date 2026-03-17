@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, like, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { activityLogs } from '../db/schema';
+import { events } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 import { parseBoundedInt } from '../utils/number-utils';
 
@@ -80,59 +80,59 @@ export async function buildOpenClawLogContext(pharmacyId: number, now: Date = ne
   const windowStartIso = new Date(now.getTime() - config.windowHours * 60 * 60 * 1000).toISOString();
 
   const failureWhereClause = and(
-    eq(activityLogs.pharmacyId, pharmacyId),
-    gte(activityLogs.createdAt, windowStartIso),
-    like(activityLogs.detail, '失敗|%'),
-    inArray(activityLogs.action, IMPORT_FAILURE_ACTIONS),
+    eq(events.pharmacyId, pharmacyId),
+    gte(events.createdAt, windowStartIso),
+    like(events.detail, '失敗|%'),
+    inArray(events.action, IMPORT_FAILURE_ACTIONS),
   );
 
   const [failureTotalRow] = await db.select({ count: rowCount })
-    .from(activityLogs)
+    .from(events)
     .where(failureWhereClause);
 
   const failureByActionRows = await db.select({
-    action: activityLogs.action,
+    action: events.action,
     count: rowCount,
   })
-    .from(activityLogs)
+    .from(events)
     .where(failureWhereClause)
-    .groupBy(activityLogs.action);
+    .groupBy(events.action);
 
-  const failureReasonExpr = sql<string>`coalesce(substring(${activityLogs.detail} from 'reason=([^|]+)'), 'unknown')`;
+  const failureReasonExpr = sql<string>`coalesce(substring(${events.detail} from 'reason=([^|]+)'), 'unknown')`;
   const failureByReasonRows = await db.select({
     reason: failureReasonExpr,
     count: rowCount,
   })
-    .from(activityLogs)
+    .from(events)
     .where(failureWhereClause)
     .groupBy(failureReasonExpr)
     .orderBy(sql`count(*)::int desc`)
     .limit(10);
 
   const recentFailureRows = await db.select({
-    action: activityLogs.action,
-    detail: activityLogs.detail,
-    createdAt: activityLogs.createdAt,
-    pharmacyId: activityLogs.pharmacyId,
+    action: events.action,
+    detail: events.detail,
+    createdAt: events.createdAt,
+    pharmacyId: events.pharmacyId,
   })
-    .from(activityLogs)
+    .from(events)
     .where(failureWhereClause)
-    .orderBy(desc(activityLogs.createdAt))
+    .orderBy(desc(events.createdAt))
     .limit(config.failureLimit);
 
   const pharmacyWhereClause = and(
-    eq(activityLogs.pharmacyId, pharmacyId),
-    gte(activityLogs.createdAt, windowStartIso),
+    eq(events.pharmacyId, pharmacyId),
+    gte(events.createdAt, windowStartIso),
   );
   const recentPharmacyRows = await db.select({
-    action: activityLogs.action,
-    detail: activityLogs.detail,
-    createdAt: activityLogs.createdAt,
-    pharmacyId: activityLogs.pharmacyId,
+    action: events.action,
+    detail: events.detail,
+    createdAt: events.createdAt,
+    pharmacyId: events.pharmacyId,
   })
-    .from(activityLogs)
+    .from(events)
     .where(pharmacyWhereClause)
-    .orderBy(desc(activityLogs.createdAt))
+    .orderBy(desc(events.createdAt))
     .limit(config.activityLimit);
 
   return {

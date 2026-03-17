@@ -1,18 +1,18 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { activityLogs, pharmacies } from '../db/schema';
+import { events, pharmacies } from '../db/schema';
 
 export async function getPharmacyHealthSummary() {
   const [activityByPharmacy, trustScores] = await Promise.all([
     db.select({
-      pharmacyId: activityLogs.pharmacyId,
+      pharmacyId: events.pharmacyId,
       pharmacyName: pharmacies.name,
       actionCount: sql<number>`count(*)`.as('action_count'),
-      lastActivity: sql<string>`max(${activityLogs.createdAt})`.as('last_activity'),
+      lastActivity: sql<string>`max(${events.createdAt})`.as('last_activity'),
     })
-      .from(activityLogs)
-      .leftJoin(pharmacies, eq(activityLogs.pharmacyId, pharmacies.id))
-      .groupBy(activityLogs.pharmacyId, pharmacies.name)
+      .from(events)
+      .leftJoin(pharmacies, eq(events.pharmacyId, pharmacies.id))
+      .groupBy(events.pharmacyId, pharmacies.name)
       .orderBy(sql`count(*) desc`)
       .limit(50),
     db.select({

@@ -3,7 +3,7 @@ import { and, eq, inArray, desc, sql, like, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
-  activityLogs,
+  events,
   systemEvents,
   systemEventSourceValues,
   systemEventLevelValues,
@@ -83,13 +83,13 @@ function buildActivityLogWhereClause(
 ): ActivityLogWhereClause {
   const conditions: Array<ReturnType<typeof eq> | ReturnType<typeof like>> = [];
   if (filters.actionFilter) {
-    conditions.push(eq(activityLogs.action, filters.actionFilter));
+    conditions.push(eq(events.action, filters.actionFilter));
   }
   if (filters.keyword) {
-    conditions.push(like(activityLogs.detail, `%${escapeLikeWildcards(filters.keyword)}%`));
+    conditions.push(like(events.detail, `%${escapeLikeWildcards(filters.keyword)}%`));
   }
   if (options.forceFailureOnly || filters.failureOnly) {
-    conditions.push(like(activityLogs.detail, '失敗|%'));
+    conditions.push(like(events.detail, '失敗|%'));
   }
   return conditions.length > 0 ? and(...conditions) : undefined;
 }
@@ -153,7 +153,7 @@ function buildCountMap<T extends string>(rows: Array<{ [key: string]: T | number
 
 async function fetchActivityLogTotal(whereClause: ActivityLogWhereClause): Promise<number> {
   const [totalRow] = await db.select({ count: rowCount })
-    .from(activityLogs)
+    .from(events)
     .where(whereClause);
   return totalRow.count;
 }
@@ -187,16 +187,16 @@ async function fetchActivityLogRows(
   offset: number,
 ): Promise<ActivityLogRow[]> {
   return db.select({
-    id: activityLogs.id,
-    pharmacyId: activityLogs.pharmacyId,
-    action: activityLogs.action,
-    detail: activityLogs.detail,
-    ipAddress: activityLogs.ipAddress,
-    createdAt: activityLogs.createdAt,
+    id: events.id,
+    pharmacyId: events.pharmacyId,
+    action: events.action,
+    detail: events.detail,
+    ipAddress: events.ipAddress,
+    createdAt: events.createdAt,
   })
-    .from(activityLogs)
+    .from(events)
     .where(whereClause)
-    .orderBy(desc(activityLogs.createdAt))
+    .orderBy(desc(events.createdAt))
     .limit(limit)
     .offset(offset);
 }
@@ -244,28 +244,28 @@ async function fetchFailureSummary(whereClause: ActivityLogWhereClause): Promise
   failureByReason: Array<{ reason: string; count: number }>;
 }> {
   const [failureTotal] = await db.select({ count: rowCount })
-    .from(activityLogs)
+    .from(events)
     .where(whereClause);
 
   const failureByActionRows = await db.select({
-    action: activityLogs.action,
+    action: events.action,
     count: rowCount,
   })
-    .from(activityLogs)
+    .from(events)
     .where(whereClause)
-    .groupBy(activityLogs.action);
+    .groupBy(events.action);
 
   const failureByAction = failureByActionRows.reduce<Record<string, number>>((acc, row) => {
     acc[row.action] = row.count;
     return acc;
   }, {});
 
-  const failureReasonExpr = sql<string>`coalesce(substring(${activityLogs.detail} from 'reason=([^|]+)'), 'unknown')`;
+  const failureReasonExpr = sql<string>`coalesce(substring(${events.detail} from 'reason=([^|]+)'), 'unknown')`;
   const failureByReason = await db.select({
     reason: failureReasonExpr,
     count: rowCount,
   })
-    .from(activityLogs)
+    .from(events)
     .where(whereClause)
     .groupBy(failureReasonExpr)
     .orderBy(sql`count(*)::int desc`)

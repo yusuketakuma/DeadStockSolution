@@ -1,5 +1,5 @@
 import { db } from '../config/database';
-import { activityLogs, drugMasterSyncLogs, errorCodes, systemEvents } from '../db/schema';
+import { events, drugMasterSyncLogs, errorCodes, systemEvents } from '../db/schema';
 import { count, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   type LogCenterQuery,
@@ -273,8 +273,8 @@ export async function getLogSummary(): Promise<LogSummary> {
   const [activityRow, systemRow, syncRow] = await Promise.all([
     db.select({
       total: count(),
-      today: sql<number>`count(*) filter (where ${activityLogs.createdAt} >= ${todayStr})`,
-    }).from(activityLogs).then((r) => r[0]),
+      today: sql<number>`count(*) filter (where ${events.createdAt} >= ${todayStr})`,
+    }).from(events).then((r) => r[0]),
     db.select({
       total: count(),
       today: sql<number>`count(*) filter (where ${systemEvents.occurredAt} >= ${todayStr})`,

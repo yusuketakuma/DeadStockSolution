@@ -1,4 +1,4 @@
-import { activityLogs, systemEvents, drugMasterSyncLogs } from '../db/schema';
+import { events, systemEvents, drugMasterSyncLogs } from '../db/schema';
 import { and, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
 import { escapeLikeWildcards } from '../utils/request-utils';
 
@@ -494,12 +494,12 @@ function buildZeroCondition(): ReturnType<typeof sql> {
 
 function buildActivityLevelCondition(level: NonNullable<LogCenterQuery['level']>): ReturnType<typeof sql> {
   if (level === 'critical') return buildZeroCondition();
-  if (level === 'error') return sql`coalesce(${activityLogs.detail}, '') like '失敗|%'`;
+  if (level === 'error') return sql`coalesce(${events.detail}, '') like '失敗|%'`;
   if (level === 'warning') {
-    return sql`coalesce(${activityLogs.detail}, '') not like '失敗|%' and ${activityLogs.action} in ('login_failed', 'password_reset_failed')`;
+    return sql`coalesce(${events.detail}, '') not like '失敗|%' and ${events.action} in ('login_failed', 'password_reset_failed')`;
   }
   if (level === 'info') {
-    return sql`coalesce(${activityLogs.detail}, '') not like '失敗|%' and ${activityLogs.action} not in ('login_failed', 'password_reset_failed')`;
+    return sql`coalesce(${events.detail}, '') not like '失敗|%' and ${events.action} not in ('login_failed', 'password_reset_failed')`;
   }
   return buildZeroCondition();
 }
@@ -514,11 +514,11 @@ function buildSyncLevelCondition(level: NonNullable<LogCenterQuery['level']>): R
 
 export const SOURCE_TABLE_CONFIG = {
   activity_logs: {
-    table: activityLogs,
-    idCol: activityLogs.id,
-    timestampCol: activityLogs.createdAt,
-    pharmacyIdCol: activityLogs.pharmacyId as typeof activityLogs.pharmacyId | null,
-    searchCols: [activityLogs.action, activityLogs.detail] as const,
+    table: events,
+    idCol: events.id,
+    timestampCol: events.createdAt,
+    pharmacyIdCol: events.pharmacyId as typeof events.pharmacyId | null,
+    searchCols: [events.action, events.detail] as const,
     levelCol: null,
   },
   system_events: {
@@ -610,7 +610,7 @@ export function buildSourceConditions(
     }
   }
   if (source === 'activity_logs') {
-    conditions.push(sql`${activityLogs.action} not in ('admin_log_status_update', 'admin_log_auto_escalated')`);
+    conditions.push(sql`${events.action} not in ('admin_log_status_update', 'admin_log_auto_escalated')`);
   }
 
   return { config, where: conditions.length > 0 ? and(...conditions) : undefined };

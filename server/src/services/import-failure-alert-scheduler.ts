@@ -1,6 +1,6 @@
 import { and, desc, gte, inArray, like, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { activityLogs } from '../db/schema';
+import { events } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
 import { normalizeHttpsOrLoopbackHttpUrl } from '../utils/url-config';
@@ -132,15 +132,15 @@ function isOptimizedLoopEnabledForImportFailureAlertScheduler(): boolean {
 
 function buildFailureWhereClause(windowStartIso: string, monitoredActions: string[]): ActivityLogWhereClause {
   return and(
-    gte(activityLogs.createdAt, windowStartIso),
-    like(activityLogs.detail, '失敗|%'),
-    inArray(activityLogs.action, monitoredActions),
+    gte(events.createdAt, windowStartIso),
+    like(events.detail, '失敗|%'),
+    inArray(events.action, monitoredActions),
   );
 }
 
 async function fetchFailureTotal(whereClause: ActivityLogWhereClause): Promise<number> {
   const [failureTotalRow] = await db.select({ count: rowCount })
-    .from(activityLogs)
+    .from(events)
     .where(whereClause);
   return failureTotalRow?.count ?? 0;
 }
@@ -150,30 +150,30 @@ async function fetchFailureSummary(
   totalFailures: number,
 ): Promise<ImportFailureSummary> {
   const failureByActionRows = await db.select({
-    action: activityLogs.action,
+    action: events.action,
     count: rowCount,
   })
-    .from(activityLogs)
+    .from(events)
     .where(whereClause)
-    .groupBy(activityLogs.action);
+    .groupBy(events.action);
 
-  const failureReasonExpr = sql<string>`coalesce(substring(${activityLogs.detail} from 'reason=([^|]+)'), 'unknown')`;
+  const failureReasonExpr = sql<string>`coalesce(substring(${events.detail} from 'reason=([^|]+)'), 'unknown')`;
   const failureByReasonRows = await db.select({
     reason: failureReasonExpr,
     count: rowCount,
   })
-    .from(activityLogs)
+    .from(events)
     .where(whereClause)
     .groupBy(failureReasonExpr)
     .orderBy(sql`count(*)::int desc`)
     .limit(10);
 
   const [latestFailure] = await db.select({
-    createdAt: activityLogs.createdAt,
+    createdAt: events.createdAt,
   })
-    .from(activityLogs)
+    .from(events)
     .where(whereClause)
-    .orderBy(desc(activityLogs.createdAt))
+    .orderBy(desc(events.createdAt))
     .limit(1);
 
   return {

@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { activityLogs, pharmacies } from '../db/schema';
+import { events, pharmacies } from '../db/schema';
 
 const PROPOSAL_TIMELINE_ACTIONS = [
   'proposal_accept',
@@ -79,19 +79,19 @@ function buildProposalTimelineEvent(
 
 export async function fetchProposalTimelineActionRows(proposalId: number): Promise<ProposalTimelineActionRow[]> {
   return db.select({
-    action: activityLogs.action,
-    detail: activityLogs.detail,
-    createdAt: activityLogs.createdAt,
-    actorPharmacyId: activityLogs.pharmacyId,
+    action: events.action,
+    detail: events.detail,
+    createdAt: events.createdAt,
+    actorPharmacyId: events.pharmacyId,
     actorName: pharmacies.name,
   })
-    .from(activityLogs)
-    .leftJoin(pharmacies, eq(activityLogs.pharmacyId, pharmacies.id))
+    .from(events)
+    .leftJoin(pharmacies, eq(events.pharmacyId, pharmacies.id))
     .where(and(
-      inArray(activityLogs.action, PROPOSAL_TIMELINE_ACTIONS),
-      sql`${activityLogs.detail} LIKE ${`proposalId=${proposalId}|%`}`,
+      inArray(events.action, PROPOSAL_TIMELINE_ACTIONS),
+      sql`${events.detail} LIKE ${`proposalId=${proposalId}|%`}`,
     ))
-    .orderBy(asc(activityLogs.createdAt), asc(activityLogs.id));
+    .orderBy(asc(events.createdAt), asc(events.id));
 }
 
 export function buildProposalTimeline({
