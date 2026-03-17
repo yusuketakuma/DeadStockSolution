@@ -7,7 +7,6 @@ export * from './schema-exchange';
 export * from './schema-matching';
 export * from './schema-notification';
 export * from './schema-drug-master';
-export * from './schema-upload-jobs';
 export * from './schema-audit';
 export * from './schema-analytics';
 export * from './schema-openclaw';
