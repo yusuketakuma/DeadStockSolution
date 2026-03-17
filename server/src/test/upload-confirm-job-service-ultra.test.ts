@@ -120,7 +120,7 @@ function createJobRecord(overrides: Record<string, unknown> = {}) {
     idempotencyKey: null,
     fileHash: 'abc123',
     headerRowIndex: 0,
-    mappingJson: JSON.stringify({ drug_code: '0', drug_name: '1', quantity: '2', unit: '3' }),
+    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' },
     status: 'pending',
     applyMode: 'replace',
     deleteMissing: false,
@@ -282,7 +282,7 @@ describe('upload-confirm-job-service-ultra', () => {
       const claimedJob = createJobRecord({
         status: 'processing',
         uploadType: 'used_medication',
-        mappingJson: JSON.stringify({ drug_name: '1' }), // no quantity needed for used_medication
+        mappingJson: { drug_name: '1' }, // no quantity needed for used_medication
         fileBase64: compressedPayload,
       });
 
@@ -318,7 +318,7 @@ describe('upload-confirm-job-service-ultra', () => {
       const compressedPayload = await createCompressedPayload('file-content');
       const claimedJob = createJobRecord({
         status: 'processing',
-        mappingJson: JSON.stringify({ drug_name: '999', quantity: '2' }), // 999 > 199, drug_name will be null
+        mappingJson: { drug_name: '999', quantity: '2' }, // 999 > 199, drug_name will be null
         fileBase64: compressedPayload,
         attempts: 0,
       });
@@ -523,7 +523,7 @@ describe('upload-confirm-job-service-ultra', () => {
       const jobRecord = createJobRecord({
         id: 5,
         status: 'completed',
-        resultJson: JSON.stringify({ uploadId: 42, rowCount: 10 }),
+        resultJson: { uploadId: 42, rowCount: 10 },
       });
       const chain = {
         from: vi.fn().mockReturnThis(),
@@ -536,7 +536,7 @@ describe('upload-confirm-job-service-ultra', () => {
       const result = await getUploadConfirmJobById(5);
       expect(result).not.toBeNull();
       expect(result!.id).toBe(5);
-      expect(result!.resultJson).toContain('uploadId');
+      expect(result!.resultJson).toEqual({ uploadId: 42, rowCount: 10 });
       expect(result!.cancelable).toBe(false);
     });
   });

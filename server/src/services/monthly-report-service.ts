@@ -167,20 +167,18 @@ export async function generateMonthlyReport(year: number, month: number, generat
 }> {
   const metrics = await buildMonthlyReportMetrics(year, month);
   const now = new Date().toISOString();
-  const payload = JSON.stringify(metrics);
-
   const [saved] = await db.insert(monthlyReports).values({
     year,
     month,
     status: 'success',
-    reportJson: payload,
+    reportJson: metrics,
     generatedBy,
     generatedAt: now,
   }).onConflictDoUpdate({
     target: [monthlyReports.year, monthlyReports.month],
     set: {
       status: 'success',
-      reportJson: payload,
+      reportJson: metrics,
       generatedBy,
       generatedAt: now,
     },
@@ -238,7 +236,7 @@ export async function getMonthlyReportById(id: number): Promise<{
   month: number;
   status: 'success' | 'failed';
   generatedAt: string | null;
-  reportJson: string;
+  reportJson: unknown;
 } | null> {
   const [row] = await db.select({
     id: monthlyReports.id,

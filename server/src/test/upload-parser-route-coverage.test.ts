@@ -694,11 +694,11 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
     expect(response.body).toEqual({ error: 'ジョブ状態の取得に失敗しました' });
   });
 
-  it('handles malformed resultJson gracefully', async () => {
+  it('handles null resultJson gracefully', async () => {
     const app = createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 206, pharmacyId: 1, status: 'completed', attempts: 1,
-      lastError: null, resultJson: '{bad-json}',
+      lastError: null, resultJson: null,
       deduplicated: false, cancelable: false,
       canceledAt: null, cancelRequestedAt: null,
       createdAt: '2026-03-01T00:00:00.000Z',
@@ -720,7 +720,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 207, pharmacyId: 1, status: 'completed', attempts: 1,
       lastError: null,
-      resultJson: JSON.stringify({ errorReportAvailable: true }),
+      resultJson: { errorReportAvailable: true },
       deduplicated: false, cancelable: false,
       canceledAt: null, cancelRequestedAt: null,
       createdAt: '2026-03-01T00:00:00.000Z',

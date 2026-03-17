@@ -148,7 +148,7 @@ function createJobRecord(overrides: Record<string, unknown> = {}) {
     idempotencyKey: null,
     fileHash: 'abc123',
     headerRowIndex: 0,
-    mappingJson: JSON.stringify({ drug_code: '0', drug_name: '1', quantity: '2', unit: '3' }),
+    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' },
     status: 'pending',
     applyMode: 'replace',
     deleteMissing: false,
@@ -434,7 +434,7 @@ describe('processUploadConfirmJobById deep coverage', () => {
     const claimedJob = createJobRecord({
       status: 'processing',
       // mapping without drug_name
-      mappingJson: JSON.stringify({ drug_code: '0', quantity: '2', unit: '3' }),
+      mappingJson: { drug_code: '0', quantity: '2', unit: '3' },
       fileBase64: compressedPayload,
       attempts: 0,
     });
@@ -464,7 +464,7 @@ describe('processUploadConfirmJobById deep coverage', () => {
       status: 'processing',
       uploadType: 'dead_stock',
       // drug_name present but no quantity
-      mappingJson: JSON.stringify({ drug_name: '1', unit: '3' }),
+      mappingJson: { drug_name: '1', unit: '3' },
       fileBase64: compressedPayload,
       attempts: 0,
     });
@@ -964,7 +964,6 @@ describe('enqueueUploadConfirmJob deep coverage', () => {
     const fileBuffer = Buffer.from('file-data');
     const fileHash = createHash('sha256').update(fileBuffer).digest('hex');
     const mapping = { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' };
-    const mappingJson = JSON.stringify(mapping);
 
     const existingJob = createJobRecord({
       id: 10,
@@ -974,7 +973,7 @@ describe('enqueueUploadConfirmJob deep coverage', () => {
       uploadType: 'dead_stock',
       fileHash,
       headerRowIndex: 0,
-      mappingJson,
+      mappingJson: mapping,
       applyMode: 'replace',
       deleteMissing: false,
     });

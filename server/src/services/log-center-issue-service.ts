@@ -26,13 +26,13 @@ export async function updateLogIssueState(params: {
     detail: note ? `status=${params.status} ${note}` : `status=${params.status}`,
     resourceType: 'log_center_issue',
     resourceId: buildLogIssueResourceId(params.source, params.logId),
-    metadataJson: JSON.stringify({
+    metadataJson: {
       source: params.source,
       logId: params.logId,
       status: params.status,
       note,
       actorEmail: params.actorEmail,
-    }),
+    },
   });
 
   return {
@@ -60,12 +60,12 @@ export async function recordLogIssueAutoEscalation(params: {
     detail: params.note?.trim() || 'auto escalation',
     resourceType: 'log_center_issue',
     resourceId: buildLogIssueResourceId(params.source, params.logId),
-    metadataJson: JSON.stringify({
+    metadataJson: {
       source: params.source,
       logId: params.logId,
       note: params.note?.trim() || null,
       reasonCodes: params.reasonCodes,
-    }),
+    },
   });
 }
 

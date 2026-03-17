@@ -11,7 +11,7 @@ export interface SourceState {
   contentHash: string | null;
   lastCheckedAt: string | null;
   lastChangedAt: string | null;
-  metadataJson: string | null;
+  metadataJson: unknown;
 }
 
 export interface UpsertSourceStateData {
@@ -21,7 +21,7 @@ export interface UpsertSourceStateData {
   contentHash?: string | null;
   lastCheckedAt?: string | null;
   lastChangedAt?: string | null;
-  metadataJson?: string | null;
+  metadataJson?: unknown;
 }
 
 export async function getSourceState(sourceKey: string): Promise<SourceState | null> {

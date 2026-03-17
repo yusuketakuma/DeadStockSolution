@@ -121,8 +121,7 @@ describe('recordLogIssueAutoEscalation', () => {
     const callArgs = mocks.dbInsertValues.mock.calls[0][0];
     expect(callArgs.action).toBe('admin_log_auto_escalated');
     expect(callArgs.pharmacyId).toBe(5);
-    const metadata = JSON.parse(callArgs.metadataJson);
-    expect(metadata.reasonCodes).toEqual(['high_error_rate']);
+    expect(callArgs.metadataJson.reasonCodes).toEqual(['high_error_rate']);
   });
 
   it('actorPharmacyId が null の場合も記録できる', async () => {
@@ -149,7 +148,7 @@ describe('getLogIssueHistory', () => {
     mocks.dbSelectFrom.mockResolvedValue([{
       id: 1, pharmacyId: 10, action: 'admin_log_status_update',
       resourceId: 'activity_logs:42',
-      metadataJson: JSON.stringify({ status: 'investigating', note: 'checking' }),
+      metadataJson: { status: 'investigating', note: 'checking' },
       createdAt: '2026-03-15T00:00:00Z',
     }]);
     mocks.loadPharmacyMap.mockResolvedValue(
@@ -168,7 +167,7 @@ describe('getLogIssueHistory', () => {
     mocks.dbSelectFrom.mockResolvedValue([{
       id: 2, pharmacyId: null, action: 'admin_log_auto_escalated',
       resourceId: 'system_events:10',
-      metadataJson: JSON.stringify({ reasonCodes: ['high_rate'] }),
+      metadataJson: { reasonCodes: ['high_rate'] },
       createdAt: '2026-03-15T01:00:00Z',
     }]);
 

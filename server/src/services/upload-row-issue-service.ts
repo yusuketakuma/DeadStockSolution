@@ -22,7 +22,7 @@ export interface UploadRowIssueRecord {
   rowNumber: number;
   issueCode: string;
   issueMessage: string;
-  rowDataJson: string | null;
+  rowDataJson: unknown;
   createdAt: string | null;
 }
 
@@ -242,7 +242,7 @@ export function buildUploadRowIssueCsv(issues: UploadRowIssueRecord[]): string {
       String(issue.rowNumber),
       quoteCsvField(issue.issueCode),
       quoteCsvField(issue.issueMessage),
-      quoteCsvField(issue.rowDataJson ?? ''),
+      quoteCsvField(issue.rowDataJson != null ? JSON.stringify(issue.rowDataJson) : ''),
     ].join(','));
   }
 

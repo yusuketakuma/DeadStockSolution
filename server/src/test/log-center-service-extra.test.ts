@@ -320,7 +320,7 @@ describe('log-center-service extra coverage', () => {
           level: 'error',
           eventType: 'http_error',
           message: 'error',
-          detailJson: JSON.stringify({ path, status: 500 }),
+          detailJson: { path, status: 500 },
           occurredAt: '2026-01-01T00:00:00Z',
         };
         const entry = normalizeLogEntry('system_events', row);
@@ -334,7 +334,7 @@ describe('log-center-service extra coverage', () => {
         level: 'error',
         eventType: 'http_error',
         message: 'error',
-        detailJson: JSON.stringify({ path: '/unknown/path', status: 500 }),
+        detailJson: { path: '/unknown/path', status: 500 },
         occurredAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('system_events', row);
@@ -361,7 +361,7 @@ describe('log-center-service extra coverage', () => {
         level: 'error',
         eventType: 'http_error',
         message: 'error',
-        detailJson: JSON.stringify({ path: '/api/test', status: 503 }),
+        detailJson: { path: '/api/test', status: 503 },
         occurredAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('system_events', row);
@@ -425,7 +425,7 @@ describe('log-center-service extra coverage', () => {
         level: 'error',
         eventType: 'http_error',
         message: 'error',
-        detailJson: JSON.stringify({ path: '/api/test', status: 500 }),
+        detailJson: { path: '/api/test', status: 500 },
         occurredAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('system_events', row);
@@ -470,7 +470,7 @@ describe('log-center-service extra coverage', () => {
         id: 1,
         action: 'login',
         detail: '',
-        metadataJson: JSON.stringify(metadata),
+        metadataJson: metadata,
         createdAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('activity_logs', row);
@@ -488,7 +488,7 @@ describe('log-center-service extra coverage', () => {
         id: 1,
         action: 'login',
         detail: '',
-        metadataJson: JSON.stringify(metadata),
+        metadataJson: metadata,
         createdAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('activity_logs', row);
@@ -519,7 +519,7 @@ describe('log-center-service extra coverage', () => {
         id: 1,
         action: 'login',
         detail: '',
-        metadataJson: JSON.stringify(metadata),
+        metadataJson: metadata,
         createdAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('activity_logs', row);
@@ -534,9 +534,9 @@ describe('log-center-service extra coverage', () => {
         level: 'error',
         eventType: 'runtime_error',
         message: 'Error',
-        detailJson: JSON.stringify({
+        detailJson: {
           stack: 'Error: boom\n    at handler (/Users/yusuke/DeadStockSolution/server/src/services/exchange-service.ts:200:15)',
-        }),
+        },
         occurredAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('system_events', row);
@@ -549,11 +549,11 @@ describe('log-center-service extra coverage', () => {
         level: 'error',
         eventType: 'runtime_error',
         message: 'Error',
-        detailJson: JSON.stringify({
+        detailJson: {
           error: {
             stack: 'Error: boom\n    at fn (client/src/pages/HomePage.ts:50:3)',
           },
-        }),
+        },
         occurredAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('system_events', row);
@@ -566,9 +566,9 @@ describe('log-center-service extra coverage', () => {
         level: 'error',
         eventType: 'runtime_error',
         message: 'Error',
-        detailJson: JSON.stringify({
+        detailJson: {
           sourceLocation: 'server/src/services/custom-service.ts:123',
-        }),
+        },
         occurredAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('system_events', row);
@@ -671,7 +671,7 @@ describe('log-center-service extra coverage', () => {
             pharmacyId,
             action: 'admin_log_status_update',
             resourceId: 'system_events:10',
-            metadataJson: JSON.stringify({ status: 'investigating', note: '調査中' }),
+            metadataJson: { status: 'investigating', note: '調査中' },
             createdAt: '2026-01-02T00:00:00Z',
           }]);
         }
@@ -717,7 +717,7 @@ describe('log-center-service extra coverage', () => {
             pharmacyId: 99,
             action: 'admin_log_status_update',
             resourceId: 'system_events:20',
-            metadataJson: JSON.stringify({ status: 'resolved' }),
+            metadataJson: { status: 'resolved' },
             createdAt: '2026-01-02T00:00:00Z',
           }]);
         }
@@ -757,7 +757,7 @@ describe('log-center-service extra coverage', () => {
             pharmacyId: null,
             action: 'admin_log_status_update',
             resourceId: 'system_events:30',
-            metadataJson: JSON.stringify({ status: 'false_positive' }),
+            metadataJson: { status: 'false_positive' },
             createdAt: '2026-01-02T00:00:00Z',
           }]);
         }
@@ -795,7 +795,7 @@ describe('log-center-service extra coverage', () => {
             pharmacyId: null,
             action: 'admin_log_status_update',
             resourceId: 'system_events:40',
-            metadataJson: JSON.stringify({ note: 'no status here' }),
+            metadataJson: { note: 'no status here' },
             createdAt: '2026-01-02T00:00:00Z',
           }]);
         }
@@ -877,7 +877,7 @@ describe('log-center-service extra coverage', () => {
           eventType: 'http_error',
           message: 'POST /api/test -> 500',
           errorCode: 'SYSTEM_INTERNAL_ERROR',
-          detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: 1 } }),
+          detailJson: { path: '/api/account', status: 500, tenant: { pharmacyId: 1 } },
           occurredAt: '2026-01-03T00:00:00Z',
         },
         {
@@ -886,7 +886,7 @@ describe('log-center-service extra coverage', () => {
           eventType: 'http_error',
           message: 'POST /api/test -> 500',
           errorCode: 'SYSTEM_INTERNAL_ERROR',
-          detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: 2 } }),
+          detailJson: { path: '/api/account', status: 500, tenant: { pharmacyId: 2 } },
           occurredAt: '2026-01-02T00:00:00Z',
         },
         {
@@ -968,7 +968,7 @@ describe('log-center-service extra coverage', () => {
         eventType: 'http_error',
         message: 'error',
         errorCode: 'TEST_CODE',
-        detailJson: JSON.stringify({ path: '/api/account', status: 500 }),
+        detailJson: { path: '/api/account', status: 500 },
         occurredAt: '2026-01-01T00:00:00Z',
       };
 
@@ -1005,7 +1005,7 @@ describe('log-center-service extra coverage', () => {
         eventType: 'test_error',
         message: `error ${i + 1}`,
         errorCode: 'ERR_CODE',
-        detailJson: JSON.stringify({ tenant: { pharmacyId: i + 1 } }),
+        detailJson: { tenant: { pharmacyId: i + 1 } },
         occurredAt: `2026-01-0${i + 1}T00:00:00Z`,
       }));
 
@@ -1045,7 +1045,7 @@ describe('log-center-service extra coverage', () => {
           level: 'error',
           eventType: 'error_a',
           message: 'error a',
-          detailJson: JSON.stringify({ tenant: { pharmacyId: 1 } }),
+          detailJson: { tenant: { pharmacyId: 1 } },
           occurredAt: '2026-01-03T00:00:00Z',
         },
         {
@@ -1053,7 +1053,7 @@ describe('log-center-service extra coverage', () => {
           level: 'error',
           eventType: 'error_a',
           message: 'error a',
-          detailJson: JSON.stringify({ tenant: { pharmacyId: 2 } }),
+          detailJson: { tenant: { pharmacyId: 2 } },
           occurredAt: '2026-01-02T00:00:00Z',
         },
         {
@@ -1061,7 +1061,7 @@ describe('log-center-service extra coverage', () => {
           level: 'error',
           eventType: 'error_b',
           message: 'error b',
-          detailJson: JSON.stringify({ tenant: { pharmacyId: 3 } }),
+          detailJson: { tenant: { pharmacyId: 3 } },
           occurredAt: '2026-01-01T00:00:00Z',
         },
       ];
@@ -1151,9 +1151,9 @@ describe('log-center-service extra coverage', () => {
         eventType: 'runtime_error',
         message: 'Error',
         // Stack has server/src but no valid extension match — normalizer returns trimmed
-        detailJson: JSON.stringify({
+        detailJson: {
           stack: 'Error: boom\n    at fn (server/src/services/some-service:100:1)',
-        }),
+        },
         occurredAt: '2026-01-01T00:00:00Z',
       };
       const entry = normalizeLogEntry('system_events', row);

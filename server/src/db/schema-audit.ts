@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, varchar, boolean, timestamp, index, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, varchar, boolean, timestamp, jsonb, index, check } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import {
   adminAuditActionValues,
@@ -35,7 +35,7 @@ export const activityLogs = pgTable('activity_logs', {
   detail: text('detail'),
   resourceType: text('resource_type'),
   resourceId: text('resource_id'),
-  metadataJson: text('metadata_json'),
+  metadataJson: jsonb('metadata_json'),
   ipAddress: text('ip_address'),
   errorCode: varchar('error_code', { length: 64 }),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
@@ -59,7 +59,7 @@ export const systemEvents = pgTable('system_events', {
   level: text('level').$type<(typeof systemEventLevelValues)[number]>().notNull().default('error'),
   eventType: text('event_type').notNull(),
   message: text('message').notNull(),
-  detailJson: text('detail_json'),
+  detailJson: jsonb('detail_json'),
   errorCode: varchar('error_code', { length: 64 }),
   occurredAt: timestamp('occurred_at', { mode: 'string' }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),

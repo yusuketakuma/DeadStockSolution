@@ -73,7 +73,7 @@ function buildSourceStateUpdate(
     contentHash: result.contentHash,
     lastCheckedAt,
     lastChangedAt: result.changed ? lastCheckedAt : undefined,
-    metadataJson: JSON.stringify({ fileCategory: result.category }),
+    metadataJson: { fileCategory: result.category },
   };
 }
 

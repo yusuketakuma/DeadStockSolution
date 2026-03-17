@@ -802,7 +802,7 @@ describe('upload routes', () => {
       deleteMissing: false,
       attempts: 1,
       lastError: null,
-      resultJson: JSON.stringify({ uploadId: 101, rowCount: 2, applyMode: 'replace' }),
+      resultJson: { uploadId: 101, rowCount: 2, applyMode: 'replace' },
       deduplicated: false,
       cancelRequestedAt: null,
       canceledAt: null,
@@ -943,7 +943,7 @@ describe('upload routes', () => {
       deleteMissing: false,
       attempts: 1,
       lastError: null,
-      resultJson: JSON.stringify({
+      resultJson: {
         uploadId: 222,
         rowCount: 4,
         applyMode: 'partial',
@@ -956,7 +956,7 @@ describe('upload routes', () => {
             INVALID_QUANTITY: 1,
           },
         },
-      }),
+      },
       deduplicated: true,
       cancelRequestedAt: null,
       canceledAt: null,

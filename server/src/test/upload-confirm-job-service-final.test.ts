@@ -135,7 +135,7 @@ function createJobRecord(overrides: Record<string, unknown> = {}) {
     idempotencyKey: null,
     fileHash: 'abc123',
     headerRowIndex: 0,
-    mappingJson: JSON.stringify({ drug_code: '0', drug_name: '1', quantity: '2', unit: '3' }),
+    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' },
     status: 'pending',
     applyMode: 'replace',
     deleteMissing: false,
@@ -483,7 +483,7 @@ describe('upload-confirm-job-service-final', () => {
         idempotencyKey: null,
         fileHash: 'abc123',
         headerRowIndex: 0,
-        mappingJson: JSON.stringify({ drug_name: '1', quantity: '2' }),
+        mappingJson: { drug_name: '1', quantity: '2' },
         status: 'failed',
         applyMode: 'replace',
         deleteMissing: false,
@@ -517,7 +517,7 @@ describe('upload-confirm-job-service-final', () => {
       const claimedJob = createJobRecord({
         status: 'processing',
         fileBase64: compressedPayload,
-        mappingJson: JSON.stringify({ drug_name: '1', quantity: '2', drug_code: null }),
+        mappingJson: { drug_name: '1', quantity: '2', drug_code: null },
         attempts: 0,
       });
 

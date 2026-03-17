@@ -37,7 +37,7 @@ function sanitizeMessage(value: string): string {
   return `${trimmed.slice(0, MAX_MESSAGE_LENGTH)}...`;
 }
 
-function toDetailJson(detail: unknown): string | null {
+function toDetailJson(detail: unknown): unknown {
   if (detail === undefined || detail === null) return null;
   if (typeof detail === 'string') {
     return detail.length > MAX_DETAIL_LENGTH ? `${detail.slice(0, MAX_DETAIL_LENGTH)}...` : detail;
@@ -45,7 +45,11 @@ function toDetailJson(detail: unknown): string | null {
   try {
     const serialized = JSON.stringify(detail);
     if (!serialized) return null;
-    return serialized.length > MAX_DETAIL_LENGTH ? `${serialized.slice(0, MAX_DETAIL_LENGTH)}...` : serialized;
+    if (serialized.length > MAX_DETAIL_LENGTH) {
+      // Truncate oversized detail to a string summary
+      return `${serialized.slice(0, MAX_DETAIL_LENGTH)}...`;
+    }
+    return detail;
   } catch {
     return null;
   }

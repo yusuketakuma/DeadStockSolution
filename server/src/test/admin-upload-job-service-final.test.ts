@@ -108,9 +108,9 @@ describe('admin-upload-job-service-final', () => {
     mocks.isUploadConfirmRetryUnavailableError.mockReturnValue(false);
   });
 
-  describe('parseResultJson — catch branch (line 88)', () => {
-    it('returns null when resultJson is invalid JSON (catch path)', async () => {
-      // resultJson = 'invalid-json' → JSON.parse throws → returns null (line 88)
+  describe('parseResultJson — null branch', () => {
+    it('returns null when resultJson is null', async () => {
+      // resultJson = null → parseResultJson returns null
       const jobRows = [
         {
           id: 1,
@@ -123,7 +123,7 @@ describe('admin-upload-job-service-final', () => {
           deduplicated: false,
           cancelRequestedAt: null,
           canceledAt: null,
-          resultJson: 'invalid-json-string{{{',
+          resultJson: null,
           createdAt: '2026-01-01T00:00:00Z',
           updatedAt: '2026-01-01T00:00:00Z',
           completedAt: '2026-01-01T00:01:00Z',
@@ -134,7 +134,7 @@ describe('admin-upload-job-service-final', () => {
 
       const result = await listAdminUploadJobs({ page: 1, limit: 10 });
       expect(result.data).toHaveLength(1);
-      // parseResultJson returns null for invalid JSON → extractPartialSummary returns null
+      // parseResultJson returns null → extractPartialSummary returns null
       expect(result.data[0].partialSummary).toBeNull();
       // resolveErrorReportAvailable(0, null): issueCount = 0, result = null → returns false
       expect(result.data[0].errorReportAvailable).toBe(false);
@@ -185,7 +185,7 @@ describe('admin-upload-job-service-final', () => {
           deduplicated: false,
           cancelRequestedAt: null,
           canceledAt: null,
-          resultJson: JSON.stringify({ errorReportAvailable: true }),
+          resultJson: { errorReportAvailable: true },
           createdAt: '2026-01-01T00:00:00Z',
           updatedAt: '2026-01-01T00:00:00Z',
           completedAt: '2026-01-01T00:01:00Z',
@@ -214,7 +214,7 @@ describe('admin-upload-job-service-final', () => {
           deduplicated: false,
           cancelRequestedAt: null,
           canceledAt: null,
-          resultJson: JSON.stringify({ errorReportAvailable: false, partialSummary: null }),
+          resultJson: { errorReportAvailable: false, partialSummary: null },
           createdAt: '2026-01-01T00:00:00Z',
           updatedAt: '2026-01-01T00:00:00Z',
           completedAt: '2026-01-01T00:01:00Z',
@@ -243,7 +243,7 @@ describe('admin-upload-job-service-final', () => {
           deduplicated: false,
           cancelRequestedAt: null,
           canceledAt: null,
-          resultJson: JSON.stringify({ partialSummary: { rejectedRows: 5 } }),
+          resultJson: { partialSummary: { rejectedRows: 5 } },
           createdAt: '2026-01-01T00:00:00Z',
           updatedAt: '2026-01-01T00:00:00Z',
           completedAt: '2026-01-01T00:01:00Z',

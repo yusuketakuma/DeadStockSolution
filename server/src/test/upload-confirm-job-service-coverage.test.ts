@@ -112,7 +112,7 @@ function createJobRecord(overrides: Record<string, unknown> = {}) {
     idempotencyKey: null,
     fileHash: 'abc123',
     headerRowIndex: 0,
-    mappingJson: JSON.stringify({ drug_code: '0', drug_name: '1', quantity: '2', unit: '3' }),
+    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' },
     status: 'pending',
     applyMode: 'replace',
     deleteMissing: false,

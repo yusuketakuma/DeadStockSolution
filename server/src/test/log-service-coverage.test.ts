@@ -91,19 +91,19 @@ describe('log-service: writeLog', () => {
         detail: 'テスト詳細',
         resourceType: 'pharmacy',
         resourceId: '42',
-        metadataJson: '{"key":"value"}',
+        metadataJson: { key: 'value' },
         ipAddress: '192.168.1.1',
         errorCode: 'ERR001',
       }),
     );
   });
 
-  it('serializes string metadataJson as-is', async () => {
+  it('parses string metadataJson to object for jsonb storage', async () => {
     await writeLog('login', { metadataJson: '{"already":"json"}' });
 
     expect(currentChain.values).toHaveBeenCalledWith(
       expect.objectContaining({
-        metadataJson: '{"already":"json"}',
+        metadataJson: { already: 'json' },
       }),
     );
   });

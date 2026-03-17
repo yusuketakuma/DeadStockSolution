@@ -168,7 +168,7 @@ describe('GET /api/admin/log-center', () => {
       eventType: 'http_unhandled_error',
       message: 'POST /api/account -> 500',
       errorCode: 'SYSTEM_INTERNAL_ERROR',
-      detailJson: JSON.stringify({
+      detailJson: {
         path: '/api/account',
         status: 500,
         stack: 'Error: boom\n    at route (/Users/yusuke/DeadStockSolution/server/src/routes/account.ts:451:13)',
@@ -176,7 +176,7 @@ describe('GET /api/admin/log-center', () => {
           pharmacyId: tenant.id,
           pharmacyEmail: tenant.email,
         },
-      }),
+      },
     });
     const cookie = makeAuthCookie(admin);
 
@@ -490,13 +490,13 @@ describe('GET /api/admin/log-center/insights', () => {
       eventType: 'http_unhandled_error',
       message: 'POST /api/account -> 500',
       errorCode: 'SYSTEM_INTERNAL_ERROR',
-      detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: tenantA.id } }),
+      detailJson: { path: '/api/account', status: 500, tenant: { pharmacyId: tenantA.id } },
     });
     await makeSystemEvent({
       eventType: 'http_unhandled_error',
       message: 'POST /api/account -> 500',
       errorCode: 'SYSTEM_INTERNAL_ERROR',
-      detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: tenantB.id } }),
+      detailJson: { path: '/api/account', status: 500, tenant: { pharmacyId: tenantB.id } },
     });
     const cookie = makeAuthCookie(admin);
 
@@ -521,7 +521,7 @@ describe('GET /api/admin/log-center/insights', () => {
       eventType: 'http_unhandled_error',
       message: 'POST /api/account -> 500',
       errorCode: 'SYSTEM_INTERNAL_ERROR',
-      detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: tenant.id } }),
+      detailJson: { path: '/api/account', status: 500, tenant: { pharmacyId: tenant.id } },
     });
     const cookie = makeAuthCookie(admin);
 
@@ -559,7 +559,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
       eventType: 'http_unhandled_error',
       message: 'POST /api/account -> 500',
       errorCode: 'SYSTEM_INTERNAL_ERROR',
-      detailJson: JSON.stringify({ path: '/api/account', status: 500, tenant: { pharmacyId: tenant.id } }),
+      detailJson: { path: '/api/account', status: 500, tenant: { pharmacyId: tenant.id } },
     });
     const cookie = makeAuthCookie(admin);
     const csrf = makeCsrfPair();
@@ -618,7 +618,7 @@ describe('PATCH /api/admin/log-center/status', () => {
       eventType: 'http_unhandled_error',
       message: 'POST /api/account -> 500',
       errorCode: 'SYSTEM_INTERNAL_ERROR',
-      detailJson: JSON.stringify({ path: '/api/account', status: 500 }),
+      detailJson: { path: '/api/account', status: 500 },
     });
     const cookie = makeAuthCookie(admin);
     const csrf = makeCsrfPair();
@@ -663,7 +663,7 @@ describe('GET /api/admin/log-center/status-history', () => {
       eventType: 'http_unhandled_error',
       message: 'POST /api/account -> 500',
       errorCode: 'SYSTEM_INTERNAL_ERROR',
-      detailJson: JSON.stringify({ path: '/api/account', status: 500 }),
+      detailJson: { path: '/api/account', status: 500 },
     });
     const cookie = makeAuthCookie(admin);
     const csrf = makeCsrfPair();

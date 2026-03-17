@@ -330,7 +330,7 @@ export async function executeCommand(request: CommandRequest, signature: string)
   // Record received command
   const [record] = await db.insert(openclawCommands).values({
     commandName: request.command,
-    parameters: request.parameters ? JSON.stringify(request.parameters) : null,
+    parameters: request.parameters ?? null,
     status: 'received',
     openclawThreadId: request.threadId ?? null,
     signature,
@@ -357,7 +357,7 @@ export async function executeCommand(request: CommandRequest, signature: string)
 
     await updateCommandRecord(record.id, {
       status: 'completed',
-      result: JSON.stringify(result),
+      result,
       completedAt: nowIso(),
     });
 

@@ -55,14 +55,15 @@ interface StoredSnapshotRow {
   id: number;
   pharmacyId?: number;
   candidateHash: string;
+
   candidateCount: number | string | null;
-  topCandidatesJson: string | null;
+  topCandidatesJson: unknown;
 }
 
 interface SnapshotSetValue {
   candidateHash: string;
   candidateCount: number;
-  topCandidatesJson: string;
+  topCandidatesJson: unknown;
   updatedAt: string;
 }
 
@@ -193,19 +194,16 @@ function hasSnapshotChanged(
   return !snapshot || snapshot.candidateHash !== next.hash || getStoredCandidateCount(snapshot) !== next.candidateCount;
 }
 
-function serializeTopCandidates(topCandidates: TopCandidateDigest[]): string {
-  return JSON.stringify(topCandidates);
-}
-
-function parseTopCandidates(topCandidatesJson: string | null | undefined): TopCandidateDigest[] {
-  return topCandidatesJson ? JSON.parse(topCandidatesJson) as TopCandidateDigest[] : [];
+function parseTopCandidates(topCandidatesJson: unknown): TopCandidateDigest[] {
+  if (!topCandidatesJson) return [];
+  return topCandidatesJson as TopCandidateDigest[];
 }
 
 function createSnapshotSetValue(next: SnapshotPayload, updatedAt: string): SnapshotSetValue {
   return {
     candidateHash: next.hash,
     candidateCount: next.candidateCount,
-    topCandidatesJson: serializeTopCandidates(next.topCandidates),
+    topCandidatesJson: next.topCandidates,
     updatedAt,
   };
 }
@@ -215,7 +213,7 @@ function createMatchNotificationValue(params: {
   triggerPharmacyId: number;
   triggerUploadType: SnapshotTriggerUploadType;
   beforeCount: number;
-  beforeTopCandidatesJson?: string | null;
+  beforeTopCandidatesJson?: unknown;
   next: SnapshotPayload;
 }): MatchNotificationValue {
   const beforeTopCandidates = parseTopCandidates(params.beforeTopCandidatesJson);

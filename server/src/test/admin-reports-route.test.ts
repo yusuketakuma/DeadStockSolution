@@ -123,7 +123,7 @@ describe('admin reports routes', () => {
       month: 2,
       status: 'success',
       generatedAt: '2026-03-01T00:00:00.000Z',
-      reportJson: '{"year":2026,"month":2}',
+      reportJson: { year: 2026, month: 2 },
     });
     const csv = await request(app).get('/api/admin/reports/monthly/5/download').query({ format: 'csv' });
     expect(csv.status).toBe(200);
@@ -136,7 +136,7 @@ describe('admin reports routes', () => {
       month: 3,
       status: 'success',
       generatedAt: '2026-04-01T00:00:00.000Z',
-      reportJson: '{"year":2026,"month":3}',
+      reportJson: { year: 2026, month: 3 },
     });
     const json = await request(app).get('/api/admin/reports/monthly/6/download');
     expect(json.status).toBe(200);

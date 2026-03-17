@@ -136,7 +136,7 @@ describe('log-center-service', () => {
           id: 7,
           action: 'admin_login',
           detail: '管理者ログイン',
-          metadataJson: JSON.stringify(metadata),
+          metadataJson: metadata,
           createdAt: '2026-03-01T15:00:00.000Z',
         };
 
@@ -233,7 +233,7 @@ describe('log-center-service', () => {
           level: 'error',
           eventType: 'api_error',
           message: 'API error',
-          detailJson: JSON.stringify(detailObj),
+          detailJson: detailObj,
           occurredAt: '2026-03-01T13:00:00.000Z',
         };
 
@@ -249,12 +249,12 @@ describe('log-center-service', () => {
           level: 'error',
           eventType: 'http_unhandled_error',
           message: 'POST /api/account -> 500',
-          detailJson: JSON.stringify({
+          detailJson: {
             path: '/api/account',
             status: 500,
             stack: 'Error: boom\n    at handler (/Users/yusuke/DeadStockSolution/server/src/routes/account.ts:451:13)',
             tenant: { pharmacyId: 22, pharmacyEmail: 'tenant@example.com' },
-          }),
+          },
           occurredAt: '2026-03-01T13:30:00.000Z',
         };
 

@@ -185,17 +185,8 @@ function classifyUploadConfirmJobError(err: unknown): UploadConfirmJobClassified
   };
 }
 
-function parseStoredMapping(mappingJson: string, uploadType: UploadType): ColumnMapping {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(mappingJson);
-  } catch {
-    throw createUploadConfirmJobError(
-      'MAPPING_INVALID',
-      'ジョブ内のmapping JSONが不正です',
-      false,
-    );
-  }
+function parseStoredMapping(mappingJson: unknown, uploadType: UploadType): ColumnMapping {
+  const parsed = mappingJson;
 
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw createUploadConfirmJobError(
@@ -323,7 +314,7 @@ async function completeUploadConfirmJob(
     .set({
       status: 'completed',
       lastError: null,
-      resultJson: JSON.stringify(responsePayload),
+      resultJson: responsePayload,
       fileBase64: CLEARED_FILE_PAYLOAD,
       processingStartedAt: null,
       cancelRequestedAt: null,

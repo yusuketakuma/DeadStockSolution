@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, real, boolean, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, real, boolean, timestamp, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import { uploadTypeEnum } from './schema-common';
 import { exchangeProposals } from './schema-exchange';
@@ -26,7 +26,7 @@ export const matchCandidateSnapshots = pgTable('match_candidate_snapshots', {
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   candidateHash: text('candidate_hash').notNull(),
   candidateCount: integer('candidate_count').notNull().default(0),
-  topCandidatesJson: text('top_candidates_json').notNull(),
+  topCandidatesJson: jsonb('top_candidates_json').notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   idxMatchSnapshotsPharmacyUnique: uniqueIndex('idx_match_snapshots_pharmacy_unique')

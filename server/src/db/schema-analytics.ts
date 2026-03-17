@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, numeric, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, numeric, timestamp, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import { monthlyReportStatusEnum, predictiveAlertTypeValues } from './schema-common';
 import { notifications } from './schema-notification';
@@ -19,7 +19,7 @@ export const monthlyReports = pgTable('monthly_reports', {
   year: integer('year').notNull(),
   month: integer('month').notNull(),
   status: monthlyReportStatusEnum('status').notNull().default('success'),
-  reportJson: text('report_json').notNull(),
+  reportJson: jsonb('report_json').notNull(),
   generatedBy: integer('generated_by').references(() => pharmacies.id, { onDelete: 'set null' }),
   generatedAt: timestamp('generated_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
@@ -36,7 +36,7 @@ export const predictiveAlerts = pgTable('predictive_alerts', {
   alertType: text('alert_type').$type<(typeof predictiveAlertTypeValues)[number]>().notNull(),
   title: text('title').notNull(),
   message: text('message').notNull(),
-  detailJson: text('detail_json').notNull(),
+  detailJson: jsonb('detail_json').notNull(),
   dedupeKey: text('dedupe_key').notNull(),
   notificationId: integer('notification_id').references(() => notifications.id, { onDelete: 'set null' }),
   detectedAt: timestamp('detected_at', { mode: 'string' }).notNull().defaultNow(),

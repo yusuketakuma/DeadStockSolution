@@ -290,7 +290,7 @@ describe('matching-snapshot-service coverage', () => {
         id: 1,
         candidateHash: 'old-hash',
         candidateCount: 0,
-        topCandidatesJson: '[]',
+        topCandidatesJson: [],
       };
       mocks.db.select.mockImplementation(() => createSelectLimitChain([existingSnapshot]));
       mocks.db.update.mockReturnValue(createUpdateChain());
@@ -361,7 +361,7 @@ describe('matching-snapshot-service coverage', () => {
         id: 1,
         candidateHash: payload.hash,
         candidateCount: payload.candidateCount,
-        topCandidatesJson: JSON.stringify(payload.topCandidates),
+        topCandidatesJson: payload.topCandidates,
       };
       mocks.db.select.mockImplementation(() => createSelectLimitChain([existingSnapshot]));
       mocks.db.update.mockReturnValue(createUpdateChain());
@@ -396,7 +396,7 @@ describe('matching-snapshot-service coverage', () => {
           pharmacyId: 20,
           candidateHash: payload2.hash,
           candidateCount: payload2.candidateCount,
-          topCandidatesJson: JSON.stringify(payload2.topCandidates),
+          topCandidatesJson: payload2.topCandidates,
         },
       ]));
 
@@ -454,7 +454,7 @@ describe('matching-snapshot-service coverage', () => {
           pharmacyId: 10,
           candidateHash: 'old-hash', // different hash to trigger change
           candidateCount: 1,
-          topCandidatesJson: JSON.stringify(oldPayload.topCandidates),
+          topCandidatesJson: oldPayload.topCandidates,
         },
       ]));
 

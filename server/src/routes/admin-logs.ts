@@ -51,7 +51,7 @@ interface SystemEventRow {
   level: string;
   eventType: string;
   message: string;
-  detailJson: string | null;
+  detailJson: unknown;
   occurredAt: string;
   createdAt: string | null;
 }
@@ -129,10 +129,16 @@ function buildSystemEventWhereClause(filters: AdminSystemEventFilters): SystemEv
   return conditions.length > 0 ? and(...conditions) : undefined;
 }
 
-function truncateSystemEventDetail(detailJson: string | null): string | null {
+function truncateSystemEventDetail(detailJson: unknown): unknown {
   if (!detailJson) return null;
-  if (detailJson.length <= SYSTEM_EVENT_DETAIL_PREVIEW_MAX_LENGTH) return detailJson;
-  return `${detailJson.slice(0, SYSTEM_EVENT_DETAIL_PREVIEW_MAX_LENGTH)}...`;
+  if (typeof detailJson === 'string') {
+    if (detailJson.length <= SYSTEM_EVENT_DETAIL_PREVIEW_MAX_LENGTH) return detailJson;
+    return `${detailJson.slice(0, SYSTEM_EVENT_DETAIL_PREVIEW_MAX_LENGTH)}...`;
+  }
+  // jsonb auto-parsed object — serialize for truncation check
+  const serialized = JSON.stringify(detailJson);
+  if (serialized.length <= SYSTEM_EVENT_DETAIL_PREVIEW_MAX_LENGTH) return detailJson;
+  return `${serialized.slice(0, SYSTEM_EVENT_DETAIL_PREVIEW_MAX_LENGTH)}...`;
 }
 
 function buildCountMap<T extends string>(rows: Array<{ [key: string]: T | number }>, keyName: string): Record<string, number> {

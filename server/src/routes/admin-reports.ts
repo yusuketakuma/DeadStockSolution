@@ -66,7 +66,7 @@ router.get('/reports/monthly/:id/download', async (req: AuthRequest, res: Respon
     const filenameBase = `monthly-report-${report.year}-${String(report.month).padStart(2, '0')}`;
 
     if (format === 'csv') {
-      const parsed = JSON.parse(report.reportJson) as MonthlyReportMetrics;
+      const parsed = report.reportJson as MonthlyReportMetrics;
       const csv = monthlyReportToCsv(parsed);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filenameBase}.csv"`);
@@ -76,7 +76,7 @@ router.get('/reports/monthly/:id/download', async (req: AuthRequest, res: Respon
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filenameBase}.json"`);
-    res.send(report.reportJson);
+    res.json(report.reportJson);
   } catch (err) {
     handleAdminError(err, 'Admin monthly report download error', '月次レポートのダウンロードに失敗しました', res);
   }

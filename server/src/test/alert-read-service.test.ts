@@ -69,7 +69,7 @@ const BASE_ALERT = {
   alertType: 'near_expiry' as const,
   title: '期限間近アラート',
   message: '5件の在庫が期限間近です',
-  detailJson: '{"items":[]}',
+  detailJson: { items: [] },
   detectedAt: '2025-01-01T00:00:00.000Z',
   resolvedAt: null,
   notificationId: null,

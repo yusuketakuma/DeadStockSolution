@@ -49,10 +49,16 @@ export async function writeLog(
         return null;
       }
       if (typeof options.metadataJson === 'string') {
-        return options.metadataJson;
+        try {
+          return JSON.parse(options.metadataJson) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
       }
+      // Validate serializable (catch circular refs)
       try {
-        return JSON.stringify(options.metadataJson);
+        JSON.stringify(options.metadataJson);
+        return options.metadataJson;
       } catch {
         return null;
       }

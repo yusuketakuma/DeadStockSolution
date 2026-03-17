@@ -100,13 +100,13 @@ describe('upload-confirm-job-service enqueue locks', () => {
             idempotencyKey: 'upload-job-key-1234',
             fileHash: 'dd5e9b25ed0dd1edf92d90d7fd8820fc7c9baff06626616db068e3d6172b23ff',
             headerRowIndex: 0,
-            mappingJson: JSON.stringify({
+            mappingJson: {
               drug_code: '0',
               drug_name: '1',
               quantity: '2',
               unit: '3',
               expiration_date: '4',
-            }),
+            },
             status: 'pending',
             applyMode: 'replace',
             deleteMissing: false,

@@ -233,14 +233,7 @@ router.get('/jobs/:jobId', async (req: AuthRequest, res: Response) => {
     if (!jobContext) return;
     const { row } = jobContext;
 
-    let result: unknown = null;
-    if (row.resultJson) {
-      try {
-        result = JSON.parse(row.resultJson);
-      } catch {
-        result = null;
-      }
-    }
+    const result: unknown = row.resultJson ?? null;
 
     const publicError = toPublicUploadJobError(row.lastError);
 

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, real, numeric, boolean, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, real, numeric, boolean, timestamp, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import { drugMasterRevisionTypeEnum, drugMasterSyncStatusEnum, equivalenceTypeEnum } from './schema-common';
 
@@ -107,7 +107,7 @@ export const drugMasterSourceState = pgTable('drug_master_source_state', {
   contentHash: text('content_hash'),
   lastCheckedAt: timestamp('last_checked_at', { mode: 'string' }),
   lastChangedAt: timestamp('last_changed_at', { mode: 'string' }),
-  metadataJson: text('metadata_json'),
+  metadataJson: jsonb('metadata_json'),
 }, (table) => ({
   idxSourceStateSourceKey: uniqueIndex('idx_source_state_source_key').on(table.sourceKey),
 }));

@@ -460,13 +460,13 @@ describe('log-center-service coverage', () => {
             eventType: 'http_unhandled_error',
             message: 'POST /api/account -> 500',
             errorCode: 'SYSTEM_INTERNAL_ERROR',
-            detailJson: JSON.stringify({
+            detailJson: {
               path: '/api/account',
               status: 500,
               tenant: {
                 pharmacyId: 8,
               },
-            }),
+            },
             occurredAt: '2026-03-10T00:00:00Z',
           }]);
         }

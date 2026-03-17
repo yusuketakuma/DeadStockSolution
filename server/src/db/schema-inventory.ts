@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, date, integer, real, numeric, boolean, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, date, integer, real, numeric, boolean, timestamp, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import { uploadJobStatusEnum, uploadTypeEnum } from './schema-common';
 
@@ -108,7 +108,7 @@ export const uploadConfirmJobs = pgTable('upload_confirm_jobs', {
   idempotencyKey: text('idempotency_key'),
   fileHash: text('file_hash').notNull(),
   headerRowIndex: integer('header_row_index').notNull(),
-  mappingJson: text('mapping_json').notNull(),
+  mappingJson: jsonb('mapping_json').notNull(),
   applyMode: text('apply_mode').notNull().default('replace'),
   deleteMissing: boolean('delete_missing').notNull().default(false),
   deduplicated: boolean('deduplicated').notNull().default(false),
@@ -116,7 +116,7 @@ export const uploadConfirmJobs = pgTable('upload_confirm_jobs', {
   status: uploadJobStatusEnum('status').notNull().default('pending'),
   attempts: integer('attempts').notNull().default(0),
   lastError: text('last_error'),
-  resultJson: text('result_json'),
+  resultJson: jsonb('result_json'),
   cancelRequestedAt: timestamp('cancel_requested_at', { mode: 'string' }),
   canceledAt: timestamp('canceled_at', { mode: 'string' }),
   canceledBy: integer('canceled_by').references(() => pharmacies.id, { onDelete: 'set null' }),
@@ -149,7 +149,7 @@ export const uploadRowIssues = pgTable('upload_row_issues', {
   rowNumber: integer('row_number').notNull(),
   issueCode: text('issue_code').notNull(),
   issueMessage: text('issue_message').notNull(),
-  rowDataJson: text('row_data_json'),
+  rowDataJson: jsonb('row_data_json'),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   idxUploadRowIssuesJobRow: index('idx_upload_row_issues_job_row')

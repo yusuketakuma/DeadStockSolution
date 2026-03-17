@@ -60,7 +60,7 @@ export interface UploadConfirmJobRuntime {
   uploadType: UploadType;
   originalFilename: string;
   headerRowIndex: number;
-  mappingJson: string;
+  mappingJson: unknown;
   status: 'pending' | 'processing';
   applyMode: ApplyMode;
   deleteMissing: boolean;
@@ -82,7 +82,7 @@ export interface UploadConfirmJobRecord {
   idempotencyKey: string | null;
   fileHash: string;
   headerRowIndex: number;
-  mappingJson: string;
+  mappingJson: unknown;
   status: UploadConfirmJobStatus;
   applyMode: ApplyMode;
   deleteMissing: boolean;
@@ -90,7 +90,7 @@ export interface UploadConfirmJobRecord {
   fileBase64: string;
   attempts: number;
   lastError: string | null;
-  resultJson: string | null;
+  resultJson: unknown;
   cancelRequestedAt: string | null;
   canceledAt: string | null;
   canceledBy: number | null;

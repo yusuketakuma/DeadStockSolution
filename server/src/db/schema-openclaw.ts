@@ -1,13 +1,13 @@
-import { pgTable, serial, text, integer, varchar, boolean, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, varchar, boolean, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import { openclawStatusEnum } from './schema-common';
 
 export const openclawCommands = pgTable('openclaw_commands', {
   id: serial('id').primaryKey(),
   commandName: varchar('command_name', { length: 64 }).notNull(),
-  parameters: text('parameters'),
+  parameters: jsonb('parameters'),
   status: varchar('status', { length: 16 }).notNull(),
-  result: text('result'),
+  result: jsonb('result'),
   errorMessage: text('error_message'),
   openclawThreadId: varchar('openclaw_thread_id', { length: 255 }),
   signature: varchar('signature', { length: 255 }).notNull(),
@@ -25,7 +25,7 @@ export const openclawCommandWhitelist = pgTable('openclaw_command_whitelist', {
   category: varchar('category', { length: 16 }).notNull(),
   descriptionJa: varchar('description_ja', { length: 255 }),
   isEnabled: boolean('is_enabled').default(true).notNull(),
-  parametersSchema: text('parameters_schema'),
+  parametersSchema: jsonb('parameters_schema'),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
 });

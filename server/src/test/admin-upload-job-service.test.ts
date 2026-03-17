@@ -289,9 +289,9 @@ describe('admin-upload-job-service', () => {
           deduplicated: false,
           cancelRequestedAt: null,
           canceledAt: null,
-          resultJson: JSON.stringify({
+          resultJson: {
             partialSummary: { rejectedRows: 3 },
-          }),
+          },
           createdAt: '2026-03-01T00:00:00Z',
           updatedAt: '2026-03-01T00:00:00Z',
           completedAt: '2026-03-01T00:01:00Z',

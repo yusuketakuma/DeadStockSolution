@@ -389,7 +389,7 @@ async function persistSignal(
         alertType: signal.alertType,
         title: signal.title,
         message: signal.message,
-        detailJson: JSON.stringify(signal.detail),
+        detailJson: signal.detail,
         dedupeKey,
         detectedAt: createdAtIso,
         createdAt: createdAtIso,

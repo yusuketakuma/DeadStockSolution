@@ -80,7 +80,7 @@ interface AdminUploadJobSummaryRow {
   deduplicated: boolean;
   cancelRequestedAt: string | null;
   canceledAt: string | null;
-  resultJson: string | null;
+  resultJson: unknown;
   createdAt: string | null;
   updatedAt: string | null;
   completedAt: string | null;
@@ -97,13 +97,9 @@ function resolveUploadJobStatus(
   return status;
 }
 
-function parseResultJson(raw: string | null): unknown {
+function parseResultJson(raw: unknown): unknown {
   if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  return raw;
 }
 
 function extractPartialSummary(result: unknown): unknown {

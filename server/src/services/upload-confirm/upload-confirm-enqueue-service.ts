@@ -48,7 +48,7 @@ function buildEnqueueResult(row: {
 function buildNewUploadConfirmJobValues(
   params: EnqueueUploadConfirmJobParams,
   fileHash: string,
-  mappingJson: string,
+  mappingJson: unknown,
   encodedPayload: string,
   requestedAtIso: string,
   nowIso: string,
@@ -86,7 +86,7 @@ function ensureIdempotentPayloadMatch(
     uploadType: EnqueueUploadConfirmJobParams['uploadType'];
     fileHash: string;
     headerRowIndex: number;
-    mappingJson: string;
+    mappingJson: unknown;
     applyMode: EnqueueUploadConfirmJobParams['applyMode'];
     deleteMissing: boolean;
   },
@@ -94,7 +94,7 @@ function ensureIdempotentPayloadMatch(
   const matched = existing.uploadType === input.uploadType
     && existing.fileHash === input.fileHash
     && existing.headerRowIndex === input.headerRowIndex
-    && existing.mappingJson === input.mappingJson
+    && JSON.stringify(existing.mappingJson) === JSON.stringify(input.mappingJson)
     && existing.applyMode === input.applyMode
     && existing.deleteMissing === input.deleteMissing;
 
@@ -107,7 +107,6 @@ export async function enqueueUploadConfirmJob(
   params: EnqueueUploadConfirmJobParams,
 ): Promise<EnqueueUploadConfirmJobResult> {
   const fileHash = computeFileHash(params.fileBuffer);
-  const mappingJson = JSON.stringify(params.mapping);
 
   return db.transaction(async (tx) => {
     await lockUploadConfirmQueueCapacity(params.pharmacyId, tx);
@@ -119,7 +118,7 @@ export async function enqueueUploadConfirmJob(
           uploadType: params.uploadType,
           fileHash,
           headerRowIndex: params.headerRowIndex,
-          mappingJson,
+          mappingJson: params.mapping,
           applyMode: params.applyMode,
           deleteMissing: params.deleteMissing,
         });
@@ -144,7 +143,7 @@ export async function enqueueUploadConfirmJob(
     const requestedAtIso = params.requestedAtIso ?? nowIso;
 
     const [job] = await tx.insert(uploadConfirmJobs).values(
-      buildNewUploadConfirmJobValues(params, fileHash, mappingJson, encodedPayload, requestedAtIso, nowIso),
+      buildNewUploadConfirmJobValues(params, fileHash, params.mapping, encodedPayload, requestedAtIso, nowIso),
     ).returning({
       id: uploadConfirmJobs.id,
       status: uploadConfirmJobs.status,

@@ -1040,7 +1040,7 @@ describe('upload-confirm-job-service — retryable error with retry (non-termina
       idempotencyKey: null,
       fileHash: 'abc123',
       headerRowIndex: 0,
-      mappingJson: JSON.stringify({ drug_code: '0', drug_name: '1', quantity: '2', unit: '3' }),
+      mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' },
       status: 'processing',
       applyMode: 'replace',
       deleteMissing: false,

@@ -17,12 +17,11 @@ export interface ListAlertsFilters {
 
 // ── ヘルパー ──────────────────────────────────
 
-function parseDetailJson(raw: string): Record<string, unknown> {
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return {};
+function parseDetailJson(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
   }
+  return {};
 }
 
 function toAlertItem(row: typeof predictiveAlerts.$inferSelect): AlertItem {
