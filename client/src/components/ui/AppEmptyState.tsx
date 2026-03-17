@@ -26,7 +26,7 @@ export default function AppEmptyState({
     <AppCard className={className}>
       <AppCard.Body className="text-center py-4">
         {icon !== null && (
-          <div style={{ fontSize: '3rem' }} className="mb-2">{icon}</div>
+          <div style={{ fontSize: '3rem' }} className="mb-2" aria-hidden="true">{icon}</div>
         )}
         <h5 className="mb-2">{title}</h5>
         {description ? <p className="text-muted small mb-0">{description}</p> : null}
