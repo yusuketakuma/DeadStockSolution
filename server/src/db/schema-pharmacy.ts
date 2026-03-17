@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, timestamp, boolean, real, date, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, numeric, timestamp, boolean, real, date, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import {
   pharmacyRelationshipTypeEnum,
   specialBusinessHoursTypeEnum,
@@ -30,6 +30,9 @@ export const pharmacies = pgTable('pharmacies', {
   verifiedAt: timestamp('verified_at', { mode: 'string' }),
   rejectionReason: text('rejection_reason'),
   matchingAutoNotifyEnabled: boolean('matching_auto_notify_enabled').notNull().default(true),
+  trustScore: numeric('trust_score', { precision: 5, scale: 2 }).default('60.00'),
+  ratingCount: integer('rating_count').default(0),
+  positiveRate: numeric('positive_rate', { precision: 5, scale: 2 }).default('0.00'),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({

@@ -1,6 +1,6 @@
 import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { exchangeFeedback, pharmacyTrustScores, pharmacies } from '../db/schema';
+import { exchangeFeedback, pharmacies } from '../db/schema';
 import { logger } from './logger';
 import { createCache } from './cache-service';
 
@@ -54,14 +54,14 @@ export async function getTrustScoreByPharmacyId(pharmacyId: number): Promise<Tru
   if (cached !== undefined) return cached;
 
   const [row] = await db.select({
-    pharmacyId: pharmacyTrustScores.pharmacyId,
-    trustScore: pharmacyTrustScores.trustScore,
-    ratingCount: pharmacyTrustScores.ratingCount,
-    positiveRate: pharmacyTrustScores.positiveRate,
-    updatedAt: pharmacyTrustScores.updatedAt,
+    pharmacyId: pharmacies.id,
+    trustScore: pharmacies.trustScore,
+    ratingCount: pharmacies.ratingCount,
+    positiveRate: pharmacies.positiveRate,
+    updatedAt: pharmacies.updatedAt,
   })
-    .from(pharmacyTrustScores)
-    .where(eq(pharmacyTrustScores.pharmacyId, pharmacyId))
+    .from(pharmacies)
+    .where(eq(pharmacies.id, pharmacyId))
     .limit(1);
 
   const resolved = row ? normalizeTrustScoreRow(row) : null;
@@ -146,12 +146,12 @@ export async function recalculateTrustScores(targetPharmacyIds?: number[]): Prom
   const now = new Date().toISOString();
   for (const pharmacy of activePharmacyRows) {
     const record = buildTrustScoreRecord(pharmacy.id, aggregateMap.get(pharmacy.id), now);
-    await db.insert(pharmacyTrustScores).values({
-      ...record,
-    }).onConflictDoUpdate({
-      target: [pharmacyTrustScores.pharmacyId],
-      set: record,
-    });
+    await db.update(pharmacies).set({
+      trustScore: record.trustScore,
+      ratingCount: record.ratingCount,
+      positiveRate: record.positiveRate,
+      updatedAt: record.updatedAt,
+    }).where(eq(pharmacies.id, pharmacy.id));
     TRUST_SCORE_LOOKUP_CACHE.invalidate(trustScoreCacheKey(pharmacy.id));
   }
 }
@@ -205,8 +205,8 @@ export async function listTrustScores(page: number, limit: number): Promise<{ da
   positiveRate: number;
 }>; total: number }> {
   const offset = (page - 1) * limit;
-  const trustScoreOrder = sql<number>`coalesce(${pharmacyTrustScores.trustScore}, 60)`;
-  const ratingCountOrder = sql<number>`coalesce(${pharmacyTrustScores.ratingCount}, 0)`;
+  const trustScoreOrder = sql<number>`coalesce(${pharmacies.trustScore}, 60)`;
+  const ratingCountOrder = sql<number>`coalesce(${pharmacies.ratingCount}, 0)`;
 
   const [rows, [totalRow]] = await Promise.all([
     db.select({
@@ -220,13 +220,12 @@ export async function listTrustScores(page: number, limit: number): Promise<{ da
       isAdmin: pharmacies.isAdmin,
       isTestAccount: pharmacies.isTestAccount,
       createdAt: pharmacies.createdAt,
-      trustScore: pharmacyTrustScores.trustScore,
-      ratingCount: pharmacyTrustScores.ratingCount,
-      positiveRate: pharmacyTrustScores.positiveRate,
-      updatedAt: pharmacyTrustScores.updatedAt,
+      trustScore: pharmacies.trustScore,
+      ratingCount: pharmacies.ratingCount,
+      positiveRate: pharmacies.positiveRate,
+      updatedAt: pharmacies.updatedAt,
     })
       .from(pharmacies)
-      .leftJoin(pharmacyTrustScores, eq(pharmacyTrustScores.pharmacyId, pharmacies.id))
       .orderBy(desc(trustScoreOrder), desc(ratingCountOrder), asc(pharmacies.id))
       .limit(limit)
       .offset(offset),

@@ -1,18 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, numeric, timestamp, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import { monthlyReportStatusEnum, predictiveAlertTypeValues } from './schema-common';
 import { notifications } from './schema-notification';
-
-export const pharmacyTrustScores = pgTable('pharmacy_trust_scores', {
-  pharmacyId: integer('pharmacy_id').primaryKey().references(() => pharmacies.id, { onDelete: 'cascade' }),
-  trustScore: numeric('trust_score', { precision: 5, scale: 2 }).notNull().default('60.00'),
-  ratingCount: integer('rating_count').notNull().default(0),
-  positiveRate: numeric('positive_rate', { precision: 5, scale: 2 }).notNull().default('0.00'),
-  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
-}, (table) => ({
-  idxTrustScoresUpdatedAt: index('idx_trust_scores_updated_at').on(table.updatedAt),
-}));
 
 export const monthlyReports = pgTable('monthly_reports', {
   id: serial('id').primaryKey(),

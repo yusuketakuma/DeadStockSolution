@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
-    insert: vi.fn(),
+    update: vi.fn(),
   },
 }));
 
@@ -50,10 +50,10 @@ function createGroupByQuery(result: unknown, withWhere: boolean) {
   return query;
 }
 
-function createInsertQuery() {
-  const query = { values: vi.fn() };
-  query.values.mockReturnValue({
-    onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+function createUpdateQuery() {
+  const query = { set: vi.fn() };
+  query.set.mockReturnValue({
+    where: vi.fn().mockResolvedValue(undefined),
   });
   return query;
 }
@@ -67,12 +67,12 @@ describe('trust-score-service ultra coverage', () => {
     it('starts recalculation and returns started=true on first call', async () => {
       const activeQuery = createFromResolvedQuery([{ id: 1 }]);
       const aggregateQuery = createGroupByQuery([], false);
-      const insertQuery = createInsertQuery();
+      const updateQuery = createUpdateQuery();
 
       mocks.db.select
         .mockImplementationOnce(() => activeQuery)
         .mockImplementationOnce(() => aggregateQuery);
-      mocks.db.insert.mockReturnValue(insertQuery);
+      mocks.db.update.mockReturnValue(updateQuery);
 
       const result = triggerTrustScoreRecalculation();
       expect(result.started).toBe(true);
@@ -91,12 +91,12 @@ describe('trust-score-service ultra coverage', () => {
 
       const activeQuery = createFromResolvedQuery([{ id: 1 }]);
       const aggregateQuery = createGroupByQuery([], false);
-      const insertQuery = createInsertQuery();
+      const updateQuery = createUpdateQuery();
 
       mocks.db.select
         .mockImplementationOnce(() => activeQuery)
         .mockImplementationOnce(() => aggregateQuery);
-      mocks.db.insert.mockReturnValue(insertQuery);
+      mocks.db.update.mockReturnValue(updateQuery);
 
       // Start first job
       const result1 = triggerTrustScoreRecalculation();
@@ -140,12 +140,12 @@ describe('trust-score-service ultra coverage', () => {
     it('handles empty target array same as no target', async () => {
       const allPharmaciesQuery = createFromResolvedQuery([{ id: 5 }]);
       const aggregateQuery = createGroupByQuery([], false);
-      const insertQuery = createInsertQuery();
+      const updateQuery = createUpdateQuery();
 
       mocks.db.select
         .mockImplementationOnce(() => allPharmaciesQuery)
         .mockImplementationOnce(() => aggregateQuery);
-      mocks.db.insert.mockReturnValue(insertQuery);
+      mocks.db.update.mockReturnValue(updateQuery);
 
       await recalculateTrustScores([]);
 
@@ -156,17 +156,16 @@ describe('trust-score-service ultra coverage', () => {
     it('assigns default score 60 for pharmacies with no feedback', async () => {
       const activeQuery = createWhereQuery([{ id: 1 }]);
       const aggregateQuery = createGroupByQuery([], true);
-      const insertQuery = createInsertQuery();
+      const updateQuery = createUpdateQuery();
 
       mocks.db.select
         .mockImplementationOnce(() => activeQuery)
         .mockImplementationOnce(() => aggregateQuery);
-      mocks.db.insert.mockReturnValue(insertQuery);
+      mocks.db.update.mockReturnValue(updateQuery);
 
       await recalculateTrustScores([1]);
 
-      expect(insertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
-        pharmacyId: 1,
+      expect(updateQuery.set).toHaveBeenCalledWith(expect.objectContaining({
         trustScore: '60',
         ratingCount: 0,
         positiveRate: '0',

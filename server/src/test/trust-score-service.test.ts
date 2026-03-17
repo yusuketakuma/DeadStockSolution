@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
-    insert: vi.fn(),
+    update: vi.fn(),
   },
 }));
 
@@ -16,13 +16,11 @@ import { listTrustScores, recalculateTrustScoreForPharmacy, recalculateTrustScor
 function createTrustRowsQuery(rows: unknown[]) {
   const query = {
     from: vi.fn(),
-    leftJoin: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
     offset: vi.fn(),
   };
   query.from.mockReturnValue(query);
-  query.leftJoin.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   query.offset.mockResolvedValue(rows);
@@ -64,12 +62,12 @@ function createGroupByQuery(result: unknown, withWhere: boolean) {
   return query;
 }
 
-function createInsertQuery() {
+function createUpdateQuery() {
   const query = {
-    values: vi.fn(),
+    set: vi.fn(),
   };
-  query.values.mockReturnValue({
-    onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+  query.set.mockReturnValue({
+    where: vi.fn().mockResolvedValue(undefined),
   });
   return query;
 }
@@ -148,24 +146,22 @@ describe('trust-score-service list', () => {
     const aggregateQuery = createGroupByQuery([
       { toPharmacyId: 1, avgRating: 5, ratingCount: 2, positiveCount: 2 },
     ], true);
-    const insertQuery = createInsertQuery();
+    const updateQuery = createUpdateQuery();
 
     mocks.db.select
       .mockImplementationOnce(() => activeQuery)
       .mockImplementationOnce(() => aggregateQuery);
-    mocks.db.insert.mockReturnValue(insertQuery);
+    mocks.db.update.mockReturnValue(updateQuery);
 
     await recalculateTrustScores([1, 1, 2]);
 
-    expect(insertQuery.values).toHaveBeenCalledTimes(2);
-    expect(insertQuery.values.mock.calls[0][0]).toEqual(expect.objectContaining({
-      pharmacyId: 1,
+    expect(updateQuery.set).toHaveBeenCalledTimes(2);
+    expect(updateQuery.set.mock.calls[0][0]).toEqual(expect.objectContaining({
       trustScore: '71.43',
       ratingCount: 2,
       positiveRate: '100',
     }));
-    expect(insertQuery.values.mock.calls[1][0]).toEqual(expect.objectContaining({
-      pharmacyId: 2,
+    expect(updateQuery.set.mock.calls[1][0]).toEqual(expect.objectContaining({
       trustScore: '60',
       ratingCount: 0,
       positiveRate: '0',
@@ -175,17 +171,16 @@ describe('trust-score-service list', () => {
   it('recalculates single pharmacy score through wrapper API', async () => {
     const activeQuery = createWhereQuery([{ id: 3 }]);
     const aggregateQuery = createGroupByQuery([], true);
-    const insertQuery = createInsertQuery();
+    const updateQuery = createUpdateQuery();
 
     mocks.db.select
       .mockImplementationOnce(() => activeQuery)
       .mockImplementationOnce(() => aggregateQuery);
-    mocks.db.insert.mockReturnValue(insertQuery);
+    mocks.db.update.mockReturnValue(updateQuery);
 
     await recalculateTrustScoreForPharmacy(3);
 
-    expect(insertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
-      pharmacyId: 3,
+    expect(updateQuery.set).toHaveBeenCalledWith(expect.objectContaining({
       trustScore: '60',
       ratingCount: 0,
       positiveRate: '0',
@@ -197,17 +192,16 @@ describe('trust-score-service list', () => {
     const aggregateQuery = createGroupByQuery([
       { toPharmacyId: 10, avgRating: 4, ratingCount: 5, positiveCount: 4 },
     ], false);
-    const insertQuery = createInsertQuery();
+    const updateQuery = createUpdateQuery();
 
     mocks.db.select
       .mockImplementationOnce(() => allPharmaciesQuery)
       .mockImplementationOnce(() => aggregateQuery);
-    mocks.db.insert.mockReturnValue(insertQuery);
+    mocks.db.update.mockReturnValue(updateQuery);
 
     await recalculateTrustScores();
 
-    expect(insertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
-      pharmacyId: 10,
+    expect(updateQuery.set).toHaveBeenCalledWith(expect.objectContaining({
       trustScore: '70',
       ratingCount: 5,
       positiveRate: '80',

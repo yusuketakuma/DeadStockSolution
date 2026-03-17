@@ -7,7 +7,7 @@ import {
   exchangeProposals,
   exchangeHistory,
   matchCandidateSnapshots,
-  pharmacyTrustScores,
+  pharmacies,
   exchangeFeedback,
   pharmacyRelationships,
   predictiveAlerts,
@@ -40,7 +40,7 @@ function buildStatisticsSummaryPayload(params: {
   proposalStats: Array<{ sent: unknown; received: unknown; completed: unknown; pendingAction: unknown }>;
   exchangeStats: Array<{ totalCount: number; totalValue: string | number | null; partnerCount: number }>;
   matchSnapshot: Array<{ candidateCount: number | string | null }>;
-  trustScore: Array<{ trustScore: string | number | null; ratingCount: number; positiveRate: string | number | null }>;
+  trustScore: Array<{ trustScore: string | number | null; ratingCount: number | null; positiveRate: string | number | null }>;
   feedbackReceived: Array<{ avgRating: number | null; count: number }>;
   favoriteCount: Array<{ count: number }>;
   activeAlertCount: Array<{ count: number }>;
@@ -193,12 +193,12 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
       // 信頼スコア
       db
         .select({
-          trustScore: pharmacyTrustScores.trustScore,
-          ratingCount: pharmacyTrustScores.ratingCount,
-          positiveRate: pharmacyTrustScores.positiveRate,
+          trustScore: pharmacies.trustScore,
+          ratingCount: pharmacies.ratingCount,
+          positiveRate: pharmacies.positiveRate,
         })
-        .from(pharmacyTrustScores)
-        .where(eq(pharmacyTrustScores.pharmacyId, pharmacyId)),
+        .from(pharmacies)
+        .where(eq(pharmacies.id, pharmacyId)),
 
       // 受け取った評価の平均
       db

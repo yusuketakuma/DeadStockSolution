@@ -1,6 +1,6 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { activityLogs, pharmacyTrustScores, pharmacies } from '../db/schema';
+import { activityLogs, pharmacies } from '../db/schema';
 
 export async function getPharmacyHealthSummary() {
   const [activityByPharmacy, trustScores] = await Promise.all([
@@ -16,16 +16,15 @@ export async function getPharmacyHealthSummary() {
       .orderBy(sql`count(*) desc`)
       .limit(50),
     db.select({
-      pharmacyId: pharmacyTrustScores.pharmacyId,
+      pharmacyId: pharmacies.id,
       pharmacyName: pharmacies.name,
-      trustScore: pharmacyTrustScores.trustScore,
-      ratingCount: pharmacyTrustScores.ratingCount,
-      positiveRate: pharmacyTrustScores.positiveRate,
-      updatedAt: pharmacyTrustScores.updatedAt,
+      trustScore: pharmacies.trustScore,
+      ratingCount: pharmacies.ratingCount,
+      positiveRate: pharmacies.positiveRate,
+      updatedAt: pharmacies.updatedAt,
     })
-      .from(pharmacyTrustScores)
-      .leftJoin(pharmacies, eq(pharmacyTrustScores.pharmacyId, pharmacies.id))
-      .orderBy(desc(pharmacyTrustScores.updatedAt))
+      .from(pharmacies)
+      .orderBy(desc(pharmacies.updatedAt))
       .limit(50),
   ]);
 
