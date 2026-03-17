@@ -45,7 +45,7 @@ describe('PasswordResetPage', () => {
       expect(screen.getByText('パスワードリセット')).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText('メールアドレス')).toBeInTheDocument();
+    expect(screen.getByLabelText(/メールアドレス/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'リセットリンクを送信' })).toBeInTheDocument();
   });
 
@@ -61,7 +61,7 @@ describe('PasswordResetPage', () => {
     await user.click(screen.getByRole('button', { name: 'パスワード再設定へ' }));
 
     await waitFor(() => {
-      expect(screen.getByLabelText('リセットトークン')).toBeInTheDocument();
+      expect(screen.getByLabelText(/リセットトークン/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'パスワードを再設定' })).toBeInTheDocument();
     });
   });

@@ -1,4 +1,4 @@
-import { useId, type ChangeEvent, type HTMLAttributes } from 'react';
+import { useId, useState, type ChangeEvent, type HTMLAttributes } from 'react';
 import { Form } from 'react-bootstrap';
 
 interface AppFieldProps {
@@ -6,6 +6,7 @@ interface AppFieldProps {
   label: string;
   value: string;
   onChange?: (value: string, event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  validate?: (value: string) => string | null;
   className?: string;
   controlClassName?: string;
   labelClassName?: string;
@@ -33,6 +34,7 @@ export default function AppField({
   label,
   value,
   onChange,
+  validate,
   className,
   controlClassName,
   labelClassName,
@@ -54,15 +56,29 @@ export default function AppField({
   isInvalid,
   errorText,
 }: AppFieldProps) {
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const handleBlur = () => {
+    if (validate) {
+      setValidationError(validate(value));
+    }
+  };
+
   const generatedId = useId().replace(/:/g, '');
   const inputId = controlId ?? `app-field-${generatedId}`;
   const helpId = helpText ? `${inputId}-help` : undefined;
-  const errorId = errorText ? `${inputId}-error` : undefined;
+  // 外部から渡された errorText を優先し、なければバリデーションエラーを使う
+  const activeError = errorText ?? validationError ?? undefined;
+  const errorId = activeError ? `${inputId}-error` : undefined;
+  const activeIsInvalid = isInvalid || (validationError !== null && !errorText);
   const describedBy = [errorId, helpId].filter(Boolean).join(' ') || undefined;
 
   return (
     <Form.Group className={className}>
-      <Form.Label className={labelClassName} htmlFor={inputId}>{label}</Form.Label>
+      <Form.Label className={labelClassName} htmlFor={inputId}>
+        {label}
+        {required && <span className="text-danger ms-1">*</span>}
+      </Form.Label>
       {as === 'textarea' ? (
         <Form.Control
           id={inputId}
@@ -81,10 +97,11 @@ export default function AppField({
           min={min}
           max={max}
           step={step}
-          isInvalid={isInvalid}
-          aria-invalid={isInvalid || undefined}
+          isInvalid={activeIsInvalid}
+          aria-invalid={activeIsInvalid || undefined}
           aria-describedby={describedBy}
           onChange={(event) => onChange?.(event.target.value, event)}
+          onBlur={handleBlur}
         />
       ) : (
         <Form.Control
@@ -103,13 +120,14 @@ export default function AppField({
           min={min}
           max={max}
           step={step}
-          isInvalid={isInvalid}
-          aria-invalid={isInvalid || undefined}
+          isInvalid={activeIsInvalid}
+          aria-invalid={activeIsInvalid || undefined}
           aria-describedby={describedBy}
           onChange={(event) => onChange?.(event.target.value, event)}
+          onBlur={handleBlur}
         />
       )}
-      {errorText && <Form.Control.Feedback id={errorId} type="invalid">{errorText}</Form.Control.Feedback>}
+      {activeError && <Form.Control.Feedback id={errorId} type="invalid">{activeError}</Form.Control.Feedback>}
       {helpText && <Form.Text id={helpId} className="text-muted">{helpText}</Form.Text>}
     </Form.Group>
   );

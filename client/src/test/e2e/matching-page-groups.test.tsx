@@ -84,7 +84,7 @@ function mockMatchingFetch(options: { includeGroups?: boolean } = {}) {
 
   const routes: Record<string, unknown> = {
     '/api/auth/me': mockUser,
-    '/api/upload/status': { usedMedicationUploaded: true },
+    '/api/upload/status': { deadStockUploaded: true, usedMedicationUploaded: true },
     '/api/exchange/find': { candidates: matchCandidates },
     '/api/timeline/bootstrap': { timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null }, digest: { events: [] }, unreadCount: 0 },
     '/api/timeline/unread-count': { unreadCount: 0 },

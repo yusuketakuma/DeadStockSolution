@@ -192,6 +192,9 @@ const ICON_MAP: Record<string, string> = {
   '/account': '👤',
 };
 
+// ── Badge polling interval ───────────────────────────────
+const BADGE_POLL_INTERVAL_MS = 15_000;
+
 // ── User badge counts ────────────────────────────────────
 interface UserBadgeCounts {
   pendingProposals: number;
@@ -230,7 +233,7 @@ function useUserBadgeCounts(isLoggedIn: boolean): UserBadgeCounts {
   useEffect(() => {
     void fetchCounts();
     if (!isLoggedIn) return;
-    const interval = setInterval(() => void fetchCounts(), 60_000);
+    const interval = setInterval(() => void fetchCounts(), BADGE_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchCounts, isLoggedIn]);
 
@@ -278,7 +281,7 @@ function useAdminBadgeCounts(isAdmin: boolean): AdminBadgeCounts {
   useEffect(() => {
     void fetchCounts();
     if (!isAdmin) return;
-    const interval = setInterval(() => void fetchCounts(), 60_000);
+    const interval = setInterval(() => void fetchCounts(), BADGE_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchCounts, isAdmin]);
 
