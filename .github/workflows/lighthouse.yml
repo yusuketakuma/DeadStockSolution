@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Ensure rollup platform binary
+        run: npm rebuild rollup || true
+
       - name: Build client
         run: npm run build:client
 

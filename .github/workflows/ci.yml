@@ -51,6 +51,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Ensure rollup platform binary
+        run: npm rebuild rollup || true
+
       - name: Test coverage server
         run: npm run test:coverage:server
 
@@ -73,6 +76,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Ensure rollup platform binary
+        run: npm rebuild rollup || true
+
       - name: Test coverage client
         run: npm run test:coverage:client
 
@@ -91,6 +97,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Ensure rollup platform binary
+        run: npm rebuild rollup || true
 
       - name: Test upload/drug-master integration flows
         run: npm run test:integration:server
@@ -111,6 +120,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Ensure rollup platform binary
+        run: npm rebuild rollup || true
 
       - name: Check OpenAPI contract
         run: npm run openapi:check
