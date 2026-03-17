@@ -55,7 +55,7 @@ vi.mock('drizzle-orm', () => ({
 
 import { runUploadConfirm } from '../services/upload-confirm-service';
 
-function createLatestUploadSelectChain(requestedAt: string | null) {
+function createLatestUploadSelectChain(completedAt: string | null) {
   const query = {
     from: vi.fn(),
     where: vi.fn(),
@@ -65,7 +65,7 @@ function createLatestUploadSelectChain(requestedAt: string | null) {
   query.from.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
-  query.limit.mockResolvedValue(requestedAt ? [{ id: 99, requestedAt }] : []);
+  query.limit.mockResolvedValue(completedAt ? [{ id: 99, completedAt }] : []);
   return query;
 }
 

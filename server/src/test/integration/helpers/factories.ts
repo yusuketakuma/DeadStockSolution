@@ -35,15 +35,20 @@ export async function makePharmacy(
 export async function makeUpload(
   db: TestDb,
   pharmacyId: number,
-  overrides: Partial<typeof schema.uploads.$inferInsert> = {},
-): Promise<typeof schema.uploads.$inferSelect> {
-  const defaults: typeof schema.uploads.$inferInsert = {
+  overrides: Partial<typeof schema.uploadJobs.$inferInsert> = {},
+): Promise<typeof schema.uploadJobs.$inferSelect> {
+  const defaults: typeof schema.uploadJobs.$inferInsert = {
     pharmacyId,
     uploadType: 'dead_stock',
     originalFilename: 'test.csv',
+    fileHash: '',
+    headerRowIndex: 0,
+    mappingJson: {},
+    fileBase64: '',
+    status: 'completed',
     ...overrides,
   };
-  const [row] = await db.insert(schema.uploads).values(defaults).returning();
+  const [row] = await db.insert(schema.uploadJobs).values(defaults).returning();
   return row;
 }
 

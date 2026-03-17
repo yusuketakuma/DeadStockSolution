@@ -8,7 +8,7 @@ import { db } from '../config/database';
 import { logger } from '../services/logger';
 import {
   pharmacies,
-  uploads,
+  uploadJobs,
   deadStockItems,
   usedMedicationItems,
   exchangeProposals,
@@ -270,10 +270,13 @@ async function main(): Promise<void> {
       pharmacyId: toNumber(row.pharmacy_id, 'uploads.pharmacy_id'),
       uploadType: toUploadType(row.upload_type),
       originalFilename: toStringValue(row.original_filename, 'uploads.original_filename'),
-      columnMapping: toNullableString(row.column_mapping),
-      rowCount: toNullableNumber(row.row_count),
+      fileHash: '',
+      headerRowIndex: 0,
+      mappingJson: {},
+      fileBase64: '',
+      status: 'completed' as const,
       createdAt: toOptionalString(row.created_at),
-    }), createOnConflictDoNothingInserter(uploads));
+    }), createOnConflictDoNothingInserter(uploadJobs));
 
     await migrateTable(legacy, 'dead_stock_items', (row) => ({
       id: toNumber(row.id, 'dead_stock_items.id'),

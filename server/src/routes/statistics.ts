@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { eq, and, or, count, sum, max, countDistinct, isNull, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
-  uploads,
+  uploadJobs,
   deadStockItems,
   exchangeProposals,
   exchangeHistory,
@@ -122,13 +122,13 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
       // アップロード回数 + 最終日（種別ごと）— 1クエリに統合
       db
         .select({
-          uploadType: uploads.uploadType,
+          uploadType: uploadJobs.uploadType,
           count: count(),
-          lastDate: max(uploads.createdAt),
+          lastDate: max(uploadJobs.createdAt),
         })
-        .from(uploads)
-        .where(eq(uploads.pharmacyId, pharmacyId))
-        .groupBy(uploads.uploadType),
+        .from(uploadJobs)
+        .where(eq(uploadJobs.pharmacyId, pharmacyId))
+        .groupBy(uploadJobs.uploadType),
 
       // デッドストック品目数 + 総薬価 — 1クエリに統合
       db

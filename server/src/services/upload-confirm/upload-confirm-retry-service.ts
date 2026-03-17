@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../../config/database';
-import { uploadConfirmJobs } from '../../db/schema';
+import { uploadJobs } from '../../db/schema';
 import { clearUploadRowIssuesForJob } from '../upload-row-issue-service';
 import {
   assertUploadConfirmQueueCapacityWithLocks,
@@ -51,14 +51,14 @@ export async function retryUploadConfirmJobByAdmin(jobId: number): Promise<Retry
 
     if (existing.idempotencyKey) {
       const [activeWithSameKey] = await tx.select({
-        id: uploadConfirmJobs.id,
+        id: uploadJobs.id,
       })
-        .from(uploadConfirmJobs)
+        .from(uploadJobs)
         .where(and(
-          eq(uploadConfirmJobs.pharmacyId, existing.pharmacyId),
-          eq(uploadConfirmJobs.idempotencyKey, existing.idempotencyKey),
-          ne(uploadConfirmJobs.id, existing.id),
-          inArray(uploadConfirmJobs.status, ACTIVE_JOB_STATUSES),
+          eq(uploadJobs.pharmacyId, existing.pharmacyId),
+          eq(uploadJobs.idempotencyKey, existing.idempotencyKey),
+          ne(uploadJobs.id, existing.id),
+          inArray(uploadJobs.status, ACTIVE_JOB_STATUSES),
         ))
         .limit(1);
 
@@ -72,14 +72,14 @@ export async function retryUploadConfirmJobByAdmin(jobId: number): Promise<Retry
     const nowIso = new Date().toISOString();
     await clearUploadRowIssuesForJob(existing.id, tx);
 
-    const [updated] = await tx.update(uploadConfirmJobs)
+    const [updated] = await tx.update(uploadJobs)
       .set(buildRetryResetPayload(nowIso))
-      .where(eq(uploadConfirmJobs.id, existing.id))
+      .where(eq(uploadJobs.id, existing.id))
       .returning({
-        id: uploadConfirmJobs.id,
-        status: uploadConfirmJobs.status,
-        canceledAt: uploadConfirmJobs.canceledAt,
-        cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
+        id: uploadJobs.id,
+        status: uploadJobs.status,
+        canceledAt: uploadJobs.canceledAt,
+        cancelRequestedAt: uploadJobs.cancelRequestedAt,
       });
 
     if (!updated) {

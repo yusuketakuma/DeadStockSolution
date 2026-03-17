@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, lte } from 'drizzle-orm';
-import { uploads } from '../../db/schema';
+import { uploadJobs } from '../../db/schema';
 import { type DbClient, type RawTimelineEvent } from '../../types/timeline';
 import { toTimelineEventType } from '../../utils/timeline-utils';
 
@@ -53,25 +53,25 @@ export async function fetchUploadEvents(
   limit?: number,
   before?: string,
 ): Promise<RawTimelineEvent[]> {
-  const conditions = [eq(uploads.pharmacyId, pharmacyId)];
+  const conditions = [eq(uploadJobs.pharmacyId, pharmacyId)];
   appendDateRangeConditions(
     conditions,
     since,
     before,
-    (value) => gte(uploads.createdAt, value),
-    (value) => lte(uploads.createdAt, value),
+    (value) => gte(uploadJobs.createdAt, value),
+    (value) => lte(uploadJobs.createdAt, value),
   );
 
   let query = db
     .select({
-      id: uploads.id,
-      uploadType: uploads.uploadType,
-      originalFilename: uploads.originalFilename,
-      createdAt: uploads.createdAt,
+      id: uploadJobs.id,
+      uploadType: uploadJobs.uploadType,
+      originalFilename: uploadJobs.originalFilename,
+      createdAt: uploadJobs.createdAt,
     })
-    .from(uploads)
+    .from(uploadJobs)
     .where(and(...conditions))
-    .orderBy(desc(uploads.createdAt));
+    .orderBy(desc(uploadJobs.createdAt));
   if (limit) query = query.limit(limit);
 
   const rows = await query;

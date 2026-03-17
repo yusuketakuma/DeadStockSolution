@@ -2,7 +2,7 @@ import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { promisify } from 'util';
 import { gunzip } from 'zlib';
 import { db } from '../../config/database';
-import { uploadConfirmJobs } from '../../db/schema';
+import { uploadJobs } from '../../db/schema';
 import {
   type ColumnMapping,
   DEAD_STOCK_FIELDS,
@@ -75,21 +75,21 @@ async function decodeUploadJobFilePayload(filePayload: string): Promise<Buffer> 
 }
 
 async function finalizeCancelRequestedJob(jobId: number, nowIso: string): Promise<void> {
-  await db.update(uploadConfirmJobs)
+  await db.update(uploadJobs)
     .set({
       status: 'failed',
       lastError: formatJobErrorMessage('JOB_CANCELED', CANCELLED_JOB_MESSAGE),
       nextRetryAt: null,
       processingStartedAt: null,
       fileBase64: CLEARED_FILE_PAYLOAD,
-      canceledAt: sql<string>`coalesce(${uploadConfirmJobs.cancelRequestedAt}, ${nowIso})`,
+      canceledAt: sql<string>`coalesce(${uploadJobs.cancelRequestedAt}, ${nowIso})`,
       completedAt: nowIso,
       updatedAt: nowIso,
     })
     .where(and(
-      eq(uploadConfirmJobs.id, jobId),
-      isNotNull(uploadConfirmJobs.cancelRequestedAt),
-      isNull(uploadConfirmJobs.canceledAt),
+      eq(uploadJobs.id, jobId),
+      isNotNull(uploadJobs.cancelRequestedAt),
+      isNull(uploadJobs.canceledAt),
     ));
 }
 
@@ -244,9 +244,9 @@ function buildFailedJobUpdatePayload(
   nextAttempts: number,
   classified: UploadConfirmJobClassifiedError,
   nowIso: string,
-): Partial<typeof uploadConfirmJobs.$inferInsert> {
+): Partial<typeof uploadJobs.$inferInsert> {
   const terminal = !classified.retryable || nextAttempts >= MAX_JOB_ATTEMPTS;
-  const payload: Partial<typeof uploadConfirmJobs.$inferInsert> = {
+  const payload: Partial<typeof uploadJobs.$inferInsert> = {
     status: terminal ? 'failed' : 'pending',
     attempts: nextAttempts,
     lastError: formatJobErrorMessage(classified.code, classified.message),
@@ -310,7 +310,7 @@ async function completeUploadConfirmJob(
   responsePayload: Record<string, unknown>,
   nowIso: string,
 ): Promise<boolean> {
-  const [completed] = await db.update(uploadConfirmJobs)
+  const [completed] = await db.update(uploadJobs)
     .set({
       status: 'completed',
       lastError: null,
@@ -324,12 +324,12 @@ async function completeUploadConfirmJob(
       updatedAt: nowIso,
     })
     .where(and(
-      eq(uploadConfirmJobs.id, jobId),
-      eq(uploadConfirmJobs.status, 'processing'),
-      isNull(uploadConfirmJobs.cancelRequestedAt),
-      isNull(uploadConfirmJobs.canceledAt),
+      eq(uploadJobs.id, jobId),
+      eq(uploadJobs.status, 'processing'),
+      isNull(uploadJobs.cancelRequestedAt),
+      isNull(uploadJobs.canceledAt),
     ))
-    .returning({ id: uploadConfirmJobs.id });
+    .returning({ id: uploadJobs.id });
 
   return Boolean(completed);
 }
@@ -380,15 +380,15 @@ export async function processClaimedUploadConfirmJob(job: UploadConfirmJobRuntim
     const nowIso = new Date().toISOString();
     const updatePayload = buildFailedJobUpdatePayload(nextAttempts, classified, nowIso);
 
-    const [updated] = await db.update(uploadConfirmJobs)
+    const [updated] = await db.update(uploadJobs)
       .set(updatePayload)
       .where(and(
-        eq(uploadConfirmJobs.id, job.id),
-        eq(uploadConfirmJobs.status, 'processing'),
-        isNull(uploadConfirmJobs.cancelRequestedAt),
-        isNull(uploadConfirmJobs.canceledAt),
+        eq(uploadJobs.id, job.id),
+        eq(uploadJobs.status, 'processing'),
+        isNull(uploadJobs.cancelRequestedAt),
+        isNull(uploadJobs.canceledAt),
       ))
-      .returning({ id: uploadConfirmJobs.id });
+      .returning({ id: uploadJobs.id });
 
     if (!updated) {
       await finalizeCancelRequestedJob(job.id, nowIso);

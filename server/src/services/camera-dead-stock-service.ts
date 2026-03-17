@@ -1,6 +1,6 @@
 import { eq, inArray, like, or } from 'drizzle-orm';
 import { db } from '../config/database';
-import { deadStockItems, drugMaster, drugMasterPackages, uploads } from '../db/schema';
+import { deadStockItems, drugMaster, drugMasterPackages, uploadJobs } from '../db/schema';
 import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 import { escapeLikeWildcards } from '../utils/request-utils';
 import { parseCameraCode, type ParsedCameraCode } from './gs1-parser';
@@ -502,14 +502,17 @@ export async function confirmCameraDeadStockBatch(
   const uploadRequestedAt = now.toISOString();
 
   return db.transaction(async (tx) => {
-    const [uploadRecord] = await tx.insert(uploads).values({
+    const [uploadRecord] = await tx.insert(uploadJobs).values({
       pharmacyId,
       uploadType: 'dead_stock',
       originalFilename: uploadFilename,
-      columnMapping: null,
-      rowCount: parsedItems.length,
-      requestedAt: uploadRequestedAt,
-    }).returning({ id: uploads.id });
+      fileHash: '',
+      headerRowIndex: 0,
+      mappingJson: {},
+      fileBase64: '',
+      status: 'completed',
+      completedAt: uploadRequestedAt,
+    }).returning({ id: uploadJobs.id });
 
     const rows = buildDeadStockInsertRows({
       pharmacyId,

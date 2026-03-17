@@ -1,6 +1,6 @@
 import { and, eq, gte, lte, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { uploadConfirmJobs } from '../db/schema';
+import { uploadJobs } from '../db/schema';
 import { getObservabilitySnapshot } from './observability-service';
 import { roundTo2 } from './matching-score-service';
 
@@ -65,15 +65,15 @@ export async function getMonitoringKpiSnapshot(windowMinutesRaw: number = 60): P
   const staleBefore = new Date(now - thresholds.pendingStaleMinutes * 60 * 1000).toISOString();
 
   const [countsRow] = await db.select({
-    failed: sql<number>`count(*) filter (where ${uploadConfirmJobs.status} = 'failed' and ${uploadConfirmJobs.createdAt} >= ${since24h})`,
-    completed: sql<number>`count(*) filter (where ${uploadConfirmJobs.status} = 'completed' and ${uploadConfirmJobs.createdAt} >= ${since24h})`,
-    pendingStale: sql<number>`count(*) filter (where ${uploadConfirmJobs.status} = 'pending' and ${uploadConfirmJobs.createdAt} <= ${staleBefore})`,
+    failed: sql<number>`count(*) filter (where ${uploadJobs.status} = 'failed' and ${uploadJobs.createdAt} >= ${since24h})`,
+    completed: sql<number>`count(*) filter (where ${uploadJobs.status} = 'completed' and ${uploadJobs.createdAt} >= ${since24h})`,
+    pendingStale: sql<number>`count(*) filter (where ${uploadJobs.status} = 'pending' and ${uploadJobs.createdAt} <= ${staleBefore})`,
   })
-    .from(uploadConfirmJobs)
+    .from(uploadJobs)
     .where(
       or(
-        gte(uploadConfirmJobs.createdAt, since24h),
-        and(eq(uploadConfirmJobs.status, 'pending'), lte(uploadConfirmJobs.createdAt, staleBefore)),
+        gte(uploadJobs.createdAt, since24h),
+        and(eq(uploadJobs.status, 'pending'), lte(uploadJobs.createdAt, staleBefore)),
       ),
     );
 

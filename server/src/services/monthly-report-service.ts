@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lt, lte, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { exchangeHistory, exchangeProposals, monthlyReports, uploads, deadStockItems } from '../db/schema';
+import { exchangeHistory, exchangeProposals, monthlyReports, uploadJobs, deadStockItems } from '../db/schema';
 
 export interface MonthlyReportMetrics {
   year: number;
@@ -48,7 +48,7 @@ function toMetricNumber(value: unknown): number {
   return Number(value ?? 0);
 }
 
-async function countByWhere(table: typeof exchangeProposals | typeof exchangeHistory | typeof uploads | typeof deadStockItems, whereClause: ReturnType<typeof and>) {
+async function countByWhere(table: typeof exchangeProposals | typeof exchangeHistory | typeof uploadJobs | typeof deadStockItems, whereClause: ReturnType<typeof and>) {
   const [row] = await db.select({ count: sql<number>`count(*)` })
     .from(table)
     .where(whereClause);
@@ -115,19 +115,19 @@ export async function buildMonthlyReportMetrics(year: number, month: number): Pr
         gte(exchangeHistory.completedAt, startIso),
         lt(exchangeHistory.completedAt, endIso),
       )),
-    countByWhere(uploads, and(
-      gte(uploads.createdAt, startIso),
-      lt(uploads.createdAt, endIso),
+    countByWhere(uploadJobs, and(
+      gte(uploadJobs.createdAt, startIso),
+      lt(uploadJobs.createdAt, endIso),
     )),
-    countByWhere(uploads, and(
-      gte(uploads.createdAt, startIso),
-      lt(uploads.createdAt, endIso),
-      eq(uploads.uploadType, 'dead_stock'),
+    countByWhere(uploadJobs, and(
+      gte(uploadJobs.createdAt, startIso),
+      lt(uploadJobs.createdAt, endIso),
+      eq(uploadJobs.uploadType, 'dead_stock'),
     )),
-    countByWhere(uploads, and(
-      gte(uploads.createdAt, startIso),
-      lt(uploads.createdAt, endIso),
-      eq(uploads.uploadType, 'used_medication'),
+    countByWhere(uploadJobs, and(
+      gte(uploadJobs.createdAt, startIso),
+      lt(uploadJobs.createdAt, endIso),
+      eq(uploadJobs.uploadType, 'used_medication'),
     )),
     countByWhere(deadStockItems, and(
       eq(deadStockItems.isAvailable, true),

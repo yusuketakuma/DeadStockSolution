@@ -13,7 +13,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import { db } from '../../config/database';
-import { uploadConfirmJobs } from '../../db/schema';
+import { uploadJobs } from '../../db/schema';
 import { rowCount } from '../../utils/db-utils';
 import { getStaleBeforeIso } from '../../utils/job-retry-utils';
 import { parseBoundedInt } from '../../utils/number-utils';
@@ -67,15 +67,15 @@ function getMaxActiveJobsGlobal(): number {
 
 function buildNotCanceledCondition(): ReturnType<typeof and> {
   return and(
-    isNull(uploadConfirmJobs.cancelRequestedAt),
-    isNull(uploadConfirmJobs.canceledAt),
+    isNull(uploadJobs.cancelRequestedAt),
+    isNull(uploadJobs.canceledAt),
   );
 }
 
 function buildRetryReadyCondition(nowIso: string): ReturnType<typeof or> {
   return or(
-    isNull(uploadConfirmJobs.nextRetryAt),
-    lte(uploadConfirmJobs.nextRetryAt, nowIso),
+    isNull(uploadJobs.nextRetryAt),
+    lte(uploadJobs.nextRetryAt, nowIso),
   );
 }
 
@@ -84,14 +84,14 @@ async function countActiveJobs(
   pharmacyId?: number,
 ): Promise<number> {
   const conditions = [
-    inArray(uploadConfirmJobs.status, ACTIVE_JOB_STATUSES),
+    inArray(uploadJobs.status, ACTIVE_JOB_STATUSES),
     buildNotCanceledCondition(),
   ];
   if (pharmacyId !== undefined) {
-    conditions.push(eq(uploadConfirmJobs.pharmacyId, pharmacyId));
+    conditions.push(eq(uploadJobs.pharmacyId, pharmacyId));
   }
   const [row] = await executor.select({ count: rowCount })
-    .from(uploadConfirmJobs)
+    .from(uploadJobs)
     .where(and(...conditions));
   return toSafeCount(row?.count);
 }
@@ -166,45 +166,45 @@ export const normalizeJobStatus = createEnumNormalizer<UploadConfirmJobStatus>(
 );
 
 const JOB_RUNTIME_COLUMNS = {
-  id: uploadConfirmJobs.id,
-  pharmacyId: uploadConfirmJobs.pharmacyId,
-  uploadType: uploadConfirmJobs.uploadType,
-  originalFilename: uploadConfirmJobs.originalFilename,
-  headerRowIndex: uploadConfirmJobs.headerRowIndex,
-  mappingJson: uploadConfirmJobs.mappingJson,
-  status: uploadConfirmJobs.status,
-  applyMode: uploadConfirmJobs.applyMode,
-  deleteMissing: uploadConfirmJobs.deleteMissing,
-  fileBase64: uploadConfirmJobs.fileBase64,
-  attempts: uploadConfirmJobs.attempts,
-  createdAt: uploadConfirmJobs.createdAt,
+  id: uploadJobs.id,
+  pharmacyId: uploadJobs.pharmacyId,
+  uploadType: uploadJobs.uploadType,
+  originalFilename: uploadJobs.originalFilename,
+  headerRowIndex: uploadJobs.headerRowIndex,
+  mappingJson: uploadJobs.mappingJson,
+  status: uploadJobs.status,
+  applyMode: uploadJobs.applyMode,
+  deleteMissing: uploadJobs.deleteMissing,
+  fileBase64: uploadJobs.fileBase64,
+  attempts: uploadJobs.attempts,
+  createdAt: uploadJobs.createdAt,
 } as const;
 
 const JOB_RECORD_COLUMNS = {
-  id: uploadConfirmJobs.id,
-  pharmacyId: uploadConfirmJobs.pharmacyId,
-  uploadType: uploadConfirmJobs.uploadType,
-  originalFilename: uploadConfirmJobs.originalFilename,
-  idempotencyKey: uploadConfirmJobs.idempotencyKey,
-  fileHash: uploadConfirmJobs.fileHash,
-  headerRowIndex: uploadConfirmJobs.headerRowIndex,
-  mappingJson: uploadConfirmJobs.mappingJson,
-  status: uploadConfirmJobs.status,
-  applyMode: uploadConfirmJobs.applyMode,
-  deleteMissing: uploadConfirmJobs.deleteMissing,
-  deduplicated: uploadConfirmJobs.deduplicated,
-  fileBase64: uploadConfirmJobs.fileBase64,
-  attempts: uploadConfirmJobs.attempts,
-  lastError: uploadConfirmJobs.lastError,
-  resultJson: uploadConfirmJobs.resultJson,
-  cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
-  canceledAt: uploadConfirmJobs.canceledAt,
-  canceledBy: uploadConfirmJobs.canceledBy,
-  processingStartedAt: uploadConfirmJobs.processingStartedAt,
-  nextRetryAt: uploadConfirmJobs.nextRetryAt,
-  completedAt: uploadConfirmJobs.completedAt,
-  createdAt: uploadConfirmJobs.createdAt,
-  updatedAt: uploadConfirmJobs.updatedAt,
+  id: uploadJobs.id,
+  pharmacyId: uploadJobs.pharmacyId,
+  uploadType: uploadJobs.uploadType,
+  originalFilename: uploadJobs.originalFilename,
+  idempotencyKey: uploadJobs.idempotencyKey,
+  fileHash: uploadJobs.fileHash,
+  headerRowIndex: uploadJobs.headerRowIndex,
+  mappingJson: uploadJobs.mappingJson,
+  status: uploadJobs.status,
+  applyMode: uploadJobs.applyMode,
+  deleteMissing: uploadJobs.deleteMissing,
+  deduplicated: uploadJobs.deduplicated,
+  fileBase64: uploadJobs.fileBase64,
+  attempts: uploadJobs.attempts,
+  lastError: uploadJobs.lastError,
+  resultJson: uploadJobs.resultJson,
+  cancelRequestedAt: uploadJobs.cancelRequestedAt,
+  canceledAt: uploadJobs.canceledAt,
+  canceledBy: uploadJobs.canceledBy,
+  processingStartedAt: uploadJobs.processingStartedAt,
+  nextRetryAt: uploadJobs.nextRetryAt,
+  completedAt: uploadJobs.completedAt,
+  createdAt: uploadJobs.createdAt,
+  updatedAt: uploadJobs.updatedAt,
 } as const;
 
 function mapJobRuntime(
@@ -234,8 +234,8 @@ export async function fetchUploadConfirmJobById(
   executor: Pick<typeof db, 'select'> = db,
 ): Promise<UploadConfirmJobRecord | null> {
   const [row] = await executor.select(JOB_RECORD_COLUMNS)
-    .from(uploadConfirmJobs)
-    .where(eq(uploadConfirmJobs.id, jobId))
+    .from(uploadJobs)
+    .where(eq(uploadJobs.id, jobId))
     .limit(1);
 
   if (!row) return null;
@@ -244,11 +244,11 @@ export async function fetchUploadConfirmJobById(
 
 export async function assertJobNotCancellationRequested(jobId: number): Promise<void> {
   const [row] = await db.select({
-    cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
-    canceledAt: uploadConfirmJobs.canceledAt,
+    cancelRequestedAt: uploadJobs.cancelRequestedAt,
+    canceledAt: uploadJobs.canceledAt,
   })
-    .from(uploadConfirmJobs)
-    .where(eq(uploadConfirmJobs.id, jobId))
+    .from(uploadJobs)
+    .where(eq(uploadJobs.id, jobId))
     .limit(1);
 
   if (!row) return;
@@ -261,12 +261,12 @@ function buildClaimableStatusCondition(staleBeforeIso: string): ReturnType<typeo
   return and(
     buildNotCanceledCondition(),
     or(
-      eq(uploadConfirmJobs.status, 'pending'),
+      eq(uploadJobs.status, 'pending'),
       and(
-        eq(uploadConfirmJobs.status, 'processing'),
+        eq(uploadJobs.status, 'processing'),
         or(
-          isNull(uploadConfirmJobs.processingStartedAt),
-          lt(uploadConfirmJobs.processingStartedAt, staleBeforeIso),
+          isNull(uploadJobs.processingStartedAt),
+          lt(uploadJobs.processingStartedAt, staleBeforeIso),
         ),
       ),
     ),
@@ -278,13 +278,13 @@ function buildNoOtherActiveProcessingCondition(
   staleBeforeIso: string,
 ): ReturnType<typeof notExists> {
   return notExists(
-    db.select({ id: uploadConfirmJobs.id })
-      .from(uploadConfirmJobs)
+    db.select({ id: uploadJobs.id })
+      .from(uploadJobs)
       .where(and(
-        eq(uploadConfirmJobs.status, 'processing'),
+        eq(uploadJobs.status, 'processing'),
         buildNotCanceledCondition(),
-        gte(uploadConfirmJobs.processingStartedAt, staleBeforeIso),
-        ne(uploadConfirmJobs.id, candidateId),
+        gte(uploadJobs.processingStartedAt, staleBeforeIso),
+        ne(uploadJobs.id, candidateId),
       )),
   );
 }
@@ -294,11 +294,11 @@ function buildClaimStatusMatchCondition(
   staleBeforeIso: string,
 ): ReturnType<typeof eq> | ReturnType<typeof or> {
   if (candidateStatus === 'pending') {
-    return eq(uploadConfirmJobs.status, 'pending');
+    return eq(uploadJobs.status, 'pending');
   }
   return or(
-    isNull(uploadConfirmJobs.processingStartedAt),
-    lt(uploadConfirmJobs.processingStartedAt, staleBeforeIso),
+    isNull(uploadJobs.processingStartedAt),
+    lt(uploadJobs.processingStartedAt, staleBeforeIso),
   );
 }
 
@@ -308,7 +308,7 @@ function buildClaimCandidateCondition(
 ): ReturnType<typeof and> {
   return and(
     buildClaimableStatusCondition(staleBeforeIso),
-    lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
+    lt(uploadJobs.attempts, MAX_JOB_ATTEMPTS),
     buildRetryReadyCondition(nowIso),
   );
 }
@@ -321,11 +321,11 @@ function buildClaimUpdateCondition(
   nowIso: string,
 ): ReturnType<typeof and> {
   return and(
-    eq(uploadConfirmJobs.id, candidateId),
+    eq(uploadJobs.id, candidateId),
     buildNotCanceledCondition(),
-    eq(uploadConfirmJobs.status, candidateStatus),
-    eq(uploadConfirmJobs.attempts, candidateAttempts),
-    lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
+    eq(uploadJobs.status, candidateStatus),
+    eq(uploadJobs.attempts, candidateAttempts),
+    lt(uploadJobs.attempts, MAX_JOB_ATTEMPTS),
     buildRetryReadyCondition(nowIso),
     buildNoOtherActiveProcessingCondition(candidateId, staleBeforeIso),
     buildClaimStatusMatchCondition(candidateStatus, staleBeforeIso),
@@ -337,11 +337,11 @@ export async function claimPendingUploadConfirmJob(): Promise<UploadConfirmJobRu
     const nowIso = new Date().toISOString();
     const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
     const [candidate] = await db.select(JOB_RUNTIME_COLUMNS)
-      .from(uploadConfirmJobs)
+      .from(uploadJobs)
       .where(buildClaimCandidateCondition(staleBeforeIso, nowIso))
       .orderBy(
-        asc(uploadConfirmJobs.createdAt),
-        asc(uploadConfirmJobs.id),
+        asc(uploadJobs.createdAt),
+        asc(uploadJobs.id),
       )
       .limit(1);
 
@@ -349,7 +349,7 @@ export async function claimPendingUploadConfirmJob(): Promise<UploadConfirmJobRu
 
     const candidateStatus = normalizeClaimableStatus(candidate.status);
 
-    const [claimed] = await db.update(uploadConfirmJobs)
+    const [claimed] = await db.update(uploadJobs)
       .set({
         status: 'processing',
         processingStartedAt: nowIso,
@@ -377,14 +377,14 @@ export async function findJobByIdempotencyKey(
   executor: Pick<typeof db, 'select'>,
 ): Promise<UploadConfirmJobRecord | null> {
   const [row] = await executor.select(JOB_RECORD_COLUMNS)
-    .from(uploadConfirmJobs)
+    .from(uploadJobs)
     .where(and(
-      eq(uploadConfirmJobs.pharmacyId, pharmacyId),
-      eq(uploadConfirmJobs.idempotencyKey, idempotencyKey),
-      inArray(uploadConfirmJobs.status, IDEMPOTENT_DEDUP_JOB_STATUSES),
-      isNull(uploadConfirmJobs.canceledAt),
+      eq(uploadJobs.pharmacyId, pharmacyId),
+      eq(uploadJobs.idempotencyKey, idempotencyKey),
+      inArray(uploadJobs.status, IDEMPOTENT_DEDUP_JOB_STATUSES),
+      isNull(uploadJobs.canceledAt),
     ))
-    .orderBy(asc(uploadConfirmJobs.id))
+    .orderBy(asc(uploadJobs.id))
     .limit(1);
 
   if (!row) return null;

@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { promisify } from 'util';
 import { gzip } from 'zlib';
 import { db } from '../../config/database';
-import { uploadConfirmJobs } from '../../db/schema';
+import { uploadJobs } from '../../db/schema';
 import {
   assertUploadConfirmQueueCapacity,
   findJobByIdempotencyKey,
@@ -124,12 +124,12 @@ export async function enqueueUploadConfirmJob(
         });
 
         if (!existing.deduplicated) {
-          await tx.update(uploadConfirmJobs)
+          await tx.update(uploadJobs)
             .set({
               deduplicated: true,
               updatedAt: new Date().toISOString(),
             })
-            .where(eq(uploadConfirmJobs.id, existing.id));
+            .where(eq(uploadJobs.id, existing.id));
         }
 
         return buildEnqueueResult(existing, true);
@@ -142,13 +142,13 @@ export async function enqueueUploadConfirmJob(
     const nowIso = new Date().toISOString();
     const requestedAtIso = params.requestedAtIso ?? nowIso;
 
-    const [job] = await tx.insert(uploadConfirmJobs).values(
+    const [job] = await tx.insert(uploadJobs).values(
       buildNewUploadConfirmJobValues(params, fileHash, params.mapping, encodedPayload, requestedAtIso, nowIso),
     ).returning({
-      id: uploadConfirmJobs.id,
-      status: uploadConfirmJobs.status,
-      canceledAt: uploadConfirmJobs.canceledAt,
-      cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
+      id: uploadJobs.id,
+      status: uploadJobs.status,
+      canceledAt: uploadJobs.canceledAt,
+      cancelRequestedAt: uploadJobs.cancelRequestedAt,
     });
 
     return buildEnqueueResult(job, false);

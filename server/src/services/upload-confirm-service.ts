@@ -3,7 +3,7 @@ import { db } from '../config/database';
 import {
   columnMappingTemplates,
   deadStockItems,
-  uploads,
+  uploadJobs,
   usedMedicationItems,
 } from '../db/schema';
 import type { ColumnMapping } from '../types';
@@ -192,17 +192,18 @@ async function assertUploadIsFresh(
   if (staleGuardMs === null) return;
 
   const [latestUpload] = await tx.select({
-    id: uploads.id,
-    requestedAt: uploads.requestedAt,
+    id: uploadJobs.id,
+    completedAt: uploadJobs.completedAt,
   })
-    .from(uploads)
+    .from(uploadJobs)
     .where(and(
-      eq(uploads.pharmacyId, pharmacyId),
-      eq(uploads.uploadType, uploadType),
+      eq(uploadJobs.pharmacyId, pharmacyId),
+      eq(uploadJobs.uploadType, uploadType),
+      eq(uploadJobs.status, 'completed'),
     ))
-    .orderBy(desc(uploads.requestedAt), desc(uploads.id))
+    .orderBy(desc(uploadJobs.completedAt), desc(uploadJobs.id))
     .limit(1);
-  const latestUploadMs = toTimestampMs(latestUpload?.requestedAt ?? null);
+  const latestUploadMs = toTimestampMs(latestUpload?.completedAt ?? null);
   if (latestUploadMs !== null && latestUploadMs >= staleGuardMs) {
     throw new Error('[STALE_JOB_SKIPPED] より新しいアップロードが既に反映されているため、このジョブはスキップされました');
   }
@@ -298,14 +299,27 @@ export async function runUploadConfirm(
     await assertUploadIsFresh(tx, pharmacyId, uploadType, staleGuardCreatedAt);
     await syncUploadRowIssuesForJob(tx, jobId, pharmacyId, uploadType, applyMode, extractedIssues);
 
-    const [uploadRecord] = await tx.insert(uploads).values({
-      pharmacyId,
-      uploadType,
-      originalFilename,
-      columnMapping: mappingJson,
-      rowCount: 0,
-      requestedAt: requestedAtIso,
-    }).returning({ id: uploads.id });
+    // jobId が既にある場合はそのまま使う（ジョブキュー経由）。
+    // ない場合は uploadJobs レコードを新規作成する（直接アップロード経路）。
+    let uploadId: number;
+    if (jobId) {
+      uploadId = jobId;
+    } else {
+      const [newJob] = await tx.insert(uploadJobs).values({
+        pharmacyId,
+        uploadType,
+        originalFilename,
+        fileHash: '',
+        headerRowIndex,
+        mappingJson: mapping,
+        applyMode,
+        deleteMissing,
+        fileBase64: '',
+        status: 'completed',
+        completedAt: requestedAtIso,
+      }).returning({ id: uploadJobs.id });
+      uploadId = newJob.id;
+    }
 
     let diffSummary: DiffSummary | null = null;
     const isReplaceMode = shouldReplaceRows(applyMode);
@@ -313,24 +327,24 @@ export async function runUploadConfirm(
     if (uploadType === 'dead_stock') {
       const sourceRows = (enrichedDeadStock ?? deadStockExtraction?.rows) ?? [];
       if (!isReplaceMode) {
-        diffSummary = await applyDeadStockDiff(tx, pharmacyId, uploadRecord.id, sourceRows, { deleteMissing });
+        diffSummary = await applyDeadStockDiff(tx, pharmacyId, uploadId, sourceRows, { deleteMissing });
       } else {
         await replaceUploadItems(
           sourceRows,
           () => tx.delete(deadStockItems).where(eq(deadStockItems.pharmacyId, pharmacyId)),
-          (item) => toDeadStockInsertRow(pharmacyId, uploadRecord.id, item),
+          (item) => toDeadStockInsertRow(pharmacyId, uploadId, item),
           (rows) => tx.insert(deadStockItems).values(rows),
         );
       }
     } else {
       const sourceRows = (enrichedUsedMedication ?? usedMedicationExtraction?.rows) ?? [];
       if (!isReplaceMode) {
-        diffSummary = await applyUsedMedicationDiff(tx, pharmacyId, uploadRecord.id, sourceRows, { deleteMissing });
+        diffSummary = await applyUsedMedicationDiff(tx, pharmacyId, uploadId, sourceRows, { deleteMissing });
       } else {
         await replaceUploadItems(
           sourceRows,
           () => tx.delete(usedMedicationItems).where(eq(usedMedicationItems.pharmacyId, pharmacyId)),
-          (item) => toUsedMedicationInsertRow(pharmacyId, uploadRecord.id, item),
+          (item) => toUsedMedicationInsertRow(pharmacyId, uploadId, item),
           (rows) => tx.insert(usedMedicationItems).values(rows),
         );
       }
@@ -340,9 +354,9 @@ export async function runUploadConfirm(
       ? diffSummary?.totalIncoming ?? parsedRowCount
       : parsedRowCount;
 
-    await tx.update(uploads)
-      .set({ rowCount: persistedRowCount })
-      .where(eq(uploads.id, uploadRecord.id));
+    await tx.update(uploadJobs)
+      .set({ resultJson: { rowCount: persistedRowCount } })
+      .where(eq(uploadJobs.id, uploadId));
 
     await tx.insert(columnMappingTemplates).values({
       pharmacyId,
@@ -368,7 +382,7 @@ export async function runUploadConfirm(
     invalidateAdminRiskSnapshotCache();
 
     return {
-      uploadId: uploadRecord.id,
+      uploadId,
       rowCount: persistedRowCount,
       diffSummary,
       partialSummary,

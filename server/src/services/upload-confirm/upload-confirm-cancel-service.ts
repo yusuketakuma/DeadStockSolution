@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../../config/database';
-import { uploadConfirmJobs } from '../../db/schema';
+import { uploadJobs } from '../../db/schema';
 import {
   fetchUploadConfirmJobById,
   normalizeJobStatus,
@@ -28,17 +28,17 @@ function toCancelResult(
 }
 
 const CANCEL_RETURNING_COLUMNS = {
-  id: uploadConfirmJobs.id,
-  status: uploadConfirmJobs.status,
-  canceledAt: uploadConfirmJobs.canceledAt,
-  cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
+  id: uploadJobs.id,
+  status: uploadJobs.status,
+  canceledAt: uploadJobs.canceledAt,
+  cancelRequestedAt: uploadJobs.cancelRequestedAt,
 } as const;
 
 function buildCancelUpdatePayload(
   existing: UploadConfirmJobRecord,
   canceledBy: number,
   nowIso: string,
-): Partial<typeof uploadConfirmJobs.$inferInsert> {
+): Partial<typeof uploadJobs.$inferInsert> {
   if (existing.status === 'pending') {
     return {
       status: 'failed',
@@ -62,7 +62,7 @@ function buildCancelUpdatePayload(
 
 function buildOwnerConditions(requiredPharmacyId?: number) {
   return requiredPharmacyId !== undefined
-    ? [eq(uploadConfirmJobs.pharmacyId, requiredPharmacyId)]
+    ? [eq(uploadJobs.pharmacyId, requiredPharmacyId)]
     : [];
 }
 
@@ -85,13 +85,13 @@ async function cancelJobCore(
     const nowIso = new Date().toISOString();
     const ownerConditions = buildOwnerConditions(options.requirePharmacyId);
 
-    const [updated] = await tx.update(uploadConfirmJobs)
+    const [updated] = await tx.update(uploadJobs)
       .set(buildCancelUpdatePayload(existing, canceledBy, nowIso))
       .where(and(
-        eq(uploadConfirmJobs.id, existing.id),
+        eq(uploadJobs.id, existing.id),
         ...ownerConditions,
-        eq(uploadConfirmJobs.status, existing.status),
-        isNull(uploadConfirmJobs.canceledAt),
+        eq(uploadJobs.status, existing.status),
+        isNull(uploadJobs.canceledAt),
       ))
       .returning(CANCEL_RETURNING_COLUMNS);
 
@@ -102,18 +102,18 @@ async function cancelJobCore(
         return null;
       }
       if (isJobCancelable(latest.status, latest.cancelRequestedAt, latest.canceledAt)) {
-        const [retryRequested] = await tx.update(uploadConfirmJobs)
+        const [retryRequested] = await tx.update(uploadJobs)
           .set({
             cancelRequestedAt: nowIso,
             canceledBy,
             updatedAt: nowIso,
           })
           .where(and(
-            eq(uploadConfirmJobs.id, latest.id),
+            eq(uploadJobs.id, latest.id),
             ...ownerConditions,
-            eq(uploadConfirmJobs.status, latest.status),
-            isNull(uploadConfirmJobs.cancelRequestedAt),
-            isNull(uploadConfirmJobs.canceledAt),
+            eq(uploadJobs.status, latest.status),
+            isNull(uploadJobs.cancelRequestedAt),
+            isNull(uploadJobs.canceledAt),
           ))
           .returning(CANCEL_RETURNING_COLUMNS);
 

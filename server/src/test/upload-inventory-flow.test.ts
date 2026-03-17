@@ -1,7 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { columnMappingTemplates, deadStockItems, uploads, usedMedicationItems } from '../db/schema';
+import { columnMappingTemplates, deadStockItems, uploadJobs, usedMedicationItems } from '../db/schema';
 import type { ColumnMapping } from '../types';
 import { setupVitestMocks } from './helpers/setup';
 
@@ -190,7 +190,7 @@ function setupDbMock() {
       execute: vi.fn().mockResolvedValue(undefined),
       select: (_shape?: Record<string, unknown>) => ({
         from: (table: unknown) => {
-          if (table === uploads) {
+          if (table === uploadJobs) {
             return {
               where: () => ({
                 orderBy: () => ({
@@ -212,7 +212,7 @@ function setupDbMock() {
         },
       }),
       insert: (table: unknown) => {
-        if (table === uploads) {
+        if (table === uploadJobs) {
           return {
             values: (value: Record<string, unknown>) => {
               const row = {
@@ -293,7 +293,7 @@ function setupDbMock() {
       update: (table: unknown) => ({
         set: (value: Record<string, unknown>) => ({
           where: async () => {
-            if (table === uploads && mocks.state.uploads.length > 0) {
+            if (table === uploadJobs && mocks.state.uploads.length > 0) {
               Object.assign(mocks.state.uploads[mocks.state.uploads.length - 1], value);
             }
           },

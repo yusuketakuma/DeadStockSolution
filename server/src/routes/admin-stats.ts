@@ -3,11 +3,10 @@ import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
-  uploads,
+  uploadJobs,
   exchangeProposals,
   exchangeProposalItems,
   exchangeHistory,
-  uploadConfirmJobs,
   notifications,
   matchNotifications,
 } from '../db/schema';
@@ -39,7 +38,7 @@ async function fetchAdminStatsSnapshot() {
     db.select({ count: rowCount })
       .from(pharmacies)
       .where(eq(pharmacies.isActive, true)),
-    db.select({ count: rowCount }).from(uploads),
+    db.select({ count: rowCount }).from(uploadJobs),
     db.select({ count: rowCount }).from(exchangeProposals),
     db.select({ count: rowCount }).from(exchangeHistory),
     db.select({ count: rowCount })
@@ -71,11 +70,11 @@ async function fetchAdminAlertSnapshot(since: string) {
     [pendingProposalsCount],
   ] = await Promise.all([
     db.select({ count: rowCount })
-      .from(uploadConfirmJobs)
-      .where(and(eq(uploadConfirmJobs.status, 'failed'), gte(uploadConfirmJobs.createdAt, since))),
+      .from(uploadJobs)
+      .where(and(eq(uploadJobs.status, 'failed'), gte(uploadJobs.createdAt, since))),
     db.select({ count: rowCount })
-      .from(uploadConfirmJobs)
-      .where(and(eq(uploadConfirmJobs.status, 'pending'), gte(uploadConfirmJobs.createdAt, since))),
+      .from(uploadJobs)
+      .where(and(eq(uploadJobs.status, 'pending'), gte(uploadJobs.createdAt, since))),
     db.select({ count: rowCount })
       .from(notifications)
       .where(eq(notifications.isRead, false)),

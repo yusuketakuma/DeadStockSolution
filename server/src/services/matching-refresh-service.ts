@@ -1,6 +1,6 @@
 import { and, asc, eq, exists, gte, inArray, isNull, lt, lte, notInArray, or, sql, type SQLWrapper } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, deadStockItems, matchingRefreshJobs, usedMedicationItems, uploads } from '../db/schema';
+import { pharmacies, deadStockItems, matchingRefreshJobs, usedMedicationItems, uploadJobs } from '../db/schema';
 import { splitIntoChunks } from '../utils/array-utils';
 import { getNextRetryIso, getStaleBeforeIso } from '../utils/job-retry-utils';
 import { parseBooleanFlag } from '../utils/number-utils';
@@ -119,12 +119,12 @@ async function resolveImpactedPharmacyIds(triggerPharmacyId: number): Promise<nu
           .where(eq(usedMedicationItems.pharmacyId, pharmacies.id)),
       ),
       exists(
-        db.select({ id: uploads.id })
-          .from(uploads)
+        db.select({ id: uploadJobs.id })
+          .from(uploadJobs)
           .where(and(
-            eq(uploads.pharmacyId, pharmacies.id),
-            eq(uploads.uploadType, 'used_medication'),
-            gte(uploads.createdAt, firstOfMonth),
+            eq(uploadJobs.pharmacyId, pharmacies.id),
+            eq(uploadJobs.uploadType, 'used_medication'),
+            gte(uploadJobs.createdAt, firstOfMonth),
           )),
       ),
     ));

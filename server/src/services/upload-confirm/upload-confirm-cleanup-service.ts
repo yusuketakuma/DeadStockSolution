@@ -5,7 +5,7 @@ import {
   lte,
 } from 'drizzle-orm';
 import { db } from '../../config/database';
-import { uploadConfirmJobs } from '../../db/schema';
+import { uploadJobs } from '../../db/schema';
 import { parseBoundedInt } from '../../utils/number-utils';
 import {
   DEFAULT_CLEANUP_BATCH_SIZE,
@@ -39,16 +39,16 @@ export async function cleanupUploadConfirmJobs(limit: number = getCleanupBatchSi
   const retentionDays = getCleanupRetentionDays();
   const cutoffIso = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
   const staleRows = await db.select({
-    id: uploadConfirmJobs.id,
+    id: uploadJobs.id,
   })
-    .from(uploadConfirmJobs)
+    .from(uploadJobs)
     .where(and(
-      inArray(uploadConfirmJobs.status, FINISHED_JOB_STATUSES),
-      lte(uploadConfirmJobs.updatedAt, cutoffIso),
+      inArray(uploadJobs.status, FINISHED_JOB_STATUSES),
+      lte(uploadJobs.updatedAt, cutoffIso),
     ))
     .orderBy(
-      asc(uploadConfirmJobs.updatedAt),
-      asc(uploadConfirmJobs.id),
+      asc(uploadJobs.updatedAt),
+      asc(uploadJobs.id),
     )
     .limit(limit);
 
@@ -57,6 +57,6 @@ export async function cleanupUploadConfirmJobs(limit: number = getCleanupBatchSi
   }
 
   const staleIds = staleRows.map((row) => row.id);
-  await db.delete(uploadConfirmJobs).where(inArray(uploadConfirmJobs.id, staleIds));
+  await db.delete(uploadJobs).where(inArray(uploadJobs.id, staleIds));
   return staleIds.length;
 }

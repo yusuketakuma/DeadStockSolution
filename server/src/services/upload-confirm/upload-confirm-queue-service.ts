@@ -1,6 +1,6 @@
 import { and, eq, isNull, lt, lte, or } from 'drizzle-orm';
 import { db } from '../../config/database';
-import { uploadConfirmJobs } from '../../db/schema';
+import { uploadJobs } from '../../db/schema';
 import { getStaleBeforeIso } from '../../utils/job-retry-utils';
 import type { ApplyMode } from '../upload-confirm-service';
 import { getUploadRowIssueCountByJobId } from '../upload-row-issue-service';
@@ -42,30 +42,30 @@ export async function ensureUploadConfirmQueueHasCapacity(pharmacyId: number): P
 export async function processUploadConfirmJobById(jobId: number): Promise<boolean> {
   const nowIso = new Date().toISOString();
   const staleBeforeIso = getStaleBeforeIso(JOB_STALE_TIMEOUT_MS);
-  const [claimed] = await db.update(uploadConfirmJobs)
+  const [claimed] = await db.update(uploadJobs)
     .set(buildClaimProcessingPayload(nowIso))
     .where(and(
-      eq(uploadConfirmJobs.id, jobId),
-      eq(uploadConfirmJobs.status, 'pending'),
-      isNull(uploadConfirmJobs.cancelRequestedAt),
-      isNull(uploadConfirmJobs.canceledAt),
-      lt(uploadConfirmJobs.attempts, MAX_JOB_ATTEMPTS),
-      or(isNull(uploadConfirmJobs.nextRetryAt), lte(uploadConfirmJobs.nextRetryAt, nowIso)),
-      or(isNull(uploadConfirmJobs.processingStartedAt), lt(uploadConfirmJobs.processingStartedAt, staleBeforeIso)),
+      eq(uploadJobs.id, jobId),
+      eq(uploadJobs.status, 'pending'),
+      isNull(uploadJobs.cancelRequestedAt),
+      isNull(uploadJobs.canceledAt),
+      lt(uploadJobs.attempts, MAX_JOB_ATTEMPTS),
+      or(isNull(uploadJobs.nextRetryAt), lte(uploadJobs.nextRetryAt, nowIso)),
+      or(isNull(uploadJobs.processingStartedAt), lt(uploadJobs.processingStartedAt, staleBeforeIso)),
     ))
     .returning({
-      id: uploadConfirmJobs.id,
-      pharmacyId: uploadConfirmJobs.pharmacyId,
-      uploadType: uploadConfirmJobs.uploadType,
-      originalFilename: uploadConfirmJobs.originalFilename,
-      headerRowIndex: uploadConfirmJobs.headerRowIndex,
-      mappingJson: uploadConfirmJobs.mappingJson,
-      status: uploadConfirmJobs.status,
-      applyMode: uploadConfirmJobs.applyMode,
-      deleteMissing: uploadConfirmJobs.deleteMissing,
-      fileBase64: uploadConfirmJobs.fileBase64,
-      attempts: uploadConfirmJobs.attempts,
-      createdAt: uploadConfirmJobs.createdAt,
+      id: uploadJobs.id,
+      pharmacyId: uploadJobs.pharmacyId,
+      uploadType: uploadJobs.uploadType,
+      originalFilename: uploadJobs.originalFilename,
+      headerRowIndex: uploadJobs.headerRowIndex,
+      mappingJson: uploadJobs.mappingJson,
+      status: uploadJobs.status,
+      applyMode: uploadJobs.applyMode,
+      deleteMissing: uploadJobs.deleteMissing,
+      fileBase64: uploadJobs.fileBase64,
+      attempts: uploadJobs.attempts,
+      createdAt: uploadJobs.createdAt,
     });
 
   if (!claimed) return false;

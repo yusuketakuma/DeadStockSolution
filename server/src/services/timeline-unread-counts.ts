@@ -13,7 +13,7 @@ import {
   exchangeProposals,
   proposalComments,
   exchangeFeedback,
-  uploads,
+  uploadJobs,
   adminMessages,
   adminMessageReads,
   exchangeHistory,
@@ -200,9 +200,9 @@ export async function countUnreadUploads(
   lastViewed: string | null,
 ): Promise<number> {
   if (!lastViewed) return 0;
-  return countRows(db, uploads, and(
-    eq(uploads.pharmacyId, pharmacyId),
-    gt(uploads.createdAt, lastViewed),
+  return countRows(db, uploadJobs, and(
+    eq(uploadJobs.pharmacyId, pharmacyId),
+    gt(uploadJobs.createdAt, lastViewed),
   ));
 }
 

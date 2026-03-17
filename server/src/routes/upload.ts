@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { uploads } from '../db/schema';
+import { uploadJobs } from '../db/schema';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
 import { logger } from '../services/logger';
@@ -78,15 +78,15 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
     const firstOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 
     const lastUploadRows = await db.select({
-      uploadType: uploads.uploadType,
-      createdAt: sql<string | null>`max(${uploads.createdAt})`,
+      uploadType: uploadJobs.uploadType,
+      createdAt: sql<string | null>`max(${uploadJobs.createdAt})`,
     })
-      .from(uploads)
+      .from(uploadJobs)
       .where(and(
-        eq(uploads.pharmacyId, pharmacyId),
-        inArray(uploads.uploadType, ['dead_stock', 'used_medication']),
+        eq(uploadJobs.pharmacyId, pharmacyId),
+        inArray(uploadJobs.uploadType, ['dead_stock', 'used_medication']),
       ))
-      .groupBy(uploads.uploadType);
+      .groupBy(uploadJobs.uploadType);
 
     let lastDeadStockDate: string | null = null;
     let lastUsedMedDate: string | null = null;

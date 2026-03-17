@@ -1,6 +1,6 @@
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, uploadConfirmJobs } from '../db/schema';
+import { pharmacies, uploadJobs } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 import {
   buildUploadRowIssueCsv,
@@ -130,35 +130,35 @@ function resolveErrorReportAvailable(issueCount: number, result: unknown): boole
 function createWhereConditions(filters: AdminUploadJobListFilters): SQL<unknown>[] {
   const conditions: SQL<unknown>[] = [];
   if (filters.pharmacyId) {
-    conditions.push(eq(uploadConfirmJobs.pharmacyId, filters.pharmacyId));
+    conditions.push(eq(uploadJobs.pharmacyId, filters.pharmacyId));
   }
   if (filters.status) {
     if (filters.status === 'canceled') {
       conditions.push(or(
-        isNotNull(uploadConfirmJobs.cancelRequestedAt),
-        isNotNull(uploadConfirmJobs.canceledAt),
+        isNotNull(uploadJobs.cancelRequestedAt),
+        isNotNull(uploadJobs.canceledAt),
       )!);
     } else {
-      conditions.push(eq(uploadConfirmJobs.status, filters.status as StoredUploadJobStatus));
-      conditions.push(isNull(uploadConfirmJobs.cancelRequestedAt));
-      conditions.push(isNull(uploadConfirmJobs.canceledAt));
+      conditions.push(eq(uploadJobs.status, filters.status as StoredUploadJobStatus));
+      conditions.push(isNull(uploadJobs.cancelRequestedAt));
+      conditions.push(isNull(uploadJobs.canceledAt));
     }
   }
   if (filters.uploadType) {
-    conditions.push(eq(uploadConfirmJobs.uploadType, filters.uploadType));
+    conditions.push(eq(uploadJobs.uploadType, filters.uploadType));
   }
   if (filters.applyMode) {
-    conditions.push(eq(uploadConfirmJobs.applyMode, filters.applyMode));
+    conditions.push(eq(uploadJobs.applyMode, filters.applyMode));
   }
   if (filters.keyword) {
     const keywordLike = `%${filters.keyword}%`;
     conditions.push(or(
-      ilike(uploadConfirmJobs.originalFilename, keywordLike),
-      ilike(uploadConfirmJobs.lastError, keywordLike),
+      ilike(uploadJobs.originalFilename, keywordLike),
+      ilike(uploadJobs.lastError, keywordLike),
       sql<boolean>`exists (
         select 1
         from ${pharmacies}
-        where ${pharmacies.id} = ${uploadConfirmJobs.pharmacyId}
+        where ${pharmacies.id} = ${uploadJobs.pharmacyId}
           and ${pharmacies.name} ilike ${keywordLike}
       )`,
     )!);
@@ -210,31 +210,31 @@ export async function listAdminUploadJobs(
   const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
   const rows = await db.select({
-    id: uploadConfirmJobs.id,
-    pharmacyId: uploadConfirmJobs.pharmacyId,
-    uploadType: uploadConfirmJobs.uploadType,
-    originalFilename: uploadConfirmJobs.originalFilename,
-    status: uploadConfirmJobs.status,
-    applyMode: uploadConfirmJobs.applyMode,
-    attempts: uploadConfirmJobs.attempts,
-    deduplicated: uploadConfirmJobs.deduplicated,
-    cancelRequestedAt: uploadConfirmJobs.cancelRequestedAt,
-    canceledAt: uploadConfirmJobs.canceledAt,
-    resultJson: uploadConfirmJobs.resultJson,
-    createdAt: uploadConfirmJobs.createdAt,
-    updatedAt: uploadConfirmJobs.updatedAt,
-    completedAt: uploadConfirmJobs.completedAt,
+    id: uploadJobs.id,
+    pharmacyId: uploadJobs.pharmacyId,
+    uploadType: uploadJobs.uploadType,
+    originalFilename: uploadJobs.originalFilename,
+    status: uploadJobs.status,
+    applyMode: uploadJobs.applyMode,
+    attempts: uploadJobs.attempts,
+    deduplicated: uploadJobs.deduplicated,
+    cancelRequestedAt: uploadJobs.cancelRequestedAt,
+    canceledAt: uploadJobs.canceledAt,
+    resultJson: uploadJobs.resultJson,
+    createdAt: uploadJobs.createdAt,
+    updatedAt: uploadJobs.updatedAt,
+    completedAt: uploadJobs.completedAt,
   })
-    .from(uploadConfirmJobs)
+    .from(uploadJobs)
     .where(whereClause)
-    .orderBy(desc(uploadConfirmJobs.createdAt), desc(uploadConfirmJobs.id))
+    .orderBy(desc(uploadJobs.createdAt), desc(uploadJobs.id))
     .limit(filters.limit)
     .offset(offset);
 
   const [totalRow] = await db.select({
     count: rowCount,
   })
-    .from(uploadConfirmJobs)
+    .from(uploadJobs)
     .where(whereClause);
 
   const pharmacyIds = [...new Set(rows.map((row) => row.pharmacyId))];

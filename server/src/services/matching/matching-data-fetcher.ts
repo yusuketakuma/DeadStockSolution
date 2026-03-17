@@ -8,7 +8,7 @@ import {
   pharmacyBusinessHours,
   pharmacyRelationships,
   pharmacySpecialHours,
-  uploads,
+  uploadJobs,
   usedMedicationItems,
 } from '../../db/schema';
 import type { getBusinessHoursStatus } from '../../utils/business-hours-utils';
@@ -87,12 +87,12 @@ function getPreparedMatchingDeadStockByPharmacyId(): PreparedMatchingDeadStockBy
 
 function buildActiveUploadExistsClause(firstOfMonth: string) {
   return exists(
-    db.select({ id: uploads.id })
-      .from(uploads)
+    db.select({ id: uploadJobs.id })
+      .from(uploadJobs)
       .where(and(
-        eq(uploads.pharmacyId, pharmacies.id),
-        eq(uploads.uploadType, 'used_medication'),
-        gte(uploads.createdAt, firstOfMonth),
+        eq(uploadJobs.pharmacyId, pharmacies.id),
+        eq(uploadJobs.uploadType, 'used_medication'),
+        gte(uploadJobs.createdAt, firstOfMonth),
       )),
   );
 }

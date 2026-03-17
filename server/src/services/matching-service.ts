@@ -4,7 +4,7 @@ import {
   groupMembers,
   pharmacies,
   pharmacyRelationships,
-  uploads,
+  uploadJobs,
   usedMedicationItems,
 } from '../db/schema';
 import { MatchCandidate } from '../types';
@@ -547,12 +547,12 @@ export async function findMatchesBatch(
     .where(and(
       eq(pharmacies.isActive, true),
       exists(
-        deps.db.select({ id: uploads.id })
-          .from(uploads)
+        deps.db.select({ id: uploadJobs.id })
+          .from(uploadJobs)
           .where(and(
-            eq(uploads.pharmacyId, pharmacies.id),
-            eq(uploads.uploadType, 'used_medication'),
-            gte(uploads.createdAt, firstOfMonth),
+            eq(uploadJobs.pharmacyId, pharmacies.id),
+            eq(uploadJobs.uploadType, 'used_medication'),
+            gte(uploadJobs.createdAt, firstOfMonth),
           )),
       ),
       exists(
