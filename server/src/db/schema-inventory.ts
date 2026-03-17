@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, serial, text, date, integer, real, numeric, boolean, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
-import { pharmacies } from './schema-auth';
+import { pharmacies } from './schema-pharmacy';
 import { uploadTypeEnum } from './schema-common';
 
 export const uploads = pgTable('uploads', {

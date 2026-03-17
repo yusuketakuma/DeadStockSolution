@@ -1,4 +1,5 @@
 export * from './schema-common';
+export * from './schema-pharmacy';
 export * from './schema-auth';
 export * from './schema-inventory';
 export * from './schema-exchange';

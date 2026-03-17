@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, serial, text, integer, boolean, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
-import { pharmacies } from './schema-auth';
+import { pharmacies } from './schema-pharmacy';
 import { uploadJobStatusEnum, uploadTypeEnum } from './schema-common';
 
 export const uploadConfirmJobs = pgTable('upload_confirm_jobs', {

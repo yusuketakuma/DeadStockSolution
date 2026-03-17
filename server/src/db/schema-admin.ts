@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, serial, text, integer, varchar, numeric, boolean, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
-import { pharmacies } from './schema-auth';
+import { pharmacies } from './schema-pharmacy';
 import {
   adminAuditActionValues,
   errorCodeCategoryValues,

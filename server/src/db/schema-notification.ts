@@ -1,5 +1,5 @@
 import { pgTable, serial, text, integer, boolean, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
-import { pharmacies } from './schema-auth';
+import { pharmacies } from './schema-pharmacy';
 import { adminMessageTargetTypeEnum } from './schema-common';
 
 export const adminMessages = pgTable('admin_messages', {

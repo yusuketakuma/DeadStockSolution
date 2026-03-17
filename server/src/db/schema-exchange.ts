@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, serial, text, integer, real, numeric, boolean, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
-import { pharmacies } from './schema-auth';
+import { pharmacies } from './schema-pharmacy';
 import { exchangeStatusEnum } from './schema-common';
 import { deadStockItems } from './schema-inventory';
 
