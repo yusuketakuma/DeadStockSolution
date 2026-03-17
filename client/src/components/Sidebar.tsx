@@ -436,7 +436,7 @@ function SidebarContent({ onNavigate, collapsed = false, onToggleCollapse }: {
       <Nav className="flex-column flex-grow-1 pt-2">
         {user?.isAdmin && (
           <div className="sidebar-group">
-            {!collapsed && <div className="sidebar-group-title">管理者</div>}
+            {!collapsed && <h2 className="sidebar-group-title">管理者</h2>}
             {ADMIN_SUBGROUPS.map((sub) => {
               const isSubCollapsed = !!subgroupState.collapsed[sub.key];
               const badgeTotal = sub.items.reduce(
@@ -484,7 +484,7 @@ function SidebarContent({ onNavigate, collapsed = false, onToggleCollapse }: {
           </div>
         )}
         {!user?.isAdmin && <div className="sidebar-group">
-          {!collapsed && <div className="sidebar-group-title">メニュー</div>}
+          {!collapsed && <h2 className="sidebar-group-title">メニュー</h2>}
           {USER_SUBGROUPS.map((sub) => {
             const isSubCollapsed = !!userSubgroupState.collapsed[sub.key];
             const badgeTotal = sub.items.reduce(

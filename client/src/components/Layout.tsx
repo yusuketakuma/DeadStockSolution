@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import AppScreen from './ui/AppScreen';
+import AppBreadcrumb from './ui/AppBreadcrumb';
 import { useMatchNotificationToast } from '../hooks/useMatchNotificationToast';
 import MobileBottomNav from './layout/MobileBottomNav';
 import './layout/MobileBottomNav.css';
@@ -45,6 +46,7 @@ export default function Layout({ children }: Props) {
           onToggleCollapse={toggleSidebarCollapse}
         />
         <main id="app-main-content" className="app-main" tabIndex={-1}>
+          <AppBreadcrumb />
           <div className="content-container py-3 px-3">
             <AppScreen>{children}</AppScreen>
           </div>
