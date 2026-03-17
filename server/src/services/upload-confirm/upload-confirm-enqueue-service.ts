@@ -21,6 +21,10 @@ import {
 
 const gzipAsync = promisify(gzip);
 
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, Object.keys(value && typeof value === 'object' ? value : {}).sort());
+}
+
 function computeFileHash(fileBuffer: Buffer): string {
   return createHash('sha256').update(fileBuffer).digest('hex');
 }
@@ -94,7 +98,7 @@ function ensureIdempotentPayloadMatch(
   const matched = existing.uploadType === input.uploadType
     && existing.fileHash === input.fileHash
     && existing.headerRowIndex === input.headerRowIndex
-    && JSON.stringify(existing.mappingJson) === JSON.stringify(input.mappingJson)
+    && stableStringify(existing.mappingJson) === stableStringify(input.mappingJson)
     && existing.applyMode === input.applyMode
     && existing.deleteMissing === input.deleteMissing;
 

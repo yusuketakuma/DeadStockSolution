@@ -40,14 +40,16 @@ function sanitizeMessage(value: string): string {
 function toDetailJson(detail: unknown): unknown {
   if (detail === undefined || detail === null) return null;
   if (typeof detail === 'string') {
-    return detail.length > MAX_DETAIL_LENGTH ? `${detail.slice(0, MAX_DETAIL_LENGTH)}...` : detail;
+    if (detail.length > MAX_DETAIL_LENGTH) {
+      return { _truncated: true, preview: detail.slice(0, MAX_DETAIL_LENGTH) };
+    }
+    return detail;
   }
   try {
     const serialized = JSON.stringify(detail);
     if (!serialized) return null;
     if (serialized.length > MAX_DETAIL_LENGTH) {
-      // Truncate oversized detail to a string summary
-      return `${serialized.slice(0, MAX_DETAIL_LENGTH)}...`;
+      return { _truncated: true, preview: serialized.slice(0, MAX_DETAIL_LENGTH) };
     }
     return detail;
   } catch {

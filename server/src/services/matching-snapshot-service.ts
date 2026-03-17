@@ -200,7 +200,7 @@ function hasSnapshotChanged(
 }
 
 function parseTopCandidates(topCandidatesJson: unknown): TopCandidateDigest[] {
-  if (!topCandidatesJson) return [];
+  if (!topCandidatesJson || !Array.isArray(topCandidatesJson)) return [];
   return topCandidatesJson as TopCandidateDigest[];
 }
 

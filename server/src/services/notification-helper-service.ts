@@ -65,9 +65,10 @@ export function resolveNotificationType(type: string): NoticeType | null {
 // Formatters & Builders
 // ============================================================================
 
-export function parseMatchDiff(raw: string): { addedCount: number; removedCount: number } {
+export function parseMatchDiff(raw: unknown): { addedCount: number; removedCount: number } {
   try {
-    const parsed = JSON.parse(raw) as MatchDiffJson;
+    const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as MatchDiffJson;
+    if (!parsed || typeof parsed !== 'object') return { addedCount: 0, removedCount: 0 };
     const addedCount = parseNumericList(parsed.addedPharmacyIds).length;
     const removedCount = parseNumericList(parsed.removedPharmacyIds).length;
     return { addedCount, removedCount };
@@ -189,8 +190,7 @@ export function matchUpdateNotice(row: {
   const triggerLabel = triggerPharmacyId === currentPharmacyId
     ? '自薬局'
     : (triggerPharmacyName ?? `薬局 #${triggerPharmacyId}`);
-  const diffStr = typeof detail.diff === 'string' ? detail.diff : JSON.stringify(detail.diff ?? '{}');
-  const { addedCount, removedCount } = parseMatchDiff(diffStr);
+  const { addedCount, removedCount } = parseMatchDiff(detail.diff);
 
   return {
     id: `match-${row.id}`,
