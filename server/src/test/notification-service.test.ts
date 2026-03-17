@@ -222,59 +222,20 @@ describe('notification-service', () => {
   describe('getDashboardUnreadCount', () => {
     it('aggregates unread counts across notification sources', async () => {
       mocks.db.select
-        .mockImplementationOnce(() => createSelectCountChain([{ count: 1 }]))
         .mockImplementationOnce(() => createSelectCountChain([{ value: 5 }]))
         .mockImplementationOnce(() => createSelectCountChain([{ count: 2 }]));
 
       const result = await getDashboardUnreadCount(10);
 
-      expect(result).toBe(8);
-      expect(mocks.db.select).toHaveBeenCalledTimes(3);
-    });
-
-    it('falls back to 0 when match_notifications table is missing', async () => {
-      const missingTableError = Object.assign(new Error('relation "match_notifications" does not exist'), {
-        code: '42P01',
-      });
-
-      mocks.db.select
-        .mockImplementationOnce(() => createSelectCountRejectChain(missingTableError))
-        .mockImplementationOnce(() => createSelectCountChain([{ value: 4 }]))
-        .mockImplementationOnce(() => createSelectCountChain([{ count: 3 }]));
-
-      const result = await getDashboardUnreadCount(10);
-
       expect(result).toBe(7);
-      expect(mocks.db.select).toHaveBeenCalledTimes(3);
+      expect(mocks.db.select).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('markAllDashboardAsRead', () => {
-    it('updates all notification buckets in a single transaction', async () => {
+    it('updates notifications and admin messages in a single transaction', async () => {
       const tx = createTxWithExecuteRows(
         [{ count: 2 }],
-        [{ exists: true }],
-        [{ count: 1 }],
-        [{ count: 3 }],
-      );
-      mocks.db.transaction.mockImplementation(async (callback: (trx: typeof tx) => Promise<number>) => callback(tx));
-
-      const result = await markAllDashboardAsRead(10);
-
-      expect(result).toBe(6);
-      expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
-      expect(tx.execute).toHaveBeenCalledTimes(4);
-
-      const sqlMock = vi.mocked(sql);
-      const adminInsertTemplate = sqlMock.mock.calls[3]?.[0];
-      const adminInsertQuery = Array.from(adminInsertTemplate as TemplateStringsArray).join('');
-      expect(adminInsertQuery).toContain('ON CONFLICT (message_id, pharmacy_id) DO NOTHING');
-    });
-
-    it('skips match notification update when table is missing', async () => {
-      const tx = createTxWithExecuteRows(
-        [{ count: 2 }],
-        [{ exists: false }],
         [{ count: 3 }],
       );
       mocks.db.transaction.mockImplementation(async (callback: (trx: typeof tx) => Promise<number>) => callback(tx));
@@ -282,17 +243,12 @@ describe('notification-service', () => {
       const result = await markAllDashboardAsRead(10);
 
       expect(result).toBe(5);
-      expect(tx.execute).toHaveBeenCalledTimes(3);
-
-      const sqlMock = vi.mocked(sql);
-      const existsTemplate = sqlMock.mock.calls[1]?.[0];
-      const existsQuery = Array.from(existsTemplate as TemplateStringsArray).join('');
-      expect(existsQuery).toContain("to_regclass('public.match_notifications')");
+      expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
+      expect(tx.execute).toHaveBeenCalledTimes(2);
     });
 
     it('propagates transaction errors', async () => {
-      const tx = createTxWithExecuteRows([{ count: 1 }], [{ count: 1 }]);
-      tx.execute.mockRejectedValueOnce(new Error('db failed'));
+      const tx = { execute: vi.fn().mockRejectedValueOnce(new Error('db failed')) };
       mocks.db.transaction.mockImplementation(async (callback: (trx: typeof tx) => Promise<number>) => callback(tx));
 
       await expect(markAllDashboardAsRead(10)).rejects.toThrow('db failed');

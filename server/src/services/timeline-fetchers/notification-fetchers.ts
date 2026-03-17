@@ -1,7 +1,6 @@
 import { and, desc, eq, gte, lte, ne, or } from 'drizzle-orm';
 import {
   notifications as notificationsTable,
-  matchNotifications,
   exchangeProposals,
   proposalComments,
   exchangeFeedback,
@@ -218,30 +217,44 @@ export async function fetchMatchEvents(
   limit?: number,
   before?: string,
 ): Promise<RawTimelineEvent[]> {
-  const conditions = [eq(matchNotifications.pharmacyId, pharmacyId)];
+  const conditions = [
+    eq(notificationsTable.pharmacyId, pharmacyId),
+    eq(notificationsTable.type, 'match_update'),
+  ];
   appendDateRangeConditions(
     conditions,
     since,
     before,
-    (value) => gte(matchNotifications.createdAt, value),
-    (value) => lte(matchNotifications.createdAt, value),
+    (value) => gte(notificationsTable.createdAt, value),
+    (value) => lte(notificationsTable.createdAt, value),
   );
 
   let query = db
     .select({
-      id: matchNotifications.id,
-      candidateCountBefore: matchNotifications.candidateCountBefore,
-      candidateCountAfter: matchNotifications.candidateCountAfter,
-      isRead: matchNotifications.isRead,
-      createdAt: matchNotifications.createdAt,
+      id: notificationsTable.id,
+      detailJson: notificationsTable.detailJson,
+      isRead: notificationsTable.isRead,
+      createdAt: notificationsTable.createdAt,
     })
-    .from(matchNotifications)
+    .from(notificationsTable)
     .where(and(...conditions))
-    .orderBy(desc(matchNotifications.createdAt));
+    .orderBy(desc(notificationsTable.createdAt));
   if (limit) query = query.limit(limit);
 
   const rows = await query;
-  return rows.map(mapMatchNotificationToEvent);
+  return rows.map((row: { id: number; detailJson: unknown; isRead: boolean; createdAt: string | null }) => {
+    const detail = (row.detailJson && typeof row.detailJson === 'object' ? row.detailJson : {}) as {
+      candidate_count_before?: number;
+      candidate_count_after?: number;
+    };
+    return mapMatchNotificationToEvent({
+      id: row.id,
+      candidateCountBefore: detail.candidate_count_before ?? 0,
+      candidateCountAfter: detail.candidate_count_after ?? 0,
+      isRead: row.isRead,
+      createdAt: row.createdAt,
+    });
+  });
 }
 
 export async function fetchProposalEvents(

@@ -153,16 +153,11 @@ describe('notification-service-extra', () => {
     });
   });
 
-  describe('getDashboardUnreadCount — throw when not 42P01 error (line 136)', () => {
-    it('re-throws non-42P01 errors from matchNotifications query', async () => {
-      // isUndefinedTableError returns false (code !== '42P01') → throw err (line 136)
+  describe('getDashboardUnreadCount — propagates DB errors', () => {
+    it('re-throws errors from notifications unread count query', async () => {
       const networkError = new Error('Connection timeout');
-      // No code property → isUndefinedTableError returns false
 
-      const matchWhere = vi.fn().mockRejectedValue(networkError);
-      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
-
-      const notifWhere = vi.fn().mockResolvedValue([{ value: 2 }]);
+      const notifWhere = vi.fn().mockRejectedValue(networkError);
       const notifFrom = vi.fn().mockReturnValue({ where: notifWhere });
 
       const adminWhere = vi.fn().mockResolvedValue([{ count: 1 }]);
@@ -170,11 +165,9 @@ describe('notification-service-extra', () => {
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
       mocks.db.select
-        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 
-      // Should throw the original error (line 136: throw err)
       await expect(getDashboardUnreadCount(55)).rejects.toThrow('Connection timeout');
     });
   });

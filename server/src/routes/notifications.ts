@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications, pharmacies, notifications as notificationsTable } from '../db/schema';
+import { adminMessages, adminMessageReads, exchangeProposals, pharmacies, notifications as notificationsTable } from '../db/schema';
 import { parsePositiveInt } from '../utils/request-utils';
 import { logger } from '../services/logger';
 import { getErrorMessage } from '../middleware/error-handler';
@@ -61,14 +61,11 @@ const messageSelect = {
 };
 
 const matchSelect = {
-  id: matchNotifications.id,
-  triggerPharmacyId: matchNotifications.triggerPharmacyId,
-  triggerUploadType: matchNotifications.triggerUploadType,
-  candidateCountBefore: matchNotifications.candidateCountBefore,
-  candidateCountAfter: matchNotifications.candidateCountAfter,
-  diffJson: matchNotifications.diffJson,
-  isRead: matchNotifications.isRead,
-  createdAt: matchNotifications.createdAt,
+  id: notificationsTable.id,
+  sourcePharmacyId: notificationsTable.sourcePharmacyId,
+  detailJson: notificationsTable.detailJson,
+  isRead: notificationsTable.isRead,
+  createdAt: notificationsTable.createdAt,
 };
 
 const notificationSelect = {
@@ -138,21 +135,14 @@ const fetchAdminMessageRows = (pharmacyId: number): Promise<AdminMessageRow[]> =
   ));
 
 const fetchMatchRows = async (pharmacyId: number) => {
-  try {
-    return await db.select(matchSelect)
-      .from(matchNotifications)
-      .where(eq(matchNotifications.pharmacyId, pharmacyId))
-      .orderBy(desc(matchNotifications.createdAt), desc(matchNotifications.id))
-      .limit(MATCH_NOTICE_LIMIT);
-  } catch (err) {
-    if (!isUndefinedTableError(err)) {
-      throw err;
-    }
-    logger.warn('match_notifications query failed (table may not exist)', {
-      error: getErrorMessage(err),
-    });
-    return [];
-  }
+  return db.select(matchSelect)
+    .from(notificationsTable)
+    .where(and(
+      eq(notificationsTable.pharmacyId, pharmacyId),
+      eq(notificationsTable.type, 'match_update'),
+    ))
+    .orderBy(desc(notificationsTable.createdAt), desc(notificationsTable.id))
+    .limit(MATCH_NOTICE_LIMIT);
 };
 
 const fetchNotificationRows = (pharmacyId: number): Promise<NotificationNoticeRow[]> => db.select(notificationSelect)
@@ -224,7 +214,7 @@ const buildNotices = (
     notices.push(matchUpdateNotice(
       row,
       pharmacyId,
-      triggerPharmacyNameById.get(row.triggerPharmacyId) ?? null,
+      row.sourcePharmacyId ? (triggerPharmacyNameById.get(row.sourcePharmacyId) ?? null) : null,
     ));
   }
 
@@ -261,7 +251,7 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
     ]);
 
     const readMessageIdSetPromise = fetchReadMessageIdSet(messageRows, pharmacyId);
-    const triggerPharmacyIds = [...new Set(matchRows.map((row) => row.triggerPharmacyId))];
+    const triggerPharmacyIds = [...new Set(matchRows.map((row) => row.sourcePharmacyId).filter((id): id is number => id != null))];
     const triggerPharmacyNameByIdPromise = fetchTriggerPharmacyNameById(triggerPharmacyIds);
 
     const [readMessageIdSet, triggerPharmacyNameById] = await Promise.all([
@@ -369,11 +359,14 @@ router.post('/matches/:id/read', async (req: AuthRequest, res: Response): Promis
 
     const pharmacyId = req.user!.id;
     const [matchNotice] = await db.select({
-      id: matchNotifications.id,
-      pharmacyId: matchNotifications.pharmacyId,
+      id: notificationsTable.id,
+      pharmacyId: notificationsTable.pharmacyId,
     })
-      .from(matchNotifications)
-      .where(eq(matchNotifications.id, id))
+      .from(notificationsTable)
+      .where(and(
+        eq(notificationsTable.id, id),
+        eq(notificationsTable.type, 'match_update'),
+      ))
       .limit(1);
 
     if (!matchNotice) {
@@ -385,9 +378,9 @@ router.post('/matches/:id/read', async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    await db.update(matchNotifications)
-      .set({ isRead: true })
-      .where(eq(matchNotifications.id, id));
+    await db.update(notificationsTable)
+      .set({ isRead: true, readAt: new Date().toISOString() })
+      .where(eq(notificationsTable.id, id));
     invalidateDashboardUnreadCache(pharmacyId);
 
     res.json({ message: '既読にしました' });

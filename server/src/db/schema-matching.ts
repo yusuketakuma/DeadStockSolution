@@ -33,26 +33,6 @@ export const matchCandidateSnapshots = pgTable('match_candidate_snapshots', {
     .on(table.pharmacyId),
 }));
 
-export const matchNotifications = pgTable('match_notifications', {
-  id: serial('id').primaryKey(),
-  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
-  triggerPharmacyId: integer('trigger_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
-  triggerUploadType: uploadTypeEnum('trigger_upload_type').notNull(),
-  candidateCountBefore: integer('candidate_count_before').notNull().default(0),
-  candidateCountAfter: integer('candidate_count_after').notNull().default(0),
-  diffJson: text('diff_json').notNull(),
-  dedupeKey: text('dedupe_key').notNull(),
-  isRead: boolean('is_read').notNull().default(false),
-  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
-}, (table) => ({
-  idxMatchNotificationsPharmacyCreated: index('idx_match_notifications_pharmacy_created')
-    .on(table.pharmacyId, table.createdAt),
-  idxMatchNotificationsUnread: index('idx_match_notifications_unread')
-    .on(table.pharmacyId, table.isRead, table.createdAt),
-  idxMatchNotificationsDedupe: uniqueIndex('idx_match_notifications_dedupe')
-    .on(table.pharmacyId, table.dedupeKey),
-}));
-
 export const matchingRefreshJobs = pgTable('matching_refresh_jobs', {
   id: serial('id').primaryKey(),
   triggerPharmacyId: integer('trigger_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { matchCandidateSnapshots, matchNotifications, pharmacies } from '../db/schema';
+import { matchCandidateSnapshots, notifications, pharmacies } from '../db/schema';
 import { MatchCandidate } from '../types';
 import { roundTo2 } from './matching-score-service';
 
@@ -69,13 +69,18 @@ interface SnapshotSetValue {
 
 interface MatchNotificationValue {
   pharmacyId: number;
-  triggerPharmacyId: number;
-  triggerUploadType: SnapshotTriggerUploadType;
-  candidateCountBefore: number;
-  candidateCountAfter: number;
-  diffJson: string;
+  type: 'match_update';
+  title: string;
+  message: string;
+  referenceType: 'match';
+  sourcePharmacyId: number;
   dedupeKey: string;
-  isRead: boolean;
+  detailJson: {
+    trigger_upload_type: SnapshotTriggerUploadType;
+    candidate_count_before: number;
+    candidate_count_after: number;
+    diff: unknown;
+  };
 }
 
 type SnapshotDbExecutor = Pick<typeof db, 'select' | 'insert' | 'update'>;
@@ -124,16 +129,16 @@ async function insertMatchNotifications(
     return;
   }
 
-  const insertQuery = executor.insert(matchNotifications);
+  const insertQuery = executor.insert(notifications);
   if (Array.isArray(values)) {
     await insertQuery.values(values).onConflictDoNothing({
-      target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
+      target: [notifications.pharmacyId, notifications.dedupeKey],
     });
     return;
   }
 
   await insertQuery.values(values).onConflictDoNothing({
-    target: [matchNotifications.pharmacyId, matchNotifications.dedupeKey],
+    target: [notifications.pharmacyId, notifications.dedupeKey],
   });
 }
 
@@ -227,18 +232,23 @@ function createMatchNotificationValue(params: {
 
   return {
     pharmacyId: params.pharmacyId,
-    triggerPharmacyId: params.triggerPharmacyId,
-    triggerUploadType: params.triggerUploadType,
-    candidateCountBefore: params.beforeCount,
-    candidateCountAfter: params.next.candidateCount,
-    diffJson: diffSerialized,
+    type: 'match_update',
+    title: 'マッチング候補更新',
+    message: '新しいマッチング候補があります',
+    referenceType: 'match',
+    sourcePharmacyId: params.triggerPharmacyId,
     dedupeKey: createNotificationDedupeKey({
       triggerPharmacyId: params.triggerPharmacyId,
       triggerUploadType: params.triggerUploadType,
       candidateCountAfter: params.next.candidateCount,
       diffSerialized,
     }),
-    isRead: false,
+    detailJson: {
+      trigger_upload_type: params.triggerUploadType,
+      candidate_count_before: params.beforeCount,
+      candidate_count_after: params.next.candidateCount,
+      diff,
+    },
   };
 }
 

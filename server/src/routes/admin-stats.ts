@@ -8,7 +8,6 @@ import {
   exchangeProposalItems,
   exchangeHistory,
   notifications,
-  matchNotifications,
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { rowCount } from '../utils/db-utils';
@@ -66,7 +65,6 @@ async function fetchAdminAlertSnapshot(since: string) {
     [failedUploadJobs],
     [stalledUploadJobs],
     [unreadNotificationsCount],
-    [unreadMatchNotificationsCount],
     [pendingProposalsCount],
   ] = await Promise.all([
     db.select({ count: rowCount })
@@ -79,9 +77,6 @@ async function fetchAdminAlertSnapshot(since: string) {
       .from(notifications)
       .where(eq(notifications.isRead, false)),
     db.select({ count: rowCount })
-      .from(matchNotifications)
-      .where(eq(matchNotifications.isRead, false)),
-    db.select({ count: rowCount })
       .from(exchangeProposals)
       .where(and(
         gte(exchangeProposals.proposedAt, since),
@@ -92,7 +87,7 @@ async function fetchAdminAlertSnapshot(since: string) {
   return {
     failedUploadJobs24h: failedUploadJobs.count,
     stalledUploadJobs24h: stalledUploadJobs.count,
-    unreadNotifications: unreadNotificationsCount.count + unreadMatchNotificationsCount.count,
+    unreadNotifications: unreadNotificationsCount.count,
     pendingProposalActions24h: pendingProposalsCount.count,
   };
 }

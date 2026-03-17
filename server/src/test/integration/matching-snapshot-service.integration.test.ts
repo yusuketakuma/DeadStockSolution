@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getTestDb, resetTestDb, closeTestDb, type TestDb } from './helpers/test-db';
 import { makePharmacy, resetFactorySeq } from './helpers/factories';
 import * as schema from '../../db/schema';
@@ -164,7 +164,7 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
     expect(result2.afterCount).toBe(2);
   });
 
-  it('変更があり通知有効の場合にmatch_notificationsが作成される', async () => {
+  it('変更があり通知有効の場合にnotificationsにmatch_updateが作成される', async () => {
     const pharmacy = await makePharmacy(testDb);
     const triggerPharmacy = await makePharmacy(testDb);
 
@@ -176,14 +176,17 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
       notifyEnabled: true,
     });
 
-    const notifications = await testDb.select().from(schema.matchNotifications)
-      .where(eq(schema.matchNotifications.pharmacyId, pharmacy.id));
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0].triggerPharmacyId).toBe(triggerPharmacy.id);
-    expect(notifications[0].isRead).toBe(false);
+    const matchNotifs = await testDb.select().from(schema.notifications)
+      .where(and(
+        eq(schema.notifications.pharmacyId, pharmacy.id),
+        eq(schema.notifications.type, 'match_update'),
+      ));
+    expect(matchNotifs).toHaveLength(1);
+    expect(matchNotifs[0].sourcePharmacyId).toBe(triggerPharmacy.id);
+    expect(matchNotifs[0].isRead).toBe(false);
   });
 
-  it('通知無効の場合はmatch_notificationsが作成されない', async () => {
+  it('通知無効の場合はmatch_update通知が作成されない', async () => {
     const pharmacy = await makePharmacy(testDb);
     const triggerPharmacy = await makePharmacy(testDb);
 
@@ -195,9 +198,12 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
       notifyEnabled: false,
     });
 
-    const notifications = await testDb.select().from(schema.matchNotifications)
-      .where(eq(schema.matchNotifications.pharmacyId, pharmacy.id));
-    expect(notifications).toHaveLength(0);
+    const matchNotifs = await testDb.select().from(schema.notifications)
+      .where(and(
+        eq(schema.notifications.pharmacyId, pharmacy.id),
+        eq(schema.notifications.type, 'match_update'),
+      ));
+    expect(matchNotifs).toHaveLength(0);
   });
 
   it('notifyEnabled未指定の場合はpharmacy設定を参照する', async () => {
@@ -212,9 +218,12 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
       // notifyEnabled未指定
     });
 
-    const notifications = await testDb.select().from(schema.matchNotifications)
-      .where(eq(schema.matchNotifications.pharmacyId, pharmacy.id));
-    expect(notifications).toHaveLength(0);
+    const matchNotifs = await testDb.select().from(schema.notifications)
+      .where(and(
+        eq(schema.notifications.pharmacyId, pharmacy.id),
+        eq(schema.notifications.type, 'match_update'),
+      ));
+    expect(matchNotifs).toHaveLength(0);
   });
 
   it('同一dedupeKeyの通知は重複しない', async () => {
@@ -244,10 +253,13 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
       notifyEnabled: true,
     });
 
-    const notifications = await testDb.select().from(schema.matchNotifications)
-      .where(eq(schema.matchNotifications.pharmacyId, pharmacy.id));
+    const matchNotifs = await testDb.select().from(schema.notifications)
+      .where(and(
+        eq(schema.notifications.pharmacyId, pharmacy.id),
+        eq(schema.notifications.type, 'match_update'),
+      ));
     // dedupeキーが同一なので重複しない
-    expect(notifications).toHaveLength(1);
+    expect(matchNotifs).toHaveLength(1);
   });
 });
 
@@ -281,8 +293,9 @@ describe('saveMatchSnapshotsBatch', () => {
     const snapshots = await testDb.select().from(schema.matchCandidateSnapshots);
     expect(snapshots).toHaveLength(2);
 
-    const notifications = await testDb.select().from(schema.matchNotifications);
-    expect(notifications).toHaveLength(2);
+    const matchNotifs = await testDb.select().from(schema.notifications)
+      .where(eq(schema.notifications.type, 'match_update'));
+    expect(matchNotifs).toHaveLength(2);
   });
 
   it('空のエントリではchangedCount=0を返す', async () => {

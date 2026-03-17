@@ -235,29 +235,12 @@ describe('notifications-route-ultra', () => {
     });
   });
 
-  // ── GET / with match_notifications table missing ──
-  describe('GET / with match_notifications error', () => {
-    it('handles 42P01 error (undefined table) gracefully', async () => {
+  // ── GET / with empty match_update notifications ──
+  describe('GET / with no match_update notifications', () => {
+    it('returns empty notices when no match_update notifications exist', async () => {
       const app = createApp();
-      const tableError = Object.assign(new Error('relation "match_notifications" does not exist'), {
-        code: '42P01',
-      });
 
-      // proposalsA, proposalsB: empty
-      // messagesAll, messagesPharmacy: empty
-      // matchRows (IIFE that catches 42P01): throws
-      // notificationRows: empty
-      let callCount = 0;
-      mocks.db.select.mockImplementation(() => {
-        callCount++;
-        if (callCount === 5) {
-          // This is the matchRows query wrapped in async IIFE
-          const query = createSelectQuery([]);
-          query.limit.mockRejectedValue(tableError);
-          return query;
-        }
-        return createSelectQuery([]);
-      });
+      mocks.db.select.mockImplementation(() => createSelectQuery([]));
 
       const res = await request(app).get('/api/notifications');
       expect(res.status).toBe(200);
@@ -343,11 +326,13 @@ describe('notifications-route-ultra', () => {
         .mockImplementationOnce(() => createSelectQuery([]))  // messagesPharmacy
         .mockImplementationOnce(() => createSelectQuery([{    // matchRows
           id: 200,
-          triggerPharmacyId: 2,
-          triggerUploadType: 'dead_stock',
-          candidateCountBefore: 5,
-          candidateCountAfter: 10,
-          diffJson: JSON.stringify({ addedPharmacyIds: [3, 4], removedPharmacyIds: [5] }),
+          sourcePharmacyId: 2,
+          detailJson: {
+            trigger_upload_type: 'dead_stock',
+            candidate_count_before: 5,
+            candidate_count_after: 10,
+            diff: { addedPharmacyIds: [3, 4], removedPharmacyIds: [5] },
+          },
           isRead: false,
           createdAt: '2026-03-01T00:00:00.000Z',
         }]))
@@ -374,11 +359,13 @@ describe('notifications-route-ultra', () => {
         .mockImplementationOnce(() => createSelectQuery([]))
         .mockImplementationOnce(() => createSelectQuery([{
           id: 300,
-          triggerPharmacyId: 1,
-          triggerUploadType: 'used_medication',
-          candidateCountBefore: 0,
-          candidateCountAfter: 3,
-          diffJson: '{}',
+          sourcePharmacyId: 1,
+          detailJson: {
+            trigger_upload_type: 'used_medication',
+            candidate_count_before: 0,
+            candidate_count_after: 3,
+            diff: {},
+          },
           isRead: true,
           createdAt: '2026-03-01T00:00:00.000Z',
         }]))

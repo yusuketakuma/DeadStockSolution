@@ -2,7 +2,6 @@ import { and, count, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import {
   adminMessages,
   adminMessageReads,
-  matchNotifications,
   notifications,
   type NotificationReferenceType,
   type NotificationType,
@@ -19,13 +18,8 @@ interface CreateNotificationInput {
   referenceId?: number;
 }
 
-interface PostgresErrorLike {
-  code?: string;
-}
-
 type NotificationSqlExecutor = Pick<ServiceDependencies['db'], 'execute'>;
 type CountRow = { count?: number | string | null };
-type ExistsRow = { exists?: boolean | string | number | null };
 type NotificationListItem = typeof notifications.$inferSelect;
 
 interface NotificationService {
@@ -39,17 +33,6 @@ interface NotificationService {
   invalidateDashboardUnreadCache(pharmacyId: number): void;
 }
 
-function isUndefinedTableError(err: unknown): err is PostgresErrorLike {
-  return typeof err === 'object' && err !== null && (err as PostgresErrorLike).code === '42P01';
-}
-
-function toBoolean(value: unknown): boolean {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value !== 0;
-  if (typeof value === 'string') return ['t', 'true', '1'].includes(value.toLowerCase());
-  return false;
-}
-
 function toCount(value: unknown): number {
   return Number(value ?? 0);
 }
@@ -58,18 +41,9 @@ function getCountFromRows(rows: CountRow[]): number {
   return toCount(rows[0]?.count);
 }
 
-function getExistsFromRows(rows: ExistsRow[]): boolean {
-  return toBoolean(rows[0]?.exists);
-}
-
 async function executeCountSql(executor: NotificationSqlExecutor, query: ReturnType<typeof sql>): Promise<number> {
   const rowsResult = await executor.execute<CountRow>(query);
   return getCountFromRows(rowsResult.rows);
-}
-
-async function executeExistsSql(executor: NotificationSqlExecutor, query: ReturnType<typeof sql>): Promise<boolean> {
-  const rowsResult = await executor.execute<ExistsRow>(query);
-  return getExistsFromRows(rowsResult.rows);
 }
 
 const DASHBOARD_UNREAD_CACHE_TTL_MS = 15_000;
@@ -192,61 +166,13 @@ async function getAdminUnreadCount(
 async function countUnreadSources(pharmacyId: number, deps: ServiceDependencies): Promise<{
   notificationsUnread: number;
   adminUnread: number;
-  matchUnread: number;
 }> {
-  const matchUnreadPromise = getMatchUnreadCount(pharmacyId, deps);
-  const [matchUnread, notificationsUnread, adminUnread] = await Promise.all([
-    matchUnreadPromise,
+  const [notificationsUnread, adminUnread] = await Promise.all([
     getUnreadCount(pharmacyId, deps),
     getAdminUnreadCount(pharmacyId, deps),
   ]);
 
-  return { notificationsUnread, adminUnread, matchUnread };
-}
-
-async function getMatchUnreadCount(pharmacyId: number, deps: ServiceDependencies): Promise<number> {
-  const [matchUnreadRow] = await deps.db.select({ count: rowCount })
-    .from(matchNotifications)
-    .where(and(
-      eq(matchNotifications.pharmacyId, pharmacyId),
-      eq(matchNotifications.isRead, false),
-    ))
-    .catch((err) => {
-      if (!isUndefinedTableError(err)) {
-        throw err;
-      }
-      deps.logger.warn('match_notifications unread count query failed (table may not exist)', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return [{ count: 0 }];
-    });
-
-  return toCount(matchUnreadRow?.count);
-}
-
-async function hasMatchNotificationsTable(executor: NotificationSqlExecutor): Promise<boolean> {
-  return executeExistsSql(executor, sql`
-    SELECT to_regclass('public.match_notifications') IS NOT NULL AS exists
-  `);
-}
-
-async function markMatchNotificationsAsRead(
-  executor: NotificationSqlExecutor,
-  pharmacyId: number,
-): Promise<number> {
-  if (!(await hasMatchNotificationsTable(executor))) {
-    return 0;
-  }
-
-  return executeCountSql(executor, sql`
-    WITH updated AS (
-      UPDATE match_notifications
-      SET is_read = true
-      WHERE pharmacy_id = ${pharmacyId} AND is_read = false
-      RETURNING 1
-    )
-    SELECT COUNT(*)::int AS count FROM updated
-  `);
+  return { notificationsUnread, adminUnread };
 }
 
 async function markAdminMessagesAsRead(
@@ -318,8 +244,8 @@ export async function getDashboardUnreadCount(
     return cached;
   }
 
-  const { notificationsUnread, adminUnread, matchUnread } = await countUnreadSources(pharmacyId, deps);
-  const totalUnread = notificationsUnread + adminUnread + matchUnread;
+  const { notificationsUnread, adminUnread } = await countUnreadSources(pharmacyId, deps);
+  const totalUnread = notificationsUnread + adminUnread;
   setCachedDashboardUnreadCount(pharmacyId, totalUnread);
   return totalUnread;
 }
@@ -378,9 +304,8 @@ export async function markAllDashboardAsRead(
 ): Promise<number> {
   const total = await deps.db.transaction(async (tx) => {
     const notificationCount = await markNotificationsAsRead(tx, pharmacyId);
-    const matchUpdateCount = await markMatchNotificationsAsRead(tx, pharmacyId);
     const adminMessageReadCount = await markAdminMessagesAsRead(tx, pharmacyId);
-    return notificationCount + matchUpdateCount + adminMessageReadCount;
+    return notificationCount + adminMessageReadCount;
   });
   invalidateDashboardUnreadCacheIfNeeded(pharmacyId, total);
   return total;

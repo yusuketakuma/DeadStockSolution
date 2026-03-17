@@ -42,26 +42,16 @@ describe('notification-service-ultra', () => {
     vi.resetAllMocks();
   });
 
-  // ── isUndefinedTableError (internal) ──
-  // Exercised through getDashboardUnreadCount's catch handler
-
-  describe('getDashboardUnreadCount — non-42P01 error propagation', () => {
-    it('propagates non-object error from match_notifications query', async () => {
-      // 1st: matchUnreadPromise (rejects with a non-object error)
-      const matchWhere = vi.fn().mockRejectedValue('string error');
-      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
-
-      // 2nd: getUnreadCount
-      const notifWhere = vi.fn().mockResolvedValue([{ value: 0 }]);
+  describe('getDashboardUnreadCount — error propagation', () => {
+    it('propagates non-object error from notifications query', async () => {
+      const notifWhere = vi.fn().mockRejectedValue('string error');
       const notifFrom = vi.fn().mockReturnValue({ where: notifWhere });
 
-      // 3rd: admin messages
       const adminWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
       const adminLeftJoin = vi.fn().mockReturnValue({ where: adminWhere });
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
       mocks.db.select
-        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 
@@ -70,10 +60,7 @@ describe('notification-service-ultra', () => {
 
     it('propagates error with non-42P01 code', async () => {
       const otherError = Object.assign(new Error('something else'), { code: '42703' });
-      const matchWhere = vi.fn().mockRejectedValue(otherError);
-      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
-
-      const notifWhere = vi.fn().mockResolvedValue([{ value: 0 }]);
+      const notifWhere = vi.fn().mockRejectedValue(otherError);
       const notifFrom = vi.fn().mockReturnValue({ where: notifWhere });
 
       const adminWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
@@ -81,18 +68,13 @@ describe('notification-service-ultra', () => {
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
       mocks.db.select
-        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 
       await expect(getDashboardUnreadCount(1)).rejects.toThrow('something else');
     });
 
-    it('handles null match unread row gracefully', async () => {
-      // matchUnreadPromise resolves with empty array
-      const matchWhere = vi.fn().mockResolvedValue([]);
-      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
-
+    it('handles empty admin unread row gracefully', async () => {
       const notifWhere = vi.fn().mockResolvedValue([{ value: 3 }]);
       const notifFrom = vi.fn().mockReturnValue({ where: notifWhere });
 
@@ -101,12 +83,11 @@ describe('notification-service-ultra', () => {
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
       mocks.db.select
-        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 
       const result = await getDashboardUnreadCount(1);
-      // 3 + 0 (no admin row) + 0 (no match row)
+      // 3 + 0 (no admin row)
       expect(result).toBe(3);
     });
   });
@@ -236,8 +217,8 @@ describe('notification-service-ultra', () => {
     });
   });
 
-  // ── markAllDashboardAsRead — toBoolean edge cases ──
-  describe('markAllDashboardAsRead — additional toBoolean branches', () => {
+  // ── markAllDashboardAsRead — simplified (no matchNotifications) ──
+  describe('markAllDashboardAsRead — transaction with notifications + admin', () => {
     function createTx(...execResults: unknown[]) {
       const execute = vi.fn();
       for (const result of execResults) {
@@ -246,71 +227,19 @@ describe('notification-service-ultra', () => {
       return { execute };
     }
 
-    it('handles toBoolean for null (falsy)', async () => {
+    it('sums notifications and admin message counts', async () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
-            { rows: [{ count: 0 }] },
-            { rows: [{ exists: null }] },
-            // no match_notifications update since null is falsy
-            { rows: [{ count: 0 }] },
+            { rows: [{ count: 1 }] }, // markNotificationsAsRead
+            { rows: [{ count: 3 }] }, // markAdminMessagesAsRead
           );
           return callback(tx);
         },
       );
 
       const result = await markAllDashboardAsRead(1);
-      expect(result).toBe(0);
-    });
-
-    it('handles toBoolean for undefined (falsy)', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
-          const tx = createTx(
-            { rows: [{ count: 0 }] },
-            { rows: [{ exists: undefined }] },
-            { rows: [{ count: 0 }] },
-          );
-          return callback(tx);
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-      expect(result).toBe(0);
-    });
-
-    it('handles toBoolean for string "false" (falsy)', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
-          const tx = createTx(
-            { rows: [{ count: 0 }] },
-            { rows: [{ exists: 'false' }] },
-            // "false" not in ['t','true','1'] so falsy
-            { rows: [{ count: 0 }] },
-          );
-          return callback(tx);
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-      expect(result).toBe(0);
-    });
-
-    it('handles toBoolean for string "t" (truthy)', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
-          const tx = createTx(
-            { rows: [{ count: 1 }] },
-            { rows: [{ exists: 't' }] },
-            { rows: [{ count: 2 }] },
-            { rows: [{ count: 3 }] },
-          );
-          return callback(tx);
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-      expect(result).toBe(6); // 1 + 2 + 3
+      expect(result).toBe(4); // 1 + 3
     });
 
     it('returns 0 and does not invalidate cache when total is 0', async () => {
@@ -318,7 +247,6 @@ describe('notification-service-ultra', () => {
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
             { rows: [{ count: 0 }] },
-            { rows: [{ exists: false }] },
             { rows: [{ count: 0 }] },
           );
           return callback(tx);
@@ -329,13 +257,11 @@ describe('notification-service-ultra', () => {
       expect(result).toBe(0);
     });
 
-    it('handles missing count in match update rows', async () => {
+    it('handles missing count in rows', async () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
-            { rows: [{ count: 0 }] },
-            { rows: [{ exists: true }] },
-            { rows: [{}] }, // no count property
+            { rows: [{}] },
             { rows: [{ count: 0 }] },
           );
           return callback(tx);
@@ -346,29 +272,11 @@ describe('notification-service-ultra', () => {
       expect(result).toBe(0);
     });
 
-    it('handles missing count in admin message rows', async () => {
+    it('handles empty rows array', async () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
-            { rows: [{ count: 0 }] },
-            { rows: [{ exists: false }] },
-            { rows: [{}] }, // no count property
-          );
-          return callback(tx);
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-      expect(result).toBe(0);
-    });
-
-    it('handles empty rows array in match update', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
-          const tx = createTx(
-            { rows: [{ count: 0 }] },
-            { rows: [{ exists: true }] },
-            { rows: [] }, // empty rows
+            { rows: [] },
             { rows: [{ count: 0 }] },
           );
           return callback(tx);

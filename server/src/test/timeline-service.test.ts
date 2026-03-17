@@ -28,7 +28,6 @@ vi.mock('../services/timeline-priority-engine', () => ({
 vi.mock('../services/timeline-unread-counts', () => ({
   countAllUnread: vi.fn(),
   countUnreadNotifications: vi.fn(),
-  countUnreadMatchNotifications: vi.fn(),
   countUnreadComments: vi.fn(),
   countUnreadAdminMessages: vi.fn(),
   countUnreadProposals: vi.fn(),
@@ -53,7 +52,6 @@ import { assignPriority } from '../services/timeline-priority-engine';
 import {
   countAllUnread,
   countUnreadNotifications,
-  countUnreadMatchNotifications,
   countUnreadComments,
   countUnreadAdminMessages,
   countUnreadProposals,
@@ -96,7 +94,6 @@ function resetAllFetchers() {
 function resetAllCounters() {
   vi.mocked(countAllUnread).mockResolvedValue(0);
   vi.mocked(countUnreadNotifications).mockResolvedValue(0);
-  vi.mocked(countUnreadMatchNotifications).mockResolvedValue(0);
   vi.mocked(countUnreadComments).mockResolvedValue(0);
   vi.mocked(countUnreadAdminMessages).mockResolvedValue(0);
   vi.mocked(countUnreadProposals).mockResolvedValue(0);

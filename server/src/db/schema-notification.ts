@@ -1,4 +1,5 @@
-import { pgTable, serial, text, integer, boolean, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, serial, text, integer, boolean, timestamp, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import { adminMessageTargetTypeEnum } from './schema-common';
 
@@ -36,6 +37,9 @@ export const notifications = pgTable('notifications', {
   referenceId: integer('reference_id'),
   isRead: boolean('is_read').notNull().default(false),
   readAt: timestamp('read_at', { mode: 'string' }),
+  detailJson: jsonb('detail_json'),
+  sourcePharmacyId: integer('source_pharmacy_id').references(() => pharmacies.id),
+  dedupeKey: text('dedupe_key'),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   idxNotificationsPharmacyUnread: index('idx_notifications_pharmacy_unread')
@@ -44,6 +48,9 @@ export const notifications = pgTable('notifications', {
     .on(table.type, table.createdAt.desc()),
   idxNotificationsReferenceLookup: index('idx_notifications_reference_lookup')
     .on(table.referenceType, table.referenceId),
+  dedupeKeyIdx: uniqueIndex('notifications_pharmacy_dedupe_key_idx')
+    .on(table.pharmacyId, table.dedupeKey)
+    .where(sql`dedupe_key IS NOT NULL`),
 }));
 
 export const pushSubscriptions = pgTable('push_subscriptions', {

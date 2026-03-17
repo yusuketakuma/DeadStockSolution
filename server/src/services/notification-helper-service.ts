@@ -157,27 +157,46 @@ export function notificationToNotice(n: NotificationNoticeRow): NoticeItem | nul
   };
 }
 
+interface MatchDetailJson {
+  trigger_upload_type?: string;
+  candidate_count_before?: number;
+  candidate_count_after?: number;
+  diff?: unknown;
+}
+
+function parseDetailJson(detailJson: unknown): MatchDetailJson {
+  if (detailJson && typeof detailJson === 'object') return detailJson as MatchDetailJson;
+  if (typeof detailJson === 'string') {
+    try { return JSON.parse(detailJson) as MatchDetailJson; } catch { return {}; }
+  }
+  return {};
+}
+
 export function matchUpdateNotice(row: {
   id: number;
-  triggerPharmacyId: number;
-  triggerUploadType: 'dead_stock' | 'used_medication';
-  candidateCountBefore: number;
-  candidateCountAfter: number;
-  diffJson: string;
+  sourcePharmacyId: number | null;
+  detailJson: unknown;
   createdAt: string | null;
   isRead: boolean;
 }, currentPharmacyId: number, triggerPharmacyName: string | null): NoticeItem {
-  const uploadTypeLabel = row.triggerUploadType === 'dead_stock' ? 'デッドストック' : '使用量';
-  const triggerLabel = row.triggerPharmacyId === currentPharmacyId
+  const detail = parseDetailJson(row.detailJson);
+  const triggerUploadType = detail.trigger_upload_type ?? 'dead_stock';
+  const candidateCountBefore = detail.candidate_count_before ?? 0;
+  const candidateCountAfter = detail.candidate_count_after ?? 0;
+  const triggerPharmacyId = row.sourcePharmacyId ?? 0;
+
+  const uploadTypeLabel = triggerUploadType === 'dead_stock' ? 'デッドストック' : '使用量';
+  const triggerLabel = triggerPharmacyId === currentPharmacyId
     ? '自薬局'
-    : (triggerPharmacyName ?? `薬局 #${row.triggerPharmacyId}`);
-  const { addedCount, removedCount } = parseMatchDiff(row.diffJson);
+    : (triggerPharmacyName ?? `薬局 #${triggerPharmacyId}`);
+  const diffStr = typeof detail.diff === 'string' ? detail.diff : JSON.stringify(detail.diff ?? '{}');
+  const { addedCount, removedCount } = parseMatchDiff(diffStr);
 
   return {
     id: `match-${row.id}`,
     type: 'match_update',
     title: `${triggerLabel}の${uploadTypeLabel}更新で候補が更新されました`,
-    body: `候補数 ${row.candidateCountBefore}件 → ${row.candidateCountAfter}件（追加 ${addedCount} / 除外 ${removedCount}）`,
+    body: `候補数 ${candidateCountBefore}件 → ${candidateCountAfter}件（追加 ${addedCount} / 除外 ${removedCount}）`,
     actionPath: '/matching',
     actionLabel: '候補を確認',
     createdAt: row.createdAt,

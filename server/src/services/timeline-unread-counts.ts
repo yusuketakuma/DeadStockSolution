@@ -9,7 +9,6 @@ import type { Column } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import {
   notifications as notificationsTable,
-  matchNotifications,
   exchangeProposals,
   proposalComments,
   exchangeFeedback,
@@ -76,23 +75,6 @@ export async function countUnreadNotifications(
     notificationsTable.pharmacyId,
     notificationsTable.isRead,
     notificationsTable.createdAt,
-    pharmacyId,
-    lastViewed,
-  );
-}
-
-/** matchNotifications: isRead=false OR createdAt > lastViewed */
-export async function countUnreadMatchNotifications(
-  db: DbClient,
-  pharmacyId: number,
-  lastViewed: string | null,
-): Promise<number> {
-  return countUnreadByIsReadFlag(
-    db,
-    matchNotifications,
-    matchNotifications.pharmacyId,
-    matchNotifications.isRead,
-    matchNotifications.createdAt,
     pharmacyId,
     lastViewed,
   );
@@ -241,14 +223,6 @@ export async function countAllUnread(
       total: sql<number>`
         COALESCE((
           SELECT count(*)::int FROM notifications
-          WHERE pharmacy_id = ${pharmacyId}
-            AND (is_read = false OR (
-              ${pharmacies.lastTimelineViewedAt} IS NOT NULL
-              AND created_at > ${pharmacies.lastTimelineViewedAt}
-            ))
-        ), 0)
-        + COALESCE((
-          SELECT count(*)::int FROM match_notifications
           WHERE pharmacy_id = ${pharmacyId}
             AND (is_read = false OR (
               ${pharmacies.lastTimelineViewedAt} IS NOT NULL

@@ -50,7 +50,7 @@ export type ErrorCodeCategory = (typeof errorCodeCategoryValues)[number];
 export const errorCodeSeverityValues = ['critical', 'error', 'warning', 'info'] as const;
 export type ErrorCodeSeverity = (typeof errorCodeSeverityValues)[number];
 
-export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment', 'request_update', 'group_invitation', 'group_join', 'group_leave', 'alert_near_expiry', 'alert_excess_stock', 'alert_resolved'] as const;
+export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment', 'request_update', 'group_invitation', 'group_join', 'group_leave', 'alert_near_expiry', 'alert_excess_stock', 'alert_resolved', 'match_update'] as const;
 export type NotificationType = (typeof notificationTypeValues)[number];
 
 export const notificationReferenceTypeValues = ['proposal', 'match', 'comment', 'request'] as const;

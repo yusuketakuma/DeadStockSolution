@@ -193,24 +193,13 @@ describe('notifications route deep coverage', () => {
     });
   });
 
-  // ── GET / with match_notifications table error ──
+  // ── GET / with empty match_update notifications ──
 
-  describe('GET /api/notifications - match_notifications table missing', () => {
-    it('gracefully handles missing match_notifications table', async () => {
+  describe('GET /api/notifications - no match_update notifications', () => {
+    it('returns empty notices when no match_update notifications exist', async () => {
       const app = createApp();
-      const missingTableError = Object.assign(new Error('relation does not exist'), { code: '42P01' });
 
-      // The matchRows query (5th call) uses an IIFE with try/catch.
-      // We use mockImplementationOnce in order; later calls fall through to the default.
-      let callCount = 0;
-      mocks.db.select.mockImplementation(() => {
-        callCount++;
-        if (callCount === 5) {
-          // matchRows IIFE: reject with table-missing error
-          return createFailingSelectQuery(missingTableError);
-        }
-        return createSelectQuery([]);
-      });
+      mocks.db.select.mockImplementation(() => createSelectQuery([]));
 
       const res = await request(app).get('/api/notifications');
       expect(res.status).toBe(200);
@@ -313,11 +302,13 @@ describe('notifications route deep coverage', () => {
       const app = createApp();
       const matchRow = {
         id: 50,
-        triggerPharmacyId: 2,
-        triggerUploadType: 'dead_stock' as const,
-        candidateCountBefore: 5,
-        candidateCountAfter: 8,
-        diffJson: JSON.stringify({ addedPharmacyIds: [3, 4, 5], removedPharmacyIds: [] }),
+        sourcePharmacyId: 2,
+        detailJson: {
+          trigger_upload_type: 'dead_stock',
+          candidate_count_before: 5,
+          candidate_count_after: 8,
+          diff: { addedPharmacyIds: [3, 4, 5], removedPharmacyIds: [] },
+        },
         isRead: false,
         createdAt: '2026-02-25T00:00:00.000Z',
       };
@@ -344,11 +335,13 @@ describe('notifications route deep coverage', () => {
       const app = createApp();
       const matchRow = {
         id: 51,
-        triggerPharmacyId: 1,  // same as currentUser → "自薬局"
-        triggerUploadType: 'used_medication' as const,
-        candidateCountBefore: 3,
-        candidateCountAfter: 2,
-        diffJson: '{}',
+        sourcePharmacyId: 1,  // same as currentUser → "自薬局"
+        detailJson: {
+          trigger_upload_type: 'used_medication',
+          candidate_count_before: 3,
+          candidate_count_after: 2,
+          diff: {},
+        },
         isRead: true,
         createdAt: '2026-02-25T00:00:00.000Z',
       };

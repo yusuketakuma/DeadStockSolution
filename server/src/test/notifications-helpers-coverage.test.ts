@@ -400,21 +400,23 @@ describe('notificationToNotice', () => {
 describe('matchUpdateNotice', () => {
   const baseRow = {
     id: 1,
-    triggerPharmacyId: 5,
-    triggerUploadType: 'dead_stock' as const,
-    candidateCountBefore: 3,
-    candidateCountAfter: 5,
-    diffJson: JSON.stringify({ addedPharmacyIds: [1, 2], removedPharmacyIds: [3] }),
+    sourcePharmacyId: 5 as number | null,
+    detailJson: {
+      trigger_upload_type: 'dead_stock',
+      candidate_count_before: 3,
+      candidate_count_after: 5,
+      diff: { addedPharmacyIds: [1, 2], removedPharmacyIds: [3] },
+    } as unknown,
     createdAt: '2024-01-01T00:00:00Z',
     isRead: false,
   };
 
-  it('shows 自薬局 when triggerPharmacyId equals currentPharmacyId', () => {
+  it('shows 自薬局 when sourcePharmacyId equals currentPharmacyId', () => {
     const notice = matchUpdateNotice(baseRow, 5, null);
     expect(notice.title).toContain('自薬局');
   });
 
-  it('shows pharmacy name when triggerPharmacyId differs from currentPharmacyId', () => {
+  it('shows pharmacy name when sourcePharmacyId differs from currentPharmacyId', () => {
     const notice = matchUpdateNotice(baseRow, 99, 'PharmaA');
     expect(notice.title).toContain('PharmaA');
   });
@@ -425,7 +427,10 @@ describe('matchUpdateNotice', () => {
   });
 
   it('shows 使用量 for used_medication upload type', () => {
-    const row = { ...baseRow, triggerUploadType: 'used_medication' as const };
+    const row = {
+      ...baseRow,
+      detailJson: { ...baseRow.detailJson as object, trigger_upload_type: 'used_medication' },
+    };
     const notice = matchUpdateNotice(row, 99, 'PharmaA');
     expect(notice.title).toContain('使用量');
   });

@@ -143,21 +143,10 @@ describe('notification-service-deep', () => {
     function setupDashboardMocks(
       notifCount: number,
       adminCount: number,
-      matchResult: { count: number } | Error,
     ) {
       // The function call order is:
-      // 1. matchUnreadPromise = db.select(...).from(matchNotifications).where(...) -- created BEFORE Promise.all
-      // 2. getUnreadCount -> db.select({ value: count() }).from(notifications).where(...)
-      // 3. db.select({ count: rowCount }).from(adminMessages).leftJoin(...).where(...)
-
-      let matchFrom: ReturnType<typeof vi.fn>;
-      if (matchResult instanceof Error) {
-        const matchWhere = vi.fn().mockRejectedValue(matchResult);
-        matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
-      } else {
-        const matchWhere = vi.fn().mockResolvedValue([matchResult]);
-        matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
-      }
+      // 1. getUnreadCount -> db.select({ value: count() }).from(notifications).where(...)
+      // 2. db.select({ count: rowCount }).from(adminMessages).leftJoin(...).where(...)
 
       const notifWhere = vi.fn().mockResolvedValue([{ value: notifCount }]);
       const notifFrom = vi.fn().mockReturnValue({ where: notifWhere });
@@ -167,37 +156,16 @@ describe('notification-service-deep', () => {
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
       mocks.db.select
-        .mockReturnValueOnce({ from: matchFrom })    // 1st: matchUnreadPromise
-        .mockReturnValueOnce({ from: notifFrom })     // 2nd: getUnreadCount
-        .mockReturnValueOnce({ from: adminFrom });     // 3rd: admin messages
+        .mockReturnValueOnce({ from: notifFrom })     // 1st: getUnreadCount
+        .mockReturnValueOnce({ from: adminFrom });     // 2nd: admin messages
     }
 
-    it('aggregates notifications, admin messages, and match notifications', async () => {
-      setupDashboardMocks(3, 2, { count: 1 });
+    it('aggregates notifications and admin messages', async () => {
+      setupDashboardMocks(3, 2);
 
       const result = await getDashboardUnreadCount(1);
 
-      expect(result).toBe(6);
-    });
-
-    it('returns 0 for match_notifications when table does not exist (42P01)', async () => {
-      const tableError = Object.assign(new Error('table not found'), { code: '42P01' });
-      setupDashboardMocks(2, 0, tableError);
-
-      const result = await getDashboardUnreadCount(1);
-
-      expect(result).toBe(2);
-      expect(mocks.logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('match_notifications'),
-        expect.any(Object),
-      );
-    });
-
-    it('propagates non-42P01 errors from match_notifications', async () => {
-      const connError = new Error('connection error');
-      setupDashboardMocks(0, 0, connError);
-
-      await expect(getDashboardUnreadCount(1)).rejects.toThrow('connection error');
+      expect(result).toBe(5);
     });
   });
 
@@ -310,11 +278,7 @@ describe('notification-service-deep', () => {
           const txExecute = vi.fn()
             // markNotificationsAsRead
             .mockResolvedValueOnce({ rows: [{ count: 3 }] })
-            // check match_notifications table exists
-            .mockResolvedValueOnce({ rows: [{ exists: true }] })
-            // update match_notifications
-            .mockResolvedValueOnce({ rows: [{ count: 2 }] })
-            // insert admin_message_reads
+            // markAdminMessagesAsRead
             .mockResolvedValueOnce({ rows: [{ count: 1 }] });
 
           return callback({ execute: txExecute });
@@ -323,114 +287,7 @@ describe('notification-service-deep', () => {
 
       const result = await markAllDashboardAsRead(1);
 
-      expect(result).toBe(6); // 3 + 2 + 1
-    });
-
-    it('skips match_notifications update when table does not exist', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
-          const txExecute = vi.fn()
-            .mockResolvedValueOnce({ rows: [{ count: 2 }] })   // notifications
-            .mockResolvedValueOnce({ rows: [{ exists: false }] }) // table check
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] });   // admin reads
-
-          return callback({ execute: txExecute });
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-
-      expect(result).toBe(2); // 2 + 0 (no match update) + 0
-    });
-
-    it('handles toBoolean for string "t" from postgres', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
-          const txExecute = vi.fn()
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ exists: 't' }] })  // postgres boolean as string
-            .mockResolvedValueOnce({ rows: [{ count: 1 }] })
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] });
-
-          return callback({ execute: txExecute });
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-
-      expect(result).toBe(1); // 0 + 1 + 0
-    });
-
-    it('handles toBoolean for numeric 1', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
-          const txExecute = vi.fn()
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ exists: 1 }] })  // numeric boolean
-            .mockResolvedValueOnce({ rows: [{ count: 2 }] })
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] });
-
-          return callback({ execute: txExecute });
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-
-      expect(result).toBe(2);
-    });
-
-    it('handles toBoolean for numeric 0', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
-          const txExecute = vi.fn()
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ exists: 0 }] })  // numeric 0 = false
-            // no match_notifications update
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] });
-
-          return callback({ execute: txExecute });
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-
-      expect(result).toBe(0);
-    });
-
-    it('handles toBoolean for string "1"', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
-          const txExecute = vi.fn()
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ exists: '1' }] })
-            .mockResolvedValueOnce({ rows: [{ count: 1 }] })
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] });
-
-          return callback({ execute: txExecute });
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-
-      expect(result).toBe(1);
-    });
-
-    it('handles toBoolean for string "true"', async () => {
-      mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
-          const txExecute = vi.fn()
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ exists: 'true' }] })
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ count: 0 }] });
-
-          return callback({ execute: txExecute });
-        },
-      );
-
-      const result = await markAllDashboardAsRead(1);
-
-      expect(result).toBe(0);
+      expect(result).toBe(4); // 3 + 1
     });
 
     it('returns 0 when no updates across any table', async () => {
@@ -438,7 +295,6 @@ describe('notification-service-deep', () => {
         async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
           const txExecute = vi.fn()
             .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ exists: false }] })
             .mockResolvedValueOnce({ rows: [{ count: 0 }] });
 
           return callback({ execute: txExecute });

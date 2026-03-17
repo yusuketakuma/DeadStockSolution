@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   countAllUnread,
   countUnreadNotifications,
-  countUnreadMatchNotifications,
   countUnreadComments,
   countUnreadAdminMessages,
   countUnreadProposals,
@@ -68,14 +67,6 @@ describe('timeline-unread-counts', () => {
     } as MockDb;
     const count = await countUnreadNotifications(db, pharmacyId, lastViewed);
     expect(count).toBe(0);
-  });
-
-  // --- countUnreadMatchNotifications ---
-
-  it('countUnreadMatchNotifications: COUNT 結果を返す', async () => {
-    const db = makeMockDb(2) as MockDb;
-    const count = await countUnreadMatchNotifications(db, pharmacyId, lastViewed);
-    expect(count).toBe(2);
   });
 
   // --- countUnreadComments ---

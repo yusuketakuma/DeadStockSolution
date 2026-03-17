@@ -109,12 +109,11 @@ describe('admin-stats routes', () => {
 
   describe('GET /alerts', () => {
     it('returns alert counts', async () => {
-      // 5 parallel queries: failedUploadJobs, stalledUploadJobs, unreadNotifications, unreadMatchNotifications, pendingProposals
+      // 4 parallel queries: failedUploadJobs, stalledUploadJobs, unreadNotifications, pendingProposals
       mocks.db.select
         .mockReturnValueOnce(createSelectChain([{ count: 3 }]))   // failedUploadJobs
         .mockReturnValueOnce(createSelectChain([{ count: 1 }]))   // stalledUploadJobs
         .mockReturnValueOnce(createSelectChain([{ count: 5 }]))   // unreadNotifications
-        .mockReturnValueOnce(createSelectChain([{ count: 2 }]))   // unreadMatchNotifications
         .mockReturnValueOnce(createSelectChain([{ count: 4 }]));  // pendingProposals
 
       const app = createApp();
@@ -123,7 +122,7 @@ describe('admin-stats routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.failedUploadJobs24h).toBe(3);
       expect(res.body.stalledUploadJobs24h).toBe(1);
-      expect(res.body.unreadNotifications).toBe(7); // 5 + 2
+      expect(res.body.unreadNotifications).toBe(5);
       expect(res.body.pendingProposalActions24h).toBe(4);
     });
 
