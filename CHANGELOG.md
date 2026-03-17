@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.14] - 2026-03-17
+
+### テーマ: データベーススキーマ ゼロベース再設計 + UI/UX改善スプリント
+
+**44テーブル・9ファイルを40テーブル・13ファイルにゼロベース再設計。冗長テーブル4つを廃止し、ドメイン別ファイル分割・JSON jsonb統一・export名整理を実施。UI/UX改善25タスクも完了。**
+
+---
+
+#### 1. データベーススキーマ再設計: 冗長テーブル4つを廃止
+
+**今まで**: `exchange_history`、`pharmacy_trust_scores`、`match_notifications`、`uploads` の4テーブルが親テーブルのデータを重複して保持。更新時に2テーブルへの二重書き込みが必要で、不整合リスクがありました。
+
+**今後**: 冗長テーブルを完全廃止し、親テーブルにカラムを追加して統合。
+
+| 廃止テーブル | 統合先 | 方法 |
+|-------------|--------|------|
+| `exchange_history` | `exchange_proposals` | `completed_total_value` カラム追加 + `status='completed'` フィルタ |
+| `pharmacy_trust_scores` | `pharmacies` | `trust_score`, `rating_count`, `positive_rate` カラム追加 |
+| `match_notifications` | `notifications` | `detail_json`, `source_pharmacy_id`, `dedupe_key` カラム追加 |
+| `uploads` + `upload_confirm_jobs` | `upload_jobs` | 統合テーブルにリネーム |
+
+#### 2. スキーマファイルのドメイン別分割
+
+**今まで**: `schema-auth.ts` に薬局・グループ・認証が混在、`schema-admin.ts` に監査・分析・OpenClawが混在。1ファイルが200行超で見通しが悪い状態でした。
+
+**今後**: 9ファイルを13のドメイン別ファイルに再編。
+
+```
+schema-auth.ts    → schema-pharmacy.ts + schema-pharmacy-group.ts + schema-auth.ts
+schema-admin.ts   → schema-audit.ts + schema-analytics.ts + schema-openclaw.ts
+schema-upload-jobs.ts → schema-inventory.ts に統合
+```
+
+#### 3. JSON text → jsonb 一括変換
+
+**今まで**: 12カラムが `text` 型で JSON 文字列を格納。読み取り時に毎回 `JSON.parse`、書き込み時に `JSON.stringify` が必要でした。
+
+**今後**: 全12カラムを `jsonb` 型に変換。Drizzle ORM が自動で JSON ↔ オブジェクト変換するため、手動の parse/stringify が不要に。PostgreSQL のネイティブ JSON 演算子も利用可能に。
+
+#### 4. export 名の整理
+
+**今まで**: `activityLogs` という export 名が、テーブルの用途（イベント記録）と乖離していました。
+
+**今後**: `activityLogs` → `events` にリネーム（DBテーブル名 `activity_logs` は維持）。14ファイルの参照を一括更新。
+
+#### 5. コードレビュー指摘の修正
+
+- `parseTopCandidates` に `Array.isArray` ガード追加（unsafe cast 防止）
+- `exchangeProposals` に completed クエリ用の部分インデックス2つ追加
+- `parseMatchDiff` を `unknown` 受付可に変更、diff の二重 serialize/parse を解消
+- truncated `detailJson` を bare string → 構造化オブジェクト `{ _truncated, preview }` に統一
+- `mappingJson` のべき等性比較をキーソート済み `stableStringify` に変更
+
+#### 6. UI/UX 改善スプリント (25タスク)
+
+- フォームバリデーション強化・前提条件チェック・バッジポーリング
+- 自動スクロール・ソート可能テーブル・提案ステータス表示
+- パンくずリスト・サイドバー a11y・スケルトンUI
+- ダイジェスト・アラート・エラー構造・タブレット対応
+- bootstrap-icons 導入・各種アクセシビリティ修正
+
+#### 7. サーバーサイド コード簡素化
+
+- 38ファイルのリファクタリング（services + routes）
+- レスポンスヘルパー統合・型ガード抽出
+- 4,610テスト全パス維持
+
+---
+
 ## [0.0.13] - 2026-03-16
 
 ### テーマ: 管理者パネル全面強化 + ユーザー/管理者アクセス分離
