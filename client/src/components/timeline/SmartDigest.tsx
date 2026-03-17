@@ -34,6 +34,7 @@ interface SmartDigestProps {
   onEventClick?: (event: TimelineEvent) => void;
   onActionPathClick?: (path: string) => void;
   className?: string;
+  maxItems?: number;
 }
 
 function mapEventToDigestItem(event: TimelineEvent): DigestItem {
@@ -63,7 +64,7 @@ function mapEventToDigestItem(event: TimelineEvent): DigestItem {
   };
 }
 
-function buildDigestItems(status: UploadStatus | null, events: TimelineEvent[]): DigestItem[] {
+function buildDigestItems(status: UploadStatus | null, events: TimelineEvent[], maxItems: number): DigestItem[] {
   const items: DigestItem[] = [];
 
   if (status !== null) {
@@ -110,7 +111,7 @@ function buildDigestItems(status: UploadStatus | null, events: TimelineEvent[]):
     });
   }
 
-  return items.slice(0, MAX_DIGEST_ITEMS);
+  return items.slice(0, maxItems);
 }
 
 export default function SmartDigest({
@@ -119,8 +120,10 @@ export default function SmartDigest({
   loading,
   onEventClick,
   className,
+  maxItems,
 }: SmartDigestProps) {
-  const digestItems = useMemo(() => buildDigestItems(status, events), [events, status]);
+  const resolvedMaxItems = maxItems ?? MAX_DIGEST_ITEMS;
+  const digestItems = useMemo(() => buildDigestItems(status, events, resolvedMaxItems), [events, status, resolvedMaxItems]);
   return (
     <AppCard className={className ?? 'mb-3'}>
       <AppCard.Header className="d-flex align-items-center justify-content-between py-2 px-3">

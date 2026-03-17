@@ -142,6 +142,7 @@ export default function DashboardPage() {
             onEventClick={handleEventClick}
             onActionPathClick={handleDigestActionPath}
             className="h-100"
+            maxItems={2}
           />
         </Col>
         <Col lg={5} className="d-flex flex-column gap-2">

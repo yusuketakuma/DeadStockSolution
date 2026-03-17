@@ -1,3 +1,4 @@
+import type React from 'react';
 import { Link } from 'react-router-dom';
 import AppCard from './AppCard';
 import AppButton from './AppButton';
@@ -9,6 +10,7 @@ interface AppEmptyStateProps {
   actionTo?: string;
   action?: React.ReactNode;
   className?: string;
+  icon?: React.ReactNode;
 }
 
 export default function AppEmptyState({
@@ -18,10 +20,14 @@ export default function AppEmptyState({
   actionTo,
   action,
   className,
+  icon = '📋',
 }: AppEmptyStateProps) {
   return (
     <AppCard className={className}>
       <AppCard.Body className="text-center py-4">
+        {icon !== null && (
+          <div style={{ fontSize: '3rem' }} className="mb-2">{icon}</div>
+        )}
         <h5 className="mb-2">{title}</h5>
         {description ? <p className="text-muted small mb-0">{description}</p> : null}
         {action}

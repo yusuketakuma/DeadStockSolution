@@ -19,6 +19,27 @@ export interface FieldError {
   message: string;
 }
 
+export class NetworkError extends Error {
+  constructor(message = 'ネットワークエラーが発生しました') {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
+export class TimeoutError extends Error {
+  constructor(message = 'リクエストがタイムアウトしました') {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+export class ServerError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'ServerError';
+  }
+}
+
 export class ApiError extends Error {
   public code?: string;
   public fieldErrors?: FieldError[];
@@ -113,9 +134,9 @@ async function fetchWithTimeout(
       if (externalSignal?.aborted) {
         throw new ApiError(0, 'リクエストがキャンセルされました');
       }
-      throw new ApiError(0, 'リクエストがタイムアウトしました');
+      throw new TimeoutError();
     }
-    throw new ApiError(0, 'ネットワークエラーが発生しました');
+    throw new NetworkError();
   } finally {
     clearTimeout(timeoutId);
     if (externalSignal) {

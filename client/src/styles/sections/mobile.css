@@ -155,6 +155,35 @@
 }
 
 
+/* ===== Tablet overrides (768px - 1024px) ===== */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .app-sidebar {
+    width: 56px;
+  }
+
+  .app-sidebar .sidebar-label {
+    display: none;
+  }
+
+  .content-container {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .mobile-table,
+  table {
+    font-size: 0.875rem;
+  }
+
+  .dl-kpi-tile {
+    padding: 0.5rem;
+  }
+
+  .page-title {
+    font-size: 1.3rem;
+  }
+}
+
 /* ===== Mobile UX Utilities ===== */
 
 /* タップハイライト無効化 */
