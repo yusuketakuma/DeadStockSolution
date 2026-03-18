@@ -14,12 +14,22 @@ const emailSchema = trimmedText
   .email('有効なメールアドレスを入力してください')
   .max(254, 'メールアドレスが長すぎます');
 
-// Password: 8+ chars, at least one letter and one digit
+// Password: 8+ chars, at least one letter and one digit (login-time validation)
 const passwordSchema = z.string()
   .min(8, 'パスワードは8文字以上で入力してください')
   .max(100, 'パスワードは100文字以下で入力してください')
   .regex(/[a-zA-Z]/, 'パスワードにはアルファベットを含めてください')
   .regex(/\d/, 'パスワードには数字を含めてください');
+
+// Strong password: 10+ chars, uppercase, lowercase, digit, symbol (new registrations)
+// 3省2ガイドライン準拠: 英大文字・英小文字・数字・記号をすべて含む10文字以上
+const strongPasswordSchema = z.string()
+  .min(10, 'パスワードは10文字以上で入力してください')
+  .max(100, 'パスワードは100文字以下で入力してください')
+  .regex(/[A-Z]/, 'パスワードには大文字アルファベットを含めてください')
+  .regex(/[a-z]/, 'パスワードには小文字アルファベットを含めてください')
+  .regex(/\d/, 'パスワードには数字を含めてください')
+  .regex(/[!@#$%^&*()\-_=+\[\]{}|;:'",.<>?/`~\\]/, 'パスワードには記号を含めてください');
 
 // Phone / FAX: Japanese phone number patterns
 const phoneSchema = trimmedText
@@ -40,7 +50,7 @@ const postalCodeSchema = trimmedText
 
 const registrationSchema = z.object({
   email: emailSchema,
-  password: passwordSchema,
+  password: strongPasswordSchema,
   name: trimmedText.min(1, '薬局名を入力してください').max(100, '薬局名は100文字以下で入力してください'),
   postalCode: postalCodeSchema,
   address: trimmedText.min(1, '住所を入力してください').max(255, '住所は255文字以下で入力してください'),
@@ -84,7 +94,7 @@ export function validateOnboardingRegistration(body: Record<string, unknown>): V
   return zodToValidationErrors(onboardingRegistrationSchema.safeParse(body));
 }
 
-export { emailSchema, passwordSchema, registrationSchema, loginSchema };
+export { emailSchema, passwordSchema, strongPasswordSchema, registrationSchema, loginSchema };
 
 // Camera scan request schemas
 export const cameraResolveSchema = z.object({

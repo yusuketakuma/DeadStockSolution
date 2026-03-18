@@ -103,7 +103,6 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     sourceLocation: sourceLocation ? `${sourceLocation.file}:${sourceLocation.line}` : null,
     tenant: {
       pharmacyId: typeof authUser?.id === 'number' ? authUser.id : null,
-      pharmacyEmail: typeof authUser?.email === 'string' ? authUser.email : null,
     },
   });
 

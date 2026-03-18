@@ -4,7 +4,7 @@ import { validateRegistration, validateLogin } from '../utils/validators';
 describe('validateRegistration', () => {
   const validData = {
     email: 'test@example.com',
-    password: 'Password1',
+    password: 'Password1!',
     name: 'テスト薬局',
     postalCode: '100-0001',
     address: '東京都千代田区1-1-1',
@@ -69,7 +69,7 @@ describe('validateRegistration', () => {
   });
 
   it('accepts strong password', () => {
-    const errors = validateRegistration({ ...validData, password: 'SecurePass123' });
+    const errors = validateRegistration({ ...validData, password: 'SecurePass123!' });
     expect(errors).toEqual([]);
   });
 
