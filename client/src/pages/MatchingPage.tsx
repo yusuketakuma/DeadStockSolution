@@ -223,6 +223,7 @@ export default function MatchingPage() {
     <RequireUpload>
       <PageShell>
         <h4 className="page-title mb-3">マッチング</h4>
+        <ScrollArea>
         {error && <ErrorRetryAlert error={error} onRetry={() => { setError(''); void handleSearch(); }} />}
         {proposalRetrySuggested && (
           <AppAlert variant="warning" className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -264,7 +265,6 @@ export default function MatchingPage() {
           </AppAlert>
         )}
 
-        <ScrollArea>
         <PullToRefresh onRefresh={async () => { await handleSearch(); }} disabled={!searched}>
         {displayCandidates.map((candidate, idx) => (
             <SwipeableListItem
@@ -399,11 +399,11 @@ export default function MatchingPage() {
             </SwipeableListItem>
         ))}
         </PullToRefresh>
-        </ScrollArea>
 
         {searched && displayCandidates.length > 0 && (
           <SwipeCoachingOverlay featureKey="matching-swipe" />
         )}
+        </ScrollArea>
 
         <ConfirmActionModal
           show={candidateForProposal !== null}

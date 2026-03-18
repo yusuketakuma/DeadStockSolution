@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { and, eq, or, like, desc, inArray, asc, sql } from 'drizzle-orm';
+import { and, eq, desc, inArray, asc, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies, pharmacyBusinessHours, pharmacySpecialHours, pharmacyRelationships } from '../db/schema';
 import { getBusinessHoursStatus } from '../utils/business-hours-utils';
@@ -7,9 +7,9 @@ import { groupBy } from '../utils/array-utils';
 import { requireLogin } from '../middleware/auth';
 import { haversineDistance } from '../utils/geo-utils';
 import { AuthRequest } from '../types';
-import { normalizeSearchTerm, parsePagination, parsePositiveInt, escapeLikeWildcards } from '../utils/request-utils';
+import { normalizeSearchTerm, parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
-import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 import { logger } from '../services/logger';
 
 const router = Router();
@@ -158,12 +158,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     const conditions = [eq(pharmacies.isActive, true)];
     if (search) {
-      const normalized = normalizeKana(search);
-      const hiragana = katakanaToHiragana(normalized);
-      const katakana = hiraganaToKatakana(normalized);
-      const likeTerms = [...new Set([normalized, hiragana, katakana])];
-      const nameConditions = likeTerms.map((term) => like(pharmacies.name, `%${escapeLikeWildcards(term)}%`));
-      conditions.push(nameConditions.length === 1 ? nameConditions[0] : or(...nameConditions)!);
+      const searchCondition = buildTokenizedSearchConditions(search, [pharmacies.name]);
+      if (searchCondition) conditions.push(searchCondition);
     }
     if (prefecture) {
       conditions.push(eq(pharmacies.prefecture, prefecture));

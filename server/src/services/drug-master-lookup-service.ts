@@ -1,4 +1,4 @@
-import { eq, like, or, and, desc, sql, count } from 'drizzle-orm';
+import { eq, or, and, desc, sql, count } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   drugMaster,
@@ -7,7 +7,7 @@ import {
   drugMasterSyncLogs,
 } from '../db/schema';
 import { createCache } from './cache-service';
-import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
+import { buildDrugMasterSearchCondition } from '../utils/search-utils';
 import { normalizePackageInfo } from '../utils/package-utils';
 
 // ── 型定義 ──────────────────────────────────────────
@@ -20,7 +20,7 @@ export interface DrugMasterStats {
   lastSyncAt: string | null;
 }
 
-type DrugMasterTextColumn = typeof drugMaster.drugName | typeof drugMaster.genericName;
+
 type DrugMasterRow = typeof drugMaster.$inferSelect;
 type DrugMasterSearchRow = Pick<DrugMasterRow,
   | 'id'
@@ -162,21 +162,6 @@ export function invalidateDrugMasterLookupCache(): void {
 
 // ── 検索・照会 ──────────────────────────────────────
 
-/** LIKE パターン中の % と _ をエスケープする */
-function escapeLikePattern(term: string): string {
-  return term.replace(/%/g, '\\%').replace(/_/g, '\\_');
-}
-
-function resolveSearchTerms(query: string): string[] {
-  const normalized = normalizeKana(query);
-  const hiragana = katakanaToHiragana(normalized);
-  const katakana = hiraganaToKatakana(normalized);
-  return [...new Set([normalized, hiragana, katakana])];
-}
-
-function buildLikeConditions(column: DrugMasterTextColumn, terms: string[]): Array<ReturnType<typeof like>> {
-  return terms.map((term) => like(column, `%${escapeLikePattern(term)}%`));
-}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -237,16 +222,8 @@ export async function searchDrugMaster(query: string, limit: number = 20): Promi
   if (!query.trim()) return [];
 
   const safeLimit = clampLimit(limit);
-  const likeTerms = resolveSearchTerms(query);
-  const nameConditions = buildLikeConditions(drugMaster.drugName, likeTerms);
-  const genericConditions = buildLikeConditions(drugMaster.genericName, likeTerms);
-
-  // YJコード直接検索も対応
-  const isCodeSearch = /^[A-Z0-9]+$/i.test(query.trim());
-  const codeCondition = isCodeSearch ? like(drugMaster.yjCode, `%${escapeLikePattern(query.trim())}%`) : null;
-
-  const allConditions = [...nameConditions, ...genericConditions];
-  if (codeCondition) allConditions.push(codeCondition);
+  const searchCondition = buildDrugMasterSearchCondition(query, [drugMaster.drugName, drugMaster.genericName], drugMaster.yjCode);
+  if (!searchCondition) return [];
 
   return db.select({
     id: drugMaster.id,
@@ -262,7 +239,7 @@ export async function searchDrugMaster(query: string, limit: number = 20): Promi
     transitionDeadline: drugMaster.transitionDeadline,
   })
     .from(drugMaster)
-    .where(or(...allConditions))
+    .where(searchCondition)
     .limit(safeLimit);
 }
 

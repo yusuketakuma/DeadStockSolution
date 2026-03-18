@@ -1,5 +1,7 @@
 import { Router, Response } from 'express';
-import { desc, inArray, eq } from 'drizzle-orm';
+import { and, desc, inArray, eq } from 'drizzle-orm';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
+import { normalizeSearchTerm } from '../utils/request-utils';
 import { db } from '../config/database';
 import {
   pharmacies,
@@ -67,6 +69,11 @@ router.get('/pharmacies/options', async (_req: AuthRequest, res: Response) => {
 router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
   try {
     const { page, limit, offset } = parseListPagination(req);
+    const search = normalizeSearchTerm(req.query.search);
+
+    const searchCondition = search
+      ? buildTokenizedSearchConditions(search, [pharmacies.name, pharmacies.email])
+      : undefined;
 
     const rows = await db.select({
       id: pharmacies.id,
@@ -81,11 +88,12 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       createdAt: pharmacies.createdAt,
     })
       .from(pharmacies)
+      .where(searchCondition)
       .orderBy(desc(pharmacies.createdAt))
       .limit(limit)
       .offset(offset);
 
-    const [total] = await db.select({ count: rowCount }).from(pharmacies);
+    const [total] = await db.select({ count: rowCount }).from(pharmacies).where(searchCondition);
 
     sendPaginated(res, rows, page, limit, total.count);
   } catch (err) {

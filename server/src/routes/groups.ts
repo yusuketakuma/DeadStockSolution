@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AuthRequest } from '../types';
 import * as groupService from '../services/group-service';
 import { logger } from '../services/logger';
-import { parsePositiveInt } from '../utils/request-utils';
+import { parsePositiveInt, normalizeSearchTerm } from '../utils/request-utils';
 
 const router = Router();
 
@@ -74,7 +74,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const limit = parsePositiveInt(req.query.limit) ?? undefined;
     const offset = parsePositiveInt(req.query.offset) ?? undefined;
-    const result = await groupService.listGroups(req.user!.id, { limit, offset });
+    const search = normalizeSearchTerm(req.query.search);
+    const result = await groupService.listGroups(req.user!.id, { limit, offset, search });
     res.json(result);
   } catch (err) {
     handleRouteError(res, 'List groups error', err);

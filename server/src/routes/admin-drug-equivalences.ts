@@ -67,7 +67,8 @@ router.get('/drug-equivalences', async (req: AuthRequest, res: Response) => {
   try {
     const limit = parsePositiveInt(req.query.limit) ?? undefined;
     const offset = parsePositiveInt(req.query.offset) ?? undefined;
-    const data = await listDrugEquivalences({ limit, offset });
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
+    const data = await listDrugEquivalences({ limit, offset, search });
     res.json({ data });
   } catch (err) {
     logger.error('Admin drug equivalences list error', {

@@ -15,7 +15,8 @@ import PackageUploadCard from './components/PackageUploadCard';
 import AutoSyncStatusCard from './components/AutoSyncStatusCard';
 import SyncLogsTable from './components/SyncLogsTable';
 import DrugMasterStatsCards from './components/DrugMasterStatsCards';
-import DrugMasterSearchFilter from './components/DrugMasterSearchFilter';
+import SearchInput from '../../components/SearchInput';
+import AppSelect from '../../components/ui/AppSelect';
 import DrugMasterTable from './components/DrugMasterTable';
 import DrugMasterDetailModal from './components/DrugMasterDetailModal';
 import DrugMasterEditModal from './components/DrugMasterEditModal';
@@ -292,11 +293,6 @@ export default function AdminDrugMasterPage() {
     }
   }, []);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    incrementalSearch.executeImmediate();
-  };
-
   const handleRemoveToken = (token: string) => {
     const newTokens = incrementalSearch.tokens.filter((t) => t !== token);
     incrementalSearch.setQuery(newTokens.join(' '));
@@ -411,6 +407,14 @@ export default function AdminDrugMasterPage() {
 
   // ── レンダリング ──────────────────────────────────
 
+  const searchInputProps = {
+    placeholder: '品名・成分名・メーカー・YJコードで検索',
+    value: incrementalSearch.query,
+    onChange: incrementalSearch.setQuery,
+    onSearch: () => incrementalSearch.executeImmediate(),
+    suggestUrl: '/search/drug-master-names',
+  } as const;
+
   const resultsStyle = {
     opacity: incrementalSearch.isSearching ? 0.6 : 1,
     transition: 'opacity 0.2s',
@@ -420,6 +424,7 @@ export default function AdminDrugMasterPage() {
     <PageShell>
       <h4 className="page-title mb-3">医薬品マスター管理</h4>
 
+      <ScrollArea>
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
@@ -461,33 +466,67 @@ export default function AdminDrugMasterPage() {
 
       <SyncLogsTable syncLogs={syncLogs} />
 
-      <div className="d-none d-lg-block">
-        <DrugMasterSearchFilter
-          searchInput={incrementalSearch.query}
-          statusFilter={statusFilter}
-          categoryFilter={categoryFilter}
-          total={total}
-          loading={loading}
-          onSearchInputChange={incrementalSearch.setQuery}
-          onSearch={handleSearch}
-          onStatusFilterChange={(v) => { setStatusFilter(v); }}
-          onCategoryFilterChange={(v) => { setCategoryFilter(v); }}
-        />
+      {/* 検索・フィルタ（デスクトップ） */}
+      <div className="d-none d-lg-block mb-3">
+        <Row className="g-2 align-items-end">
+          <Col md={5}>
+            <SearchInput {...searchInputProps} />
+          </Col>
+          <Col md={3}>
+            <AppSelect
+              size="sm"
+              value={statusFilter}
+              ariaLabel="ステータスで絞り込み"
+              onChange={(v) => { setStatusFilter(v); }}
+              options={[
+                { value: '', label: '全ステータス' },
+                { value: 'listed', label: '収載中' },
+                { value: 'transition', label: '経過措置中' },
+                { value: 'delisted', label: '削除済' },
+              ]}
+            />
+          </Col>
+          <Col md={3}>
+            <AppSelect
+              size="sm"
+              value={categoryFilter}
+              ariaLabel="区分で絞り込み"
+              onChange={(v) => { setCategoryFilter(v); }}
+              options={[
+                { value: '', label: '全区分' },
+                { value: '内用薬', label: '内用薬' },
+                { value: '外用薬', label: '外用薬' },
+                { value: '注射薬', label: '注射薬' },
+                { value: '歯科用薬剤', label: '歯科用薬剤' },
+              ]}
+            />
+          </Col>
+          <Col md={1} className="text-end">
+            <span className="small text-muted">{total.toLocaleString()}件</span>
+          </Col>
+        </Row>
       </div>
-      <div className="d-lg-none mb-2 d-flex align-items-center gap-2">
-        <AppButton
-          size="sm"
-          variant="outline-secondary"
-          onClick={() => setFilterSheetOpen(true)}
-        >
-          <i className="bi bi-funnel" />{' '}
-          フィルタ
-          {(statusFilter || categoryFilter) && (
-            <Badge bg="primary" pill className="ms-1">
-              {(statusFilter ? 1 : 0) + (categoryFilter ? 1 : 0)}
-            </Badge>
-          )}
-        </AppButton>
+
+      {/* 検索・フィルタ（モバイル） */}
+      <div className="d-lg-none mb-2">
+        <div className="mb-2">
+          <SearchInput {...searchInputProps} />
+        </div>
+        <div className="d-flex align-items-center gap-2">
+          <AppButton
+            size="sm"
+            variant="outline-secondary"
+            onClick={() => setFilterSheetOpen(true)}
+          >
+            <i className="bi bi-funnel" />{' '}
+            フィルタ
+            {(statusFilter || categoryFilter) && (
+              <Badge bg="primary" pill className="ms-1">
+                {(statusFilter ? 1 : 0) + (categoryFilter ? 1 : 0)}
+              </Badge>
+            )}
+          </AppButton>
+        </div>
       </div>
       <MobileFilterSheet
         isOpen={filterSheetOpen}
@@ -557,7 +596,6 @@ export default function AdminDrugMasterPage() {
         />
       </div>
 
-      <ScrollArea>
       <div style={resultsStyle}>
       <DrugMasterTable
         items={items}

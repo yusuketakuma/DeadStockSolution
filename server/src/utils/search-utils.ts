@@ -102,3 +102,23 @@ export function buildTokenizedSearchConditions(
 
   return and(...tokenConditions) as SQL;
 }
+
+/**
+ * 医薬品マスター用の検索条件を構築する。
+ * 名前カラムのトークン化AND検索 + YJコード前方一致検索を OR で結合。
+ */
+export function buildDrugMasterSearchCondition(
+  query: string,
+  nameColumns: AnyColumn[],
+  yjCodeColumn: AnyColumn,
+): SQL | undefined {
+  const nameCondition = buildTokenizedSearchConditions(query, nameColumns);
+  const trimmed = query.trim();
+  const isCodeSearch = /^[A-Z0-9]+$/i.test(trimmed);
+  const yjCondition = isCodeSearch
+    ? ilike(yjCodeColumn, `%${escapeLikeWildcards(trimmed)}%`)
+    : undefined;
+
+  if (nameCondition && yjCondition) return or(nameCondition, yjCondition) as SQL;
+  return nameCondition ?? yjCondition;
+}

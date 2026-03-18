@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, notInArray, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, notInArray, or, type SQL } from 'drizzle-orm';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 import { db } from '../config/database';
 import { groupMembers, notifications, pharmacyGroups } from '../db/schema';
 import type {
@@ -20,6 +21,7 @@ type GroupMemberRow = typeof groupMembers.$inferSelect;
 interface ListGroupFilters {
   limit?: number;
   offset?: number;
+  search?: string;
 }
 
 interface MemberListResponse {
@@ -324,21 +326,30 @@ export async function deleteGroup(groupId: number, pharmacyId: number): Promise<
 export async function listGroups(pharmacyId: number, filters: ListGroupFilters = {}): Promise<GroupListResponse> {
   const { limit, offset } = normalizePaging(filters.limit, filters.offset);
 
+  const searchCondition = filters.search
+    ? buildTokenizedSearchConditions(filters.search, [pharmacyGroups.name, pharmacyGroups.description])
+    : undefined;
+
   const memberRows = await db.select({ groupId: groupMembers.groupId })
     .from(groupMembers)
     .where(eq(groupMembers.pharmacyId, pharmacyId));
   const memberGroupIds = memberRows.map((row) => row.groupId);
 
+  const ownConditions: SQL[] = [];
+  if (memberGroupIds.length > 0) ownConditions.push(inArray(pharmacyGroups.id, memberGroupIds));
+  if (searchCondition) ownConditions.push(searchCondition);
+
   const ownGroups = memberGroupIds.length > 0
-    ? await db.select().from(pharmacyGroups).where(inArray(pharmacyGroups.id, memberGroupIds))
+    ? await db.select().from(pharmacyGroups).where(and(...ownConditions))
     : [];
 
-  const publicGroups = memberGroupIds.length > 0
-    ? await db.select().from(pharmacyGroups).where(and(
-      eq(pharmacyGroups.visibility, 'public'),
-      notInArray(pharmacyGroups.id, memberGroupIds),
-    ))
-    : await db.select().from(pharmacyGroups).where(eq(pharmacyGroups.visibility, 'public'));
+  const publicConditions: SQL[] = [eq(pharmacyGroups.visibility, 'public')];
+  if (memberGroupIds.length > 0) publicConditions.push(notInArray(pharmacyGroups.id, memberGroupIds));
+  if (searchCondition) publicConditions.push(searchCondition);
+
+  const publicGroups = await db.select().from(pharmacyGroups)
+    .where(and(...publicConditions))
+    .limit(500);
 
   const groups = dedupeAndSortGroups(ownGroups, publicGroups);
 

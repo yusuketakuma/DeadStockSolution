@@ -128,6 +128,7 @@ export default function InventoryBrowsePage() {
     <PageShell>
       <h4 className="page-title mb-3">全薬局の在庫参照</h4>
 
+      <ScrollArea>
       <div className="mb-2 d-flex gap-2 mobile-stack">
         <div className="flex-grow-1">
           <SearchInput
@@ -202,7 +203,6 @@ export default function InventoryBrowsePage() {
         onChange={setSortOption}
       />
 
-      <ScrollArea>
       <div style={resultsStyle}>
       {incrementalSearch.isSearching && items.length === 0 ? (
         <InlineLoader text="在庫データを読み込み中..." className="text-muted small" />
@@ -274,8 +274,8 @@ export default function InventoryBrowsePage() {
         />
       )}
       </div>
-      </ScrollArea>
       <Pagination currentPage={incrementalSearch.page} totalPages={totalPages} onPageChange={incrementalSearch.setPage} />
+      </ScrollArea>
     </PageShell>
   );
 }

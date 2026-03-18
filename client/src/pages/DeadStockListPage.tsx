@@ -206,6 +206,7 @@ export default function DeadStockListPage() {
         <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
       </div>
 
+      <ScrollArea>
       <div className="mb-2">
         <SearchInput
           placeholder="薬品名で検索（スペース区切りで絞り込み）..."
@@ -338,7 +339,6 @@ export default function DeadStockListPage() {
         <ErrorRetryAlert error={actionError} />
       )}
 
-      <ScrollArea>
       <div style={resultsStyle}>
       {incrementalSearch.isSearching && items.length === 0 ? (
         <InlineLoader text="デッドストック一覧を読み込み中..." className="text-muted small" />
@@ -442,8 +442,8 @@ export default function DeadStockListPage() {
         />
       )}
       </div>
-      </ScrollArea>
       <Pagination currentPage={incrementalSearch.page} totalPages={totalPages} onPageChange={incrementalSearch.setPage} />
+      </ScrollArea>
 
       <ConfirmActionModal
         show={pendingDeleteId !== null}

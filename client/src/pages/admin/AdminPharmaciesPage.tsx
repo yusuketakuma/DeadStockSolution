@@ -177,6 +177,7 @@ export default function AdminPharmaciesPage() {
   return (
     <PageShell>
       <h4 className="page-title mb-3">薬局管理</h4>
+      <ScrollArea>
       <Nav variant="tabs" className="mb-3" activeKey={activeTab} onSelect={(k) => setActiveTab((k as 'all' | 'pending') || 'all')}>
         <Nav.Item>
           <Nav.Link eventKey="all">
@@ -220,7 +221,6 @@ export default function AdminPharmaciesPage() {
       {error && (
         <ErrorRetryAlert error={error} onRetry={() => void retry()} />
       )}
-      <ScrollArea>
       {loading ? (
         <InlineLoader text="薬局データを読み込み中..." className="text-muted small" />
       ) : filteredPharmacies.length === 0 ? (
@@ -387,8 +387,8 @@ export default function AdminPharmaciesPage() {
           )}
         />
       )}
-      </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+      </ScrollArea>
     </PageShell>
   );
 }
