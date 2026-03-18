@@ -5,7 +5,7 @@ import AppButton from '../components/ui/AppButton';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import { Badge, FormCheck } from 'react-bootstrap';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
@@ -17,6 +17,7 @@ import AppActionBar from '../components/ui/AppActionBar';
 import AppDataTable from '../components/ui/AppDataTable';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
+import SwipeableListItem from '../components/gesture/SwipeableListItem';
 
 interface Proposal {
   id: number;
@@ -64,6 +65,7 @@ function canRejectProposal(proposal: Proposal): boolean {
 
 export default function ProposalsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [sortMode, setSortMode] = useState<ProposalSortMode>('recent');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkActionLoading, setBulkActionLoading] = useState<'accept' | 'reject' | null>(null);
@@ -287,39 +289,46 @@ export default function ProposalsPage() {
               const selectable = canAcceptProposal(p, user?.id) || canRejectProposal(p);
 
               return (
-                <AppMobileDataCard
-                  key={p.id}
-                  title={`マッチング #${p.id}`}
-                  subtitle={otherName}
-                  badges={(
-                    <div className="d-flex flex-column gap-1 align-items-start">
-                      <Badge bg={phaseInfo.variant}>{phaseInfo.phaseLabel}</Badge>
-                      <span className="small text-muted">あなた: {phaseInfo.yourStatus}</span>
-                      <span className="small text-muted">相手: {phaseInfo.theirStatus}</span>
-                    </div>
-                  )}
-                  fields={[
-                    { label: '優先度', value: (p.priorityScore ?? 0).toFixed(1) },
-                    { label: '優先理由', value: (p.priorityReasons ?? []).join(' / ') || '-' },
-                    { label: 'A側薬価', value: formatYen(p.totalValueA) },
-                    { label: 'B側薬価', value: formatYen(p.totalValueB) },
-                    { label: '差額', value: formatYen(p.valueDifference) },
-                    { label: '開始日', value: formatDateTimeJa(p.proposedAt) },
-                    { label: '期限', value: formatDateTimeJa(p.deadlineAt) },
-                  ]}
-                  actions={(
-                    <div className="d-flex flex-column gap-2">
-                      <FormCheck
-                        checked={selectedIdSet.has(p.id)}
-                        onChange={() => toggleSelection(p.id)}
-                        disabled={!selectable}
-                        label="一括対象に追加"
-                        aria-label={`${otherName}との提案を一括対象に追加`}
-                      />
-                      <Link to={`/proposals/${p.id}`} className="btn btn-sm btn-outline-primary w-100">詳細</Link>
-                    </div>
-                  )}
-                />
+                <SwipeableListItem
+                  key={`swipe-${p.id}`}
+                  onSwipeLeft={() => navigate(`/proposals/${p.id}`)}
+                  leftContent={<div className="swipe-bg-info"><span className="swipe-icon" aria-hidden="true">{'\u2192'}</span> 詳細</div>}
+                  undoDuration={0}
+                >
+                  <AppMobileDataCard
+                    key={p.id}
+                    title={`マッチング #${p.id}`}
+                    subtitle={otherName}
+                    badges={(
+                      <div className="d-flex flex-column gap-1 align-items-start">
+                        <Badge bg={phaseInfo.variant}>{phaseInfo.phaseLabel}</Badge>
+                        <span className="small text-muted">あなた: {phaseInfo.yourStatus}</span>
+                        <span className="small text-muted">相手: {phaseInfo.theirStatus}</span>
+                      </div>
+                    )}
+                    fields={[
+                      { label: '優先度', value: (p.priorityScore ?? 0).toFixed(1) },
+                      { label: '優先理由', value: (p.priorityReasons ?? []).join(' / ') || '-' },
+                      { label: 'A側薬価', value: formatYen(p.totalValueA) },
+                      { label: 'B側薬価', value: formatYen(p.totalValueB) },
+                      { label: '差額', value: formatYen(p.valueDifference) },
+                      { label: '開始日', value: formatDateTimeJa(p.proposedAt) },
+                      { label: '期限', value: formatDateTimeJa(p.deadlineAt) },
+                    ]}
+                    actions={(
+                      <div className="d-flex flex-column gap-2">
+                        <FormCheck
+                          checked={selectedIdSet.has(p.id)}
+                          onChange={() => toggleSelection(p.id)}
+                          disabled={!selectable}
+                          label="一括対象に追加"
+                          aria-label={`${otherName}との提案を一括対象に追加`}
+                        />
+                        <Link to={`/proposals/${p.id}`} className="btn btn-sm btn-outline-primary w-100">詳細</Link>
+                      </div>
+                    )}
+                  />
+                </SwipeableListItem>
               );
             })}
           </div>

@@ -53,3 +53,50 @@
 .ptr-arrow {
   transition: transform var(--dl-duration-fast) var(--dl-ease-standard);
 }
+
+/* ── Swipe action backgrounds ── */
+.swipe-bg-reject {
+  background: #dc2626;
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+}
+
+.swipe-bg-approve {
+  background: #16a34a;
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+}
+
+.swipe-bg-info {
+  background: #2563eb;
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+}
+
+.swipe-bg-reject,
+.swipe-bg-approve,
+.swipe-bg-info {
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.swipe-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}

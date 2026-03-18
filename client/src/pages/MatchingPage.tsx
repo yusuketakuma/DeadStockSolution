@@ -19,6 +19,8 @@ import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import { useSearchParams } from 'react-router-dom';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
+import SwipeableListItem from '../components/gesture/SwipeableListItem';
+import SwipeCoachingOverlay from '../components/gesture/SwipeCoachingOverlay';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -265,6 +267,14 @@ export default function MatchingPage() {
         <ScrollArea>
         <PullToRefresh onRefresh={async () => { await handleSearch(); }} disabled={!searched}>
         {displayCandidates.map((candidate, idx) => (
+            <SwipeableListItem
+              key={`swipe-${candidate.pharmacyId}`}
+              onSwipeLeft={() => setCandidates((prev) => prev.filter((c) => c.pharmacyId !== candidate.pharmacyId))}
+              onSwipeRight={() => setCandidateForProposal(candidate)}
+              leftContent={<div className="swipe-bg-reject"><span className="swipe-icon" aria-hidden="true">{'\u2715'}</span> 拒否</div>}
+              rightContent={<div className="swipe-bg-approve"><span className="swipe-icon" aria-hidden="true">{'\u2713'}</span> 承認</div>}
+              undoDuration={5000}
+            >
             <AppCard key={candidate.pharmacyId} className="mb-3">
             <AppCard.Header className="p-0">
               <AppButton
@@ -386,9 +396,14 @@ export default function MatchingPage() {
               </AppCard.Body>
             )}
           </AppCard>
+            </SwipeableListItem>
         ))}
         </PullToRefresh>
         </ScrollArea>
+
+        {searched && displayCandidates.length > 0 && (
+          <SwipeCoachingOverlay featureKey="matching-swipe" />
+        )}
 
         <ConfirmActionModal
           show={candidateForProposal !== null}
