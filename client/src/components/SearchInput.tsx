@@ -1,19 +1,27 @@
-import { useState, useEffect, useRef, useId } from 'react';
+import { useState, useEffect, useRef, useId, type ReactNode } from 'react';
 import { ListGroup } from 'react-bootstrap';
 import { api } from '../api/client';
 import AppControl from './ui/AppControl';
 
 interface SearchInputProps {
-  placeholder: string;
+  placeholder?: string;
   value: string;
   onChange: (value: string) => void;
   onSearch: (value: string) => void;
   suggestUrl: string;
+  trailingIcon?: ReactNode;
 }
 
 const DEBOUNCE_MS = 300;
 
-export default function SearchInput({ placeholder, value, onChange, onSearch, suggestUrl }: SearchInputProps) {
+export default function SearchInput({
+  placeholder = '薬品名 メーカー名で検索（スペース区切りで絞り込み）',
+  value,
+  onChange,
+  onSearch,
+  suggestUrl,
+  trailingIcon,
+}: SearchInputProps) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -136,6 +144,7 @@ export default function SearchInput({ placeholder, value, onChange, onSearch, su
         aria-controls={isExpanded ? listboxId : undefined}
         aria-activedescendant={isExpanded && selectedIndex >= 0 ? `${listboxId}-${selectedIndex}` : undefined}
       />
+      {trailingIcon}
       {isExpanded && (
         <ListGroup
           id={listboxId}
