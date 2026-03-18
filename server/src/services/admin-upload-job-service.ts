@@ -1,6 +1,7 @@
-import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies, uploadJobs } from '../db/schema';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 import { rowCount } from '../utils/db-utils';
 import {
   buildUploadRowIssueCsv,
@@ -151,17 +152,20 @@ function createWhereConditions(filters: AdminUploadJobListFilters): SQL<unknown>
     conditions.push(eq(uploadJobs.applyMode, filters.applyMode));
   }
   if (filters.keyword) {
-    const keywordLike = `%${filters.keyword}%`;
-    conditions.push(or(
-      ilike(uploadJobs.originalFilename, keywordLike),
-      ilike(uploadJobs.lastError, keywordLike),
-      sql<boolean>`exists (
-        select 1
-        from ${pharmacies}
-        where ${pharmacies.id} = ${uploadJobs.pharmacyId}
-          and ${pharmacies.name} ilike ${keywordLike}
-      )`,
-    )!);
+    const tokenizedCondition = buildTokenizedSearchConditions(filters.keyword, [uploadJobs.originalFilename, uploadJobs.lastError]);
+    const pharmacyNameCondition = buildTokenizedSearchConditions(filters.keyword, [pharmacies.name]);
+    const pharmacyExists = pharmacyNameCondition
+      ? sql<boolean>`exists (
+          select 1
+          from ${pharmacies}
+          where ${pharmacies.id} = ${uploadJobs.pharmacyId}
+            and ${pharmacyNameCondition}
+        )`
+      : undefined;
+    const parts = [tokenizedCondition, pharmacyExists].filter(Boolean);
+    if (parts.length > 0) {
+      conditions.push(parts.length === 1 ? parts[0]! : or(...parts)!);
+    }
   }
   return conditions;
 }

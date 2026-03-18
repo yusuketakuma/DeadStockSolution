@@ -193,7 +193,6 @@ const ICON_MAP: Record<string, ReactNode> = {
 };
 
 // ── Badge polling interval ───────────────────────────────
-// Badge count polling interval (reduced from 60s to 15s for better UX responsiveness)
 const BADGE_POLL_INTERVAL_MS = 15_000;
 
 // ── User badge counts ────────────────────────────────────

@@ -25,12 +25,15 @@ vi.mock('drizzle-orm', () => ({
   or: vi.fn(() => ({})),
   eq: vi.fn(() => ({})),
   like: vi.fn(() => ({})),
+  ilike: vi.fn(() => ({})),
 }));
 
 vi.mock('../utils/kana-utils', () => ({
   katakanaToHiragana: vi.fn((s: string) => s),
   hiraganaToKatakana: vi.fn((s: string) => s),
   normalizeKana: vi.fn((s: string) => s),
+  fullWidthAlphanumToHalfWidth: vi.fn((s: string) => s),
+  halfWidthAlphanumToFullWidth: vi.fn((s: string) => s),
 }));
 
 vi.mock('../utils/request-utils', () => ({

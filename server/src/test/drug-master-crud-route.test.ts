@@ -44,6 +44,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
   and: vi.fn(() => ({})),
   like: vi.fn(() => ({})),
+  ilike: vi.fn(() => ({})),
   or: vi.fn(() => ({})),
   isNotNull: vi.fn(() => ({})),
   sql: vi.fn(() => ({})),

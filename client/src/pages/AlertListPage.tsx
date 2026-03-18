@@ -12,6 +12,8 @@ import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import InlineLoader from '../components/ui/InlineLoader';
 import Pagination from '../components/Pagination';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import PullToRefresh from '../components/gesture/PullToRefresh';
+import SwipeableListItem from '../components/gesture/SwipeableListItem';
 
 // ── 型定義 ──────────────────────────────────────
 type AlertType = 'near_expiry' | 'excess_stock';
@@ -418,6 +420,7 @@ export default function AlertListPage() {
         <Tab.Content>
           <Tab.Pane eventKey={resolvedTab}>
             <ScrollArea>
+              <PullToRefresh onRefresh={async () => { await fetchAlerts(); }}>
               {loading ? (
                 <InlineLoader text="アラートを読み込み中..." className="text-muted small" />
               ) : alerts.length === 0 ? (
@@ -448,11 +451,21 @@ export default function AlertListPage() {
                   )}
                   mobile={() => (
                     <div className="dl-mobile-data-list">
-                      {alerts.map(renderMobileCard)}
+                      {alerts.map((alert) => (
+                        <SwipeableListItem
+                          key={`swipe-${alert.id}`}
+                          onSwipeLeft={!alert.resolvedAt ? () => void handleResolve(alert.id) : undefined}
+                          leftContent={!alert.resolvedAt ? <div className="swipe-bg-info"><span className="swipe-icon" aria-hidden="true">{'\u2713'}</span> 既読</div> : undefined}
+                          undoDuration={0}
+                        >
+                          {renderMobileCard(alert)}
+                        </SwipeableListItem>
+                      ))}
                     </div>
                   )}
                 />
               )}
+              </PullToRefresh>
             </ScrollArea>
           </Tab.Pane>
         </Tab.Content>

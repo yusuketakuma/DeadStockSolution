@@ -101,7 +101,7 @@ describe('DeadStockListPage', () => {
     expect(screen.getByText('単位')).toBeInTheDocument();
     expect(screen.getByText('薬価(単価)')).toBeInTheDocument();
     expect(screen.getByText('薬価(合計)')).toBeInTheDocument();
-    expect(screen.getByText('使用期限')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '使用期限' })).toBeInTheDocument();
     expect(screen.getByText('ロット')).toBeInTheDocument();
   });
 

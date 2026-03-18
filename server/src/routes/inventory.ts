@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, and, or, like, desc, inArray, notExists } from 'drizzle-orm';
+import { eq, and, or, desc, inArray, notExists } from 'drizzle-orm';
 import type { ZodType } from 'zod';
 import { db } from '../config/database';
 import {
@@ -14,9 +14,9 @@ import { getBusinessHoursStatus } from '../utils/business-hours-utils';
 import { groupBy } from '../utils/array-utils';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { normalizeSearchTerm, parsePagination, escapeLikeWildcards, buildPaginatedResponse } from '../utils/request-utils';
+import { normalizeSearchTerm, parsePagination, buildPaginatedResponse } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
-import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 import { logger } from '../services/logger';
 import { writeLog, getClientIp } from '../services/log-service';
 import { getPharmacyRiskDetail, invalidateAdminRiskSnapshotCache } from '../services/expiry-risk-service';
@@ -83,13 +83,7 @@ function buildBrowseSearchCondition(rawSearch: unknown) {
   if (!search) {
     return undefined;
   }
-
-  const normalized = normalizeKana(search);
-  const hiragana = katakanaToHiragana(normalized);
-  const katakana = hiraganaToKatakana(normalized);
-  const likeTerms = [...new Set([normalized, hiragana, katakana])];
-  const likeConditions = likeTerms.map((term) => like(deadStockItems.drugName, `%${escapeLikeWildcards(term)}%`));
-  return likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
+  return buildTokenizedSearchConditions(search, [deadStockItems.drugName]);
 }
 
 type BusinessStatus = ReturnType<typeof getBusinessHoursStatus> & { isConfigured: boolean };
@@ -249,16 +243,26 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
       maxLimit: 200,
     });
 
+    const search = normalizeSearchTerm(req.query.search);
+    const searchCondition = search
+      ? buildTokenizedSearchConditions(search, [deadStockItems.drugName])
+      : undefined;
+
+    const whereExpr = and(
+      eq(deadStockItems.pharmacyId, req.user!.id),
+      searchCondition,
+    );
+
     const items = await db.select()
       .from(deadStockItems)
-      .where(eq(deadStockItems.pharmacyId, req.user!.id))
+      .where(whereExpr)
       .orderBy(desc(deadStockItems.createdAt))
       .limit(limit)
       .offset(offset);
 
     const [total] = await db.select({ count: rowCount })
       .from(deadStockItems)
-      .where(eq(deadStockItems.pharmacyId, req.user!.id));
+      .where(whereExpr);
 
     res.json(buildPaginatedResponse(items, { page, limit, total: total.count }));
   } catch (err) {

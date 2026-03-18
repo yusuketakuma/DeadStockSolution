@@ -1,7 +1,7 @@
 import { db } from '../config/database';
-import { inArray, like, or } from 'drizzle-orm';
+import { inArray, or } from 'drizzle-orm';
 import { drugMaster, drugMasterPackages } from '../db/schema';
-import { escapeLikeWildcards } from '../utils/request-utils';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 import { normalizeString } from '../utils/string-utils';
 import { normalizePackageInfo, scorePackageMatch } from '../utils/package-utils';
 
@@ -508,7 +508,9 @@ export async function searchMasterCandidates(
   const normalized = normalizeString(drugName);
   if (!normalized || normalized.length < 2) return [];
 
-  const escapedSearch = escapeLikeWildcards(normalized);
+  const searchCondition = buildTokenizedSearchConditions(normalized, [drugMaster.drugName, drugMaster.genericName]);
+  if (!searchCondition) return [];
+
   const filtered = await db.select({
     id: drugMaster.id,
     drugName: drugMaster.drugName,
@@ -516,7 +518,8 @@ export async function searchMasterCandidates(
     yakkaPrice: drugMaster.yakkaPrice,
     unit: drugMaster.unit,
   }).from(drugMaster)
-    .where(like(drugMaster.drugName, `%${escapedSearch}%`));
+    .where(searchCondition)
+    .limit(200);
 
   const scored: Array<MasterCandidate & { score: number }> = [];
 

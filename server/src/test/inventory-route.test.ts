@@ -61,6 +61,7 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => ({})),
   or: vi.fn(() => ({})),
   like: vi.fn(() => ({})),
+  ilike: vi.fn(() => ({})),
   desc: vi.fn(() => ({})),
   inArray: vi.fn(() => ({})),
   notExists: vi.fn(() => ({})),

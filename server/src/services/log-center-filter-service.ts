@@ -1,6 +1,6 @@
 import { events, systemEvents, drugMasterSyncLogs } from '../db/schema';
-import { and, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
-import { escapeLikeWildcards } from '../utils/request-utils';
+import { and, eq, gte, lte, or, sql } from 'drizzle-orm';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 
 export const LOG_SOURCES = ['activity_logs', 'system_events', 'drug_master_sync_logs'] as const;
 export type LogSource = (typeof LOG_SOURCES)[number];
@@ -598,10 +598,8 @@ export function buildSourceConditions(
     conditions.push(lte(config.timestampCol, query.to));
   }
   if (query.search) {
-    const escaped = escapeLikeWildcards(query.search);
-    conditions.push(
-      or(...config.searchCols.map((col) => ilike(col, `%${escaped}%`))),
-    );
+    const searchCondition = buildTokenizedSearchConditions(query.search, [...config.searchCols]);
+    if (searchCondition) conditions.push(searchCondition);
   }
   if (query.level) {
     const levelCondition = buildLevelCondition(source, query.level, config.levelCol);

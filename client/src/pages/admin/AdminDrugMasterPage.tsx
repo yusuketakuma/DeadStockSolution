@@ -1,15 +1,22 @@
-import { useState, useEffect, useRef, FormEvent, useCallback, type MutableRefObject } from 'react';
+import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import { useToast } from '../../contexts/ToastContext';
-import { Col, Row } from 'react-bootstrap';
+import { Badge, Col, Form, Row } from 'react-bootstrap';
+import { useSearchParams } from 'react-router-dom';
+import AppButton from '../../components/ui/AppButton';
+import MobileFilterSheet from '../../components/mobile/MobileFilterSheet';
 import { api, apiUpload } from '../../api/client';
 import Pagination from '../../components/Pagination';
+import SearchChips from '../../components/search/SearchChips';
+import SearchResultStatus from '../../components/search/SearchResultStatus';
+import { useIncrementalSearch } from '../../hooks/useIncrementalSearch';
 import DrugMasterSyncCard from './components/DrugMasterSyncCard';
 import PackageUploadCard from './components/PackageUploadCard';
 import AutoSyncStatusCard from './components/AutoSyncStatusCard';
 import SyncLogsTable from './components/SyncLogsTable';
 import DrugMasterStatsCards from './components/DrugMasterStatsCards';
-import DrugMasterSearchFilter from './components/DrugMasterSearchFilter';
+import SearchInput from '../../components/SearchInput';
+import AppSelect from '../../components/ui/AppSelect';
 import DrugMasterTable from './components/DrugMasterTable';
 import DrugMasterDetailModal from './components/DrugMasterDetailModal';
 import DrugMasterEditModal from './components/DrugMasterEditModal';
@@ -75,7 +82,7 @@ function buildDrugMasterListParams(input: {
 }
 
 function scheduleRefresh(
-  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  timerRef: RefObject<ReturnType<typeof setTimeout> | null>,
   callback: () => void,
 ): void {
   if (timerRef.current !== null) {
@@ -95,16 +102,10 @@ function fetchDrugMasterDetailByYjCode(yjCode: string): Promise<DrugMasterDetail
 
 export default function AdminDrugMasterPage() {
   const { showError } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [items, setItems] = useState<DrugMasterItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [loading, setLoading] = useState(false);
 
   // 同期関連
   const [syncing, setSyncing] = useState(false);
@@ -139,6 +140,67 @@ export default function AdminDrugMasterPage() {
 
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+
+  // ── インクリメンタルサーチ ────────────────────────────
+  const initialQuery = searchParams.get('search') || '';
+
+  // statusFilter/categoryFilter を ref で保持（fetchFn 再生成を避ける）
+  const statusFilterRef = useRef(statusFilter);
+  statusFilterRef.current = statusFilter;
+  const categoryFilterRef = useRef(categoryFilter);
+  categoryFilterRef.current = categoryFilter;
+
+  const [totalPages, setTotalPages] = useState(1);
+
+  const fetchDrugMasterItems = useCallback(
+    async (query: string, page: number, signal: AbortSignal) => {
+      const params = buildDrugMasterListParams({
+        page,
+        search: query,
+        statusFilter: statusFilterRef.current,
+        categoryFilter: categoryFilterRef.current,
+      });
+      const data = await api.get<ListResponse>(`/admin/drug-master?${params}`, { signal });
+      setTotalPages(data.pagination.totalPages);
+      return { data: data.data, total: data.pagination.total };
+    },
+    [],
+  );
+
+  const incrementalSearch = useIncrementalSearch<DrugMasterItem>({
+    fetchFn: fetchDrugMasterItems,
+    minChars: 0,
+    initialQuery,
+  });
+
+  // URL同期
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (incrementalSearch.query) {
+      params.set('search', incrementalSearch.query);
+    } else {
+      params.delete('search');
+    }
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incrementalSearch.query]);
+
+  // 初回フェッチ
+  useEffect(() => {
+    incrementalSearch.executeImmediate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // フィルタ変更時は即座に再フェッチ
+  useEffect(() => {
+    incrementalSearch.executeImmediate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, categoryFilter]);
+
+  const items = incrementalSearch.results;
+  const total = incrementalSearch.total;
+  const loading = incrementalSearch.isSearching;
 
   // ── データ取得 ──────────────────────────────────
 
@@ -148,26 +210,6 @@ export default function AdminDrugMasterPage() {
       setStats(data);
     } catch (_err) { showError('医薬品統計の取得に失敗しました'); }
   }, [showError]);
-
-  const fetchItems = useCallback(async (p: number) => {
-    setLoading(true);
-    try {
-      const params = buildDrugMasterListParams({
-        page: p,
-        search,
-        statusFilter,
-        categoryFilter,
-      });
-      const data = await api.get<ListResponse>(`/admin/drug-master?${params}`);
-      setItems(data.data);
-      setTotalPages(data.pagination.totalPages);
-      setTotal(data.pagination.total);
-    } catch (err) {
-      setError(resolveErrorMessage(err, 'データの取得に失敗しました'));
-    } finally {
-      setLoading(false);
-    }
-  }, [search, statusFilter, categoryFilter]);
 
   const fetchSyncLogs = useCallback(async () => {
     try {
@@ -251,14 +293,9 @@ export default function AdminDrugMasterPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchItems(page);
-  }, [page, fetchItems]);
-
-  const handleSearch = (e: FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-    setSearch(searchInput);
+  const handleRemoveToken = (token: string) => {
+    const newTokens = incrementalSearch.tokens.filter((t) => t !== token);
+    incrementalSearch.setQuery(newTokens.join(' '));
   };
 
   // ── 同期処理 ────────────────────────────────────
@@ -287,7 +324,7 @@ export default function AdminDrugMasterPage() {
       setSyncResult(`同期完了: 処理 ${r.itemsProcessed}件 / 追加 ${r.itemsAdded}件 / 更新 ${r.itemsUpdated}件 / 削除 ${r.itemsDeleted}件`);
       if (syncFileRef.current) syncFileRef.current.value = '';
       void fetchStats();
-      void fetchItems(page);
+      incrementalSearch.executeImmediate();
       void fetchSyncLogs();
     } catch (err) {
       setSyncError(resolveErrorMessage(err, '同期に失敗しました'));
@@ -359,7 +396,7 @@ export default function AdminDrugMasterPage() {
       });
       setMessage('医薬品情報を更新しました');
       setShowEdit(false);
-      void fetchItems(page);
+      incrementalSearch.executeImmediate();
       void fetchStats();
     } catch (err) {
       setError(resolveErrorMessage(err, '更新に失敗しました'));
@@ -370,10 +407,24 @@ export default function AdminDrugMasterPage() {
 
   // ── レンダリング ──────────────────────────────────
 
+  const searchInputProps = {
+    placeholder: '品名・成分名・メーカー・YJコードで検索',
+    value: incrementalSearch.query,
+    onChange: incrementalSearch.setQuery,
+    onSearch: () => incrementalSearch.executeImmediate(),
+    suggestUrl: '/search/drug-master-names',
+  } as const;
+
+  const resultsStyle = {
+    opacity: incrementalSearch.isSearching ? 0.6 : 1,
+    transition: 'opacity 0.2s',
+  };
+
   return (
     <PageShell>
       <h4 className="page-title mb-3">医薬品マスター管理</h4>
 
+      <ScrollArea>
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
@@ -415,19 +466,137 @@ export default function AdminDrugMasterPage() {
 
       <SyncLogsTable syncLogs={syncLogs} />
 
-      <DrugMasterSearchFilter
-        searchInput={searchInput}
-        statusFilter={statusFilter}
-        categoryFilter={categoryFilter}
-        total={total}
-        loading={loading}
-        onSearchInputChange={setSearchInput}
-        onSearch={handleSearch}
-        onStatusFilterChange={(v) => { setStatusFilter(v); setPage(1); }}
-        onCategoryFilterChange={(v) => { setCategoryFilter(v); setPage(1); }}
-      />
+      {/* 検索・フィルタ（デスクトップ） */}
+      <div className="d-none d-lg-block mb-3">
+        <Row className="g-2 align-items-end">
+          <Col md={5}>
+            <SearchInput {...searchInputProps} />
+          </Col>
+          <Col md={3}>
+            <AppSelect
+              size="sm"
+              value={statusFilter}
+              ariaLabel="ステータスで絞り込み"
+              onChange={(v) => { setStatusFilter(v); }}
+              options={[
+                { value: '', label: '全ステータス' },
+                { value: 'listed', label: '収載中' },
+                { value: 'transition', label: '経過措置中' },
+                { value: 'delisted', label: '削除済' },
+              ]}
+            />
+          </Col>
+          <Col md={3}>
+            <AppSelect
+              size="sm"
+              value={categoryFilter}
+              ariaLabel="区分で絞り込み"
+              onChange={(v) => { setCategoryFilter(v); }}
+              options={[
+                { value: '', label: '全区分' },
+                { value: '内用薬', label: '内用薬' },
+                { value: '外用薬', label: '外用薬' },
+                { value: '注射薬', label: '注射薬' },
+                { value: '歯科用薬剤', label: '歯科用薬剤' },
+              ]}
+            />
+          </Col>
+          <Col md={1} className="text-end">
+            <span className="small text-muted">{total.toLocaleString()}件</span>
+          </Col>
+        </Row>
+      </div>
 
-      <ScrollArea>
+      {/* 検索・フィルタ（モバイル） */}
+      <div className="d-lg-none mb-2">
+        <div className="mb-2">
+          <SearchInput {...searchInputProps} />
+        </div>
+        <div className="d-flex align-items-center gap-2">
+          <AppButton
+            size="sm"
+            variant="outline-secondary"
+            onClick={() => setFilterSheetOpen(true)}
+          >
+            <i className="bi bi-funnel" />{' '}
+            フィルタ
+            {(statusFilter || categoryFilter) && (
+              <Badge bg="primary" pill className="ms-1">
+                {(statusFilter ? 1 : 0) + (categoryFilter ? 1 : 0)}
+              </Badge>
+            )}
+          </AppButton>
+        </div>
+      </div>
+      <MobileFilterSheet
+        isOpen={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        title="絞り込み"
+        activeFilterCount={(statusFilter ? 1 : 0) + (categoryFilter ? 1 : 0)}
+        onReset={() => {
+          setStatusFilter('');
+          setCategoryFilter('');
+        }}
+        onApply={() => {/* filters already applied via state */}}
+      >
+        <Form.Group className="mb-3">
+          <Form.Label className="fw-semibold small">ステータス</Form.Label>
+          {[
+            { value: '', label: '全ステータス' },
+            { value: 'listed', label: '収載中' },
+            { value: 'transition', label: '経過措置中' },
+            { value: 'delisted', label: '削除済' },
+          ].map((opt) => (
+            <Form.Check
+              key={opt.value}
+              type="radio"
+              id={`status-filter-${opt.value || 'all'}`}
+              name="statusFilter"
+              label={opt.label}
+              checked={statusFilter === opt.value}
+              onChange={() => setStatusFilter(opt.value)}
+            />
+          ))}
+        </Form.Group>
+        <Form.Group>
+          <Form.Label className="fw-semibold small">区分</Form.Label>
+          {[
+            { value: '', label: '全区分' },
+            { value: '内用薬', label: '内用薬' },
+            { value: '外用薬', label: '外用薬' },
+            { value: '注射薬', label: '注射薬' },
+            { value: '歯科用薬剤', label: '歯科用薬剤' },
+          ].map((opt) => (
+            <Form.Check
+              key={opt.value}
+              type="radio"
+              id={`category-filter-${opt.value || 'all'}`}
+              name="categoryFilter"
+              label={opt.label}
+              checked={categoryFilter === opt.value}
+              onChange={() => setCategoryFilter(opt.value)}
+            />
+          ))}
+        </Form.Group>
+      </MobileFilterSheet>
+
+      <div className="mb-2">
+        <SearchChips
+          tokens={incrementalSearch.tokens}
+          onRemove={handleRemoveToken}
+          maxTokenWarning={incrementalSearch.tokens.length > 5}
+        />
+      </div>
+
+      <div className="mb-2">
+        <SearchResultStatus
+          totalCount={total}
+          isSearching={incrementalSearch.isSearching}
+          searchQuery={incrementalSearch.query}
+        />
+      </div>
+
+      <div style={resultsStyle}>
       <DrugMasterTable
         items={items}
         loading={loading}
@@ -435,7 +604,8 @@ export default function AdminDrugMasterPage() {
         onOpenDetail={openDetail}
         onOpenEdit={openEdit}
       />
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination currentPage={incrementalSearch.page} totalPages={totalPages} onPageChange={incrementalSearch.setPage} />
+      </div>
       </ScrollArea>
 
       <DrugMasterDetailModal

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { katakanaToHiragana, hiraganaToKatakana, halfWidthToFullWidth, normalizeKana } from '../utils/kana-utils';
+import { katakanaToHiragana, hiraganaToKatakana, halfWidthToFullWidth, normalizeKana, fullWidthAlphanumToHalfWidth, halfWidthAlphanumToFullWidth } from '../utils/kana-utils';
 
 describe('katakanaToHiragana', () => {
   it('converts katakana to hiragana', () => {
@@ -108,5 +108,69 @@ describe('normalizeKana', () => {
 
   it('passes through hiragana unchanged', () => {
     expect(normalizeKana('あせとあみのふぇん')).toBe('あせとあみのふぇん');
+  });
+
+  it('normalizes full-width alphanumeric to half-width', () => {
+    expect(normalizeKana('１０ｍｇ')).toBe('10mg');
+  });
+
+  it('normalizes mixed full-width alphanumeric and half-width katakana', () => {
+    expect(normalizeKana('ｱｾﾄｱﾐﾉ錠１０ｍｇ')).toBe('アセトアミノ錠10mg');
+  });
+});
+
+describe('fullWidthAlphanumToHalfWidth', () => {
+  it('converts full-width digits to half-width', () => {
+    expect(fullWidthAlphanumToHalfWidth('１０')).toBe('10');
+  });
+
+  it('converts full-width lowercase letters to half-width', () => {
+    expect(fullWidthAlphanumToHalfWidth('ｍｇ')).toBe('mg');
+  });
+
+  it('converts full-width uppercase letters to half-width', () => {
+    expect(fullWidthAlphanumToHalfWidth('Ａ１')).toBe('A1');
+  });
+
+  it('converts mixed full-width alphanumeric string', () => {
+    expect(fullWidthAlphanumToHalfWidth('１０ｍｇ')).toBe('10mg');
+  });
+
+  it('leaves half-width characters unchanged', () => {
+    expect(fullWidthAlphanumToHalfWidth('10mg')).toBe('10mg');
+  });
+
+  it('leaves katakana unchanged', () => {
+    expect(fullWidthAlphanumToHalfWidth('アセトアミノフェン')).toBe('アセトアミノフェン');
+  });
+
+  it('leaves kanji unchanged', () => {
+    expect(fullWidthAlphanumToHalfWidth('錠剤')).toBe('錠剤');
+  });
+
+  it('handles empty string', () => {
+    expect(fullWidthAlphanumToHalfWidth('')).toBe('');
+  });
+
+  it('handles mixed content', () => {
+    expect(fullWidthAlphanumToHalfWidth('アスピリン錠１００ｍｇ')).toBe('アスピリン錠100mg');
+  });
+});
+
+describe('halfWidthAlphanumToFullWidth', () => {
+  it('converts half-width digits to full-width', () => {
+    expect(halfWidthAlphanumToFullWidth('10')).toBe('１０');
+  });
+
+  it('converts half-width lowercase letters to full-width', () => {
+    expect(halfWidthAlphanumToFullWidth('mg')).toBe('ｍｇ');
+  });
+
+  it('converts half-width string to full-width', () => {
+    expect(halfWidthAlphanumToFullWidth('10mg')).toBe('１０ｍｇ');
+  });
+
+  it('handles empty string', () => {
+    expect(halfWidthAlphanumToFullWidth('')).toBe('');
   });
 });

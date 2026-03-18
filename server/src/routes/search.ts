@@ -1,11 +1,10 @@
 import { Router, Response } from 'express';
-import { eq, or, like, and } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, pharmacies, drugMaster } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
-import { escapeLikeWildcards } from '../utils/request-utils';
+import { buildTokenizedSearchConditions, buildDrugMasterSearchCondition } from '../utils/search-utils';
 import { logger } from '../services/logger';
 
 const router = Router();
@@ -22,17 +21,6 @@ function sanitizeQuery(value: unknown): string | undefined {
   return sanitized.slice(0, 100);
 }
 
-function buildKanaLikeTerms(rawQuery: string): string[] {
-  const normalized = normalizeKana(rawQuery);
-  const hiragana = katakanaToHiragana(normalized);
-  const katakana = hiraganaToKatakana(normalized);
-  return [...new Set([normalized, hiragana, katakana])];
-}
-
-function buildEscapedLikeConditions<T>(terms: string[], resolver: (escapedTerm: string) => T): T[] {
-  return terms.map((term) => resolver(escapeLikeWildcards(term)));
-}
-
 // Drug name suggestions for incremental search
 router.get('/drugs', async (req: AuthRequest, res: Response) => {
   try {
@@ -42,10 +30,7 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const conditions = buildEscapedLikeConditions(
-      buildKanaLikeTerms(rawQuery),
-      (term) => like(deadStockItems.drugName, `%${term}%`),
-    );
+    const searchCondition = buildTokenizedSearchConditions(rawQuery, [deadStockItems.drugName]);
 
     const results = await db.selectDistinct({
       drugName: deadStockItems.drugName,
@@ -53,7 +38,7 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
       .from(deadStockItems)
       .where(and(
         eq(deadStockItems.isAvailable, true),
-        conditions.length === 1 ? conditions[0] : or(...conditions),
+        searchCondition,
       ))
       .limit(MAX_SUGGESTIONS);
 
@@ -73,17 +58,11 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const nameConditions = buildEscapedLikeConditions(
-      buildKanaLikeTerms(rawQuery),
-      (term) => like(drugMaster.drugName, `%${term}%`),
+    const searchCondition = buildDrugMasterSearchCondition(
+      rawQuery,
+      [drugMaster.drugName, drugMaster.genericName, drugMaster.manufacturer],
+      drugMaster.yjCode,
     );
-
-    // YJコード検索にも対応
-    const isCodeSearch = /^[A-Z0-9]+$/i.test(rawQuery.trim());
-    const allConditions = [...nameConditions];
-    if (isCodeSearch) {
-      allConditions.push(like(drugMaster.yjCode, `%${escapeLikeWildcards(rawQuery.trim())}%`));
-    }
 
     const results = await db.select({
       yjCode: drugMaster.yjCode,
@@ -95,13 +74,45 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
       .from(drugMaster)
       .where(and(
         eq(drugMaster.isListed, true),
-        or(...allConditions),
+        searchCondition,
       ))
       .limit(MAX_SUGGESTIONS);
 
     res.json(results);
   } catch (err) {
     logger.error('Drug master search error', { error: (err as Error).message });
+    res.status(500).json({ error: '検索に失敗しました' });
+  }
+});
+
+// Drug master name suggestions for SearchInput (returns string[])
+router.get('/drug-master-names', async (req: AuthRequest, res: Response) => {
+  try {
+    const rawQuery = sanitizeQuery(req.query.q);
+    if (!rawQuery) {
+      res.json([]);
+      return;
+    }
+
+    const searchCondition = buildDrugMasterSearchCondition(
+      rawQuery,
+      [drugMaster.drugName, drugMaster.genericName, drugMaster.manufacturer],
+      drugMaster.yjCode,
+    );
+
+    const results = await db.selectDistinct({
+      drugName: drugMaster.drugName,
+    })
+      .from(drugMaster)
+      .where(and(
+        eq(drugMaster.isListed, true),
+        searchCondition,
+      ))
+      .limit(MAX_SUGGESTIONS);
+
+    res.json(results.map((r) => r.drugName));
+  } catch (err) {
+    logger.error('Drug master name suggest error', { error: (err as Error).message });
     res.status(500).json({ error: '検索に失敗しました' });
   }
 });
@@ -115,10 +126,7 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const conditions = buildEscapedLikeConditions(
-      buildKanaLikeTerms(rawQuery),
-      (term) => like(pharmacies.name, `%${term}%`),
-    );
+    const searchCondition = buildTokenizedSearchConditions(rawQuery, [pharmacies.name]);
 
     const results = await db.selectDistinct({
       name: pharmacies.name,
@@ -126,7 +134,7 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       .from(pharmacies)
       .where(and(
         eq(pharmacies.isActive, true),
-        conditions.length === 1 ? conditions[0] : or(...conditions),
+        searchCondition,
       ))
       .limit(MAX_SUGGESTIONS);
 

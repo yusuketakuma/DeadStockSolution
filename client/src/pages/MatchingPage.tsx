@@ -18,6 +18,9 @@ import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import { useSearchParams } from 'react-router-dom';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import PullToRefresh from '../components/gesture/PullToRefresh';
+import SwipeableListItem from '../components/gesture/SwipeableListItem';
+import SwipeCoachingOverlay from '../components/gesture/SwipeCoachingOverlay';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -220,6 +223,7 @@ export default function MatchingPage() {
     <RequireUpload>
       <PageShell>
         <h4 className="page-title mb-3">マッチング</h4>
+        <ScrollArea>
         {error && <ErrorRetryAlert error={error} onRetry={() => { setError(''); void handleSearch(); }} />}
         {proposalRetrySuggested && (
           <AppAlert variant="warning" className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -261,8 +265,16 @@ export default function MatchingPage() {
           </AppAlert>
         )}
 
-        <ScrollArea>
+        <PullToRefresh onRefresh={async () => { await handleSearch(); }} disabled={!searched}>
         {displayCandidates.map((candidate, idx) => (
+            <SwipeableListItem
+              key={`swipe-${candidate.pharmacyId}`}
+              onSwipeLeft={() => setCandidates((prev) => prev.filter((c) => c.pharmacyId !== candidate.pharmacyId))}
+              onSwipeRight={() => setCandidateForProposal(candidate)}
+              leftContent={<div className="swipe-bg-reject"><span className="swipe-icon" aria-hidden="true">{'\u2715'}</span> 拒否</div>}
+              rightContent={<div className="swipe-bg-approve"><span className="swipe-icon" aria-hidden="true">{'\u2713'}</span> 承認</div>}
+              undoDuration={5000}
+            >
             <AppCard key={candidate.pharmacyId} className="mb-3">
             <AppCard.Header className="p-0">
               <AppButton
@@ -384,7 +396,13 @@ export default function MatchingPage() {
               </AppCard.Body>
             )}
           </AppCard>
+            </SwipeableListItem>
         ))}
+        </PullToRefresh>
+
+        {searched && displayCandidates.length > 0 && (
+          <SwipeCoachingOverlay featureKey="matching-swipe" />
+        )}
         </ScrollArea>
 
         <ConfirmActionModal

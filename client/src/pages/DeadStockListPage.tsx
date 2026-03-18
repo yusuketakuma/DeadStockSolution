@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
-import { Badge, ButtonGroup } from 'react-bootstrap';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Badge, ButtonGroup, Form } from 'react-bootstrap';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
@@ -11,10 +11,18 @@ import AppEmptyState from '../components/ui/AppEmptyState';
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-import { useApiQuery } from '../hooks/useApiQuery';
+import SearchInput from '../components/SearchInput';
+import SearchChips from '../components/search/SearchChips';
+import SearchResultStatus from '../components/search/SearchResultStatus';
+import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 import { useToast } from '../contexts/ToastContext';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import PullToRefresh from '../components/gesture/PullToRefresh';
+import MobileFilterSheet from '../components/mobile/MobileFilterSheet';
+import MobileSortSheet from '../components/mobile/MobileSortSheet';
+import type { SortOption } from '../components/mobile/MobileSortSheet';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
+import BarcodeScanButton from '../components/mobile/BarcodeScanButton';
 
 interface DeadStockItem {
   id: number;
@@ -52,6 +60,15 @@ const EXPIRY_FILTER_BUCKETS: Record<Exclude<ExpiryFilter, 'all'>, RiskBucket[]> 
   within90: ['expired', 'within30', 'within60', 'within90'],
 };
 
+type DeadStockSortKey = 'drugName' | 'expiryAsc' | 'quantityAsc' | 'createdDesc';
+
+const DEAD_STOCK_SORT_OPTIONS: SortOption<DeadStockSortKey>[] = [
+  { value: 'drugName', label: '薬品名順' },
+  { value: 'expiryAsc', label: '期限日が近い順' },
+  { value: 'quantityAsc', label: '数量が少ない順' },
+  { value: 'createdDesc', label: '登録日が新しい順' },
+];
+
 interface EnrichedItem extends DeadStockItem {
   daysRemaining: number | null;
   bucket: RiskBucket;
@@ -60,27 +77,56 @@ interface EnrichedItem extends DeadStockItem {
 export default function DeadStockListPage() {
   const { showSuccess } = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState('');
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
   const [sortByExpiry, setSortByExpiry] = useState(false);
-  const [page, setPage] = useState(1);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [sortOption, setSortOption] = useState<DeadStockSortKey>('drugName');
+  const [totalPages, setTotalPages] = useState(1);
 
-  const {
-    data,
-    isLoading: loading,
-    error,
-    refetch,
-  } = useApiQuery(
-    ['dead-stock-list', page],
-    ({ signal }) => api.get<ListResponse>(`/inventory/dead-stock?page=${page}`, { signal }),
+  const initialQuery = searchParams.get('search') || '';
+
+  const fetchDeadStock = useCallback(
+    async (query: string, page: number, signal: AbortSignal) => {
+      const params = new URLSearchParams({ page: String(page) });
+      if (query) params.set('search', query);
+      const res = await api.get<ListResponse>(`/inventory/dead-stock?${params}`, { signal });
+      setTotalPages(res.pagination.totalPages);
+      return { data: res.data, total: res.pagination.total };
+    },
+    [],
   );
 
-  const items = useMemo(() => data?.data ?? [], [data?.data]);
-  const totalPages = data?.pagination.totalPages ?? 1;
-  const total = data?.pagination.total ?? 0;
-  const queryError = error instanceof Error ? error.message : '';
+  const incrementalSearch = useIncrementalSearch<DeadStockItem>({
+    fetchFn: fetchDeadStock,
+    minChars: 0,
+    initialQuery,
+  });
+
+  // URL同期
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (incrementalSearch.query) {
+      params.set('search', incrementalSearch.query);
+    } else {
+      params.delete('search');
+    }
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incrementalSearch.query]);
+
+  // 初回フェッチ（minChars=0 なので空クエリでもフェッチする）
+  useEffect(() => {
+    incrementalSearch.executeImmediate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const items = incrementalSearch.results;
+  const total = incrementalSearch.total;
 
   const handleDeleteConfirmed = async () => {
     if (pendingDeleteId === null) return;
@@ -89,7 +135,7 @@ export default function DeadStockListPage() {
     try {
       await api.delete(`/inventory/dead-stock/${pendingDeleteId}`);
       showSuccess('削除しました');
-      await refetch();
+      incrementalSearch.executeImmediate();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '削除に失敗しました');
     } finally {
@@ -110,20 +156,48 @@ export default function DeadStockListPage() {
       const matchBuckets = EXPIRY_FILTER_BUCKETS[expiryFilter];
       filtered = filtered.filter((item) => matchBuckets.includes(item.bucket));
     }
-    if (sortByExpiry) {
+    if (sortByExpiry || sortOption !== 'drugName') {
       filtered = [...filtered].sort((a, b) => {
-        if (a.daysRemaining === null && b.daysRemaining === null) return 0;
-        if (a.daysRemaining === null) return 1;
-        if (b.daysRemaining === null) return -1;
-        return a.daysRemaining - b.daysRemaining;
+        // Legacy sortByExpiry toggle takes priority when active
+        if (sortByExpiry && sortOption === 'drugName') {
+          if (a.daysRemaining === null && b.daysRemaining === null) return 0;
+          if (a.daysRemaining === null) return 1;
+          if (b.daysRemaining === null) return -1;
+          return a.daysRemaining - b.daysRemaining;
+        }
+        switch (sortOption) {
+          case 'expiryAsc': {
+            if (a.daysRemaining === null && b.daysRemaining === null) return 0;
+            if (a.daysRemaining === null) return 1;
+            if (b.daysRemaining === null) return -1;
+            return a.daysRemaining - b.daysRemaining;
+          }
+          case 'quantityAsc':
+            return a.quantity - b.quantity;
+          case 'createdDesc':
+            return b.id - a.id;
+          case 'drugName':
+          default:
+            return a.drugName.localeCompare(b.drugName, 'ja');
+        }
       });
     }
     return filtered;
-  }, [enrichedItems, expiryFilter, sortByExpiry]);
+  }, [enrichedItems, expiryFilter, sortByExpiry, sortOption]);
+
+  const handleRemoveToken = (token: string) => {
+    const newTokens = incrementalSearch.tokens.filter((t) => t !== token);
+    incrementalSearch.setQuery(newTokens.join(' '));
+  };
 
   const pendingItem = pendingDeleteId === null
     ? null
     : items.find((item) => item.id === pendingDeleteId) ?? null;
+
+  const resultsStyle = {
+    opacity: incrementalSearch.isSearching ? 0.6 : 1,
+    transition: 'opacity 0.2s',
+  };
 
   return (
     <PageShell>
@@ -132,42 +206,148 @@ export default function DeadStockListPage() {
         <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
       </div>
 
-      {items.length > 0 && (
-        <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
-          <ButtonGroup size="sm">
-            {(Object.keys(EXPIRY_FILTER_LABELS) as ExpiryFilter[]).map((key) => (
-              <AppButton
-                key={key}
-                variant={expiryFilter === key ? 'primary' : 'outline-primary'}
-                onClick={() => setExpiryFilter(key)}
-              >
-                {EXPIRY_FILTER_LABELS[key]}
-              </AppButton>
-            ))}
-          </ButtonGroup>
-          <AppButton
-            size="sm"
-            variant={sortByExpiry ? 'secondary' : 'outline-secondary'}
-            onClick={() => setSortByExpiry((v) => !v)}
-          >
-            期限順
-          </AppButton>
-        </div>
-      )}
-
-      {(queryError || actionError) && (
-        <ErrorRetryAlert error={queryError || actionError || ''} onRetry={queryError ? () => void refetch() : undefined} />
-      )}
-
       <ScrollArea>
-      {loading ? (
+      <div className="mb-2">
+        <SearchInput
+          placeholder="薬品名で検索（スペース区切りで絞り込み）..."
+          value={incrementalSearch.query}
+          onChange={incrementalSearch.setQuery}
+          onSearch={() => incrementalSearch.executeImmediate()}
+          suggestUrl="/search/drugs"
+          trailingIcon={
+            <BarcodeScanButton
+              onScanResult={(drugName) => {
+                incrementalSearch.setQuery(drugName);
+                incrementalSearch.executeImmediate();
+              }}
+            />
+          }
+        />
+        <div className="mt-1">
+          <SearchChips
+            tokens={incrementalSearch.tokens}
+            onRemove={handleRemoveToken}
+            maxTokenWarning={incrementalSearch.tokens.length > 5}
+          />
+        </div>
+      </div>
+
+      <div className="mb-2">
+        <SearchResultStatus
+          totalCount={total}
+          isSearching={incrementalSearch.isSearching}
+          searchQuery={incrementalSearch.query}
+        />
+      </div>
+
+      {items.length > 0 && (
+        <AppResponsiveSwitch
+          desktop={() => (
+            <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
+              <ButtonGroup size="sm">
+                {(Object.keys(EXPIRY_FILTER_LABELS) as ExpiryFilter[]).map((key) => (
+                  <AppButton
+                    key={key}
+                    variant={expiryFilter === key ? 'primary' : 'outline-primary'}
+                    onClick={() => setExpiryFilter(key)}
+                  >
+                    {EXPIRY_FILTER_LABELS[key]}
+                  </AppButton>
+                ))}
+              </ButtonGroup>
+              <AppButton
+                size="sm"
+                variant={sortByExpiry ? 'secondary' : 'outline-secondary'}
+                onClick={() => setSortByExpiry((v) => !v)}
+              >
+                期限順
+              </AppButton>
+            </div>
+          )}
+          mobile={() => (
+            <div className="d-flex align-items-center gap-2 mb-2">
+              <AppButton
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => setFilterSheetOpen(true)}
+              >
+                <i className="bi bi-funnel" />{' '}
+                フィルタ
+                {(expiryFilter !== 'all' || sortByExpiry) && (
+                  <Badge bg="primary" pill className="ms-1">
+                    {(expiryFilter !== 'all' ? 1 : 0) + (sortByExpiry ? 1 : 0)}
+                  </Badge>
+                )}
+              </AppButton>
+              <AppButton
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => setSortSheetOpen(true)}
+              >
+                <i className="bi bi-arrow-down-up" /> 並び替え
+              </AppButton>
+            </div>
+          )}
+        />
+      )}
+
+      <MobileFilterSheet
+        isOpen={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        title="期限フィルタ"
+        activeFilterCount={(expiryFilter !== 'all' ? 1 : 0) + (sortByExpiry ? 1 : 0)}
+        onReset={() => {
+          setExpiryFilter('all');
+          setSortByExpiry(false);
+        }}
+        onApply={() => {/* filters already applied via state */}}
+      >
+        <Form.Group className="mb-3">
+          <Form.Label className="fw-semibold small">使用期限</Form.Label>
+          {(Object.keys(EXPIRY_FILTER_LABELS) as ExpiryFilter[]).map((key) => (
+            <Form.Check
+              key={key}
+              type="radio"
+              id={`expiry-filter-${key}`}
+              name="expiryFilter"
+              label={EXPIRY_FILTER_LABELS[key]}
+              checked={expiryFilter === key}
+              onChange={() => setExpiryFilter(key)}
+            />
+          ))}
+        </Form.Group>
+        <Form.Group>
+          <Form.Check
+            type="switch"
+            id="sort-by-expiry"
+            label="期限順に並べ替え"
+            checked={sortByExpiry}
+            onChange={() => setSortByExpiry((v) => !v)}
+          />
+        </Form.Group>
+      </MobileFilterSheet>
+
+      <MobileSortSheet
+        isOpen={sortSheetOpen}
+        onClose={() => setSortSheetOpen(false)}
+        options={DEAD_STOCK_SORT_OPTIONS}
+        value={sortOption}
+        onChange={setSortOption}
+      />
+
+      {actionError && (
+        <ErrorRetryAlert error={actionError} />
+      )}
+
+      <div style={resultsStyle}>
+      {incrementalSearch.isSearching && items.length === 0 ? (
         <InlineLoader text="デッドストック一覧を読み込み中..." className="text-muted small" />
       ) : items.length === 0 ? (
         <AppEmptyState
-          title="デッドストックデータがありません"
-          description="Excelファイルをアップロードすると一覧に表示されます。"
-          actionLabel="アップロードへ進む"
-          actionTo="/upload"
+          title={incrementalSearch.query ? `「${incrementalSearch.query}」に一致するデータがありません` : 'デッドストックデータがありません'}
+          description={incrementalSearch.query ? '検索条件を変えて再度お試しください。' : 'Excelファイルをアップロードすると一覧に表示されます。'}
+          actionLabel={incrementalSearch.query ? undefined : 'アップロードへ進む'}
+          actionTo={incrementalSearch.query ? undefined : '/upload'}
         />
       ) : (
         <AppResponsiveSwitch
@@ -223,6 +403,7 @@ export default function DeadStockListPage() {
             </div>
           )}
           mobile={() => (
+            <PullToRefresh disabled={filterSheetOpen || sortSheetOpen} onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
             <div className="dl-mobile-data-list">
               {displayItems.map((item) => (
                 <AppMobileDataCard
@@ -256,11 +437,13 @@ export default function DeadStockListPage() {
                 />
               ))}
             </div>
+            </PullToRefresh>
           )}
         />
       )}
+      </div>
+      <Pagination currentPage={incrementalSearch.page} totalPages={totalPages} onPageChange={incrementalSearch.setPage} />
       </ScrollArea>
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
       <ConfirmActionModal
         show={pendingDeleteId !== null}

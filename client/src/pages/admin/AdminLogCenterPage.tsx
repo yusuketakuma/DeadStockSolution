@@ -153,6 +153,7 @@ export default function AdminLogCenterPage() {
         </a>
       </div>
 
+      <ScrollArea>
       {summaryError && (
         <AppAlert variant="warning" className="mb-3">
           {summaryError}
@@ -169,7 +170,6 @@ export default function AdminLogCenterPage() {
         </AppAlert>
       )}
 
-      <ScrollArea>
       <SummaryCards summary={summary} />
       <InsightCards insights={insights} />
       <Row className="g-2 mb-3">

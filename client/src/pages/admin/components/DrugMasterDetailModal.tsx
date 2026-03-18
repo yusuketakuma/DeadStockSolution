@@ -3,6 +3,7 @@ import AppTable from '../../../components/ui/AppTable';
 import AppModalShell from '../../../components/ui/AppModalShell';
 import AppMobileDataCard from '../../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../../components/ui/AppResponsiveSwitch';
+import PinchZoomContainer from '../../../components/gesture/PinchZoomContainer';
 import type { DrugMasterDetail } from './types';
 
 const REVISION_TYPE_LABELS: Record<string, string> = {
@@ -22,7 +23,7 @@ export default function DrugMasterDetailModal({ detail, show, onHide }: DrugMast
   return (
     <AppModalShell show={show} onHide={onHide} size="lg" title={<span className="h6 mb-0">医薬品詳細</span>}>
         {detail && (
-          <>
+          <PinchZoomContainer>
             <Row className="mb-3">
               <Col sm={4}><strong>YJコード</strong><div className="font-monospace">{detail.yjCode}</div></Col>
               <Col sm={4}><strong>薬価</strong><div>{detail.yakkaPrice.toLocaleString()}円</div></Col>
@@ -141,7 +142,7 @@ export default function DrugMasterDetailModal({ detail, show, onHide }: DrugMast
                 />
               </>
             )}
-          </>
+          </PinchZoomContainer>
         )}
     </AppModalShell>
   );

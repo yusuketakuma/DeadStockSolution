@@ -3,6 +3,7 @@ import { db } from '../config/database';
 import { drugEquivalences } from '../db/schema';
 import type { DrugEquivalence, EquivalenceType } from '../types';
 import { logger } from './logger';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 
 const VALID_EQUIVALENCE_TYPES: ReadonlySet<string> = new Set<string>(['brand_generic', 'generic_generic']);
 const DEFAULT_EQUIVALENCE_PAGE_SIZE = 50 as const;
@@ -129,10 +130,15 @@ export async function getDrugEquivalenceById(id: number): Promise<DrugEquivalenc
 export async function listDrugEquivalences(
   options: ListDrugEquivalencesOptions = {},
 ): Promise<DrugEquivalence[]> {
-  const { limit = DEFAULT_EQUIVALENCE_PAGE_SIZE, offset = 0 } = options;
+  const { limit = DEFAULT_EQUIVALENCE_PAGE_SIZE, offset = 0, search } = options;
+
+  const searchCondition = search
+    ? buildTokenizedSearchConditions(search, [drugEquivalences.drugNameA, drugEquivalences.drugNameB])
+    : undefined;
 
   const rows = await db.select()
     .from(drugEquivalences)
+    .where(searchCondition)
     .orderBy(desc(drugEquivalences.id))
     .limit(limit)
     .offset(offset);
