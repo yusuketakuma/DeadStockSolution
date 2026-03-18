@@ -19,6 +19,8 @@ import { useToast } from '../contexts/ToastContext';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
 import MobileFilterSheet from '../components/mobile/MobileFilterSheet';
+import MobileSortSheet from '../components/mobile/MobileSortSheet';
+import type { SortOption } from '../components/mobile/MobileSortSheet';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
 
 interface DeadStockItem {
@@ -57,6 +59,15 @@ const EXPIRY_FILTER_BUCKETS: Record<Exclude<ExpiryFilter, 'all'>, RiskBucket[]> 
   within90: ['expired', 'within30', 'within60', 'within90'],
 };
 
+type DeadStockSortKey = 'drugName' | 'expiryAsc' | 'quantityAsc' | 'createdDesc';
+
+const DEAD_STOCK_SORT_OPTIONS: SortOption<DeadStockSortKey>[] = [
+  { value: 'drugName', label: '薬品名順' },
+  { value: 'expiryAsc', label: '期限日が近い順' },
+  { value: 'quantityAsc', label: '数量が少ない順' },
+  { value: 'createdDesc', label: '登録日が新しい順' },
+];
+
 interface EnrichedItem extends DeadStockItem {
   daysRemaining: number | null;
   bucket: RiskBucket;
@@ -72,6 +83,8 @@ export default function DeadStockListPage() {
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
   const [sortByExpiry, setSortByExpiry] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [sortOption, setSortOption] = useState<DeadStockSortKey>('drugName');
   const [totalPages, setTotalPages] = useState(1);
 
   const initialQuery = searchParams.get('search') || '';
@@ -142,16 +155,34 @@ export default function DeadStockListPage() {
       const matchBuckets = EXPIRY_FILTER_BUCKETS[expiryFilter];
       filtered = filtered.filter((item) => matchBuckets.includes(item.bucket));
     }
-    if (sortByExpiry) {
+    if (sortByExpiry || sortOption !== 'drugName') {
       filtered = [...filtered].sort((a, b) => {
-        if (a.daysRemaining === null && b.daysRemaining === null) return 0;
-        if (a.daysRemaining === null) return 1;
-        if (b.daysRemaining === null) return -1;
-        return a.daysRemaining - b.daysRemaining;
+        // Legacy sortByExpiry toggle takes priority when active
+        if (sortByExpiry && sortOption === 'drugName') {
+          if (a.daysRemaining === null && b.daysRemaining === null) return 0;
+          if (a.daysRemaining === null) return 1;
+          if (b.daysRemaining === null) return -1;
+          return a.daysRemaining - b.daysRemaining;
+        }
+        switch (sortOption) {
+          case 'expiryAsc': {
+            if (a.daysRemaining === null && b.daysRemaining === null) return 0;
+            if (a.daysRemaining === null) return 1;
+            if (b.daysRemaining === null) return -1;
+            return a.daysRemaining - b.daysRemaining;
+          }
+          case 'quantityAsc':
+            return a.quantity - b.quantity;
+          case 'createdDesc':
+            return b.id - a.id;
+          case 'drugName':
+          default:
+            return a.drugName.localeCompare(b.drugName, 'ja');
+        }
       });
     }
     return filtered;
-  }, [enrichedItems, expiryFilter, sortByExpiry]);
+  }, [enrichedItems, expiryFilter, sortByExpiry, sortOption]);
 
   const handleRemoveToken = (token: string) => {
     const newTokens = incrementalSearch.tokens.filter((t) => t !== token);
@@ -238,6 +269,13 @@ export default function DeadStockListPage() {
                   </Badge>
                 )}
               </AppButton>
+              <AppButton
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => setSortSheetOpen(true)}
+              >
+                <i className="bi bi-arrow-down-up" /> 並び替え
+              </AppButton>
             </div>
           )}
         />
@@ -278,6 +316,14 @@ export default function DeadStockListPage() {
           />
         </Form.Group>
       </MobileFilterSheet>
+
+      <MobileSortSheet
+        isOpen={sortSheetOpen}
+        onClose={() => setSortSheetOpen(false)}
+        options={DEAD_STOCK_SORT_OPTIONS}
+        value={sortOption}
+        onChange={setSortOption}
+      />
 
       {actionError && (
         <ErrorRetryAlert error={actionError} />
@@ -348,7 +394,7 @@ export default function DeadStockListPage() {
             </div>
           )}
           mobile={() => (
-            <PullToRefresh disabled={filterSheetOpen} onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
+            <PullToRefresh disabled={filterSheetOpen || sortSheetOpen} onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
             <div className="dl-mobile-data-list">
               {displayItems.map((item) => (
                 <AppMobileDataCard

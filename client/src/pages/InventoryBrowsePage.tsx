@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppEmptyState from '../components/ui/AppEmptyState';
@@ -15,7 +15,10 @@ import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
 import MobileFilterSheet from '../components/mobile/MobileFilterSheet';
+import MobileSortSheet from '../components/mobile/MobileSortSheet';
+import type { SortOption } from '../components/mobile/MobileSortSheet';
 import { useSearchParams } from 'react-router-dom';
+import { daysUntilExpiry } from '../utils/expiry-risk';
 
 interface BrowseItem {
   id: number;
@@ -36,8 +39,18 @@ interface BrowseResponse {
   pagination: { page: number; totalPages: number; total: number };
 }
 
+type BrowseSortKey = 'drugName' | 'expiryAsc' | 'pharmacyName';
+
+const BROWSE_SORT_OPTIONS: SortOption<BrowseSortKey>[] = [
+  { value: 'drugName', label: '薬品名順' },
+  { value: 'expiryAsc', label: '期限日が近い順' },
+  { value: 'pharmacyName', label: '薬局名順' },
+];
+
 export default function InventoryBrowsePage() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [sortOption, setSortOption] = useState<BrowseSortKey>('drugName');
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get('search') || '';
 
@@ -78,6 +91,27 @@ export default function InventoryBrowsePage() {
   const items = incrementalSearch.results;
   const total = incrementalSearch.total;
   const totalPages = Math.max(1, Math.ceil(total / 20));
+
+  const displayItems = useMemo(() => {
+    if (sortOption === 'drugName' && items.length === 0) return items;
+    return [...items].sort((a, b) => {
+      switch (sortOption) {
+        case 'expiryAsc': {
+          const da = daysUntilExpiry(a.expirationDate);
+          const db = daysUntilExpiry(b.expirationDate);
+          if (da === null && db === null) return 0;
+          if (da === null) return 1;
+          if (db === null) return -1;
+          return da - db;
+        }
+        case 'pharmacyName':
+          return a.pharmacyName.localeCompare(b.pharmacyName, 'ja');
+        case 'drugName':
+        default:
+          return a.drugName.localeCompare(b.drugName, 'ja');
+      }
+    });
+  }, [items, sortOption]);
 
   const handleRemoveToken = (token: string) => {
     const newTokens = incrementalSearch.tokens.filter((t) => t !== token);
@@ -127,13 +161,20 @@ export default function InventoryBrowsePage() {
         />
       </div>
 
-      <div className="d-lg-none mb-2">
+      <div className="d-lg-none mb-2 d-flex gap-2">
         <AppButton
           size="sm"
           variant="outline-secondary"
           onClick={() => setFilterSheetOpen(true)}
         >
           <i className="bi bi-funnel" /> フィルタ
+        </AppButton>
+        <AppButton
+          size="sm"
+          variant="outline-secondary"
+          onClick={() => setSortSheetOpen(true)}
+        >
+          <i className="bi bi-arrow-down-up" /> 並び替え
         </AppButton>
       </div>
       <MobileFilterSheet
@@ -144,6 +185,13 @@ export default function InventoryBrowsePage() {
       >
         <p className="text-muted small mb-0">フィルタはありません</p>
       </MobileFilterSheet>
+      <MobileSortSheet
+        isOpen={sortSheetOpen}
+        onClose={() => setSortSheetOpen(false)}
+        options={BROWSE_SORT_OPTIONS}
+        value={sortOption}
+        onChange={setSortOption}
+      />
 
       <ScrollArea>
       <div style={resultsStyle}>
@@ -174,7 +222,7 @@ export default function InventoryBrowsePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
+                  {displayItems.map((item) => (
                     <tr key={item.id}>
                       <td>{item.drugName}</td>
                       <td>{item.quantity}</td>
@@ -193,9 +241,9 @@ export default function InventoryBrowsePage() {
             </div>
           )}
           mobile={() => (
-            <PullToRefresh disabled={filterSheetOpen} onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
+            <PullToRefresh disabled={filterSheetOpen || sortSheetOpen} onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
             <div className="dl-mobile-data-list">
-              {items.map((item) => (
+              {displayItems.map((item) => (
                 <AppMobileDataCard
                   key={item.id}
                   title={item.drugName}
