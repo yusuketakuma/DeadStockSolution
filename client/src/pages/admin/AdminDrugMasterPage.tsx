@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import { useToast } from '../../contexts/ToastContext';
-import { Col, Row } from 'react-bootstrap';
+import { Badge, Col, Form, Row } from 'react-bootstrap';
 import { useSearchParams } from 'react-router-dom';
+import AppButton from '../../components/ui/AppButton';
+import MobileFilterSheet from '../../components/mobile/MobileFilterSheet';
 import { api, apiUpload } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import SearchChips from '../../components/search/SearchChips';
@@ -137,6 +139,7 @@ export default function AdminDrugMasterPage() {
 
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
   // ── インクリメンタルサーチ ────────────────────────────
   const initialQuery = searchParams.get('search') || '';
@@ -458,17 +461,85 @@ export default function AdminDrugMasterPage() {
 
       <SyncLogsTable syncLogs={syncLogs} />
 
-      <DrugMasterSearchFilter
-        searchInput={incrementalSearch.query}
-        statusFilter={statusFilter}
-        categoryFilter={categoryFilter}
-        total={total}
-        loading={loading}
-        onSearchInputChange={incrementalSearch.setQuery}
-        onSearch={handleSearch}
-        onStatusFilterChange={(v) => { setStatusFilter(v); }}
-        onCategoryFilterChange={(v) => { setCategoryFilter(v); }}
-      />
+      <div className="d-none d-lg-block">
+        <DrugMasterSearchFilter
+          searchInput={incrementalSearch.query}
+          statusFilter={statusFilter}
+          categoryFilter={categoryFilter}
+          total={total}
+          loading={loading}
+          onSearchInputChange={incrementalSearch.setQuery}
+          onSearch={handleSearch}
+          onStatusFilterChange={(v) => { setStatusFilter(v); }}
+          onCategoryFilterChange={(v) => { setCategoryFilter(v); }}
+        />
+      </div>
+      <div className="d-lg-none mb-2 d-flex align-items-center gap-2">
+        <AppButton
+          size="sm"
+          variant="outline-secondary"
+          onClick={() => setFilterSheetOpen(true)}
+        >
+          <i className="bi bi-funnel" />{' '}
+          フィルタ
+          {(statusFilter || categoryFilter) && (
+            <Badge bg="primary" pill className="ms-1">
+              {(statusFilter ? 1 : 0) + (categoryFilter ? 1 : 0)}
+            </Badge>
+          )}
+        </AppButton>
+      </div>
+      <MobileFilterSheet
+        isOpen={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        title="絞り込み"
+        activeFilterCount={(statusFilter ? 1 : 0) + (categoryFilter ? 1 : 0)}
+        onReset={() => {
+          setStatusFilter('');
+          setCategoryFilter('');
+        }}
+        onApply={() => {/* filters already applied via state */}}
+      >
+        <Form.Group className="mb-3">
+          <Form.Label className="fw-semibold small">ステータス</Form.Label>
+          {[
+            { value: '', label: '全ステータス' },
+            { value: 'listed', label: '収載中' },
+            { value: 'transition', label: '経過措置中' },
+            { value: 'delisted', label: '削除済' },
+          ].map((opt) => (
+            <Form.Check
+              key={opt.value}
+              type="radio"
+              id={`status-filter-${opt.value || 'all'}`}
+              name="statusFilter"
+              label={opt.label}
+              checked={statusFilter === opt.value}
+              onChange={() => setStatusFilter(opt.value)}
+            />
+          ))}
+        </Form.Group>
+        <Form.Group>
+          <Form.Label className="fw-semibold small">区分</Form.Label>
+          {[
+            { value: '', label: '全区分' },
+            { value: '内用薬', label: '内用薬' },
+            { value: '外用薬', label: '外用薬' },
+            { value: '注射薬', label: '注射薬' },
+            { value: '歯科用薬剤', label: '歯科用薬剤' },
+          ].map((opt) => (
+            <Form.Check
+              key={opt.value}
+              type="radio"
+              id={`category-filter-${opt.value || 'all'}`}
+              name="categoryFilter"
+              label={opt.label}
+              checked={categoryFilter === opt.value}
+              onChange={() => setCategoryFilter(opt.value)}
+            />
+          ))}
+        </Form.Group>
+      </MobileFilterSheet>
 
       <div className="mb-2">
         <SearchChips

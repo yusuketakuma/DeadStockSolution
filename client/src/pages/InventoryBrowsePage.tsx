@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppEmptyState from '../components/ui/AppEmptyState';
@@ -14,6 +14,7 @@ import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
+import MobileFilterSheet from '../components/mobile/MobileFilterSheet';
 import { useSearchParams } from 'react-router-dom';
 
 interface BrowseItem {
@@ -36,6 +37,7 @@ interface BrowseResponse {
 }
 
 export default function InventoryBrowsePage() {
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get('search') || '';
 
@@ -125,6 +127,24 @@ export default function InventoryBrowsePage() {
         />
       </div>
 
+      <div className="d-lg-none mb-2">
+        <AppButton
+          size="sm"
+          variant="outline-secondary"
+          onClick={() => setFilterSheetOpen(true)}
+        >
+          <i className="bi bi-funnel" /> フィルタ
+        </AppButton>
+      </div>
+      <MobileFilterSheet
+        isOpen={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        title="フィルタ"
+        activeFilterCount={0}
+      >
+        <p className="text-muted small mb-0">フィルタはありません</p>
+      </MobileFilterSheet>
+
       <ScrollArea>
       <div style={resultsStyle}>
       {incrementalSearch.isSearching && items.length === 0 ? (
@@ -173,7 +193,7 @@ export default function InventoryBrowsePage() {
             </div>
           )}
           mobile={() => (
-            <PullToRefresh onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
+            <PullToRefresh disabled={filterSheetOpen} onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
             <div className="dl-mobile-data-list">
               {items.map((item) => (
                 <AppMobileDataCard

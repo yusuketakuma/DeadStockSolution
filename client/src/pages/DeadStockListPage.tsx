@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Badge, ButtonGroup } from 'react-bootstrap';
+import { Badge, ButtonGroup, Form } from 'react-bootstrap';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -18,6 +18,7 @@ import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 import { useToast } from '../contexts/ToastContext';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
+import MobileFilterSheet from '../components/mobile/MobileFilterSheet';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
 
 interface DeadStockItem {
@@ -70,6 +71,7 @@ export default function DeadStockListPage() {
   const [actionError, setActionError] = useState('');
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
   const [sortByExpiry, setSortByExpiry] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
 
   const initialQuery = searchParams.get('search') || '';
@@ -198,27 +200,84 @@ export default function DeadStockListPage() {
       </div>
 
       {items.length > 0 && (
-        <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
-          <ButtonGroup size="sm">
-            {(Object.keys(EXPIRY_FILTER_LABELS) as ExpiryFilter[]).map((key) => (
+        <AppResponsiveSwitch
+          desktop={() => (
+            <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
+              <ButtonGroup size="sm">
+                {(Object.keys(EXPIRY_FILTER_LABELS) as ExpiryFilter[]).map((key) => (
+                  <AppButton
+                    key={key}
+                    variant={expiryFilter === key ? 'primary' : 'outline-primary'}
+                    onClick={() => setExpiryFilter(key)}
+                  >
+                    {EXPIRY_FILTER_LABELS[key]}
+                  </AppButton>
+                ))}
+              </ButtonGroup>
               <AppButton
-                key={key}
-                variant={expiryFilter === key ? 'primary' : 'outline-primary'}
-                onClick={() => setExpiryFilter(key)}
+                size="sm"
+                variant={sortByExpiry ? 'secondary' : 'outline-secondary'}
+                onClick={() => setSortByExpiry((v) => !v)}
               >
-                {EXPIRY_FILTER_LABELS[key]}
+                期限順
               </AppButton>
-            ))}
-          </ButtonGroup>
-          <AppButton
-            size="sm"
-            variant={sortByExpiry ? 'secondary' : 'outline-secondary'}
-            onClick={() => setSortByExpiry((v) => !v)}
-          >
-            期限順
-          </AppButton>
-        </div>
+            </div>
+          )}
+          mobile={() => (
+            <div className="d-flex align-items-center gap-2 mb-2">
+              <AppButton
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => setFilterSheetOpen(true)}
+              >
+                <i className="bi bi-funnel" />{' '}
+                フィルタ
+                {(expiryFilter !== 'all' || sortByExpiry) && (
+                  <Badge bg="primary" pill className="ms-1">
+                    {(expiryFilter !== 'all' ? 1 : 0) + (sortByExpiry ? 1 : 0)}
+                  </Badge>
+                )}
+              </AppButton>
+            </div>
+          )}
+        />
       )}
+
+      <MobileFilterSheet
+        isOpen={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        title="期限フィルタ"
+        activeFilterCount={(expiryFilter !== 'all' ? 1 : 0) + (sortByExpiry ? 1 : 0)}
+        onReset={() => {
+          setExpiryFilter('all');
+          setSortByExpiry(false);
+        }}
+        onApply={() => {/* filters already applied via state */}}
+      >
+        <Form.Group className="mb-3">
+          <Form.Label className="fw-semibold small">使用期限</Form.Label>
+          {(Object.keys(EXPIRY_FILTER_LABELS) as ExpiryFilter[]).map((key) => (
+            <Form.Check
+              key={key}
+              type="radio"
+              id={`expiry-filter-${key}`}
+              name="expiryFilter"
+              label={EXPIRY_FILTER_LABELS[key]}
+              checked={expiryFilter === key}
+              onChange={() => setExpiryFilter(key)}
+            />
+          ))}
+        </Form.Group>
+        <Form.Group>
+          <Form.Check
+            type="switch"
+            id="sort-by-expiry"
+            label="期限順に並べ替え"
+            checked={sortByExpiry}
+            onChange={() => setSortByExpiry((v) => !v)}
+          />
+        </Form.Group>
+      </MobileFilterSheet>
 
       {actionError && (
         <ErrorRetryAlert error={actionError} />
@@ -289,7 +348,7 @@ export default function DeadStockListPage() {
             </div>
           )}
           mobile={() => (
-            <PullToRefresh onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
+            <PullToRefresh disabled={filterSheetOpen} onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
             <div className="dl-mobile-data-list">
               {displayItems.map((item) => (
                 <AppMobileDataCard
