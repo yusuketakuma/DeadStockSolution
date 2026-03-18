@@ -1,7 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
-import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import AppEmptyState from '../components/ui/AppEmptyState';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 'react';
+import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import { useToast } from '../../contexts/ToastContext';
 import { Col, Row } from 'react-bootstrap';
@@ -79,7 +79,7 @@ function buildDrugMasterListParams(input: {
 }
 
 function scheduleRefresh(
-  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  timerRef: RefObject<ReturnType<typeof setTimeout> | null>,
   callback: () => void,
 ): void {
   if (timerRef.current !== null) {
