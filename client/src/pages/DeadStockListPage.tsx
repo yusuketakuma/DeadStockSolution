@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Badge, ButtonGroup } from 'react-bootstrap';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { api } from '../api/client';
 import Pagination from '../components/Pagination';
@@ -11,7 +11,10 @@ import AppEmptyState from '../components/ui/AppEmptyState';
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-import { useApiQuery } from '../hooks/useApiQuery';
+import SearchInput from '../components/SearchInput';
+import SearchChips from '../components/search/SearchChips';
+import SearchResultStatus from '../components/search/SearchResultStatus';
+import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 import { useToast } from '../contexts/ToastContext';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
@@ -60,27 +63,53 @@ interface EnrichedItem extends DeadStockItem {
 export default function DeadStockListPage() {
   const { showSuccess } = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState('');
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all');
   const [sortByExpiry, setSortByExpiry] = useState(false);
-  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const {
-    data,
-    isLoading: loading,
-    error,
-    refetch,
-  } = useApiQuery(
-    ['dead-stock-list', page],
-    ({ signal }) => api.get<ListResponse>(`/inventory/dead-stock?page=${page}`, { signal }),
+  const initialQuery = searchParams.get('search') || '';
+
+  const fetchDeadStock = useCallback(
+    async (query: string, page: number, signal: AbortSignal) => {
+      const params = new URLSearchParams({ page: String(page) });
+      if (query) params.set('search', query);
+      const res = await api.get<ListResponse>(`/inventory/dead-stock?${params}`, { signal });
+      setTotalPages(res.pagination.totalPages);
+      return { data: res.data, total: res.pagination.total };
+    },
+    [],
   );
 
-  const items = useMemo(() => data?.data ?? [], [data?.data]);
-  const totalPages = data?.pagination.totalPages ?? 1;
-  const total = data?.pagination.total ?? 0;
-  const queryError = error instanceof Error ? error.message : '';
+  const incrementalSearch = useIncrementalSearch<DeadStockItem>({
+    fetchFn: fetchDeadStock,
+    minChars: 0,
+    initialQuery,
+  });
+
+  // URL同期
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (incrementalSearch.query) {
+      params.set('search', incrementalSearch.query);
+    } else {
+      params.delete('search');
+    }
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incrementalSearch.query]);
+
+  // 初回フェッチ（minChars=0 なので空クエリでもフェッチする）
+  useEffect(() => {
+    incrementalSearch.executeImmediate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const items = incrementalSearch.results;
+  const total = incrementalSearch.total;
 
   const handleDeleteConfirmed = async () => {
     if (pendingDeleteId === null) return;
@@ -89,7 +118,7 @@ export default function DeadStockListPage() {
     try {
       await api.delete(`/inventory/dead-stock/${pendingDeleteId}`);
       showSuccess('削除しました');
-      await refetch();
+      incrementalSearch.executeImmediate();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '削除に失敗しました');
     } finally {
@@ -121,15 +150,50 @@ export default function DeadStockListPage() {
     return filtered;
   }, [enrichedItems, expiryFilter, sortByExpiry]);
 
+  const handleRemoveToken = (token: string) => {
+    const newTokens = incrementalSearch.tokens.filter((t) => t !== token);
+    incrementalSearch.setQuery(newTokens.join(' '));
+  };
+
   const pendingItem = pendingDeleteId === null
     ? null
     : items.find((item) => item.id === pendingDeleteId) ?? null;
+
+  const resultsStyle = {
+    opacity: incrementalSearch.isSearching ? 0.6 : 1,
+    transition: 'opacity 0.2s',
+  };
 
   return (
     <PageShell>
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4 className="page-title mb-0">デッドストックリスト ({total}件)</h4>
         <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
+      </div>
+
+      <div className="mb-2">
+        <SearchInput
+          placeholder="薬品名で検索（スペース区切りで絞り込み）..."
+          value={incrementalSearch.query}
+          onChange={incrementalSearch.setQuery}
+          onSearch={() => incrementalSearch.executeImmediate()}
+          suggestUrl="/search/drugs"
+        />
+        <div className="mt-1">
+          <SearchChips
+            tokens={incrementalSearch.tokens}
+            onRemove={handleRemoveToken}
+            maxTokenWarning={incrementalSearch.tokens.length > 5}
+          />
+        </div>
+      </div>
+
+      <div className="mb-2">
+        <SearchResultStatus
+          totalCount={total}
+          isSearching={incrementalSearch.isSearching}
+          searchQuery={incrementalSearch.query}
+        />
       </div>
 
       {items.length > 0 && (
@@ -155,19 +219,20 @@ export default function DeadStockListPage() {
         </div>
       )}
 
-      {(queryError || actionError) && (
-        <ErrorRetryAlert error={queryError || actionError || ''} onRetry={queryError ? () => void refetch() : undefined} />
+      {actionError && (
+        <ErrorRetryAlert error={actionError} />
       )}
 
       <ScrollArea>
-      {loading ? (
+      <div style={resultsStyle}>
+      {incrementalSearch.isSearching && items.length === 0 ? (
         <InlineLoader text="デッドストック一覧を読み込み中..." className="text-muted small" />
       ) : items.length === 0 ? (
         <AppEmptyState
-          title="デッドストックデータがありません"
-          description="Excelファイルをアップロードすると一覧に表示されます。"
-          actionLabel="アップロードへ進む"
-          actionTo="/upload"
+          title={incrementalSearch.query ? `「${incrementalSearch.query}」に一致するデータがありません` : 'デッドストックデータがありません'}
+          description={incrementalSearch.query ? '検索条件を変えて再度お試しください。' : 'Excelファイルをアップロードすると一覧に表示されます。'}
+          actionLabel={incrementalSearch.query ? undefined : 'アップロードへ進む'}
+          actionTo={incrementalSearch.query ? undefined : '/upload'}
         />
       ) : (
         <AppResponsiveSwitch
@@ -259,8 +324,9 @@ export default function DeadStockListPage() {
           )}
         />
       )}
+      </div>
       </ScrollArea>
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination currentPage={incrementalSearch.page} totalPages={totalPages} onPageChange={incrementalSearch.setPage} />
 
       <ConfirmActionModal
         show={pendingDeleteId !== null}

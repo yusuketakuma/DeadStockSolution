@@ -1,9 +1,13 @@
-import { useState, useEffect, useRef, FormEvent, useCallback, type MutableRefObject } from 'react';
+import { useState, useEffect, useRef, useCallback, type MutableRefObject } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import { useToast } from '../../contexts/ToastContext';
 import { Col, Row } from 'react-bootstrap';
+import { useSearchParams } from 'react-router-dom';
 import { api, apiUpload } from '../../api/client';
 import Pagination from '../../components/Pagination';
+import SearchChips from '../../components/search/SearchChips';
+import SearchResultStatus from '../../components/search/SearchResultStatus';
+import { useIncrementalSearch } from '../../hooks/useIncrementalSearch';
 import DrugMasterSyncCard from './components/DrugMasterSyncCard';
 import PackageUploadCard from './components/PackageUploadCard';
 import AutoSyncStatusCard from './components/AutoSyncStatusCard';
@@ -95,16 +99,10 @@ function fetchDrugMasterDetailByYjCode(yjCode: string): Promise<DrugMasterDetail
 
 export default function AdminDrugMasterPage() {
   const { showError } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [items, setItems] = useState<DrugMasterItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [loading, setLoading] = useState(false);
 
   // 同期関連
   const [syncing, setSyncing] = useState(false);
@@ -140,6 +138,66 @@ export default function AdminDrugMasterPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  // ── インクリメンタルサーチ ────────────────────────────
+  const initialQuery = searchParams.get('search') || '';
+
+  // statusFilter/categoryFilter を ref で保持（fetchFn 再生成を避ける）
+  const statusFilterRef = useRef(statusFilter);
+  statusFilterRef.current = statusFilter;
+  const categoryFilterRef = useRef(categoryFilter);
+  categoryFilterRef.current = categoryFilter;
+
+  const [totalPages, setTotalPages] = useState(1);
+
+  const fetchDrugMasterItems = useCallback(
+    async (query: string, page: number, signal: AbortSignal) => {
+      const params = buildDrugMasterListParams({
+        page,
+        search: query,
+        statusFilter: statusFilterRef.current,
+        categoryFilter: categoryFilterRef.current,
+      });
+      const data = await api.get<ListResponse>(`/admin/drug-master?${params}`, { signal });
+      setTotalPages(data.pagination.totalPages);
+      return { data: data.data, total: data.pagination.total };
+    },
+    [],
+  );
+
+  const incrementalSearch = useIncrementalSearch<DrugMasterItem>({
+    fetchFn: fetchDrugMasterItems,
+    minChars: 0,
+    initialQuery,
+  });
+
+  // URL同期
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (incrementalSearch.query) {
+      params.set('search', incrementalSearch.query);
+    } else {
+      params.delete('search');
+    }
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incrementalSearch.query]);
+
+  // 初回フェッチ
+  useEffect(() => {
+    incrementalSearch.executeImmediate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // フィルタ変更時は即座に再フェッチ
+  useEffect(() => {
+    incrementalSearch.executeImmediate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, categoryFilter]);
+
+  const items = incrementalSearch.results;
+  const total = incrementalSearch.total;
+  const loading = incrementalSearch.isSearching;
+
   // ── データ取得 ──────────────────────────────────
 
   const fetchStats = useCallback(async () => {
@@ -148,26 +206,6 @@ export default function AdminDrugMasterPage() {
       setStats(data);
     } catch (_err) { showError('医薬品統計の取得に失敗しました'); }
   }, [showError]);
-
-  const fetchItems = useCallback(async (p: number) => {
-    setLoading(true);
-    try {
-      const params = buildDrugMasterListParams({
-        page: p,
-        search,
-        statusFilter,
-        categoryFilter,
-      });
-      const data = await api.get<ListResponse>(`/admin/drug-master?${params}`);
-      setItems(data.data);
-      setTotalPages(data.pagination.totalPages);
-      setTotal(data.pagination.total);
-    } catch (err) {
-      setError(resolveErrorMessage(err, 'データの取得に失敗しました'));
-    } finally {
-      setLoading(false);
-    }
-  }, [search, statusFilter, categoryFilter]);
 
   const fetchSyncLogs = useCallback(async () => {
     try {
@@ -251,14 +289,14 @@ export default function AdminDrugMasterPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchItems(page);
-  }, [page, fetchItems]);
-
-  const handleSearch = (e: FormEvent) => {
+  const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setPage(1);
-    setSearch(searchInput);
+    incrementalSearch.executeImmediate();
+  };
+
+  const handleRemoveToken = (token: string) => {
+    const newTokens = incrementalSearch.tokens.filter((t) => t !== token);
+    incrementalSearch.setQuery(newTokens.join(' '));
   };
 
   // ── 同期処理 ────────────────────────────────────
@@ -287,7 +325,7 @@ export default function AdminDrugMasterPage() {
       setSyncResult(`同期完了: 処理 ${r.itemsProcessed}件 / 追加 ${r.itemsAdded}件 / 更新 ${r.itemsUpdated}件 / 削除 ${r.itemsDeleted}件`);
       if (syncFileRef.current) syncFileRef.current.value = '';
       void fetchStats();
-      void fetchItems(page);
+      incrementalSearch.executeImmediate();
       void fetchSyncLogs();
     } catch (err) {
       setSyncError(resolveErrorMessage(err, '同期に失敗しました'));
@@ -359,7 +397,7 @@ export default function AdminDrugMasterPage() {
       });
       setMessage('医薬品情報を更新しました');
       setShowEdit(false);
-      void fetchItems(page);
+      incrementalSearch.executeImmediate();
       void fetchStats();
     } catch (err) {
       setError(resolveErrorMessage(err, '更新に失敗しました'));
@@ -369,6 +407,11 @@ export default function AdminDrugMasterPage() {
   };
 
   // ── レンダリング ──────────────────────────────────
+
+  const resultsStyle = {
+    opacity: incrementalSearch.isSearching ? 0.6 : 1,
+    transition: 'opacity 0.2s',
+  };
 
   return (
     <PageShell>
@@ -416,18 +459,35 @@ export default function AdminDrugMasterPage() {
       <SyncLogsTable syncLogs={syncLogs} />
 
       <DrugMasterSearchFilter
-        searchInput={searchInput}
+        searchInput={incrementalSearch.query}
         statusFilter={statusFilter}
         categoryFilter={categoryFilter}
         total={total}
         loading={loading}
-        onSearchInputChange={setSearchInput}
+        onSearchInputChange={incrementalSearch.setQuery}
         onSearch={handleSearch}
-        onStatusFilterChange={(v) => { setStatusFilter(v); setPage(1); }}
-        onCategoryFilterChange={(v) => { setCategoryFilter(v); setPage(1); }}
+        onStatusFilterChange={(v) => { setStatusFilter(v); }}
+        onCategoryFilterChange={(v) => { setCategoryFilter(v); }}
       />
 
+      <div className="mb-2">
+        <SearchChips
+          tokens={incrementalSearch.tokens}
+          onRemove={handleRemoveToken}
+          maxTokenWarning={incrementalSearch.tokens.length > 5}
+        />
+      </div>
+
+      <div className="mb-2">
+        <SearchResultStatus
+          totalCount={total}
+          isSearching={incrementalSearch.isSearching}
+          searchQuery={incrementalSearch.query}
+        />
+      </div>
+
       <ScrollArea>
+      <div style={resultsStyle}>
       <DrugMasterTable
         items={items}
         loading={loading}
@@ -435,7 +495,8 @@ export default function AdminDrugMasterPage() {
         onOpenDetail={openDetail}
         onOpenEdit={openEdit}
       />
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination currentPage={incrementalSearch.page} totalPages={totalPages} onPageChange={incrementalSearch.setPage} />
+      </div>
       </ScrollArea>
 
       <DrugMasterDetailModal
