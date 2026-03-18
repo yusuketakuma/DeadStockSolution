@@ -13,6 +13,7 @@ import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import PullToRefresh from '../components/gesture/PullToRefresh';
 import { useSearchParams } from 'react-router-dom';
 
 interface BrowseItem {
@@ -172,6 +173,7 @@ export default function InventoryBrowsePage() {
             </div>
           )}
           mobile={() => (
+            <PullToRefresh onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
             <div className="dl-mobile-data-list">
               {items.map((item) => (
                 <AppMobileDataCard
@@ -190,6 +192,7 @@ export default function InventoryBrowsePage() {
                 />
               ))}
             </div>
+            </PullToRefresh>
           )}
         />
       )}

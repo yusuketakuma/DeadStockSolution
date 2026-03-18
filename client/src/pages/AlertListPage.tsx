@@ -12,6 +12,7 @@ import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import InlineLoader from '../components/ui/InlineLoader';
 import Pagination from '../components/Pagination';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import PullToRefresh from '../components/gesture/PullToRefresh';
 
 // ── 型定義 ──────────────────────────────────────
 type AlertType = 'near_expiry' | 'excess_stock';
@@ -418,6 +419,7 @@ export default function AlertListPage() {
         <Tab.Content>
           <Tab.Pane eventKey={resolvedTab}>
             <ScrollArea>
+              <PullToRefresh onRefresh={async () => { await fetchAlerts(); }}>
               {loading ? (
                 <InlineLoader text="アラートを読み込み中..." className="text-muted small" />
               ) : alerts.length === 0 ? (
@@ -453,6 +455,7 @@ export default function AlertListPage() {
                   )}
                 />
               )}
+              </PullToRefresh>
             </ScrollArea>
           </Tab.Pane>
         </Tab.Content>

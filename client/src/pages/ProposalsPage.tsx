@@ -16,6 +16,7 @@ import { getProposalPhaseInfo } from '../utils/proposal-status';
 import AppActionBar from '../components/ui/AppActionBar';
 import AppDataTable from '../components/ui/AppDataTable';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import PullToRefresh from '../components/gesture/PullToRefresh';
 
 interface Proposal {
   id: number;
@@ -205,6 +206,7 @@ export default function ProposalsPage() {
       />
 
       <ScrollArea>
+      <PullToRefresh onRefresh={async () => { await retry(); }}>
       <AppDataTable
         loading={loading}
         error={error}
@@ -323,6 +325,7 @@ export default function ProposalsPage() {
           </div>
         )}
       />
+      </PullToRefresh>
       </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
     </PageShell>

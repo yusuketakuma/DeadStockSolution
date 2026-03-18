@@ -17,6 +17,7 @@ import SearchResultStatus from '../components/search/SearchResultStatus';
 import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 import { useToast } from '../contexts/ToastContext';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import PullToRefresh from '../components/gesture/PullToRefresh';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
 
 interface DeadStockItem {
@@ -288,6 +289,7 @@ export default function DeadStockListPage() {
             </div>
           )}
           mobile={() => (
+            <PullToRefresh onRefresh={() => { incrementalSearch.executeImmediate(); return new Promise(r => setTimeout(r, 300)); }}>
             <div className="dl-mobile-data-list">
               {displayItems.map((item) => (
                 <AppMobileDataCard
@@ -321,6 +323,7 @@ export default function DeadStockListPage() {
                 />
               ))}
             </div>
+            </PullToRefresh>
           )}
         />
       )}

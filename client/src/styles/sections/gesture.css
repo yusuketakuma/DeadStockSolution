@@ -1,0 +1,55 @@
+:root {
+  --dl-duration-fast: 150ms;
+  --dl-duration-normal: 300ms;
+  --dl-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dl-duration-fast: 0ms;
+    --dl-duration-normal: 0ms;
+  }
+}
+
+.ptr-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 0;
+  overflow: hidden;
+  transition: height var(--dl-duration-normal) var(--dl-ease-standard);
+}
+
+.ptr-indicator.pulling {
+  /* height set dynamically via style prop */
+}
+
+.ptr-indicator.refreshing {
+  height: 48px;
+}
+
+.ptr-indicator.complete {
+  height: 48px;
+}
+
+.ptr-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--bs-secondary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: ptr-spin 0.8s linear infinite;
+}
+
+@keyframes ptr-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ptr-check {
+  color: var(--bs-success);
+  font-size: 1.2rem;
+}
+
+.ptr-arrow {
+  transition: transform var(--dl-duration-fast) var(--dl-ease-standard);
+}

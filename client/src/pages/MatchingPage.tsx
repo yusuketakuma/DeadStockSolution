@@ -18,6 +18,7 @@ import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import { useSearchParams } from 'react-router-dom';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import PullToRefresh from '../components/gesture/PullToRefresh';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -262,6 +263,7 @@ export default function MatchingPage() {
         )}
 
         <ScrollArea>
+        <PullToRefresh onRefresh={async () => { await handleSearch(); }} disabled={!searched}>
         {displayCandidates.map((candidate, idx) => (
             <AppCard key={candidate.pharmacyId} className="mb-3">
             <AppCard.Header className="p-0">
@@ -385,6 +387,7 @@ export default function MatchingPage() {
             )}
           </AppCard>
         ))}
+        </PullToRefresh>
         </ScrollArea>
 
         <ConfirmActionModal
