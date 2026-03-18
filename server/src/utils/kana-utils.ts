@@ -75,9 +75,30 @@ export function hiraganaToKatakana(str: string): string {
 }
 
 /**
+ * Convert full-width alphanumeric characters (U+FF01–U+FF5E) to half-width (U+0021–U+007E).
+ * Only ASCII printable characters in their full-width form are converted.
+ * Katakana, kanji, hiragana and other characters are left unchanged.
+ */
+export function fullWidthAlphanumToHalfWidth(str: string): string {
+  return str.replace(/[\uFF01-\uFF5E]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)
+  );
+}
+
+/**
+ * Convert half-width alphanumeric characters (U+0021–U+007E, i.e. ASCII printable)
+ * to full-width equivalents (U+FF01–U+FF5E).
+ */
+export function halfWidthAlphanumToFullWidth(str: string): string {
+  return str.replace(/[\u0021-\u007E]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) + 0xFEE0)
+  );
+}
+
+/**
  * Normalize a search term: convert half-width katakana to full-width,
- * then return both hiragana and katakana variants for cross-matching.
+ * then convert full-width alphanumeric characters to half-width.
  */
 export function normalizeKana(str: string): string {
-  return halfWidthToFullWidth(str);
+  return fullWidthAlphanumToHalfWidth(halfWidthToFullWidth(str));
 }
