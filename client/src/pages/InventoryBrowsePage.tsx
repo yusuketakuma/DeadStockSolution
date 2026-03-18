@@ -19,6 +19,7 @@ import MobileSortSheet from '../components/mobile/MobileSortSheet';
 import type { SortOption } from '../components/mobile/MobileSortSheet';
 import { useSearchParams } from 'react-router-dom';
 import { daysUntilExpiry } from '../utils/expiry-risk';
+import BarcodeScanButton from '../components/mobile/BarcodeScanButton';
 
 interface BrowseItem {
   id: number;
@@ -135,6 +136,14 @@ export default function InventoryBrowsePage() {
             onChange={incrementalSearch.setQuery}
             onSearch={() => incrementalSearch.executeImmediate()}
             suggestUrl="/search/drugs"
+            trailingIcon={
+              <BarcodeScanButton
+                onScanResult={(drugName) => {
+                  incrementalSearch.setQuery(drugName);
+                  incrementalSearch.executeImmediate();
+                }}
+              />
+            }
           />
         </div>
         <AppButton variant="primary" onClick={() => incrementalSearch.executeImmediate()}>検索</AppButton>

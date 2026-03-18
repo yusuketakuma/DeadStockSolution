@@ -22,6 +22,7 @@ import MobileFilterSheet from '../components/mobile/MobileFilterSheet';
 import MobileSortSheet from '../components/mobile/MobileSortSheet';
 import type { SortOption } from '../components/mobile/MobileSortSheet';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
+import BarcodeScanButton from '../components/mobile/BarcodeScanButton';
 
 interface DeadStockItem {
   id: number;
@@ -212,6 +213,14 @@ export default function DeadStockListPage() {
           onChange={incrementalSearch.setQuery}
           onSearch={() => incrementalSearch.executeImmediate()}
           suggestUrl="/search/drugs"
+          trailingIcon={
+            <BarcodeScanButton
+              onScanResult={(drugName) => {
+                incrementalSearch.setQuery(drugName);
+                incrementalSearch.executeImmediate();
+              }}
+            />
+          }
         />
         <div className="mt-1">
           <SearchChips
