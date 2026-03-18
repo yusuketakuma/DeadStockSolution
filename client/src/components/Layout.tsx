@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import AppScreen from './ui/AppScreen';
 import AppBreadcrumb from './ui/AppBreadcrumb';
 import { useMatchNotificationToast } from '../hooks/useMatchNotificationToast';
+import { usePageSwipe } from '../hooks/usePageSwipe';
 import MobileBottomNav from './layout/MobileBottomNav';
 import './layout/MobileBottomNav.css';
 
@@ -23,6 +24,9 @@ export default function Layout({ children }: Props) {
     }
   });
   useMatchNotificationToast();
+
+  const mainRef = useRef<HTMLElement | null>(null);
+  usePageSwipe(mainRef, { disabled: sidebarOpen });
 
   const toggleSidebarCollapse = () => {
     setSidebarCollapsed((prev) => {
@@ -45,7 +49,7 @@ export default function Layout({ children }: Props) {
           collapsed={sidebarCollapsed}
           onToggleCollapse={toggleSidebarCollapse}
         />
-        <main id="app-main-content" className="app-main" tabIndex={-1}>
+        <main id="app-main-content" className="app-main" tabIndex={-1} ref={mainRef}>
           <AppBreadcrumb />
           <div className="content-container py-3 px-3">
             <AppScreen>{children}</AppScreen>
