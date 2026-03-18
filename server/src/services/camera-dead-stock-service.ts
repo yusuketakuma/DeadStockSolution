@@ -1,8 +1,8 @@
-import { eq, inArray, like, or } from 'drizzle-orm';
+import { type SQL, eq, inArray, ilike, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, drugMaster, drugMasterPackages, uploadJobs } from '../db/schema';
-import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 import { escapeLikeWildcards } from '../utils/request-utils';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 import { parseCameraCode, type ParsedCameraCode } from './gs1-parser';
 import { triggerMatchingRefreshOnUpload } from './matching-refresh-service';
 
@@ -57,7 +57,7 @@ interface PackageRow {
   janCode?: string | null;
 }
 
-type ManualSearchWhereExpr = ReturnType<typeof like> | ReturnType<typeof or>;
+type ManualSearchWhereExpr = SQL | undefined;
 
 const MAX_CAMERA_BATCH_COUNT = 200;
 const MAX_CAMERA_QUANTITY = 100_000;
@@ -182,23 +182,18 @@ function normalizeManualCandidateSearch(search: string): string {
 }
 
 function buildManualSearchWhere(search: string): ManualSearchWhereExpr {
-  const normalized = normalizeKana(search);
-  const hiragana = katakanaToHiragana(normalized);
-  const katakana = hiraganaToKatakana(normalized);
-  const likeTerms = [...new Set([search, normalized, hiragana, katakana].filter(Boolean))];
-  const likeConditions = likeTerms.flatMap((term) => {
-    const escapedLikeTerm = `%${escapeLikeWildcards(term)}%`;
-    return [
-      like(drugMaster.drugName, escapedLikeTerm),
-      like(drugMaster.genericName, escapedLikeTerm),
-    ];
-  });
+  const nameCondition = buildTokenizedSearchConditions(search, [drugMaster.drugName, drugMaster.genericName]);
 
-  if (/^[A-Z0-9]+$/i.test(search)) {
-    likeConditions.push(like(drugMaster.yjCode, `%${escapeLikeWildcards(search)}%`));
+  // YJコード検索（英数字のみの場合）
+  const isCodeSearch = /^[A-Z0-9]+$/i.test(search);
+  const yjCondition = isCodeSearch
+    ? ilike(drugMaster.yjCode, `%${escapeLikeWildcards(search)}%`)
+    : undefined;
+
+  if (nameCondition && yjCondition) {
+    return or(nameCondition, yjCondition) as SQL;
   }
-
-  return likeConditions.length === 1 ? likeConditions[0] : or(...likeConditions);
+  return nameCondition ?? yjCondition;
 }
 
 function buildFirstPackageByMasterId(packageRows: PackageRow[]): Map<number, PackageRow> {
@@ -363,6 +358,9 @@ export async function searchCameraManualCandidates(
 ): Promise<CameraCodeMatch[]> {
   const normalizedSearch = normalizeManualCandidateSearch(search);
   const whereExpr = buildManualSearchWhere(normalizedSearch);
+  if (!whereExpr) {
+    return [];
+  }
 
   const limit = normalizeManualCandidateLimit(limitInput);
   const masters = await db.select(MASTER_ROW_FIELDS)

@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { eq, and, like, or, isNotNull } from 'drizzle-orm';
+import { eq, and, ilike, or, isNotNull } from 'drizzle-orm';
 import { db } from '../config/database';
 import { drugMaster } from '../db/schema';
 import { AuthRequest } from '../types';
 import { parsePagination, normalizeSearchTerm, escapeLikeWildcards } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { writeLog, getClientIp } from '../services/log-service';
-import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 import {
   getDrugMasterStats,
   getDrugDetail,
@@ -39,19 +39,21 @@ function buildDrugMasterListConditions(
   }
 
   if (search) {
-    const normalized = normalizeKana(search);
-    const hiragana = katakanaToHiragana(normalized);
-    const katakana = hiraganaToKatakana(normalized);
-    const likeTerms = new Set([normalized, hiragana, katakana]);
-    const nameConditions = [...likeTerms].map((term) => like(drugMaster.drugName, `%${escapeLikeWildcards(term)}%`));
-    const genericConditions = [...likeTerms].map((term) => like(drugMaster.genericName, `%${escapeLikeWildcards(term)}%`));
-    const allSearchConditions = [...nameConditions, ...genericConditions];
+    const nameCondition = buildTokenizedSearchConditions(search, [drugMaster.drugName, drugMaster.genericName, drugMaster.manufacturer]);
 
-    if (/^[A-Z0-9]+$/i.test(search.trim())) {
-      allSearchConditions.push(like(drugMaster.yjCode, `%${escapeLikeWildcards(search.trim())}%`));
+    // YJコード検索（英数字のみの場合）
+    const isCodeSearch = /^[A-Z0-9]+$/i.test(search.trim());
+    const yjCondition = isCodeSearch
+      ? ilike(drugMaster.yjCode, `%${escapeLikeWildcards(search.trim())}%`)
+      : undefined;
+
+    const searchCondition = nameCondition && yjCondition
+      ? or(nameCondition, yjCondition)
+      : nameCondition ?? yjCondition;
+
+    if (searchCondition) {
+      conditions.push(searchCondition);
     }
-
-    conditions.push(or(...allSearchConditions));
   }
 
   return conditions;

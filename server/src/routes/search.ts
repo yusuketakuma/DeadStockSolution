@@ -1,11 +1,11 @@
 import { Router, Response } from 'express';
-import { eq, or, like, and } from 'drizzle-orm';
+import { eq, ilike, and, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, pharmacies, drugMaster } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { katakanaToHiragana, hiraganaToKatakana, normalizeKana } from '../utils/kana-utils';
 import { escapeLikeWildcards } from '../utils/request-utils';
+import { buildTokenizedSearchConditions } from '../utils/search-utils';
 import { logger } from '../services/logger';
 
 const router = Router();
@@ -22,17 +22,6 @@ function sanitizeQuery(value: unknown): string | undefined {
   return sanitized.slice(0, 100);
 }
 
-function buildKanaLikeTerms(rawQuery: string): string[] {
-  const normalized = normalizeKana(rawQuery);
-  const hiragana = katakanaToHiragana(normalized);
-  const katakana = hiraganaToKatakana(normalized);
-  return [...new Set([normalized, hiragana, katakana])];
-}
-
-function buildEscapedLikeConditions<T>(terms: string[], resolver: (escapedTerm: string) => T): T[] {
-  return terms.map((term) => resolver(escapeLikeWildcards(term)));
-}
-
 // Drug name suggestions for incremental search
 router.get('/drugs', async (req: AuthRequest, res: Response) => {
   try {
@@ -42,10 +31,7 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const conditions = buildEscapedLikeConditions(
-      buildKanaLikeTerms(rawQuery),
-      (term) => like(deadStockItems.drugName, `%${term}%`),
-    );
+    const searchCondition = buildTokenizedSearchConditions(rawQuery, [deadStockItems.drugName]);
 
     const results = await db.selectDistinct({
       drugName: deadStockItems.drugName,
@@ -53,7 +39,7 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
       .from(deadStockItems)
       .where(and(
         eq(deadStockItems.isAvailable, true),
-        conditions.length === 1 ? conditions[0] : or(...conditions),
+        searchCondition,
       ))
       .limit(MAX_SUGGESTIONS);
 
@@ -73,17 +59,18 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const nameConditions = buildEscapedLikeConditions(
-      buildKanaLikeTerms(rawQuery),
-      (term) => like(drugMaster.drugName, `%${term}%`),
-    );
+    const nameCondition = buildTokenizedSearchConditions(rawQuery, [drugMaster.drugName, drugMaster.genericName, drugMaster.manufacturer]);
 
-    // YJコード検索にも対応
+    // YJコード検索にも対応（英数字のみの場合）
     const isCodeSearch = /^[A-Z0-9]+$/i.test(rawQuery.trim());
-    const allConditions = [...nameConditions];
-    if (isCodeSearch) {
-      allConditions.push(like(drugMaster.yjCode, `%${escapeLikeWildcards(rawQuery.trim())}%`));
-    }
+    const yjCondition = isCodeSearch
+      ? ilike(drugMaster.yjCode, `%${escapeLikeWildcards(rawQuery.trim())}%`)
+      : undefined;
+
+    // nameCondition と yjCondition を OR で結合
+    const searchCondition = nameCondition && yjCondition
+      ? or(nameCondition, yjCondition)
+      : nameCondition ?? yjCondition;
 
     const results = await db.select({
       yjCode: drugMaster.yjCode,
@@ -95,7 +82,7 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
       .from(drugMaster)
       .where(and(
         eq(drugMaster.isListed, true),
-        or(...allConditions),
+        searchCondition,
       ))
       .limit(MAX_SUGGESTIONS);
 
@@ -115,10 +102,7 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const conditions = buildEscapedLikeConditions(
-      buildKanaLikeTerms(rawQuery),
-      (term) => like(pharmacies.name, `%${term}%`),
-    );
+    const searchCondition = buildTokenizedSearchConditions(rawQuery, [pharmacies.name]);
 
     const results = await db.selectDistinct({
       name: pharmacies.name,
@@ -126,7 +110,7 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
       .from(pharmacies)
       .where(and(
         eq(pharmacies.isActive, true),
-        conditions.length === 1 ? conditions[0] : or(...conditions),
+        searchCondition,
       ))
       .limit(MAX_SUGGESTIONS);
 
