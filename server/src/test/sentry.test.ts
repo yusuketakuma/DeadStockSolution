@@ -31,11 +31,14 @@ describe('sentry config', () => {
 
       initSentry();
 
-      expect(Sentry.init).toHaveBeenCalledWith({
-        dsn: 'https://test@sentry.io/123',
-        environment: 'production',
-        tracesSampleRate: 0.1,
-      });
+      expect(Sentry.init).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dsn: 'https://test@sentry.io/123',
+          environment: 'production',
+          tracesSampleRate: 0.1,
+          beforeSend: expect.any(Function),
+        })
+      );
     });
 
     it('does not initialize when SENTRY_DSN is not set', () => {
