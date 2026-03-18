@@ -333,7 +333,7 @@ async function resolveByYjPrefix7(yjCode: string): Promise<CameraCodeMatch | nul
   // 同成分で包装情報がある品目を優先
   const candidates = await db.select(MASTER_ROW_FIELDS)
     .from(drugMaster)
-    .where(like(drugMaster.yjCode, `${escapeLikeWildcards(yjPrefix7)}%`))
+    .where(ilike(drugMaster.yjCode, `${escapeLikeWildcards(yjPrefix7)}%`))
     .limit(10);
 
   if (candidates.length === 0) return null;
