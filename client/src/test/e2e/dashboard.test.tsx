@@ -118,6 +118,7 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('在庫参照')).toBeInTheDocument();
     });
+    expect(screen.getByText('医薬品在庫検索')).toBeInTheDocument();
     expect(screen.getByText('マッチング状況')).toBeInTheDocument();
     expect(screen.getByText('交換履歴')).toBeInTheDocument();
   });
@@ -633,9 +634,10 @@ describe('Layout with Sidebar navigation', () => {
       expect(sidebar).toBeInTheDocument();
     });
     expect(screen.getAllByText('アップロード').length).toBeGreaterThan(0);
-    expect(screen.getByText('デッドストックリスト')).toBeInTheDocument();
-    expect(screen.getByText('医薬品使用量リスト')).toBeInTheDocument();
+    expect(screen.getByText('デッドストック')).toBeInTheDocument();
+    expect(screen.getByText('医薬品使用量')).toBeInTheDocument();
     expect(screen.getByText('在庫参照')).toBeInTheDocument();
+    expect(screen.getByText('医薬品在庫検索')).toBeInTheDocument();
     expect(screen.getAllByText('マッチング').length).toBeGreaterThan(0);
     expect(screen.getByText('マッチング一覧')).toBeInTheDocument();
     expect(screen.getByText('交換履歴')).toBeInTheDocument();

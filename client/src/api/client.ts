@@ -293,19 +293,19 @@ export interface DrugChip {
   displayLabel: string;
 }
 
-export interface PrescriptionSearchFilters {
+export interface InventorySearchFilters {
   groupOnly: boolean;
   openOnly: boolean;
   favoritePriority: boolean;
 }
 
-export interface PrescriptionSearchRequest {
+export interface InventorySearchRequest {
   drugKeys: Array<{
     drugMasterId: number;
     genericName: string | null;
     specification: string | null;
   }>;
-  filters: PrescriptionSearchFilters;
+  filters: InventorySearchFilters;
   coordinates: { latitude: number | null; longitude: number | null } | null;
 }
 
@@ -320,7 +320,7 @@ export interface MatrixCell {
   }>;
 }
 
-export interface PrescriptionSearchResponse {
+export interface InventorySearchResponse {
   summary: Array<{
     pharmacyId: number;
     pharmacyName: string;
@@ -340,6 +340,17 @@ export interface PrescriptionSearchResponse {
       cells: MatrixCell[];
     }>;
   };
+}
+
+function inventorySearchRequest(
+  data: InventorySearchRequest,
+  options?: { signal?: AbortSignal },
+) {
+  return apiRequest<InventorySearchResponse>('/inventory/inventory-search', {
+    method: 'POST',
+    body: data,
+    signal: options?.signal,
+  });
 }
 
 export const api = {
@@ -366,8 +377,7 @@ export const api = {
     options: Pick<ApiOptions, 'headers' | 'timeout' | 'signal'> = {},
   ) => apiRequest<T>(path, { method: 'DELETE', body, ...options }),
   upload: apiUpload,
-  prescriptionSearch: (data: PrescriptionSearchRequest, options?: { signal?: AbortSignal }) =>
-    apiRequest<PrescriptionSearchResponse>('/inventory/prescription-search', { method: 'POST', body: data, signal: options?.signal }),
+  inventorySearch: inventorySearchRequest,
 };
 
 /**

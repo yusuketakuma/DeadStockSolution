@@ -28,9 +28,9 @@ import {
   cameraResolveSchema,
   cameraConfirmSchema,
   cameraManualCandidatesSchema,
-  prescriptionSearchSchema,
+  inventorySearchSchema,
 } from '../utils/validators';
-import { searchPrescriptionInventory } from '../services/prescription-search-service';
+import { searchInventoryAvailability } from '../services/inventory-search-service';
 import { isApiError } from '../utils/api-error';
 import { sendBadRequest } from './response-helpers';
 
@@ -357,13 +357,12 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Prescription inventory search across pharmacies
-router.post('/prescription-search', async (req: AuthRequest, res: Response) => {
+async function handleInventorySearch(req: AuthRequest, res: Response) {
   try {
-    const data = parsePayloadOrRespond(prescriptionSearchSchema, req.body ?? {}, res, '検索条件を入力してください');
+    const data = parsePayloadOrRespond(inventorySearchSchema, req.body ?? {}, res, '在庫検索条件を入力してください');
     if (!data) return;
 
-    const result = await searchPrescriptionInventory(
+    const result = await searchInventoryAvailability(
       req.user!.id,
       data.drugKeys,
       data.filters,
@@ -372,8 +371,11 @@ router.post('/prescription-search', async (req: AuthRequest, res: Response) => {
 
     res.json(result);
   } catch (err) {
-    handleRouteError(err, 'Prescription search error', res);
+    handleRouteError(err, 'Inventory search error', res);
   }
-});
+}
+
+// Inventory search across pharmacies
+router.post('/inventory-search', handleInventorySearch);
 
 export default router;

@@ -25,7 +25,7 @@ vi.mock('../config/database.js', () => {
   };
 });
 
-import { scoreAndSortPharmacies, searchPrescriptionInventory } from '../services/prescription-search-service.js';
+import { scoreAndSortPharmacies, searchInventoryAvailability } from '../services/inventory-search-service.js';
 
 function setupDbResponses(responses: unknown[]) {
   mocks.dbResponses = responses;
@@ -73,9 +73,29 @@ describe('scoreAndSortPharmacies', () => {
     const sorted = scoreAndSortPharmacies(pharmacyList);
     expect(sorted[0].pharmacyId).toBe(1);
   });
+
+  it('favoritePriority=true の場合は同充足数ならお気に入り薬局を優先する', () => {
+    const pharmacyList = [
+      { pharmacyId: 1, matchedCount: 2, totalYakka: 100, distance: 5, isFavorite: false },
+      { pharmacyId: 2, matchedCount: 2, totalYakka: 200, distance: 1, isFavorite: true },
+    ];
+
+    const sorted = scoreAndSortPharmacies(pharmacyList, { favoritePriority: true });
+    expect(sorted[0].pharmacyId).toBe(2);
+  });
+
+  it('favoritePriority=false の場合はお気に入り判定で順序を変えない', () => {
+    const pharmacyList = [
+      { pharmacyId: 1, matchedCount: 2, totalYakka: 100, distance: 5, isFavorite: false },
+      { pharmacyId: 2, matchedCount: 2, totalYakka: 200, distance: 1, isFavorite: true },
+    ];
+
+    const sorted = scoreAndSortPharmacies(pharmacyList, { favoritePriority: false });
+    expect(sorted[0].pharmacyId).toBe(1);
+  });
 });
 
-describe('searchPrescriptionInventory', () => {
+describe('searchInventoryAvailability', () => {
   beforeEach(() => {
     mocks.callCount.value = 0;
     mocks.dbResponses = [];
@@ -88,7 +108,7 @@ describe('searchPrescriptionInventory', () => {
       [], // batch equivalences lookup
     ]);
 
-    const result = await searchPrescriptionInventory(
+    const result = await searchInventoryAvailability(
       1,
       [{ drugMasterId: 999, genericName: null, specification: null }],
       { groupOnly: false, openOnly: false, favoritePriority: false },
@@ -127,7 +147,7 @@ describe('searchPrescriptionInventory', () => {
       [{ id: 1, manufacturer: null }, { id: 2, manufacturer: null }], // manufacturers
     ]);
 
-    const result = await searchPrescriptionInventory(
+    const result = await searchInventoryAvailability(
       1,
       [{ drugMasterId: 1, genericName: 'test', specification: '10mg' }],
       { groupOnly: false, openOnly: false, favoritePriority: false },
@@ -153,7 +173,7 @@ describe('searchPrescriptionInventory', () => {
       [{ id: 1, manufacturer: 'A社' }, { id: 2, manufacturer: 'A社' }],
     ]);
 
-    const result = await searchPrescriptionInventory(
+    const result = await searchInventoryAvailability(
       1,
       [{ drugMasterId: 1, genericName: 'test', specification: '10mg' }],
       { groupOnly: false, openOnly: false, favoritePriority: false },
@@ -174,7 +194,7 @@ describe('searchPrescriptionInventory', () => {
       // Promise.all: blocked, favorites, manufacturers (but allDrugMasterIds=[1] so these still run)
     ]);
 
-    const result = await searchPrescriptionInventory(
+    const result = await searchInventoryAvailability(
       1,
       [{ drugMasterId: 1, genericName: 'gnA', specification: '10mg' }],
       { groupOnly: false, openOnly: false, favoritePriority: false },
@@ -185,5 +205,28 @@ describe('searchPrescriptionInventory', () => {
     expect(result.matrix.columns[0].genericName).toBe('gnA');
     expect(result.matrix.columns[0].specification).toBe('10mg');
     expect(result.summary).toHaveLength(0);
+  });
+
+  it('非アクティブ薬局は結果から除外される', async () => {
+    setupDbResponses([
+      [{ id: 1, drugName: 'テスト薬', genericName: 'test', specification: '10mg', yakkaPrice: '100.00', manufacturer: null }],
+      [],
+      [{ id: 1 }],
+      [{ id: 10, pharmacyId: 2, drugMasterId: 1, drugName: 'テスト薬', quantity: 5, unit: '錠', yakkaUnitPrice: '100.00' }],
+      [],
+      [],
+      [],
+      [{ id: 1, manufacturer: null }],
+    ]);
+
+    const result = await searchInventoryAvailability(
+      1,
+      [{ drugMasterId: 1, genericName: 'test', specification: '10mg' }],
+      { groupOnly: false, openOnly: false, favoritePriority: false },
+      null,
+    );
+
+    expect(result.summary).toEqual([]);
+    expect(result.matrix.rows).toEqual([]);
   });
 });

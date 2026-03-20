@@ -40,6 +40,7 @@ const USER_SUBGROUPS: UserSubGroup[] = [
       { to: '/inventory/dead-stock', label: 'デッドストック' },
       { to: '/inventory/used-medication', label: '医薬品使用量' },
       { to: '/inventory/browse', label: '在庫参照' },
+      { to: '/inventory/search', label: '医薬品在庫検索' },
     ],
   },
   {
@@ -165,6 +166,7 @@ const ICON_MAP: Record<string, ReactNode> = {
   '/inventory/dead-stock': <i className="bi bi-box-seam" />,
   '/inventory/used-medication': <i className="bi bi-capsule" />,
   '/inventory/browse': <i className="bi bi-search" />,
+  '/inventory/search': <i className="bi bi-grid-3x3-gap" />,
   '/pharmacies': <i className="bi bi-hospital" />,
   '/admin': <i className="bi bi-gear" />,
   '/admin/pharmacies': <i className="bi bi-hospital" />,

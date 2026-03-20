@@ -94,6 +94,7 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => ({})),
   eq: vi.fn(() => ({})),
   or: vi.fn(() => ({})),
+  ilike: vi.fn(() => ({})),
   desc: vi.fn(() => ({})),
   inArray: vi.fn(() => ({})),
   sql: vi.fn(() => ({})),
@@ -238,7 +239,7 @@ describe('admin pharmacies list routes', () => {
 
     mocks.db.select
       .mockImplementationOnce(() => createPaginatedQuery(pharmacyRows))
-      .mockImplementationOnce(() => createFromQuery([{ count: 1 }]));
+      .mockImplementationOnce(() => createWhereQuery([{ count: 1 }]));
 
     const response = await request(app)
       .get('/api/admin/pharmacies');

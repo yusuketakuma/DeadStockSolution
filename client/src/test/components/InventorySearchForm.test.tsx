@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import PrescriptionSearchForm from '../../components/inventory/PrescriptionSearchForm';
-import type { DrugChip, PrescriptionSearchFilters } from '../../api/client';
+import InventorySearchForm from '../../components/inventory/InventorySearchForm';
+import type { DrugChip, InventorySearchFilters } from '../../api/client';
 
 // SearchInput uses api.get internally; mock the module to keep tests fast/isolated
 vi.mock('../../api/client', async (importOriginal) => {
@@ -21,7 +21,7 @@ vi.mock('../../components/mobile/BarcodeScanButton', () => ({
   default: () => null,
 }));
 
-const defaultFilters: PrescriptionSearchFilters = {
+const defaultFilters: InventorySearchFilters = {
   groupOnly: false,
   openOnly: false,
   favoritePriority: false,
@@ -37,13 +37,13 @@ function makeChip(override: Partial<DrugChip> = {}): DrugChip {
   };
 }
 
-describe('PrescriptionSearchForm', () => {
+describe('InventorySearchForm', () => {
   it('calls onRemoveChip with the correct index when the × button is clicked', async () => {
     const user = userEvent.setup();
     const onRemoveChip = vi.fn();
 
     render(
-      <PrescriptionSearchForm
+      <InventorySearchForm
         chips={[makeChip({ drugMasterId: 1, displayLabel: 'アスピリン 100mg' })]}
         onAddChip={vi.fn()}
         onRemoveChip={onRemoveChip}
@@ -63,7 +63,7 @@ describe('PrescriptionSearchForm', () => {
 
   it('disables the search button when chips is empty', () => {
     render(
-      <PrescriptionSearchForm
+      <InventorySearchForm
         chips={[]}
         onAddChip={vi.fn()}
         onRemoveChip={vi.fn()}
@@ -83,7 +83,7 @@ describe('PrescriptionSearchForm', () => {
     const onSearch = vi.fn();
 
     render(
-      <PrescriptionSearchForm
+      <InventorySearchForm
         chips={[makeChip()]}
         onAddChip={vi.fn()}
         onRemoveChip={vi.fn()}
@@ -108,7 +108,7 @@ describe('PrescriptionSearchForm', () => {
     const onFiltersChange = vi.fn();
 
     const { container } = render(
-      <PrescriptionSearchForm
+      <InventorySearchForm
         chips={[]}
         onAddChip={vi.fn()}
         onRemoveChip={vi.fn()}
@@ -137,7 +137,7 @@ describe('PrescriptionSearchForm', () => {
     const onFiltersChange = vi.fn();
 
     const { container } = render(
-      <PrescriptionSearchForm
+      <InventorySearchForm
         chips={[]}
         onAddChip={vi.fn()}
         onRemoveChip={vi.fn()}

@@ -44,9 +44,17 @@ import {
 } from '../services/group-service';
 
 function createSelectWhereResult(result: unknown) {
-  const where = vi.fn().mockResolvedValue(result);
+  const resolved = Promise.resolve(result);
+  const limit = vi.fn().mockResolvedValue(result);
+  const whereResult = {
+    limit,
+    then: resolved.then.bind(resolved),
+    catch: resolved.catch.bind(resolved),
+    finally: resolved.finally.bind(resolved),
+  };
+  const where = vi.fn().mockReturnValue(whereResult);
   const from = vi.fn().mockReturnValue({ where });
-  return { from, where };
+  return { from, where, limit };
 }
 
 function createSelectOrderLimitOffsetResult(result: unknown) {

@@ -1,25 +1,25 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { api, type DrugChip, type PrescriptionSearchFilters, type PrescriptionSearchResponse } from '../api/client';
+import { api, type DrugChip, type InventorySearchFilters, type InventorySearchResponse } from '../api/client';
 
-interface UsePrescriptionSearchReturn {
+interface UseInventorySearchReturn {
   chips: DrugChip[];
   addChip: (chip: DrugChip) => void;
   removeChip: (index: number) => void;
   clearChips: () => void;
-  filters: PrescriptionSearchFilters;
-  setFilters: React.Dispatch<React.SetStateAction<PrescriptionSearchFilters>>;
-  result: PrescriptionSearchResponse | null;
+  filters: InventorySearchFilters;
+  setFilters: React.Dispatch<React.SetStateAction<InventorySearchFilters>>;
+  result: InventorySearchResponse | null;
   isSearching: boolean;
   search: () => Promise<void>;
   error: string | null;
 }
 
-export function usePrescriptionSearch(): UsePrescriptionSearchReturn {
+export function useInventorySearch(): UseInventorySearchReturn {
   const [chips, setChips] = useState<DrugChip[]>([]);
-  const [filters, setFilters] = useState<PrescriptionSearchFilters>({
+  const [filters, setFilters] = useState<InventorySearchFilters>({
     groupOnly: false, openOnly: false, favoritePriority: false,
   });
-  const [result, setResult] = useState<PrescriptionSearchResponse | null>(null);
+  const [result, setResult] = useState<InventorySearchResponse | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +55,7 @@ export function usePrescriptionSearch(): UsePrescriptionSearchReturn {
     setIsSearching(true);
     setError(null);
     try {
-      const searchResult = await api.prescriptionSearch(
+      const searchResult = await api.inventorySearch(
         {
           drugKeys: chips.map(c => ({
             drugMasterId: c.drugMasterId,

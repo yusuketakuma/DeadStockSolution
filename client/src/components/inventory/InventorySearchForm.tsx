@@ -2,20 +2,20 @@ import { useState } from 'react';
 import { Badge, Button, Form, OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap';
 import SearchInput, { type DrugMasterSuggestion } from '../SearchInput';
 import BarcodeScanButton from '../mobile/BarcodeScanButton';
-import type { DrugChip, PrescriptionSearchFilters } from '../../api/client';
+import type { DrugChip, InventorySearchFilters } from '../../api/client';
 
 interface Props {
   chips: DrugChip[];
   onAddChip: (chip: DrugChip) => void;
   onRemoveChip: (index: number) => void;
-  filters: PrescriptionSearchFilters;
-  onFiltersChange: React.Dispatch<React.SetStateAction<PrescriptionSearchFilters>>;
+  filters: InventorySearchFilters;
+  onFiltersChange: React.Dispatch<React.SetStateAction<InventorySearchFilters>>;
   onSearch: () => void;
   isSearching: boolean;
   isGroupMember: boolean;
 }
 
-export default function PrescriptionSearchForm({
+export default function InventorySearchForm({
   chips,
   onAddChip,
   onRemoveChip,

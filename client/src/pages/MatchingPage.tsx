@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAsyncState } from '../hooks/useAsyncState';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
@@ -6,7 +6,6 @@ import AppAlert from '../components/ui/AppAlert';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
-import type { GroupListResponse, GroupDetailResponse } from '../../../server/src/types/group';
 import RequireUpload from '../components/RequireUpload';
 import { markMatchingDone, readOnboardingMatchingDone } from '../components/onboarding/onboardingSteps';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,11 +15,12 @@ import LoadingButton from '../components/ui/LoadingButton';
 import AppCard from '../components/ui/AppCard';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
 import SwipeableListItem from '../components/gesture/SwipeableListItem';
 import SwipeCoachingOverlay from '../components/gesture/SwipeCoachingOverlay';
+import { useGroupMembership } from '../hooks/useGroupMembership';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -60,16 +60,6 @@ function formatPercent(value?: number): string {
   return `${Math.round(value)}%`;
 }
 
-function collectGroupPharmacyIds(groupDetails: GroupDetailResponse[]): Set<number> {
-  const ids = new Set<number>();
-  for (const detail of groupDetails) {
-    for (const member of detail.members) {
-      ids.add(member.pharmacyId);
-    }
-  }
-  return ids;
-}
-
 function resolveProposalMessageState(err: unknown): ProposalMessageState {
   const errorMessage = err instanceof Error ? err.message : '仮マッチングの送信に失敗しました';
   return {
@@ -80,6 +70,12 @@ function resolveProposalMessageState(err: unknown): ProposalMessageState {
       || errorMessage.includes('利用可能')
     ),
   };
+}
+
+function parsePositiveId(value: string | null): number | null {
+  if (!value) return null;
+  const normalized = Number(value);
+  return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 }
 
 interface MatchItemsTableProps {
@@ -144,6 +140,7 @@ function MatchItemsTable({ items, keyPrefix }: MatchItemsTableProps) {
 
 export default function MatchingPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
   const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
@@ -152,37 +149,42 @@ export default function MatchingPage() {
   const [proposalRetrySuggested, setProposalRetrySuggested] = useState(false);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [candidateForProposal, setCandidateForProposal] = useState<MatchCandidate | null>(null);
+  const requestedTargetPharmacyId = useMemo(
+    () => parsePositiveId(searchParams.get('targetPharmacyId')),
+    [searchParams],
+  );
+  const inventorySearchDrugs = (searchParams.get('inventorySearchDrugs') ?? '').trim();
   const requestedDrug = (searchParams.get('drug') ?? '').trim();
-  const [groupPharmacyIds, setGroupPharmacyIds] = useState<Set<number>>(new Set());
-
-  useEffect(() => {
-    const fetchGroupData = async () => {
-      try {
-        const listRes = await api.get<GroupListResponse>('/groups?tab=mine');
-        if (listRes.groups.length === 0) return;
-        const details = await Promise.all(
-          listRes.groups.map((g) => api.get<GroupDetailResponse>(`/groups/${g.id}`))
-        );
-        setGroupPharmacyIds(collectGroupPharmacyIds(details));
-      } catch {
-        // Silently fail - group data is supplementary
-      }
-    };
-    void fetchGroupData();
-  }, []);
+  const { groupPharmacyIds } = useGroupMembership({ includeMemberIds: true });
+  const hasSearchContext = requestedTargetPharmacyId !== null || requestedDrug.length > 0;
+  const autoSearchKey = useMemo(
+    () => JSON.stringify({
+      targetPharmacyId: requestedTargetPharmacyId,
+      requestedDrug,
+      inventorySearchDrugs,
+    }),
+    [inventorySearchDrugs, requestedDrug, requestedTargetPharmacyId],
+  );
+  const lastAutoSearchKeyRef = useRef<string | null>(null);
 
   const displayCandidates = useMemo(() => {
+    let filteredCandidates = candidates;
+    if (requestedTargetPharmacyId !== null) {
+      filteredCandidates = filteredCandidates.filter(
+        (candidate) => candidate.pharmacyId === requestedTargetPharmacyId,
+      );
+    }
     const needle = requestedDrug.toLowerCase();
     if (!needle) {
-      return candidates;
+      return filteredCandidates;
     }
-    return candidates.filter((candidate) =>
+    return filteredCandidates.filter((candidate) =>
       candidate.itemsFromA.some((item) => item.drugName.toLowerCase().includes(needle))
       || candidate.itemsFromB.some((item) => item.drugName.toLowerCase().includes(needle)),
     );
-  }, [candidates, requestedDrug]);
+  }, [candidates, requestedDrug, requestedTargetPharmacyId]);
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     setLoading(true);
     setError('');
     setMessage('');
@@ -199,7 +201,22 @@ export default function MatchingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setError, setLoading, setMessage, user?.id]);
+
+  useEffect(() => {
+    if (!hasSearchContext) {
+      lastAutoSearchKeyRef.current = null;
+      return;
+    }
+    if (lastAutoSearchKeyRef.current === autoSearchKey) return;
+    lastAutoSearchKeyRef.current = autoSearchKey;
+    void handleSearch();
+  }, [autoSearchKey, handleSearch, hasSearchContext]);
+
+  useEffect(() => {
+    if (requestedTargetPharmacyId === null) return;
+    setExpandedIdx(displayCandidates.length === 1 ? 0 : null);
+  }, [displayCandidates.length, requestedTargetPharmacyId]);
 
   const handleSendProposal = async () => {
     if (!candidateForProposal) return;
@@ -234,6 +251,21 @@ export default function MatchingPage() {
           </AppAlert>
         )}
         {message && <AppAlert variant="success">{message}</AppAlert>}
+        {(requestedTargetPharmacyId !== null || inventorySearchDrugs) && (
+          <AppAlert variant="info" className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <span className="small">
+              医薬品在庫検索からマッチング候補を確認しています。
+              {inventorySearchDrugs && (
+                <>
+                  {' '}対象薬剤: <strong>{inventorySearchDrugs}</strong>
+                </>
+              )}
+            </span>
+            <AppButton type="button" variant="outline-info" size="sm" onClick={() => navigate('/matching')}>
+              全候補を表示
+            </AppButton>
+          </AppAlert>
+        )}
         {requestedDrug && (
           <AppAlert variant="info" className="small">
             対象薬剤: <strong>{requestedDrug}</strong>（一致候補を優先表示）
@@ -262,6 +294,14 @@ export default function MatchingPage() {
         {searched && candidates.length > 0 && displayCandidates.length === 0 && requestedDrug && !loading && (
           <AppAlert variant="warning">
             「{requestedDrug}」に一致する候補は見つかりませんでした。クエリを外すと全候補を確認できます。
+          </AppAlert>
+        )}
+        {searched && candidates.length > 0 && displayCandidates.length === 0 && requestedTargetPharmacyId !== null && !loading && (
+          <AppAlert variant="warning" className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <span>選択した薬局は現在マッチング候補にありません。全候補を表示して他の候補を確認できます。</span>
+            <AppButton type="button" variant="outline-warning" size="sm" onClick={() => navigate('/matching')}>
+              全候補を表示
+            </AppButton>
           </AppAlert>
         )}
 

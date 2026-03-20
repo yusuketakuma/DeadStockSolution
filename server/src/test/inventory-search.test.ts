@@ -3,7 +3,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  searchPrescriptionInventory: vi.fn(),
+  searchInventoryAvailability: vi.fn(),
   loggerError: vi.fn(),
 }));
 
@@ -23,8 +23,8 @@ vi.mock('../config/database', () => ({
   },
 }));
 
-vi.mock('../services/prescription-search-service', () => ({
-  searchPrescriptionInventory: mocks.searchPrescriptionInventory,
+vi.mock('../services/inventory-search-service', () => ({
+  searchInventoryAvailability: mocks.searchInventoryAvailability,
 }));
 
 vi.mock('../services/expiry-risk-service', () => ({
@@ -115,7 +115,7 @@ const mockSearchResult = {
   },
 };
 
-describe('POST /api/inventory/prescription-search', () => {
+describe('POST /api/inventory/inventory-search', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -124,36 +124,36 @@ describe('POST /api/inventory/prescription-search', () => {
     const app = createApp();
 
     const response = await request(app)
-      .post('/api/inventory/prescription-search')
+      .post('/api/inventory/inventory-search')
       .send({ drugKeys: [], filters: { groupOnly: false, openOnly: false, favoritePriority: false }, coordinates: null });
 
     expect(response.status).toBe(400);
     expect(response.body.error).toContain('薬剤を1つ以上選択してください');
-    expect(mocks.searchPrescriptionInventory).not.toHaveBeenCalled();
+    expect(mocks.searchInventoryAvailability).not.toHaveBeenCalled();
   });
 
   it('returns 400 when drugKeys is missing', async () => {
     const app = createApp();
 
     const response = await request(app)
-      .post('/api/inventory/prescription-search')
+      .post('/api/inventory/inventory-search')
       .send({});
 
     expect(response.status).toBe(400);
-    expect(mocks.searchPrescriptionInventory).not.toHaveBeenCalled();
+    expect(mocks.searchInventoryAvailability).not.toHaveBeenCalled();
   });
 
   it('returns 200 with search result for valid request', async () => {
     const app = createApp();
-    mocks.searchPrescriptionInventory.mockResolvedValue(mockSearchResult);
+    mocks.searchInventoryAvailability.mockResolvedValue(mockSearchResult);
 
     const response = await request(app)
-      .post('/api/inventory/prescription-search')
+      .post('/api/inventory/inventory-search')
       .send(validSearchBody);
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual(mockSearchResult);
-    expect(mocks.searchPrescriptionInventory).toHaveBeenCalledWith(
+    expect(mocks.searchInventoryAvailability).toHaveBeenCalledWith(
       1,
       validSearchBody.drugKeys,
       validSearchBody.filters,
@@ -171,37 +171,37 @@ describe('POST /api/inventory/prescription-search', () => {
     }));
 
     const response = await request(app)
-      .post('/api/inventory/prescription-search')
+      .post('/api/inventory/inventory-search')
       .send({ drugKeys: elevenKeys, filters: { groupOnly: false, openOnly: false, favoritePriority: false }, coordinates: null });
 
     expect(response.status).toBe(400);
     expect(response.body.error).toContain('薬剤は10品目まで検索できます');
-    expect(mocks.searchPrescriptionInventory).not.toHaveBeenCalled();
+    expect(mocks.searchInventoryAvailability).not.toHaveBeenCalled();
   });
 
   it('returns 500 when service throws unexpected error', async () => {
     const app = createApp();
-    mocks.searchPrescriptionInventory.mockRejectedValue(new Error('DB接続エラー'));
+    mocks.searchInventoryAvailability.mockRejectedValue(new Error('DB接続エラー'));
 
     const response = await request(app)
-      .post('/api/inventory/prescription-search')
+      .post('/api/inventory/inventory-search')
       .send(validSearchBody);
 
     expect(response.status).toBe(500);
     expect(response.body.error).toBe('サーバーエラーが発生しました');
-    expect(mocks.loggerError).toHaveBeenCalledWith('Prescription search error', expect.objectContaining({ error: 'DB接続エラー' }));
+    expect(mocks.loggerError).toHaveBeenCalledWith('Inventory search error', expect.objectContaining({ error: 'DB接続エラー' }));
   });
 
   it('applies default filters when filters field is omitted', async () => {
     const app = createApp();
-    mocks.searchPrescriptionInventory.mockResolvedValue(mockSearchResult);
+    mocks.searchInventoryAvailability.mockResolvedValue(mockSearchResult);
 
     const response = await request(app)
-      .post('/api/inventory/prescription-search')
+      .post('/api/inventory/inventory-search')
       .send({ drugKeys: [validDrugKey] });
 
     expect(response.status).toBe(200);
-    expect(mocks.searchPrescriptionInventory).toHaveBeenCalledWith(
+    expect(mocks.searchInventoryAvailability).toHaveBeenCalledWith(
       1,
       [validDrugKey],
       { groupOnly: false, openOnly: false, favoritePriority: false },

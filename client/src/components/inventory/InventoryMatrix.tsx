@@ -1,9 +1,9 @@
 import { Table } from 'react-bootstrap';
 import InventoryMatrixCell from './InventoryMatrixCell';
-import type { PrescriptionSearchResponse } from '../../api/client';
+import type { InventorySearchResponse } from '../../api/client';
 
-type MatrixColumn = PrescriptionSearchResponse['matrix']['columns'][number];
-type MatrixRow = PrescriptionSearchResponse['matrix']['rows'][number];
+type MatrixColumn = InventorySearchResponse['matrix']['columns'][number];
+type MatrixRow = InventorySearchResponse['matrix']['rows'][number];
 
 interface Props {
   columns: MatrixColumn[];

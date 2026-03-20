@@ -1,6 +1,6 @@
+import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 import { db } from '../config/database';
-import { drugMaster, drugEquivalences, deadStockItems, pharmacies, pharmacyRelationships, groupMembers } from '../db/schema';
-import { eq, and, inArray, or, isNull, ne } from 'drizzle-orm';
+import { deadStockItems, drugEquivalences, drugMaster, groupMembers, pharmacies, pharmacyRelationships } from '../db/schema';
 import { haversineDistance } from '../utils/geo-utils';
 import { buildBusinessStatusMap } from '../utils/business-hours-utils';
 
@@ -86,11 +86,22 @@ export async function resolveDrugGroups(drugKeys: DrugKey[]): Promise<DrugGroup[
   return groups;
 }
 
-export function scoreAndSortPharmacies<T extends { matchedCount: number; totalYakka: number; distance: number | null }>(
+interface PharmacySortOptions {
+  favoritePriority?: boolean;
+}
+
+export function scoreAndSortPharmacies<
+  T extends { matchedCount: number; totalYakka: number; distance: number | null; isFavorite?: boolean }
+>(
   pharmacyList: T[],
+  options: PharmacySortOptions = {},
 ): T[] {
+  const { favoritePriority = false } = options;
   return [...pharmacyList].sort((a, b) => {
     if (b.matchedCount !== a.matchedCount) return b.matchedCount - a.matchedCount;
+    if (favoritePriority && Boolean(b.isFavorite) !== Boolean(a.isFavorite)) {
+      return Number(Boolean(b.isFavorite)) - Number(Boolean(a.isFavorite));
+    }
     if (a.totalYakka !== b.totalYakka) return a.totalYakka - b.totalYakka;
     if (a.distance === null && b.distance === null) return 0;
     if (a.distance === null) return 1;
@@ -98,8 +109,6 @@ export function scoreAndSortPharmacies<T extends { matchedCount: number; totalYa
     return a.distance - b.distance;
   });
 }
-
-// Types for searchPrescriptionInventory
 
 interface PharmacyScore {
   pharmacyId: number;
@@ -124,7 +133,7 @@ interface MatrixCell {
   }>;
 }
 
-export interface PrescriptionSearchResult {
+export interface InventorySearchResult {
   summary: PharmacyScore[];
   matrix: {
     columns: Array<{ genericName: string | null; specification: string | null; columnLabel: string }>;
@@ -138,12 +147,12 @@ export interface PrescriptionSearchResult {
 
 // Main search function
 
-export async function searchPrescriptionInventory(
+export async function searchInventoryAvailability(
   pharmacyId: number,
   drugKeys: DrugKey[],
   filters: { groupOnly: boolean; openOnly: boolean; favoritePriority: boolean },
   coordinates: { latitude: number | null; longitude: number | null } | null,
-): Promise<PrescriptionSearchResult> {
+): Promise<InventorySearchResult> {
   // 1. Resolve drug groups
   const drugGroups = await resolveDrugGroups(drugKeys);
 
@@ -188,7 +197,10 @@ export async function searchPrescriptionInventory(
         name: pharmacies.name,
         latitude: pharmacies.latitude,
         longitude: pharmacies.longitude,
-      }).from(pharmacies).where(inArray(pharmacies.id, relevantPharmacyIds))
+      }).from(pharmacies).where(and(
+        inArray(pharmacies.id, relevantPharmacyIds),
+        eq(pharmacies.isActive, true),
+      ))
     : [];
   const pharmacyMap = new Map(pharmacyRows.map(p => [p.id, p]));
 
@@ -249,7 +261,7 @@ export async function searchPrescriptionInventory(
 
   // 11. Build matrix and summary per pharmacy
   const summaryList: PharmacyScore[] = [];
-  const matrixRows: PrescriptionSearchResult['matrix']['rows'] = [];
+  const matrixRows: InventorySearchResult['matrix']['rows'] = [];
 
   for (const [phId, items] of pharmacyInventory) {
     const pharmacy = pharmacyMap.get(phId);
@@ -318,11 +330,13 @@ export async function searchPrescriptionInventory(
   }
 
   // 12. Sort + limit to 50 (use Map for O(1) matrix row lookup)
-  const sortedSummary = scoreAndSortPharmacies(summaryList).slice(0, 50);
+  const sortedSummary = scoreAndSortPharmacies(summaryList, {
+    favoritePriority: filters.favoritePriority,
+  }).slice(0, 50);
   const matrixRowMap = new Map(matrixRows.map(r => [r.pharmacyId, r]));
   const sortedMatrixRows = sortedSummary
     .map(s => matrixRowMap.get(s.pharmacyId))
-    .filter((r): r is PrescriptionSearchResult['matrix']['rows'][number] => r !== undefined);
+    .filter((r): r is InventorySearchResult['matrix']['rows'][number] => r !== undefined);
 
   return {
     summary: sortedSummary,

@@ -14,10 +14,10 @@ interface PharmacySummary {
 
 interface Props {
   summaries: PharmacySummary[];
-  onPropose: (pharmacyId: number) => void;
+  onOpenMatching: (pharmacyId: number) => void;
 }
 
-export default function PharmacySummaryCards({ summaries, onPropose }: Props) {
+export default function PharmacySummaryCards({ summaries, onOpenMatching }: Props) {
   const fullMatch = summaries.filter(s => s.matchedCount === s.totalDrugs);
   const partialMatch = summaries.filter(s => s.matchedCount < s.totalDrugs);
 
@@ -27,7 +27,7 @@ export default function PharmacySummaryCards({ summaries, onPropose }: Props) {
         <div className="mb-3">
           <h6 className="text-success mb-2">すべて揃う薬局</h6>
           {fullMatch.map(s => (
-            <PharmacyCard key={s.pharmacyId} summary={s} onPropose={onPropose} />
+            <PharmacyCard key={s.pharmacyId} summary={s} onOpenMatching={onOpenMatching} />
           ))}
         </div>
       )}
@@ -35,7 +35,7 @@ export default function PharmacySummaryCards({ summaries, onPropose }: Props) {
         <div className="mb-3">
           <h6 className="text-warning mb-2">一部揃う薬局</h6>
           {partialMatch.map(s => (
-            <PharmacyCard key={s.pharmacyId} summary={s} onPropose={onPropose} />
+            <PharmacyCard key={s.pharmacyId} summary={s} onOpenMatching={onOpenMatching} />
           ))}
         </div>
       )}
@@ -43,7 +43,7 @@ export default function PharmacySummaryCards({ summaries, onPropose }: Props) {
   );
 }
 
-function PharmacyCard({ summary: s, onPropose }: { summary: PharmacySummary; onPropose: (id: number) => void }) {
+function PharmacyCard({ summary: s, onOpenMatching }: { summary: PharmacySummary; onOpenMatching: (id: number) => void }) {
   return (
     <Card className="mb-2">
       <Card.Body className="d-flex justify-content-between align-items-center py-2">
@@ -64,8 +64,8 @@ function PharmacyCard({ summary: s, onPropose }: { summary: PharmacySummary; onP
             </Badge>
           </div>
         </div>
-        <Button size="sm" variant="outline-primary" onClick={() => onPropose(s.pharmacyId)}>
-          提案する
+        <Button size="sm" variant="outline-primary" onClick={() => onOpenMatching(s.pharmacyId)}>
+          マッチング候補を確認
         </Button>
       </Card.Body>
     </Card>
