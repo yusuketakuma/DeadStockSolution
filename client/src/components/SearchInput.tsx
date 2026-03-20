@@ -3,6 +3,15 @@ import { ListGroup } from 'react-bootstrap';
 import { api } from '../api/client';
 import AppControl from './ui/AppControl';
 
+export interface DrugMasterSuggestion {
+  id: number;
+  drugName: string;
+  genericName: string | null;
+  specification: string | null;
+  yakkaPrice: string;
+  unit: string | null;
+}
+
 interface SearchInputProps {
   placeholder?: string;
   value: string;
@@ -10,6 +19,8 @@ interface SearchInputProps {
   onSearch: (value: string) => void;
   suggestUrl: string;
   trailingIcon?: ReactNode;
+  onSelectItem?: (item: DrugMasterSuggestion) => void;
+  suggestObjectUrl?: string;
 }
 
 const DEBOUNCE_MS = 300;
@@ -21,8 +32,11 @@ export default function SearchInput({
   onSearch,
   suggestUrl,
   trailingIcon,
+  onSelectItem,
+  suggestObjectUrl,
 }: SearchInputProps) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [objectSuggestions, setObjectSuggestions] = useState<DrugMasterSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -30,16 +44,21 @@ export default function SearchInput({
   const containerRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
 
+  const isObjectMode = Boolean(suggestObjectUrl);
+  const activeSuggestions = isObjectMode ? objectSuggestions : suggestions;
+
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
 
+    setSuggestions([]);
+    setObjectSuggestions([]);
+    setShowSuggestions(false);
+
     if (!value.trim()) {
       requestAbortRef.current?.abort();
       requestAbortRef.current = null;
-      setSuggestions([]);
-      setShowSuggestions(false);
       return;
     }
 
@@ -50,19 +69,32 @@ export default function SearchInput({
       const controller = new AbortController();
       requestAbortRef.current = controller;
       try {
-        const results = await api.get<string[]>(
-          `${suggestUrl}?q=${encodeURIComponent(value)}`,
-          { signal: controller.signal },
-        );
-        if (!cancelled) {
-          setSuggestions(results);
-          setShowSuggestions(results.length > 0);
-          setSelectedIndex(-1);
+        if (isObjectMode && suggestObjectUrl) {
+          const results = await api.get<DrugMasterSuggestion[]>(
+            `${suggestObjectUrl}?q=${encodeURIComponent(value)}`,
+            { signal: controller.signal },
+          );
+          if (!cancelled) {
+            setObjectSuggestions(results);
+            setShowSuggestions(results.length > 0);
+            setSelectedIndex(-1);
+          }
+        } else {
+          const results = await api.get<string[]>(
+            `${suggestUrl}?q=${encodeURIComponent(value)}`,
+            { signal: controller.signal },
+          );
+          if (!cancelled) {
+            setSuggestions(results);
+            setShowSuggestions(results.length > 0);
+            setSelectedIndex(-1);
+          }
         }
       } catch {
         if (controller.signal.aborted) return;
         if (!cancelled) {
           setSuggestions([]);
+          setObjectSuggestions([]);
         }
       }
     }, DEBOUNCE_MS);
@@ -75,7 +107,7 @@ export default function SearchInput({
       requestAbortRef.current?.abort();
       requestAbortRef.current = null;
     };
-  }, [value, suggestUrl]);
+  }, [value, suggestUrl, suggestObjectUrl, isObjectMode]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -87,14 +119,21 @@ export default function SearchInput({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const selectSuggestion = (suggestion: string) => {
+  const selectStringSuggestion = (suggestion: string) => {
     onChange(suggestion);
     onSearch(suggestion);
     setShowSuggestions(false);
   };
 
+  const selectObjectSuggestion = (item: DrugMasterSuggestion) => {
+    onSelectItem?.(item);
+    onChange('');
+    setShowSuggestions(false);
+    setObjectSuggestions([]);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!showSuggestions || suggestions.length === 0) {
+    if (!showSuggestions || activeSuggestions.length === 0) {
       if (e.key === 'Enter') {
         e.preventDefault();
         onSearch(value);
@@ -105,7 +144,7 @@ export default function SearchInput({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedIndex((prev) => Math.min(prev + 1, suggestions.length - 1));
+        setSelectedIndex((prev) => Math.min(prev + 1, activeSuggestions.length - 1));
         break;
       case 'ArrowUp':
         e.preventDefault();
@@ -114,7 +153,11 @@ export default function SearchInput({
       case 'Enter':
         e.preventDefault();
         if (selectedIndex >= 0) {
-          selectSuggestion(suggestions[selectedIndex]);
+          if (isObjectMode) {
+            selectObjectSuggestion(objectSuggestions[selectedIndex]);
+          } else {
+            selectStringSuggestion(suggestions[selectedIndex]);
+          }
         } else {
           onSearch(value);
           setShowSuggestions(false);
@@ -126,7 +169,7 @@ export default function SearchInput({
     }
   };
 
-  const isExpanded = showSuggestions && suggestions.length > 0;
+  const isExpanded = showSuggestions && activeSuggestions.length > 0;
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
@@ -136,7 +179,7 @@ export default function SearchInput({
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         onFocus={() => {
-          if (suggestions.length > 0) setShowSuggestions(true);
+          if (activeSuggestions.length > 0) setShowSuggestions(true);
         }}
         role="combobox"
         aria-autocomplete="list"
@@ -161,20 +204,35 @@ export default function SearchInput({
             boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
           }}
         >
-          {suggestions.map((s, idx) => (
-            <ListGroup.Item
-              key={`${idx}-${s}`}
-              id={`${listboxId}-${idx}`}
-              action
-              active={idx === selectedIndex}
-              onClick={() => selectSuggestion(s)}
-              role="option"
-              aria-selected={idx === selectedIndex}
-              style={{ cursor: 'pointer', fontSize: '0.9rem' }}
-            >
-              {s}
-            </ListGroup.Item>
-          ))}
+          {isObjectMode
+            ? objectSuggestions.map((item, idx) => (
+                <ListGroup.Item
+                  key={`${idx}-${item.id}`}
+                  id={`${listboxId}-${idx}`}
+                  action
+                  active={idx === selectedIndex}
+                  onClick={() => selectObjectSuggestion(item)}
+                  role="option"
+                  aria-selected={idx === selectedIndex}
+                  style={{ cursor: 'pointer', fontSize: '0.9rem' }}
+                >
+                  {item.drugName}
+                </ListGroup.Item>
+              ))
+            : suggestions.map((s, idx) => (
+                <ListGroup.Item
+                  key={`${idx}-${s}`}
+                  id={`${listboxId}-${idx}`}
+                  action
+                  active={idx === selectedIndex}
+                  onClick={() => selectStringSuggestion(s)}
+                  role="option"
+                  aria-selected={idx === selectedIndex}
+                  style={{ cursor: 'pointer', fontSize: '0.9rem' }}
+                >
+                  {s}
+                </ListGroup.Item>
+              ))}
         </ListGroup>
       )}
     </div>
