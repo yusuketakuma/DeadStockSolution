@@ -65,8 +65,10 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
     );
 
     const results = await db.select({
+      id: drugMaster.id,
       yjCode: drugMaster.yjCode,
       drugName: drugMaster.drugName,
+      genericName: drugMaster.genericName,
       yakkaPrice: drugMaster.yakkaPrice,
       unit: drugMaster.unit,
       specification: drugMaster.specification,
