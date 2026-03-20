@@ -46,14 +46,14 @@ export default function PrescriptionSearchForm({
   return (
     <div className="mb-3">
       <div style={{ position: 'relative' }}>
-        <SearchInput
+        <SearchInput<DrugMasterSuggestion>
           placeholder="薬品名を入力..."
-          suggestObjectUrl="/search/drug-master"
-          suggestUrl=""
+          suggestUrl="/search/drug-master"
           value={searchValue}
           onChange={setSearchValue}
-          onSearch={() => {}}
-          onSelectItem={handleSelectItem}
+          renderItem={(item) => item.drugName}
+          onSelect={handleSelectItem}
+          clearOnSelect
           trailingIcon={<BarcodeScanButton onScanResult={handleScanResult} />}
         />
       </div>

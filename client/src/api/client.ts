@@ -366,8 +366,8 @@ export const api = {
     options: Pick<ApiOptions, 'headers' | 'timeout' | 'signal'> = {},
   ) => apiRequest<T>(path, { method: 'DELETE', body, ...options }),
   upload: apiUpload,
-  prescriptionSearch: (data: PrescriptionSearchRequest) =>
-    apiRequest<PrescriptionSearchResponse>('/inventory/prescription-search', { method: 'POST', body: data }),
+  prescriptionSearch: (data: PrescriptionSearchRequest, options?: { signal?: AbortSignal }) =>
+    apiRequest<PrescriptionSearchResponse>('/inventory/prescription-search', { method: 'POST', body: data, signal: options?.signal }),
 };
 
 /**

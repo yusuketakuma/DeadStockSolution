@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { api, type DrugChip, type PrescriptionSearchFilters, type PrescriptionSearchResponse } from '../api/client';
 
 interface UsePrescriptionSearchReturn {
@@ -23,6 +23,13 @@ export function usePrescriptionSearch(): UsePrescriptionSearchReturn {
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+
+  // アンマウント時に進行中のリクエストをキャンセル
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
   const addChip = useCallback((chip: DrugChip) => {
     setChips(prev => {
       if (prev.length >= 10) return prev;
@@ -39,23 +46,38 @@ export function usePrescriptionSearch(): UsePrescriptionSearchReturn {
 
   const search = useCallback(async () => {
     if (chips.length === 0) return;
+
+    // 前回のリクエストをキャンセル
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setIsSearching(true);
     setError(null);
     try {
-      const searchResult = await api.prescriptionSearch({
-        drugKeys: chips.map(c => ({
-          drugMasterId: c.drugMasterId,
-          genericName: c.genericName,
-          specification: c.specification,
-        })),
-        filters,
-        coordinates: null,
-      });
-      setResult(searchResult);
+      const searchResult = await api.prescriptionSearch(
+        {
+          drugKeys: chips.map(c => ({
+            drugMasterId: c.drugMasterId,
+            genericName: c.genericName,
+            specification: c.specification,
+          })),
+          filters,
+          coordinates: null,
+        },
+        { signal: controller.signal },
+      );
+      // abort された場合は結果を反映しない
+      if (!controller.signal.aborted) {
+        setResult(searchResult);
+      }
     } catch {
+      if (controller.signal.aborted) return;
       setError('検索中にエラーが発生しました');
     } finally {
-      setIsSearching(false);
+      if (!controller.signal.aborted) {
+        setIsSearching(false);
+      }
     }
   }, [chips, filters]);
 
