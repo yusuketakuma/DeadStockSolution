@@ -31,7 +31,9 @@ import {
   cameraResolveSchema,
   cameraConfirmSchema,
   cameraManualCandidatesSchema,
+  prescriptionSearchSchema,
 } from '../utils/validators';
+import { searchPrescriptionInventory } from '../services/prescription-search-service';
 import { isApiError } from '../utils/api-error';
 import { sendBadRequest } from './response-helpers';
 
@@ -401,6 +403,25 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     logger.error('Browse inventory error:', { error: (err as Error).message });
     res.status(500).json({ error: '在庫参照に失敗しました' });
+  }
+});
+
+// Prescription inventory search across pharmacies
+router.post('/prescription-search', async (req: AuthRequest, res: Response) => {
+  try {
+    const data = parsePayloadOrRespond(prescriptionSearchSchema, req.body ?? {}, res, '検索条件を入力してください');
+    if (!data) return;
+
+    const result = await searchPrescriptionInventory(
+      req.user!.id,
+      data.drugKeys,
+      data.filters,
+      data.coordinates,
+    );
+
+    res.json(result);
+  } catch (err) {
+    handleRouteError(err, 'Prescription search error', res);
   }
 });
 
