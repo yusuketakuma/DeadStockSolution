@@ -213,8 +213,12 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
   }
 
   if (!response.ok && shouldRetry && RETRYABLE_STATUS_CODES.has(response.status)) {
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    response = await doRequest();
+    if (!signal?.aborted) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      if (!signal?.aborted) {
+        response = await doRequest();
+      }
+    }
   }
 
   if (!response.ok) {
@@ -258,6 +262,15 @@ export async function apiUpload<T>(path: string, formData: FormData, options: Up
     }
   }
 
+  if (!response.ok && RETRYABLE_STATUS_CODES.has(response.status)) {
+    if (!signal?.aborted) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      if (!signal?.aborted) {
+        response = await fetchWithTimeout(`${API_BASE}${path}`, config, timeout, signal);
+      }
+    }
+  }
+
   if (!response.ok) {
     if (response.status === 401) {
       clearAuthState();
@@ -271,6 +284,62 @@ export async function apiUpload<T>(path: string, formData: FormData, options: Up
 export function buildApiUrl(path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${API_BASE}${normalizedPath}`;
+}
+
+export interface DrugChip {
+  drugMasterId: number;
+  genericName: string | null;
+  specification: string | null;
+  displayLabel: string;
+}
+
+export interface PrescriptionSearchFilters {
+  groupOnly: boolean;
+  openOnly: boolean;
+  favoritePriority: boolean;
+}
+
+export interface PrescriptionSearchRequest {
+  drugKeys: Array<{
+    drugMasterId: number;
+    genericName: string | null;
+    specification: string | null;
+  }>;
+  filters: PrescriptionSearchFilters;
+  coordinates: { latitude: number | null; longitude: number | null } | null;
+}
+
+export interface MatrixCell {
+  available: boolean;
+  items: Array<{
+    drugName: string;
+    manufacturer: string | null;
+    yakkaUnitPrice: number | null;
+    quantity: number;
+    unit: string | null;
+  }>;
+}
+
+export interface PrescriptionSearchResponse {
+  summary: Array<{
+    pharmacyId: number;
+    pharmacyName: string;
+    matchedCount: number;
+    totalDrugs: number;
+    totalYakka: number;
+    distance: number | null;
+    businessStatus: { isOpen: boolean; message: string; isConfigured: boolean };
+    isFavorite: boolean;
+    isGroupMember: boolean;
+  }>;
+  matrix: {
+    columns: Array<{ genericName: string | null; specification: string | null; columnLabel: string }>;
+    rows: Array<{
+      pharmacyId: number;
+      pharmacyName: string;
+      cells: MatrixCell[];
+    }>;
+  };
 }
 
 export const api = {
@@ -297,6 +366,8 @@ export const api = {
     options: Pick<ApiOptions, 'headers' | 'timeout' | 'signal'> = {},
   ) => apiRequest<T>(path, { method: 'DELETE', body, ...options }),
   upload: apiUpload,
+  prescriptionSearch: (data: PrescriptionSearchRequest) =>
+    apiRequest<PrescriptionSearchResponse>('/inventory/prescription-search', { method: 'POST', body: data }),
 };
 
 /**
