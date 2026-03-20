@@ -12,6 +12,7 @@ const UploadPage = lazy(() => import('../pages/UploadPage'));
 const DeadStockListPage = lazy(() => import('../pages/DeadStockListPage'));
 const UsedMedicationListPage = lazy(() => import('../pages/UsedMedicationListPage'));
 const InventoryBrowsePage = lazy(() => import('../pages/InventoryBrowsePage'));
+const InventorySearchPage = lazy(() => import('../pages/InventorySearchPage'));
 const MatchingPage = lazy(() => import('../pages/MatchingPage'));
 const ProposalsPage = lazy(() => import('../pages/ProposalsPage'));
 const ProposalDetailPage = lazy(() => import('../pages/ProposalDetailPage'));
@@ -89,6 +90,7 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/inventory/dead-stock', access: 'protected', userOnly: true, useLayout: true, component: DeadStockListPage, title: 'デッドストック', parent: '/inventory' },
   { path: '/inventory/used-medication', access: 'protected', userOnly: true, useLayout: true, component: UsedMedicationListPage, title: '医薬品使用量', parent: '/inventory' },
   { path: '/inventory/browse', access: 'protected', userOnly: true, useLayout: true, component: InventoryBrowsePage, title: '在庫参照', parent: '/inventory' },
+  { path: '/inventory/search', access: 'protected', userOnly: true, useLayout: true, component: InventorySearchPage, title: '医薬品在庫検索', parent: '/inventory' },
   { path: '/matching', access: 'protected', userOnly: true, useLayout: true, component: MatchingPage, title: 'マッチング' },
   { path: '/proposals', access: 'protected', userOnly: true, useLayout: true, component: ProposalsPage, title: 'マッチング一覧' },
   { path: '/proposals/:id', access: 'protected', userOnly: true, useLayout: true, component: ProposalDetailPage, title: '提案詳細', parent: '/proposals' },

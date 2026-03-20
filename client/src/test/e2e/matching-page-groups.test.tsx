@@ -167,4 +167,89 @@ describe('MatchingPage — Group Badge', () => {
     const groupBadges = Array.from(allBadges).filter((b) => b.textContent === 'グループ');
     expect(groupBadges).toHaveLength(0);
   });
+
+  it('auto-loads and narrows candidates when opened from inventory search', async () => {
+    mockMatchingFetch();
+    renderWithProviders(<MatchingPage />, {
+      route: '/matching?targetPharmacyId=5&inventorySearchDrugs=%E3%82%A2%E3%82%B9%E3%83%94%E3%83%AA%E3%83%B3%20100mg',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /グループ内薬局/ })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('グループ外薬局')).not.toBeInTheDocument();
+    expect(screen.getByText(/医薬品在庫検索からマッチング候補を確認しています/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全候補を表示' })).toBeInTheDocument();
+  });
+
+  it('does not auto-retry forever when inventory-search auto-load fails', async () => {
+    const exchangeFindCalls = { value: 0 };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/upload/status')) {
+        return new Response(JSON.stringify({ deadStockUploaded: true, usedMedicationUploaded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/groups?tab=mine')) {
+        return new Response(JSON.stringify(myGroupsResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/groups/10')) {
+        return new Response(JSON.stringify(groupDetail10), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/timeline/bootstrap')) {
+        return new Response(JSON.stringify({ timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null }, digest: { events: [] }, unreadCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/timeline/unread-count')) {
+        return new Response(JSON.stringify({ unreadCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/exchange/find')) {
+        exchangeFindCalls.value += 1;
+        return new Response(JSON.stringify({ error: '検索失敗' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<MatchingPage />, {
+      route: '/matching?targetPharmacyId=5&inventorySearchDrugs=%E3%83%86%E3%82%B9%E3%83%88%E8%96%AC',
+    });
+
+    await screen.findByText('検索失敗');
+    await waitFor(() => {
+      expect(exchangeFindCalls.value).toBe(1);
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(exchangeFindCalls.value).toBe(1);
+  });
 });

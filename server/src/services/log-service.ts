@@ -29,7 +29,8 @@ export type LogAction =
   | 'drug_master_edit'
   | 'admin_verify_pharmacy'
   | 'admin_bulk_verify'
-  | 'admin_bulk_reject';
+  | 'admin_bulk_reject'
+  | 'admin_csv_export';
 
 export async function writeLog(
   action: LogAction,

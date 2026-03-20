@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import DeadStockListPage from '../../pages/DeadStockListPage';
 import UsedMedicationListPage from '../../pages/UsedMedicationListPage';
 import InventoryBrowsePage from '../../pages/InventoryBrowsePage';
@@ -219,7 +220,12 @@ describe('UsedMedicationListPage', () => {
       },
     });
 
-    renderWithProviders(<UsedMedicationListPage />);
+    const queryClient = new QueryClient();
+    renderWithProviders(
+      <QueryClientProvider client={queryClient}>
+        <UsedMedicationListPage />
+      </QueryClientProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('アムロジピン錠5mg')).toBeInTheDocument();

@@ -240,7 +240,7 @@ describe('auth routes — additional coverage', () => {
   describe('POST /register', () => {
     const validBody = {
       email: 'pharmacy@example.com',
-      password: 'Password123',
+      password: 'Password123!',
       name: '中央薬局',
       postalCode: '100-0001',
       address: '千代田1-1',

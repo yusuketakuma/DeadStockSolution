@@ -3,26 +3,41 @@ import { ListGroup } from 'react-bootstrap';
 import { api } from '../api/client';
 import AppControl from './ui/AppControl';
 
-interface SearchInputProps {
+export interface DrugMasterSuggestion {
+  id: number;
+  drugName: string;
+  genericName: string | null;
+  specification: string | null;
+  yakkaPrice: string;
+  unit: string | null;
+}
+
+export interface SearchInputProps<T = string> {
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
-  onSearch: (value: string) => void;
+  onSearch?: (value: string) => void;
   suggestUrl: string;
   trailingIcon?: ReactNode;
+  onSelect?: (item: T) => void;
+  renderItem?: (item: T) => string;
+  clearOnSelect?: boolean;
 }
 
 const DEBOUNCE_MS = 300;
 
-export default function SearchInput({
+export default function SearchInput<T = string>({
   placeholder = '薬品名 メーカー名で検索（スペース区切りで絞り込み）',
   value,
   onChange,
   onSearch,
   suggestUrl,
   trailingIcon,
-}: SearchInputProps) {
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  onSelect,
+  renderItem,
+  clearOnSelect = false,
+}: SearchInputProps<T>) {
+  const [suggestions, setSuggestions] = useState<T[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -35,11 +50,12 @@ export default function SearchInput({
       clearTimeout(debounceRef.current);
     }
 
+    setSuggestions([]);
+    setShowSuggestions(false);
+
     if (!value.trim()) {
       requestAbortRef.current?.abort();
       requestAbortRef.current = null;
-      setSuggestions([]);
-      setShowSuggestions(false);
       return;
     }
 
@@ -50,7 +66,7 @@ export default function SearchInput({
       const controller = new AbortController();
       requestAbortRef.current = controller;
       try {
-        const results = await api.get<string[]>(
+        const results = await api.get<T[]>(
           `${suggestUrl}?q=${encodeURIComponent(value)}`,
           { signal: controller.signal },
         );
@@ -87,9 +103,20 @@ export default function SearchInput({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const selectSuggestion = (suggestion: string) => {
-    onChange(suggestion);
-    onSearch(suggestion);
+  const getDisplayText = (item: T): string => {
+    return renderItem ? renderItem(item) : String(item);
+  };
+
+  const handleSelect = (item: T) => {
+    onSelect?.(item);
+    if (clearOnSelect) {
+      onChange('');
+      setSuggestions([]);
+    } else {
+      const text = getDisplayText(item);
+      onChange(text);
+      onSearch?.(text);
+    }
     setShowSuggestions(false);
   };
 
@@ -97,7 +124,7 @@ export default function SearchInput({
     if (!showSuggestions || suggestions.length === 0) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        onSearch(value);
+        onSearch?.(value);
       }
       return;
     }
@@ -114,9 +141,9 @@ export default function SearchInput({
       case 'Enter':
         e.preventDefault();
         if (selectedIndex >= 0) {
-          selectSuggestion(suggestions[selectedIndex]);
+          handleSelect(suggestions[selectedIndex]);
         } else {
-          onSearch(value);
+          onSearch?.(value);
           setShowSuggestions(false);
         }
         break;
@@ -161,18 +188,18 @@ export default function SearchInput({
             boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
           }}
         >
-          {suggestions.map((s, idx) => (
+          {suggestions.map((item, idx) => (
             <ListGroup.Item
-              key={`${idx}-${s}`}
+              key={idx}
               id={`${listboxId}-${idx}`}
               action
               active={idx === selectedIndex}
-              onClick={() => selectSuggestion(s)}
+              onClick={() => handleSelect(item)}
               role="option"
               aria-selected={idx === selectedIndex}
               style={{ cursor: 'pointer', fontSize: '0.9rem' }}
             >
-              {s}
+              {getDisplayText(item)}
             </ListGroup.Item>
           ))}
         </ListGroup>

@@ -148,7 +148,8 @@ function sendInactiveAccountResponse(res: Response, verificationStatus: Verifica
 }
 
 function sendInvalidSessionResponse(res: Response): void {
-  res.status(401).json({ error: 'セッションが無効です。再度ログインしてください' });
+  // 3省2ガイドライン §14: パスワード変更後の全セッション無効化を明示通知
+  res.status(401).json({ error: 'セッションが無効です。再度ログインしてください', code: 'SESSION_INVALIDATED' });
 }
 
 function sendAuthConfigurationResponse(res: Response): void {

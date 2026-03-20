@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { eq, and, gt, lt, isNull, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { passwordResetTokens, pharmacies } from '../db/schema';
-import { hashPassword } from './auth-service';
+import { hashPassword, verifyPassword } from './auth-service';
 import { eqEmailCaseInsensitive } from '../utils/email-utils';
 
 const TOKEN_EXPIRY_MINUTES = 30;
@@ -51,6 +51,7 @@ export function generateResetToken(): string {
 export interface PasswordResetResult {
   success: boolean;
   pharmacyId: number;
+  reason?: 'same_password';
 }
 
 export async function createPasswordResetToken(email: string): Promise<{ token: string; pharmacyName: string } | null> {
@@ -134,6 +135,18 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
 
     if (!consumed) {
       return { success: false, pharmacyId: 0 };
+    }
+
+    // 3省2ガイドライン: 現在のパスワードと同一でないことを確認（再利用防止）
+    const [currentRow] = await tx.select({ passwordHash: pharmacies.passwordHash })
+      .from(pharmacies)
+      .where(eq(pharmacies.id, consumed.pharmacyId))
+      .limit(1);
+    if (currentRow?.passwordHash) {
+      const isSame = await verifyPassword(newPassword, currentRow.passwordHash);
+      if (isSame) {
+        return { success: false, pharmacyId: 0, reason: 'same_password' as const };
+      }
     }
 
     // Hash password only after token is confirmed valid (avoid CPU waste on invalid tokens).

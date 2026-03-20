@@ -212,6 +212,7 @@ export default function DashboardPage() {
               <Link to="/upload" className="btn btn-outline-primary btn-sm py-0">アップロード</Link>
               <Link to="/matching" className="btn btn-outline-primary btn-sm py-0">マッチングを実行</Link>
               <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm py-0">在庫参照</Link>
+              <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm py-0">医薬品在庫検索</Link>
               <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">マッチング状況</Link>
               <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm py-0">交換履歴</Link>
             </div>

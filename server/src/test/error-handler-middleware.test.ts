@@ -413,7 +413,7 @@ describe('error-handler middleware', () => {
         sourceLocation: null,
         tenant: {
           pharmacyId: null,
-          pharmacyEmail: null,
+          // pharmacyEmail removed for PII protection
         },
       });
     });
@@ -440,7 +440,7 @@ describe('error-handler middleware', () => {
         sourceLocation: null,
         tenant: {
           pharmacyId: null,
-          pharmacyEmail: null,
+          // pharmacyEmail removed for PII protection
         },
       });
     });
@@ -461,7 +461,6 @@ describe('error-handler middleware', () => {
         path: '/api/account',
         tenant: {
           pharmacyId: 42,
-          pharmacyEmail: 'tenant@example.com',
         },
       }));
     });

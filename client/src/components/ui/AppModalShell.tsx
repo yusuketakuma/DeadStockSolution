@@ -9,6 +9,8 @@ interface AppModalShellProps {
   closeButton?: boolean;
   centered?: boolean;
   size?: 'sm' | 'lg' | 'xl';
+  backdrop?: boolean | 'static';
+  keyboard?: boolean;
 }
 
 export default function AppModalShell({
@@ -20,9 +22,11 @@ export default function AppModalShell({
   closeButton = true,
   centered = true,
   size,
+  backdrop,
+  keyboard,
 }: AppModalShellProps) {
   return (
-    <Modal show={show} onHide={onHide} centered={centered} size={size}>
+    <Modal show={show} onHide={onHide} centered={centered} size={size} backdrop={backdrop} keyboard={keyboard}>
       <Modal.Header closeButton={closeButton}>
         <Modal.Title>{title}</Modal.Title>
       </Modal.Header>

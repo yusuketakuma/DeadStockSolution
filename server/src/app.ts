@@ -191,6 +191,12 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  // 3省2ガイドライン §13.3: 通信の暗号化 — HSTS を明示的に設定
+  strictTransportSecurity: {
+    maxAge: 31536000,       // 1年
+    includeSubDomains: true,
+    preload: true,
+  },
 }));
 // Permissions-Policy は Helmet が直接サポートしていないためカスタムミドルウェアで追加
 // camera=(self): カメラは自分のオリジンからのみ許可（バーコードスキャン機能で使用）

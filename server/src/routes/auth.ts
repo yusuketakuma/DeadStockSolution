@@ -14,6 +14,7 @@ import { AuthRequest } from '../types';
 import { requireLogin, invalidateAuthUserCache } from '../middleware/auth';
 import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } from '../middleware/csrf';
 import { writeLog, getClientIp } from '../services/log-service';
+import { trackLoginFailure, clearLoginFailures } from '../utils/login-failure-tracker';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
 import { handleRouteError, getErrorMessage } from '../middleware/error-handler';
@@ -528,11 +529,14 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response): Pro
 
     const valid = await verifyPassword(password, pharmacy.passwordHash);
     if (!valid) {
-      void writeLog('login_failed', { detail: `ログイン失敗: ${normalizedEmail}`, ipAddress: getClientIp(req) });
+      const clientIp = getClientIp(req);
+      trackLoginFailure(clientIp);
+      void writeLog('login_failed', { detail: `ログイン失敗: ${normalizedEmail}`, ipAddress: clientIp });
       res.status(401).json(buildInvalidCredentialsResponse());
       return;
     }
 
+    clearLoginFailures(getClientIp(req));
     const token = generateToken(buildTokenPayload(pharmacy));
     invalidateAuthUserCache(pharmacy.id);
 
@@ -592,6 +596,10 @@ router.post('/password-reset/confirm', passwordResetLimiter, async (req: AuthReq
 
     const resetResult = await resetPasswordWithToken(token, newPassword);
     if (!resetResult.success) {
+      if (resetResult.reason === 'same_password') {
+        res.status(400).json({ error: '現在と同じパスワードは使用できません。別のパスワードを設定してください' });
+        return;
+      }
       void writeLog('password_reset_failed', { detail: 'リセットトークン無効または期限切れ', ipAddress: getClientIp(req) });
       res.status(400).json(buildInvalidPasswordResetResponse());
       return;

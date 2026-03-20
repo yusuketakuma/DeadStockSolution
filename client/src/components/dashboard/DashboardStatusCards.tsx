@@ -75,8 +75,16 @@ export default function DashboardStatusCards({ status, userName }: Props) {
         <Col md={6} lg={4}>
           <AppDataPanel>
               <h5>在庫参照</h5>
-              <p>全薬局の医薬品在庫を検索・閲覧</p>
-              <Link to="/inventory/browse" className="btn btn-outline-primary btn-sm">在庫を検索</Link>
+              <p>全薬局の在庫を一覧で参照</p>
+              <Link to="/inventory/browse" className="btn btn-outline-primary btn-sm">在庫参照を開く</Link>
+          </AppDataPanel>
+        </Col>
+
+        <Col md={6} lg={4}>
+          <AppDataPanel>
+              <h5>医薬品在庫検索</h5>
+              <p>複数薬剤を指定して在庫を横断検索</p>
+              <Link to="/inventory/search" className="btn btn-outline-primary btn-sm">医薬品在庫検索を開く</Link>
           </AppDataPanel>
         </Col>
 

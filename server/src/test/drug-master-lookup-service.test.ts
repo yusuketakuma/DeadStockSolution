@@ -18,16 +18,21 @@ vi.mock('drizzle-orm', () => ({
   count: vi.fn(() => ({})),
   desc: vi.fn((col: unknown) => col),
   eq: vi.fn(() => ({})),
+  ilike: vi.fn(() => ({})),
   like: vi.fn(() => ({})),
   or: vi.fn((...args: unknown[]) => args),
   sql: vi.fn(() => ({})),
 }));
 
-vi.mock('../utils/kana-utils', () => ({
-  katakanaToHiragana: vi.fn((s: string) => s),
-  hiraganaToKatakana: vi.fn((s: string) => s),
-  normalizeKana: vi.fn((s: string) => s),
-}));
+vi.mock('../utils/kana-utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/kana-utils')>();
+  return {
+    ...actual,
+    katakanaToHiragana: vi.fn((s: string) => s),
+    hiraganaToKatakana: vi.fn((s: string) => s),
+    normalizeKana: vi.fn((s: string) => s),
+  };
+});
 
 vi.mock('../utils/package-utils', () => ({
   normalizePackageInfo: vi.fn().mockReturnValue({

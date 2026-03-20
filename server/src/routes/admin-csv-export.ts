@@ -9,6 +9,7 @@ import { Router, Response, RequestHandler } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { AuthRequest } from '../types';
 import { logger } from '../services/logger';
+import { writeLog, getClientIp } from '../services/log-service';
 import type { CsvWriter } from '../services/csv-export-service';
 import {
   exportPharmaciesCsv,
@@ -47,11 +48,19 @@ function createCsvExportHandler(
   filenamePrefix: string,
   errorMessageJa: string,
 ): RequestHandler {
-  return async (_req: AuthRequest, res: Response) => {
+  return async (req: AuthRequest, res: Response) => {
     try {
       const date = formatDateForFilename();
       setCsvHeaders(res, `${filenamePrefix}-${date}.csv`);
-      await exportFn(res);
+      const rowCount = await exportFn(res);
+      void writeLog('admin_csv_export', {
+        pharmacyId: req.user?.id ?? null,
+        detail: `CSVエクスポート: ${filenamePrefix}`,
+        resourceType: 'csv_export',
+        resourceId: filenamePrefix,
+        metadataJson: { exportType: filenamePrefix, rowCount, date },
+        ipAddress: getClientIp(req),
+      });
       res.end();
     } catch (err) {
       logger.error(`CSV export ${filenamePrefix} route error`, {
