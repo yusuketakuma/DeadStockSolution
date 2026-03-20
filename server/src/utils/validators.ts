@@ -114,3 +114,26 @@ export const cameraManualCandidatesSchema = z.object({
 export type CameraResolveBody = z.infer<typeof cameraResolveSchema>;
 export type CameraConfirmBody = z.infer<typeof cameraConfirmSchema>;
 export type CameraManualCandidatesQuery = z.infer<typeof cameraManualCandidatesSchema>;
+
+// Prescription inventory search schemas
+export const prescriptionSearchDrugKeySchema = z.object({
+  drugMasterId: z.number().int().positive(),
+  genericName: z.string().max(200).nullable(),
+  specification: z.string().max(100).nullable(),
+});
+
+export const prescriptionSearchSchema = z.object({
+  drugKeys: z
+    .array(prescriptionSearchDrugKeySchema)
+    .min(1, '薬剤を1つ以上選択してください')
+    .max(10, '薬剤は10品目まで検索できます'),
+  filters: z.object({
+    groupOnly: z.boolean().default(false),
+    openOnly: z.boolean().default(false),
+    favoritePriority: z.boolean().default(false),
+  }).default({ groupOnly: false, openOnly: false, favoritePriority: false }),
+  coordinates: z.object({
+    latitude: z.number().nullable(),
+    longitude: z.number().nullable(),
+  }).nullable().default(null),
+});
