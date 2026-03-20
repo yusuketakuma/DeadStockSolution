@@ -2,6 +2,7 @@ import { db } from '../config/database';
 import { drugMaster, drugEquivalences, deadStockItems, pharmacies, pharmacyRelationships, groupMembers } from '../db/schema';
 import { eq, and, inArray, or, isNull, ne } from 'drizzle-orm';
 import { haversineDistance } from '../utils/geo-utils';
+import { buildBusinessStatusMap } from '../utils/business-hours-utils';
 
 // Types
 interface DrugKey {
@@ -243,7 +244,10 @@ export async function searchPrescriptionInventory(
   // Pre-compute Set for each drug group (avoid Array.includes in hot loop)
   const drugGroupSets = drugGroups.map(g => new Set(g.drugMasterIds));
 
-  // 10. Build matrix and summary per pharmacy
+  // 10. Fetch business hours status for all candidate pharmacies
+  const businessStatusMap = await buildBusinessStatusMap([...pharmacyInventory.keys()], new Date());
+
+  // 11. Build matrix and summary per pharmacy
   const summaryList: PharmacyScore[] = [];
   const matrixRows: PrescriptionSearchResult['matrix']['rows'] = [];
 
@@ -251,7 +255,10 @@ export async function searchPrescriptionInventory(
     const pharmacy = pharmacyMap.get(phId);
     if (!pharmacy) continue;
 
-    // TODO: openOnly filter — integrate business-hours-service
+    const bizStatus = businessStatusMap.get(phId) ?? { isOpen: false, closingSoon: false, is24Hours: false, todayHours: null, isConfigured: false };
+
+    // openOnly filter
+    if (filters.openOnly && !bizStatus.isOpen) continue;
 
     const cells: MatrixCell[] = drugGroups.map((_group, gi) => {
       const idSet = drugGroupSets[gi];
@@ -298,13 +305,19 @@ export async function searchPrescriptionInventory(
       distance: dist !== null ? Math.round(dist * 10) / 10 : null,
       isFavorite: favoriteIds.has(phId),
       isGroupMember: groupMemberIds !== null ? groupMemberIds.has(phId) : false,
-      businessStatus: { isOpen: true, message: '', isConfigured: false },
+      businessStatus: {
+        isOpen: bizStatus.isOpen,
+        message: bizStatus.todayHours
+          ? `${bizStatus.todayHours.openTime ?? ''}〜${bizStatus.todayHours.closeTime ?? ''}`
+          : '',
+        isConfigured: bizStatus.isConfigured,
+      },
     });
 
     matrixRows.push({ pharmacyId: phId, pharmacyName: pharmacy.name, cells });
   }
 
-  // 11. Sort + limit to 50 (use Map for O(1) matrix row lookup)
+  // 12. Sort + limit to 50 (use Map for O(1) matrix row lookup)
   const sortedSummary = scoreAndSortPharmacies(summaryList).slice(0, 50);
   const matrixRowMap = new Map(matrixRows.map(r => [r.pharmacyId, r]));
   const sortedMatrixRows = sortedSummary

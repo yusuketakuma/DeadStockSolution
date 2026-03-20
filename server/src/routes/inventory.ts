@@ -6,12 +6,9 @@ import {
   deadStockItems,
   usedMedicationItems,
   pharmacies,
-  pharmacyBusinessHours,
-  pharmacySpecialHours,
   pharmacyRelationships,
 } from '../db/schema';
-import { getBusinessHoursStatus } from '../utils/business-hours-utils';
-import { groupBy } from '../utils/array-utils';
+import { buildBusinessStatusMap } from '../utils/business-hours-utils';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination, buildPaginatedResponse } from '../utils/request-utils';
@@ -86,52 +83,6 @@ function buildBrowseSearchCondition(rawSearch: unknown) {
     return undefined;
   }
   return buildTokenizedSearchConditions(search, [deadStockItems.drugName]);
-}
-
-type BusinessStatus = ReturnType<typeof getBusinessHoursStatus> & { isConfigured: boolean };
-
-async function buildBusinessStatusMap(pharmacyIds: number[], now: Date): Promise<Map<number, BusinessStatus>> {
-  if (pharmacyIds.length === 0) {
-    return new Map();
-  }
-
-  const [allHours, allSpecialHours] = await Promise.all([
-    db.select({
-      pharmacyId: pharmacyBusinessHours.pharmacyId,
-      dayOfWeek: pharmacyBusinessHours.dayOfWeek,
-      openTime: pharmacyBusinessHours.openTime,
-      closeTime: pharmacyBusinessHours.closeTime,
-      isClosed: pharmacyBusinessHours.isClosed,
-      is24Hours: pharmacyBusinessHours.is24Hours,
-    })
-      .from(pharmacyBusinessHours)
-      .where(inArray(pharmacyBusinessHours.pharmacyId, pharmacyIds)),
-    db.select({
-      pharmacyId: pharmacySpecialHours.pharmacyId,
-      id: pharmacySpecialHours.id,
-      specialType: pharmacySpecialHours.specialType,
-      startDate: pharmacySpecialHours.startDate,
-      endDate: pharmacySpecialHours.endDate,
-      openTime: pharmacySpecialHours.openTime,
-      closeTime: pharmacySpecialHours.closeTime,
-      isClosed: pharmacySpecialHours.isClosed,
-      is24Hours: pharmacySpecialHours.is24Hours,
-      note: pharmacySpecialHours.note,
-      updatedAt: pharmacySpecialHours.updatedAt,
-    })
-      .from(pharmacySpecialHours)
-      .where(inArray(pharmacySpecialHours.pharmacyId, pharmacyIds)),
-  ]);
-
-  const hoursByPharmacy = groupBy(allHours, (row) => row.pharmacyId);
-  const specialHoursByPharmacy = groupBy(allSpecialHours, (row) => row.pharmacyId);
-
-  return new Map(pharmacyIds.map((pharmacyId) => {
-    const hours = hoursByPharmacy.get(pharmacyId) ?? [];
-    const specialHours = specialHoursByPharmacy.get(pharmacyId) ?? [];
-    const status = getBusinessHoursStatus(hours, specialHours, now);
-    return [pharmacyId, { ...status, isConfigured: hours.length > 0 || specialHours.length > 0 }];
-  }));
 }
 
 // Helper to handle errors consistently

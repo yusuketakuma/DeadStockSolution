@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   invalidateAdminRiskSnapshotCache: vi.fn(),
   triggerMatchingRefreshOnUpload: vi.fn(),
   getBusinessHoursStatus: vi.fn(),
+  buildBusinessStatusMap: vi.fn(),
   writeLog: vi.fn(),
   getClientIp: vi.fn(),
   loggerError: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock('../services/matching-refresh-service', () => ({
 
 vi.mock('../utils/business-hours-utils', () => ({
   getBusinessHoursStatus: mocks.getBusinessHoursStatus,
+  buildBusinessStatusMap: mocks.buildBusinessStatusMap,
 }));
 
 vi.mock('../services/log-service', () => ({
@@ -563,6 +565,9 @@ describe('inventory routes', () => {
 
   it('returns browse inventory with business status and pagination', async () => {
     const app = createApp();
+    mocks.buildBusinessStatusMap.mockResolvedValueOnce(new Map([
+      [2, { isOpen: true, closingSoon: false, is24Hours: false, todayHours: { openTime: '09:00', closeTime: '18:00' }, isConfigured: true }],
+    ]));
     mocks.db.select
       .mockImplementationOnce(() => createWhereQuery([]))
       .mockImplementationOnce(() => createInnerJoinOffsetQuery([
@@ -580,10 +585,6 @@ describe('inventory routes', () => {
           prefecture: '東京都',
         },
       ]))
-      .mockImplementationOnce(() => createWhereQuery([
-        { pharmacyId: 2, dayOfWeek: 1, openTime: '09:00', closeTime: '18:00', isClosed: false, is24Hours: false },
-      ]))
-      .mockImplementationOnce(() => createWhereQuery([]))
       .mockImplementationOnce(() => createInnerJoinWhereQuery([{ count: 1 }]));
 
     const response = await request(app).get('/api/inventory/browse').query({ page: 1, limit: 50, search: '薬C' });
@@ -600,6 +601,6 @@ describe('inventory routes', () => {
       total: 1,
       totalPages: 1,
     });
-    expect(mocks.getBusinessHoursStatus).toHaveBeenCalledTimes(1);
+    expect(mocks.buildBusinessStatusMap).toHaveBeenCalledTimes(1);
   });
 });
