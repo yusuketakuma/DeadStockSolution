@@ -85,10 +85,12 @@ prescription-search-service.ts
      - openOnly: businessHours で営業中の薬局に絞る
      - favoritePriority: pharmacyRelationships WHERE relationshipType = 'favorite'
        AND pharmacyId = 自薬局ID → targetPharmacyId が対象薬局のものを上位ソート
-  4. ブロック薬局除外（既存 buildBlockedPharmacyCondition 流用）
+  4. ブロック薬局除外（既存 buildBlockedPairSet + isBlockedPair from matching-data-preparer.ts 流用、
+     または inventory.ts:343-359 の notExists サブクエリパターン流用）
   5. 薬局ごとのスコア計算:
      - 品目充足数（降順）
      - 薬価合計（昇順、各品目の最安メーカーで計算）
+       ※ Drizzle ORM の numeric 型は string で返却されるため、parseFloat() で数値変換してから算術演算すること
      - 距離（昇順、Haversine計算。coordinates 未送信時は距離=null でソート末尾）
   6. レスポンス返却（薬局上限50件）
        │
@@ -123,14 +125,14 @@ prescription-search-service.ts
               {
                 drugName: "ロキソプロフェンNa錠60mg「サワイ」",
                 manufacturer: "サワイ",
-                yakkaUnitPrice: 5.7,
+                yakkaUnitPrice: 5.7,   // number（サービス層で parseFloat 済み）
                 quantity: 120,
                 unit: "錠"
               },
               {
                 drugName: "ロキソプロフェンNa錠60mg「日医工」",
                 manufacturer: "日医工",
-                yakkaUnitPrice: 5.9,
+                yakkaUnitPrice: 5.9,   // number（サービス層で parseFloat 済み）
                 quantity: 30,
                 unit: "錠"
               }
@@ -156,7 +158,7 @@ drugMaster.genericName が NULL の場合のフォールバック戦略:
    - drugEquivalences は drugNameA / drugNameB（自由テキスト）で同等品ペアを保持
    - 検索フロー: drugMaster.drugName → drugEquivalences.drugNameA で検索 → drugNameB を取得 → drugMaster.drugName = drugNameB で逆引き（逆方向も同様）
    - equivalenceType: 'brand_generic'（先発↔後発）, 'generic_generic'（後発↔後発）
-3. **第3優先**: どちらもヒットしない → drugName の正規化マッチング（既存 matching-score-service の prepareDrugName + Jaccard 係数流用）
+3. **第3優先**: どちらもヒットしない → drugName の正規化マッチング（既存 matching-score-service の prepareDrugName + Jaccard 係数流用、スコア閾値 0.70 以上を同一成分とみなす）
 
 ### 前提条件と事前確認
 
@@ -271,7 +273,7 @@ interface DrugChip {
 | ファイル | 変更内容 |
 |---------|---------|
 | `server/src/routes/inventory.ts` | `POST /inventory/prescription-search` エンドポイント追加 |
-| `server/src/routes/search.ts` | `/search/drug-master` のレスポンスに genericName, specification 追加 |
+| `server/src/routes/search.ts` | `/search/drug-master` のレスポンスに `id`（→ チップの drugMasterId）, `genericName`, `specification` 追加 |
 
 ### フロントエンド（変更）
 
