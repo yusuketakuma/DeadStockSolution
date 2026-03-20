@@ -1,15 +1,6 @@
-interface CellItem {
-  drugName: string;
-  manufacturer: string | null;
-  yakkaUnitPrice: number | null;
-  quantity: number;
-  unit: string | null;
-}
+import type { MatrixCell } from '../../api/client';
 
-interface Props {
-  available: boolean;
-  items: CellItem[];
-}
+type Props = MatrixCell;
 
 export default function InventoryMatrixCell({ available, items }: Props) {
   if (!available) {

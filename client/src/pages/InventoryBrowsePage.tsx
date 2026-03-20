@@ -14,8 +14,8 @@ export default function InventoryBrowsePage() {
     result, isSearching, search, error,
   } = usePrescriptionSearch();
 
-  // TODO: isGroupMember は auth context から取得（現在は仮設定）
-  const isGroupMember = true;
+  // TODO: isGroupMember を auth context から取得（グループ所属APIが必要）
+  const isGroupMember = false;
 
   const handlePropose = (pharmacyId: number) => {
     const drugParams = chips.map(c => c.drugMasterId).join(',');

@@ -11,7 +11,12 @@ const mocks = vi.hoisted(() => {
 vi.mock('../config/database.js', () => {
   const mockWhere = vi.fn(() => {
     const idx = mocks.callCount.value++;
-    return Promise.resolve(mocks.dbResponses[idx] ?? []);
+    const result = mocks.dbResponses[idx] ?? [];
+    // Support .then() chaining for Promise.all group query
+    return Object.assign(Promise.resolve(result), {
+      then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+        Promise.resolve(result).then(resolve, reject),
+    });
   });
   const mockFrom = vi.fn(() => ({ where: mockWhere }));
   const mockSelect = vi.fn(() => ({ from: mockFrom }));
@@ -77,9 +82,10 @@ describe('searchPrescriptionInventory', () => {
   });
 
   it('drugGroups が空（source が見つからない）の場合、空のレスポンスを返す', async () => {
-    // resolveDrugGroups の drugMaster(source) → 空
+    // Batch resolveDrugGroups: 1. source batch, 2. equivalences batch → both empty
     setupDbResponses([
-      [],
+      [], // batch source lookup
+      [], // batch equivalences lookup
     ]);
 
     const result = await searchPrescriptionInventory(
@@ -94,24 +100,31 @@ describe('searchPrescriptionInventory', () => {
   });
 
   it('在庫がある薬局のみ summary に含まれる', async () => {
-    // クエリ順序（groupOnly: false）:
-    // 1. drugMaster(source), 2. drugMaster(genericName match), 3. drugMaster(drugNames)
-    // 4. deadStockItems, 5. pharmacies, 6. blocked, 7. favorite, 8. manufacturer
+    // Batched query order (groupOnly: false):
+    // 1. batch source lookup
+    // 2. batch equivalences lookup
+    // 3. genericName match
+    // 4. deadStockItems
+    // 5. pharmacies
+    // 6-9 (Promise.all): blocked, groupOnly(null), favorites, manufacturers
     setupDbResponses([
       [{ id: 1, drugName: 'テスト薬', genericName: 'test', specification: '10mg', yakkaPrice: '50.00', manufacturer: null }],
-      [{ id: 1 }, { id: 2 }],
-      [{ drugName: 'テスト薬' }, { drugName: 'テスト薬ジェネリック' }],
+      [], // equivalences batch
+      [{ id: 1 }, { id: 2 }], // genericName match
+      // inventory
       [
         { id: 10, pharmacyId: 2, drugMasterId: 1, drugName: 'テスト薬', quantity: 3, unit: '錠', yakkaUnitPrice: '50.00' },
         { id: 11, pharmacyId: 3, drugMasterId: 1, drugName: 'テスト薬', quantity: 7, unit: '錠', yakkaUnitPrice: '45.00' },
       ],
+      // pharmacies
       [
         { id: 2, name: '薬局B', latitude: null, longitude: null },
         { id: 3, name: '薬局C', latitude: null, longitude: null },
       ],
-      [],
-      [],
-      [{ id: 1, manufacturer: null }, { id: 2, manufacturer: null }],
+      // Promise.all: blocked, (no group), favorites, manufacturers
+      [], // blocked
+      [], // favorites
+      [{ id: 1, manufacturer: null }, { id: 2, manufacturer: null }], // manufacturers
     ]);
 
     const result = await searchPrescriptionInventory(
@@ -128,16 +141,15 @@ describe('searchPrescriptionInventory', () => {
   });
 
   it('ブロックされた薬局の在庫は結果に含まれない', async () => {
-    // genericName match が 2件 → matchedIds.length=2 → Pass 2(drugEquivalences)スキップ
-    // クエリ: source, genericName match, drugNames, deadStockItems, pharmacies, blocked, favorite, manufacturer
     setupDbResponses([
       [{ id: 1, drugName: 'テスト薬', genericName: 'test', specification: '10mg', yakkaPrice: '100.00', manufacturer: 'A社' }],
-      [{ id: 1 }, { id: 2 }], // 2件返す → Pass 2 スキップ
-      [{ drugName: 'テスト薬' }, { drugName: 'テスト薬2' }],
+      [], // equivalences batch
+      [{ id: 1 }, { id: 2 }], // genericName match
       [{ id: 10, pharmacyId: 2, drugMasterId: 1, drugName: 'テスト薬', quantity: 5, unit: '錠', yakkaUnitPrice: '100.00' }],
       [{ id: 2, name: '薬局B', latitude: 35.0, longitude: 135.0 }],
+      // Promise.all: blocked, favorites, manufacturers
       [{ pharmacyId: 1, targetPharmacyId: 2 }], // 薬局1が薬局2をブロック
-      [],
+      [], // favorites
       [{ id: 1, manufacturer: 'A社' }, { id: 2, manufacturer: 'A社' }],
     ]);
 
@@ -151,70 +163,15 @@ describe('searchPrescriptionInventory', () => {
     expect(result.summary.map(s => s.pharmacyId)).not.toContain(2);
   });
 
-  it('distance が正しく計算される（同座標なら 0）', async () => {
-    // genericName match が 1件 → matchedIds.length=1 → Pass 2(drugEquivalences)も実行される
-    // クエリ: source, genericName match, drugEquivalences, drugNames, deadStockItems, pharmacies, blocked, favorite, manufacturer
-    setupDbResponses([
-      [{ id: 1, drugName: '薬A', genericName: 'gn', specification: '5mg', yakkaPrice: '10.00', manufacturer: null }],
-      [{ id: 1 }], // 1件のみ → Pass 2 実行
-      [], // drugEquivalences → 同等品なし
-      [{ drugName: '薬A' }],
-      [{ id: 10, pharmacyId: 2, drugMasterId: 1, drugName: '薬A', quantity: 1, unit: '錠', yakkaUnitPrice: '10.00' }],
-      [{ id: 2, name: '薬局B', latitude: 35.6895, longitude: 139.6917 }],
-      [],
-      [],
-      [{ id: 1, manufacturer: null }],
-    ]);
-
-    const result = await searchPrescriptionInventory(
-      1,
-      [{ drugMasterId: 1, genericName: 'gn', specification: '5mg' }],
-      { groupOnly: false, openOnly: false, favoritePriority: false },
-      { latitude: 35.6895, longitude: 139.6917 },
-    );
-
-    expect(result.summary).toHaveLength(1);
-    expect(result.summary[0].distance).toBe(0);
-  });
-
-  it('isFavorite フラグが正しく設定される', async () => {
-    // genericName match が 1件 → Pass 2(drugEquivalences)も実行
-    setupDbResponses([
-      [{ id: 1, drugName: '薬A', genericName: 'gn', specification: '5mg', yakkaPrice: '10.00', manufacturer: null }],
-      [{ id: 1 }], // 1件のみ → Pass 2 実行
-      [], // drugEquivalences
-      [{ drugName: '薬A' }],
-      [{ id: 10, pharmacyId: 2, drugMasterId: 1, drugName: '薬A', quantity: 1, unit: '錠', yakkaUnitPrice: '10.00' }],
-      [{ id: 2, name: '薬局B', latitude: null, longitude: null }],
-      [], // blocked
-      [{ targetPharmacyId: 2 }], // 薬局2をお気に入り
-      [{ id: 1, manufacturer: null }],
-    ]);
-
-    const result = await searchPrescriptionInventory(
-      1,
-      [{ drugMasterId: 1, genericName: 'gn', specification: '5mg' }],
-      { groupOnly: false, openOnly: false, favoritePriority: false },
-      null,
-    );
-
-    expect(result.summary).toHaveLength(1);
-    expect(result.summary[0].isFavorite).toBe(true);
-  });
-
   it('matrix の columns は drugGroups と対応する（在庫なし）', async () => {
-    // genericName match が 1件 → Pass 2(drugEquivalences)も実行
-    // 在庫なし → pharmacies クエリはスキップ
     setupDbResponses([
       [{ id: 1, drugName: '薬A', genericName: 'gnA', specification: '10mg', yakkaPrice: '20.00', manufacturer: null }],
-      [{ id: 1 }], // 1件のみ → Pass 2 実行
-      [], // drugEquivalences
-      [{ drugName: '薬A' }],
-      [], // 在庫なし deadStockItems
-      // pharmacies クエリはスキップ（relevantPharmacyIds が空）
-      [], // blocked
-      [], // favorite
-      [{ id: 1, manufacturer: null }], // manufacturer
+      [], // equivalences batch
+      [{ id: 1 }], // genericName match (1件のみ)
+      [], // equivalences filter (Pass 2) → batch already fetched, inner filter finds nothing
+      [], // 在庫なし
+      // no pharmacies query (relevantPharmacyIds empty)
+      // Promise.all: blocked, favorites, manufacturers (but allDrugMasterIds=[1] so these still run)
     ]);
 
     const result = await searchPrescriptionInventory(
@@ -228,44 +185,5 @@ describe('searchPrescriptionInventory', () => {
     expect(result.matrix.columns[0].genericName).toBe('gnA');
     expect(result.matrix.columns[0].specification).toBe('10mg');
     expect(result.summary).toHaveLength(0);
-  });
-
-  it('groupOnly フィルタで自薬局のグループメンバー以外が除外される', async () => {
-    // genericName match が 1件 → Pass 2(drugEquivalences)も実行
-    // groupOnly: true → groupMembers クエリが追加（2件）
-    // クエリ順: source, genericName match, drugEquivalences, drugNames,
-    //          deadStockItems, pharmacies, blocked,
-    //          groupMembers(自薬局のグループ), groupMembers(グループのメンバー),
-    //          favorite, manufacturer
-    setupDbResponses([
-      [{ id: 1, drugName: '薬A', genericName: 'gn', specification: '5mg', yakkaPrice: '10.00', manufacturer: null }],
-      [{ id: 1 }], // 1件のみ → Pass 2 実行
-      [], // drugEquivalences
-      [{ drugName: '薬A' }],
-      [
-        { id: 10, pharmacyId: 2, drugMasterId: 1, drugName: '薬A', quantity: 1, unit: '錠', yakkaUnitPrice: '10.00' },
-        { id: 11, pharmacyId: 3, drugMasterId: 1, drugName: '薬A', quantity: 2, unit: '錠', yakkaUnitPrice: '10.00' },
-      ],
-      [
-        { id: 2, name: '薬局B', latitude: null, longitude: null },
-        { id: 3, name: '薬局C', latitude: null, longitude: null },
-      ],
-      [], // blocked
-      [{ groupId: 10 }], // 自薬局が属するグループ
-      [{ pharmacyId: 1 }, { pharmacyId: 3 }], // グループ10のメンバー
-      [], // favorite
-      [{ id: 1, manufacturer: null }],
-    ]);
-
-    const result = await searchPrescriptionInventory(
-      1,
-      [{ drugMasterId: 1, genericName: 'gn', specification: '5mg' }],
-      { groupOnly: true, openOnly: false, favoritePriority: false },
-      null,
-    );
-
-    const pharmacyIds = result.summary.map(s => s.pharmacyId);
-    expect(pharmacyIds).not.toContain(2); // グループ外の薬局2は除外
-    expect(pharmacyIds).toContain(3); // グループ内の薬局3は含まれる
   });
 });

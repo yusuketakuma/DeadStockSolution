@@ -1,28 +1,9 @@
 import { Table } from 'react-bootstrap';
 import InventoryMatrixCell from './InventoryMatrixCell';
+import type { PrescriptionSearchResponse } from '../../api/client';
 
-interface MatrixColumn {
-  genericName: string | null;
-  specification: string | null;
-  columnLabel: string;
-}
-
-interface MatrixCellData {
-  available: boolean;
-  items: Array<{
-    drugName: string;
-    manufacturer: string | null;
-    yakkaUnitPrice: number | null;
-    quantity: number;
-    unit: string | null;
-  }>;
-}
-
-interface MatrixRow {
-  pharmacyId: number;
-  pharmacyName: string;
-  cells: MatrixCellData[];
-}
+type MatrixColumn = PrescriptionSearchResponse['matrix']['columns'][number];
+type MatrixRow = PrescriptionSearchResponse['matrix']['rows'][number];
 
 interface Props {
   columns: MatrixColumn[];
