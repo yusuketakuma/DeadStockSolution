@@ -2,7 +2,7 @@
 description: コーディング規約（コードファイル編集時のみ適用）
 paths: "**/*.{ts,tsx,js,jsx,py,rb,go,rs,java,kt,swift,c,cpp,h,hpp,cs,php}"
 _harness_template: "rules/coding-standards.md.template"
-_harness_version: "2.5.23"
+_harness_version: "2.5.27"
 ---
 
 # Coding Standards

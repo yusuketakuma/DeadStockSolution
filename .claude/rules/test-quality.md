@@ -2,7 +2,7 @@
 description: テスト品質保護ルール - テスト改ざんを禁止し、正しい実装を促す
 paths: "**/*.{test,spec}.{ts,tsx,js,jsx,py}, **/test/**/*.*, **/tests/**/*.*, **/__tests__/**/*.*, .husky/**, .github/workflows/**"
 _harness_template: "rules/test-quality.md.template"
-_harness_version: "2.5.30"
+_harness_version: "3.12.0"
 ---
 
 # Test Quality Protection Rules
