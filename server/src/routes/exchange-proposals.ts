@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
@@ -48,6 +48,15 @@ const findLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+});
+
+const proposalWriteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '提案リクエストが多すぎます。しばらく待ってからお試しください。' },
+  keyGenerator: (req) => (req as AuthRequest).user?.id?.toString() ?? ipKeyGenerator(req.ip ?? 'unknown'),
 });
 
 type BulkActionType = 'accept' | 'reject';
@@ -664,19 +673,19 @@ const handlePrintProposal = async (req: AuthRequest, res: Response): Promise<voi
 router.post('/find', findLimiter, handleFind);
 
 // Create proposal from selected candidate
-router.post('/proposals', handleCreateProposal);
+router.post('/proposals', proposalWriteLimiter, handleCreateProposal);
 
 // Bulk accept/reject proposals
-router.post('/proposals/bulk-action', handleBulkAction);
+router.post('/proposals/bulk-action', proposalWriteLimiter, handleBulkAction);
 
 // Accept proposal (single action endpoint kept for backward compatibility with detail page)
-router.post('/proposals/:id/accept', handleAcceptProposal);
+router.post('/proposals/:id/accept', proposalWriteLimiter, handleAcceptProposal);
 
 // Reject proposal (single action endpoint kept for backward compatibility with detail page)
-router.post('/proposals/:id/reject', handleRejectProposal);
+router.post('/proposals/:id/reject', proposalWriteLimiter, handleRejectProposal);
 
 // Complete exchange (single action endpoint kept for backward compatibility with detail page)
-router.post('/proposals/:id/complete', handleCompleteProposal);
+router.post('/proposals/:id/complete', proposalWriteLimiter, handleCompleteProposal);
 
 // Pending action count (lightweight badge endpoint)
 router.get('/proposals/pending-count', handlePendingCount);
