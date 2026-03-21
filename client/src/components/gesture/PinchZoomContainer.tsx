@@ -41,7 +41,7 @@ export default function PinchZoomContainer({
           onClick={reset}
           aria-label="ズームリセット"
           style={{
-            position: 'fixed',
+            position: 'absolute',
             top: 16,
             right: 16,
             zIndex: 9999,

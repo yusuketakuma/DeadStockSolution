@@ -61,13 +61,8 @@ function createWrapper(options: WrapperOptions = {}) {
     timelineState,
   } = options;
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    const mergedRouterProps: MemoryRouterProps = {
-      future: { v7_startTransition: true, v7_relativeSplatPath: true },
-      ...routerProps,
-    };
-
     return (
-      <MemoryRouter initialEntries={[route]} {...mergedRouterProps}>
+      <MemoryRouter initialEntries={[route]} {...routerProps}>
         <AuthProvider
           initialUser={authUser}
           initialLoading={authLoading}

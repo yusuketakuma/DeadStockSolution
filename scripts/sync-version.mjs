@@ -15,7 +15,13 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const checkOnly = process.argv.includes('--check');
 
-const version = readFileSync(resolve(root, 'VERSION'), 'utf-8').trim();
+let version;
+try {
+  version = readFileSync(resolve(root, 'VERSION'), 'utf-8').trim();
+} catch (err) {
+  console.error(`Failed to read VERSION file at ${resolve(root, 'VERSION')}: ${err.message}`);
+  process.exit(1);
+}
 if (!/^\d+\.\d+\.\d+/.test(version)) {
   console.error(`Invalid version in VERSION file: "${version}"`);
   process.exit(1);

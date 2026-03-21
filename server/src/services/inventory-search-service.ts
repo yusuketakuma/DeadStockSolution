@@ -38,40 +38,93 @@ export async function resolveDrugGroups(drugKeys: DrugKey[]): Promise<DrugGroup[
       )
     : [];
 
-  const groups: DrugGroup[] = [];
-
+  // Prepare resolved keys with genericName/specification
+  const resolvedKeys: Array<{ key: DrugKey; source: typeof sourceRows[number]; gn: string | null; spec: string | null }> = [];
   for (const key of drugKeys) {
     const source = sourceMap.get(key.drugMasterId);
     if (!source) continue;
+    resolvedKeys.push({
+      key,
+      source,
+      gn: key.genericName ?? source.genericName,
+      spec: key.specification ?? source.specification,
+    });
+  }
 
-    const gn = key.genericName ?? source.genericName;
-    const spec = key.specification ?? source.specification;
+  // Batch Pass 1: collect all unique (genericName, specification) pairs and query once
+  const gnConditions = resolvedKeys
+    .filter(r => r.gn !== null)
+    .map(r => and(
+      eq(drugMaster.genericName, r.gn!),
+      r.spec != null ? eq(drugMaster.specification, r.spec) : isNull(drugMaster.specification),
+    ));
+
+  const allGnMatches = gnConditions.length > 0
+    ? await db.select({ id: drugMaster.id, genericName: drugMaster.genericName, specification: drugMaster.specification })
+        .from(drugMaster)
+        .where(or(...gnConditions))
+    : [];
+
+  // Index gnMatches by "genericName|specification" for fast lookup
+  const gnMatchIndex = new Map<string, number[]>();
+  for (const m of allGnMatches) {
+    const matchKey = `${m.genericName ?? ''}|${m.specification ?? ''}`;
+    const arr = gnMatchIndex.get(matchKey);
+    if (arr) { arr.push(m.id); } else { gnMatchIndex.set(matchKey, [m.id]); }
+  }
+
+  // Batch Pass 2: collect all drugNames needing equivalence fallback, query once
+  const equivFallbackNames: string[] = [];
+  const needsEquivFallback: boolean[] = [];
+  for (const r of resolvedKeys) {
+    const matchKey = `${r.gn ?? ''}|${r.spec ?? ''}`;
+    const gnIds = r.gn ? (gnMatchIndex.get(matchKey) ?? []) : [];
+    const matchedCount = new Set([r.source.id, ...gnIds]).size;
+    const needs = !r.gn || matchedCount <= 1;
+    needsEquivFallback.push(needs);
+    if (needs) {
+      const relevantEquivs = allEquivRows.filter(
+        eq => eq.drugNameA === r.source.drugName || eq.drugNameB === r.source.drugName
+      );
+      for (const re of relevantEquivs) {
+        equivFallbackNames.push(re.drugNameA === r.source.drugName ? re.drugNameB : re.drugNameA);
+      }
+    }
+  }
+
+  const uniqueEquivNames = [...new Set(equivFallbackNames)];
+  const allEquivMasters = uniqueEquivNames.length > 0
+    ? await db.select({ id: drugMaster.id, drugName: drugMaster.drugName }).from(drugMaster)
+        .where(inArray(drugMaster.drugName, uniqueEquivNames))
+    : [];
+  const equivMasterIndex = new Map<string, number[]>();
+  for (const m of allEquivMasters) {
+    const arr = equivMasterIndex.get(m.drugName);
+    if (arr) { arr.push(m.id); } else { equivMasterIndex.set(m.drugName, [m.id]); }
+  }
+
+  // Build groups from pre-fetched data
+  const groups: DrugGroup[] = [];
+  for (let i = 0; i < resolvedKeys.length; i++) {
+    const { source, gn, spec } = resolvedKeys[i];
     let matchedIds: number[] = [source.id];
 
-    // Pass 1: genericName + specification 完全一致
+    // Pass 1: genericName + specification match from batch result
     if (gn) {
-      const matches = await db.select({ id: drugMaster.id }).from(drugMaster).where(
-        and(
-          eq(drugMaster.genericName, gn),
-          spec != null ? eq(drugMaster.specification, spec) : isNull(drugMaster.specification),
-        )
-      );
-      matchedIds = [...new Set([...matchedIds, ...matches.map((m: { id: number }) => m.id)])];
+      const matchKey = `${gn}|${spec ?? ''}`;
+      const gnIds = gnMatchIndex.get(matchKey) ?? [];
+      matchedIds = [...new Set([...matchedIds, ...gnIds])];
     }
 
-    // Pass 2: drugEquivalences テキストマッチ (genericName NULL or 少数マッチ時)
-    if (!gn || matchedIds.length <= 1) {
+    // Pass 2: equivalence fallback from batch result
+    if (needsEquivFallback[i]) {
       const relevantEquivs = allEquivRows.filter(
         r => r.drugNameA === source.drugName || r.drugNameB === source.drugName
       );
-      if (relevantEquivs.length > 0) {
-        const otherNames = relevantEquivs.map(r =>
-          r.drugNameA === source.drugName ? r.drugNameB : r.drugNameA
-        );
-        const otherMasters = await db.select({ id: drugMaster.id }).from(drugMaster).where(
-          inArray(drugMaster.drugName, otherNames)
-        );
-        matchedIds = [...new Set([...matchedIds, ...otherMasters.map((m: { id: number }) => m.id)])];
+      for (const re of relevantEquivs) {
+        const otherName = re.drugNameA === source.drugName ? re.drugNameB : re.drugNameA;
+        const otherIds = equivMasterIndex.get(otherName) ?? [];
+        matchedIds = [...new Set([...matchedIds, ...otherIds])];
       }
     }
 

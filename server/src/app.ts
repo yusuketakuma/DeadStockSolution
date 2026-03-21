@@ -47,6 +47,10 @@ import { resolveTrustProxySetting } from './utils/trust-proxy';
 
 const app = express();
 app.disable('x-powered-by');
+
+if (process.env.NODE_ENV === 'production' && !process.env.UPSTASH_REDIS_REST_URL) {
+  console.warn('[WARN] UPSTASH_REDIS_REST_URL is not set in production. Rate limiting is degraded to in-memory store.');
+}
 app.set('trust proxy', resolveTrustProxySetting());
 
 const API_PREFIXES = ['/api', '/api/v1'] as const;

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router, Response } from 'express';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
@@ -87,6 +88,7 @@ import { handoffToOpenClaw } from '../services/openclaw-service';
 const router = Router();
 
 const ONBOARDING_COOKIE_NAME = 'onboarding_token';
+const OAUTH_STATE_COOKIE = 'oauth_state';
 type AuthRouteHandler = (req: AuthRequest, res: Response) => void | Promise<void>;
 type OnboardingClaims = NonNullable<ReturnType<typeof verifyOnboardingToken>>;
 
@@ -105,7 +107,14 @@ function createAuthKitUrlHandler(
 ): AuthRouteHandler {
   return (_req: AuthRequest, res: Response): void => {
     try {
-      const url = getAuthorizationUrl(screenHint);
+      const state = crypto.randomBytes(32).toString('hex');
+      res.cookie(OAUTH_STATE_COOKIE, state, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 10 * 60 * 1000, // 10分
+      });
+      const url = getAuthorizationUrl(screenHint, state);
       res.json({ url });
     } catch (err) {
       handleRouteError(err, logContext, userMessage, res);
@@ -163,6 +172,15 @@ router.get('/register', createAuthKitUrlHandler('sign-up', 'WorkOS register URL 
 // GET /auth/callback — WorkOS AuthKit からのコールバック処理
 router.get('/callback', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // OAuth state パラメータの検証
+    const stateParam = typeof req.query.state === 'string' ? req.query.state : '';
+    const stateCookie = typeof req.cookies?.[OAUTH_STATE_COOKIE] === 'string' ? req.cookies[OAUTH_STATE_COOKIE] : '';
+    res.clearCookie(OAUTH_STATE_COOKIE);
+    if (!stateParam || !stateCookie || stateParam !== stateCookie) {
+      res.status(400).json({ error: 'OAuth state パラメータが無効です' });
+      return;
+    }
+
     const code = typeof req.query.code === 'string' ? req.query.code : '';
     if (!code) {
       res.status(400).json({ error: '認証コードがありません' });
@@ -596,10 +614,6 @@ router.post('/password-reset/confirm', passwordResetLimiter, async (req: AuthReq
 
     const resetResult = await resetPasswordWithToken(token, newPassword);
     if (!resetResult.success) {
-      if (resetResult.reason === 'same_password') {
-        res.status(400).json({ error: '現在と同じパスワードは使用できません。別のパスワードを設定してください' });
-        return;
-      }
       void writeLog('password_reset_failed', { detail: 'リセットトークン無効または期限切れ', ipAddress: getClientIp(req) });
       res.status(400).json(buildInvalidPasswordResetResponse());
       return;

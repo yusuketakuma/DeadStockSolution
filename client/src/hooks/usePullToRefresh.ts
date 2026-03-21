@@ -30,6 +30,7 @@ export function usePullToRefresh(
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [pullDistance, setPullDistance] = useState(0);
   const [state, setState] = useState<PullState>('idle');
+  const mountedRef = useRef(true);
 
   const startYRef = useRef(0);
   const stateRef = useRef<PullState>('idle');
@@ -109,15 +110,23 @@ export function usePullToRefresh(
       stateRef.current = 'refreshing';
 
       onRefreshRef.current().then(() => {
+        if (!mountedRef.current) return;
         setState('complete');
         stateRef.current = 'complete';
         setPullDistance(0);
         pullRef.current = 0;
 
         setTimeout(() => {
+          if (!mountedRef.current) return;
           setState('idle');
           stateRef.current = 'idle';
         }, COMPLETE_DELAY);
+      }).catch(() => {
+        if (!mountedRef.current) return;
+        setState('idle');
+        stateRef.current = 'idle';
+        setPullDistance(0);
+        pullRef.current = 0;
       });
     } else {
       setState('idle');
@@ -138,6 +147,7 @@ export function usePullToRefresh(
     el.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     return () => {
+      mountedRef.current = false;
       el.style.overscrollBehaviorY = origOverscroll;
       el.removeEventListener('touchstart', handleTouchStart);
       el.removeEventListener('touchmove', handleTouchMove);

@@ -24,8 +24,8 @@ export default function InventoryMatrix({ columns, rows, totalDrugs }: Props) {
             <th style={{ position: 'sticky', left: 0, background: 'var(--bs-table-bg, #fff)', zIndex: 2, minWidth: 120 }}>
               薬局
             </th>
-            {columns.map((col, i) => (
-              <th key={i} style={{ position: 'sticky', top: 0, zIndex: 1, minWidth: 150 }}>
+            {columns.map((col) => (
+              <th key={col.columnLabel} style={{ position: 'sticky', top: 0, zIndex: 1, minWidth: 150 }}>
                 {col.columnLabel}
               </th>
             ))}
@@ -40,8 +40,8 @@ export default function InventoryMatrix({ columns, rows, totalDrugs }: Props) {
                   <div className="fw-bold small">{row.pharmacyName}</div>
                   <small className="text-muted">{matchedCount}/{totalDrugs}</small>
                 </td>
-                {row.cells.map((cell, i) => (
-                  <InventoryMatrixCell key={i} available={cell.available} items={cell.items} />
+                {row.cells.map((cell, cellIdx) => (
+                  <InventoryMatrixCell key={columns[cellIdx]?.columnLabel ?? cellIdx} available={cell.available} items={cell.items} />
                 ))}
               </tr>
             );

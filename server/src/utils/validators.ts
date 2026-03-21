@@ -133,7 +133,7 @@ export const inventorySearchSchema = z.object({
     favoritePriority: z.boolean().default(false),
   }).default({ groupOnly: false, openOnly: false, favoritePriority: false }),
   coordinates: z.object({
-    latitude: z.number().nullable(),
-    longitude: z.number().nullable(),
+    latitude: z.number().min(-90).max(90).nullable(),
+    longitude: z.number().min(-180).max(180).nullable(),
   }).nullable().default(null),
 });

@@ -23,12 +23,12 @@ function isExemptPath(path: string): boolean {
   return EXEMPT_PATHS.has(path);
 }
 function timingSafeCompare(a: string, b: string): boolean {
-  const aBuffer = Buffer.from(a, 'utf8');
-  const bBuffer = Buffer.from(b, 'utf8');
-  if (aBuffer.length !== bBuffer.length) {
-    return false;
-  }
-  return crypto.timingSafeEqual(aBuffer, bBuffer);
+  const maxLen = Math.max(a.length, b.length, 1);
+  const aBuffer = Buffer.alloc(maxLen);
+  const bBuffer = Buffer.alloc(maxLen);
+  Buffer.from(a, 'utf8').copy(aBuffer);
+  Buffer.from(b, 'utf8').copy(bBuffer);
+  return crypto.timingSafeEqual(aBuffer, bBuffer) && a.length === b.length;
 }
 
 export function generateCsrfToken(): string {

@@ -628,7 +628,6 @@ export function buildTokenPayload(pharmacy: {
     email: pharmacy.email,
     isAdmin: pharmacy.isAdmin ?? false,
     sessionVersion,
-    workosUserId: pharmacy.workosUserId ?? undefined,
   };
 }
 

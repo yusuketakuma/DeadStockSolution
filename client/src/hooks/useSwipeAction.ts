@@ -33,8 +33,8 @@ export function useSwipeAction(options: UseSwipeActionOptions = {}): UseSwipeAct
   const [isSwiping, setIsSwiping] = useState(false);
   const [direction, setDirection] = useState<'left' | 'right' | null>(null);
 
-  const startXRef = useRef(0);
-  const startYRef = useRef(0);
+  const startXRef = useRef<number | null>(null);
+  const startYRef = useRef<number | null>(null);
   const startTimeRef = useRef(0);
   const activeRef = useRef(false); // swipe gesture recognised
   const lockedOutRef = useRef(false); // vertical scroll detected, ignore rest of gesture
@@ -90,13 +90,13 @@ export function useSwipeAction(options: UseSwipeActionOptions = {}): UseSwipeAct
 
   const handleTouchMove = useCallback((e: Event) => {
     if (disabledRef.current || lockedOutRef.current) return;
-    if (startXRef.current === 0 && startYRef.current === 0) return;
+    if (startXRef.current == null || startYRef.current == null) return;
 
     const touch = (e as TouchEvent).touches?.[0];
     if (!touch) return;
 
-    const dx = touch.clientX - startXRef.current;
-    const dy = touch.clientY - startYRef.current;
+    const dx = touch.clientX - startXRef.current!;
+    const dy = touch.clientY - startYRef.current!;
 
     // First significant move: check angle
     if (!activeRef.current) {
@@ -136,8 +136,8 @@ export function useSwipeAction(options: UseSwipeActionOptions = {}): UseSwipeAct
 
     if (!activeRef.current) {
       // Reset start refs
-      startXRef.current = 0;
-      startYRef.current = 0;
+      startXRef.current = null;
+      startYRef.current = null;
       return;
     }
 
@@ -167,8 +167,8 @@ export function useSwipeAction(options: UseSwipeActionOptions = {}): UseSwipeAct
     setDirection(null);
 
     activeRef.current = false;
-    startXRef.current = 0;
-    startYRef.current = 0;
+    startXRef.current = null;
+    startYRef.current = null;
   }, []);
 
   useEffect(() => {

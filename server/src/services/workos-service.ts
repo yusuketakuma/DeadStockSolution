@@ -46,13 +46,14 @@ function getRedirectUri(): string {
   );
 }
 
-export function getAuthorizationUrl(screenHint?: 'sign-up' | 'sign-in'): string {
+export function getAuthorizationUrl(screenHint?: 'sign-up' | 'sign-in', state?: string): string {
   const workos = getWorkOS();
   const url = workos.userManagement.getAuthorizationUrl({
     provider: 'authkit',
     clientId: getClientId(),
     redirectUri: getRedirectUri(),
     screenHint,
+    state,
   });
   return url;
 }
