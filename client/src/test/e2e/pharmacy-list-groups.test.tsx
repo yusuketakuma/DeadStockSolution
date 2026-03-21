@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PharmacyListPage from '../../pages/PharmacyListPage';
 import { renderWithProviders, mockUser, setupFetchMock } from '../helpers';
-import type { GroupListResponse, GroupDetailResponse } from '../../../../server/src/types/group';
+import type { GroupMembershipSummaryResponse } from '../../../../server/src/types/group';
 
 function setMatchMedia(matches: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -33,44 +33,12 @@ const samplePharmaciesResponse = {
   pagination: { page: 1, totalPages: 1, total: 3 },
 };
 
-const myGroupsResponse: GroupListResponse = {
+const membershipSummaryResponse: GroupMembershipSummaryResponse = {
   groups: [
-    { id: 10, name: '東京グループ', description: null, visibility: 'public', ownerPharmacyId: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-    { id: 20, name: '全国ネットワーク', description: null, visibility: 'invite_only', ownerPharmacyId: 5, createdAt: '2026-01-02T00:00:00Z', updatedAt: '2026-01-02T00:00:00Z' },
+    { id: 10, name: '東京グループ', memberPharmacyIds: [1, 2] },
+    { id: 20, name: '全国ネットワーク', memberPharmacyIds: [1, 3] },
   ],
-  total: 2,
-  offset: 0,
-  limit: 20,
-};
-
-const groupDetail10: GroupDetailResponse = {
-  id: 10,
-  name: '東京グループ',
-  description: null,
-  visibility: 'public',
-  ownerPharmacyId: 1,
-  createdAt: '2026-01-01T00:00:00Z',
-  updatedAt: '2026-01-01T00:00:00Z',
-  members: [
-    { id: 100, groupId: 10, pharmacyId: 1, role: 'owner', joinedAt: '2026-01-01T00:00:00Z' },
-    { id: 101, groupId: 10, pharmacyId: 2, role: 'member', joinedAt: '2026-01-01T00:00:00Z' },
-  ],
-  memberCount: 2,
-};
-
-const groupDetail20: GroupDetailResponse = {
-  id: 20,
-  name: '全国ネットワーク',
-  description: null,
-  visibility: 'invite_only',
-  ownerPharmacyId: 5,
-  createdAt: '2026-01-02T00:00:00Z',
-  updatedAt: '2026-01-02T00:00:00Z',
-  members: [
-    { id: 200, groupId: 20, pharmacyId: 1, role: 'member', joinedAt: '2026-01-02T00:00:00Z' },
-    { id: 201, groupId: 20, pharmacyId: 3, role: 'member', joinedAt: '2026-01-02T00:00:00Z' },
-  ],
-  memberCount: 2,
+  groupPharmacyIds: [1, 2, 3],
 };
 
 function mockPharmacyListFetch(options: {
@@ -88,11 +56,9 @@ function mockPharmacyListFetch(options: {
   };
 
   if (includeGroups && !emptyGroups) {
-    routes['/api/groups?tab=mine'] = myGroupsResponse;
-    routes['/api/groups/10'] = groupDetail10;
-    routes['/api/groups/20'] = groupDetail20;
+    routes['/api/groups/membership-summary'] = membershipSummaryResponse;
   } else {
-    routes['/api/groups?tab=mine'] = { groups: [], total: 0, offset: 0, limit: 20 };
+    routes['/api/groups/membership-summary'] = { groups: [], groupPharmacyIds: [] };
   }
 
   return setupFetchMock(routes);
@@ -212,9 +178,7 @@ describe('PharmacyListPage — Group Features', () => {
         '/api/auth/me': mockUser,
         '/api/pharmacies/relationships': { favorites: [], blocked: [] },
         '/api/pharmacies': customResponse,
-        '/api/groups?tab=mine': myGroupsResponse,
-        '/api/groups/10': groupDetail10,
-        '/api/groups/20': groupDetail20,
+        '/api/groups/membership-summary': membershipSummaryResponse,
         '/api/timeline/bootstrap': { timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null }, digest: { events: [] }, unreadCount: 0 },
         '/api/timeline/unread-count': { unreadCount: 0 },
       });

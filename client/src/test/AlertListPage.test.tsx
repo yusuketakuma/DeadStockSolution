@@ -56,7 +56,7 @@ const mockResolvedList = {
 // ── ヘルパー ──────────────────────────────────────
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/alerts']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter initialEntries={['/alerts']}>
       <AlertListPage />
     </MemoryRouter>,
   );

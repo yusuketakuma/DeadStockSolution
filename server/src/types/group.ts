@@ -73,6 +73,22 @@ export interface GroupListResponse {
   total: number;
   offset: number;
   limit: number;
+  pagination?: {
+    mode: 'cursor' | 'offset';
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
+}
+
+export interface GroupMembershipSummaryItem {
+  id: number;
+  name: string;
+  memberPharmacyIds: number[];
+}
+
+export interface GroupMembershipSummaryResponse {
+  groups: GroupMembershipSummaryItem[];
+  groupPharmacyIds: number[];
 }
 
 /**

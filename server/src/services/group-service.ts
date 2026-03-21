@@ -6,6 +6,7 @@ import type {
   GroupCreateRequest,
   GroupDetailResponse,
   GroupListResponse,
+  GroupMembershipSummaryResponse,
   PharmacyGroup,
   GroupMember,
   GroupMemberRole,
@@ -14,14 +15,24 @@ import type {
 import { createNotification } from './notification-service';
 import { logger } from './logger';
 import { sendToPharmacy } from './push-dispatch-service';
+import { encodeCursor } from '../utils/cursor-pagination';
 
 type PharmacyGroupRow = typeof pharmacyGroups.$inferSelect;
 type GroupMemberRow = typeof groupMembers.$inferSelect;
+
+export interface GroupCursor {
+  id: number;
+  createdAt: string;
+}
+
+export type GroupListTab = 'mine' | 'public';
 
 interface ListGroupFilters {
   limit?: number;
   offset?: number;
   search?: string;
+  cursor?: GroupCursor;
+  tab?: GroupListTab;
 }
 
 interface MemberListResponse {
@@ -218,8 +229,11 @@ function dedupeAndSortGroups(ownGroups: PharmacyGroupRow[], publicGroups: Pharma
     return map;
   }, new Map());
 
-  return [...deduped.values()]
-    .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+  return sortGroups([...deduped.values()]);
+}
+
+function sortGroups(groups: PharmacyGroupRow[]): PharmacyGroupRow[] {
+  return [...groups].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
 }
 
 async function getActorRole(groupId: number, pharmacyId: number): Promise<GroupMemberRole> {
@@ -339,25 +353,102 @@ export async function listGroups(pharmacyId: number, filters: ListGroupFilters =
   if (memberGroupIds.length > 0) ownConditions.push(inArray(pharmacyGroups.id, memberGroupIds));
   if (searchCondition) ownConditions.push(searchCondition);
 
-  const ownGroups = memberGroupIds.length > 0
-    ? await db.select().from(pharmacyGroups).where(and(...ownConditions))
-    : [];
+  const ownGroups = filters.tab === 'public' || memberGroupIds.length === 0
+    ? []
+    : await db.select().from(pharmacyGroups).where(and(...ownConditions));
 
   const publicConditions: SQL[] = [eq(pharmacyGroups.visibility, 'public')];
   if (memberGroupIds.length > 0) publicConditions.push(notInArray(pharmacyGroups.id, memberGroupIds));
   if (searchCondition) publicConditions.push(searchCondition);
 
-  const publicGroups = await db.select().from(pharmacyGroups)
-    .where(and(...publicConditions))
-    .limit(500);
+  const publicGroups = filters.tab === 'mine'
+    ? []
+    : await db.select().from(pharmacyGroups)
+      .where(and(...publicConditions))
+      .limit(500);
 
-  const groups = dedupeAndSortGroups(ownGroups, publicGroups);
+  const groups = filters.tab === 'mine'
+    ? sortGroups(ownGroups)
+    : filters.tab === 'public'
+      ? sortGroups(publicGroups)
+      : dedupeAndSortGroups(ownGroups, publicGroups);
+
+  if (filters.cursor) {
+    const cursor = filters.cursor;
+    // cursor-based: find position after cursor in the sorted list (desc by createdAt, then id)
+    const cursorIdx = groups.findIndex(
+      (g) => g.id === cursor.id && g.createdAt === cursor.createdAt,
+    );
+    // If cursor not found, start from beginning (stale cursor)
+    const startIdx = cursorIdx >= 0 ? cursorIdx + 1 : 0;
+    const pageGroups = groups.slice(startIdx, startIdx + limit + 1);
+    const hasMore = pageGroups.length > limit;
+    const items = hasMore ? pageGroups.slice(0, limit) : pageGroups;
+    const lastItem = items[items.length - 1];
+    const nextCursor = hasMore && lastItem
+      ? encodeCursor<GroupCursor>({ id: lastItem.id, createdAt: lastItem.createdAt ?? '' })
+      : null;
+
+    return {
+      groups: items.map(toGroup),
+      total: groups.length,
+      offset: 0,
+      limit,
+      pagination: { mode: 'cursor', hasMore, nextCursor },
+    };
+  }
 
   return {
     groups: groups.slice(offset, offset + limit).map(toGroup),
     total: groups.length,
     offset,
     limit,
+    pagination: { mode: 'offset', hasMore: offset + limit < groups.length, nextCursor: null },
+  };
+}
+
+export async function getMembershipSummary(pharmacyId: number): Promise<GroupMembershipSummaryResponse> {
+  const memberRows = await db.select({ groupId: groupMembers.groupId })
+    .from(groupMembers)
+    .where(eq(groupMembers.pharmacyId, pharmacyId));
+
+  const memberGroupIds = memberRows.map((row) => row.groupId);
+  if (memberGroupIds.length === 0) {
+    return { groups: [], groupPharmacyIds: [] };
+  }
+
+  const [groups, allMemberRows] = await Promise.all([
+    db.select({
+      id: pharmacyGroups.id,
+      name: pharmacyGroups.name,
+    })
+      .from(pharmacyGroups)
+      .where(inArray(pharmacyGroups.id, memberGroupIds)),
+    db.select({
+      groupId: groupMembers.groupId,
+      pharmacyId: groupMembers.pharmacyId,
+    })
+      .from(groupMembers)
+      .where(inArray(groupMembers.groupId, memberGroupIds)),
+  ]);
+
+  const memberIdsByGroup = new Map<number, number[]>();
+  const allGroupPharmacyIds = new Set<number>();
+
+  for (const row of allMemberRows) {
+    const ids = memberIdsByGroup.get(row.groupId) ?? [];
+    ids.push(row.pharmacyId);
+    memberIdsByGroup.set(row.groupId, ids);
+    allGroupPharmacyIds.add(row.pharmacyId);
+  }
+
+  return {
+    groups: groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      memberPharmacyIds: memberIdsByGroup.get(group.id) ?? [],
+    })),
+    groupPharmacyIds: [...allGroupPharmacyIds],
   };
 }
 

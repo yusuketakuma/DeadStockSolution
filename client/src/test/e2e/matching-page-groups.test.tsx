@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MatchingPage from '../../pages/MatchingPage';
 import { renderWithProviders, mockUser, setupFetchMock } from '../helpers';
-import type { GroupListResponse, GroupDetailResponse } from '../../../../server/src/types/group';
+import type { GroupMembershipSummaryResponse } from '../../../../server/src/types/group';
 
 function setMatchMedia(matches: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -22,28 +22,11 @@ function setMatchMedia(matches: boolean) {
   });
 }
 
-const myGroupsResponse: GroupListResponse = {
+const membershipSummaryResponse: GroupMembershipSummaryResponse = {
   groups: [
-    { id: 10, name: '東京グループ', description: null, visibility: 'public', ownerPharmacyId: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+    { id: 10, name: '東京グループ', memberPharmacyIds: [1, 5] },
   ],
-  total: 1,
-  offset: 0,
-  limit: 20,
-};
-
-const groupDetail10: GroupDetailResponse = {
-  id: 10,
-  name: '東京グループ',
-  description: null,
-  visibility: 'public',
-  ownerPharmacyId: 1,
-  createdAt: '2026-01-01T00:00:00Z',
-  updatedAt: '2026-01-01T00:00:00Z',
-  members: [
-    { id: 100, groupId: 10, pharmacyId: 1, role: 'owner', joinedAt: '2026-01-01T00:00:00Z' },
-    { id: 101, groupId: 10, pharmacyId: 5, role: 'member', joinedAt: '2026-01-01T00:00:00Z' },
-  ],
-  memberCount: 2,
+  groupPharmacyIds: [1, 5],
 };
 
 const matchCandidates = [
@@ -53,7 +36,7 @@ const matchCandidates = [
     pharmacyPhone: '03-1111-1111',
     pharmacyFax: '03-1111-2222',
     distance: 3,
-    itemsFromA: [{ deadStockItemId: 1, drugName: 'テスト薬A', quantity: 10, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 1000, expirationDate: '2027-01-01', matchScore: 0.9 }],
+    itemsFromA: [{ deadStockItemId: 1, drugName: 'アスピリン 100mg', quantity: 10, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 1000, expirationDate: '2027-01-01', matchScore: 0.9 }],
     itemsFromB: [{ deadStockItemId: 2, drugName: 'テスト薬B', quantity: 5, unit: '錠', yakkaUnitPrice: 200, yakkaValue: 1000, expirationDate: '2027-06-01', matchScore: 0.8 }],
     totalValueA: 10000,
     totalValueB: 10000,
@@ -91,10 +74,9 @@ function mockMatchingFetch(options: { includeGroups?: boolean } = {}) {
   };
 
   if (includeGroups) {
-    routes['/api/groups?tab=mine'] = myGroupsResponse;
-    routes['/api/groups/10'] = groupDetail10;
+    routes['/api/groups/membership-summary'] = membershipSummaryResponse;
   } else {
-    routes['/api/groups?tab=mine'] = { groups: [], total: 0, offset: 0, limit: 20 };
+    routes['/api/groups/membership-summary'] = { groups: [], groupPharmacyIds: [] };
   }
 
   return setupFetchMock(routes);
@@ -168,10 +150,10 @@ describe('MatchingPage — Group Badge', () => {
     expect(groupBadges).toHaveLength(0);
   });
 
-  it('auto-loads and narrows candidates when opened from inventory search', async () => {
+  it('auto-loads and narrows candidates by inventory search drugs', async () => {
     mockMatchingFetch();
     renderWithProviders(<MatchingPage />, {
-      route: '/matching?targetPharmacyId=5&inventorySearchDrugs=%E3%82%A2%E3%82%B9%E3%83%94%E3%83%AA%E3%83%B3%20100mg',
+      route: '/matching?inventorySearchDrugs=%E3%82%A2%E3%82%B9%E3%83%94%E3%83%AA%E3%83%B3%20100mg',
     });
 
     await waitFor(() => {
@@ -200,14 +182,8 @@ describe('MatchingPage — Group Badge', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      if (url.includes('/api/groups?tab=mine')) {
-        return new Response(JSON.stringify(myGroupsResponse), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/groups/10')) {
-        return new Response(JSON.stringify(groupDetail10), {
+      if (url.includes('/api/groups/membership-summary')) {
+        return new Response(JSON.stringify(membershipSummaryResponse), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });

@@ -78,6 +78,17 @@ function parsePositiveId(value: string | null): number | null {
   return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 }
 
+function parseRequestedDrugTerms(requestedDrug: string, inventorySearchDrugs: string): string[] {
+  if (requestedDrug) {
+    return [requestedDrug.toLowerCase()];
+  }
+
+  return inventorySearchDrugs
+    .split('/')
+    .map((term) => term.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 interface MatchItemsTableProps {
   items: MatchItem[];
   keyPrefix: string;
@@ -155,15 +166,19 @@ export default function MatchingPage() {
   );
   const inventorySearchDrugs = (searchParams.get('inventorySearchDrugs') ?? '').trim();
   const requestedDrug = (searchParams.get('drug') ?? '').trim();
+  const requestedDrugTerms = useMemo(
+    () => parseRequestedDrugTerms(requestedDrug, inventorySearchDrugs),
+    [inventorySearchDrugs, requestedDrug],
+  );
+  const requestedDrugLabel = requestedDrug || inventorySearchDrugs;
   const { groupPharmacyIds } = useGroupMembership({ includeMemberIds: true });
-  const hasSearchContext = requestedTargetPharmacyId !== null || requestedDrug.length > 0;
+  const hasSearchContext = requestedTargetPharmacyId !== null || requestedDrugTerms.length > 0;
   const autoSearchKey = useMemo(
     () => JSON.stringify({
       targetPharmacyId: requestedTargetPharmacyId,
-      requestedDrug,
-      inventorySearchDrugs,
+      requestedDrugTerms,
     }),
-    [inventorySearchDrugs, requestedDrug, requestedTargetPharmacyId],
+    [requestedDrugTerms, requestedTargetPharmacyId],
   );
   const lastAutoSearchKeyRef = useRef<string | null>(null);
 
@@ -174,15 +189,16 @@ export default function MatchingPage() {
         (candidate) => candidate.pharmacyId === requestedTargetPharmacyId,
       );
     }
-    const needle = requestedDrug.toLowerCase();
-    if (!needle) {
+    if (requestedDrugTerms.length === 0) {
       return filteredCandidates;
     }
     return filteredCandidates.filter((candidate) =>
-      candidate.itemsFromA.some((item) => item.drugName.toLowerCase().includes(needle))
-      || candidate.itemsFromB.some((item) => item.drugName.toLowerCase().includes(needle)),
+      requestedDrugTerms.some((term) =>
+        candidate.itemsFromA.some((item) => item.drugName.toLowerCase().includes(term))
+        || candidate.itemsFromB.some((item) => item.drugName.toLowerCase().includes(term)),
+      ),
     );
-  }, [candidates, requestedDrug, requestedTargetPharmacyId]);
+  }, [candidates, requestedDrugTerms, requestedTargetPharmacyId]);
 
   const handleSearch = useCallback(async () => {
     setLoading(true);
@@ -266,9 +282,9 @@ export default function MatchingPage() {
             </AppButton>
           </AppAlert>
         )}
-        {requestedDrug && (
+        {requestedDrugTerms.length > 0 && (
           <AppAlert variant="info" className="small">
-            対象薬剤: <strong>{requestedDrug}</strong>（一致候補を優先表示）
+            対象薬剤: <strong>{requestedDrugLabel}</strong>（一致候補を優先表示）
           </AppAlert>
         )}
 
@@ -291,9 +307,9 @@ export default function MatchingPage() {
             交換候補が見つかりませんでした。アップロード内容を更新後、再実行してください。
           </AppAlert>
         )}
-        {searched && candidates.length > 0 && displayCandidates.length === 0 && requestedDrug && !loading && (
+        {searched && candidates.length > 0 && displayCandidates.length === 0 && requestedDrugTerms.length > 0 && !loading && (
           <AppAlert variant="warning">
-            「{requestedDrug}」に一致する候補は見つかりませんでした。クエリを外すと全候補を確認できます。
+            「{requestedDrugLabel}」に一致する候補は見つかりませんでした。クエリを外すと全候補を確認できます。
           </AppAlert>
         )}
         {searched && candidates.length > 0 && displayCandidates.length === 0 && requestedTargetPharmacyId !== null && !loading && (

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, numeric, timestamp, boolean, real, date, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, numeric, timestamp, boolean, real, date, index, uniqueIndex, check, jsonb } from 'drizzle-orm/pg-core';
 import {
   pharmacyRelationshipTypeEnum,
   specialBusinessHoursTypeEnum,
@@ -91,4 +91,18 @@ export const pharmacyRelationships = pgTable('pharmacy_relationships', {
   idxRelationshipsUnique: uniqueIndex('idx_relationships_unique')
     .on(table.pharmacyId, table.targetPharmacyId),
   chkNotSelfRelationship: check('chk_not_self_relationship', sql`${table.pharmacyId} != ${table.targetPharmacyId}`),
+}));
+
+export const inventorySearchPreferences = pgTable('inventory_search_preferences', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  draftJson: jsonb('draft_json').notNull(),
+  searchHistoryJson: jsonb('search_history_json').notNull(),
+  savedPresetsJson: jsonb('saved_presets_json').notNull(),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxInventorySearchPreferencesPharmacy: uniqueIndex('idx_inventory_search_preferences_pharmacy')
+    .on(table.pharmacyId),
 }));

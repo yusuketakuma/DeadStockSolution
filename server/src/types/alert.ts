@@ -27,6 +27,11 @@ export interface AlertListResponse {
   offset: number;
   limit: number;
   unresolvedCount: number;
+  pagination?: {
+    mode: 'cursor' | 'offset';
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
 }
 
 /**

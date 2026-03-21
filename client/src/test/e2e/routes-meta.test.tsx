@@ -1,17 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import App from '../../App';
 import { mockUser } from '../helpers';
 
 function renderAppAtRoute(route: string) {
-  const routerProps: MemoryRouterProps = {
-    initialEntries: [route],
-    future: { v7_startTransition: true, v7_relativeSplatPath: true },
-  };
-
   return render(
-    <MemoryRouter {...routerProps}>
+    <MemoryRouter initialEntries={[route]}>
       <App />
     </MemoryRouter>,
   );

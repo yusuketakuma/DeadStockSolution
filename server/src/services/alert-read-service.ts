@@ -1,18 +1,25 @@
-import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import { db } from '../config/database';
 import { notifications, predictiveAlerts, type PredictiveAlertType } from '../db/schema';
 import type { AlertItem, AlertListResponse, AlertStats } from '../types/alert';
 import { invalidateDashboardUnreadCache } from './notification-service';
+import { encodeCursor } from '../utils/cursor-pagination';
 
 const DEFAULT_ALERT_PAGE_SIZE = 20 as const;
 
 // ── 型定義 ──────────────────────────────────
+
+export interface AlertCursor {
+  id: number;
+  detectedAt: string;
+}
 
 export interface ListAlertsFilters {
   resolved?: boolean;
   type?: PredictiveAlertType;
   offset?: number;
   limit?: number;
+  cursor?: AlertCursor;
 }
 
 // ── ヘルパー ──────────────────────────────────
@@ -64,11 +71,54 @@ function buildAlertStatsByType(rows: Array<{ alertType: PredictiveAlertType; cou
 
 // ── アラート一覧 ──────────────────────────────────
 
+function buildCursorWhereClause(pharmacyId: number, filters: ListAlertsFilters, cursor: AlertCursor) {
+  const baseConditions = buildAlertListWhereClause(pharmacyId, filters);
+  // cursor: detectedAt < cursor.detectedAt OR (detectedAt = cursor.detectedAt AND id < cursor.id)
+  const cursorCondition = or(
+    lt(predictiveAlerts.detectedAt, cursor.detectedAt),
+    and(
+      eq(predictiveAlerts.detectedAt, cursor.detectedAt),
+      lt(predictiveAlerts.id, cursor.id),
+    ),
+  );
+  return and(baseConditions, cursorCondition);
+}
+
 export async function listAlerts(
   pharmacyId: number,
   filters: ListAlertsFilters,
 ): Promise<AlertListResponse> {
-  const { resolved, offset = 0, limit = DEFAULT_ALERT_PAGE_SIZE } = filters;
+  const { resolved, offset = 0, limit = DEFAULT_ALERT_PAGE_SIZE, cursor } = filters;
+
+  if (cursor) {
+    // cursor-based pagination
+    const whereClause = buildCursorWhereClause(pharmacyId, filters, cursor);
+    const rows = await db
+      .select()
+      .from(predictiveAlerts)
+      .where(whereClause)
+      .orderBy(desc(predictiveAlerts.detectedAt), desc(predictiveAlerts.id))
+      .limit(limit + 1);
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const alerts = items.map(toAlertItem);
+    const lastItem = items[items.length - 1];
+    const nextCursor = hasMore && lastItem
+      ? encodeCursor<AlertCursor>({ id: lastItem.id, detectedAt: lastItem.detectedAt })
+      : null;
+
+    return {
+      alerts,
+      total: 0,
+      offset: 0,
+      limit,
+      unresolvedCount: 0,
+      pagination: { mode: 'cursor', hasMore, nextCursor },
+    };
+  }
+
+  // offset/limit pagination (backward compat)
   const whereClause = buildAlertListWhereClause(pharmacyId, filters);
 
   const [totalResult, rows] = await Promise.all([
@@ -91,7 +141,14 @@ export async function listAlerts(
   // unresolvedCount: resolved=false の場合は total と同じ、それ以外は別途計算不要（フロントで stats API を利用）
   const unresolvedCount = resolved === false ? total : 0;
 
-  return { alerts, total, offset, limit, unresolvedCount };
+  return {
+    alerts,
+    total,
+    offset,
+    limit,
+    unresolvedCount,
+    pagination: { mode: 'offset', hasMore: offset + limit < total, nextCursor: null },
+  };
 }
 
 // ── アラート詳細 ──────────────────────────────────

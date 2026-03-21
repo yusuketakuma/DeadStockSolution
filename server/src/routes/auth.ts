@@ -398,7 +398,18 @@ router.post('/complete-registration', registerLimiter, async (req: AuthRequest, 
 // Legacy endpoints (maintained for backward compatibility during migration)
 // ---------------------------------------------------------------------------
 
+function isLegacyPasswordAuthDisabled(): boolean {
+  return process.env.LEGACY_PASSWORD_AUTH_ENABLED === 'false';
+}
+
+function respondLegacyAuthGone(res: Response): void {
+  res.status(410).json({
+    error: 'パスワード認証は廃止されました。WorkOS 認証をご利用ください。',
+  });
+}
+
 router.post('/register', registerLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
+  if (isLegacyPasswordAuthDisabled()) { respondLegacyAuthGone(res); return; }
   try {
     const errors = validateRegistration(req.body);
     if (errors.length > 0) {
@@ -516,6 +527,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
 });
 
 router.post('/login', loginLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
+  if (isLegacyPasswordAuthDisabled()) { respondLegacyAuthGone(res); return; }
   try {
     const errors = validateLogin(req.body);
     if (errors.length > 0) {
@@ -575,6 +587,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response): Pro
 });
 
 router.post('/password-reset/request', passwordResetLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
+  if (isLegacyPasswordAuthDisabled()) { respondLegacyAuthGone(res); return; }
   try {
     const requestStartedAt = Date.now();
     const email = typeof req.body?.email === 'string' ? normalizeEmail(req.body.email) : '';
@@ -599,6 +612,7 @@ router.post('/password-reset/request', passwordResetLimiter, async (req: AuthReq
 });
 
 router.post('/password-reset/confirm', passwordResetLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
+  if (isLegacyPasswordAuthDisabled()) { respondLegacyAuthGone(res); return; }
   try {
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';

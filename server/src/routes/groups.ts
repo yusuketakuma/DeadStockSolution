@@ -2,8 +2,10 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { AuthRequest } from '../types';
 import * as groupService from '../services/group-service';
+import type { GroupCursor, GroupListTab } from '../services/group-service';
 import { logger } from '../services/logger';
 import { parsePositiveInt, normalizeSearchTerm } from '../utils/request-utils';
+import { parseCursor } from '../utils/cursor-pagination';
 
 const router = Router();
 
@@ -51,6 +53,19 @@ function handleRouteError(res: Response, logMessage: string, err: unknown): void
   res.status(status).json({ error: status >= 500 ? 'グループ操作に失敗しました' : message });
 }
 
+function parseGroupCursor(raw: unknown) {
+  return parseCursor<GroupCursor>(raw, (c) =>
+    typeof c.createdAt === 'string' && Number.isFinite(Date.parse(c.createdAt)),
+  );
+}
+
+function parseGroupTab(raw: unknown): GroupListTab | undefined {
+  if (raw !== 'mine' && raw !== 'public') {
+    return undefined;
+  }
+  return raw;
+}
+
 // ── POST / — グループ作成 ──────────────────────────────────
 
 router.post('/', async (req: AuthRequest, res: Response) => {
@@ -75,10 +90,29 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const limit = parsePositiveInt(req.query.limit) ?? undefined;
     const offset = parsePositiveInt(req.query.offset) ?? undefined;
     const search = normalizeSearchTerm(req.query.search);
-    const result = await groupService.listGroups(req.user!.id, { limit, offset, search });
+    const tab = parseGroupTab(Array.isArray(req.query.tab) ? req.query.tab[0] : req.query.tab);
+
+    const cursor = parseGroupCursor(req.query.cursor);
+    if (cursor === null) {
+      res.status(400).json({ error: 'cursorが不正です' });
+      return;
+    }
+
+    const result = await groupService.listGroups(req.user!.id, { limit, offset, search, cursor, tab });
     res.json(result);
   } catch (err) {
     handleRouteError(res, 'List groups error', err);
+  }
+});
+
+// ── GET /membership-summary — 自分が所属するグループと参加薬局一覧 ──────────────────────────────────
+
+router.get('/membership-summary', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await groupService.getMembershipSummary(req.user!.id);
+    res.json(result);
+  } catch (err) {
+    handleRouteError(res, 'Get membership summary error', err);
   }
 });
 

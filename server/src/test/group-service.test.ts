@@ -152,8 +152,8 @@ describe('group-service', () => {
       description: null,
       visibility: 'invite_only' as const,
       ownerPharmacyId: 1,
-      createdAt: '2026-03-01T00:00:00.000Z',
-      updatedAt: '2026-03-01T00:00:00.000Z',
+      createdAt: '2026-03-02T00:00:00.000Z',
+      updatedAt: '2026-03-02T00:00:00.000Z',
     }];
     const publicGroups = [{
       id: 20,
@@ -177,6 +177,52 @@ describe('group-service', () => {
 
     expect(result.total).toBe(2);
     expect(result.groups.map((g: { id: number }) => g.id)).toEqual([10, 20]);
+  });
+
+  it('listGroups with tab=mine returns only member groups', async () => {
+    const ownGroups = [{
+      id: 10,
+      name: 'A',
+      description: null,
+      visibility: 'invite_only' as const,
+      ownerPharmacyId: 1,
+      createdAt: '2026-03-02T00:00:00.000Z',
+      updatedAt: '2026-03-02T00:00:00.000Z',
+    }];
+    const memberQuery = createSelectWhereResult([{ groupId: 10 }]);
+    const ownQuery = createSelectWhereResult(ownGroups);
+
+    mocks.db.select
+      .mockReturnValueOnce({ from: memberQuery.from })
+      .mockReturnValueOnce({ from: ownQuery.from });
+
+    const result = await listGroups(1, { tab: 'mine', offset: 0, limit: 20 });
+
+    expect(result.total).toBe(1);
+    expect(result.groups.map((g: { id: number }) => g.id)).toEqual([10]);
+  });
+
+  it('listGroups with tab=public returns only public groups outside membership', async () => {
+    const publicGroups = [{
+      id: 20,
+      name: 'B',
+      description: null,
+      visibility: 'public' as const,
+      ownerPharmacyId: 2,
+      createdAt: '2026-03-03T00:00:00.000Z',
+      updatedAt: '2026-03-03T00:00:00.000Z',
+    }];
+    const memberQuery = createSelectWhereResult([{ groupId: 10 }]);
+    const publicQuery = createSelectWhereResult(publicGroups);
+
+    mocks.db.select
+      .mockReturnValueOnce({ from: memberQuery.from })
+      .mockReturnValueOnce({ from: publicQuery.from });
+
+    const result = await listGroups(1, { tab: 'public', offset: 0, limit: 20 });
+
+    expect(result.total).toBe(1);
+    expect(result.groups.map((g: { id: number }) => g.id)).toEqual([20]);
   });
 
   it('getGroupDetail rejects invite_only access when requester is not member', async () => {

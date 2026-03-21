@@ -1,9 +1,11 @@
 import { Router, Response } from 'express';
 import { AuthRequest } from '../types';
 import * as alertReadService from '../services/alert-read-service';
+import type { AlertCursor } from '../services/alert-read-service';
 import { predictiveAlertTypeValues } from '../db/schema';
 import { logger } from '../services/logger';
 import { parsePositiveInt } from '../utils/request-utils';
+import { parseCursor } from '../utils/cursor-pagination';
 
 const router = Router();
 
@@ -22,6 +24,12 @@ function parseResolved(value: string | string[] | undefined): boolean | undefine
   return undefined;
 }
 
+function parseAlertCursor(raw: unknown) {
+  return parseCursor<AlertCursor>(raw, (c) =>
+    typeof c.detectedAt === 'string' && Number.isFinite(Date.parse(c.detectedAt)),
+  );
+}
+
 // ── GET / — アラート一覧 ──────────────────────────────────
 
 router.get('/', async (req: AuthRequest, res: Response) => {
@@ -38,11 +46,18 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    const cursor = parseAlertCursor(req.query.cursor);
+    if (cursor === null) {
+      res.status(400).json({ error: 'cursorが不正です' });
+      return;
+    }
+
     const result = await alertReadService.listAlerts(pharmacyId, {
       resolved,
       type: type as typeof predictiveAlertTypeValues[number] | undefined,
       offset,
       limit,
+      cursor,
     });
     res.json(result);
   } catch (err) {

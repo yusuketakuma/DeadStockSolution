@@ -101,6 +101,7 @@ describe('alert routes', () => {
         type: undefined,
         offset: 0,
         limit: 20,
+        cursor: undefined,
       });
     });
 
@@ -115,6 +116,7 @@ describe('alert routes', () => {
         type: undefined,
         offset: 0,
         limit: 20,
+        cursor: undefined,
       });
     });
 
@@ -129,6 +131,7 @@ describe('alert routes', () => {
         type: undefined,
         offset: 0,
         limit: 20,
+        cursor: undefined,
       });
     });
 
@@ -143,6 +146,7 @@ describe('alert routes', () => {
         type: 'near_expiry',
         offset: 0,
         limit: 20,
+        cursor: undefined,
       });
     });
 
@@ -157,6 +161,7 @@ describe('alert routes', () => {
         type: 'near_expiry',
         offset: 0,
         limit: 20,
+        cursor: undefined,
       });
     });
 
@@ -171,7 +176,44 @@ describe('alert routes', () => {
         type: undefined,
         offset: 10,
         limit: 5,
+        cursor: undefined,
       });
+    });
+
+    it('200 — cursor パラメータ付きで cursor-based pagination を使用', async () => {
+      const cursorPayload = { id: 5, detectedAt: '2025-01-01T00:00:00.000Z' };
+      const encodedCursor = Buffer.from(JSON.stringify(cursorPayload), 'utf-8').toString('base64url');
+      mocks.listAlerts.mockResolvedValue({
+        alerts: [],
+        total: -1,
+        offset: 0,
+        limit: 20,
+        unresolvedCount: 0,
+        pagination: { mode: 'cursor', hasMore: false, nextCursor: null },
+      });
+      const app = createApp();
+
+      const res = await request(app).get(`/api/alerts?cursor=${encodedCursor}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.pagination.mode).toBe('cursor');
+      expect(mocks.listAlerts).toHaveBeenCalledWith(1, {
+        resolved: undefined,
+        type: undefined,
+        offset: 0,
+        limit: 20,
+        cursor: cursorPayload,
+      });
+    });
+
+    it('400 — 不正な cursor', async () => {
+      const app = createApp();
+
+      const res = await request(app).get('/api/alerts?cursor=!!!invalid!!!');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBeDefined();
+      expect(mocks.listAlerts).not.toHaveBeenCalled();
     });
 
     it('400 — 不正な type', async () => {

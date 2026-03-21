@@ -4,7 +4,7 @@ import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
-import type { GroupListResponse, GroupDetailResponse } from '../../../server/src/types/group';
+import type { GroupMembershipSummaryResponse } from '../../../server/src/types/group';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import SearchInput from '../components/SearchInput';
@@ -62,14 +62,6 @@ interface GroupInfo {
   memberPharmacyIds: number[];
 }
 
-function toGroupInfo(detail: GroupDetailResponse): GroupInfo {
-  return {
-    id: detail.id,
-    name: detail.name,
-    memberPharmacyIds: detail.members.map((member) => member.pharmacyId),
-  };
-}
-
 function buildPharmacyQuery(page: number, filters: { search: string; prefecture: string; sortBy: string }) {
   const params = new URLSearchParams({ page: String(page) });
   if (filters.search) params.set('search', filters.search);
@@ -124,12 +116,8 @@ export default function PharmacyListPage() {
 
   const fetchGroupData = useCallback(async () => {
     try {
-      const listRes = await api.get<GroupListResponse>('/groups?tab=mine');
-      if (listRes.groups.length === 0) return;
-      const details = await Promise.all(
-        listRes.groups.map((g) => api.get<GroupDetailResponse>(`/groups/${g.id}`))
-      );
-      setMyGroups(details.map(toGroupInfo));
+      const summary = await api.get<GroupMembershipSummaryResponse>('/groups/membership-summary');
+      setMyGroups(summary.groups);
     } catch {
       // Silently fail - group data is supplementary
     }

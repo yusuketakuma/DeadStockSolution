@@ -126,7 +126,7 @@ describe('searchInventoryAvailability', () => {
     // 3. genericName match
     // 4. deadStockItems
     // 5. pharmacies
-    // 6-9 (Promise.all): blocked, groupOnly(null), favorites, manufacturers
+    // 6-9 (Promise.all): blocked, my groups, favorites, manufacturers
     setupDbResponses([
       [{ id: 1, drugName: 'テスト薬', genericName: 'test', specification: '10mg', yakkaPrice: '50.00', manufacturer: null }],
       [], // equivalences batch
@@ -141,8 +141,9 @@ describe('searchInventoryAvailability', () => {
         { id: 2, name: '薬局B', latitude: null, longitude: null },
         { id: 3, name: '薬局C', latitude: null, longitude: null },
       ],
-      // Promise.all: blocked, (no group), favorites, manufacturers
+      // Promise.all: blocked, my groups, favorites, manufacturers
       [], // blocked
+      [], // my groups
       [], // favorites
       [{ id: 1, manufacturer: null }, { id: 2, manufacturer: null }], // manufacturers
     ]);
@@ -167,8 +168,9 @@ describe('searchInventoryAvailability', () => {
       [{ id: 1 }, { id: 2 }], // genericName match
       [{ id: 10, pharmacyId: 2, drugMasterId: 1, drugName: 'テスト薬', quantity: 5, unit: '錠', yakkaUnitPrice: '100.00' }],
       [{ id: 2, name: '薬局B', latitude: 35.0, longitude: 135.0 }],
-      // Promise.all: blocked, favorites, manufacturers
+      // Promise.all: blocked, my groups, favorites, manufacturers
       [{ pharmacyId: 1, targetPharmacyId: 2 }], // 薬局1が薬局2をブロック
+      [], // my groups
       [], // favorites
       [{ id: 1, manufacturer: 'A社' }, { id: 2, manufacturer: 'A社' }],
     ]);
@@ -188,10 +190,13 @@ describe('searchInventoryAvailability', () => {
       [{ id: 1, drugName: '薬A', genericName: 'gnA', specification: '10mg', yakkaPrice: '20.00', manufacturer: null }],
       [], // equivalences batch
       [{ id: 1 }], // genericName match (1件のみ)
-      [], // equivalences filter (Pass 2) → batch already fetched, inner filter finds nothing
       [], // 在庫なし
       // no pharmacies query (relevantPharmacyIds empty)
-      // Promise.all: blocked, favorites, manufacturers (but allDrugMasterIds=[1] so these still run)
+      // Promise.all: blocked, my groups, favorites, manufacturers (but allDrugMasterIds=[1] so these still run)
+      [], // blocked
+      [], // my groups
+      [], // favorites
+      [{ id: 1, manufacturer: null }], // manufacturers
     ]);
 
     const result = await searchInventoryAvailability(
@@ -216,6 +221,7 @@ describe('searchInventoryAvailability', () => {
       [],
       [],
       [],
+      [],
       [{ id: 1, manufacturer: null }],
     ]);
 
@@ -228,5 +234,30 @@ describe('searchInventoryAvailability', () => {
 
     expect(result.summary).toEqual([]);
     expect(result.matrix.rows).toEqual([]);
+  });
+
+  it('groupOnly=false でも同一グループ薬局に isGroupMember を付与する', async () => {
+    setupDbResponses([
+      [{ id: 1, drugName: 'テスト薬', genericName: 'test', specification: '10mg', yakkaPrice: '80.00', manufacturer: null }],
+      [],
+      [{ id: 1 }],
+      [{ id: 10, pharmacyId: 2, drugMasterId: 1, drugName: 'テスト薬', quantity: 5, unit: '錠', yakkaUnitPrice: '80.00' }],
+      [{ id: 2, name: '薬局B', latitude: null, longitude: null }],
+      [], // blocked
+      [{ groupId: 10 }], // my groups
+      [], // favorites
+      [{ id: 1, manufacturer: null }], // manufacturers
+      [{ pharmacyId: 1 }, { pharmacyId: 2 }], // group members
+    ]);
+
+    const result = await searchInventoryAvailability(
+      1,
+      [{ drugMasterId: 1, genericName: 'test', specification: '10mg' }],
+      { groupOnly: false, openOnly: false, favoritePriority: false },
+      null,
+    );
+
+    expect(result.summary).toHaveLength(1);
+    expect(result.summary[0]?.isGroupMember).toBe(true);
   });
 });

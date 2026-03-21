@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { GroupDetailResponse, GroupListResponse } from '../../../server/src/types/group';
+import type { GroupMembershipSummaryResponse } from '../../../server/src/types/group';
 
 interface UseGroupMembershipOptions {
   includeMemberIds?: boolean;
@@ -9,16 +9,6 @@ interface UseGroupMembershipOptions {
 interface UseGroupMembershipReturn {
   isGroupMember: boolean;
   groupPharmacyIds: Set<number>;
-}
-
-function collectGroupPharmacyIds(groupDetails: GroupDetailResponse[]): Set<number> {
-  const ids = new Set<number>();
-  for (const detail of groupDetails) {
-    for (const member of detail.members) {
-      ids.add(member.pharmacyId);
-    }
-  }
-  return ids;
 }
 
 export function useGroupMembership(
@@ -34,12 +24,12 @@ export function useGroupMembership(
 
     const loadMembership = async () => {
       try {
-        const listRes = await api.get<GroupListResponse>('/groups?tab=mine', {
+        const summary = await api.get<GroupMembershipSummaryResponse>('/groups/membership-summary', {
           signal: controller.signal,
         });
         if (!active || controller.signal.aborted) return;
 
-        const hasGroups = listRes.groups.length > 0;
+        const hasGroups = summary.groups.length > 0;
         setIsGroupMember(hasGroups);
 
         if (!includeMemberIds || !hasGroups) {
@@ -47,16 +37,7 @@ export function useGroupMembership(
           return;
         }
 
-        const details = await Promise.all(
-          listRes.groups.map((group) =>
-            api.get<GroupDetailResponse>(`/groups/${group.id}`, {
-              signal: controller.signal,
-            })
-          ),
-        );
-        if (!active || controller.signal.aborted) return;
-
-        setGroupPharmacyIds(collectGroupPharmacyIds(details));
+        setGroupPharmacyIds(new Set(summary.groupPharmacyIds));
       } catch {
         if (!active || controller.signal.aborted) return;
         setIsGroupMember(false);

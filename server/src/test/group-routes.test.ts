@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   updateGroup: vi.fn(),
   deleteGroup: vi.fn(),
   listGroups: vi.fn(),
+  getMembershipSummary: vi.fn(),
   getGroupDetail: vi.fn(),
   inviteMember: vi.fn(),
   acceptInvitation: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('../services/group-service', () => ({
   updateGroup: mocks.updateGroup,
   deleteGroup: mocks.deleteGroup,
   listGroups: mocks.listGroups,
+  getMembershipSummary: mocks.getMembershipSummary,
   getGroupDetail: mocks.getGroupDetail,
   inviteMember: mocks.inviteMember,
   acceptInvitation: mocks.acceptInvitation,
@@ -162,7 +164,7 @@ describe('group routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(result);
-      expect(mocks.listGroups).toHaveBeenCalledWith(1, { limit: undefined, offset: undefined });
+      expect(mocks.listGroups).toHaveBeenCalledWith(1, { limit: undefined, offset: undefined, search: undefined, cursor: undefined, tab: undefined });
     });
 
     it('200 — limit/offset パラメータ付き', async () => {
@@ -173,7 +175,54 @@ describe('group routes', () => {
       const res = await request(app).get('/api/groups?limit=5&offset=10');
 
       expect(res.status).toBe(200);
-      expect(mocks.listGroups).toHaveBeenCalledWith(1, { limit: 5, offset: 10 });
+      expect(mocks.listGroups).toHaveBeenCalledWith(1, { limit: 5, offset: 10, search: undefined, cursor: undefined, tab: undefined });
+    });
+
+    it('200 — tab パラメータ付き', async () => {
+      const result = { groups: [], total: 0, offset: 0, limit: 20 };
+      mocks.listGroups.mockResolvedValue(result);
+      const app = createApp();
+
+      const res = await request(app).get('/api/groups?tab=mine');
+
+      expect(res.status).toBe(200);
+      expect(mocks.listGroups).toHaveBeenCalledWith(1, { limit: undefined, offset: undefined, search: undefined, cursor: undefined, tab: 'mine' });
+    });
+
+    it('200 — cursor パラメータ付きで cursor-based pagination を使用', async () => {
+      const cursorPayload = { id: 3, createdAt: '2025-01-01T00:00:00.000Z' };
+      const encodedCursor = Buffer.from(JSON.stringify(cursorPayload), 'utf-8').toString('base64url');
+      const result = {
+        groups: [],
+        total: 10,
+        offset: 0,
+        limit: 20,
+        pagination: { mode: 'cursor', hasMore: false, nextCursor: null },
+      };
+      mocks.listGroups.mockResolvedValue(result);
+      const app = createApp();
+
+      const res = await request(app).get(`/api/groups?cursor=${encodedCursor}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.pagination.mode).toBe('cursor');
+      expect(mocks.listGroups).toHaveBeenCalledWith(1, {
+        limit: undefined,
+        offset: undefined,
+        search: undefined,
+        cursor: cursorPayload,
+        tab: undefined,
+      });
+    });
+
+    it('400 — 不正な cursor', async () => {
+      const app = createApp();
+
+      const res = await request(app).get('/api/groups?cursor=!!!invalid!!!');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBeDefined();
+      expect(mocks.listGroups).not.toHaveBeenCalled();
     });
 
     it('500 — サービスエラー', async () => {
@@ -181,6 +230,32 @@ describe('group routes', () => {
       const app = createApp();
 
       const res = await request(app).get('/api/groups');
+
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe('GET /api/groups/membership-summary', () => {
+    it('200 — 所属グループのサマリー取得', async () => {
+      const result = {
+        groups: [{ id: 10, name: '東京グループ', memberPharmacyIds: [1, 2] }],
+        groupPharmacyIds: [1, 2],
+      };
+      mocks.getMembershipSummary.mockResolvedValue(result);
+      const app = createApp();
+
+      const res = await request(app).get('/api/groups/membership-summary');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(result);
+      expect(mocks.getMembershipSummary).toHaveBeenCalledWith(1);
+    });
+
+    it('500 — サービスエラー', async () => {
+      mocks.getMembershipSummary.mockRejectedValue(new Error('DB error'));
+      const app = createApp();
+
+      const res = await request(app).get('/api/groups/membership-summary');
 
       expect(res.status).toBe(500);
     });

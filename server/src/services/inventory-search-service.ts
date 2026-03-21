@@ -263,7 +263,7 @@ export async function searchInventoryAvailability(
   const pharmacyMap = new Map(pharmacyRows.map(p => [p.id, p]));
 
   // 5-8. Fetch blocked, group members, favorites, and manufacturers in parallel
-  const [blockedRows, groupQueryResult, favoriteRows, masterRows] = await Promise.all([
+  const [blockedRows, groupMemberIds, favoriteRows, masterRows] = await Promise.all([
     // 5. Blocked pharmacies
     db.select({ pharmacyId: pharmacyRelationships.pharmacyId, targetPharmacyId: pharmacyRelationships.targetPharmacyId })
       .from(pharmacyRelationships)
@@ -271,18 +271,16 @@ export async function searchInventoryAvailability(
         or(eq(pharmacyRelationships.pharmacyId, pharmacyId), eq(pharmacyRelationships.targetPharmacyId, pharmacyId)),
         eq(pharmacyRelationships.relationshipType, 'blocked'),
       )),
-    // 6. Group members (only if groupOnly filter)
-    filters.groupOnly
-      ? db.select({ groupId: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.pharmacyId, pharmacyId))
-          .then(async myGroups => {
-            if (myGroups.length === 0) return new Set<number>();
-            const memberRows = await db.select({ pharmacyId: groupMembers.pharmacyId }).from(groupMembers)
-              .where(inArray(groupMembers.groupId, myGroups.map(g => g.groupId)));
-            const ids = new Set(memberRows.map(m => m.pharmacyId));
-            ids.delete(pharmacyId);
-            return ids;
-          })
-      : Promise.resolve(null as Set<number> | null),
+    // 6. Group members
+    db.select({ groupId: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.pharmacyId, pharmacyId))
+      .then(async myGroups => {
+        if (myGroups.length === 0) return new Set<number>();
+        const memberRows = await db.select({ pharmacyId: groupMembers.pharmacyId }).from(groupMembers)
+          .where(inArray(groupMembers.groupId, myGroups.map(g => g.groupId)));
+        const ids = new Set(memberRows.map(m => m.pharmacyId));
+        ids.delete(pharmacyId);
+        return ids;
+      }),
     // 7. Favorites
     db.select({ targetPharmacyId: pharmacyRelationships.targetPharmacyId })
       .from(pharmacyRelationships)
@@ -295,7 +293,6 @@ export async function searchInventoryAvailability(
 
   const blockedIds = new Set(blockedRows.flatMap(r => [r.pharmacyId, r.targetPharmacyId]));
   blockedIds.delete(pharmacyId);
-  const groupMemberIds = groupQueryResult;
   const favoriteIds = new Set(favoriteRows.map(r => r.targetPharmacyId));
   const masterManufacturerMap = new Map(masterRows.map(m => [m.id, m.manufacturer]));
 
@@ -303,7 +300,7 @@ export async function searchInventoryAvailability(
   const pharmacyInventory = new Map<number, typeof inventory>();
   for (const item of inventory) {
     if (blockedIds.has(item.pharmacyId)) continue;
-    if (groupMemberIds !== null && !groupMemberIds.has(item.pharmacyId)) continue;
+    if (filters.groupOnly && !groupMemberIds.has(item.pharmacyId)) continue;
 
     let items = pharmacyInventory.get(item.pharmacyId);
     if (!items) {
@@ -376,7 +373,7 @@ export async function searchInventoryAvailability(
       totalYakka: Math.round(totalYakka * 100) / 100,
       distance: dist !== null ? Math.round(dist * 10) / 10 : null,
       isFavorite: favoriteIds.has(phId),
-      isGroupMember: groupMemberIds !== null ? groupMemberIds.has(phId) : false,
+      isGroupMember: groupMemberIds.has(phId),
       businessStatus: {
         isOpen: bizStatus.isOpen,
         message: bizStatus.todayHours
