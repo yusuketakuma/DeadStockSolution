@@ -20,6 +20,9 @@ if [ -n "${TEST_PHARMACY_SEED_JSON:-}" ]; then
   npx --prefix "$ROOT_DIR" tsx "$ROOT_DIR/server/src/db/seed-test-pharmacy-accounts.ts" || echo "[vercel-build] Warning: test pharmacy seeding failed (non-fatal)"
 fi
 
+# Sync VERSION → package.json (ensures app version matches)
+node "$ROOT_DIR/scripts/sync-version.mjs"
+
 # Build client (Vite + SWC)
 (
   cd "$CLIENT_DIR"

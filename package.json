@@ -13,6 +13,9 @@
     "openapi:check": "node scripts/generate-openapi.mjs --check",
     "lint": "npm run lint --workspace=server && npm run lint --workspace=client",
     "lint:fix": "npm run lint:fix --workspace=server && npm run lint:fix --workspace=client",
+    "version:sync": "node scripts/sync-version.mjs",
+    "version:check": "node scripts/sync-version.mjs --check",
+    "prebuild": "node scripts/sync-version.mjs",
     "build": "npm run build --workspace=server && npm run build --workspace=client",
     "build:client": "npm run build --workspace=client",
     "build:server": "npm run build --workspace=server",
@@ -42,6 +45,7 @@
     "remotion:render": "npx remotion render remotion/src/index.ts ProductVideo out/video.mp4"
   },
   "lint-staged": {
+    "VERSION": "node scripts/sync-version.mjs",
     "*.{ts,tsx}": "eslint --fix"
   },
   "overrides": {

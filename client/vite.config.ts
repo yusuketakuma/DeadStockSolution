@@ -6,13 +6,13 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig, loadEnv, type PluginOption } from 'vite';
 
-type PackageJson = {
-  version?: string;
-};
-
-const packageJson = JSON.parse(
-  readFileSync(new URL('./package.json', import.meta.url), 'utf-8')
-) as PackageJson;
+function readVersionFile(): string | undefined {
+  try {
+    return readFileSync(new URL('../VERSION', import.meta.url), 'utf-8').trim();
+  } catch {
+    return undefined;
+  }
+}
 
 function normalizeVersion(version: string | undefined): string {
   const trimmed = version?.trim();
@@ -27,7 +27,7 @@ const projectRoot = fileURLToPath(new URL('.', import.meta.url));
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, projectRoot, '');
   const envVersion = env.VITE_APP_VERSION?.trim();
-  const appVersion = normalizeVersion(envVersion || packageJson.version);
+  const appVersion = normalizeVersion(envVersion || readVersionFile());
 
   const plugins: PluginOption[] = [react()];
 
