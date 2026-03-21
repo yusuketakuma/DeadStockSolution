@@ -13,7 +13,7 @@ import { validateRegistration, validateLogin, validateOnboardingRegistration } f
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 import { requireLogin, invalidateAuthUserCache } from '../middleware/auth';
-import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } from '../middleware/csrf';
+import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie, timingSafeCompare } from '../middleware/csrf';
 import { writeLog, getClientIp } from '../services/log-service';
 import { trackLoginFailure, clearLoginFailures } from '../utils/login-failure-tracker';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
@@ -176,7 +176,7 @@ router.get('/callback', async (req: AuthRequest, res: Response): Promise<void> =
     const stateParam = typeof req.query.state === 'string' ? req.query.state : '';
     const stateCookie = typeof req.cookies?.[OAUTH_STATE_COOKIE] === 'string' ? req.cookies[OAUTH_STATE_COOKIE] : '';
     res.clearCookie(OAUTH_STATE_COOKIE);
-    if (!stateParam || !stateCookie || stateParam !== stateCookie) {
+    if (!stateParam || !stateCookie || !timingSafeCompare(stateParam, stateCookie)) {
       res.status(400).json({ error: 'OAuth state パラメータが無効です' });
       return;
     }

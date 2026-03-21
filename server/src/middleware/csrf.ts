@@ -22,13 +22,20 @@ function isSafeMethod(method: string): boolean {
 function isExemptPath(path: string): boolean {
   return EXEMPT_PATHS.has(path);
 }
-function timingSafeCompare(a: string, b: string): boolean {
-  const maxLen = Math.max(a.length, b.length, 1);
-  const aBuffer = Buffer.alloc(maxLen);
-  const bBuffer = Buffer.alloc(maxLen);
-  Buffer.from(a, 'utf8').copy(aBuffer);
-  Buffer.from(b, 'utf8').copy(bBuffer);
-  return crypto.timingSafeEqual(aBuffer, bBuffer) && a.length === b.length;
+export function timingSafeCompare(a: string, b: string): boolean {
+  const aBuffer = Buffer.from(a, 'utf8');
+  const bBuffer = Buffer.from(b, 'utf8');
+  if (aBuffer.length === bBuffer.length) {
+    return crypto.timingSafeEqual(aBuffer, bBuffer);
+  }
+  // Lengths differ — still run timingSafeEqual to avoid timing leak, but always return false
+  const maxLen = Math.max(aBuffer.length, bBuffer.length);
+  const aPadded = Buffer.alloc(maxLen);
+  const bPadded = Buffer.alloc(maxLen);
+  aBuffer.copy(aPadded);
+  bBuffer.copy(bPadded);
+  crypto.timingSafeEqual(aPadded, bPadded);
+  return false;
 }
 
 export function generateCsrfToken(): string {

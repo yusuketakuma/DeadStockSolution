@@ -38,6 +38,15 @@ export async function resolveDrugGroups(drugKeys: DrugKey[]): Promise<DrugGroup[
       )
     : [];
 
+  // Index equivalences by drugName for O(1) lookup (eliminates duplicate filtering)
+  const equivByDrugName = new Map<string, Array<{ drugNameA: string; drugNameB: string }>>();
+  for (const row of allEquivRows) {
+    for (const name of [row.drugNameA, row.drugNameB]) {
+      const arr = equivByDrugName.get(name);
+      if (arr) { arr.push(row); } else { equivByDrugName.set(name, [row]); }
+    }
+  }
+
   // Prepare resolved keys with genericName/specification
   const resolvedKeys: Array<{ key: DrugKey; source: typeof sourceRows[number]; gn: string | null; spec: string | null }> = [];
   for (const key of drugKeys) {
@@ -74,25 +83,23 @@ export async function resolveDrugGroups(drugKeys: DrugKey[]): Promise<DrugGroup[
   }
 
   // Batch Pass 2: collect all drugNames needing equivalence fallback, query once
-  const equivFallbackNames: string[] = [];
+  const equivFallbackNameSet = new Set<string>();
   const needsEquivFallback: boolean[] = [];
   for (const r of resolvedKeys) {
     const matchKey = `${r.gn ?? ''}|${r.spec ?? ''}`;
     const gnIds = r.gn ? (gnMatchIndex.get(matchKey) ?? []) : [];
-    const matchedCount = new Set([r.source.id, ...gnIds]).size;
-    const needs = !r.gn || matchedCount <= 1;
+    const hasOtherMatch = gnIds.some(id => id !== r.source.id);
+    const needs = !r.gn || !hasOtherMatch;
     needsEquivFallback.push(needs);
     if (needs) {
-      const relevantEquivs = allEquivRows.filter(
-        eq => eq.drugNameA === r.source.drugName || eq.drugNameB === r.source.drugName
-      );
+      const relevantEquivs = equivByDrugName.get(r.source.drugName) ?? [];
       for (const re of relevantEquivs) {
-        equivFallbackNames.push(re.drugNameA === r.source.drugName ? re.drugNameB : re.drugNameA);
+        equivFallbackNameSet.add(re.drugNameA === r.source.drugName ? re.drugNameB : re.drugNameA);
       }
     }
   }
 
-  const uniqueEquivNames = [...new Set(equivFallbackNames)];
+  const uniqueEquivNames = [...equivFallbackNameSet];
   const allEquivMasters = uniqueEquivNames.length > 0
     ? await db.select({ id: drugMaster.id, drugName: drugMaster.drugName }).from(drugMaster)
         .where(inArray(drugMaster.drugName, uniqueEquivNames))
@@ -103,28 +110,26 @@ export async function resolveDrugGroups(drugKeys: DrugKey[]): Promise<DrugGroup[
     if (arr) { arr.push(m.id); } else { equivMasterIndex.set(m.drugName, [m.id]); }
   }
 
-  // Build groups from pre-fetched data
+  // Build groups from pre-fetched data (use Set to avoid repeated array spread+dedup)
   const groups: DrugGroup[] = [];
   for (let i = 0; i < resolvedKeys.length; i++) {
     const { source, gn, spec } = resolvedKeys[i];
-    let matchedIds: number[] = [source.id];
+    const idSet = new Set<number>([source.id]);
 
     // Pass 1: genericName + specification match from batch result
     if (gn) {
       const matchKey = `${gn}|${spec ?? ''}`;
       const gnIds = gnMatchIndex.get(matchKey) ?? [];
-      matchedIds = [...new Set([...matchedIds, ...gnIds])];
+      for (const id of gnIds) idSet.add(id);
     }
 
     // Pass 2: equivalence fallback from batch result
     if (needsEquivFallback[i]) {
-      const relevantEquivs = allEquivRows.filter(
-        r => r.drugNameA === source.drugName || r.drugNameB === source.drugName
-      );
+      const relevantEquivs = equivByDrugName.get(source.drugName) ?? [];
       for (const re of relevantEquivs) {
         const otherName = re.drugNameA === source.drugName ? re.drugNameB : re.drugNameA;
         const otherIds = equivMasterIndex.get(otherName) ?? [];
-        matchedIds = [...new Set([...matchedIds, ...otherIds])];
+        for (const id of otherIds) idSet.add(id);
       }
     }
 
@@ -132,7 +137,7 @@ export async function resolveDrugGroups(drugKeys: DrugKey[]): Promise<DrugGroup[
       columnLabel: gn ? `${gn} ${spec ?? ''}`.trim() : source.drugName,
       genericName: gn,
       specification: spec,
-      drugMasterIds: matchedIds,
+      drugMasterIds: [...idSet],
     });
   }
 
@@ -300,10 +305,12 @@ export async function searchInventoryAvailability(
     if (blockedIds.has(item.pharmacyId)) continue;
     if (groupMemberIds !== null && !groupMemberIds.has(item.pharmacyId)) continue;
 
-    if (!pharmacyInventory.has(item.pharmacyId)) {
-      pharmacyInventory.set(item.pharmacyId, []);
+    let items = pharmacyInventory.get(item.pharmacyId);
+    if (!items) {
+      items = [];
+      pharmacyInventory.set(item.pharmacyId, items);
     }
-    pharmacyInventory.get(item.pharmacyId)!.push(item);
+    items.push(item);
   }
 
   // Pre-compute Set for each drug group (avoid Array.includes in hot loop)

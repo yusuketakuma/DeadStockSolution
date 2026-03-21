@@ -95,8 +95,8 @@ export function useSwipeAction(options: UseSwipeActionOptions = {}): UseSwipeAct
     const touch = (e as TouchEvent).touches?.[0];
     if (!touch) return;
 
-    const dx = touch.clientX - startXRef.current!;
-    const dy = touch.clientY - startYRef.current!;
+    const dx = touch.clientX - startXRef.current;
+    const dy = touch.clientY - startYRef.current;
 
     // First significant move: check angle
     if (!activeRef.current) {
