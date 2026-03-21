@@ -39,6 +39,9 @@ export default tseslint.config(
     rules: {
       ...commonTsRules,
       ...reactHooks.configs.recommended.rules,
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/no-access-state-in-render': 'off',
+      'react-hooks/refs': 'off',
       'react-refresh/only-export-components': 'off',
     },
   },
