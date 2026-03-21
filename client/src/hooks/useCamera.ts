@@ -48,7 +48,10 @@ function resolveErrorMessage(error: unknown, fallback: string): string {
 }
 
 function resolveCaptureResultInfo(addedCount: number): string {
-  return `画像内コードを ${addedCount} 件追加しました。候補を確認して医薬品を確定してください。`;
+  if (addedCount === 0) {
+    return '画像内のコードは全て追加済みです。';
+  }
+  return `画像内コードを ${addedCount} 件追加しました。数量を入力して登録してください。`;
 }
 
 function getCameraStartBlocker(videoElement: HTMLVideoElement | null): string | null {

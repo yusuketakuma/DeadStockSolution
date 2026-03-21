@@ -116,8 +116,21 @@ export default function ScanResultSheet({
             <div className="small text-muted text-truncate" title={latestRow.rawCode}>
               {latestRow.rawCode}
             </div>
-            {latestRow.packageLabel && (
-              <div className="small text-muted">{latestRow.packageLabel}</div>
+            {(latestRow.packageLabel || latestRow.unit) && (
+              <div className="small text-muted">
+                {[
+                  latestRow.packageLabel,
+                  latestRow.unit ? `単位: ${latestRow.unit}` : '',
+                ].filter(Boolean).join(' | ')}
+              </div>
+            )}
+            {(latestRow.expirationDate || latestRow.lotNumber) && (
+              <div className="small text-muted">
+                {[
+                  latestRow.expirationDate ? `使用期限: ${latestRow.expirationDate}` : '',
+                  latestRow.lotNumber ? `ロット: ${latestRow.lotNumber}` : '',
+                ].filter(Boolean).join(' | ')}
+              </div>
             )}
           </div>
           <Badge bg={isResolved ? 'success' : 'warning'}>

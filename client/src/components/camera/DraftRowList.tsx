@@ -279,7 +279,9 @@ export default function DraftRowList({
               </td>
               <td>
                 <Badge bg={row.status === 'resolved' ? 'success' : 'warning'}>
-                  {row.status === 'resolved' ? '確定済み' : '候補確認待ち'}
+                  {row.status === 'resolved'
+                    ? (row.warnings.includes('手動で医薬品候補を確定しました。') ? '確定済み' : '自動確定')
+                    : '候補確認待ち'}
                 </Badge>
                 {row.warnings.length > 0 && (
                   <div className="small text-muted mt-1">{row.warnings.join(' / ')}</div>

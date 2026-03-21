@@ -17,7 +17,7 @@ describe('UploadPage camera register mode', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows auto candidates from scanned code and requires manual confirmation', async () => {
+  it('auto-resolves scanned code with match and allows batch registration', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/me')) {
@@ -73,10 +73,8 @@ describe('UploadPage camera register mode', () => {
     await userEvent.click(screen.getByRole('button', { name: '解析して追加' }));
 
     await waitFor(() => {
-      expect(screen.getByText('候補確認待ち')).toBeInTheDocument();
+      expect(screen.getByText('自動確定')).toBeInTheDocument();
     });
-
-    await userEvent.click(screen.getByRole('button', { name: '確定' }));
 
     const quantityInput = screen.getByRole('spinbutton');
     await userEvent.type(quantityInput, '3');
@@ -202,13 +200,13 @@ describe('UploadPage camera register mode', () => {
   });
 
   it('captures multiple codes from a camera frame and registers them together', async () => {
-    const originalIsSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext');
-    Object.defineProperty(window, 'isSecureContext', {
+    const originalIsSecureContext = Object.getOwnPropertyDescriptor(globalThis, 'isSecureContext');
+    Object.defineProperty(globalThis, 'isSecureContext', {
       configurable: true,
       value: true,
     });
 
-    const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
+    const originalMediaDevices = Object.getOwnPropertyDescriptor(globalThis.navigator ?? {}, 'mediaDevices');
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
@@ -318,10 +316,9 @@ describe('UploadPage camera register mode', () => {
       await userEvent.click(screen.getByRole('button', { name: '一覧' }));
 
       // Now the rows should be visible in the normal view
-      const confirmButtons = await screen.findAllByRole('button', { name: '確定' });
-      expect(confirmButtons).toHaveLength(2);
-      await userEvent.click(confirmButtons[0]);
-      await userEvent.click(confirmButtons[1]);
+      // Both rows have matches, so they are auto-resolved and show '自動確定' badges
+      const resolvedBadges = await screen.findAllByText('自動確定');
+      expect(resolvedBadges).toHaveLength(2);
 
       const quantityInputs = screen.getAllByRole('spinbutton');
       expect(quantityInputs.length).toBeGreaterThanOrEqual(2);
@@ -349,7 +346,7 @@ describe('UploadPage camera register mode', () => {
         (globalThis as { BarcodeDetector?: unknown }).BarcodeDetector = originalBarcodeDetector;
       }
       if (originalIsSecureContext) {
-        Object.defineProperty(window, 'isSecureContext', originalIsSecureContext);
+        Object.defineProperty(globalThis, 'isSecureContext', originalIsSecureContext);
       }
       if (originalMediaDevices) {
         Object.defineProperty(navigator, 'mediaDevices', originalMediaDevices);
@@ -358,8 +355,8 @@ describe('UploadPage camera register mode', () => {
   }, 15000);
 
   it('shows camera error on insecure context', async () => {
-    const originalIsSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext');
-    Object.defineProperty(window, 'isSecureContext', {
+    const originalIsSecureContext = Object.getOwnPropertyDescriptor(globalThis, 'isSecureContext');
+    Object.defineProperty(globalThis, 'isSecureContext', {
       configurable: true,
       value: false,
     });
@@ -384,7 +381,7 @@ describe('UploadPage camera register mode', () => {
       expect(await screen.findByText('カメラ利用にはHTTPS接続が必要です')).toBeInTheDocument();
     } finally {
       if (originalIsSecureContext) {
-        Object.defineProperty(window, 'isSecureContext', originalIsSecureContext);
+        Object.defineProperty(globalThis, 'isSecureContext', originalIsSecureContext);
       }
     }
   });
