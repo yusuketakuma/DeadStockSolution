@@ -125,7 +125,10 @@ function resolveAutoCandidateSearchTerms(rawCode: string, resolved: CameraResolv
   return [...new Set(terms)].slice(0, AUTO_CANDIDATE_TERM_LIMIT);
 }
 
-function resolveCandidateGuidanceMessage(rawCode: string, candidateCount: number): string {
+function resolveCandidateGuidanceMessage(rawCode: string, candidateCount: number, autoResolved: boolean): string {
+  if (autoResolved) {
+    return `コード ${rawCode} を読取し、薬剤を自動確定しました。数量を入力してください。`;
+  }
   if (candidateCount > 0) {
     return `コード ${rawCode} を読取しました。候補 ${candidateCount} 件から医薬品を確定してください。`;
   }
@@ -253,7 +256,8 @@ export function useBarcodeResolver({
       if (rowMutationResult === 'duplicate') {
         return rowMutationResult;
       }
-      onInfo(resolveCandidateGuidanceMessage(normalized, candidateOptions.length));
+      const autoResolved = resolved.match !== null;
+      onInfo(resolveCandidateGuidanceMessage(normalized, candidateOptions.length, autoResolved));
       return rowMutationResult;
     } catch (err) {
       onError(resolveErrorMessage(err, 'コード解析に失敗しました'));

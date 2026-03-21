@@ -46,19 +46,22 @@ function toDraftRow(
   resolved: CameraResolveResponse,
   candidateOptions: CameraManualCandidate[],
 ): DraftRow {
+  const match = resolved.match;
+  const autoResolved = match !== null;
+
   return {
     id,
     rawCode,
-    status: 'unmatched',
-    drugMasterId: null,
-    drugMasterPackageId: null,
-    drugName: '',
-    packageLabel: resolved.match?.packageLabel ?? '',
+    status: autoResolved ? 'resolved' : 'unmatched',
+    drugMasterId: autoResolved ? match.drugMasterId : null,
+    drugMasterPackageId: autoResolved ? match.drugMasterPackageId : null,
+    drugName: autoResolved ? match.drugName : '',
+    packageLabel: match?.packageLabel ?? '',
     packageLabelEdited: false,
     expirationDate: resolved.parsed.expirationDate ?? '',
     lotNumber: resolved.parsed.lotNumber ?? '',
     quantity: '',
-    unit: '',
+    unit: autoResolved ? (match.unit ?? '') : '',
     warnings: resolved.warnings,
     candidateOptions,
     candidateSearchKeyword: resolveAutoCandidateSearchKeyword(rawCode, resolved),
