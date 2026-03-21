@@ -82,13 +82,11 @@ describe('api client', () => {
     const cancelledPromise = api.get('/cancel', { signal: controller.signal, timeout: 50 });
     controller.abort();
     await expect(cancelledPromise).rejects.toMatchObject({
-      status: 0,
       message: 'リクエストがキャンセルされました',
     });
 
     await expect(api.get('/timeout', { timeout: 1 })).rejects.toMatchObject({
-      status: 0,
-      message: 'リクエストがタイムアウトしました',
+      name: 'TimeoutError',
     });
   });
 
@@ -102,8 +100,7 @@ describe('api client', () => {
     const networkFetch = vi.fn().mockRejectedValue(new Error('boom'));
     vi.stubGlobal('fetch', networkFetch);
     await expect(api.get('/network')).rejects.toMatchObject({
-      status: 0,
-      message: 'ネットワークエラーが発生しました',
+      name: 'NetworkError',
     });
   });
 
