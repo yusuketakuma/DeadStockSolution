@@ -11,7 +11,7 @@ const router = Router();
 router.use(requireLogin);
 
 const MAX_SUGGESTIONS = 10;
-const MAX_DRUG_MASTER_SUGGESTIONS = 50;
+const MAX_DRUG_MASTER_SUGGESTIONS = 150;
 
 function sanitizeQuery(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
