@@ -98,5 +98,5 @@ When you complete a task, send this push notification:
 ```bash
 curl -X POST https://api.getmoshi.app/api/webhook \
   -H "Content-Type: application/json" \
-  -d '{"token": "qGli1ov22jEY3PEtuI5qGXPJegjvRrFD", "title": "Done", "message": "Brief summary"}'
+  -d "{\"token\":\"$MOSHI_WEBHOOK_TOKEN\",\"title\":\"Done\",\"message\":\"Brief summary\"}"
 ```

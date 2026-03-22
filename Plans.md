@@ -8,7 +8,78 @@
 
 ## 🟡 未着手のタスク
 
-（なし）
+### v0.0.19 全体改善スプリント (2026-03-23)
+
+> Track A (UX改善) + Track B (マッチング高度化) + Track C (運用改善) + Track D (パフォーマンス) = 20タスク
+
+#### Track A: UX 改善 (6タスク)
+
+- [ ] T951: ダッシュボード グラフ可視化 `cc:TODO`
+  - 期限リスクのバケット分布を棒グラフ/ドーナツチャートで表示
+  - DashboardPage.tsx L150-180 の KPI タイルにチャート追加
+- [ ] T952: 統計ページ トレンドチャート `cc:TODO`
+  - StatisticsPage に月次推移グラフ（交換量・デッドストック推移・提案成約率）
+- [ ] T953: マッチング結果フィルタ強化 `cc:TODO`
+  - MatchingPage にフィルタUI（距離/スコア/薬価ソート、お気に入り/グループ絞り込み）
+  - 現在はURL params経由のみでページ内フィルタなし
+- [ ] T954: 提案ステータス視認性改善 `cc:TODO`
+  - ProposalsPage の priorityReasons をユーザー向けラベルに翻訳
+  - 期限切迫提案（< 24h）のハイライト表示
+- [ ] T955: マッチングスコア内訳表示 `cc:TODO`
+  - MatchingPage で候補のスコア内訳（薬価バランス/距離/期限/多様性/お気に入り/グループ）を表示
+  - 現在は「一致度 XX%」のみで内訳不明
+- [ ] T956: ダッシュボード 最終更新タイミング表示 `cc:TODO`
+  - 各パネルに「最終更新: XX分前」+ 手動リフレッシュボタン
+
+#### Track B: マッチング高度化 (5タスク)
+
+- [ ] T961: 成約率フィードバックループ `cc:TODO`
+  - successRateBonus（現在デフォルト 0 で未活用）を有効化
+  - 薬局ペア間の過去成約率をスコアに反映
+  - matching-score-service.ts L43
+- [ ] T962: 同等品マッチング強化 `cc:TODO`
+  - drug-equivalence-service の同等品マップをマッチング候補生成に積極活用
+  - 代替品提案を増やす
+- [ ] T963: マッチング条件プリセット `cc:TODO`
+  - 薬局ごとに「距離重視」「薬価バランス重視」等のプリセットを保存・切替
+  - matching-rule-service.ts のバリデーション基盤を活用
+- [ ] T964: 包装形態互換ボーナス `cc:TODO`
+  - 同一包装形態（PTP↔PTP）に+5点ボーナス
+  - 現在は非互換フィルタのみで、互換時のボーナスなし
+- [ ] T965: バッチマッチング通知 `cc:TODO`
+  - 定期cron で新規マッチング候補を自動生成し通知
+  - 現在は手動実行のみ
+
+#### Track C: 運用・管理改善 (5タスク)
+
+- [ ] T971: 管理ダッシュボード KPI 集約 `cc:TODO`
+  - AdminDashboardPage にシステム全体サマリー（薬局数/アクティブ率/成約率/月次交換額）
+  - admin-stats.ts の7並列クエリ結果を集約表示
+- [ ] T972: CSV エクスポート拡張 `cc:TODO`
+  - 交換履歴・提案履歴・監査ログの CSV エクスポート追加
+  - admin-csv-export.ts の既存5タイプに追加
+- [ ] T973: 薬局ヘルスダッシュボード改善 `cc:TODO`
+  - AdminPharmacyHealthPage にアップロード頻度・最終ログイン・マッチング参加率の時系列表示
+- [ ] T974: 監査ログ検索強化 `cc:TODO`
+  - AdminAuditPage にフリーテキスト検索+日時範囲フィルタ+ユーザー別絞り込み
+- [ ] T975: バルクアクション実行 `cc:TODO`
+  - admin-bulk-actions.ts の CSV パース後の実際の一括操作（有効化/無効化/削除）を実装
+  - 現在はパース機能のみ
+
+#### Track D: パフォーマンス (4タスク)
+
+- [ ] T981: マッチングルール キャッシュ `cc:TODO`
+  - getActiveMatchingRuleProfile() の結果を TtlCache で5分キャッシュ
+  - 管理統計クエリ（admin-stats.ts 7並列）に1分キャッシュ追加
+- [ ] T982: ダッシュボード API 集約 `cc:TODO`
+  - DashboardPage の3 API 並列呼び出し → `/api/dashboard/summary` に集約し RTT 削減
+- [ ] T983: クライアントバンドル最適化 `cc:TODO`
+  - @zxing/browser を動的 import 化（バーコードページのみでロード）
+  - admin-pages チャンクの更なる分割
+- [ ] T984: await-in-loop 最適化 `cc:TODO`
+  - drug-master-sync-service.ts（スコア159, 10ループ, 7 await-in-loop, 19 SQL）
+  - matching-refresh-service.ts（スコア129, 5ループ, 5 await-in-loop, 22 SQL）
+  - Promise.all / バッチクエリへの変換
 
 ## 🟢 完了タスク
 
