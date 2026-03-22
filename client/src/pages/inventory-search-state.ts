@@ -4,7 +4,7 @@ import type {
   InventorySearchPreferencesResponse,
   InventorySearchStatePayload,
 } from '../../../shared/inventory-search-preferences';
-import { createDefaultInventorySearchState, normalizeInventorySearchPreferences } from '../../../shared/inventory-search-preferences.js';
+import { createDefaultInventorySearchState, normalizeInventorySearchPreferences } from '../../../shared/inventory-search-preferences.mjs';
 import type { DrugMasterSuggestion } from '../components/SearchInput';
 
 export interface SearchCoordinates {
