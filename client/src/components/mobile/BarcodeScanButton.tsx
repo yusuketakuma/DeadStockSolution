@@ -1,147 +1,180 @@
 import { useCallback, useRef, useState } from 'react';
-import { Modal } from 'react-bootstrap';
+import { Badge, Form } from 'react-bootstrap';
 import AppButton from '../ui/AppButton';
 import CameraViewport from '../camera/CameraViewport';
+import ScanViewfinder from '../camera/ScanViewfinder';
 import { useToast } from '../../contexts/ToastContext';
 import { api } from '../../api/client';
-import { normalizeCodeInput } from '../../hooks/useBarcodeResolver';
+import {
+  normalizeCodeInput,
+  type AppendOrUpdateRowResult,
+  type CameraResolveResponse,
+  type CameraManualCandidate,
+} from '../../hooks/useBarcodeResolver';
+import { useCamera } from '../../hooks/useCamera';
+import { useScanFeedback } from '../../hooks/useScanFeedback';
 
 interface BarcodeScanButtonProps {
   onScanResult: (drugName: string) => void;
 }
 
-interface ScannerControlsLike {
-  stop: () => void;
-  switchTorch?: (enabled: boolean) => Promise<void>;
+interface ResolveResult {
+  match: CameraResolveResponse['match'];
+  parsed: CameraResolveResponse['parsed'];
+  candidates: CameraManualCandidate[];
 }
 
-type ZxingDecodeCallback = (
-  result: { getText: () => string } | null | undefined,
-  error?: { message?: string } | null | undefined,
-) => void;
-
-const NOT_FOUND_MESSAGE = 'このバーコードに対応する薬品が見つかりません';
-
+/**
+ * バーコードスキャンボタン（モバイル専用）
+ * 共通カメラUI（ビューファインダー + フィードバック）を使用。
+ * スキャン→候補ボトムシート→「この薬品で検索」で呼び出し元に薬品名を返す。
+ */
 export default function BarcodeScanButton({ onScanResult }: BarcodeScanButtonProps) {
-  const [open, setOpen] = useState(false);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraError, setCameraError] = useState('');
-  const [resolving, setResolving] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [resolveResult, setResolveResult] = useState<ResolveResult | null>(null);
+  const [selectedDrugName, setSelectedDrugName] = useState('');
+  const [showHint, setShowHint] = useState(true);
+
   const { showWarning } = useToast();
+  const resolvingRef = useRef(false);
+  const stopCameraRef = useRef<() => void>(() => {});
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const controlsRef = useRef<ScannerControlsLike | null>(null);
-  const sessionRef = useRef(0);
+  const {
+    triggerFeedback,
+    scanFlashType,
+    soundEnabled,
+    toggleSound,
+    ensureAudioContext,
+  } = useScanFeedback();
 
-  const stopCamera = useCallback(() => {
-    sessionRef.current += 1;
-    controlsRef.current?.stop();
-    controlsRef.current = null;
-    const videoElement = videoRef.current;
-    const stream = videoElement?.srcObject;
-    if (videoElement && stream && typeof (stream as MediaStream).getTracks === 'function') {
-      (stream as MediaStream).getTracks().forEach((track) => track.stop());
-      videoElement.srcObject = null;
+  const handleResolveCode = useCallback(async (code: string): Promise<AppendOrUpdateRowResult | null> => {
+    if (resolvingRef.current) return null;
+    const normalized = normalizeCodeInput(code);
+    if (!normalized) return null;
+
+    resolvingRef.current = true;
+    try {
+      const response = await api.post<CameraResolveResponse>(
+        '/inventory/dead-stock/camera/resolve',
+        { rawCode: normalized },
+      );
+
+      // Fetch candidates
+      let candidates: CameraManualCandidate[] = [];
+      const searchTerm = response.match?.yjCode
+        ?? response.parsed.yjCode
+        ?? response.parsed.gtin
+        ?? normalized;
+      if (searchTerm) {
+        try {
+          const candidateResp = await api.get<{ data: CameraManualCandidate[] }>(
+            `/inventory/dead-stock/camera/manual-candidates?q=${encodeURIComponent(searchTerm)}`,
+          );
+          candidates = candidateResp.data;
+        } catch {
+          // Candidate search failed, continue with match only
+        }
+      }
+
+      // Determine feedback type
+      if (response.match) {
+        triggerFeedback('success');
+      } else if (candidates.length > 0) {
+        triggerFeedback('unmatched');
+      } else {
+        triggerFeedback('unmatched');
+        showWarning('このバーコードに対応する薬品が見つかりません');
+        return null;
+      }
+
+      // Build combined list: match first, then candidates (excluding duplicates)
+      const matchId = response.match?.drugMasterId;
+      const dedupedCandidates = candidates.filter((c) => c.drugMasterId !== matchId);
+
+      const result: ResolveResult = {
+        match: response.match,
+        parsed: response.parsed,
+        candidates: dedupedCandidates,
+      };
+
+      stopCameraRef.current();
+      setResolveResult(result);
+      setSelectedDrugName(response.match?.drugName ?? dedupedCandidates[0]?.drugName ?? '');
+      setShowHint(false);
+      setSheetOpen(true);
+
+      return 'added';
+    } catch {
+      showWarning('バーコードの解析に失敗しました');
+      return null;
+    } finally {
+      resolvingRef.current = false;
     }
-    setCameraActive(false);
-  }, []);
+  }, [showWarning, triggerFeedback]);
+
+  const {
+    cameraActive,
+    cameraError,
+    cameraBusy,
+    torchSupported,
+    torchEnabled,
+    torchBusy,
+    videoRef,
+    frameCanvasRef,
+    stopCamera,
+    handleStartCamera,
+    handleToggleTorch,
+  } = useCamera({
+    resolving: false,
+    submitting: false,
+    normalizeCodeInput,
+    onResolveCode: handleResolveCode,
+    onScanDetected: undefined,
+    onError: () => {},
+    onInfo: () => {},
+  });
+  stopCameraRef.current = stopCamera;
+
+  const hintText = cameraActive
+    ? (showHint ? 'バーコードを枠内に合わせてください' : '')
+    : '';
+
+  const handleOpen = useCallback(async () => {
+    setFullscreen(true);
+    setShowHint(true);
+    setSheetOpen(false);
+    setResolveResult(null);
+    setSelectedDrugName('');
+    ensureAudioContext();
+    await handleStartCamera();
+  }, [ensureAudioContext, handleStartCamera]);
 
   const handleClose = useCallback(() => {
     stopCamera();
-    setOpen(false);
-    setCameraError('');
-    setResolving(false);
+    setFullscreen(false);
+    setSheetOpen(false);
+    setResolveResult(null);
   }, [stopCamera]);
 
-  const resolveBarcodeToDrugName = useCallback(async (rawCode: string): Promise<string | null> => {
-    const code = normalizeCodeInput(rawCode);
-    if (!code) return null;
-    try {
-      const results = await api.get<string[]>(`/search/drugs?q=${encodeURIComponent(code)}`);
-      return results.length > 0 ? results[0] : null;
-    } catch {
-      return null;
+  const handleConfirmSearch = useCallback(() => {
+    if (selectedDrugName) {
+      onScanResult(selectedDrugName);
     }
-  }, []);
+    handleClose();
+  }, [handleClose, onScanResult, selectedDrugName]);
 
-  const handleDetected = useCallback(async (text: string, sessionId: number) => {
-    if (sessionId !== sessionRef.current) return;
-    if (resolving) return;
-
-    setResolving(true);
-    try {
-      const drugName = await resolveBarcodeToDrugName(text);
-      if (sessionId !== sessionRef.current) return;
-
-      if (drugName) {
-        onScanResult(drugName);
-        handleClose();
-      } else {
-        showWarning(NOT_FOUND_MESSAGE);
-      }
-    } finally {
-      setResolving(false);
-    }
-  }, [handleClose, onScanResult, resolveBarcodeToDrugName, resolving, showWarning]);
-
-  const startCamera = useCallback(async () => {
-    if (cameraActive) return;
-    const videoElement = videoRef.current;
-    if (!videoElement) {
-      setCameraError('カメラ初期化に失敗しました');
-      return;
-    }
-    if (!window.isSecureContext) {
-      setCameraError('カメラ利用にはHTTPS接続が必要です');
-      return;
-    }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('このブラウザはカメラ機能に対応していません');
-      return;
-    }
-
-    setCameraError('');
-    const sessionId = sessionRef.current + 1;
-    sessionRef.current = sessionId;
-
-    try {
-      const { NotFoundException, createReader, startReaderWithFallback } = await import('../../lib/zxing-camera');
-      const reader = createReader();
-      const onDecode: ZxingDecodeCallback = (result, decodeError) => {
-        if (result) {
-          void handleDetected(result.getText(), sessionId);
-          return;
-        }
-        if (decodeError && !(decodeError instanceof NotFoundException)) {
-          setCameraError(decodeError.message || 'カメラ読取に失敗しました');
-        }
-      };
-
-      const controls = await startReaderWithFallback(reader, videoElement, onDecode);
-      controlsRef.current = controls;
-      setCameraActive(true);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'NotAllowedError') {
-        setCameraError('カメラ権限が拒否されました。ブラウザ設定から許可してください');
-      } else if (err instanceof DOMException && err.name === 'NotFoundError') {
-        setCameraError('利用可能なカメラが見つかりません');
-      } else {
-        setCameraError(err instanceof Error ? err.message : 'カメラ起動に失敗しました');
-      }
-    }
-  }, [cameraActive, handleDetected]);
-
-  const handleOpen = useCallback(() => {
-    setOpen(true);
-  }, []);
-
-  const handleEntered = useCallback(() => {
-    void startCamera();
-  }, [startCamera]);
+  const handleSheetClose = useCallback(() => {
+    setSheetOpen(false);
+    setResolveResult(null);
+    setSelectedDrugName('');
+    setShowHint(true);
+    void handleStartCamera();
+  }, [handleStartCamera]);
 
   return (
     <>
+      {/* Trigger button (mobile only) */}
       <span
         className="d-lg-none"
         style={{
@@ -155,7 +188,7 @@ export default function BarcodeScanButton({ onScanResult }: BarcodeScanButtonPro
         <AppButton
           variant="link"
           size="sm"
-          onClick={handleOpen}
+          onClick={() => void handleOpen()}
           aria-label="バーコードスキャン"
           className="p-0 text-muted"
         >
@@ -163,37 +196,140 @@ export default function BarcodeScanButton({ onScanResult }: BarcodeScanButtonPro
         </AppButton>
       </span>
 
-      <Modal
-        show={open}
-        onHide={handleClose}
-        onEntered={handleEntered}
-        fullscreen
-        className="d-lg-none"
-      >
-        <Modal.Header closeButton>
-          <Modal.Title className="fs-6">バーコードスキャン</Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-0 bg-dark d-flex flex-column">
+      {/* Fullscreen camera overlay */}
+      {fullscreen && (
+        <>
           <CameraViewport
             videoRef={videoRef}
-            canvasRef={canvasRef}
+            canvasRef={frameCanvasRef}
             cameraActive={cameraActive}
             cameraError={cameraError}
-            fullscreen={false}
-          />
-          {resolving && (
-            <div className="text-center text-light py-3">
-              <div className="spinner-border spinner-border-sm me-2" role="status" />
-              薬品を検索中...
-            </div>
+            fullscreen
+          >
+            <ScanViewfinder
+              scanning={cameraActive}
+              flashType={scanFlashType}
+              hintText={hintText}
+            />
+          </CameraViewport>
+
+          {/* Top bar */}
+          <div className="camera-fs-top-bar">
+            <button
+              type="button"
+              className="camera-fs-close-btn"
+              onClick={handleClose}
+              disabled={cameraBusy}
+              aria-label="カメラを閉じる"
+            >
+              ×
+            </button>
+            <button
+              type="button"
+              className="scan-stats-sound-btn"
+              onClick={toggleSound}
+              aria-label={soundEnabled ? 'サウンドをオフ' : 'サウンドをオン'}
+            >
+              <i className={soundEnabled ? 'bi bi-volume-up-fill' : 'bi bi-volume-mute-fill'} />
+            </button>
+          </div>
+
+          {/* Torch button */}
+          {torchSupported && (
+            <button
+              type="button"
+              className={`camera-fs-torch-btn ${torchEnabled ? 'camera-fs-torch-btn--on' : 'camera-fs-torch-btn--off'}${sheetOpen ? ' camera-fs-torch-btn--sheet-open' : ''}`}
+              onClick={() => void handleToggleTorch()}
+              disabled={!cameraActive || cameraBusy || torchBusy}
+              aria-label={torchEnabled ? 'ライトをオフ' : 'ライトをオン'}
+            >
+              <i className={torchEnabled ? 'bi bi-lightbulb-fill' : 'bi bi-lightbulb'} />
+            </button>
           )}
-          {!cameraActive && !cameraError && (
-            <div className="text-center text-light py-3">
-              カメラを起動中...
+
+          {/* Candidate bottom sheet */}
+          <div className={`scan-result-sheet bottom-sheet${sheetOpen ? ' open' : ''}`}>
+            <div className="bottom-sheet-handle" />
+            <div className="bottom-sheet-header">
+              <h3 className="bottom-sheet-header-title">スキャン結果</h3>
+              <button
+                type="button"
+                className="bottom-sheet-close"
+                aria-label="閉じる"
+                onClick={handleSheetClose}
+              >
+                ×
+              </button>
             </div>
-          )}
-        </Modal.Body>
-      </Modal>
+            <div className="bottom-sheet-content">
+              {resolveResult && (
+                <div role="radiogroup" aria-label="候補一覧">
+                  {/* Match row */}
+                  {resolveResult.match && (
+                    <Form.Check
+                      type="radio"
+                      id="scan-candidate-match"
+                      name="scan-candidate"
+                      checked={selectedDrugName === resolveResult.match.drugName}
+                      onChange={() => setSelectedDrugName(resolveResult.match!.drugName)}
+                      label={
+                        <div>
+                          <div className="d-flex align-items-center gap-2">
+                            <span className="fw-bold">{resolveResult.match.drugName}</span>
+                            <Badge bg="success" style={{ fontSize: '0.7rem' }}>確定</Badge>
+                          </div>
+                          <div className="small text-muted">
+                            {[
+                              resolveResult.match.packageLabel ? `包装: ${resolveResult.match.packageLabel}` : null,
+                              resolveResult.parsed.expirationDate ? `期限: ${resolveResult.parsed.expirationDate}` : null,
+                              resolveResult.parsed.lotNumber ? `ロット: ${resolveResult.parsed.lotNumber}` : null,
+                            ].filter(Boolean).join(' | ')}
+                          </div>
+                        </div>
+                      }
+                      className="py-2 border-bottom"
+                    />
+                  )}
+
+                  {/* Candidate rows */}
+                  {resolveResult.candidates.map((candidate) => (
+                    <Form.Check
+                      type="radio"
+                      id={`scan-candidate-${candidate.drugMasterId}`}
+                      key={candidate.drugMasterId}
+                      name="scan-candidate"
+                      checked={selectedDrugName === candidate.drugName}
+                      onChange={() => setSelectedDrugName(candidate.drugName)}
+                      label={
+                        <div>
+                          <span className="fw-bold">{candidate.drugName}</span>
+                          {candidate.packageLabel && (
+                            <div className="small text-muted">
+                              包装: {candidate.packageLabel}
+                            </div>
+                          )}
+                        </div>
+                      }
+                      className="py-2 border-bottom"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="bottom-sheet-footer">
+              <div />
+              <AppButton
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmSearch}
+                disabled={!selectedDrugName}
+              >
+                この薬品で検索
+              </AppButton>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

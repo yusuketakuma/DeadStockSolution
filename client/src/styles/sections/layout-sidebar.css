@@ -102,7 +102,7 @@
   background: var(--sidebar-active-bg);
   color: #fff !important;
   font-weight: 600;
-  border-left: 3px solid #3b82f6;
+  border-left: 3px solid #22d3ee;
 }
 
 /* ===== Sidebar link icon & label ===== */
@@ -126,10 +126,10 @@
 }
 
 .sidebar-group-title {
-  font-size: 0.72rem;
-  color: #94a3b8;
+  font-size: 0.68rem;
+  color: #64748b;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   padding: 0.35rem 1rem 0.3rem;
   text-transform: uppercase;
 }

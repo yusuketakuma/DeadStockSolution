@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import { Router, Response } from 'express';
 import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
@@ -13,19 +12,12 @@ import { validateRegistration, validateLogin, validateOnboardingRegistration } f
 import { geocodeAddress } from '../services/geocode-service';
 import { AuthRequest } from '../types';
 import { requireLogin, invalidateAuthUserCache } from '../middleware/auth';
-import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie, timingSafeCompare } from '../middleware/csrf';
+import { clearCsrfCookie, ensureCsrfCookie, generateCsrfToken, setCsrfCookie } from '../middleware/csrf';
 import { writeLog, getClientIp } from '../services/log-service';
 import { trackLoginFailure, clearLoginFailures } from '../utils/login-failure-tracker';
 import { createPasswordResetToken, resetPasswordWithToken } from '../services/password-reset-service';
 import { logger } from '../services/logger';
 import { handleRouteError, getErrorMessage } from '../middleware/error-handler';
-import {
-  getAuthorizationUrl,
-  authenticateWithCode,
-  findOrLinkPharmacy,
-  generateOnboardingToken,
-  verifyOnboardingToken,
-} from '../services/workos-service';
 import {
   isTestLoginFeatureEnabled,
   handleAuthConfigurationError,
@@ -81,66 +73,16 @@ import {
   setIsTestAccountColumnAvailable,
   TEST_PHARMACY_CACHE_TTL_MS,
 } from './auth-helpers';
+import authWorkosRouter, { getOnboardingClaimsOrRespond } from './auth-workos';
 import { normalizeEmail } from '../utils/email-utils';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
 
 const router = Router();
-
-const ONBOARDING_COOKIE_NAME = 'onboarding_token';
-const OAUTH_STATE_COOKIE = 'oauth_state';
-type AuthRouteHandler = (req: AuthRequest, res: Response) => void | Promise<void>;
-type OnboardingClaims = NonNullable<ReturnType<typeof verifyOnboardingToken>>;
+router.use(authWorkosRouter);
 
 if (process.env.NODE_ENV !== 'test' && EXPOSE_PASSWORD_RESET_TOKEN) {
   throw new Error('EXPOSE_PASSWORD_RESET_TOKEN=true は test 環境でのみ許可されています');
-}
-
-// ---------------------------------------------------------------------------
-// WorkOS AuthKit endpoints
-// ---------------------------------------------------------------------------
-
-function createAuthKitUrlHandler(
-  screenHint: 'sign-in' | 'sign-up',
-  logContext: string,
-  userMessage: string,
-): AuthRouteHandler {
-  return (_req: AuthRequest, res: Response): void => {
-    try {
-      const state = crypto.randomBytes(32).toString('hex');
-      res.cookie(OAUTH_STATE_COOKIE, state, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 10 * 60 * 1000, // 10分
-      });
-      const url = getAuthorizationUrl(screenHint, state);
-      res.json({ url });
-    } catch (err) {
-      handleRouteError(err, logContext, userMessage, res);
-    }
-  };
-}
-
-function getOnboardingClaimsOrRespond(
-  req: AuthRequest,
-  res: Response,
-  missingMessage: string,
-  invalidMessage: string,
-): OnboardingClaims | null {
-  const token = typeof req.cookies?.[ONBOARDING_COOKIE_NAME] === 'string' ? req.cookies[ONBOARDING_COOKIE_NAME] : '';
-  if (!token) {
-    res.status(401).json({ error: missingMessage });
-    return null;
-  }
-
-  const claims = verifyOnboardingToken(token);
-  if (!claims) {
-    res.status(401).json({ error: invalidMessage });
-    return null;
-  }
-
-  return claims;
 }
 
 function handleRegistrationUniqueConstraint(err: unknown, res: Response): boolean {
@@ -162,103 +104,6 @@ function handleRegistrationUniqueConstraint(err: unknown, res: Response): boolea
   res.status(409).json({ error: 'この情報は既に登録されています' });
   return true;
 }
-
-// GET /auth/login — WorkOS AuthKit ログインURLを返す
-router.get('/login', createAuthKitUrlHandler('sign-in', 'WorkOS login URL error', 'ログインURLの生成に失敗しました'));
-
-// GET /auth/register — WorkOS AuthKit サインアップURLを返す
-router.get('/register', createAuthKitUrlHandler('sign-up', 'WorkOS register URL error', '登録URLの生成に失敗しました'));
-
-// GET /auth/callback — WorkOS AuthKit からのコールバック処理
-router.get('/callback', async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    // OAuth state パラメータの検証
-    const stateParam = typeof req.query.state === 'string' ? req.query.state : '';
-    const stateCookie = typeof req.cookies?.[OAUTH_STATE_COOKIE] === 'string' ? req.cookies[OAUTH_STATE_COOKIE] : '';
-    res.clearCookie(OAUTH_STATE_COOKIE);
-    if (!stateParam || !stateCookie || !timingSafeCompare(stateParam, stateCookie)) {
-      res.status(400).json({ error: 'OAuth state パラメータが無効です' });
-      return;
-    }
-
-    const code = typeof req.query.code === 'string' ? req.query.code : '';
-    if (!code) {
-      res.status(400).json({ error: '認証コードがありません' });
-      return;
-    }
-    assertJwtSecretConfigured();
-
-    const authResult = await authenticateWithCode(code);
-    const { pharmacy, isNewUser } = await findOrLinkPharmacy(authResult.user);
-
-    if (isNewUser || !pharmacy) {
-      // 新規ユーザー: WorkOS で認証済みだが薬局未登録
-      // 専用 onboarding トークンを発行（通常のauth cookieとは別名）
-      const onboardingToken = generateOnboardingToken({
-        workosUserId: authResult.user.id,
-        email: authResult.user.email,
-      });
-      res.cookie(ONBOARDING_COOKIE_NAME, onboardingToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 30 * 60 * 1000, // 30分
-      });
-
-      const clientBaseUrl = getClientBaseUrl();
-      res.redirect(`${clientBaseUrl}/onboarding`);
-      return;
-    }
-
-    // 既存ユーザー: ログイン処理
-    if (!pharmacy.isActive) {
-      const clientBaseUrl = getClientBaseUrl();
-      if (pharmacy.verificationStatus === 'pending_verification') {
-        res.redirect(`${clientBaseUrl}/verification-pending?email=${encodeURIComponent(pharmacy.email)}`);
-        return;
-      }
-      res.redirect(`${clientBaseUrl}/login?error=inactive`);
-      return;
-    }
-
-    const tokenPayload = buildTokenPayload(pharmacy);
-    const token = generateToken(tokenPayload);
-    invalidateAuthUserCache(pharmacy.id);
-
-    setAuthCookie(res, token, process.env.NODE_ENV === 'production');
-    setCsrfCookie(res, generateCsrfToken());
-
-    const logAction = getLoginLogAction(pharmacy.isAdmin);
-    void writeLog(logAction, {
-      pharmacyId: pharmacy.id,
-      detail: `WorkOS ログイン: ${pharmacy.name}`,
-      ipAddress: getClientIp(req),
-    });
-
-    const clientBaseUrl = getClientBaseUrl();
-    res.redirect(clientBaseUrl);
-  } catch (err) {
-    logger.error('WorkOS callback error', { error: getErrorMessage(err) });
-    const clientBaseUrl = getClientBaseUrl();
-    res.redirect(`${clientBaseUrl}/login?error=auth_failed`);
-  }
-});
-
-// GET /auth/onboarding-info — Onboarding トークンからユーザー情報を返す
-router.get('/onboarding-info', (req: AuthRequest, res: Response): void => {
-  const claims = getOnboardingClaimsOrRespond(
-    req,
-    res,
-    'Onboardingセッションが無効です。再度ログインしてください',
-    'Onboardingセッションが期限切れです。再度ログインしてください',
-  );
-  if (!claims) {
-    return;
-  }
-
-  res.json({ email: claims.email, workosUserId: claims.workosUserId });
-});
-
 // POST /auth/complete-registration — WorkOS認証済みユーザーの薬局情報登録
 router.post('/complete-registration', registerLimiter, async (req: AuthRequest, res: Response): Promise<void> => {
   try {

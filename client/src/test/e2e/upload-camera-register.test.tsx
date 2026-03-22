@@ -292,30 +292,24 @@ describe('UploadPage camera register mode', () => {
 
       // Wait for camera section to be available
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'カメラ開始' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'スキャン開始' })).toBeInTheDocument();
       });
 
-      await userEvent.click(screen.getByRole('button', { name: 'カメラ開始' }));
-      const video = document.querySelector('video') as HTMLVideoElement | null;
-      expect(video).not.toBeNull();
-      if (!video) {
-        throw new Error('video element not found');
-      }
-      Object.defineProperty(video, 'videoWidth', { configurable: true, value: 1280 });
-      Object.defineProperty(video, 'videoHeight', { configurable: true, value: 720 });
+      // Add two codes via manual input to test multi-code batch registration
+      const codeInput = await screen.findByPlaceholderText('例: (01)...(17)...(10)... または YJコード');
 
-      // In fullscreen mode, the button is labeled "撮影" instead of "画像からコード検出"
-      await userEvent.click(screen.getByRole('button', { name: '撮影' }));
-
-      // Wait for scan result sheet to appear with the latest row
+      // Add first code
+      await userEvent.type(codeInput, '04912345678904');
+      await userEvent.click(screen.getByRole('button', { name: '解析して追加' }));
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: '一覧' })).toBeInTheDocument();
-      }, { timeout: 5000 });
+        expect(screen.getByText('自動確定')).toBeInTheDocument();
+      });
 
-      // Click "一覧" to exit fullscreen and view all rows
-      await userEvent.click(screen.getByRole('button', { name: '一覧' }));
+      // Add second code
+      await userEvent.clear(codeInput);
+      await userEvent.type(codeInput, '04912345678911');
+      await userEvent.click(screen.getByRole('button', { name: '解析して追加' }));
 
-      // Now the rows should be visible in the normal view
       // Both rows have matches, so they are auto-resolved and show '自動確定' badges
       const resolvedBadges = await screen.findAllByText('自動確定');
       expect(resolvedBadges).toHaveLength(2);
@@ -376,7 +370,7 @@ describe('UploadPage camera register mode', () => {
         expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
       });
 
-      await userEvent.click(screen.getByRole('button', { name: 'カメラ開始' }));
+      await userEvent.click(screen.getByRole('button', { name: 'スキャン開始' }));
 
       expect(await screen.findByText('カメラ利用にはHTTPS接続が必要です')).toBeInTheDocument();
     } finally {

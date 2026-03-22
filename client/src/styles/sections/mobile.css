@@ -6,10 +6,10 @@
 }
 
 .upload-entry-card-item {
-  border: 1px solid #dbe4ef;
-  border-radius: 12px;
+  border: 1px solid #d4dde8;
+  border-radius: 10px;
   padding: 1rem;
-  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  background: linear-gradient(180deg, #f6f9fc 0%, #ffffff 100%);
 }
 
 .upload-dual-flow-grid {

@@ -174,7 +174,7 @@ export async function countUnreadExpiryRisk(
   ));
 }
 
-/** uploads: 常に read → createdAt > lastViewed のみ */
+/** upload_confirm_jobs: 常に read → createdAt > lastViewed のみ */
 export async function countUnreadUploads(
   db: DbClient,
   pharmacyId: number,
@@ -252,7 +252,7 @@ export async function countAllUnread(
           WHERE to_pharmacy_id = ${pharmacyId}
         ), 0)
         + COALESCE((
-          SELECT count(*)::int FROM uploads
+          SELECT count(*)::int FROM upload_confirm_jobs
           WHERE pharmacy_id = ${pharmacyId}
             AND ${pharmacies.lastTimelineViewedAt} IS NOT NULL
             AND created_at > ${pharmacies.lastTimelineViewedAt}

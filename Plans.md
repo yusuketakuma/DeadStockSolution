@@ -12,6 +12,45 @@
 
 ## 🟢 完了タスク
 
+### v0.0.17 Release Hardening + Inventory Search + Auth/Account (2026-03-21)
+
+> Track A (9タスク) + Track B (4タスク) + Track C (3タスク) + Next Queue (11タスク) = 27タスク完了
+
+#### Track A: Release Hardening `cc:完了`
+- [x] T901 cron secret 統一 (CRON_SECRET fallback) `cc:完了`
+- [x] T903 repo:hygiene に .claude/state cleanup 反映 `cc:完了`
+- [x] T904 README/SECURITY/env example 整合 `cc:完了`
+- [x] T905 quality gate 役割整理 `cc:完了`
+- [x] T911 env schema 起動時検証 `cc:完了`
+- [x] T915 repo:hygiene 生成物・local state 対応 `cc:完了`
+- [x] T916 quality:verify 標準化 `cc:完了`
+- [x] T943 品質ゲート基準明文化 `cc:完了`
+- [x] T946 runbook verify-only 判断基準 `cc:完了`
+
+#### Track B: Inventory Search Workflow `cc:完了`
+- [x] T931 URL/preset/history/preferences 往復 `cc:完了`
+- [x] T932 InventorySearchPage state hydration 整理 `cc:完了`
+- [x] T933 hooks 3分割 (route sync / persistence / query) `cc:完了`
+- [x] T935 client coverage 拡張 (52 new tests) `cc:完了`
+
+#### Track C: Auth / Account / Route Split `cc:完了`
+- [x] T922 WorkOS 抽出 `cc:完了`
+- [x] T923 domain 単位 sub-route/service/shared types `cc:完了`
+- [x] T934 legacy auth feature flag (LEGACY_PASSWORD_AUTH_ENABLED) `cc:完了`
+
+#### Next Queue `cc:完了`
+- [x] T902 failing E2E test fix `cc:完了`
+- [x] T913 OpenAPI shared types (shared/api-types.d.ts 6740行生成) `cc:完了`
+- [x] T914 API 互換ポリシー docs `cc:完了`
+- [x] T921 app.ts 5モジュール分割 (381行→47行) `cc:完了`
+- [x] T924 DB schema Phase 1 検証 + Phase 2 ドキュメント `cc:完了`
+- [x] T925 alerts/groups カーソルページネーション `cc:完了`
+- [x] T926 feature flag registry (13 flags, 21 tests) `cc:完了`
+- [x] T941 SLO tracking service + admin API (22 tests) `cc:完了`
+- [x] T942 Vitest hoisted mock 整理 `cc:完了`
+- [x] T944 ADR テンプレート `cc:完了`
+- [x] T945 performance regression tracking docs `cc:完了`
+
 ### UI/UX 改善スプリント (v0.0.15) — 完了 (2026-03-17)
 
 > 25タスク (6 Phase) — 4タスク削除(既実装/YAGNI)、2タスク検証のみ(変更不要)

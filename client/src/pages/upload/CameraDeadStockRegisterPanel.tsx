@@ -1,5 +1,5 @@
-import { useState, type ChangeEvent } from 'react';
-import { Form } from 'react-bootstrap';
+import { useState, useCallback, useMemo, useRef, type ChangeEvent } from 'react';
+import { Badge, Form } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import AppAlert from '../../components/ui/AppAlert';
@@ -8,13 +8,17 @@ import AppCard from '../../components/ui/AppCard';
 import AppControl from '../../components/ui/AppControl';
 import LoadingButton from '../../components/ui/LoadingButton';
 import {
+  type AppendOrUpdateRowResult,
   normalizeCodeInput,
   useBarcodeResolver,
 } from '../../hooks/useBarcodeResolver';
 import { useCamera } from '../../hooks/useCamera';
 import { useCameraDraftRows } from '../../hooks/useCameraDraftRows';
+import { useScanFeedback } from '../../hooks/useScanFeedback';
 import CameraViewport from '../../components/camera/CameraViewport';
+import ScanViewfinder from '../../components/camera/ScanViewfinder';
 import ScanResultSheet from '../../components/camera/ScanResultSheet';
+import ScanStatsBar from '../../components/camera/ScanStatsBar';
 import DraftRowList from '../../components/camera/DraftRowList';
 
 interface CameraConfirmBatchResponse {
@@ -34,8 +38,11 @@ export default function CameraDeadStockRegisterPanel() {
   const [info, setInfo] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [showScanSheet, setShowScanSheet] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [cameraFullscreen, setCameraFullscreen] = useState(false);
+  const [showHint, setShowHint] = useState(true);
+  const [lastAddedRowId, setLastAddedRowId] = useState<number | null>(null);
+  const rowsRef = useRef<typeof rows>([]);
 
   const navigate = useNavigate();
 
@@ -53,6 +60,9 @@ export default function CameraDeadStockRegisterPanel() {
     onError: setError,
   });
 
+  // Keep rowsRef in sync for use in callbacks that may close over stale rows
+  rowsRef.current = rows;
+
   const {
     resolving,
     handleResolveCode,
@@ -62,6 +72,39 @@ export default function CameraDeadStockRegisterPanel() {
     onError: setError,
     onInfo: setInfo,
   });
+
+  const {
+    triggerFeedback,
+    scanFlashType,
+    soundEnabled,
+    toggleSound,
+    ensureAudioContext,
+  } = useScanFeedback();
+
+  const handleResolvedScanResult = useCallback((result: AppendOrUpdateRowResult | null) => {
+    if (result === null) {
+      return;
+    }
+
+    if (result === 'duplicate') {
+      triggerFeedback('duplicate');
+      return;
+    }
+
+    const currentRows = rowsRef.current;
+    const latest = currentRows[currentRows.length - 1];
+    if (latest) {
+      triggerFeedback(latest.status === 'resolved' ? 'success' : 'unmatched');
+    }
+
+    setShowHint(false);
+    setSheetOpen(true);
+    if (result === 'added' && latest) {
+      setLastAddedRowId(latest.id);
+      return;
+    }
+    setLastAddedRowId(null);
+  }, [triggerFeedback]);
 
   const {
     cameraActive,
@@ -84,18 +127,33 @@ export default function CameraDeadStockRegisterPanel() {
     submitting,
     normalizeCodeInput,
     onResolveCode: (code) => {
-      setShowScanSheet(true);
-      return handleResolveCode(code);
+      const promise = handleResolveCode(code);
+      void promise.then(handleResolvedScanResult);
+      return promise;
     },
     onError: setError,
     onInfo: setInfo,
   });
 
+  // Computed stats
+  const resolvedCount = useMemo(() => rows.filter((r) => r.status === 'resolved').length, [rows]);
+  const unmatchedCount = useMemo(() => rows.filter((r) => r.status === 'unmatched').length, [rows]);
+
+  const latestRow = rows.length > 0 ? rows[rows.length - 1] : null;
+
+  // Hint text for viewfinder
+  const hintText = useMemo(() => {
+    if (!cameraActive) return '';
+    if (resolving) return '読取中...';
+    if (showHint) return 'バーコードを枠内に合わせてください';
+    return '';
+  }, [cameraActive, resolving, showHint]);
+
   const handleManualAdd = async () => {
     const result = await handleResolveCode(manualCode);
     if (result !== null) {
       setManualCode('');
-      setShowScanSheet(true);
+      handleResolvedScanResult(result);
     }
   };
 
@@ -141,98 +199,109 @@ export default function CameraDeadStockRegisterPanel() {
     }
   };
 
-  const latestRow = rows.length > 0 ? rows[rows.length - 1] : null;
-
   const handleStartCameraWithFullscreen = async () => {
+    ensureAudioContext();
     setCameraFullscreen(true);
+    setShowHint(true);
     await handleStartCamera();
   };
 
   const handleStopCamera = () => {
     stopCamera();
     setCameraFullscreen(false);
+    setSheetOpen(false);
   };
 
   const handleViewAllRows = () => {
-    setShowScanSheet(false);
+    setSheetOpen(false);
     setCameraFullscreen(false);
   };
 
+  const handleContinueScan = () => {
+    setSheetOpen(false);
+  };
+
+  const handleUndo = () => {
+    if (lastAddedRowId !== null) {
+      removeRow(lastAddedRowId);
+      setLastAddedRowId(null);
+    } else if (latestRow) {
+      removeRow(latestRow.id);
+    }
+    setSheetOpen(false);
+  };
+
+  const handleFieldChange = useCallback((rowId: number, field: 'quantity' | 'expirationDate' | 'lotNumber', value: string) => {
+    updateRowField(rowId, field, value);
+  }, [updateRowField]);
+
   return (
     <>
-      {/* 全画面カメラモード */}
+      {/* ── 全画面カメラモード ── */}
       {cameraFullscreen && (
-        <CameraViewport
-          videoRef={videoRef}
-          canvasRef={frameCanvasRef}
-          cameraActive={cameraActive}
-          cameraError={cameraError}
-          fullscreen
-        />
-      )}
+        <>
+          <CameraViewport
+            videoRef={videoRef}
+            canvasRef={frameCanvasRef}
+            cameraActive={cameraActive}
+            cameraError={cameraError}
+            fullscreen
+          >
+            <ScanViewfinder
+              scanning={cameraActive}
+              flashType={scanFlashType}
+              hintText={hintText}
+            />
+          </CameraViewport>
 
-      {/* 全画面カメラ時のコントロールオーバーレイ */}
-      {cameraFullscreen && (
-        <div
-          className="camera-fullscreen-controls"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 120,
-            padding: 'calc(0.5rem + env(safe-area-inset-top, 0px)) 0.75rem',
-            background: 'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%)',
-          }}
-        >
-          <div className="d-flex gap-2 justify-content-between">
-            <div className="d-flex gap-2">
-              <AppButton
-                variant="light"
-                size="sm"
-                onClick={handleStopCamera}
-                disabled={cameraBusy}
-              >
-                閉じる
-              </AppButton>
-              {torchSupported && (
-                <AppButton
-                  variant={torchEnabled ? 'warning' : 'outline-light'}
-                  size="sm"
-                  onClick={() => void handleToggleTorch()}
-                  disabled={!cameraActive || cameraBusy || torchBusy}
-                >
-                  {torchEnabled ? '💡' : '🔦'}
-                </AppButton>
-              )}
-            </div>
-            <div className="d-flex gap-2">
-              <LoadingButton
-                variant="light"
-                size="sm"
-                loading={frameCapturing}
-                loadingLabel="検出中..."
-                disabled={!cameraActive || cameraBusy || resolving || submitting}
-                onClick={() => void handleCaptureFromFrame()}
-              >
-                撮影
-              </LoadingButton>
-            </div>
+          {/* Top bar: close + stats */}
+          <div className="camera-fs-top-bar">
+            <button
+              type="button"
+              className="camera-fs-close-btn"
+              onClick={handleStopCamera}
+              disabled={cameraBusy}
+              aria-label="カメラを閉じる"
+            >
+              ×
+            </button>
+            <ScanStatsBar
+              resolvedCount={resolvedCount}
+              unmatchedCount={unmatchedCount}
+              totalCount={rows.length}
+              soundEnabled={soundEnabled}
+              onToggleSound={toggleSound}
+            />
           </div>
-        </div>
+
+          {/* Torch button */}
+          {torchSupported && (
+            <button
+              type="button"
+              className={`camera-fs-torch-btn ${torchEnabled ? 'camera-fs-torch-btn--on' : 'camera-fs-torch-btn--off'}${sheetOpen ? ' camera-fs-torch-btn--sheet-open' : ''}`}
+              onClick={() => void handleToggleTorch()}
+              disabled={!cameraActive || cameraBusy || torchBusy}
+              aria-label={torchEnabled ? 'ライトをオフ' : 'ライトをオン'}
+            >
+              <i className={torchEnabled ? 'bi bi-lightbulb-fill' : 'bi bi-lightbulb'} />
+            </button>
+          )}
+
+          {/* Bottom sheet */}
+          <ScanResultSheet
+            open={sheetOpen}
+            latestRow={latestRow}
+            totalCount={rows.length}
+            onClose={() => setSheetOpen(false)}
+            onViewAll={handleViewAllRows}
+            onUndo={handleUndo}
+            onFieldChange={handleFieldChange}
+            onContinueScan={handleContinueScan}
+          />
+        </>
       )}
 
-      {/* スキャン結果ボトムシート */}
-      {cameraFullscreen && showScanSheet && (
-        <ScanResultSheet
-          latestRow={latestRow}
-          onClose={() => setShowScanSheet(false)}
-          totalCount={rows.length}
-          onViewAll={handleViewAllRows}
-        />
-      )}
-
-      {/* 通常ビュー（非フルスクリーン時） */}
+      {/* ── 通常ビュー（非フルスクリーン時） ── */}
       {!cameraFullscreen && (
         <>
           {error && <AppAlert variant="danger">{error}</AppAlert>}
@@ -241,12 +310,10 @@ export default function CameraDeadStockRegisterPanel() {
           <AppCard className="mb-3">
             <AppCard.Header>カメラ読取登録</AppCard.Header>
             <AppCard.Body>
-              <ol className="mb-3 upload-step-list">
-                <li>カメラ開始後、リアルタイム読取または画像検出でコードを取り込みます。</li>
-                <li>行ごとに提示された候補医薬品から手動で確定します。</li>
-                <li>必要に応じて包装単位・使用期限・ロット番号を補完します。</li>
-                <li>「一括登録」でデッドストックへ反映します。</li>
-              </ol>
+              <div className="small text-muted mb-3">
+                スキャン開始でカメラを起動し、バーコードを読み取ります。
+                読取結果の確認・数量入力後、一括登録でデッドストックに反映します。
+              </div>
 
               <div className="d-flex gap-2 flex-wrap align-items-end mb-3 mobile-stack camera-mobile-actions">
                 <Form.Group className="flex-grow-1 mb-0" controlId="camera-manual-code">
@@ -275,11 +342,11 @@ export default function CameraDeadStockRegisterPanel() {
 
               <div className="d-flex gap-2 flex-wrap mb-3 mobile-stack camera-mobile-actions">
                 <AppButton
-                  variant={cameraActive ? 'outline-danger' : 'outline-secondary'}
+                  variant={cameraActive ? 'outline-danger' : 'primary'}
                   onClick={cameraActive ? handleStopCamera : () => void handleStartCameraWithFullscreen()}
                   disabled={cameraBusy}
                 >
-                  {cameraActive ? 'カメラ停止' : 'カメラ開始'}
+                  {cameraActive ? 'カメラ停止' : 'スキャン開始'}
                 </AppButton>
                 {torchSupported && (
                   <AppButton
@@ -290,15 +357,18 @@ export default function CameraDeadStockRegisterPanel() {
                     {torchEnabled ? 'ライトOFF' : 'ライトON'}
                   </AppButton>
                 )}
-                <LoadingButton
-                  variant="outline-primary"
-                  loading={frameCapturing}
-                  loadingLabel="検出中..."
-                  disabled={!cameraActive || cameraBusy || resolving || submitting}
-                  onClick={() => void handleCaptureFromFrame()}
-                >
-                  画像からコード検出
-                </LoadingButton>
+                {barcodeDetectorSupported && (
+                  <LoadingButton
+                    variant="outline-secondary"
+                    size="sm"
+                    loading={frameCapturing}
+                    loadingLabel="検出中..."
+                    disabled={!cameraActive || cameraBusy || resolving || submitting}
+                    onClick={() => void handleCaptureFromFrame()}
+                  >
+                    手動検出
+                  </LoadingButton>
+                )}
                 <AppButton
                   variant="outline-secondary"
                   onClick={() => {
@@ -316,29 +386,37 @@ export default function CameraDeadStockRegisterPanel() {
                   一覧へ移動
                 </AppButton>
               </div>
-              <div className="small text-muted mb-2">
-                {barcodeDetectorSupported
-                  ? '画像検出では1フレーム内の複数コードを同時に追加できます。'
-                  : '画像検出は単一コード読取にフォールバックします（ブラウザ機能制限）。'}
-              </div>
 
               {cameraError && <AppAlert variant="warning" className="small">{cameraError}</AppAlert>}
 
-              <div className="mb-3 camera-mobile-video" style={{ maxWidth: 480 }}>
-                <video
-                  ref={videoRef}
-                  muted
-                  playsInline
-                  autoPlay
-                  style={{ width: '100%', minHeight: 220, borderRadius: 8, border: '1px solid #dee2e6', backgroundColor: '#111' }}
-                />
-                <canvas ref={frameCanvasRef} style={{ display: 'none' }} />
-              </div>
+              {/* Non-fullscreen video preview */}
+              {!cameraFullscreen && (
+                <div className="mb-3 camera-mobile-video" style={{ maxWidth: 480 }}>
+                  <video
+                    ref={videoRef}
+                    muted
+                    playsInline
+                    autoPlay
+                    style={{ width: '100%', minHeight: 220, borderRadius: 8, border: '1px solid #dee2e6', backgroundColor: '#111' }}
+                  />
+                  <canvas ref={frameCanvasRef} style={{ display: 'none' }} />
+                </div>
+              )}
             </AppCard.Body>
           </AppCard>
 
           <AppCard className="mb-3">
-            <AppCard.Header>読取結果（{rows.length}件）</AppCard.Header>
+            <AppCard.Header>
+              <div className="d-flex align-items-center gap-2">
+                読取結果（{rows.length}件）
+                {resolvedCount > 0 && (
+                  <Badge bg="success">{resolvedCount} 確定</Badge>
+                )}
+                {unmatchedCount > 0 && (
+                  <Badge bg="warning" text="dark">{unmatchedCount} 要確認</Badge>
+                )}
+              </div>
+            </AppCard.Header>
             <AppCard.Body>
               <DraftRowList
                 rows={rows}

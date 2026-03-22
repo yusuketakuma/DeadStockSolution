@@ -22,6 +22,7 @@ import { emailSchema } from '../utils/validators';
 import { sendBadRequest, sendConflict, sendNotFound } from './response-helpers';
 import { invalidateActivePasswordResetTokens } from '../services/password-reset-service';
 import { setAuthCookie } from './auth-helpers';
+import inventorySearchRouter from './account-inventory-search';
 
 // パスワード変更用レート制限: 10回/時/ユーザー
 const passwordChangeLimiter = rateLimit({
@@ -44,6 +45,8 @@ const accountDeletionLimiter = rateLimit({
 });
 
 const router = Router();
+
+router.use(inventorySearchRouter);
 
 type AccountUpdates = Record<string, unknown>;
 type PasswordRow = { passwordHash: string | null };

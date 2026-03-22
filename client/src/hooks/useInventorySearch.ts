@@ -1,14 +1,22 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { api, type DrugChip, type InventorySearchFilters, type InventorySearchResponse } from '../api/client';
+import {
+  requestCurrentCoordinates,
+  type PersistedInventorySearchState,
+} from '../pages/inventory-search-state';
 
 interface UseInventorySearchReturn {
   chips: DrugChip[];
   addChip: (chip: DrugChip) => void;
   removeChip: (index: number) => void;
   clearChips: () => void;
+  applyPersistedSearchState: (state: PersistedInventorySearchState) => void;
+  useCurrentLocation: boolean;
+  setUseCurrentLocation: React.Dispatch<React.SetStateAction<boolean>>;
   filters: InventorySearchFilters;
   setFilters: React.Dispatch<React.SetStateAction<InventorySearchFilters>>;
   result: InventorySearchResponse | null;
+  resetResultView: () => void;
   isSearching: boolean;
   search: () => Promise<void>;
   error: string | null;
@@ -19,6 +27,7 @@ export function useInventorySearch(): UseInventorySearchReturn {
   const [filters, setFilters] = useState<InventorySearchFilters>({
     groupOnly: false, openOnly: false, favoritePriority: false,
   });
+  const [useCurrentLocation, setUseCurrentLocation] = useState(false);
   const [result, setResult] = useState<InventorySearchResponse | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +52,17 @@ export function useInventorySearch(): UseInventorySearchReturn {
   }, []);
 
   const clearChips = useCallback(() => { setChips([]); setResult(null); }, []);
+  const resetResultView = useCallback(() => {
+    setResult(null);
+    setError(null);
+  }, []);
+  const applyPersistedSearchState = useCallback((state: PersistedInventorySearchState) => {
+    setChips(state.chips);
+    setFilters(state.filters);
+    setUseCurrentLocation(state.useCurrentLocation);
+    setResult(null);
+    setError(null);
+  }, []);
 
   const search = useCallback(async () => {
     if (chips.length === 0) return;
@@ -55,6 +75,11 @@ export function useInventorySearch(): UseInventorySearchReturn {
     setIsSearching(true);
     setError(null);
     try {
+      const coordinates = useCurrentLocation
+        ? await requestCurrentCoordinates()
+        : null;
+      if (controller.signal.aborted) return;
+
       const searchResult = await api.inventorySearch(
         {
           drugKeys: chips.map(c => ({
@@ -63,7 +88,7 @@ export function useInventorySearch(): UseInventorySearchReturn {
             specification: c.specification,
           })),
           filters,
-          coordinates: null,
+          coordinates,
         },
         { signal: controller.signal },
       );
@@ -71,15 +96,30 @@ export function useInventorySearch(): UseInventorySearchReturn {
       if (!controller.signal.aborted) {
         setResult(searchResult);
       }
-    } catch {
+    } catch (err) {
       if (controller.signal.aborted) return;
-      setError('検索中にエラーが発生しました');
+      setError(err instanceof Error ? err.message : '検索中にエラーが発生しました');
     } finally {
       if (!controller.signal.aborted) {
         setIsSearching(false);
       }
     }
-  }, [chips, filters]);
+  }, [chips, filters, useCurrentLocation]);
 
-  return { chips, addChip, removeChip, clearChips, filters, setFilters, result, isSearching, search, error };
+  return {
+    chips,
+    addChip,
+    removeChip,
+    clearChips,
+    applyPersistedSearchState,
+    useCurrentLocation,
+    setUseCurrentLocation,
+    filters,
+    setFilters,
+    result,
+    resetResultView,
+    isSearching,
+    search,
+    error,
+  };
 }

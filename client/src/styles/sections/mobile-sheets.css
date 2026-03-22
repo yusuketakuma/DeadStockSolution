@@ -4,7 +4,7 @@
   position: fixed;
   inset: 0;
   z-index: 1040;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(12,29,46,0.45);
   opacity: 0;
   transition: opacity var(--dl-duration-normal) var(--dl-ease-standard);
   pointer-events: none;
@@ -23,7 +23,7 @@
   z-index: 1050;
   background: var(--bs-body-bg, #fff);
   border-radius: 16px 16px 0 0;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.06), 0 -8px 32px rgba(12,29,46,0.12);
   transform: translateY(100%);
   transition: transform var(--dl-duration-normal) var(--dl-ease-standard);
   display: flex;

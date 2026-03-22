@@ -1,20 +1,20 @@
 :root {
-  --dl-bg: #f5f7fa;
+  --dl-bg: #f0f4f8;
   --dl-surface: #ffffff;
-  --dl-surface-muted: #f8fafc;
-  --dl-border: #dce4ed;
-  --dl-text: #102a43;
-  --dl-text-muted: #5a7186;
-  --dl-primary: #0a6699;
-  --dl-primary-strong: #074d7a;
+  --dl-surface-muted: #f6f8fb;
+  --dl-border: #d4dde8;
+  --dl-text: #0c1d2e;
+  --dl-text-muted: #4a6178;
+  --dl-primary: #0e7490;
+  --dl-primary-strong: #0c5e74;
   --dl-danger-soft: #fef2f2;
   --dl-danger-border: #fca5a5;
   --dl-success-soft: #ecfdf5;
-  --dl-success-border: #86efac;
-  --dl-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(16,42,67,0.06);
-  --dl-radius-lg: 16px;
-  --dl-radius-md: 12px;
-  --dl-focus-ring: #2f80ed;
+  --dl-success-border: #6ee7b7;
+  --dl-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(12,29,46,0.06), 0 12px 32px rgba(12,29,46,0.04);
+  --dl-radius-lg: 14px;
+  --dl-radius-md: 10px;
+  --dl-focus-ring: #0891b2;
   --dl-control-min-height: 44px;
 }
 
@@ -38,12 +38,12 @@
 .dl-auth-page {
   min-height: 100dvh;
   background:
-    radial-gradient(circle at 0% 0%, rgba(11, 110, 168, 0.1), transparent 36%),
-    radial-gradient(circle at 100% 100%, rgba(11, 110, 168, 0.08), transparent 30%),
-    var(--dl-bg);
+    radial-gradient(ellipse at 10% 0%, rgba(14,116,144,0.12), transparent 50%),
+    radial-gradient(ellipse at 90% 80%, rgba(6,78,59,0.08), transparent 45%),
+    linear-gradient(180deg, #edf2f7 0%, #f0f4f8 50%, #e8edf3 100%);
   padding: 1.25rem 0.75rem;
   color: var(--dl-text);
-  font-family: "BIZ UDPGothic", "Noto Sans JP", sans-serif;
+  font-family: "Zen Kaku Gothic New", "Noto Sans JP", sans-serif;
 }
 
 .dl-auth-shell {
@@ -708,19 +708,19 @@
 
 /* ===== App-wide Design Language (protected screens) ===== */
 .app-theme {
-  --dl-app-bg: #f5f7fa;
+  --dl-app-bg: #f0f4f8;
   --dl-app-surface: #ffffff;
-  --dl-app-surface-muted: #f8fafc;
-  --dl-app-border: #dce4ed;
-  --dl-app-text: #16324a;
-  --dl-app-text-muted: #5a7186;
-  --dl-app-primary: #0a6699;
-  --dl-app-primary-strong: #074d7a;
-  --dl-app-header: #0d5d8c;
-  --dl-app-sidebar: #173852;
-  --dl-app-sidebar-hover: #1e4969;
-  --dl-app-sidebar-active: #24597d;
-  --dl-app-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(22,50,74,0.06);
+  --dl-app-surface-muted: #f6f8fb;
+  --dl-app-border: #d4dde8;
+  --dl-app-text: #0c1d2e;
+  --dl-app-text-muted: #4a6178;
+  --dl-app-primary: #0e7490;
+  --dl-app-primary-strong: #0c5e74;
+  --dl-app-header: #0c4a6e;
+  --dl-app-sidebar: #0f172a;
+  --dl-app-sidebar-hover: #1e293b;
+  --dl-app-sidebar-active: #164e63;
+  --dl-app-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(12,29,46,0.06), 0 12px 32px rgba(12,29,46,0.04);
 }
 
 .app-theme .app-main {
@@ -749,14 +749,14 @@
 
 .dl-app-screen .page-title {
   color: var(--dl-app-text);
-  font-size: 1.34rem;
+  font-size: 1.3rem;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.015em;
 }
 
 .app-theme .app-header {
-  background: linear-gradient(115deg, var(--dl-app-header), #1571a8);
-  box-shadow: 0 3px 12px rgba(7, 52, 81, 0.24);
+  background: linear-gradient(115deg, var(--dl-app-header), #155e75);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 4px 16px rgba(12,74,110,0.32);
 }
 
 .app-theme .sidebar-desktop,
@@ -771,32 +771,39 @@
 
 .app-theme .sidebar-link.active {
   background: var(--dl-app-sidebar-active);
-  border-left-color: #7fd1ff;
+  border-left-color: #22d3ee;
 }
 
 .app-theme .app-footer {
-  background: #eff4f9;
+  background: #e8edf3;
   border-color: var(--dl-app-border) !important;
 }
 
 .dl-app-screen .card {
   border: 1px solid var(--dl-app-border);
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: var(--dl-app-shadow);
   background: var(--dl-app-surface);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.dl-app-screen .card:hover {
+  border-color: #bcc8d6;
 }
 
 .dl-app-screen .card-header,
 .dl-app-screen .card-footer {
   background: var(--dl-app-surface-muted);
   border-color: var(--dl-app-border);
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .dl-app-screen .table {
   --bs-table-bg: #ffffff;
   --bs-table-border-color: var(--dl-app-border);
   --bs-table-striped-bg: transparent;
-  --bs-table-hover-bg: #f0f6ff;
+  --bs-table-hover-bg: #ecfdf5;
 }
 
 .dl-app-screen .table > :not(caption) > * > * {
@@ -821,7 +828,13 @@
 
 .dl-app-screen .btn {
   border-radius: 8px;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.dl-app-screen .btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .dl-app-screen .form-control,
@@ -837,8 +850,8 @@
 
 .dl-app-screen .form-control:focus,
 .dl-app-screen .form-select:focus {
-  border-color: #69b7df;
-  box-shadow: 0 0 0 0.2rem rgba(21, 113, 168, 0.18);
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 0.2rem rgba(14,116,144,0.15);
 }
 
 .app-theme .btn,

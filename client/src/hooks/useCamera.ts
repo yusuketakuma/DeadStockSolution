@@ -129,6 +129,7 @@ interface UseCameraOptions {
   submitting: boolean;
   normalizeCodeInput: (value: string) => string;
   onResolveCode: (code: string) => Promise<AppendOrUpdateRowResult | null>;
+  onScanDetected?: () => void;
   onError: (message: string) => void;
   onInfo: (message: string) => void;
 }
@@ -138,6 +139,7 @@ export function useCamera({
   submitting,
   normalizeCodeInput,
   onResolveCode,
+  onScanDetected,
   onError,
   onInfo,
 }: UseCameraOptions) {
@@ -274,12 +276,13 @@ export function useCamera({
     }
 
     lastScanRef.current = { text: normalized, at: now };
+    onScanDetected?.();
     pendingCameraCodesRef.current.add(normalized);
     if (resolving) {
       return;
     }
     await drainPendingCodes(sessionId);
-  }, [drainPendingCodes, normalizeCodeInput, resolving]);
+  }, [drainPendingCodes, normalizeCodeInput, onScanDetected, resolving]);
 
   useEffect(() => {
     if (resolving || !cameraActive || pendingCameraCodesRef.current.size === 0) {

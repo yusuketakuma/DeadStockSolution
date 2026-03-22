@@ -1,17 +1,19 @@
 :root {
-  --app-bg: #f5f7fa;
+  --app-bg: #f0f4f8;
   --sidebar-width: 240px;
   --sidebar-width-collapsed: 60px;
   --header-height: 56px;
-  --sidebar-bg: #173852;
-  --sidebar-text: #cbd5e1;
-  --sidebar-active-bg: #24597d;
-  --sidebar-hover-bg: #1e4969;
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #94a3b8;
+  --sidebar-active-bg: #164e63;
+  --sidebar-hover-bg: #1e293b;
 }
 
 body {
-  font-family: 'BIZ UDPGothic', 'Noto Sans JP', sans-serif;
+  font-family: 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif;
   background: var(--app-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ===== Header ===== */
@@ -25,8 +27,9 @@ body {
   justify-content: center;
   height: var(--header-height);
   padding: 0 1rem;
-  background: #0d6efd;
+  background: linear-gradient(115deg, #0c4a6e, #155e75);
   color: #fff;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
 .app-header-main {
@@ -82,15 +85,16 @@ body {
   flex-shrink: 0;
   border-radius: 999px;
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.38), rgba(14, 165, 233, 0.38));
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1);
   text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .app-header-updates-trigger:hover {
   color: #fff;
-  border-color: rgba(255, 255, 255, 0.92);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.62), rgba(14, 165, 233, 0.62));
+  border-color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .app-header-updates-trigger:focus-visible {
@@ -159,7 +163,7 @@ body {
   display: inline-flex;
   align-items: baseline;
   gap: 0.35rem;
-  color: #0d6efd;
+  color: #0e7490;
   text-decoration: none;
   font-weight: 600;
 }
@@ -173,8 +177,8 @@ body {
   align-items: center;
   padding: 0.08rem 0.4rem;
   border-radius: 999px;
-  background: rgba(13, 110, 253, 0.12);
-  color: #0b5ed7;
+  background: rgba(14,116,144,0.12);
+  color: #0c5e74;
   font-size: 0.68rem;
   font-weight: 700;
 }

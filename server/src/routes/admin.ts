@@ -22,6 +22,7 @@ import matchingPerformanceRouter from './admin-matching-performance';
 import uploadQualityRouter from './admin-upload-quality';
 import auditRouter from './admin-audit';
 import businessHoursRouter from './admin-business-hours';
+import sloRouter from './admin-slo';
 
 const router = Router();
 
@@ -50,5 +51,6 @@ router.use(matchingPerformanceRouter);
 router.use(uploadQualityRouter);
 router.use(auditRouter);
 router.use(businessHoursRouter);
+router.use(sloRouter);
 
 export default router;

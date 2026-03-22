@@ -33,6 +33,20 @@ function makeMockDb(countResult: number) {
 
 type MockDb = ReturnType<typeof makeMockDb>;
 
+function flattenSqlChunks(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(flattenSqlChunks).join('');
+  if (value && typeof value === 'object') {
+    if ('value' in value) {
+      return flattenSqlChunks((value as { value: unknown }).value);
+    }
+    if ('queryChunks' in value) {
+      return flattenSqlChunks((value as { queryChunks: unknown }).queryChunks);
+    }
+  }
+  return '';
+}
+
 describe('timeline-unread-counts', () => {
   const pharmacyId = 1;
   const lastViewed = '2026-01-15T00:00:00.000Z';
@@ -210,5 +224,24 @@ describe('timeline-unread-counts', () => {
     } as MockDb;
     const count = await countAllUnread(db, pharmacyId);
     expect(count).toBe(0);
+  });
+
+  it('countAllUnread: upload_confirm_jobs を参照してアップロード未読数を集計する', async () => {
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ total: 0 }]),
+      }),
+    });
+    const db = {
+      select,
+      update: vi.fn(),
+    } as MockDb;
+
+    await countAllUnread(db, pharmacyId);
+
+    const projection = select.mock.calls[0]?.[0] as { total?: unknown } | undefined;
+    const sqlText = flattenSqlChunks(projection?.total);
+    expect(sqlText).toContain('FROM upload_confirm_jobs');
+    expect(sqlText).not.toContain('FROM uploads');
   });
 });

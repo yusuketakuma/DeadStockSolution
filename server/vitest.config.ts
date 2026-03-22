@@ -12,7 +12,8 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text-summary', 'json-summary'],
       reportsDirectory: './coverage',
-      exclude: ['src/test/**', 'src/types/express.d.ts', 'src/db/schema.ts'],
+      include: ['src/**/*.ts'],
+      exclude: ['src/test/**', 'src/types/express.d.ts', 'src/db/schema.ts', 'src/**/*.d.ts'],
       thresholds: {
         lines: 95,
         statements: 93,

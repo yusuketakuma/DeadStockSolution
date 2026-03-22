@@ -1,4 +1,4 @@
-import { type Ref } from 'react';
+import { type ReactNode, type Ref } from 'react';
 
 interface CameraViewportProps {
   videoRef: Ref<HTMLVideoElement>;
@@ -10,6 +10,10 @@ interface CameraViewportProps {
    * true の場合、position: fixed で画面全体を覆う
    */
   fullscreen?: boolean;
+  /**
+   * フルスクリーン時にビデオの上に描画するオーバーレイ（ビューファインダー等）
+   */
+  children?: ReactNode;
 }
 
 /**
@@ -22,6 +26,7 @@ export default function CameraViewport({
   cameraActive,
   cameraError,
   fullscreen = false,
+  children,
 }: CameraViewportProps) {
   const containerStyle = fullscreen
     ? {
@@ -62,6 +67,10 @@ export default function CameraViewport({
         style={videoStyle}
       />
       <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+      {/* Viewfinder overlay slot (fullscreen only) */}
+      {fullscreen && children}
+
       {cameraError && !fullscreen && (
         <div
           className="small text-warning mt-2"
