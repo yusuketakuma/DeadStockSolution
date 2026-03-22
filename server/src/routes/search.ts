@@ -43,17 +43,19 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
         WHEN LOWER(${deadStockItems.drugName}) LIKE ${containsPattern} THEN 400
         ELSE 100
       END
-    `.as('relevance_score');
+    `;
 
-    const results = await db.selectDistinct({
+    const results = await db.select({
       drugName: deadStockItems.drugName,
+      score: sql<number>`MAX(${relevanceScore})`.as('score'),
     })
       .from(deadStockItems)
       .where(and(
         eq(deadStockItems.isAvailable, true),
         searchCondition,
       ))
-      .orderBy(desc(relevanceScore), asc(sql`char_length(${deadStockItems.drugName})`))
+      .groupBy(deadStockItems.drugName)
+      .orderBy(desc(sql`score`), asc(sql`char_length(${deadStockItems.drugName})`))
       .limit(MAX_DRUG_MASTER_SUGGESTIONS);
 
     res.json(results.map((r) => r.drugName));
@@ -93,7 +95,7 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
         WHEN LOWER(${drugMaster.manufacturer}) LIKE ${containsPattern} THEN 200
         ELSE 100
       END
-    `.as('relevance_score');
+    `;
 
     const results = await db.select({
       id: drugMaster.id,
@@ -148,17 +150,19 @@ router.get('/drug-master-names', async (req: AuthRequest, res: Response) => {
         WHEN LOWER(${drugMaster.genericName}) LIKE ${containsPattern} THEN 300
         ELSE 100
       END
-    `.as('relevance_score');
+    `;
 
-    const results = await db.selectDistinct({
+    const results = await db.select({
       drugName: drugMaster.drugName,
+      score: sql<number>`MAX(${relevanceScore})`.as('score'),
     })
       .from(drugMaster)
       .where(and(
         eq(drugMaster.isListed, true),
         searchCondition,
       ))
-      .orderBy(desc(relevanceScore), asc(sql`char_length(${drugMaster.drugName})`))
+      .groupBy(drugMaster.drugName)
+      .orderBy(desc(sql`score`), asc(sql`char_length(${drugMaster.drugName})`))
       .limit(MAX_DRUG_MASTER_SUGGESTIONS);
 
     res.json(results.map((r) => r.drugName));
@@ -189,17 +193,19 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
         WHEN LOWER(${pharmacies.name}) LIKE ${containsPattern} THEN 400
         ELSE 100
       END
-    `.as('relevance_score');
+    `;
 
-    const results = await db.selectDistinct({
+    const results = await db.select({
       name: pharmacies.name,
+      score: sql<number>`MAX(${relevanceScore})`.as('score'),
     })
       .from(pharmacies)
       .where(and(
         eq(pharmacies.isActive, true),
         searchCondition,
       ))
-      .orderBy(desc(relevanceScore), asc(sql`char_length(${pharmacies.name})`))
+      .groupBy(pharmacies.name)
+      .orderBy(desc(sql`score`), asc(sql`char_length(${pharmacies.name})`))
       .limit(MAX_SUGGESTIONS);
 
     res.json(results.map((r) => r.name));
