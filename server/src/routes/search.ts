@@ -11,6 +11,7 @@ const router = Router();
 router.use(requireLogin);
 
 const MAX_SUGGESTIONS = 10;
+const MAX_DRUG_MASTER_SUGGESTIONS = 50;
 
 function sanitizeQuery(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -78,7 +79,7 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
         eq(drugMaster.isListed, true),
         searchCondition,
       ))
-      .limit(MAX_SUGGESTIONS);
+      .limit(MAX_DRUG_MASTER_SUGGESTIONS);
 
     res.json(results);
   } catch (err) {
