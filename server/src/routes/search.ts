@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql, desc, asc } from 'drizzle-orm';
 import { db } from '../config/database';
 import { deadStockItems, pharmacies, drugMaster } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
@@ -65,6 +65,23 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
       drugMaster.yjCode,
     );
 
+    const queryLower = rawQuery.toLowerCase();
+    const prefixPattern = `${queryLower}%`;
+    const containsPattern = `%${queryLower}%`;
+
+    const relevanceScore = sql<number>`
+      CASE
+        WHEN LOWER(${drugMaster.drugName}) = ${queryLower} THEN 1000
+        WHEN LOWER(${drugMaster.drugName}) LIKE ${prefixPattern} THEN 800
+        WHEN LOWER(${drugMaster.genericName}) = ${queryLower} THEN 700
+        WHEN LOWER(${drugMaster.genericName}) LIKE ${prefixPattern} THEN 600
+        WHEN LOWER(${drugMaster.drugName}) LIKE ${containsPattern} THEN 400
+        WHEN LOWER(${drugMaster.genericName}) LIKE ${containsPattern} THEN 300
+        WHEN LOWER(${drugMaster.manufacturer}) LIKE ${containsPattern} THEN 200
+        ELSE 100
+      END
+    `.as('relevance_score');
+
     const results = await db.select({
       id: drugMaster.id,
       yjCode: drugMaster.yjCode,
@@ -79,6 +96,7 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
         eq(drugMaster.isListed, true),
         searchCondition,
       ))
+      .orderBy(desc(relevanceScore), asc(sql`char_length(${drugMaster.drugName})`))
       .limit(MAX_DRUG_MASTER_SUGGESTIONS);
 
     res.json(results);

@@ -153,6 +153,13 @@ export default function SearchInput<T = string>({
     }
   };
 
+  useEffect(() => {
+    if (selectedIndex >= 0) {
+      document.getElementById(`${listboxId}-${selectedIndex}`)
+        ?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [selectedIndex, listboxId]);
+
   const isExpanded = showSuggestions && suggestions.length > 0;
 
   return (
