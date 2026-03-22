@@ -43,7 +43,7 @@
     linear-gradient(180deg, #edf2f7 0%, #f0f4f8 50%, #e8edf3 100%);
   padding: 1.25rem 0.75rem;
   color: var(--dl-text);
-  font-family: "Zen Kaku Gothic New", "Noto Sans JP", sans-serif;
+  font-family: "BIZ UDPGothic", "Noto Sans JP", sans-serif;
 }
 
 .dl-auth-shell {
