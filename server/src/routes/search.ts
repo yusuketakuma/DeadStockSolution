@@ -32,6 +32,18 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
     }
 
     const searchCondition = buildTokenizedSearchConditions(rawQuery, [deadStockItems.drugName]);
+    const queryLower = rawQuery.toLowerCase();
+    const prefixPattern = `${queryLower}%`;
+    const containsPattern = `%${queryLower}%`;
+
+    const relevanceScore = sql<number>`
+      CASE
+        WHEN LOWER(${deadStockItems.drugName}) = ${queryLower} THEN 1000
+        WHEN LOWER(${deadStockItems.drugName}) LIKE ${prefixPattern} THEN 800
+        WHEN LOWER(${deadStockItems.drugName}) LIKE ${containsPattern} THEN 400
+        ELSE 100
+      END
+    `.as('relevance_score');
 
     const results = await db.selectDistinct({
       drugName: deadStockItems.drugName,
@@ -41,7 +53,8 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
         eq(deadStockItems.isAvailable, true),
         searchCondition,
       ))
-      .limit(MAX_SUGGESTIONS);
+      .orderBy(desc(relevanceScore), asc(sql`char_length(${deadStockItems.drugName})`))
+      .limit(MAX_DRUG_MASTER_SUGGESTIONS);
 
     res.json(results.map((r) => r.drugName));
   } catch (err) {
@@ -121,6 +134,22 @@ router.get('/drug-master-names', async (req: AuthRequest, res: Response) => {
       drugMaster.yjCode,
     );
 
+    const queryLower = rawQuery.toLowerCase();
+    const prefixPattern = `${queryLower}%`;
+    const containsPattern = `%${queryLower}%`;
+
+    const relevanceScore = sql<number>`
+      CASE
+        WHEN LOWER(${drugMaster.drugName}) = ${queryLower} THEN 1000
+        WHEN LOWER(${drugMaster.drugName}) LIKE ${prefixPattern} THEN 800
+        WHEN LOWER(${drugMaster.genericName}) = ${queryLower} THEN 700
+        WHEN LOWER(${drugMaster.genericName}) LIKE ${prefixPattern} THEN 600
+        WHEN LOWER(${drugMaster.drugName}) LIKE ${containsPattern} THEN 400
+        WHEN LOWER(${drugMaster.genericName}) LIKE ${containsPattern} THEN 300
+        ELSE 100
+      END
+    `.as('relevance_score');
+
     const results = await db.selectDistinct({
       drugName: drugMaster.drugName,
     })
@@ -129,7 +158,8 @@ router.get('/drug-master-names', async (req: AuthRequest, res: Response) => {
         eq(drugMaster.isListed, true),
         searchCondition,
       ))
-      .limit(MAX_SUGGESTIONS);
+      .orderBy(desc(relevanceScore), asc(sql`char_length(${drugMaster.drugName})`))
+      .limit(MAX_DRUG_MASTER_SUGGESTIONS);
 
     res.json(results.map((r) => r.drugName));
   } catch (err) {
@@ -148,6 +178,18 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
     }
 
     const searchCondition = buildTokenizedSearchConditions(rawQuery, [pharmacies.name]);
+    const queryLower = rawQuery.toLowerCase();
+    const prefixPattern = `${queryLower}%`;
+    const containsPattern = `%${queryLower}%`;
+
+    const relevanceScore = sql<number>`
+      CASE
+        WHEN LOWER(${pharmacies.name}) = ${queryLower} THEN 1000
+        WHEN LOWER(${pharmacies.name}) LIKE ${prefixPattern} THEN 800
+        WHEN LOWER(${pharmacies.name}) LIKE ${containsPattern} THEN 400
+        ELSE 100
+      END
+    `.as('relevance_score');
 
     const results = await db.selectDistinct({
       name: pharmacies.name,
@@ -157,6 +199,7 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
         eq(pharmacies.isActive, true),
         searchCondition,
       ))
+      .orderBy(desc(relevanceScore), asc(sql`char_length(${pharmacies.name})`))
       .limit(MAX_SUGGESTIONS);
 
     res.json(results.map((r) => r.name));
