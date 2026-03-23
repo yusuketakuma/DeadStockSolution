@@ -3,7 +3,7 @@ import { getBusinessHoursStatus } from '../../utils/business-hours-utils';
 import { haversineDistance } from '../../utils/geo-utils';
 import { classifyPackageFormFromUnit, arePackageFormsCompatible, type PackageForm } from '../../utils/package-utils';
 import {
-  calculateCandidateScore,
+  calculateCandidateScoreWithBreakdown,
   calculateMatchRate,
   findBestDrugMatchWithEquivalences,
   isExpiredDate,
@@ -215,6 +215,7 @@ function buildCandidateFromPharmacy(params: {
   equivalenceMap: Map<string, string[]>;
   myToTheirCache: Map<string, DrugMatchResult>;
   theirToMyCache: Map<string, DrugMatchResult>;
+  successCountByPharmacy: Map<number, number>;
 }): MatchCandidate | null {
   const {
     otherPharmacy,
@@ -232,6 +233,7 @@ function buildCandidateFromPharmacy(params: {
     equivalenceMap,
     myToTheirCache,
     theirToMyCache,
+    successCountByPharmacy,
   } = params;
 
   const theirPreparedDeadStock = preparedDeadStockByPharmacy.get(otherPharmacy.id) ?? [];
@@ -265,7 +267,8 @@ function buildCandidateFromPharmacy(params: {
 
   const isFavorite = favoriteIds.has(otherPharmacy.id);
   const isGroupMember = groupMemberIds.has(otherPharmacy.id);
-  const score = calculateCandidateScore(
+  const successCount = successCountByPharmacy.get(otherPharmacy.id) ?? 0;
+  const scoreResult = calculateCandidateScoreWithBreakdown(
     totalA,
     totalB,
     diff,
@@ -275,6 +278,8 @@ function buildCandidateFromPharmacy(params: {
     matchingRuleProfile,
     isFavorite,
     isGroupMember,
+    new Date(),
+    successCount,
   );
   const matchRate = calculateMatchRate(balancedA, balancedB);
   const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id);
@@ -297,7 +302,8 @@ function buildCandidateFromPharmacy(params: {
     totalValueA: roundTo2(totalA),
     totalValueB: roundTo2(totalB),
     valueDifference: diff,
-    score,
+    score: scoreResult.total,
+    scoreBreakdown: scoreResult.breakdown,
     matchRate,
     businessStatus,
     isFavorite,
@@ -386,6 +392,7 @@ export function collectCandidates(params: {
   now: Date;
   includeIsConfiguredInBusinessStatus: boolean;
   equivalenceMap: Map<string, string[]>;
+  successCountByPharmacy: Map<number, number>;
 }): MatchCandidate[] {
   const candidates: MatchCandidate[] = [];
   const { pharmaciesWithInboundMatches, globalDrugMatchCache } = precomputeGlobalDrugMatches({
@@ -418,6 +425,7 @@ export function collectCandidates(params: {
       equivalenceMap: params.equivalenceMap,
       myToTheirCache: new Map<string, DrugMatchResult>(),
       theirToMyCache: globalDrugMatchCache,
+      successCountByPharmacy: params.successCountByPharmacy,
     });
     if (!candidate) continue;
     candidates.push(candidate);

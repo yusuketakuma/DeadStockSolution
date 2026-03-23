@@ -1,6 +1,6 @@
 import { distance as levenshtein } from 'fastest-levenshtein';
 import { normalizeString } from '../utils/string-utils';
-import { MatchItem } from '../types';
+import { MatchItem, ScoreBreakdown } from '../types';
 import type {
   DrugMatchResult,
   MatchingScoringRules,
@@ -539,6 +539,11 @@ function resolveCandidateScoreContext(
   };
 }
 
+export interface CandidateScoreResult {
+  total: number;
+  breakdown: ScoreBreakdown;
+}
+
 export function calculateCandidateScore(
   totalA: number,
   totalB: number,
@@ -550,7 +555,36 @@ export function calculateCandidateScore(
   isFavorite: boolean = false,
   isGroupMemberOrReferenceDate: boolean | Date = false,
   referenceDate: Date = new Date(),
+  successCount: number = 0,
 ): number {
+  return calculateCandidateScoreWithBreakdown(
+    totalA,
+    totalB,
+    diff,
+    distanceKm,
+    itemsFromA,
+    itemsFromB,
+    scoringRules,
+    isFavorite,
+    isGroupMemberOrReferenceDate,
+    referenceDate,
+    successCount,
+  ).total;
+}
+
+export function calculateCandidateScoreWithBreakdown(
+  totalA: number,
+  totalB: number,
+  diff: number,
+  distanceKm: number,
+  itemsFromA: MatchItem[],
+  itemsFromB: MatchItem[],
+  scoringRules: MatchingScoringRules = DEFAULT_MATCHING_SCORING_RULES,
+  isFavorite: boolean = false,
+  isGroupMemberOrReferenceDate: boolean | Date = false,
+  referenceDate: Date = new Date(),
+  successCount: number = 0,
+): CandidateScoreResult {
   const context = resolveCandidateScoreContext(
     totalA,
     totalB,
@@ -575,16 +609,31 @@ export function calculateCandidateScore(
   );
   const favoriteScore = isFavorite ? scoringRules.favoriteBonus : 0;
   const groupScore = context.isGroupMember ? scoringRules.groupBonus : 0;
+  const successRateBonusValue = calculateSuccessRateBonus(successCount, scoringRules.successRateBonus);
 
-  return roundTo2(
+  const total = roundTo2(
     context.valueScore
       + context.balanceScore
       + context.distanceScore
       + nearExpiryScore
       + diversityScore
       + favoriteScore
-      + groupScore,
+      + groupScore
+      + successRateBonusValue,
   );
+
+  const breakdown: ScoreBreakdown = {
+    valueScore: roundTo2(context.valueScore),
+    distanceScore: roundTo2(context.distanceScore),
+    expiryScore: roundTo2(nearExpiryScore),
+    diversityScore: roundTo2(diversityScore),
+    favoriteBonus: roundTo2(favoriteScore),
+    groupBonus: roundTo2(groupScore),
+    successRateBonus: roundTo2(successRateBonusValue),
+    total,
+  };
+
+  return { total, breakdown };
 }
 
 export function calculateMatchRate(itemsA: MatchItem[], itemsB: MatchItem[]): number {

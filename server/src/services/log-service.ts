@@ -30,6 +30,8 @@ export type LogAction =
   | 'admin_verify_pharmacy'
   | 'admin_bulk_verify'
   | 'admin_bulk_reject'
+  | 'admin_bulk_activate'
+  | 'admin_bulk_deactivate'
   | 'admin_csv_export';
 
 export async function writeLog(

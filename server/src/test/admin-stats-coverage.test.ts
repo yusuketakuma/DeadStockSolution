@@ -78,7 +78,9 @@ describe('admin-stats routes', () => {
         .mockReturnValueOnce(createSelectChain([{ count: 50 }]))   // proposalCount
         .mockReturnValueOnce(createSelectChain([{ count: 30 }]))   // historyCount
         .mockReturnValueOnce(createSelectChain([{ count: 200 }]))  // pickupCount
-        .mockReturnValueOnce(createSelectChain([{ total: 500000 }])); // exchangeAmount
+        .mockReturnValueOnce(createSelectChain([{ total: 500000 }])) // exchangeAmount
+        .mockReturnValueOnce(createSelectChain([{ count: 10 }]))   // activePharmacies30d
+        .mockReturnValueOnce(createSelectChain([{ total: 80000 }])); // monthlyExchangeValue
 
       const app = createApp();
       const res = await request(app).get('/api/admin/stats');

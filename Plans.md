@@ -10,76 +10,163 @@
 
 ### v0.0.19 全体改善スプリント (2026-03-23)
 
-> Track A (UX改善) + Track B (マッチング高度化) + Track C (運用改善) + Track D (パフォーマンス) = 20タスク
+> 6 Track, 26タスク — コードベース再レビュー反映済み
+>
+> 補正方針: 既存実装と矛盾するタスクは再定義し、既存 API の責務を壊す案は分離エンドポイント化、運用系は現在ある OpenClaw / matching-refresh 基盤の延長として整理する。
 
-#### Track A: UX 改善 (6タスク)
+#### 実行ゲート
 
-- [ ] T951: ダッシュボード グラフ可視化 `cc:TODO`
-  - 期限リスクのバケット分布を棒グラフ/ドーナツチャートで表示
-  - DashboardPage.tsx L150-180 の KPI タイルにチャート追加
-- [ ] T952: 統計ページ トレンドチャート `cc:TODO`
+- Gate 0: schema / contract 変更を先行する
+  - T952a, T955, T961, T963, T971, T973, T975, T991, T992, T994, T996, T997
+- Gate 1: UI は backend contract 固定後に着手する
+  - T951, T952c, T953, T954, T962
+- Gate 2: 運用導入・最適化は最後にまとめて検証する
+  - T965, T983, T984, T993, T998, T999
+
+#### Track A: UX 改善 (7タスク)
+
+- [x] T950: チャート実装方針確定 `cc:完了` (2026-03-23)
+  - Dashboard / Statistics の表示要件と bundle 予算を比較し、SVG/CSS 実装か chart library 導入かを決定
+  - 採用案を ADR/Plans に残し、T951/T952c の前提を固定する
+  - 決定: Chart.js + react-chartjs-2 を採用 (gzip ~60KB)。docs/adr/004-chart-implementation.md 参照
+- [ ] T951: ダッシュボード グラフ可視化 `cc:TODO` depends:T950
+  - DashboardPage の期限リスクカードに compact chart を追加する
+  - 既存の KPI 4枚レイアウトを崩さず、モバイルで読める配置にする
+- [ ] T952a: 月次統計テーブル + 集計cron `cc:WIP`
+  - daily_statistics テーブル新規作成（date, pharmacyId, metrics JSONB）
+  - 日次集計 cron ジョブ追加（vercel.json）
+- [ ] T952b: 月次統計 API `cc:TODO` depends:T952a
+  - 既存 `/statistics/summary` とは別に時系列専用 endpoint を追加する（例: `/statistics/trends?days=30`）
+  - 現行 summary API の責務を壊さず、30/90日レンジのレスポンスを分離する
+- [ ] T952c: 統計ページ トレンドチャート UI `cc:TODO` depends:T950,T952b
   - StatisticsPage に月次推移グラフ（交換量・デッドストック推移・提案成約率）
 - [ ] T953: マッチング結果フィルタ強化 `cc:TODO`
   - MatchingPage にフィルタUI（距離/スコア/薬価ソート、お気に入り/グループ絞り込み）
-  - 現在はURL params経由のみでページ内フィルタなし
+  - 既存の URL 経由初期絞り込みと共存できるクライアントサイド絞り込みにする
 - [ ] T954: 提案ステータス視認性改善 `cc:TODO`
-  - ProposalsPage の priorityReasons をユーザー向けラベルに翻訳
-  - 期限切迫提案（< 24h）のハイライト表示
-- [ ] T955: マッチングスコア内訳表示 `cc:TODO`
-  - MatchingPage で候補のスコア内訳（薬価バランス/距離/期限/多様性/お気に入り/グループ）を表示
-  - 現在は「一致度 XX%」のみで内訳不明
-- [ ] T956: ダッシュボード 最終更新タイミング表示 `cc:TODO`
-  - 各パネルに「最終更新: XX分前」+ 手動リフレッシュボタン
+  - ProposalsPage の priorityReasons は既に日本語のため、翻訳ではなく Badge / 補助ラベル化で可読性を上げる
+  - 期限切迫提案（< 24h）と期限超過を一覧上で明確にハイライト表示する
 
 #### Track B: マッチング高度化 (5タスク)
 
-- [ ] T961: 成約率フィードバックループ `cc:TODO`
-  - successRateBonus（現在デフォルト 0 で未活用）を有効化
-  - 薬局ペア間の過去成約率をスコアに反映
-  - matching-score-service.ts L43
-- [ ] T962: 同等品マッチング強化 `cc:TODO`
-  - drug-equivalence-service の同等品マップをマッチング候補生成に積極活用
-  - 代替品提案を増やす
+- [ ] T955: マッチングスコア内訳表示 `cc:WIP`
+  - 既存の合計 score は維持しつつ、別途 `scoreBreakdown` を返す形で後方互換を保つ
+  - API: MatchCandidate に `scoreBreakdown` フィールド追加
+  - クライアント: MatchingPage で内訳（薬価/距離/期限/多様性/お気に入り/グループ）を展開表示
+- [ ] T961: 成約率フィードバックループ `cc:WIP`
+  - exchangeProposals.completed を薬局ペア単位で集計し、A↔B を同一ペアとして扱う
+  - successRateBonus（現在デフォルト 0）を有効化し、0 のときは現状挙動を維持する
+  - calculateSuccessRateBonus() は実装済みのため、集計結果の配線とテスト追加が主作業
+- [ ] T962: 同等品マッチングの説明性強化 `cc:TODO`
+  - equivalenceMap は既に候補生成で利用している前提で、候補ごとに「同一薬剤 / 同等品」区分を返す
+  - MatchingPage で代替提案バッジ・注記を表示し、なぜ候補に出たかを説明できるようにする
 - [ ] T963: マッチング条件プリセット `cc:TODO`
-  - 薬局ごとに「距離重視」「薬価バランス重視」等のプリセットを保存・切替
-  - matching-rule-service.ts のバリデーション基盤を活用
-- [ ] T964: 包装形態互換ボーナス `cc:TODO`
-  - 同一包装形態（PTP↔PTP）に+5点ボーナス
-  - 現在は非互換フィルタのみで、互換時のボーナスなし
+  - matchingRuleProfiles を「グローバル既定 + 薬局別 override」の2層に再設計する
+  - `pharmacyId` nullable 追加に合わせて active unique 制約と fallback 解決順を整理する
+  - `getActiveMatchingRuleProfile(pharmacyId?)` に対応する
 - [ ] T965: バッチマッチング通知 `cc:TODO`
-  - 定期cron で新規マッチング候補を自動生成し通知
-  - 現在は手動実行のみ
+  - matching-refresh 完了後の既存 snapshot 通知を Timeline / digest 上で読める形に整流する
+  - 管理側から matching-refresh 実行状況と通知件数を追えるようにする
 
-#### Track C: 運用・管理改善 (5タスク)
+#### Track C: 運用・管理改善 (4タスク)
 
-- [ ] T971: 管理ダッシュボード KPI 集約 `cc:TODO`
-  - AdminDashboardPage にシステム全体サマリー（薬局数/アクティブ率/成約率/月次交換額）
-  - admin-stats.ts の7並列クエリ結果を集約表示
+- [ ] T971: 管理ダッシュボード KPI 集約 `cc:WIP`
+  - AdminDashboardPage にシステム全体サマリー追加
+  - KPI定義: アクティブ率=直近30日 `events.action in ('login','admin_login')` 薬局/総薬局、成約率=completed/total proposals、月次交換額=当月completedTotalValue合計
+  - admin-stats.ts の既存集計 API を拡張し、画面側の二次計算を減らす
 - [ ] T972: CSV エクスポート拡張 `cc:TODO`
-  - 交換履歴・提案履歴・監査ログの CSV エクスポート追加
-  - admin-csv-export.ts の既存5タイプに追加
-- [ ] T973: 薬局ヘルスダッシュボード改善 `cc:TODO`
-  - AdminPharmacyHealthPage にアップロード頻度・最終ログイン・マッチング参加率の時系列表示
-- [ ] T974: 監査ログ検索強化 `cc:TODO`
-  - AdminAuditPage にフリーテキスト検索+日時範囲フィルタ+ユーザー別絞り込み
-- [ ] T975: バルクアクション実行 `cc:TODO`
-  - admin-bulk-actions.ts の CSV パース後の実際の一括操作（有効化/無効化/削除）を実装
-  - 現在はパース機能のみ
+  - 既存 `/admin/csv/exchanges` / `/admin/csv/logs` は維持しつつ、提案履歴 CSV と admin_audit_logs CSV を追加する
+  - export 対象が `events` ログと `admin_audit_logs` で別物であることを UI/命名で明確にする
+  - admin-csv-export.ts の既存パターン（createCsvExportHandler）に従う
+- [ ] T973: 薬局ヘルスダッシュボード改善 `cc:WIP`
+  - `/admin/pharmacy-health` の payload を拡張し、uploadJobs / activity_logs / exchangeProposals or snapshots 由来の指標を返す
+  - 最終ログインは pharmacies テーブルの列ではなく activity_logs から導出する
+  - 現在の「活動量ランキング + trustScore」表示を時系列/運用ビューへ育てる
+- [x] T975: CSV一括 有効化/無効化 `cc:完了`
+  - ※ Backend (BULK_ACTION_CONFIG の activate/deactivate) は T1003 で実装済み
+  - writeLog の action マッピングを修正: activate→admin_bulk_activate / deactivate→admin_bulk_deactivate
+  - LogAction 型に admin_bulk_activate / admin_bulk_deactivate を追加
+  - log-center-filter-service に新 action の case を追加
+  - schema-audit.ts の check 制約・UI は既に対応済みを確認
+  - テスト: admin-bulk-activate-deactivate.test.ts (13件) 追加・全通過 (2026-03-23)
 
-#### Track D: パフォーマンス (4タスク)
+#### Track D: パフォーマンス (2タスク)
 
-- [ ] T981: マッチングルール キャッシュ `cc:TODO`
-  - getActiveMatchingRuleProfile() の結果を TtlCache で5分キャッシュ
-  - 管理統計クエリ（admin-stats.ts 7並列）に1分キャッシュ追加
-- [ ] T982: ダッシュボード API 集約 `cc:TODO`
-  - DashboardPage の3 API 並列呼び出し → `/api/dashboard/summary` に集約し RTT 削減
 - [ ] T983: クライアントバンドル最適化 `cc:TODO`
-  - @zxing/browser を動的 import 化（バーコードページのみでロード）
-  - admin-pages チャンクの更なる分割
-- [ ] T984: await-in-loop 最適化 `cc:TODO`
-  - drug-master-sync-service.ts（スコア159, 10ループ, 7 await-in-loop, 19 SQL）
-  - matching-refresh-service.ts（スコア129, 5ループ, 5 await-in-loop, 22 SQL）
-  - Promise.all / バッチクエリへの変換
+  - `@zxing/browser` は既に `useCamera` 経由で遅延ロード済みのため、残る admin/chart 系 chunk を主対象にする
+  - `check:bundle-size` のしきい値を基準に before/after を計測し、admin pages の更なる分割を行う
+- [ ] T984: matching-refresh フォールバック並列化 `cc:TODO`
+  - matching-refresh-service.ts のバッチ保存失敗時フォールバックパスで await-in-loop → Promise.allSettled に変換
+  - 同時実行数制限（5-10並列）で DB コネクションプール枯渇を防止
+  - ※ drug-master-sync-service.ts は調査の結果 await-in-loop なし（同期ループのみ）
+
+#### Track E: OpenClaw 実戦配備 (4タスク)
+
+- [ ] T991: OpenClaw ヘルスチェック + 監視 `cc:TODO`
+  - GET `/api/health/openclaw` を追加し、connector / webhook / commands / log-push / autofix の状態を集約する
+  - AdminDashboardPage に OpenClaw 接続ステータスウィジェットを追加する
+  - ハンドオフ成功/失敗率と最終ハンドオフ時刻を返す
+  - 成功/失敗率は T994 の履歴または専用イベント記録を前提にする
+- [ ] T992: ハンドオフ失敗リトライキュー `cc:TODO`
+  - ※ Backend (openclaw-retry-service + internal-openclaw-retries + DB) は実装済み
+  - 残: AdminOpenClawPage にリトライ状況表示 UI を追加
+- [ ] T993: フィーチャーフラグ段階有効化 runbook `cc:TODO`
+  - 既存 feature flag registry を前提に、Phase 1-3 の有効化手順・確認 API・ロールバック手順を整理する
+  - Phase 1: 基本ハンドオフ（OPENCLAW_CONNECTOR_MODE + 認証設定）
+  - Phase 2: OPENCLAW_COMMANDS_ENABLED=true（コマンド受信）
+  - Phase 3: OPENCLAW_LOG_PUSH_ENABLED + OPENCLAW_ERROR_AUTOFIX_ENABLED
+- [ ] T994: OpenClaw ステータス遷移タイムライン `cc:TODO`
+  - ※ openclawRequestEvents テーブル + recordOpenClawRequestEvent + listRequestEventTimeline は実装済み
+  - 残: GET /api/admin/user-requests/:id/events endpoint 公開 + AdminOpenClawPage タイムライン UI
+
+#### Track F: 横断ゲート (4タスク)
+
+- [ ] T996: schema migration まとめ出し `cc:TODO`
+  - schema 変更タスク（T952a, T963, T975, T992, T994）は migration の競合を避ける順序でまとめる
+  - `db:generate` 実行だけでなく、backfill 要否・既存データ互換・rollback 方針を各タスクに添える
+- [ ] T997: API 契約同期 `cc:TODO`
+  - endpoint / response 変更タスクでは `scripts/generate-openapi.mjs`, `server/openapi/openapi.json`, `shared/api-types.d.ts` の更新を必須にする
+  - `openapi:check` と server openapi contract test を通す
+- [ ] T998: 回帰テスト行列 `cc:TODO`
+  - Track ごとに最低限の server/client 回帰テスト対象を先に決める
+  - 例: statistics route/page, matching score/breakdown, admin stats/health/bulk actions, openclaw health/retry/timeline
+- [ ] T999: スプリント完了ゲート `cc:TODO`
+  - 最終完了条件として `lint`, `typecheck`, `openapi:check`, `db:generate`, 変更箇所の targeted tests を明記する
+  - client bundle に触れるタスクは `build` と `check:bundle-size` を追加で必須化する
+
+#### Track G: 追加機能 (11タスク, 1件延期)
+
+> 詳細計画: [docs/superpowers/plans/2026-03-23-v019-additional-features.md](docs/superpowers/plans/2026-03-23-v019-additional-features.md)
+>
+> Gate 0 migration 順序: T1005 → T1008a → T1010 (直列で drizzle-kit generate)
+
+- [x] T1001: 提案コメント未読管理 `cc:完了 [c0d1b9d]`
+  - 既存 `proposalComments.readByRecipient` を活用、未読カウント API + 既読マーク API
+- [x] T1002: アップロード品質の薬局向け公開 `cc:完了 [51c3063]`
+  - `/api/upload-quality/my-summary` + `/api/upload-quality/my-issues` + UploadQualityPage
+- [x] T1003: 管理者一括操作ドライラン `cc:完了 [c0d1b9d]`
+  - `POST /admin/bulk-actions/preview` で DB 変更なしのプレビュー
+- [x] T1004: マッチング候補ブックマーク UI `cc:完了 [51c3063]` depends:T1005
+  - MatchingPage にブックマークボタン + BookmarksPage
+- [x] T1005: マッチング候補ブックマーク Backend `cc:完了 [c0d1b9d]`
+  - `match_candidate_bookmarks` テーブル + CRUD API
+- [x] T1006: 期限切れ在庫の自動アーカイブ `cc:完了 [c0d1b9d]`
+  - cron (毎日 02:00) で `expirationDateIso < today` の `isAvailable=false` 化
+- [x] T1007: Admin レート制限ダッシュボード `cc:完了 [51c3063]`
+  - レート制限設定の可視化 (設定表示、将来 Redis 移行時に実データ拡張)
+- [x] T1008a: 薬局間メッセージング Backend `cc:完了 [51c3063]`
+  - `direct_messages` テーブル + スレッド/送信/既読 API
+- [x] T1008b: 薬局間メッセージング UI `cc:完了 [a509d7b]` depends:T1008a
+  - MessagesPage (スレッド一覧 + チャットビュー)
+- [x] T1009: SSE + Redis リアルタイム通知 `cc:完了 [a501c27]`
+  - Upstash Redis LIST をメッセージキューに使用、SSE endpoint で 2秒ポーリング配信
+  - クライアント EventSource + exponential backoff 再接続、接続中はポーリング間隔延長
+- [x] T1010: マッチング A/B テスト基盤 `cc:完了 [130fc02]`
+  - `matching_experiments` + `matching_experiment_assignments` テーブル + 実験プロファイル解決
+- [x] T1011: オンボーディングウィザード改善 `cc:完了 [a509d7b]`
+  - 単一フォーム → 3ステップウィザード (基本情報/許可証/確認)
+- [x] T1012: モバイル PWA 対応強化 `cc:完了 [130fc02]`
+  - manifest.json に scope 追加 (SW + install prompt は既存実装を確認)
 
 ## 🟢 完了タスク
 

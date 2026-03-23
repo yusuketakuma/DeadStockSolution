@@ -244,6 +244,8 @@ function mapActionToCodeLocation(action: string | null): string | null {
     case 'admin_verify_pharmacy':
     case 'admin_bulk_verify':
     case 'admin_bulk_reject':
+    case 'admin_bulk_activate':
+    case 'admin_bulk_deactivate':
     case 'admin_toggle_active':
       return 'server/src/routes/admin-pharmacies-actions.ts';
     default:

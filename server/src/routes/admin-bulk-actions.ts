@@ -52,7 +52,13 @@ router.post('/bulk-actions/execute', adminWriteLimiter, async (req: AuthRequest,
       reason: parsed.data.reason,
     });
 
-    void writeLog(parsed.data.action === 'reject' || parsed.data.action === 'deactivate' ? 'admin_bulk_reject' : 'admin_bulk_verify', {
+    const logActionMap = {
+      verify: 'admin_bulk_verify',
+      reject: 'admin_bulk_reject',
+      activate: 'admin_bulk_activate',
+      deactivate: 'admin_bulk_deactivate',
+    } as const;
+    void writeLog(logActionMap[parsed.data.action], {
       pharmacyId: req.user!.id,
       detail: `一括操作(${parsed.data.action}): ${parsed.data.pharmacyIds.length}件`,
       ipAddress: getClientIp(req),

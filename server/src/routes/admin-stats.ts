@@ -7,6 +7,7 @@ import {
   exchangeProposals,
   exchangeProposalItems,
   notifications,
+  events,
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { rowCount } from '../utils/db-utils';
@@ -23,6 +24,9 @@ function parseRequestedMinutes(rawValue: unknown, fallback = 60): number {
 }
 
 async function fetchAdminStatsSnapshot() {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+
   const [
     [pharmacyCount],
     [activePharmacyCount],
@@ -31,6 +35,8 @@ async function fetchAdminStatsSnapshot() {
     [historyCount],
     [pickupCount],
     [exchangeAmount],
+    [activePharmacies30d],
+    [monthlyExchangeValue],
   ] = await Promise.all([
     db.select({ count: rowCount }).from(pharmacies),
     db.select({ count: rowCount })
@@ -46,16 +52,39 @@ async function fetchAdminStatsSnapshot() {
     db.select({
       total: sql<number>`coalesce(sum(${exchangeProposals.completedTotalValue}), 0)`,
     }).from(exchangeProposals).where(eq(exchangeProposals.status, 'completed')),
+    db.select({
+      count: sql<number>`count(distinct ${events.pharmacyId})::int`,
+    }).from(events).where(
+      and(
+        sql`${events.action} IN ('login', 'admin_login')`,
+        gte(events.createdAt, thirtyDaysAgo),
+      ),
+    ),
+    db.select({
+      total: sql<number>`coalesce(sum(${exchangeProposals.completedTotalValue}), 0)`,
+    }).from(exchangeProposals).where(
+      and(
+        eq(exchangeProposals.status, 'completed'),
+        gte(exchangeProposals.completedAt, monthStart),
+      ),
+    ),
   ]);
 
+  const totalPharmacies = pharmacyCount.count;
+  const activeRate30d = totalPharmacies > 0 ? activePharmacies30d.count / totalPharmacies : 0;
+  const proposalCompletionRate = proposalCount.count > 0 ? historyCount.count / proposalCount.count : 0;
+
   return {
-    pharmacyCount: pharmacyCount.count,
+    pharmacyCount: totalPharmacies,
     activePharmacyCount: activePharmacyCount.count,
     uploadCount: uploadCount.count,
     proposalCount: proposalCount.count,
     historyCount: historyCount.count,
     pickupCount: pickupCount.count,
     exchangeAmount: Number(exchangeAmount.total ?? 0),
+    activeRate30d,
+    proposalCompletionRate,
+    monthlyExchangeValue: Number(monthlyExchangeValue.total ?? 0),
   };
 }
 
@@ -104,6 +133,9 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
       totalExchanges: snapshot.historyCount,
       totalPickupItems: snapshot.pickupCount,
       totalExchangeValue: snapshot.exchangeAmount,
+      activeRate30d: snapshot.activeRate30d,
+      proposalCompletionRate: snapshot.proposalCompletionRate,
+      monthlyExchangeValue: snapshot.monthlyExchangeValue,
     });
   } catch (err) {
     handleAdminError(err, 'Admin stats error', '統計情報の取得に失敗しました', res);

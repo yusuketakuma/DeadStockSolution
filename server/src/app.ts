@@ -35,6 +35,7 @@ import internalMonitoringRoutes from './routes/internal-monitoring';
 import internalPredictiveAlertsRoutes from './routes/internal-predictive-alerts';
 import internalVercelDeployEventsRoutes from './routes/internal-vercel-deploy-events';
 import internalDeadStockArchiveRoutes from './routes/internal-dead-stock-archive';
+import internalDailyStatisticsRoutes from './routes/internal-daily-statistics';
 import statisticsRoutes from './routes/statistics';
 import groupsRoutes from './routes/groups';
 import alertsRoutes from './routes/alerts';
@@ -382,6 +383,7 @@ registerApiRoute('/internal/monitoring', internalMonitoringRoutes);
 registerApiRoute('/internal/predictive-alerts', internalPredictiveAlertsRoutes);
 registerApiRoute('/internal/vercel', internalVercelDeployEventsRoutes);
 registerApiRoute('/internal/dead-stock', internalDeadStockArchiveRoutes);
+registerApiRoute('/internal/daily-statistics', internalDailyStatisticsRoutes);
 
 app.use(errorHandler);
 

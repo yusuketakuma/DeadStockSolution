@@ -53,6 +53,17 @@ export interface BusinessHoursStatus {
   isConfigured?: boolean;
 }
 
+export interface ScoreBreakdown {
+  valueScore: number;
+  distanceScore: number;
+  expiryScore: number;
+  diversityScore: number;
+  favoriteBonus: number;
+  groupBonus: number;
+  successRateBonus: number;
+  total: number;
+}
+
 export interface MatchCandidate {
   pharmacyId: number;
   pharmacyName: string;
@@ -65,6 +76,7 @@ export interface MatchCandidate {
   totalValueB: number;
   valueDifference: number;
   score?: number;
+  scoreBreakdown?: ScoreBreakdown;
   matchRate?: number;
   priorityBreakdown?: MatchPriorityBreakdown;
   businessImpact?: MatchBusinessImpact;

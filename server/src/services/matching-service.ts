@@ -33,6 +33,7 @@ import {
 } from './matching/matching-data-preparer';
 import { sortAndLimitCandidates } from './matching/matching-ranker';
 import { fetchEquivalenceMap } from './drug-equivalence-service';
+import { getPharmacyPairSuccessCounts } from './success-rate-query-service';
 import { getServiceDeps, type ServiceDependencies } from './service-container';
 
 type PharmacyLocation = {
@@ -406,6 +407,7 @@ function buildCandidatesForSource(params: {
   now: Date;
   includeIsConfiguredInBusinessStatus: boolean;
   equivalenceMap: Map<string, string[]>;
+  successCountByPharmacy: Map<number, number>;
 }): MatchCandidate[] {
   const sourcePreparedData = getSourcePreparedData(
     params.sourcePharmacyId,
@@ -436,6 +438,7 @@ function buildCandidatesForSource(params: {
     now: params.now,
     includeIsConfiguredInBusinessStatus: params.includeIsConfiguredInBusinessStatus,
     equivalenceMap: params.equivalenceMap,
+    successCountByPharmacy: params.successCountByPharmacy,
   });
 
   return sortAndLimitCandidates(candidates, params.matchingRuleProfile, params.now);
@@ -583,6 +586,11 @@ export async function findMatchesBatch(
     deps,
   );
 
+  const successCountsByPharmacy = await Promise.all(
+    existingSourcePharmacyIds.map(async (id) => [id, await getPharmacyPairSuccessCounts(id, deps)] as const),
+  );
+  const successCountsByPharmacyMap = new Map(successCountsByPharmacy);
+
   for (const sourcePharmacyId of existingSourcePharmacyIds) {
     const currentPharmacy = currentPharmacyById.get(sourcePharmacyId);
     if (!currentPharmacy) throw new Error('薬局が見つかりません');
@@ -606,6 +614,7 @@ export async function findMatchesBatch(
       now,
       includeIsConfiguredInBusinessStatus: false,
       equivalenceMap,
+      successCountByPharmacy: successCountsByPharmacyMap.get(sourcePharmacyId) ?? new Map<number, number>(),
     }));
   }
 
@@ -651,13 +660,16 @@ export async function findMatches(
   if (viablePharmacies.length === 0) return [];
 
   const favoriteIds = new Set(favoriteRows.map((row) => row.targetPharmacyId));
-  const matchingIndexes = await buildSingleMatchingIndexes(
-    pharmacyId,
-    viablePharmacies.map((pharmacy) => pharmacy.id),
-    myDeadStock,
-    myUsedMeds,
-    deps,
-  );
+  const [matchingIndexes, successCountByPharmacy] = await Promise.all([
+    buildSingleMatchingIndexes(
+      pharmacyId,
+      viablePharmacies.map((pharmacy) => pharmacy.id),
+      myDeadStock,
+      myUsedMeds,
+      deps,
+    ),
+    getPharmacyPairSuccessCounts(pharmacyId, deps),
+  ]);
   if (!matchingIndexes) {
     return [];
   }
@@ -676,6 +688,7 @@ export async function findMatches(
     now,
     includeIsConfiguredInBusinessStatus: true,
     equivalenceMap,
+    successCountByPharmacy,
   });
 }
 

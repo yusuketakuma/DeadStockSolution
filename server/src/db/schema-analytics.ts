@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, timestamp, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, date, timestamp, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import { monthlyReportStatusEnum, predictiveAlertTypeValues } from './schema-common';
 import { notifications } from './schema-notification';
@@ -19,6 +19,17 @@ export const monthlyReports = pgTable('monthly_reports', {
     .on(table.generatedAt),
   chkMonthlyReportsMonthRange: check('chk_monthly_reports_month_range', sql`${table.month} >= 1 AND ${table.month} <= 12`),
 }));
+
+export const dailyStatistics = pgTable('daily_statistics', {
+  id: serial('id').primaryKey(),
+  date: date('date', { mode: 'string' }).notNull(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
+  metrics: jsonb('metrics').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('uq_daily_stats_date_pharmacy').on(table.date, table.pharmacyId),
+  index('idx_daily_stats_pharmacy_date').on(table.pharmacyId, table.date),
+]);
 
 export const predictiveAlerts = pgTable('predictive_alerts', {
   id: serial('id').primaryKey(),
