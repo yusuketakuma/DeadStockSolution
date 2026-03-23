@@ -12,6 +12,7 @@ import {
   stopMonitoringKpiAlertScheduler,
 } from './services/monitoring-kpi-alert-scheduler';
 import { logger } from './services/logger';
+import { initRealtimeInfrastructure, shutdownRealtimeInfrastructure } from './services/realtime-service';
 import { recordUncaughtException, recordUnhandledRejection } from './services/system-event-service';
 
 const PORT = resolvePort();
@@ -39,6 +40,7 @@ async function bootstrapServer(): Promise<void> {
   }
 
   await ensureTestPharmacyColumnsAtStartup();
+  await initRealtimeInfrastructure();
 
   server = app.listen(PORT, startSchedulers);
 }
@@ -60,23 +62,30 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
   }, SHUTDOWN_TIMEOUT_MS);
   forceCloseTimer.unref();
 
-  if (!server) {
+  const finishShutdown = async (exitCode: number): Promise<void> => {
     clearTimeout(forceCloseTimer);
+    await shutdownRealtimeInfrastructure();
+    if (exitCode === 0) {
+      logger.info('Server stopped');
+    }
+    process.exit(exitCode);
+  };
+
+  if (!server) {
     logger.info('Server was not started; exiting immediately');
-    process.exit(0);
+    void finishShutdown(0);
     return;
   }
 
   server.close((err) => {
-    clearTimeout(forceCloseTimer);
     if (err) {
       logger.error('Error during server close', {
         error: err instanceof Error ? err.message : String(err),
       });
-      process.exit(1);
+      void finishShutdown(1);
+      return;
     }
-    logger.info('Server stopped');
-    process.exit(0);
+    void finishShutdown(0);
   });
 }
 

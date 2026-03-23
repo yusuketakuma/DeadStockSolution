@@ -21,6 +21,11 @@ const mocks = vi.hoisted(() => ({
   getOpenClawImplementationBranch: vi.fn(),
   processVerificationCallback: vi.fn(),
   isVerificationRequestType: vi.fn(),
+  ensureOpenClawWorkItem: vi.fn(),
+  updateOpenClawWorkItem: vi.fn(),
+  recordOpenClawRequestMessage: vi.fn(),
+  isOpenClawWorkflowStatus: vi.fn(),
+  mapOpenClawStatusToWorkflowStatus: vi.fn(),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -53,6 +58,14 @@ vi.mock('../services/pharmacy-verification-service', () => ({
   isVerificationRequestType: mocks.isVerificationRequestType,
 }));
 
+vi.mock('../services/openclaw-thread-service', () => ({
+  ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
+  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+  recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
+  isOpenClawWorkflowStatus: mocks.isOpenClawWorkflowStatus,
+  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+}));
+
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
   and: vi.fn(() => ({})),
@@ -80,6 +93,12 @@ function createApp() {
 describe('openclaw routes — coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('implementing');
+    mocks.isOpenClawWorkflowStatus.mockReturnValue(true);
+    mocks.canTransitionOpenClawStatus.mockImplementation((current: string, next: string) => {
+      const order = ['pending_handoff', 'in_dialogue', 'implementing', 'completed'];
+      return order.indexOf(next) >= order.indexOf(current);
+    });
   });
 
   describe('POST /callback', () => {
@@ -343,6 +362,195 @@ describe('openclaw routes — coverage', () => {
 
       expect(res.status).toBe(500);
       expect(mocks.releaseOpenClawWebhookReplay).toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /report', () => {
+    it('records a follow-up question and updates workflow state', async () => {
+      const app = createApp();
+      mocks.isOpenClawWebhookConfigured.mockReturnValue(true);
+      mocks.verifyOpenClawWebhookSignature.mockReturnValue(true);
+      mocks.isOpenClawWebhookReplay.mockReturnValue(false);
+      mocks.consumeOpenClawWebhookReplay.mockReturnValue(true);
+      mocks.db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{
+              id: 1,
+              pharmacyId: 7,
+              openclawStatus: 'in_dialogue',
+              openclawThreadId: 'thread-1',
+              openclawSummary: null,
+              requestText: 'request',
+            }]),
+          }),
+        }),
+      });
+      mocks.db.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const txMock = {
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        };
+        await fn(txMock);
+      });
+
+      const res = await request(app)
+        .post('/api/openclaw/report')
+        .send({ requestId: 1, kind: 'question', message: '利用端末を教えてください', workflowStatus: 'awaiting_user' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.workflowStatus).toBe('awaiting_user');
+      expect(mocks.recordOpenClawRequestMessage).toHaveBeenCalledWith(expect.objectContaining({
+        requestId: 1,
+        authorType: 'openclaw_agent',
+        messageType: 'question',
+        body: '利用端末を教えてください',
+      }));
+    });
+
+    it('does not regress openclawStatus when implementing work sends an analysis report', async () => {
+      const app = createApp();
+      mocks.isOpenClawWebhookConfigured.mockReturnValue(true);
+      mocks.verifyOpenClawWebhookSignature.mockReturnValue(true);
+      mocks.isOpenClawWebhookReplay.mockReturnValue(false);
+      mocks.consumeOpenClawWebhookReplay.mockReturnValue(true);
+      mocks.db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{
+              id: 1,
+              pharmacyId: 7,
+              openclawStatus: 'implementing',
+              openclawThreadId: 'thread-1',
+              openclawSummary: '修正中',
+              requestText: 'request',
+            }]),
+          }),
+        }),
+      });
+      const txUpdateWhere = vi.fn().mockResolvedValue(undefined);
+      const txUpdateSet = vi.fn().mockReturnValue({ where: txUpdateWhere });
+      mocks.db.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        await fn({
+          update: vi.fn().mockReturnValue({ set: txUpdateSet }),
+        });
+      });
+
+      const res = await request(app)
+        .post('/api/openclaw/report')
+        .send({ requestId: 1, kind: 'analysis', message: '原因は特定済みです', workflowStatus: 'analyzing' });
+
+      expect(res.status).toBe(200);
+      expect(txUpdateSet).toHaveBeenCalledWith(expect.objectContaining({
+        openclawStatus: 'implementing',
+      }));
+    });
+
+    it('records PR metadata when report kind is pr_opened', async () => {
+      const app = createApp();
+      mocks.isOpenClawWebhookConfigured.mockReturnValue(true);
+      mocks.verifyOpenClawWebhookSignature.mockReturnValue(true);
+      mocks.isOpenClawWebhookReplay.mockReturnValue(false);
+      mocks.consumeOpenClawWebhookReplay.mockReturnValue(true);
+      mocks.isImplementationBranchAllowed.mockReturnValue(true);
+      mocks.db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{
+              id: 2,
+              pharmacyId: 7,
+              openclawStatus: 'implementing',
+              openclawThreadId: 'thread-2',
+              openclawSummary: null,
+              requestText: 'request',
+            }]),
+          }),
+        }),
+      });
+      mocks.db.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const txMock = {
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockResolvedValue(undefined),
+          }),
+        };
+        await fn(txMock);
+      });
+
+      const res = await request(app)
+        .post('/api/openclaw/report')
+        .send({
+          requestId: 2,
+          kind: 'pr_opened',
+          message: 'PR を作成しました',
+          workflowStatus: 'pr_opened',
+          branchName: 'review',
+          prUrl: 'https://github.com/example/repo/pull/1',
+          prNumber: 1,
+        });
+
+      expect(res.status).toBe(200);
+      expect(mocks.updateOpenClawWorkItem).toHaveBeenCalledWith(expect.objectContaining({
+        requestId: 2,
+        workflowStatus: 'pr_opened',
+        branchName: 'review',
+        prUrl: 'https://github.com/example/repo/pull/1',
+        prNumber: 1,
+      }));
+    });
+
+    it('does not duplicate completion messages when the same completed report is replayed later', async () => {
+      const app = createApp();
+      mocks.isOpenClawWebhookConfigured.mockReturnValue(true);
+      mocks.verifyOpenClawWebhookSignature.mockReturnValue(true);
+      mocks.isOpenClawWebhookReplay.mockReturnValue(false);
+      mocks.consumeOpenClawWebhookReplay.mockReturnValue(true);
+      mocks.db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{
+              id: 9,
+              pharmacyId: 7,
+              openclawStatus: 'completed',
+              openclawThreadId: 'thread-9',
+              openclawSummary: '修正を完了しました',
+              requestText: 'request',
+            }]),
+          }),
+        }),
+      });
+      mocks.db.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const txMock = {
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockResolvedValue(undefined),
+          }),
+        };
+        await fn(txMock);
+      });
+
+      const res = await request(app)
+        .post('/api/openclaw/report')
+        .send({
+          requestId: 9,
+          kind: 'completed',
+          message: '修正を完了しました',
+          workflowStatus: 'completed',
+        });
+
+      expect(res.status).toBe(200);
+      expect(mocks.recordOpenClawRequestMessage).not.toHaveBeenCalled();
     });
   });
 });

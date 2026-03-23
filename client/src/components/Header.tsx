@@ -43,7 +43,7 @@ const HIDDEN_PATH_PREFIXES = ['/login', '/register', '/password-reset'];
 const USER_QUICK_ACTIONS: QuickAction[] = [
   { to: '/upload', label: 'アップロード' },
   { to: '/matching', label: 'マッチング' },
-  { to: '/proposals', label: '提案確認' },
+  { to: '/requests', label: '要望対応' },
 ];
 const ADMIN_QUICK_ACTIONS: QuickAction[] = [
   { to: '/admin/openclaw', label: '要望対応' },

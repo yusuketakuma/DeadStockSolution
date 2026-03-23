@@ -165,6 +165,19 @@ describe('openclaw-service', () => {
     const payload = JSON.parse(String(requestInit.body));
     expect(payload.context).toEqual(context);
     expect(payload.constraints.implementationBranch).toBe('review');
+    expect(payload.task).toEqual(expect.objectContaining({
+      sourceSystem: 'DeadStockSolution',
+      source: 'user_request',
+      taskKind: 'user_report',
+      execution: expect.objectContaining({
+        owner: 'openclaw',
+        mode: 'task_managed',
+        useTaskManager: true,
+        useCodingWorkflow: true,
+        openPullRequestWhenNeeded: true,
+        implementationBranch: 'review',
+      }),
+    }));
   });
 
 

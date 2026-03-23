@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   buildOpenClawLogContext: vi.fn(),
   buildProposalTimeline: vi.fn(),
   fetchProposalTimelineActionRows: vi.fn(),
+  mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  updateOpenClawWorkItem: vi.fn(),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -52,6 +54,11 @@ vi.mock('../services/proposal-timeline-service', () => ({
   fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
 }));
 
+vi.mock('../services/openclaw-thread-service', () => ({
+  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+}));
+
 vi.mock('../utils/path-utils', () => ({
   isSafeInternalPath: (path: string) => path.startsWith('/'),
 }));
@@ -83,8 +90,9 @@ function createApp() {
 }
 
 function createLimitQuery(result: unknown) {
-  const query = { from: vi.fn(), where: vi.fn(), limit: vi.fn(), offset: vi.fn(), orderBy: vi.fn() };
+  const query = { from: vi.fn(), leftJoin: vi.fn(), where: vi.fn(), limit: vi.fn(), offset: vi.fn(), orderBy: vi.fn() };
   query.from.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
   query.limit.mockReturnValue(query);
@@ -95,6 +103,7 @@ function createLimitQuery(result: unknown) {
 describe('admin-pharmacies-actions routes — coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
   });
 
   describe('POST /messages', () => {
@@ -233,8 +242,10 @@ describe('admin-pharmacies-actions routes — coverage', () => {
       const app = createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([]),
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([]),
+            }),
           }),
         }),
       });
@@ -250,11 +261,13 @@ describe('admin-pharmacies-actions routes — coverage', () => {
       const app = createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([{
-              id: 1, pharmacyId: 5, requestText: 'テスト要望',
-              openclawStatus: 'completed',
-            }]),
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{
+                id: 1, pharmacyId: 5, requestText: 'テスト要望',
+                openclawStatus: 'completed',
+              }]),
+            }),
           }),
         }),
       });
@@ -266,15 +279,18 @@ describe('admin-pharmacies-actions routes — coverage', () => {
       expect(res.body.error).toContain('完了済み要望は再連携できません');
     });
 
-    it('returns 400 for non-pending_handoff status', async () => {
+    it('returns 400 for non-retryable status', async () => {
       const app = createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([{
-              id: 1, pharmacyId: 5, requestText: 'テスト要望',
-              openclawStatus: 'implementing',
-            }]),
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{
+                id: 1, pharmacyId: 5, requestText: 'テスト要望',
+                openclawStatus: 'implementing',
+                workflowStatus: 'implementing',
+              }]),
+            }),
           }),
         }),
       });
@@ -283,18 +299,22 @@ describe('admin-pharmacies-actions routes — coverage', () => {
         .post('/api/admin/requests/1/handoff');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('連携待ちの要望のみ');
+      expect(res.body.error).toContain('連携待ちまたは失敗');
     });
 
     it('performs handoff successfully (accepted)', async () => {
       const app = createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([{
-              id: 1, pharmacyId: 5, requestText: 'テスト要望',
-              openclawStatus: 'pending_handoff',
-            }]),
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{
+                id: 1, pharmacyId: 5, requestText: 'テスト要望',
+                openclawStatus: 'pending_handoff',
+                openclawThreadId: null,
+                workflowStatus: 'queued',
+              }]),
+            }),
           }),
         }),
       });
@@ -325,11 +345,15 @@ describe('admin-pharmacies-actions routes — coverage', () => {
       const app = createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([{
-              id: 1, pharmacyId: 5, requestText: 'テスト要望',
-              openclawStatus: 'pending_handoff',
-            }]),
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{
+                id: 1, pharmacyId: 5, requestText: 'テスト要望',
+                openclawStatus: 'pending_handoff',
+                openclawThreadId: null,
+                workflowStatus: 'queued',
+              }]),
+            }),
           }),
         }),
       });

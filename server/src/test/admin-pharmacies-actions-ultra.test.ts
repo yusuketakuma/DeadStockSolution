@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   getClientIp: vi.fn(() => '127.0.0.1'),
   buildProposalTimeline: vi.fn(),
   fetchProposalTimelineActionRows: vi.fn(),
+  mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  updateOpenClawWorkItem: vi.fn(),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -44,6 +46,11 @@ vi.mock('../services/log-service', () => ({
 vi.mock('../services/proposal-timeline-service', () => ({
   buildProposalTimeline: mocks.buildProposalTimeline,
   fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
+}));
+
+vi.mock('../services/openclaw-thread-service', () => ({
+  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
 }));
 
 vi.mock('../services/logger', () => ({
@@ -115,8 +122,9 @@ function createCountQuery(total: number) {
 }
 
 function createLimitQuery(result: unknown) {
-  const query = { from: vi.fn(), where: vi.fn(), limit: vi.fn() };
+  const query = { from: vi.fn(), leftJoin: vi.fn(), where: vi.fn(), limit: vi.fn() };
   query.from.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.limit.mockResolvedValue(result);
   return query;
@@ -142,6 +150,7 @@ describe('admin-pharmacies-actions ultra coverage', () => {
     vi.resetAllMocks();
     mocks.writeLog.mockReturnValue(undefined);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
+    mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
   });
 
   describe('GET /exchanges', () => {
@@ -410,23 +419,24 @@ describe('admin-pharmacies-actions ultra coverage', () => {
       expect(res.body.error).toContain('完了済み');
     });
 
-    it('returns 400 when request is not pending_handoff', async () => {
+    it('returns 400 when request is neither pending_handoff nor failed', async () => {
       const app = createApp();
       mocks.db.select.mockImplementation(() => createLimitQuery([{
-        id: 1, pharmacyId: 2, requestText: 'test', openclawStatus: 'in_progress',
+        id: 1, pharmacyId: 2, requestText: 'test', openclawStatus: 'implementing', workflowStatus: 'implementing',
       }]));
 
       const res = await request(app).post('/api/admin/requests/1/handoff');
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('連携待ち');
+      expect(res.body.error).toContain('連携待ちまたは失敗');
     });
 
     it('returns 200 on accepted handoff', async () => {
       const app = createApp();
       mocks.db.select.mockImplementation(() => createLimitQuery([{
-        id: 1, pharmacyId: 2, requestText: 'test', openclawStatus: 'pending_handoff',
+        id: 1, pharmacyId: 2, requestText: 'test', openclawStatus: 'pending_handoff', openclawThreadId: null, workflowStatus: 'queued',
       }]));
       mocks.buildOpenClawLogContext.mockResolvedValue({ operationLogs: [] });
+      mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
       mocks.handoffToOpenClaw.mockResolvedValue({
         accepted: true,
         connectorConfigured: true,
@@ -443,12 +453,47 @@ describe('admin-pharmacies-actions ultra coverage', () => {
       const res = await request(app).post('/api/admin/requests/1/handoff');
       expect(res.status).toBe(200);
       expect(res.body.handoff.accepted).toBe(true);
+      expect(mocks.updateOpenClawWorkItem).toHaveBeenCalledWith(expect.objectContaining({
+        requestId: 1,
+        workflowStatus: 'analyzing',
+        lastError: null,
+      }));
+    });
+
+    it('allows retry when the workflow is failed', async () => {
+      const app = createApp();
+      mocks.db.select.mockImplementation(() => createLimitQuery([{
+        id: 1,
+        pharmacyId: 2,
+        requestText: 'test',
+        openclawStatus: 'in_dialogue',
+        openclawThreadId: 'thread-1',
+        workflowStatus: 'failed',
+      }]));
+      mocks.buildOpenClawLogContext.mockResolvedValue({ operationLogs: [] });
+      mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
+      mocks.handoffToOpenClaw.mockResolvedValue({
+        accepted: true,
+        connectorConfigured: true,
+        implementationBranch: 'main',
+        status: 'in_dialogue',
+        note: 'OK',
+        threadId: 'thread-1',
+        summary: '再解析します',
+      });
+      mocks.db.update.mockImplementation(() => ({
+        set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+      }));
+
+      const res = await request(app).post('/api/admin/requests/1/handoff');
+      expect(res.status).toBe(200);
+      expect(mocks.handoffToOpenClaw).toHaveBeenCalled();
     });
 
     it('returns 202 on non-accepted handoff', async () => {
       const app = createApp();
       mocks.db.select.mockImplementation(() => createLimitQuery([{
-        id: 1, pharmacyId: 2, requestText: 'test', openclawStatus: 'pending_handoff',
+        id: 1, pharmacyId: 2, requestText: 'test', openclawStatus: 'pending_handoff', openclawThreadId: null, workflowStatus: 'queued',
       }]));
       mocks.buildOpenClawLogContext.mockResolvedValue(undefined);
       mocks.handoffToOpenClaw.mockResolvedValue({
@@ -467,9 +512,10 @@ describe('admin-pharmacies-actions ultra coverage', () => {
     it('handles context collection failure gracefully', async () => {
       const app = createApp();
       mocks.db.select.mockImplementation(() => createLimitQuery([{
-        id: 1, pharmacyId: 2, requestText: 'test', openclawStatus: 'pending_handoff',
+        id: 1, pharmacyId: 2, requestText: 'test', openclawStatus: 'pending_handoff', openclawThreadId: null, workflowStatus: 'queued',
       }]));
       mocks.buildOpenClawLogContext.mockRejectedValue(new Error('context error'));
+      mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
       mocks.handoffToOpenClaw.mockResolvedValue({
         accepted: true,
         connectorConfigured: true,

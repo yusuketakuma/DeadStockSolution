@@ -145,6 +145,14 @@ describe('openclaw-service-ultra', () => {
       expect(result.threadId).toBe('cli-session-123');
       expect(result.summary).toBe('Task accepted and processed');
       expect(result.status).toBe('in_dialogue');
+      const cliArgs = mocks.execFileAsync.mock.calls[0][1] as string[];
+      const messageIndex = cliArgs.indexOf('--message');
+      expect(messageIndex).toBeGreaterThan(-1);
+      const cliMessage = cliArgs[messageIndex + 1];
+      expect(cliMessage).toContain('task envelope');
+      expect(cliMessage).toContain('task 管理・coding workflow・PR 自動化');
+      expect(cliMessage).toContain('"taskKind": "user_report"');
+      expect(cliMessage).toContain('"mode": "task_managed"');
     });
 
     it('includes structured context in gateway CLI messages', async () => {

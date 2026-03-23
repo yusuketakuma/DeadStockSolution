@@ -1,17 +1,70 @@
 import { Router, Response } from 'express';
-import { eq, desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
-import { userRequests } from '../db/schema';
+import { openclawWorkItems, userRequests } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { logger } from '../services/logger';
 import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
+import {
+  buildOpenClawConversationContext,
+  ensureOpenClawWorkItem,
+  listOpenClawRequestMessages,
+  mapOpenClawStatusToWorkflowStatus,
+  recordOpenClawRequestMessage,
+  updateOpenClawWorkItem,
+} from '../services/openclaw-thread-service';
+import {
+  publishAdminRequestsRefresh,
+  publishRequestsRefresh,
+} from '../services/realtime-service';
 import { AuthRequest } from '../types';
 import { parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 
 router.use(requireLogin);
+
+function parseRequestBodyMessage(rawValue: unknown): string {
+  return typeof rawValue === 'string' ? rawValue.trim() : '';
+}
+
+async function buildRequestHandoffContext(
+  pharmacyId: number,
+  requestId: number,
+  source: string,
+  threadId: string | null,
+  options?: {
+    followUp?: Record<string, unknown>;
+  },
+): Promise<Record<string, unknown>> {
+  const conversation = await buildOpenClawConversationContext(requestId);
+
+  try {
+    const operationLogs = await buildOpenClawLogContext(pharmacyId);
+    return {
+      source,
+      conversation,
+      ...(threadId ? { threadId } : {}),
+      ...(options?.followUp ? { followUp: options.followUp } : {}),
+      operationLogs,
+    };
+  } catch (contextErr) {
+    logger.warn('OpenClaw context collection failed', {
+      requestId,
+      pharmacyId,
+      source,
+      error: (contextErr as Error).message,
+    });
+
+    return {
+      source,
+      conversation,
+      ...(threadId ? { threadId } : {}),
+      ...(options?.followUp ? { followUp: options.followUp } : {}),
+    };
+  }
+}
 
 router.get('/me', async (req: AuthRequest, res: Response) => {
   try {
@@ -29,10 +82,16 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
       openclawStatus: userRequests.openclawStatus,
       openclawThreadId: userRequests.openclawThreadId,
       openclawSummary: userRequests.openclawSummary,
-      createdAt: userRequests.createdAt,
+      workflowStatus: openclawWorkItems.workflowStatus,
+      latestSummary: openclawWorkItems.latestSummary,
+      branchName: openclawWorkItems.branchName,
+      prUrl: openclawWorkItems.prUrl,
+      prNumber: openclawWorkItems.prNumber,
       updatedAt: userRequests.updatedAt,
+      createdAt: userRequests.createdAt,
     })
       .from(userRequests)
+      .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
       .where(eq(userRequests.pharmacyId, req.user.id))
       .orderBy(desc(userRequests.createdAt), desc(userRequests.id))
       .limit(limit);
@@ -49,6 +108,58 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
   }
 });
 
+router.get('/:id/messages', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({ error: 'ログインが必要です' });
+      return;
+    }
+
+    const requestId = parsePositiveInt(req.params.id);
+    if (!requestId) {
+      res.status(400).json({ error: '要望IDが不正です' });
+      return;
+    }
+
+    const [requestRow] = await db.select({
+      id: userRequests.id,
+      pharmacyId: userRequests.pharmacyId,
+      requestText: userRequests.requestText,
+      openclawStatus: userRequests.openclawStatus,
+      openclawThreadId: userRequests.openclawThreadId,
+      openclawSummary: userRequests.openclawSummary,
+      createdAt: userRequests.createdAt,
+      updatedAt: userRequests.updatedAt,
+      workflowStatus: openclawWorkItems.workflowStatus,
+      latestSummary: openclawWorkItems.latestSummary,
+      lastQuestion: openclawWorkItems.lastQuestion,
+      branchName: openclawWorkItems.branchName,
+      prUrl: openclawWorkItems.prUrl,
+      prNumber: openclawWorkItems.prNumber,
+      lastError: openclawWorkItems.lastError,
+    })
+      .from(userRequests)
+      .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+      .where(eq(userRequests.id, requestId))
+      .limit(1);
+
+    if (!requestRow || requestRow.pharmacyId !== req.user.id) {
+      res.status(404).json({ error: '要望が見つかりません' });
+      return;
+    }
+
+    const messages = await listOpenClawRequestMessages(requestId);
+
+    res.json({
+      request: requestRow,
+      messages,
+    });
+  } catch (err) {
+    logger.error('User request message list error', { error: (err as Error).message });
+    res.status(500).json({ error: '会話履歴の取得に失敗しました' });
+  }
+});
+
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user?.id) {
@@ -56,7 +167,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const requestText = typeof req.body.message === 'string' ? req.body.message.trim() : '';
+    const requestText = parseRequestBodyMessage(req.body.message);
     if (!requestText || requestText.length > 2000) {
       res.status(400).json({ error: '要望は1〜2000文字で入力してください' });
       return;
@@ -74,23 +185,27 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         createdAt: userRequests.createdAt,
       });
 
-    let handoffContext: Record<string, unknown> | undefined;
-    try {
-      const operationLogs = await buildOpenClawLogContext(req.user.id);
-      handoffContext = { operationLogs };
-    } catch (contextErr) {
-      logger.warn('OpenClaw context collection failed on request submit', {
-        requestId: created.id,
-        pharmacyId: req.user.id,
-        error: (contextErr as Error).message,
-      });
-    }
+    await ensureOpenClawWorkItem({
+      requestId: created.id,
+      pharmacyId: req.user.id,
+      source: 'user_request',
+      workflowStatus: 'queued',
+      latestSummary: '要望を受け付けました',
+    });
 
+    await recordOpenClawRequestMessage({
+      requestId: created.id,
+      authorType: 'user',
+      body: requestText,
+    });
+
+    const handoffContext = await buildRequestHandoffContext(req.user.id, created.id, 'user_request', null);
     const handoff = await handoffToOpenClaw({
       requestId: created.id,
       pharmacyId: req.user.id,
       requestText,
       context: handoffContext,
+      handoffKey: 'initial',
     });
 
     let openclawStatus = created.openclawStatus;
@@ -105,6 +220,22 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         .where(eq(userRequests.id, created.id));
       openclawStatus = handoff.status;
     }
+
+    await updateOpenClawWorkItem({
+      requestId: created.id,
+      workflowStatus: handoff.accepted ? mapOpenClawStatusToWorkflowStatus(handoff.status) : 'queued',
+      latestSummary: handoff.summary ?? (handoff.accepted ? 'OpenClawへ連携しました' : 'OpenClaw連携待ちです'),
+    });
+
+    publishRequestsRefresh({
+      pharmacyId: req.user.id,
+      requestId: created.id,
+      reason: 'request_created',
+    });
+    publishAdminRequestsRefresh({
+      requestId: created.id,
+      reason: 'request_created',
+    });
 
     res.status(201).json({
       message: '要望を受け付けました',
@@ -123,6 +254,131 @@ router.post('/', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     logger.error('User request submit error', { error: (err as Error).message });
     res.status(500).json({ error: '要望の送信に失敗しました' });
+  }
+});
+
+router.post('/:id/messages', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({ error: 'ログインが必要です' });
+      return;
+    }
+
+    const requestId = parsePositiveInt(req.params.id);
+    if (!requestId) {
+      res.status(400).json({ error: '要望IDが不正です' });
+      return;
+    }
+
+    const message = parseRequestBodyMessage(req.body.message);
+    if (!message || message.length > 2000) {
+      res.status(400).json({ error: '返信は1〜2000文字で入力してください' });
+      return;
+    }
+
+    const [requestRow] = await db.select({
+      id: userRequests.id,
+      pharmacyId: userRequests.pharmacyId,
+      requestText: userRequests.requestText,
+      openclawStatus: userRequests.openclawStatus,
+      openclawThreadId: userRequests.openclawThreadId,
+      workflowStatus: openclawWorkItems.workflowStatus,
+      lastQuestion: openclawWorkItems.lastQuestion,
+    })
+      .from(userRequests)
+      .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+      .where(eq(userRequests.id, requestId))
+      .limit(1);
+
+    if (!requestRow || requestRow.pharmacyId !== req.user.id) {
+      res.status(404).json({ error: '要望が見つかりません' });
+      return;
+    }
+
+    if (requestRow.openclawStatus === 'completed') {
+      res.status(400).json({ error: '完了済み要望には返信できません' });
+      return;
+    }
+
+    const recorded = await recordOpenClawRequestMessage({
+      requestId,
+      authorType: 'user',
+      body: message,
+    });
+
+    await updateOpenClawWorkItem({
+      requestId,
+      workflowStatus: requestRow.workflowStatus === 'awaiting_user' ? 'analyzing' : 'queued',
+      latestSummary: '追加情報を受領し、再解析を開始しました',
+      lastQuestion: null,
+      lastError: null,
+    });
+
+    const handoffContext = await buildRequestHandoffContext(
+      req.user.id,
+      requestId,
+      'user_request_follow_up',
+      requestRow.openclawThreadId,
+      {
+        followUp: {
+          type: 'user_reply',
+          messageId: recorded.id,
+          message,
+          previousOpenClawStatus: requestRow.openclawStatus,
+          previousWorkflowStatus: requestRow.workflowStatus ?? null,
+          lastQuestion: requestRow.lastQuestion ?? null,
+          resumePolicy: 'continue_existing_case_without_reset',
+        },
+      },
+    );
+    const handoff = await handoffToOpenClaw({
+      requestId,
+      pharmacyId: req.user.id,
+      requestText: requestRow.requestText,
+      context: handoffContext,
+      handoffKey: `message-${recorded.id}`,
+    });
+
+    if (handoff.accepted) {
+      await db.update(userRequests)
+        .set({
+          openclawStatus: handoff.status,
+          openclawThreadId: handoff.threadId ?? requestRow.openclawThreadId,
+          openclawSummary: handoff.summary,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(userRequests.id, requestId));
+    }
+
+    await updateOpenClawWorkItem({
+      requestId,
+      workflowStatus: handoff.accepted ? mapOpenClawStatusToWorkflowStatus(handoff.status) : 'queued',
+      latestSummary: handoff.summary ?? (handoff.accepted ? 'OpenClawへ再連携しました' : 'OpenClawへ再連携待ちです'),
+    });
+
+    publishRequestsRefresh({
+      pharmacyId: req.user.id,
+      requestId,
+      reason: 'request_reply_created',
+    });
+    publishAdminRequestsRefresh({
+      requestId,
+      reason: 'request_reply_created',
+    });
+
+    res.json({
+      message: '返信を送信しました',
+      nextStep: handoff.note,
+      handoff: {
+        accepted: handoff.accepted,
+        connectorConfigured: handoff.connectorConfigured,
+        implementationBranch: handoff.implementationBranch,
+        status: handoff.status,
+      },
+    });
+  } catch (err) {
+    logger.error('User request reply error', { error: (err as Error).message });
+    res.status(500).json({ error: '返信の送信に失敗しました' });
   }
 });
 

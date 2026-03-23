@@ -7,6 +7,7 @@ import {
   pharmacies,
   exchangeProposals,
   adminMessages,
+  openclawWorkItems,
   userRequests,
 } from '../db/schema';
 import { AuthRequest } from '../types';
@@ -17,6 +18,7 @@ import {
   isOpenClawConnectorConfigured,
   isOpenClawWebhookConfigured,
 } from '../services/openclaw-service';
+import { listOpenClawRequestMessages } from '../services/openclaw-thread-service';
 import { sendPaginated, parseListPagination, handleAdminError } from './admin-utils';
 
 const router = Router();
@@ -181,11 +183,17 @@ router.get('/requests', async (req: AuthRequest, res: Response) => {
       openclawStatus: userRequests.openclawStatus,
       openclawThreadId: userRequests.openclawThreadId,
       openclawSummary: userRequests.openclawSummary,
+      workflowStatus: openclawWorkItems.workflowStatus,
+      latestSummary: openclawWorkItems.latestSummary,
+      branchName: openclawWorkItems.branchName,
+      prUrl: openclawWorkItems.prUrl,
+      prNumber: openclawWorkItems.prNumber,
       createdAt: userRequests.createdAt,
       updatedAt: userRequests.updatedAt,
     })
       .from(userRequests)
       .innerJoin(pharmacies, eq(userRequests.pharmacyId, pharmacies.id))
+      .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
       .orderBy(desc(userRequests.createdAt), desc(userRequests.id))
       .limit(limit)
       .offset(offset);
@@ -196,6 +204,53 @@ router.get('/requests', async (req: AuthRequest, res: Response) => {
     });
   } catch (err) {
     handleAdminError(err, 'Admin user requests list error', '要望一覧の取得に失敗しました', res);
+  }
+});
+
+router.get('/requests/:id/messages', async (req: AuthRequest, res: Response) => {
+  try {
+    const requestId = Number(req.params.id);
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      res.status(400).json({ error: '要望IDが不正です' });
+      return;
+    }
+
+    const [requestRow] = await db.select({
+      id: userRequests.id,
+      pharmacyId: userRequests.pharmacyId,
+      pharmacyName: pharmacies.name,
+      requestText: userRequests.requestText,
+      openclawStatus: userRequests.openclawStatus,
+      openclawThreadId: userRequests.openclawThreadId,
+      openclawSummary: userRequests.openclawSummary,
+      workflowStatus: openclawWorkItems.workflowStatus,
+      latestSummary: openclawWorkItems.latestSummary,
+      lastQuestion: openclawWorkItems.lastQuestion,
+      branchName: openclawWorkItems.branchName,
+      prUrl: openclawWorkItems.prUrl,
+      prNumber: openclawWorkItems.prNumber,
+      lastError: openclawWorkItems.lastError,
+      createdAt: userRequests.createdAt,
+      updatedAt: userRequests.updatedAt,
+    })
+      .from(userRequests)
+      .innerJoin(pharmacies, eq(userRequests.pharmacyId, pharmacies.id))
+      .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+      .where(eq(userRequests.id, requestId))
+      .limit(1);
+
+    if (!requestRow) {
+      res.status(404).json({ error: '要望が見つかりません' });
+      return;
+    }
+
+    const messages = await listOpenClawRequestMessages(requestId);
+    res.json({
+      request: requestRow,
+      messages,
+    });
+  } catch (err) {
+    handleAdminError(err, 'Admin request messages error', '会話履歴の取得に失敗しました', res);
   }
 });
 

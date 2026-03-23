@@ -9,6 +9,7 @@ import {
   markTimelineViewed,
   getSmartDigest,
 } from '../services/timeline-service';
+import { publishTimelineRefresh } from '../services/realtime-service';
 import type { TimelineCursor, TimelinePriority } from '../types/timeline';
 import { handleRouteError } from '../middleware/error-handler';
 import { decodeCursor } from '../utils/cursor-pagination';
@@ -129,6 +130,10 @@ router.patch('/mark-viewed', requireLogin, async (req, res) => {
     const authReq = req as AuthRequest;
     const pharmacyId = authReq.user!.id;
     await markTimelineViewed(db, pharmacyId);
+    publishTimelineRefresh({
+      pharmacyId,
+      reason: 'timeline_marked_viewed',
+    });
     res.json({ success: true });
   } catch (err) {
     handleRouteError(err, 'タイムライン閲覧済みマークエラー', 'タイムライン閲覧済みマークに失敗しました', res);

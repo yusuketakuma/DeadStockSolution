@@ -19,6 +19,32 @@ export const openclawStatusEnum = pgEnum('openclaw_status_enum', [
   'implementing',
   'completed',
 ]);
+export const openclawWorkItemTypeEnum = pgEnum('openclaw_work_item_type_enum', [
+  'user_report',
+  'incident_investigation',
+  'verification_review',
+]);
+export const openclawWorkflowStatusEnum = pgEnum('openclaw_workflow_status_enum', [
+  'queued',
+  'analyzing',
+  'awaiting_user',
+  'implementing',
+  'pr_opened',
+  'completed',
+  'failed',
+]);
+export const openclawMessageAuthorTypeEnum = pgEnum('openclaw_message_author_type_enum', [
+  'user',
+  'openclaw_agent',
+  'system',
+  'admin',
+]);
+export const openclawMessageTypeEnum = pgEnum('openclaw_message_type_enum', [
+  'message',
+  'question',
+  'status_update',
+  'pr_report',
+]);
 export const drugMasterSyncStatusEnum = pgEnum('drug_master_sync_status_enum', ['running', 'success', 'failed', 'partial']);
 export const drugMasterRevisionTypeEnum = pgEnum('drug_master_revision_type_enum', ['price_revision', 'new_listing', 'delisting', 'transition']);
 export const specialBusinessHoursTypeEnum = pgEnum('special_business_hours_type_enum', [

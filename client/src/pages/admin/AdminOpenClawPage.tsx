@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
-import { Badge, ListGroup } from 'react-bootstrap';
+import { Badge } from 'react-bootstrap';
 import AppCard from '../../components/ui/AppCard';
 import { api } from '../../api/client';
 import AppSelect from '../../components/ui/AppSelect';
@@ -10,8 +10,11 @@ import LoadingButton from '../../components/ui/LoadingButton';
 import AppControl from '../../components/ui/AppControl';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import { useSseRefresh } from '../../hooks/useSseRefresh';
 import { formatDateTimeJa } from '../../utils/formatters';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
+
+const LIVE_REFRESH_INTERVAL_MS = 60_000;
 
 interface UserRequestItem {
   id: number;
@@ -21,29 +24,29 @@ interface UserRequestItem {
   openclawStatus: string;
   openclawThreadId: string | null;
   openclawSummary: string | null;
+  workflowStatus: string | null;
+  latestSummary: string | null;
+  branchName: string | null;
+  prUrl: string | null;
+  prNumber: number | null;
   createdAt: string | null;
-  retryJob: {
-    id: number;
-    status: string;
-    attemptCount: number;
-    maxAttempts: number;
-    nextRetryAt: string | null;
-    lastAttemptAt: string | null;
-    completedAt: string | null;
-    lastError: string | null;
-    triggerReason: string | null;
-    updatedAt: string | null;
-  } | null;
-  recentEvents: Array<{
-    id: number;
-    eventType: string;
-    fromStatus: string | null;
-    toStatus: string | null;
-    threadId: string | null;
-    summary: string | null;
-    note: string | null;
-    createdAt: string | null;
-  }>;
+  updatedAt: string | null;
+}
+
+interface RequestMessageItem {
+  id: number;
+  authorType: 'user' | 'openclaw_agent' | 'system' | 'admin';
+  messageType: 'message' | 'question' | 'status_update' | 'pr_report';
+  body: string;
+  createdAt: string | null;
+}
+
+interface RequestThreadResponse {
+  request: UserRequestItem & {
+    lastQuestion?: string | null;
+    lastError?: string | null;
+  };
+  messages: RequestMessageItem[];
 }
 
 interface UserRequestsResponse {
@@ -66,57 +69,6 @@ interface RequestHandoffResponse {
   };
 }
 
-interface RetryQueueStats {
-  pending: number;
-  processing: number;
-  completed: number;
-  failed: number;
-}
-
-interface RetryJobItem {
-  id: number;
-  requestId: number;
-  pharmacyId: number;
-  pharmacyName: string;
-  status: string;
-  attemptCount: number;
-  maxAttempts: number;
-  nextRetryAt: string | null;
-  lastAttemptAt: string | null;
-  completedAt: string | null;
-  lastError: string | null;
-  triggerReason: string | null;
-  createdAt: string;
-  updatedAt: string;
-  requestText: string;
-}
-
-interface RetryJobsResponse {
-  data: RetryJobItem[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-  stats: RetryQueueStats;
-}
-
-interface RequestEventItem {
-  id: number;
-  eventType: string;
-  fromStatus: string | null;
-  toStatus: string | null;
-  threadId: string | null;
-  summary: string | null;
-  note: string | null;
-  createdAt: string | null;
-}
-
-interface RequestEventsResponse {
-  events: RequestEventItem[];
-}
-
 function openclawStatusMeta(status: string): { label: string; bg: 'secondary' | 'primary' | 'warning' | 'success' } {
   switch (status) {
     case 'in_dialogue':
@@ -131,8 +83,30 @@ function openclawStatusMeta(status: string): { label: string; bg: 'secondary' | 
   }
 }
 
+function workflowStatusMeta(status: string | null): { label: string; bg: 'secondary' | 'primary' | 'warning' | 'success' | 'danger' } {
+  switch (status) {
+    case 'awaiting_user':
+      return { label: '回答待ち', bg: 'primary' };
+    case 'implementing':
+      return { label: '実装中', bg: 'warning' };
+    case 'pr_opened':
+      return { label: 'PR作成済み', bg: 'warning' };
+    case 'completed':
+      return { label: '完了', bg: 'success' };
+    case 'failed':
+      return { label: '失敗', bg: 'danger' };
+    case 'analyzing':
+      return { label: '解析中', bg: 'secondary' };
+    case 'queued':
+    default:
+      return { label: '受付済み', bg: 'secondary' };
+  }
+}
+
 export default function AdminOpenClawPage() {
   const [requests, setRequests] = useState<UserRequestItem[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
+  const [thread, setThread] = useState<RequestThreadResponse | null>(null);
   const [connectorMeta, setConnectorMeta] = useState<{
     configured: boolean;
     webhookConfigured: boolean;
@@ -140,74 +114,97 @@ export default function AdminOpenClawPage() {
   } | null>(null);
   const [handoffingRequestId, setHandoffingRequestId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending_handoff' | 'in_dialogue' | 'implementing' | 'completed'>('all');
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'queued' | 'analyzing' | 'awaiting_user' | 'implementing' | 'pr_opened' | 'completed' | 'failed'>('all');
   const [searchText, setSearchText] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [expandedTimelineId, setExpandedTimelineId] = useState<number | null>(null);
-  const [timelineEvents, setTimelineEvents] = useState<RequestEventItem[]>([]);
-  const [timelineLoading, setTimelineLoading] = useState(false);
 
-  // Retry queue state
-  const [retryStats, setRetryStats] = useState<RetryQueueStats | null>(null);
-  const [retryJobs, setRetryJobs] = useState<RetryJobItem[]>([]);
-  const [retryTotal, setRetryTotal] = useState(0);
-  const [retryStatusFilter, setRetryStatusFilter] = useState<'all' | 'pending' | 'processing' | 'completed' | 'failed'>('all');
-  const [retryLoading, setRetryLoading] = useState(false);
-
-  const statusCount = requests.reduce<Record<string, number>>((acc, item) => {
-    acc[item.openclawStatus] = (acc[item.openclawStatus] ?? 0) + 1;
+  const workflowCount = requests.reduce<Record<string, number>>((acc, item) => {
+    const key = item.workflowStatus ?? 'queued';
+    acc[key] = (acc[key] ?? 0) + 1;
     return acc;
   }, {});
 
   const normalizedQuery = searchText.trim().toLowerCase();
   const filteredRequests = requests.filter((item) => {
-    if (statusFilter !== 'all' && item.openclawStatus !== statusFilter) {
+    if (statusFilter !== 'all' && item.workflowStatus !== statusFilter) {
       return false;
     }
     if (!normalizedQuery) return true;
-    const haystack = `${item.pharmacyName} ${item.requestText} ${item.openclawSummary ?? ''}`.toLowerCase();
+    const haystack = `${item.pharmacyName} ${item.requestText} ${item.latestSummary ?? ''} ${item.openclawSummary ?? ''}`.toLowerCase();
     return haystack.includes(normalizedQuery);
   });
 
-  const fetchRequests = async () => {
-    setLoading(true);
+  const fetchRequests = async ({ background = false }: { background?: boolean } = {}) => {
+    if (!background) {
+      setLoading(true);
+    }
     try {
       const data = await api.get<UserRequestsResponse>('/admin/requests?page=1&limit=50');
       setRequests(data.data);
       setConnectorMeta(data.connector ?? null);
+      setSelectedRequestId((current) => {
+        if (current && data.data.some((item) => item.id === current)) {
+          return current;
+        }
+        return data.data[0]?.id ?? null;
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'OpenClaw連携情報の取得に失敗しました');
+      if (!background) {
+        setError(err instanceof Error ? err.message : 'OpenClaw連携情報の取得に失敗しました');
+      }
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   };
 
-  const fetchRetryJobs = async (statusParam: string = retryStatusFilter) => {
-    setRetryLoading(true);
+  const fetchThread = async (requestId: number, { background = false }: { background?: boolean } = {}) => {
+    if (!background) {
+      setThreadLoading(true);
+    }
+
     try {
-      const qs = statusParam !== 'all' ? `?status=${statusParam}&limit=20` : '?limit=20';
-      const data = await api.get<RetryJobsResponse>(`/admin/openclaw-retries${qs}`);
-      setRetryStats(data.stats);
-      setRetryJobs(data.data);
-      setRetryTotal(data.pagination.total);
-    } catch {
-      // silently fail — stats section is secondary
+      const data = await api.get<RequestThreadResponse>(`/admin/requests/${requestId}/messages`);
+      setThread(data);
+    } catch (err) {
+      if (!background) {
+        setError(err instanceof Error ? err.message : '会話履歴の取得に失敗しました');
+      }
     } finally {
-      setRetryLoading(false);
+      if (!background) {
+        setThreadLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchRequests();
-    fetchRetryJobs('all');
+    void fetchRequests();
   }, []);
 
-  const handleRetryStatusFilterChange = (value: string) => {
-    const next = value as typeof retryStatusFilter;
-    setRetryStatusFilter(next);
-    fetchRetryJobs(next);
-  };
+  useEffect(() => {
+    if (!selectedRequestId) {
+      setThread(null);
+      return;
+    }
+    void fetchThread(selectedRequestId);
+  }, [selectedRequestId]);
+
+  useSseRefresh({
+    enabled: true,
+    streamPath: '/realtime/stream?topics=admin_requests',
+    events: ['admin_requests.refresh'],
+    onRefresh: async () => {
+    await fetchRequests({ background: true });
+    if (selectedRequestId) {
+      await fetchThread(selectedRequestId, { background: true });
+    }
+    },
+    fallbackIntervalMs: LIVE_REFRESH_INTERVAL_MS,
+    minFetchIntervalMs: 4_000,
+  });
 
   const handleRetryHandoff = async (requestId: number) => {
     setError('');
@@ -217,29 +214,14 @@ export default function AdminOpenClawPage() {
       const result = await api.post<RequestHandoffResponse>(`/admin/requests/${requestId}/handoff`);
       setMessage(`${result.message} ${result.handoff.note}`);
       await fetchRequests();
+      if (selectedRequestId === requestId) {
+        const threadData = await api.get<RequestThreadResponse>(`/admin/requests/${requestId}/messages`);
+        setThread(threadData);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'OpenClaw再連携に失敗しました');
     } finally {
       setHandoffingRequestId(null);
-    }
-  };
-
-  const handleToggleTimeline = async (requestId: number) => {
-    if (expandedTimelineId === requestId) {
-      setExpandedTimelineId(null);
-      setTimelineEvents([]);
-      return;
-    }
-    setExpandedTimelineId(requestId);
-    setTimelineEvents([]);
-    setTimelineLoading(true);
-    try {
-      const result = await api.get<RequestEventsResponse>(`/admin/user-requests/${requestId}/events`);
-      setTimelineEvents(result.events);
-    } catch {
-      setTimelineEvents([]);
-    } finally {
-      setTimelineLoading(false);
     }
   };
 
@@ -251,101 +233,6 @@ export default function AdminOpenClawPage() {
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
       <ScrollArea>
-
-      {/* リトライキュー統計カード */}
-      <AppCard className="mb-3">
-        <AppCard.Header>
-          <div className="d-flex justify-content-between align-items-center">
-            <span>リトライキュー</span>
-            <LoadingButton
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => fetchRetryJobs(retryStatusFilter)}
-              loading={retryLoading}
-              loadingLabel="更新中..."
-            >
-              更新
-            </LoadingButton>
-          </div>
-        </AppCard.Header>
-        <AppCard.Body>
-          {retryStats && (
-            <div className="d-flex gap-2 align-items-center flex-wrap mb-3">
-              <Badge bg="secondary">待機中: {retryStats.pending}</Badge>
-              <Badge bg="primary">実行中: {retryStats.processing}</Badge>
-              <Badge bg="success">完了: {retryStats.completed}</Badge>
-              <Badge bg="danger">失敗: {retryStats.failed}</Badge>
-              <span className="text-muted small">合計: {retryTotal}件</span>
-            </div>
-          )}
-
-          <div className="mb-3">
-            <AppSelect
-              size="sm"
-              value={retryStatusFilter}
-              ariaLabel="リトライジョブ状態で絞り込み"
-              onChange={handleRetryStatusFilterChange}
-              className="filter-select-compact"
-              options={[
-                { value: 'all', label: 'すべて' },
-                { value: 'pending', label: '待機中' },
-                { value: 'processing', label: '実行中' },
-                { value: 'completed', label: '完了' },
-                { value: 'failed', label: '失敗' },
-              ]}
-            />
-          </div>
-
-          {retryLoading ? (
-            <InlineLoader text="読み込み中..." className="text-muted small" />
-          ) : retryJobs.length === 0 ? (
-            <div className="text-muted small">リトライジョブはありません。</div>
-          ) : (
-            <div className="table-responsive">
-              <AppTable size="sm" className="mb-0">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>要望ID</th>
-                    <th>薬局</th>
-                    <th>状態</th>
-                    <th>試行</th>
-                    <th>次回予定</th>
-                    <th>最終エラー</th>
-                    <th>更新日時</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {retryJobs.map((job) => {
-                    const meta = retryStatusMeta(job.status);
-                    return (
-                      <tr key={job.id}>
-                        <td>{job.id}</td>
-                        <td>{job.requestId}</td>
-                        <td className="small">{job.pharmacyName}</td>
-                        <td><Badge bg={meta.bg}>{meta.label}</Badge></td>
-                        <td className="small">{job.attemptCount}/{job.maxAttempts}</td>
-                        <td className="small">
-                          {job.nextRetryAt ? formatDateTimeJa(job.nextRetryAt) : '-'}
-                        </td>
-                        <td className="small text-danger">
-                          {job.lastError ? (
-                            <span title={job.lastError}>
-                              {job.lastError.length > 60 ? `${job.lastError.slice(0, 60)}…` : job.lastError}
-                            </span>
-                          ) : '-'}
-                        </td>
-                        <td className="small">{formatDateTimeJa(job.updatedAt)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </AppTable>
-            </div>
-          )}
-        </AppCard.Body>
-      </AppCard>
-
       <AppCard>
         <AppCard.Header>要望一覧（管理者専用）</AppCard.Header>
         <AppCard.Body>
@@ -354,27 +241,35 @@ export default function AdminOpenClawPage() {
             Webhook: {connectorMeta?.webhookConfigured ? '設定済み' : '未設定'} /
             実装許可ブランチ: <code>{connectorMeta?.implementationBranch ?? 'review'}</code>
           </div>
+          <div className="small text-muted mb-3">
+            OpenClaw から反映された状態を SSE で自動更新し、接続できない場合は約1分ごとに再取得します。
+          </div>
 
           <div className="d-flex gap-2 align-items-center flex-wrap mb-3">
-            <Badge bg="secondary">連携待ち: {statusCount.pending_handoff ?? 0}</Badge>
-            <Badge bg="primary">対話中: {statusCount.in_dialogue ?? 0}</Badge>
-            <Badge bg="warning" text="dark">実装中: {statusCount.implementing ?? 0}</Badge>
-            <Badge bg="success">完了: {statusCount.completed ?? 0}</Badge>
+            <Badge bg="secondary">受付済み: {workflowCount.queued ?? 0}</Badge>
+            <Badge bg="secondary">解析中: {workflowCount.analyzing ?? 0}</Badge>
+            <Badge bg="primary">回答待ち: {workflowCount.awaiting_user ?? 0}</Badge>
+            <Badge bg="warning" text="dark">実装中: {(workflowCount.implementing ?? 0) + (workflowCount.pr_opened ?? 0)}</Badge>
+            <Badge bg="success">完了: {workflowCount.completed ?? 0}</Badge>
+            <Badge bg="danger">失敗: {workflowCount.failed ?? 0}</Badge>
           </div>
 
           <div className="d-flex gap-2 flex-wrap mb-3">
             <AppSelect
               size="sm"
               value={statusFilter}
-              ariaLabel="OpenClaw状態で絞り込み"
+              ariaLabel="DSS状態で絞り込み"
               onChange={(value) => setStatusFilter(value as typeof statusFilter)}
               className="filter-select-compact"
               options={[
                 { value: 'all', label: 'すべての状態' },
-                { value: 'pending_handoff', label: '連携待ち' },
-                { value: 'in_dialogue', label: '対話中' },
+                { value: 'queued', label: '受付済み' },
+                { value: 'analyzing', label: '解析中' },
+                { value: 'awaiting_user', label: '回答待ち' },
                 { value: 'implementing', label: '実装中' },
+                { value: 'pr_opened', label: 'PR作成済み' },
                 { value: 'completed', label: '完了' },
+                { value: 'failed', label: '失敗' },
               ]}
             />
             <AppControl
@@ -403,7 +298,6 @@ export default function AdminOpenClawPage() {
                         <th>薬局</th>
                         <th>要望内容</th>
                         <th>OpenClaw状態</th>
-                        <th>Retry</th>
                         <th>受付日時</th>
                         <th>操作</th>
                       </tr>
@@ -411,100 +305,49 @@ export default function AdminOpenClawPage() {
                     <tbody>
                       {filteredRequests.map((item) => {
                         const status = openclawStatusMeta(item.openclawStatus);
-                        const isTimelineExpanded = expandedTimelineId === item.id;
+                        const workflow = workflowStatusMeta(item.workflowStatus);
                         return (
-                          <>
-                            <tr key={item.id}>
-                              <td>{item.id}</td>
-                              <td>{item.pharmacyName} (ID: {item.pharmacyId})</td>
-                              <td className="small">
-                                <div>{item.requestText}</div>
-                                {item.openclawSummary && <div className="text-muted mt-1">要約: {item.openclawSummary}</div>}
-                                {item.openclawThreadId && <div className="text-muted mt-1">Thread: {item.openclawThreadId}</div>}
-                                {item.recentEvents.length > 0 && (
-                                  <div className="text-muted mt-2">
-                                    {item.recentEvents.slice(0, 3).map((event) => (
-                                      <div key={event.id}>
-                                        {formatDateTimeJa(event.createdAt)} {eventTypeLabel(event.eventType)}
-                                        {event.note ? `: ${event.note}` : ''}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </td>
-                              <td><Badge bg={status.bg}>{status.label}</Badge></td>
-                              <td className="small">
-                                {item.retryJob ? (
-                                  <>
-                                    <Badge bg={retryStatusMeta(item.retryJob.status).bg}>
-                                      {retryStatusMeta(item.retryJob.status).label}
-                                    </Badge>
-                                    <div className="text-muted mt-1">
-                                      {item.retryJob.attemptCount}/{item.retryJob.maxAttempts}
-                                    </div>
-                                    {item.retryJob.nextRetryAt && (
-                                      <div className="text-muted">次回: {formatDateTimeJa(item.retryJob.nextRetryAt)}</div>
-                                    )}
-                                    {item.retryJob.lastError && (
-                                      <div className="text-danger mt-1">{item.retryJob.lastError}</div>
-                                    )}
-                                  </>
-                                ) : (
-                                  <span className="text-muted small">-</span>
-                                )}
-                              </td>
-                              <td>{formatDateTimeJa(item.createdAt)}</td>
-                              <td>
-                                <div className="d-flex flex-column gap-1">
-                                  {item.openclawStatus === 'pending_handoff' && (
-                                    <LoadingButton
-                                      size="sm"
-                                      variant="outline-primary"
-                                      disabled={handoffingRequestId !== null && handoffingRequestId !== item.id}
-                                      onClick={() => handleRetryHandoff(item.id)}
-                                      loading={handoffingRequestId === item.id}
-                                      loadingLabel="再連携中..."
-                                    >
-                                      再連携
-                                    </LoadingButton>
-                                  )}
-                                  <LoadingButton
-                                    size="sm"
-                                    variant={isTimelineExpanded ? 'secondary' : 'outline-secondary'}
-                                    onClick={() => handleToggleTimeline(item.id)}
-                                    loading={timelineLoading && isTimelineExpanded}
-                                    loadingLabel="読込中..."
-                                  >
-                                    {isTimelineExpanded ? '閉じる' : 'タイムライン'}
-                                  </LoadingButton>
-                                </div>
-                              </td>
-                            </tr>
-                            {isTimelineExpanded && (
-                              <tr key={`${item.id}-timeline`}>
-                                <td colSpan={7} className="p-2 bg-light">
-                                  {timelineLoading ? (
-                                    <InlineLoader text="タイムライン読み込み中..." className="text-muted small" />
-                                  ) : timelineEvents.length === 0 ? (
-                                    <div className="text-muted small px-2">イベントはありません。</div>
-                                  ) : (
-                                    <ListGroup variant="flush" className="small">
-                                      {timelineEvents.map((event) => (
-                                        <ListGroup.Item key={event.id} className="px-2 py-1 bg-light">
-                                          <span className="text-muted me-2">{formatDateTimeJa(event.createdAt)}</span>
-                                          <Badge bg="secondary" className="me-2">{eventTypeLabel(event.eventType)}</Badge>
-                                          {event.fromStatus && event.toStatus && (
-                                            <span className="text-muted me-2">{event.fromStatus} → {event.toStatus}</span>
-                                          )}
-                                          {event.note && <span>{event.note}</span>}
-                                        </ListGroup.Item>
-                                      ))}
-                                    </ListGroup>
-                                  )}
-                                </td>
-                              </tr>
-                            )}
-                          </>
+                          <tr key={item.id}>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn btn-link p-0 text-decoration-none"
+                                onClick={() => setSelectedRequestId(item.id)}
+                              >
+                                {item.id}
+                              </button>
+                            </td>
+                            <td>{item.pharmacyName} (ID: {item.pharmacyId})</td>
+                            <td className="small">
+                              <div>{item.requestText}</div>
+                              {(item.latestSummary ?? item.openclawSummary) && <div className="text-muted mt-1">要約: {item.latestSummary ?? item.openclawSummary}</div>}
+                              {item.openclawThreadId && <div className="text-muted mt-1">Thread: {item.openclawThreadId}</div>}
+                              {item.prUrl && <div className="text-muted mt-1">PR: {item.prUrl}</div>}
+                            </td>
+                            <td>
+                              <div className="d-flex flex-wrap gap-1">
+                                <Badge bg={status.bg}>{status.label}</Badge>
+                                <Badge bg={workflow.bg}>{workflow.label}</Badge>
+                              </div>
+                            </td>
+                            <td>{formatDateTimeJa(item.createdAt)}</td>
+                            <td>
+                              {item.openclawStatus === 'pending_handoff' || item.workflowStatus === 'failed' ? (
+                                <LoadingButton
+                                  size="sm"
+                                  variant="outline-primary"
+                                  disabled={handoffingRequestId !== null && handoffingRequestId !== item.id}
+                                  onClick={() => handleRetryHandoff(item.id)}
+                                  loading={handoffingRequestId === item.id}
+                                  loadingLabel="再連携中..."
+                                >
+                                  再連携
+                                </LoadingButton>
+                              ) : (
+                                <span className="text-muted small">-</span>
+                              )}
+                            </td>
+                          </tr>
                         );
                       })}
                     </tbody>
@@ -515,34 +358,51 @@ export default function AdminOpenClawPage() {
                 <div className="dl-mobile-data-list">
                   {filteredRequests.map((item) => {
                     const status = openclawStatusMeta(item.openclawStatus);
+                    const workflow = workflowStatusMeta(item.workflowStatus);
                     return (
                       <AppMobileDataCard
                         key={item.id}
                         title={`${item.pharmacyName} (ID: ${item.pharmacyId})`}
                         subtitle={`要望ID: ${item.id}`}
-                        badges={<Badge bg={status.bg}>{status.label}</Badge>}
+                        badges={(
+                          <div className="d-flex gap-1 flex-wrap">
+                            <Badge bg={status.bg}>{status.label}</Badge>
+                            <Badge bg={workflow.bg}>{workflow.label}</Badge>
+                          </div>
+                        )}
                         fields={[
                           { label: '要望内容', value: item.requestText },
-                          { label: '要約', value: item.openclawSummary || '-' },
+                          { label: '要約', value: item.latestSummary ?? item.openclawSummary ?? '-' },
                           { label: 'Thread', value: item.openclawThreadId || '-' },
-                          { label: 'Retry', value: item.retryJob ? `${retryStatusMeta(item.retryJob.status).label} (${item.retryJob.attemptCount}/${item.retryJob.maxAttempts})` : '-' },
-                          { label: 'Retry詳細', value: item.retryJob?.lastError || item.retryJob?.triggerReason || '-' },
-                          { label: '履歴', value: item.recentEvents.slice(0, 3).map((event) => `${formatDateTimeJa(event.createdAt)} ${eventTypeLabel(event.eventType)}`).join(' / ') || '-' },
+                          { label: 'PR', value: item.prUrl || '-' },
                           { label: '受付日時', value: formatDateTimeJa(item.createdAt) },
                         ]}
-                        actions={item.openclawStatus === 'pending_handoff' ? (
-                          <LoadingButton
-                            size="sm"
-                            variant="outline-primary"
-                            disabled={handoffingRequestId !== null && handoffingRequestId !== item.id}
-                            onClick={() => handleRetryHandoff(item.id)}
-                            loading={handoffingRequestId === item.id}
-                            loadingLabel="再連携中..."
-                          >
-                            再連携
-                          </LoadingButton>
-                        ) : (
-                          <span className="text-muted small">操作不要</span>
+                        actions={(
+                          <div className="d-flex gap-2 align-items-center">
+                            <LoadingButton
+                              size="sm"
+                              variant="outline-secondary"
+                              onClick={() => setSelectedRequestId(item.id)}
+                              loading={false}
+                              loadingLabel="読み込み中..."
+                            >
+                              詳細
+                            </LoadingButton>
+                            {item.openclawStatus === 'pending_handoff' || item.workflowStatus === 'failed' ? (
+                              <LoadingButton
+                                size="sm"
+                                variant="outline-primary"
+                                disabled={handoffingRequestId !== null && handoffingRequestId !== item.id}
+                                onClick={() => handleRetryHandoff(item.id)}
+                                loading={handoffingRequestId === item.id}
+                                loadingLabel="再連携中..."
+                              >
+                                再連携
+                              </LoadingButton>
+                            ) : (
+                              <span className="text-muted small">操作不要</span>
+                            )}
+                          </div>
                         )}
                       />
                     );
@@ -553,45 +413,61 @@ export default function AdminOpenClawPage() {
           )}
         </AppCard.Body>
       </AppCard>
+
+      <AppCard className="mt-3">
+        <AppCard.Header>DSS会話履歴</AppCard.Header>
+        <AppCard.Body>
+          {!selectedRequestId ? (
+            <div className="text-muted small">要望を選択すると詳細が表示されます。</div>
+          ) : threadLoading ? (
+            <InlineLoader text="会話履歴を読み込み中..." className="text-muted small" />
+          ) : !thread ? (
+            <div className="text-muted small">会話履歴を取得できませんでした。</div>
+          ) : (
+            <div className="d-flex flex-column gap-3">
+              <div className="d-flex flex-wrap gap-2">
+                <Badge bg={openclawStatusMeta(thread.request.openclawStatus).bg}>
+                  {openclawStatusMeta(thread.request.openclawStatus).label}
+                </Badge>
+                <Badge bg={workflowStatusMeta(thread.request.workflowStatus).bg}>
+                  {workflowStatusMeta(thread.request.workflowStatus).label}
+                </Badge>
+                {thread.request.prUrl && (
+                  <a href={thread.request.prUrl} target="_blank" rel="noreferrer" className="small">
+                    PR #{thread.request.prNumber ?? '-'} を開く
+                  </a>
+                )}
+                {thread.request.branchName && <span className="text-muted small">branch: {thread.request.branchName}</span>}
+              </div>
+
+              <div className="small text-muted">
+                {thread.request.pharmacyName} / 要望 #{thread.request.id}
+              </div>
+
+              <div className="d-flex flex-column gap-2">
+                {thread.messages.map((entry) => (
+                  <div key={entry.id} className={`border rounded p-3 ${entry.authorType === 'user' ? 'bg-light' : 'bg-white'}`}>
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <strong className="small">
+                        {entry.authorType === 'user'
+                          ? 'ユーザー'
+                          : entry.authorType === 'openclaw_agent'
+                            ? 'DSS Manager'
+                            : entry.authorType === 'admin'
+                              ? 'Admin'
+                              : 'System'}
+                      </strong>
+                      <span className="text-muted small">{formatDateTimeJa(entry.createdAt)}</span>
+                    </div>
+                    <div className="small" style={{ whiteSpace: 'pre-wrap' }}>{entry.body}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </AppCard.Body>
+      </AppCard>
       </ScrollArea>
     </PageShell>
   );
-}
-
-function eventTypeLabel(eventType: string): string {
-  switch (eventType) {
-    case 'created':
-      return '受付';
-    case 'handoff_accepted':
-      return '初回連携成功';
-    case 'handoff_deferred':
-      return '初回連携保留';
-    case 'retry_scheduled':
-      return '再試行予約';
-    case 'retry_started':
-      return '再試行開始';
-    case 'retry_succeeded':
-      return '再試行成功';
-    case 'retry_failed':
-      return '再試行失敗';
-    case 'status_updated':
-      return '状態更新';
-    default:
-      return eventType;
-  }
-}
-
-function retryStatusMeta(status: string): { label: string; bg: 'secondary' | 'primary' | 'warning' | 'success' | 'danger' } {
-  switch (status) {
-    case 'pending':
-      return { label: '待機中', bg: 'secondary' };
-    case 'processing':
-      return { label: '実行中', bg: 'primary' };
-    case 'completed':
-      return { label: '完了', bg: 'success' };
-    case 'failed':
-      return { label: '失敗', bg: 'danger' };
-    default:
-      return { label: status, bg: 'warning' };
-  }
 }

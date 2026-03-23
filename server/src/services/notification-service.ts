@@ -1,14 +1,16 @@
 import { and, count, desc, eq, isNull, or, sql } from 'drizzle-orm';
-import { enqueueNotification, isRedisConfigured } from './redis-pubsub-service';
+import { db } from '../config/database';
 import {
   adminMessages,
   adminMessageReads,
+  matchNotifications,
   notifications,
   type NotificationReferenceType,
   type NotificationType,
 } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
-import { getServiceDeps, type ServiceDependencies } from './service-container';
+import { logger } from './logger';
+import { publishTimelineRefresh } from './realtime-service';
 
 interface CreateNotificationInput {
   pharmacyId: number;
@@ -17,78 +19,29 @@ interface CreateNotificationInput {
   message: string;
   referenceType?: NotificationReferenceType;
   referenceId?: number;
-  detailJson?: Record<string, unknown>;
 }
 
-type NotificationSqlExecutor = Pick<ServiceDependencies['db'], 'execute'>;
-type CountRow = { count?: number | string | null };
-type NotificationListItem = typeof notifications.$inferSelect;
-
-interface NotificationService {
-  createNotification(input: CreateNotificationInput): Promise<{ id: number } | null>;
-  getUnreadCount(pharmacyId: number): Promise<number>;
-  getDashboardUnreadCount(pharmacyId: number): Promise<number>;
-  getNotifications(pharmacyId: number, page?: number, limit?: number): Promise<{ rows: NotificationListItem[]; total: number }>;
-  markAsRead(notificationId: number, pharmacyId: number): Promise<boolean>;
-  markAllAsRead(pharmacyId: number): Promise<number>;
-  markAllDashboardAsRead(pharmacyId: number): Promise<number>;
-  invalidateDashboardUnreadCache(pharmacyId: number): void;
+interface PostgresErrorLike {
+  code?: string;
 }
 
-function toCount(value: unknown): number {
-  return Number(value ?? 0);
+type NotificationSqlExecutor = Pick<typeof db, 'execute'>;
+
+function isUndefinedTableError(err: unknown): err is PostgresErrorLike {
+  return typeof err === 'object' && err !== null && (err as PostgresErrorLike).code === '42P01';
 }
 
-function getCountFromRows(rows: CountRow[]): number {
-  return toCount(rows[0]?.count);
-}
-
-async function executeCountSql(executor: NotificationSqlExecutor, query: ReturnType<typeof sql>): Promise<number> {
-  const rowsResult = await executor.execute<CountRow>(query);
-  return getCountFromRows(rowsResult.rows);
+function toBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') return ['t', 'true', '1'].includes(value.toLowerCase());
+  return false;
 }
 
 const DASHBOARD_UNREAD_CACHE_TTL_MS = 15_000;
 const DASHBOARD_UNREAD_CACHE_MAX_SIZE = 500;
 const DASHBOARD_UNREAD_CACHE_ENABLED = process.env.NODE_ENV !== 'test';
 const dashboardUnreadCache = new Map<number, { value: number; expiresAt: number }>();
-
-type PreparedNotificationUnreadCountByPharmacy = {
-  execute(params: { pharmacyId: number }): Promise<Array<{ value: number }>>;
-};
-
-let prepared_notification_unread_count_by_pharmacy: PreparedNotificationUnreadCountByPharmacy | null = null;
-
-function bindParam<T>(name: string): T {
-  const placeholderFn = (sql as typeof sql & { placeholder?: (placeholderName: string) => unknown }).placeholder;
-  if (typeof placeholderFn === 'function') {
-    return placeholderFn(name) as T;
-  }
-  return name as T;
-}
-
-function getPreparedNotificationUnreadCountByPharmacy(
-  deps: ServiceDependencies,
-): PreparedNotificationUnreadCountByPharmacy | null {
-  const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
-  if (process.env.NODE_ENV === 'test') return null;
-  if (typeof placeholderFn !== 'function') return null;
-  if (deps.db !== getServiceDeps().db) return null;
-  if (prepared_notification_unread_count_by_pharmacy) return prepared_notification_unread_count_by_pharmacy;
-
-  const query = deps.db.select({ value: count() })
-    .from(notifications)
-    .where(and(
-      eq(notifications.pharmacyId, bindParam<number>('pharmacyId')),
-      eq(notifications.isRead, false),
-    ));
-
-  if (typeof (query as { prepare?: unknown }).prepare !== 'function') return null;
-
-  prepared_notification_unread_count_by_pharmacy = (query as { prepare(name: string): PreparedNotificationUnreadCountByPharmacy })
-    .prepare('prepared_notification_unread_count_by_pharmacy');
-  return prepared_notification_unread_count_by_pharmacy;
-}
 
 function getCachedDashboardUnreadCount(pharmacyId: number): number | null {
   if (!DASHBOARD_UNREAD_CACHE_ENABLED) return null;
@@ -124,13 +77,8 @@ export function invalidateDashboardUnreadCache(pharmacyId: number): void {
   dashboardUnreadCache.delete(pharmacyId);
 }
 
-function invalidateDashboardUnreadCacheIfNeeded(pharmacyId: number, affectedCount: number): void {
-  if (affectedCount <= 0) return;
-  invalidateDashboardUnreadCache(pharmacyId);
-}
-
 async function markNotificationsAsRead(executor: NotificationSqlExecutor, pharmacyId: number): Promise<number> {
-  return executeCountSql(executor, sql`
+  const updatedRows = await executor.execute<{ count: number }>(sql`
     WITH updated AS (
       UPDATE notifications
       SET is_read = true, read_at = now()
@@ -139,124 +87,87 @@ async function markNotificationsAsRead(executor: NotificationSqlExecutor, pharma
     )
     SELECT COUNT(*)::int AS count FROM updated
   `);
-}
-
-async function getAdminUnreadCount(
-  pharmacyId: number,
-  deps: ServiceDependencies,
-): Promise<number> {
-  const [adminUnreadRow] = await deps.db.select({ count: rowCount })
-    .from(adminMessages)
-    .leftJoin(adminMessageReads, and(
-      eq(adminMessageReads.messageId, adminMessages.id),
-      eq(adminMessageReads.pharmacyId, pharmacyId),
-    ))
-    .where(and(
-      or(
-        eq(adminMessages.targetType, 'all'),
-        and(
-          eq(adminMessages.targetType, 'pharmacy'),
-          eq(adminMessages.targetPharmacyId, pharmacyId),
-        ),
-      ),
-      isNull(adminMessageReads.messageId),
-    ));
-
-  return toCount(adminUnreadRow?.count);
-}
-
-async function countUnreadSources(pharmacyId: number, deps: ServiceDependencies): Promise<{
-  notificationsUnread: number;
-  adminUnread: number;
-}> {
-  const [notificationsUnread, adminUnread] = await Promise.all([
-    getUnreadCount(pharmacyId, deps),
-    getAdminUnreadCount(pharmacyId, deps),
-  ]);
-
-  return { notificationsUnread, adminUnread };
-}
-
-async function markAdminMessagesAsRead(
-  executor: NotificationSqlExecutor,
-  pharmacyId: number,
-): Promise<number> {
-  return executeCountSql(executor, sql`
-    WITH inserted AS (
-      INSERT INTO admin_message_reads (message_id, pharmacy_id)
-      SELECT m.id, ${pharmacyId}
-      FROM admin_messages AS m
-      LEFT JOIN admin_message_reads AS reads
-        ON reads.message_id = m.id AND reads.pharmacy_id = ${pharmacyId}
-      WHERE (
-        m.target_type = 'all'
-        OR (m.target_type = 'pharmacy' AND m.target_pharmacy_id = ${pharmacyId})
-      )
-        AND reads.message_id IS NULL
-      ON CONFLICT (message_id, pharmacy_id) DO NOTHING
-      RETURNING 1
-    )
-    SELECT COUNT(*)::int AS count FROM inserted
-  `);
+  return Number(updatedRows.rows[0]?.count ?? 0);
 }
 
 export async function createNotification(
   input: CreateNotificationInput,
-  deps: ServiceDependencies = getServiceDeps(),
 ): Promise<{ id: number } | null> {
   try {
-    const [result] = await deps.db.insert(notifications).values({
+    const [result] = await db.insert(notifications).values({
       pharmacyId: input.pharmacyId,
       type: input.type,
       title: input.title,
       message: input.message,
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
-      detailJson: input.detailJson ?? null,
     }).returning({ id: notifications.id });
     invalidateDashboardUnreadCache(input.pharmacyId);
-    if (result && isRedisConfigured()) {
-      try {
-        await enqueueNotification(input.pharmacyId, {
-          type: 'new_notification',
-          data: { id: result.id, title: input.title, type: input.type },
-        });
-      } catch { /* Redis 障害時はフォールバック（通知作成自体は成功扱い） */ }
-    }
+    publishTimelineRefresh({
+      pharmacyId: input.pharmacyId,
+      reason: 'notification_created',
+    });
     return result ?? null;
   } catch (err) {
-    deps.logger.error('Failed to create notification', { error: (err as Error).message });
+    logger.error('Failed to create notification', { error: (err as Error).message });
     return null;
   }
 }
 
-export async function getUnreadCount(
-  pharmacyId: number,
-  deps: ServiceDependencies = getServiceDeps(),
-): Promise<number> {
-  const prepared = getPreparedNotificationUnreadCountByPharmacy(deps);
-  const [result] = prepared
-    ? await prepared.execute({ pharmacyId })
-    : await deps.db.select({ value: count() })
-      .from(notifications)
-      .where(and(
-        eq(notifications.pharmacyId, pharmacyId),
-        eq(notifications.isRead, false),
-      ));
+export async function getUnreadCount(pharmacyId: number): Promise<number> {
+  const [result] = await db.select({ value: count() })
+    .from(notifications)
+    .where(and(
+      eq(notifications.pharmacyId, pharmacyId),
+      eq(notifications.isRead, false),
+    ));
   return result?.value ?? 0;
 }
 
-export async function getDashboardUnreadCount(
-  pharmacyId: number,
-  deps: ServiceDependencies = getServiceDeps(),
-): Promise<number> {
+export async function getDashboardUnreadCount(pharmacyId: number): Promise<number> {
   const cached = getCachedDashboardUnreadCount(pharmacyId);
   if (cached !== null) {
     return cached;
   }
 
-  const { notificationsUnread, adminUnread } = await countUnreadSources(pharmacyId, deps);
-  const totalUnread = notificationsUnread + adminUnread;
+  const matchUnreadPromise = db.select({ count: rowCount })
+    .from(matchNotifications)
+    .where(and(
+      eq(matchNotifications.pharmacyId, pharmacyId),
+      eq(matchNotifications.isRead, false),
+    ))
+    .catch((err) => {
+      if (!isUndefinedTableError(err)) {
+        throw err;
+      }
+      logger.warn('match_notifications unread count query failed (table may not exist)', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [{ count: 0 }];
+    });
+
+  const [notificationsUnread, [adminUnreadRow], [matchUnreadRow]] = await Promise.all([
+    getUnreadCount(pharmacyId),
+    db.select({ count: rowCount })
+      .from(adminMessages)
+      .leftJoin(adminMessageReads, and(
+        eq(adminMessageReads.messageId, adminMessages.id),
+        eq(adminMessageReads.pharmacyId, pharmacyId),
+      ))
+      .where(and(
+        or(
+          eq(adminMessages.targetType, 'all'),
+          and(
+            eq(adminMessages.targetType, 'pharmacy'),
+            eq(adminMessages.targetPharmacyId, pharmacyId),
+          ),
+        ),
+        isNull(adminMessageReads.messageId),
+      )),
+    matchUnreadPromise,
+  ]);
+
+  const totalUnread = notificationsUnread + (adminUnreadRow?.count ?? 0) + (matchUnreadRow?.count ?? 0);
   setCachedDashboardUnreadCount(pharmacyId, totalUnread);
   return totalUnread;
 }
@@ -265,15 +176,14 @@ export async function getNotifications(
   pharmacyId: number,
   page: number = 1,
   limit: number = 20,
-  deps: ServiceDependencies = getServiceDeps(),
-): Promise<{ rows: NotificationListItem[]; total: number }> {
+): Promise<{ rows: typeof notifications.$inferSelect[]; total: number }> {
   const offset = (page - 1) * limit;
 
-  const [countResult] = await deps.db.select({ value: count() })
+  const [countResult] = await db.select({ value: count() })
     .from(notifications)
     .where(eq(notifications.pharmacyId, pharmacyId));
 
-  const rows = await deps.db.select()
+  const rows = await db.select()
     .from(notifications)
     .where(eq(notifications.pharmacyId, pharmacyId))
     .orderBy(desc(notifications.createdAt))
@@ -286,51 +196,86 @@ export async function getNotifications(
 export async function markAsRead(
   notificationId: number,
   pharmacyId: number,
-  deps: ServiceDependencies = getServiceDeps(),
 ): Promise<boolean> {
-  const result = await deps.db.update(notifications)
+  const result = await db.update(notifications)
     .set({ isRead: true, readAt: new Date().toISOString() })
     .where(and(
       eq(notifications.id, notificationId),
       eq(notifications.pharmacyId, pharmacyId),
     ))
     .returning({ id: notifications.id });
-  const wasUpdated = result.length > 0;
-  invalidateDashboardUnreadCacheIfNeeded(pharmacyId, wasUpdated ? 1 : 0);
-  return wasUpdated;
+  if (result.length > 0) {
+    invalidateDashboardUnreadCache(pharmacyId);
+    publishTimelineRefresh({
+      pharmacyId,
+      reason: 'notification_read',
+    });
+  }
+  return result.length > 0;
 }
 
-export async function markAllAsRead(
-  pharmacyId: number,
-  deps: ServiceDependencies = getServiceDeps(),
-): Promise<number> {
-  const count = await markNotificationsAsRead(deps.db, pharmacyId);
-  invalidateDashboardUnreadCacheIfNeeded(pharmacyId, count);
+export async function markAllAsRead(pharmacyId: number): Promise<number> {
+  const count = await markNotificationsAsRead(db, pharmacyId);
+  if (count > 0) {
+    invalidateDashboardUnreadCache(pharmacyId);
+    publishTimelineRefresh({
+      pharmacyId,
+      reason: 'notifications_marked_read',
+    });
+  }
   return count;
 }
 
-export async function markAllDashboardAsRead(
-  pharmacyId: number,
-  deps: ServiceDependencies = getServiceDeps(),
-): Promise<number> {
-  const total = await deps.db.transaction(async (tx) => {
+export async function markAllDashboardAsRead(pharmacyId: number): Promise<number> {
+  const total = await db.transaction(async (tx) => {
     const notificationCount = await markNotificationsAsRead(tx, pharmacyId);
-    const adminMessageReadCount = await markAdminMessagesAsRead(tx, pharmacyId);
-    return notificationCount + adminMessageReadCount;
-  });
-  invalidateDashboardUnreadCacheIfNeeded(pharmacyId, total);
-  return total;
-}
 
-export function createNotificationService(deps: ServiceDependencies = getServiceDeps()): NotificationService {
-  return {
-    createNotification: (input: CreateNotificationInput) => createNotification(input, deps),
-    getUnreadCount: (pharmacyId: number) => getUnreadCount(pharmacyId, deps),
-    getDashboardUnreadCount: (pharmacyId: number) => getDashboardUnreadCount(pharmacyId, deps),
-    getNotifications: (pharmacyId: number, page?: number, limit?: number) => getNotifications(pharmacyId, page, limit, deps),
-    markAsRead: (notificationId: number, pharmacyId: number) => markAsRead(notificationId, pharmacyId, deps),
-    markAllAsRead: (pharmacyId: number) => markAllAsRead(pharmacyId, deps),
-    markAllDashboardAsRead: (pharmacyId: number) => markAllDashboardAsRead(pharmacyId, deps),
-    invalidateDashboardUnreadCache,
-  };
+    const matchTableExistsRows = await tx.execute<{ exists: boolean | string | number }>(sql`
+      SELECT to_regclass('public.match_notifications') IS NOT NULL AS exists
+    `);
+    const hasMatchNotificationsTable = toBoolean(matchTableExistsRows.rows[0]?.exists);
+
+    const matchUpdateRows = hasMatchNotificationsTable
+      ? await tx.execute<{ count: number }>(sql`
+        WITH updated AS (
+          UPDATE match_notifications
+          SET is_read = true
+          WHERE pharmacy_id = ${pharmacyId} AND is_read = false
+          RETURNING 1
+        )
+        SELECT COUNT(*)::int AS count FROM updated
+      `)
+      : { rows: [{ count: 0 }] };
+
+    const insertedAdminReadRows = await tx.execute<{ count: number }>(sql`
+      WITH inserted AS (
+        INSERT INTO admin_message_reads (message_id, pharmacy_id)
+        SELECT m.id, ${pharmacyId}
+        FROM admin_messages AS m
+        LEFT JOIN admin_message_reads AS reads
+          ON reads.message_id = m.id AND reads.pharmacy_id = ${pharmacyId}
+        WHERE (
+          m.target_type = 'all'
+          OR (m.target_type = 'pharmacy' AND m.target_pharmacy_id = ${pharmacyId})
+        )
+          AND reads.message_id IS NULL
+        ON CONFLICT (message_id, pharmacy_id) DO NOTHING
+        RETURNING 1
+      )
+      SELECT COUNT(*)::int AS count FROM inserted
+    `);
+
+    const matchUpdateCount = Number(matchUpdateRows.rows[0]?.count ?? 0);
+    const adminMessageReadCount = Number(insertedAdminReadRows.rows[0]?.count ?? 0);
+
+    return notificationCount + matchUpdateCount + adminMessageReadCount;
+  });
+  if (total > 0) {
+    invalidateDashboardUnreadCache(pharmacyId);
+    publishTimelineRefresh({
+      pharmacyId,
+      reason: 'dashboard_notifications_marked_read',
+    });
+  }
+  return total;
 }

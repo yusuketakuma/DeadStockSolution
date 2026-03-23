@@ -16,6 +16,7 @@ import inventoryRoutes from './routes/inventory';
 import exchangeRoutes from './routes/exchange';
 import pharmaciesRoutes from './routes/pharmacies';
 import notificationsRoutes from './routes/notifications';
+import realtimeRoutes from './routes/realtime';
 import timelineRoutes from './routes/timeline';
 import requestsRoutes from './routes/requests';
 import openclawRoutes from './routes/openclaw';
@@ -82,8 +83,10 @@ function isRawBodyRoute(url?: string): boolean {
 
   return (
     url.startsWith('/api/openclaw/callback')
+    || url.startsWith('/api/openclaw/report')
     || url.startsWith('/api/openclaw/commands')
     || url.startsWith('/api/v1/openclaw/callback')
+    || url.startsWith('/api/v1/openclaw/report')
     || url.startsWith('/api/v1/openclaw/commands')
     || url.startsWith('/api/stripe/webhook')
     || url.startsWith('/api/v1/stripe/webhook')
@@ -363,6 +366,7 @@ registerApiRoute('/push', rejectAdmin, pushRoutes);
 registerApiRoute('/upload-quality', rejectAdmin, uploadQualityRoutes);
 registerApiRoute('/messages', messagesRoutes);
 registerApiRoute('/sse', requireLogin, rejectAdmin, sseRoutes);
+registerApiRoute('/realtime', realtimeRoutes);
 registerApiRoute('/subscriptions', subscriptionsRoutes);
 
 // Shared routes (both admin and user)

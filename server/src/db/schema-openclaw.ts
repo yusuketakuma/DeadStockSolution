@@ -1,6 +1,12 @@
-import { pgTable, serial, text, integer, varchar, boolean, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, varchar, boolean, timestamp, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
-import { openclawStatusEnum } from './schema-common';
+import {
+  openclawMessageAuthorTypeEnum,
+  openclawMessageTypeEnum,
+  openclawStatusEnum,
+  openclawWorkflowStatusEnum,
+  openclawWorkItemTypeEnum,
+} from './schema-common';
 
 export const openclawCommands = pgTable('openclaw_commands', {
   id: serial('id').primaryKey(),
@@ -43,4 +49,42 @@ export const userRequests = pgTable('user_requests', {
   idxUserRequestsCreatedAt: index('idx_user_requests_created_at').on(table.createdAt),
   idxUserRequestsPharmacyCreated: index('idx_user_requests_pharmacy_created').on(table.pharmacyId, table.createdAt),
   idxUserRequestsStatusCreated: index('idx_user_requests_status_created').on(table.openclawStatus, table.createdAt),
+}));
+
+export const openclawWorkItems = pgTable('openclaw_work_items', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id').notNull().references(() => userRequests.id, { onDelete: 'cascade' }),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  workItemType: openclawWorkItemTypeEnum('work_item_type').notNull().default('user_report'),
+  workflowStatus: openclawWorkflowStatusEnum('workflow_status').notNull().default('queued'),
+  latestSummary: text('latest_summary'),
+  lastQuestion: text('last_question'),
+  branchName: text('branch_name'),
+  prUrl: text('pr_url'),
+  prNumber: integer('pr_number'),
+  lastError: text('last_error'),
+  metadataJson: text('metadata_json'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxOpenclawWorkItemsRequestUnique: uniqueIndex('idx_openclaw_work_items_request_unique').on(table.requestId),
+  idxOpenclawWorkItemsPharmacyStatus: index('idx_openclaw_work_items_pharmacy_status')
+    .on(table.pharmacyId, table.workflowStatus, table.updatedAt),
+  idxOpenclawWorkItemsStatusUpdated: index('idx_openclaw_work_items_status_updated')
+    .on(table.workflowStatus, table.updatedAt),
+}));
+
+export const openclawRequestMessages = pgTable('openclaw_request_messages', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id').notNull().references(() => userRequests.id, { onDelete: 'cascade' }),
+  authorType: openclawMessageAuthorTypeEnum('author_type').notNull(),
+  messageType: openclawMessageTypeEnum('message_type').notNull().default('message'),
+  body: text('body').notNull(),
+  metadataJson: text('metadata_json'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxOpenclawRequestMessagesRequestCreated: index('idx_openclaw_request_messages_request_created')
+    .on(table.requestId, table.createdAt),
+  idxOpenclawRequestMessagesRequestAuthor: index('idx_openclaw_request_messages_request_author')
+    .on(table.requestId, table.authorType, table.createdAt),
 }));

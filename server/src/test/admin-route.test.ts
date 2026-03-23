@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   isOpenClawWebhookConfigured: vi.fn(),
   getOpenClawImplementationBranch: vi.fn(),
   buildOpenClawLogContext: vi.fn(),
+  mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  updateOpenClawWorkItem: vi.fn(),
   getObservabilitySnapshot: vi.fn(),
   loggerWarn: vi.fn(),
   loggerError: vi.fn(),
@@ -42,6 +44,11 @@ vi.mock('../services/openclaw-service', () => ({
 
 vi.mock('../services/openclaw-log-context-service', () => ({
   buildOpenClawLogContext: mocks.buildOpenClawLogContext,
+}));
+
+vi.mock('../services/openclaw-thread-service', () => ({
+  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
 }));
 
 vi.mock('../services/observability-service', () => ({
@@ -137,10 +144,12 @@ function createFailureReasonQuery(result: unknown) {
 function createLimitQuery(result: unknown) {
   const query = {
     from: vi.fn(),
+    leftJoin: vi.fn(),
     where: vi.fn(),
     limit: vi.fn(),
   };
   query.from.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.limit.mockResolvedValue(result);
   return query;
@@ -163,6 +172,7 @@ describe('admin routes', () => {
     mocks.isOpenClawWebhookConfigured.mockReturnValue(true);
     mocks.getOpenClawImplementationBranch.mockReturnValue('feature/openclaw');
     mocks.getClientIp.mockReturnValue('127.0.0.1');
+    mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
   });
 
   it('returns paginated logs with failure summary', async () => {
@@ -276,6 +286,8 @@ describe('admin routes', () => {
       pharmacyId: 10,
       requestText: '在庫一覧のCSV出力を改善してほしい',
       openclawStatus: 'pending_handoff',
+      openclawThreadId: null,
+      workflowStatus: 'queued',
     }];
     const updateQuery = createUpdateQuery();
 
@@ -306,9 +318,17 @@ describe('admin routes', () => {
     expect(mocks.handoffToOpenClaw).toHaveBeenCalledWith(expect.objectContaining({
       requestId: 12,
       pharmacyId: 10,
-      context: { operationLogs: [{ action: 'upload' }] },
+      context: expect.objectContaining({
+        source: 'admin_log_investigation',
+        operationLogs: [{ action: 'upload' }],
+      }),
     }));
     expect(mocks.db.update).toHaveBeenCalledTimes(1);
+    expect(mocks.updateOpenClawWorkItem).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: 12,
+      workflowStatus: 'analyzing',
+      lastError: null,
+    }));
     expect(updateQuery.set).toHaveBeenCalledWith(expect.objectContaining({
       openclawStatus: 'in_dialogue',
       openclawThreadId: 'thread-12',
@@ -413,13 +433,14 @@ describe('admin routes', () => {
       pharmacyId: 10,
       requestText: '既存要望',
       openclawStatus: 'implementing',
+      workflowStatus: 'implementing',
     }]));
 
     const response = await request(app)
       .post('/api/admin/requests/45/handoff');
 
     expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: '連携待ちの要望のみ再連携できます' });
+    expect(response.body).toEqual({ error: '連携待ちまたは失敗した要望のみ再連携できます' });
     expect(mocks.handoffToOpenClaw).not.toHaveBeenCalled();
     expect(mocks.db.update).not.toHaveBeenCalled();
   });

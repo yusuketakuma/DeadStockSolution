@@ -19,6 +19,19 @@ import {
   verifyOpenClawWebhookSignature,
   type OpenClawStatus,
 } from '../services/openclaw-service';
+import {
+  ensureOpenClawWorkItem,
+  isOpenClawWorkflowStatus,
+  mapOpenClawStatusToWorkflowStatus,
+  recordOpenClawRequestMessage,
+  updateOpenClawWorkItem,
+  type OpenClawWorkflowStatus,
+} from '../services/openclaw-thread-service';
+import {
+  publishAdminRequestsRefresh,
+  publishRequestsRefresh,
+  publishTimelineRefresh,
+} from '../services/realtime-service';
 import { isPositiveSafeInteger, parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
@@ -65,59 +78,42 @@ function parseJsonObject(rawValue: string | null | undefined): Record<string, un
   }
 }
 
-function respondUnauthorizedWebhook(res: Response): void {
-  res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+function normalizeWorkflowStatus(value: unknown): OpenClawWorkflowStatus | null {
+  if (!isOpenClawWorkflowStatus(value)) {
+    return null;
+  }
+  return value;
 }
 
-function buildOpenClawUpdatePayload(
-  status: OpenClawStatus,
-  threadId: string | null,
-  summary: string | null,
-  current: {
-    openclawThreadId: string | null;
-    openclawSummary: string | null;
-  },
-) {
-  return {
-    openclawStatus: status,
-    openclawThreadId: threadId ?? current.openclawThreadId,
-    openclawSummary: summary ?? current.openclawSummary,
-    updatedAt: new Date().toISOString(),
-  };
+type OpenClawReportKind = 'question' | 'analysis' | 'status_update' | 'pr_opened' | 'completed' | 'failed';
+
+function isOpenClawReportKind(value: unknown): value is OpenClawReportKind {
+  return value === 'question'
+    || value === 'analysis'
+    || value === 'status_update'
+    || value === 'pr_opened'
+    || value === 'completed'
+    || value === 'failed';
 }
 
-async function applyPharmacyVerificationCallback(params: {
-  current: {
-    pharmacyId: number;
-    requestText: string;
-  };
-  requestId: number;
-  summary: string | null;
-}): Promise<void> {
-  const requestContent = parseJsonObject(params.current.requestText);
-  if (!requestContent || !isVerificationRequestType(requestContent.type)) {
-    return;
+function resolveStatusFromWorkflowStatus(workflowStatus: OpenClawWorkflowStatus): OpenClawStatus {
+  if (workflowStatus === 'implementing' || workflowStatus === 'pr_opened') {
+    return 'implementing';
   }
+  if (workflowStatus === 'completed') {
+    return 'completed';
+  }
+  return 'in_dialogue';
+}
 
-  const verificationData = parseJsonObject(params.summary);
-  if (!verificationData || typeof verificationData.approved !== 'boolean') {
-    logger.warn('Skipped pharmacy verification callback due to invalid summary payload', {
-      requestId: params.requestId,
-      pharmacyId: params.current.pharmacyId,
-      summaryProvided: Boolean(params.summary),
-    });
-    return;
-  }
-
-  const callbackResult = await processVerificationCallback({
-    pharmacyId: params.current.pharmacyId,
-    requestId: params.requestId,
-    approved: verificationData.approved,
-    reason: typeof verificationData.reason === 'string' ? verificationData.reason : '',
-  });
-  if (callbackResult.applied) {
-    invalidateAuthUserCache(params.current.pharmacyId);
-  }
+function resolveNonRegressingOpenClawStatus(
+  currentStatus: OpenClawStatus,
+  workflowStatus: OpenClawWorkflowStatus,
+): OpenClawStatus {
+  const desiredStatus = resolveStatusFromWorkflowStatus(workflowStatus);
+  return canTransitionOpenClawStatus(currentStatus, desiredStatus)
+    ? desiredStatus
+    : currentStatus;
 }
 
 router.post('/callback', callbackLimiter, async (req, res: Response) => {
@@ -136,7 +132,7 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
     });
 
     if (!isAuthorized) {
-      respondUnauthorizedWebhook(res);
+      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
       return;
     }
 
@@ -144,7 +140,7 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       receivedSignature: signature,
       receivedTimestamp: timestamp,
     })) {
-      respondUnauthorizedWebhook(res);
+      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
       return;
     }
 
@@ -196,13 +192,18 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       receivedTimestamp: timestamp,
     });
     if (!replayAccepted) {
-      respondUnauthorizedWebhook(res);
+      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
       return;
     }
 
     try {
       await db.transaction(async (tx) => {
-        const updatePayload = buildOpenClawUpdatePayload(status, threadId, summary, current);
+        const updatePayload = {
+          openclawStatus: status,
+          openclawThreadId: threadId ?? current.openclawThreadId,
+          openclawSummary: summary ?? current.openclawSummary,
+          updatedAt: new Date().toISOString(),
+        };
 
         if (status !== 'completed') {
           await tx.update(userRequests)
@@ -246,14 +247,61 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       throw err;
     }
 
+    await ensureOpenClawWorkItem({
+      requestId,
+      pharmacyId: current.pharmacyId,
+      workflowStatus: mapOpenClawStatusToWorkflowStatus(status),
+      latestSummary: summary ?? current.openclawSummary ?? null,
+    });
+
+    await updateOpenClawWorkItem({
+      requestId,
+      workflowStatus: mapOpenClawStatusToWorkflowStatus(status),
+      latestSummary: summary ?? current.openclawSummary ?? null,
+    });
+
+    const isDuplicateCompletedCallback = status === 'completed'
+      && current.openclawStatus === 'completed'
+      && current.openclawSummary === summary;
+
+    if (summary && !isDuplicateCompletedCallback) {
+      await recordOpenClawRequestMessage({
+        requestId,
+        authorType: 'system',
+        messageType: 'status_update',
+        body: summary,
+        metadata: {
+          status,
+          threadId: threadId ?? current.openclawThreadId ?? null,
+          implementationBranch: reportedBranch ?? getOpenClawImplementationBranch(),
+        },
+      });
+    }
+
     // Process pharmacy verification callback if applicable
     if (status === 'completed') {
       try {
-        await applyPharmacyVerificationCallback({
-          current,
-          requestId,
-          summary,
-        });
+        const requestContent = parseJsonObject(current.requestText);
+        if (requestContent && isVerificationRequestType(requestContent.type)) {
+          const verificationData = parseJsonObject(summary);
+          if (!verificationData || typeof verificationData.approved !== 'boolean') {
+            logger.warn('Skipped pharmacy verification callback due to invalid summary payload', {
+              requestId,
+              pharmacyId: current.pharmacyId,
+              summaryProvided: Boolean(summary),
+            });
+          } else {
+            const callbackResult = await processVerificationCallback({
+              pharmacyId: current.pharmacyId,
+              requestId,
+              approved: verificationData.approved,
+              reason: typeof verificationData.reason === 'string' ? verificationData.reason : '',
+            });
+            if (callbackResult.applied) {
+              invalidateAuthUserCache(current.pharmacyId);
+            }
+          }
+        }
       } catch (verificationErr) {
         logger.error('Pharmacy verification callback processing failed', {
           requestId,
@@ -262,6 +310,22 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
         });
         // Don't fail the whole callback - the OpenClaw status was already updated
       }
+    }
+
+    publishRequestsRefresh({
+      pharmacyId: current.pharmacyId,
+      requestId,
+      reason: 'openclaw_callback',
+    });
+    publishAdminRequestsRefresh({
+      requestId,
+      reason: 'openclaw_callback',
+    });
+    if (status === 'completed') {
+      publishTimelineRefresh({
+        pharmacyId: current.pharmacyId,
+        reason: 'request_completion_notification',
+      });
     }
 
     res.json({
@@ -273,6 +337,185 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
   } catch (err) {
     logger.error('OpenClaw callback error', { error: (err as Error).message });
     res.status(500).json({ error: 'OpenClawコールバック処理に失敗しました' });
+  }
+});
+
+router.post('/report', callbackLimiter, async (req, res: Response) => {
+  try {
+    if (!isOpenClawWebhookConfigured()) {
+      res.status(503).json({ error: 'OpenClaw webhook が未設定です' });
+      return;
+    }
+
+    const signature = req.header('x-openclaw-signature');
+    const timestamp = req.header('x-openclaw-timestamp');
+    const isAuthorized = verifyOpenClawWebhookSignature({
+      receivedSignature: signature,
+      receivedTimestamp: timestamp,
+      rawBody: req.rawBody,
+    });
+
+    if (!isAuthorized || isOpenClawWebhookReplay({ receivedSignature: signature, receivedTimestamp: timestamp })) {
+      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+      return;
+    }
+
+    const requestId = parseRequestId(req.body.requestId);
+    const kind = req.body.kind;
+    const message = normalizeText(req.body.message, 4000);
+    const workflowStatus = normalizeWorkflowStatus(req.body.workflowStatus);
+    const threadId = normalizeText(req.body.threadId, 120);
+    const summary = normalizeText(req.body.summary, 4000);
+    const branchName = normalizeText(req.body.branchName, 120);
+    const prUrl = normalizeText(req.body.prUrl, 500);
+    const prNumber = isPositiveSafeInteger(req.body.prNumber) ? Number(req.body.prNumber) : null;
+
+    if (!requestId || !isOpenClawReportKind(kind) || !message) {
+      res.status(400).json({ error: 'requestId, kind, message が不正です' });
+      return;
+    }
+
+    if ((kind === 'pr_opened' || workflowStatus === 'implementing' || workflowStatus === 'pr_opened')
+      && !isImplementationBranchAllowed(branchName)) {
+      res.status(409).json({ error: '許可されていない実装ブランチです' });
+      return;
+    }
+
+    const [current] = await db.select({
+      id: userRequests.id,
+      pharmacyId: userRequests.pharmacyId,
+      openclawStatus: userRequests.openclawStatus,
+      openclawThreadId: userRequests.openclawThreadId,
+      openclawSummary: userRequests.openclawSummary,
+      requestText: userRequests.requestText,
+    })
+      .from(userRequests)
+      .where(eq(userRequests.id, requestId))
+      .limit(1);
+
+    if (!current) {
+      res.status(404).json({ error: '対象の要望が見つかりません' });
+      return;
+    }
+
+    if (!consumeOpenClawWebhookReplay({ receivedSignature: signature, receivedTimestamp: timestamp })) {
+      res.status(401).json({ error: 'OpenClaw webhook 認証に失敗しました' });
+      return;
+    }
+
+    const nextWorkflowStatus = workflowStatus
+      ?? (kind === 'question'
+        ? 'awaiting_user'
+        : kind === 'pr_opened'
+          ? 'pr_opened'
+          : kind === 'completed'
+            ? 'completed'
+            : kind === 'failed'
+              ? 'failed'
+              : 'analyzing');
+
+    const nextOpenClawStatus = resolveNonRegressingOpenClawStatus(current.openclawStatus, nextWorkflowStatus);
+    const nextSummary = summary ?? message;
+    const isDuplicateCompletedReport = kind === 'completed'
+      && current.openclawStatus === 'completed'
+      && current.openclawSummary === nextSummary;
+    let shouldCreateCompletionNotification = false;
+
+    try {
+      await db.transaction(async (tx) => {
+        await tx.update(userRequests)
+          .set({
+            openclawStatus: nextOpenClawStatus,
+            openclawThreadId: threadId ?? current.openclawThreadId,
+            openclawSummary: nextSummary,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(userRequests.id, requestId));
+
+        if (kind === 'completed' && current.openclawStatus !== 'completed') {
+          shouldCreateCompletionNotification = true;
+          await tx.insert(notifications).values({
+            pharmacyId: current.pharmacyId,
+            type: 'request_update',
+            title: 'ご要望の対応が完了しました',
+            message: summary
+              ? `要望 #${requestId}: ${summary}`
+              : `要望 #${requestId} の対応が完了しました。管理画面で詳細をご確認ください。`,
+            referenceType: 'request',
+            referenceId: requestId,
+          });
+        }
+      });
+    } catch (err) {
+      releaseOpenClawWebhookReplay({ receivedSignature: signature, receivedTimestamp: timestamp });
+      throw err;
+    }
+
+    await ensureOpenClawWorkItem({
+      requestId,
+      pharmacyId: current.pharmacyId,
+      workflowStatus: nextWorkflowStatus,
+      latestSummary: nextSummary,
+    });
+
+    await updateOpenClawWorkItem({
+      requestId,
+      workflowStatus: nextWorkflowStatus,
+      latestSummary: nextSummary,
+      lastQuestion: kind === 'question' ? message : undefined,
+      branchName: branchName ?? undefined,
+      prUrl: prUrl ?? undefined,
+      prNumber: prNumber ?? undefined,
+      lastError: kind === 'failed' ? message : undefined,
+      metadata: {
+        kind,
+        threadId: threadId ?? current.openclawThreadId ?? null,
+      },
+    });
+
+    if (!isDuplicateCompletedReport) {
+      await recordOpenClawRequestMessage({
+        requestId,
+        authorType: kind === 'completed' || kind === 'failed' ? 'system' : 'openclaw_agent',
+        messageType: kind === 'question' ? 'question' : kind === 'pr_opened' ? 'pr_report' : 'status_update',
+        body: message,
+        metadata: {
+          kind,
+          workflowStatus: nextWorkflowStatus,
+          threadId: threadId ?? current.openclawThreadId ?? null,
+          branchName,
+          prUrl,
+          prNumber,
+          completionNotificationCreated: shouldCreateCompletionNotification,
+        },
+      });
+    }
+
+    publishRequestsRefresh({
+      pharmacyId: current.pharmacyId,
+      requestId,
+      reason: 'openclaw_report',
+    });
+    publishAdminRequestsRefresh({
+      requestId,
+      reason: 'openclaw_report',
+    });
+    if (shouldCreateCompletionNotification) {
+      publishTimelineRefresh({
+        pharmacyId: current.pharmacyId,
+        reason: 'request_completion_notification',
+      });
+    }
+
+    res.json({
+      message: 'OpenClawレポートを反映しました',
+      requestId,
+      workflowStatus: nextWorkflowStatus,
+      openclawStatus: nextOpenClawStatus,
+    });
+  } catch (err) {
+    logger.error('OpenClaw report error', { error: (err as Error).message });
+    res.status(500).json({ error: 'OpenClawレポート処理に失敗しました' });
   }
 });
 

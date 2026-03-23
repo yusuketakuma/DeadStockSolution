@@ -18,6 +18,7 @@ const ProposalsPage = lazy(() => import('../pages/ProposalsPage'));
 const ProposalDetailPage = lazy(() => import('../pages/ProposalDetailPage'));
 const ProposalPrintPage = lazy(() => import('../pages/ProposalPrintPage'));
 const ExchangeHistoryPage = lazy(() => import('../pages/ExchangeHistoryPage'));
+const MyRequestsPage = lazy(() => import('../pages/MyRequestsPage'));
 const PharmacyListPage = lazy(() => import('../pages/PharmacyListPage'));
 const StatisticsPage = lazy(() => import('../pages/StatisticsPage'));
 const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage'));
@@ -100,6 +101,7 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/proposals/:id', access: 'protected', userOnly: true, useLayout: true, component: ProposalDetailPage, title: '提案詳細', parent: '/proposals' },
   { path: '/proposals/:id/print', access: 'protected', userOnly: true, useLayout: false, component: ProposalPrintPage, title: '提案印刷', parent: '/proposals' },
   { path: '/exchange-history', access: 'protected', userOnly: true, useLayout: true, component: ExchangeHistoryPage, title: '交換履歴' },
+  { path: '/requests', access: 'protected', userOnly: true, useLayout: true, component: MyRequestsPage, title: '要望一覧' },
   { path: '/pharmacies', access: 'protected', userOnly: true, useLayout: true, component: PharmacyListPage, title: '薬局一覧' },
   { path: '/statistics', access: 'protected', userOnly: true, useLayout: true, component: StatisticsPage, title: '統計' },
   { path: '/groups', access: 'protected', userOnly: true, useLayout: true, component: GroupListPage, title: 'グループ' },

@@ -156,6 +156,9 @@ export async function triggerReverification(
       requestId,
       pharmacyId,
       requestText,
+      context: {
+        source: 'pharmacy_verification_request',
+      },
     }).then((handoffResult) => {
       if (!handoffResult.accepted) {
         logger.warn('Re-verification handoff was not accepted', {

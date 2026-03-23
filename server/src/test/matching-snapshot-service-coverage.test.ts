@@ -119,10 +119,12 @@ function createInsertOnConflictChain() {
     values: vi.fn(),
     onConflictDoNothing: vi.fn(),
     onConflictDoUpdate: vi.fn(),
+    returning: vi.fn(),
   };
   chain.values.mockReturnValue(chain);
-  chain.onConflictDoNothing.mockResolvedValue(undefined);
-  chain.onConflictDoUpdate.mockResolvedValue(undefined);
+  chain.onConflictDoNothing.mockReturnValue(chain);
+  chain.onConflictDoUpdate.mockReturnValue(chain);
+  chain.returning.mockResolvedValue([]);
   return chain;
 }
 
