@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, and, or, count, sum, max, countDistinct, isNull, sql } from 'drizzle-orm';
+import { eq, and, or, count, sum, max, countDistinct, isNull, sql, gte, asc } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   uploadJobs,
@@ -11,6 +11,7 @@ import {
   pharmacyRelationships,
   predictiveAlerts,
 } from '../db/schema';
+import { dailyStatistics } from '../db/schema-analytics';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { getPharmacyRiskDetail } from '../services/expiry-risk-service';
@@ -250,6 +251,31 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
     res.json(payload);
   } catch (err) {
     logger.error('Statistics summary error:', { error: (err as Error).message });
+    res.status(500).json({ error: '統計情報の取得に失敗しました' });
+  }
+});
+
+router.get('/trends', async (req: AuthRequest, res: Response) => {
+  const pharmacyId = req.user!.id;
+  const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
+  const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+
+  try {
+    const rows = await db
+      .select({
+        date: dailyStatistics.date,
+        metrics: dailyStatistics.metrics,
+      })
+      .from(dailyStatistics)
+      .where(and(
+        eq(dailyStatistics.pharmacyId, pharmacyId),
+        gte(dailyStatistics.date, startDate),
+      ))
+      .orderBy(asc(dailyStatistics.date));
+
+    res.json({ trends: rows, days, startDate });
+  } catch (err) {
+    logger.error('Statistics trends error:', { error: (err as Error).message });
     res.status(500).json({ error: '統計情報の取得に失敗しました' });
   }
 });

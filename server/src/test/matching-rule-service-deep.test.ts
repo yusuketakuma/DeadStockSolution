@@ -19,6 +19,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
   and: vi.fn(() => ({})),
   asc: vi.fn(() => ({})),
+  isNull: vi.fn(() => ({})),
 }));
 
 import {
@@ -35,7 +36,7 @@ import { DEFAULT_MATCHING_SCORING_RULES } from '../services/matching-score-servi
 function makeSelectChain(result: unknown[]) {
   const limit = vi.fn().mockResolvedValue(result);
   const orderBy = vi.fn().mockReturnValue({ limit });
-  const where = vi.fn().mockReturnValue({ limit });
+  const where = vi.fn().mockReturnValue({ limit, orderBy });
   return { from: vi.fn().mockReturnValue({ where, orderBy, limit }) };
 }
 

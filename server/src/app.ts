@@ -41,6 +41,7 @@ import groupsRoutes from './routes/groups';
 import alertsRoutes from './routes/alerts';
 import matchBookmarksRoutes from './routes/match-bookmarks';
 import adminMatchingExperimentsRoutes from './routes/admin-matching-experiments';
+import adminOpenClawRetriesRoutes from './routes/admin-openclaw-retries';
 import pushRoutes from './routes/push';
 import uploadQualityRoutes from './routes/upload-quality';
 import messagesRoutes from './routes/messages';
@@ -369,6 +370,7 @@ registerApiRoute('/openclaw/commands', openclawCommandsRoutes);
 
 // Admin-only routes
 registerApiRoute('/admin', adminMatchingExperimentsRoutes);
+registerApiRoute('/admin', adminOpenClawRetriesRoutes);
 registerApiRoute('/admin/drug-master', drugMasterRoutes);
 registerApiRoute('/admin/error-codes', adminErrorCodesRoutes);
 registerApiRoute('/admin/log-center', adminLogCenterRoutes);

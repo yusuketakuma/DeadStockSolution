@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import { db } from '../config/database';
 import { matchingRuleProfiles } from '../db/schema';
 import { DEFAULT_MATCHING_SCORING_RULES } from './matching-score-service';
@@ -186,15 +186,34 @@ function hasAnyRuleField(input: MatchingRuleProfileUpdateInput): boolean {
 async function selectActiveProfileRow(reader: Pick<DbTransaction, 'select'>): Promise<MatchingRuleProfileRow | null> {
   const [currentActive] = await reader.select()
     .from(matchingRuleProfiles)
-    .where(eq(matchingRuleProfiles.isActive, true))
+    .where(and(
+      eq(matchingRuleProfiles.isActive, true),
+      isNull(matchingRuleProfiles.pharmacyId),
+    ))
     .limit(1);
 
   return currentActive ?? null;
 }
 
+async function selectActiveProfileRowForPharmacy(
+  reader: Pick<DbTransaction, 'select'>,
+  pharmacyId: number,
+): Promise<MatchingRuleProfileRow | null> {
+  const [row] = await reader.select()
+    .from(matchingRuleProfiles)
+    .where(and(
+      eq(matchingRuleProfiles.isActive, true),
+      eq(matchingRuleProfiles.pharmacyId, pharmacyId),
+    ))
+    .limit(1);
+
+  return row ?? null;
+}
+
 async function selectFirstProfileRow(reader: Pick<DbTransaction, 'select'>): Promise<MatchingRuleProfileRow | null> {
   const [firstRow] = await reader.select()
     .from(matchingRuleProfiles)
+    .where(isNull(matchingRuleProfiles.pharmacyId))
     .orderBy(asc(matchingRuleProfiles.id))
     .limit(1);
 
@@ -285,13 +304,32 @@ export async function getActiveMatchingRuleProfile(
     : (options ?? {});
   const { pharmacyId, forceRefresh = false } = normalizedOptions;
 
-  // pharmacyId が指定された場合は実験サービスに委譲
+  // pharmacyId が指定された場合:
+  // 1. 実験サービスをチェック
+  // 2. 薬局別アクティブプロファイルをチェック
+  // 3. グローバルプロファイルにフォールバック
   if (pharmacyId !== undefined) {
     const { getProfileForPharmacy } = await import('./matching-experiment-service');
     const experimentProfile = await getProfileForPharmacy(pharmacyId);
     if (experimentProfile) {
       return experimentProfile;
     }
+
+    try {
+      const pharmacyRow = await selectActiveProfileRowForPharmacy(db, pharmacyId);
+      if (pharmacyRow) {
+        const rules = normalizeRulesFromDbRow(pharmacyRow);
+        if (rules) {
+          return toProfile(pharmacyRow, rules);
+        }
+      }
+    } catch (err) {
+      logger.error('Failed to load pharmacy-specific matching rule profile', {
+        pharmacyId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    // グローバルプロファイルへフォールバック（キャッシュ経由）
   }
 
   if (!forceRefresh) {

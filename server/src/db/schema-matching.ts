@@ -55,6 +55,7 @@ export const matchingRefreshJobs = pgTable('matching_refresh_jobs', {
 export const matchingRuleProfiles = pgTable('matching_rule_profiles', {
   id: serial('id').primaryKey(),
   profileName: text('profile_name').notNull(),
+  pharmacyId: integer('pharmacy_id').references(() => pharmacies.id), // nullable: null = global profile
   isActive: boolean('is_active').notNull().default(true),
   nameMatchThreshold: real('name_match_threshold').notNull().default(0.7),
   valueScoreMax: real('value_score_max').notNull().default(55),
@@ -80,9 +81,12 @@ export const matchingRuleProfiles = pgTable('matching_rule_profiles', {
 }, (table) => ({
   idxMatchingRuleProfilesNameUnique: uniqueIndex('idx_matching_rule_profiles_name_unique')
     .on(table.profileName),
-  idxMatchingRuleProfilesActiveUnique: uniqueIndex('idx_matching_rule_profiles_active_unique')
+  uqMatchingRuleProfileActiveGlobal: uniqueIndex('uq_matching_rule_profile_active_global')
     .on(table.isActive)
-    .where(sql`${table.isActive} = true`),
+    .where(sql`${table.isActive} = true AND ${table.pharmacyId} IS NULL`),
+  uqMatchingRuleProfileActivePharmacy: uniqueIndex('uq_matching_rule_profile_active_pharmacy')
+    .on(table.pharmacyId, table.isActive)
+    .where(sql`${table.isActive} = true AND ${table.pharmacyId} IS NOT NULL`),
   idxMatchingRuleProfilesUpdatedAt: index('idx_matching_rule_profiles_updated_at')
     .on(table.updatedAt),
   chkMatchingRuleNameThreshold: check('chk_matching_rule_name_threshold', sql`${table.nameMatchThreshold} >= 0 AND ${table.nameMatchThreshold} <= 1`),

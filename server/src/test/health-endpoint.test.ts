@@ -1,13 +1,14 @@
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // db mock must be hoisted so it is set up before app.ts is imported
 const mocks = vi.hoisted(() => ({
   dbExecute: vi.fn(),
+  dbSelect: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
-  db: { execute: mocks.dbExecute },
+  db: { execute: mocks.dbExecute, select: mocks.dbSelect },
 }));
 
 vi.mock('../services/logger', () => ({
@@ -22,9 +23,32 @@ vi.mock('../services/logger', () => ({
 // Import app after mocks are set up
 import app from '../app';
 
+const ORIGINAL_OPENCLAW_CONNECTOR_MODE = process.env.OPENCLAW_CONNECTOR_MODE;
+const ORIGINAL_OPENCLAW_CLI_PATH = process.env.OPENCLAW_CLI_PATH;
+const ORIGINAL_OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID;
+const ORIGINAL_OPENCLAW_WEBHOOK_SECRET = process.env.OPENCLAW_WEBHOOK_SECRET;
+
+function mockRetryQueueRows(rows: Array<{ status: string }>) {
+  let callCount = 0;
+  mocks.dbSelect.mockImplementation(() => {
+    callCount += 1;
+    if (callCount === 1) {
+      // First call: retry queue (select().from() — no where)
+      return { from: vi.fn().mockResolvedValue(rows) };
+    }
+    // Second call: handoff KPI (select().from().where())
+    return {
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([]),
+      }),
+    };
+  });
+}
+
 describe('/api/health', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRetryQueueRows([]);
   });
 
   describe('DB 正常時', () => {
@@ -84,6 +108,7 @@ describe('/api/health', () => {
 describe('/api/health/ready', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRetryQueueRows([]);
   });
 
   describe('DB 正常時', () => {
@@ -106,5 +131,51 @@ describe('/api/health/ready', () => {
       expect(res.status).toBe(503);
       expect(res.body).toEqual({ ready: false });
     });
+  });
+});
+
+describe('/api/health/openclaw', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRetryQueueRows([]);
+    delete process.env.OPENCLAW_CONNECTOR_MODE;
+    delete process.env.OPENCLAW_CLI_PATH;
+    delete process.env.OPENCLAW_AGENT_ID;
+    delete process.env.OPENCLAW_WEBHOOK_SECRET;
+  });
+
+  afterEach(() => {
+    if (typeof ORIGINAL_OPENCLAW_CONNECTOR_MODE === 'string') process.env.OPENCLAW_CONNECTOR_MODE = ORIGINAL_OPENCLAW_CONNECTOR_MODE;
+    else delete process.env.OPENCLAW_CONNECTOR_MODE;
+    if (typeof ORIGINAL_OPENCLAW_CLI_PATH === 'string') process.env.OPENCLAW_CLI_PATH = ORIGINAL_OPENCLAW_CLI_PATH;
+    else delete process.env.OPENCLAW_CLI_PATH;
+    if (typeof ORIGINAL_OPENCLAW_AGENT_ID === 'string') process.env.OPENCLAW_AGENT_ID = ORIGINAL_OPENCLAW_AGENT_ID;
+    else delete process.env.OPENCLAW_AGENT_ID;
+    if (typeof ORIGINAL_OPENCLAW_WEBHOOK_SECRET === 'string') process.env.OPENCLAW_WEBHOOK_SECRET = ORIGINAL_OPENCLAW_WEBHOOK_SECRET;
+    else delete process.env.OPENCLAW_WEBHOOK_SECRET;
+  });
+
+  it('returns 503 when OpenClaw connector/webhook are not configured', async () => {
+    const res = await request(app).get('/api/health/openclaw');
+
+    expect(res.status).toBe(503);
+    expect(res.body.status).toBe('degraded');
+    expect(res.body.connector.configured).toBe(false);
+    expect(res.body.webhook.configured).toBe(false);
+  });
+
+  it('returns 200 when OpenClaw is configured and retry queue is healthy', async () => {
+    process.env.OPENCLAW_CONNECTOR_MODE = 'gateway_cli';
+    process.env.OPENCLAW_CLI_PATH = '/usr/local/bin/openclaw';
+    process.env.OPENCLAW_AGENT_ID = 'agent-1';
+    process.env.OPENCLAW_WEBHOOK_SECRET = 'secret';
+    mockRetryQueueRows([{ status: 'pending' }, { status: 'completed' }]);
+
+    const res = await request(app).get('/api/health/openclaw');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.retryQueue.pending).toBe(1);
+    expect(res.body.retryQueue.completed).toBe(1);
   });
 });
