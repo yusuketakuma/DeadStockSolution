@@ -34,6 +34,7 @@ import {
   type OpenClawHandoffResponseBody,
   type GatewaySendInput,
 } from './openclaw-handoff-helpers';
+import { enqueueDdsWorkItemFromHandoff } from './dds-agent-service';
 
 const execFileAsync = promisify(execFile);
 
@@ -273,6 +274,27 @@ async function handoffViaLegacyHttp(
   return buildHandoffFailure(config, 'OpenClaw連携中にエラーが発生しました。');
 }
 
+async function handoffViaManagedRemoteAgent(
+  config: OpenClawConfig,
+  input: OpenClawHandoffInput,
+): Promise<OpenClawHandoffResult> {
+  const queued = await enqueueDdsWorkItemFromHandoff({
+    requestId: input.requestId,
+    pharmacyId: input.pharmacyId,
+    requestText: input.requestText,
+    context: input.context,
+  });
+
+  return buildHandoffSuccess(config, {
+    status: 'pending_handoff',
+    threadId: null,
+    summary: null,
+    note: queued.created
+      ? 'DDS queue に登録しました。production agent が処理を開始します。'
+      : 'DDS queue に再登録しました。production agent の再処理を待っています。',
+  });
+}
+
 export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ summary: string }> {
   const config = getOpenClawConfig();
 
@@ -295,11 +317,21 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
       '--json',
     ];
 
-    const { stdout } = await execFileAsync(config.cliPath, args, {
-      timeout: timeoutSeconds * 1000 + 3000,
-      maxBuffer: 2 * 1024 * 1024,
-      env: buildSafeCliEnv(),
-    });
+    let stdout: string;
+    try {
+      const result = await execFileAsync(config.cliPath, args, {
+        timeout: timeoutSeconds * 1000 + 3000,
+        maxBuffer: 2 * 1024 * 1024,
+        env: buildSafeCliEnv(),
+      });
+      stdout = result.stdout;
+    } catch (err) {
+      logger.error('sendToOpenClawGateway gateway_cli failed', {
+        agentId: input.agentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw new Error('OpenClaw Gateway CLI 送信に失敗しました');
+    }
 
     let parsed: Record<string, unknown> = {};
     try {
@@ -349,9 +381,11 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
 
 export async function handoffToOpenClaw(input: OpenClawHandoffInput): Promise<OpenClawHandoffResult> {
   const config = getOpenClawConfig();
-  const connectorConfigured = config.mode === 'gateway_cli'
-    ? Boolean(config.cliPath && config.agentId)
-    : Boolean(config.baseUrl && config.apiKey && config.agentId);
+  const connectorConfigured = config.mode === 'managed_remote_agent'
+    ? true
+    : config.mode === 'gateway_cli'
+      ? Boolean(config.cliPath && config.agentId)
+      : Boolean(config.baseUrl && config.apiKey && config.agentId);
 
   if (!connectorConfigured) {
     return {
@@ -390,6 +424,9 @@ export async function handoffToOpenClaw(input: OpenClawHandoffInput): Promise<Op
   }
 
   const task = (async () => {
+    if (config.mode === 'managed_remote_agent') {
+      return handoffViaManagedRemoteAgent(config, input);
+    }
     if (config.mode === 'gateway_cli') {
       return handoffViaGatewayCli(config, input, idempotencyKey);
     }

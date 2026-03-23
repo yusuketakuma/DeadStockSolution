@@ -32,6 +32,8 @@ import {
   publishRequestsRefresh,
   publishTimelineRefresh,
 } from '../services/realtime-service';
+import { recordOpenClawRequestEvent } from '../services/openclaw-request-event-service';
+import { completeOpenClawRetryForRequest } from '../services/openclaw-retry-service';
 import { isPositiveSafeInteger, parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
@@ -182,7 +184,7 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
 
     if (!canTransitionOpenClawStatus(current.openclawStatus, status)) {
       res.status(409).json({
-        error: `状態遷移が不正です。現在: ${current.openclawStatus}, 受信: ${status}`,
+        error: '状態遷移が不正です',
       });
       return;
     }
@@ -209,6 +211,16 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
           await tx.update(userRequests)
             .set(updatePayload)
             .where(eq(userRequests.id, requestId));
+          await recordOpenClawRequestEvent({
+            requestId,
+            pharmacyId: current.pharmacyId,
+            eventType: 'status_updated',
+            fromStatus: current.openclawStatus,
+            toStatus: status,
+            threadId,
+            summary,
+            note: 'OpenClaw callback により状態を更新しました',
+          }, tx);
           return;
         }
 
@@ -224,10 +236,30 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
           await tx.update(userRequests)
             .set(updatePayload)
             .where(eq(userRequests.id, requestId));
+          await recordOpenClawRequestEvent({
+            requestId,
+            pharmacyId: current.pharmacyId,
+            eventType: 'status_updated',
+            fromStatus: current.openclawStatus,
+            toStatus: status,
+            threadId,
+            summary,
+            note: 'OpenClaw callback により完了状態を再反映しました',
+          }, tx);
           return;
         }
 
         const summaryText = summary ?? current.openclawSummary;
+        await recordOpenClawRequestEvent({
+          requestId,
+          pharmacyId: current.pharmacyId,
+          eventType: 'status_updated',
+          fromStatus: current.openclawStatus,
+          toStatus: status,
+          threadId,
+          summary: summaryText,
+          note: 'OpenClaw callback により状態を更新しました',
+        }, tx);
         await tx.insert(notifications).values({
           pharmacyId: current.pharmacyId,
           type: 'request_update',
@@ -277,6 +309,8 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
         },
       });
     }
+
+    await completeOpenClawRetryForRequest(requestId);
 
     // Process pharmacy verification callback if applicable
     if (status === 'completed') {

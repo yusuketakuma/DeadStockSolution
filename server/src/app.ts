@@ -27,6 +27,7 @@ import adminErrorCodesRoutes from './routes/admin-error-codes';
 import adminLogCenterRoutes from './routes/admin-log-center';
 import adminRateLimitsRoutes from './routes/admin-rate-limits';
 import openclawCommandsRoutes from './routes/openclaw-commands';
+import openclawConnectRoutes from './routes/openclaw-connect';
 import updatesRoutes from './routes/updates';
 import internalMatchingRefreshRoutes from './routes/internal-matching-refresh';
 import internalMonthlyReportsRoutes from './routes/internal-monthly-reports';
@@ -52,7 +53,7 @@ import subscriptionsRoutes from './routes/subscriptions';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { csrfProtection } from './middleware/csrf';
-import { requireLogin, rejectAdmin } from './middleware/auth';
+import { requireLogin, rejectAdmin, requireAdmin } from './middleware/auth';
 import { db } from './config/database';
 import { sql } from 'drizzle-orm';
 import { logger } from './services/logger';
@@ -85,9 +86,11 @@ function isRawBodyRoute(url?: string): boolean {
     url.startsWith('/api/openclaw/callback')
     || url.startsWith('/api/openclaw/report')
     || url.startsWith('/api/openclaw/commands')
+    || url.startsWith('/api/openclaw/connect')
     || url.startsWith('/api/v1/openclaw/callback')
     || url.startsWith('/api/v1/openclaw/report')
     || url.startsWith('/api/v1/openclaw/commands')
+    || url.startsWith('/api/v1/openclaw/connect')
     || url.startsWith('/api/stripe/webhook')
     || url.startsWith('/api/v1/stripe/webhook')
   );
@@ -364,7 +367,7 @@ registerApiRoute('/alerts', requireLogin, rejectAdmin, alertsRoutes);
 registerApiRoute('/match-bookmarks', requireLogin, rejectAdmin, matchBookmarksRoutes);
 registerApiRoute('/push', rejectAdmin, pushRoutes);
 registerApiRoute('/upload-quality', rejectAdmin, uploadQualityRoutes);
-registerApiRoute('/messages', messagesRoutes);
+registerApiRoute('/messages', requireLogin, rejectAdmin, messagesRoutes);
 registerApiRoute('/sse', requireLogin, rejectAdmin, sseRoutes);
 registerApiRoute('/realtime', realtimeRoutes);
 registerApiRoute('/subscriptions', subscriptionsRoutes);
@@ -377,14 +380,15 @@ registerApiRoute('/updates', updatesRoutes);
 // OpenClaw (webhook callbacks need access regardless)
 registerApiRoute('/openclaw', openclawRoutes);
 registerApiRoute('/openclaw/commands', openclawCommandsRoutes);
+registerApiRoute('/openclaw/connect', openclawConnectRoutes);
 
 // Admin-only routes
-registerApiRoute('/admin', adminMatchingExperimentsRoutes);
-registerApiRoute('/admin', adminOpenClawRetriesRoutes);
-registerApiRoute('/admin/drug-master', drugMasterRoutes);
-registerApiRoute('/admin/error-codes', adminErrorCodesRoutes);
-registerApiRoute('/admin/log-center', adminLogCenterRoutes);
-registerApiRoute('/admin/rate-limits', adminRateLimitsRoutes);
+registerApiRoute('/admin', requireLogin, requireAdmin, adminMatchingExperimentsRoutes);
+registerApiRoute('/admin', requireLogin, requireAdmin, adminOpenClawRetriesRoutes);
+registerApiRoute('/admin/drug-master', requireLogin, requireAdmin, drugMasterRoutes);
+registerApiRoute('/admin/error-codes', requireLogin, requireAdmin, adminErrorCodesRoutes);
+registerApiRoute('/admin/log-center', requireLogin, requireAdmin, adminLogCenterRoutes);
+registerApiRoute('/admin/rate-limits', requireLogin, requireAdmin, adminRateLimitsRoutes);
 
 // Internal routes
 registerApiRoute('/internal/matching-refresh', internalMatchingRefreshRoutes);

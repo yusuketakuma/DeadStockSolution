@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { matchingExperiments, matchingExperimentAssignments, matchingRuleProfiles } from '../db/schema';
 import { createCache } from './cache-service';
@@ -46,6 +46,7 @@ export interface ExperimentResults {
 
 const ACTIVE_EXPERIMENT_CACHE_KEY = 'active_experiment';
 const ACTIVE_EXPERIMENT_CACHE_TTL_MS = 5 * 60 * 1000; // 5分
+const MATCHING_EXPERIMENT_START_LOCK_KEY = 41001;
 
 const activeExperimentCache = createCache<MatchingExperiment | null>({
   ttlMs: ACTIVE_EXPERIMENT_CACHE_TTL_MS,
@@ -260,6 +261,21 @@ export async function createExperiment(input: ExperimentCreateInput): Promise<Ma
  */
 export async function startExperiment(experimentId: number): Promise<MatchingExperiment> {
   const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${MATCHING_EXPERIMENT_START_LOCK_KEY})`);
+
+    const [current] = await tx.select()
+      .from(matchingExperiments)
+      .where(eq(matchingExperiments.id, experimentId))
+      .limit(1);
+
+    if (!current) {
+      throw new Error('実験が見つかりません');
+    }
+
+    if (current.status !== 'draft') {
+      throw new Error('実験を開始できない状態です');
+    }
+
     // 既に running の実験があれば拒否
     const [running] = await tx.select()
       .from(matchingExperiments)
@@ -275,14 +291,13 @@ export async function startExperiment(experimentId: number): Promise<MatchingExp
         status: 'running',
         startedAt: new Date(),
       })
-      .where(eq(matchingExperiments.id, experimentId))
+      .where(and(
+        eq(matchingExperiments.id, experimentId),
+        eq(matchingExperiments.status, 'draft'),
+      ))
       .returning();
 
     if (!updated) {
-      throw new Error('実験が見つかりません');
-    }
-
-    if (updated.status !== 'running') {
       throw new Error('実験を開始できない状態です');
     }
 
@@ -308,16 +323,32 @@ export async function startExperiment(experimentId: number): Promise<MatchingExp
  * 実験を停止する（status: running → completed）。
  */
 export async function stopExperiment(experimentId: number): Promise<MatchingExperiment> {
+  const [current] = await db.select()
+    .from(matchingExperiments)
+    .where(eq(matchingExperiments.id, experimentId))
+    .limit(1);
+
+  if (!current) {
+    throw new Error('実験が見つかりません');
+  }
+
+  if (current.status !== 'running') {
+    throw new Error('実験を停止できない状態です');
+  }
+
   const [updated] = await db.update(matchingExperiments)
     .set({
       status: 'completed',
       endedAt: new Date(),
     })
-    .where(eq(matchingExperiments.id, experimentId))
+    .where(and(
+      eq(matchingExperiments.id, experimentId),
+      eq(matchingExperiments.status, 'running'),
+    ))
     .returning();
 
   if (!updated) {
-    throw new Error('実験が見つかりません');
+    throw new Error('実験を停止できない状態です');
   }
 
   activeExperimentCache.invalidate(ACTIVE_EXPERIMENT_CACHE_KEY);
@@ -357,16 +388,25 @@ export async function listExperiments(): Promise<MatchingExperiment[]> {
  * 実験のアサインメント集計結果を取得する。
  */
 export async function getExperimentResults(experimentId: number): Promise<ExperimentResults> {
-  const assignments = await db.select()
+  const rows = await db
+    .select({
+      assignedGroup: matchingExperimentAssignments.assignedGroup,
+      count: sql<number>`count(*)::int`,
+    })
     .from(matchingExperimentAssignments)
-    .where(eq(matchingExperimentAssignments.experimentId, experimentId));
+    .where(eq(matchingExperimentAssignments.experimentId, experimentId))
+    .groupBy(matchingExperimentAssignments.assignedGroup);
 
-  const controlCount = assignments.filter((a) => a.assignedGroup === 'control').length;
-  const treatmentCount = assignments.filter((a) => a.assignedGroup === 'treatment').length;
+  let controlCount = 0;
+  let treatmentCount = 0;
+  for (const row of rows) {
+    if (row.assignedGroup === 'control') controlCount = row.count;
+    else if (row.assignedGroup === 'treatment') treatmentCount = row.count;
+  }
 
   return {
     experimentId,
-    totalAssignments: assignments.length,
+    totalAssignments: controlCount + treatmentCount,
     controlCount,
     treatmentCount,
   };

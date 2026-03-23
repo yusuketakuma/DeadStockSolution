@@ -36,10 +36,12 @@ function mockRetryQueueRows(rows: Array<{ status: string }>) {
       // First call: retry queue (select().from() — no where)
       return { from: vi.fn().mockResolvedValue(rows) };
     }
-    // Second call: handoff KPI (select().from().where())
+    // Second call: handoff KPI (select().from().where().groupBy())
     return {
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([]),
+        where: vi.fn().mockReturnValue({
+          groupBy: vi.fn().mockResolvedValue([]),
+        }),
       }),
     };
   });
@@ -177,5 +179,19 @@ describe('/api/health/openclaw', () => {
     expect(res.body.status).toBe('ok');
     expect(res.body.retryQueue.pending).toBe(1);
     expect(res.body.retryQueue.completed).toBe(1);
+  });
+
+  it('returns 200 even when historical failed retries exist', async () => {
+    process.env.OPENCLAW_CONNECTOR_MODE = 'gateway_cli';
+    process.env.OPENCLAW_CLI_PATH = '/usr/local/bin/openclaw';
+    process.env.OPENCLAW_AGENT_ID = 'agent-1';
+    process.env.OPENCLAW_WEBHOOK_SECRET = 'secret';
+    mockRetryQueueRows([{ status: 'failed' }, { status: 'completed' }]);
+
+    const res = await request(app).get('/api/health/openclaw');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.retryQueue.failed).toBe(1);
   });
 });
