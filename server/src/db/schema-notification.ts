@@ -53,6 +53,24 @@ export const notifications = pgTable('notifications', {
     .where(sql`dedupe_key IS NOT NULL`),
 }));
 
+export const matchNotifications = pgTable('match_notifications', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  triggerPharmacyId: integer('trigger_pharmacy_id').references(() => pharmacies.id, { onDelete: 'set null' }),
+  triggerUploadType: text('trigger_upload_type'),
+  candidateCountBefore: integer('candidate_count_before'),
+  candidateCountAfter: integer('candidate_count_after'),
+  diffJson: jsonb('diff_json'),
+  isRead: boolean('is_read').notNull().default(false),
+  dedupeKey: text('dedupe_key'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxMatchNotificationsPharmacy: index('idx_match_notifications_pharmacy').on(table.pharmacyId, table.createdAt),
+  uqMatchNotificationsDedupeKey: uniqueIndex('uq_match_notifications_dedupe_key')
+    .on(table.pharmacyId, table.dedupeKey)
+    .where(sql`dedupe_key IS NOT NULL`),
+}));
+
 export const pushSubscriptions = pgTable('push_subscriptions', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),

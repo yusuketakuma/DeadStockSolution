@@ -19,6 +19,7 @@ interface CreateNotificationInput {
   message: string;
   referenceType?: NotificationReferenceType;
   referenceId?: number;
+  detailJson?: Record<string, unknown>;
 }
 
 interface PostgresErrorLike {
@@ -101,6 +102,7 @@ export async function createNotification(
       message: input.message,
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
+      detailJson: input.detailJson ?? null,
     }).returning({ id: notifications.id });
     invalidateDashboardUnreadCache(input.pharmacyId);
     publishTimelineRefresh({

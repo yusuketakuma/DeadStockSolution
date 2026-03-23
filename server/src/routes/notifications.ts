@@ -418,7 +418,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     // messageReads と triggerPharmacy names を並列取得
     const messageIds = messageRows.map((message) => message.id);
-    const triggerPharmacyIds = [...new Set(matchRows.map((row) => row.triggerPharmacyId))];
+    const triggerPharmacyIds = [...new Set(matchRows.map((row) => row.triggerPharmacyId).filter((id): id is number => id != null))];
 
     const [messageReadRows, triggerPharmacyRows] = await Promise.all([
       messageIds.length > 0
@@ -469,8 +469,18 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     const triggerPharmacyNameById = new Map(triggerPharmacyRows.map((row) => [row.id, row.name]));
     for (const row of matchRows) {
+      if (!row.triggerPharmacyId || !row.triggerUploadType || row.candidateCountBefore == null || row.candidateCountAfter == null) continue;
       notices.push(matchUpdateNotice(
-        row,
+        {
+          id: row.id,
+          triggerPharmacyId: row.triggerPharmacyId,
+          triggerUploadType: row.triggerUploadType as 'dead_stock' | 'used_medication',
+          candidateCountBefore: row.candidateCountBefore,
+          candidateCountAfter: row.candidateCountAfter,
+          diffJson: typeof row.diffJson === 'string' ? row.diffJson : JSON.stringify(row.diffJson ?? ''),
+          isRead: row.isRead,
+          createdAt: row.createdAt,
+        },
         pharmacyId,
         triggerPharmacyNameById.get(row.triggerPharmacyId) ?? null,
       ));

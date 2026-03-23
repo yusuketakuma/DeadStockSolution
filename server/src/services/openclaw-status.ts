@@ -2,7 +2,7 @@ import { normalizeHttpsOrLoopbackHttpUrl } from '../utils/url-config';
 
 export type OpenClawStatus = 'pending_handoff' | 'in_dialogue' | 'implementing' | 'completed';
 type OpenClawBaseUrlError = 'missing' | 'invalid' | 'insecure';
-type OpenClawConnectorMode = 'legacy_http' | 'gateway_cli';
+type OpenClawConnectorMode = 'legacy_http' | 'gateway_cli' | 'managed_remote_agent';
 
 const FIXED_IMPLEMENTATION_BRANCH = 'review';
 const DEFAULT_WEBHOOK_MAX_SKEW_SECONDS = 300;
@@ -55,6 +55,7 @@ function normalizeBaseUrl(baseUrlRaw: string): { value: string; error: OpenClawB
 function resolveOpenClawConnectorMode(): OpenClawConnectorMode {
   const rawMode = (process.env.OPENCLAW_CONNECTOR_MODE ?? '').trim().toLowerCase();
   if (rawMode === 'gateway_cli') return 'gateway_cli';
+  if (rawMode === 'managed_remote_agent') return 'managed_remote_agent';
   return 'legacy_http';
 }
 

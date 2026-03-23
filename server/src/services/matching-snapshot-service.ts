@@ -203,7 +203,9 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
 
     if (shouldNotify) {
       const beforeTopCandidates: TopCandidateDigest[] = current?.topCandidatesJson
-        ? JSON.parse(current.topCandidatesJson) as TopCandidateDigest[]
+        ? (typeof current.topCandidatesJson === 'string'
+          ? JSON.parse(current.topCandidatesJson) as TopCandidateDigest[]
+          : current.topCandidatesJson as TopCandidateDigest[])
         : [];
       const diff = calculateSnapshotDiff(beforeTopCandidates, next.topCandidates, beforeCount, next.candidateCount);
       const diffSerialized = JSON.stringify(diff);
@@ -341,7 +343,9 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
     if (!entry.notifyEnabled) continue;
 
     const beforeTopCandidates: TopCandidateDigest[] = existing?.topCandidatesJson
-      ? JSON.parse(existing.topCandidatesJson) as TopCandidateDigest[]
+      ? (typeof existing.topCandidatesJson === 'string'
+        ? JSON.parse(existing.topCandidatesJson) as TopCandidateDigest[]
+        : existing.topCandidatesJson as TopCandidateDigest[])
       : [];
     const beforeCount = Number(existing?.candidateCount ?? 0);
     const diff = calculateSnapshotDiff(beforeTopCandidates, next.topCandidates, beforeCount, next.candidateCount);

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, varchar, boolean, timestamp, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, varchar, boolean, timestamp, jsonb, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import {
   openclawMessageAuthorTypeEnum,
@@ -72,6 +72,135 @@ export const openclawWorkItems = pgTable('openclaw_work_items', {
     .on(table.pharmacyId, table.workflowStatus, table.updatedAt),
   idxOpenclawWorkItemsStatusUpdated: index('idx_openclaw_work_items_status_updated')
     .on(table.workflowStatus, table.updatedAt),
+}));
+
+// openclawRequestEvents — ステータス遷移イベントログ（0037 migration）
+export const openclawRequestEvents = pgTable('openclaw_request_events', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id').notNull().references(() => userRequests.id, { onDelete: 'cascade' }),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  eventType: varchar('event_type', { length: 64 }).notNull(),
+  fromStatus: openclawStatusEnum('from_status'),
+  toStatus: openclawStatusEnum('to_status'),
+  threadId: text('thread_id'),
+  summary: text('summary'),
+  note: text('note'),
+  metadataJson: jsonb('metadata_json'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  idxOpenclawRequestEventsRequestCreated: index('idx_openclaw_request_events_request_created').on(table.requestId, table.createdAt),
+  idxOpenclawRequestEventsPharmacyCreated: index('idx_openclaw_request_events_pharmacy_created').on(table.pharmacyId, table.createdAt),
+  idxOpenclawRequestEventsTypeCreated: index('idx_openclaw_request_events_type_created').on(table.eventType, table.createdAt),
+}));
+
+// openclawRetryJobs — ハンドオフ失敗リトライキュー（0037 migration）
+export const openclawRetryJobs = pgTable('openclaw_retry_jobs', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id').notNull().references(() => userRequests.id, { onDelete: 'cascade' }),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 24 }).notNull().default('pending'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(3),
+  nextRetryAt: timestamp('next_retry_at', { mode: 'string' }).defaultNow().notNull(),
+  lastAttemptAt: timestamp('last_attempt_at', { mode: 'string' }),
+  completedAt: timestamp('completed_at', { mode: 'string' }),
+  lastError: text('last_error'),
+  triggerReason: text('trigger_reason'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  uqOpenclawRetryJobsRequestId: uniqueIndex('uq_openclaw_retry_jobs_request_id').on(table.requestId),
+  idxOpenclawRetryJobsStatusNextRetry: index('idx_openclaw_retry_jobs_status_next_retry').on(table.status, table.nextRetryAt),
+  idxOpenclawRetryJobsPharmacyCreated: index('idx_openclaw_retry_jobs_pharmacy_created').on(table.pharmacyId, table.createdAt),
+}));
+
+// DDS agent 関連テーブル
+export const ddsBootstrapTokens = pgTable('dds_bootstrap_tokens', {
+  id: serial('id').primaryKey(),
+  environment: varchar('environment', { length: 32 }).notNull(),
+  tokenHash: varchar('token_hash', { length: 128 }).notNull(),
+  requestedByAdminId: integer('requested_by_admin_id').references(() => pharmacies.id, { onDelete: 'set null' }),
+  expiresAt: timestamp('expires_at', { mode: 'string' }).notNull(),
+  consumedAt: timestamp('consumed_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+});
+
+export const ddsAgentConnections = pgTable('dds_agent_connections', {
+  id: serial('id').primaryKey(),
+  agentId: varchar('agent_id', { length: 128 }).notNull(),
+  agentName: varchar('agent_name', { length: 128 }),
+  deviceLabel: varchar('device_label', { length: 128 }),
+  environment: varchar('environment', { length: 32 }).notNull(),
+  controlTokenHash: varchar('control_token_hash', { length: 128 }).notNull(),
+  status: varchar('status', { length: 24 }).notNull().default('active'),
+  metadataJson: jsonb('metadata_json'),
+  lastHeartbeatAt: timestamp('last_heartbeat_at', { mode: 'string' }),
+  lastSeenAt: timestamp('last_seen_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+  registeredAt: timestamp('registered_at', { mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  uqDdsAgentConnectionsAgentEnv: uniqueIndex('uq_dds_agent_connections_agent_env').on(table.agentId, table.environment),
+}));
+
+export const ddsAgentJobs = pgTable('dds_agent_jobs', {
+  id: serial('id').primaryKey(),
+  agentId: varchar('agent_id', { length: 128 }),
+  environment: varchar('environment', { length: 32 }).notNull(),
+  workItemId: integer('work_item_id').references(() => ddsWorkItems.id, { onDelete: 'set null' }),
+  jobType: varchar('job_type', { length: 64 }).notNull(),
+  payload: jsonb('payload'),
+  payloadJson: jsonb('payload_json'),
+  status: varchar('status', { length: 24 }).notNull().default('pending'),
+  result: jsonb('result'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  leaseTokenHash: varchar('lease_token_hash', { length: 128 }),
+  leaseExpiresAt: timestamp('lease_expires_at', { mode: 'string' }),
+  leasedAt: timestamp('leased_at', { mode: 'string' }),
+  completedAt: timestamp('completed_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  idxDdsAgentJobsAgentStatus: index('idx_dds_agent_jobs_agent_status').on(table.agentId, table.status, table.createdAt),
+  idxDdsAgentJobsWorkItem: index('idx_dds_agent_jobs_work_item').on(table.workItemId),
+}));
+
+export const ddsWorkItems = pgTable('dds_work_items', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id').references(() => userRequests.id, { onDelete: 'cascade' }),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  type: varchar('type', { length: 32 }).notNull().default('product_update'),
+  workItemType: varchar('work_item_type', { length: 32 }).notNull().default('product_update'),
+  workflowStatus: varchar('workflow_status', { length: 32 }).notNull().default('queued'),
+  requestText: text('request_text'),
+  latestSummary: text('latest_summary'),
+  resultSummary: text('result_summary'),
+  lastQuestion: text('last_question'),
+  branchName: text('branch_name'),
+  prUrl: text('pr_url'),
+  prNumber: integer('pr_number'),
+  lastError: text('last_error'),
+  metadataJson: text('metadata_json'),
+  contextJson: jsonb('context_json'),
+  source: varchar('source', { length: 64 }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  uqDdsWorkItemsRequestId: uniqueIndex('uq_dds_work_items_request_id').on(table.requestId),
+  idxDdsWorkItemsPharmacyStatus: index('idx_dds_work_items_pharmacy_status').on(table.pharmacyId, table.workflowStatus, table.updatedAt),
+}));
+
+export const userRequestMessages = pgTable('user_request_messages', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id').notNull().references(() => userRequests.id, { onDelete: 'cascade' }),
+  authorType: varchar('author_type', { length: 32 }).notNull(),
+  authorPharmacyId: integer('author_pharmacy_id').references(() => pharmacies.id, { onDelete: 'set null' }),
+  messageType: varchar('message_type', { length: 32 }).notNull().default('message'),
+  body: text('body').notNull(),
+  metadataJson: jsonb('metadata_json'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  idxUserRequestMessagesRequestCreated: index('idx_user_request_messages_request_created').on(table.requestId, table.createdAt),
 }));
 
 export const openclawRequestMessages = pgTable('openclaw_request_messages', {
