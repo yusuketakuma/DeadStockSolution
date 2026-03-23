@@ -3,6 +3,7 @@
   "short_name": "DeadStock",
   "description": "薬局間のデッドストック医薬品交換を支援するシステム",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0d6efd",

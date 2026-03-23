@@ -106,6 +106,31 @@ export const matchingRuleProfiles = pgTable('matching_rule_profiles', {
   chkMatchingRuleMaxCandidates: check('chk_matching_rule_max_candidates', sql`${table.maxCandidates} >= 1 AND ${table.maxCandidates} <= 200`),
 }));
 
+export const matchingExperiments = pgTable('matching_experiments', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  controlProfileId: integer('control_profile_id').notNull().references(() => matchingRuleProfiles.id),
+  treatmentProfileId: integer('treatment_profile_id').notNull().references(() => matchingRuleProfiles.id),
+  trafficPercentage: integer('traffic_percentage').notNull().default(50),
+  status: text('status').notNull().default('draft'),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  chkExperimentStatus: check('chk_experiment_status', sql`${table.status} IN ('draft','running','completed','cancelled')`),
+  chkExperimentTrafficPct: check('chk_experiment_traffic_pct', sql`${table.trafficPercentage} >= 0 AND ${table.trafficPercentage} <= 100`),
+}));
+
+export const matchingExperimentAssignments = pgTable('matching_experiment_assignments', {
+  id: serial('id').primaryKey(),
+  experimentId: integer('experiment_id').notNull().references(() => matchingExperiments.id),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
+  assignedGroup: text('assigned_group').notNull(),
+  assignedAt: timestamp('assigned_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uqExperimentPharmacy: uniqueIndex('uq_experiment_pharmacy').on(table.experimentId, table.pharmacyId),
+}));
+
 export const matchCandidateBookmarks = pgTable('match_candidate_bookmarks', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),

@@ -276,7 +276,24 @@ async function ensureActiveProfileRowInTransaction(tx: DbTransaction): Promise<M
   return selectActiveProfileRow(tx);
 }
 
-export async function getActiveMatchingRuleProfile(forceRefresh: boolean = false): Promise<MatchingRuleProfile> {
+export async function getActiveMatchingRuleProfile(
+  options?: { pharmacyId?: number; forceRefresh?: boolean } | boolean,
+): Promise<MatchingRuleProfile> {
+  // 後方互換: boolean を渡された場合は forceRefresh として扱う
+  const normalizedOptions = typeof options === 'boolean'
+    ? { forceRefresh: options }
+    : (options ?? {});
+  const { pharmacyId, forceRefresh = false } = normalizedOptions;
+
+  // pharmacyId が指定された場合は実験サービスに委譲
+  if (pharmacyId !== undefined) {
+    const { getProfileForPharmacy } = await import('./matching-experiment-service');
+    const experimentProfile = await getProfileForPharmacy(pharmacyId);
+    if (experimentProfile) {
+      return experimentProfile;
+    }
+  }
+
   if (!forceRefresh) {
     const cached = activeProfileCache.get(ACTIVE_PROFILE_CACHE_KEY);
     if (cached) {
