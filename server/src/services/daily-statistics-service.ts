@@ -26,6 +26,9 @@ function toDateString(d: Date): string {
 export async function aggregateDailyStatistics(
   targetDate?: string,
 ): Promise<{ processedCount: number }> {
+  if (targetDate && !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    throw new Error('targetDate must be in YYYY-MM-DD format');
+  }
   // デフォルトは昨日
   const resolvedDate = targetDate ?? (() => {
     const yesterday = new Date();

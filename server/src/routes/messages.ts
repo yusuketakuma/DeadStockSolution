@@ -19,6 +19,8 @@ const MESSAGE_POST_MIN_INTERVAL_MS = 10_000;
 const MESSAGE_MAX_BODY_LENGTH = 2000;
 
 // In-memory rate limit tracker: key = `${fromId}:${toId}` → last sent timestamp
+// Note: serverless 環境ではインスタンス間で共有されないため、
+// 完全な制限には Redis ベースのレートリミッターが必要（既存 apiRateLimiter で補完）
 const lastSentMap = new Map<string, number>();
 
 function checkRateLimit(fromId: number, toId: number): void {

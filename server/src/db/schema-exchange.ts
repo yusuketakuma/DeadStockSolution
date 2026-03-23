@@ -13,10 +13,10 @@ export const directMessages = pgTable('direct_messages', {
   readAt: timestamp('read_at', { withTimezone: true }),
   isDeleted: boolean('is_deleted').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  index('idx_dm_to_pharmacy').on(table.toPharmacyId, table.isRead),
-  index('idx_dm_from_pharmacy').on(table.fromPharmacyId),
-]);
+}, (table) => ({
+  idxDmToPharmacy: index('idx_dm_to_pharmacy').on(table.toPharmacyId, table.isRead),
+  idxDmFromPharmacy: index('idx_dm_from_pharmacy').on(table.fromPharmacyId),
+}));
 
 export const exchangeProposals = pgTable('exchange_proposals', {
   id: serial('id').primaryKey(),

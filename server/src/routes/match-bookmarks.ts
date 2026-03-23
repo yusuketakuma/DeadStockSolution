@@ -77,11 +77,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const limit = Number.isInteger(limitRaw) && limitRaw >= 1 && limitRaw <= 100 ? limitRaw : 20;
     const offset = (page - 1) * limit;
 
-    const candidatePharmacy = {
-      id: pharmacies.id,
-      name: pharmacies.name,
-    };
-
     const rows = await db
       .select({
         id: matchCandidateBookmarks.id,
@@ -98,9 +93,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       .orderBy(desc(matchCandidateBookmarks.createdAt))
       .limit(limit)
       .offset(offset);
-
-    // suppress unused variable lint warning
-    void candidatePharmacy;
 
     res.json({ items: rows, page, limit });
   } catch (err) {
