@@ -95,6 +95,9 @@ export default defineConfig(({ mode }) => {
               ) {
                 return 'vendor-react';
               }
+              if (id.includes('chart.js') || id.includes('react-chartjs-2')) {
+                return 'vendor-charts';
+              }
             }
             if (id.includes('/pages/admin/')) {
               return 'admin-pages';

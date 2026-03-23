@@ -7,6 +7,7 @@ import { api } from '../api/client';
 import type { UploadStatus } from '../components/dashboard/types';
 import { useAsyncResource } from '../hooks/useAsyncResource';
 import AppDataPanel from '../components/ui/AppDataPanel';
+import RiskBucketBarChart from '../components/charts/RiskBucketBarChart';
 import SmartDigest from '../components/timeline/SmartDigest';
 import DashboardTimeline from '../components/timeline/DashboardTimeline';
 import OnboardingGuide from '../components/onboarding/OnboardingGuide';
@@ -149,32 +150,37 @@ export default function DashboardPage() {
           {/* Risk KPIs */}
           <AppDataPanel title="期限切れリスク（自薬局）" className="flex-shrink-0">
             {risk ? (
-              <Row className="g-2">
-                <Col xs={6} lg={3}>
-                  <div className="dl-kpi-tile">
-                    <div className="dl-kpi-value">{risk.riskScore.toFixed(1)}</div>
-                    <div className="dl-kpi-label">リスクスコア</div>
-                  </div>
-                </Col>
-                <Col xs={6} lg={3}>
-                  <div className={`dl-kpi-tile${risk.bucketCounts.expired > 0 ? ' dl-kpi-tile--danger' : ''}`}>
-                    <div className="dl-kpi-value">{risk.bucketCounts.expired}</div>
-                    <div className="dl-kpi-label">期限切れ</div>
-                  </div>
-                </Col>
-                <Col xs={6} lg={3}>
-                  <div className="dl-kpi-tile">
-                    <div className="dl-kpi-value">{risk.bucketCounts.within30}</div>
-                    <div className="dl-kpi-label">30日以内</div>
-                  </div>
-                </Col>
-                <Col xs={6} lg={3}>
-                  <div className="dl-kpi-tile">
-                    <div className="dl-kpi-value">{risk.totalItems}</div>
-                    <div className="dl-kpi-label">在庫数</div>
-                  </div>
-                </Col>
-              </Row>
+              <>
+                <Row className="g-2">
+                  <Col xs={6} lg={3}>
+                    <div className="dl-kpi-tile">
+                      <div className="dl-kpi-value">{risk.riskScore.toFixed(1)}</div>
+                      <div className="dl-kpi-label">リスクスコア</div>
+                    </div>
+                  </Col>
+                  <Col xs={6} lg={3}>
+                    <div className={`dl-kpi-tile${risk.bucketCounts.expired > 0 ? ' dl-kpi-tile--danger' : ''}`}>
+                      <div className="dl-kpi-value">{risk.bucketCounts.expired}</div>
+                      <div className="dl-kpi-label">期限切れ</div>
+                    </div>
+                  </Col>
+                  <Col xs={6} lg={3}>
+                    <div className="dl-kpi-tile">
+                      <div className="dl-kpi-value">{risk.bucketCounts.within30}</div>
+                      <div className="dl-kpi-label">30日以内</div>
+                    </div>
+                  </Col>
+                  <Col xs={6} lg={3}>
+                    <div className="dl-kpi-tile">
+                      <div className="dl-kpi-value">{risk.totalItems}</div>
+                      <div className="dl-kpi-label">在庫数</div>
+                    </div>
+                  </Col>
+                </Row>
+                <div className="mt-2">
+                  <RiskBucketBarChart bucketCounts={risk.bucketCounts} />
+                </div>
+              </>
             ) : (
               <div className="small text-muted">期限リスクデータはまだありません。</div>
             )}
