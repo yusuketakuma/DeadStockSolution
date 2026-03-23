@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { Row, Col } from 'react-bootstrap';
+import { useEffect, useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError, type FieldError } from '../api/client';
 import AuthPageLayout from '../components/ui/AuthPageLayout';
 import AppAlert from '../components/ui/AppAlert';
-import AppSelect from '../components/ui/AppSelect';
-import LoadingButton from '../components/ui/LoadingButton';
-import AppField from '../components/ui/AppField';
 import { useAsyncState } from '../hooks/useAsyncState';
+import OnboardingProgressBar from '../components/onboarding/OnboardingProgressBar';
+import OnboardingStep1 from '../components/onboarding/OnboardingStep1';
+import OnboardingStep2 from '../components/onboarding/OnboardingStep2';
+import OnboardingStep3 from '../components/onboarding/OnboardingStep3';
 
 interface OnboardingForm {
   name: string;
@@ -22,17 +22,7 @@ interface OnboardingForm {
   prefecture: string;
 }
 
-const PREFECTURES = [
-  '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
-  '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
-  '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
-  '岐阜県', '静岡県', '愛知県', '三重県',
-  '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
-  '鳥取県', '島根県', '岡山県', '広島県', '山口県',
-  '徳島県', '香川県', '愛媛県', '高知県',
-  '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
-];
-const PREFECTURE_OPTIONS = PREFECTURES.map((pref) => ({ value: pref, label: pref }));
+const TOTAL_STEPS = 3;
 
 export default function OnboardingPage() {
   const [form, setForm] = useState<OnboardingForm>({
@@ -45,6 +35,7 @@ export default function OnboardingPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldError[]>([]);
   const [workosInfo, setWorkosInfo] = useState<{ workosUserId: string; email: string } | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
+  const [step, setStep] = useState(1);
   const navigate = useNavigate();
 
   // onboarding ページロード時に onboarding トークンから WorkOS 情報を取得
@@ -63,19 +54,12 @@ export default function OnboardingPage() {
       .finally(() => setInfoLoading(false));
   }, [navigate]);
 
-  const handleChange = (field: keyof OnboardingForm, value: string) => {
+  const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setFieldErrors((prev) => prev.filter((fe) => fe.field !== field));
   };
 
-  const fieldErrorMap = useMemo(() => (
-    new Map(fieldErrors.map((fieldError) => [fieldError.field, fieldError.message]))
-  ), [fieldErrors]);
-
-  const getFieldError = (field: string): string | undefined => fieldErrorMap.get(field);
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!agreed || !workosInfo) {
       setError('免責事項に同意してください');
       return;
@@ -91,12 +75,28 @@ export default function OnboardingPage() {
       if (err instanceof ApiError && err.fieldErrors && err.fieldErrors.length > 0) {
         setFieldErrors(err.fieldErrors);
         setError('入力内容にエラーがあります。各項目を確認してください。');
+        // フィールドエラーがどのステップに属するか判定してステップを戻す
+        const step1Fields = ['name', 'postalCode', 'address', 'phone', 'fax', 'prefecture'];
+        const step2Fields = ['licenseNumber', 'permitLicenseNumber', 'permitPharmacyName', 'permitAddress'];
+        const hasStep1Error = err.fieldErrors.some((fe) => step1Fields.includes(fe.field));
+        const hasStep2Error = err.fieldErrors.some((fe) => step2Fields.includes(fe.field));
+        if (hasStep1Error) {
+          setStep(1);
+        } else if (hasStep2Error) {
+          setStep(2);
+        }
       } else {
         setError(err instanceof Error ? err.message : '登録に失敗しました');
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  // form の onSubmit は Step3 の submit ボタン経由で呼ばれるが、
+  // Enter キーによる意図しない送信を防ぐためフォームタグで wrap しない
+  const handleFormSubmit = (e: FormEvent) => {
+    e.preventDefault();
   };
 
   if (infoLoading) {
@@ -123,166 +123,39 @@ export default function OnboardingPage() {
               {workosInfo.email} で認証済みです
             </AppAlert>
           )}
-          {error && <AppAlert variant="danger" className="dl-status-alert">{error}</AppAlert>}
-          <form onSubmit={handleSubmit}>
-            <AppField
-              className="mb-3"
-              controlId="onboarding-name"
-              label="薬局名 *"
-              type="text"
-              value={form.name}
-              onChange={(value) => handleChange('name', value)}
-              required
-              isInvalid={!!getFieldError('name')}
-              errorText={getFieldError('name')}
-            />
 
-            <AppField
-              className="mb-3"
-              controlId="onboarding-license-number"
-              label="薬局開設許可番号 *"
-              type="text"
-              value={form.licenseNumber}
-              onChange={(value) => handleChange('licenseNumber', value)}
-              required
-              isInvalid={!!getFieldError('licenseNumber')}
-              errorText={getFieldError('licenseNumber')}
-            />
+          <OnboardingProgressBar currentStep={step} totalSteps={TOTAL_STEPS} />
 
-            <AppField
-              className="mb-3"
-              controlId="onboarding-permit-license-number"
-              label="許可証記載の許可番号 *"
-              type="text"
-              value={form.permitLicenseNumber}
-              onChange={(value) => handleChange('permitLicenseNumber', value)}
-              required
-              isInvalid={!!getFieldError('permitLicenseNumber')}
-              errorText={getFieldError('permitLicenseNumber')}
-            />
+          {error && <AppAlert variant="danger" className="dl-status-alert mb-3">{error}</AppAlert>}
 
-            <AppField
-              className="mb-3"
-              controlId="onboarding-permit-pharmacy-name"
-              label="許可証記載の薬局名 *"
-              type="text"
-              value={form.permitPharmacyName}
-              onChange={(value) => handleChange('permitPharmacyName', value)}
-              required
-              isInvalid={!!getFieldError('permitPharmacyName')}
-              errorText={getFieldError('permitPharmacyName')}
-            />
-
-            <AppField
-              className="mb-3"
-              controlId="onboarding-permit-address"
-              label="許可証記載の所在地 *"
-              type="text"
-              value={form.permitAddress}
-              onChange={(value) => handleChange('permitAddress', value)}
-              required
-              isInvalid={!!getFieldError('permitAddress')}
-              errorText={getFieldError('permitAddress')}
-              placeholder="許可証に記載されている所在地"
-            />
-
-            <Row>
-              <Col md={6}>
-                <AppSelect
-                  className="mb-3"
-                  controlId="onboarding-prefecture"
-                  label="都道府県 *"
-                  value={form.prefecture}
-                  onChange={(value) => handleChange('prefecture', value)}
-                  required
-                  isInvalid={!!getFieldError('prefecture')}
-                  errorText={getFieldError('prefecture')}
-                  placeholder="選択してください"
-                  options={PREFECTURE_OPTIONS}
-                />
-              </Col>
-              <Col md={6}>
-                <AppField
-                  className="mb-3"
-                  controlId="onboarding-postal-code"
-                  label="郵便番号 *"
-                  type="text"
-                  value={form.postalCode}
-                  onChange={(value) => handleChange('postalCode', value)}
-                  placeholder="1234567"
-                  required
-                  isInvalid={!!getFieldError('postalCode')}
-                  errorText={getFieldError('postalCode')}
-                />
-              </Col>
-            </Row>
-
-            <AppField
-              className="mb-3"
-              controlId="onboarding-address"
-              label="住所 *"
-              type="text"
-              value={form.address}
-              onChange={(value) => handleChange('address', value)}
-              required
-              isInvalid={!!getFieldError('address')}
-              errorText={getFieldError('address')}
-              placeholder="市区町村以降の住所"
-              helpText={!getFieldError('address') ? '位置情報の特定に使用します。正確な住所を入力してください' : undefined}
-            />
-
-            <Row>
-              <Col md={6}>
-                <AppField
-                  className="mb-3"
-                  controlId="onboarding-phone"
-                  label="電話番号 *"
-                  type="tel"
-                  value={form.phone}
-                  onChange={(value) => handleChange('phone', value)}
-                  required
-                  isInvalid={!!getFieldError('phone')}
-                  errorText={getFieldError('phone')}
-                />
-              </Col>
-              <Col md={6}>
-                <AppField
-                  className="mb-3"
-                  controlId="onboarding-fax"
-                  label="FAX番号 *"
-                  type="tel"
-                  value={form.fax}
-                  onChange={(value) => handleChange('fax', value)}
-                  required
-                  isInvalid={!!getFieldError('fax')}
-                  errorText={getFieldError('fax')}
-                />
-              </Col>
-            </Row>
-
-            <div className="form-check mb-3">
-              <input
-                type="checkbox"
-                className="form-check-input"
-                id="onboarding-agreed"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
+          <form onSubmit={handleFormSubmit} noValidate>
+            {step === 1 && (
+              <OnboardingStep1
+                formData={form}
+                onChange={handleChange}
+                onNext={() => setStep(2)}
+                fieldErrors={fieldErrors}
               />
-              <label className="form-check-label" htmlFor="onboarding-agreed">
-                本システムはあくまで業務補助ツールであり、医薬品の交換に関する一切の責任を負わないことに同意します
-              </label>
-            </div>
-
-            <LoadingButton
-              type="submit"
-              variant="primary"
-              className="w-100"
-              disabled={!agreed}
-              loading={loading}
-              loadingLabel="登録中..."
-            >
-              薬局情報を登録
-            </LoadingButton>
+            )}
+            {step === 2 && (
+              <OnboardingStep2
+                formData={form}
+                onChange={handleChange}
+                onNext={() => setStep(3)}
+                onBack={() => setStep(1)}
+                fieldErrors={fieldErrors}
+              />
+            )}
+            {step === 3 && (
+              <OnboardingStep3
+                formData={form}
+                agreed={agreed}
+                onAgreeChange={setAgreed}
+                onSubmit={handleSubmit}
+                onBack={() => setStep(2)}
+                loading={loading}
+              />
+            )}
           </form>
         </>
       )}

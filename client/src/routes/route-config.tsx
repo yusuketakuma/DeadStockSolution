@@ -49,6 +49,7 @@ const GroupListPage = lazy(() => import('../pages/GroupListPage'));
 const GroupDetailPage = lazy(() => import('../pages/GroupDetailPage'));
 const AlertListPage = lazy(() => import('../pages/AlertListPage'));
 const BookmarksPage = lazy(() => import('../pages/BookmarksPage'));
+const MessagesPage = lazy(() => import('../pages/MessagesPage'));
 
 
 type RouteComponent = ComponentType | LazyExoticComponent<ComponentType>;
@@ -104,6 +105,7 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/groups/:id', access: 'protected', userOnly: true, useLayout: true, component: GroupDetailPage, title: 'グループ詳細', parent: '/groups' },
   { path: '/alerts', access: 'protected', userOnly: true, useLayout: true, component: AlertListPage, title: 'アラート' },
   { path: '/bookmarks', access: 'protected', userOnly: true, useLayout: true, component: BookmarksPage, title: 'ブックマーク' },
+  { path: '/messages', access: 'protected', userOnly: true, useLayout: true, component: MessagesPage, title: 'メッセージ' },
 
   { path: '/admin', access: 'protected', adminOnly: true, useLayout: true, component: AdminDashboardPage, title: 'ダッシュボード' },
   { path: '/admin/pharmacies', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmaciesPage, title: '薬局管理', parent: '/admin' },
