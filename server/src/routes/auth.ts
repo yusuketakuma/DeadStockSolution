@@ -27,6 +27,20 @@ import { handoffToOpenClaw } from '../services/openclaw-service';
 import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verification-service';
 
 const router = Router();
+
+// Legacy password auth feature flag — "false" のみ無効化、未設定やそれ以外は有効
+const LEGACY_PASSWORD_AUTH_ENABLED = process.env.LEGACY_PASSWORD_AUTH_ENABLED?.trim().toLowerCase() !== 'false';
+
+function rejectIfLegacyPasswordDisabled(req: AuthRequest, res: Response, next: () => void): void {
+  if (!LEGACY_PASSWORD_AUTH_ENABLED) {
+    res.status(410).json({
+      error: 'パスワードベースの認証は無効化されています。WorkOS AuthKit でログインしてください。',
+    });
+    return;
+  }
+  next();
+}
+
 const EXPOSE_PASSWORD_RESET_TOKEN = process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true';
 if (process.env.NODE_ENV !== 'test' && EXPOSE_PASSWORD_RESET_TOKEN) {
   throw new Error('EXPOSE_PASSWORD_RESET_TOKEN=true は test 環境でのみ許可されています');
@@ -122,7 +136,7 @@ let testPharmacyCache: {
   rows: Array<{ id: number; name: string; email: string; prefecture: string; password: string | null }>;
 } | null = null;
 
-router.post('/register', registerLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/register', rejectIfLegacyPasswordDisabled, registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const errors = validateRegistration(req.body);
     if (errors.length > 0) {
@@ -345,7 +359,7 @@ router.post('/register', registerLimiter, async (req: AuthRequest, res: Response
   }
 });
 
-router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/login', rejectIfLegacyPasswordDisabled, loginLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const errors = validateLogin(req.body);
     if (errors.length > 0) {
@@ -370,6 +384,11 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
 
     if (!pharmacy.isActive) {
       res.status(403).json({ error: 'このアカウントは無効になっています' });
+      return;
+    }
+
+    if (!pharmacy.passwordHash) {
+      res.status(401).json({ error: 'パスワード認証が設定されていません。別の方法でログインしてください。' });
       return;
     }
 
@@ -415,7 +434,7 @@ router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/password-reset/request', rejectIfLegacyPasswordDisabled, loginLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const requestStartedAt = Date.now();
     const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
@@ -455,7 +474,7 @@ router.post('/password-reset/request', loginLimiter, async (req: AuthRequest, re
   }
 });
 
-router.post('/password-reset/confirm', loginLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/password-reset/confirm', rejectIfLegacyPasswordDisabled, loginLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
