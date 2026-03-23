@@ -24,6 +24,7 @@ import searchRoutes from './routes/search';
 import drugMasterRoutes from './routes/drug-master';
 import adminErrorCodesRoutes from './routes/admin-error-codes';
 import adminLogCenterRoutes from './routes/admin-log-center';
+import adminRateLimitsRoutes from './routes/admin-rate-limits';
 import openclawCommandsRoutes from './routes/openclaw-commands';
 import updatesRoutes from './routes/updates';
 import internalMatchingRefreshRoutes from './routes/internal-matching-refresh';
@@ -39,6 +40,8 @@ import groupsRoutes from './routes/groups';
 import alertsRoutes from './routes/alerts';
 import matchBookmarksRoutes from './routes/match-bookmarks';
 import pushRoutes from './routes/push';
+import uploadQualityRoutes from './routes/upload-quality';
+import messagesRoutes from './routes/messages';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { csrfProtection } from './middleware/csrf';
@@ -348,6 +351,8 @@ registerApiRoute('/groups', requireLogin, rejectAdmin, groupsRoutes);
 registerApiRoute('/alerts', requireLogin, rejectAdmin, alertsRoutes);
 registerApiRoute('/match-bookmarks', requireLogin, rejectAdmin, matchBookmarksRoutes);
 registerApiRoute('/push', rejectAdmin, pushRoutes);
+registerApiRoute('/upload-quality', rejectAdmin, uploadQualityRoutes);
+registerApiRoute('/messages', messagesRoutes);
 
 // Shared routes (both admin and user)
 registerApiRoute('/notifications', notificationsRoutes);
@@ -362,6 +367,7 @@ registerApiRoute('/openclaw/commands', openclawCommandsRoutes);
 registerApiRoute('/admin/drug-master', drugMasterRoutes);
 registerApiRoute('/admin/error-codes', adminErrorCodesRoutes);
 registerApiRoute('/admin/log-center', adminLogCenterRoutes);
+registerApiRoute('/admin/rate-limits', adminRateLimitsRoutes);
 
 // Internal routes
 registerApiRoute('/internal/matching-refresh', internalMatchingRefreshRoutes);

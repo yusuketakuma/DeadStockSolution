@@ -44,9 +44,11 @@ const AdminAuditPage = lazy(() => import('../pages/admin/AdminAuditPage'));
 const AdminBusinessHoursPage = lazy(() => import('../pages/admin/AdminBusinessHoursPage'));
 const AdminBulkActionsPage = lazy(() => import('../pages/admin/AdminBulkActionsPage'));
 const AdminRelationshipsPage = lazy(() => import('../pages/admin/AdminRelationshipsPage'));
+const AdminRateLimitsPage = lazy(() => import('../pages/admin/AdminRateLimitsPage'));
 const GroupListPage = lazy(() => import('../pages/GroupListPage'));
 const GroupDetailPage = lazy(() => import('../pages/GroupDetailPage'));
 const AlertListPage = lazy(() => import('../pages/AlertListPage'));
+const BookmarksPage = lazy(() => import('../pages/BookmarksPage'));
 
 
 type RouteComponent = ComponentType | LazyExoticComponent<ComponentType>;
@@ -101,6 +103,7 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/groups', access: 'protected', userOnly: true, useLayout: true, component: GroupListPage, title: 'グループ' },
   { path: '/groups/:id', access: 'protected', userOnly: true, useLayout: true, component: GroupDetailPage, title: 'グループ詳細', parent: '/groups' },
   { path: '/alerts', access: 'protected', userOnly: true, useLayout: true, component: AlertListPage, title: 'アラート' },
+  { path: '/bookmarks', access: 'protected', userOnly: true, useLayout: true, component: BookmarksPage, title: 'ブックマーク' },
 
   { path: '/admin', access: 'protected', adminOnly: true, useLayout: true, component: AdminDashboardPage, title: 'ダッシュボード' },
   { path: '/admin/pharmacies', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmaciesPage, title: '薬局管理', parent: '/admin' },
@@ -126,4 +129,5 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/admin/bulk-actions', access: 'protected', adminOnly: true, useLayout: true, component: AdminBulkActionsPage, title: '一括操作', parent: '/admin' },
   { path: '/admin/relationships', access: 'protected', adminOnly: true, useLayout: true, component: AdminRelationshipsPage, title: '関係性監査', parent: '/admin' },
   { path: '/admin/log-center', access: 'protected', adminOnly: true, useLayout: true, component: AdminLogCenterPage, title: 'ログセンター', parent: '/admin' },
+  { path: '/admin/rate-limits', access: 'protected', adminOnly: true, useLayout: true, component: AdminRateLimitsPage, title: 'レート制限設定', parent: '/admin' },
 ]);

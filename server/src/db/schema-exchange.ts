@@ -4,6 +4,20 @@ import { pharmacies } from './schema-pharmacy';
 import { exchangeStatusEnum } from './schema-common';
 import { deadStockItems } from './schema-inventory';
 
+export const directMessages = pgTable('direct_messages', {
+  id: serial('id').primaryKey(),
+  fromPharmacyId: integer('from_pharmacy_id').notNull().references(() => pharmacies.id),
+  toPharmacyId: integer('to_pharmacy_id').notNull().references(() => pharmacies.id),
+  body: text('body').notNull(),
+  isRead: boolean('is_read').default(false).notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  isDeleted: boolean('is_deleted').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_dm_to_pharmacy').on(table.toPharmacyId, table.isRead),
+  index('idx_dm_from_pharmacy').on(table.fromPharmacyId),
+]);
+
 export const exchangeProposals = pgTable('exchange_proposals', {
   id: serial('id').primaryKey(),
   pharmacyAId: integer('pharmacy_a_id').notNull().references(() => pharmacies.id),

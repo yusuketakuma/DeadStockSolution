@@ -6,6 +6,11 @@ import AppAlert from '../components/ui/AppAlert';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { api } from '../api/client';
+import {
+  createBookmark,
+  deleteBookmark,
+  fetchBookmarksPage,
+} from '../api/match-bookmarks';
 import RequireUpload from '../components/RequireUpload';
 import { markMatchingDone, readOnboardingMatchingDone } from '../components/onboarding/onboardingSteps';
 import { useAuth } from '../contexts/AuthContext';
@@ -160,6 +165,9 @@ export default function MatchingPage() {
   const [proposalRetrySuggested, setProposalRetrySuggested] = useState(false);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [candidateForProposal, setCandidateForProposal] = useState<MatchCandidate | null>(null);
+  // bookmarks: map of "pharmacyId:drugCode" -> bookmark id
+  const [bookmarkMap, setBookmarkMap] = useState<Map<string, number>>(new Map());
+  const [bookmarkPending, setBookmarkPending] = useState<Set<string>>(new Set());
   const requestedTargetPharmacyId = useMemo(
     () => parsePositiveId(searchParams.get('targetPharmacyId')),
     [searchParams],
@@ -199,6 +207,54 @@ export default function MatchingPage() {
       ),
     );
   }, [candidates, requestedDrugTerms, requestedTargetPharmacyId]);
+
+  // ブックマーク一覧を読み込んでマップを構築
+  useEffect(() => {
+    async function loadBookmarks() {
+      try {
+        const res = await fetchBookmarksPage(1, 100);
+        const map = new Map<string, number>();
+        for (const b of res.items) {
+          map.set(`${b.candidatePharmacyId}:${b.drugCode}`, b.id);
+        }
+        setBookmarkMap(map);
+      } catch {
+        // ブックマーク取得失敗は無視（メイン機能に影響させない）
+      }
+    }
+    void loadBookmarks();
+  }, []);
+
+  const handleToggleBookmark = useCallback(async (candidate: MatchCandidate, drugCode: string) => {
+    const key = `${candidate.pharmacyId}:${drugCode}`;
+    if (bookmarkPending.has(key)) return;
+    setBookmarkPending((prev) => new Set(prev).add(key));
+    try {
+      const existingId = bookmarkMap.get(key);
+      if (existingId !== undefined) {
+        await deleteBookmark(existingId);
+        setBookmarkMap((prev) => {
+          const next = new Map(prev);
+          next.delete(key);
+          return next;
+        });
+      } else {
+        const created = await createBookmark({
+          candidatePharmacyId: candidate.pharmacyId,
+          drugCode,
+        });
+        setBookmarkMap((prev) => new Map(prev).set(key, created.id));
+      }
+    } catch {
+      // ブックマーク操作失敗は無視
+    } finally {
+      setBookmarkPending((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  }, [bookmarkMap, bookmarkPending]);
 
   const handleSearch = useCallback(async () => {
     setLoading(true);
@@ -444,10 +500,29 @@ export default function MatchingPage() {
                   </AppCard.Body>
                 </AppCard>
 
-                <div className="d-flex gap-2 mobile-stack">
+                <div className="d-flex gap-2 mobile-stack flex-wrap">
                   <LoadingButton variant="success" onClick={() => setCandidateForProposal(candidate)} loading={proposalSubmitting} loadingLabel="提案中...">
                     仮マッチングする
                   </LoadingButton>
+                  {candidate.itemsFromA.concat(candidate.itemsFromB).map((item) => {
+                    const key = `${candidate.pharmacyId}:${item.drugName}`;
+                    const isBookmarked = bookmarkMap.has(key);
+                    const isPending = bookmarkPending.has(key);
+                    return (
+                      <LoadingButton
+                        key={key}
+                        variant={isBookmarked ? 'warning' : 'outline-secondary'}
+                        size="sm"
+                        loading={isPending}
+                        loadingLabel="..."
+                        onClick={() => void handleToggleBookmark(candidate, item.drugName)}
+                        title={isBookmarked ? 'ブックマーク解除' : 'ブックマーク'}
+                        aria-label={`${item.drugName} を${isBookmarked ? 'ブックマーク解除' : 'ブックマーク'}`}
+                      >
+                        {isBookmarked ? '\u2605' : '\u2606'} {item.drugName}
+                      </LoadingButton>
+                    );
+                  })}
                 </div>
               </AppCard.Body>
             )}
