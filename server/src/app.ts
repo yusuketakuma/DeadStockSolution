@@ -28,13 +28,16 @@ import openclawCommandsRoutes from './routes/openclaw-commands';
 import updatesRoutes from './routes/updates';
 import internalMatchingRefreshRoutes from './routes/internal-matching-refresh';
 import internalMonthlyReportsRoutes from './routes/internal-monthly-reports';
+import internalOpenClawRetriesRoutes from './routes/internal-openclaw-retries';
 import internalUploadJobsRoutes from './routes/internal-upload-jobs';
 import internalMonitoringRoutes from './routes/internal-monitoring';
 import internalPredictiveAlertsRoutes from './routes/internal-predictive-alerts';
 import internalVercelDeployEventsRoutes from './routes/internal-vercel-deploy-events';
+import internalDeadStockArchiveRoutes from './routes/internal-dead-stock-archive';
 import statisticsRoutes from './routes/statistics';
 import groupsRoutes from './routes/groups';
 import alertsRoutes from './routes/alerts';
+import matchBookmarksRoutes from './routes/match-bookmarks';
 import pushRoutes from './routes/push';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
@@ -43,6 +46,7 @@ import { requireLogin, rejectAdmin } from './middleware/auth';
 import { db } from './config/database';
 import { sql } from 'drizzle-orm';
 import { logger } from './services/logger';
+import { getOpenClawHealthSnapshot } from './services/openclaw-health-service';
 import { resolveTrustProxySetting } from './utils/trust-proxy';
 
 const app = express();
@@ -276,9 +280,26 @@ const readinessHandler: RequestHandler = async (_req, res) => {
   }
 };
 
+const openClawHealthHandler: RequestHandler = async (_req, res) => {
+  try {
+    const snapshot = await getOpenClawHealthSnapshot();
+    res.status(snapshot.status === 'ok' ? 200 : 503).json(snapshot);
+  } catch (err) {
+    logger.error('OpenClaw health check failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(503).json({
+      status: 'degraded',
+      timestamp: new Date().toISOString(),
+      error: 'openclaw health check failed',
+    });
+  }
+};
+
 for (const prefix of API_PREFIXES) {
   app.get(`${prefix}/health`, healthHandler);
   app.get(`${prefix}/health/ready`, readinessHandler);
+  app.get(`${prefix}/health/openclaw`, openClawHealthHandler);
 }
 
 const apiRateLimiter = rateLimit({
@@ -325,6 +346,7 @@ registerApiRoute('/search', rejectAdmin, searchRoutes);
 registerApiRoute('/statistics', rejectAdmin, statisticsRoutes);
 registerApiRoute('/groups', requireLogin, rejectAdmin, groupsRoutes);
 registerApiRoute('/alerts', requireLogin, rejectAdmin, alertsRoutes);
+registerApiRoute('/match-bookmarks', requireLogin, rejectAdmin, matchBookmarksRoutes);
 registerApiRoute('/push', rejectAdmin, pushRoutes);
 
 // Shared routes (both admin and user)
@@ -344,10 +366,12 @@ registerApiRoute('/admin/log-center', adminLogCenterRoutes);
 // Internal routes
 registerApiRoute('/internal/matching-refresh', internalMatchingRefreshRoutes);
 registerApiRoute('/internal/monthly-reports', internalMonthlyReportsRoutes);
+registerApiRoute('/internal/openclaw-retries', internalOpenClawRetriesRoutes);
 registerApiRoute('/internal/upload-jobs', internalUploadJobsRoutes);
 registerApiRoute('/internal/monitoring', internalMonitoringRoutes);
 registerApiRoute('/internal/predictive-alerts', internalPredictiveAlertsRoutes);
 registerApiRoute('/internal/vercel', internalVercelDeployEventsRoutes);
+registerApiRoute('/internal/dead-stock', internalDeadStockArchiveRoutes);
 
 app.use(errorHandler);
 

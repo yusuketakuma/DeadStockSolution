@@ -105,3 +105,17 @@ export const matchingRuleProfiles = pgTable('matching_rule_profiles', {
   chkMatchingRuleSuccessRateBonus: check('chk_matching_rule_success_rate_bonus', sql`${table.successRateBonus} >= 0 AND ${table.successRateBonus} <= 50`),
   chkMatchingRuleMaxCandidates: check('chk_matching_rule_max_candidates', sql`${table.maxCandidates} >= 1 AND ${table.maxCandidates} <= 200`),
 }));
+
+export const matchCandidateBookmarks = pgTable('match_candidate_bookmarks', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
+  candidatePharmacyId: integer('candidate_pharmacy_id').notNull().references(() => pharmacies.id),
+  drugCode: text('drug_code').notNull(),
+  memo: text('memo'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uqBookmarkPharmacyCandidateDrug: uniqueIndex('uq_bookmark_pharmacy_candidate_drug')
+    .on(table.pharmacyId, table.candidatePharmacyId, table.drugCode),
+  idxBookmarkPharmacyId: index('idx_bookmark_pharmacy_id')
+    .on(table.pharmacyId),
+}));

@@ -257,4 +257,45 @@ describe('Admin Bulk Actions', () => {
       expect(res.body.succeeded).toBe(1);
     });
   });
+
+  describe('POST /bulk-actions/execute', () => {
+    it('activate action can be executed via generic endpoint', async () => {
+      mocks.db.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([
+                { id: 5, verificationStatus: 'verified', isActive: false },
+              ]),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+        };
+        return fn(tx);
+      });
+
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [5], action: 'activate' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toContain('一括有効化');
+      expect(res.body.succeeded).toBe(1);
+    });
+
+    it('returns 400 for invalid action', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [1], action: 'invalid' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('action');
+    });
+  });
 });

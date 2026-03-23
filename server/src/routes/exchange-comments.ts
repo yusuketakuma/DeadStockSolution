@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ne, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   exchangeProposals,
@@ -7,6 +7,7 @@ import {
   proposalComments,
 } from '../db/schema';
 import { AuthRequest } from '../types';
+import { rejectAdmin } from '../middleware/auth';
 import { createNotification } from '../services/notification-service';
 import { parsePagination } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
@@ -244,6 +245,61 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
     }
     logger.error('Create proposal comment error', { error: (err as Error).message });
     res.status(500).json({ error: 'コメント投稿に失敗しました' });
+  }
+});
+
+router.get('/proposals/:id/comments/unread-count', rejectAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!proposalId) return;
+
+    const proposal = await findProposalForUser(proposalId, req.user!.id);
+    if (!proposal) {
+      res.status(404).json({ error: 'マッチングが見つかりません' });
+      return;
+    }
+
+    const [countRow] = await db.select({ count: rowCount })
+      .from(proposalComments)
+      .where(and(
+        eq(proposalComments.proposalId, proposalId),
+        ne(proposalComments.authorPharmacyId, req.user!.id),
+        eq(proposalComments.readByRecipient, false),
+        eq(proposalComments.isDeleted, false),
+      ));
+
+    res.json({ unreadCount: countRow?.count ?? 0 });
+  } catch (err) {
+    logger.error('Get unread comment count error', { error: (err as Error).message });
+    res.status(500).json({ error: '未読コメント数の取得に失敗しました' });
+  }
+});
+
+router.patch('/proposals/:id/comments/mark-read', rejectAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!proposalId) return;
+
+    const proposal = await findProposalForUser(proposalId, req.user!.id);
+    if (!proposal) {
+      res.status(404).json({ error: 'マッチングが見つかりません' });
+      return;
+    }
+
+    const result = await db.update(proposalComments)
+      .set({ readByRecipient: true })
+      .where(and(
+        eq(proposalComments.proposalId, proposalId),
+        ne(proposalComments.authorPharmacyId, req.user!.id),
+        eq(proposalComments.readByRecipient, false),
+        eq(proposalComments.isDeleted, false),
+      ))
+      .returning({ id: proposalComments.id });
+
+    res.json({ markedCount: result.length });
+  } catch (err) {
+    logger.error('Mark comments as read error', { error: (err as Error).message });
+    res.status(500).json({ error: '既読マークの更新に失敗しました' });
   }
 });
 

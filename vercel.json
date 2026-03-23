@@ -53,8 +53,16 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/internal/openclaw-retries/run",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/internal/monthly-reports/run",
       "schedule": "0 1 1 * *"
+    },
+    {
+      "path": "/api/internal/dead-stock/archive-expired",
+      "schedule": "0 2 * * *"
     }
   ]
 }

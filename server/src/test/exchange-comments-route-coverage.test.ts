@@ -17,6 +17,13 @@ vi.mock('../middleware/auth', () => ({
     req.user = { id: 1, email: 'test@example.com', isAdmin: false };
     next();
   },
+  rejectAdmin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, res: Response, next: () => void) => {
+    if (req.user?.isAdmin) {
+      res.status(403).json({ error: '管理者アカウントではこの機能を利用できません。一般ユーザーアカウントでログインしてください' });
+      return;
+    }
+    next();
+  },
 }));
 
 vi.mock('../config/database', () => ({ db: mocks.db }));
@@ -57,7 +64,12 @@ vi.mock('../db/schema', () => ({
   },
 }));
 
-import exchangeCommentsRouter from '../routes/exchange-comments';
+let exchangeCommentsRouter: express.Router;
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ default: exchangeCommentsRouter } = await import('../routes/exchange-comments'));
+});
 
 /**
  * Build a chainable query mock where every chain method returns itself,

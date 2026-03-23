@@ -23,10 +23,23 @@ export interface BulkActionResult {
  * 一括操作レスポンス
  */
 export interface BulkPharmacyActionResponse {
+  message: string;
   totalRequested: number;
   succeeded: number;
   failed: number;
   results: BulkActionResult[];
+}
+
+/**
+ * 一括操作ドライランの個別プレビュー結果
+ */
+export interface BulkActionPreviewItem {
+  pharmacyId: number;
+  pharmacyName: string;
+  currentStatus: string | null;
+  newStatus: string | null;
+  wouldSkip: boolean;
+  skipReason?: string;
 }
 
 /**
