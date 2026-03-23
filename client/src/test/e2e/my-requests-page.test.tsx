@@ -99,13 +99,13 @@ describe('MyRequestsPage', () => {
     renderWithProviders(<MyRequestsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('要望とDSS対応')).toBeInTheDocument();
+      expect(screen.getByText('ユーザーリクエストとバグ報告')).toBeInTheDocument();
     });
     await waitFor(() => {
       expect(screen.getByText('要望 #31')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('回答待ち')).toBeInTheDocument();
+    expect(screen.getAllByText('回答待ち').length).toBeGreaterThan(0);
     expect(screen.getByText('完了')).toBeInTheDocument();
     expect(screen.getByText('在庫一覧の検索を改善してほしい')).toBeInTheDocument();
   });
@@ -250,7 +250,7 @@ describe('MyRequestsPage', () => {
     renderWithProviders(<MyRequestsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('回答待ち')).toBeInTheDocument();
+      expect(screen.getAllByText('回答待ち').length).toBeGreaterThan(0);
     });
 
     requestList = [

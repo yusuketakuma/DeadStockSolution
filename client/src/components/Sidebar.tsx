@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 const NAV_GROUPS = [
@@ -17,7 +19,6 @@ const NAV_GROUPS = [
       { to: '/matching', label: 'マッチング' },
       { to: '/proposals', label: 'マッチング一覧' },
       { to: '/exchange-history', label: '交換履歴' },
-      { to: '/requests', label: '要望とDSS対応' },
       { to: '/statistics', label: '統計' },
     ],
   },
@@ -80,20 +81,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="sidebar-content d-flex flex-column h-100">
       <Nav className="flex-column flex-grow-1 pt-2">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.title} className="sidebar-group">
-            <div className="sidebar-group-title">{group.title}</div>
-            {group.items.map((item) => (
-              <SidebarLink
-                key={item.to}
-                to={item.to}
-                label={item.label}
-                onNavigate={onNavigate}
-                end={item.end}
-              />
-            ))}
-          </div>
-        ))}
         {user?.isAdmin && (
           <div className="sidebar-group">
             <div className="sidebar-group-title">管理者</div>
@@ -108,6 +95,20 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             ))}
           </div>
         )}
+        {NAV_GROUPS.map((group) => (
+          <div key={group.title} className="sidebar-group">
+            <div className="sidebar-group-title">{group.title}</div>
+            {group.items.map((item) => (
+              <SidebarLink
+                key={item.to}
+                to={item.to}
+                label={item.label}
+                onNavigate={onNavigate}
+                end={item.end}
+              />
+            ))}
+          </div>
+        ))}
       </Nav>
 
       <div className="sidebar-footer border-top p-3">
@@ -120,11 +121,20 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export default function Sidebar({ isOpen, onClose }: Props) {
+export default function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }: Props) {
   return (
     <>
-      <aside className="sidebar-desktop d-none d-lg-flex">
-        <SidebarContent />
+      <aside className={`sidebar-desktop d-none d-lg-flex${collapsed ? ' is-collapsed' : ''}`}>
+        <div className="d-flex flex-column w-100">
+          {onToggleCollapse && (
+            <div className="border-bottom px-3 py-2">
+              <AppButton variant="outline-secondary" size="sm" onClick={onToggleCollapse}>
+                {collapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
+              </AppButton>
+            </div>
+          )}
+          <SidebarContent />
+        </div>
       </aside>
 
       <Offcanvas show={isOpen} onHide={onClose} className="sidebar-mobile d-lg-none" placement="start">

@@ -177,7 +177,7 @@ export default function MyRequestsPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">要望とDSS対応</h4>
+      <h4 className="page-title mb-3">ユーザーリクエストとバグ報告</h4>
       {message && <AppAlert variant="success" dismissible onClose={() => setMessage('')}>{message}</AppAlert>}
       {error && <AppAlert variant="danger" dismissible onClose={() => setError('')}>{error}</AppAlert>}
 

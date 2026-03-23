@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from 'react-bootstrap';
 import AppButton from './ui/AppButton';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -6,7 +6,6 @@ import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useTimeline } from '../contexts/TimelineContext';
 import AppUpdatesPopover from './header/AppUpdatesPopover';
-import RequestModal from './header/RequestModal';
 import { sanitizeInternalPath } from '../utils/navigation';
 import { APP_VERSION } from '../constants/appVersion';
 
@@ -61,11 +60,6 @@ export default function Header({ onToggleSidebar }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const [previousPath, setPreviousPath] = useState('');
-  const [requestModalOpen, setRequestModalOpen] = useState(false);
-  const [requestText, setRequestText] = useState('');
-  const [requestError, setRequestError] = useState('');
-  const [requestSubmitting, setRequestSubmitting] = useState(false);
-  const [requestMessage, setRequestMessage] = useState('');
   const [updatesPopoverOpen, setUpdatesPopoverOpen] = useState(false);
   const [updatesLoading, setUpdatesLoading] = useState(false);
   const [updatesError, setUpdatesError] = useState('');
@@ -94,44 +88,6 @@ export default function Header({ onToggleSidebar }: Props) {
     const source = user?.isAdmin ? ADMIN_QUICK_ACTIONS : USER_QUICK_ACTIONS;
     return source.filter((item) => !location.pathname.startsWith(item.to)).slice(0, 2);
   }, [location.pathname, user?.isAdmin]);
-
-  const openRequestModal = () => {
-    setRequestError('');
-    setRequestMessage('');
-    setRequestModalOpen(true);
-  };
-
-  const closeRequestModal = () => {
-    if (requestSubmitting) return;
-    setRequestModalOpen(false);
-  };
-
-  const handleRequestSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const message = requestText.trim();
-    if (!message) {
-      setRequestError('要望内容を入力してください');
-      return;
-    }
-    if (message.length > 2000) {
-      setRequestError('要望は2000文字以内で入力してください');
-      return;
-    }
-
-    setRequestSubmitting(true);
-    setRequestError('');
-    try {
-      const result = await api.post<{ message?: string; nextStep?: string }>('/requests', { message });
-      const detail = result.nextStep ? ` ${result.nextStep}` : '';
-      setRequestMessage(`${result.message ?? '要望を受け付けました。'}${detail}`);
-      setRequestText('');
-      setRequestModalOpen(false);
-    } catch (err) {
-      setRequestError(err instanceof Error ? err.message : '要望の送信に失敗しました');
-    } finally {
-      setRequestSubmitting(false);
-    }
-  };
 
   const loadGitHubUpdates = async () => {
     setUpdatesLoading(true);
@@ -195,7 +151,7 @@ export default function Header({ onToggleSidebar }: Props) {
               variant="outline-light"
               size="sm"
               className="app-header-request-btn"
-              onClick={openRequestModal}
+              onClick={() => navigate('/requests')}
             >
               要望をあげる
             </AppButton>
@@ -203,9 +159,6 @@ export default function Header({ onToggleSidebar }: Props) {
         </div>
 
         <div className="app-header-quick ms-auto d-none d-lg-flex">
-          {requestMessage && (
-            <span className="app-header-request-message" role="status">{requestMessage}</span>
-          )}
           {previousPath && (
             <Link to={previousPath} className="app-header-quick-link app-header-quick-link-muted">
               前回の画面へ戻る
@@ -232,9 +185,6 @@ export default function Header({ onToggleSidebar }: Props) {
       </div>
 
       <div className="app-header-quick-mobile d-lg-none" aria-label="ヘッダークイック導線">
-        {requestMessage && (
-          <span className="app-header-request-message" role="status">{requestMessage}</span>
-        )}
         {previousPath && (
           <Link to={previousPath} className="app-header-quick-link app-header-quick-link-muted">
             前回の画面へ戻る
@@ -247,15 +197,6 @@ export default function Header({ onToggleSidebar }: Props) {
         ))}
       </div>
 
-      <RequestModal
-        show={requestModalOpen}
-        requestText={requestText}
-        requestError={requestError}
-        requestSubmitting={requestSubmitting}
-        onHide={closeRequestModal}
-        onTextChange={setRequestText}
-        onSubmit={handleRequestSubmit}
-      />
     </header>
   );
 }
