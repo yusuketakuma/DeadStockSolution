@@ -43,6 +43,7 @@ import adminMatchingExperimentsRoutes from './routes/admin-matching-experiments'
 import pushRoutes from './routes/push';
 import uploadQualityRoutes from './routes/upload-quality';
 import messagesRoutes from './routes/messages';
+import sseRoutes from './routes/sse';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { csrfProtection } from './middleware/csrf';
@@ -354,6 +355,7 @@ registerApiRoute('/match-bookmarks', requireLogin, rejectAdmin, matchBookmarksRo
 registerApiRoute('/push', rejectAdmin, pushRoutes);
 registerApiRoute('/upload-quality', rejectAdmin, uploadQualityRoutes);
 registerApiRoute('/messages', messagesRoutes);
+registerApiRoute('/sse', requireLogin, rejectAdmin, sseRoutes);
 
 // Shared routes (both admin and user)
 registerApiRoute('/notifications', notificationsRoutes);

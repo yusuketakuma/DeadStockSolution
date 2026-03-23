@@ -1,4 +1,5 @@
 import { and, count, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { enqueueNotification, isRedisConfigured } from './redis-pubsub-service';
 import {
   adminMessages,
   adminMessageReads,
@@ -212,6 +213,14 @@ export async function createNotification(
       referenceId: input.referenceId ?? null,
     }).returning({ id: notifications.id });
     invalidateDashboardUnreadCache(input.pharmacyId);
+    if (result && isRedisConfigured()) {
+      try {
+        await enqueueNotification(input.pharmacyId, {
+          type: 'new_notification',
+          data: { id: result.id, title: input.title, type: input.type },
+        });
+      } catch { /* Redis 障害時はフォールバック（通知作成自体は成功扱い） */ }
+    }
     return result ?? null;
   } catch (err) {
     deps.logger.error('Failed to create notification', { error: (err as Error).message });
