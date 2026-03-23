@@ -39,7 +39,6 @@ vi.mock('express-rate-limit', () => ({
   ipKeyGenerator: (ip: string) => ip,
 }));
 
-// admin.ts が全サブルーターを読み込むため、他の依存もモック
 vi.mock('../config/database', () => ({
   db: { select: vi.fn(), update: vi.fn(), insert: vi.fn(), transaction: vi.fn() },
 }));
@@ -94,65 +93,60 @@ function createApp() {
   return app;
 }
 
-describe('Admin CSV Export Routes', () => {
+describe('Admin CSV Export Extended Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('GET /csv/pharmacies', () => {
-    it('CSV ヘッダーを設定して薬局データを返す', async () => {
-      mocks.exportPharmaciesCsv.mockImplementation(async (writer: { write: (s: string) => void }) => {
-        writer.write('\uFEFFID,名前\r\n');
-        writer.write('1,テスト薬局\r\n');
-        return 1;
+  describe('GET /csv/proposals', () => {
+    it('200 を返し CSV ヘッダーを設定する', async () => {
+      mocks.exportProposalsCsv.mockImplementation(async (writer: { write: (s: string) => void }) => {
+        writer.write('\uFEFFID,提案元薬局ID,提案元薬局名,提案先薬局ID,提案先薬局名,ステータス,提案元合計金額,提案先合計金額,差額,提案完了合計金額,提案日,完了日\r\n');
+        return 0;
       });
 
       const app = createApp();
-      const res = await request(app).get('/api/admin/csv/pharmacies');
+      const res = await request(app).get('/api/admin/csv/proposals');
 
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toContain('text/csv');
-      expect(res.headers['content-disposition']).toContain('pharmacies-');
-      expect(res.text).toContain('\uFEFF');
+      expect(res.headers['content-disposition']).toContain('proposals-');
+      expect(res.text).toContain('提案元薬局名');
     });
 
-    it('エクスポートエラー時に500を返す', async () => {
-      mocks.exportPharmaciesCsv.mockRejectedValue(new Error('DB error'));
+    it('エクスポートエラー時に 500 を返す', async () => {
+      mocks.exportProposalsCsv.mockRejectedValue(new Error('DB error'));
 
       const app = createApp();
-      const res = await request(app).get('/api/admin/csv/pharmacies');
+      const res = await request(app).get('/api/admin/csv/proposals');
 
       expect(res.status).toBe(500);
     });
   });
 
-  describe('GET /csv/exchanges', () => {
-    it('交換データCSVを返す', async () => {
-      mocks.exportExchangesCsv.mockImplementation(async (writer: { write: (s: string) => void }) => {
-        writer.write('\uFEFFID,ステータス\r\n');
+  describe('GET /csv/audit-logs', () => {
+    it('200 を返し CSV ヘッダーを設定する', async () => {
+      mocks.exportAuditLogsCsv.mockImplementation(async (writer: { write: (s: string) => void }) => {
+        writer.write('\uFEFFID,管理者ID,管理者名,アクション,対象薬局ID,対象薬局名,変更前ステータス,変更後ステータス,理由,実行日時\r\n');
         return 0;
       });
 
       const app = createApp();
-      const res = await request(app).get('/api/admin/csv/exchanges');
+      const res = await request(app).get('/api/admin/csv/audit-logs');
 
       expect(res.status).toBe(200);
-      expect(res.headers['content-disposition']).toContain('exchanges-');
+      expect(res.headers['content-type']).toContain('text/csv');
+      expect(res.headers['content-disposition']).toContain('audit-logs-');
+      expect(res.text).toContain('管理者名');
     });
-  });
 
-  describe('GET /csv/reports', () => {
-    it('レポートCSVを返す', async () => {
-      mocks.exportReportsCsv.mockImplementation(async (writer: { write: (s: string) => void }) => {
-        writer.write('\uFEFFID,年,月\r\n');
-        return 0;
-      });
+    it('エクスポートエラー時に 500 を返す', async () => {
+      mocks.exportAuditLogsCsv.mockRejectedValue(new Error('DB error'));
 
       const app = createApp();
-      const res = await request(app).get('/api/admin/csv/reports');
+      const res = await request(app).get('/api/admin/csv/audit-logs');
 
-      expect(res.status).toBe(200);
-      expect(res.headers['content-disposition']).toContain('reports-');
+      expect(res.status).toBe(500);
     });
   });
 });

@@ -1,4 +1,5 @@
-import { Container, Row, Col, Badge } from 'react-bootstrap';
+import { useState } from 'react';
+import { Container, Row, Col, Badge, ButtonGroup, Button } from 'react-bootstrap';
 import AppKpiCard from '../components/ui/AppKpiCard';
 import AppDataPanel from '../components/ui/AppDataPanel';
 import { api } from '../api/client';
@@ -6,6 +7,48 @@ import { useApiQuery } from '../hooks/useApiQuery';
 import { formatYen, formatDateJa } from '../utils/formatters';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import InlineLoader from '../components/ui/InlineLoader';
+import TrendChart from '../components/charts/TrendChart';
+
+type TrendDays = 30 | 60 | 90;
+
+interface TrendRow {
+  date: string;
+  metrics: {
+    deadStockCount?: number;
+    proposalsSent?: number;
+    proposalsReceived?: number;
+    proposalsCompleted?: number;
+    exchangeValue?: number;
+    [key: string]: unknown;
+  };
+}
+
+interface TrendResponse {
+  trends: TrendRow[];
+  days: number;
+  startDate: string;
+}
+
+interface TrendDataPoint {
+  date: string;
+  deadStockCount: number | null;
+  proposalsSent: number | null;
+  proposalsReceived: number | null;
+  proposalsCompleted: number | null;
+  exchangeValue: number | null;
+  [key: string]: unknown;
+}
+
+function normalizeTrends(rows: TrendRow[]): TrendDataPoint[] {
+  return rows.map((row) => ({
+    date: row.date,
+    deadStockCount: row.metrics.deadStockCount ?? null,
+    proposalsSent: row.metrics.proposalsSent ?? null,
+    proposalsReceived: row.metrics.proposalsReceived ?? null,
+    proposalsCompleted: row.metrics.proposalsCompleted ?? null,
+    exchangeValue: row.metrics.exchangeValue ?? null,
+  }));
+}
 
 interface BucketCounts {
   expired: number;
@@ -142,6 +185,8 @@ function StatisticsShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function StatisticsPage() {
+  const [trendDays, setTrendDays] = useState<TrendDays>(30);
+
   const {
     data,
     error,
@@ -150,9 +195,19 @@ export default function StatisticsPage() {
     ['statistics-summary'],
     ({ signal }) => api.get<StatisticsSummary>('/statistics/summary', { signal }),
   );
+
+  const {
+    data: trendData,
+    isLoading: trendLoading,
+  } = useApiQuery(
+    ['statistics-trends', trendDays],
+    ({ signal }) => api.get<TrendResponse>(`/statistics/trends?days=${trendDays}`, { signal }),
+  );
+
   const queryError = error instanceof Error ? error.message : '';
   const summary = data ?? EMPTY_STATS;
   const buckets = summary.inventory.bucketCounts;
+  const trendPoints: TrendDataPoint[] = trendData ? normalizeTrends(trendData.trends) : [];
 
   return (
       <StatisticsShell>
@@ -313,6 +368,55 @@ export default function StatisticsPage() {
           </Col>
           <Col xs={6}>
             <AppKpiCard value={summary.network.favoriteCount} label="お気に入り薬局数" />
+          </Col>
+        </Row>
+      </AppDataPanel>
+
+      {/* 月次推移グラフ */}
+      <AppDataPanel title="月次推移" className="mt-3">
+        <div className="d-flex justify-content-end mb-3">
+          <ButtonGroup size="sm">
+            {([30, 60, 90] as TrendDays[]).map((d) => (
+              <Button
+                key={d}
+                variant={trendDays === d ? 'primary' : 'outline-secondary'}
+                onClick={() => setTrendDays(d)}
+              >
+                {d}日
+              </Button>
+            ))}
+          </ButtonGroup>
+        </div>
+        {trendLoading && <InlineLoader text="推移データを読み込み中..." />}
+        <Row className="g-4">
+          <Col xs={12} md={6}>
+            <p className="fw-semibold mb-1 small text-muted">デッドストック推移</p>
+            <TrendChart
+              data={trendPoints}
+              lines={[
+                { key: 'deadStockCount', label: 'デッドストック数', color: '#dc3545' },
+              ]}
+            />
+          </Col>
+          <Col xs={12} md={6}>
+            <p className="fw-semibold mb-1 small text-muted">提案数推移</p>
+            <TrendChart
+              data={trendPoints}
+              lines={[
+                { key: 'proposalsSent', label: '送信', color: '#0d6efd' },
+                { key: 'proposalsReceived', label: '受信', color: '#6f42c1' },
+                { key: 'proposalsCompleted', label: '完了', color: '#198754' },
+              ]}
+            />
+          </Col>
+          <Col xs={12} md={6}>
+            <p className="fw-semibold mb-1 small text-muted">交換額推移 (円)</p>
+            <TrendChart
+              data={trendPoints}
+              lines={[
+                { key: 'exchangeValue', label: '交換薬価', color: '#fd7e14' },
+              ]}
+            />
           </Col>
         </Row>
       </AppDataPanel>

@@ -41,7 +41,7 @@ export type SystemEventLevel = (typeof systemEventLevelValues)[number];
 export const registrationReviewVerdictValues = ['approved', 'rejected'] as const;
 export type RegistrationReviewVerdict = (typeof registrationReviewVerdictValues)[number];
 
-export const adminAuditActionValues = ['verify', 'reject', 're-review'] as const;
+export const adminAuditActionValues = ['verify', 'reject', 're-review', 'activate', 'deactivate'] as const;
 export type AdminAuditAction = (typeof adminAuditActionValues)[number];
 
 export const errorCodeCategoryValues = ['upload', 'auth', 'sync', 'system', 'openclaw'] as const;
@@ -50,7 +50,7 @@ export type ErrorCodeCategory = (typeof errorCodeCategoryValues)[number];
 export const errorCodeSeverityValues = ['critical', 'error', 'warning', 'info'] as const;
 export type ErrorCodeSeverity = (typeof errorCodeSeverityValues)[number];
 
-export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment', 'request_update', 'group_invitation', 'group_join', 'group_leave', 'alert_near_expiry', 'alert_excess_stock', 'alert_resolved', 'match_update'] as const;
+export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment', 'request_update', 'group_invitation', 'group_join', 'group_leave', 'alert_near_expiry', 'alert_excess_stock', 'alert_resolved', 'match_update', 'matching_refresh_complete'] as const;
 export type NotificationType = (typeof notificationTypeValues)[number];
 
 export const notificationReferenceTypeValues = ['proposal', 'match', 'comment', 'request'] as const;

@@ -341,7 +341,7 @@ export function findBestDrugMatchWithEquivalences(
   );
 
   if (bestScore > baseResult.score) {
-    const result = { score: bestScore };
+    const result: DrugMatchResult = { score: bestScore, matchedByEquivalence: true };
     setLimitedCacheEntry(cache, normalizedDrugName, result, MAX_DRUG_MATCH_CACHE_SIZE);
     return result;
   }

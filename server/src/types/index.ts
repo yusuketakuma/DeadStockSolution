@@ -83,6 +83,7 @@ export interface MatchCandidate {
   priorityReasons?: MatchPriorityReason[];
   businessStatus?: BusinessHoursStatus;
   isFavorite?: boolean;
+  matchType?: 'exact' | 'equivalent'; // 同一薬剤 or 同等品マッチング
 }
 
 export interface MatchPriorityBreakdown {

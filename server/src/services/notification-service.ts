@@ -17,6 +17,7 @@ interface CreateNotificationInput {
   message: string;
   referenceType?: NotificationReferenceType;
   referenceId?: number;
+  detailJson?: Record<string, unknown>;
 }
 
 type NotificationSqlExecutor = Pick<ServiceDependencies['db'], 'execute'>;
@@ -211,6 +212,7 @@ export async function createNotification(
       message: input.message,
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
+      detailJson: input.detailJson ?? null,
     }).returning({ id: notifications.id });
     invalidateDashboardUnreadCache(input.pharmacyId);
     if (result && isRedisConfigured()) {

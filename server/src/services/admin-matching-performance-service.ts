@@ -1,9 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { exchangeProposals, matchCandidateSnapshots } from '../db/schema';
+import { getMatchingRefreshStats } from './matching-refresh-service';
 
 export async function getMatchingPerformance() {
-  const [statusBreakdown, candidateDistribution] = await Promise.all([
+  const [statusBreakdown, candidateDistribution, refreshStats] = await Promise.all([
     db.select({
       status: exchangeProposals.status,
       count: sql<number>`count(*)`.as('count'),
@@ -18,6 +19,7 @@ export async function getMatchingPerformance() {
       .from(matchCandidateSnapshots)
       .orderBy(sql`${matchCandidateSnapshots.candidateCount} desc`)
       .limit(50),
+    getMatchingRefreshStats(),
   ]);
 
   const totalProposals = statusBreakdown.reduce((sum, row) => sum + row.count, 0);
@@ -27,6 +29,7 @@ export async function getMatchingPerformance() {
   return {
     statusBreakdown,
     candidateDistribution,
+    refreshStats,
     summary: {
       totalProposals,
       completedCount,

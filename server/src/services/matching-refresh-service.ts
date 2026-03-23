@@ -1,6 +1,6 @@
-import { and, asc, eq, exists, gte, inArray, isNull, lt, lte, notInArray, or, sql, type SQLWrapper } from 'drizzle-orm';
+import { and, asc, count, eq, exists, gte, inArray, isNull, lt, lte, max, min, notInArray, or, sql, type SQLWrapper } from 'drizzle-orm';
 import { db } from '../config/database';
-import { pharmacies, deadStockItems, matchingRefreshJobs, usedMedicationItems, uploadJobs } from '../db/schema';
+import { pharmacies, deadStockItems, matchCandidateSnapshots, matchingRefreshJobs, usedMedicationItems, uploadJobs } from '../db/schema';
 import { splitIntoChunks } from '../utils/array-utils';
 import { getNextRetryIso, getStaleBeforeIso } from '../utils/job-retry-utils';
 import { parseBooleanFlag } from '../utils/number-utils';
@@ -9,6 +9,7 @@ import { findMatches, findMatchesBatch } from './matching-service';
 import { logger } from './logger';
 import { getErrorMessage } from '../middleware/error-handler';
 import { saveMatchSnapshotAndNotifyOnChange, saveMatchSnapshotsBatch } from './matching-snapshot-service';
+import { createNotification } from './notification-service';
 
 const AUTO_RECOMPUTE_ENABLED = parseBooleanFlag(process.env.MATCHING_AUTO_RECOMPUTE_ENABLED, true);
 const MAX_JOB_ATTEMPTS = 5;
@@ -278,13 +279,20 @@ async function persistSnapshotEntries(
     });
 
     let changedCount = 0;
-    for (const entry of snapshotEntries) {
-      try {
-        const result = await saveMatchSnapshotAndNotifyOnChange(entry);
-        if (result.changed) changedCount += 1;
-      } catch (err) {
-        recordPharmacyRefreshFailure(failedPharmacyIds, entry.pharmacyId, triggerPharmacyId, uploadType, err);
-      }
+    const CONCURRENCY = 5;
+    for (let i = 0; i < snapshotEntries.length; i += CONCURRENCY) {
+      const batch = snapshotEntries.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(entry => saveMatchSnapshotAndNotifyOnChange(entry))
+      );
+      results.forEach((result, idx) => {
+        if (result.status === 'rejected') {
+          const entry = batch[idx];
+          recordPharmacyRefreshFailure(failedPharmacyIds, entry.pharmacyId, triggerPharmacyId, uploadType, result.reason);
+        } else if (result.value.changed) {
+          changedCount += 1;
+        }
+      });
     }
     return changedCount;
   }
@@ -321,6 +329,20 @@ async function runSingleRefresh(triggerPharmacyId: number, uploadType: MatchingR
     uploadType,
     impactedCount: impactedIds.length,
     changedCount,
+  });
+
+  const triggerSnapshot = await db.select({ candidateCount: matchCandidateSnapshots.candidateCount })
+    .from(matchCandidateSnapshots)
+    .where(eq(matchCandidateSnapshots.pharmacyId, triggerPharmacyId))
+    .limit(1);
+  const candidateCount = triggerSnapshot[0]?.candidateCount ?? 0;
+
+  await createNotification({
+    pharmacyId: triggerPharmacyId,
+    type: 'matching_refresh_complete',
+    title: 'マッチング更新完了',
+    message: `${candidateCount}件の候補が見つかりました`,
+    detailJson: { candidateCount, refreshedAt: new Date().toISOString() },
   });
 }
 
@@ -536,6 +558,35 @@ export async function triggerMatchingRefreshOnUpload(params: {
 
     await insertRefreshJob(tx, params, scheduledAtIso, nowIso);
   });
+}
+
+export interface MatchingRefreshStats {
+  lastRefreshAt: string | null;
+  totalRefreshes: number;
+  pendingJobs: number;
+  averageRefreshDuration: number | null;
+}
+
+export async function getMatchingRefreshStats(): Promise<MatchingRefreshStats> {
+  const [jobStats] = await db.select({
+    totalRefreshes: count(matchingRefreshJobs.id),
+    pendingJobs: sql<number>`count(*) filter (where ${matchingRefreshJobs.processingStartedAt} is null)`,
+    lastRefreshAt: max(matchingRefreshJobs.updatedAt),
+    minCreatedAt: min(matchingRefreshJobs.createdAt),
+    maxUpdatedAt: max(matchingRefreshJobs.updatedAt),
+  }).from(matchingRefreshJobs);
+
+  const totalRefreshes = jobStats?.totalRefreshes ?? 0;
+  const pendingJobs = jobStats?.pendingJobs ?? 0;
+  const lastRefreshAt = jobStats?.lastRefreshAt ?? null;
+
+  let averageRefreshDuration: number | null = null;
+  if (jobStats?.minCreatedAt && jobStats?.maxUpdatedAt && totalRefreshes > 0) {
+    const durationMs = new Date(jobStats.maxUpdatedAt).getTime() - new Date(jobStats.minCreatedAt).getTime();
+    averageRefreshDuration = Math.round(durationMs / totalRefreshes);
+  }
+
+  return { lastRefreshAt, totalRefreshes, pendingJobs, averageRefreshDuration };
 }
 
 export const __testables = {

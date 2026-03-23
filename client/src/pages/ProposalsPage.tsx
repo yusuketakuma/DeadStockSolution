@@ -50,6 +50,24 @@ interface BulkActionResponse {
 
 type ProposalSortMode = 'recent' | 'priority';
 
+const PRIORITY_REASON_BADGE: Record<string, { bg: string; text?: string; label: string }> = {
+  '期限切迫': { bg: 'warning', text: 'dark', label: '期限切迫' },
+  '高薬価': { bg: 'info', label: '高薬価' },
+  '高優先度': { bg: 'primary', label: '高優先度' },
+  '大量在庫': { bg: 'secondary', label: '大量在庫' },
+};
+
+function getPriorityReasonBadge(reason: string): { bg: string; text?: string; label: string } {
+  return PRIORITY_REASON_BADGE[reason] ?? { bg: 'secondary', label: reason };
+}
+
+function getProposalUrgencyClass(proposal: Proposal): string {
+  if (!proposal.deadlineAt) return '';
+  const hoursLeft = (new Date(proposal.deadlineAt).getTime() - Date.now()) / 3600000;
+  if (hoursLeft < 0) return 'border-start border-danger border-3 bg-danger bg-opacity-10';
+  if (hoursLeft < 24) return 'border-start border-warning border-3 bg-warning bg-opacity-10';
+  return '';
+}
 
 function canAcceptProposal(proposal: Proposal, viewerId: number | undefined): boolean {
   if (!viewerId) return false;
@@ -244,8 +262,10 @@ export default function ProposalsPage() {
                   const phaseInfo = getProposalPhaseInfo(p.status, isA);
                   const selectable = canAcceptProposal(p, user?.id) || canRejectProposal(p);
 
+                  const urgencyClass = getProposalUrgencyClass(p);
+
                   return (
-                    <tr key={p.id}>
+                    <tr key={p.id} className={urgencyClass}>
                       <td>
                         <FormCheck
                           checked={selectedIdSet.has(p.id)}
@@ -265,7 +285,16 @@ export default function ProposalsPage() {
                       </td>
                       <td>
                         <div className="fw-semibold">{(p.priorityScore ?? 0).toFixed(1)}</div>
-                        <div className="small text-muted">{(p.priorityReasons ?? []).join(' / ')}</div>
+                        <div className="d-flex flex-wrap gap-1 mt-1">
+                          {(p.priorityReasons ?? []).map((reason) => {
+                            const badge = getPriorityReasonBadge(reason);
+                            return (
+                              <Badge key={reason} bg={badge.bg} text={badge.text}>
+                                {badge.label}
+                              </Badge>
+                            );
+                          })}
+                        </div>
                       </td>
                       <td>{formatYen(p.totalValueA)}</td>
                       <td>{formatYen(p.totalValueB)}</td>
@@ -287,6 +316,8 @@ export default function ProposalsPage() {
               const otherName = isA ? p.pharmacyBName : p.pharmacyAName;
               const phaseInfo = getProposalPhaseInfo(p.status, isA);
               const selectable = canAcceptProposal(p, user?.id) || canRejectProposal(p);
+              const urgencyClass = getProposalUrgencyClass(p);
+              const priorityReasons = p.priorityReasons ?? [];
 
               return (
                 <SwipeableListItem
@@ -297,6 +328,7 @@ export default function ProposalsPage() {
                 >
                   <AppMobileDataCard
                     key={p.id}
+                    className={urgencyClass}
                     title={`マッチング #${p.id}`}
                     subtitle={otherName}
                     badges={(
@@ -308,7 +340,23 @@ export default function ProposalsPage() {
                     )}
                     fields={[
                       { label: '優先度', value: (p.priorityScore ?? 0).toFixed(1) },
-                      { label: '優先理由', value: (p.priorityReasons ?? []).join(' / ') || '-' },
+                      {
+                        label: '優先理由',
+                        value: priorityReasons.length > 0
+                          ? (
+                            <div className="d-flex flex-wrap gap-1">
+                              {priorityReasons.map((reason) => {
+                                const badge = getPriorityReasonBadge(reason);
+                                return (
+                                  <Badge key={reason} bg={badge.bg} text={badge.text}>
+                                    {badge.label}
+                                  </Badge>
+                                );
+                              })}
+                            </div>
+                          )
+                          : '-',
+                      },
                       { label: 'A側薬価', value: formatYen(p.totalValueA) },
                       { label: 'B側薬価', value: formatYen(p.totalValueB) },
                       { label: '差額', value: formatYen(p.valueDifference) },

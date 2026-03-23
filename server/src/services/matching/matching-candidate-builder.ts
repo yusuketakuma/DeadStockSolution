@@ -39,8 +39,9 @@ function buildMatchItems(
   matchCache: Map<string, DrugMatchResult>,
   nameMatchThreshold: number,
   equivalenceMap: Map<string, string[]>,
-): MatchItem[] {
+): { items: MatchItem[]; hasEquivalenceMatch: boolean } {
   const items: MatchItem[] = [];
+  let hasEquivalenceMatch = false;
 
   for (const { stock, preparedDrugName } of preparedStocks) {
     const price = Number(stock.yakkaUnitPrice);
@@ -51,6 +52,10 @@ function buildMatchItems(
 
     const match = findBestDrugMatchWithEquivalences(preparedDrugName, usedMedIndex, matchCache, equivalenceMap);
     if (match.score < nameMatchThreshold) continue;
+
+    if (match.matchedByEquivalence) {
+      hasEquivalenceMatch = true;
+    }
 
     items.push({
       deadStockItemId: stock.id,
@@ -68,7 +73,7 @@ function buildMatchItems(
     });
   }
 
-  return items;
+  return { items, hasEquivalenceMatch };
 }
 
 /**
@@ -240,14 +245,14 @@ function buildCandidateFromPharmacy(params: {
   const theirUsedMedIndex = usedMedIndexByPharmacy.get(otherPharmacy.id);
   if (theirPreparedDeadStock.length === 0 || !theirUsedMedIndex) return null;
 
-  const rawItemsFromA = buildMatchItems(
+  const { items: rawItemsFromA, hasEquivalenceMatch: aHasEquivalence } = buildMatchItems(
     myPreparedDeadStock,
     theirUsedMedIndex,
     myToTheirCache,
     matchingRuleProfile.nameMatchThreshold,
     equivalenceMap,
   );
-  const rawItemsFromB = buildMatchItems(
+  const { items: rawItemsFromB, hasEquivalenceMatch: bHasEquivalence } = buildMatchItems(
     theirPreparedDeadStock,
     myUsedMedIndex,
     theirToMyCache,
@@ -291,6 +296,8 @@ function buildCandidateFromPharmacy(params: {
     includeIsConfiguredInBusinessStatus,
   );
 
+  const matchType: 'exact' | 'equivalent' = (aHasEquivalence || bHasEquivalence) ? 'equivalent' : 'exact';
+
   return {
     pharmacyId: otherPharmacy.id,
     pharmacyName: otherPharmacy.name,
@@ -307,6 +314,7 @@ function buildCandidateFromPharmacy(params: {
     matchRate,
     businessStatus,
     isFavorite,
+    matchType,
   };
 }
 

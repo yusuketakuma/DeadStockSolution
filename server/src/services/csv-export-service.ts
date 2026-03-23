@@ -2,13 +2,14 @@
 // ストリーミング CSV 生成（UTF-8 with BOM）。
 // Excel 文字化け防止のため BOM を先頭に付与する。
 
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   pharmacies,
   exchangeProposals,
   monthlyReports,
   events,
+  adminAuditLogs,
 } from '../db/schema';
 import { deadStockItems } from '../db/schema-inventory';
 import { logger } from './logger';
@@ -280,6 +281,119 @@ export async function exportLogsCsv(
       ]));
     },
     errorMessage: 'CSV export logs failed',
+  });
+}
+
+// ── 提案履歴エクスポート ──────────────────────────────────
+
+const PROPOSAL_HEADERS = [
+  'ID', '提案元薬局ID', '提案元薬局名', '提案先薬局ID', '提案先薬局名',
+  'ステータス', '提案元合計金額', '提案先合計金額', '差額',
+  '提案完了合計金額', '提案日', '完了日',
+];
+
+export async function exportProposalsCsv(
+  writer: CsvWriter,
+  _options: CsvExportOptions = {},
+): Promise<number> {
+  const batchSize = _options.batchSize ?? BATCH_SIZE;
+  const pharmacyA = db.select({ id: pharmacies.id, name: pharmacies.name }).from(pharmacies).as('pa');
+  const pharmacyB = db.select({ id: pharmacies.id, name: pharmacies.name }).from(pharmacies).as('pb');
+  return runCsvExport({
+    writer,
+    headers: PROPOSAL_HEADERS,
+    batchSize,
+    fetchRows: (offset, limit) => db.select({
+        id: exchangeProposals.id,
+        pharmacyAId: exchangeProposals.pharmacyAId,
+        pharmacyAName: pharmacyA.name,
+        pharmacyBId: exchangeProposals.pharmacyBId,
+        pharmacyBName: pharmacyB.name,
+        status: exchangeProposals.status,
+        totalValueA: exchangeProposals.totalValueA,
+        totalValueB: exchangeProposals.totalValueB,
+        valueDifference: exchangeProposals.valueDifference,
+        completedTotalValue: exchangeProposals.completedTotalValue,
+        proposedAt: exchangeProposals.proposedAt,
+        completedAt: exchangeProposals.completedAt,
+      })
+        .from(exchangeProposals)
+        .leftJoin(pharmacyA, eq(exchangeProposals.pharmacyAId, pharmacyA.id))
+        .leftJoin(pharmacyB, eq(exchangeProposals.pharmacyBId, pharmacyB.id))
+        .orderBy(desc(exchangeProposals.proposedAt))
+        .limit(limit)
+        .offset(offset),
+    writeRow: (targetWriter, row) => {
+      targetWriter.write(toCsvRow([
+        row.id,
+        row.pharmacyAId,
+        row.pharmacyAName,
+        row.pharmacyBId,
+        row.pharmacyBName,
+        row.status,
+        row.totalValueA,
+        row.totalValueB,
+        row.valueDifference,
+        row.completedTotalValue,
+        row.proposedAt,
+        row.completedAt,
+      ]));
+    },
+    errorMessage: 'CSV export proposals failed',
+  });
+}
+
+// ── 監査ログエクスポート ──────────────────────────────────
+
+const AUDIT_LOG_HEADERS = [
+  'ID', '管理者ID', '管理者名', 'アクション',
+  '対象薬局ID', '対象薬局名', '変更前ステータス', '変更後ステータス', '理由', '実行日時',
+];
+
+export async function exportAuditLogsCsv(
+  writer: CsvWriter,
+  _options: CsvExportOptions = {},
+): Promise<number> {
+  const batchSize = _options.batchSize ?? BATCH_SIZE;
+  const adminPharmacy = db.select({ id: pharmacies.id, name: pharmacies.name }).from(pharmacies).as('ap');
+  const targetPharmacy = db.select({ id: pharmacies.id, name: pharmacies.name }).from(pharmacies).as('tp');
+  return runCsvExport({
+    writer,
+    headers: AUDIT_LOG_HEADERS,
+    batchSize,
+    fetchRows: (offset, limit) => db.select({
+        id: adminAuditLogs.id,
+        adminId: adminAuditLogs.adminId,
+        adminName: adminPharmacy.name,
+        action: adminAuditLogs.action,
+        targetPharmacyId: adminAuditLogs.targetPharmacyId,
+        targetPharmacyName: targetPharmacy.name,
+        previousStatus: adminAuditLogs.previousStatus,
+        newStatus: adminAuditLogs.newStatus,
+        reason: adminAuditLogs.reason,
+        createdAt: adminAuditLogs.createdAt,
+      })
+        .from(adminAuditLogs)
+        .leftJoin(adminPharmacy, eq(adminAuditLogs.adminId, adminPharmacy.id))
+        .leftJoin(targetPharmacy, eq(adminAuditLogs.targetPharmacyId, targetPharmacy.id))
+        .orderBy(desc(adminAuditLogs.createdAt))
+        .limit(limit)
+        .offset(offset),
+    writeRow: (targetWriter, row) => {
+      targetWriter.write(toCsvRow([
+        row.id,
+        row.adminId,
+        row.adminName,
+        row.action,
+        row.targetPharmacyId,
+        row.targetPharmacyName,
+        row.previousStatus,
+        row.newStatus,
+        row.reason,
+        row.createdAt,
+      ]));
+    },
+    errorMessage: 'CSV export audit-logs failed',
   });
 }
 

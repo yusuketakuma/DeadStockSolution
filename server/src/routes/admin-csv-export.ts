@@ -17,6 +17,8 @@ import {
   exportReportsCsv,
   exportLogsCsv,
   exportRiskCsv,
+  exportProposalsCsv,
+  exportAuditLogsCsv,
 } from '../services/csv-export-service';
 
 const csvExportLimiter = rateLimit({
@@ -80,5 +82,7 @@ router.get('/csv/exchanges', csvExportLimiter, createCsvExportHandler(exportExch
 router.get('/csv/reports', csvExportLimiter, createCsvExportHandler(exportReportsCsv, 'reports', 'レポートCSVの出力に失敗しました'));
 router.get('/csv/logs', csvExportLimiter, createCsvExportHandler(exportLogsCsv, 'logs', 'ログCSVの出力に失敗しました'));
 router.get('/csv/risk', csvExportLimiter, createCsvExportHandler(exportRiskCsv, 'risk', 'リスクCSVの出力に失敗しました'));
+router.get('/csv/proposals', csvExportLimiter, createCsvExportHandler(exportProposalsCsv, 'proposals', '提案履歴CSVの出力に失敗しました'));
+router.get('/csv/audit-logs', csvExportLimiter, createCsvExportHandler(exportAuditLogsCsv, 'audit-logs', '監査ログCSVの出力に失敗しました'));
 
 export default router;

@@ -26,6 +26,7 @@ import PullToRefresh from '../components/gesture/PullToRefresh';
 import SwipeableListItem from '../components/gesture/SwipeableListItem';
 import SwipeCoachingOverlay from '../components/gesture/SwipeCoachingOverlay';
 import { useGroupMembership } from '../hooks/useGroupMembership';
+import MatchingFilters, { DEFAULT_FILTERS, type MatchingFilterState } from '../components/matching/MatchingFilters';
 
 interface MatchItem {
   deadStockItemId: number;
@@ -53,6 +54,7 @@ interface MatchCandidate {
   matchRate?: number;
   businessStatus?: BusinessHoursStatus;
   isFavorite?: boolean;
+  matchType?: 'exact' | 'equivalent';
 }
 
 interface ProposalMessageState {
@@ -159,6 +161,7 @@ export default function MatchingPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
+  const [filters, setFilters] = useState<MatchingFilterState>(DEFAULT_FILTERS);
   const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
   const [proposalSubmitting, setProposalSubmitting] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -192,21 +195,58 @@ export default function MatchingPage() {
 
   const displayCandidates = useMemo(() => {
     let filteredCandidates = candidates;
+
+    // URL 経由の初期絞り込み（既存動作を維持）
     if (requestedTargetPharmacyId !== null) {
       filteredCandidates = filteredCandidates.filter(
         (candidate) => candidate.pharmacyId === requestedTargetPharmacyId,
       );
     }
-    if (requestedDrugTerms.length === 0) {
-      return filteredCandidates;
+    if (requestedDrugTerms.length > 0) {
+      filteredCandidates = filteredCandidates.filter((candidate) =>
+        requestedDrugTerms.some((term) =>
+          candidate.itemsFromA.some((item) => item.drugName.toLowerCase().includes(term))
+          || candidate.itemsFromB.some((item) => item.drugName.toLowerCase().includes(term)),
+        ),
+      );
     }
-    return filteredCandidates.filter((candidate) =>
-      requestedDrugTerms.some((term) =>
-        candidate.itemsFromA.some((item) => item.drugName.toLowerCase().includes(term))
-        || candidate.itemsFromB.some((item) => item.drugName.toLowerCase().includes(term)),
-      ),
-    );
-  }, [candidates, requestedDrugTerms, requestedTargetPharmacyId]);
+
+    // クライアントサイドフィルタ
+    if (filters.favoriteOnly) {
+      filteredCandidates = filteredCandidates.filter((c) => c.isFavorite === true);
+    }
+    if (filters.groupOnly) {
+      filteredCandidates = filteredCandidates.filter((c) => groupPharmacyIds.has(c.pharmacyId));
+    }
+    if (filters.minScore !== null) {
+      filteredCandidates = filteredCandidates.filter((c) => (c.score ?? 0) >= (filters.minScore ?? 0));
+    }
+
+    // ソート
+    const sorted = [...filteredCandidates].sort((a, b) => {
+      let diff = 0;
+      if (filters.sortBy === 'score') {
+        diff = (a.score ?? 0) - (b.score ?? 0);
+      } else if (filters.sortBy === 'distance') {
+        diff = a.distance - b.distance;
+      } else if (filters.sortBy === 'price') {
+        diff = (a.totalValueA + a.totalValueB) - (b.totalValueA + b.totalValueB);
+      } else if (filters.sortBy === 'expiry') {
+        const getEarliestExpiry = (c: MatchCandidate): number => {
+          const dates = [...c.itemsFromA, ...c.itemsFromB]
+            .map((item) => item.expirationDate)
+            .filter((d): d is string => !!d)
+            .map((d) => new Date(d).getTime())
+            .filter((t) => !Number.isNaN(t));
+          return dates.length > 0 ? Math.min(...dates) : Infinity;
+        };
+        diff = getEarliestExpiry(a) - getEarliestExpiry(b);
+      }
+      return filters.sortOrder === 'asc' ? diff : -diff;
+    });
+
+    return sorted;
+  }, [candidates, filters, groupPharmacyIds, requestedDrugTerms, requestedTargetPharmacyId]);
 
   // ブックマーク一覧を読み込んでマップを構築
   useEffect(() => {
@@ -358,6 +398,10 @@ export default function MatchingPage() {
           </AppCard.Body>
         </AppCard>
 
+        {searched && candidates.length > 0 && (
+          <MatchingFilters filters={filters} onFilterChange={setFilters} />
+        )}
+
         {searched && candidates.length === 0 && !loading && (
           <AppAlert variant="info">
             交換候補が見つかりませんでした。アップロード内容を更新後、再実行してください。
@@ -401,6 +445,8 @@ export default function MatchingPage() {
                   <strong>{candidate.pharmacyName}</strong>
                   {candidate.isFavorite && <Badge bg="warning" text="dark" className="ms-2">お気に入り</Badge>}
                   {groupPharmacyIds.has(candidate.pharmacyId) && <Badge bg="success" className="ms-2">グループ</Badge>}
+                  {candidate.matchType === 'equivalent' && <Badge bg="info" className="ms-2">同等品</Badge>}
+                  {candidate.matchType === 'exact' && <Badge bg="success" className="ms-2">同一薬剤</Badge>}
                   <span className="small text-muted d-block">
                     TEL: {candidate.pharmacyPhone || '-'} / FAX: {candidate.pharmacyFax || '-'}
                   </span>
@@ -422,6 +468,11 @@ export default function MatchingPage() {
                 {candidate.businessStatus?.closingSoon && (
                   <AppAlert variant="warning" className="py-2 mb-3">
                     この薬局はまもなく営業終了です（本日 {candidate.businessStatus.todayHours?.closeTime} まで）
+                  </AppAlert>
+                )}
+                {candidate.matchType === 'equivalent' && (
+                  <AppAlert variant="info" className="py-2 mb-3 small">
+                    この候補は同等品マッチングにより表示されています。薬品名が異なる場合でも、同等品として登録された薬剤が含まれます。
                   </AppAlert>
                 )}
                 <Row className="g-3 mb-3">
