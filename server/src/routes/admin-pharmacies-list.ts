@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { and, desc, inArray, eq } from 'drizzle-orm';
-import { buildTokenizedSearchConditions } from '../utils/search-utils';
+import { buildTokenizedSearchConditions, buildSearchRelevanceScore } from '../utils/search-utils';
 import { normalizeSearchTerm } from '../utils/request-utils';
 import { db } from '../config/database';
 import {
@@ -76,6 +76,12 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
     const searchCondition = search
       ? buildTokenizedSearchConditions(search, [pharmacies.name, pharmacies.email])
       : undefined;
+    const relevanceScore = search
+      ? buildSearchRelevanceScore(search, [
+        { column: pharmacies.name, weight: 5 },
+        { column: pharmacies.email, weight: 2 },
+      ])
+      : null;
 
     const rows = await db.select({
       id: pharmacies.id,
@@ -91,7 +97,10 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
     })
       .from(pharmacies)
       .where(searchCondition)
-      .orderBy(desc(pharmacies.createdAt))
+      .orderBy(
+        ...(relevanceScore ? [desc(relevanceScore)] : []),
+        desc(pharmacies.createdAt),
+      )
       .limit(limit)
       .offset(offset);
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PharmacyListPage from '../../pages/PharmacyListPage';
@@ -70,6 +70,10 @@ describe('PharmacyListPage — Group Features', () => {
     setMatchMedia(false); // desktop
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   describe('Group Badges', () => {
     it('shows group name badge for pharmacy in a single group', async () => {
       mockPharmacyListFetch();
@@ -135,6 +139,74 @@ describe('PharmacyListPage — Group Features', () => {
   });
 
   describe('Group Filter', () => {
+    it('fetches incrementally while typing without clicking search', async () => {
+      const mockFetch = mockPharmacyListFetch();
+      const user = userEvent.setup();
+      renderWithProviders(<PharmacyListPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('テスト薬局')).toBeInTheDocument();
+      });
+
+      mockFetch.mockClear();
+
+      const searchInput = screen.getByPlaceholderText('薬局名で検索（ひらがな・カタカナ対応）...');
+      await user.type(searchInput, 'テスト');
+
+      await waitFor(() => {
+        const pharmacySearchCalls = mockFetch.mock.calls.filter(([input]) => {
+          const url = typeof input === 'string' ? input : input.toString();
+          return url.includes('/api/pharmacies?') && url.includes('search=%E3%83%86%E3%82%B9%E3%83%88');
+        });
+        expect(pharmacySearchCalls.length).toBeGreaterThan(0);
+      }, { timeout: 2000 });
+    });
+
+    it('keeps pagination working after filters are initialized', async () => {
+      const pageOneResponse = {
+        data: [
+          { id: 1, name: 'テスト薬局', prefecture: '東京都', address: '東京都渋谷区1-1', phone: '03-1111-1111', fax: '03-1111-2222', distance: null },
+        ],
+        pagination: { page: 1, totalPages: 2, total: 2 },
+      };
+      const pageTwoResponse = {
+        data: [
+          { id: 2, name: '2ページ目薬局', prefecture: '大阪府', address: '大阪府大阪市1-1', phone: '06-2222-2222', fax: '06-2222-3333', distance: 5 },
+        ],
+        pagination: { page: 2, totalPages: 2, total: 2 },
+      };
+      const fetchMock = setupFetchMock({
+        '/api/auth/me': mockUser,
+        '/api/pharmacies/relationships': { favorites: [], blocked: [] },
+        '/api/pharmacies?page=2': pageTwoResponse,
+        '/api/pharmacies': pageOneResponse,
+        '/api/groups/membership-summary': membershipSummaryResponse,
+        '/api/timeline/bootstrap': { timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null }, digest: { events: [] }, unreadCount: 0 },
+        '/api/timeline/unread-count': { unreadCount: 0 },
+      });
+      const user = userEvent.setup();
+
+      renderWithProviders(<PharmacyListPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('テスト薬局')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: 'ページ 2' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('2ページ目薬局')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('テスト薬局')).not.toBeInTheDocument();
+      expect(
+        fetchMock.mock.calls.some(([input]) => {
+          const url = typeof input === 'string' ? input : input.toString();
+          return url.includes('/api/pharmacies?page=2');
+        }),
+      ).toBe(true);
+    });
+
     it('renders group filter dropdown with group names', async () => {
       mockPharmacyListFetch();
       renderWithProviders(<PharmacyListPage />);

@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { eq, and, or, desc, inArray, notExists } from 'drizzle-orm';
+import { eq, and, or, desc, inArray, notExists, asc } from 'drizzle-orm';
 import type { ZodType } from 'zod';
 import { db } from '../config/database';
 import {
@@ -13,7 +13,7 @@ import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination, buildPaginatedResponse } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
-import { buildTokenizedSearchConditions } from '../utils/search-utils';
+import { buildTokenizedSearchConditions, buildSearchRelevanceScore } from '../utils/search-utils';
 import { logger } from '../services/logger';
 import { writeLog, getClientIp } from '../services/log-service';
 import { getPharmacyRiskDetail, invalidateAdminRiskSnapshotCache } from '../services/expiry-risk-service';
@@ -200,6 +200,9 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
     const searchCondition = search
       ? buildTokenizedSearchConditions(search, [deadStockItems.drugName])
       : undefined;
+    const relevanceScore = search
+      ? buildSearchRelevanceScore(search, [{ column: deadStockItems.drugName, weight: 5 }])
+      : null;
 
     const whereExpr = and(
       eq(deadStockItems.pharmacyId, req.user!.id),
@@ -209,7 +212,10 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
     const items = await db.select()
       .from(deadStockItems)
       .where(whereExpr)
-      .orderBy(desc(deadStockItems.createdAt))
+      .orderBy(
+        ...(relevanceScore ? [desc(relevanceScore)] : []),
+        desc(deadStockItems.createdAt),
+      )
       .limit(limit)
       .offset(offset);
 
@@ -292,6 +298,10 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       maxLimit: 200,
     });
     const searchCondition = buildBrowseSearchCondition(req.query.search);
+    const search = normalizeSearchTerm(req.query.search);
+    const relevanceScore = search
+      ? buildSearchRelevanceScore(search, [{ column: deadStockItems.drugName, weight: 5 }])
+      : null;
 
     const blockCondition = notExists(
       db.select({ id: pharmacyRelationships.id })
@@ -334,7 +344,11 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       .from(deadStockItems)
       .innerJoin(pharmacies, eq(deadStockItems.pharmacyId, pharmacies.id))
       .where(whereExpr)
-      .orderBy(desc(deadStockItems.createdAt))
+      .orderBy(
+        ...(relevanceScore ? [desc(relevanceScore)] : []),
+        desc(deadStockItems.createdAt),
+        asc(pharmacies.name),
+      )
       .limit(limit)
       .offset(offset);
 

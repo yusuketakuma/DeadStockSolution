@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { eq, and, ilike, or, isNotNull } from 'drizzle-orm';
+import { eq, and, ilike, or, isNotNull, desc, asc } from 'drizzle-orm';
 import { db } from '../config/database';
 import { drugMaster } from '../db/schema';
 import { AuthRequest } from '../types';
 import { parsePagination, normalizeSearchTerm, escapeLikeWildcards } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { writeLog, getClientIp } from '../services/log-service';
-import { buildTokenizedSearchConditions } from '../utils/search-utils';
+import { buildTokenizedSearchConditions, buildSearchRelevanceScore } from '../utils/search-utils';
 import {
   getDrugMasterStats,
   getDrugDetail,
@@ -115,6 +115,14 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     const conditions = buildDrugMasterListConditions(search, statusFilter, categoryFilter);
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const relevanceScore = search
+      ? buildSearchRelevanceScore(search, [
+        { column: drugMaster.drugName, weight: 5 },
+        { column: drugMaster.genericName, weight: 3 },
+        { column: drugMaster.manufacturer, weight: 2 },
+        { column: drugMaster.yjCode, weight: 4 },
+      ])
+      : null;
 
     const [totalResult] = await db.select({ value: rowCount })
       .from(drugMaster)
@@ -136,7 +144,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     })
       .from(drugMaster)
       .where(whereClause)
-      .orderBy(drugMaster.drugName)
+      .orderBy(
+        ...(relevanceScore ? [desc(relevanceScore)] : []),
+        asc(drugMaster.drugName),
+      )
       .limit(limit)
       .offset(offset);
 

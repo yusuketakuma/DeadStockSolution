@@ -50,7 +50,10 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(() => ({})),
   inArray: vi.fn(() => ({})),
   asc: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
+  sql: Object.assign(
+    (..._args: unknown[]) => ({}),
+    { join: vi.fn(() => ({})) },
+  ),
 }));
 
 import pharmaciesRouter from '../routes/pharmacies';

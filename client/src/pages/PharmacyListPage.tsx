@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
@@ -16,6 +16,7 @@ import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -88,11 +89,7 @@ function buildGroupMaps(groups: GroupInfo[]) {
 
 export default function PharmacyListPage() {
   const { user } = useAuth();
-  const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
-  const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
   const [prefecture, setPrefecture] = useState('');
   const [sortBy, setSortBy] = useState('');
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
@@ -100,9 +97,11 @@ export default function PharmacyListPage() {
   const [myGroups, setMyGroups] = useState<GroupInfo[]>([]);
   const [groupFilter, setGroupFilter] = useState('');
   const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
   const [pendingBlockId, setPendingBlockId] = useState<number | null>(null);
   const [blockSubmitting, setBlockSubmitting] = useState(false);
+  const filtersInitializedRef = useRef(false);
+  const previousPrefectureRef = useRef(prefecture);
+  const previousSortByRef = useRef(sortBy);
 
   const fetchRelationships = useCallback(async () => {
     try {
@@ -123,22 +122,60 @@ export default function PharmacyListPage() {
     }
   }, []);
 
-  const fetchData = useCallback(async (p: number) => {
-    setLoading(true);
+  const fetchPharmacies = useCallback(async (query: string, page: number, signal: AbortSignal) => {
     setMessage('');
     try {
-      const params = buildPharmacyQuery(p, { search, prefecture, sortBy });
-      const data = await api.get<PharmaciesResponse>(`/pharmacies?${params}`);
-      setPharmacies(data.data);
-      setTotalPages(data.pagination.totalPages);
+      const params = buildPharmacyQuery(page, { search: query, prefecture, sortBy });
+      const data = await api.get<PharmaciesResponse>(`/pharmacies?${params}`, { signal });
+      if (!signal.aborted) {
+        setTotalPages(data.pagination.totalPages);
+      }
+      return { data: data.data, total: data.pagination.total };
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : '薬局一覧の取得に失敗しました');
-    } finally {
-      setLoading(false);
+      if (!signal.aborted) {
+        setMessage(err instanceof Error ? err.message : '薬局一覧の取得に失敗しました');
+        setTotalPages(1);
+      }
+      return { data: [], total: 0 };
     }
-  }, [search, prefecture, sortBy]);
+  }, [prefecture, sortBy]);
 
-  useEffect(() => { void fetchData(page); }, [page, fetchData]);
+  const incrementalSearch = useIncrementalSearch<Pharmacy>({
+    fetchFn: fetchPharmacies,
+    minChars: 0,
+  });
+  const { executeImmediate, page, query, results, setPage, setQuery, isSearching } = incrementalSearch;
+
+  useEffect(() => {
+    executeImmediate();
+  }, [executeImmediate]);
+
+  useEffect(() => {
+    if (!filtersInitializedRef.current) {
+      filtersInitializedRef.current = true;
+      previousPrefectureRef.current = prefecture;
+      previousSortByRef.current = sortBy;
+      return;
+    }
+
+    const prefectureChanged = previousPrefectureRef.current !== prefecture;
+    const sortByChanged = previousSortByRef.current !== sortBy;
+
+    previousPrefectureRef.current = prefecture;
+    previousSortByRef.current = sortBy;
+
+    if (!prefectureChanged && !sortByChanged) {
+      return;
+    }
+
+    if (page !== 1) {
+      setPage(1);
+      return;
+    }
+
+    executeImmediate();
+  }, [prefecture, sortBy, setPage, executeImmediate, page]);
+
   useEffect(() => { fetchRelationships(); }, [fetchRelationships]);
   useEffect(() => { void fetchGroupData(); }, [fetchGroupData]);
 
@@ -146,6 +183,8 @@ export default function PharmacyListPage() {
     () => buildGroupMaps(myGroups),
     [myGroups],
   );
+
+  const pharmacies = results;
 
   const displayedPharmacies = useMemo(() => {
     if (!groupFilter) return pharmacies;
@@ -163,9 +202,12 @@ export default function PharmacyListPage() {
     return 'グループ';
   };
 
-  const handleSearch = (q: string) => {
-    setPage(1);
-    setSearch(q);
+  const handleSearch = (nextQuery?: string) => {
+    if (typeof nextQuery === 'string' && nextQuery !== query) {
+      setQuery(nextQuery);
+      return;
+    }
+    executeImmediate();
   };
 
   const toggleFavorite = async (pharmacyId: number) => {
@@ -226,20 +268,20 @@ export default function PharmacyListPage() {
             <div className="flex-grow-1">
               <SearchInput
                 placeholder="薬局名で検索（ひらがな・カタカナ対応）..."
-                value={searchInput}
-                onChange={setSearchInput}
+                value={query}
+                onChange={setQuery}
                 onSearch={handleSearch}
                 suggestUrl="/search/pharmacies"
               />
             </div>
-            <AppButton variant="primary" onClick={() => handleSearch(searchInput)}>検索</AppButton>
+            <AppButton variant="primary" onClick={() => handleSearch()}>検索</AppButton>
           </div>
         </Col>
         <Col md={3}>
           <AppSelect
             value={prefecture}
             ariaLabel="都道府県で絞り込み"
-            onChange={(value) => { setPrefecture(value); setPage(1); }}
+            onChange={setPrefecture}
             placeholder="全都道府県"
             options={PREFECTURES.map((pref) => ({ value: pref, label: pref }))}
           />
@@ -257,7 +299,7 @@ export default function PharmacyListPage() {
           <AppSelect
             value={sortBy}
             ariaLabel="並び順"
-            onChange={(value) => { setSortBy(value); setPage(1); }}
+            onChange={setSortBy}
             options={[
               { value: '', label: '登録順' },
               { value: 'distance', label: '距離が近い順' },
@@ -269,12 +311,12 @@ export default function PharmacyListPage() {
       <ScrollArea>
       {message ? (
         <AppAlert variant="danger" dismissible onClose={() => setMessage('')}>{message}</AppAlert>
-      ) : loading ? (
+      ) : isSearching ? (
         <InlineLoader text="薬局一覧を読み込み中..." className="text-muted small" />
       ) : displayedPharmacies.length === 0 ? (
         <AppEmptyState
-          title={search ? `「${search}」に一致する薬局が見つかりません` : groupFilter ? 'このグループに属する薬局が見つかりません' : '薬局が見つかりません'}
-          description={search ? '検索条件を変更して再度お試しください。' : groupFilter ? 'グループフィルターを解除してお試しください。' : undefined}
+          title={query ? `「${query}」に一致する薬局が見つかりません` : groupFilter ? 'このグループに属する薬局が見つかりません' : '薬局が見つかりません'}
+          description={query ? '検索条件を変更して再度お試しください。' : groupFilter ? 'グループフィルターを解除してお試しください。' : undefined}
         />
       ) : (
         <AppResponsiveSwitch

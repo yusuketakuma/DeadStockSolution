@@ -9,7 +9,7 @@ import { haversineDistance } from '../utils/geo-utils';
 import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePagination, parsePositiveInt } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
-import { buildTokenizedSearchConditions } from '../utils/search-utils';
+import { buildTokenizedSearchConditions, buildSearchRelevanceScore } from '../utils/search-utils';
 import { logger } from '../services/logger';
 
 const router = Router();
@@ -202,25 +202,38 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       longitude: pharmacies.longitude,
       distance: sortBy === 'distance' ? distanceExpr : sql<null>`NULL`,
     };
+    const relevanceScore = search
+      ? buildSearchRelevanceScore(search, [{ column: pharmacies.name, weight: 5 }])
+      : null;
 
     const baseRows = sortBy === 'distance'
       ? hasCurrentCoords
         ? await db.select(selectFields)
           .from(pharmacies)
           .where(whereExpr)
-          .orderBy(sql`COALESCE(${distanceExpr}, 999999)`, asc(pharmacies.name))
+          .orderBy(
+            ...(relevanceScore ? [desc(relevanceScore)] : []),
+            sql`COALESCE(${distanceExpr}, 999999)`,
+            asc(pharmacies.name),
+          )
           .limit(limit)
           .offset(offset)
         : await db.select(selectFields)
           .from(pharmacies)
           .where(whereExpr)
-          .orderBy(asc(pharmacies.name))
+          .orderBy(
+            ...(relevanceScore ? [desc(relevanceScore)] : []),
+            asc(pharmacies.name),
+          )
           .limit(limit)
           .offset(offset)
       : await db.select(selectFields)
         .from(pharmacies)
         .where(whereExpr)
-        .orderBy(desc(pharmacies.createdAt))
+        .orderBy(
+          ...(relevanceScore ? [desc(relevanceScore)] : []),
+          desc(pharmacies.createdAt),
+        )
         .limit(limit)
         .offset(offset);
 

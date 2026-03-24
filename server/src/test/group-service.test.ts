@@ -23,9 +23,14 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(() => ({})),
   eq: vi.fn(() => ({})),
   inArray: vi.fn(() => ({})),
+  ilike: vi.fn(() => ({})),
   ne: vi.fn(() => ({})),
   notInArray: vi.fn(() => ({})),
   or: vi.fn(() => ({})),
+  sql: Object.assign(
+    (..._args: unknown[]) => ({}),
+    { join: vi.fn(() => ({})) },
+  ),
 }));
 
 import {
@@ -223,6 +228,40 @@ describe('group-service', () => {
 
     expect(result.total).toBe(1);
     expect(result.groups.map((g: { id: number }) => g.id)).toEqual([20]);
+  });
+
+  it('listGroups with search prioritizes higher relevance over createdAt order', async () => {
+    const ownGroups = [
+      {
+        id: 10,
+        name: '全国医薬連携',
+        description: '東京の共同購入',
+        visibility: 'invite_only' as const,
+        ownerPharmacyId: 1,
+        createdAt: '2026-03-03T00:00:00.000Z',
+        updatedAt: '2026-03-03T00:00:00.000Z',
+      },
+      {
+        id: 11,
+        name: '東京薬局グループ',
+        description: null,
+        visibility: 'invite_only' as const,
+        ownerPharmacyId: 1,
+        createdAt: '2026-03-01T00:00:00.000Z',
+        updatedAt: '2026-03-01T00:00:00.000Z',
+      },
+    ];
+
+    const memberQuery = createSelectWhereResult([{ groupId: 10 }, { groupId: 11 }]);
+    const ownQuery = createSelectWhereResult(ownGroups);
+
+    mocks.db.select
+      .mockReturnValueOnce({ from: memberQuery.from })
+      .mockReturnValueOnce({ from: ownQuery.from });
+
+    const result = await listGroups(1, { tab: 'mine', search: '東京', offset: 0, limit: 20 });
+
+    expect(result.groups.map((g: { id: number }) => g.id)).toEqual([11, 10]);
   });
 
   it('getGroupDetail rejects invite_only access when requester is not member', async () => {

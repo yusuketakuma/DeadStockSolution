@@ -45,13 +45,18 @@ vi.mock('../services/logger', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
+  asc: vi.fn(() => ({})),
+  desc: vi.fn(() => ({})),
   eq: vi.fn(() => ({})),
   and: vi.fn(() => ({})),
   like: vi.fn(() => ({})),
   ilike: vi.fn(() => ({})),
   or: vi.fn(() => ({})),
   isNotNull: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
+  sql: Object.assign(
+    (..._args: unknown[]) => ({}),
+    { join: vi.fn(() => ({})) },
+  ),
 }));
 
 import drugMasterRouter from '../routes/drug-master';

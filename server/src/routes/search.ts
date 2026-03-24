@@ -4,7 +4,11 @@ import { db } from '../config/database';
 import { deadStockItems, pharmacies, drugMaster } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { buildTokenizedSearchConditions, buildDrugMasterSearchCondition } from '../utils/search-utils';
+import {
+  buildTokenizedSearchConditions,
+  buildDrugMasterSearchCondition,
+  buildSearchRelevanceScore,
+} from '../utils/search-utils';
 import { logger } from '../services/logger';
 
 const router = Router();
@@ -32,18 +36,9 @@ router.get('/drugs', async (req: AuthRequest, res: Response) => {
     }
 
     const searchCondition = buildTokenizedSearchConditions(rawQuery, [deadStockItems.drugName]);
-    const queryLower = rawQuery.toLowerCase();
-    const prefixPattern = `${queryLower}%`;
-    const containsPattern = `%${queryLower}%`;
-
-    const relevanceScore = sql<number>`
-      CASE
-        WHEN LOWER(${deadStockItems.drugName}) = ${queryLower} THEN 1000
-        WHEN LOWER(${deadStockItems.drugName}) LIKE ${prefixPattern} THEN 800
-        WHEN LOWER(${deadStockItems.drugName}) LIKE ${containsPattern} THEN 400
-        ELSE 100
-      END
-    `;
+    const relevanceScore = buildSearchRelevanceScore(rawQuery, [
+      { column: deadStockItems.drugName, weight: 4 },
+    ]);
 
     const results = await db.select({
       drugName: deadStockItems.drugName,
@@ -80,22 +75,12 @@ router.get('/drug-master', async (req: AuthRequest, res: Response) => {
       drugMaster.yjCode,
     );
 
-    const queryLower = rawQuery.toLowerCase();
-    const prefixPattern = `${queryLower}%`;
-    const containsPattern = `%${queryLower}%`;
-
-    const relevanceScore = sql<number>`
-      CASE
-        WHEN LOWER(${drugMaster.drugName}) = ${queryLower} THEN 1000
-        WHEN LOWER(${drugMaster.drugName}) LIKE ${prefixPattern} THEN 800
-        WHEN LOWER(${drugMaster.genericName}) = ${queryLower} THEN 700
-        WHEN LOWER(${drugMaster.genericName}) LIKE ${prefixPattern} THEN 600
-        WHEN LOWER(${drugMaster.drugName}) LIKE ${containsPattern} THEN 400
-        WHEN LOWER(${drugMaster.genericName}) LIKE ${containsPattern} THEN 300
-        WHEN LOWER(${drugMaster.manufacturer}) LIKE ${containsPattern} THEN 200
-        ELSE 100
-      END
-    `;
+    const relevanceScore = buildSearchRelevanceScore(rawQuery, [
+      { column: drugMaster.drugName, weight: 5 },
+      { column: drugMaster.genericName, weight: 3 },
+      { column: drugMaster.manufacturer, weight: 2 },
+      { column: drugMaster.yjCode, weight: 4 },
+    ]);
 
     const results = await db.select({
       id: drugMaster.id,
@@ -136,21 +121,11 @@ router.get('/drug-master-names', async (req: AuthRequest, res: Response) => {
       drugMaster.yjCode,
     );
 
-    const queryLower = rawQuery.toLowerCase();
-    const prefixPattern = `${queryLower}%`;
-    const containsPattern = `%${queryLower}%`;
-
-    const relevanceScore = sql<number>`
-      CASE
-        WHEN LOWER(${drugMaster.drugName}) = ${queryLower} THEN 1000
-        WHEN LOWER(${drugMaster.drugName}) LIKE ${prefixPattern} THEN 800
-        WHEN LOWER(${drugMaster.genericName}) = ${queryLower} THEN 700
-        WHEN LOWER(${drugMaster.genericName}) LIKE ${prefixPattern} THEN 600
-        WHEN LOWER(${drugMaster.drugName}) LIKE ${containsPattern} THEN 400
-        WHEN LOWER(${drugMaster.genericName}) LIKE ${containsPattern} THEN 300
-        ELSE 100
-      END
-    `;
+    const relevanceScore = buildSearchRelevanceScore(rawQuery, [
+      { column: drugMaster.drugName, weight: 5 },
+      { column: drugMaster.genericName, weight: 3 },
+      { column: drugMaster.yjCode, weight: 4 },
+    ]);
 
     const results = await db.select({
       drugName: drugMaster.drugName,
@@ -182,18 +157,9 @@ router.get('/pharmacies', async (req: AuthRequest, res: Response) => {
     }
 
     const searchCondition = buildTokenizedSearchConditions(rawQuery, [pharmacies.name]);
-    const queryLower = rawQuery.toLowerCase();
-    const prefixPattern = `${queryLower}%`;
-    const containsPattern = `%${queryLower}%`;
-
-    const relevanceScore = sql<number>`
-      CASE
-        WHEN LOWER(${pharmacies.name}) = ${queryLower} THEN 1000
-        WHEN LOWER(${pharmacies.name}) LIKE ${prefixPattern} THEN 800
-        WHEN LOWER(${pharmacies.name}) LIKE ${containsPattern} THEN 400
-        ELSE 100
-      END
-    `;
+    const relevanceScore = buildSearchRelevanceScore(rawQuery, [
+      { column: pharmacies.name, weight: 5 },
+    ]);
 
     const results = await db.select({
       name: pharmacies.name,

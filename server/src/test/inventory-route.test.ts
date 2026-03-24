@@ -64,10 +64,14 @@ vi.mock('drizzle-orm', () => ({
   or: vi.fn(() => ({})),
   like: vi.fn(() => ({})),
   ilike: vi.fn(() => ({})),
+  asc: vi.fn(() => ({})),
   desc: vi.fn(() => ({})),
   inArray: vi.fn(() => ({})),
   notExists: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
+  sql: Object.assign(
+    (..._args: unknown[]) => ({}),
+    { join: vi.fn(() => ({})) },
+  ),
 }));
 
 import inventoryRouter from '../routes/inventory';

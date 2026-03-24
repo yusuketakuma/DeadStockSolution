@@ -41,6 +41,8 @@ vi.mock('../services/logger', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
+  asc: vi.fn(() => ({})),
+  desc: vi.fn(() => ({})),
   eq: vi.fn(() => ({})),
   and: vi.fn(() => ({})),
   like: vi.fn(() => ({})),

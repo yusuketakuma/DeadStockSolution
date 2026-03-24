@@ -29,7 +29,10 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(() => ({})),
   sql: Object.assign(
     (..._args: unknown[]) => ({ as: vi.fn(() => ({})) }),
-    { raw: (..._args: unknown[]) => ({}) },
+    {
+      raw: (..._args: unknown[]) => ({}),
+      join: (..._args: unknown[]) => ({}),
+    },
   ),
 }));
 

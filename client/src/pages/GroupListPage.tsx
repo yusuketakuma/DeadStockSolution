@@ -59,25 +59,52 @@ export default function GroupListPage() {
   // 参加処理
   const [joiningId, setJoiningId] = useState<number | null>(null);
 
-  const fetchGroups = useCallback(async () => {
+  const fetchGroups = useCallback(async (options?: { signal?: AbortSignal; searchQuery?: string }) => {
+    const signal = options?.signal;
     setLoading(true);
     setError('');
     try {
-      const params = buildGroupsQuery(activeTab, search);
-      const data = await api.get<GroupListResponse>(`/groups?${params}`);
+      const params = buildGroupsQuery(activeTab, options?.searchQuery ?? search);
+      const data = await api.get<GroupListResponse>(
+        `/groups?${params}`,
+        signal ? { signal } : undefined,
+      );
+      if (signal?.aborted) return;
       setGroups(data.groups);
     } catch (err) {
+      if (signal?.aborted) return;
       setError(err instanceof Error ? err.message : 'グループ一覧の取得に失敗しました');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   }, [activeTab, search]);
 
   useEffect(() => {
-    void fetchGroups();
+    const controller = new AbortController();
+    void fetchGroups({ signal: controller.signal });
+    return () => controller.abort();
   }, [fetchGroups]);
 
+  useEffect(() => {
+    if (activeTab !== 'public') {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [activeTab, searchInput]);
+
   const handleSearch = (q: string) => {
+    setSearchInput(q);
+    if (q === search) {
+      void fetchGroups({ searchQuery: q });
+      return;
+    }
     setSearch(q);
   };
 

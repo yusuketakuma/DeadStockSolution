@@ -255,4 +255,51 @@ describe('InventoryBrowsePage', () => {
     expect(screen.getByText('在庫データがありません')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('薬品名で検索（ひらがな・カタカナ対応）...')).toBeInTheDocument();
   });
+
+  it('preserves server ordering when the default sort is selected', async () => {
+    createMockFetch({
+      '/api/auth/me': mockUser,
+      '/api/inventory/browse': {
+        data: [
+          {
+            id: 2,
+            drugName: 'ロキソプロフェン錠60mg',
+            quantity: 20,
+            unit: '錠',
+            packageLabel: null,
+            yakkaUnitPrice: 5.7,
+            yakkaTotal: 114,
+            expirationDate: '2026-12-01',
+            pharmacyName: 'B薬局',
+            prefecture: '大阪府',
+          },
+          {
+            id: 1,
+            drugName: 'アムロジピン錠5mg',
+            quantity: 100,
+            unit: '錠',
+            packageLabel: null,
+            yakkaUnitPrice: 10.1,
+            yakkaTotal: 1010,
+            expirationDate: '2027-06-01',
+            pharmacyName: 'A薬局',
+            prefecture: '東京都',
+          },
+        ],
+        pagination: { page: 1, totalPages: 1, total: 2 },
+      },
+    });
+
+    renderWithProviders(<InventoryBrowsePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('ロキソプロフェン錠60mg')).toBeInTheDocument();
+    });
+
+    const rows = screen.getAllByRole('row');
+    const dataRows = rows.filter((row) => row.querySelector('td'));
+
+    expect(dataRows[0]).toHaveTextContent('ロキソプロフェン錠60mg');
+    expect(dataRows[1]).toHaveTextContent('アムロジピン錠5mg');
+  });
 });

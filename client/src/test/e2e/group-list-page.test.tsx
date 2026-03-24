@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import GroupListPage from '../../pages/GroupListPage';
@@ -96,6 +96,10 @@ describe('GroupListPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     setMatchMedia(false); // desktop by default
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders page title and tabs', async () => {
@@ -221,6 +225,200 @@ describe('GroupListPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('招待待ち')).toBeInTheDocument();
+    });
+  });
+
+  it('fetches public groups incrementally while typing', async () => {
+    const user = userEvent.setup();
+    const incrementalPublicGroups: PharmacyGroup[] = [
+      {
+        id: 30,
+        name: '東京協業グループ',
+        description: '東京都の共同仕入れ',
+        visibility: 'public',
+        ownerPharmacyId: 20,
+        createdAt: '2026-02-01T00:00:00Z',
+        updatedAt: '2026-02-01T00:00:00Z',
+      },
+    ];
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/groups?tab=mine')) {
+        return new Response(JSON.stringify(makeGroupListResponse(sampleMyGroups)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/groups?tab=public&search=%E6%9D%B1%E4%BA%AC')) {
+        return new Response(JSON.stringify(makeGroupListResponse(incrementalPublicGroups)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/groups?tab=public')) {
+        return new Response(JSON.stringify(makeGroupListResponse(samplePublicGroups)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/timeline/bootstrap')) {
+        return new Response(JSON.stringify({
+          timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null },
+          digest: { events: [] },
+          unreadCount: 0,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/timeline/unread-count')) {
+        return new Response(JSON.stringify({ unreadCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    renderWithProviders(<GroupListPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('東京薬局グループ')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('公開グループ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('全国薬局ネットワーク')).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText('グループ名で検索...');
+    await user.type(input, '東京');
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([url]) =>
+          String(url).includes('/api/groups?tab=public&search=%E6%9D%B1%E4%BA%AC'),
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('東京協業グループ')).toBeInTheDocument();
+    });
+  });
+
+  it('retries the same public-group query when search is clicked again', async () => {
+    const user = userEvent.setup();
+    const searchResultGroups: PharmacyGroup[] = [
+      {
+        id: 31,
+        name: '東京共同配送',
+        description: '同じ検索語の再試行確認',
+        visibility: 'public',
+        ownerPharmacyId: 21,
+        createdAt: '2026-02-02T00:00:00Z',
+        updatedAt: '2026-02-02T00:00:00Z',
+      },
+    ];
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/groups?tab=mine')) {
+        return new Response(JSON.stringify(makeGroupListResponse(sampleMyGroups)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/groups?tab=public&search=%E6%9D%B1%E4%BA%AC')) {
+        return new Response(JSON.stringify(makeGroupListResponse(searchResultGroups)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/groups?tab=public')) {
+        return new Response(JSON.stringify(makeGroupListResponse(samplePublicGroups)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/timeline/bootstrap')) {
+        return new Response(JSON.stringify({
+          timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null },
+          digest: { events: [] },
+          unreadCount: 0,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/timeline/unread-count')) {
+        return new Response(JSON.stringify({ unreadCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    renderWithProviders(<GroupListPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('東京薬局グループ')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('公開グループ'));
+
+    const input = await screen.findByPlaceholderText('グループ名で検索...');
+    await user.type(input, '東京');
+
+    await waitFor(() => {
+      expect(screen.getByText('東京共同配送')).toBeInTheDocument();
+    });
+
+    const searchUrl = '/api/groups?tab=public&search=%E6%9D%B1%E4%BA%AC';
+    const beforeRetry = fetchMock.mock.calls.filter(([url]) => String(url).includes(searchUrl)).length;
+
+    await user.click(screen.getByRole('button', { name: '検索' }));
+
+    await waitFor(() => {
+      const afterRetry = fetchMock.mock.calls.filter(([url]) => String(url).includes(searchUrl)).length;
+      expect(afterRetry).toBeGreaterThan(beforeRetry);
     });
   });
 

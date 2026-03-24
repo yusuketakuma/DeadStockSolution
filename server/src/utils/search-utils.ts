@@ -1,4 +1,4 @@
-import { type SQL, type AnyColumn, ilike, or, and } from 'drizzle-orm';
+import { type SQL, type AnyColumn, ilike, or, and, sql } from 'drizzle-orm';
 import {
   normalizeKana,
   katakanaToHiragana,
@@ -121,4 +121,145 @@ export function buildDrugMasterSearchCondition(
 
   if (nameCondition && yjCondition) return or(nameCondition, yjCondition) as SQL;
   return nameCondition ?? yjCondition;
+}
+
+interface RelevanceColumn {
+  column: AnyColumn;
+  weight?: number;
+}
+
+interface TextRelevanceField {
+  value: string | null | undefined;
+  weight?: number;
+}
+
+function uniqueNormalizedVariants(value: string): string[] {
+  return [...new Set(buildKanaVariants(value).map((variant) => variant.trim()).filter(Boolean))];
+}
+
+function scoreTextMatch(
+  text: string,
+  variants: string[],
+  scores: { exact: number; prefix: number; contains: number },
+): number {
+  if (!text || variants.length === 0) return 0;
+
+  const normalized = text.trim().toLowerCase();
+  let total = 0;
+
+  for (const variant of variants) {
+    const normalizedVariant = variant.toLowerCase();
+    if (!normalizedVariant) continue;
+
+    if (normalized === normalizedVariant) {
+      total += scores.exact;
+    } else if (normalized.startsWith(normalizedVariant)) {
+      total += scores.prefix;
+    } else if (normalized.includes(normalizedVariant)) {
+      total += scores.contains;
+    }
+  }
+
+  return total;
+}
+
+function buildColumnRelevanceScore(
+  column: AnyColumn,
+  variants: string[],
+  scores: { exact: number; prefix: number; contains: number },
+): SQL<number> {
+  if (variants.length === 0) {
+    return sql<number>`0`;
+  }
+
+  const cases: SQL[] = [];
+  for (const variant of variants) {
+    const normalizedVariant = variant.toLowerCase();
+    const escaped = escapeLikeWildcards(normalizedVariant);
+    const prefixPattern = `${escaped}%`;
+    const containsPattern = `%${escaped}%`;
+
+    cases.push(sql<number>`
+      CASE
+        WHEN LOWER(COALESCE(${column}, '')) = ${normalizedVariant} THEN ${scores.exact}
+        WHEN LOWER(COALESCE(${column}, '')) LIKE ${prefixPattern} THEN ${scores.prefix}
+        WHEN LOWER(COALESCE(${column}, '')) LIKE ${containsPattern} THEN ${scores.contains}
+        ELSE 0
+      END
+    `);
+  }
+
+  return sql<number>`(${sql.join(cases, sql` + `)})`;
+}
+
+/**
+ * 一覧検索用の一致度スコアを構築する。
+ * 全文一致を強く、トークン一致を補助的に加点する。
+ */
+export function buildSearchRelevanceScore(
+  query: string,
+  columns: RelevanceColumn[],
+): SQL<number> {
+  const trimmed = query.trim();
+  if (!trimmed || columns.length === 0) {
+    return sql<number>`0`;
+  }
+
+  const fullVariants = uniqueNormalizedVariants(trimmed);
+  const tokenVariants = [...new Set(
+    tokenizeQuery(trimmed).flatMap((token) => uniqueNormalizedVariants(token)),
+  )];
+
+  const columnScores = columns.map(({ column, weight = 1 }) => {
+    const fullScore = buildColumnRelevanceScore(column, fullVariants, {
+      exact: 1000 * weight,
+      prefix: 700 * weight,
+      contains: 250 * weight,
+    });
+    const tokenScore = buildColumnRelevanceScore(column, tokenVariants, {
+      exact: 120 * weight,
+      prefix: 80 * weight,
+      contains: 30 * weight,
+    });
+
+    return sql<number>`(${fullScore} + ${tokenScore})`;
+  });
+
+  return sql<number>`(${sql.join(columnScores, sql` + `)})`;
+}
+
+/**
+ * JS 側で整列する一覧向けの一致度スコア。
+ * SQL と同じ重みを使って並び順を揃える。
+ */
+export function computeTextRelevanceScore(
+  query: string,
+  fields: TextRelevanceField[],
+): number {
+  const trimmed = query.trim();
+  if (!trimmed || fields.length === 0) {
+    return 0;
+  }
+
+  const fullVariants = uniqueNormalizedVariants(trimmed);
+  const tokenVariants = [...new Set(
+    tokenizeQuery(trimmed).flatMap((token) => uniqueNormalizedVariants(token)),
+  )];
+
+  return fields.reduce((total, { value, weight = 1 }) => {
+    const text = value?.trim() ?? '';
+    if (!text) return total;
+
+    return total
+      + scoreTextMatch(text, fullVariants, {
+        exact: 1000 * weight,
+        prefix: 700 * weight,
+        contains: 250 * weight,
+      })
+      + scoreTextMatch(text, tokenVariants, {
+        exact: 120 * weight,
+        prefix: 80 * weight,
+        contains: 30 * weight,
+      });
+  }, 0);
 }

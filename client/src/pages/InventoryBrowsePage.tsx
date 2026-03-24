@@ -92,7 +92,9 @@ export default function InventoryBrowsePage() {
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
   const displayItems = useMemo(() => {
-    if (sortOption === 'drugName' && items.length === 0) return items;
+    if (sortOption === 'drugName') {
+      return items;
+    }
     return [...items].sort((a, b) => {
       switch (sortOption) {
         case 'expiryAsc': {
@@ -105,9 +107,8 @@ export default function InventoryBrowsePage() {
         }
         case 'pharmacyName':
           return a.pharmacyName.localeCompare(b.pharmacyName, 'ja');
-        case 'drugName':
         default:
-          return a.drugName.localeCompare(b.drugName, 'ja');
+          return 0;
       }
     });
   }, [items, sortOption]);

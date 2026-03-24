@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, notInArray, or, type SQL } from 'drizzle-orm';
-import { buildTokenizedSearchConditions } from '../utils/search-utils';
+import { buildTokenizedSearchConditions, computeTextRelevanceScore } from '../utils/search-utils';
 import { db } from '../config/database';
 import { groupMembers, notifications, pharmacyGroups } from '../db/schema';
 import type {
@@ -236,6 +236,30 @@ function sortGroups(groups: PharmacyGroupRow[]): PharmacyGroupRow[] {
   return [...groups].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
 }
 
+function sortGroupsBySearchRelevance(groups: PharmacyGroupRow[], search: string): PharmacyGroupRow[] {
+  return [...groups].sort((left, right) => {
+    const rightScore = computeTextRelevanceScore(search, [
+      { value: right.name, weight: 5 },
+      { value: right.description, weight: 2 },
+    ]);
+    const leftScore = computeTextRelevanceScore(search, [
+      { value: left.name, weight: 5 },
+      { value: left.description, weight: 2 },
+    ]);
+
+    if (leftScore !== rightScore) {
+      return rightScore - leftScore;
+    }
+
+    const createdCompare = String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? ''));
+    if (createdCompare !== 0) {
+      return createdCompare;
+    }
+
+    return left.id - right.id;
+  });
+}
+
 async function getActorRole(groupId: number, pharmacyId: number): Promise<GroupMemberRole> {
   const membership = await getMembership(groupId, pharmacyId);
   if (!membership) {
@@ -372,16 +396,19 @@ export async function listGroups(pharmacyId: number, filters: ListGroupFilters =
     : filters.tab === 'public'
       ? sortGroups(publicGroups)
       : dedupeAndSortGroups(ownGroups, publicGroups);
+  const orderedGroups = filters.search
+    ? sortGroupsBySearchRelevance(groups, filters.search)
+    : groups;
 
   if (filters.cursor) {
     const cursor = filters.cursor;
     // cursor-based: find position after cursor in the sorted list (desc by createdAt, then id)
-    const cursorIdx = groups.findIndex(
+    const cursorIdx = orderedGroups.findIndex(
       (g) => g.id === cursor.id && g.createdAt === cursor.createdAt,
     );
     // If cursor not found, start from beginning (stale cursor)
     const startIdx = cursorIdx >= 0 ? cursorIdx + 1 : 0;
-    const pageGroups = groups.slice(startIdx, startIdx + limit + 1);
+    const pageGroups = orderedGroups.slice(startIdx, startIdx + limit + 1);
     const hasMore = pageGroups.length > limit;
     const items = hasMore ? pageGroups.slice(0, limit) : pageGroups;
     const lastItem = items[items.length - 1];
@@ -391,7 +418,7 @@ export async function listGroups(pharmacyId: number, filters: ListGroupFilters =
 
     return {
       groups: items.map(toGroup),
-      total: groups.length,
+      total: orderedGroups.length,
       offset: 0,
       limit,
       pagination: { mode: 'cursor', hasMore, nextCursor },
@@ -399,11 +426,11 @@ export async function listGroups(pharmacyId: number, filters: ListGroupFilters =
   }
 
   return {
-    groups: groups.slice(offset, offset + limit).map(toGroup),
-    total: groups.length,
+    groups: orderedGroups.slice(offset, offset + limit).map(toGroup),
+    total: orderedGroups.length,
     offset,
     limit,
-    pagination: { mode: 'offset', hasMore: offset + limit < groups.length, nextCursor: null },
+    pagination: { mode: 'offset', hasMore: offset + limit < orderedGroups.length, nextCursor: null },
   };
 }
 
