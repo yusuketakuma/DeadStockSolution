@@ -120,9 +120,9 @@ export const ddsBootstrapTokens = pgTable('dds_bootstrap_tokens', {
   environment: varchar('environment', { length: 32 }).notNull(),
   tokenHash: varchar('token_hash', { length: 128 }).notNull(),
   requestedByAdminId: integer('requested_by_admin_id').references(() => pharmacies.id, { onDelete: 'set null' }),
-  expiresAt: timestamp('expires_at', { mode: 'string' }).notNull(),
-  consumedAt: timestamp('consumed_at', { mode: 'string' }),
-  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { mode: 'string', withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 });
 
 export const ddsAgentConnections = pgTable('dds_agent_connections', {
@@ -134,11 +134,11 @@ export const ddsAgentConnections = pgTable('dds_agent_connections', {
   controlTokenHash: varchar('control_token_hash', { length: 128 }).notNull(),
   status: varchar('status', { length: 24 }).notNull().default('active'),
   metadataJson: jsonb('metadata_json'),
-  lastHeartbeatAt: timestamp('last_heartbeat_at', { mode: 'string' }),
-  lastSeenAt: timestamp('last_seen_at', { mode: 'string' }),
-  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
-  registeredAt: timestamp('registered_at', { mode: 'string' }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+  lastHeartbeatAt: timestamp('last_heartbeat_at', { mode: 'string', withTimezone: true }),
+  lastSeenAt: timestamp('last_seen_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  registeredAt: timestamp('registered_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   uqDdsAgentConnectionsAgentEnv: uniqueIndex('uq_dds_agent_connections_agent_env').on(table.agentId, table.environment),
 }));
@@ -155,11 +155,11 @@ export const ddsAgentJobs = pgTable('dds_agent_jobs', {
   result: jsonb('result'),
   attemptCount: integer('attempt_count').notNull().default(0),
   leaseTokenHash: varchar('lease_token_hash', { length: 128 }),
-  leaseExpiresAt: timestamp('lease_expires_at', { mode: 'string' }),
-  leasedAt: timestamp('leased_at', { mode: 'string' }),
-  completedAt: timestamp('completed_at', { mode: 'string' }),
-  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+  leaseExpiresAt: timestamp('lease_expires_at', { mode: 'string', withTimezone: true }),
+  leasedAt: timestamp('leased_at', { mode: 'string', withTimezone: true }),
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   idxDdsAgentJobsAgentStatus: index('idx_dds_agent_jobs_agent_status').on(table.agentId, table.status, table.createdAt),
   idxDdsAgentJobsWorkItem: index('idx_dds_agent_jobs_work_item').on(table.workItemId),
@@ -183,8 +183,8 @@ export const ddsWorkItems = pgTable('dds_work_items', {
   metadataJson: text('metadata_json'),
   contextJson: jsonb('context_json'),
   source: varchar('source', { length: 64 }),
-  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   uqDdsWorkItemsRequestId: uniqueIndex('uq_dds_work_items_request_id').on(table.requestId),
   idxDdsWorkItemsPharmacyStatus: index('idx_dds_work_items_pharmacy_status').on(table.pharmacyId, table.workflowStatus, table.updatedAt),

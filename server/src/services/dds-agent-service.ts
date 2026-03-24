@@ -125,10 +125,15 @@ async function consumeBootstrapToken(token: string): Promise<void> {
 
   const [row] = await db.select()
     .from(ddsBootstrapTokens)
-    .where(eq(ddsBootstrapTokens.tokenHash, tokenHash))
+    .where(and(
+      eq(ddsBootstrapTokens.tokenHash, tokenHash),
+      eq(ddsBootstrapTokens.environment, DDS_ENVIRONMENT),
+      sql`${ddsBootstrapTokens.consumedAt} is null`,
+      sql`${ddsBootstrapTokens.expiresAt} > now()`,
+    ))
     .limit(1);
 
-  if (!row || row.environment !== DDS_ENVIRONMENT || row.consumedAt || row.expiresAt <= now) {
+  if (!row) {
     throw new ApiError(401, 'bootstrap token が不正または期限切れです');
   }
 
