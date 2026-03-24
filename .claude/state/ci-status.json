@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-03-15T16:21:43Z",
-  "trigger_command": "git push origin preview && git checkout main && git merge preview --no-edit && git push origin main && git checkout preview",
+  "timestamp": "2026-03-24T04:31:09Z",
+  "trigger_command": "git push origin preview --tags",
   "status": "completed",
-  "conclusion": "failure"
+  "conclusion": "success"
 }

@@ -11,3 +11,48 @@
 {"id":"event-000010","type":"tool.bash","ts":"2026-03-24T02:38:37Z","state":"stopped","data":{"command":"git status -s | grep '^\?\?' | head -20"}}
 {"id":"event-000011","type":"tool.bash","ts":"2026-03-24T02:38:38Z","state":"stopped","data":{"command":"git diff --stat HEAD -- ':!.claude' ':!server/.claude' | tail -5"}}
 {"id":"event-000012","type":"tool.bash","ts":"2026-03-24T02:38:42Z","state":"stopped","data":{"command":"git status -s | grep '^\?\?' "}}
+{"id":"event-000013","type":"tool.bash","ts":"2026-03-24T02:38:55Z","state":"stopped","data":{"command":"git add \
+  client/src/contexts/TimelineContext.tsx \
+  client/src/contexts/__tests__/TimelineContext.test.tsx \
+  client/src/hooks/__tests__/useCameraDraftRows.test.ts \
+  client/src/test/components/"}}
+{"id":"event-000014","type":"tool.bash","ts":"2026-03-24T02:39:14Z","state":"stopped","data":{"command":"git commit -m "$(cat <<'EOF'
+feat: add openclaw connect/retry services and comprehensive test fixes
+
+OpenClaw接続・リトライ・リクエストイベントサービスを新規追加。
+admin/内部ルート追加、OpenAPI仕様更新、クライアント側テスト修正、
+TimelineContext改善、テストヘル"}}
+{"id":"event-000015","type":"tool.bash","ts":"2026-03-24T02:39:20Z","state":"stopped","data":{"command":"git push origin preview"}}
+{"id":"event-000016","type":"tool.bash","ts":"2026-03-24T04:27:22Z","state":"stopped","data":{"command":"command -v gh &>/dev/null && echo "✅ gh available" || echo "⚠️ gh not found""}}
+{"id":"event-000017","type":"tool.bash","ts":"2026-03-24T04:27:23Z","state":"stopped","data":{"command":"git diff --quiet && git diff --cached --quiet && echo "✅ clean" || echo "⚠️ uncommitted changes""}}
+{"id":"event-000018","type":"tool.bash","ts":"2026-03-24T04:27:24Z","state":"stopped","data":{"command":"cat VERSION 2>/dev/null || (jq -r '.version' package.json 2>/dev/null)"}}
+{"id":"event-000019","type":"tool.bash","ts":"2026-03-24T04:27:25Z","state":"stopped","data":{"command":"git log --oneline v0.0.18..HEAD 2>/dev/null || git log --oneline -10"}}
+{"id":"event-000020","type":"tool.bash","ts":"2026-03-24T04:27:51Z","state":"stopped","data":{"command":"git log --oneline v0.0.18..HEAD 2>/dev/null || git log --oneline --since="2025-03-01" | head -20"}}
+{"id":"event-000021","type":"tool.bash","ts":"2026-03-24T04:27:52Z","state":"stopped","data":{"command":"git diff v0.0.18..HEAD --stat 2>/dev/null | tail -10"}}
+{"id":"event-000022","type":"tool.bash","ts":"2026-03-24T04:27:57Z","state":"stopped","data":{"command":"git tag -l 'v0.0.18' | head -1"}}
+{"id":"event-000023","type":"tool.bash","ts":"2026-03-24T04:27:58Z","state":"stopped","data":{"command":"git tag -l | sort -V | tail -5"}}
+{"id":"event-000024","type":"tool.bash","ts":"2026-03-24T04:28:03Z","state":"stopped","data":{"command":"git log v0.0.8..HEAD --oneline | wc -l && git log v0.0.8..HEAD --oneline"}}
+{"id":"event-000025","type":"tool.bash","ts":"2026-03-24T04:28:09Z","state":"stopped","data":{"command":"git diff v0.0.8..HEAD --stat -- server/src/routes/ server/src/services/ | grep -v '\.test\.' | head -40"}}
+{"id":"event-000026","type":"tool.bash","ts":"2026-03-24T04:28:11Z","state":"stopped","data":{"command":"git diff v0.0.8..HEAD --stat -- client/src/pages/ client/src/components/ client/src/contexts/ client/src/hooks/ | head -40"}}
+{"id":"event-000027","type":"tool.bash","ts":"2026-03-24T04:28:11Z","state":"stopped","data":{"command":"cat CHANGELOG.md 2>/dev/null | head -60"}}
+{"id":"event-000028","type":"tool.bash","ts":"2026-03-24T04:28:16Z","state":"stopped","data":{"command":"cat CHANGELOG.md | head -120 | tail -60"}}
+{"id":"event-000029","type":"tool.bash","ts":"2026-03-24T04:28:23Z","state":"stopped","data":{"command":"git log 80dd61a..HEAD --oneline"}}
+{"id":"event-000030","type":"tool.bash","ts":"2026-03-24T04:28:28Z","state":"stopped","data":{"command":"git diff 80dd61a..HEAD --stat -- server/src/routes/ server/src/services/ client/src/pages/ client/src/components/ | grep -v '\.test\.' | head -60"}}
+{"id":"event-000031","type":"tool.bash","ts":"2026-03-24T04:28:34Z","state":"stopped","data":{"command":"git diff 80dd61a..HEAD --stat -- server/src/routes/ server/src/services/ client/src/pages/ client/src/components/ | grep -v '\.test\.' | tail -30"}}
+{"id":"event-000032","type":"tool.edit","ts":"2026-03-24T04:29:54Z","state":"stopped","data":{"file_path":"/Users/yusuke/workspace/DeadStockSolution/CHANGELOG.md"}}
+{"id":"event-000033","type":"tool.bash","ts":"2026-03-24T04:30:07Z","state":"stopped","data":{"command":"grep '"version"' /Users/yusuke/workspace/DeadStockSolution/package.json /Users/yusuke/workspace/DeadStockSolution/server/package.json /Users/yusuke/workspace/DeadStockSolution/client/package.json 2>/d"}}
+{"id":"event-000034","type":"tool.write","ts":"2026-03-24T04:30:11Z","state":"stopped","data":{"file_path":"/Users/yusuke/workspace/DeadStockSolution/VERSION"}}
+{"id":"event-000035","type":"tool.bash","ts":"2026-03-24T04:30:13Z","state":"stopped","data":{"command":"jq '.version = "0.0.19"' package.json > tmp.json && mv tmp.json package.json && jq '.version = "0.0.19"' server/package.json > tmp.json && mv tmp.json server/package.json && jq '.version = "0.0.19"' c"}}
+{"id":"event-000036","type":"tool.bash","ts":"2026-03-24T04:30:20Z","state":"stopped","data":{"command":"git add VERSION CHANGELOG.md package.json server/package.json client/package.json && git commit -m "$(cat <<'EOF'
+chore: release v0.0.19
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropi"}}
+{"id":"event-000037","type":"tool.bash","ts":"2026-03-24T04:30:26Z","state":"stopped","data":{"command":"git push origin preview --tags"}}
+{"id":"event-000038","type":"tool.bash","ts":"2026-03-24T04:30:47Z","state":"stopped","data":{"command":"gh release create "v0.0.19" \
+  --title "v0.0.19 — Real-time notifications, Stripe payments, OpenClaw integration" \
+  --target preview \
+  --notes "$(cat <<'EOF'
+## What's Changed
+
+**Major release ad"}}
+{"id":"event-000039","type":"tool.bash","ts":"2026-03-24T04:32:06Z","state":"stopped","data":{"command":"git status -s"}}
