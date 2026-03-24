@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-03-23T23:00:49.007Z",
+  "skills": {},
+  "commands": {
+    "harness-review": {
+      "count": 1,
+      "lastUsed": "2026-03-23T23:00:49.007Z"
+    }
+  },
+  "agents": {},
+  "hooks": {}
+}
