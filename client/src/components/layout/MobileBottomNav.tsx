@@ -1,6 +1,7 @@
 import { Badge, Nav } from 'react-bootstrap';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTimeline } from '../../contexts/TimelineContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface NavItem {
   to: string;
@@ -40,13 +41,36 @@ function GroupIcon() {
   return <NavIcon><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></NavIcon>;
 }
 
-export const NAV_ITEMS: NavItem[] = [
+function MessageIcon() {
+  return <NavIcon><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></NavIcon>;
+}
+
+function RequestIcon() {
+  return <NavIcon><path d="M4 4h16v12H7l-3 3z" /><path d="M8 8h8" /><path d="M8 12h5" /></NavIcon>;
+}
+
+function AdminIcon() {
+  return <NavIcon><path d="M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7z" /><path d="M9.5 12.5l1.5 1.5 3.5-4" /></NavIcon>;
+}
+
+export const USER_NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'ホーム', icon: <DashboardIcon />, end: true },
   { to: '/matching', label: 'マッチング', icon: <MatchingIcon /> },
   { to: '/proposals', label: '提案', icon: <ProposalIcon />, badgeKey: 'proposals' },
+  { to: '/messages', label: 'メッセージ', icon: <MessageIcon /> },
   { to: '/alerts', label: 'アラート', icon: <AlertIcon />, badgeKey: 'alerts' },
-  { to: '/groups', label: 'グループ', icon: <GroupIcon /> },
 ];
+
+export const ADMIN_NAV_ITEMS: NavItem[] = [
+  { to: '/admin', label: 'ホーム', icon: <AdminIcon />, end: true },
+  { to: '/admin/user-requests', label: '要望', icon: <RequestIcon /> },
+  { to: '/admin/direct-messages', label: 'メッセージ', icon: <MessageIcon /> },
+  { to: '/admin/drug-master', label: 'マスター', icon: <ProposalIcon /> },
+  { to: '/admin/openclaw', label: 'OpenClaw', icon: <GroupIcon /> },
+];
+
+// 互換用。ページスワイプや既存テストは利用者向けナビを基準に扱う。
+export const NAV_ITEMS: NavItem[] = USER_NAV_ITEMS;
 
 /**
  * モバイル専用ボトムナビゲーション
@@ -58,6 +82,8 @@ export const NAV_ITEMS: NavItem[] = [
 export default function MobileBottomNav() {
   const location = useLocation();
   const { unreadCount } = useTimeline();
+  const { user } = useAuth();
+  const navItems = user?.isAdmin ? ADMIN_NAV_ITEMS : USER_NAV_ITEMS;
 
   // バッジカウント（TimelineContextのunreadCountを共有）
   const getBadgeCount = (key?: 'proposals' | 'alerts'): number => {
@@ -79,7 +105,7 @@ export default function MobileBottomNav() {
       aria-label="モバイルナビゲーション"
     >
       <Nav className="mobile-bottom-nav-inner justify-content-around">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const active = isActive(item.to, item.end);
           const badgeCount = getBadgeCount(item.badgeKey);
           return (

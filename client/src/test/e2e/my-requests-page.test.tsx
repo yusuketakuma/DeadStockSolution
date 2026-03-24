@@ -184,7 +184,7 @@ describe('MyRequestsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '追加情報を送信' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/返信を送信しました/)).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('追加情報を送信しました');
     });
 
     expect(fetchMock.mock.calls.some(([request, init]) => (
@@ -282,5 +282,95 @@ describe('MyRequestsPage', () => {
       expect(screen.getAllByText('実装中').length).toBeGreaterThan(0);
     });
     expect(screen.getByText('追加情報を受領し、解析を再開しました')).toBeInTheDocument();
+  });
+
+  it('creates a new request from the page-level request form', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse(mockUser);
+      }
+      if (url.includes('/api/timeline/bootstrap')) {
+        return jsonResponse({
+          timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null },
+          digest: { events: [] },
+          unreadCount: 0,
+        });
+      }
+      if (url.includes('/api/timeline/unread-count')) {
+        return jsonResponse({ unreadCount: 0 });
+      }
+      if (url.includes('/api/requests/me')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 77,
+              requestText: '新しい帳票を追加したい',
+              openclawStatus: 'pending_handoff',
+              openclawThreadId: 'thread-77',
+              openclawSummary: '受付済み',
+              workflowStatus: 'queued',
+              latestSummary: '要望を受け付けました',
+              branchName: null,
+              prUrl: null,
+              prNumber: null,
+              updatedAt: '2026-03-24T10:10:00.000Z',
+              createdAt: '2026-03-24T10:10:00.000Z',
+            },
+          ],
+        });
+      }
+      if (url.includes('/api/requests/77/messages')) {
+        return jsonResponse({
+          request: {
+            id: 77,
+            requestText: '新しい帳票を追加したい',
+            openclawStatus: 'pending_handoff',
+            openclawThreadId: 'thread-77',
+            openclawSummary: '受付済み',
+            workflowStatus: 'queued',
+            latestSummary: '要望を受け付けました',
+            branchName: null,
+            prUrl: null,
+            prNumber: null,
+            updatedAt: '2026-03-24T10:10:00.000Z',
+            createdAt: '2026-03-24T10:10:00.000Z',
+          },
+          messages: [
+            { id: 1, authorType: 'user', messageType: 'message', body: '新しい帳票を追加したい', createdAt: '2026-03-24T10:10:00.000Z', metadata: null },
+          ],
+        });
+      }
+      if (url.endsWith('/api/requests') && init?.method === 'POST') {
+        return jsonResponse({
+          message: '要望を受け付けました',
+          nextStep: 'DSS Manager が内容を確認します。',
+          request: {
+            id: 77,
+          },
+        }, 201);
+      }
+      return jsonResponse({ error: 'Not found' }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<MyRequestsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '新しい要望を入力' })).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: '新しい要望を入力' }));
+    await userEvent.type(screen.getByPlaceholderText('依頼したい内容や困っていることを入力してください'), '新しい帳票を追加したい');
+    await userEvent.click(screen.getByRole('button', { name: '要望を送信' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('要望を受け付けました');
+    });
+    expect(fetchMock.mock.calls.some(([request, init]) => (
+      String(request).endsWith('/api/requests')
+      && init?.method === 'POST'
+      && String(init.body).includes('新しい帳票を追加したい')
+    ))).toBe(true);
   });
 });

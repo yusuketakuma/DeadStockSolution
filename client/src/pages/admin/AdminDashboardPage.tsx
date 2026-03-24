@@ -228,6 +228,7 @@ export default function AdminDashboardPage() {
           <Link to="/admin/drug-master" className="btn btn-sm btn-outline-primary">医薬品マスター</Link>
           <Link to="/admin/pharmacies" className="btn btn-sm btn-outline-secondary">薬局管理</Link>
           <Link to="/admin/groups" className="btn btn-sm btn-outline-info">グループ管理</Link>
+          <Link to="/admin/direct-messages" className="btn btn-sm btn-outline-secondary">ユーザー間メッセージ</Link>
           <Link to="/admin/user-requests" className="btn btn-sm btn-outline-info">ユーザーリクエスト</Link>
           <Link to="/admin/alerts" className="btn btn-sm btn-outline-warning">アラート管理</Link>
           <Link to="/admin/notifications" className="btn btn-sm btn-outline-secondary">通知・配信</Link>

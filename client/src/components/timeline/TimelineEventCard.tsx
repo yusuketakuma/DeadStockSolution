@@ -1,9 +1,7 @@
+import type { KeyboardEvent } from 'react';
 import { Badge } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import type { TimelineEvent, TimelinePriority, TimelineSource } from '../../types/timeline';
-import AppCard from '../ui/AppCard';
-import AppMobileDataCard from '../ui/AppMobileDataCard';
-import AppResponsiveSwitch from '../ui/AppResponsiveSwitch';
 
 const SOURCE_ICON: Record<TimelineSource, string> = {
   proposal: '↔️',
@@ -18,6 +16,19 @@ const SOURCE_ICON: Record<TimelineSource, string> = {
   feedback: '⭐',
 };
 
+const SOURCE_LABEL: Record<TimelineSource, string> = {
+  proposal: '提案',
+  comment: 'コメント',
+  match: 'マッチ',
+  upload: '取込',
+  admin_message: '運営',
+  exchange_history: '履歴',
+  expiry_risk: '期限',
+  notification: '通知',
+  activity: '操作',
+  feedback: '評価',
+};
+
 const PRIORITY_VARIANT: Record<TimelinePriority, string> = {
   critical: 'danger',
   high: 'warning',
@@ -26,10 +37,10 @@ const PRIORITY_VARIANT: Record<TimelinePriority, string> = {
 };
 
 const PRIORITY_LABEL: Record<TimelinePriority, string> = {
-  critical: '重要',
-  high: '高',
-  medium: '中',
-  low: '低',
+  critical: '緊急',
+  high: '重要',
+  medium: '通常',
+  low: '補足',
 };
 
 function getRelativeTime(timestamp: string): string {
@@ -47,12 +58,24 @@ function getRelativeTime(timestamp: string): string {
   return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
+function getAbsoluteTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  return date.toLocaleString('ja-JP', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 interface TimelineEventCardProps {
   event: TimelineEvent;
 }
 
 export default function TimelineEventCard({ event }: TimelineEventCardProps) {
   const navigate = useNavigate();
+  const isClickable = Boolean(event.actionPath);
 
   const handleClick = () => {
     if (event.actionPath) {
@@ -60,82 +83,72 @@ export default function TimelineEventCard({ event }: TimelineEventCardProps) {
     }
   };
 
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!isClickable) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleClick();
+    }
+  };
+
   const icon = SOURCE_ICON[event.source] ?? '📌';
+  const sourceLabel = SOURCE_LABEL[event.source] ?? '更新';
   const priorityVariant = PRIORITY_VARIANT[event.priority];
   const priorityLabel = PRIORITY_LABEL[event.priority];
   const relativeTime = getRelativeTime(event.timestamp);
+  const absoluteTime = getAbsoluteTime(event.timestamp);
 
   const priorityBadge = (
-    <Badge bg={priorityVariant} data-testid="priority-badge">
+    <Badge bg={priorityVariant} data-testid="priority-badge" className="rounded-pill">
       {priorityLabel}
     </Badge>
   );
 
   const unreadDot = !event.isRead ? (
-    <span
-      data-testid="unread-dot"
-      style={{
-        display: 'inline-block',
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        backgroundColor: '#0d6efd',
-        marginRight: 4,
-        verticalAlign: 'middle',
-      }}
-    />
+    <span data-testid="unread-dot" className="dl-timeline-unread-dot" />
   ) : null;
 
   return (
-    <AppResponsiveSwitch
-      mobile={
-        <AppMobileDataCard
-          title={
-            <span
-              onClick={handleClick}
-              style={{ cursor: event.actionPath ? 'pointer' : 'default' }}
-              data-testid="card-title"
-            >
-              {unreadDot}
-              <span className={event.isRead ? '' : 'fw-bold'}>{icon} {event.title}</span>
+    <div className="dl-timeline-event">
+      <div className={`dl-timeline-marker ${event.isRead ? 'is-read' : 'is-unread'}`} aria-hidden="true">
+        <span className="dl-timeline-marker-dot">{icon}</span>
+      </div>
+      <div
+        className={`dl-timeline-card${isClickable ? ' is-clickable' : ''}${event.isRead ? '' : ' is-unread'}`}
+        onClick={isClickable ? handleClick : undefined}
+        onKeyDown={handleKeyDown}
+        role={isClickable ? 'button' : undefined}
+        tabIndex={isClickable ? 0 : undefined}
+        data-testid="desktop-card"
+      >
+        <div className="dl-timeline-card-top">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span className="dl-timeline-source-chip" aria-label={`icon-${event.source}`}>
+              <span aria-hidden="true">{icon}</span>
+              <span>{sourceLabel}</span>
             </span>
-          }
-          subtitle={<span className="text-muted small">{event.body}</span>}
-          badges={priorityBadge}
-          fields={[{ label: '時刻', value: <span data-testid="relative-time">{relativeTime}</span> }]}
-          className="mb-2"
-        />
-      }
-      desktop={
-        <AppCard
-          className="mb-2"
-          style={{ cursor: event.actionPath ? 'pointer' : 'default' }}
-          onClick={handleClick}
-          data-testid="desktop-card"
-        >
-          <AppCard.Body className="py-2">
-            <div className="d-flex align-items-center gap-2">
-              <span aria-label={`icon-${event.source}`} style={{ fontSize: '1.1em' }}>{icon}</span>
-              <div className="flex-grow-1 overflow-hidden">
-                <div className="d-flex align-items-center gap-2">
-                  {unreadDot}
-                  <span
-                    className={`text-truncate ${event.isRead ? '' : 'fw-bold'}`}
-                    data-testid="card-title"
-                  >
-                    {event.title}
-                  </span>
-                </div>
-                <div className="text-muted small text-truncate">{event.body}</div>
-              </div>
-              <div className="d-flex align-items-center gap-2 flex-shrink-0">
-                <span className="text-muted small" data-testid="relative-time">{relativeTime}</span>
-                {priorityBadge}
-              </div>
-            </div>
-          </AppCard.Body>
-        </AppCard>
-      }
-    />
+            {priorityBadge}
+            {!event.isRead && <span className="dl-timeline-unread-pill">未読</span>}
+          </div>
+          <span className="dl-timeline-time" data-testid="relative-time" title={absoluteTime}>
+            {relativeTime}
+          </span>
+        </div>
+
+        <div className="dl-timeline-title-row">
+          {unreadDot}
+          <span className={`dl-timeline-title ${event.isRead ? '' : 'fw-semibold'}`} data-testid="card-title">
+            {event.title}
+          </span>
+        </div>
+
+        <p className="dl-timeline-body mb-0">{event.body}</p>
+
+        <div className="dl-timeline-meta">
+          <span className="text-muted">{absoluteTime}</span>
+          {event.actionPath && <span className="dl-timeline-action-hint">詳細を開く</span>}
+        </div>
+      </div>
+    </div>
   );
 }

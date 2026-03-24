@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import { useToast } from '../../contexts/ToastContext';
 import { Badge, Col, Form, Row } from 'react-bootstrap';
@@ -12,7 +12,7 @@ import SearchResultStatus from '../../components/search/SearchResultStatus';
 import { useIncrementalSearch } from '../../hooks/useIncrementalSearch';
 import DrugMasterSyncCard from './components/DrugMasterSyncCard';
 import PackageUploadCard from './components/PackageUploadCard';
-import AutoSyncStatusCard from './components/AutoSyncStatusCard';
+import MasterRefreshCard from './components/MasterRefreshCard';
 import SyncLogsTable from './components/SyncLogsTable';
 import DrugMasterStatsCards from './components/DrugMasterStatsCards';
 import SearchInput from '../../components/SearchInput';
@@ -59,6 +59,7 @@ interface AutoSyncStatus {
   hasSourceUrl: boolean;
   checkIntervalHours: number;
   supportsManualUrlOverride: boolean;
+  sourceMode?: 'index' | 'single';
 }
 
 function resolveErrorMessage(err: unknown, fallback: string): string {
@@ -81,21 +82,66 @@ function buildDrugMasterListParams(input: {
   return params.toString();
 }
 
-function scheduleRefresh(
-  timerRef: RefObject<ReturnType<typeof setTimeout> | null>,
-  callback: () => void,
-): void {
-  if (timerRef.current !== null) {
-    clearTimeout(timerRef.current);
-  }
-  timerRef.current = setTimeout(() => {
-    timerRef.current = null;
-    callback();
-  }, 5000);
-}
-
 function fetchDrugMasterDetailByYjCode(yjCode: string): Promise<DrugMasterDetail> {
   return api.get<DrugMasterDetail>(`/admin/drug-master/detail/${encodeURIComponent(yjCode)}`);
+}
+
+type MasterRefreshStep = {
+  key: 'drug-master' | 'package-master';
+  label: string;
+  status: 'idle' | 'running' | 'success' | 'failed';
+  sourceDescription: string | null;
+  message: string;
+  startedAt: string | null;
+  completedAt: string | null;
+};
+
+type MasterRefreshResponse = {
+  triggered: boolean;
+  message: string;
+  steps: Array<{
+    key: 'drug-master' | 'package-master';
+    label: string;
+    triggered: boolean;
+    message: string;
+  }>;
+};
+
+function summarizeLogMessage(log: SyncLog | undefined): string {
+  if (!log) return '未実行です';
+  if (log.status === 'running') return '更新処理を実行しています';
+  if (log.status === 'failed') return log.errorMessage || '更新に失敗しました';
+  return `処理 ${log.itemsProcessed}件 / 追加 ${log.itemsAdded}件 / 更新 ${log.itemsUpdated}件 / 削除 ${log.itemsDeleted}件`;
+}
+
+function getLatestLogByType(syncLogs: SyncLog[], syncTypes: string[]): SyncLog | undefined {
+  return syncLogs.find((log) => syncTypes.includes(log.syncType));
+}
+
+function buildMasterRefreshSteps(syncLogs: SyncLog[]): MasterRefreshStep[] {
+  const drugMasterLog = getLatestLogByType(syncLogs, ['auto']);
+  const packageLog = getLatestLogByType(syncLogs, ['package_auto']);
+
+  return [
+    {
+      key: 'drug-master',
+      label: '医薬品マスター本体',
+      status: (drugMasterLog?.status as MasterRefreshStep['status'] | undefined) ?? 'idle',
+      sourceDescription: drugMasterLog?.sourceDescription ?? null,
+      message: summarizeLogMessage(drugMasterLog),
+      startedAt: drugMasterLog?.startedAt ?? null,
+      completedAt: drugMasterLog?.completedAt ?? null,
+    },
+    {
+      key: 'package-master',
+      label: '包装単位データ',
+      status: (packageLog?.status as MasterRefreshStep['status'] | undefined) ?? 'idle',
+      sourceDescription: packageLog?.sourceDescription ?? null,
+      message: summarizeLogMessage(packageLog),
+      startedAt: packageLog?.startedAt ?? null,
+      completedAt: packageLog?.completedAt ?? null,
+    },
+  ];
 }
 
 // ── メインコンポーネント ─────────────────────────────
@@ -115,16 +161,17 @@ export default function AdminDrugMasterPage() {
   const [revisionDate, setRevisionDate] = useState(new Date().toISOString().slice(0, 10));
   const syncFileRef = useRef<HTMLInputElement>(null);
   const pkgFileRef = useRef<HTMLInputElement>(null);
+  const [showManualMaintenance, setShowManualMaintenance] = useState(false);
 
   // 自動取得関連
   const [autoSyncStatus, setAutoSyncStatus] = useState<AutoSyncStatus | null>(null);
-  const [autoSyncTriggering, setAutoSyncTriggering] = useState(false);
-  const [manualSourceUrl, setManualSourceUrl] = useState('');
   const [packageAutoSyncStatus, setPackageAutoSyncStatus] = useState<AutoSyncStatus | null>(null);
-  const [packageAutoSyncTriggering, setPackageAutoSyncTriggering] = useState(false);
-  const [packageManualSourceUrl, setPackageManualSourceUrl] = useState('');
-  const autoSyncRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const packageAutoSyncRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [packageMessage, setPackageMessage] = useState('');
+  const [packageError, setPackageError] = useState('');
+  const [masterRefreshRunning, setMasterRefreshRunning] = useState(false);
+  const [masterRefreshPolling, setMasterRefreshPolling] = useState(false);
+  const [masterRefreshMessage, setMasterRefreshMessage] = useState('');
+  const [masterRefreshError, setMasterRefreshError] = useState('');
 
   // 同期ログ
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -201,6 +248,8 @@ export default function AdminDrugMasterPage() {
   const items = incrementalSearch.results;
   const total = incrementalSearch.total;
   const loading = incrementalSearch.isSearching;
+  const masterRefreshSteps = buildMasterRefreshSteps(syncLogs);
+  const masterRefreshActive = masterRefreshSteps.some((step) => step.status === 'running');
 
   // ── データ取得 ──────────────────────────────────
 
@@ -214,7 +263,7 @@ export default function AdminDrugMasterPage() {
   const fetchSyncLogs = useCallback(async () => {
     try {
       const data = await api.get<{ data: SyncLog[] }>('/admin/drug-master/sync-logs');
-      setSyncLogs(data.data.slice(0, 5));
+      setSyncLogs(data.data.slice(0, 10));
     } catch { /* ignore */ }
   }, []);
 
@@ -232,46 +281,26 @@ export default function AdminDrugMasterPage() {
     } catch { /* ignore */ }
   }, []);
 
-  const handleAutoSyncTrigger = async () => {
-    setAutoSyncTriggering(true);
+  const handleMasterRefresh = async () => {
+    setMasterRefreshRunning(true);
+    setMasterRefreshMessage('');
+    setMasterRefreshError('');
     try {
-      const result = await api.post<{ triggered: boolean; message: string }>('/admin/drug-master/auto-sync', {
-        sourceUrl: manualSourceUrl.trim() || null,
-      });
+      const result = await api.post<MasterRefreshResponse>('/admin/drug-master/master-refresh', {});
       if (result.triggered) {
-        setMessage(result.message);
-        scheduleRefresh(autoSyncRefreshTimerRef, () => {
-          fetchSyncLogs();
-          fetchStats();
-        });
+        setMasterRefreshMessage(result.message);
+        setMasterRefreshPolling(true);
+        void fetchSyncLogs();
+        void fetchStats();
+        void fetchAutoSyncStatus();
+        void fetchPackageAutoSyncStatus();
       } else {
-        setSyncError(result.message);
+        setMasterRefreshError(result.message);
       }
     } catch (err) {
-      setSyncError(resolveErrorMessage(err, '自動取得の開始に失敗しました'));
+      setMasterRefreshError(resolveErrorMessage(err, 'マスター更新の開始に失敗しました'));
     } finally {
-      setAutoSyncTriggering(false);
-    }
-  };
-
-  const handlePackageAutoSyncTrigger = async () => {
-    setPackageAutoSyncTriggering(true);
-    try {
-      const result = await api.post<{ triggered: boolean; message: string }>('/admin/drug-master/auto-sync/packages', {
-        sourceUrl: packageManualSourceUrl.trim() || null,
-      });
-      if (result.triggered) {
-        setMessage(result.message);
-        scheduleRefresh(packageAutoSyncRefreshTimerRef, () => {
-          fetchSyncLogs();
-        });
-      } else {
-        setSyncError(result.message);
-      }
-    } catch (err) {
-      setSyncError(resolveErrorMessage(err, '包装単位データ自動取得の開始に失敗しました'));
-    } finally {
-      setPackageAutoSyncTriggering(false);
+      setMasterRefreshRunning(false);
     }
   };
 
@@ -282,16 +311,32 @@ export default function AdminDrugMasterPage() {
     void fetchPackageAutoSyncStatus();
   }, [fetchAutoSyncStatus, fetchPackageAutoSyncStatus, fetchStats, fetchSyncLogs]);
 
-  useEffect(() => () => {
-    if (autoSyncRefreshTimerRef.current !== null) {
-      clearTimeout(autoSyncRefreshTimerRef.current);
-      autoSyncRefreshTimerRef.current = null;
-    }
-    if (packageAutoSyncRefreshTimerRef.current !== null) {
-      clearTimeout(packageAutoSyncRefreshTimerRef.current);
-      packageAutoSyncRefreshTimerRef.current = null;
-    }
-  }, []);
+  useEffect(() => {
+    if (!masterRefreshPolling && !masterRefreshActive) return undefined;
+
+    const intervalId = setInterval(() => {
+      void fetchSyncLogs();
+      void fetchStats();
+      void fetchAutoSyncStatus();
+      void fetchPackageAutoSyncStatus();
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [
+    fetchAutoSyncStatus,
+    fetchPackageAutoSyncStatus,
+    fetchStats,
+    fetchSyncLogs,
+    masterRefreshActive,
+    masterRefreshPolling,
+  ]);
+
+  useEffect(() => {
+    if (!masterRefreshPolling) return;
+    if (masterRefreshActive) return;
+    if (!masterRefreshSteps.some((step) => step.status !== 'idle')) return;
+    setMasterRefreshPolling(false);
+  }, [masterRefreshActive, masterRefreshPolling, masterRefreshSteps]);
 
   const handleRemoveToken = (token: string) => {
     const newTokens = incrementalSearch.tokens.filter((t) => t !== token);
@@ -336,21 +381,24 @@ export default function AdminDrugMasterPage() {
   const handlePackageUpload = async () => {
     const file = pkgFileRef.current?.files?.[0];
     if (!file) {
-      setError('ファイルを選択してください');
+      setPackageError('ファイルを選択してください');
       return;
     }
 
     setPkgUploading(true);
+    setPackageMessage('');
+    setPackageError('');
     try {
       const formData = new FormData();
       formData.append('file', file);
       const result = await apiUpload<{ message: string; result: { added: number; updated: number } }>(
         '/admin/drug-master/upload-packages', formData,
       );
-      setMessage(`包装単位登録完了: 追加 ${result.result.added}件 / 更新 ${result.result.updated}件`);
+      setPackageMessage(`包装単位登録完了: 追加 ${result.result.added}件 / 更新 ${result.result.updated}件`);
       if (pkgFileRef.current) pkgFileRef.current.value = '';
+      void fetchSyncLogs();
     } catch (err) {
-      setError(resolveErrorMessage(err, '登録に失敗しました'));
+      setPackageError(resolveErrorMessage(err, '登録に失敗しました'));
     } finally {
       setPkgUploading(false);
     }
@@ -422,7 +470,12 @@ export default function AdminDrugMasterPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">医薬品マスター管理</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">医薬品マスター管理</h4>
+          <div className="text-muted small">更新状況の追跡、絞り込み、手動メンテナンスを device 幅に合わせて配置します。</div>
+        </div>
+      </div>
 
       <ScrollArea>
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
@@ -430,44 +483,58 @@ export default function AdminDrugMasterPage() {
 
       <DrugMasterStatsCards stats={stats} />
 
-      <Row className="g-3 mb-3">
-        <Col lg={6}>
-          <DrugMasterSyncCard
-            revisionDate={revisionDate}
-            onRevisionDateChange={setRevisionDate}
-            syncFileRef={syncFileRef}
-            syncing={syncing}
-            syncResult={syncResult}
-            syncError={syncError}
-            onSync={handleSync}
-          />
-        </Col>
-        <Col lg={6}>
-          <PackageUploadCard
-            pkgFileRef={pkgFileRef}
-            pkgUploading={pkgUploading}
-            packageAutoSyncStatus={packageAutoSyncStatus}
-            packageAutoSyncTriggering={packageAutoSyncTriggering}
-            packageManualSourceUrl={packageManualSourceUrl}
-            onPackageManualSourceUrlChange={setPackageManualSourceUrl}
-            onPackageUpload={handlePackageUpload}
-            onPackageAutoSyncTrigger={handlePackageAutoSyncTrigger}
-          />
-        </Col>
-      </Row>
-
-      <AutoSyncStatusCard
+      <MasterRefreshCard
+        refreshing={masterRefreshRunning}
+        active={masterRefreshActive || masterRefreshPolling}
+        message={masterRefreshMessage}
+        error={masterRefreshError}
         autoSyncStatus={autoSyncStatus}
-        autoSyncTriggering={autoSyncTriggering}
-        manualSourceUrl={manualSourceUrl}
-        onManualSourceUrlChange={setManualSourceUrl}
-        onAutoSyncTrigger={handleAutoSyncTrigger}
+        packageAutoSyncStatus={packageAutoSyncStatus}
+        steps={masterRefreshSteps}
+        onRefresh={handleMasterRefresh}
       />
 
       <SyncLogsTable syncLogs={syncLogs} />
 
+      <details className="mb-3" open={showManualMaintenance} onToggle={(e) => {
+        setShowManualMaintenance((e.currentTarget as HTMLDetailsElement).open);
+      }}>
+        <summary className="small fw-semibold mb-3" style={{ cursor: 'pointer', listStyle: 'none' }}>
+          手動メンテナンス
+        </summary>
+        {showManualMaintenance && (
+          <>
+            <p className="small text-muted mb-3">
+              緊急時のみ、個別ファイルの手動取込を実行できます。
+            </p>
+            <Row className="g-3 mb-3">
+              <Col xl={6}>
+                <DrugMasterSyncCard
+                  revisionDate={revisionDate}
+                  onRevisionDateChange={setRevisionDate}
+                  syncFileRef={syncFileRef}
+                  syncing={syncing}
+                  syncResult={syncResult}
+                  syncError={syncError}
+                  onSync={handleSync}
+                />
+              </Col>
+              <Col xl={6}>
+                <PackageUploadCard
+                  pkgFileRef={pkgFileRef}
+                  pkgUploading={pkgUploading}
+                  packageMessage={packageMessage}
+                  packageError={packageError}
+                  onPackageUpload={handlePackageUpload}
+                />
+              </Col>
+            </Row>
+          </>
+        )}
+      </details>
+
       {/* 検索・フィルタ（デスクトップ） */}
-      <div className="d-none d-lg-block mb-3">
+      <div className="d-none d-xl-block mb-3">
         <Row className="g-2 align-items-end">
           <Col md={5}>
             <SearchInput {...searchInputProps} />
@@ -508,7 +575,7 @@ export default function AdminDrugMasterPage() {
       </div>
 
       {/* 検索・フィルタ（モバイル） */}
-      <div className="d-lg-none mb-2">
+      <div className="d-xl-none mb-2">
         <div className="mb-2">
           <SearchInput {...searchInputProps} />
         </div>

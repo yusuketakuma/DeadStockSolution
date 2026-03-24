@@ -1,10 +1,12 @@
 import { Router, Response } from 'express';
 import { AuthRequest } from '../types';
 import { requireLogin, rejectAdmin } from '../middleware/auth';
-import { parsePagination } from '../utils/request-utils';
+import { uploadOptionalAttachments } from '../middleware/attachment-upload';
+import { normalizeSearchTerm, parsePagination } from '../utils/request-utils';
 import { logger } from '../services/logger';
 import { ApiError } from '../utils/api-error';
 import {
+  getDirectMessageAttachmentDownload,
   sendMessage,
   getThreads,
   getThread,
@@ -40,9 +42,9 @@ function checkRateLimit(fromId: number, toId: number): void {
   lastSentMap.set(key, now);
 }
 
-function parseBodyText(raw: unknown): string {
+function parseBodyText(raw: unknown, allowEmpty: boolean): string {
   const body = typeof raw === 'string' ? raw.trim() : '';
-  if (!body) {
+  if (!body && !allowEmpty) {
     throw new ApiError(400, 'メッセージ本文を入力してください', 'EMPTY_BODY');
   }
   if (body.length > MESSAGE_MAX_BODY_LENGTH) {
@@ -62,10 +64,11 @@ function parsePharmacyId(raw: unknown): number | null {
 }
 
 // POST / — メッセージ送信
-router.post('/', requireLogin, rejectAdmin, async (req: AuthRequest, res: Response) => {
+router.post('/', requireLogin, rejectAdmin, uploadOptionalAttachments, async (req: AuthRequest, res: Response) => {
   try {
     const fromId = req.user!.id;
     const toId = parsePharmacyId(req.body?.toPharmacyId);
+    const files = Array.isArray(req.files) ? req.files as Express.Multer.File[] : [];
     if (!toId) {
       res.status(400).json({ error: '宛先薬局IDが不正です' });
       return;
@@ -77,7 +80,7 @@ router.post('/', requireLogin, rejectAdmin, async (req: AuthRequest, res: Respon
 
     let body: string;
     try {
-      body = parseBodyText(req.body?.body);
+      body = parseBodyText(req.body?.body, files.length > 0);
     } catch (err) {
       if (err instanceof ApiError) {
         res.status(err.status).json({ error: err.message });
@@ -105,7 +108,7 @@ router.post('/', requireLogin, rejectAdmin, async (req: AuthRequest, res: Respon
       throw err;
     }
 
-    const message = await sendMessage(fromId, toId, body);
+    const message = await sendMessage(fromId, toId, body, files);
     res.status(201).json({ message: 'メッセージを送信しました', data: message });
   } catch (err) {
     logger.error('Send message error', { error: (err as Error).message });
@@ -117,7 +120,8 @@ router.post('/', requireLogin, rejectAdmin, async (req: AuthRequest, res: Respon
 router.get('/threads', requireLogin, rejectAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const pharmacyId = req.user!.id;
-    const threads = await getThreads(pharmacyId);
+    const search = normalizeSearchTerm(req.query.search);
+    const threads = await getThreads(pharmacyId, search ?? null);
     res.json({ data: threads });
   } catch (err) {
     logger.error('Get threads error', { error: (err as Error).message });
@@ -183,6 +187,34 @@ router.get('/unread-count', requireLogin, rejectAdmin, async (req: AuthRequest, 
   } catch (err) {
     logger.error('Get unread count error', { error: (err as Error).message });
     res.status(500).json({ error: '未読数の取得に失敗しました' });
+  }
+});
+
+router.get('/attachments/:attachmentId', requireLogin, rejectAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const attachmentId = parsePharmacyId(req.params.attachmentId);
+    if (!attachmentId) {
+      res.status(400).json({ error: '添付IDが不正です' });
+      return;
+    }
+
+    const attachment = await getDirectMessageAttachmentDownload(attachmentId);
+    if (!attachment) {
+      res.status(404).json({ error: '添付ファイルが見つかりません' });
+      return;
+    }
+    if (attachment.fromPharmacyId !== req.user!.id && attachment.toPharmacyId !== req.user!.id) {
+      res.status(403).json({ error: 'この添付ファイルにはアクセスできません' });
+      return;
+    }
+
+    res.setHeader('Content-Type', attachment.mimeType);
+    res.setHeader('Content-Length', String(attachment.fileSize));
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`);
+    res.send(attachment.content);
+  } catch (err) {
+    logger.error('Direct message attachment download error', { error: (err as Error).message });
+    res.status(500).json({ error: '添付ファイルの取得に失敗しました' });
   }
 });
 

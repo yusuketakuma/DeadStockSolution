@@ -16,6 +16,15 @@ const mocks = vi.hoisted(() => ({
   listOpenClawRequestMessages: vi.fn(),
   updateOpenClawWorkItem: vi.fn(),
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  computeRequestWaitingState: vi.fn(),
+  createRequestMessageAttachments: vi.fn(),
+  getRequestAttachmentDownload: vi.fn(),
+  hasRequesterUnreadMessages: vi.fn(),
+  isRequestCategory: vi.fn(),
+  isRequestPriority: vi.fn(),
+  listRequestDuplicateSuggestions: vi.fn(),
+  touchRequestViewed: vi.fn(),
+  updateRequestActivity: vi.fn(),
   loggerError: vi.fn(),
   loggerWarn: vi.fn(),
 }));
@@ -46,6 +55,18 @@ vi.mock('../services/openclaw-thread-service', () => ({
   listOpenClawRequestMessages: mocks.listOpenClawRequestMessages,
   updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
   mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+}));
+
+vi.mock('../services/request-collaboration-service', () => ({
+  computeRequestWaitingState: mocks.computeRequestWaitingState,
+  createRequestMessageAttachments: mocks.createRequestMessageAttachments,
+  getRequestAttachmentDownload: mocks.getRequestAttachmentDownload,
+  hasRequesterUnreadMessages: mocks.hasRequesterUnreadMessages,
+  isRequestCategory: mocks.isRequestCategory,
+  isRequestPriority: mocks.isRequestPriority,
+  listRequestDuplicateSuggestions: mocks.listRequestDuplicateSuggestions,
+  touchRequestViewed: mocks.touchRequestViewed,
+  updateRequestActivity: mocks.updateRequestActivity,
 }));
 
 vi.mock('../services/logger', () => ({
@@ -97,6 +118,20 @@ describe('requests routes — thread flow', () => {
       workItem: { workItemType: 'user_report', workflowStatus: 'queued', latestSummary: null, branchName: null, prUrl: null, prNumber: null, lastQuestion: null, lastError: null },
     });
     mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
+    mocks.computeRequestWaitingState.mockReturnValue({ waitingOn: null, isOverdue: false });
+    mocks.createRequestMessageAttachments.mockResolvedValue([]);
+    mocks.getRequestAttachmentDownload.mockResolvedValue(null);
+    mocks.hasRequesterUnreadMessages.mockReturnValue(false);
+    mocks.isRequestCategory.mockImplementation((value: unknown) =>
+      ['improvement', 'bug_report', 'question', 'master_update', 'integration_issue'].includes(String(value)),
+    );
+    mocks.isRequestPriority.mockImplementation((value: unknown) =>
+      ['urgent', 'normal', 'low'].includes(String(value)),
+    );
+    mocks.listRequestDuplicateSuggestions.mockResolvedValue([]);
+    mocks.recordOpenClawRequestMessage.mockResolvedValue({ id: 1 });
+    mocks.touchRequestViewed.mockResolvedValue(undefined);
+    mocks.updateRequestActivity.mockResolvedValue(undefined);
   });
 
   it('POST / creates a request and hands it off with conversation context', async () => {

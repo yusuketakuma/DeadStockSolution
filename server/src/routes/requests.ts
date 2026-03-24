@@ -1,8 +1,9 @@
 import { Router, Response } from 'express';
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
-import { openclawWorkItems, userRequests } from '../db/schema';
+import { openclawWorkItems, pharmacies, userRequests } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
+import { uploadOptionalAttachments } from '../middleware/attachment-upload';
 import { logger } from '../services/logger';
 import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
 import { handoffToOpenClaw } from '../services/openclaw-service';
@@ -16,11 +17,22 @@ import {
   updateOpenClawWorkItem,
 } from '../services/openclaw-thread-service';
 import {
+  computeRequestWaitingState,
+  createRequestMessageAttachments,
+  getRequestAttachmentDownload,
+  hasRequesterUnreadMessages,
+  isRequestCategory,
+  isRequestPriority,
+  listRequestDuplicateSuggestions,
+  touchRequestViewed,
+  updateRequestActivity,
+} from '../services/request-collaboration-service';
+import {
   publishAdminRequestsRefresh,
   publishRequestsRefresh,
 } from '../services/realtime-service';
 import { AuthRequest } from '../types';
-import { parsePositiveInt } from '../utils/request-utils';
+import { normalizeSearchTerm, parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
 
@@ -28,6 +40,74 @@ router.use(requireLogin);
 
 function parseRequestBodyMessage(rawValue: unknown): string {
   return typeof rawValue === 'string' ? rawValue.trim() : '';
+}
+
+function parseRequestCategoryInput(rawValue: unknown) {
+  return isRequestCategory(rawValue) ? rawValue : 'improvement';
+}
+
+function parseRequestPriorityInput(rawValue: unknown) {
+  return isRequestPriority(rawValue) ? rawValue : 'normal';
+}
+
+function buildRequestSummary(row: {
+  id: number;
+  requestText: string;
+  category?: string | null;
+  priority?: string | null;
+  closeReason?: string | null;
+  assignedAdminId?: number | null;
+  assignedAdminName?: string | null;
+  requesterLastViewedAt?: string | null;
+  adminLastViewedAt?: string | null;
+  latestUserMessageAt?: string | null;
+  latestStaffMessageAt?: string | null;
+  openclawStatus: string | null;
+  openclawThreadId: string | null;
+  openclawSummary: string | null;
+  workflowStatus: string | null;
+  latestSummary: string | null;
+  branchName: string | null;
+  prUrl: string | null;
+  prNumber: number | null;
+  updatedAt: string | null;
+  createdAt: string | null;
+}) {
+  const waitingState = computeRequestWaitingState({
+    latestUserMessageAt: row.latestUserMessageAt ?? null,
+    latestStaffMessageAt: row.latestStaffMessageAt ?? null,
+    workflowStatus: row.workflowStatus ?? null,
+  });
+
+  return {
+    id: row.id,
+    requestText: row.requestText,
+    category: row.category ?? 'improvement',
+    priority: row.priority ?? 'normal',
+    closeReason: row.closeReason ?? null,
+    assignedAdminId: row.assignedAdminId ?? null,
+    assignedAdminName: row.assignedAdminName ?? null,
+    requesterLastViewedAt: row.requesterLastViewedAt ?? null,
+    adminLastViewedAt: row.adminLastViewedAt ?? null,
+    latestUserMessageAt: row.latestUserMessageAt ?? null,
+    latestStaffMessageAt: row.latestStaffMessageAt ?? null,
+    openclawStatus: row.openclawStatus ?? 'pending_handoff',
+    openclawThreadId: row.openclawThreadId,
+    openclawSummary: row.openclawSummary,
+    workflowStatus: row.workflowStatus,
+    latestSummary: row.latestSummary,
+    branchName: row.branchName,
+    prUrl: row.prUrl,
+    prNumber: row.prNumber,
+    updatedAt: row.updatedAt,
+    createdAt: row.createdAt,
+    hasUnread: hasRequesterUnreadMessages({
+      latestStaffMessageAt: row.latestStaffMessageAt ?? null,
+      requesterLastViewedAt: row.requesterLastViewedAt ?? null,
+    }),
+    waitingOn: waitingState.waitingOn,
+    isOverdue: waitingState.isOverdue,
+  };
 }
 
 async function buildRequestHandoffContext(
@@ -80,6 +160,15 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
     let rows: Array<{
       id: number;
       requestText: string;
+      category: string | null;
+      priority: string | null;
+      closeReason: string | null;
+      assignedAdminId: number | null;
+      assignedAdminName: string | null;
+      requesterLastViewedAt: string | null;
+      adminLastViewedAt: string | null;
+      latestUserMessageAt: string | null;
+      latestStaffMessageAt: string | null;
       openclawStatus: string | null;
       openclawThreadId: string | null;
       openclawSummary: string | null;
@@ -96,6 +185,15 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
       rows = await db.select({
         id: userRequests.id,
         requestText: userRequests.requestText,
+        category: userRequests.category,
+        priority: userRequests.priority,
+        closeReason: userRequests.closeReason,
+        assignedAdminId: userRequests.assignedAdminId,
+        assignedAdminName: pharmacies.name,
+        requesterLastViewedAt: userRequests.requesterLastViewedAt,
+        adminLastViewedAt: userRequests.adminLastViewedAt,
+        latestUserMessageAt: userRequests.latestUserMessageAt,
+        latestStaffMessageAt: userRequests.latestStaffMessageAt,
         openclawStatus: userRequests.openclawStatus,
         openclawThreadId: userRequests.openclawThreadId,
         openclawSummary: userRequests.openclawSummary,
@@ -109,6 +207,7 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
       })
         .from(userRequests)
         .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+        .leftJoin(pharmacies, eq(pharmacies.id, userRequests.assignedAdminId))
         .where(eq(userRequests.pharmacyId, req.user.id))
         .orderBy(desc(userRequests.createdAt), desc(userRequests.id))
         .limit(limit);
@@ -120,6 +219,14 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
       rows = await db.select({
         id: userRequests.id,
         requestText: userRequests.requestText,
+        category: userRequests.category,
+        priority: userRequests.priority,
+        closeReason: userRequests.closeReason,
+        assignedAdminId: userRequests.assignedAdminId,
+        requesterLastViewedAt: userRequests.requesterLastViewedAt,
+        adminLastViewedAt: userRequests.adminLastViewedAt,
+        latestUserMessageAt: userRequests.latestUserMessageAt,
+        latestStaffMessageAt: userRequests.latestStaffMessageAt,
         openclawStatus: userRequests.openclawStatus,
         openclawThreadId: userRequests.openclawThreadId,
         openclawSummary: userRequests.openclawSummary,
@@ -132,6 +239,7 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
         .limit(limit)
         .then((fallbackRows) => fallbackRows.map((row) => ({
           ...row,
+          assignedAdminName: null,
           workflowStatus: null,
           latestSummary: null,
           branchName: null,
@@ -141,7 +249,7 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
     }
 
     res.json({
-      data: rows,
+      data: rows.map((row) => buildRequestSummary(row)),
       pagination: {
         limit,
       },
@@ -149,6 +257,27 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     logger.error('User request list error', { error: (err as Error).message });
     res.status(500).json({ error: '要望一覧の取得に失敗しました' });
+  }
+});
+
+router.get('/suggestions', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({ error: 'ログインが必要です' });
+      return;
+    }
+
+    const query = normalizeSearchTerm(req.query.query, 200);
+    if (!query) {
+      res.json({ data: [] });
+      return;
+    }
+
+    const data = await listRequestDuplicateSuggestions(req.user.id, query);
+    res.json({ data });
+  } catch (err) {
+    logger.error('Request duplicate suggestions error', { error: (err as Error).message });
+    res.status(500).json({ error: '重複候補の取得に失敗しました' });
   }
 });
 
@@ -169,6 +298,15 @@ router.get('/:id/messages', async (req: AuthRequest, res: Response) => {
       id: number;
       pharmacyId: number;
       requestText: string;
+      category: string | null;
+      priority: string | null;
+      closeReason: string | null;
+      assignedAdminId: number | null;
+      assignedAdminName: string | null;
+      requesterLastViewedAt: string | null;
+      adminLastViewedAt: string | null;
+      latestUserMessageAt: string | null;
+      latestStaffMessageAt: string | null;
       openclawStatus: string | null;
       openclawThreadId: string | null;
       openclawSummary: string | null;
@@ -188,6 +326,15 @@ router.get('/:id/messages', async (req: AuthRequest, res: Response) => {
         id: userRequests.id,
         pharmacyId: userRequests.pharmacyId,
         requestText: userRequests.requestText,
+        category: userRequests.category,
+        priority: userRequests.priority,
+        closeReason: userRequests.closeReason,
+        assignedAdminId: userRequests.assignedAdminId,
+        assignedAdminName: pharmacies.name,
+        requesterLastViewedAt: userRequests.requesterLastViewedAt,
+        adminLastViewedAt: userRequests.adminLastViewedAt,
+        latestUserMessageAt: userRequests.latestUserMessageAt,
+        latestStaffMessageAt: userRequests.latestStaffMessageAt,
         openclawStatus: userRequests.openclawStatus,
         openclawThreadId: userRequests.openclawThreadId,
         openclawSummary: userRequests.openclawSummary,
@@ -203,6 +350,7 @@ router.get('/:id/messages', async (req: AuthRequest, res: Response) => {
       })
         .from(userRequests)
         .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+        .leftJoin(pharmacies, eq(pharmacies.id, userRequests.assignedAdminId))
         .where(eq(userRequests.id, requestId))
         .limit(1);
     } catch (err) {
@@ -214,6 +362,14 @@ router.get('/:id/messages', async (req: AuthRequest, res: Response) => {
         id: userRequests.id,
         pharmacyId: userRequests.pharmacyId,
         requestText: userRequests.requestText,
+        category: userRequests.category,
+        priority: userRequests.priority,
+        closeReason: userRequests.closeReason,
+        assignedAdminId: userRequests.assignedAdminId,
+        requesterLastViewedAt: userRequests.requesterLastViewedAt,
+        adminLastViewedAt: userRequests.adminLastViewedAt,
+        latestUserMessageAt: userRequests.latestUserMessageAt,
+        latestStaffMessageAt: userRequests.latestStaffMessageAt,
         openclawStatus: userRequests.openclawStatus,
         openclawThreadId: userRequests.openclawThreadId,
         openclawSummary: userRequests.openclawSummary,
@@ -225,6 +381,7 @@ router.get('/:id/messages', async (req: AuthRequest, res: Response) => {
         .limit(1)
         .then((fallbackRows) => fallbackRows.map((row) => ({
           ...row,
+          assignedAdminName: null,
           workflowStatus: null,
           latestSummary: null,
           lastQuestion: null,
@@ -242,10 +399,15 @@ router.get('/:id/messages', async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    await touchRequestViewed(requestId, 'requester');
     const messages = await listOpenClawRequestMessages(requestId);
 
     res.json({
-      request: requestRow,
+      request: {
+        ...buildRequestSummary(requestRow),
+        lastQuestion: requestRow.lastQuestion,
+        lastError: requestRow.lastError,
+      },
       messages,
     });
   } catch (err) {
@@ -254,7 +416,7 @@ router.get('/:id/messages', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', uploadOptionalAttachments, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user?.id) {
       res.status(401).json({ error: 'ログインが必要です' });
@@ -262,20 +424,37 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     }
 
     const requestText = parseRequestBodyMessage(req.body.message);
-    if (!requestText || requestText.length > 2000) {
+    const files = Array.isArray(req.files) ? req.files as Express.Multer.File[] : [];
+    if ((!requestText && files.length === 0) || requestText.length > 2000) {
       res.status(400).json({ error: '要望は1〜2000文字で入力してください' });
       return;
     }
+    const category = parseRequestCategoryInput(req.body.category);
+    const priority = parseRequestPriorityInput(req.body.priority);
 
     const [created] = await db.insert(userRequests)
       .values({
         pharmacyId: req.user.id,
         requestText,
+        category,
+        priority,
         openclawStatus: 'pending_handoff',
       })
       .returning({
         id: userRequests.id,
+        requestText: userRequests.requestText,
+        category: userRequests.category,
+        priority: userRequests.priority,
+        closeReason: userRequests.closeReason,
+        assignedAdminId: userRequests.assignedAdminId,
+        requesterLastViewedAt: userRequests.requesterLastViewedAt,
+        adminLastViewedAt: userRequests.adminLastViewedAt,
+        latestUserMessageAt: userRequests.latestUserMessageAt,
+        latestStaffMessageAt: userRequests.latestStaffMessageAt,
         openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+        openclawSummary: userRequests.openclawSummary,
+        updatedAt: userRequests.updatedAt,
         createdAt: userRequests.createdAt,
       });
 
@@ -287,11 +466,14 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       latestSummary: '要望を受け付けました',
     });
 
-    await recordOpenClawRequestMessage({
+    const recorded = await recordOpenClawRequestMessage({
       requestId: created.id,
       authorType: 'user',
       body: requestText,
     });
+    await createRequestMessageAttachments(recorded.id, files);
+    await updateRequestActivity(created.id, 'user');
+    await touchRequestViewed(created.id, 'requester');
 
     const handoffContext = await buildRequestHandoffContext(req.user.id, created.id, 'user_request', null);
     const handoff = await handoffToOpenClaw({
@@ -341,7 +523,15 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         status: handoff.status,
       },
       request: {
-        ...created,
+        ...buildRequestSummary({
+          ...created,
+          workflowStatus: handoff.accepted ? mapOpenClawStatusToWorkflowStatus(handoff.status) : 'queued',
+          latestSummary: handoff.summary ?? null,
+          branchName: null,
+          prUrl: null,
+          prNumber: null,
+          assignedAdminName: null,
+        }),
         openclawStatus,
       },
     });
@@ -351,7 +541,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/:id/messages', async (req: AuthRequest, res: Response) => {
+router.post('/:id/messages', uploadOptionalAttachments, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user?.id) {
       res.status(401).json({ error: 'ログインが必要です' });
@@ -365,7 +555,8 @@ router.post('/:id/messages', async (req: AuthRequest, res: Response) => {
     }
 
     const message = parseRequestBodyMessage(req.body.message);
-    if (!message || message.length > 2000) {
+    const files = Array.isArray(req.files) ? req.files as Express.Multer.File[] : [];
+    if ((!message && files.length === 0) || message.length > 2000) {
       res.status(400).json({ error: '返信は1〜2000文字で入力してください' });
       return;
     }
@@ -433,6 +624,9 @@ router.post('/:id/messages', async (req: AuthRequest, res: Response) => {
       authorType: 'user',
       body: message,
     });
+    await createRequestMessageAttachments(recorded.id, files);
+    await updateRequestActivity(requestId, 'user');
+    await touchRequestViewed(requestId, 'requester');
 
     await updateOpenClawWorkItem({
       requestId,
@@ -507,6 +701,47 @@ router.post('/:id/messages', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     logger.error('User request reply error', { error: (err as Error).message });
     res.status(500).json({ error: '返信の送信に失敗しました' });
+  }
+});
+
+router.get('/attachments/:attachmentId', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({ error: 'ログインが必要です' });
+      return;
+    }
+
+    const attachmentId = parsePositiveInt(req.params.attachmentId);
+    if (!attachmentId) {
+      res.status(400).json({ error: '添付IDが不正です' });
+      return;
+    }
+
+    const attachment = await getRequestAttachmentDownload(attachmentId);
+    if (!attachment) {
+      res.status(404).json({ error: '添付ファイルが見つかりません' });
+      return;
+    }
+
+    const [requestRow] = await db.select({
+      pharmacyId: userRequests.pharmacyId,
+    })
+      .from(userRequests)
+      .where(eq(userRequests.id, attachment.requestId))
+      .limit(1);
+
+    if (!requestRow || requestRow.pharmacyId !== req.user.id) {
+      res.status(403).json({ error: 'この添付ファイルにはアクセスできません' });
+      return;
+    }
+
+    res.setHeader('Content-Type', attachment.mimeType);
+    res.setHeader('Content-Length', String(attachment.fileSize));
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`);
+    res.send(attachment.content);
+  } catch (err) {
+    logger.error('Request attachment download error', { error: (err as Error).message });
+    res.status(500).json({ error: '添付ファイルの取得に失敗しました' });
   }
 });
 

@@ -76,7 +76,7 @@ describe('POST /messages', () => {
     expect(res.status).toBe(201);
     expect(res.body.message).toBe('メッセージを送信しました');
     expect(res.body.data.id).toBe(10);
-    expect(mocks.sendMessage).toHaveBeenCalledWith(1, 2, 'こんにちは');
+    expect(mocks.sendMessage).toHaveBeenCalledWith(1, 2, 'こんにちは', []);
   });
 
   it('should return 400 when body is empty', async () => {
@@ -180,7 +180,7 @@ describe('GET /messages/threads', () => {
     expect(res.body.data).toHaveLength(1);
     expect(res.body.data[0].otherPharmacyId).toBe(2);
     expect(res.body.data[0].unreadCount).toBe(3);
-    expect(mocks.getThreads).toHaveBeenCalledWith(1);
+    expect(mocks.getThreads).toHaveBeenCalledWith(1, null);
   });
 
   it('should return empty list when no threads', async () => {

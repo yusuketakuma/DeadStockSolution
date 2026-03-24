@@ -19,6 +19,15 @@ const mocks = vi.hoisted(() => ({
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
   publishAdminRequestsRefresh: vi.fn(),
   publishRequestsRefresh: vi.fn(),
+  computeRequestWaitingState: vi.fn(),
+  createRequestMessageAttachments: vi.fn(),
+  getRequestAttachmentDownload: vi.fn(),
+  hasRequesterUnreadMessages: vi.fn(),
+  isRequestCategory: vi.fn(),
+  isRequestPriority: vi.fn(),
+  listRequestDuplicateSuggestions: vi.fn(),
+  touchRequestViewed: vi.fn(),
+  updateRequestActivity: vi.fn(),
 }));
 
 // Default user — tests can override
@@ -81,7 +90,23 @@ vi.mock('../services/realtime-service', () => ({
   publishRequestsRefresh: mocks.publishRequestsRefresh,
 }));
 
+vi.mock('../services/request-collaboration-service', () => ({
+  computeRequestWaitingState: mocks.computeRequestWaitingState,
+  createRequestMessageAttachments: mocks.createRequestMessageAttachments,
+  getRequestAttachmentDownload: mocks.getRequestAttachmentDownload,
+  hasRequesterUnreadMessages: mocks.hasRequesterUnreadMessages,
+  isRequestCategory: mocks.isRequestCategory,
+  isRequestPriority: mocks.isRequestPriority,
+  listRequestDuplicateSuggestions: mocks.listRequestDuplicateSuggestions,
+  touchRequestViewed: mocks.touchRequestViewed,
+  updateRequestActivity: mocks.updateRequestActivity,
+}));
+
 vi.mock('../db/schema', () => ({
+  pharmacies: {
+    id: 'id',
+    name: 'name',
+  },
   openclawWorkItems: {
     requestId: 'requestId',
     workflowStatus: 'workflowStatus',
@@ -96,6 +121,14 @@ vi.mock('../db/schema', () => ({
     id: 'id',
     pharmacyId: 'pharmacyId',
     requestText: 'requestText',
+    category: 'category',
+    priority: 'priority',
+    closeReason: 'closeReason',
+    assignedAdminId: 'assignedAdminId',
+    requesterLastViewedAt: 'requesterLastViewedAt',
+    adminLastViewedAt: 'adminLastViewedAt',
+    latestUserMessageAt: 'latestUserMessageAt',
+    latestStaffMessageAt: 'latestStaffMessageAt',
     openclawStatus: 'openclawStatus',
     openclawThreadId: 'openclawThreadId',
     openclawSummary: 'openclawSummary',
@@ -177,6 +210,17 @@ describe('GET /api/requests/me', () => {
     mockUser = { id: 1, email: 'user@example.com', isAdmin: false };
     mocks.isMissingOpenClawSchemaError.mockReturnValue(false);
     mocks.listOpenClawRequestMessages.mockResolvedValue([]);
+    mocks.computeRequestWaitingState.mockReturnValue({ waitingOn: null, isOverdue: false });
+    mocks.hasRequesterUnreadMessages.mockReturnValue(false);
+    mocks.isRequestCategory.mockImplementation((value: unknown) =>
+      ['improvement', 'bug_report', 'question', 'master_update', 'integration_issue'].includes(String(value)),
+    );
+    mocks.isRequestPriority.mockImplementation((value: unknown) =>
+      ['urgent', 'normal', 'low'].includes(String(value)),
+    );
+    mocks.createRequestMessageAttachments.mockResolvedValue(undefined);
+    mocks.touchRequestViewed.mockResolvedValue(undefined);
+    mocks.updateRequestActivity.mockResolvedValue(undefined);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -308,6 +352,17 @@ describe('POST /api/requests', () => {
     mocks.updateOpenClawWorkItem.mockResolvedValue(undefined);
     mocks.mapOpenClawStatusToWorkflowStatus.mockImplementation((status: string) => status);
     mocks.handoffToOpenClaw.mockResolvedValue(defaultHandoff);
+    mocks.computeRequestWaitingState.mockReturnValue({ waitingOn: null, isOverdue: false });
+    mocks.hasRequesterUnreadMessages.mockReturnValue(false);
+    mocks.isRequestCategory.mockImplementation((value: unknown) =>
+      ['improvement', 'bug_report', 'question', 'master_update', 'integration_issue'].includes(String(value)),
+    );
+    mocks.isRequestPriority.mockImplementation((value: unknown) =>
+      ['urgent', 'normal', 'low'].includes(String(value)),
+    );
+    mocks.createRequestMessageAttachments.mockResolvedValue(undefined);
+    mocks.touchRequestViewed.mockResolvedValue(undefined);
+    mocks.updateRequestActivity.mockResolvedValue(undefined);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -419,6 +474,9 @@ describe('GET /api/requests/:id/messages', () => {
     mockUser = { id: 1, email: 'user@example.com', isAdmin: false };
     mocks.isMissingOpenClawSchemaError.mockReturnValue(false);
     mocks.listOpenClawRequestMessages.mockResolvedValue([]);
+    mocks.computeRequestWaitingState.mockReturnValue({ waitingOn: null, isOverdue: false });
+    mocks.hasRequesterUnreadMessages.mockReturnValue(false);
+    mocks.touchRequestViewed.mockResolvedValue(undefined);
   });
 
   it('falls back to request row without openclaw_work_items when schema is missing', async () => {
@@ -478,6 +536,9 @@ describe('POST /api/requests/:id/messages', () => {
     mocks.recordOpenClawRequestMessage.mockResolvedValue({ id: 77 });
     mocks.updateOpenClawWorkItem.mockResolvedValue(undefined);
     mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
+    mocks.createRequestMessageAttachments.mockResolvedValue(undefined);
+    mocks.touchRequestViewed.mockResolvedValue(undefined);
+    mocks.updateRequestActivity.mockResolvedValue(undefined);
   });
 
   it('re-handoffs with fallback query when openclaw schema is missing', async () => {

@@ -35,6 +35,7 @@ const AdminMatchingRulesPage = lazy(() => import('../pages/admin/AdminMatchingRu
 const AdminDrugEquivalencesPage = lazy(() => import('../pages/admin/AdminDrugEquivalencesPage'));
 const AdminUserRequestsPage = lazy(() => import('../pages/admin/AdminUserRequestsPage'));
 const AdminGroupsPage = lazy(() => import('../pages/admin/AdminGroupsPage'));
+const AdminDirectMessagesPage = lazy(() => import('../pages/admin/AdminDirectMessagesPage'));
 const AdminAlertsPage = lazy(() => import('../pages/admin/AdminAlertsPage'));
 const AdminNotificationsPage = lazy(() => import('../pages/admin/AdminNotificationsPage'));
 const AdminOpenClawCommandsPage = lazy(() => import('../pages/admin/AdminOpenClawCommandsPage'));
@@ -116,6 +117,7 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/admin/pharmacies', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmaciesPage, title: '薬局管理', parent: '/admin' },
   { path: '/admin/pharmacies/:id/edit', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmacyEditPage, title: '薬局編集', parent: '/admin/pharmacies' },
   { path: '/admin/groups', access: 'protected', adminOnly: true, useLayout: true, component: AdminGroupsPage, title: 'グループ管理', parent: '/admin' },
+  { path: '/admin/direct-messages', access: 'protected', adminOnly: true, useLayout: true, component: AdminDirectMessagesPage, title: 'ユーザー間メッセージ', parent: '/admin' },
   { path: '/admin/user-requests', access: 'protected', adminOnly: true, useLayout: true, component: AdminUserRequestsPage, title: 'ユーザーリクエスト', parent: '/admin' },
   { path: '/admin/alerts', access: 'protected', adminOnly: true, useLayout: true, component: AdminAlertsPage, title: 'アラート管理', parent: '/admin' },
   { path: '/admin/exchanges', access: 'protected', adminOnly: true, useLayout: true, component: AdminExchangesPage, title: '交換履歴', parent: '/admin' },

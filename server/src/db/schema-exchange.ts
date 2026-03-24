@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, serial, text, integer, real, numeric, boolean, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, real, numeric, boolean, timestamp, index, uniqueIndex, check, varchar } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
 import { exchangeStatusEnum } from './schema-common';
 import { deadStockItems } from './schema-inventory';
@@ -16,6 +16,19 @@ export const directMessages = pgTable('direct_messages', {
 }, (table) => ({
   idxDmToPharmacy: index('idx_dm_to_pharmacy').on(table.toPharmacyId, table.isRead),
   idxDmFromPharmacy: index('idx_dm_from_pharmacy').on(table.fromPharmacyId),
+}));
+
+export const directMessageAttachments = pgTable('direct_message_attachments', {
+  id: serial('id').primaryKey(),
+  messageId: integer('message_id').notNull().references(() => directMessages.id, { onDelete: 'cascade' }),
+  fileName: varchar('file_name', { length: 255 }).notNull(),
+  mimeType: varchar('mime_type', { length: 128 }).notNull(),
+  fileSize: integer('file_size').notNull(),
+  contentBase64: text('content_base64').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  idxDirectMessageAttachmentsMessageCreated: index('idx_direct_message_attachments_message_created')
+    .on(table.messageId, table.createdAt),
 }));
 
 export const exchangeProposals = pgTable('exchange_proposals', {

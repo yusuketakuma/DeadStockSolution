@@ -60,6 +60,12 @@ function renderOperatorState(entry: NormalizedLogEntry) {
   return LOG_STATUS_LABELS[entry.operatorState.status] ?? entry.operatorState.status;
 }
 
+function buildCellTitle(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function buildInsightFingerprint(entry: NormalizedLogEntry): string {
   return [
     entry.errorCode ?? 'no-code',
@@ -259,7 +265,7 @@ export const LogEntriesView = memo(function LogEntriesView({
           <AppResponsiveSwitch
             desktop={() => (
               <div className="table-responsive">
-                <AppTable striped hover size="sm" className="mobile-table">
+                <AppTable striped hover size="sm" className="mobile-table dl-log-center-table">
                   <thead className="table-light">
                     <tr>
                       <th>ID</th>
@@ -285,15 +291,44 @@ export const LogEntriesView = memo(function LogEntriesView({
                           <td className="small">{formatDateTimeJa(entry.timestamp)}</td>
                           <td><LevelBadge level={entry.level} /></td>
                           <td><SourceLabel source={entry.source} /></td>
-                          <td className="small">{entry.category}</td>
-                          <td className="small">{renderTenant(entry)}</td>
-                          <td className="small">{entry.errorCode ?? '-'}</td>
+                          <td className="small">
+                            <div className="dl-log-center-cell dl-log-center-cell--compact" title={buildCellTitle(entry.category)}>
+                              {entry.category}
+                            </div>
+                          </td>
+                          <td className="small">
+                            <div className="dl-log-center-cell dl-log-center-cell--compact" title={buildCellTitle(renderTenant(entry))}>
+                              {renderTenant(entry)}
+                            </div>
+                          </td>
+                          <td className="small">
+                            <div className="dl-log-center-cell dl-log-center-cell--compact" title={buildCellTitle(entry.errorCode ?? '-')}>
+                              {entry.errorCode ?? '-'}
+                            </div>
+                          </td>
                           <td className="small">{renderOperatorState(entry)}</td>
                           <td className="small">
-                            <div>{entry.whatHappened}</div>
-                            <div className="text-muted">{truncatePreview(entry.improvementSuggestion ?? '-')}</div>
+                            <div
+                              className="dl-log-center-cell dl-log-center-cell--headline"
+                              title={buildCellTitle(entry.whatHappened)}
+                            >
+                              {entry.whatHappened}
+                            </div>
+                            <div
+                              className="text-muted dl-log-center-cell dl-log-center-cell--subline"
+                              title={buildCellTitle(entry.improvementSuggestion ?? '-')}
+                            >
+                              {truncatePreview(entry.improvementSuggestion ?? '-')}
+                            </div>
                           </td>
-                          <td className="small font-monospace">{entry.codeLocation ?? '-'}</td>
+                          <td className="small">
+                            <div
+                              className="font-monospace dl-log-center-code"
+                              title={buildCellTitle(entry.codeLocation ?? '-')}
+                            >
+                              {entry.codeLocation ?? '-'}
+                            </div>
+                          </td>
                           <td className="small">
                             {insight ? `${insight.count}件 / ${insight.impactedTenantCount}テナント` : '-'}
                           </td>

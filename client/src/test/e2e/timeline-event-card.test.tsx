@@ -36,7 +36,7 @@ describe('TimelineEventCard', () => {
     const event = makeEvent({ priority: 'critical' });
     render(<TimelineEventCard event={event} />);
     const badge = screen.getByTestId('priority-badge');
-    expect(badge).toHaveTextContent('重要');
+    expect(badge).toHaveTextContent('緊急');
     expect(badge.className).toContain('bg-danger');
   });
 
@@ -44,7 +44,7 @@ describe('TimelineEventCard', () => {
     const event = makeEvent({ priority: 'high' });
     render(<TimelineEventCard event={event} />);
     const badge = screen.getByTestId('priority-badge');
-    expect(badge).toHaveTextContent('高');
+    expect(badge).toHaveTextContent('重要');
     expect(badge.className).toContain('bg-warning');
   });
 
@@ -52,7 +52,7 @@ describe('TimelineEventCard', () => {
     const event = makeEvent({ priority: 'medium' });
     render(<TimelineEventCard event={event} />);
     const badge = screen.getByTestId('priority-badge');
-    expect(badge).toHaveTextContent('中');
+    expect(badge).toHaveTextContent('通常');
     expect(badge.className).toContain('bg-primary');
   });
 

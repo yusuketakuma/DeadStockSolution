@@ -299,6 +299,33 @@ describe('drug-master-lookup-service', () => {
       expect(result).toHaveLength(1);
     });
 
+    it('derives stale running logs as failed for display', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date('2026-03-24T12:00:00.000Z'));
+        const chain = createSelectChain([{
+          id: 9,
+          syncType: 'auto',
+          sourceDescription: '自動取得',
+          status: 'running',
+          itemsProcessed: 0,
+          itemsAdded: 0,
+          itemsUpdated: 0,
+          itemsDeleted: 0,
+          errorMessage: null,
+          startedAt: '2026-03-24T11:00:00.000Z',
+          completedAt: null,
+        }]);
+        mocks.db.select.mockReturnValue(chain);
+
+        const [result] = await getSyncLogs();
+        expect(result.status).toBe('failed');
+        expect(result.errorMessage).toContain('タイムアウト');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('clamps limit to range [1, 100]', async () => {
       const chain = createSelectChain([]);
       mocks.db.select.mockReturnValue(chain);

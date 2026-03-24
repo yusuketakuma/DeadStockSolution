@@ -1,7 +1,6 @@
 :root {
   --app-bg: #f0f4f8;
   --sidebar-width: 240px;
-  --sidebar-width-collapsed: 60px;
   --header-height: 56px;
   --sidebar-bg: #0f172a;
   --sidebar-text: #94a3b8;
@@ -22,11 +21,11 @@ body {
   top: 0;
   z-index: 1030;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   flex-direction: column;
   justify-content: center;
-  height: var(--header-height);
-  padding: 0 1rem;
+  min-height: var(--header-height);
+  padding: 0.5rem 1rem;
   background: linear-gradient(115deg, #0c4a6e, #155e75);
   color: #fff;
   border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -35,30 +34,37 @@ body {
 .app-header-main {
   display: flex;
   align-items: center;
+  gap: 0.75rem;
   width: 100%;
+  min-width: 0;
 }
 
 .app-header-brand-group {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .app-header-brand-meta {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .app-header-brand {
   display: inline-flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 0.45rem;
   font-size: 1.1rem;
   font-weight: 700;
   color: #fff;
   text-decoration: none;
   letter-spacing: -0.01em;
+  min-width: 0;
 }
 
 .app-header-brand:hover {
@@ -248,6 +254,8 @@ body {
 .app-header-quick {
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .app-header-quick-mobile {
@@ -278,6 +286,22 @@ body {
   border-color: rgba(255, 255, 255, 0.42);
   color: #dbeafe;
   background: rgba(15, 23, 42, 0.25);
+}
+
+@media (max-width: 1199.98px) {
+  .app-header-main {
+    flex-wrap: wrap;
+  }
+
+  .app-header-brand-group {
+    flex: 1 1 240px;
+  }
+
+  .app-header-quick {
+    width: 100%;
+    margin-left: 0 !important;
+    justify-content: flex-start;
+  }
 }
 
 .sidebar-toggle {

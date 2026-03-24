@@ -59,6 +59,12 @@ function renderTenant(entry: NormalizedLogEntry) {
   return entry.tenant.tenantLabel;
 }
 
+function buildCellTitle(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function buildLogIssueDraft(entry: NormalizedLogEntry, insight: LogInsightItem | null): string {
   return [
     `タイトル: ${entry.whatHappened}`,
@@ -292,9 +298,9 @@ export const LogDetailModal = memo(function LogDetailModal({
         <Col md={6}>
           <AppCard body className="h-100">
             <div className="small text-muted">何が起きたか</div>
-            <div className="fw-semibold">{entry.whatHappened}</div>
+            <div className="fw-semibold dl-log-center-cell" title={buildCellTitle(entry.whatHappened)}>{entry.whatHappened}</div>
             <div className="small text-muted mt-2">改善方法</div>
-            <div className="small">{entry.improvementSuggestion ?? '-'}</div>
+            <div className="small dl-log-center-cell" title={buildCellTitle(entry.improvementSuggestion ?? '-')}>{entry.improvementSuggestion ?? '-'}</div>
           </AppCard>
         </Col>
         <Col md={6}>
@@ -304,7 +310,12 @@ export const LogDetailModal = memo(function LogDetailModal({
             <div className="small">運用状態: {LOG_STATUS_LABELS[workflowStatus]}</div>
             <div className="small">再発回数: {recurrenceCount}</div>
             <div className="small">影響テナント数: {impactedTenantCount}</div>
-            <div className="small">発生コード: <span className="font-monospace">{entry.codeLocation ?? '-'}</span></div>
+            <div className="small">
+              発生コード:{' '}
+              <span className="font-monospace dl-log-center-code" title={buildCellTitle(entry.codeLocation ?? '-')}>
+                {entry.codeLocation ?? '-'}
+              </span>
+            </div>
           </AppCard>
         </Col>
       </Row>
@@ -376,7 +387,7 @@ export const LogDetailModal = memo(function LogDetailModal({
                         : `ステータス更新: ${item.status ? LOG_STATUS_LABELS[item.status] : '-'}`}
                     </div>
                     <div className="text-muted">{formatDateTimeJa(item.createdAt)}</div>
-                    {item.note ? <div>{item.note}</div> : null}
+                    {item.note ? <div className="dl-log-center-cell" title={buildCellTitle(item.note)}>{item.note}</div> : null}
                     {item.reasonCodes.length > 0 ? <div>理由: {item.reasonCodes.join(', ')}</div> : null}
                   </div>
                 ))}
@@ -388,7 +399,7 @@ export const LogDetailModal = memo(function LogDetailModal({
 
       <AppCard body className="mt-3">
         <div className="small text-muted mb-2">エラー詳細 JSON</div>
-        <pre className="small mb-0 text-wrap" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        <pre className="small mb-0 text-wrap dl-log-center-detail-json">
           {detailText || '-'}
         </pre>
       </AppCard>

@@ -16,7 +16,7 @@ export default function SearchChips({ tokens, onRemove, maxTokenWarning }: Searc
           最大5キーワードまで検索できます
         </Alert>
       )}
-      <div className="d-flex gap-1 overflow-auto">
+      <div className="d-flex flex-wrap gap-1">
         {tokens.map((token) => (
           <Badge key={token} bg="secondary" className="d-flex align-items-center gap-1">
             {token}

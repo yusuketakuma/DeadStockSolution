@@ -40,6 +40,15 @@ export const userRequests = pgTable('user_requests', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   requestText: text('request_text').notNull(),
+  category: varchar('category', { length: 32 }).notNull().default('improvement'),
+  priority: varchar('priority', { length: 16 }).notNull().default('normal'),
+  closeReason: varchar('close_reason', { length: 32 }),
+  assignedAdminId: integer('assigned_admin_id').references(() => pharmacies.id, { onDelete: 'set null' }),
+  requesterLastViewedAt: timestamp('requester_last_viewed_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  adminLastViewedAt: timestamp('admin_last_viewed_at', { mode: 'string', withTimezone: true }),
+  latestUserMessageAt: timestamp('latest_user_message_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  latestStaffMessageAt: timestamp('latest_staff_message_at', { mode: 'string', withTimezone: true }),
+  closedAt: timestamp('closed_at', { mode: 'string', withTimezone: true }),
   openclawStatus: openclawStatusEnum('openclaw_status').notNull().default('pending_handoff'),
   openclawThreadId: text('openclaw_thread_id'),
   openclawSummary: text('openclaw_summary'),
@@ -49,6 +58,9 @@ export const userRequests = pgTable('user_requests', {
   idxUserRequestsCreatedAt: index('idx_user_requests_created_at').on(table.createdAt),
   idxUserRequestsPharmacyCreated: index('idx_user_requests_pharmacy_created').on(table.pharmacyId, table.createdAt),
   idxUserRequestsStatusCreated: index('idx_user_requests_status_created').on(table.openclawStatus, table.createdAt),
+  idxUserRequestsCategoryCreated: index('idx_user_requests_category_created').on(table.category, table.createdAt),
+  idxUserRequestsPriorityCreated: index('idx_user_requests_priority_created').on(table.priority, table.createdAt),
+  idxUserRequestsAssignedAdminCreated: index('idx_user_requests_assigned_admin_created').on(table.assignedAdminId, table.createdAt),
 }));
 
 export const openclawWorkItems = pgTable('openclaw_work_items', {
@@ -216,4 +228,28 @@ export const openclawRequestMessages = pgTable('openclaw_request_messages', {
     .on(table.requestId, table.createdAt),
   idxOpenclawRequestMessagesRequestAuthor: index('idx_openclaw_request_messages_request_author')
     .on(table.requestId, table.authorType, table.createdAt),
+}));
+
+export const requestMessageAttachments = pgTable('request_message_attachments', {
+  id: serial('id').primaryKey(),
+  messageId: integer('message_id').notNull().references(() => openclawRequestMessages.id, { onDelete: 'cascade' }),
+  fileName: varchar('file_name', { length: 255 }).notNull(),
+  mimeType: varchar('mime_type', { length: 128 }).notNull(),
+  fileSize: integer('file_size').notNull(),
+  contentBase64: text('content_base64').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  idxRequestMessageAttachmentsMessageCreated: index('idx_request_message_attachments_message_created')
+    .on(table.messageId, table.createdAt),
+}));
+
+export const userRequestInternalNotes = pgTable('user_request_internal_notes', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id').notNull().references(() => userRequests.id, { onDelete: 'cascade' }),
+  authorAdminId: integer('author_admin_id').references(() => pharmacies.id, { onDelete: 'set null' }),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  idxUserRequestInternalNotesRequestCreated: index('idx_user_request_internal_notes_request_created')
+    .on(table.requestId, table.createdAt),
 }));

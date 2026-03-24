@@ -24,7 +24,7 @@ export default function PullToRefresh({ onRefresh, disabled = false, children }:
   const arrowRotation = Math.min((pullDistance / THRESHOLD) * 180, 180);
 
   return (
-    <div ref={containerRef} style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    <div ref={containerRef}>
       <div
         className={`ptr-indicator ${state}`}
         style={state === 'pulling' ? { height: indicatorHeight } : undefined}

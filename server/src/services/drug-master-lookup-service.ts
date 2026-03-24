@@ -9,6 +9,7 @@ import {
 import { createCache } from './cache-service';
 import { buildDrugMasterSearchCondition } from '../utils/search-utils';
 import { normalizePackageInfo } from '../utils/package-utils';
+import { parseBoundedInt } from '../utils/number-utils';
 
 // ── 型定義 ──────────────────────────────────────────
 
@@ -67,6 +68,12 @@ const DRUG_DETAIL_CACHE = createCache<DrugDetailRow | null>({
   maxEntries: 10_000,
   name: 'drug_detail_lookup',
 });
+const DRUG_MASTER_SYNC_RUNNING_TIMEOUT_MINUTES = parseBoundedInt(
+  process.env.DRUG_MASTER_SYNC_RUNNING_TIMEOUT_MINUTES,
+  30,
+  1,
+  24 * 60,
+);
 
 type PreparedDrugMasterById = {
   execute(params: { drugMasterId: number }): Promise<DrugMasterRow[]>;
@@ -165,6 +172,28 @@ export function invalidateDrugMasterLookupCache(): void {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function deriveSyncLogStatus(log: DrugMasterSyncLogRow): DrugMasterSyncLogRow {
+  if (log.status !== 'running' || !log.startedAt || log.completedAt) {
+    return log;
+  }
+
+  const startedAt = new Date(log.startedAt);
+  if (Number.isNaN(startedAt.getTime())) {
+    return log;
+  }
+
+  const timeoutMs = DRUG_MASTER_SYNC_RUNNING_TIMEOUT_MINUTES * 60 * 1000;
+  if (Date.now() - startedAt.getTime() < timeoutMs) {
+    return log;
+  }
+
+  return {
+    ...log,
+    status: 'failed',
+    errorMessage: log.errorMessage || `同期がタイムアウトしました（${DRUG_MASTER_SYNC_RUNNING_TIMEOUT_MINUTES}分超過）`,
+  };
 }
 
 function normalizePackageRow(pkg: DrugMasterPackageRow): DrugMasterPackageRow & {
@@ -328,10 +357,11 @@ export async function getDrugDetail(yjCode: string): Promise<DrugDetailRow | nul
 
 export async function getSyncLogs(limit: number = 20): Promise<DrugMasterSyncLogRow[]> {
   const safeLimit = clampLimit(limit);
-  return db.select()
+  const logs = await db.select()
     .from(drugMasterSyncLogs)
     .orderBy(desc(drugMasterSyncLogs.startedAt))
     .limit(safeLimit);
+  return logs.map(deriveSyncLogStatus);
 }
 
 export async function updateDrugMasterItem(yjCode: string, updates: DrugMasterUpdateInput): Promise<DrugMasterRow | null> {

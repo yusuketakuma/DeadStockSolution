@@ -74,6 +74,7 @@ describe('DashboardTimeline', () => {
       <DashboardTimeline {...defaultProps} events={[todayEvent, yesterdayEvent]} total={2} />
     );
     expect(screen.getAllByText('テストイベント')).toHaveLength(2);
+    expect(screen.getAllByTestId('date-header').length).toBeGreaterThan(0);
   });
 
   it('shows "もっと見る" button when hasMore is true', () => {
@@ -81,7 +82,7 @@ describe('DashboardTimeline', () => {
     renderWithProviders(
       <DashboardTimeline {...defaultProps} events={events} total={10} hasMore={true} />
     );
-    const button = screen.getByRole('button', { name: 'もっと見る' });
+    const button = screen.getByRole('button', { name: 'さらに9件を見る' });
     expect(button).toBeInTheDocument();
   });
 
@@ -99,7 +100,7 @@ describe('DashboardTimeline', () => {
     renderWithProviders(
       <DashboardTimeline {...defaultProps} events={events} total={5} hasMore={true} onLoadMore={onLoadMore} />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'もっと見る' }));
+    fireEvent.click(screen.getByRole('button', { name: 'さらに4件を見る' }));
     expect(onLoadMore).toHaveBeenCalledOnce();
   });
 
@@ -108,5 +109,12 @@ describe('DashboardTimeline', () => {
       <DashboardTimeline {...defaultProps} />
     );
     expect(screen.getByText('タイムライン')).toBeInTheDocument();
+  });
+
+  it('shows active filter summary when filtered', () => {
+    renderWithProviders(
+      <DashboardTimeline {...defaultProps} selectedPriority="critical" events={[makeEvent({ priority: 'critical' })]} total={1} />
+    );
+    expect(screen.getByText(/絞り込み: 緊急/)).toBeInTheDocument();
   });
 });

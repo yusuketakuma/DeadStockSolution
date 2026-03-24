@@ -15,19 +15,10 @@ interface Props {
   children: React.ReactNode;
 }
 
-const SIDEBAR_COLLAPSED_KEY = 'dss.sidebar-collapsed';
-
 const IDLE_WARN_REMAINING_SECONDS = 5 * 60;
 
 export default function Layout({ children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
   const [showIdleWarning, setShowIdleWarning] = useState(false);
   const { logout, user } = useAuth();
 
@@ -56,27 +47,12 @@ export default function Layout({ children }: Props) {
   const mainRef = useRef<HTMLElement | null>(null);
   usePageSwipe(mainRef, { disabled: sidebarOpen });
 
-  const toggleSidebarCollapse = () => {
-    setSidebarCollapsed((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-      } catch { /* ignore */ }
-      return next;
-    });
-  };
-
   return (
-    <div className={`app-layout app-theme${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+    <div className="app-layout app-theme">
       <a href="#app-main-content" className="dl-skip-link">メインコンテンツへスキップ</a>
       <Header onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />
       <div className="app-body">
-        <Sidebar
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={toggleSidebarCollapse}
-        />
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main id="app-main-content" className="app-main" tabIndex={-1} ref={mainRef}>
           <AppBreadcrumb />
           <div className="content-container py-3 px-3">

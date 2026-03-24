@@ -177,6 +177,51 @@ function buildAutoSyncStatus(
   };
 }
 
+function buildMasterRefreshResponse(params: {
+  drugResult: { triggered: boolean; message: string };
+  packageResult: { triggered: boolean; message: string };
+}) {
+  const { drugResult, packageResult } = params;
+  const steps = [
+    {
+      key: 'drug-master' as const,
+      label: '医薬品マスター本体',
+      triggered: drugResult.triggered,
+      message: drugResult.message,
+    },
+    {
+      key: 'package-master' as const,
+      label: '包装単位データ',
+      triggered: packageResult.triggered,
+      message: packageResult.message,
+    },
+  ];
+  const triggeredCount = steps.filter((step) => step.triggered).length;
+  if (triggeredCount === steps.length) {
+    return {
+      triggered: true,
+      message: 'マスター更新を開始しました。進捗と更新ログを確認してください。',
+      steps,
+    };
+  }
+  if (triggeredCount > 0) {
+    const failedSteps = steps
+      .filter((step) => !step.triggered)
+      .map((step) => `${step.label}: ${step.message}`)
+      .join(' / ');
+    return {
+      triggered: true,
+      message: `一部の更新を開始しました。未開始: ${failedSteps}`,
+      steps,
+    };
+  }
+  return {
+    triggered: false,
+    message: steps.map((step) => `${step.label}: ${step.message}`).join(' / '),
+    steps,
+  };
+}
+
 async function parseDrugMasterRows(file: Express.Multer.File, ext: string): Promise<ParsedDrugMasterRows> {
   if (ext === '.csv') {
     const csvContent = decodeCsvBuffer(file.buffer);
@@ -452,6 +497,38 @@ router.get('/sync-logs', async (_req: AuthRequest, res: Response) => {
       error: err instanceof Error ? err.message : String(err),
     });
     res.status(500).json({ error: '同期ログの取得に失敗しました' });
+  }
+});
+
+router.post('/master-refresh', async (req: AuthRequest, res: Response) => {
+  try {
+    const [drugResult, packageResult] = await Promise.all([
+      triggerManualAutoSync(),
+      triggerManualPackageAutoSync(),
+    ]);
+
+    if (drugResult.triggered) {
+      await writeLog('drug_master_sync', {
+        pharmacyId: req.user!.id,
+        detail: 'マスター更新を手動トリガー（医薬品マスター本体）',
+        ipAddress: getClientIp(req as Request),
+      });
+    }
+
+    if (packageResult.triggered) {
+      await writeLog('drug_master_package_upload', {
+        pharmacyId: req.user!.id,
+        detail: 'マスター更新を手動トリガー（包装単位データ）',
+        ipAddress: getClientIp(req as Request),
+      });
+    }
+
+    res.json(buildMasterRefreshResponse({ drugResult, packageResult }));
+  } catch (err) {
+    logger.error('Master refresh trigger error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ error: 'マスター更新の開始に失敗しました' });
   }
 });
 

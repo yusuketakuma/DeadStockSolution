@@ -1,5 +1,6 @@
 import { Row, Col, Badge, Form, Table } from 'react-bootstrap';
 import AppCard from '../../../components/ui/AppCard';
+import AppAlert from '../../../components/ui/AppAlert';
 import InlineLoader from '../../../components/ui/InlineLoader';
 import LoadingButton from '../../../components/ui/LoadingButton';
 import AppControl from '../../../components/ui/AppControl';
@@ -25,6 +26,8 @@ interface AutoSyncStatusCardProps {
   autoSyncStatus: AutoSyncStatus | null;
   autoSyncTriggering: boolean;
   manualSourceUrl: string;
+  autoSyncMessage: string;
+  autoSyncError: string;
   onManualSourceUrlChange: (url: string) => void;
   onAutoSyncTrigger: () => void;
 }
@@ -33,6 +36,8 @@ export default function AutoSyncStatusCard({
   autoSyncStatus,
   autoSyncTriggering,
   manualSourceUrl,
+  autoSyncMessage,
+  autoSyncError,
   onManualSourceUrlChange,
   onAutoSyncTrigger,
 }: AutoSyncStatusCardProps) {
@@ -137,10 +142,17 @@ export default function AutoSyncStatusCard({
               onClick={onAutoSyncTrigger}
               disabled={!isIndexMode && !autoSyncStatus.hasSourceUrl && !manualSourceUrl.trim()}
               loading={autoSyncTriggering}
-              loadingLabel="確認中..."
+              loadingLabel="更新中..."
             >
-              {isIndexMode ? 'MHLW ポータルから探索・取得' : '今すぐ更新を確認・取得'}
+              マスター更新
             </LoadingButton>
+            <Form.Text className="d-block mt-1 text-muted">
+              {isIndexMode
+                ? 'MHLW ポータルを探索して最新ファイルを取得します。'
+                : '設定済みURLまたは手動指定URLから最新ファイルを取得します。'}
+            </Form.Text>
+            {autoSyncMessage && <AppAlert variant="success" className="py-1 small mt-2">{autoSyncMessage}</AppAlert>}
+            {autoSyncError && <AppAlert variant="danger" className="py-1 small mt-2">{autoSyncError}</AppAlert>}
             {!isIndexMode && !autoSyncStatus.hasSourceUrl && (
               <Form.Text className="d-block mt-1 text-muted">
                 環境変数 DRUG_MASTER_SOURCE_URL を設定してください。

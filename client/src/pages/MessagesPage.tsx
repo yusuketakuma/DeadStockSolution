@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
   Badge,
   Button,
   Card,
   Col,
-  Container,
   Form,
   ListGroup,
   Row,
@@ -14,27 +13,73 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   fetchThreads,
   fetchThread,
+  getMessageAttachmentDownloadUrl,
   sendMessage,
   markThreadRead,
   type Message,
+  type MessageAttachment,
   type MessageThread,
 } from '../api/messages';
+import { notifyMessageNavUpdated } from '../lib/message-nav-events';
+import PageShell, { ScrollArea } from '../components/ui/PageShell';
+
+const QUICK_REPLY_TEMPLATES = [
+  'ありがとうございます。内容を確認して折り返します。',
+  '在庫状況を確認中です。少々お待ちください。',
+  '詳細条件をもう少し教えてください。',
+  '対応できる見込みです。進めます。',
+] as const;
 
 function formatDateTime(iso: string): string {
   try {
     const d = new Date(iso);
     const now = new Date();
     const isToday =
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate();
+      d.getFullYear() === now.getFullYear()
+      && d.getMonth() === now.getMonth()
+      && d.getDate() === now.getDate();
     if (isToday) {
       return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
     }
-    return d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+    return d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return '';
   }
+}
+
+function threadStatusBadge(thread: MessageThread) {
+  if (thread.isOverdue) {
+    return <Badge bg="warning" text="dark">24時間超</Badge>;
+  }
+  if (thread.waitingOn === 'me') {
+    return <Badge bg="danger">返信待ち</Badge>;
+  }
+  if (thread.waitingOn === 'them') {
+    return <Badge bg="info">相手確認中</Badge>;
+  }
+  return null;
+}
+
+function AttachmentLinks({ attachments }: { attachments: MessageAttachment[] }) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="d-flex flex-column gap-1 mt-2">
+      {attachments.map((attachment) => (
+        <a
+          key={attachment.id}
+          href={getMessageAttachmentDownloadUrl(attachment.id)}
+          target="_blank"
+          rel="noreferrer"
+          className="small text-decoration-none"
+        >
+          添付: {attachment.fileName} ({Math.max(1, Math.round(attachment.fileSize / 1024))}KB)
+        </a>
+      ))}
+    </div>
+  );
 }
 
 export default function MessagesPage() {
@@ -44,6 +89,8 @@ export default function MessagesPage() {
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [threadsError, setThreadsError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
 
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<number | null>(null);
   const [selectedPharmacyName, setSelectedPharmacyName] = useState<string>('');
@@ -52,19 +99,18 @@ export default function MessagesPage() {
   const [messagesError, setMessagesError] = useState<string | null>(null);
 
   const [inputBody, setInputBody] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  // モバイル: スレッド一覧表示中か詳細表示中か
   const [showDetail, setShowDetail] = useState(false);
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const loadThreads = useCallback(async () => {
+  const loadThreads = useCallback(async (nextSearch: string) => {
     setThreadsLoading(true);
     setThreadsError(null);
     try {
-      const res = await fetchThreads();
+      const res = await fetchThreads(nextSearch || undefined);
       setThreads(res.data);
     } catch (err) {
       setThreadsError(err instanceof Error ? err.message : 'スレッド一覧の取得に失敗しました');
@@ -74,15 +120,14 @@ export default function MessagesPage() {
   }, []);
 
   useEffect(() => {
-    void loadThreads();
-  }, [loadThreads]);
+    void loadThreads(search);
+  }, [loadThreads, search]);
 
   const loadMessages = useCallback(async (pharmacyId: number) => {
     setMessagesLoading(true);
     setMessagesError(null);
     try {
       const res = await fetchThread(pharmacyId);
-      // APIは新しい順で返す可能性があるため、古い順に並べ替える
       const sorted = [...res.data].sort(
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
@@ -94,61 +139,116 @@ export default function MessagesPage() {
     }
   }, []);
 
-  const handleSelectThread = useCallback(
-    async (thread: MessageThread) => {
-      setSelectedPharmacyId(thread.otherPharmacyId);
-      setSelectedPharmacyName(thread.otherPharmacyName);
-      setInputBody('');
-      setSendError(null);
-      setShowDetail(true);
-      await loadMessages(thread.otherPharmacyId);
-      // 既読化
-      try {
-        await markThreadRead(thread.otherPharmacyId);
-        setThreads((prev) =>
-          prev.map((t) =>
-            t.otherPharmacyId === thread.otherPharmacyId ? { ...t, unreadCount: 0 } : t,
-          ),
-        );
-      } catch {
-        // 既読化失敗は非致命的
-      }
-    },
-    [loadMessages],
-  );
-
-  // メッセージ末尾にスクロール
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
+  useEffect(() => {
+    if (threads.length === 0) {
+      setSelectedPharmacyId(null);
+      setSelectedPharmacyName('');
+      setMessages([]);
+      return;
+    }
+    if (selectedPharmacyId && threads.some((thread) => thread.otherPharmacyId === selectedPharmacyId)) {
+      return;
+    }
+    const next = threads[0];
+    setSelectedPharmacyId(next.otherPharmacyId);
+    setSelectedPharmacyName(next.otherPharmacyName);
+  }, [threads, selectedPharmacyId]);
+
+  useEffect(() => {
+    if (!selectedPharmacyId) {
+      return;
+    }
+    void loadMessages(selectedPharmacyId);
+  }, [selectedPharmacyId, loadMessages]);
+
+  const handleSelectThread = useCallback(
+    async (thread: MessageThread) => {
+      setSelectedPharmacyId(thread.otherPharmacyId);
+      setSelectedPharmacyName(thread.otherPharmacyName);
+      setInputBody('');
+      setSelectedFiles([]);
+      setSendError(null);
+      setShowDetail(true);
+      await loadMessages(thread.otherPharmacyId);
+      try {
+        await markThreadRead(thread.otherPharmacyId);
+        setThreads((prev) =>
+          prev.map((current) =>
+            current.otherPharmacyId === thread.otherPharmacyId
+              ? { ...current, unreadCount: 0 }
+              : current,
+          ),
+        );
+        notifyMessageNavUpdated();
+      } catch {
+        // ignore optimistic read sync errors
+      }
+    },
+    [loadMessages],
+  );
+
   const handleSend = useCallback(async () => {
-    if (!selectedPharmacyId || !inputBody.trim()) return;
+    if (!selectedPharmacyId || (!inputBody.trim() && selectedFiles.length === 0)) {
+      return;
+    }
     setSending(true);
     setSendError(null);
     try {
-      await sendMessage(selectedPharmacyId, inputBody.trim());
+      await sendMessage(selectedPharmacyId, inputBody.trim(), selectedFiles);
       setInputBody('');
+      setSelectedFiles([]);
       await loadMessages(selectedPharmacyId);
-      await loadThreads();
+      await loadThreads(search);
+      notifyMessageNavUpdated();
     } catch (err) {
       setSendError(err instanceof Error ? err.message : 'メッセージ送信に失敗しました');
     } finally {
       setSending(false);
     }
-  }, [selectedPharmacyId, inputBody, loadMessages, loadThreads]);
+  }, [inputBody, loadMessages, loadThreads, search, selectedFiles, selectedPharmacyId]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       void handleSend();
     }
   };
 
-  const ThreadList = (
-    <Card className="h-100">
+  const handleSelectedFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setSelectedFiles(Array.from(event.currentTarget.files ?? []));
+  };
+
+  const selectedThread = useMemo(
+    () => threads.find((thread) => thread.otherPharmacyId === selectedPharmacyId) ?? null,
+    [selectedPharmacyId, threads],
+  );
+
+  const threadList = (
+    <Card>
       <Card.Header className="fw-semibold">メッセージ一覧</Card.Header>
+      <Card.Body className="border-bottom">
+        <Form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSearch(searchInput.trim());
+          }}
+        >
+          <div className="d-flex gap-2">
+            <Form.Control
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="薬局名・本文で検索"
+              aria-label="メッセージ検索"
+            />
+            <Button type="submit" variant="outline-secondary">検索</Button>
+          </div>
+        </Form>
+      </Card.Body>
       {threadsLoading ? (
         <Card.Body className="d-flex justify-content-center align-items-center">
           <Spinner animation="border" size="sm" />
@@ -156,42 +256,41 @@ export default function MessagesPage() {
       ) : threadsError ? (
         <Card.Body>
           <p className="text-danger small mb-1">{threadsError}</p>
-          <Button size="sm" variant="outline-secondary" onClick={() => void loadThreads()}>
+          <Button size="sm" variant="outline-secondary" onClick={() => void loadThreads(search)}>
             再読み込み
           </Button>
         </Card.Body>
       ) : threads.length === 0 ? (
-        <Card.Body className="text-muted small">メッセージはありません</Card.Body>
+        <Card.Body className="text-muted small">
+          {search ? '検索条件に一致するメッセージはありません' : 'メッセージはありません'}
+        </Card.Body>
       ) : (
         <ListGroup variant="flush">
-          {threads.map((t) => (
+          {threads.map((thread) => (
             <ListGroup.Item
-              key={t.otherPharmacyId}
+              key={thread.otherPharmacyId}
               action
-              active={selectedPharmacyId === t.otherPharmacyId}
-              onClick={() => void handleSelectThread(t)}
-              className="d-flex justify-content-between align-items-start"
+              active={selectedPharmacyId === thread.otherPharmacyId}
+              onClick={() => void handleSelectThread(thread)}
+              className="d-flex justify-content-between align-items-start gap-2"
               style={{ cursor: 'pointer' }}
             >
-              <div className="me-2 overflow-hidden">
-                <div className="fw-semibold text-truncate">{t.otherPharmacyName}</div>
-                <div
-                  className="text-muted small text-truncate"
-                  style={{ maxWidth: '180px' }}
-                >
-                  {t.lastMessageBody}
+              <div className="overflow-hidden">
+                <div className="fw-semibold text-truncate">{thread.otherPharmacyName}</div>
+                <div className="d-flex flex-wrap gap-1 mt-1">
+                  {thread.unreadCount > 0 && (
+                    <Badge bg="danger" pill>{thread.unreadCount}件未読</Badge>
+                  )}
+                  {threadStatusBadge(thread)}
+                  {thread.hasAttachments && <Badge bg="secondary">添付あり</Badge>}
+                </div>
+                <div className="text-muted small mt-2 text-truncate" style={{ maxWidth: '220px' }}>
+                  {thread.lastMessageBody || '添付ファイル'}
                 </div>
               </div>
-              <div className="d-flex flex-column align-items-end gap-1 flex-shrink-0">
-                <span className="text-muted" style={{ fontSize: '0.7rem' }}>
-                  {formatDateTime(t.lastMessageAt)}
-                </span>
-                {t.unreadCount > 0 && (
-                  <Badge bg="danger" pill>
-                    {t.unreadCount}
-                  </Badge>
-                )}
-              </div>
+              <span className="text-muted flex-shrink-0" style={{ fontSize: '0.72rem' }}>
+                {formatDateTime(thread.lastMessageAt)}
+              </span>
             </ListGroup.Item>
           ))}
         </ListGroup>
@@ -199,10 +298,9 @@ export default function MessagesPage() {
     </Card>
   );
 
-  const MessageDetail = (
-    <Card className="h-100 d-flex flex-column">
+  const messageDetail = (
+    <Card>
       <Card.Header className="d-flex align-items-center gap-2">
-        {/* モバイル: 戻るボタン */}
         <Button
           variant="link"
           size="sm"
@@ -212,16 +310,20 @@ export default function MessagesPage() {
         >
           &#8592;
         </Button>
-        <span className="fw-semibold">
-          {selectedPharmacyName || 'スレッドを選択してください'}
-        </span>
+        <div className="d-flex flex-column">
+          <span className="fw-semibold">
+            {selectedPharmacyName || 'スレッドを選択してください'}
+          </span>
+          {selectedThread && (
+            <div className="d-flex flex-wrap gap-1 mt-1">
+              {threadStatusBadge(selectedThread)}
+              {selectedThread.hasAttachments && <Badge bg="secondary">添付あり</Badge>}
+            </div>
+          )}
+        </div>
       </Card.Header>
 
-      {/* メッセージエリア */}
-      <div
-        className="flex-grow-1 overflow-auto p-3"
-        style={{ minHeight: 0, maxHeight: '55vh' }}
-      >
+      <div className="p-3">
         {!selectedPharmacyId ? (
           <p className="text-muted text-center mt-4">左のスレッドを選択してください</p>
         ) : messagesLoading ? (
@@ -233,25 +335,32 @@ export default function MessagesPage() {
         ) : messages.length === 0 ? (
           <p className="text-muted small text-center mt-4">まだメッセージがありません</p>
         ) : (
-          messages.map((msg) => {
-            const isMine = msg.fromPharmacyId === myPharmacyId;
+          messages.map((message) => {
+            const isMine = message.fromPharmacyId === myPharmacyId;
             return (
               <div
-                key={msg.id}
+                key={message.id}
                 className={`d-flex mb-2 ${isMine ? 'justify-content-end' : 'justify-content-start'}`}
               >
                 <div
-                  className={`px-3 py-2 rounded-3 text-wrap ${
+                  className={`px-3 py-2 rounded-3 ${
                     isMine ? 'bg-primary text-white' : 'bg-light text-dark border'
                   }`}
-                  style={{ maxWidth: '70%', wordBreak: 'break-word' }}
+                  style={{ maxWidth: '78%', wordBreak: 'break-word' }}
                 >
-                  <div style={{ fontSize: '0.95rem' }}>{msg.body}</div>
+                  {message.body ? (
+                    <div style={{ fontSize: '0.95rem', whiteSpace: 'pre-wrap' }}>{message.body}</div>
+                  ) : (
+                    <div className={isMine ? 'text-white-50' : 'text-muted'} style={{ fontSize: '0.9rem' }}>
+                      添付ファイル
+                    </div>
+                  )}
+                  <AttachmentLinks attachments={message.attachments} />
                   <div
                     className={`text-end mt-1 ${isMine ? 'text-white-50' : 'text-muted'}`}
                     style={{ fontSize: '0.7rem' }}
                   >
-                    {formatDateTime(msg.createdAt)}
+                    {formatDateTime(message.createdAt)}
                   </div>
                 </div>
               </div>
@@ -261,36 +370,63 @@ export default function MessagesPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 送信フォーム */}
       {selectedPharmacyId && (
         <Card.Footer className="bg-white border-top">
+          <div className="d-flex flex-wrap gap-2 mb-2">
+            {QUICK_REPLY_TEMPLATES.map((template) => (
+              <Button
+                key={template}
+                type="button"
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => setInputBody(template)}
+              >
+                {template}
+              </Button>
+            ))}
+          </div>
           {sendError && <p className="text-danger small mb-1">{sendError}</p>}
           <Form
-            onSubmit={(e) => {
-              e.preventDefault();
+            onSubmit={(event) => {
+              event.preventDefault();
               void handleSend();
             }}
           >
-            <div className="d-flex gap-2">
+            <div className="d-flex flex-column gap-2">
               <Form.Control
                 as="textarea"
-                rows={2}
+                rows={3}
                 value={inputBody}
-                onChange={(e) => setInputBody(e.target.value)}
+                onChange={(event) => setInputBody(event.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="メッセージを入力（Ctrl+Enter で送信）"
                 disabled={sending}
                 style={{ resize: 'none' }}
                 aria-label="メッセージ本文"
               />
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={sending || !inputBody.trim()}
-                style={{ minWidth: '72px' }}
-              >
-                {sending ? <Spinner animation="border" size="sm" /> : '送信'}
-              </Button>
+              <div className="d-flex flex-column flex-md-row gap-2 justify-content-between align-items-md-center">
+                <div className="d-flex flex-column gap-1">
+                  <Form.Control
+                    type="file"
+                    multiple
+                    onChange={handleSelectedFilesChange}
+                    aria-label="添付ファイル"
+                  />
+                  {selectedFiles.length > 0 && (
+                    <div className="small text-muted">
+                      {selectedFiles.map((file) => file.name).join(', ')}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={sending || (!inputBody.trim() && selectedFiles.length === 0)}
+                  style={{ minWidth: '88px' }}
+                >
+                  {sending ? <Spinner animation="border" size="sm" /> : '送信'}
+                </Button>
+              </div>
             </div>
           </Form>
         </Card.Footer>
@@ -299,21 +435,24 @@ export default function MessagesPage() {
   );
 
   return (
-    <Container fluid className="py-3" style={{ height: 'calc(100vh - 60px)' }}>
-      {/* デスクトップ: 左右分割レイアウト */}
-      <Row className="h-100 d-none d-md-flex g-3">
-        <Col md={4} className="h-100">
-          {ThreadList}
-        </Col>
-        <Col md={8} className="h-100">
-          {MessageDetail}
-        </Col>
-      </Row>
-
-      {/* モバイル: 一覧 ↔ 詳細の切り替え */}
-      <div className="d-md-none h-100">
-        {showDetail ? MessageDetail : ThreadList}
+    <PageShell>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">薬局間メッセージ</h4>
+          <div className="text-muted small">一覧と会話を device 幅に合わせて切り替えます。</div>
+        </div>
       </div>
-    </Container>
+
+      <ScrollArea>
+        <Row className="d-none d-lg-flex g-3">
+          <Col lg={4}>{threadList}</Col>
+          <Col lg={8}>{messageDetail}</Col>
+        </Row>
+
+        <div className="d-lg-none">
+          {showDetail ? messageDetail : threadList}
+        </div>
+      </ScrollArea>
+    </PageShell>
   );
 }

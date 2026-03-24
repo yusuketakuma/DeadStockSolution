@@ -28,11 +28,15 @@ When a `task envelope` is present, treat it as the source of truth. Extract at l
 - `taskKind`
 - `source`
 - `summary`
+- `request.meta.category`
+- `request.meta.priority`
 - `context`
 - `constraints`
 - `execution`
 - `callbacks`
 - `conversation`
+
+If `conversation[*].attachments` exists, treat attached screenshots / PDF / TXT / CSV as first-class evidence. Inspect them before asking the user for the same information again.
 
 Read these local contract files before acting:
 - `.openclaw/DSS_STATE_MACHINE.md`
@@ -60,12 +64,18 @@ Before sending the first answer, decide:
 - missing information category, if any
 - whether the next action is `reportUrl`, `callbackUrl`, or repository work
 
+Use `request.meta.category` and `request.meta.priority` as triage hints:
+- `bug_report` / `integration_issue` / `urgent` => bias toward faster reproduction and implementation
+- `question` => prefer direct answer if code change is unnecessary
+- `master_update` => check admin/master update flows first
+
 If the request is underspecified, reply with:
 1. one-sentence understanding of the problem
 2. what is already known
 3. up to 3 focused follow-up questions
 
 Do not ask for information that is already in logs, the task envelope, or earlier messages.
+Do not ask for screenshots, CSV, or logs if equivalent evidence is already attached in `conversation[*].attachments`.
 
 ## Conversation Mode
 

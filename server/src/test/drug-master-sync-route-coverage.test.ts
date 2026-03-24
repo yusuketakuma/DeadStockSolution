@@ -298,6 +298,53 @@ describe('drug-master-sync route — coverage', () => {
     });
   });
 
+  describe('POST /master-refresh', () => {
+    it('triggers both master refresh flows', async () => {
+      mocks.triggerManualAutoSync.mockResolvedValue({
+        triggered: true,
+        message: '医薬品マスター更新を開始しました',
+      });
+      mocks.triggerManualPackageAutoSync.mockResolvedValue({
+        triggered: true,
+        message: '包装単位更新を開始しました',
+      });
+
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/admin/drug-master/master-refresh')
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.triggered).toBe(true);
+      expect(res.body.steps).toHaveLength(2);
+      expect(mocks.triggerManualAutoSync).toHaveBeenCalled();
+      expect(mocks.triggerManualPackageAutoSync).toHaveBeenCalled();
+      expect(mocks.writeLog).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns partial message when one flow cannot be triggered', async () => {
+      mocks.triggerManualAutoSync.mockResolvedValue({
+        triggered: true,
+        message: '医薬品マスター更新を開始しました',
+      });
+      mocks.triggerManualPackageAutoSync.mockResolvedValue({
+        triggered: false,
+        message: '包装単位同期が既に実行中です',
+      });
+
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/admin/drug-master/master-refresh')
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.triggered).toBe(true);
+      expect(res.body.message).toContain('一部の更新を開始しました');
+      expect(res.body.message).toContain('包装単位データ');
+      expect(mocks.writeLog).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('POST /auto-sync', () => {
     it('triggers auto sync', async () => {
       mocks.triggerManualAutoSync.mockResolvedValue({ triggered: true });

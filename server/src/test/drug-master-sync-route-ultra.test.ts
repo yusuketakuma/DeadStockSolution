@@ -85,6 +85,7 @@ const ORIGINAL_ENV = { ...process.env };
 
 describe('drug-master-sync-route-ultra', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.resetAllMocks();
     mocks.parseMhlwExcelData.mockReturnValue([]);
     mocks.parseMhlwCsvData.mockReturnValue([]);
@@ -108,6 +109,7 @@ describe('drug-master-sync-route-ultra', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const key of [
       'DRUG_MASTER_SOURCE_URL', 'DRUG_MASTER_AUTO_SYNC', 'DRUG_MASTER_CHECK_INTERVAL_HOURS',
       'DRUG_PACKAGE_SOURCE_URL', 'DRUG_PACKAGE_AUTO_SYNC', 'DRUG_PACKAGE_CHECK_INTERVAL_HOURS',

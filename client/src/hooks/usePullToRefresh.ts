@@ -22,6 +22,14 @@ function isMobileViewport(): boolean {
     window.matchMedia('(max-width: 991.98px)').matches;
 }
 
+function getPageScrollTop(): number {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return 0;
+  return window.scrollY
+    || document.documentElement.scrollTop
+    || document.body.scrollTop
+    || 0;
+}
+
 export function usePullToRefresh(
   options: UsePullToRefreshOptions,
 ): UsePullToRefreshReturn {
@@ -52,7 +60,7 @@ export function usePullToRefresh(
     if (stateRef.current === 'refreshing' || stateRef.current === 'complete') return;
 
     const el = containerRef.current;
-    if (!el || el.scrollTop > 0) return;
+    if (!el || getPageScrollTop() > 0) return;
 
     const touch = (e as TouchEvent).changedTouches?.[0] ?? (e as TouchEvent).touches?.[0];
     if (!touch) return;
@@ -67,7 +75,7 @@ export function usePullToRefresh(
 
     const el = containerRef.current;
     if (!el) return;
-    if (el.scrollTop > 0) {
+    if (getPageScrollTop() > 0) {
       startYRef.current = 0;
       if (stateRef.current === 'pulling') {
         setState('idle');

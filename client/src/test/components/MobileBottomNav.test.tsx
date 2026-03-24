@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import MobileBottomNav from '../../components/layout/MobileBottomNav';
-import { renderWithProviders, setupFetchMock, mockUser } from '../helpers';
+import { renderWithProviders, setupFetchMock, mockAdminUser, mockUser } from '../helpers';
 
 // Mock TimelineContext unreadCount
 vi.mock('../../contexts/TimelineContext', async (importOriginal) => {
@@ -56,14 +56,25 @@ beforeEach(() => {
 });
 
 describe('MobileBottomNav', () => {
-  it('renders all nav items', () => {
+  it('renders user nav items', () => {
     renderWithProviders(<MobileBottomNav />, { route: '/' });
 
     expect(screen.getByText('ホーム')).toBeInTheDocument();
     expect(screen.getByText('マッチング')).toBeInTheDocument();
     expect(screen.getByText('提案')).toBeInTheDocument();
+    expect(screen.getByText('メッセージ')).toBeInTheDocument();
     expect(screen.getByText('アラート')).toBeInTheDocument();
-    expect(screen.getByText('グループ')).toBeInTheDocument();
+  });
+
+  it('renders admin nav items for admin users', () => {
+    renderWithProviders(<MobileBottomNav />, { route: '/admin', authUser: mockAdminUser });
+
+    expect(screen.getByText('ホーム')).toBeInTheDocument();
+    expect(screen.getByText('要望')).toBeInTheDocument();
+    expect(screen.getByText('メッセージ')).toBeInTheDocument();
+    expect(screen.getByText('マスター')).toBeInTheDocument();
+    expect(screen.getByText('OpenClaw')).toBeInTheDocument();
+    expect(screen.queryByText('マッチング')).not.toBeInTheDocument();
   });
 
   it('has mobile navigation role and aria-label', () => {

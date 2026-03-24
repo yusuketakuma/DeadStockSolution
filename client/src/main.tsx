@@ -10,6 +10,7 @@ import './styles/sections/content.css';
 import './styles/sections/mobile.css';
 import './styles/sections/gesture.css';
 import './styles/sections/mobile-sheets.css';
+import './styles/components/timeline.css';
 import './styles/design-language.css';
 import App from './App';
 

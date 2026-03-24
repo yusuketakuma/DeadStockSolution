@@ -1,11 +1,12 @@
 import crypto from 'crypto';
-import { and, asc, desc, eq, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   ddsAgentConnections,
   ddsAgentJobs,
   ddsBootstrapTokens,
   ddsWorkItems,
+  requestMessageAttachments,
   userRequestMessages,
   userRequests,
 } from '../db/schema';
@@ -431,11 +432,21 @@ export async function claimNextDdsJob(token: string): Promise<null | {
     requestText: string;
     source: string;
     context: Record<string, unknown> | null;
+    category: string | null;
+    priority: string | null;
+    closeReason: string | null;
+    assignedAdminId: number | null;
     conversation: Array<{
       id: number;
       authorType: string;
       body: string;
       createdAt: string;
+      attachments: Array<{
+        id: number;
+        fileName: string;
+        mimeType: string;
+        fileSize: number;
+      }>;
     }>;
   };
 }> {
@@ -507,6 +518,18 @@ export async function claimNextDdsJob(token: string): Promise<null | {
     return null;
   }
 
+  const [requestMeta] = workItem.requestId
+    ? await db.select({
+      category: userRequests.category,
+      priority: userRequests.priority,
+      closeReason: userRequests.closeReason,
+      assignedAdminId: userRequests.assignedAdminId,
+    })
+      .from(userRequests)
+      .where(eq(userRequests.id, workItem.requestId))
+      .limit(1)
+    : [];
+
   await db.update(ddsWorkItems)
     .set({
       workflowStatus: 'analyzing',
@@ -514,7 +537,7 @@ export async function claimNextDdsJob(token: string): Promise<null | {
     })
     .where(eq(ddsWorkItems.id, workItem.id));
 
-  const conversation = workItem.requestId
+  const conversationRows = workItem.requestId
     ? await db.select({
       id: userRequestMessages.id,
       authorType: userRequestMessages.authorType,
@@ -525,6 +548,43 @@ export async function claimNextDdsJob(token: string): Promise<null | {
       .where(eq(userRequestMessages.requestId, workItem.requestId))
       .orderBy(asc(userRequestMessages.createdAt), asc(userRequestMessages.id))
     : [];
+
+  const conversationMessageIds = conversationRows.map((row) => row.id);
+  const attachmentRows = conversationMessageIds.length > 0
+    ? await db.select({
+      id: requestMessageAttachments.id,
+      messageId: requestMessageAttachments.messageId,
+      fileName: requestMessageAttachments.fileName,
+      mimeType: requestMessageAttachments.mimeType,
+      fileSize: requestMessageAttachments.fileSize,
+    })
+      .from(requestMessageAttachments)
+      .where(inArray(requestMessageAttachments.messageId, conversationMessageIds))
+      .orderBy(asc(requestMessageAttachments.id))
+    : [];
+
+  const attachmentsByMessageId = new Map<number, Array<{
+    id: number;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  }>>();
+
+  for (const attachment of attachmentRows) {
+    const existing = attachmentsByMessageId.get(attachment.messageId) ?? [];
+    existing.push({
+      id: attachment.id,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+      fileSize: attachment.fileSize,
+    });
+    attachmentsByMessageId.set(attachment.messageId, existing);
+  }
+
+  const conversation = conversationRows.map((row) => ({
+    ...row,
+    attachments: attachmentsByMessageId.get(row.id) ?? [],
+  }));
 
   return {
     jobId: job.id,
@@ -539,6 +599,10 @@ export async function claimNextDdsJob(token: string): Promise<null | {
       requestText: workItem.requestText ?? '',
       source: workItem.source ?? 'user_request',
       context: (workItem.contextJson as Record<string, unknown> | null) ?? null,
+      category: requestMeta?.category ?? null,
+      priority: requestMeta?.priority ?? null,
+      closeReason: requestMeta?.closeReason ?? null,
+      assignedAdminId: requestMeta?.assignedAdminId ?? null,
       conversation,
     },
   };

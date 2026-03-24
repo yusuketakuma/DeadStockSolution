@@ -127,15 +127,16 @@ export default function DashboardPage() {
         <OnboardingGuide status={status} onDismiss={dismissOnboarding} />
       )}
 
-      {/* Title row */}
-      <div className="d-flex align-items-center justify-content-between mb-2 flex-shrink-0">
-        <h4 className="page-title mb-0">ダッシュボード</h4>
-        <small className="text-muted">ようこそ、{user?.name} さん</small>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">ダッシュボード</h4>
+          <small className="text-muted">ようこそ、{user?.name} さん</small>
+        </div>
       </div>
 
       {/* Top row: SmartDigest (left) + Risk & Status (right) */}
-      <Row className="g-2 mb-2 flex-shrink-0">
-        <Col lg={7}>
+      <Row className="g-3 mb-2">
+        <Col xl={7}>
           <SmartDigest
             events={digestEvents}
             status={status}
@@ -146,31 +147,31 @@ export default function DashboardPage() {
             maxItems={2}
           />
         </Col>
-        <Col lg={5} className="d-flex flex-column gap-2">
+        <Col xl={5} className="d-flex flex-column gap-3">
           {/* Risk KPIs */}
-          <AppDataPanel title="期限切れリスク（自薬局）" className="flex-shrink-0">
+          <AppDataPanel title="期限切れリスク（自薬局）">
             {risk ? (
               <>
                 <Row className="g-2">
-                  <Col xs={6} lg={3}>
+                  <Col xs={6} md={3}>
                     <div className="dl-kpi-tile">
                       <div className="dl-kpi-value">{risk.riskScore.toFixed(1)}</div>
                       <div className="dl-kpi-label">リスクスコア</div>
                     </div>
                   </Col>
-                  <Col xs={6} lg={3}>
+                  <Col xs={6} md={3}>
                     <div className={`dl-kpi-tile${risk.bucketCounts.expired > 0 ? ' dl-kpi-tile--danger' : ''}`}>
                       <div className="dl-kpi-value">{risk.bucketCounts.expired}</div>
                       <div className="dl-kpi-label">期限切れ</div>
                     </div>
                   </Col>
-                  <Col xs={6} lg={3}>
+                  <Col xs={6} md={3}>
                     <div className="dl-kpi-tile">
                       <div className="dl-kpi-value">{risk.bucketCounts.within30}</div>
                       <div className="dl-kpi-label">30日以内</div>
                     </div>
                   </Col>
-                  <Col xs={6} lg={3}>
+                  <Col xs={6} md={3}>
                     <div className="dl-kpi-tile">
                       <div className="dl-kpi-value">{risk.totalItems}</div>
                       <div className="dl-kpi-label">在庫数</div>
@@ -187,7 +188,7 @@ export default function DashboardPage() {
           </AppDataPanel>
 
           {/* Compact status strip */}
-          <AppDataPanel title="アップロード状況" className="flex-shrink-0">
+          <AppDataPanel title="アップロード状況">
             <Row className="g-2 mb-2 small">
               <Col xs={6} sm={4}>
                 <div className="dl-kpi-tile">
@@ -214,7 +215,7 @@ export default function DashboardPage() {
                 </div>
               </Col>
             </Row>
-            <div className="d-flex gap-1 flex-wrap">
+            <div className="dl-inline-actions">
               <Link to="/upload" className="btn btn-outline-primary btn-sm py-0">アップロード</Link>
               <Link to="/matching" className="btn btn-outline-primary btn-sm py-0">マッチングを実行</Link>
               <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm py-0">在庫参照</Link>
@@ -236,7 +237,7 @@ export default function DashboardPage() {
         <AppDataPanel
           title="予兆アラート"
           actions={<Link to="/alerts" className="btn btn-outline-primary btn-sm py-0">全て見る</Link>}
-          className="mb-2 flex-shrink-0"
+          className="mb-2"
         >
           <Row className="g-2">
             <Col xs={4}>

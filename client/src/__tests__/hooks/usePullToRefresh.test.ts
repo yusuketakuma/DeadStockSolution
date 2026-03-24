@@ -106,6 +106,22 @@ describe('usePullToRefresh', () => {
       '(max-width: 991.98px)': true,
       '(prefers-reduced-motion: reduce)': false,
     });
+
+    Object.defineProperty(window, 'scrollY', {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(document.documentElement, 'scrollTop', {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(document.body, 'scrollTop', {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
   });
 
   afterEach(() => {
@@ -140,6 +156,24 @@ describe('usePullToRefresh', () => {
       container,
       getResult: () => hookRef.current!.get(),
     };
+  }
+
+  function setPageScrollTop(value: number) {
+    Object.defineProperty(window, 'scrollY', {
+      value,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(document.documentElement, 'scrollTop', {
+      value,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(document.body, 'scrollTop', {
+      value,
+      writable: true,
+      configurable: true,
+    });
   }
 
   // ─── Tests ─────────────────────────────────────
@@ -190,11 +224,7 @@ describe('usePullToRefresh', () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined);
     const { getResult, container } = setup({ onRefresh });
 
-    Object.defineProperty(container, 'scrollTop', {
-      value: 100,
-      writable: true,
-      configurable: true,
-    });
+    setPageScrollTop(100);
 
     act(() => {
       container.dispatchEvent(createTouchEvent('touchstart', container, 200));

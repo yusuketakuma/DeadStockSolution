@@ -21,6 +21,19 @@ interface SyncLogsTableProps {
   syncLogs: SyncLog[];
 }
 
+function getSyncStatusBadge(status: string): { variant: string; label: string } {
+  switch (status) {
+    case 'success':
+      return { variant: 'success', label: '成功' };
+    case 'running':
+      return { variant: 'primary', label: '実行中' };
+    case 'failed':
+      return { variant: 'danger', label: '失敗' };
+    default:
+      return { variant: 'secondary', label: status };
+  }
+}
+
 export default function SyncLogsTable({ syncLogs }: SyncLogsTableProps) {
   if (syncLogs.length === 0) return null;
 
@@ -44,12 +57,14 @@ export default function SyncLogsTable({ syncLogs }: SyncLogsTableProps) {
                 </tr>
               </thead>
               <tbody>
-                {syncLogs.map((log) => (
+                {syncLogs.map((log) => {
+                  const badge = getSyncStatusBadge(log.status);
+                  return (
                   <tr key={log.id}>
                     <td className="small">{formatDateTimeJa(log.startedAt)}</td>
                     <td>
-                      <Badge bg={log.status === 'success' ? 'success' : log.status === 'running' ? 'primary' : 'danger'}>
-                        {log.status}
+                      <Badge bg={badge.variant}>
+                        {badge.label}
                       </Badge>
                     </td>
                     <td className="small text-truncate sync-log-source">{log.sourceDescription || '-'}</td>
@@ -59,19 +74,22 @@ export default function SyncLogsTable({ syncLogs }: SyncLogsTableProps) {
                     <td>{log.itemsDeleted}</td>
                     <td className="small text-danger text-truncate sync-log-error">{log.errorMessage || '-'}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </AppTable>
           )}
           mobile={() => (
             <div className="dl-mobile-data-list p-3">
-              {syncLogs.map((log) => (
+              {syncLogs.map((log) => {
+                const badge = getSyncStatusBadge(log.status);
+                return (
                 <AppMobileDataCard
                   key={log.id}
                   title={formatDateTimeJa(log.startedAt)}
                   badges={(
-                    <Badge bg={log.status === 'success' ? 'success' : log.status === 'running' ? 'primary' : 'danger'}>
-                      {log.status}
+                    <Badge bg={badge.variant}>
+                      {badge.label}
                     </Badge>
                   )}
                   fields={[
@@ -83,7 +101,8 @@ export default function SyncLogsTable({ syncLogs }: SyncLogsTableProps) {
                     { label: 'エラー', value: log.errorMessage || '-' },
                   ]}
                 />
-              ))}
+                );
+              })}
             </div>
           )}
         />

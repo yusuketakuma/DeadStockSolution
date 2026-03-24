@@ -1,13 +1,14 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Nav, Offcanvas } from 'react-bootstrap';
 import AppButton from './ui/AppButton';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { fetchUnreadCount } from '../api/messages';
+import { MESSAGE_NAV_UPDATED_EVENT } from '../lib/message-nav-events';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  collapsed?: boolean;
-  onToggleCollapse?: () => void;
 }
 
 const NAV_GROUPS = [
@@ -18,6 +19,7 @@ const NAV_GROUPS = [
       { to: '/upload', label: 'アップロード' },
       { to: '/matching', label: 'マッチング' },
       { to: '/proposals', label: 'マッチング一覧' },
+      { to: '/messages', label: 'メッセージ' },
       { to: '/exchange-history', label: '交換履歴' },
       { to: '/statistics', label: '統計' },
     ],
@@ -40,6 +42,7 @@ const ADMIN_ITEMS = [
   { to: '/admin/exchanges', label: '交換履歴' },
   { to: '/admin/upload-jobs', label: '取込ジョブ管理' },
   { to: '/admin/pharmacies', label: '薬局管理' },
+  { to: '/admin/direct-messages', label: 'ユーザー間メッセージ' },
   { to: '/admin/openclaw', label: 'OpenClaw連携' },
   { to: '/admin/drug-master', label: '医薬品マスター' },
   { to: '/admin/log-center', label: 'ログセンター' },
@@ -50,11 +53,13 @@ function SidebarLink({
   label,
   onNavigate,
   end = false,
+  badgeCount,
 }: {
   to: string;
   label: string;
   onNavigate?: () => void;
   end?: boolean;
+  badgeCount?: number;
 }) {
   return (
     <NavLink
@@ -63,7 +68,12 @@ function SidebarLink({
       className={({ isActive }: { isActive: boolean }) => `sidebar-link nav-link${isActive ? ' active' : ''}`}
       onClick={() => onNavigate?.()}
     >
-      {label}
+      <span>{label}</span>
+      {badgeCount && badgeCount > 0 ? (
+        <span className="sidebar-badge" aria-label={`${badgeCount}件の未読メッセージ`}>
+          {badgeCount > 99 ? '99+' : badgeCount}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
@@ -71,6 +81,35 @@ function SidebarLink({
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [messageUnreadCount, setMessageUnreadCount] = useState(0);
+
+  const refreshMessageUnreadCount = useCallback(async () => {
+    if (!user || user.isAdmin) {
+      setMessageUnreadCount(0);
+      return;
+    }
+    try {
+      const result = await fetchUnreadCount();
+      setMessageUnreadCount(result.unreadCount);
+    } catch {
+      setMessageUnreadCount(0);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void refreshMessageUnreadCount();
+  }, [refreshMessageUnreadCount, location.pathname]);
+
+  useEffect(() => {
+    const handleMessageNavUpdated = () => {
+      void refreshMessageUnreadCount();
+    };
+    window.addEventListener(MESSAGE_NAV_UPDATED_EVENT, handleMessageNavUpdated);
+    return () => {
+      window.removeEventListener(MESSAGE_NAV_UPDATED_EVENT, handleMessageNavUpdated);
+    };
+  }, [refreshMessageUnreadCount]);
 
   const handleLogout = async () => {
     onNavigate?.();
@@ -98,13 +137,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {NAV_GROUPS.map((group) => (
           <div key={group.title} className="sidebar-group">
             <div className="sidebar-group-title">{group.title}</div>
-            {group.items.map((item) => (
+            {group.items
+              .filter((item) => !(user?.isAdmin && item.to === '/messages'))
+              .map((item) => (
               <SidebarLink
                 key={item.to}
                 to={item.to}
                 label={item.label}
                 onNavigate={onNavigate}
                 end={item.end}
+                badgeCount={item.to === '/messages' ? messageUnreadCount : undefined}
               />
             ))}
           </div>
@@ -121,20 +163,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export default function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }: Props) {
+export default function Sidebar({ isOpen, onClose }: Props) {
   return (
     <>
-      <aside className={`sidebar-desktop d-none d-lg-flex${collapsed ? ' is-collapsed' : ''}`}>
-        <div className="d-flex flex-column w-100">
-          {onToggleCollapse && (
-            <div className="border-bottom px-3 py-2">
-              <AppButton variant="outline-secondary" size="sm" onClick={onToggleCollapse}>
-                {collapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
-              </AppButton>
-            </div>
-          )}
-          <SidebarContent />
-        </div>
+      <aside className="sidebar-desktop d-none d-lg-flex">
+        <SidebarContent />
       </aside>
 
       <Offcanvas show={isOpen} onHide={onClose} className="sidebar-mobile d-lg-none" placement="start">

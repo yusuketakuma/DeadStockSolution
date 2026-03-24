@@ -57,30 +57,34 @@ describe('TimelineEventCard', () => {
     renderWithProviders(<TimelineEventCard event={makeEvent({ priority: 'critical' })} />);
     const badges = screen.getAllByTestId('priority-badge');
     expect(badges[0]).toHaveClass('bg-danger');
-    expect(badges[0]).toHaveTextContent('重要');
+    expect(badges[0]).toHaveTextContent('緊急');
   });
 
   it('shows warning badge for high priority', () => {
     renderWithProviders(<TimelineEventCard event={makeEvent({ priority: 'high' })} />);
     const badges = screen.getAllByTestId('priority-badge');
     expect(badges[0]).toHaveClass('bg-warning');
+    expect(badges[0]).toHaveTextContent('重要');
   });
 
   it('shows primary badge for medium priority', () => {
     renderWithProviders(<TimelineEventCard event={makeEvent({ priority: 'medium' })} />);
     const badges = screen.getAllByTestId('priority-badge');
     expect(badges[0]).toHaveClass('bg-primary');
+    expect(badges[0]).toHaveTextContent('通常');
   });
 
   it('shows secondary badge for low priority', () => {
     renderWithProviders(<TimelineEventCard event={makeEvent({ priority: 'low' })} />);
     const badges = screen.getAllByTestId('priority-badge');
     expect(badges[0]).toHaveClass('bg-secondary');
+    expect(badges[0]).toHaveTextContent('補足');
   });
 
   it('shows unread dot when isRead is false', () => {
     renderWithProviders(<TimelineEventCard event={makeEvent({ isRead: false })} />);
     expect(screen.getAllByTestId('unread-dot').length).toBeGreaterThan(0);
+    expect(screen.getByText('未読')).toBeInTheDocument();
   });
 
   it('does not show unread dot when isRead is true', () => {
@@ -98,6 +102,11 @@ describe('TimelineEventCard', () => {
   it('shows event title', () => {
     renderWithProviders(<TimelineEventCard event={makeEvent({ title: '提案が届きました' })} />);
     expect(screen.getAllByText(/提案が届きました/)[0]).toBeInTheDocument();
+  });
+
+  it('shows absolute timestamp metadata', () => {
+    renderWithProviders(<TimelineEventCard event={makeEvent()} />);
+    expect(screen.getByText(/\d{4}\/\d{1,2}\/\d{1,2}/)).toBeInTheDocument();
   });
 
   it('navigates on desktop card click', () => {

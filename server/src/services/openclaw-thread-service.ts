@@ -9,6 +9,7 @@ import {
   type openclawWorkflowStatusEnum,
 } from '../db/schema';
 import type { OpenClawStatus } from './openclaw-service';
+import { listRequestMessageAttachmentsByMessageIds } from './request-collaboration-service';
 
 export type OpenClawWorkItemType = typeof openclawWorkItemTypeEnum.enumValues[number];
 export type OpenClawWorkflowStatus = typeof openclawWorkflowStatusEnum.enumValues[number];
@@ -22,6 +23,12 @@ export interface OpenClawConversationMessage {
   body: string;
   createdAt: string | null;
   metadata: Record<string, unknown> | null;
+  attachments: Array<{
+    id: number;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  }>;
 }
 
 export interface OpenClawConversationContext {
@@ -281,6 +288,8 @@ export async function listOpenClawRequestMessages(requestId: number): Promise<Op
     }
   }
 
+  const attachmentsByMessageId = await listRequestMessageAttachmentsByMessageIds(rows.map((row) => row.id));
+
   return rows.map((row) => ({
     id: row.id,
     authorType: row.authorType,
@@ -288,6 +297,7 @@ export async function listOpenClawRequestMessages(requestId: number): Promise<Op
     body: row.body,
     createdAt: row.createdAt,
     metadata: parseMetadataJson(row.metadataJson),
+    attachments: attachmentsByMessageId.get(row.id) ?? [],
   }));
 }
 

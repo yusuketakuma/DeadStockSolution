@@ -25,21 +25,26 @@
 
 @media (max-width: 991.98px) {
   :root {
-    --header-height: 72px;
+    --header-height: 84px;
   }
 
   .app-header {
     align-items: stretch;
-    gap: 0.25rem;
-    padding: 0.35rem 0.75rem;
+    gap: 0.4rem;
+    padding: 0.45rem 0.75rem 0.55rem;
   }
 
   .app-header-main {
-    min-height: 36px;
+    min-height: 40px;
+    gap: 0.5rem;
   }
 
   .app-header-brand {
     font-size: 1rem;
+  }
+
+  .app-header-brand-group {
+    justify-content: space-between;
   }
 
   .app-header-request-btn {
@@ -59,18 +64,11 @@
   .app-header-quick-mobile {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.35rem;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .app-header-quick-mobile::-webkit-scrollbar {
-    display: none;
   }
 
   .app-header-quick-mobile .app-header-quick-link {
-    white-space: nowrap;
     font-size: 0.72rem;
     padding: 0.3rem 0.55rem;
   }
@@ -80,10 +78,40 @@
   }
 }
 
+@media (max-width: 575.98px) {
+  .app-header-brand-group {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .app-header-brand-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .app-header-brand {
+    font-size: 0.95rem;
+  }
+
+  .app-header-request-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .app-header-quick-mobile .app-header-quick-link {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
 @media (max-width: 991.98px) {
   .content-container {
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
   }
 
   .page-title {
@@ -157,14 +185,6 @@
 
 /* ===== Tablet overrides (768px - 1024px) ===== */
 @media (min-width: 768px) and (max-width: 1024px) {
-  .app-sidebar {
-    width: 56px;
-  }
-
-  .app-sidebar .sidebar-label {
-    display: none;
-  }
-
   .content-container {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
