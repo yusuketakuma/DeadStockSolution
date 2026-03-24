@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     select: vi.fn(),
   },
   getOpenClawRetryQueueSnapshot: vi.fn(),
+  isMissingOpenClawRetrySchemaError: vi.fn(),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -25,6 +26,7 @@ vi.mock('../services/logger', () => ({
 
 vi.mock('../services/openclaw-retry-service', () => ({
   getOpenClawRetryQueueSnapshot: mocks.getOpenClawRetryQueueSnapshot,
+  isMissingOpenClawRetrySchemaError: mocks.isMissingOpenClawRetrySchemaError,
 }));
 
 vi.mock('drizzle-orm', () => {
@@ -78,6 +80,7 @@ describe('GET /admin/openclaw-retries', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getOpenClawRetryQueueSnapshot.mockResolvedValue(defaultStats);
+    mocks.isMissingOpenClawRetrySchemaError.mockReturnValue(false);
   });
 
   it('リトライジョブ一覧と統計情報を返す', async () => {
@@ -215,5 +218,39 @@ describe('GET /admin/openclaw-retries', () => {
     expect(res.body.data).toHaveLength(0);
     expect(res.body.pagination.total).toBe(0);
     expect(res.body.stats.pending).toBe(2);
+  });
+
+  it('retry schema が未反映でも空配列でフォールバックする', async () => {
+    const missingSchemaError = Object.assign(new Error('relation "openclaw_retry_jobs" does not exist'), { code: '42P01' });
+    mocks.isMissingOpenClawRetrySchemaError.mockReturnValue(true);
+    mocks.db.select
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            innerJoin: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockReturnValue({
+                    offset: vi.fn().mockRejectedValue(missingSchemaError),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockRejectedValue(missingSchemaError),
+        }),
+      });
+
+    const app = createApp();
+    const res = await request(app).get('/api/admin/openclaw-retries');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.pagination.total).toBe(0);
+    expect(res.body.stats).toEqual(defaultStats);
   });
 });

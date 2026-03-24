@@ -7,7 +7,7 @@ import { logger } from './logger';
 
 export type OpenClawStatus = 'pending_handoff' | 'in_dialogue' | 'implementing' | 'completed';
 type OpenClawBaseUrlError = 'missing' | 'invalid' | 'insecure';
-type OpenClawConnectorMode = 'legacy_http' | 'gateway_cli';
+type OpenClawConnectorMode = 'legacy_http' | 'gateway_cli' | 'managed_remote_agent';
 
 const FIXED_IMPLEMENTATION_BRANCH = 'review';
 const execFileAsync = promisify(execFile);
@@ -797,6 +797,9 @@ export function getOpenClawImplementationBranch(): string {
 
 export function isOpenClawConnectorConfigured(): boolean {
   const config = readConfig();
+  if (config.mode === 'managed_remote_agent') {
+    return true;
+  }
   if (config.mode === 'gateway_cli') {
     return Boolean(config.cliPath && config.agentId);
   }

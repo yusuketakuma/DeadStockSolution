@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   handoffToOpenClaw: vi.fn(),
   buildOpenClawConversationContext: vi.fn(),
   ensureOpenClawWorkItem: vi.fn(),
+  isMissingOpenClawSchemaError: vi.fn(),
+  listOpenClawRequestMessages: vi.fn(),
   recordOpenClawRequestMessage: vi.fn(),
   updateOpenClawWorkItem: vi.fn(),
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
@@ -67,7 +69,8 @@ vi.mock('../services/openclaw-service', () => ({
 vi.mock('../services/openclaw-thread-service', () => ({
   buildOpenClawConversationContext: mocks.buildOpenClawConversationContext,
   ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
-  listOpenClawRequestMessages: vi.fn(),
+  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
+  listOpenClawRequestMessages: mocks.listOpenClawRequestMessages,
   mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
   recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
   updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
@@ -134,6 +137,22 @@ function createSelectQuery(result: unknown) {
   return query;
 }
 
+function createRejectingSelectQuery(error: Error) {
+  const query = {
+    from: vi.fn(),
+    leftJoin: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+    limit: vi.fn(),
+  };
+  query.from.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
+  query.where.mockReturnValue(query);
+  query.orderBy.mockReturnValue(query);
+  query.limit.mockRejectedValue(error);
+  return query;
+}
+
 // Helper to build a chainable insert mock
 function createInsertQuery(returnRows: unknown[]) {
   return {
@@ -156,6 +175,8 @@ describe('GET /api/requests/me', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockUser = { id: 1, email: 'user@example.com', isAdmin: false };
+    mocks.isMissingOpenClawSchemaError.mockReturnValue(false);
+    mocks.listOpenClawRequestMessages.mockResolvedValue([]);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -221,6 +242,39 @@ describe('GET /api/requests/me', () => {
     expect(res.status).toBe(500);
     expect(res.body.error).toBeDefined();
   });
+
+  it('falls back to user_requests only when openclaw schema is missing', async () => {
+    const missingSchemaError = Object.assign(new Error('relation "openclaw_work_items" does not exist'), { code: '42P01' });
+    mocks.isMissingOpenClawSchemaError.mockReturnValue(true);
+    mocks.db.select
+      .mockReturnValueOnce(createRejectingSelectQuery(missingSchemaError))
+      .mockReturnValueOnce(createSelectQuery([
+        {
+          id: 22,
+          requestText: 'フォールバック取得',
+          openclawStatus: 'pending_handoff',
+          openclawThreadId: null,
+          openclawSummary: null,
+          updatedAt: '2026-03-24T09:00:00Z',
+          createdAt: '2026-03-24T09:00:00Z',
+        },
+      ]));
+
+    const app = createApp();
+    const res = await request(app).get('/api/requests/me');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({
+        id: 22,
+        workflowStatus: null,
+        latestSummary: null,
+        branchName: null,
+        prUrl: null,
+        prNumber: null,
+      }),
+    ]);
+  });
 });
 
 describe('POST /api/requests', () => {
@@ -248,6 +302,8 @@ describe('POST /api/requests', () => {
     mocks.buildOpenClawLogContext.mockResolvedValue([]);
     mocks.buildOpenClawConversationContext.mockResolvedValue([]);
     mocks.ensureOpenClawWorkItem.mockResolvedValue(undefined);
+    mocks.isMissingOpenClawSchemaError.mockReturnValue(false);
+    mocks.listOpenClawRequestMessages.mockResolvedValue([]);
     mocks.recordOpenClawRequestMessage.mockResolvedValue({ id: 99 });
     mocks.updateOpenClawWorkItem.mockResolvedValue(undefined);
     mocks.mapOpenClawStatusToWorkflowStatus.mockImplementation((status: string) => status);
@@ -354,5 +410,102 @@ describe('POST /api/requests', () => {
     const app = createApp();
     const res = await request(app).post('/api/requests').send({ message: boundaryMessage });
     expect(res.status).toBe(201);
+  });
+});
+
+describe('GET /api/requests/:id/messages', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockUser = { id: 1, email: 'user@example.com', isAdmin: false };
+    mocks.isMissingOpenClawSchemaError.mockReturnValue(false);
+    mocks.listOpenClawRequestMessages.mockResolvedValue([]);
+  });
+
+  it('falls back to request row without openclaw_work_items when schema is missing', async () => {
+    const missingSchemaError = Object.assign(new Error('relation "openclaw_work_items" does not exist'), { code: '42P01' });
+    mocks.isMissingOpenClawSchemaError.mockReturnValue(true);
+    mocks.db.select
+      .mockReturnValueOnce(createRejectingSelectQuery(missingSchemaError))
+      .mockReturnValueOnce(createSelectQuery([
+        {
+          id: 5,
+          pharmacyId: 1,
+          requestText: '詳細を見たい',
+          openclawStatus: 'pending_handoff',
+          openclawThreadId: null,
+          openclawSummary: null,
+          createdAt: '2026-03-24T09:00:00Z',
+          updatedAt: '2026-03-24T09:00:00Z',
+        },
+      ]));
+
+    const app = createApp();
+    const res = await request(app).get('/api/requests/5/messages');
+
+    expect(res.status).toBe(200);
+    expect(res.body.request).toEqual(expect.objectContaining({
+      id: 5,
+      workflowStatus: null,
+      latestSummary: null,
+      lastQuestion: null,
+      branchName: null,
+      prUrl: null,
+      prNumber: null,
+      lastError: null,
+    }));
+    expect(res.body.messages).toEqual([]);
+  });
+});
+
+describe('POST /api/requests/:id/messages', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockUser = { id: 1, email: 'user@example.com', isAdmin: false };
+    mocks.db.update.mockReturnValue(createUpdateQuery());
+    mocks.buildOpenClawLogContext.mockResolvedValue([]);
+    mocks.buildOpenClawConversationContext.mockResolvedValue([]);
+    mocks.handoffToOpenClaw.mockResolvedValue({
+      accepted: true,
+      connectorConfigured: true,
+      implementationBranch: 'review',
+      status: 'in_dialogue',
+      threadId: 'thread-follow-up',
+      summary: '追加情報を受領しました',
+      note: '継続して解析します',
+    });
+    mocks.isMissingOpenClawSchemaError.mockReturnValue(false);
+    mocks.listOpenClawRequestMessages.mockResolvedValue([]);
+    mocks.recordOpenClawRequestMessage.mockResolvedValue({ id: 77 });
+    mocks.updateOpenClawWorkItem.mockResolvedValue(undefined);
+    mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
+  });
+
+  it('re-handoffs with fallback query when openclaw schema is missing', async () => {
+    const missingSchemaError = Object.assign(new Error('relation "openclaw_work_items" does not exist'), { code: '42P01' });
+    mocks.isMissingOpenClawSchemaError.mockReturnValue(true);
+    mocks.db.select
+      .mockReturnValueOnce(createRejectingSelectQuery(missingSchemaError))
+      .mockReturnValueOnce(createSelectQuery([
+        {
+          id: 5,
+          pharmacyId: 1,
+          requestText: '元の要望',
+          openclawStatus: 'pending_handoff',
+          openclawThreadId: 'thread-existing',
+        },
+      ]));
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/requests/5/messages')
+      .send({ message: '追加情報です' });
+
+    expect(res.status).toBe(200);
+    expect(mocks.handoffToOpenClaw).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: 5,
+      pharmacyId: 1,
+      requestText: '元の要望',
+    }));
+    expect(mocks.updateOpenClawWorkItem).toHaveBeenCalled();
   });
 });

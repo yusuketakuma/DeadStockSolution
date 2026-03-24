@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getOpenClawImplementationBranch: vi.fn(),
   buildOpenClawLogContext: vi.fn(),
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  isMissingOpenClawSchemaError: vi.fn(),
   updateOpenClawWorkItem: vi.fn(),
   getObservabilitySnapshot: vi.fn(),
   loggerWarn: vi.fn(),
@@ -48,6 +49,7 @@ vi.mock('../services/openclaw-log-context-service', () => ({
 
 vi.mock('../services/openclaw-thread-service', () => ({
   mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
   updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
 }));
 
@@ -173,6 +175,9 @@ describe('admin routes', () => {
     mocks.getOpenClawImplementationBranch.mockReturnValue('feature/openclaw');
     mocks.getClientIp.mockReturnValue('127.0.0.1');
     mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
+    mocks.isMissingOpenClawSchemaError.mockImplementation((err: unknown) => (
+      typeof err === 'object' && err !== null && (err as { code?: string }).code === '42P01'
+    ));
   });
 
   it('returns paginated logs with failure summary', async () => {
@@ -334,6 +339,46 @@ describe('admin routes', () => {
       openclawThreadId: 'thread-12',
       openclawSummary: 'openclaw started',
       updatedAt: expect.any(String),
+    }));
+  });
+
+  it('re-handoffs request with fallback query when openclaw schema is missing', async () => {
+    const app = createApp();
+    const missingSchemaError = Object.assign(new Error('relation "openclaw_work_items" does not exist'), { code: '42P01' });
+    const requestRow = [{
+      id: 14,
+      pharmacyId: 10,
+      requestText: '一覧の表示を直してほしい',
+      openclawStatus: 'pending_handoff',
+      openclawThreadId: null,
+      workflowStatus: null,
+    }];
+    const updateQuery = createUpdateQuery();
+
+    mocks.db.select
+      .mockImplementationOnce(() => {
+        throw missingSchemaError;
+      })
+      .mockImplementationOnce(() => createLimitQuery(requestRow));
+    mocks.db.update.mockReturnValue(updateQuery);
+    mocks.buildOpenClawLogContext.mockResolvedValue([]);
+    mocks.handoffToOpenClaw.mockResolvedValue({
+      accepted: true,
+      connectorConfigured: true,
+      implementationBranch: 'feature/openclaw',
+      status: 'in_dialogue',
+      note: 'handoff queued',
+      threadId: 'thread-14',
+      summary: 'openclaw started',
+    });
+
+    const response = await request(app)
+      .post('/api/admin/requests/14/handoff');
+
+    expect(response.status).toBe(200);
+    expect(mocks.handoffToOpenClaw).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: 14,
+      pharmacyId: 10,
     }));
   });
 

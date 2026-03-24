@@ -221,6 +221,10 @@ export function getOpenClawImplementationBranch(): string {
 
 export function isOpenClawConnectorConfigured(): boolean {
   const config = getOpenClawConfig();
+  if (config.mode === 'managed_remote_agent') {
+    // Remote-agent mode queues work in-app and does not require legacy HTTP or CLI credentials.
+    return true;
+  }
   if (config.mode === 'gateway_cli') {
     return Boolean(config.cliPath && config.agentId);
   }

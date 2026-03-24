@@ -95,6 +95,7 @@ export async function issueDdsBootstrapToken(adminId: number | null): Promise<{
   environment: string;
   registerUrl: string;
   callbackUrl: string;
+  reportUrl: string;
   commandsUrl: string;
   healthUrl: string;
 }> {
@@ -114,6 +115,7 @@ export async function issueDdsBootstrapToken(adminId: number | null): Promise<{
     environment: DDS_ENVIRONMENT,
     registerUrl: buildAbsoluteApiUrl('/api/openclaw/connect/register'),
     callbackUrl: buildAbsoluteApiUrl('/api/openclaw/callback'),
+    reportUrl: buildAbsoluteApiUrl('/api/openclaw/report'),
     commandsUrl: buildAbsoluteApiUrl('/api/openclaw/commands'),
     healthUrl: buildAbsoluteApiUrl('/api/health/openclaw'),
   };
@@ -154,6 +156,7 @@ export async function registerDdsAgent(input: {
   claimUrl: string;
   heartbeatUrl: string;
   callbackUrl: string;
+  reportUrl: string;
   commandsUrl: string;
   workItemQuestionUrl: string;
   workItemPrUrl: string;
@@ -206,6 +209,7 @@ export async function registerDdsAgent(input: {
     claimUrl: buildAbsoluteApiUrl('/api/openclaw/connect/jobs/claim'),
     heartbeatUrl: buildAbsoluteApiUrl('/api/openclaw/connect/heartbeat'),
     callbackUrl: buildAbsoluteApiUrl('/api/openclaw/callback'),
+    reportUrl: buildAbsoluteApiUrl('/api/openclaw/report'),
     commandsUrl: buildAbsoluteApiUrl('/api/openclaw/commands'),
     workItemQuestionUrl: buildAbsoluteApiUrl('/api/openclaw/connect/work-items/:id/question'),
     workItemPrUrl: buildAbsoluteApiUrl('/api/openclaw/connect/work-items/:id/pr'),
@@ -691,6 +695,63 @@ export async function reportDdsPullRequest(token: string, input: {
         summary: input.summary,
         note: `DDS が PR を作成しました: ${input.prUrl}`,
       }, tx);
+    }
+  });
+}
+
+export async function completeDdsWorkItem(token: string, input: {
+  workItemId: number;
+  leaseToken: string;
+  status: 'completed' | 'failed';
+  summary: string;
+}): Promise<void> {
+  const workItem = await ensureAgentLease(token, input.workItemId, input.leaseToken);
+  const currentTime = nowIso();
+  const leaseTokenHash = hashToken(input.leaseToken);
+  const nextWorkflowStatus = input.status === 'failed' ? 'failed' : 'completed';
+
+  await db.transaction(async (tx) => {
+    await tx.update(ddsWorkItems)
+      .set({
+        workflowStatus: nextWorkflowStatus,
+        resultSummary: input.summary,
+        updatedAt: currentTime,
+      })
+      .where(eq(ddsWorkItems.id, workItem.id));
+
+    await tx.update(ddsAgentJobs)
+      .set({
+        status: 'completed',
+        completedAt: currentTime,
+        payloadJson: {
+          action: input.status,
+          summary: input.summary,
+        },
+        updatedAt: currentTime,
+      })
+      .where(and(
+        eq(ddsAgentJobs.workItemId, workItem.id),
+        eq(ddsAgentJobs.status, 'leased'),
+        eq(ddsAgentJobs.leaseTokenHash, leaseTokenHash),
+      ));
+
+    if (workItem.requestId) {
+      await tx.update(userRequests)
+        .set({
+          openclawStatus: input.status === 'failed' ? 'in_dialogue' : 'completed',
+          openclawSummary: input.summary.slice(0, 4000),
+          updatedAt: currentTime,
+        })
+        .where(eq(userRequests.id, workItem.requestId));
+
+      await tx.insert(userRequestMessages).values({
+        requestId: workItem.requestId,
+        authorType: 'system',
+        body: input.summary,
+        metadataJson: {
+          ddsStatus: input.status,
+        },
+      });
     }
   });
 }

@@ -38,8 +38,10 @@ Read these local contract files before acting:
 - `.openclaw/DSS_STATE_MACHINE.md`
 - `.openclaw/DSS_WEBHOOK_CONTRACT.md`
 - `.openclaw/DSS_RUNTIME_LOGGING.md`
+- `.openclaw/PREFLIGHT.md`
 
 If any of them conflicts with a casual conversational instinct, prefer the contract file.
+If `.openclaw/PREFLIGHT.md` indicates degraded fallback mode, do not overstate OpenClaw feature health.
 
 ## Intake Contract
 

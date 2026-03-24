@@ -9,6 +9,7 @@ import { handoffToOpenClaw } from '../services/openclaw-service';
 import {
   buildOpenClawConversationContext,
   ensureOpenClawWorkItem,
+  isMissingOpenClawSchemaError,
   listOpenClawRequestMessages,
   mapOpenClawStatusToWorkflowStatus,
   recordOpenClawRequestMessage,
@@ -76,25 +77,68 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
     const parsedLimit = parsePositiveInt(String(req.query.limit ?? ''));
     const limit = parsedLimit ? Math.min(parsedLimit, 100) : 50;
 
-    const rows = await db.select({
-      id: userRequests.id,
-      requestText: userRequests.requestText,
-      openclawStatus: userRequests.openclawStatus,
-      openclawThreadId: userRequests.openclawThreadId,
-      openclawSummary: userRequests.openclawSummary,
-      workflowStatus: openclawWorkItems.workflowStatus,
-      latestSummary: openclawWorkItems.latestSummary,
-      branchName: openclawWorkItems.branchName,
-      prUrl: openclawWorkItems.prUrl,
-      prNumber: openclawWorkItems.prNumber,
-      updatedAt: userRequests.updatedAt,
-      createdAt: userRequests.createdAt,
-    })
-      .from(userRequests)
-      .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
-      .where(eq(userRequests.pharmacyId, req.user.id))
-      .orderBy(desc(userRequests.createdAt), desc(userRequests.id))
-      .limit(limit);
+    let rows: Array<{
+      id: number;
+      requestText: string;
+      openclawStatus: string | null;
+      openclawThreadId: string | null;
+      openclawSummary: string | null;
+      workflowStatus: string | null;
+      latestSummary: string | null;
+      branchName: string | null;
+      prUrl: string | null;
+      prNumber: number | null;
+      updatedAt: string | null;
+      createdAt: string | null;
+    }>;
+
+    try {
+      rows = await db.select({
+        id: userRequests.id,
+        requestText: userRequests.requestText,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+        openclawSummary: userRequests.openclawSummary,
+        workflowStatus: openclawWorkItems.workflowStatus,
+        latestSummary: openclawWorkItems.latestSummary,
+        branchName: openclawWorkItems.branchName,
+        prUrl: openclawWorkItems.prUrl,
+        prNumber: openclawWorkItems.prNumber,
+        updatedAt: userRequests.updatedAt,
+        createdAt: userRequests.createdAt,
+      })
+        .from(userRequests)
+        .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+        .where(eq(userRequests.pharmacyId, req.user.id))
+        .orderBy(desc(userRequests.createdAt), desc(userRequests.id))
+        .limit(limit);
+    } catch (err) {
+      if (!isMissingOpenClawSchemaError(err)) {
+        throw err;
+      }
+
+      rows = await db.select({
+        id: userRequests.id,
+        requestText: userRequests.requestText,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+        openclawSummary: userRequests.openclawSummary,
+        updatedAt: userRequests.updatedAt,
+        createdAt: userRequests.createdAt,
+      })
+        .from(userRequests)
+        .where(eq(userRequests.pharmacyId, req.user.id))
+        .orderBy(desc(userRequests.createdAt), desc(userRequests.id))
+        .limit(limit)
+        .then((fallbackRows) => fallbackRows.map((row) => ({
+          ...row,
+          workflowStatus: null,
+          latestSummary: null,
+          branchName: null,
+          prUrl: null,
+          prNumber: null,
+        })));
+    }
 
     res.json({
       data: rows,
@@ -121,27 +165,77 @@ router.get('/:id/messages', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const [requestRow] = await db.select({
-      id: userRequests.id,
-      pharmacyId: userRequests.pharmacyId,
-      requestText: userRequests.requestText,
-      openclawStatus: userRequests.openclawStatus,
-      openclawThreadId: userRequests.openclawThreadId,
-      openclawSummary: userRequests.openclawSummary,
-      createdAt: userRequests.createdAt,
-      updatedAt: userRequests.updatedAt,
-      workflowStatus: openclawWorkItems.workflowStatus,
-      latestSummary: openclawWorkItems.latestSummary,
-      lastQuestion: openclawWorkItems.lastQuestion,
-      branchName: openclawWorkItems.branchName,
-      prUrl: openclawWorkItems.prUrl,
-      prNumber: openclawWorkItems.prNumber,
-      lastError: openclawWorkItems.lastError,
-    })
-      .from(userRequests)
-      .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
-      .where(eq(userRequests.id, requestId))
-      .limit(1);
+    let requestRows: Array<{
+      id: number;
+      pharmacyId: number;
+      requestText: string;
+      openclawStatus: string | null;
+      openclawThreadId: string | null;
+      openclawSummary: string | null;
+      createdAt: string | null;
+      updatedAt: string | null;
+      workflowStatus: string | null;
+      latestSummary: string | null;
+      lastQuestion: string | null;
+      branchName: string | null;
+      prUrl: string | null;
+      prNumber: number | null;
+      lastError: string | null;
+    }>;
+
+    try {
+      requestRows = await db.select({
+        id: userRequests.id,
+        pharmacyId: userRequests.pharmacyId,
+        requestText: userRequests.requestText,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+        openclawSummary: userRequests.openclawSummary,
+        createdAt: userRequests.createdAt,
+        updatedAt: userRequests.updatedAt,
+        workflowStatus: openclawWorkItems.workflowStatus,
+        latestSummary: openclawWorkItems.latestSummary,
+        lastQuestion: openclawWorkItems.lastQuestion,
+        branchName: openclawWorkItems.branchName,
+        prUrl: openclawWorkItems.prUrl,
+        prNumber: openclawWorkItems.prNumber,
+        lastError: openclawWorkItems.lastError,
+      })
+        .from(userRequests)
+        .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+        .where(eq(userRequests.id, requestId))
+        .limit(1);
+    } catch (err) {
+      if (!isMissingOpenClawSchemaError(err)) {
+        throw err;
+      }
+
+      requestRows = await db.select({
+        id: userRequests.id,
+        pharmacyId: userRequests.pharmacyId,
+        requestText: userRequests.requestText,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+        openclawSummary: userRequests.openclawSummary,
+        createdAt: userRequests.createdAt,
+        updatedAt: userRequests.updatedAt,
+      })
+        .from(userRequests)
+        .where(eq(userRequests.id, requestId))
+        .limit(1)
+        .then((fallbackRows) => fallbackRows.map((row) => ({
+          ...row,
+          workflowStatus: null,
+          latestSummary: null,
+          lastQuestion: null,
+          branchName: null,
+          prUrl: null,
+          prNumber: null,
+          lastError: null,
+        })));
+    }
+
+    const [requestRow] = requestRows;
 
     if (!requestRow || requestRow.pharmacyId !== req.user.id) {
       res.status(404).json({ error: '要望が見つかりません' });
@@ -276,19 +370,53 @@ router.post('/:id/messages', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const [requestRow] = await db.select({
-      id: userRequests.id,
-      pharmacyId: userRequests.pharmacyId,
-      requestText: userRequests.requestText,
-      openclawStatus: userRequests.openclawStatus,
-      openclawThreadId: userRequests.openclawThreadId,
-      workflowStatus: openclawWorkItems.workflowStatus,
-      lastQuestion: openclawWorkItems.lastQuestion,
-    })
-      .from(userRequests)
-      .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
-      .where(eq(userRequests.id, requestId))
-      .limit(1);
+    let requestRows: Array<{
+      id: number;
+      pharmacyId: number;
+      requestText: string;
+      openclawStatus: string;
+      openclawThreadId: string | null;
+      workflowStatus: string | null;
+      lastQuestion: string | null;
+    }>;
+
+    try {
+      requestRows = await db.select({
+        id: userRequests.id,
+        pharmacyId: userRequests.pharmacyId,
+        requestText: userRequests.requestText,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+        workflowStatus: openclawWorkItems.workflowStatus,
+        lastQuestion: openclawWorkItems.lastQuestion,
+      })
+        .from(userRequests)
+        .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+        .where(eq(userRequests.id, requestId))
+        .limit(1);
+    } catch (err) {
+      if (!isMissingOpenClawSchemaError(err)) {
+        throw err;
+      }
+
+      requestRows = await db.select({
+        id: userRequests.id,
+        pharmacyId: userRequests.pharmacyId,
+        requestText: userRequests.requestText,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+      })
+        .from(userRequests)
+        .where(eq(userRequests.id, requestId))
+        .limit(1)
+        .then((fallbackRows) => fallbackRows.map((row) => ({
+          ...row,
+          workflowStatus: null,
+          lastQuestion: null,
+        })));
+    }
+
+    const [requestRow] = requestRows;
 
     if (!requestRow || requestRow.pharmacyId !== req.user.id) {
       res.status(404).json({ error: '要望が見つかりません' });

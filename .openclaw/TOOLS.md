@@ -3,6 +3,8 @@
 ## Workspace
 
 - Repo root: `/Users/yusuke/workspace/DeadStockSolution`
+- Repo-side OpenClaw contract directory: `/Users/yusuke/workspace/DeadStockSolution/.openclaw`
+- Home-side agent bootstrap directory: `~/.openclaw/agents/dss-manager`
 - Production-focused OpenClaw agent: `dss-manager`
 - Default PR base branch: `review`
 - Preferred branch prefix: `dss/`
@@ -26,6 +28,7 @@
 - OpenClaw case state model: `.openclaw/DSS_STATE_MACHINE.md`
 - OpenClaw webhook contract: `.openclaw/DSS_WEBHOOK_CONTRACT.md`
 - OpenClaw runtime log policy: `.openclaw/DSS_RUNTIME_LOGGING.md`
+- OpenClaw preflight checklist: `.openclaw/PREFLIGHT.md`
 
 ## Operating Notes
 
@@ -33,4 +36,6 @@
 - Respect existing uncommitted user changes.
 - Avoid destructive git commands.
 - Keep fixes production-relevant unless the task explicitly says otherwise.
+- If recent OpenClaw schema is missing, user and admin routes may run in degraded fallback mode.
+- Do not confuse repo-side `.openclaw/` docs with home-side `~/.openclaw/agents/dss-manager/` runtime files.
 - Local DSS case log target: `~/.openclaw/agents/dss-manager/runtime/case-state.ndjson`

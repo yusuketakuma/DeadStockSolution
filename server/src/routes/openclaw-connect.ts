@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import {
   claimNextDdsJob,
+  completeDdsWorkItem,
   heartbeatDdsAgent,
   postDdsQuestion,
   registerDdsAgent,
@@ -207,6 +208,51 @@ router.post('/work-items/:id/pr', connectLimiter, async (req: Request, res: Resp
     }
     logger.error('openclaw-connect work-items pr error', { error: (err as Error).message });
     res.status(500).json({ error: 'PR 報告の処理に失敗しました' });
+  }
+});
+
+router.post('/work-items/:id/complete', connectLimiter, async (req: Request, res: Response) => {
+  try {
+    const token = requireControlToken(req, res);
+    if (!token) return;
+
+    const workItemId = parsePositiveInt(req.params.id);
+    if (!workItemId) {
+      res.status(400).json({ error: 'work item ID が不正です' });
+      return;
+    }
+
+    const leaseToken = typeof req.body?.leaseToken === 'string' ? req.body.leaseToken.trim() : '';
+    const status = req.body?.status === 'failed' ? 'failed' : req.body?.status === 'completed' ? 'completed' : null;
+    const summary = typeof req.body?.summary === 'string' ? req.body.summary.trim() : '';
+    if (!leaseToken) {
+      res.status(400).json({ error: 'leaseToken が必要です' });
+      return;
+    }
+    if (!status) {
+      res.status(400).json({ error: 'status は completed または failed が必要です' });
+      return;
+    }
+    if (!summary) {
+      res.status(400).json({ error: 'summary が必要です' });
+      return;
+    }
+
+    await completeDdsWorkItem(token, {
+      workItemId,
+      leaseToken,
+      status,
+      summary: summary.slice(0, 4000),
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    if (err instanceof Error && 'status' in err) {
+      const status = (err as { status: number }).status;
+      res.status(status).json({ error: err.message });
+      return;
+    }
+    logger.error('openclaw-connect work-items complete error', { error: (err as Error).message });
+    res.status(500).json({ error: '完了報告の処理に失敗しました' });
   }
 });
 

@@ -123,8 +123,6 @@ vi.mock('express-rate-limit', () => ({
   default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
-import authRouter from '../routes/auth';
-
 /* ── helpers ─────────────────────────────────────── */
 function createSelectQuery(result: unknown) {
   const resolved = Promise.resolve(result);
@@ -144,7 +142,8 @@ function createSelectQuery(result: unknown) {
   return query;
 }
 
-function createApp() {
+async function createApp() {
+  const { default: authRouter } = await import('../routes/auth');
   const app = express();
   app.use(express.json());
   app.use(cookieParser());
@@ -155,6 +154,7 @@ function createApp() {
 /* ── tests ─────────────────────────────────────── */
 describe('auth route deep coverage', () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.resetAllMocks();
     mocks.validateRegistration.mockReturnValue([]);
     mocks.validateLogin.mockReturnValue([]);
@@ -184,7 +184,7 @@ describe('auth route deep coverage', () => {
 
   describe('POST /auth/password-reset/request', () => {
     it('returns 400 when email is empty', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/password-reset/request')
         .send({ email: '' });
@@ -193,7 +193,7 @@ describe('auth route deep coverage', () => {
     });
 
     it('returns 400 when email is not a string', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/password-reset/request')
         .send({ email: 123 });
@@ -205,7 +205,7 @@ describe('auth route deep coverage', () => {
         success: false,
         error: { issues: [{ message: '無効なメール' }] },
       });
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/password-reset/request')
         .send({ email: 'bad' });
@@ -215,7 +215,7 @@ describe('auth route deep coverage', () => {
 
     it('returns success even when createPasswordResetToken returns null (prevents enumeration)', async () => {
       mocks.createPasswordResetToken.mockResolvedValueOnce(null);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/password-reset/request')
         .send({ email: 'noone@example.com' });
@@ -228,7 +228,7 @@ describe('auth route deep coverage', () => {
 
   describe('POST /auth/password-reset/confirm', () => {
     it('returns 400 when token is empty', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/password-reset/confirm')
         .send({ token: '', newPassword: 'ValidPass1!' });
@@ -237,7 +237,7 @@ describe('auth route deep coverage', () => {
     });
 
     it('returns 400 when token is non-hex format', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/password-reset/confirm')
         .send({ token: 'not-hex-64-chars', newPassword: 'ValidPass1!' });
@@ -250,7 +250,7 @@ describe('auth route deep coverage', () => {
         success: false,
         error: { issues: [{ message: 'パスワードが弱すぎます' }] },
       });
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/password-reset/confirm')
         .send({ token: 'a'.repeat(64), newPassword: '1' });
@@ -260,7 +260,7 @@ describe('auth route deep coverage', () => {
 
     it('returns 400 when resetPasswordWithToken fails', async () => {
       mocks.resetPasswordWithToken.mockResolvedValueOnce({ success: false });
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/password-reset/confirm')
         .send({ token: 'b'.repeat(64), newPassword: 'GoodPass1!' });
@@ -270,7 +270,7 @@ describe('auth route deep coverage', () => {
 
     it('returns success for valid token and password', async () => {
       mocks.resetPasswordWithToken.mockResolvedValueOnce({ success: true, pharmacyId: 5 });
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/password-reset/confirm')
         .send({ token: 'c'.repeat(64), newPassword: 'GoodPass1!' });
@@ -284,7 +284,7 @@ describe('auth route deep coverage', () => {
 
   describe('POST /auth/logout', () => {
     it('logs out even without a token cookie', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).post('/auth/logout');
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('ログアウト');
@@ -292,7 +292,7 @@ describe('auth route deep coverage', () => {
 
     it('logs out and invalidates cache when token cookie is present', async () => {
       mocks.verifyToken.mockReturnValueOnce({ id: 42 });
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/logout')
         .set('Cookie', 'token=valid-jwt');
@@ -302,7 +302,7 @@ describe('auth route deep coverage', () => {
 
     it('handles invalid token cookie gracefully during logout', async () => {
       mocks.verifyToken.mockImplementationOnce(() => { throw new Error('bad'); });
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/logout')
         .set('Cookie', 'token=bad-jwt');
@@ -315,7 +315,7 @@ describe('auth route deep coverage', () => {
 
   describe('GET /auth/csrf-token', () => {
     it('returns csrf token', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/auth/csrf-token');
       expect(res.status).toBe(200);
       expect(res.body.csrfToken).toBe('csrf-tok');
@@ -331,7 +331,7 @@ describe('auth route deep coverage', () => {
         throw Object.assign(new Error('JWT_SECRET not set'), { __jwtSecretMissing: true });
       });
       mocks.isJwtSecretMissingError.mockReturnValueOnce(true);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/login')
         .send({ email: 'a@b.com', password: 'pass' });
@@ -355,7 +355,7 @@ describe('auth route deep coverage', () => {
           name: 'test',
         }]),
       );
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/login')
         .send({ email: 'inactive@example.com', password: 'pass' });
@@ -380,7 +380,7 @@ describe('auth route deep coverage', () => {
           name: 'test',
         }]),
       );
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/login')
         .send({ email: 'test@example.com', password: 'wrong' });
@@ -398,7 +398,7 @@ describe('auth route deep coverage', () => {
       mocks.db.transaction.mockRejectedValueOnce(
         Object.assign(new Error('unique constraint "pharmacies_license_number_unique"'), { code: '23505', constraint: 'pharmacies_license_number_unique' }),
       );
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/register')
         .send({
@@ -416,7 +416,7 @@ describe('auth route deep coverage', () => {
       mocks.db.transaction.mockRejectedValueOnce(
         Object.assign(new Error('unique constraint "pharmacies_email_unique"'), { code: '23505', constraint: 'pharmacies_email_unique' }),
       );
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/register')
         .send({
@@ -434,7 +434,7 @@ describe('auth route deep coverage', () => {
       mocks.db.transaction.mockRejectedValueOnce(
         Object.assign(new Error('unique constraint "other_unique"'), { code: '23505', constraint: 'other_unique' }),
       );
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/auth/register')
         .send({
@@ -453,7 +453,7 @@ describe('auth route deep coverage', () => {
       process.env.NODE_ENV = 'production';
       process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
       mocks.db.select.mockReturnValue(createSelectQuery([]));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/auth/test-pharmacies');
       expect(res.status).toBe(404);
       expect(res.body).toEqual({ error: 'テスト薬局がDBに登録されていません（5件登録を確認してください）' });

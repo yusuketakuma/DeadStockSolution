@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   loggerError: vi.fn(),
   loggerWarn: vi.fn(),
   listOpenClawRequestMessages: vi.fn(),
+  isMissingOpenClawSchemaError: vi.fn(),
   updateOpenClawWorkItem: vi.fn(),
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
   publishAdminRequestsRefresh: vi.fn(),
@@ -84,6 +85,7 @@ vi.mock('../services/logger', () => ({
 
 vi.mock('../services/openclaw-thread-service', () => ({
   listOpenClawRequestMessages: mocks.listOpenClawRequestMessages,
+  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
   updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
   mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
 }));
@@ -243,6 +245,9 @@ describe('admin pharmacies list routes', () => {
     mocks.getOpenClawImplementationBranch.mockReturnValue('feature/openclaw');
     mocks.getClientIp.mockReturnValue('127.0.0.1');
     mocks.listOpenClawRequestMessages.mockResolvedValue([]);
+    mocks.isMissingOpenClawSchemaError.mockImplementation((err: unknown) => (
+      typeof err === 'object' && err !== null && (err as { code?: string }).code === '42P01'
+    ));
     mocks.updateOpenClawWorkItem.mockResolvedValue(undefined);
     mocks.mapOpenClawStatusToWorkflowStatus.mockImplementation((status: string) => status);
   });
@@ -350,6 +355,34 @@ describe('admin pharmacies list routes', () => {
       webhookConfigured: true,
       implementationBranch: 'feature/openclaw',
     });
+  });
+
+  it('GET /requests falls back when openclaw_work_items is missing', async () => {
+    const app = createApp();
+    const missingSchemaError = Object.assign(new Error('relation "openclaw_work_items" does not exist'), { code: '42P01' });
+    const fallbackRows = [
+      { id: 1, pharmacyId: 2, pharmacyName: '薬局A', requestText: '改善要望', openclawStatus: 'pending_handoff', openclawThreadId: null, openclawSummary: null, createdAt: '2026-02-01', updatedAt: '2026-02-01' },
+    ];
+
+    mocks.db.select
+      .mockImplementationOnce(() => {
+        throw missingSchemaError;
+      })
+      .mockImplementationOnce(() => createPaginatedQuery(fallbackRows))
+      .mockImplementationOnce(() => createFromQuery([{ count: 1 }]));
+
+    const response = await request(app)
+      .get('/api/admin/requests');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0]).toEqual(expect.objectContaining({
+      id: 1,
+      workflowStatus: null,
+      latestSummary: null,
+      branchName: null,
+      prUrl: null,
+      prNumber: null,
+    }));
   });
 });
 

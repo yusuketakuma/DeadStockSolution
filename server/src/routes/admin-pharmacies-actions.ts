@@ -22,6 +22,7 @@ import {
 } from '../services/openclaw-service';
 import {
   mapOpenClawStatusToWorkflowStatus,
+  isMissingOpenClawSchemaError,
   updateOpenClawWorkItem,
 } from '../services/openclaw-thread-service';
 import {
@@ -274,18 +275,50 @@ router.post('/requests/:id/handoff', adminWriteLimiter, async (req: AuthRequest,
     const requestId = parseIdOrBadRequest(res, req.params.id);
     if (!requestId) return;
 
-    const [requestRow] = await db.select({
-      id: userRequests.id,
-      pharmacyId: userRequests.pharmacyId,
-      requestText: userRequests.requestText,
-      openclawStatus: userRequests.openclawStatus,
-      openclawThreadId: userRequests.openclawThreadId,
-      workflowStatus: openclawWorkItems.workflowStatus,
-    })
-      .from(userRequests)
-      .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
-      .where(eq(userRequests.id, requestId))
-      .limit(1);
+    let requestRows: Array<{
+      id: number;
+      pharmacyId: number;
+      requestText: string;
+      openclawStatus: string | null;
+      openclawThreadId: string | null;
+      workflowStatus: string | null;
+    }>;
+
+    try {
+      requestRows = await db.select({
+        id: userRequests.id,
+        pharmacyId: userRequests.pharmacyId,
+        requestText: userRequests.requestText,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+        workflowStatus: openclawWorkItems.workflowStatus,
+      })
+        .from(userRequests)
+        .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+        .where(eq(userRequests.id, requestId))
+        .limit(1);
+    } catch (err) {
+      if (!isMissingOpenClawSchemaError(err)) {
+        throw err;
+      }
+
+      requestRows = await db.select({
+        id: userRequests.id,
+        pharmacyId: userRequests.pharmacyId,
+        requestText: userRequests.requestText,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+      })
+        .from(userRequests)
+        .where(eq(userRequests.id, requestId))
+        .limit(1)
+        .then((fallbackRows) => fallbackRows.map((row) => ({
+          ...row,
+          workflowStatus: null,
+        })));
+    }
+
+    const [requestRow] = requestRows;
 
     if (!requestRow) {
       res.status(404).json({ error: '要望が見つかりません' });

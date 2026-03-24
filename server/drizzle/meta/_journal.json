@@ -169,6 +169,20 @@
       "when": 1774346400000,
       "tag": "0038_dds_timestamptz_fix",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1774346700000,
+      "tag": "0039_user_request_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1774346800000,
+      "tag": "0040_openclaw_runtime_tables",
+      "breakpoints": true
     }
   ]
 }

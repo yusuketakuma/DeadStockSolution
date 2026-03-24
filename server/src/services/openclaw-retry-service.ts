@@ -7,6 +7,8 @@ import { handoffToOpenClaw } from './openclaw-service';
 
 interface PostgresErrorLike {
   code?: string;
+  message?: unknown;
+  cause?: unknown;
 }
 
 export interface OpenClawRetryQueueSnapshot {
@@ -46,8 +48,47 @@ const EMPTY_PROCESS_RESULT: ProcessOpenClawRetriesResult = {
   skipped: 0,
 };
 
+const OPENCLAW_RETRY_SCHEMA_TOKENS = [
+  'openclaw_retry_jobs',
+  'attempt_count',
+  'max_attempts',
+  'next_retry_at',
+  'last_attempt_at',
+  'trigger_reason',
+  'completed_at',
+];
+
+function extractErrorCode(err: unknown): string | null {
+  if (!err || typeof err !== 'object') return null;
+  const code = (err as PostgresErrorLike).code;
+  if (typeof code === 'string' && code.trim().length > 0) {
+    return code;
+  }
+  return extractErrorCode((err as PostgresErrorLike).cause);
+}
+
+function findErrorChainMatch(err: unknown, predicate: (message: string) => boolean): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const message = String((err as PostgresErrorLike).message ?? '').toLowerCase();
+  if (message && predicate(message)) {
+    return true;
+  }
+  return findErrorChainMatch((err as PostgresErrorLike).cause, predicate);
+}
+
+export function isMissingOpenClawRetrySchemaError(err: unknown): err is PostgresErrorLike {
+  const code = extractErrorCode(err);
+  if (code === '42P01') {
+    return true;
+  }
+  if (code === '42703') {
+    return findErrorChainMatch(err, (message) => OPENCLAW_RETRY_SCHEMA_TOKENS.some((token) => message.includes(token)));
+  }
+  return false;
+}
+
 function isUndefinedTableError(err: unknown): err is PostgresErrorLike {
-  return typeof err === 'object' && err !== null && (err as PostgresErrorLike).code === '42P01';
+  return isMissingOpenClawRetrySchemaError(err) && extractErrorCode(err) === '42P01';
 }
 
 function nowIso(): string {

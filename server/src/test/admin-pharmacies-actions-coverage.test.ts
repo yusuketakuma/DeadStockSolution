@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   buildProposalTimeline: vi.fn(),
   fetchProposalTimelineActionRows: vi.fn(),
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  isMissingOpenClawSchemaError: vi.fn(),
   updateOpenClawWorkItem: vi.fn(),
 }));
 
@@ -56,6 +57,7 @@ vi.mock('../services/proposal-timeline-service', () => ({
 
 vi.mock('../services/openclaw-thread-service', () => ({
   mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
   updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
 }));
 
@@ -104,6 +106,9 @@ describe('admin-pharmacies-actions routes — coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
+    mocks.isMissingOpenClawSchemaError.mockImplementation((err: unknown) => (
+      typeof err === 'object' && err !== null && (err as { code?: string }).code === '42P01'
+    ));
   });
 
   describe('POST /messages', () => {

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   buildProposalTimeline: vi.fn(),
   fetchProposalTimelineActionRows: vi.fn(),
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  isMissingOpenClawSchemaError: vi.fn(),
   updateOpenClawWorkItem: vi.fn(),
 }));
 
@@ -50,6 +51,7 @@ vi.mock('../services/proposal-timeline-service', () => ({
 
 vi.mock('../services/openclaw-thread-service', () => ({
   mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
   updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
 }));
 
@@ -151,6 +153,9 @@ describe('admin-pharmacies-actions ultra coverage', () => {
     mocks.writeLog.mockReturnValue(undefined);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
     mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
+    mocks.isMissingOpenClawSchemaError.mockImplementation((err: unknown) => (
+      typeof err === 'object' && err !== null && (err as { code?: string }).code === '42P01'
+    ));
   });
 
   describe('GET /exchanges', () => {

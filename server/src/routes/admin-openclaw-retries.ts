@@ -4,7 +4,10 @@ import { db } from '../config/database';
 import { openclawRetryJobs, userRequests, pharmacies } from '../db/schema';
 import { AuthRequest } from '../types';
 import { handleAdminError, parseListPagination, sendPaginated } from './admin-utils';
-import { getOpenClawRetryQueueSnapshot } from '../services/openclaw-retry-service';
+import {
+  getOpenClawRetryQueueSnapshot,
+  isMissingOpenClawRetrySchemaError,
+} from '../services/openclaw-retry-service';
 
 const router = Router();
 
@@ -29,33 +32,51 @@ router.get('/openclaw-retries', async (req: AuthRequest, res: Response) => {
 
     const [snapshot, rows, [totalRow]] = await Promise.all([
       getOpenClawRetryQueueSnapshot(),
-      db.select({
-        id: openclawRetryJobs.id,
-        requestId: openclawRetryJobs.requestId,
-        pharmacyId: openclawRetryJobs.pharmacyId,
-        pharmacyName: pharmacies.name,
-        status: openclawRetryJobs.status,
-        attemptCount: openclawRetryJobs.attemptCount,
-        maxAttempts: openclawRetryJobs.maxAttempts,
-        nextRetryAt: openclawRetryJobs.nextRetryAt,
-        lastAttemptAt: openclawRetryJobs.lastAttemptAt,
-        completedAt: openclawRetryJobs.completedAt,
-        lastError: openclawRetryJobs.lastError,
-        triggerReason: openclawRetryJobs.triggerReason,
-        createdAt: openclawRetryJobs.createdAt,
-        updatedAt: openclawRetryJobs.updatedAt,
-        requestText: userRequests.requestText,
-      })
-        .from(openclawRetryJobs)
-        .innerJoin(userRequests, eq(openclawRetryJobs.requestId, userRequests.id))
-        .innerJoin(pharmacies, eq(openclawRetryJobs.pharmacyId, pharmacies.id))
-        .where(whereClause)
-        .orderBy(desc(openclawRetryJobs.updatedAt))
-        .limit(limit)
-        .offset(offset),
-      db.select({ value: count() })
-        .from(openclawRetryJobs)
-        .where(whereClause),
+      (async () => {
+        try {
+          return await db.select({
+            id: openclawRetryJobs.id,
+            requestId: openclawRetryJobs.requestId,
+            pharmacyId: openclawRetryJobs.pharmacyId,
+            pharmacyName: pharmacies.name,
+            status: openclawRetryJobs.status,
+            attemptCount: openclawRetryJobs.attemptCount,
+            maxAttempts: openclawRetryJobs.maxAttempts,
+            nextRetryAt: openclawRetryJobs.nextRetryAt,
+            lastAttemptAt: openclawRetryJobs.lastAttemptAt,
+            completedAt: openclawRetryJobs.completedAt,
+            lastError: openclawRetryJobs.lastError,
+            triggerReason: openclawRetryJobs.triggerReason,
+            createdAt: openclawRetryJobs.createdAt,
+            updatedAt: openclawRetryJobs.updatedAt,
+            requestText: userRequests.requestText,
+          })
+            .from(openclawRetryJobs)
+            .innerJoin(userRequests, eq(openclawRetryJobs.requestId, userRequests.id))
+            .innerJoin(pharmacies, eq(openclawRetryJobs.pharmacyId, pharmacies.id))
+            .where(whereClause)
+            .orderBy(desc(openclawRetryJobs.updatedAt))
+            .limit(limit)
+            .offset(offset);
+        } catch (err) {
+          if (!isMissingOpenClawRetrySchemaError(err)) {
+            throw err;
+          }
+          return [];
+        }
+      })(),
+      (async () => {
+        try {
+          return await db.select({ value: count() })
+            .from(openclawRetryJobs)
+            .where(whereClause);
+        } catch (err) {
+          if (!isMissingOpenClawRetrySchemaError(err)) {
+            throw err;
+          }
+          return [{ value: 0 }];
+        }
+      })(),
     ]);
 
     sendPaginated(res, rows, page, limit, totalRow?.value ?? 0, { stats: snapshot });

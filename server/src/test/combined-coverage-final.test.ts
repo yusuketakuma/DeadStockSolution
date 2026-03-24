@@ -179,15 +179,16 @@ describe('matching-priority-service — parseIsoDate NaN → null (line 22)', ()
 
 describe('routes/upload.ts — GET /status catch block (lines 50-55)', () => {
   it('returns 500 when DB select throws', async () => {
+    vi.resetModules();
     const express = (await import('express')).default;
     const request = (await import('supertest')).default;
 
-    const dbMock = vi.hoisted(() => ({ select: vi.fn() }));
-    vi.mock('../config/database', () => ({ db: dbMock }));
-    vi.mock('../middleware/auth', () => ({
+    const dbMock = { select: vi.fn() };
+    vi.doMock('../config/database', () => ({ db: dbMock }));
+    vi.doMock('../middleware/auth', () => ({
       requireLogin: (_req: unknown, _res: unknown, next: () => void) => next(),
     }));
-    vi.mock('../services/logger', () => ({
+    vi.doMock('../services/logger', () => ({
       logger: {
         debug: vi.fn(),
         info: vi.fn(),
@@ -195,7 +196,7 @@ describe('routes/upload.ts — GET /status catch block (lines 50-55)', () => {
         error: vi.fn(),
       },
     }));
-    vi.mock('drizzle-orm', () => ({
+    vi.doMock('drizzle-orm', () => ({
       eq: vi.fn(() => ({})),
       and: vi.fn(() => ({})),
       inArray: vi.fn(() => ({})),

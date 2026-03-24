@@ -39,6 +39,57 @@ export interface OpenClawConversationContext {
   } | null;
 }
 
+interface ErrorLike {
+  code?: unknown;
+  message?: unknown;
+  cause?: unknown;
+}
+
+const OPENCLAW_SCHEMA_TOKENS = [
+  'openclaw_work_items',
+  'openclaw_request_messages',
+  'workflow_status',
+  'latest_summary',
+  'last_question',
+  'branch_name',
+  'pr_url',
+  'pr_number',
+  'last_error',
+];
+
+function extractErrorCode(err: unknown): string | null {
+  if (!err || typeof err !== 'object') return null;
+  const code = (err as ErrorLike).code;
+  if (typeof code === 'string' && code.trim().length > 0) {
+    return code;
+  }
+  return extractErrorCode((err as ErrorLike).cause);
+}
+
+function findErrorChainMatch(err: unknown, predicate: (message: string) => boolean): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const message = String((err as ErrorLike).message ?? '').toLowerCase();
+  if (message && predicate(message)) {
+    return true;
+  }
+  return findErrorChainMatch((err as ErrorLike).cause, predicate);
+}
+
+function includesOpenClawSchemaToken(err: unknown): boolean {
+  return findErrorChainMatch(err, (message) => OPENCLAW_SCHEMA_TOKENS.some((token) => message.includes(token)));
+}
+
+export function isMissingOpenClawSchemaError(err: unknown): boolean {
+  const code = extractErrorCode(err);
+  if (code === '42P01') {
+    return true;
+  }
+  if (code === '42703') {
+    return includesOpenClawSchemaToken(err);
+  }
+  return includesOpenClawSchemaToken(err);
+}
+
 function toMetadataJson(value?: Record<string, unknown> | null): string | null {
   if (!value || Object.keys(value).length === 0) {
     return null;
@@ -171,9 +222,15 @@ export async function updateOpenClawWorkItem(input: {
   if (input.lastError !== undefined) updatePayload.lastError = input.lastError;
   if (input.metadata !== undefined) updatePayload.metadataJson = toMetadataJson(input.metadata);
 
-  await db.update(openclawWorkItems)
-    .set(updatePayload)
-    .where(eq(openclawWorkItems.requestId, input.requestId));
+  try {
+    await db.update(openclawWorkItems)
+      .set(updatePayload)
+      .where(eq(openclawWorkItems.requestId, input.requestId));
+  } catch (err) {
+    if (!isMissingOpenClawSchemaError(err)) {
+      throw err;
+    }
+  }
 }
 
 export async function recordOpenClawRequestMessage(input: {
@@ -197,17 +254,32 @@ export async function recordOpenClawRequestMessage(input: {
 }
 
 export async function listOpenClawRequestMessages(requestId: number): Promise<OpenClawConversationMessage[]> {
-  const rows = await db.select({
-    id: openclawRequestMessages.id,
-    authorType: openclawRequestMessages.authorType,
-    messageType: openclawRequestMessages.messageType,
-    body: openclawRequestMessages.body,
-    createdAt: openclawRequestMessages.createdAt,
-    metadataJson: openclawRequestMessages.metadataJson,
-  })
-    .from(openclawRequestMessages)
-    .where(eq(openclawRequestMessages.requestId, requestId))
-    .orderBy(asc(openclawRequestMessages.createdAt), asc(openclawRequestMessages.id));
+  let rows: Array<{
+    id: number;
+    authorType: OpenClawMessageAuthorType;
+    messageType: OpenClawMessageType;
+    body: string;
+    createdAt: string | null;
+    metadataJson: string | null;
+  }> = [];
+
+  try {
+    rows = await db.select({
+      id: openclawRequestMessages.id,
+      authorType: openclawRequestMessages.authorType,
+      messageType: openclawRequestMessages.messageType,
+      body: openclawRequestMessages.body,
+      createdAt: openclawRequestMessages.createdAt,
+      metadataJson: openclawRequestMessages.metadataJson,
+    })
+      .from(openclawRequestMessages)
+      .where(eq(openclawRequestMessages.requestId, requestId))
+      .orderBy(asc(openclawRequestMessages.createdAt), asc(openclawRequestMessages.id));
+  } catch (err) {
+    if (!isMissingOpenClawSchemaError(err)) {
+      throw err;
+    }
+  }
 
   return rows.map((row) => ({
     id: row.id,
@@ -220,19 +292,28 @@ export async function listOpenClawRequestMessages(requestId: number): Promise<Op
 }
 
 export async function buildOpenClawConversationContext(requestId: number): Promise<OpenClawConversationContext> {
-  const [workItem] = await db.select({
-    workItemType: openclawWorkItems.workItemType,
-    workflowStatus: openclawWorkItems.workflowStatus,
-    latestSummary: openclawWorkItems.latestSummary,
-    branchName: openclawWorkItems.branchName,
-    prUrl: openclawWorkItems.prUrl,
-    prNumber: openclawWorkItems.prNumber,
-    lastQuestion: openclawWorkItems.lastQuestion,
-    lastError: openclawWorkItems.lastError,
-  })
-    .from(openclawWorkItems)
-    .where(eq(openclawWorkItems.requestId, requestId))
-    .limit(1);
+  let workItem: OpenClawConversationContext['workItem'] = null;
+
+  try {
+    const [row] = await db.select({
+      workItemType: openclawWorkItems.workItemType,
+      workflowStatus: openclawWorkItems.workflowStatus,
+      latestSummary: openclawWorkItems.latestSummary,
+      branchName: openclawWorkItems.branchName,
+      prUrl: openclawWorkItems.prUrl,
+      prNumber: openclawWorkItems.prNumber,
+      lastQuestion: openclawWorkItems.lastQuestion,
+      lastError: openclawWorkItems.lastError,
+    })
+      .from(openclawWorkItems)
+      .where(eq(openclawWorkItems.requestId, requestId))
+      .limit(1);
+    workItem = row ?? null;
+  } catch (err) {
+    if (!isMissingOpenClawSchemaError(err)) {
+      throw err;
+    }
+  }
 
   const messages = await listOpenClawRequestMessages(requestId);
 
