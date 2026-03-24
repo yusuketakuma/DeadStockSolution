@@ -14,6 +14,10 @@ import {
   getUnreadCount,
   pharmacyExists,
 } from '../services/messaging-service';
+import {
+  publishAdminMessagesRefresh,
+  publishMessagesRefresh,
+} from '../services/realtime-service';
 
 const router = Router();
 
@@ -109,6 +113,26 @@ router.post('/', requireLogin, rejectAdmin, uploadOptionalAttachments, async (re
     }
 
     const message = await sendMessage(fromId, toId, body, files);
+    const pharmacyAId = Math.min(fromId, toId);
+    const pharmacyBId = Math.max(fromId, toId);
+    publishMessagesRefresh({
+      pharmacyId: fromId,
+      otherPharmacyId: toId,
+      messageId: message.id,
+      reason: 'message_sent',
+    });
+    publishMessagesRefresh({
+      pharmacyId: toId,
+      otherPharmacyId: fromId,
+      messageId: message.id,
+      reason: 'message_received',
+    });
+    publishAdminMessagesRefresh({
+      pharmacyAId,
+      pharmacyBId,
+      messageId: message.id,
+      reason: 'message_sent',
+    });
     res.status(201).json({ message: 'メッセージを送信しました', data: message });
   } catch (err) {
     logger.error('Send message error', { error: (err as Error).message });
@@ -171,6 +195,25 @@ router.patch('/thread/:pharmacyId/read', requireLogin, rejectAdmin, async (req: 
     }
 
     const markedCount = await markThreadRead(myId, otherId);
+    if (markedCount > 0) {
+      const pharmacyAId = Math.min(myId, otherId);
+      const pharmacyBId = Math.max(myId, otherId);
+      publishMessagesRefresh({
+        pharmacyId: myId,
+        otherPharmacyId: otherId,
+        reason: 'thread_read',
+      });
+      publishMessagesRefresh({
+        pharmacyId: otherId,
+        otherPharmacyId: myId,
+        reason: 'thread_read',
+      });
+      publishAdminMessagesRefresh({
+        pharmacyAId,
+        pharmacyBId,
+        reason: 'thread_read',
+      });
+    }
     res.json({ markedCount });
   } catch (err) {
     logger.error('Mark thread read error', { error: (err as Error).message });

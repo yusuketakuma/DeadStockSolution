@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Badge, Form } from 'react-bootstrap';
 import { api, buildApiUrl } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import AppAlert from '../../components/ui/AppAlert';
+import AttachmentPreviewList from '../../components/ui/AttachmentPreviewList';
 import AppCard from '../../components/ui/AppCard';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
@@ -10,7 +11,10 @@ import InlineLoader from '../../components/ui/InlineLoader';
 import LoadingButton from '../../components/ui/LoadingButton';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
+import { useSseRefresh } from '../../hooks/useSseRefresh';
 import { formatDateTimeJa } from '../../utils/formatters';
+
+const LIVE_REFRESH_INTERVAL_MS = 60_000;
 
 const REPLY_TEMPLATES = [
   '追加情報ありがとうございます。内容を確認して進めます。',
@@ -226,6 +230,40 @@ export default function AdminUserRequestsPage() {
     { errorMessage: 'ユーザーリクエストの取得に失敗しました' },
   );
 
+  const loadRequestDetail = useCallback(async (
+    requestId: number,
+    options: { background?: boolean; signal?: AbortSignal } = {},
+  ) => {
+    const background = options.background ?? false;
+    if (!background) {
+      setDetailLoading(true);
+      setDetailError('');
+    }
+
+    try {
+      const response = await api.get<AdminUserRequestDetailResponse>(`/admin/user-requests/${requestId}`, { signal: options.signal });
+      setDetailError('');
+      setDetail(response);
+      setMeta({
+        category: response.request.category ?? 'improvement',
+        priority: response.request.priority ?? 'normal',
+        assignedAdminId: response.request.assignedAdminId ? String(response.request.assignedAdminId) : '',
+        closeReason: response.request.closeReason ?? '',
+      });
+    } catch (err) {
+      if (options.signal?.aborted) {
+        return;
+      }
+      if (!background) {
+        setDetailError(err instanceof Error ? err.message : '要望詳細の取得に失敗しました');
+      }
+    } finally {
+      if (!options.signal?.aborted && !background) {
+        setDetailLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     void api.get<{ data: Array<{ id: number; name: string }> }>('/admin/user-requests/assignees')
       .then((response) => setAssignees(response.data))
@@ -251,31 +289,10 @@ export default function AdminUserRequestsPage() {
     }
 
     const controller = new AbortController();
-    setDetailLoading(true);
-    setDetailError('');
-    void api.get<AdminUserRequestDetailResponse>(`/admin/user-requests/${selectedRequestId}`, { signal: controller.signal })
-      .then((response) => {
-        setDetail(response);
-        setMeta({
-          category: response.request.category ?? 'improvement',
-          priority: response.request.priority ?? 'normal',
-          assignedAdminId: response.request.assignedAdminId ? String(response.request.assignedAdminId) : '',
-          closeReason: response.request.closeReason ?? '',
-        });
-      })
-      .catch((err) => {
-        if (!controller.signal.aborted) {
-          setDetailError(err instanceof Error ? err.message : '要望詳細の取得に失敗しました');
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setDetailLoading(false);
-        }
-      });
+    void loadRequestDetail(selectedRequestId, { signal: controller.signal });
 
     return () => controller.abort();
-  }, [selectedRequestId]);
+  }, [loadRequestDetail, selectedRequestId]);
 
   useEffect(() => {
     if (!filtersInitializedRef.current) {
@@ -291,26 +308,23 @@ export default function AdminUserRequestsPage() {
     setPage(1);
   }, [categoryFilter, fetchPage, onlyUnread, page, priorityFilter, setPage, statusFilter, waitingOnFilter]);
 
-  const refreshListAndDetail = async () => {
+  const refreshListAndDetail = async (options: { background?: boolean } = {}) => {
     await fetchPage(page, { force: true });
     if (selectedRequestId) {
-      setDetailLoading(true);
-      try {
-        const response = await api.get<AdminUserRequestDetailResponse>(`/admin/user-requests/${selectedRequestId}`);
-        setDetail(response);
-        setMeta({
-          category: response.request.category ?? 'improvement',
-          priority: response.request.priority ?? 'normal',
-          assignedAdminId: response.request.assignedAdminId ? String(response.request.assignedAdminId) : '',
-          closeReason: response.request.closeReason ?? '',
-        });
-      } catch (err) {
-        setDetailError(err instanceof Error ? err.message : '要望詳細の取得に失敗しました');
-      } finally {
-        setDetailLoading(false);
-      }
+      await loadRequestDetail(selectedRequestId, { background: options.background });
     }
   };
+
+  const { connected: realtimeConnected } = useSseRefresh({
+    enabled: true,
+    streamPath: '/realtime/stream?topics=admin_requests',
+    events: ['admin_requests.refresh'],
+    onRefresh: async () => {
+      await refreshListAndDetail({ background: true });
+    },
+    fallbackIntervalMs: LIVE_REFRESH_INTERVAL_MS,
+    minFetchIntervalMs: 4_000,
+  });
 
   const handleSaveMeta = async () => {
     if (!selectedRequestId) return;
@@ -409,6 +423,9 @@ export default function AdminUserRequestsPage() {
           <h4 className="page-title mb-0">ユーザーリクエスト管理</h4>
           <div className="text-muted small">一覧・担当・内部メモ・返信を 1 画面で追える運用レイアウトです。</div>
         </div>
+        <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
+          自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
+        </Badge>
       </div>
       {actionMessage && <AppAlert variant="success" dismissible onClose={() => setActionMessage('')}>{actionMessage}</AppAlert>}
       {actionError && <AppAlert variant="danger" dismissible onClose={() => setActionError('')}>{actionError}</AppAlert>}
@@ -702,21 +719,10 @@ export default function AdminUserRequestsPage() {
                             ) : (
                               <div className="small text-muted">添付ファイル</div>
                             )}
-                            {message.attachments.length > 0 && (
-                              <div className="d-flex flex-column gap-1 mt-2">
-                                {message.attachments.map((attachment) => (
-                                  <a
-                                    key={attachment.id}
-                                    href={attachmentUrl(attachment.id)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="small text-decoration-none"
-                                  >
-                                    添付: {attachment.fileName}
-                                  </a>
-                                ))}
-                              </div>
-                            )}
+                            <AttachmentPreviewList
+                              attachments={message.attachments}
+                              getDownloadUrl={attachmentUrl}
+                            />
                           </div>
                         ))}
                       </div>

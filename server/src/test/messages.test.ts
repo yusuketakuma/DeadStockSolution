@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   markThreadRead: vi.fn(),
   getUnreadCount: vi.fn(),
   pharmacyExists: vi.fn(),
+  publishMessagesRefresh: vi.fn(),
+  publishAdminMessagesRefresh: vi.fn(),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -37,6 +39,11 @@ vi.mock('../services/messaging-service', () => ({
 
 vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('../services/realtime-service', () => ({
+  publishMessagesRefresh: mocks.publishMessagesRefresh,
+  publishAdminMessagesRefresh: mocks.publishAdminMessagesRefresh,
 }));
 
 let app: express.Express;
@@ -77,6 +84,13 @@ describe('POST /messages', () => {
     expect(res.body.message).toBe('メッセージを送信しました');
     expect(res.body.data.id).toBe(10);
     expect(mocks.sendMessage).toHaveBeenCalledWith(1, 2, 'こんにちは', []);
+    expect(mocks.publishMessagesRefresh).toHaveBeenCalledTimes(2);
+    expect(mocks.publishAdminMessagesRefresh).toHaveBeenCalledWith({
+      pharmacyAId: 1,
+      pharmacyBId: 2,
+      messageId: 10,
+      reason: 'message_sent',
+    });
   });
 
   it('should return 400 when body is empty', async () => {
@@ -260,6 +274,12 @@ describe('PATCH /messages/thread/:pharmacyId/read', () => {
     expect(res.status).toBe(200);
     expect(res.body.markedCount).toBe(5);
     expect(mocks.markThreadRead).toHaveBeenCalledWith(1, 2);
+    expect(mocks.publishMessagesRefresh).toHaveBeenCalledTimes(2);
+    expect(mocks.publishAdminMessagesRefresh).toHaveBeenCalledWith({
+      pharmacyAId: 1,
+      pharmacyBId: 2,
+      reason: 'thread_read',
+    });
   });
 
   it('should return 0 markedCount when nothing to mark', async () => {
@@ -269,6 +289,8 @@ describe('PATCH /messages/thread/:pharmacyId/read', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.markedCount).toBe(0);
+    expect(mocks.publishMessagesRefresh).not.toHaveBeenCalled();
+    expect(mocks.publishAdminMessagesRefresh).not.toHaveBeenCalled();
   });
 
   it('should return 400 for invalid pharmacyId', async () => {

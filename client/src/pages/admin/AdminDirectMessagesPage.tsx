@@ -1,15 +1,19 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Col, Row } from 'react-bootstrap';
 import { api, buildApiUrl } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import AppCard from '../../components/ui/AppCard';
+import AttachmentPreviewList from '../../components/ui/AttachmentPreviewList';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppField from '../../components/ui/AppField';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import InlineLoader from '../../components/ui/InlineLoader';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
+import { useSseRefresh } from '../../hooks/useSseRefresh';
 import { formatDateTimeJa } from '../../utils/formatters';
+
+const LIVE_REFRESH_INTERVAL_MS = 60_000;
 
 interface AdminDirectMessageThread {
   pharmacyAId: number;
@@ -67,7 +71,8 @@ interface AdminDirectMessageDetailResponse {
 }
 
 function buildThreadKey(pharmacyAId: number, pharmacyBId: number): string {
-  return `${pharmacyAId}:${pharmacyBId}`;
+  const sorted = [pharmacyAId, pharmacyBId].sort((left, right) => left - right);
+  return `${sorted[0]}:${sorted[1]}`;
 }
 
 export default function AdminDirectMessagesPage() {
@@ -103,6 +108,47 @@ export default function AdminDirectMessagesPage() {
     { errorMessage: 'ユーザー間メッセージ一覧の取得に失敗しました' },
   );
 
+  const fetchThreadDetail = useCallback(async (
+    threadKey: string,
+    targetPage: number,
+    options: { background?: boolean; signal?: AbortSignal } = {},
+  ) => {
+    const [pharmacyAIdText, pharmacyBIdText] = threadKey.split(':');
+    const pharmacyAId = Number(pharmacyAIdText);
+    const pharmacyBId = Number(pharmacyBIdText);
+    if (!Number.isInteger(pharmacyAId) || !Number.isInteger(pharmacyBId)) {
+      setThreadError('対象スレッドの識別子が不正です');
+      return;
+    }
+
+    const background = options.background ?? false;
+    if (!background) {
+      setThreadLoading(true);
+      setThreadError('');
+    }
+
+    try {
+      const response = await api.get<AdminDirectMessageDetailResponse>(
+        `/admin/direct-messages/thread?pharmacyAId=${pharmacyAId}&pharmacyBId=${pharmacyBId}&page=${targetPage}&limit=100`,
+        { signal: options.signal },
+      );
+      setThreadError('');
+      setThreadResponse(response);
+    } catch (err) {
+      if (options.signal?.aborted) {
+        return;
+      }
+      if (!background) {
+        setThreadError(err instanceof Error ? err.message : 'ユーザー間メッセージ履歴の取得に失敗しました');
+        setThreadResponse(null);
+      }
+    } finally {
+      if (!options.signal?.aborted && !background) {
+        setThreadLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (threads.length === 0) {
       setSelectedThreadKey(null);
@@ -125,41 +171,28 @@ export default function AdminDirectMessagesPage() {
       return;
     }
 
-    const [pharmacyAIdText, pharmacyBIdText] = selectedThreadKey.split(':');
-    const pharmacyAId = Number(pharmacyAIdText);
-    const pharmacyBId = Number(pharmacyBIdText);
-    if (!Number.isInteger(pharmacyAId) || !Number.isInteger(pharmacyBId)) {
-      setThreadError('対象スレッドの識別子が不正です');
-      return;
-    }
-
     const controller = new AbortController();
-    setThreadLoading(true);
-    setThreadError('');
-    void api.get<AdminDirectMessageDetailResponse>(
-      `/admin/direct-messages/thread?pharmacyAId=${pharmacyAId}&pharmacyBId=${pharmacyBId}&page=${threadPage}&limit=100`,
-      { signal: controller.signal },
-    )
-      .then((response) => {
-        setThreadResponse(response);
-      })
-      .catch((err) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        setThreadError(err instanceof Error ? err.message : 'ユーザー間メッセージ履歴の取得に失敗しました');
-        setThreadResponse(null);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setThreadLoading(false);
-        }
-      });
-
+    void fetchThreadDetail(selectedThreadKey, threadPage, { signal: controller.signal });
     return () => {
       controller.abort();
     };
-  }, [selectedThreadKey, threadPage, threadReloadKey]);
+  }, [fetchThreadDetail, selectedThreadKey, threadPage, threadReloadKey]);
+
+  const refreshThreadsAndDetail = useCallback(async () => {
+    await fetchPage(page, { force: true });
+    if (selectedThreadKey) {
+      await fetchThreadDetail(selectedThreadKey, threadPage, { background: true });
+    }
+  }, [fetchPage, fetchThreadDetail, page, selectedThreadKey, threadPage]);
+
+  const { connected: realtimeConnected } = useSseRefresh({
+    enabled: true,
+    streamPath: '/realtime/stream?topics=admin_messages',
+    events: ['admin_messages.refresh'],
+    onRefresh: refreshThreadsAndDetail,
+    fallbackIntervalMs: LIVE_REFRESH_INTERVAL_MS,
+    minFetchIntervalMs: 4_000,
+  });
 
   const orderedMessages = useMemo(() => {
     if (!threadResponse) {
@@ -189,6 +222,9 @@ export default function AdminDirectMessagesPage() {
           <h4 className="page-title mb-0">ユーザー間メッセージ確認</h4>
           <div className="text-muted small">tablet までは 1 カラム、広い画面では一覧と会話を横に並べます。</div>
         </div>
+        <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
+          自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
+        </Badge>
       </div>
 
       <form className="mb-3" onSubmit={handleSearch}>
@@ -315,21 +351,10 @@ export default function AdminDirectMessagesPage() {
                               ) : (
                                 <div className="small text-muted">添付ファイル</div>
                               )}
-                              {attachments.length > 0 && (
-                                <div className="d-flex flex-column gap-1 mt-2">
-                                  {attachments.map((attachment) => (
-                                    <a
-                                      key={attachment.id}
-                                      href={attachmentUrl(attachment.id)}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="small text-decoration-none"
-                                    >
-                                      添付: {attachment.fileName}
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
+                              <AttachmentPreviewList
+                                attachments={attachments}
+                                getDownloadUrl={attachmentUrl}
+                              />
                             </div>
                           );
                         })}

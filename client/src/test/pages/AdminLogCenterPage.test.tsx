@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LogEntriesView } from '../../pages/admin/components/AdminLogCenterLogEntriesView';
 import { LogDetailModal, getActionStatusAlertVariant } from '../../pages/admin/components/AdminLogCenterLogDetailModal';
@@ -112,5 +113,28 @@ describe('AdminLogCenterPage feedback helpers', () => {
 
     expect(screen.getByTitle(longCodeLocation)).toHaveClass('dl-log-center-code');
     expect(screen.getByText(longDetail).closest('pre')).toHaveClass('dl-log-center-detail-json');
+  });
+
+  it('shows active filters and can clear local filter controls', async () => {
+    render(<LogEntriesView sourceFilter="system_events" insights={null} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/ソース: システムイベント/)).toBeInTheDocument();
+    });
+
+    await userEvent.selectOptions(screen.getByLabelText('レベルで絞り込み'), 'error');
+    await userEvent.type(screen.getByPlaceholderText('メッセージ / カテゴリ / エラーコードで検索'), 'ERR_TEST');
+
+    await waitFor(() => {
+      expect(screen.getByText('レベル: Error')).toBeInTheDocument();
+      expect(screen.getByText('検索: ERR_TEST')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: '条件をクリア' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('レベル: Error')).not.toBeInTheDocument();
+      expect(screen.queryByText('検索: ERR_TEST')).not.toBeInTheDocument();
+    });
   });
 });

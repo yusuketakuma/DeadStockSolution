@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ORIGINAL_LOG_LEVEL = process.env.LOG_LEVEL;
 const ORIGINAL_LOGGER_LAZY_PAYLOAD_ENABLED = process.env.LOGGER_LAZY_PAYLOAD_ENABLED;
+const ORIGINAL_LOGGER_ENABLE_TEST_OUTPUT = process.env.LOGGER_ENABLE_TEST_OUTPUT;
 
 async function loadLogger() {
   vi.resetModules();
@@ -24,6 +25,12 @@ describe('logger feature flags', () => {
       delete process.env.LOGGER_LAZY_PAYLOAD_ENABLED;
     } else {
       process.env.LOGGER_LAZY_PAYLOAD_ENABLED = ORIGINAL_LOGGER_LAZY_PAYLOAD_ENABLED;
+    }
+
+    if (ORIGINAL_LOGGER_ENABLE_TEST_OUTPUT === undefined) {
+      delete process.env.LOGGER_ENABLE_TEST_OUTPUT;
+    } else {
+      process.env.LOGGER_ENABLE_TEST_OUTPUT = ORIGINAL_LOGGER_ENABLE_TEST_OUTPUT;
     }
   });
 

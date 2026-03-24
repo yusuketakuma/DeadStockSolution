@@ -5,6 +5,7 @@ async function importLoggerWithEnv(env: Record<string, string | undefined>) {
   const original = {
     LOG_LEVEL: process.env.LOG_LEVEL,
     LOGGER_LAZY_PAYLOAD_ENABLED: process.env.LOGGER_LAZY_PAYLOAD_ENABLED,
+    LOGGER_ENABLE_TEST_OUTPUT: process.env.LOGGER_ENABLE_TEST_OUTPUT,
   };
 
   if (env.LOG_LEVEL === undefined) {
@@ -17,6 +18,12 @@ async function importLoggerWithEnv(env: Record<string, string | undefined>) {
     delete process.env.LOGGER_LAZY_PAYLOAD_ENABLED;
   } else {
     process.env.LOGGER_LAZY_PAYLOAD_ENABLED = env.LOGGER_LAZY_PAYLOAD_ENABLED;
+  }
+
+  if (env.LOGGER_ENABLE_TEST_OUTPUT === undefined) {
+    delete process.env.LOGGER_ENABLE_TEST_OUTPUT;
+  } else {
+    process.env.LOGGER_ENABLE_TEST_OUTPUT = env.LOGGER_ENABLE_TEST_OUTPUT;
   }
 
   vi.resetModules();
@@ -34,6 +41,12 @@ async function importLoggerWithEnv(env: Record<string, string | undefined>) {
     process.env.LOGGER_LAZY_PAYLOAD_ENABLED = original.LOGGER_LAZY_PAYLOAD_ENABLED;
   }
 
+  if (original.LOGGER_ENABLE_TEST_OUTPUT === undefined) {
+    delete process.env.LOGGER_ENABLE_TEST_OUTPUT;
+  } else {
+    process.env.LOGGER_ENABLE_TEST_OUTPUT = original.LOGGER_ENABLE_TEST_OUTPUT;
+  }
+
   return mod.logger;
 }
 
@@ -45,6 +58,7 @@ describe('logger', () => {
   afterEach(() => {
     delete process.env.LOG_LEVEL;
     delete process.env.LOGGER_LAZY_PAYLOAD_ENABLED;
+    delete process.env.LOGGER_ENABLE_TEST_OUTPUT;
   });
 
   it('outputs JSON to stdout for info', () => {
@@ -125,5 +139,26 @@ describe('logger', () => {
     const output = JSON.parse((stdoutSpy.mock.calls[0][0] as string).trim());
     expect(output.level).toBe('debug');
     expect(output.enabled).toBe(true);
+  });
+
+  it('suppresses test output when write stream is not mocked', async () => {
+    const envLogger = await importLoggerWithEnv({
+      LOG_LEVEL: 'info',
+      LOGGER_ENABLE_TEST_OUTPUT: 'false',
+    });
+
+    const originalWrite = process.stdout.write;
+    let called = false;
+    process.stdout.write = ((...args: Parameters<typeof process.stdout.write>) => {
+      called = true;
+      return originalWrite.apply(process.stdout, args);
+    }) as typeof process.stdout.write;
+
+    try {
+      envLogger.info('suppressed in tests');
+      expect(called).toBe(false);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
   });
 });

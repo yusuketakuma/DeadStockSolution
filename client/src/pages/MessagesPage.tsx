@@ -17,12 +17,14 @@ import {
   sendMessage,
   markThreadRead,
   type Message,
-  type MessageAttachment,
   type MessageThread,
 } from '../api/messages';
 import { notifyMessageNavUpdated } from '../lib/message-nav-events';
+import { useSseRefresh } from '../hooks/useSseRefresh';
+import AttachmentPreviewList from '../components/ui/AttachmentPreviewList';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
+const LIVE_REFRESH_INTERVAL_MS = 60_000;
 const QUICK_REPLY_TEMPLATES = [
   'ありがとうございます。内容を確認して折り返します。',
   '在庫状況を確認中です。少々お待ちください。',
@@ -60,28 +62,6 @@ function threadStatusBadge(thread: MessageThread) {
   return null;
 }
 
-function AttachmentLinks({ attachments }: { attachments: MessageAttachment[] }) {
-  if (attachments.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="d-flex flex-column gap-1 mt-2">
-      {attachments.map((attachment) => (
-        <a
-          key={attachment.id}
-          href={getMessageAttachmentDownloadUrl(attachment.id)}
-          target="_blank"
-          rel="noreferrer"
-          className="small text-decoration-none"
-        >
-          添付: {attachment.fileName} ({Math.max(1, Math.round(attachment.fileSize / 1024))}KB)
-        </a>
-      ))}
-    </div>
-  );
-}
-
 export default function MessagesPage() {
   const { user } = useAuth();
   const myPharmacyId = user?.id ?? 0;
@@ -106,16 +86,27 @@ export default function MessagesPage() {
   const [showDetail, setShowDetail] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const loadThreads = useCallback(async (nextSearch: string) => {
-    setThreadsLoading(true);
-    setThreadsError(null);
+  const loadThreads = useCallback(async (
+    nextSearch: string,
+    options: { background?: boolean } = {},
+  ) => {
+    const background = options.background ?? false;
+    if (!background) {
+      setThreadsLoading(true);
+      setThreadsError(null);
+    }
     try {
       const res = await fetchThreads(nextSearch || undefined);
+      setThreadsError(null);
       setThreads(res.data);
     } catch (err) {
-      setThreadsError(err instanceof Error ? err.message : 'スレッド一覧の取得に失敗しました');
+      if (!background) {
+        setThreadsError(err instanceof Error ? err.message : 'スレッド一覧の取得に失敗しました');
+      }
     } finally {
-      setThreadsLoading(false);
+      if (!background) {
+        setThreadsLoading(false);
+      }
     }
   }, []);
 
@@ -123,21 +114,49 @@ export default function MessagesPage() {
     void loadThreads(search);
   }, [loadThreads, search]);
 
-  const loadMessages = useCallback(async (pharmacyId: number) => {
-    setMessagesLoading(true);
-    setMessagesError(null);
+  const loadMessages = useCallback(async (
+    pharmacyId: number,
+    options: { background?: boolean } = {},
+  ) => {
+    const background = options.background ?? false;
+    if (!background) {
+      setMessagesLoading(true);
+      setMessagesError(null);
+    }
     try {
       const res = await fetchThread(pharmacyId);
       const sorted = [...res.data].sort(
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
+      setMessagesError(null);
       setMessages(sorted);
     } catch (err) {
-      setMessagesError(err instanceof Error ? err.message : 'メッセージの取得に失敗しました');
+      if (!background) {
+        setMessagesError(err instanceof Error ? err.message : 'メッセージの取得に失敗しました');
+      }
     } finally {
-      setMessagesLoading(false);
+      if (!background) {
+        setMessagesLoading(false);
+      }
     }
   }, []);
+
+  const refreshThreadsAndMessages = useCallback(async () => {
+    await loadThreads(search, { background: true });
+    if (selectedPharmacyId) {
+      await loadMessages(selectedPharmacyId, { background: true });
+    }
+    notifyMessageNavUpdated();
+  }, [loadMessages, loadThreads, search, selectedPharmacyId]);
+
+  const { connected: realtimeConnected } = useSseRefresh({
+    enabled: true,
+    streamPath: '/realtime/stream?topics=messages',
+    events: ['messages.refresh'],
+    onRefresh: refreshThreadsAndMessages,
+    fallbackIntervalMs: LIVE_REFRESH_INTERVAL_MS,
+    minFetchIntervalMs: 4_000,
+  });
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -355,7 +374,10 @@ export default function MessagesPage() {
                       添付ファイル
                     </div>
                   )}
-                  <AttachmentLinks attachments={message.attachments} />
+                  <AttachmentPreviewList
+                    attachments={message.attachments}
+                    getDownloadUrl={getMessageAttachmentDownloadUrl}
+                  />
                   <div
                     className={`text-end mt-1 ${isMine ? 'text-white-50' : 'text-muted'}`}
                     style={{ fontSize: '0.7rem' }}
@@ -441,6 +463,9 @@ export default function MessagesPage() {
           <h4 className="page-title mb-0">薬局間メッセージ</h4>
           <div className="text-muted small">一覧と会話を device 幅に合わせて切り替えます。</div>
         </div>
+        <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
+          自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
+        </Badge>
       </div>
 
       <ScrollArea>

@@ -4,6 +4,7 @@ import { api, buildApiUrl } from '../api/client';
 import AppAlert from '../components/ui/AppAlert';
 import AppCard from '../components/ui/AppCard';
 import AppControl from '../components/ui/AppControl';
+import AttachmentPreviewList from '../components/ui/AttachmentPreviewList';
 import InlineLoader from '../components/ui/InlineLoader';
 import LoadingButton from '../components/ui/LoadingButton';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
@@ -264,7 +265,7 @@ export default function MyRequestsPage() {
     return () => window.clearTimeout(timer);
   }, [newRequestText, showCreateForm]);
 
-  useSseRefresh({
+  const { connected: realtimeConnected } = useSseRefresh({
     enabled: true,
     streamPath: '/realtime/stream?topics=requests',
     events: ['requests.refresh'],
@@ -377,6 +378,9 @@ export default function MyRequestsPage() {
           <h4 className="page-title mb-0">ユーザーリクエストとバグ報告</h4>
           <div className="text-muted small">新規要望の登録と、OpenClaw・管理者とのやり取りをここで追えます。</div>
         </div>
+        <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
+          自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
+        </Badge>
       </div>
       {message && <AppAlert variant="success" dismissible onClose={() => setMessage('')}>{message}</AppAlert>}
       {error && <AppAlert variant="danger" dismissible onClose={() => setError('')}>{error}</AppAlert>}
@@ -616,21 +620,10 @@ export default function MyRequestsPage() {
                             ) : (
                               <div className="small text-muted">添付ファイル</div>
                             )}
-                            {attachments.length > 0 && (
-                              <div className="d-flex flex-column gap-1 mt-2">
-                                {attachments.map((attachment) => (
-                                  <a
-                                    key={attachment.id}
-                                    href={attachmentUrl(attachment.id)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="small text-decoration-none"
-                                  >
-                                    添付: {attachment.fileName}
-                                  </a>
-                                ))}
-                              </div>
-                            )}
+                            <AttachmentPreviewList
+                              attachments={attachments}
+                              getDownloadUrl={attachmentUrl}
+                            />
                           </div>
                         );
                       })}

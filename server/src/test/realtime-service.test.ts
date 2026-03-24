@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Response } from 'express';
 import {
   getRealtimeSubscriberCount,
+  publishAdminMessagesRefresh,
   publishAdminRequestsRefresh,
+  publishMessagesRefresh,
   publishRequestsRefresh,
   publishTimelineRefresh,
   subscribeRealtimeClient,
 } from '../services/realtime-service';
+import { logger } from '../services/logger';
 
 function createResponseMock(options?: { write?: ReturnType<typeof vi.fn> }) {
   const handlers = new Map<string, () => void>();
@@ -100,6 +103,52 @@ describe('realtime-service', () => {
     admin.handlers.get('close')?.();
   });
 
+  it('publishes message events to matching pharmacies and admin message events only to admins', () => {
+    const sender = createResponseMock();
+    const recipient = createResponseMock();
+    const admin = createResponseMock();
+
+    subscribeRealtimeClient({
+      res: sender.res,
+      pharmacyId: 3,
+      isAdmin: false,
+      topics: ['messages'],
+    });
+    subscribeRealtimeClient({
+      res: recipient.res,
+      pharmacyId: 9,
+      isAdmin: false,
+      topics: ['messages'],
+    });
+    subscribeRealtimeClient({
+      res: admin.res,
+      pharmacyId: 99,
+      isAdmin: true,
+      topics: ['admin_messages'],
+    });
+
+    publishMessagesRefresh({
+      pharmacyId: 9,
+      otherPharmacyId: 3,
+      messageId: 77,
+      reason: 'message_received',
+    });
+    publishAdminMessagesRefresh({
+      pharmacyAId: 3,
+      pharmacyBId: 9,
+      messageId: 77,
+      reason: 'message_sent',
+    });
+
+    expect(sender.res.write).not.toHaveBeenCalledWith(expect.stringContaining('event: messages.refresh'));
+    expect(recipient.res.write).toHaveBeenCalledWith(expect.stringContaining('event: messages.refresh'));
+    expect(admin.res.write).toHaveBeenCalledWith(expect.stringContaining('event: admin_messages.refresh'));
+
+    sender.handlers.get('close')?.();
+    recipient.handlers.get('close')?.();
+    admin.handlers.get('close')?.();
+  });
+
   it('cleans up subscribers when the response closes', () => {
     const stream = createResponseMock();
     subscribeRealtimeClient({
@@ -116,6 +165,7 @@ describe('realtime-service', () => {
   });
 
   it('does not throw when a subscriber write fails during publish', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
     const brokenWrite = vi.fn()
       .mockImplementationOnce(() => undefined)
       .mockImplementationOnce(() => undefined)
@@ -146,6 +196,8 @@ describe('realtime-service', () => {
     }).not.toThrow();
 
     expect(getRealtimeSubscriberCount()).toBe(1);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
     healthy.handlers.get('close')?.();
   });
 });

@@ -52,11 +52,42 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
+if (typeof HTMLCanvasElement !== 'undefined') {
+  const defaultCanvasContext = {
+    clearRect: vi.fn(),
+    drawImage: vi.fn(),
+    fillRect: vi.fn(),
+    getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(4) })),
+    putImageData: vi.fn(),
+    createImageData: vi.fn(() => ({ data: new Uint8ClampedArray(4) })),
+    setTransform: vi.fn(),
+    resetTransform: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    translate: vi.fn(),
+    scale: vi.fn(),
+    rotate: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
+    stroke: vi.fn(),
+    fillText: vi.fn(),
+    measureText: vi.fn(() => ({ width: 0 })),
+  };
+
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(() => defaultCanvasContext),
+  });
+}
+
 // jsdom can return an empty transition-duration, which makes dom-helpers parse NaN.
 const originalGetPropertyValue = CSSStyleDeclaration.prototype.getPropertyValue;
 CSSStyleDeclaration.prototype.getPropertyValue = function patchedGetPropertyValue(property: string): string {
   const value = originalGetPropertyValue.call(this, property);
-  if (property === 'transition-duration') {
+  if (property === 'transition-duration' || property === 'transition-delay') {
     const normalized = value.trim();
     if (!normalized || Number.isNaN(parseFloat(normalized))) {
       return '0s';
@@ -64,6 +95,23 @@ CSSStyleDeclaration.prototype.getPropertyValue = function patchedGetPropertyValu
   }
   return value;
 };
+
+const originalGetComputedStyle = window.getComputedStyle.bind(window);
+window.getComputedStyle = ((element: Element) => {
+  const styles = originalGetComputedStyle(element);
+  const originalComputedGetPropertyValue = styles.getPropertyValue.bind(styles);
+  styles.getPropertyValue = (property: string) => {
+    const value = originalComputedGetPropertyValue(property);
+    if (property === 'transition-duration' || property === 'transition-delay') {
+      const normalized = value.trim();
+      if (!normalized || Number.isNaN(parseFloat(normalized))) {
+        return '0s';
+      }
+    }
+    return value;
+  };
+  return styles;
+}) as typeof window.getComputedStyle;
 
 const originalSetTimeout = globalThis.setTimeout.bind(globalThis);
 vi.stubGlobal('setTimeout', ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {

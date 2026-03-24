@@ -45,9 +45,9 @@ const USER_QUICK_ACTIONS: QuickAction[] = [
   { to: '/requests', label: '要望対応' },
 ];
 const ADMIN_QUICK_ACTIONS: QuickAction[] = [
-  { to: '/admin/openclaw', label: '要望対応' },
-  { to: '/admin/drug-master', label: 'マスター管理' },
-  { to: '/admin/logs', label: '操作ログ' },
+  { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
+  { to: '/admin/drug-master', label: '医薬品マスター管理' },
+  { to: '/admin/log-center', label: 'ログセンター' },
 ];
 
 function isTrackablePath(pathname: string): boolean {

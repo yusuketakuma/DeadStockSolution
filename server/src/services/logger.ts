@@ -19,6 +19,7 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 const envLevel = process.env.LOG_LEVEL as LogLevel;
 const currentLevel: LogLevel = envLevel in LOG_LEVELS ? envLevel : 'info';
 const lazyPayloadEnabled = process.env.LOGGER_LAZY_PAYLOAD_ENABLED !== 'false';
+const testOutputEnabled = process.env.NODE_ENV !== 'test' || process.env.LOGGER_ENABLE_TEST_OUTPUT === 'true';
 
 function shouldLog(level: LogLevel): boolean {
   return LOG_LEVELS[level] >= LOG_LEVELS[currentLevel];
@@ -50,13 +51,24 @@ function formatLog(level: LogLevel, msg: string, data?: Record<string, unknown>)
   return JSON.stringify(entry);
 }
 
+function isMockedWrite(stream: NodeJS.WriteStream): boolean {
+  const write = stream.write as unknown as { mock?: unknown; _isMockFunction?: unknown; getMockImplementation?: unknown };
+  return typeof stream.write === 'function'
+    && (
+      'mock' in write
+      || Boolean(write._isMockFunction)
+      || typeof write.getMockImplementation === 'function'
+    );
+}
+
 function emitLog(
   level: LogLevel,
   stream: NodeJS.WriteStream,
   msg: string,
   data?: LogPayload,
 ): void {
-  if (shouldLog(level)) {
+  const canWriteToStream = testOutputEnabled || isMockedWrite(stream);
+  if (shouldLog(level) && canWriteToStream) {
     stream.write(formatLog(level, msg, resolvePayloadSafely(data)) + '\n');
   } else if (!lazyPayloadEnabled) {
     // When lazy payload is disabled, eagerly evaluate the callback

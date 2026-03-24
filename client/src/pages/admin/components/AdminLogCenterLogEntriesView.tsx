@@ -44,6 +44,10 @@ const LEVEL_OPTIONS = [
   { value: 'info', label: 'Info' },
 ];
 
+function levelLabel(level: string): string {
+  return LEVEL_OPTIONS.find((option) => option.value === level)?.label ?? level;
+}
+
 function SourceLabel({ source }: { source: string }) {
   return <>{SOURCE_LABELS[source] ?? source}</>;
 }
@@ -185,6 +189,11 @@ export const LogEntriesView = memo(function LogEntriesView({
   if (sourceFilter) exportQuery.set('source', sourceFilter);
   if (levelFilter) exportQuery.set('level', levelFilter);
   if (keyword.trim()) exportQuery.set('search', keyword.trim());
+  const activeFilters = [
+    sourceFilter ? `ソース: ${SOURCE_LABELS[sourceFilter] ?? sourceFilter}` : null,
+    levelFilter ? `レベル: ${levelLabel(levelFilter)}` : null,
+    keyword.trim() ? `検索: ${keyword.trim()}` : null,
+  ].filter((value): value is string => Boolean(value));
 
   const handleCopyEntry = useCallback(async (entry: NormalizedLogEntry) => {
     try {
@@ -238,8 +247,34 @@ export const LogEntriesView = memo(function LogEntriesView({
         </Col>
       </Row>
 
+      {activeFilters.length > 0 && (
+        <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+          <div className="d-flex flex-wrap gap-2">
+            {activeFilters.map((filterLabel) => (
+              <span key={filterLabel} className="badge bg-light text-dark border">
+                {filterLabel}
+              </span>
+            ))}
+          </div>
+          {(levelFilter || keyword.trim()) && (
+            <AppButton
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => {
+                setLevelFilter('');
+                setKeyword('');
+              }}
+            >
+              条件をクリア
+            </AppButton>
+          )}
+        </div>
+      )}
+
       <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-        <div className="small text-muted">{total}件</div>
+        <div className="small text-muted">
+          {total}件{activeFilters.length > 0 ? ' / 絞り込み中' : ''}
+        </div>
         <div className="d-flex gap-2 flex-wrap">
           <a
             className="btn btn-sm btn-outline-primary"

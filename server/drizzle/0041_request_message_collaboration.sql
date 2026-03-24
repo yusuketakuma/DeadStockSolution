@@ -59,6 +59,29 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_user_request_internal_notes_request_created" ON "user_request_internal_notes" USING btree ("request_id","created_at");
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "direct_messages" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "from_pharmacy_id" integer NOT NULL,
+  "to_pharmacy_id" integer NOT NULL,
+  "body" text NOT NULL,
+  "is_read" boolean DEFAULT false NOT NULL,
+  "read_at" timestamp with time zone,
+  "is_deleted" boolean DEFAULT false NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "direct_messages" ADD CONSTRAINT "direct_messages_from_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("from_pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "direct_messages" ADD CONSTRAINT "direct_messages_to_pharmacy_id_pharmacies_id_fk" FOREIGN KEY ("to_pharmacy_id") REFERENCES "public"."pharmacies"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_dm_to_pharmacy" ON "direct_messages" USING btree ("to_pharmacy_id","is_read");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_dm_from_pharmacy" ON "direct_messages" USING btree ("from_pharmacy_id");
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "direct_message_attachments" (
   "id" serial PRIMARY KEY NOT NULL,
   "message_id" integer NOT NULL,

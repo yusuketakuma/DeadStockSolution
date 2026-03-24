@@ -2,7 +2,7 @@ import type { Response } from 'express';
 import { createClient, type RedisClientType } from 'redis';
 import { logger } from './logger';
 
-export const realtimeTopics = ['timeline', 'requests', 'admin_requests'] as const;
+export const realtimeTopics = ['timeline', 'requests', 'admin_requests', 'messages', 'admin_messages'] as const;
 export type RealtimeTopic = typeof realtimeTopics[number];
 
 interface RealtimeSubscriber {
@@ -44,6 +44,24 @@ function flush(res: Response): void {
   }
 }
 
+function isExpectedSseDisconnect(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const code = 'code' in error && typeof (error as { code?: unknown }).code === 'string'
+    ? (error as { code: string }).code
+    : '';
+  if (['EPIPE', 'ECONNRESET', 'ERR_STREAM_WRITE_AFTER_END'].includes(code)) {
+    return true;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes('write after end')
+    || message.includes('socket hang up')
+    || message.includes('connection reset')
+    || message.includes('broken pipe');
+}
+
 function safeWriteEvent(
   res: Response,
   eventName: string,
@@ -55,10 +73,12 @@ function safeWriteEvent(
     flush(res);
     return true;
   } catch (err) {
-    logger.warn('Realtime SSE write failed', {
-      error: err instanceof Error ? err.message : String(err),
-      eventName,
-    });
+    if (!isExpectedSseDisconnect(err)) {
+      logger.warn('Realtime SSE write failed', {
+        error: err instanceof Error ? err.message : String(err),
+        eventName,
+      });
+    }
     return false;
   }
 }
@@ -69,7 +89,7 @@ function matchesTopic(
   pharmacyId?: number,
 ): boolean {
   if (!subscriber.topics.has(topic)) return false;
-  if (topic === 'admin_requests') {
+  if (topic === 'admin_requests' || topic === 'admin_messages') {
     return subscriber.isAdmin;
   }
   if (pharmacyId === undefined) {
@@ -323,6 +343,42 @@ export function publishAdminRequestsRefresh(input: {
       reason: input.reason,
       occurredAt: new Date().toISOString(),
       requestId: input.requestId,
+    },
+  });
+}
+
+export function publishMessagesRefresh(input: {
+  pharmacyId: number;
+  reason: string;
+  otherPharmacyId?: number;
+  messageId?: number;
+}): void {
+  void publishEnvelope({
+    topic: 'messages',
+    pharmacyId: input.pharmacyId,
+    payload: {
+      reason: input.reason,
+      occurredAt: new Date().toISOString(),
+      otherPharmacyId: input.otherPharmacyId,
+      messageId: input.messageId,
+    },
+  });
+}
+
+export function publishAdminMessagesRefresh(input: {
+  reason: string;
+  pharmacyAId?: number;
+  pharmacyBId?: number;
+  messageId?: number;
+}): void {
+  void publishEnvelope({
+    topic: 'admin_messages',
+    payload: {
+      reason: input.reason,
+      occurredAt: new Date().toISOString(),
+      pharmacyAId: input.pharmacyAId,
+      pharmacyBId: input.pharmacyBId,
+      messageId: input.messageId,
     },
   });
 }

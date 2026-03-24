@@ -43,8 +43,9 @@ const ADMIN_ITEMS = [
   { to: '/admin/upload-jobs', label: '取込ジョブ管理' },
   { to: '/admin/pharmacies', label: '薬局管理' },
   { to: '/admin/direct-messages', label: 'ユーザー間メッセージ' },
+  { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
   { to: '/admin/openclaw', label: 'OpenClaw連携' },
-  { to: '/admin/drug-master', label: '医薬品マスター' },
+  { to: '/admin/drug-master', label: '医薬品マスター管理' },
   { to: '/admin/log-center', label: 'ログセンター' },
 ];
 

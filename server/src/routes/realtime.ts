@@ -39,7 +39,7 @@ router.get('/stream', async (req: AuthRequest, res: Response) => {
     return;
   }
 
-  if (topics.includes('admin_requests') && !req.user?.isAdmin) {
+  if ((topics.includes('admin_requests') || topics.includes('admin_messages')) && !req.user?.isAdmin) {
     res.status(403).json({ error: '管理者権限が必要です' });
     return;
   }
