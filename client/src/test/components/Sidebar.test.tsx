@@ -1,5 +1,4 @@
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Sidebar from '../../components/Sidebar';
@@ -24,21 +23,19 @@ describe('Sidebar', () => {
     window.localStorage.clear();
   });
 
-  it('connects subgroup toggle buttons to controlled regions with aria-controls', async () => {
-    const user = userEvent.setup();
-
+  it('renders static sidebar groups and links for admin users', () => {
     render(
       <MemoryRouter>
         <Sidebar isOpen={false} onClose={vi.fn()} />
       </MemoryRouter>,
     );
 
-    // SubgroupHeader buttons use aria-expanded but not aria-controls
-    const toggle = screen.getAllByRole('button', { expanded: true })[0];
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-
-    await user.click(toggle);
-
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getAllByText('管理者')).toHaveLength(2);
+    expect(screen.getByText('主要操作')).toBeInTheDocument();
+    expect(screen.getByText('在庫・参照')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'OpenClaw連携' })).toHaveAttribute('href', '/admin/openclaw');
+    expect(screen.getByRole('link', { name: 'ダッシュボード' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: '薬局一覧' })).toHaveAttribute('href', '/pharmacies');
+    expect(screen.getByRole('button', { name: 'ログアウト' })).toBeInTheDocument();
   });
 });

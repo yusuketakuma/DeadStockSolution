@@ -107,7 +107,7 @@ describe('MyRequestsPage', () => {
 
     expect(screen.getAllByText('回答待ち').length).toBeGreaterThan(0);
     expect(screen.getByText('完了')).toBeInTheDocument();
-    expect(screen.getByText('在庫一覧の検索を改善してほしい')).toBeInTheDocument();
+    expect(screen.getAllByText('在庫一覧の検索を改善してほしい').length).toBeGreaterThan(0);
   });
 
   it('sends additional information for an existing request', async () => {

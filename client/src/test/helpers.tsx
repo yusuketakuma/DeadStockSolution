@@ -71,7 +71,7 @@ function createWrapper(options: WrapperOptions = {}) {
           <TimelineProvider
             initialState={timelineState}
             disableBootstrap={!enableLiveTimeline}
-            disableUnreadPolling={!enableLiveTimeline}
+            disableRealtimeRefresh={!enableLiveTimeline}
           >
             <NotificationProvider>
               {children}

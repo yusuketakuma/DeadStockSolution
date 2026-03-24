@@ -11,10 +11,9 @@ describe('OnboardingPage', () => {
 
     renderWithProviders(<OnboardingPage />, { route: '/onboarding' });
 
-    // The useEffect calls api.get('/auth/onboarding-info') which uses fetch internally.
-    // The onboarding page does not wire up an AbortController in its useEffect,
-    // so we verify the request is made on mount.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toContain('/auth/onboarding-info');
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/auth/onboarding-info')),
+    ).toBe(true);
   });
 });

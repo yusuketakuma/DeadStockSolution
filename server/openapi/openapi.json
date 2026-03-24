@@ -1149,6 +1149,109 @@
         }
       }
     },
+    "/api/admin/openclaw/bootstrap-token": {
+      "post": {
+        "operationId": "issueAdminOpenClawBootstrapToken",
+        "summary": "Issue DDS bootstrap token",
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "201": {
+            "description": "DDS bootstrap token issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bootstrap token request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "DDS bootstrap token issue failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/openclaw/control-token/rotate": {
+      "post": {
+        "operationId": "rotateAdminOpenClawControlToken",
+        "summary": "Rotate DDS control token",
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "DDS control token rotated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "DDS control token rotation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/openclaw/dds-agent": {
+      "get": {
+        "operationId": "getAdminOpenClawDdsAgentStatus",
+        "summary": "Get DDS agent connection status",
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "DDS agent status response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "DDS agent status fetch failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/pharmacies": {
       "get": {
         "operationId": "getAdminPharmacies",
@@ -3304,6 +3407,55 @@
             }
           }
         }
+      },
+      "post": {
+        "operationId": "runInternalOpenClawRetriesPost",
+        "summary": "Run internal OpenClaw retry jobs",
+        "tags": [
+          "Internal"
+        ],
+        "responses": {
+          "200": {
+            "description": "Internal OpenClaw retry response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Internal OpenClaw retry unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal OpenClaw retry failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Internal OpenClaw retry not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/internal/predictive-alerts/run": {
@@ -4093,6 +4245,291 @@
           },
           "500": {
             "description": "OpenClaw command history failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openclaw/connect/heartbeat": {
+      "post": {
+        "operationId": "heartbeatOpenClawDdsAgent",
+        "summary": "Record DDS agent heartbeat",
+        "tags": [
+          "OpenClaw"
+        ],
+        "responses": {
+          "200": {
+            "description": "DDS heartbeat response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "DDS control token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "DDS heartbeat failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openclaw/connect/jobs/claim": {
+      "post": {
+        "operationId": "claimOpenClawDdsJob",
+        "summary": "Claim next DDS work item",
+        "tags": [
+          "OpenClaw"
+        ],
+        "responses": {
+          "200": {
+            "description": "DDS job response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No DDS job available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "DDS control token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "DDS job claim failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openclaw/connect/register": {
+      "post": {
+        "operationId": "registerOpenClawDdsAgent",
+        "summary": "Register DDS agent with bootstrap token",
+        "tags": [
+          "OpenClaw"
+        ],
+        "responses": {
+          "201": {
+            "description": "DDS agent registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid DDS registration payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bootstrap token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "DDS registration failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openclaw/connect/work-items/{id}/pr": {
+      "post": {
+        "operationId": "reportOpenClawDdsPullRequest",
+        "summary": "Report DDS pull request for a work item",
+        "tags": [
+          "OpenClaw"
+        ],
+        "responses": {
+          "200": {
+            "description": "DDS pull request accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid DDS pull request payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "DDS control token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "DDS work item not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DDS lease token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "DDS pull request report failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openclaw/connect/work-items/{id}/question": {
+      "post": {
+        "operationId": "postOpenClawDdsQuestion",
+        "summary": "Post DDS question for a work item",
+        "tags": [
+          "OpenClaw"
+        ],
+        "responses": {
+          "200": {
+            "description": "DDS question accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid DDS question payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "DDS control token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "DDS work item not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DDS lease token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "DDS question failed",
             "content": {
               "application/json": {
                 "schema": {

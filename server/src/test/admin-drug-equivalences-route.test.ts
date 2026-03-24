@@ -71,7 +71,7 @@ const sampleEquivalence = {
 
 describe('admin drug equivalences routes', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe('GET /drug-equivalences', () => {

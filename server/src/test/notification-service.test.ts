@@ -222,13 +222,14 @@ describe('notification-service', () => {
   describe('getDashboardUnreadCount', () => {
     it('aggregates unread counts across notification sources', async () => {
       mocks.db.select
+        .mockImplementationOnce(() => createSelectCountChain([{ count: 1 }]))
         .mockImplementationOnce(() => createSelectCountChain([{ value: 5 }]))
         .mockImplementationOnce(() => createSelectCountChain([{ count: 2 }]));
 
       const result = await getDashboardUnreadCount(10);
 
-      expect(result).toBe(7);
-      expect(mocks.db.select).toHaveBeenCalledTimes(2);
+      expect(result).toBe(8);
+      expect(mocks.db.select).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -236,6 +237,7 @@ describe('notification-service', () => {
     it('updates notifications and admin messages in a single transaction', async () => {
       const tx = createTxWithExecuteRows(
         [{ count: 2 }],
+        [{ exists: false }],
         [{ count: 3 }],
       );
       mocks.db.transaction.mockImplementation(async (callback: (trx: typeof tx) => Promise<number>) => callback(tx));
@@ -244,7 +246,7 @@ describe('notification-service', () => {
 
       expect(result).toBe(5);
       expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
-      expect(tx.execute).toHaveBeenCalledTimes(2);
+      expect(tx.execute).toHaveBeenCalledTimes(3);
     });
 
     it('propagates transaction errors', async () => {

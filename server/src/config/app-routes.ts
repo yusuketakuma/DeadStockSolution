@@ -17,6 +17,7 @@ import drugMasterRoutes from '../routes/drug-master';
 import adminErrorCodesRoutes from '../routes/admin-error-codes';
 import adminLogCenterRoutes from '../routes/admin-log-center';
 import openclawCommandsRoutes from '../routes/openclaw-commands';
+import openclawConnectRoutes from '../routes/openclaw-connect';
 import updatesRoutes from '../routes/updates';
 import internalMatchingRefreshRoutes from '../routes/internal-matching-refresh';
 import internalMonthlyReportsRoutes from '../routes/internal-monthly-reports';
@@ -57,6 +58,7 @@ export function setupRoutes(app: Express): void {
   // OpenClaw (webhook callbacks need access regardless)
   registerApiRoute(app, '/openclaw', openclawRoutes);
   registerApiRoute(app, '/openclaw/commands', openclawCommandsRoutes);
+  registerApiRoute(app, '/openclaw/connect', openclawConnectRoutes);
 
   // Admin-only routes
   registerApiRoute(app, '/admin/drug-master', drugMasterRoutes);

@@ -276,6 +276,9 @@ describe('openclaw routes — coverage', () => {
               where: vi.fn().mockResolvedValue(undefined),
             }),
           }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockResolvedValue(undefined),
+          }),
         };
         return fn(txMock);
       });

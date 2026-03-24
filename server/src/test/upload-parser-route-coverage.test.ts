@@ -126,7 +126,7 @@ const VALID_MAPPING = JSON.stringify({
 
 describe('upload-parser route coverage: preview edge cases', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
 
     mocks.parseExcelBuffer.mockResolvedValue([
       ['YJコード', '薬剤名', '数量'],
@@ -224,7 +224,7 @@ describe('upload-parser route coverage: preview edge cases', () => {
 
 describe('upload-parser route coverage: diff-preview edge cases', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
 
     mocks.parseExcelBuffer.mockResolvedValue([
       ['YJコード', '薬剤名', '月間使用量', '単位', '薬価'],
@@ -361,7 +361,7 @@ describe('upload-parser route coverage: diff-preview edge cases', () => {
 
 describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
@@ -459,7 +459,7 @@ describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
 
 describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
@@ -545,7 +545,7 @@ describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
 
 describe('upload-parser route coverage: jobs/:jobId status', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
@@ -738,7 +738,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
 
 describe('upload-parser route coverage: confirm headerRowIndex out of range', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
 
     mocks.parseExcelBuffer.mockResolvedValue([
       ['YJコード', '薬剤名', '数量'],

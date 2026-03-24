@@ -2,8 +2,12 @@ import express from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../config/database', () => ({
+const mocks = vi.hoisted(() => ({
   db: { select: vi.fn() },
+}));
+
+vi.mock('../config/database', () => ({
+  db: mocks.db,
 }));
 
 vi.mock('../services/logger', () => ({
@@ -75,21 +79,15 @@ describe('GET /api/auth/verification-status', () => {
     });
   });
 
-  it('returns 500 when database query throws', async () => {
-    const query = {
-      from: vi.fn(),
-      where: vi.fn(),
-      limit: vi.fn(),
-    };
-    query.from.mockReturnValue(query);
-    query.where.mockReturnValue(query);
-    query.limit.mockRejectedValue(new Error('db failed'));
-    mocks.db.select.mockReturnValue(query);
-
+  it('returns the same anti-enumeration response even if a database mock is present', async () => {
     const app = createApp();
     const response = await request(app).get('/api/auth/verification-status?email=test@example.com');
 
-    expect(response.status).toBe(500);
-    expect(response.body.error).toBe('審査ステータスの取得に失敗しました');
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      verificationStatus: 'pending_verification',
+      rejectionReason: null,
+    });
+    expect(mocks.db.select).not.toHaveBeenCalled();
   });
 });

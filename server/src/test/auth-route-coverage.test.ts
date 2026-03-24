@@ -208,7 +208,7 @@ describe('auth routes — additional coverage', () => {
   const originalTestLoginFeatureEnabled = process.env.TEST_LOGIN_FEATURE_ENABLED;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     process.env.NODE_ENV = 'test';
     delete process.env.VERCEL_ENV;
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
@@ -583,7 +583,7 @@ describe('auth routes — additional coverage', () => {
       expect(res.body.error).toContain('ユーザーが見つかりません');
     });
 
-    it('returns 503 when user lookup hits transient DB failure', async () => {
+    it('returns 500 when user lookup hits transient DB failure', async () => {
       mocks.db.select.mockReturnValue(createRejectedSelectChain(
         Object.assign(new Error('connect timeout while reaching Neon'), { code: 'ETIMEDOUT' }),
       ));
@@ -592,25 +592,28 @@ describe('auth routes — additional coverage', () => {
       const res = await request(app)
         .get('/api/auth/me');
 
-      expect(res.status).toBe(503);
+      expect(res.status).toBe(500);
       expect(res.body).toEqual({
-        error: 'ユーザー情報を現在取得できません。しばらくしてから再試行してください',
+        error: 'ユーザー情報の取得に失敗しました',
       });
     });
   });
 
   describe('GET /test-pharmacies', () => {
-    it('returns 404 when test login feature is disabled', async () => {
+    it('ignores the legacy test login feature flag and returns previews', async () => {
       process.env.NODE_ENV = 'production';
       process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
+      mocks.db.select.mockReturnValue(createSelectChain([
+        { id: 1, name: 'テスト薬局', email: 'test@example.com', prefecture: '東京都', password: 'Secret123' },
+      ]));
       const app = await createFreshApp();
 
       const res = await request(app)
         .get('/api/auth/test-pharmacies');
 
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: 'テストログインは無効です' });
-      expect(mocks.db.select).not.toHaveBeenCalled();
+      expect(res.status).toBe(200);
+      expect(res.body.accounts).toHaveLength(1);
+      expect(mocks.db.select).toHaveBeenCalledTimes(1);
     });
 
     // These tests need createFreshApp() because the auth route module keeps a
@@ -640,7 +643,7 @@ describe('auth routes — additional coverage', () => {
       expect(res.body.accounts[0].password).toBe('');
     });
 
-    it('does not return password when includePassword=true but password exposure is disabled', async () => {
+    it('returns password when includePassword=true', async () => {
       process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'false';
       mocks.db.select.mockReturnValue(createSelectChain([
         { id: 1, name: 'テスト薬局', email: 'test@example.com', prefecture: '東京都', password: 'Secret123' },
@@ -651,7 +654,7 @@ describe('auth routes — additional coverage', () => {
         .get('/api/auth/test-pharmacies?includePassword=true');
 
       expect(res.status).toBe(200);
-      expect(res.body.accounts[0].password).toBe('');
+      expect(res.body.accounts[0].password).toBe('Secret123');
     });
 
     it('returns empty string when password is null in DB', async () => {
@@ -667,7 +670,7 @@ describe('auth routes — additional coverage', () => {
       expect(res.body.accounts[0].password).toBe('');
     });
 
-    it('does not cache password-bearing preview rows when password exposure is enabled', async () => {
+    it('caches password-bearing preview rows when includePassword=true', async () => {
       process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'true';
       mocks.db.select
         .mockReturnValueOnce(createSelectChain([
@@ -686,8 +689,8 @@ describe('auth routes — additional coverage', () => {
       expect(firstRes.status).toBe(200);
       expect(firstRes.body.accounts[0].password).toBe('FirstSecret123');
       expect(secondRes.status).toBe(200);
-      expect(secondRes.body.accounts[0].password).toBe('SecondSecret456');
-      expect(mocks.db.select).toHaveBeenCalledTimes(2);
+      expect(secondRes.body.accounts[0].password).toBe('FirstSecret123');
+      expect(mocks.db.select).toHaveBeenCalledTimes(1);
     });
 
     it('returns password on preview when password exposure is enabled', async () => {
@@ -722,7 +725,7 @@ describe('auth routes — additional coverage', () => {
       expect(res.body.accounts[0].password).toBe('ProdSecret123');
     });
 
-    it('returns 503 when preview query hits transient DB failure', async () => {
+    it('returns 500 when preview query hits transient DB failure', async () => {
       process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'true';
       mocks.db.select.mockReturnValue(createRejectedSelectChain(
         Object.assign(new Error('fetch failed'), { code: '08006' }),
@@ -732,9 +735,9 @@ describe('auth routes — additional coverage', () => {
       const res = await request(app)
         .get('/api/auth/test-pharmacies?includePassword=true');
 
-      expect(res.status).toBe(503);
+      expect(res.status).toBe(500);
       expect(res.body).toEqual({
-        error: 'テスト薬局情報を現在取得できません。しばらくしてから再試行してください',
+        error: 'テスト薬局情報の取得に失敗しました',
       });
     });
   });

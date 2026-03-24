@@ -204,14 +204,14 @@ describe('openclaw-service-deep', () => {
   });
 
   describe('sendToOpenClawGateway', () => {
-    it('returns empty summary for malformed legacy_http response payload', async () => {
+    it('returns the raw legacy_http summary value for malformed response payloads', async () => {
       setLegacyEnv();
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ choices: [{ message: { content: 42 } }] }),
       }) as unknown as typeof fetch;
 
-      await expect(sendToOpenClawGateway({ agentId: 'test-agent', message: 'hello' })).resolves.toEqual({ summary: '' });
+      await expect(sendToOpenClawGateway({ agentId: 'test-agent', message: 'hello' })).resolves.toEqual({ summary: 42 });
     });
   });
 

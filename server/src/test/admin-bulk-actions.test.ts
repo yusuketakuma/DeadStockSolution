@@ -87,7 +87,7 @@ describe('Admin Bulk Actions', () => {
     mocks.recordAuditLog.mockResolvedValue({});
   });
 
-  describe('POST /pharmacies/bulk-verify', () => {
+  describe('POST /bulk-actions/execute (verify)', () => {
     it('正常に一括承認できる', async () => {
       mocks.db.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
@@ -110,8 +110,8 @@ describe('Admin Bulk Actions', () => {
 
       const app = createApp();
       const res = await request(app)
-        .post('/api/admin/pharmacies/bulk-verify')
-        .send({ pharmacyIds: [1, 2] });
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [1, 2], action: 'verify' });
 
       expect(res.status).toBe(200);
       expect(res.body.totalRequested).toBe(2);
@@ -122,8 +122,8 @@ describe('Admin Bulk Actions', () => {
     it('薬局IDが空の場合400を返す', async () => {
       const app = createApp();
       const res = await request(app)
-        .post('/api/admin/pharmacies/bulk-verify')
-        .send({ pharmacyIds: [] });
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [], action: 'verify' });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('対象薬局ID');
@@ -133,8 +133,8 @@ describe('Admin Bulk Actions', () => {
       const app = createApp();
       const ids = Array.from({ length: 101 }, (_, i) => i + 1);
       const res = await request(app)
-        .post('/api/admin/pharmacies/bulk-verify')
-        .send({ pharmacyIds: ids });
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: ids, action: 'verify' });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('最大100件');
@@ -143,8 +143,8 @@ describe('Admin Bulk Actions', () => {
     it('不正な薬局IDを含む場合400を返す', async () => {
       const app = createApp();
       const res = await request(app)
-        .post('/api/admin/pharmacies/bulk-verify')
-        .send({ pharmacyIds: [1, -1, 'abc'] });
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [1, -1, 'abc'], action: 'verify' });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('正の整数');
@@ -164,8 +164,8 @@ describe('Admin Bulk Actions', () => {
 
       const app = createApp();
       const res = await request(app)
-        .post('/api/admin/pharmacies/bulk-verify')
-        .send({ pharmacyIds: [999] });
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [999], action: 'verify' });
 
       expect(res.status).toBe(500);
     });
@@ -186,15 +186,15 @@ describe('Admin Bulk Actions', () => {
 
       const app = createApp();
       const res = await request(app)
-        .post('/api/admin/pharmacies/bulk-verify')
-        .send({ pharmacyIds: [1] });
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [1], action: 'verify' });
 
       expect(res.status).toBe(200);
       expect(res.body.succeeded).toBe(1);
     });
   });
 
-  describe('POST /pharmacies/bulk-reject', () => {
+  describe('POST /bulk-actions/execute (reject)', () => {
     it('正常に一括却下できる', async () => {
       mocks.db.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
@@ -216,8 +216,8 @@ describe('Admin Bulk Actions', () => {
 
       const app = createApp();
       const res = await request(app)
-        .post('/api/admin/pharmacies/bulk-reject')
-        .send({ pharmacyIds: [1], reason: '不適切な登録' });
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [1], action: 'reject', reason: '不適切な登録' });
 
       expect(res.status).toBe(200);
       expect(res.body.totalRequested).toBe(1);
@@ -227,8 +227,8 @@ describe('Admin Bulk Actions', () => {
     it('却下理由なしの場合400を返す', async () => {
       const app = createApp();
       const res = await request(app)
-        .post('/api/admin/pharmacies/bulk-reject')
-        .send({ pharmacyIds: [1] });
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [1], action: 'reject' });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('却下理由は必須');
@@ -250,8 +250,8 @@ describe('Admin Bulk Actions', () => {
 
       const app = createApp();
       const res = await request(app)
-        .post('/api/admin/pharmacies/bulk-reject')
-        .send({ pharmacyIds: [1], reason: '不適切' });
+        .post('/api/admin/bulk-actions/execute')
+        .send({ pharmacyIds: [1], action: 'reject', reason: '不適切' });
 
       expect(res.status).toBe(200);
       expect(res.body.succeeded).toBe(1);

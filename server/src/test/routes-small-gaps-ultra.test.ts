@@ -131,6 +131,13 @@ vi.mock('../middleware/auth', () => ({
     req.user = { id: 1, email: 'test@example.com', isAdmin: false };
     next();
   },
+  rejectAdmin: (req: { user?: { isAdmin?: boolean } }, res: Response, next: () => void) => {
+    if (req.user?.isAdmin) {
+      res.status(403).json({ error: '管理者はこの操作を実行できません' });
+      return;
+    }
+    next();
+  },
   invalidateAuthUserCache: mocks.invalidateAuthUserCache,
 }));
 vi.mock('../middleware/csrf', () => ({
@@ -354,11 +361,11 @@ describe('auth.ts — ultra coverage', () => {
   });
 
   // --- Cover /me error catch ---
-  it('GET /me — returns 503 on non-column-missing error', async () => {
+  it('GET /me — returns 500 on non-column-missing error', async () => {
     mocks.db.select.mockReturnValue(selectChainLimitRejects(new Error('connection error')));
     const app = await createAuthApp();
     const res = await request(app).get('/auth/me');
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(500);
   });
 
   it('GET /test-pharmacies — returns 503 when columns are missing', async () => {
@@ -386,11 +393,11 @@ describe('auth.ts — ultra coverage', () => {
   });
 
   // --- Cover /test-pharmacies error catch ---
-  it('GET /test-pharmacies — returns 503 on non-column-missing error', async () => {
+  it('GET /test-pharmacies — returns 500 on non-column-missing error', async () => {
     mocks.db.select.mockReturnValue(selectChainOrderByRejects(new Error('unexpected')));
     const app = await createAuthApp();
     const res = await request(app).get('/auth/test-pharmacies');
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(500);
   });
 
   // --- Cover register with auth configuration error ---

@@ -2,20 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ErrorFixContext } from '../services/error-fix-context';
 
 const mocks = vi.hoisted(() => ({
-  handoffToOpenClaw: vi.fn(),
-  dbInsert: vi.fn(),
-  dbUpdate: vi.fn(),
+  executeOpenClawHandoff: vi.fn(),
 }));
 
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: mocks.handoffToOpenClaw,
-}));
-
-vi.mock('../config/database', () => ({
-  db: {
-    insert: () => ({ values: () => ({ returning: mocks.dbInsert }) }),
-    update: () => ({ set: () => ({ where: mocks.dbUpdate }) }),
-  },
+vi.mock('../services/openclaw-handoff-executor', () => ({
+  executeOpenClawHandoff: mocks.executeOpenClawHandoff,
+  skippedHandoff: (reason: string) => ({
+    triggered: false,
+    accepted: false,
+    requestId: null,
+    status: 'pending_handoff',
+    reason,
+  }),
 }));
 
 vi.mock('../services/logger', () => ({
@@ -42,7 +40,7 @@ function makeContext(overrides?: Partial<ErrorFixContext>): ErrorFixContext {
 
 describe('handoffErrorToOpenClaw', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     _resetDedupCacheForTests();
     vi.stubEnv('OPENCLAW_ERROR_AUTOFIX_ENABLED', 'true');
     vi.stubEnv('OPENCLAW_ERROR_AUTOFIX_PHARMACY_ID', '1');
@@ -66,13 +64,12 @@ describe('handoffErrorToOpenClaw', () => {
   });
 
   it('should deduplicate same error within window', async () => {
-    mocks.dbInsert.mockResolvedValue([{ id: 1 }]);
-    mocks.handoffToOpenClaw.mockResolvedValue({
+    mocks.executeOpenClawHandoff.mockResolvedValue({
+      triggered: true,
       accepted: true,
+      requestId: 1,
       status: 'in_dialogue',
-      threadId: 't1',
-      summary: 's1',
-      note: 'ok',
+      reason: 'ok',
     });
 
     await handoffErrorToOpenClaw(makeContext(), 500);
@@ -82,31 +79,29 @@ describe('handoffErrorToOpenClaw', () => {
   });
 
   it('should trigger handoff for 5xx', async () => {
-    mocks.dbInsert.mockResolvedValue([{ id: 1 }]);
-    mocks.handoffToOpenClaw.mockResolvedValue({
+    mocks.executeOpenClawHandoff.mockResolvedValue({
+      triggered: true,
       accepted: true,
+      requestId: 1,
       status: 'in_dialogue',
-      threadId: 't1',
-      summary: 's1',
-      note: 'ok',
+      reason: 'ok',
     });
 
     const result = await handoffErrorToOpenClaw(makeContext(), 500);
     expect(result.triggered).toBe(true);
     expect(result.accepted).toBe(true);
-    expect(mocks.handoffToOpenClaw).toHaveBeenCalledOnce();
+    expect(mocks.executeOpenClawHandoff).toHaveBeenCalledOnce();
   });
 
   it('should allow retry after a failed handoff attempt', async () => {
-    mocks.dbInsert.mockResolvedValue([{ id: 1 }]);
-    mocks.handoffToOpenClaw
+    mocks.executeOpenClawHandoff
       .mockRejectedValueOnce(new Error('temporary failure'))
       .mockResolvedValueOnce({
+        triggered: true,
         accepted: true,
+        requestId: 2,
         status: 'in_dialogue',
-        threadId: 't2',
-        summary: 's2',
-        note: 'ok',
+        reason: 'ok',
       });
 
     const first = await handoffErrorToOpenClaw(makeContext(), 500);
@@ -116,7 +111,7 @@ describe('handoffErrorToOpenClaw', () => {
     expect(first.reason).toBe('error');
     expect(second.triggered).toBe(true);
     expect(second.accepted).toBe(true);
-    expect(mocks.handoffToOpenClaw).toHaveBeenCalledTimes(2);
+    expect(mocks.executeOpenClawHandoff).toHaveBeenCalledTimes(2);
   });
 
   it('should skip when pharmacy ID is invalid', async () => {
@@ -127,13 +122,12 @@ describe('handoffErrorToOpenClaw', () => {
   });
 
   it('should handle handoff rejection gracefully', async () => {
-    mocks.dbInsert.mockResolvedValue([{ id: 2 }]);
-    mocks.handoffToOpenClaw.mockResolvedValue({
+    mocks.executeOpenClawHandoff.mockResolvedValue({
+      triggered: true,
       accepted: false,
-      status: 'rejected',
-      threadId: null,
-      summary: null,
-      note: 'rate limited',
+      requestId: 2,
+      status: 'pending_handoff',
+      reason: 'rate limited',
     });
 
     const result = await handoffErrorToOpenClaw(makeContext(), 500);
@@ -143,21 +137,20 @@ describe('handoffErrorToOpenClaw', () => {
   });
 
   it('should allow retry after a non-accepted handoff result', async () => {
-    mocks.dbInsert.mockResolvedValue([{ id: 3 }]);
-    mocks.handoffToOpenClaw
+    mocks.executeOpenClawHandoff
       .mockResolvedValueOnce({
+        triggered: true,
         accepted: false,
+        requestId: 3,
         status: 'pending_handoff',
-        threadId: null,
-        summary: null,
-        note: 'connector unavailable',
+        reason: 'connector unavailable',
       })
       .mockResolvedValueOnce({
+        triggered: true,
         accepted: true,
+        requestId: 4,
         status: 'in_dialogue',
-        threadId: 't3',
-        summary: 's3',
-        note: 'ok',
+        reason: 'ok',
       });
 
     const first = await handoffErrorToOpenClaw(makeContext(), 500);
@@ -165,6 +158,6 @@ describe('handoffErrorToOpenClaw', () => {
 
     expect(first.accepted).toBe(false);
     expect(second.accepted).toBe(true);
-    expect(mocks.handoffToOpenClaw).toHaveBeenCalledTimes(2);
+    expect(mocks.executeOpenClawHandoff).toHaveBeenCalledTimes(2);
   });
 });

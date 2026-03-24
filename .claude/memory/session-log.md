@@ -727,3 +727,59 @@
 - （必要に応じて追記）
 
 ---
+
+## セッション: 2026-03-23T22:54:38Z
+
+- session_id: `session-1774306327`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-23T22:52:07Z`
+- ended_at: `2026-03-23T22:54:38Z`
+- duration_minutes: 542
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+
+**Plans.md のWIP/依頼中（抜粋）**:
+
+```
+32:- [ ] T951: ダッシュボード グラフ可視化 `cc:WIP` depends:T950
+95:- [ ] T983: クライアントバンドル最適化 `cc:WIP`
+113:- [ ] T993: フィーチャーフラグ段階有効化 runbook `cc:WIP`
+```
+
+---
+
+## セッション: 2026-03-24T02:38:11Z
+
+- session_id: `session-1774319771`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-24T02:36:11Z`
+- ended_at: `2026-03-24T02:38:11Z`
+- duration_minutes: 542
+- changes: 0
+
+### 変更ファイル
+- （なし）
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+
+**Plans.md のWIP/依頼中（抜粋）**:
+
+```
+32:- [ ] T951: ダッシュボード グラフ可視化 `cc:WIP` depends:T950
+95:- [ ] T983: クライアントバンドル最適化 `cc:WIP`
+113:- [ ] T993: フィーチャーフラグ段階有効化 runbook `cc:WIP`
+```
+
+---

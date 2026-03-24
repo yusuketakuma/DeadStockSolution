@@ -110,7 +110,7 @@ function mockSelectAlwaysEmpty() {
 
 describe('notifications route deep coverage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.db.update.mockImplementation(() => ({
       set: vi.fn(() => ({
         where: vi.fn().mockResolvedValue(undefined),
@@ -121,6 +121,10 @@ describe('notifications route deep coverage', () => {
         onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
       })),
     }));
+    mocks.getDashboardUnreadCount.mockResolvedValue(3);
+    mocks.invalidateDashboardUnreadCache.mockImplementation(() => undefined);
+    mocks.markAsRead.mockResolvedValue(true);
+    mocks.markAllDashboardAsRead.mockResolvedValue(5);
     // Default: select always returns empty. Individual tests can override with mockImplementationOnce.
     mockSelectAlwaysEmpty();
   });
@@ -302,13 +306,11 @@ describe('notifications route deep coverage', () => {
       const app = createApp();
       const matchRow = {
         id: 50,
-        sourcePharmacyId: 2,
-        detailJson: {
-          trigger_upload_type: 'dead_stock',
-          candidate_count_before: 5,
-          candidate_count_after: 8,
-          diff: { addedPharmacyIds: [3, 4, 5], removedPharmacyIds: [] },
-        },
+        triggerPharmacyId: 2,
+        triggerUploadType: 'dead_stock',
+        candidateCountBefore: 5,
+        candidateCountAfter: 8,
+        diffJson: JSON.stringify({ addedPharmacyIds: [3, 4, 5], removedPharmacyIds: [] }),
         isRead: false,
         createdAt: '2026-02-25T00:00:00.000Z',
       };
@@ -335,13 +337,11 @@ describe('notifications route deep coverage', () => {
       const app = createApp();
       const matchRow = {
         id: 51,
-        sourcePharmacyId: 1,  // same as currentUser → "自薬局"
-        detailJson: {
-          trigger_upload_type: 'used_medication',
-          candidate_count_before: 3,
-          candidate_count_after: 2,
-          diff: {},
-        },
+        triggerPharmacyId: 1,  // same as currentUser → "自薬局"
+        triggerUploadType: 'used_medication',
+        candidateCountBefore: 3,
+        candidateCountAfter: 2,
+        diffJson: JSON.stringify({}),
         isRead: true,
         createdAt: '2026-02-25T00:00:00.000Z',
       };
@@ -397,17 +397,17 @@ describe('notifications route deep coverage', () => {
     });
   });
 
-  describe('GET /api/notifications - alert notification', () => {
-    it('renders alert notice linked to /alerts', async () => {
+  describe('GET /api/notifications - predictive alert notification', () => {
+    it('renders status update notice linked to /matching', async () => {
       const app = createApp();
       const notification = {
         id: 71,
         pharmacyId: 1,
-        type: 'alert_near_expiry',
+        type: 'proposal_status_changed',
         title: '期限切迫在庫の予兆があります',
         message: '在庫を確認してください',
-        referenceType: 'alert',
-        referenceId: 901,
+        referenceType: 'match',
+        referenceId: null,
         isRead: false,
         readAt: null,
         createdAt: '2026-03-01T00:00:00.000Z',
@@ -423,9 +423,9 @@ describe('notifications route deep coverage', () => {
       const res = await request(app).get('/api/notifications');
       expect(res.status).toBe(200);
       expect(res.body.notices).toHaveLength(1);
-      expect(res.body.notices[0].type).toBe('alert');
-      expect(res.body.notices[0].actionPath).toBe('/alerts');
-      expect(res.body.notices[0].actionLabel).toBe('アラートを確認');
+      expect(res.body.notices[0].type).toBe('status_update');
+      expect(res.body.notices[0].actionPath).toBe('/matching');
+      expect(res.body.notices[0].actionLabel).toBe('確認する');
       expect(res.body.summary).toEqual(expect.objectContaining({
         actionableRequests: 1,
       }));

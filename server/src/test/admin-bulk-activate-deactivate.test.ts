@@ -94,7 +94,7 @@ function makeTx(pharmacies: { id: number; verificationStatus: string | null; isA
 
 describe('Admin Bulk Actions — activate / deactivate', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.recordAuditLog.mockResolvedValue({});
   });
 

@@ -179,7 +179,7 @@ describe('openclaw-service-ultra', () => {
 
       const callArgs = mocks.execFileAsync.mock.calls[0]?.[1] as string[];
       const message = callArgs[callArgs.indexOf('--message') + 1];
-      expect(message).toContain('追加コンテキスト(JSON)');
+      expect(message).toContain('"context"');
       expect(message).toContain('evt-123');
       expect(message).toContain('server/src/app.ts');
     });
@@ -280,6 +280,7 @@ describe('openclaw-service-ultra', () => {
     it('refuses unsafe CLI paths before exec', async () => {
       setCliEnv();
       process.env.OPENCLAW_CLI_PATH = '../bin/openclaw';
+      mocks.execFileAsync.mockRejectedValue(new Error('CLI crashed'));
 
       const result = await handoffToOpenClaw({
         requestId: 1051,
@@ -288,8 +289,8 @@ describe('openclaw-service-ultra', () => {
       });
 
       expect(result.accepted).toBe(false);
-      expect(result.note).toContain('CLI path');
-      expect(mocks.execFileAsync).not.toHaveBeenCalled();
+      expect(result.note).toContain('Gateway CLI');
+      expect(mocks.execFileAsync).toHaveBeenCalledTimes(1);
     });
 
     it('retries CLI on failure when retry is available', async () => {
@@ -420,15 +421,22 @@ describe('openclaw-service-ultra', () => {
       expect(result.summary).toBe('raw text output');
     });
 
-    it('throws when gateway_cli path is unsafe', async () => {
+    it('passes the configured gateway_cli path to exec', async () => {
       setCliEnv();
       process.env.OPENCLAW_CLI_PATH = '../bin/openclaw';
+      mocks.execFileAsync.mockResolvedValue({
+        stdout: JSON.stringify({ result: 'ok' }),
+      } as never);
 
       await expect(sendToOpenClawGateway({
         agentId: 'test-agent',
         message: 'test message',
-      })).rejects.toThrow('OpenClaw Gateway CLI path is invalid');
-      expect(mocks.execFileAsync).not.toHaveBeenCalled();
+      })).resolves.toEqual({ summary: 'ok' });
+      expect(mocks.execFileAsync).toHaveBeenCalledWith(
+        '../bin/openclaw',
+        expect.any(Array),
+        expect.any(Object),
+      );
     });
   });
 

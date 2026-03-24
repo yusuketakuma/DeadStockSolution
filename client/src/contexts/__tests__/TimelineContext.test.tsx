@@ -23,7 +23,7 @@ function createEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
 
 function createWrapper(options?: {
   disableBootstrap?: boolean;
-  disableUnreadPolling?: boolean;
+  disableRealtimeRefresh?: boolean;
 }) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
@@ -40,7 +40,7 @@ function createWrapper(options?: {
       >
         <TimelineProvider
           disableBootstrap={options?.disableBootstrap}
-          disableUnreadPolling={options?.disableUnreadPolling}
+          disableRealtimeRefresh={options?.disableRealtimeRefresh}
         >
           {children}
         </TimelineProvider>
@@ -99,7 +99,7 @@ describe('TimelineContext', () => {
 
   it('TimelineProvider renders children', () => {
     setupTimelineFetchMock();
-    const wrapper = createWrapper({ disableBootstrap: true, disableUnreadPolling: true });
+    const wrapper = createWrapper({ disableBootstrap: true, disableRealtimeRefresh: true });
 
     const { result } = renderHook(() => useTimeline(), { wrapper });
 
@@ -108,7 +108,7 @@ describe('TimelineContext', () => {
 
   it('useTimeline returns initial values', () => {
     setupTimelineFetchMock();
-    const wrapper = createWrapper({ disableBootstrap: true, disableUnreadPolling: true });
+    const wrapper = createWrapper({ disableBootstrap: true, disableRealtimeRefresh: true });
 
     const { result } = renderHook(() => useTimeline(), { wrapper });
 

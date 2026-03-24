@@ -53,6 +53,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "read-excel-file": "^7.0.2",
+    "redis": "^5.11.0",
     "stripe": "^20.4.0",
     "undici": "^7.22.0",
     "web-push": "^3.6.7",

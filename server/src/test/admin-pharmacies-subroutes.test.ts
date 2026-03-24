@@ -24,6 +24,12 @@ const mocks = vi.hoisted(() => ({
   validateSpecialBusinessHours: vi.fn(),
   loggerError: vi.fn(),
   loggerWarn: vi.fn(),
+  listOpenClawRequestMessages: vi.fn(),
+  updateOpenClawWorkItem: vi.fn(),
+  mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  publishAdminRequestsRefresh: vi.fn(),
+  publishRequestsRefresh: vi.fn(),
+  publishTimelineRefresh: vi.fn(),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -76,6 +82,18 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
+vi.mock('../services/openclaw-thread-service', () => ({
+  listOpenClawRequestMessages: mocks.listOpenClawRequestMessages,
+  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+}));
+
+vi.mock('../services/realtime-service', () => ({
+  publishAdminRequestsRefresh: mocks.publishAdminRequestsRefresh,
+  publishRequestsRefresh: mocks.publishRequestsRefresh,
+  publishTimelineRefresh: mocks.publishTimelineRefresh,
+}));
+
 vi.mock('../utils/validators', () => ({
   emailSchema: {
     safeParse: vi.fn((val: string) => {
@@ -121,11 +139,13 @@ function createPaginatedQuery(rows: unknown[]) {
     limit: vi.fn(),
     offset: vi.fn(),
     innerJoin: vi.fn(),
+    leftJoin: vi.fn(),
   };
   query.from.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
   query.innerJoin.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   query.offset.mockResolvedValue(rows);
   return query;
@@ -135,8 +155,12 @@ function createWhereQuery(result: unknown) {
   const query = {
     from: vi.fn(),
     where: vi.fn(),
+    innerJoin: vi.fn(),
+    leftJoin: vi.fn(),
   };
   query.from.mockReturnValue(query);
+  query.innerJoin.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.where.mockResolvedValue(result);
   return query;
 }
@@ -146,8 +170,12 @@ function createLimitQuery(result: unknown) {
     from: vi.fn(),
     where: vi.fn(),
     limit: vi.fn(),
+    innerJoin: vi.fn(),
+    leftJoin: vi.fn(),
   };
   query.from.mockReturnValue(query);
+  query.innerJoin.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.limit.mockResolvedValue(result);
   return query;
@@ -175,11 +203,13 @@ function createJoinOrderByQuery(rows: unknown[]) {
   const query = {
     from: vi.fn(),
     innerJoin: vi.fn(),
+    leftJoin: vi.fn(),
     where: vi.fn(),
     orderBy: vi.fn(),
   };
   query.from.mockReturnValue(query);
   query.innerJoin.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.orderBy.mockResolvedValue(rows);
   return query;
@@ -212,6 +242,9 @@ describe('admin pharmacies list routes', () => {
     mocks.isOpenClawWebhookConfigured.mockReturnValue(true);
     mocks.getOpenClawImplementationBranch.mockReturnValue('feature/openclaw');
     mocks.getClientIp.mockReturnValue('127.0.0.1');
+    mocks.listOpenClawRequestMessages.mockResolvedValue([]);
+    mocks.updateOpenClawWorkItem.mockResolvedValue(undefined);
+    mocks.mapOpenClawStatusToWorkflowStatus.mockImplementation((status: string) => status);
   });
 
   it('GET /pharmacies/options returns pharmacy list', async () => {

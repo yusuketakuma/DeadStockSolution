@@ -84,7 +84,7 @@ const VALID_TIMESTAMP = '1700000000';
 
 describe('POST /api/openclaw-commands', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockUser = { id: 1, email: 'admin@example.com', isAdmin: true };
     // Default: feature enabled, webhook configured
     process.env.OPENCLAW_COMMANDS_ENABLED = 'true';
@@ -255,7 +255,7 @@ describe('POST /api/openclaw-commands', () => {
 
 describe('GET /api/openclaw-commands/history', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockUser = { id: 1, email: 'admin@example.com', isAdmin: true };
     mocks.parseListPagination.mockReturnValue({ page: 1, limit: 50, offset: 0 });
     mocks.listCommandHistory.mockResolvedValue([]);

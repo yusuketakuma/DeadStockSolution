@@ -143,11 +143,8 @@ describe('notification-service-deep', () => {
     function setupDashboardMocks(
       notifCount: number,
       adminCount: number,
+      matchCount: number = 0,
     ) {
-      // The function call order is:
-      // 1. getUnreadCount -> db.select({ value: count() }).from(notifications).where(...)
-      // 2. db.select({ count: rowCount }).from(adminMessages).leftJoin(...).where(...)
-
       const notifWhere = vi.fn().mockResolvedValue([{ value: notifCount }]);
       const notifFrom = vi.fn().mockReturnValue({ where: notifWhere });
 
@@ -155,9 +152,13 @@ describe('notification-service-deep', () => {
       const adminLeftJoin = vi.fn().mockReturnValue({ where: adminWhere });
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
+      const matchWhere = vi.fn().mockResolvedValue([{ count: matchCount }]);
+      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
+
       mocks.db.select
-        .mockReturnValueOnce({ from: notifFrom })     // 1st: getUnreadCount
-        .mockReturnValueOnce({ from: adminFrom });     // 2nd: admin messages
+        .mockReturnValueOnce({ from: matchFrom })
+        .mockReturnValueOnce({ from: notifFrom })
+        .mockReturnValueOnce({ from: adminFrom });
     }
 
     it('aggregates notifications and admin messages', async () => {
@@ -278,6 +279,10 @@ describe('notification-service-deep', () => {
           const txExecute = vi.fn()
             // markNotificationsAsRead
             .mockResolvedValueOnce({ rows: [{ count: 3 }] })
+            // match_notifications table exists
+            .mockResolvedValueOnce({ rows: [{ exists: true }] })
+            // mark match_notifications as read
+            .mockResolvedValueOnce({ rows: [{ count: 0 }] })
             // markAdminMessagesAsRead
             .mockResolvedValueOnce({ rows: [{ count: 1 }] });
 
@@ -294,6 +299,8 @@ describe('notification-service-deep', () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
           const txExecute = vi.fn()
+            .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+            .mockResolvedValueOnce({ rows: [{ exists: true }] })
             .mockResolvedValueOnce({ rows: [{ count: 0 }] })
             .mockResolvedValueOnce({ rows: [{ count: 0 }] });
 

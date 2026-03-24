@@ -27,6 +27,9 @@ vi.mock('../middleware/auth', () => ({
     req.user = { id: 2, email: 'user@example.com', isAdmin: false };
     next();
   },
+  rejectAdmin: (_req: unknown, _res: unknown, next: () => void) => {
+    next();
+  },
 }));
 
 vi.mock('../config/database', () => ({

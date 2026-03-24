@@ -53,7 +53,11 @@ describe('notification-service-final', () => {
       const adminLeftJoin = vi.fn().mockReturnValue({ where: adminWhere });
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
+      const matchWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
+
       mocks.db.select
+        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 
@@ -71,7 +75,11 @@ describe('notification-service-final', () => {
       const adminLeftJoin = vi.fn().mockReturnValue({ where: adminWhere });
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
+      const matchWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
+
       mocks.db.select
+        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 
@@ -80,7 +88,7 @@ describe('notification-service-final', () => {
     });
   });
 
-  describe('markAllDashboardAsRead — transaction with 2 SQL calls', () => {
+  describe('markAllDashboardAsRead — transaction with notifications, match notifications, and admin messages', () => {
     function createTx(...execResults: unknown[]) {
       const execute = vi.fn();
       for (const result of execResults) {
@@ -94,6 +102,8 @@ describe('notification-service-final', () => {
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
             { rows: [{ count: 3 }] }, // markNotificationsAsRead
+            { rows: [{ exists: true }] }, // match_notifications table exists
+            { rows: [{ count: 0 }] }, // mark match_notifications as read
             { rows: [{ count: 2 }] }, // markAdminMessagesAsRead
           );
           return callback(tx);
@@ -108,6 +118,8 @@ describe('notification-service-final', () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
+            { rows: [{ count: 0 }] },
+            { rows: [{ exists: true }] },
             { rows: [{ count: 0 }] },
             { rows: [{ count: 0 }] },
           );

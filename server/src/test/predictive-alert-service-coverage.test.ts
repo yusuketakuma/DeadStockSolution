@@ -524,7 +524,7 @@ describe('predictive-alert-service coverage', () => {
   });
 
   describe('runPredictiveAlertsJob - push notification', () => {
-    it('dispatches push when VAPID keys are set', async () => {
+    it('does not dispatch push even when VAPID keys are set', async () => {
       vi.stubEnv('VAPID_PUBLIC_KEY', 'test-public-key');
       vi.stubEnv('VAPID_PRIVATE_KEY', 'test-private-key');
 
@@ -547,13 +547,7 @@ describe('predictive-alert-service coverage', () => {
 
       await runPredictiveAlertsJob({ now: new Date('2026-03-15T00:00:00.000Z') });
 
-      expect(mocks.sendToPharmacy).toHaveBeenCalledWith(
-        10,
-        expect.objectContaining({
-          title: '期限切迫在庫の予兆があります',
-          data: expect.objectContaining({ type: 'near_expiry' }),
-        }),
-      );
+      expect(mocks.sendToPharmacy).not.toHaveBeenCalled();
     });
 
     it('does not dispatch push when VAPID keys missing', async () => {
@@ -582,7 +576,7 @@ describe('predictive-alert-service coverage', () => {
       expect(mocks.sendToPharmacy).not.toHaveBeenCalled();
     });
 
-    it('logs warning when push dispatch fails but does not fail the alert', async () => {
+    it('does not attempt push dispatch even when a sender mock would fail', async () => {
       vi.stubEnv('VAPID_PUBLIC_KEY', 'test-key');
       vi.stubEnv('VAPID_PRIVATE_KEY', 'test-key');
       mocks.sendToPharmacy.mockRejectedValueOnce(new Error('Push failed'));
@@ -608,10 +602,8 @@ describe('predictive-alert-service coverage', () => {
 
       // Alert was still created despite push failure
       expect(result.generatedAlerts).toBe(1);
-      expect(mocks.logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('push notification'),
-        expect.any(Object),
-      );
+      expect(mocks.sendToPharmacy).not.toHaveBeenCalled();
+      expect(mocks.logger.warn).not.toHaveBeenCalled();
     });
 
     it('logs warning with error message string when non-Error is thrown', async () => {
@@ -702,8 +694,10 @@ describe('predictive-alert-service coverage', () => {
       });
 
       expect(capturedNotifValues).toMatchObject({
-        type: 'alert_excess_stock',
+        type: 'proposal_status_changed',
         pharmacyId: 20,
+        referenceType: 'match',
+        referenceId: null,
       });
     });
   });

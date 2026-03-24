@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   db: {
     select: vi.fn(),
-    selectDistinct: vi.fn(),
   },
 }));
 
@@ -26,6 +25,12 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
   like: vi.fn(() => ({})),
   ilike: vi.fn(() => ({})),
+  asc: vi.fn(() => ({})),
+  desc: vi.fn(() => ({})),
+  sql: Object.assign(
+    (..._args: unknown[]) => ({ as: vi.fn(() => ({})) }),
+    { raw: (..._args: unknown[]) => ({}) },
+  ),
 }));
 
 vi.mock('../utils/kana-utils', () => ({
@@ -55,10 +60,14 @@ function createSelectDistinctQuery(result: unknown) {
   const query = {
     from: vi.fn(),
     where: vi.fn(),
+    groupBy: vi.fn(),
+    orderBy: vi.fn(),
     limit: vi.fn(),
   };
   query.from.mockReturnValue(query);
   query.where.mockReturnValue(query);
+  query.groupBy.mockReturnValue(query);
+  query.orderBy.mockReturnValue(query);
   query.limit.mockResolvedValue(result);
   return query;
 }
@@ -67,10 +76,12 @@ function createSelectQuery(result: unknown) {
   const query = {
     from: vi.fn(),
     where: vi.fn(),
+    orderBy: vi.fn(),
     limit: vi.fn(),
   };
   query.from.mockReturnValue(query);
   query.where.mockReturnValue(query);
+  query.orderBy.mockReturnValue(query);
   query.limit.mockResolvedValue(result);
   return query;
 }
@@ -84,7 +95,7 @@ function createApp() {
 
 describe('GET /api/search/drugs', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it('returns empty array when query is empty', async () => {
@@ -92,7 +103,7 @@ describe('GET /api/search/drugs', () => {
     const response = await request(app).get('/api/search/drugs');
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
-    expect(mocks.db.selectDistinct).not.toHaveBeenCalled();
+    expect(mocks.db.select).not.toHaveBeenCalled();
   });
 
   it('returns empty array when query is whitespace only', async () => {
@@ -104,7 +115,7 @@ describe('GET /api/search/drugs', () => {
 
   it('returns drug names matching the query', async () => {
     const app = createApp();
-    mocks.db.selectDistinct.mockImplementation(() =>
+    mocks.db.select.mockImplementation(() =>
       createSelectDistinctQuery([
         { drugName: 'アムロジピン錠5mg' },
         { drugName: 'アムロジピン錠10mg' },
@@ -114,13 +125,13 @@ describe('GET /api/search/drugs', () => {
     const response = await request(app).get('/api/search/drugs').query({ q: 'アムロ' });
     expect(response.status).toBe(200);
     expect(response.body).toEqual(['アムロジピン錠5mg', 'アムロジピン錠10mg']);
-    expect(mocks.db.selectDistinct).toHaveBeenCalledTimes(1);
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
   it('returns at most 10 results (MAX_SUGGESTIONS)', async () => {
     const app = createApp();
     const manyResults = Array.from({ length: 10 }, (_, i) => ({ drugName: `Drug ${i + 1}` }));
-    mocks.db.selectDistinct.mockImplementation(() => createSelectDistinctQuery(manyResults));
+    mocks.db.select.mockImplementation(() => createSelectDistinctQuery(manyResults));
 
     const response = await request(app).get('/api/search/drugs').query({ q: 'Drug' });
     expect(response.status).toBe(200);
@@ -134,7 +145,7 @@ describe('GET /api/search/drugs', () => {
       where: vi.fn().mockReturnThis(),
       limit: vi.fn().mockRejectedValue(new Error('DB error')),
     };
-    mocks.db.selectDistinct.mockImplementation(() => failQuery);
+    mocks.db.select.mockImplementation(() => failQuery);
 
     const response = await request(app).get('/api/search/drugs').query({ q: 'test' });
     expect(response.status).toBe(500);
@@ -144,7 +155,7 @@ describe('GET /api/search/drugs', () => {
 
 describe('GET /api/search/drug-master', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it('returns empty array when query is empty', async () => {
@@ -213,7 +224,7 @@ describe('GET /api/search/drug-master', () => {
 
 describe('GET /api/search/pharmacies', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it('returns empty array when query is empty', async () => {
@@ -221,19 +232,19 @@ describe('GET /api/search/pharmacies', () => {
     const response = await request(app).get('/api/search/pharmacies');
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
-    expect(mocks.db.selectDistinct).not.toHaveBeenCalled();
+    expect(mocks.db.select).not.toHaveBeenCalled();
   });
 
   it('returns pharmacy names matching the query', async () => {
     const app = createApp();
-    mocks.db.selectDistinct.mockImplementation(() =>
+    mocks.db.select.mockImplementation(() =>
       createSelectDistinctQuery([{ name: 'さくら薬局' }, { name: 'さくらい薬局' }]),
     );
 
     const response = await request(app).get('/api/search/pharmacies').query({ q: 'さくら' });
     expect(response.status).toBe(200);
     expect(response.body).toEqual(['さくら薬局', 'さくらい薬局']);
-    expect(mocks.db.selectDistinct).toHaveBeenCalledTimes(1);
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
   it('returns 500 on database error', async () => {
@@ -243,7 +254,7 @@ describe('GET /api/search/pharmacies', () => {
       where: vi.fn().mockReturnThis(),
       limit: vi.fn().mockRejectedValue(new Error('DB error')),
     };
-    mocks.db.selectDistinct.mockImplementation(() => failQuery);
+    mocks.db.select.mockImplementation(() => failQuery);
 
     const response = await request(app).get('/api/search/pharmacies').query({ q: 'test' });
     expect(response.status).toBe(500);
@@ -253,8 +264,8 @@ describe('GET /api/search/pharmacies', () => {
 
 describe('sanitizeQuery utility (via route behavior)', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.db.selectDistinct.mockImplementation(() => createSelectDistinctQuery([]));
+    vi.resetAllMocks();
+    mocks.db.select.mockImplementation(() => createSelectDistinctQuery([]));
   });
 
   it('strips control characters from query', async () => {
@@ -268,13 +279,13 @@ describe('sanitizeQuery utility (via route behavior)', () => {
 
   it('truncates query to max 100 characters', async () => {
     const app = createApp();
-    mocks.db.selectDistinct.mockImplementation(() => createSelectDistinctQuery([{ drugName: 'TestDrug' }]));
+    mocks.db.select.mockImplementation(() => createSelectDistinctQuery([{ drugName: 'TestDrug' }]));
 
     const longQuery = 'a'.repeat(150);
     const response = await request(app).get('/api/search/drugs').query({ q: longQuery });
     expect(response.status).toBe(200);
     // Query was truncated but still non-empty so DB was called
-    expect(mocks.db.selectDistinct).toHaveBeenCalledTimes(1);
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
   it('returns empty for non-string query param types', async () => {

@@ -30,6 +30,26 @@ interface TimelineContextValue {
   loadMore: () => Promise<void>;
 }
 
+interface TimelineProviderInitialState {
+  events?: TimelineEvent[];
+  total?: number;
+  hasMore?: boolean;
+  loading?: boolean;
+  error?: string;
+  digestEvents?: TimelineEvent[];
+  digestLoading?: boolean;
+  unreadCount?: number;
+  selectedPriority?: TimelinePriority | null;
+}
+
+interface TimelineProviderProps {
+  children: ReactNode;
+  initialState?: TimelineProviderInitialState;
+  disableBootstrap?: boolean;
+  disableRealtimeRefresh?: boolean;
+  disableUnreadPolling?: boolean;
+}
+
 const TimelineContext = createContext<TimelineContextValue>({
   events: [],
   total: 0,
@@ -49,21 +69,30 @@ const TimelineContext = createContext<TimelineContextValue>({
 
 const PAGE_LIMIT = 20;
 
-export function TimelineProvider({ children }: { children: ReactNode }) {
+export function TimelineProvider({
+  children,
+  initialState,
+  disableBootstrap = false,
+  disableRealtimeRefresh,
+  disableUnreadPolling = false,
+}: TimelineProviderProps) {
   const { user } = useAuth();
+  const suppressRealtimeRefresh = disableRealtimeRefresh ?? disableUnreadPolling;
 
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [total, setTotal] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [events, setEvents] = useState<TimelineEvent[]>(initialState?.events ?? []);
+  const [total, setTotal] = useState(initialState?.total ?? 0);
+  const [hasMore, setHasMore] = useState(initialState?.hasMore ?? false);
+  const [loading, setLoading] = useState(initialState?.loading ?? false);
+  const [error, setError] = useState(initialState?.error ?? '');
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [selectedPriority, setSelectedPriority] = useState<TimelinePriority | null>(null);
+  const [selectedPriority, setSelectedPriority] = useState<TimelinePriority | null>(
+    initialState?.selectedPriority ?? null,
+  );
 
-  const [digestEvents, setDigestEvents] = useState<TimelineEvent[]>([]);
-  const [digestLoading, setDigestLoading] = useState(false);
+  const [digestEvents, setDigestEvents] = useState<TimelineEvent[]>(initialState?.digestEvents ?? []);
+  const [digestLoading, setDigestLoading] = useState(initialState?.digestLoading ?? false);
 
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(initialState?.unreadCount ?? 0);
 
   const fetchTimeline = useCallback(async (
     cursor: string | undefined,
@@ -160,7 +189,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, [fetchBootstrap]);
 
   useSseRefresh({
-    enabled: !!user,
+    enabled: !!user && !suppressRealtimeRefresh,
     streamPath: '/realtime/stream?topics=timeline',
     events: ['timeline.refresh'],
     onRefresh: refreshTimeline,
@@ -181,9 +210,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    void refreshTimeline();
+    if (!disableBootstrap) {
+      void refreshTimeline();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [disableBootstrap, user]);
 
   const value = useMemo<TimelineContextValue>(() => ({
     events,

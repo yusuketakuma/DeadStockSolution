@@ -67,7 +67,7 @@ export function createSubQueryBuilder() {
   query.where.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
-  query.groupBy.mockReturnValue(query);
+  query.groupBy.mockResolvedValue([]);
   query.innerJoin.mockReturnValue(query);
   return query;
 }

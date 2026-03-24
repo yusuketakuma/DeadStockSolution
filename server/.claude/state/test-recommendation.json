@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-03-16T11:40:10Z",
-  "changed_file": "/Users/yusuke/DeadStockSolution/client/src/pages/UploadPage.tsx",
+  "timestamp": "2026-03-23T22:59:22Z",
+  "changed_file": "src/test/openclaw-connect-route.test.ts",
   "test_command": "npm test",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

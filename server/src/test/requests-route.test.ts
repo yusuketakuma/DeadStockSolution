@@ -10,6 +10,13 @@ const mocks = vi.hoisted(() => ({
   },
   buildOpenClawLogContext: vi.fn(),
   handoffToOpenClaw: vi.fn(),
+  buildOpenClawConversationContext: vi.fn(),
+  ensureOpenClawWorkItem: vi.fn(),
+  recordOpenClawRequestMessage: vi.fn(),
+  updateOpenClawWorkItem: vi.fn(),
+  mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  publishAdminRequestsRefresh: vi.fn(),
+  publishRequestsRefresh: vi.fn(),
 }));
 
 // Default user — tests can override
@@ -57,7 +64,31 @@ vi.mock('../services/openclaw-service', () => ({
   handoffToOpenClaw: mocks.handoffToOpenClaw,
 }));
 
+vi.mock('../services/openclaw-thread-service', () => ({
+  buildOpenClawConversationContext: mocks.buildOpenClawConversationContext,
+  ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
+  listOpenClawRequestMessages: vi.fn(),
+  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
+  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+}));
+
+vi.mock('../services/realtime-service', () => ({
+  publishAdminRequestsRefresh: mocks.publishAdminRequestsRefresh,
+  publishRequestsRefresh: mocks.publishRequestsRefresh,
+}));
+
 vi.mock('../db/schema', () => ({
+  openclawWorkItems: {
+    requestId: 'requestId',
+    workflowStatus: 'workflowStatus',
+    latestSummary: 'latestSummary',
+    branchName: 'branchName',
+    prUrl: 'prUrl',
+    prNumber: 'prNumber',
+    lastQuestion: 'lastQuestion',
+    lastError: 'lastError',
+  },
   userRequests: {
     id: 'id',
     pharmacyId: 'pharmacyId',
@@ -90,11 +121,13 @@ function createApp() {
 function createSelectQuery(result: unknown) {
   const query = {
     from: vi.fn(),
+    leftJoin: vi.fn(),
     where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
   };
   query.from.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
   query.limit.mockResolvedValue(result);
@@ -121,7 +154,7 @@ function createUpdateQuery() {
 
 describe('GET /api/requests/me', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockUser = { id: 1, email: 'user@example.com', isAdmin: false };
   });
 
@@ -208,11 +241,16 @@ describe('POST /api/requests', () => {
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockUser = { id: 1, email: 'user@example.com', isAdmin: false };
     mocks.db.insert.mockReturnValue(createInsertQuery([createdRow]));
     mocks.db.update.mockReturnValue(createUpdateQuery());
     mocks.buildOpenClawLogContext.mockResolvedValue([]);
+    mocks.buildOpenClawConversationContext.mockResolvedValue([]);
+    mocks.ensureOpenClawWorkItem.mockResolvedValue(undefined);
+    mocks.recordOpenClawRequestMessage.mockResolvedValue({ id: 99 });
+    mocks.updateOpenClawWorkItem.mockResolvedValue(undefined);
+    mocks.mapOpenClawStatusToWorkflowStatus.mockImplementation((status: string) => status);
     mocks.handoffToOpenClaw.mockResolvedValue(defaultHandoff);
   });
 

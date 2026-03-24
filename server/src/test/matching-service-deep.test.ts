@@ -103,6 +103,7 @@ function classifySelect(fields: unknown): string {
   if (keys.includes('dayOfWeek')) return 'businessHours';
   if (keys.includes('specialType')) return 'specialHours';
   if (keys.includes('deadStockItemId') && keys.includes('reservedQty')) return 'reservations';
+  if (keys.includes('pharmacyAId') && keys.includes('pharmacyBId') && keys.includes('count')) return 'successCounts';
   return 'unknown';
 }
 
@@ -201,6 +202,7 @@ describe('matching-service-deep: buildMatchItems via findMatches', () => {
         return createWhereQuery([{ id: 2, name: '相手薬局', phone: '000', fax: '000', latitude: 35.1, longitude: 139.1 }]);
       }
       if (type === 'reservations') return createGroupByQuery([]);
+      if (type === 'successCounts') return createGroupByQuery([]);
       if (type === 'businessHours') return createWhereQuery([]);
       if (type === 'specialHours') return createWhereQuery([]);
       return createSubQueryBuilder();
@@ -238,6 +240,7 @@ describe('matching-service-deep: buildMatchItems via findMatches', () => {
         return createWhereQuery([{ id: 2, name: '相手', phone: '000', fax: '000', latitude: 35.1, longitude: 139.1 }]);
       }
       if (type === 'reservations') return createGroupByQuery([]);
+      if (type === 'successCounts') return createGroupByQuery([]);
       if (type === 'businessHours') return createWhereQuery([]);
       if (type === 'specialHours') return createWhereQuery([]);
       return createSubQueryBuilder();

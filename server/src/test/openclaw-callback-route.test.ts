@@ -14,6 +14,10 @@ const mocks = vi.hoisted(() => ({
   loggerError: vi.fn(),
   processVerificationCallback: vi.fn(),
   invalidateAuthUserCache: vi.fn(),
+  ensureOpenClawWorkItem: vi.fn(),
+  updateOpenClawWorkItem: vi.fn(),
+  recordOpenClawRequestMessage: vi.fn(),
+  completeOpenClawRetryForRequest: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
@@ -35,6 +39,20 @@ vi.mock('../services/pharmacy-verification-callback-service', () => ({
 
 vi.mock('../middleware/auth', () => ({
   invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+}));
+
+vi.mock('../services/openclaw-thread-service', () => ({
+  ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
+  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+  recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
+  isOpenClawWorkflowStatus: vi.fn(() => true),
+  mapOpenClawStatusToWorkflowStatus: vi.fn((status: string) => (
+    status === 'completed' ? 'completed' : status === 'implementing' ? 'implementing' : 'in_dialogue'
+  )),
+}));
+
+vi.mock('../services/openclaw-retry-service', () => ({
+  completeOpenClawRetryForRequest: mocks.completeOpenClawRetryForRequest,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -283,11 +301,14 @@ describe('openclaw callback route', () => {
       openclawSummary: null,
     }];
     const updateQuery = createUpdateQuery();
-    const insertQuery = createInsertQuery();
+    const eventInsertQuery = createInsertQuery();
+    const notificationInsertQuery = createInsertQuery();
 
     mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
     mocks.db.update.mockImplementationOnce(() => updateQuery);
-    mocks.db.insert.mockImplementationOnce(() => insertQuery);
+    mocks.db.insert
+      .mockImplementationOnce(() => eventInsertQuery)
+      .mockImplementationOnce(() => notificationInsertQuery);
 
     const payload = {
       requestId: 21,
@@ -311,8 +332,8 @@ describe('openclaw callback route', () => {
     vi.useRealTimers();
 
     expect(res.status).toBe(200);
-    expect(mocks.db.insert).toHaveBeenCalledTimes(1);
-    expect(insertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.db.insert).toHaveBeenCalledTimes(2);
+    expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
       pharmacyId: 8,
       type: 'request_update',
       referenceType: 'request',
@@ -360,7 +381,7 @@ describe('openclaw callback route', () => {
     vi.useRealTimers();
 
     expect(res.status).toBe(200);
-    expect(mocks.db.insert).not.toHaveBeenCalled();
+    expect(mocks.db.insert).toHaveBeenCalledTimes(1);
     expect(mocks.db.update).toHaveBeenCalledTimes(2);
   });
 

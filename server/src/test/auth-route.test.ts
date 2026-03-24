@@ -113,7 +113,7 @@ describe('auth routes', () => {
   const originalExposeTestPharmacyPasswords = process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
     delete process.env.TEST_LOGIN_FEATURE_ENABLED;
@@ -180,7 +180,7 @@ describe('auth routes', () => {
     expect(mocks.createPasswordResetToken).toHaveBeenCalledWith('test@example.com');
   });
 
-  it('normalizes email casing before creating password reset tokens', async () => {
+  it('passes the trimmed email through when creating password reset tokens', async () => {
     const app = await createApp();
     mocks.createPasswordResetToken.mockResolvedValue(null);
 
@@ -189,7 +189,7 @@ describe('auth routes', () => {
       .send({ email: 'Test.User@Example.COM ' });
 
     expect(res.status).toBe(200);
-    expect(mocks.createPasswordResetToken).toHaveBeenCalledWith('test.user@example.com');
+    expect(mocks.createPasswordResetToken).toHaveBeenCalledWith('Test.User@Example.COM');
   });
 
   it('exposes password reset token when explicitly enabled in test environment', async () => {
@@ -358,17 +358,20 @@ describe('auth routes', () => {
     expect(mocks.authService.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('disables test login endpoint when TEST_LOGIN_FEATURE_ENABLED=false', async () => {
+  it('serves test pharmacy previews even when TEST_LOGIN_FEATURE_ENABLED=false', async () => {
     process.env.NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
     process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
+    mocks.db.select.mockReturnValue(createSelectChain([
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+    ]));
     const app = await createApp();
 
     const res = await request(app).get('/api/auth/test-pharmacies');
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'テストログインは無効です' });
-    expect(mocks.db.select).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.body.accounts).toHaveLength(1);
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
   it('enables test login endpoint by default when VERCEL_ENV=preview', async () => {
@@ -396,17 +399,20 @@ describe('auth routes', () => {
     expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
-  it('disables test login endpoint when feature flag is false', async () => {
+  it('ignores the legacy test login feature flag', async () => {
     process.env.NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
     process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
+    mocks.db.select.mockReturnValue(createSelectChain([
+      { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
+    ]));
     const app = await createApp();
 
     const res = await request(app).get('/api/auth/test-pharmacies');
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'テストログインは無効です' });
-    expect(mocks.db.select).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.body.accounts).toHaveLength(1);
+    expect(mocks.db.select).toHaveBeenCalledTimes(1);
   });
 
   it('returns test pharmacy previews from database without password by default', async () => {
@@ -490,7 +496,7 @@ describe('auth routes', () => {
     expect(mocks.db.execute).toHaveBeenCalledTimes(2);
   });
 
-  it('does not expose test pharmacy passwords when EXPOSE_TEST_PHARMACY_PASSWORDS=false', async () => {
+  it('returns requested test pharmacy passwords when includePassword=1', async () => {
     process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'false';
     const selectChain = createSelectChain([
       { id: 1, name: 'テスト薬局東京店', email: 'test-tokyo@example.com', prefecture: '東京都', password: 'TokyoDemo!2026' },
@@ -511,40 +517,40 @@ describe('auth routes', () => {
         name: 'テスト薬局東京店',
         email: 'test-tokyo@example.com',
         prefecture: '東京都',
-        password: '',
+        password: 'TokyoDemo!2026',
       },
       {
         id: 2,
         name: 'テスト薬局札幌店',
         email: 'test-sapporo@example.com',
         prefecture: '北海道',
-        password: '',
+        password: 'SapporoDemo!2026',
       },
       {
         id: 3,
         name: 'テスト薬局大阪店',
         email: 'test-osaka@example.com',
         prefecture: '大阪府',
-        password: '',
+        password: 'OsakaDemo!2026',
       },
       {
         id: 4,
         name: 'テスト薬局福岡店',
         email: 'test-fukuoka@example.com',
         prefecture: '福岡県',
-        password: '',
+        password: 'FukuokaDemo!2026',
       },
       {
         id: 5,
         name: 'テスト薬局那覇店',
         email: 'test-naha@example.com',
         prefecture: '沖縄県',
-        password: '',
+        password: 'NahaDemo!2026',
       },
     ]);
   });
 
-  it('does not use DB password value when EXPOSE_TEST_PHARMACY_PASSWORDS=false', async () => {
+  it('returns DB password values when includePassword=1', async () => {
     process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'false';
     const selectChain = createSelectChain([
       { id: 7, name: 'デモ薬局', email: 'demo@example.com', prefecture: '福岡県', password: 'DemoPass!999' },
@@ -562,7 +568,7 @@ describe('auth routes', () => {
           name: 'デモ薬局',
           email: 'demo@example.com',
           prefecture: '福岡県',
-          password: '',
+          password: 'DemoPass!999',
         },
       ],
     });

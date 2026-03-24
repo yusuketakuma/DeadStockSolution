@@ -164,7 +164,11 @@ describe('notification-service-extra', () => {
       const adminLeftJoin = vi.fn().mockReturnValue({ where: adminWhere });
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
+      const matchWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
+
       mocks.db.select
+        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 

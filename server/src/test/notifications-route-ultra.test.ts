@@ -79,7 +79,7 @@ function createApp() {
   return app;
 }
 
-describe('notifications-route-ultra alert follow-up', () => {
+describe('notifications-route-ultra predictive alert follow-up', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.db.select.mockImplementation(() => createSelectQuery([]));
@@ -98,7 +98,7 @@ describe('notifications-route-ultra alert follow-up', () => {
     mocks.markAllDashboardAsRead.mockResolvedValue(0);
   });
 
-  it('maps predictive alert notifications to alert notices and /alerts', async () => {
+  it('maps predictive alert notifications to status updates and /matching', async () => {
     const app = createApp();
 
     mocks.db.select
@@ -110,11 +110,11 @@ describe('notifications-route-ultra alert follow-up', () => {
       .mockImplementationOnce(() => createSelectQuery([{
         id: 401,
         pharmacyId: 1,
-        type: 'alert_near_expiry',
+        type: 'proposal_status_changed',
         title: '期限切迫在庫の予兆があります',
         message: '2件の在庫が45日以内に期限到来予定です。',
-        referenceType: 'alert',
-        referenceId: 88,
+        referenceType: 'match',
+        referenceId: null,
         isRead: false,
         readAt: null,
         createdAt: '2026-03-01T00:00:00.000Z',
@@ -124,10 +124,10 @@ describe('notifications-route-ultra alert follow-up', () => {
 
     const res = await request(app).get('/api/notifications');
     expect(res.status).toBe(200);
-    const alertNotice = res.body.notices.find((n: { type: string }) => n.type === 'alert');
-    expect(alertNotice).toBeDefined();
-    expect(alertNotice.actionPath).toBe('/alerts');
-    expect(alertNotice.actionLabel).toBe('アラートを確認');
+    const statusNotice = res.body.notices.find((n: { type: string }) => n.type === 'status_update');
+    expect(statusNotice).toBeDefined();
+    expect(statusNotice.actionPath).toBe('/matching');
+    expect(statusNotice.actionLabel).toBe('確認する');
   });
 });
 
@@ -326,13 +326,11 @@ describe('notifications-route-ultra', () => {
         .mockImplementationOnce(() => createSelectQuery([]))  // messagesPharmacy
         .mockImplementationOnce(() => createSelectQuery([{    // matchRows
           id: 200,
-          sourcePharmacyId: 2,
-          detailJson: {
-            trigger_upload_type: 'dead_stock',
-            candidate_count_before: 5,
-            candidate_count_after: 10,
-            diff: { addedPharmacyIds: [3, 4], removedPharmacyIds: [5] },
-          },
+          triggerPharmacyId: 2,
+          triggerUploadType: 'dead_stock',
+          candidateCountBefore: 5,
+          candidateCountAfter: 10,
+          diffJson: JSON.stringify({ addedPharmacyIds: [3, 4], removedPharmacyIds: [5] }),
           isRead: false,
           createdAt: '2026-03-01T00:00:00.000Z',
         }]))
@@ -359,13 +357,11 @@ describe('notifications-route-ultra', () => {
         .mockImplementationOnce(() => createSelectQuery([]))
         .mockImplementationOnce(() => createSelectQuery([{
           id: 300,
-          sourcePharmacyId: 1,
-          detailJson: {
-            trigger_upload_type: 'used_medication',
-            candidate_count_before: 0,
-            candidate_count_after: 3,
-            diff: {},
-          },
+          triggerPharmacyId: 1,
+          triggerUploadType: 'used_medication',
+          candidateCountBefore: 0,
+          candidateCountAfter: 3,
+          diffJson: JSON.stringify({}),
           isRead: true,
           createdAt: '2026-03-01T00:00:00.000Z',
         }]))

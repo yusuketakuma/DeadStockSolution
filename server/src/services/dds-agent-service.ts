@@ -93,6 +93,7 @@ export async function issueDdsBootstrapToken(adminId: number | null): Promise<{
   token: string;
   expiresAt: string;
   environment: string;
+  registerUrl: string;
   callbackUrl: string;
   commandsUrl: string;
   healthUrl: string;
@@ -111,6 +112,7 @@ export async function issueDdsBootstrapToken(adminId: number | null): Promise<{
     token,
     expiresAt,
     environment: DDS_ENVIRONMENT,
+    registerUrl: buildAbsoluteApiUrl('/api/openclaw/connect/register'),
     callbackUrl: buildAbsoluteApiUrl('/api/openclaw/callback'),
     commandsUrl: buildAbsoluteApiUrl('/api/openclaw/commands'),
     healthUrl: buildAbsoluteApiUrl('/api/health/openclaw'),
@@ -171,12 +173,13 @@ export async function registerDdsAgent(input: {
       metadataJson: {
         openclawVersion: input.openclawVersion ?? null,
       },
+      lastHeartbeatAt: currentTime,
       lastSeenAt: currentTime,
       createdAt: currentTime,
       updatedAt: currentTime,
     })
     .onConflictDoUpdate({
-      target: ddsAgentConnections.environment,
+      target: [ddsAgentConnections.agentId, ddsAgentConnections.environment],
       set: {
         agentId: input.agentId.trim(),
         agentName: input.agentName.trim(),
@@ -186,6 +189,7 @@ export async function registerDdsAgent(input: {
         metadataJson: {
           openclawVersion: input.openclawVersion ?? null,
         },
+        lastHeartbeatAt: currentTime,
         lastSeenAt: currentTime,
         updatedAt: currentTime,
       },
@@ -254,9 +258,18 @@ export async function getDdsConnectionStatus(): Promise<{
     .orderBy(desc(ddsWorkItems.updatedAt), desc(ddsWorkItems.id))
     .limit(1);
 
+  const staleThresholdMs = Math.max(resolveLeaseSeconds() * 2 * 1000, 60_000);
+  const lastSeenAtMs = connection?.lastSeenAt ? Date.parse(connection.lastSeenAt) : Number.NaN;
+  const connected = Boolean(
+    connection
+      && connection.status === 'connected'
+      && Number.isFinite(lastSeenAtMs)
+      && Date.now() - lastSeenAtMs <= staleThresholdMs,
+  );
+
   return {
     environment: DDS_ENVIRONMENT,
-    connected: Boolean(connection),
+    connected,
     agentId: connection?.agentId ?? null,
     agentName: connection?.agentName ?? null,
     lastSeenAt: connection?.lastSeenAt ?? null,
@@ -285,12 +298,14 @@ async function authenticateControlToken(token: string): Promise<typeof ddsAgentC
 
 export async function heartbeatDdsAgent(token: string, payload?: Record<string, unknown>): Promise<void> {
   const connection = await authenticateControlToken(token);
+  const currentTime = nowIso();
   await db.update(ddsAgentConnections)
     .set({
       status: 'connected',
       metadataJson: payload ?? connection.metadataJson ?? null,
-      lastSeenAt: nowIso(),
-      updatedAt: nowIso(),
+      lastHeartbeatAt: currentTime,
+      lastSeenAt: currentTime,
+      updatedAt: currentTime,
     })
     .where(eq(ddsAgentConnections.id, connection.id));
 }
@@ -415,7 +430,7 @@ export async function claimNextDdsJob(token: string): Promise<null | {
     }>;
   };
 }> {
-  await authenticateControlToken(token);
+  const connection = await authenticateControlToken(token);
   const currentTime = nowIso();
 
   await db.update(ddsAgentJobs)
@@ -452,9 +467,11 @@ export async function claimNextDdsJob(token: string): Promise<null | {
 
   const locked = await db.update(ddsAgentJobs)
     .set({
+      agentId: connection.agentId,
       status: 'leased',
       leaseTokenHash: hashToken(leaseToken),
       leaseExpiresAt,
+      leasedAt: currentTime,
       attemptCount: sql`${ddsAgentJobs.attemptCount} + 1`,
       updatedAt: currentTime,
     })
@@ -507,7 +524,7 @@ export async function claimNextDdsJob(token: string): Promise<null | {
     workItem: {
       id: workItem.id,
       type: workItem.type as DdsWorkItemType,
-      workflowStatus: workItem.workflowStatus as DdsWorkflowStatus,
+      workflowStatus: 'analyzing',
       requestId: workItem.requestId,
       pharmacyId: workItem.pharmacyId,
       requestText: workItem.requestText ?? '',
@@ -518,8 +535,29 @@ export async function claimNextDdsJob(token: string): Promise<null | {
   };
 }
 
-async function ensureAgentOwnsWorkItem(token: string, workItemId: number): Promise<typeof ddsWorkItems.$inferSelect> {
-  await authenticateControlToken(token);
+async function ensureAgentLease(
+  token: string,
+  workItemId: number,
+  leaseToken: string,
+): Promise<typeof ddsWorkItems.$inferSelect> {
+  const connection = await authenticateControlToken(token);
+  const currentTime = nowIso();
+  const [lease] = await db.select({ id: ddsAgentJobs.id })
+    .from(ddsAgentJobs)
+    .where(and(
+      eq(ddsAgentJobs.environment, DDS_ENVIRONMENT),
+      eq(ddsAgentJobs.agentId, connection.agentId),
+      eq(ddsAgentJobs.workItemId, workItemId),
+      eq(ddsAgentJobs.status, 'leased'),
+      eq(ddsAgentJobs.leaseTokenHash, hashToken(leaseToken)),
+      sql`${ddsAgentJobs.leaseExpiresAt} > ${currentTime}`,
+    ))
+    .limit(1);
+
+  if (!lease) {
+    throw new ApiError(409, 'lease token が不正または期限切れです');
+  }
+
   const [workItem] = await db.select()
     .from(ddsWorkItems)
     .where(eq(ddsWorkItems.id, workItemId))
@@ -532,13 +570,14 @@ async function ensureAgentOwnsWorkItem(token: string, workItemId: number): Promi
   return workItem;
 }
 
-export async function postDdsQuestion(token: string, workItemId: number, body: string): Promise<void> {
-  const workItem = await ensureAgentOwnsWorkItem(token, workItemId);
+export async function postDdsQuestion(token: string, workItemId: number, leaseToken: string, body: string): Promise<void> {
+  const workItem = await ensureAgentLease(token, workItemId, leaseToken);
   if (!workItem.requestId) {
     throw new ApiError(400, 'ユーザー対話を持たない work item です');
   }
 
   const currentTime = nowIso();
+  const leaseTokenHash = hashToken(leaseToken);
   await db.transaction(async (tx) => {
     await tx.insert(userRequestMessages).values({
       requestId: workItem.requestId!,
@@ -572,20 +611,23 @@ export async function postDdsQuestion(token: string, workItemId: number, body: s
       })
       .where(and(
         eq(ddsAgentJobs.workItemId, workItem.id),
-        or(eq(ddsAgentJobs.status, 'pending'), eq(ddsAgentJobs.status, 'leased')),
+        eq(ddsAgentJobs.status, 'leased'),
+        eq(ddsAgentJobs.leaseTokenHash, leaseTokenHash),
       ));
   });
 }
 
 export async function reportDdsPullRequest(token: string, input: {
   workItemId: number;
+  leaseToken: string;
   branchName: string;
   prNumber?: number | null;
   prUrl: string;
   summary: string;
 }): Promise<void> {
-  const workItem = await ensureAgentOwnsWorkItem(token, input.workItemId);
+  const workItem = await ensureAgentLease(token, input.workItemId, input.leaseToken);
   const currentTime = nowIso();
+  const leaseTokenHash = hashToken(input.leaseToken);
 
   await db.transaction(async (tx) => {
     await tx.update(ddsWorkItems)
@@ -613,7 +655,8 @@ export async function reportDdsPullRequest(token: string, input: {
       })
       .where(and(
         eq(ddsAgentJobs.workItemId, workItem.id),
-        or(eq(ddsAgentJobs.status, 'pending'), eq(ddsAgentJobs.status, 'leased')),
+        eq(ddsAgentJobs.status, 'leased'),
+        eq(ddsAgentJobs.leaseTokenHash, leaseTokenHash),
       ));
 
     if (workItem.requestId) {

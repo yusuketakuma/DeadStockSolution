@@ -76,6 +76,7 @@ vi.mock('drizzle-orm', () => ({
 
 import { findMatches, findMatchesBatch } from '../services/matching-service';
 import {
+  createGroupByQuery,
   createLimitQuery,
   createOrderByQuery,
   createSubQueryBuilder,
@@ -103,6 +104,7 @@ function classifySelect(fields: unknown): string {
   if (keys.includes('dayOfWeek')) return 'businessHours';
   if (keys.includes('specialType')) return 'specialHours';
   if (keys.includes('deadStockItemId') && keys.includes('reservedQty')) return 'reservations';
+  if (keys.includes('pharmacyAId') && keys.includes('pharmacyBId') && keys.includes('count')) return 'successCounts';
   return 'unknown';
 }
 
@@ -130,6 +132,7 @@ describe('matching-service coverage: findMatches', () => {
       }
       if (type === 'deadStock') return createOrderByQuery([]);
       if (type === 'usedMed') return createOrderByQuery([{ pharmacyId: 1, drugName: '薬A' }]);
+      if (type === 'successCounts') return createGroupByQuery([]);
       return createSubQueryBuilder();
     });
 
@@ -151,6 +154,7 @@ describe('matching-service coverage: findMatches', () => {
         }]);
       }
       if (type === 'usedMed') return createOrderByQuery([]);
+      if (type === 'successCounts') return createGroupByQuery([]);
       return createSubQueryBuilder();
     });
 
@@ -178,6 +182,7 @@ describe('matching-service coverage: findMatches', () => {
       }
       if (type === 'favoriteRows') return createWhereQuery([]);
       if (type === 'viablePharmacies') return createWhereQuery([]);
+      if (type === 'successCounts') return createGroupByQuery([]);
       return createSubQueryBuilder();
     });
 
@@ -205,6 +210,7 @@ describe('matching-service coverage: findMatches', () => {
       if (type === 'viablePharmacies') return createWhereQuery([
         { id: 2, name: '相手薬局', phone: '000', fax: '000', latitude: 35.1, longitude: 139.1 },
       ]);
+      if (type === 'successCounts') return createGroupByQuery([]);
       // Reservations that consume all stock
       if (type === 'reservations') {
         const groupByQuery = {

@@ -65,8 +65,13 @@ describe('useCameraDraftRows', () => {
     expect(result.current.rows).toHaveLength(1);
     expect(result.current.rows[0]).toEqual(expect.objectContaining({
       rawCode: 'CODE-001',
-      status: 'unmatched',
+      status: 'resolved',
+      drugMasterId: 10,
+      drugMasterPackageId: 20,
+      drugName: 'テスト薬',
       packageLabel: '100錠',
+      expirationDate: '2031-12-31',
+      unit: '錠',
       candidateOptions: candidates,
     }));
 

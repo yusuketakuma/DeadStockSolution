@@ -49,7 +49,7 @@ function createApp() {
 
 describe('admin-upload-jobs route coverage: GET /upload-jobs filters', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.isUploadConfirmRetryUnavailableError.mockImplementation(
       (error: unknown) => Boolean(
         error
@@ -160,7 +160,7 @@ describe('admin-upload-jobs route coverage: GET /upload-jobs filters', () => {
 
 describe('admin-upload-jobs route coverage: GET /upload-jobs/:id', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.isUploadConfirmRetryUnavailableError.mockReturnValue(false);
   });
 
@@ -214,7 +214,7 @@ describe('admin-upload-jobs route coverage: GET /upload-jobs/:id', () => {
 
 describe('admin-upload-jobs route coverage: PATCH /upload-jobs/:id/cancel', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.isUploadConfirmRetryUnavailableError.mockReturnValue(false);
   });
 
@@ -295,7 +295,7 @@ describe('admin-upload-jobs route coverage: PATCH /upload-jobs/:id/cancel', () =
 
 describe('admin-upload-jobs route coverage: POST /upload-jobs/:id/retry', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.isUploadConfirmRetryUnavailableError.mockImplementation(
       (error: unknown) => Boolean(
         error
@@ -356,7 +356,7 @@ describe('admin-upload-jobs route coverage: POST /upload-jobs/:id/retry', () => 
 
 describe('admin-upload-jobs route coverage: GET /upload-jobs/:id/error-report', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.isUploadConfirmRetryUnavailableError.mockReturnValue(false);
   });
 

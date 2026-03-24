@@ -90,7 +90,7 @@ function createTxInsertNotificationReturning(notificationId: number | null) {
   return { values };
 }
 
-it('runPredictiveAlertsJob persists alert notifications with alert routing metadata', async () => {
+it('runPredictiveAlertsJob persists predictive alert notifications with matching routing metadata', async () => {
   vi.resetAllMocks();
   vi.stubEnv('VAPID_PUBLIC_KEY', 'test-public-key');
   vi.stubEnv('VAPID_PRIVATE_KEY', 'test-private-key');
@@ -137,9 +137,9 @@ it('runPredictiveAlertsJob persists alert notifications with alert routing metad
   expect(txRef!.insert).toHaveBeenCalledTimes(2);
   expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
     pharmacyId: 10,
-    type: 'alert_near_expiry',
-    referenceType: 'alert',
-    referenceId: 501,
+    type: 'proposal_status_changed',
+    referenceType: 'match',
+    referenceId: null,
   }));
 });
 
@@ -150,7 +150,7 @@ describe('alert/group push integration', () => {
     vi.stubEnv('VAPID_PRIVATE_KEY', 'test-private-key');
   });
 
-  it('runPredictiveAlertsJob dispatches push after alert creation', async () => {
+  it('runPredictiveAlertsJob does not dispatch push after alert creation', async () => {
     const activePharmaciesQuery = createSelectWhereResult([{ id: 10 }]);
     const nearExpiryQuery = createSelectWhereGroupByResult([
       { pharmacyId: 10, itemCount: 2, totalValue: 1200, nearestExpiryDate: '2026-03-15' },
@@ -187,24 +187,13 @@ describe('alert/group push integration', () => {
       excessStockMonths: 3,
     });
 
-    expect(mocks.sendToPharmacy).toHaveBeenCalledTimes(1);
+    expect(mocks.sendToPharmacy).not.toHaveBeenCalled();
     expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
       pharmacyId: 10,
-      type: 'alert_near_expiry',
-      referenceType: 'alert',
-      referenceId: 501,
+      type: 'proposal_status_changed',
+      referenceType: 'match',
+      referenceId: null,
     }));
-    expect(mocks.sendToPharmacy).toHaveBeenCalledWith(
-      10,
-      expect.objectContaining({
-        title: '期限切迫在庫の予兆があります',
-        body: expect.stringContaining('期限到来予定です'),
-        data: expect.objectContaining({
-          url: '/alerts',
-          type: 'near_expiry',
-        }),
-      }),
-    );
   });
 
   it('runPredictiveAlertsJob skips push dispatch when VAPID keys are missing', async () => {
@@ -244,9 +233,9 @@ describe('alert/group push integration', () => {
     await runPredictiveAlertsJob({ now: new Date('2026-03-01T00:00:00.000Z') });
 
     expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'alert_near_expiry',
-      referenceType: 'alert',
-      referenceId: 777,
+      type: 'proposal_status_changed',
+      referenceType: 'match',
+      referenceId: null,
     }));
     expect(mocks.sendToPharmacy).not.toHaveBeenCalled();
   });

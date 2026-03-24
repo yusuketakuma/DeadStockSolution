@@ -4,10 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   dbSelect: vi.fn(),
   dbExecute: vi.fn(),
+  getDdsConnectionStatus: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
   db: { select: mocks.dbSelect, execute: mocks.dbExecute },
+}));
+
+vi.mock('../services/dds-agent-service', () => ({
+  getDdsConnectionStatus: mocks.getDdsConnectionStatus,
 }));
 
 vi.mock('../services/logger', () => ({
@@ -29,7 +34,7 @@ function mockSelectReturning(rows: Array<Record<string, unknown>>) {
 // First call = openclawRetryJobs (retry queue), second call = openclawRequestEvents (handoff KPI)
 function mockSelectSequence(
   retryRows: Array<{ status: string }>,
-  handoffRows: Array<{ eventType: string; createdAt: string }>,
+  handoffRows: Array<{ eventType: string; count: number; latest: string }>,
 ) {
   let callCount = 0;
   mocks.dbSelect.mockImplementation(() => {
@@ -40,10 +45,12 @@ function mockSelectSequence(
         from: vi.fn().mockResolvedValue(retryRows),
       };
     }
-    // handoff KPI: select().from().where()
+    // handoff KPI: select().from().where().groupBy()
     return {
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(handoffRows),
+        where: vi.fn().mockReturnValue({
+          groupBy: vi.fn().mockResolvedValue(handoffRows),
+        }),
       }),
     };
   });
@@ -55,6 +62,13 @@ describe('getOpenClawHealthSnapshot — handoff KPI fields', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.dbExecute.mockResolvedValue([]);
+    mocks.getDdsConnectionStatus.mockResolvedValue({
+      connected: false,
+      agentId: null,
+      lastSeenAt: null,
+      queuedJobs: 0,
+      awaitingUser: 0,
+    });
   });
 
   afterEach(() => {
@@ -72,8 +86,8 @@ describe('getOpenClawHealthSnapshot — handoff KPI fields', () => {
     mockSelectSequence(
       [],
       [
-        { eventType: 'handoff_accepted', createdAt: '2026-03-20T10:00:00.000Z' },
-        { eventType: 'handoff_deferred', createdAt: '2026-03-21T12:00:00.000Z' },
+        { eventType: 'handoff_accepted', count: 1, latest: '2026-03-20T10:00:00.000Z' },
+        { eventType: 'handoff_deferred', count: 1, latest: '2026-03-21T12:00:00.000Z' },
       ],
     );
 
@@ -96,8 +110,7 @@ describe('getOpenClawHealthSnapshot — handoff KPI fields', () => {
     mockSelectSequence(
       [],
       [
-        { eventType: 'handoff_accepted', createdAt: '2026-03-20T09:00:00.000Z' },
-        { eventType: 'handoff_accepted', createdAt: '2026-03-20T10:00:00.000Z' },
+        { eventType: 'handoff_accepted', count: 2, latest: '2026-03-20T10:00:00.000Z' },
       ],
     );
 
@@ -110,7 +123,7 @@ describe('getOpenClawHealthSnapshot — handoff KPI fields', () => {
     mockSelectSequence(
       [],
       [
-        { eventType: 'handoff_deferred', createdAt: '2026-03-19T08:00:00.000Z' },
+        { eventType: 'handoff_deferred', count: 1, latest: '2026-03-19T08:00:00.000Z' },
       ],
     );
 
@@ -123,9 +136,8 @@ describe('getOpenClawHealthSnapshot — handoff KPI fields', () => {
     mockSelectSequence(
       [],
       [
-        { eventType: 'handoff_accepted', createdAt: '2026-03-20T10:00:00.000Z' },
-        { eventType: 'handoff_accepted', createdAt: '2026-03-20T11:00:00.000Z' },
-        { eventType: 'handoff_deferred', createdAt: '2026-03-20T12:00:00.000Z' },
+        { eventType: 'handoff_accepted', count: 2, latest: '2026-03-20T11:00:00.000Z' },
+        { eventType: 'handoff_deferred', count: 1, latest: '2026-03-20T12:00:00.000Z' },
       ],
     );
 
@@ -139,9 +151,8 @@ describe('getOpenClawHealthSnapshot — handoff KPI fields', () => {
     mockSelectSequence(
       [],
       [
-        { eventType: 'handoff_accepted', createdAt: '2026-03-20T10:00:00.000Z' },
-        { eventType: 'handoff_deferred', createdAt: '2026-03-22T15:30:00.000Z' },
-        { eventType: 'handoff_accepted', createdAt: '2026-03-21T08:00:00.000Z' },
+        { eventType: 'handoff_accepted', count: 2, latest: '2026-03-21T08:00:00.000Z' },
+        { eventType: 'handoff_deferred', count: 1, latest: '2026-03-22T15:30:00.000Z' },
       ],
     );
 

@@ -51,7 +51,11 @@ describe('notification-service-ultra', () => {
       const adminLeftJoin = vi.fn().mockReturnValue({ where: adminWhere });
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
+      const matchWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
+
       mocks.db.select
+        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 
@@ -67,7 +71,11 @@ describe('notification-service-ultra', () => {
       const adminLeftJoin = vi.fn().mockReturnValue({ where: adminWhere });
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
+      const matchWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
+
       mocks.db.select
+        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 
@@ -82,7 +90,11 @@ describe('notification-service-ultra', () => {
       const adminLeftJoin = vi.fn().mockReturnValue({ where: adminWhere });
       const adminFrom = vi.fn().mockReturnValue({ leftJoin: adminLeftJoin });
 
+      const matchWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      const matchFrom = vi.fn().mockReturnValue({ where: matchWhere });
+
       mocks.db.select
+        .mockReturnValueOnce({ from: matchFrom })
         .mockReturnValueOnce({ from: notifFrom })
         .mockReturnValueOnce({ from: adminFrom });
 
@@ -217,7 +229,6 @@ describe('notification-service-ultra', () => {
     });
   });
 
-  // ── markAllDashboardAsRead — simplified (no matchNotifications) ──
   describe('markAllDashboardAsRead — transaction with notifications + admin', () => {
     function createTx(...execResults: unknown[]) {
       const execute = vi.fn();
@@ -232,6 +243,8 @@ describe('notification-service-ultra', () => {
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
             { rows: [{ count: 1 }] }, // markNotificationsAsRead
+            { rows: [{ exists: true }] }, // match_notifications table exists
+            { rows: [{ count: 0 }] }, // matchNotifications markAsRead
             { rows: [{ count: 3 }] }, // markAdminMessagesAsRead
           );
           return callback(tx);
@@ -246,6 +259,8 @@ describe('notification-service-ultra', () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
+            { rows: [{ count: 0 }] },
+            { rows: [{ exists: true }] },
             { rows: [{ count: 0 }] },
             { rows: [{ count: 0 }] },
           );
@@ -262,6 +277,8 @@ describe('notification-service-ultra', () => {
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
             { rows: [{}] },
+            { rows: [{ exists: true }] },
+            { rows: [{ count: 0 }] },
             { rows: [{ count: 0 }] },
           );
           return callback(tx);
@@ -277,6 +294,8 @@ describe('notification-service-ultra', () => {
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
             { rows: [] },
+            { rows: [{ exists: true }] },
+            { rows: [{ count: 0 }] },
             { rows: [{ count: 0 }] },
           );
           return callback(tx);

@@ -61,16 +61,16 @@ function createApp() {
   return app;
 }
 
-it('GET /api/notifications maps predictive alerts to alert notices routed to /alerts', async () => {
+it('GET /api/notifications maps predictive alert notifications to status updates routed to /matching', async () => {
   const app = createApp();
   const notificationRows = [{
     id: 7001,
     pharmacyId: 1,
-    type: 'alert_near_expiry',
+    type: 'proposal_status_changed',
     title: '期限切迫在庫の予兆があります',
     message: '2件の在庫が期限到来予定です。',
-    referenceType: 'alert',
-    referenceId: 55,
+    referenceType: 'match',
+    referenceId: null,
     isRead: false,
     readAt: null,
     createdAt: '2026-02-26T04:00:00.000Z',
@@ -90,9 +90,9 @@ it('GET /api/notifications maps predictive alerts to alert notices routed to /al
   expect(response.body.notices).toHaveLength(1);
   expect(response.body.notices[0]).toEqual(expect.objectContaining({
     id: 'notification-7001',
-    type: 'alert',
-    actionPath: '/alerts',
-    actionLabel: 'アラートを確認',
+    type: 'status_update',
+    actionPath: '/matching',
+    actionLabel: '確認する',
   }));
   expect(response.body.summary).toEqual(expect.objectContaining({
     actionableRequests: 1,
@@ -102,7 +102,9 @@ it('GET /api/notifications maps predictive alerts to alert notices routed to /al
 
 describe('notifications routes /matches/:id/read', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mocks.db.select.mockReset();
+    mocks.db.update.mockReset();
+    mocks.db.insert.mockReset();
     mocks.db.select.mockImplementation(() => createSelectQuery([{ id: 10, pharmacyId: 1 }]));
     mocks.db.update.mockImplementation(() => ({
       set: vi.fn(() => ({
@@ -153,7 +155,9 @@ describe('notifications routes /matches/:id/read', () => {
 
 describe('notifications routes /messages/:id/read', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mocks.db.select.mockReset();
+    mocks.db.update.mockReset();
+    mocks.db.insert.mockReset();
     mocks.db.select.mockImplementation(() => createSelectQuery([{ id: 11, targetType: 'all', targetPharmacyId: null }]));
     mocks.db.insert.mockImplementation(() => ({
       values: vi.fn(() => ({
@@ -198,7 +202,9 @@ describe('notifications routes /messages/:id/read', () => {
 
 describe('notifications routes GET /', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mocks.db.select.mockReset();
+    mocks.db.update.mockReset();
+    mocks.db.insert.mockReset();
   });
 
   it('deduplicates proposal event notifications against proposal-derived notices', async () => {

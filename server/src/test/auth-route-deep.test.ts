@@ -155,7 +155,29 @@ function createApp() {
 /* ── tests ─────────────────────────────────────── */
 describe('auth route deep coverage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    mocks.validateRegistration.mockReturnValue([]);
+    mocks.validateLogin.mockReturnValue([]);
+    mocks.emailSchema.safeParse.mockReturnValue({ success: true });
+    mocks.passwordSchema.safeParse.mockReturnValue({ success: true });
+    mocks.hashPassword.mockResolvedValue('hashedpw');
+    mocks.verifyPassword.mockResolvedValue(true);
+    mocks.generateToken.mockReturnValue('jwt-token');
+    mocks.verifyToken.mockReturnValue({ id: 1, email: 'test@example.com', isAdmin: false });
+    mocks.deriveSessionVersion.mockReturnValue('v1');
+    mocks.isJwtSecretMissingError.mockReturnValue(false);
+    mocks.geocodeAddress.mockResolvedValue({ lat: 35.6, lng: 139.7 });
+    mocks.evaluateRegistrationScreening.mockReturnValue({
+      approved: true,
+      screeningScore: 100,
+      reasons: [],
+      mismatches: [],
+    });
+    mocks.getClientIp.mockReturnValue('127.0.0.1');
+    mocks.createPasswordResetToken.mockResolvedValue({ token: 'a'.repeat(64) });
+    mocks.resetPasswordWithToken.mockResolvedValue({ success: true, pharmacyId: 1 });
+    mocks.ensureCsrfCookie.mockReturnValue('csrf-tok');
+    mocks.generateCsrfToken.mockReturnValue('csrf-tok');
   });
 
   // ── password-reset/request ──
@@ -427,13 +449,14 @@ describe('auth route deep coverage', () => {
 
   // ── test-pharmacies route ──
   describe('GET /auth/test-pharmacies', () => {
-    it('returns 404 when test login feature flag is disabled', async () => {
+    it('returns 404 when no test pharmacies exist even if the legacy feature flag is false', async () => {
       process.env.NODE_ENV = 'production';
       process.env.TEST_LOGIN_FEATURE_ENABLED = 'false';
+      mocks.db.select.mockReturnValue(createSelectQuery([]));
       const app = createApp();
       const res = await request(app).get('/auth/test-pharmacies');
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: 'テストログインは無効です' });
+      expect(res.body).toEqual({ error: 'テスト薬局がDBに登録されていません（5件登録を確認してください）' });
     });
   });
 });
