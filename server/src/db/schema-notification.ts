@@ -62,13 +62,12 @@ export const matchNotifications = pgTable('match_notifications', {
   candidateCountAfter: integer('candidate_count_after'),
   diffJson: jsonb('diff_json'),
   isRead: boolean('is_read').notNull().default(false),
-  dedupeKey: text('dedupe_key'),
+  dedupeKey: text('dedupe_key').notNull(),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   idxMatchNotificationsPharmacy: index('idx_match_notifications_pharmacy').on(table.pharmacyId, table.createdAt),
   uqMatchNotificationsDedupeKey: uniqueIndex('uq_match_notifications_dedupe_key')
-    .on(table.pharmacyId, table.dedupeKey)
-    .where(sql`dedupe_key IS NOT NULL`),
+    .on(table.pharmacyId, table.dedupeKey),
 }));
 
 export const pushSubscriptions = pgTable('push_subscriptions', {

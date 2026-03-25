@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getTestDb, resetTestDb, closeTestDb, type TestDb } from './helpers/test-db';
 import { makePharmacy, resetFactorySeq } from './helpers/factories';
 import * as schema from '../../db/schema';
@@ -164,7 +164,7 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
     expect(result2.afterCount).toBe(2);
   });
 
-  it('変更があり通知有効の場合にnotificationsにmatch_updateが作成される', async () => {
+  it('変更があり通知有効の場合にmatch_notificationsが作成される', async () => {
     const pharmacy = await makePharmacy(testDb);
     const triggerPharmacy = await makePharmacy(testDb);
 
@@ -176,17 +176,14 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
       notifyEnabled: true,
     });
 
-    const matchNotifs = await testDb.select().from(schema.notifications)
-      .where(and(
-        eq(schema.notifications.pharmacyId, pharmacy.id),
-        eq(schema.notifications.type, 'match_update'),
-      ));
+    const matchNotifs = await testDb.select().from(schema.matchNotifications)
+      .where(eq(schema.matchNotifications.pharmacyId, pharmacy.id));
     expect(matchNotifs).toHaveLength(1);
-    expect(matchNotifs[0].sourcePharmacyId).toBe(triggerPharmacy.id);
+    expect(matchNotifs[0].triggerPharmacyId).toBe(triggerPharmacy.id);
     expect(matchNotifs[0].isRead).toBe(false);
   });
 
-  it('通知無効の場合はmatch_update通知が作成されない', async () => {
+  it('通知無効の場合はmatch_notificationsが作成されない', async () => {
     const pharmacy = await makePharmacy(testDb);
     const triggerPharmacy = await makePharmacy(testDb);
 
@@ -198,11 +195,8 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
       notifyEnabled: false,
     });
 
-    const matchNotifs = await testDb.select().from(schema.notifications)
-      .where(and(
-        eq(schema.notifications.pharmacyId, pharmacy.id),
-        eq(schema.notifications.type, 'match_update'),
-      ));
+    const matchNotifs = await testDb.select().from(schema.matchNotifications)
+      .where(eq(schema.matchNotifications.pharmacyId, pharmacy.id));
     expect(matchNotifs).toHaveLength(0);
   });
 
@@ -218,11 +212,8 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
       // notifyEnabled未指定
     });
 
-    const matchNotifs = await testDb.select().from(schema.notifications)
-      .where(and(
-        eq(schema.notifications.pharmacyId, pharmacy.id),
-        eq(schema.notifications.type, 'match_update'),
-      ));
+    const matchNotifs = await testDb.select().from(schema.matchNotifications)
+      .where(eq(schema.matchNotifications.pharmacyId, pharmacy.id));
     expect(matchNotifs).toHaveLength(0);
   });
 
@@ -253,11 +244,8 @@ describe('saveMatchSnapshotAndNotifyOnChange', () => {
       notifyEnabled: true,
     });
 
-    const matchNotifs = await testDb.select().from(schema.notifications)
-      .where(and(
-        eq(schema.notifications.pharmacyId, pharmacy.id),
-        eq(schema.notifications.type, 'match_update'),
-      ));
+    const matchNotifs = await testDb.select().from(schema.matchNotifications)
+      .where(eq(schema.matchNotifications.pharmacyId, pharmacy.id));
     // dedupeキーが同一なので重複しない
     expect(matchNotifs).toHaveLength(1);
   });
@@ -293,8 +281,7 @@ describe('saveMatchSnapshotsBatch', () => {
     const snapshots = await testDb.select().from(schema.matchCandidateSnapshots);
     expect(snapshots).toHaveLength(2);
 
-    const matchNotifs = await testDb.select().from(schema.notifications)
-      .where(eq(schema.notifications.type, 'match_update'));
+    const matchNotifs = await testDb.select().from(schema.matchNotifications);
     expect(matchNotifs).toHaveLength(2);
   });
 
