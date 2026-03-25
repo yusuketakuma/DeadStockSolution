@@ -30,6 +30,6 @@
   },
   "skills": {
     "index": [],
-    "decision_required": true
+    "decision_required": false
   }
 }
