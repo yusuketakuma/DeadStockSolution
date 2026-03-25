@@ -6,5 +6,3 @@
 {"id":"event-000081","type":"tool.bash","ts":"2026-03-25T08:55:21Z","state":"initialized","data":{"command":"git log v0.0.19..HEAD --oneline 2>/dev/null || git log 225d7c7..HEAD --oneline"}}
 {"id":"event-000082","type":"tool.bash","ts":"2026-03-25T08:55:21Z","state":"initialized","data":{"command":"git status --short | head -30"}}
 {"id":"event-000083","type":"session.stop","ts":"2026-03-25T08:55:39Z","state":"stopped"}
-{"id":"event-000084","type":"tool.bash","ts":"2026-03-25T08:55:50Z","state":"stopped","data":{"command":"git status --short"}}
-{"id":"event-000085","type":"tool.bash","ts":"2026-03-25T08:55:56Z","state":"stopped","data":{"command":"git log --oneline -3"}}

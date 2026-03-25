@@ -4,6 +4,7 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "permissions": {
+    "defaultMode": "auto",
     "allow": [
       "Bash(cat:*)",
       "Bash(cd:*)",
@@ -98,6 +99,6 @@
   },
   "language": "japanese",
   "_harness_template": "claude/settings.security.json.template",
-  "_harness_version": "2.5.23",
+  "_harness_version": "3.13.0",
   "_harness_note": "Project-level settings template. Plugin defaults (.claude-plugin/settings.json) provide baseline deny/ask only; allow rules belong here at project scope."
 }

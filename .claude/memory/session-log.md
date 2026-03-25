@@ -783,3 +783,34 @@
 ```
 
 ---
+
+## セッション: 2026-03-25T08:55:39Z
+
+- session_id: `session-1774418387`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-25T05:59:47Z`
+- ended_at: `2026-03-25T08:55:39Z`
+- duration_minutes: 715
+- changes: 5
+
+### 変更ファイル
+- `/Users/yusuke/.mcp.json`
+- `.claude-code-harness-version`
+- `.claude/settings.json`
+- `.cursor/mcp.json`
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+
+**Plans.md のWIP/依頼中（抜粋）**:
+
+```
+32:- [ ] T951: ダッシュボード グラフ可視化 `cc:WIP` depends:T950
+95:- [ ] T983: クライアントバンドル最適化 `cc:WIP`
+113:- [ ] T993: フィーチャーフラグ段階有効化 runbook `cc:WIP`
+```
+
+---
