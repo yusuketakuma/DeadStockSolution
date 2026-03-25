@@ -3,7 +3,30 @@
   "parent_session_id": null,
   "state": "initialized",
   "started_at": "2026-03-25T10:14:41Z",
-  "updated_at": "2026-03-25T10:14:41Z",
-  "event_seq": 0,
-  "last_event_id": ""
+  "updated_at": "2026-03-25T11:11:28Z",
+  "event_seq": 8,
+  "last_event_id": "event-000008",
+  "state_version": 1,
+  "cwd": "/Users/yusuke/DeadStockSolution",
+  "project_name": "DeadStockSolution",
+  "resumed_at": "2026-03-25T11:10:27Z",
+  "git": {
+    "branch": "preview",
+    "uncommitted_changes": 3,
+    "last_commit": "4b41f43"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1774274691,
+    "wip_tasks": 3,
+    "todo_tasks": 0,
+    "pending_tasks": 0,
+    "completed_tasks": 75
+  },
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "prompt_seq": 2,
+  "intent": "semantic"
 }
