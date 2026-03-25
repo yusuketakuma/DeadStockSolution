@@ -4,5 +4,11 @@
     "last_seen": 1774428490,
     "pid": "52535",
     "status": "active"
+  },
+  "session-1774431240": {
+    "short_id": "session-1774",
+    "last_seen": 1774431240,
+    "pid": "70659",
+    "status": "active"
   }
 }

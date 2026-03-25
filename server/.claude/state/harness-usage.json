@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-03-08T22:15:34.678Z",
+  "updatedAt": "2026-03-25T10:14:41.497Z",
   "skills": {
     "impl": {
       "count": 1,
@@ -18,5 +18,11 @@
     }
   },
   "agents": {},
-  "hooks": {}
+  "hooks": {
+    "session-init": {
+      "triggered": 1,
+      "blocked": 0,
+      "lastTriggered": "2026-03-25T10:14:41.494Z"
+    }
+  }
 }

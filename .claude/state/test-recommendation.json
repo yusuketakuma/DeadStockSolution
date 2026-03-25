@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-03-23T22:59:07Z",
-  "changed_file": "server/src/test/openclaw-connect-route.test.ts",
+  "timestamp": "2026-03-25T09:54:54Z",
+  "changed_file": "client/src/pages/admin/AdminOpenClawPage.tsx",
   "test_command": "npm test",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

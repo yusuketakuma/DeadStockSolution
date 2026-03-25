@@ -1,0 +1,9 @@
+{"id":"event-000001","type":"session.start","ts":"2026-03-25T10:14:41Z","state":"initialized"}
+{"id":"event-000002","type":"tool.bash","ts":"2026-03-25T10:15:11Z","state":"initialized","data":{"command":"git status --short 2>/dev/null | head -20"}}
+{"id":"event-000003","type":"tool.bash","ts":"2026-03-25T10:15:18Z","state":"initialized","data":{"command":"ls drizzle/meta/ 2>/dev/null"}}
+{"id":"event-000004","type":"tool.bash","ts":"2026-03-25T10:15:19Z","state":"initialized","data":{"command":"ls drizzle/ 2>/dev/null"}}
+{"id":"event-000005","type":"tool.bash","ts":"2026-03-25T10:15:29Z","state":"initialized","data":{"command":"npx drizzle-kit generate 2>&1 | tail -20"}}
+{"id":"event-000006","type":"tool.bash","ts":"2026-03-25T10:15:30Z","state":"initialized","data":{"command":"git log --oneline -5 -- drizzle/"}}
+{"id":"event-000007","type":"tool.bash","ts":"2026-03-25T10:15:40Z","state":"initialized","data":{"command":"npm run test:server 2>&1 | tail -40"}}
+{"id":"event-000008","type":"tool.bash","ts":"2026-03-25T10:17:44Z","state":"initialized","data":{"command":"cd /Users/yusuke/workspace/DeadStockSolution && npm run test:server 2>&1 | tail -40"}}
+{"id":"event-000009","type":"session.stop","ts":"2026-03-25T10:17:56Z","state":"stopped"}

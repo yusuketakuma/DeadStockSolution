@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-03-25T08:55:01.769Z",
+  "updatedAt": "2026-03-25T09:51:54.993Z",
   "skills": {
     "parallel-workflows": {
       "count": 1,
@@ -77,8 +77,8 @@
       "lastUsed": "2026-02-26T13:56:03.848Z"
     },
     "simplify": {
-      "count": 12,
-      "lastUsed": "2026-03-16T11:58:11.999Z"
+      "count": 13,
+      "lastUsed": "2026-03-25T09:51:54.993Z"
     },
     "harness-setup": {
       "count": 3,
@@ -129,9 +129,9 @@
   },
   "hooks": {
     "session-init": {
-      "triggered": 56,
+      "triggered": 57,
       "blocked": 0,
-      "lastTriggered": "2026-03-25T08:48:10.831Z"
+      "lastTriggered": "2026-03-25T09:33:59.910Z"
     }
   }
 }

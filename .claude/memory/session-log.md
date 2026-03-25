@@ -814,3 +814,32 @@
 ```
 
 ---
+
+## セッション: 2026-03-25T09:40:46Z
+
+- session_id: `session-1774431240`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-25T09:34:00Z`
+- ended_at: `2026-03-25T09:40:46Z`
+- duration_minutes: 546
+- changes: 3
+
+### 変更ファイル
+- `.claude/state/skills-decision.json`
+- `client/src/pages/admin/AdminDirectMessagesPage.tsx`
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+
+**Plans.md のWIP/依頼中（抜粋）**:
+
+```
+32:- [ ] T951: ダッシュボード グラフ可視化 `cc:WIP` depends:T950
+95:- [ ] T983: クライアントバンドル最適化 `cc:WIP`
+113:- [ ] T993: フィーチャーフラグ段階有効化 runbook `cc:WIP`
+```
+
+---
