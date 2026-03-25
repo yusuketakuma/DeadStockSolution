@@ -102,25 +102,27 @@ export default function AdminBusinessHoursPage() {
                         {name ?? `薬局ID:${pharmacyId}`}
                       </Card.Header>
                       <Card.Body className="p-0">
-                        <AppTable size="sm" className="mb-0">
-                          <thead className="table-light">
-                            <tr>
-                              {DAY_NAMES.map((d) => <th key={d} className="text-center">{d}</th>)}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr>
-                              {DAY_NAMES.map((_, idx) => {
-                                const h = hours.find((hh) => hh.dayOfWeek === idx);
-                                return (
-                                  <td key={idx} className="text-center small">
-                                    {h ? formatTime(h) : '—'}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          </tbody>
-                        </AppTable>
+                        <div className="table-responsive">
+                          <AppTable size="sm" className="mb-0 mobile-table">
+                            <thead className="table-light">
+                              <tr>
+                                {DAY_NAMES.map((d) => <th key={d} className="text-center">{d}</th>)}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                {DAY_NAMES.map((_, idx) => {
+                                  const h = hours.find((hh) => hh.dayOfWeek === idx);
+                                  return (
+                                    <td key={idx} className="text-center small">
+                                      {h ? formatTime(h) : '—'}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            </tbody>
+                          </AppTable>
+                        </div>
                       </Card.Body>
                     </Card>
                   ))}
@@ -131,32 +133,34 @@ export default function AdminBusinessHoursPage() {
               {special.length === 0 ? (
                 <AppEmptyState title="特別営業時間データがありません" />
               ) : (
-                <AppTable striped hover size="sm">
-                  <thead className="table-light">
-                    <tr>
-                      <th>薬局</th>
-                      <th>タイプ</th>
-                      <th>期間</th>
-                      <th>時間</th>
-                      <th>備考</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {special.map((s) => (
-                      <tr key={s.id}>
-                        <td>{s.pharmacyName ?? `ID:${s.pharmacyId}`}</td>
-                        <td>
-                          <Badge bg={s.specialType === 'special_open' ? 'success' : 'secondary'}>
-                            {SPECIAL_TYPE_LABELS[s.specialType] ?? s.specialType}
-                          </Badge>
-                        </td>
-                        <td className="small">{s.startDate} 〜 {s.endDate}</td>
-                        <td className="small">{formatTime(s)}</td>
-                        <td className="small text-muted">{s.note ?? '—'}</td>
+                <div className="table-responsive">
+                  <AppTable striped hover size="sm" className="mobile-table">
+                    <thead className="table-light">
+                      <tr>
+                        <th>薬局</th>
+                        <th>タイプ</th>
+                        <th>期間</th>
+                        <th>時間</th>
+                        <th>備考</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </AppTable>
+                    </thead>
+                    <tbody>
+                      {special.map((s) => (
+                        <tr key={s.id}>
+                          <td>{s.pharmacyName ?? `ID:${s.pharmacyId}`}</td>
+                          <td>
+                            <Badge bg={s.specialType === 'special_open' ? 'success' : 'secondary'}>
+                              {SPECIAL_TYPE_LABELS[s.specialType] ?? s.specialType}
+                            </Badge>
+                          </td>
+                          <td className="small">{s.startDate} 〜 {s.endDate}</td>
+                          <td className="small">{formatTime(s)}</td>
+                          <td className="small text-muted">{s.note ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </AppTable>
+                </div>
               )}
             </Tab>
           </Tabs>

@@ -372,7 +372,7 @@ export default function AdminUploadJobsPage() {
               <AppAlert variant="warning" className="mb-0">{detailError}</AppAlert>
             ) : selectedJob ? (
               <>
-                <div className="small text-muted mb-2">
+                <div className="small text-muted mb-2 text-wrap-anywhere">
                   ファイル: {selectedJob.originalFilename} / 試行回数: {formatNumberJa(selectedJob.attempts)}
                 </div>
                 <div className="d-flex flex-wrap gap-2 mb-3">

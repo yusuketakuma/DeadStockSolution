@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Col, Row } from 'react-bootstrap';
+import { Badge } from 'react-bootstrap';
 import { api, buildApiUrl } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import AppCard from '../../components/ui/AppCard';
@@ -228,26 +228,26 @@ export default function AdminDirectMessagesPage() {
       </div>
 
       <form className="mb-3" onSubmit={handleSearch}>
-        <Row className="g-2 align-items-end">
-          <Col xs={12} md={7} lg={6}>
+        <div className="row g-2 align-items-end">
+          <div className="col-12 col-md-7 col-lg-6">
             <AppField
               label="薬局名で絞り込み"
               value={searchInput}
               onChange={(value) => setSearchInput(value)}
               placeholder="例: みどり薬局"
             />
-          </Col>
-          <Col xs={12} md="auto">
+          </div>
+          <div className="col-12 col-md-auto">
             <button type="submit" className="btn btn-primary">検索</button>
-          </Col>
-        </Row>
+          </div>
+        </div>
       </form>
 
       {error && <ErrorRetryAlert error={error} onRetry={() => void retry()} />}
 
       <ScrollArea>
-        <Row className="g-3">
-          <Col xs={12} xl={4}>
+        <div className={`dl-two-pane-grid${selectedThreadKey ? ' dl-pane-detail-active' : ''}`}>
+          <div className="dl-stack-gap-md">
             <AppCard className="h-100">
               <AppCard.Header>スレッド一覧</AppCard.Header>
               <AppCard.Body>
@@ -294,9 +294,16 @@ export default function AdminDirectMessagesPage() {
               </AppCard.Body>
             </AppCard>
             <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-          </Col>
+          </div>
 
-          <Col xs={12} xl={8}>
+          <div className="dl-stack-gap-md">
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm d-xl-none mb-2"
+              onClick={() => setSelectedThreadKey(null)}
+            >
+              ← 一覧に戻る
+            </button>
             <AppCard className="h-100">
               <AppCard.Header>会話内容</AppCard.Header>
               <AppCard.Body>
@@ -370,8 +377,8 @@ export default function AdminDirectMessagesPage() {
                 )}
               </AppCard.Body>
             </AppCard>
-          </Col>
-        </Row>
+          </div>
+        </div>
       </ScrollArea>
     </PageShell>
   );

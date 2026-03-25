@@ -263,7 +263,7 @@ export default function AdminPharmacyEditPage() {
         ) : auditLogs.length === 0 ? (
           <p className="text-muted mb-0">操作履歴はありません</p>
         ) : (
-          <Table striped bordered hover responsive size="sm">
+          <Table striped bordered hover responsive size="sm" className="mobile-table">
             <thead>
               <tr>
                 <th>日時</th>

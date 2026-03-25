@@ -45,7 +45,7 @@
 
 .dl-two-pane-grid {
   display: grid;
-  grid-template-columns: minmax(0, 350px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   gap: 1rem;
   align-items: start;
 }
@@ -78,6 +78,11 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+}
+
+.text-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .mobile-table th {
@@ -302,6 +307,14 @@
 @media (max-width: 1199.98px) {
   .dl-two-pane-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dl-two-pane-grid.dl-pane-detail-active > :first-child {
+    display: none;
+  }
+
+  .dl-two-pane-grid:not(.dl-pane-detail-active) > :nth-child(2) {
+    display: none;
   }
 }
 

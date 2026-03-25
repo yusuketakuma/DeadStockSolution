@@ -504,7 +504,7 @@ export default function MyRequestsPage() {
       </AppCard>
 
       <ScrollArea>
-        <div className="dl-two-pane-grid">
+        <div className={`dl-two-pane-grid${selectedRequestId ? ' dl-pane-detail-active' : ''}`}>
           <div className="dl-stack-gap-md">
             <AppCard>
               <AppCard.Header>要望一覧</AppCard.Header>
@@ -554,6 +554,13 @@ export default function MyRequestsPage() {
           </div>
 
           <div className="dl-stack-gap-md">
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm d-xl-none mb-2"
+              onClick={() => setSelectedRequestId(null)}
+            >
+              ← 一覧に戻る
+            </button>
             <AppCard>
               <AppCard.Header>会話履歴</AppCard.Header>
               <AppCard.Body>

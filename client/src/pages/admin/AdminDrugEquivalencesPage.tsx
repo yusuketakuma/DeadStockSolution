@@ -164,7 +164,7 @@ export default function AdminDrugEquivalencesPage() {
         </Card>
       ) : (
         <Card>
-          <Table responsive hover className="mb-0">
+          <Table responsive hover className="mb-0 mobile-table">
             <thead>
               <tr>
                 <th>ID</th>

@@ -91,26 +91,28 @@ export default function AdminMatchingPerformancePage() {
                 <Card>
                   <Card.Header>ステータス別件数</Card.Header>
                   <Card.Body className="p-0">
-                    <AppTable striped size="sm" className="mb-0">
-                      <thead className="table-light">
-                        <tr>
-                          <th>ステータス</th>
-                          <th>件数</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.statusBreakdown.map((s) => (
-                          <tr key={s.status}>
-                            <td>
-                              <Badge bg={s.status === 'completed' ? 'success' : s.status === 'rejected' ? 'danger' : 'secondary'}>
-                                {STATUS_LABELS[s.status] ?? s.status}
-                              </Badge>
-                            </td>
-                            <td>{s.count}</td>
+                    <div className="table-responsive">
+                      <AppTable striped size="sm" className="mb-0 mobile-table">
+                        <thead className="table-light">
+                          <tr>
+                            <th>ステータス</th>
+                            <th>件数</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </AppTable>
+                        </thead>
+                        <tbody>
+                          {data.statusBreakdown.map((s) => (
+                            <tr key={s.status}>
+                              <td>
+                                <Badge bg={s.status === 'completed' ? 'success' : s.status === 'rejected' ? 'danger' : 'secondary'}>
+                                  {STATUS_LABELS[s.status] ?? s.status}
+                                </Badge>
+                              </td>
+                              <td>{s.count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </AppTable>
+                    </div>
                   </Card.Body>
                 </Card>
               </Col>
@@ -118,24 +120,26 @@ export default function AdminMatchingPerformancePage() {
                 <Card>
                   <Card.Header>候補数分布（上位50薬局）</Card.Header>
                   <Card.Body className="p-0">
-                    <AppTable striped size="sm" className="mb-0">
-                      <thead className="table-light">
-                        <tr>
-                          <th>薬局ID</th>
-                          <th>候補数</th>
-                          <th>更新日</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.candidateDistribution.map((c) => (
-                          <tr key={c.pharmacyId}>
-                            <td>{c.pharmacyId}</td>
-                            <td><Badge bg="primary">{c.candidateCount}</Badge></td>
-                            <td className="small">{formatDateTimeJa(c.updatedAt)}</td>
+                    <div className="table-responsive">
+                      <AppTable striped size="sm" className="mb-0 mobile-table">
+                        <thead className="table-light">
+                          <tr>
+                            <th>薬局ID</th>
+                            <th>候補数</th>
+                            <th>更新日</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </AppTable>
+                        </thead>
+                        <tbody>
+                          {data.candidateDistribution.map((c) => (
+                            <tr key={c.pharmacyId}>
+                              <td>{c.pharmacyId}</td>
+                              <td><Badge bg="primary">{c.candidateCount}</Badge></td>
+                              <td className="small">{formatDateTimeJa(c.updatedAt)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </AppTable>
+                    </div>
                   </Card.Body>
                 </Card>
               </Col>

@@ -137,7 +137,7 @@ export default function AdminOpenClawCommandsPage() {
           <Card body className="text-center text-muted">コマンドデータがありません。「新規登録」から追加してください。</Card>
         ) : (
           <Card>
-            <Table responsive hover className="mb-0">
+            <Table responsive hover className="mb-0 mobile-table">
               <thead>
                 <tr>
                   <th>ID</th>

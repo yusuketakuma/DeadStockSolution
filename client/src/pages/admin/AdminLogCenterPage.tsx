@@ -210,7 +210,7 @@ export default function AdminLogCenterPage() {
           <div className="small text-muted">再発中の high-signal なエラーはまだありません。</div>
         ) : (
           <div className="table-responsive">
-            <AppTable striped hover size="sm" className="mb-0">
+            <AppTable striped hover size="sm" className="mb-0 mobile-table">
               <thead className="table-light">
                 <tr>
                   <th>論点</th>

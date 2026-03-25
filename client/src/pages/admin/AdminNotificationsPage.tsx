@@ -209,28 +209,30 @@ export default function AdminNotificationsPage() {
             ) : subscriptions.length === 0 ? (
               <AppEmptyState title="プッシュ購読がありません" description="プッシュ通知の購読が登録されるとここに表示されます。" />
             ) : (
-              <AppTable striped hover size="sm">
-                <thead className="table-light">
-                  <tr>
-                    <th>薬局ID</th>
-                    <th>薬局名</th>
-                    <th>購読数</th>
-                    <th>最終登録</th>
-                    <th>最終利用</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {subscriptions.map((s) => (
-                    <tr key={s.pharmacyId}>
-                      <td>{s.pharmacyId}</td>
-                      <td>{s.pharmacyName ?? '—'}</td>
-                      <td><Badge bg="primary">{s.subscriptionCount}</Badge></td>
-                      <td>{formatDateTimeJa(s.latestCreatedAt)}</td>
-                      <td>{formatDateTimeJa(s.latestUsedAt)}</td>
+              <div className="table-responsive">
+                <AppTable striped hover size="sm" className="mobile-table">
+                  <thead className="table-light">
+                    <tr>
+                      <th>薬局ID</th>
+                      <th>薬局名</th>
+                      <th>購読数</th>
+                      <th>最終登録</th>
+                      <th>最終利用</th>
                     </tr>
-                  ))}
-                </tbody>
-              </AppTable>
+                  </thead>
+                  <tbody>
+                    {subscriptions.map((s) => (
+                      <tr key={s.pharmacyId}>
+                        <td>{s.pharmacyId}</td>
+                        <td>{s.pharmacyName ?? '—'}</td>
+                        <td><Badge bg="primary">{s.subscriptionCount}</Badge></td>
+                        <td>{formatDateTimeJa(s.latestCreatedAt)}</td>
+                        <td>{formatDateTimeJa(s.latestUsedAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </AppTable>
+              </div>
             )}
           </Tab>
         </Tabs>

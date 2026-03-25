@@ -63,24 +63,26 @@ export default function AdminPharmacyHealthPage() {
               <Card>
                 <Card.Header>アクティビティランキング（上位50）</Card.Header>
                 <Card.Body className="p-0">
-                  <AppTable striped size="sm" className="mb-0">
-                    <thead className="table-light">
-                      <tr>
-                        <th>薬局</th>
-                        <th>操作回数</th>
-                        <th>最終アクティビティ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.activityByPharmacy.map((a) => (
-                        <tr key={a.pharmacyId ?? 'null'}>
-                          <td>{a.pharmacyName ?? `ID:${a.pharmacyId ?? '—'}`}</td>
-                          <td><Badge bg="primary">{a.actionCount}</Badge></td>
-                          <td className="small">{formatDateTimeJa(a.lastActivity)}</td>
+                  <div className="table-responsive">
+                    <AppTable striped size="sm" className="mb-0 mobile-table">
+                      <thead className="table-light">
+                        <tr>
+                          <th>薬局</th>
+                          <th>操作回数</th>
+                          <th>最終アクティビティ</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </AppTable>
+                      </thead>
+                      <tbody>
+                        {data.activityByPharmacy.map((a) => (
+                          <tr key={a.pharmacyId ?? 'null'}>
+                            <td>{a.pharmacyName ?? `ID:${a.pharmacyId ?? '—'}`}</td>
+                            <td><Badge bg="primary">{a.actionCount}</Badge></td>
+                            <td className="small">{formatDateTimeJa(a.lastActivity)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </AppTable>
+                  </div>
                 </Card.Body>
               </Card>
             </Col>
@@ -88,32 +90,34 @@ export default function AdminPharmacyHealthPage() {
               <Card>
                 <Card.Header>信頼スコア一覧</Card.Header>
                 <Card.Body className="p-0">
-                  <AppTable striped size="sm" className="mb-0">
-                    <thead className="table-light">
-                      <tr>
-                        <th>薬局</th>
-                        <th>スコア</th>
-                        <th>評価数</th>
-                        <th>好感率</th>
-                        <th>更新日</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.trustScores.map((t) => (
-                        <tr key={t.pharmacyId}>
-                          <td>{t.pharmacyName ?? `ID:${t.pharmacyId}`}</td>
-                          <td>
-                            <Badge bg={Number(t.trustScore) >= 70 ? 'success' : Number(t.trustScore) >= 40 ? 'warning' : 'danger'}>
-                              {Number(t.trustScore).toFixed(1)}
-                            </Badge>
-                          </td>
-                          <td>{t.ratingCount}</td>
-                          <td>{Number(t.positiveRate).toFixed(1)}%</td>
-                          <td className="small">{formatDateTimeJa(t.updatedAt)}</td>
+                  <div className="table-responsive">
+                    <AppTable striped size="sm" className="mb-0 mobile-table">
+                      <thead className="table-light">
+                        <tr>
+                          <th>薬局</th>
+                          <th>スコア</th>
+                          <th>評価数</th>
+                          <th>好感率</th>
+                          <th>更新日</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </AppTable>
+                      </thead>
+                      <tbody>
+                        {data.trustScores.map((t) => (
+                          <tr key={t.pharmacyId}>
+                            <td>{t.pharmacyName ?? `ID:${t.pharmacyId}`}</td>
+                            <td>
+                              <Badge bg={Number(t.trustScore) >= 70 ? 'success' : Number(t.trustScore) >= 40 ? 'warning' : 'danger'}>
+                                {Number(t.trustScore).toFixed(1)}
+                              </Badge>
+                            </td>
+                            <td>{t.ratingCount}</td>
+                            <td>{Number(t.positiveRate).toFixed(1)}%</td>
+                            <td className="small">{formatDateTimeJa(t.updatedAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </AppTable>
+                  </div>
                 </Card.Body>
               </Card>
             </Col>

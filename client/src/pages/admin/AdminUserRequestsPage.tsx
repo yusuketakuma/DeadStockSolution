@@ -499,7 +499,7 @@ export default function AdminUserRequestsPage() {
       {error && <ErrorRetryAlert error={error} onRetry={() => void retry()} />}
 
       <ScrollArea>
-        <div className="dl-two-pane-grid">
+        <div className={`dl-two-pane-grid${selectedRequestId ? ' dl-pane-detail-active' : ''}`}>
           <div className="dl-stack-gap-md">
             <AppCard className="h-100">
               <AppCard.Header>要望一覧</AppCard.Header>
@@ -542,6 +542,13 @@ export default function AdminUserRequestsPage() {
           </div>
 
           <div className="dl-stack-gap-md">
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm d-xl-none mb-2"
+              onClick={() => setSelectedRequestId(null)}
+            >
+              ← 一覧に戻る
+            </button>
             <AppCard className="h-100">
               <AppCard.Header>要望詳細</AppCard.Header>
               <AppCard.Body>

@@ -437,7 +437,7 @@ export default function AdminOpenClawPage() {
                     PR #{thread.request.prNumber ?? '-'} を開く
                   </a>
                 )}
-                {thread.request.branchName && <span className="text-muted small">branch: {thread.request.branchName}</span>}
+                {thread.request.branchName && <span className="text-muted small text-wrap-anywhere">branch: {thread.request.branchName}</span>}
               </div>
 
               <div className="small text-muted">

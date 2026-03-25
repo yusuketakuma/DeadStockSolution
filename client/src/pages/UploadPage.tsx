@@ -205,11 +205,12 @@ export default function UploadPage() {
         <AppCard.Body>
           <div className="small">
             <h6 className="fw-bold mb-2">デッドストックリスト</h6>
+            <div className="table-responsive">
             <table className="table table-sm table-bordered mb-3">
               <thead className="table-light">
                 <tr>
-                  <th style={{ width: '25%' }}>列名</th>
-                  <th style={{ width: '15%' }}>必須</th>
+                  <th>列名</th>
+                  <th>必須</th>
                   <th>説明</th>
                 </tr>
               </thead>
@@ -251,13 +252,15 @@ export default function UploadPage() {
                 </tr>
               </tbody>
             </table>
+            </div>
 
             <h6 className="fw-bold mb-2">使用実績リスト</h6>
+            <div className="table-responsive">
             <table className="table table-sm table-bordered mb-0">
               <thead className="table-light">
                 <tr>
-                  <th style={{ width: '25%' }}>列名</th>
-                  <th style={{ width: '15%' }}>必須</th>
+                  <th>列名</th>
+                  <th>必須</th>
                   <th>説明</th>
                 </tr>
               </thead>
@@ -284,6 +287,7 @@ export default function UploadPage() {
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
           <div className="small text-muted mt-2">
             薬品コードを入力すると、薬価・単位・包装形態（PTP/バラ等）が医薬品マスターから自動設定されます。
