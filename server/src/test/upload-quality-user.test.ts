@@ -8,52 +8,54 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-  rejectAdmin: (_req: unknown, _res: unknown, next: () => void) => {
-    next();
-  },
-}));
+function mockUploadQualityRouteDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+    rejectAdmin: (_req: unknown, _res: unknown, next: () => void) => {
+      next();
+    },
+  }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('drizzle-orm', () => {
-  const sqlExpr = { as: (_alias: string) => ({}) };
-  const sqlFn = Object.assign(
-    (..._args: unknown[]) => sqlExpr,
-    { raw: (..._args: unknown[]) => sqlExpr },
-  );
-  return {
-    eq: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    sql: sqlFn,
-  };
-});
+  vi.doMock('drizzle-orm', () => {
+    const sqlExpr = { as: (_alias: string) => ({}) };
+    const sqlFn = Object.assign(
+      (..._args: unknown[]) => sqlExpr,
+      { raw: (..._args: unknown[]) => sqlExpr },
+    );
+    return {
+      eq: vi.fn(() => ({})),
+      and: vi.fn(() => ({})),
+      desc: vi.fn(() => ({})),
+      sql: sqlFn,
+    };
+  });
 
-vi.mock('../utils/db-utils', () => ({
-  rowCount: {},
-}));
+  vi.doMock('../utils/db-utils', () => ({
+    rowCount: {},
+  }));
 
-vi.mock('../db/schema', () => ({
-  uploadRowIssues: {
-    id: 'id',
-    jobId: 'jobId',
-    pharmacyId: 'pharmacyId',
-    uploadType: 'uploadType',
-    rowNumber: 'rowNumber',
-    issueCode: 'issueCode',
-    issueMessage: 'issueMessage',
-    createdAt: 'createdAt',
-  },
-}));
+  vi.doMock('../db/schema', () => ({
+    uploadRowIssues: {
+      id: 'id',
+      jobId: 'jobId',
+      pharmacyId: 'pharmacyId',
+      uploadType: 'uploadType',
+      rowNumber: 'rowNumber',
+      issueCode: 'issueCode',
+      issueMessage: 'issueMessage',
+      createdAt: 'createdAt',
+    },
+  }));
+}
 
 /**
  * Build a chainable query mock where every known chain method returns itself,
@@ -77,6 +79,7 @@ let uploadQualityRouter: express.Router;
 
 beforeEach(async () => {
   vi.resetModules();
+  mockUploadQualityRouteDependencies();
   ({ default: uploadQualityRouter } = await import('../routes/upload-quality'));
 });
 

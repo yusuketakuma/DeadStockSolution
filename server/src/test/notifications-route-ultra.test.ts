@@ -12,44 +12,54 @@ const mocks = vi.hoisted(() => ({
   invalidateDashboardUnreadCache: vi.fn(),
   markAsRead: vi.fn(),
   markAllDashboardAsRead: vi.fn(),
+  publishTimelineRefresh: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-}));
+function mockNotificationsRouteDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+  }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
 
-vi.mock('../services/notification-service', () => ({
-  getDashboardUnreadCount: mocks.getDashboardUnreadCount,
-  invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
-  markAsRead: mocks.markAsRead,
-  markAllDashboardAsRead: mocks.markAllDashboardAsRead,
-}));
+  vi.doMock('../services/notification-service', () => ({
+    getDashboardUnreadCount: mocks.getDashboardUnreadCount,
+    invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
+    markAsRead: mocks.markAsRead,
+    markAllDashboardAsRead: mocks.markAllDashboardAsRead,
+  }));
 
-import notificationsRouter from '../routes/notifications';
+  vi.doMock('../services/realtime-service', () => ({
+    publishTimelineRefresh: mocks.publishTimelineRefresh,
+  }));
+
+  vi.doMock('../db/schema', async () => await vi.importActual('../db/schema'));
+  vi.doMock('../utils/request-utils', async () => await vi.importActual('../utils/request-utils'));
+  vi.doMock('../utils/cursor-pagination', async () => await vi.importActual('../utils/cursor-pagination'));
+  vi.doMock('../utils/path-utils', async () => await vi.importActual('../utils/path-utils'));
+}
 
 function createSelectQuery(result: unknown) {
   const query: Record<string, ReturnType<typeof vi.fn>> = {
@@ -72,7 +82,9 @@ function createSelectQuery(result: unknown) {
   return promisified;
 }
 
-function createApp() {
+let notificationsRouter: express.Router;
+
+async function createApp() {
   const app = express();
   app.use(express.json());
   app.use('/api/notifications', notificationsRouter);
@@ -80,8 +92,11 @@ function createApp() {
 }
 
 describe('notifications-route-ultra predictive alert follow-up', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    vi.resetModules();
+    mockNotificationsRouteDependencies();
+    ({ default: notificationsRouter } = await import('../routes/notifications'));
     mocks.db.select.mockImplementation(() => createSelectQuery([]));
     mocks.db.update.mockImplementation(() => ({
       set: vi.fn(() => ({
@@ -99,7 +114,7 @@ describe('notifications-route-ultra predictive alert follow-up', () => {
   });
 
   it('maps predictive alert notifications to status updates and /matching', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     mocks.db.select
       .mockImplementationOnce(() => createSelectQuery([]))
@@ -132,8 +147,11 @@ describe('notifications-route-ultra predictive alert follow-up', () => {
 });
 
 describe('notifications-route-ultra', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    vi.resetModules();
+    mockNotificationsRouteDependencies();
+    ({ default: notificationsRouter } = await import('../routes/notifications'));
     mocks.db.select.mockImplementation(() => createSelectQuery([]));
     mocks.db.update.mockImplementation(() => ({
       set: vi.fn(() => ({
@@ -154,7 +172,7 @@ describe('notifications-route-ultra', () => {
   describe('GET /unread-count', () => {
     it('returns the unread count', async () => {
       mocks.getDashboardUnreadCount.mockResolvedValue(5);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/notifications/unread-count');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ unreadCount: 5 });
@@ -162,7 +180,7 @@ describe('notifications-route-ultra', () => {
 
     it('returns 500 on error', async () => {
       mocks.getDashboardUnreadCount.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/notifications/unread-count');
       expect(res.status).toBe(500);
       expect(res.body.error).toContain('未読件数');
@@ -173,7 +191,7 @@ describe('notifications-route-ultra', () => {
   describe('PATCH /read-all', () => {
     it('marks all notifications as read', async () => {
       mocks.markAllDashboardAsRead.mockResolvedValue(3);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).patch('/api/notifications/read-all');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ message: '3件を既読にしました', count: 3 });
@@ -181,7 +199,7 @@ describe('notifications-route-ultra', () => {
 
     it('returns 500 on error', async () => {
       mocks.markAllDashboardAsRead.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).patch('/api/notifications/read-all');
       expect(res.status).toBe(500);
       expect(res.body.error).toContain('一括既読');
@@ -192,14 +210,14 @@ describe('notifications-route-ultra', () => {
   describe('PATCH /:id/read', () => {
     it('marks a notification as read', async () => {
       mocks.markAsRead.mockResolvedValue(true);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).patch('/api/notifications/1/read');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ message: '既読にしました' });
     });
 
     it('returns 400 for invalid id', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).patch('/api/notifications/abc/read');
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('不正なID');
@@ -207,7 +225,7 @@ describe('notifications-route-ultra', () => {
 
     it('returns 404 when notification not found', async () => {
       mocks.markAsRead.mockResolvedValue(false);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).patch('/api/notifications/999/read');
       expect(res.status).toBe(404);
       expect(res.body.error).toContain('通知が見つかりません');
@@ -215,7 +233,7 @@ describe('notifications-route-ultra', () => {
 
     it('returns 500 on error', async () => {
       mocks.markAsRead.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).patch('/api/notifications/1/read');
       expect(res.status).toBe(500);
       expect(res.body.error).toContain('既読更新');
@@ -228,7 +246,7 @@ describe('notifications-route-ultra', () => {
       mocks.db.select.mockImplementation(() => {
         throw new Error('DB connection failed');
       });
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/notifications');
       expect(res.status).toBe(500);
       expect(res.body.error).toContain('通知の取得に失敗しました');
@@ -238,7 +256,7 @@ describe('notifications-route-ultra', () => {
   // ── GET / with empty match_update notifications ──
   describe('GET / with no match_update notifications', () => {
     it('returns empty notices when no match_update notifications exist', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       mocks.db.select.mockImplementation(() => createSelectQuery([]));
 
@@ -257,7 +275,7 @@ describe('notifications-route-ultra', () => {
           onConflictDoNothing: vi.fn().mockRejectedValue(new Error('insert error')),
         })),
       }));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).post('/api/notifications/messages/1/read');
       expect(res.status).toBe(500);
       expect(res.body.error).toContain('既読処理に失敗しました');
@@ -273,7 +291,7 @@ describe('notifications-route-ultra', () => {
           where: vi.fn().mockRejectedValue(new Error('update error')),
         })),
       }));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).post('/api/notifications/matches/1/read');
       expect(res.status).toBe(500);
       expect(res.body.error).toContain('既読処理に失敗しました');
@@ -283,7 +301,7 @@ describe('notifications-route-ultra', () => {
   // ── GET / with admin messages and match notifications ──
   describe('GET / with mixed content', () => {
     it('includes admin messages with read status', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       // proposalsA=empty, proposalsB=empty
       // messagesAll=[message], messagesPharmacy=empty
@@ -316,7 +334,7 @@ describe('notifications-route-ultra', () => {
     });
 
     it('includes match update notifications with pharmacy name', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       // 6 queries in first Promise.all + 1 triggerPharmacy (messageIds is empty so that resolves inline)
       mocks.db.select
@@ -348,7 +366,7 @@ describe('notifications-route-ultra', () => {
     });
 
     it('displays 自薬局 when trigger pharmacy is the current user', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       mocks.db.select
         .mockImplementationOnce(() => createSelectQuery([]))
@@ -379,7 +397,7 @@ describe('notifications-route-ultra', () => {
   // ── GET / with various notification types ──
   describe('GET / notification type resolution', () => {
     it('maps new_comment type correctly', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       mocks.db.select
         .mockImplementationOnce(() => createSelectQuery([]))
@@ -410,7 +428,7 @@ describe('notifications-route-ultra', () => {
     });
 
     it('skips unsupported notification types', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       mocks.db.select
         .mockImplementationOnce(() => createSelectQuery([]))
@@ -442,7 +460,7 @@ describe('notifications-route-ultra', () => {
   // ── GET / proposal notice variations ──
   describe('GET / proposal notice variations', () => {
     it('shows outbound notice for pharmacy A when status is proposed', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       mocks.db.select
         .mockImplementationOnce(() => createSelectQuery([{
@@ -468,7 +486,7 @@ describe('notifications-route-ultra', () => {
     });
 
     it('shows confirmed notice for confirmed proposals', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       mocks.db.select
         .mockImplementationOnce(() => createSelectQuery([{
@@ -494,7 +512,7 @@ describe('notifications-route-ultra', () => {
     });
 
     it('shows inbound notice for accepted_a when pharmacy B', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       mocks.db.select
         .mockImplementationOnce(() => createSelectQuery([]))
@@ -520,7 +538,7 @@ describe('notifications-route-ultra', () => {
     });
 
     it('shows inbound notice for accepted_b when pharmacy A (isA)', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       mocks.db.select
         .mockImplementationOnce(() => createSelectQuery([{

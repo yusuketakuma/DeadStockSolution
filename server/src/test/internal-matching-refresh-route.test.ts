@@ -6,20 +6,24 @@ const mocks = vi.hoisted(() => ({
   processPendingMatchingRefreshJobs: vi.fn(),
 }));
 
-vi.mock('../services/matching-refresh-service', () => ({
-  processPendingMatchingRefreshJobs: mocks.processPendingMatchingRefreshJobs,
-}));
+function mockInternalMatchingRefreshRouteDependencies() {
+  vi.doMock('../services/matching-refresh-service', () => ({
+    processPendingMatchingRefreshJobs: mocks.processPendingMatchingRefreshJobs,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
 
-import internalMatchingRefreshRouter from '../routes/internal-matching-refresh';
+  vi.doMock('../routes/internal-cron-auth', async () => await vi.importActual('../routes/internal-cron-auth'));
+}
+
+let internalMatchingRefreshRouter: express.Router;
 
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
 const ORIGINAL_MATCHING_REFRESH_CRON_SECRET = process.env.MATCHING_REFRESH_CRON_SECRET;
@@ -31,8 +35,11 @@ function createApp() {
 }
 
 describe('internal matching refresh route auth', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    mockInternalMatchingRefreshRouteDependencies();
+    ({ default: internalMatchingRefreshRouter } = await import('../routes/internal-matching-refresh'));
     delete process.env.CRON_SECRET;
     delete process.env.MATCHING_REFRESH_CRON_SECRET;
     mocks.processPendingMatchingRefreshJobs.mockResolvedValue(3);
@@ -84,4 +91,3 @@ describe('internal matching refresh route auth', () => {
     expect(mocks.processPendingMatchingRefreshJobs).toHaveBeenCalledWith(20);
   });
 });
-

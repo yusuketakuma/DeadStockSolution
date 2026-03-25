@@ -26,75 +26,61 @@ const mocks = vi.hoisted(() => ({
   loggerError: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => {
-    next();
-  },
-}));
+function mockDrugMasterSyncRouteCoverageDependencies() {
+  vi.doMock('../services/drug-master-service', () => ({
+    parseMhlwExcelData: mocks.parseMhlwExcelData,
+    parseMhlwCsvData: mocks.parseMhlwCsvData,
+    parsePackageExcelData: mocks.parsePackageExcelData,
+    parsePackageCsvData: mocks.parsePackageCsvData,
+    parsePackageXmlData: mocks.parsePackageXmlData,
+    parsePackageZipData: mocks.parsePackageZipData,
+    decodeCsvBuffer: mocks.decodeCsvBuffer,
+    syncDrugMaster: mocks.syncDrugMaster,
+    syncPackageData: mocks.syncPackageData,
+    getSyncLogs: mocks.getSyncLogs,
+    createSyncLog: mocks.createSyncLog,
+    completeSyncLog: mocks.completeSyncLog,
+  }));
+  vi.doMock('../services/drug-master-scheduler', () => ({
+    triggerManualAutoSync: mocks.triggerManualAutoSync,
+    getConfiguredSourceMode: mocks.getConfiguredSourceMode,
+  }));
+  vi.doMock('../services/drug-package-scheduler', () => ({
+    triggerManualPackageAutoSync: mocks.triggerManualPackageAutoSync,
+  }));
+  vi.doMock('../services/drug-master-source-state-service', () => ({
+    getSourceStatesByPrefix: mocks.getSourceStatesByPrefix,
+  }));
+  vi.doMock('../services/upload-service', () => ({
+    parseExcelBuffer: mocks.parseExcelBuffer,
+  }));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: mocks.loggerWarn,
+      error: mocks.loggerError,
+    },
+  }));
+  vi.doMock('../config/database', () => ({
+    db: { select: vi.fn() },
+  }));
+  vi.doMock('../routes/admin-utils', async () => vi.importActual('../routes/admin-utils'));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
+}
 
-vi.mock('../services/drug-master-service', () => ({
-  parseMhlwExcelData: mocks.parseMhlwExcelData,
-  parseMhlwCsvData: mocks.parseMhlwCsvData,
-  parsePackageExcelData: mocks.parsePackageExcelData,
-  parsePackageCsvData: mocks.parsePackageCsvData,
-  parsePackageXmlData: mocks.parsePackageXmlData,
-  parsePackageZipData: mocks.parsePackageZipData,
-  decodeCsvBuffer: mocks.decodeCsvBuffer,
-  syncDrugMaster: mocks.syncDrugMaster,
-  syncPackageData: mocks.syncPackageData,
-  getSyncLogs: mocks.getSyncLogs,
-  createSyncLog: mocks.createSyncLog,
-  completeSyncLog: mocks.completeSyncLog,
-}));
-
-vi.mock('../services/drug-master-scheduler', () => ({
-  triggerManualAutoSync: mocks.triggerManualAutoSync,
-  getConfiguredSourceMode: mocks.getConfiguredSourceMode,
-}));
-
-vi.mock('../services/drug-package-scheduler', () => ({
-  triggerManualPackageAutoSync: mocks.triggerManualPackageAutoSync,
-}));
-
-vi.mock('../services/drug-master-source-state-service', () => ({
-  getSourceStatesByPrefix: mocks.getSourceStatesByPrefix,
-}));
-
-vi.mock('../services/upload-service', () => ({
-  parseExcelBuffer: mocks.parseExcelBuffer,
-}));
-
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: mocks.loggerWarn,
-    error: mocks.loggerError,
-  },
-}));
-
-vi.mock('../config/database', () => ({
-  db: { select: vi.fn() },
-}));
-
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
-
-import drugMasterRouter from '../routes/drug-master';
-
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  mockDrugMasterSyncRouteCoverageDependencies();
+  const { default: drugMasterSyncRouter } = await import('../routes/drug-master-sync');
   const app = express();
   app.use(express.json());
   app.use('/api/admin/drug-master', (req, _res, next) => {
@@ -102,13 +88,13 @@ function createApp() {
       id: 1, email: 'admin@example.com', isAdmin: true,
     };
     next();
-  }, drugMasterRouter);
+  }, drugMasterSyncRouter);
   return app;
 }
 
 describe('drug-master-sync route — coverage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.createSyncLog.mockResolvedValue({ id: 100 });
     mocks.completeSyncLog.mockResolvedValue(undefined);
     mocks.writeLog.mockResolvedValue(undefined);
@@ -117,7 +103,7 @@ describe('drug-master-sync route — coverage', () => {
 
   describe('POST /sync', () => {
     it('returns 400 when no file is provided', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .field('revisionDate', '2026-01-01');
@@ -133,7 +119,7 @@ describe('drug-master-sync route — coverage', () => {
         itemsProcessed: 1, itemsAdded: 1, itemsUpdated: 0, itemsDeleted: 0,
       });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .field('revisionDate', '2026-01-01')
@@ -152,7 +138,7 @@ describe('drug-master-sync route — coverage', () => {
       mocks.parseExcelBuffer.mockResolvedValue([['Header']]);
       mocks.parseMhlwExcelData.mockReturnValue([]);
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .field('revisionDate', '2026-01-01')
@@ -168,7 +154,7 @@ describe('drug-master-sync route — coverage', () => {
     it('returns 400 when parse throws an error', async () => {
       mocks.parseExcelBuffer.mockRejectedValue(new Error('Parse failure'));
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .field('revisionDate', '2026-01-01')
@@ -186,7 +172,7 @@ describe('drug-master-sync route — coverage', () => {
       mocks.parseMhlwExcelData.mockReturnValue([{ yjCode: '1111111F1111', drugName: '薬A' }]);
       mocks.syncDrugMaster.mockRejectedValue(new Error('Sync DB error'));
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .field('revisionDate', '2026-01-01')
@@ -202,7 +188,7 @@ describe('drug-master-sync route — coverage', () => {
 
   describe('POST /upload-packages', () => {
     it('returns 400 when no file is provided', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages');
 
@@ -215,7 +201,7 @@ describe('drug-master-sync route — coverage', () => {
       mocks.parsePackageCsvData.mockReturnValue([{ code: '12345', name: 'パッケージA' }]);
       mocks.syncPackageData.mockResolvedValue({ added: 1, updated: 0 });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('csv'), {
@@ -231,7 +217,7 @@ describe('drug-master-sync route — coverage', () => {
       mocks.decodeCsvBuffer.mockReturnValue('');
       mocks.parsePackageCsvData.mockReturnValue([]);
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('csv'), {
@@ -247,7 +233,7 @@ describe('drug-master-sync route — coverage', () => {
       mocks.parsePackageXmlData.mockReturnValue([{ code: '12345', name: 'パッケージA' }]);
       mocks.syncPackageData.mockResolvedValue({ added: 1, updated: 0 });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('<xml>data</xml>'), {
@@ -263,7 +249,7 @@ describe('drug-master-sync route — coverage', () => {
       mocks.parsePackageZipData.mockReturnValue([{ code: '12345', name: 'パッケージA' }]);
       mocks.syncPackageData.mockResolvedValue({ added: 1, updated: 0 });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('zipdata'), {
@@ -280,7 +266,7 @@ describe('drug-master-sync route — coverage', () => {
     it('returns sync logs', async () => {
       mocks.getSyncLogs.mockResolvedValue([{ id: 1, status: 'success' }]);
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/sync-logs');
 
       expect(res.status).toBe(200);
@@ -290,7 +276,7 @@ describe('drug-master-sync route — coverage', () => {
     it('returns 500 on error', async () => {
       mocks.getSyncLogs.mockRejectedValue(new Error('DB error'));
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/sync-logs');
 
       expect(res.status).toBe(500);
@@ -309,7 +295,7 @@ describe('drug-master-sync route — coverage', () => {
         message: '包装単位更新を開始しました',
       });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/master-refresh')
         .send({});
@@ -332,7 +318,7 @@ describe('drug-master-sync route — coverage', () => {
         message: '包装単位同期が既に実行中です',
       });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/master-refresh')
         .send({});
@@ -349,7 +335,7 @@ describe('drug-master-sync route — coverage', () => {
     it('triggers auto sync', async () => {
       mocks.triggerManualAutoSync.mockResolvedValue({ triggered: true });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync')
         .send({ sourceUrl: 'https://example.com/data.csv' });
@@ -362,7 +348,7 @@ describe('drug-master-sync route — coverage', () => {
     it('returns result when not triggered', async () => {
       mocks.triggerManualAutoSync.mockResolvedValue({ triggered: false, reason: 'already_running' });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync')
         .send({});
@@ -374,7 +360,7 @@ describe('drug-master-sync route — coverage', () => {
     it('returns 500 on error', async () => {
       mocks.triggerManualAutoSync.mockRejectedValue(new Error('sync error'));
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync')
         .send({});
@@ -388,7 +374,7 @@ describe('drug-master-sync route — coverage', () => {
     it('returns auto-sync status in single mode', async () => {
       mocks.getConfiguredSourceMode.mockReturnValue('single');
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/auto-sync/status');
 
       expect(res.status).toBe(200);
@@ -403,7 +389,7 @@ describe('drug-master-sync route — coverage', () => {
         { sourceKey: 'drug:file:yakka', url: 'https://example.com/yakka.csv', lastCheckedAt: '2026-01-01T00:00:00Z', lastChangedAt: '2026-01-01T00:00:00Z' },
       ]);
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/auto-sync/status');
 
       expect(res.status).toBe(200);
@@ -417,7 +403,7 @@ describe('drug-master-sync route — coverage', () => {
     it('triggers package auto sync', async () => {
       mocks.triggerManualPackageAutoSync.mockResolvedValue({ triggered: true });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync/packages')
         .send({});
@@ -429,7 +415,7 @@ describe('drug-master-sync route — coverage', () => {
     it('returns 500 on error', async () => {
       mocks.triggerManualPackageAutoSync.mockRejectedValue(new Error('error'));
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync/packages')
         .send({});
@@ -441,7 +427,7 @@ describe('drug-master-sync route — coverage', () => {
 
   describe('GET /auto-sync/packages/status', () => {
     it('returns package auto-sync status', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/auto-sync/packages/status');
 
       expect(res.status).toBe(200);

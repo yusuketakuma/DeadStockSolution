@@ -33,98 +33,100 @@ const mocks = vi.hoisted(() => ({
   publishTimelineRefresh: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => {
-    next();
-  },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+function mockAdminPharmaciesSubrouteDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => {
+      next();
+    },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: mocks.handoffToOpenClaw,
-  isOpenClawConnectorConfigured: mocks.isOpenClawConnectorConfigured,
-  isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
-  getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
-}));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: mocks.handoffToOpenClaw,
+    isOpenClawConnectorConfigured: mocks.isOpenClawConnectorConfigured,
+    isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
+    getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
+  }));
 
-vi.mock('../services/openclaw-log-context-service', () => ({
-  buildOpenClawLogContext: mocks.buildOpenClawLogContext,
-}));
+  vi.doMock('../services/openclaw-log-context-service', () => ({
+    buildOpenClawLogContext: mocks.buildOpenClawLogContext,
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/geocode-service', () => ({
-  geocodeAddress: mocks.geocodeAddress,
-}));
+  vi.doMock('../services/geocode-service', () => ({
+    geocodeAddress: mocks.geocodeAddress,
+  }));
 
-vi.mock('../routes/business-hours', () => ({
-  fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
-  validateBusinessHours: mocks.validateBusinessHours,
-  validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
-}));
+  vi.doMock('../routes/business-hours', () => ({
+    fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
+    validateBusinessHours: mocks.validateBusinessHours,
+    validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: mocks.loggerWarn,
-    error: mocks.loggerError,
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: mocks.loggerWarn,
+      error: mocks.loggerError,
+    },
+  }));
 
-vi.mock('../services/openclaw-thread-service', () => ({
-  listOpenClawRequestMessages: mocks.listOpenClawRequestMessages,
-  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
-  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
-  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
-}));
+  vi.doMock('../services/openclaw-thread-service', () => ({
+    listOpenClawRequestMessages: mocks.listOpenClawRequestMessages,
+    isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
+    updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+    mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  }));
 
-vi.mock('../services/realtime-service', () => ({
-  publishAdminRequestsRefresh: mocks.publishAdminRequestsRefresh,
-  publishRequestsRefresh: mocks.publishRequestsRefresh,
-  publishTimelineRefresh: mocks.publishTimelineRefresh,
-}));
+  vi.doMock('../services/realtime-service', () => ({
+    publishAdminRequestsRefresh: mocks.publishAdminRequestsRefresh,
+    publishRequestsRefresh: mocks.publishRequestsRefresh,
+    publishTimelineRefresh: mocks.publishTimelineRefresh,
+  }));
 
-vi.mock('../utils/validators', () => ({
-  emailSchema: {
-    safeParse: vi.fn((val: string) => {
-      if (val.includes('@')) return { success: true, data: val };
-      return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
-    }),
-  },
-}));
+  vi.doMock('../utils/validators', () => ({
+    emailSchema: {
+      safeParse: vi.fn((val: string) => {
+        if (val.includes('@')) return { success: true, data: val };
+        return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
+      }),
+    },
+  }));
 
-vi.mock('../utils/path-utils', () => ({
-  sanitizeInternalPath: vi.fn((path: string) => path),
-  isSafeInternalPath: vi.fn(() => true),
-}));
+  vi.doMock('../utils/path-utils', () => ({
+    sanitizeInternalPath: vi.fn((path: string) => path),
+    isSafeInternalPath: vi.fn(() => true),
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  or: vi.fn(() => ({})),
-  ilike: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    ilike: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-import adminRouter from '../routes/admin';
+let adminRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -236,6 +238,12 @@ function createInsertQuery() {
   query.values.mockResolvedValue(undefined);
   return query;
 }
+
+beforeEach(async () => {
+  vi.resetModules();
+  mockAdminPharmaciesSubrouteDependencies();
+  ({ default: adminRouter } = await import('../routes/admin'));
+});
 
 describe('admin pharmacies list routes', () => {
   beforeEach(() => {

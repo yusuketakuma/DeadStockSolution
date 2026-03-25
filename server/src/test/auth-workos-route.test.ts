@@ -27,55 +27,57 @@ const mocks = vi.hoisted(() => ({
   loggerError: vi.fn(),
 }));
 
-vi.mock('../services/auth-service', () => ({
-  assertJwtSecretConfigured: mocks.assertJwtSecretConfigured,
-  generateToken: mocks.generateToken,
-}));
+function mockAuthWorkosRouteDependencies() {
+  vi.doMock('../services/auth-service', () => ({
+    assertJwtSecretConfigured: mocks.assertJwtSecretConfigured,
+    generateToken: mocks.generateToken,
+  }));
 
-vi.mock('../middleware/auth', () => ({
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+  vi.doMock('../middleware/auth', () => ({
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../middleware/csrf', () => ({
-  setCsrfCookie: mocks.setCsrfCookie,
-  generateCsrfToken: mocks.generateCsrfToken,
-  timingSafeCompare: mocks.timingSafeCompare,
-}));
+  vi.doMock('../middleware/csrf', () => ({
+    setCsrfCookie: mocks.setCsrfCookie,
+    generateCsrfToken: mocks.generateCsrfToken,
+    timingSafeCompare: mocks.timingSafeCompare,
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: mocks.loggerError,
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: mocks.loggerError,
+    },
+  }));
 
-vi.mock('../middleware/error-handler', () => ({
-  handleRouteError: mocks.handleRouteError,
-  getErrorMessage: mocks.getErrorMessage,
-}));
+  vi.doMock('../middleware/error-handler', () => ({
+    handleRouteError: mocks.handleRouteError,
+    getErrorMessage: mocks.getErrorMessage,
+  }));
 
-vi.mock('../services/workos-service', () => ({
-  getAuthorizationUrl: mocks.getAuthorizationUrl,
-  authenticateWithCode: mocks.authenticateWithCode,
-  findOrLinkPharmacy: mocks.findOrLinkPharmacy,
-  generateOnboardingToken: mocks.generateOnboardingToken,
-  verifyOnboardingToken: mocks.verifyOnboardingToken,
-}));
+  vi.doMock('../services/workos-service', () => ({
+    getAuthorizationUrl: mocks.getAuthorizationUrl,
+    authenticateWithCode: mocks.authenticateWithCode,
+    findOrLinkPharmacy: mocks.findOrLinkPharmacy,
+    generateOnboardingToken: mocks.generateOnboardingToken,
+    verifyOnboardingToken: mocks.verifyOnboardingToken,
+  }));
 
-vi.mock('../routes/auth-helpers', () => ({
-  buildTokenPayload: mocks.buildTokenPayload,
-  setAuthCookie: mocks.setAuthCookie,
-  getLoginLogAction: mocks.getLoginLogAction,
-}));
+  vi.doMock('../routes/auth-helpers', () => ({
+    buildTokenPayload: mocks.buildTokenPayload,
+    setAuthCookie: mocks.setAuthCookie,
+    getLoginLogAction: mocks.getLoginLogAction,
+  }));
+}
 
-import authWorkosRouter from '../routes/auth-workos';
+let authWorkosRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -86,7 +88,10 @@ function createApp() {
 }
 
 describe('auth WorkOS routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    mockAuthWorkosRouteDependencies();
+    ({ default: authWorkosRouter } = await import('../routes/auth-workos'));
     vi.clearAllMocks();
     process.env.NODE_ENV = 'test';
     delete process.env.CLIENT_URL;

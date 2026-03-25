@@ -24,71 +24,74 @@ const mocks = vi.hoisted(() => ({
   sendReverificationTriggerErrorResponse: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+function mockAdminDetailCoverageDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../services/geocode-service', () => ({
-  geocodeAddress: mocks.geocodeAddress,
-}));
+  vi.doMock('../services/geocode-service', () => ({
+    geocodeAddress: mocks.geocodeAddress,
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../routes/business-hours', () => ({
-  fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
-  validateBusinessHours: mocks.validateBusinessHours,
-  validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
-}));
+  vi.doMock('../routes/business-hours', () => ({
+    fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
+    validateBusinessHours: mocks.validateBusinessHours,
+    validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
+  }));
 
-vi.mock('../services/pharmacy-verification-callback-service', () => ({
-  processVerificationCallback: mocks.processVerificationCallback,
-}));
+  vi.doMock('../services/pharmacy-verification-callback-service', () => ({
+    processVerificationCallback: mocks.processVerificationCallback,
+  }));
 
-vi.mock('../services/pharmacy-verification-service', () => ({
-  detectChangedReverificationFields: mocks.detectChangedReverificationFields,
-  triggerReverification: mocks.triggerReverification,
-  ReverificationTriggerError: mocks.ReverificationTriggerError,
-  sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
-}));
+  vi.doMock('../services/pharmacy-verification-service', () => ({
+    detectChangedReverificationFields: mocks.detectChangedReverificationFields,
+    triggerReverification: mocks.triggerReverification,
+    ReverificationTriggerError: mocks.ReverificationTriggerError,
+    sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
+  }));
 
-vi.mock('../utils/validators', () => ({
-  emailSchema: {
-    safeParse: vi.fn((val: string) => {
-      if (val.includes('@')) return { success: true, data: val };
-      return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
-    }),
-  },
-}));
+  vi.doMock('../utils/validators', () => ({
+    emailSchema: {
+      safeParse: vi.fn((val: string) => {
+        if (val.includes('@')) return { success: true, data: val };
+        return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
+      }),
+    },
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-import adminRouter from '../routes/admin';
-
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  mockAdminDetailCoverageDependencies();
+  const { default: adminRouter } = await import('../routes/admin');
   const app = express();
   app.use(express.json());
   app.use('/api/admin', adminRouter);
@@ -119,7 +122,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
 
   describe('GET /pharmacies/:id', () => {
     it('returns pharmacy detail', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([{
         id: 1, name: 'テスト薬局', email: 'test@example.com', passwordHash: 'secret',
       }]));
@@ -133,7 +136,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 404 when pharmacy not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([]));
 
       const res = await request(app).get('/api/admin/pharmacies/999');
@@ -143,7 +146,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 400 for invalid id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/admin/pharmacies/abc');
 
@@ -154,7 +157,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
 
   describe('PUT /pharmacies/:id/toggle-active', () => {
     it('toggles pharmacy active status', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([{ isActive: true }]));
       mocks.db.update.mockReturnValue({
         set: vi.fn().mockReturnValue({
@@ -169,7 +172,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 404 when pharmacy not found for toggle', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([]));
 
       const res = await request(app).put('/api/admin/pharmacies/999/toggle-active');
@@ -180,7 +183,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
 
   describe('POST /pharmacies/:id/verify', () => {
     it('approves pharmacy verification', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.processVerificationCallback.mockResolvedValue({
         verificationStatus: 'verified',
         pharmacyId: 1,
@@ -195,7 +198,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('rejects pharmacy verification', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.processVerificationCallback.mockResolvedValue({
         verificationStatus: 'rejected',
         pharmacyId: 1,
@@ -210,7 +213,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 400 when approved is not boolean', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/pharmacies/1/verify')
@@ -223,7 +226,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
 
   describe('PUT /pharmacies/:id', () => {
     it('returns 400 for invalid version', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .put('/api/admin/pharmacies/1')
@@ -234,7 +237,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 404 when pharmacy not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([]));
 
       const res = await request(app)
@@ -245,7 +248,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 400 for invalid email type', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([{
         id: 1, email: 'test@example.com', name: 'テスト', postalCode: '1000001',
         address: '千代田', phone: '03-1234', fax: '03-1234', licenseNumber: 'L-001',
@@ -261,7 +264,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('updates pharmacy name', async () => {
-      const app = createApp();
+      const app = await createApp();
       const existing = {
         id: 1, email: 'test@example.com', name: 'テスト', postalCode: '1000001',
         address: '千代田', phone: '03-1234', fax: '03-1234', licenseNumber: 'L-001',
@@ -279,7 +282,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 400 for test account without display password', async () => {
-      const app = createApp();
+      const app = await createApp();
       const existing = {
         id: 1, email: 'test@example.com', name: 'テスト', postalCode: '1000001',
         address: '千代田', phone: '03-1234', fax: '03-1234', licenseNumber: 'L-001',
@@ -298,7 +301,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
 
   describe('GET /pharmacies/:id/business-hours/settings', () => {
     it('returns business hours settings', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.fetchBusinessHourSettings.mockResolvedValue({
         hours: [], specialHours: [], version: 1,
       });
@@ -310,7 +313,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 404 when pharmacy not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.fetchBusinessHourSettings.mockRejectedValue(new Error('薬局が見つかりません'));
 
       const res = await request(app).get('/api/admin/pharmacies/999/business-hours/settings');
@@ -321,7 +324,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
 
   describe('PUT /pharmacies/:id/business-hours', () => {
     it('returns 400 for invalid business hours', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.validateBusinessHours.mockReturnValue({ error: '7日分の営業時間を指定してください' });
 
       const res = await request(app)
@@ -333,7 +336,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 400 for invalid special hours', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.validateBusinessHours.mockReturnValue({ valid: [] });
       mocks.validateSpecialBusinessHours.mockReturnValue({ error: '特例営業時間のフォーマットが不正です' });
 
@@ -345,7 +348,7 @@ describe('admin-pharmacies-detail routes — coverage', () => {
     });
 
     it('returns 400 for invalid version', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.validateBusinessHours.mockReturnValue({ valid: [] });
       mocks.validateSpecialBusinessHours.mockReturnValue({ valid: [], provided: false });
 

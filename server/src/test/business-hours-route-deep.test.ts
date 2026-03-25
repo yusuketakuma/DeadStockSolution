@@ -1,3 +1,4 @@
+import type { Router } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,31 +12,40 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-}));
+function mockBusinessHoursRouteDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+  }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
+}
 
-import businessHoursRouter from '../routes/business-hours';
+let businessHoursRouter: Router;
 import { createAuthenticatedApp } from './helpers/mock-builders';
 
 function createApp() {
   return createAuthenticatedApp('/api/business-hours', businessHoursRouter);
 }
+
+beforeEach(async () => {
+  vi.resetModules();
+  mockBusinessHoursRouteDependencies();
+  const { default: router } = await import('../routes/business-hours');
+  businessHoursRouter = router;
+});
 
 function createSelectQuery(result: unknown) {
   const query = { from: vi.fn(), where: vi.fn(), orderBy: vi.fn(), limit: vi.fn() };

@@ -7,53 +7,55 @@ const mocks = vi.hoisted(() => ({
   sanitizeInternalPath: vi.fn((path: string) => path),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1 };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+function mockAdminPharmaciesListExtraDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1 };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
 
-vi.mock('../config/database', () => ({
-  db: {
-    select: mocks.dbSelect,
-  },
-}));
+  vi.doMock('../config/database', () => ({
+    db: {
+      select: mocks.dbSelect,
+    },
+  }));
 
-vi.mock('../utils/path-utils', () => ({
-  sanitizeInternalPath: mocks.sanitizeInternalPath,
-}));
+  vi.doMock('../utils/path-utils', () => ({
+    sanitizeInternalPath: mocks.sanitizeInternalPath,
+  }));
 
-vi.mock('../routes/admin-utils', () => ({
-  parseListPagination: () => ({ page: 1, limit: 20, offset: 0 }),
-  sendPaginated: (res: express.Response, rows: unknown[], page: number, limit: number, total: number, extra?: Record<string, unknown>) => {
-    res.json({ data: rows, pagination: { page, limit, total }, ...(extra ?? {}) });
-  },
-  handleAdminError: (_err: unknown, _log: string, message: string, res: express.Response) => {
-    res.status(500).json({ error: message });
-  },
-}));
+  vi.doMock('../routes/admin-utils', () => ({
+    parseListPagination: () => ({ page: 1, limit: 20, offset: 0 }),
+    sendPaginated: (res: express.Response, rows: unknown[], page: number, limit: number, total: number, extra?: Record<string, unknown>) => {
+      res.json({ data: rows, pagination: { page, limit, total }, ...(extra ?? {}) });
+    },
+    handleAdminError: (_err: unknown, _log: string, message: string, res: express.Response) => {
+      res.status(500).json({ error: message });
+    },
+  }));
 
-vi.mock('../services/openclaw-service', () => ({
-  getOpenClawImplementationBranch: () => 'main',
-  isOpenClawConnectorConfigured: () => true,
-  isOpenClawWebhookConfigured: () => true,
-}));
+  vi.doMock('../services/openclaw-service', () => ({
+    getOpenClawImplementationBranch: () => 'main',
+    isOpenClawConnectorConfigured: () => true,
+    isOpenClawWebhookConfigured: () => true,
+  }));
 
-vi.mock('../utils/db-utils', () => ({ rowCount: 1 }));
+  vi.doMock('../utils/db-utils', () => ({ rowCount: 1 }));
 
-vi.mock('drizzle-orm', () => ({
-  desc: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    desc: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+  }));
+}
 
-import router from '../routes/admin-pharmacies-list';
+let adminPharmaciesListRouter: express.Router;
 
 function createApp() {
   const app = express();
-  app.use('/api/admin', router);
+  app.use('/api/admin', adminPharmaciesListRouter);
   return app;
 }
 
@@ -90,8 +92,11 @@ function whereQuery(rows: unknown[]) {
 }
 
 describe('admin-pharmacies-list extra branch coverage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    mockAdminPharmaciesListExtraDependencies();
+    ({ default: adminPharmaciesListRouter } = await import('../routes/admin-pharmacies-list'));
     mocks.sanitizeInternalPath.mockImplementation((path: string) => path);
   });
 

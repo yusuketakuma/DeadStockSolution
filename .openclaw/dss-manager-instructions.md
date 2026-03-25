@@ -27,16 +27,20 @@ Common inputs include:
 When a `task envelope` is present, treat it as the source of truth. Extract at least:
 - `taskKind`
 - `source`
-- `summary`
+- `request.summary`
 - `request.meta.category`
 - `request.meta.priority`
+- `request.meta.assignedAdminName`
+- `request.meta.waitingOn`
+- `request.meta.isOverdue`
+- `request.meta.internalNotes`
 - `context`
 - `constraints`
 - `execution`
 - `callbacks`
 - `conversation`
 
-If `conversation[*].attachments` exists, treat attached screenshots / PDF / TXT / CSV as first-class evidence. Inspect them before asking the user for the same information again.
+If `conversation[*].attachments` exists, treat attached screenshots / PDF / TXT / CSV as first-class evidence. Inspect `previewText` first, and if `localPath` is present, inspect that file before asking the user for the same information again.
 
 Read these local contract files before acting:
 - `.openclaw/DSS_STATE_MACHINE.md`
@@ -69,6 +73,11 @@ Use `request.meta.category` and `request.meta.priority` as triage hints:
 - `question` => prefer direct answer if code change is unnecessary
 - `master_update` => check admin/master update flows first
 
+Additional triage hints:
+- `request.meta.waitingOn === "admin"` and `request.meta.isOverdue === true` => prioritize a concrete next action
+- `request.meta.waitingOn === "user"` => do not ask again unless the existing gap is still unresolved
+- `request.meta.internalNotes` are operator-only context; use them to avoid repeated rediscovery, but do not leak them back verbatim to the app user
+
 If the request is underspecified, reply with:
 1. one-sentence understanding of the problem
 2. what is already known
@@ -76,6 +85,7 @@ If the request is underspecified, reply with:
 
 Do not ask for information that is already in logs, the task envelope, or earlier messages.
 Do not ask for screenshots, CSV, or logs if equivalent evidence is already attached in `conversation[*].attachments`.
+If `conversation[*].attachments[*].previewText` or `localPath` already explains the failure, move directly into analysis or implementation.
 
 ## Conversation Mode
 
@@ -200,6 +210,7 @@ When the task is user-report oriented:
 If the request can be solved by explanation only:
 - answer directly
 - use `reportUrl kind="analysis"` only when the app should persist the explanation thread
+- for answer-only tasks returned to the runner, use `status="no_action"` and put the user-facing final answer in `summary`
 
 If the user asks for status mid-stream, answer with current understanding, current step, and what remains.
 

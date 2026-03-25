@@ -16,6 +16,10 @@
 npm run quality:gate
 ```
 
+定期タスクで使う `quality:gate` は「自動修正 + preview 向けの継続改善フロー」であり、release 判定そのものではない。
+
+release 可否の判断は別途 [release-quality-gate.md](./release-quality-gate.md) の deployment smoke 必須 `verify:release` を使う。
+
 定期タスクでは `quality:gate` を基盤に、追加でセキュリティ確認を実施する。
 
 - `npm run audit:prod`

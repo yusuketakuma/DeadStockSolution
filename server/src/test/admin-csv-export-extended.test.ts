@@ -12,79 +12,81 @@ const mocks = vi.hoisted(() => ({
   exportAuditLogsCsv: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-}));
+function mockAdminCsvExportDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../services/csv-export-service', () => ({
-  exportPharmaciesCsv: mocks.exportPharmaciesCsv,
-  exportExchangesCsv: mocks.exportExchangesCsv,
-  exportReportsCsv: mocks.exportReportsCsv,
-  exportLogsCsv: mocks.exportLogsCsv,
-  exportRiskCsv: mocks.exportRiskCsv,
-  exportProposalsCsv: mocks.exportProposalsCsv,
-  exportAuditLogsCsv: mocks.exportAuditLogsCsv,
-}));
+  vi.doMock('../services/csv-export-service', () => ({
+    exportPharmaciesCsv: mocks.exportPharmaciesCsv,
+    exportExchangesCsv: mocks.exportExchangesCsv,
+    exportReportsCsv: mocks.exportReportsCsv,
+    exportLogsCsv: mocks.exportLogsCsv,
+    exportRiskCsv: mocks.exportRiskCsv,
+    exportProposalsCsv: mocks.exportProposalsCsv,
+    exportAuditLogsCsv: mocks.exportAuditLogsCsv,
+  }));
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-  ipKeyGenerator: (ip: string) => ip,
-}));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+    ipKeyGenerator: (ip: string) => ip,
+  }));
 
-vi.mock('../config/database', () => ({
-  db: { select: vi.fn(), update: vi.fn(), insert: vi.fn(), transaction: vi.fn() },
-}));
-vi.mock('../middleware/error-handler', () => ({
-  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-}));
-vi.mock('../services/log-service', () => ({
-  writeLog: vi.fn(),
-  getClientIp: vi.fn(),
-}));
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: vi.fn(),
-  isOpenClawConnectorConfigured: vi.fn(),
-  isOpenClawWebhookConfigured: vi.fn(),
-  getOpenClawImplementationBranch: vi.fn(),
-}));
-vi.mock('../services/openclaw-log-context-service', () => ({
-  buildOpenClawLogContext: vi.fn(),
-}));
-vi.mock('../services/observability-service', () => ({
-  getObservabilitySnapshot: vi.fn(),
-}));
-vi.mock('../services/proposal-timeline-service', () => ({
-  buildProposalTimeline: vi.fn(),
-  fetchProposalTimelineActionRows: vi.fn(),
-}));
-vi.mock('../services/matching-rule-service', () => ({
-  getActiveMatchingRuleProfile: vi.fn(),
-  updateActiveMatchingRuleProfile: vi.fn(),
-}));
-vi.mock('../services/audit-log-service', () => ({
-  recordAuditLog: vi.fn(),
-}));
-vi.mock('../utils/path-utils', () => ({
-  isSafeInternalPath: () => true,
-  sanitizeInternalPath: (p: unknown) => p,
-}));
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  sql: Object.assign((..._args: unknown[]) => ({}), { raw: (..._args: unknown[]) => ({}) }),
-}));
+  vi.doMock('../config/database', () => ({
+    db: { select: vi.fn(), update: vi.fn(), insert: vi.fn(), transaction: vi.fn() },
+  }));
+  vi.doMock('../middleware/error-handler', () => ({
+    getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+  }));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: vi.fn(),
+    getClientIp: vi.fn(),
+  }));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: vi.fn(),
+    isOpenClawConnectorConfigured: vi.fn(),
+    isOpenClawWebhookConfigured: vi.fn(),
+    getOpenClawImplementationBranch: vi.fn(),
+  }));
+  vi.doMock('../services/openclaw-log-context-service', () => ({
+    buildOpenClawLogContext: vi.fn(),
+  }));
+  vi.doMock('../services/observability-service', () => ({
+    getObservabilitySnapshot: vi.fn(),
+  }));
+  vi.doMock('../services/proposal-timeline-service', () => ({
+    buildProposalTimeline: vi.fn(),
+    fetchProposalTimelineActionRows: vi.fn(),
+  }));
+  vi.doMock('../services/matching-rule-service', () => ({
+    getActiveMatchingRuleProfile: vi.fn(),
+    updateActiveMatchingRuleProfile: vi.fn(),
+  }));
+  vi.doMock('../services/audit-log-service', () => ({
+    recordAuditLog: vi.fn(),
+  }));
+  vi.doMock('../utils/path-utils', () => ({
+    isSafeInternalPath: () => true,
+    sanitizeInternalPath: (p: unknown) => p,
+  }));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    sql: Object.assign((..._args: unknown[]) => ({}), { raw: (..._args: unknown[]) => ({}) }),
+  }));
+}
 
-import adminRouter from '../routes/admin';
+let adminRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -94,8 +96,12 @@ function createApp() {
 }
 
 describe('Admin CSV Export Extended Routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    mockAdminCsvExportDependencies();
+    const { default: router } = await import('../routes/admin');
+    adminRouter = router;
   });
 
   describe('GET /csv/proposals', () => {

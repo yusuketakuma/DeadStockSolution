@@ -28,55 +28,57 @@ const mocks = vi.hoisted(() => ({
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+function mockOpenClawRouteDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../services/openclaw-service', () => ({
-  isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
-  verifyOpenClawWebhookSignature: mocks.verifyOpenClawWebhookSignature,
-  isOpenClawWebhookReplay: mocks.isOpenClawWebhookReplay,
-  consumeOpenClawWebhookReplay: mocks.consumeOpenClawWebhookReplay,
-  releaseOpenClawWebhookReplay: mocks.releaseOpenClawWebhookReplay,
-  isOpenClawStatus: mocks.isOpenClawStatus,
-  canTransitionOpenClawStatus: mocks.canTransitionOpenClawStatus,
-  isImplementationBranchAllowed: mocks.isImplementationBranchAllowed,
-  getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
-}));
+  vi.doMock('../services/openclaw-service', () => ({
+    isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
+    verifyOpenClawWebhookSignature: mocks.verifyOpenClawWebhookSignature,
+    isOpenClawWebhookReplay: mocks.isOpenClawWebhookReplay,
+    consumeOpenClawWebhookReplay: mocks.consumeOpenClawWebhookReplay,
+    releaseOpenClawWebhookReplay: mocks.releaseOpenClawWebhookReplay,
+    isOpenClawStatus: mocks.isOpenClawStatus,
+    canTransitionOpenClawStatus: mocks.canTransitionOpenClawStatus,
+    isImplementationBranchAllowed: mocks.isImplementationBranchAllowed,
+    getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
+  }));
 
-vi.mock('../services/pharmacy-verification-callback-service', () => ({
-  processVerificationCallback: mocks.processVerificationCallback,
-}));
+  vi.doMock('../services/pharmacy-verification-callback-service', () => ({
+    processVerificationCallback: mocks.processVerificationCallback,
+  }));
 
-vi.mock('../services/pharmacy-verification-service', () => ({
-  isVerificationRequestType: mocks.isVerificationRequestType,
-}));
+  vi.doMock('../services/pharmacy-verification-service', () => ({
+    isVerificationRequestType: mocks.isVerificationRequestType,
+  }));
 
-vi.mock('../services/openclaw-thread-service', () => ({
-  ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
-  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
-  recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
-  isOpenClawWorkflowStatus: mocks.isOpenClawWorkflowStatus,
-  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
-}));
+  vi.doMock('../services/openclaw-thread-service', () => ({
+    ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
+    updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+    recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
+    isOpenClawWorkflowStatus: mocks.isOpenClawWorkflowStatus,
+    mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  ne: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    ne: vi.fn(() => ({})),
+  }));
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-import openclawRouter from '../routes/openclaw';
+let openclawRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -91,8 +93,11 @@ function createApp() {
 }
 
 describe('openclaw routes — coverage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    mockOpenClawRouteDependencies();
+    ({ default: openclawRouter } = await import('../routes/openclaw'));
     mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('implementing');
     mocks.isOpenClawWorkflowStatus.mockReturnValue(true);
     mocks.canTransitionOpenClawStatus.mockImplementation((current: string, next: string) => {

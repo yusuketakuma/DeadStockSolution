@@ -6,23 +6,21 @@ const mocks = vi.hoisted(() => ({
   getPharmacyHealthSummary: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => {
-    next();
-  },
-}));
-
-vi.mock('../services/admin-pharmacy-health-service', () => ({
-  getPharmacyHealthSummary: mocks.getPharmacyHealthSummary,
-}));
-
-import adminPharmacyHealthRouter from '../routes/admin-pharmacy-health';
-
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => {
+      next();
+    },
+  }));
+  vi.doMock('../services/admin-pharmacy-health-service', () => ({
+    getPharmacyHealthSummary: mocks.getPharmacyHealthSummary,
+  }));
+  const { default: adminPharmacyHealthRouter } = await import('../routes/admin-pharmacy-health');
   const app = express();
   app.use(express.json());
   app.use('/api/admin', adminPharmacyHealthRouter);
@@ -54,7 +52,7 @@ describe('GET /api/admin/pharmacy-health (expanded)', () => {
 
   it('returns 200 with all expected fields', async () => {
     mocks.getPharmacyHealthSummary.mockResolvedValue(sampleData);
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/pharmacy-health');
 
     expect(res.status).toBe(200);
@@ -63,7 +61,7 @@ describe('GET /api/admin/pharmacy-health (expanded)', () => {
 
   it('returns existing activityByPharmacy field', async () => {
     mocks.getPharmacyHealthSummary.mockResolvedValue(sampleData);
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/pharmacy-health');
 
     expect(res.body.data.activityByPharmacy).toBeDefined();
@@ -72,7 +70,7 @@ describe('GET /api/admin/pharmacy-health (expanded)', () => {
 
   it('returns existing trustScores field', async () => {
     mocks.getPharmacyHealthSummary.mockResolvedValue(sampleData);
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/pharmacy-health');
 
     expect(res.body.data.trustScores).toBeDefined();
@@ -81,7 +79,7 @@ describe('GET /api/admin/pharmacy-health (expanded)', () => {
 
   it('returns new uploadActivity field with correct structure', async () => {
     mocks.getPharmacyHealthSummary.mockResolvedValue(sampleData);
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/pharmacy-health');
 
     expect(res.body.data.uploadActivity).toBeDefined();
@@ -98,7 +96,7 @@ describe('GET /api/admin/pharmacy-health (expanded)', () => {
 
   it('returns new lastLogins field with correct structure', async () => {
     mocks.getPharmacyHealthSummary.mockResolvedValue(sampleData);
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/pharmacy-health');
 
     expect(res.body.data.lastLogins).toBeDefined();
@@ -112,7 +110,7 @@ describe('GET /api/admin/pharmacy-health (expanded)', () => {
 
   it('returns new proposalActivity field with correct structure', async () => {
     mocks.getPharmacyHealthSummary.mockResolvedValue(sampleData);
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/pharmacy-health');
 
     expect(res.body.data.proposalActivity).toBeDefined();
@@ -137,7 +135,7 @@ describe('GET /api/admin/pharmacy-health (expanded)', () => {
       ],
     };
     mocks.getPharmacyHealthSummary.mockResolvedValue(dataWithNullLogin);
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/pharmacy-health');
 
     expect(res.status).toBe(200);
@@ -152,7 +150,7 @@ describe('GET /api/admin/pharmacy-health (expanded)', () => {
       ],
     };
     mocks.getPharmacyHealthSummary.mockResolvedValue(dataWithNullUpload);
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/pharmacy-health');
 
     expect(res.status).toBe(200);
@@ -162,7 +160,7 @@ describe('GET /api/admin/pharmacy-health (expanded)', () => {
 
   it('returns 500 when service throws', async () => {
     mocks.getPharmacyHealthSummary.mockRejectedValue(new Error('DB error'));
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/pharmacy-health');
 
     expect(res.status).toBe(500);

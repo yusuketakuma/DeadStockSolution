@@ -24,69 +24,80 @@ const mocks = vi.hoisted(() => ({
   sendReverificationTriggerErrorResponse: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+function mockAdminDetailDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
 
-vi.mock('../services/geocode-service', () => ({
-  geocodeAddress: mocks.geocodeAddress,
-}));
+  vi.doMock('../services/geocode-service', () => ({
+    geocodeAddress: mocks.geocodeAddress,
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../routes/business-hours', () => ({
-  fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
-  validateBusinessHours: mocks.validateBusinessHours,
-  validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
-}));
+  vi.doMock('../routes/business-hours', () => ({
+    fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
+    validateBusinessHours: mocks.validateBusinessHours,
+    validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
+  }));
 
-vi.mock('../services/pharmacy-verification-callback-service', () => ({
-  processVerificationCallback: mocks.processVerificationCallback,
-}));
+  vi.doMock('../services/pharmacy-verification-callback-service', () => ({
+    processVerificationCallback: mocks.processVerificationCallback,
+  }));
 
-vi.mock('../services/pharmacy-verification-service', () => ({
-  detectChangedReverificationFields: mocks.detectChangedReverificationFields,
-  triggerReverification: mocks.triggerReverification,
-  ReverificationTriggerError: mocks.ReverificationTriggerError,
-  sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
-}));
+  vi.doMock('../services/pharmacy-verification-service', () => ({
+    detectChangedReverificationFields: mocks.detectChangedReverificationFields,
+    triggerReverification: mocks.triggerReverification,
+    ReverificationTriggerError: mocks.ReverificationTriggerError,
+    sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
+  }));
 
-vi.mock('../utils/validators', () => ({
-  emailSchema: {
-    safeParse: vi.fn((val: string) => {
-      if (val.includes('@')) return { success: true, data: val };
-      return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
-    }),
-  },
-}));
+  vi.doMock('../routes/admin-write-limiter', () => ({
+    adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('../routes/admin-utils', async () => await vi.importActual('../routes/admin-utils'));
+  vi.doMock('../routes/admin-pharmacies-detail-helpers', async () => await vi.importActual('../routes/admin-pharmacies-detail-helpers'));
+  vi.doMock('../db/schema', async () => await vi.importActual('../db/schema'));
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('../utils/validators', () => ({
+    emailSchema: {
+      safeParse: vi.fn((val: string) => {
+        if (val.includes('@')) return { success: true, data: val };
+        return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
+      }),
+    },
+  }));
 
-import adminRouter from '../routes/admin';
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
 
-function createApp() {
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
+
+async function createApp() {
+  vi.resetModules();
+  mockAdminDetailDependencies();
+  const { default: adminRouter } = await import('../routes/admin');
   const app = express();
   app.use(express.json());
   app.use('/api/admin', adminRouter);
@@ -117,13 +128,13 @@ const BASE_PHARMACY = {
 
 describe('admin-pharmacies-detail routes — deep coverage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.detectChangedReverificationFields.mockReturnValue([]);
   });
 
   describe('GET /pharmacies/:id — error handling', () => {
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -141,7 +152,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('GET /pharmacies/:id/business-hours/settings — error handling', () => {
     it('returns 400 for invalid id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/admin/pharmacies/abc/business-hours/settings');
 
@@ -150,7 +161,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 500 on general error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.fetchBusinessHourSettings.mockRejectedValue(new Error('General error'));
 
       const res = await request(app).get('/api/admin/pharmacies/1/business-hours/settings');
@@ -162,7 +173,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('PUT /pharmacies/:id — email conflict', () => {
     it('returns 409 when email is already taken by another pharmacy', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_PHARMACY]))
         .mockReturnValueOnce(createLimitQuery([{ id: 999 }]));
@@ -176,7 +187,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('allows updating email to same pharmacy (no conflict)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_PHARMACY]))
         .mockReturnValueOnce(createLimitQuery([{ id: 10 }]));
@@ -192,7 +203,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('PUT /pharmacies/:id — licenseNumber conflict', () => {
     it('returns 409 when licenseNumber is taken by another pharmacy', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_PHARMACY]))
         .mockReturnValueOnce(createLimitQuery([{ id: 999 }]));
@@ -208,7 +219,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('PUT /pharmacies/:id — field validations', () => {
     it('returns 400 for invalid name (empty)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -220,7 +231,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid postalCode', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -232,7 +243,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for non-string postalCode', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -244,7 +255,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid address', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -256,7 +267,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid phone', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -268,7 +279,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid fax', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -280,7 +291,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid licenseNumber', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -292,7 +303,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid prefecture', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -304,7 +315,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid isActive type', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -316,7 +327,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid isTestAccount type', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -328,7 +339,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for non-string testAccountPassword', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -340,7 +351,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for too long testAccountPassword', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -352,7 +363,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('sets testAccountPassword to null when empty string', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
       mocks.db.update.mockReturnValue(createUpdateQuery([{ id: 10, version: 2 }]));
 
@@ -364,7 +375,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid email format', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
 
       const res = await request(app)
@@ -377,7 +388,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('PUT /pharmacies/:id — geocode on address/prefecture change', () => {
     it('geocodes when address changes', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
       mocks.geocodeAddress.mockResolvedValue({ lat: 35.0, lng: 139.0 });
       mocks.db.update.mockReturnValue(createUpdateQuery([{ id: 10, version: 2 }]));
@@ -391,7 +402,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 400 when geocode fails', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
       mocks.geocodeAddress.mockResolvedValue(null);
 
@@ -406,7 +417,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('PUT /pharmacies/:id — optimistic lock conflict', () => {
     it('returns 409 on version conflict', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_PHARMACY]))
         .mockReturnValueOnce(createLimitQuery([{ ...BASE_PHARMACY, version: 5 }]));
@@ -421,7 +432,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 404 when pharmacy deleted during optimistic lock check', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_PHARMACY]))
         .mockReturnValueOnce(createLimitQuery([]));
@@ -437,7 +448,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('PUT /pharmacies/:id — reverification trigger', () => {
     it('triggers reverification when relevant fields change', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
       mocks.detectChangedReverificationFields.mockReturnValue(['name']);
       mocks.db.update.mockReturnValue(createUpdateQuery([{ id: 10, version: 2 }]));
@@ -451,7 +462,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('handles ReverificationTriggerError', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
       mocks.detectChangedReverificationFields.mockReturnValue(['name']);
       mocks.db.update.mockReturnValue(createUpdateQuery([{ id: 10, version: 2 }]));
@@ -469,7 +480,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 500 on general update error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -488,7 +499,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('PUT /pharmacies/:id — test account logic', () => {
     it('clears testAccountPassword when isTestAccount is set to false', async () => {
-      const app = createApp();
+      const app = await createApp();
       const testPharmacy = { ...BASE_PHARMACY, isTestAccount: true, testAccountPassword: 'pass123' };
       mocks.db.select.mockReturnValue(createLimitQuery([testPharmacy]));
       mocks.db.update.mockReturnValue(createUpdateQuery([{ id: 10, version: 2 }]));
@@ -501,7 +512,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('updates test account with display password', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
       mocks.db.update.mockReturnValue(createUpdateQuery([{ id: 10, version: 2 }]));
 
@@ -515,7 +526,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('PUT /pharmacies/:id/toggle-active — error handling', () => {
     it('returns 400 for invalid id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).put('/api/admin/pharmacies/abc/toggle-active');
 
@@ -523,7 +534,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -538,7 +549,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('toggles inactive pharmacy to active', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([{ isActive: false }]));
       mocks.db.update.mockReturnValue({
         set: vi.fn().mockReturnValue({
@@ -555,7 +566,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('POST /pharmacies/:id/verify — edge cases', () => {
     it('returns 400 for invalid id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/pharmacies/abc/verify')
@@ -565,7 +576,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 500 on verification callback error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.processVerificationCallback.mockRejectedValue(new Error('Callback failed'));
 
       const res = await request(app)
@@ -577,7 +588,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('approves with custom reason', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.processVerificationCallback.mockResolvedValue({
         verificationStatus: 'verified',
         pharmacyId: 1,
@@ -593,7 +604,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
   describe('PUT /pharmacies/:id/business-hours — transaction flow', () => {
     it('returns 404 when pharmacy not found for business hours update', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.validateBusinessHours.mockReturnValue({ valid: [] });
       mocks.validateSpecialBusinessHours.mockReturnValue({ valid: [], provided: false });
       mocks.db.select.mockReturnValue(createLimitQuery([]));
@@ -606,7 +617,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('handles conflict during business hours transaction', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.validateBusinessHours.mockReturnValue({ valid: [{ dayOfWeek: 0, openTime: '09:00', closeTime: '18:00', isClosed: false, is24Hours: false }] });
       mocks.validateSpecialBusinessHours.mockReturnValue({ valid: [], provided: false });
       mocks.db.select.mockReturnValue(createLimitQuery([{ id: 1 }]));
@@ -633,7 +644,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('updates business hours with special hours', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.validateBusinessHours.mockReturnValue({
         valid: [{ dayOfWeek: 0, openTime: '09:00', closeTime: '18:00', isClosed: false, is24Hours: false }],
       });
@@ -670,7 +681,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     });
 
     it('returns 500 on business hours update error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.validateBusinessHours.mockReturnValue({ valid: [] });
       mocks.validateSpecialBusinessHours.mockReturnValue({ valid: [], provided: false });
       mocks.db.select.mockReturnValue({

@@ -8,28 +8,32 @@ const mocks = vi.hoisted(() => ({
   isDependencyServiceUnavailableError: vi.fn(),
 }));
 
-vi.mock('../config/database', () => ({
-  db: {
-    select: mocks.select,
-  },
-}));
+function mockAuthMiddlewareDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: {
+      select: mocks.select,
+    },
+  }));
 
-vi.mock('../services/auth-service', () => ({
-  verifyToken: mocks.verifyToken,
-  deriveSessionVersion: mocks.deriveSessionVersion,
-  isJwtSecretMissingError: mocks.isJwtSecretMissingError,
-}));
+  vi.doMock('../services/auth-service', () => ({
+    verifyToken: mocks.verifyToken,
+    deriveSessionVersion: mocks.deriveSessionVersion,
+    isJwtSecretMissingError: mocks.isJwtSecretMissingError,
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  sql: {},
-}));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    sql: {},
+  }));
 
-vi.mock('../routes/auth-helpers', () => ({
-  isDependencyServiceUnavailableError: mocks.isDependencyServiceUnavailableError,
-}));
+  vi.doMock('../routes/auth-helpers', () => ({
+    isDependencyServiceUnavailableError: mocks.isDependencyServiceUnavailableError,
+  }));
+}
 
-import { clearAuthUserCacheForTests, invalidateAuthUserCache, requireLogin } from '../middleware/auth';
+let clearAuthUserCacheForTests: typeof import('../middleware/auth').clearAuthUserCacheForTests;
+let invalidateAuthUserCache: typeof import('../middleware/auth').invalidateAuthUserCache;
+let requireLogin: typeof import('../middleware/auth').requireLogin;
 
 function createSelectQuery(result: unknown) {
   const query = {
@@ -64,7 +68,14 @@ function createRes() {
 describe('auth middleware cache', () => {
   const originalNodeEnv = process.env.NODE_ENV;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    mockAuthMiddlewareDependencies();
+    ({
+      clearAuthUserCacheForTests,
+      invalidateAuthUserCache,
+      requireLogin,
+    } = await import('../middleware/auth'));
     vi.clearAllMocks();
     clearAuthUserCacheForTests();
     process.env.NODE_ENV = 'development';

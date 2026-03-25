@@ -60,7 +60,25 @@ cd /Users/yusuke/DeadStockSolution
 
 ## 5. 品質ゲート
 
-PR前に必ず実行:
+`preview` に載せる前の必須 gate:
+
+```bash
+cd /Users/yusuke/DeadStockSolution
+npm run verify:preview
+```
+
+`verify:preview` は integration / perf / OpenAPI contract まで含む static full gate。
+
+リリース候補の最終判定:
+
+```bash
+cd /Users/yusuke/DeadStockSolution
+RELEASE_SMOKE_BASE_URL=https://<candidate>.vercel.app npm run verify:release
+```
+
+CI では `VERCEL_TOKEN` と `GITHUB_SHA` / `GITHUB_REF_NAME` があれば deployment URL を自動解決できる。
+
+自動修正を含む定期スキャン:
 
 ```bash
 cd /Users/yusuke/DeadStockSolution
@@ -72,3 +90,5 @@ npm run quality:gate
 ```bash
 OPENCLAW_NOTIFY_TARGET=-5103716630 npm run quality:gate:notify
 ```
+
+詳細は [release-quality-gate.md](./release-quality-gate.md) を参照。

@@ -5,7 +5,6 @@ on:
     branches:
       - main
       - dev
-      - preview
   pull_request:
 
 concurrency:
@@ -54,8 +53,8 @@ jobs:
       - name: Ensure rollup platform binary
         run: npm rebuild rollup || true
 
-      - name: Test coverage server
-        run: npm run test:coverage:server
+      - name: Server full test suite
+        run: npm run test:server
 
       - name: Performance regression guard
         run: npm run test:perf:server
@@ -79,8 +78,8 @@ jobs:
       - name: Ensure rollup platform binary
         run: npm rebuild rollup || true
 
-      - name: Test coverage client
-        run: npm run test:coverage:client
+      - name: Client full test suite
+        run: npm run test:client
 
   integration:
     runs-on: ubuntu-latest

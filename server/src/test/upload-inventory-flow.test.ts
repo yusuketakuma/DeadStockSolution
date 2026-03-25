@@ -1,7 +1,6 @@
 import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { columnMappingTemplates, deadStockItems, uploadJobs, usedMedicationItems } from '../db/schema';
 import type { ColumnMapping } from '../types';
 import { setupVitestMocks } from './helpers/setup';
 
@@ -50,58 +49,64 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'flow@example.com', isAdmin: false };
-    next();
-  },
-}));
+function mockUploadInventoryDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'flow@example.com', isAdmin: false };
+      next();
+    },
+  }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../services/upload-service', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../services/upload-service')>();
-  return {
-    ...actual,
-    parseExcelBuffer: mocks.parseExcelBuffer,
-  };
-});
+  vi.doMock('../services/upload-service', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../services/upload-service')>();
+    return {
+      ...actual,
+      parseExcelBuffer: mocks.parseExcelBuffer,
+    };
+  });
 
-vi.mock('../services/drug-master-enrichment', () => ({
-  enrichWithDrugMaster: mocks.enrichWithDrugMaster,
-}));
+  vi.doMock('../services/drug-master-enrichment', () => ({
+    enrichWithDrugMaster: mocks.enrichWithDrugMaster,
+  }));
 
-vi.mock('../services/matching-refresh-service', () => ({
-  triggerMatchingRefreshOnUpload: mocks.triggerMatchingRefreshOnUpload,
-}));
+  vi.doMock('../services/matching-refresh-service', () => ({
+    triggerMatchingRefreshOnUpload: mocks.triggerMatchingRefreshOnUpload,
+  }));
 
-vi.mock('../services/upload-confirm-job-service', () => ({
-  enqueueUploadConfirmJob: mocks.enqueueUploadConfirmJob,
-  getUploadConfirmJobForPharmacy: mocks.getUploadConfirmJobForPharmacy,
-  cancelUploadConfirmJobForPharmacy: mocks.cancelUploadConfirmJobForPharmacy,
-  isUploadConfirmQueueLimitError: mocks.isUploadConfirmQueueLimitError,
-  isUploadConfirmIdempotencyConflictError: mocks.isUploadConfirmIdempotencyConflictError,
-}));
+  vi.doMock('../services/upload-confirm-job-service', () => ({
+    enqueueUploadConfirmJob: mocks.enqueueUploadConfirmJob,
+    getUploadConfirmJobForPharmacy: mocks.getUploadConfirmJobForPharmacy,
+    cancelUploadConfirmJobForPharmacy: mocks.cancelUploadConfirmJobForPharmacy,
+    isUploadConfirmQueueLimitError: mocks.isUploadConfirmQueueLimitError,
+    isUploadConfirmIdempotencyConflictError: mocks.isUploadConfirmIdempotencyConflictError,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+}
 
-import uploadRouter from '../routes/upload';
-import inventoryRouter from '../routes/inventory';
-import { runUploadConfirm } from '../services/upload-confirm-service';
+let uploadRouter: express.Router;
+let inventoryRouter: express.Router;
+let runUploadConfirm: typeof import('../services/upload-confirm-service').runUploadConfirm;
+let columnMappingTemplates: typeof import('../db/schema').columnMappingTemplates;
+let deadStockItems: typeof import('../db/schema').deadStockItems;
+let uploadJobs: typeof import('../db/schema').uploadJobs;
+let usedMedicationItems: typeof import('../db/schema').usedMedicationItems;
 
 function createApp() {
   const app = express();
@@ -308,7 +313,18 @@ function setupDbMock() {
 describe('upload -> inventory flow', () => {
   setupVitestMocks();
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    mockUploadInventoryDependencies();
+    ({
+      columnMappingTemplates,
+      deadStockItems,
+      uploadJobs,
+      usedMedicationItems,
+    } = await import('../db/schema'));
+    ({ default: uploadRouter } = await import('../routes/upload'));
+    ({ default: inventoryRouter } = await import('../routes/inventory'));
+    ({ runUploadConfirm } = await import('../services/upload-confirm-service'));
     mocks.reset();
     setupDbMock();
 

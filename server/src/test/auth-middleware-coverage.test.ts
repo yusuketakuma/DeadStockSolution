@@ -9,33 +9,33 @@ const mocks = vi.hoisted(() => ({
   isDependencyServiceUnavailableError: vi.fn(),
 }));
 
-vi.mock('../config/database', () => ({
-  db: {
-    select: mocks.select,
-  },
-}));
+function mockAuthMiddlewareCoverageDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: {
+      select: mocks.select,
+    },
+  }));
 
-vi.mock('../services/auth-service', () => ({
-  verifyToken: mocks.verifyToken,
-  deriveSessionVersion: mocks.deriveSessionVersion,
-  isJwtSecretMissingError: mocks.isJwtSecretMissingError,
-}));
+  vi.doMock('../services/auth-service', () => ({
+    verifyToken: mocks.verifyToken,
+    deriveSessionVersion: mocks.deriveSessionVersion,
+    isJwtSecretMissingError: mocks.isJwtSecretMissingError,
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  sql: {},
-}));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    sql: {},
+  }));
 
-vi.mock('../routes/auth-helpers', () => ({
-  isDependencyServiceUnavailableError: mocks.isDependencyServiceUnavailableError,
-}));
+  vi.doMock('../routes/auth-helpers', () => ({
+    isDependencyServiceUnavailableError: mocks.isDependencyServiceUnavailableError,
+  }));
+}
 
-import {
-  requireLogin,
-  requireAdmin,
-  clearAuthUserCacheForTests,
-  invalidateAuthUserCache,
-} from '../middleware/auth';
+let requireLogin: typeof import('../middleware/auth').requireLogin;
+let requireAdmin: typeof import('../middleware/auth').requireAdmin;
+let clearAuthUserCacheForTests: typeof import('../middleware/auth').clearAuthUserCacheForTests;
+let invalidateAuthUserCache: typeof import('../middleware/auth').invalidateAuthUserCache;
 
 // ── Helper: create Drizzle select chain ──────────────
 function createSelectQuery(result: unknown) {
@@ -77,7 +77,15 @@ function createReq(token?: string) {
 }
 
 describe('auth middleware (coverage)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    mockAuthMiddlewareCoverageDependencies();
+    ({
+      requireLogin,
+      requireAdmin,
+      clearAuthUserCacheForTests,
+      invalidateAuthUserCache,
+    } = await import('../middleware/auth'));
     vi.clearAllMocks();
     clearAuthUserCacheForTests();
     mocks.isJwtSecretMissingError.mockReturnValue(false);

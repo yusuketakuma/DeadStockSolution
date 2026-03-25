@@ -19,11 +19,11 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import internalVercelDeployEventsRouter from '../routes/internal-vercel-deploy-events';
-
 const ORIGINAL_SECRET = process.env.VERCEL_DEPLOY_WEBHOOK_SECRET;
 
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  const { default: internalVercelDeployEventsRouter } = await import('../routes/internal-vercel-deploy-events');
   const app = express();
   app.use(express.json());
   app.use('/api/internal/vercel', internalVercelDeployEventsRouter);
@@ -46,7 +46,7 @@ describe('internal vercel deploy events route', () => {
   });
 
   it('returns 503 when webhook secret is not configured', async () => {
-    const app = createApp();
+    const app = await createApp();
     const response = await request(app)
       .post('/api/internal/vercel/deploy-events')
       .send({ type: 'deployment.error' });
@@ -57,7 +57,7 @@ describe('internal vercel deploy events route', () => {
 
   it('returns 401 when authorization header is invalid', async () => {
     process.env.VERCEL_DEPLOY_WEBHOOK_SECRET = 'secret-token';
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/internal/vercel/deploy-events')
@@ -71,7 +71,7 @@ describe('internal vercel deploy events route', () => {
 
   it('records vercel deploy event when authorized', async () => {
     process.env.VERCEL_DEPLOY_WEBHOOK_SECRET = 'secret-token';
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/internal/vercel/deploy-events')
@@ -101,7 +101,7 @@ describe('internal vercel deploy events route', () => {
   it('returns 500 when event persistence fails', async () => {
     process.env.VERCEL_DEPLOY_WEBHOOK_SECRET = 'secret-token';
     mocks.recordVercelDeployEvent.mockResolvedValueOnce(false);
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/internal/vercel/deploy-events')

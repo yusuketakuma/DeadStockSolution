@@ -6,16 +6,20 @@ const mocks = vi.hoisted(() => ({
   registerDdsAgent: vi.fn(),
   claimNextDdsJob: vi.fn(),
   heartbeatDdsAgent: vi.fn(),
+  getDdsWorkItemAttachmentDownload: vi.fn(),
   postDdsQuestion: vi.fn(),
   reportDdsPullRequest: vi.fn(),
+  completeDdsWorkItem: vi.fn(),
 }));
 
 vi.mock('../services/dds-agent-service', () => ({
   registerDdsAgent: mocks.registerDdsAgent,
   claimNextDdsJob: mocks.claimNextDdsJob,
   heartbeatDdsAgent: mocks.heartbeatDdsAgent,
+  getDdsWorkItemAttachmentDownload: mocks.getDdsWorkItemAttachmentDownload,
   postDdsQuestion: mocks.postDdsQuestion,
   reportDdsPullRequest: mocks.reportDdsPullRequest,
+  completeDdsWorkItem: mocks.completeDdsWorkItem,
 }));
 
 vi.mock('../services/logger', () => ({
@@ -27,7 +31,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import openclawConnectRouter from '../routes/openclaw-connect';
+let openclawConnectRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -40,7 +44,10 @@ const VALID_TOKEN = 'test-control-token-abc123';
 const AUTH_HEADER = `Bearer ${VALID_TOKEN}`;
 
 describe('openclaw-connect routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    const { default: router } = await import('../routes/openclaw-connect');
+    openclawConnectRouter = router;
     vi.clearAllMocks();
   });
 
@@ -125,9 +132,20 @@ describe('openclaw-connect routes', () => {
           workflowStatus: 'queued',
           requestId: 5,
           pharmacyId: 2,
+          pharmacyName: 'テスト薬局',
           requestText: 'テスト要望',
+          summary: 'テスト要望を確認しました',
           source: 'user_request',
           context: null,
+          category: 'improvement',
+          priority: 'normal',
+          closeReason: null,
+          assignedAdminId: null,
+          assignedAdminName: null,
+          waitingOn: 'admin',
+          isOverdue: false,
+          openclawStatus: 'in_dialogue',
+          internalNotes: [],
           conversation: [],
         },
       };
@@ -339,6 +357,79 @@ describe('openclaw-connect routes', () => {
         prNumber: null,
         summary: '',
       }));
+    });
+  });
+
+  describe('GET /work-items/:id/attachments/:attachmentId', () => {
+    it('should return 401 when no authorization header', async () => {
+      const app = createApp();
+      const res = await request(app).get('/api/openclaw/connect/work-items/1/attachments/2');
+      expect(res.status).toBe(401);
+    });
+
+    it('should return 400 when work item ID is invalid', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .get('/api/openclaw/connect/work-items/0/attachments/2')
+        .set('Authorization', AUTH_HEADER)
+        .query({ leaseToken: 'lease-1' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('work item ID');
+    });
+
+    it('should return 400 when attachment ID is invalid', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .get('/api/openclaw/connect/work-items/1/attachments/0')
+        .set('Authorization', AUTH_HEADER)
+        .query({ leaseToken: 'lease-1' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('attachment ID');
+    });
+
+    it('should return 400 when leaseToken is missing', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .get('/api/openclaw/connect/work-items/1/attachments/2')
+        .set('Authorization', AUTH_HEADER);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('leaseToken');
+    });
+
+    it('should stream attachment successfully', async () => {
+      mocks.getDdsWorkItemAttachmentDownload.mockResolvedValue({
+        fileName: 'evidence.txt',
+        mimeType: 'text/plain',
+        fileSize: 12,
+        content: Buffer.from('hello world!'),
+      });
+
+      const app = createApp();
+      const res = await request(app)
+        .get('/api/openclaw/connect/work-items/10/attachments/20')
+        .set('Authorization', AUTH_HEADER)
+        .query({ leaseToken: 'lease-10' });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/plain');
+      expect(res.headers['content-disposition']).toContain('evidence.txt');
+      expect(mocks.getDdsWorkItemAttachmentDownload).toHaveBeenCalledWith(
+        VALID_TOKEN,
+        10,
+        'lease-10',
+        20,
+      );
+      expect(res.text).toBe('hello world!');
+    });
+
+    it('should return 404 when attachment does not exist', async () => {
+      mocks.getDdsWorkItemAttachmentDownload.mockResolvedValue(null);
+      const app = createApp();
+      const res = await request(app)
+        .get('/api/openclaw/connect/work-items/10/attachments/20')
+        .set('Authorization', AUTH_HEADER)
+        .query({ leaseToken: 'lease-10' });
+      expect(res.status).toBe(404);
     });
   });
 });

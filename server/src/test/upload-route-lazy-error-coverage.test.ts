@@ -1,6 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   db: {
@@ -14,31 +14,45 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+function mockUploadRouteLazyErrorDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: Request & { user?: { id: number } }, _res: Response, next: NextFunction) => {
-    req.user = { id: 1 };
-    next();
-  },
-}));
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: Request & { user?: { id: number } }, _res: Response, next: NextFunction) => {
+      req.user = { id: 1 };
+      next();
+    },
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: mocks.logger,
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: mocks.logger,
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
 
-vi.mock('../routes/upload-parser', async () => {
-  const { Router } = await import('express');
-  return { default: Router() };
+  vi.doMock('../routes/upload-parser', async () => {
+    const { Router } = await import('express');
+    return { default: Router() };
+  });
+
+  vi.doMock('../routes/upload-validation', async () => await vi.importActual('../routes/upload-validation'));
+  vi.doMock('../db/schema', async () => await vi.importActual('../db/schema'));
+}
+
+let uploadRouter: (typeof import('../routes/upload'))['default'];
+
+beforeEach(async () => {
+  vi.resetAllMocks();
+  vi.resetModules();
+  mockUploadRouteLazyErrorDependencies();
+  ({ default: uploadRouter } = await import('../routes/upload'));
 });
 
 describe('routes/upload.ts lazy logger payload coverage', () => {
@@ -58,8 +72,6 @@ describe('routes/upload.ts lazy logger payload coverage', () => {
         (payload as () => Record<string, unknown>)();
       }
     });
-
-    const { default: uploadRouter } = await import('../routes/upload');
 
     const app = express();
     app.use(express.json());

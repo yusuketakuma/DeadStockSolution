@@ -19,72 +19,74 @@ const mocks = vi.hoisted(() => ({
   updateOpenClawWorkItem: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-}));
+function mockAdminPharmaciesActionCoverageDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+  }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../middleware/error-handler', () => ({
-  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-}));
+  vi.doMock('../middleware/error-handler', () => ({
+    getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+  }));
 
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: mocks.handoffToOpenClaw,
-}));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: mocks.handoffToOpenClaw,
+  }));
 
-vi.mock('../services/openclaw-log-context-service', () => ({
-  buildOpenClawLogContext: mocks.buildOpenClawLogContext,
-}));
+  vi.doMock('../services/openclaw-log-context-service', () => ({
+    buildOpenClawLogContext: mocks.buildOpenClawLogContext,
+  }));
 
-vi.mock('../services/proposal-timeline-service', () => ({
-  buildProposalTimeline: mocks.buildProposalTimeline,
-  fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
-}));
+  vi.doMock('../services/proposal-timeline-service', () => ({
+    buildProposalTimeline: mocks.buildProposalTimeline,
+    fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
+  }));
 
-vi.mock('../services/openclaw-thread-service', () => ({
-  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
-  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
-  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
-}));
+  vi.doMock('../services/openclaw-thread-service', () => ({
+    mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+    isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
+    updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+  }));
 
-vi.mock('../utils/path-utils', () => ({
-  isSafeInternalPath: (path: string) => path.startsWith('/'),
-}));
+  vi.doMock('../utils/path-utils', () => ({
+    isSafeInternalPath: (path: string) => path.startsWith('/'),
+  }));
 
-vi.mock('drizzle-orm', () => {
-  const sqlFn = Object.assign(
-    (..._args: unknown[]) => ({}),
-    { raw: (..._args: unknown[]) => ({}) },
-  );
-  return {
-    eq: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    sql: sqlFn,
-  };
-});
+  vi.doMock('drizzle-orm', () => {
+    const sqlFn = Object.assign(
+      (..._args: unknown[]) => ({}),
+      { raw: (..._args: unknown[]) => ({}) },
+    );
+    return {
+      eq: vi.fn(() => ({})),
+      and: vi.fn(() => ({})),
+      desc: vi.fn(() => ({})),
+      sql: sqlFn,
+    };
+  });
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-import adminRouter from '../routes/admin';
+let adminRouter: express.Router;
 
-function createApp() {
+async function createApp() {
   const app = express();
   app.use(express.json());
   app.use('/api/admin', adminRouter);
@@ -103,8 +105,11 @@ function createLimitQuery(result: unknown) {
 }
 
 describe('admin-pharmacies-actions routes — coverage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    mockAdminPharmaciesActionCoverageDependencies();
+    ({ default: adminRouter } = await import('../routes/admin'));
     mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('analyzing');
     mocks.isMissingOpenClawSchemaError.mockImplementation((err: unknown) => (
       typeof err === 'object' && err !== null && (err as { code?: string }).code === '42P01'
@@ -113,7 +118,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
 
   describe('POST /messages', () => {
     it('returns 400 for invalid targetType', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/messages')
@@ -124,7 +129,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 400 for empty title', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/messages')
@@ -135,7 +140,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 400 for too long title', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/messages')
@@ -146,7 +151,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 400 for empty body', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/messages')
@@ -157,7 +162,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 400 for too long body', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/messages')
@@ -168,7 +173,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 400 for pharmacy target without valid id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/messages')
@@ -179,7 +184,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 404 when target pharmacy not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -197,7 +202,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 400 for unsafe action path', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/messages')
@@ -208,7 +213,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('sends message to all successfully', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.insert.mockReturnValue({
         values: vi.fn().mockResolvedValue(undefined),
       });
@@ -222,7 +227,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('sends message to specific pharmacy successfully', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -244,7 +249,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
 
   describe('POST /requests/:id/handoff', () => {
     it('returns 404 when request not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           leftJoin: vi.fn().mockReturnValue({
@@ -263,7 +268,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 400 for completed request', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           leftJoin: vi.fn().mockReturnValue({
@@ -285,7 +290,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 400 for non-retryable status', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           leftJoin: vi.fn().mockReturnValue({
@@ -308,7 +313,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('performs handoff successfully (accepted)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           leftJoin: vi.fn().mockReturnValue({
@@ -347,7 +352,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('performs handoff with pending status (202)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           leftJoin: vi.fn().mockReturnValue({
@@ -379,7 +384,7 @@ describe('admin-pharmacies-actions routes — coverage', () => {
     });
 
     it('returns 400 for invalid request id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/admin/requests/abc/handoff');

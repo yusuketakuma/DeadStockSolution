@@ -65,7 +65,7 @@ vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import drugMasterSyncRouter from '../routes/drug-master-sync';
+let drugMasterSyncRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -80,6 +80,12 @@ function createApp() {
   }, drugMasterSyncRouter);
   return app;
 }
+
+beforeEach(async () => {
+  vi.resetModules();
+  const { default: router } = await import('../routes/drug-master-sync');
+  drugMasterSyncRouter = router;
+});
 
 const ORIGINAL_ENV = { ...process.env };
 

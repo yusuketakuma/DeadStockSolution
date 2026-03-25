@@ -11,35 +11,31 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-  rejectAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-}));
+function mockMatchBookmarkDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+  }));
+}
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-}));
-
-import matchBookmarksRouter from '../routes/match-bookmarks';
-import { requireLogin } from '../middleware/auth';
+let matchBookmarksRouter: express.Router;
 
 function createApp() {
   const app = express();
   app.use(express.json());
-  app.use('/api/match-bookmarks', requireLogin as express.RequestHandler, matchBookmarksRouter);
+  app.use('/api/match-bookmarks', (req, _res, next) => {
+    (req as express.Request & {
+      user?: { id: number; email: string; isAdmin: boolean };
+    }).user = { id: 1, email: 'test@example.com', isAdmin: false };
+    next();
+  }, matchBookmarksRouter);
   return app;
 }
 
@@ -113,8 +109,11 @@ function makeDeleteChain() {
 // ── テスト ──────────────────────────────────
 
 describe('match-bookmarks routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    mockMatchBookmarkDependencies();
+    ({ default: matchBookmarksRouter } = await import('../routes/match-bookmarks'));
   });
 
   // ── POST / ──────────────────────────────────

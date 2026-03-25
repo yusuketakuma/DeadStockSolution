@@ -64,13 +64,6 @@ vi.mock('../db/schema', () => ({
   },
 }));
 
-let exchangeCommentsRouter: express.Router;
-
-beforeEach(async () => {
-  vi.resetModules();
-  ({ default: exchangeCommentsRouter } = await import('../routes/exchange-comments'));
-});
-
 /**
  * Build a chainable query mock where every chain method returns itself,
  * and the terminal (limit or offset) resolves with the given result.
@@ -88,7 +81,9 @@ function chainableSelect(result: unknown) {
   return q;
 }
 
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  const exchangeCommentsRouter = (await import('../routes/exchange-comments')).default;
   const app = express();
   app.use(express.json());
   // The exchange-comments router doesn't apply requireLogin itself;
@@ -101,7 +96,9 @@ function createApp() {
   return app;
 }
 
-function createAdminApp() {
+async function createAdminApp() {
+  vi.resetModules();
+  const exchangeCommentsRouter = (await import('../routes/exchange-comments')).default;
   const app = express();
   app.use(express.json());
   app.use((req: Request & { user?: { id: number; email: string; isAdmin: boolean } }, _res: Response, next: NextFunction) => {
@@ -119,7 +116,7 @@ describe('exchange-comments routes — coverage', () => {
 
   describe('POST /proposals/:id/comments', () => {
     it('creates a comment successfully', async () => {
-      const app = createApp();
+      const app = await createApp();
       const proposal = { id: 1, pharmacyAId: 1, pharmacyBId: 2 };
 
       // db.select({...}).from(...).where(...).limit(1)
@@ -157,7 +154,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 404 when proposal not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([]));
 
       const res = await request(app)
@@ -169,7 +166,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 403 when admin tries to post', async () => {
-      const app = createAdminApp();
+      const app = await createAdminApp();
       const proposal = { id: 1, pharmacyAId: 1, pharmacyBId: 2 };
       mocks.db.select.mockReturnValueOnce(chainableSelect([proposal]));
 
@@ -181,7 +178,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 400 for empty body', async () => {
-      const app = createApp();
+      const app = await createApp();
       const proposal = { id: 1, pharmacyAId: 1, pharmacyBId: 2 };
       mocks.db.select.mockReturnValueOnce(chainableSelect([proposal]));
 
@@ -194,7 +191,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 400 for too long body', async () => {
-      const app = createApp();
+      const app = await createApp();
       const proposal = { id: 1, pharmacyAId: 1, pharmacyBId: 2 };
       mocks.db.select.mockReturnValueOnce(chainableSelect([proposal]));
 
@@ -207,7 +204,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 429 for short interval rate limit', async () => {
-      const app = createApp();
+      const app = await createApp();
       const proposal = { id: 1, pharmacyAId: 1, pharmacyBId: 2 };
       mocks.db.select.mockReturnValueOnce(chainableSelect([proposal]));
 
@@ -232,7 +229,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 429 for duplicate body', async () => {
-      const app = createApp();
+      const app = await createApp();
       const proposal = { id: 1, pharmacyAId: 1, pharmacyBId: 2 };
       mocks.db.select.mockReturnValueOnce(chainableSelect([proposal]));
 
@@ -258,7 +255,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 400 for invalid proposal id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/exchanges/proposals/abc/comments')
@@ -268,7 +265,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 500 on unexpected error', async () => {
-      const app = createApp();
+      const app = await createApp();
       // Use mockImplementation to throw synchronously in the select chain
       mocks.db.select.mockReturnValueOnce({
         from: vi.fn().mockReturnValue({
@@ -289,7 +286,7 @@ describe('exchange-comments routes — coverage', () => {
 
   describe('GET /proposals/:id/comments', () => {
     it('returns paginated comments', async () => {
-      const app = createApp();
+      const app = await createApp();
       const proposal = { id: 1, pharmacyAId: 1, pharmacyBId: 2 };
 
       // First select: proposal lookup
@@ -324,7 +321,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns deleted comment with placeholder text', async () => {
-      const app = createApp();
+      const app = await createApp();
       const proposal = { id: 1, pharmacyAId: 1, pharmacyBId: 2 };
 
       const proposalChain = chainableSelect([proposal]);
@@ -354,7 +351,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 404 when proposal not found on GET', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([]));
 
       const res = await request(app)
@@ -365,7 +362,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 400 for invalid proposal id on GET', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .get('/api/exchanges/proposals/abc/comments');
@@ -374,7 +371,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 500 on database error for GET', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -393,7 +390,7 @@ describe('exchange-comments routes — coverage', () => {
 
   describe('PATCH /proposals/:id/comments/:commentId', () => {
     it('updates comment successfully', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([{
         id: 10, proposalId: 1, isDeleted: false,
       }]));
@@ -412,7 +409,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 404 when comment not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([]));
 
       const res = await request(app)
@@ -424,7 +421,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 400 when editing deleted comment', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([{
         id: 10, proposalId: 1, isDeleted: true,
       }]));
@@ -438,7 +435,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 400 for empty body on edit', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([{
         id: 10, proposalId: 1, isDeleted: false,
       }]));
@@ -452,7 +449,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 400 for too long body on edit', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([{
         id: 10, proposalId: 1, isDeleted: false,
       }]));
@@ -466,7 +463,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 403 when admin tries to edit', async () => {
-      const app = createAdminApp();
+      const app = await createAdminApp();
 
       const res = await request(app)
         .patch('/api/exchanges/proposals/1/comments/10')
@@ -476,7 +473,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 400 for invalid comment id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .patch('/api/exchanges/proposals/1/comments/abc')
@@ -486,7 +483,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -506,7 +503,7 @@ describe('exchange-comments routes — coverage', () => {
 
   describe('DELETE /proposals/:id/comments/:commentId', () => {
     it('deletes comment successfully (soft delete)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([{
         id: 10, proposalId: 1, isDeleted: false,
       }]));
@@ -524,7 +521,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 404 when comment not found for delete', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([]));
 
       const res = await request(app)
@@ -535,7 +532,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 400 when trying to delete already deleted comment', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce(chainableSelect([{
         id: 10, proposalId: 1, isDeleted: true,
       }]));
@@ -548,7 +545,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 403 when admin tries to delete', async () => {
-      const app = createAdminApp();
+      const app = await createAdminApp();
 
       const res = await request(app)
         .delete('/api/exchanges/proposals/1/comments/10');
@@ -557,7 +554,7 @@ describe('exchange-comments routes — coverage', () => {
     });
 
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValueOnce({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({

@@ -110,7 +110,7 @@ vi.mock('../services/log-service', () => ({
   getClientIp: mocks.getClientIp,
 }));
 
-import uploadRouter from '../routes/upload';
+let uploadRouter: express.Router;
 
 function createTxMock(uploadId: number) {
   return {
@@ -136,6 +136,12 @@ function createApp() {
   app.use('/api/upload', uploadRouter);
   return app;
 }
+
+beforeEach(async () => {
+  vi.resetModules();
+  const { default: router } = await import('../routes/upload');
+  uploadRouter = router;
+});
 
 describe('upload routes', () => {
   setupVitestMocks();

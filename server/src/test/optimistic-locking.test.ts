@@ -23,60 +23,62 @@ const mocks = vi.hoisted(() => ({
   invalidateAuthUserCache: vi.fn(),
 }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+function mockOptimisticLockingDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
 
-vi.mock('../services/geocode-service', () => ({
-  geocodeAddress: mocks.geocodeAddress,
-}));
+  vi.doMock('../services/geocode-service', () => ({
+    geocodeAddress: mocks.geocodeAddress,
+  }));
 
-vi.mock('../services/auth-service', () => ({
-  hashPassword: mocks.hashPassword,
-  verifyPassword: mocks.verifyPassword,
-  deriveSessionVersion: mocks.deriveSessionVersion,
-  generateToken: mocks.generateToken,
-  verifyToken: vi.fn(),
-}));
+  vi.doMock('../services/auth-service', () => ({
+    hashPassword: mocks.hashPassword,
+    verifyPassword: mocks.verifyPassword,
+    deriveSessionVersion: mocks.deriveSessionVersion,
+    generateToken: mocks.generateToken,
+    verifyToken: vi.fn(),
+  }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../middleware/csrf', () => ({
-  clearCsrfCookie: vi.fn(),
-  csrfProtection: (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('../middleware/csrf', () => ({
+    clearCsrfCookie: vi.fn(),
+    csrfProtection: (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
 
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: vi.fn(() => Promise.resolve({
-    accepted: true,
-    connectorConfigured: true,
-    implementationBranch: 'review',
-    status: 'in_dialogue',
-    threadId: 'thread-1',
-    summary: null,
-    note: 'ok',
-  })),
-}));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: vi.fn(() => Promise.resolve({
+      accepted: true,
+      connectorConfigured: true,
+      implementationBranch: 'review',
+      status: 'in_dialogue',
+      threadId: 'thread-1',
+      summary: null,
+      note: 'ok',
+    })),
+  }));
+}
 
 // ── ヘルパー関数 ──────────────────────────────────────────
 
@@ -100,7 +102,6 @@ async function createAccountApp() {
   const app = express();
   app.use(express.json());
   app.use(cookieParser());
-  const { default: accountRouter } = await import('../routes/account');
   app.use('/api/account', accountRouter);
   return app;
 }
@@ -109,10 +110,19 @@ async function createBusinessHoursApp() {
   const app = express();
   app.use(express.json());
   app.use(cookieParser());
-  const { default: businessHoursRouter } = await import('../routes/business-hours');
   app.use('/api/business-hours', businessHoursRouter);
   return app;
 }
+
+let accountRouter: express.Router;
+let businessHoursRouter: express.Router;
+
+beforeEach(async () => {
+  vi.resetModules();
+  mockOptimisticLockingDependencies();
+  ({ default: accountRouter } = await import('../routes/account'));
+  ({ default: businessHoursRouter } = await import('../routes/business-hours'));
+});
 
 // ── テスト ──────────────────────────────────────────
 

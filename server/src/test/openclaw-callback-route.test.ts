@@ -20,49 +20,51 @@ const mocks = vi.hoisted(() => ({
   completeOpenClawRetryForRequest: vi.fn(),
 }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+function mockOpenClawCallbackRouteDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: mocks.loggerWarn,
-    error: mocks.loggerError,
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: mocks.loggerWarn,
+      error: mocks.loggerError,
+    },
+  }));
 
-vi.mock('../services/pharmacy-verification-callback-service', () => ({
-  processVerificationCallback: mocks.processVerificationCallback,
-}));
+  vi.doMock('../services/pharmacy-verification-callback-service', () => ({
+    processVerificationCallback: mocks.processVerificationCallback,
+  }));
 
-vi.mock('../middleware/auth', () => ({
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+  vi.doMock('../middleware/auth', () => ({
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../services/openclaw-thread-service', () => ({
-  ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
-  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
-  recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
-  isOpenClawWorkflowStatus: vi.fn(() => true),
-  mapOpenClawStatusToWorkflowStatus: vi.fn((status: string) => (
-    status === 'completed' ? 'completed' : status === 'implementing' ? 'implementing' : 'in_dialogue'
-  )),
-}));
+  vi.doMock('../services/openclaw-thread-service', () => ({
+    ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
+    updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+    recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
+    isOpenClawWorkflowStatus: vi.fn(() => true),
+    mapOpenClawStatusToWorkflowStatus: vi.fn((status: string) => (
+      status === 'completed' ? 'completed' : status === 'implementing' ? 'implementing' : 'in_dialogue'
+    )),
+  }));
 
-vi.mock('../services/openclaw-retry-service', () => ({
-  completeOpenClawRetryForRequest: mocks.completeOpenClawRetryForRequest,
-}));
+  vi.doMock('../services/openclaw-retry-service', () => ({
+    completeOpenClawRetryForRequest: mocks.completeOpenClawRetryForRequest,
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  ne: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    ne: vi.fn(() => ({})),
+  }));
+}
 
-import openclawRouter from '../routes/openclaw';
-import { resetOpenClawWebhookReplayCacheForTests } from '../services/openclaw-service';
+let openclawRouter: express.Router;
+let resetOpenClawWebhookReplayCacheForTests: typeof import('../services/openclaw-service').resetOpenClawWebhookReplayCacheForTests;
 
 function createApp() {
   const app = express();
@@ -123,8 +125,12 @@ function createSignature(secret: string, timestamp: number, rawBody: string): st
 }
 
 describe('openclaw callback route', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    mockOpenClawCallbackRouteDependencies();
+    ({ default: openclawRouter } = await import('../routes/openclaw'));
+    ({ resetOpenClawWebhookReplayCacheForTests } = await import('../services/openclaw-service'));
     resetOpenClawWebhookReplayCacheForTests();
     process.env.OPENCLAW_WEBHOOK_SECRET = 'webhook-secret';
     process.env.OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS = '300';

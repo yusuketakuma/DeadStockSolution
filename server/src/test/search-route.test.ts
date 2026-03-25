@@ -8,57 +8,6 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-}));
-
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
-
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  or: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  like: vi.fn(() => ({})),
-  ilike: vi.fn(() => ({})),
-  asc: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  sql: Object.assign(
-    (..._args: unknown[]) => ({ as: vi.fn(() => ({})) }),
-    {
-      raw: (..._args: unknown[]) => ({}),
-      join: (..._args: unknown[]) => ({}),
-    },
-  ),
-}));
-
-vi.mock('../utils/kana-utils', () => ({
-  katakanaToHiragana: vi.fn((s: string) => s),
-  hiraganaToKatakana: vi.fn((s: string) => s),
-  normalizeKana: vi.fn((s: string) => s),
-  fullWidthAlphanumToHalfWidth: vi.fn((s: string) => s),
-  halfWidthAlphanumToFullWidth: vi.fn((s: string) => s),
-}));
-
-vi.mock('../utils/request-utils', () => ({
-  escapeLikeWildcards: vi.fn((s: string) => s),
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
-import searchRouter from '../routes/search';
-
 function createSelectDistinctQuery(result: unknown) {
   const query = {
     from: vi.fn(),
@@ -89,7 +38,52 @@ function createSelectQuery(result: unknown) {
   return query;
 }
 
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+  }));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    like: vi.fn(() => ({})),
+    ilike: vi.fn(() => ({})),
+    asc: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    sql: Object.assign(
+      (..._args: unknown[]) => ({ as: vi.fn(() => ({})) }),
+      {
+        raw: (..._args: unknown[]) => ({}),
+        join: (..._args: unknown[]) => ({}),
+      },
+    ),
+  }));
+  vi.doMock('../utils/kana-utils', () => ({
+    katakanaToHiragana: vi.fn((s: string) => s),
+    hiraganaToKatakana: vi.fn((s: string) => s),
+    normalizeKana: vi.fn((s: string) => s),
+    fullWidthAlphanumToHalfWidth: vi.fn((s: string) => s),
+    halfWidthAlphanumToFullWidth: vi.fn((s: string) => s),
+  }));
+  vi.doMock('../utils/request-utils', () => ({
+    escapeLikeWildcards: vi.fn((s: string) => s),
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
+  const { default: searchRouter } = await import('../routes/search');
   const app = express();
   app.use(express.json());
   app.use('/api/search', searchRouter);
@@ -102,7 +96,7 @@ describe('GET /api/search/drugs', () => {
   });
 
   it('returns empty array when query is empty', async () => {
-    const app = createApp();
+    const app = await createApp();
     const response = await request(app).get('/api/search/drugs');
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
@@ -110,14 +104,14 @@ describe('GET /api/search/drugs', () => {
   });
 
   it('returns empty array when query is whitespace only', async () => {
-    const app = createApp();
+    const app = await createApp();
     const response = await request(app).get('/api/search/drugs').query({ q: '   ' });
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
   });
 
   it('returns drug names matching the query', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementation(() =>
       createSelectDistinctQuery([
         { drugName: 'アムロジピン錠5mg' },
@@ -132,7 +126,7 @@ describe('GET /api/search/drugs', () => {
   });
 
   it('returns at most 10 results (MAX_SUGGESTIONS)', async () => {
-    const app = createApp();
+    const app = await createApp();
     const manyResults = Array.from({ length: 10 }, (_, i) => ({ drugName: `Drug ${i + 1}` }));
     mocks.db.select.mockImplementation(() => createSelectDistinctQuery(manyResults));
 
@@ -142,7 +136,7 @@ describe('GET /api/search/drugs', () => {
   });
 
   it('returns 500 on database error', async () => {
-    const app = createApp();
+    const app = await createApp();
     const failQuery = {
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
@@ -162,7 +156,7 @@ describe('GET /api/search/drug-master', () => {
   });
 
   it('returns empty array when query is empty', async () => {
-    const app = createApp();
+    const app = await createApp();
     const response = await request(app).get('/api/search/drug-master');
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
@@ -170,7 +164,7 @@ describe('GET /api/search/drug-master', () => {
   });
 
   it('returns drug master records matching name search', async () => {
-    const app = createApp();
+    const app = await createApp();
     const mockRecord = {
       yjCode: '1234567890123',
       drugName: 'アムロジピン錠5mg「サワイ」',
@@ -190,7 +184,7 @@ describe('GET /api/search/drug-master', () => {
   });
 
   it('includes YJ code condition when query is alphanumeric', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementation(() =>
       createSelectQuery([
         {
@@ -211,7 +205,7 @@ describe('GET /api/search/drug-master', () => {
   });
 
   it('returns 500 on database error', async () => {
-    const app = createApp();
+    const app = await createApp();
     const failQuery = {
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
@@ -231,7 +225,7 @@ describe('GET /api/search/pharmacies', () => {
   });
 
   it('returns empty array when query is empty', async () => {
-    const app = createApp();
+    const app = await createApp();
     const response = await request(app).get('/api/search/pharmacies');
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
@@ -239,7 +233,7 @@ describe('GET /api/search/pharmacies', () => {
   });
 
   it('returns pharmacy names matching the query', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementation(() =>
       createSelectDistinctQuery([{ name: 'さくら薬局' }, { name: 'さくらい薬局' }]),
     );
@@ -251,7 +245,7 @@ describe('GET /api/search/pharmacies', () => {
   });
 
   it('returns 500 on database error', async () => {
-    const app = createApp();
+    const app = await createApp();
     const failQuery = {
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
@@ -272,7 +266,7 @@ describe('sanitizeQuery utility (via route behavior)', () => {
   });
 
   it('strips control characters from query', async () => {
-    const app = createApp();
+    const app = await createApp();
     // Control chars in q should be stripped; result is empty after stripping
     const response = await request(app).get('/api/search/drugs').query({ q: '\x00\x01\x1F' });
     expect(response.status).toBe(200);
@@ -281,7 +275,7 @@ describe('sanitizeQuery utility (via route behavior)', () => {
   });
 
   it('truncates query to max 100 characters', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementation(() => createSelectDistinctQuery([{ drugName: 'TestDrug' }]));
 
     const longQuery = 'a'.repeat(150);
@@ -292,7 +286,7 @@ describe('sanitizeQuery utility (via route behavior)', () => {
   });
 
   it('returns empty for non-string query param types', async () => {
-    const app = createApp();
+    const app = await createApp();
     // Passing no q param — sanitizeQuery receives undefined → returns undefined
     const response = await request(app).get('/api/search/drugs');
     expect(response.status).toBe(200);

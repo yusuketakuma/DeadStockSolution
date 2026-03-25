@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import {
   claimNextDdsJob,
   completeDdsWorkItem,
+  getDdsWorkItemAttachmentDownload,
   heartbeatDdsAgent,
   postDdsQuestion,
   registerDdsAgent,
@@ -208,6 +209,50 @@ router.post('/work-items/:id/pr', connectLimiter, async (req: Request, res: Resp
     }
     logger.error('openclaw-connect work-items pr error', { error: (err as Error).message });
     res.status(500).json({ error: 'PR 報告の処理に失敗しました' });
+  }
+});
+
+router.get('/work-items/:id/attachments/:attachmentId', connectLimiter, async (req: Request, res: Response) => {
+  try {
+    const token = requireControlToken(req, res);
+    if (!token) return;
+
+    const workItemId = parsePositiveInt(req.params.id);
+    if (!workItemId) {
+      res.status(400).json({ error: 'work item ID が不正です' });
+      return;
+    }
+
+    const attachmentId = parsePositiveInt(req.params.attachmentId);
+    if (!attachmentId) {
+      res.status(400).json({ error: 'attachment ID が不正です' });
+      return;
+    }
+
+    const leaseToken = typeof req.query.leaseToken === 'string' ? req.query.leaseToken.trim() : '';
+    if (!leaseToken) {
+      res.status(400).json({ error: 'leaseToken が必要です' });
+      return;
+    }
+
+    const attachment = await getDdsWorkItemAttachmentDownload(token, workItemId, leaseToken, attachmentId);
+    if (!attachment) {
+      res.status(404).json({ error: '添付ファイルが見つかりません' });
+      return;
+    }
+
+    res.setHeader('Content-Type', attachment.mimeType);
+    res.setHeader('Content-Length', String(attachment.fileSize));
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`);
+    res.send(attachment.content);
+  } catch (err) {
+    if (err instanceof Error && 'status' in err) {
+      const status = (err as { status: number }).status;
+      res.status(status).json({ error: err.message });
+      return;
+    }
+    logger.error('openclaw-connect work-items attachment error', { error: (err as Error).message });
+    res.status(500).json({ error: '添付ファイルの取得に失敗しました' });
   }
 });
 

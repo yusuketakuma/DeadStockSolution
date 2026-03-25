@@ -41,50 +41,7 @@ const mocks = vi.hoisted(() => ({
   getClientIp: vi.fn(() => '127.0.0.1'),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-}));
-vi.mock('../services/drug-master-service', () => ({
-  parseMhlwExcelData: mocks.parseMhlwExcelData,
-  parseMhlwCsvData: mocks.parseMhlwCsvData,
-  parsePackageExcelData: mocks.parsePackageExcelData,
-  parsePackageCsvData: mocks.parsePackageCsvData,
-  parsePackageXmlData: mocks.parsePackageXmlData,
-  parsePackageZipData: mocks.parsePackageZipData,
-  decodeCsvBuffer: mocks.decodeCsvBuffer,
-  syncDrugMaster: mocks.syncDrugMaster,
-  syncPackageData: mocks.syncPackageData,
-  getSyncLogs: mocks.getSyncLogs,
-  createSyncLog: mocks.createSyncLog,
-  completeSyncLog: mocks.completeSyncLog,
-}));
-vi.mock('../services/drug-master-scheduler', () => ({
-  triggerManualAutoSync: mocks.triggerManualAutoSync,
-  getConfiguredSourceMode: mocks.getConfiguredSourceMode,
-}));
-vi.mock('../services/drug-package-scheduler', () => ({
-  triggerManualPackageAutoSync: mocks.triggerManualPackageAutoSync,
-}));
-vi.mock('../services/drug-master-source-state-service', () => ({
-  getSourceStatesByPrefix: mocks.getSourceStatesByPrefix,
-}));
-vi.mock('../services/upload-service', () => ({
-  parseExcelBuffer: mocks.parseExcelBuffer,
-}));
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-
-import drugMasterSyncRouter from '../routes/drug-master-sync';
-
-function createApp() {
+async function createApp() {
   const app = express();
   app.use(express.json());
   // Simulate the auth middleware that drug-master.ts applies
@@ -99,11 +56,62 @@ function createApp() {
   return app;
 }
 
+function mockDrugMasterSyncRouteDeepDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+  }));
+  vi.doMock('../services/drug-master-service', () => ({
+    parseMhlwExcelData: mocks.parseMhlwExcelData,
+    parseMhlwCsvData: mocks.parseMhlwCsvData,
+    parsePackageExcelData: mocks.parsePackageExcelData,
+    parsePackageCsvData: mocks.parsePackageCsvData,
+    parsePackageXmlData: mocks.parsePackageXmlData,
+    parsePackageZipData: mocks.parsePackageZipData,
+    decodeCsvBuffer: mocks.decodeCsvBuffer,
+    syncDrugMaster: mocks.syncDrugMaster,
+    syncPackageData: mocks.syncPackageData,
+    getSyncLogs: mocks.getSyncLogs,
+    createSyncLog: mocks.createSyncLog,
+    completeSyncLog: mocks.completeSyncLog,
+  }));
+  vi.doMock('../services/drug-master-scheduler', () => ({
+    triggerManualAutoSync: mocks.triggerManualAutoSync,
+    getConfiguredSourceMode: mocks.getConfiguredSourceMode,
+  }));
+  vi.doMock('../services/drug-package-scheduler', () => ({
+    triggerManualPackageAutoSync: mocks.triggerManualPackageAutoSync,
+  }));
+  vi.doMock('../services/drug-master-source-state-service', () => ({
+    getSourceStatesByPrefix: mocks.getSourceStatesByPrefix,
+  }));
+  vi.doMock('../services/upload-service', () => ({
+    parseExcelBuffer: mocks.parseExcelBuffer,
+  }));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
+  vi.doMock('../middleware/upload-middleware', async () => await vi.importActual('../middleware/upload-middleware'));
+  vi.doMock('../routes/admin-utils', async () => await vi.importActual('../routes/admin-utils'));
+}
+
+let drugMasterSyncRouter: (typeof import('../routes/drug-master-sync'))['default'];
+
 const ORIGINAL_ENV = { ...process.env };
 
 describe('drug-master-sync route deep coverage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    mockDrugMasterSyncRouteDeepDependencies();
+    ({ default: drugMasterSyncRouter } = await import('../routes/drug-master-sync'));
     // Re-set defaults after resetAllMocks clears implementations
     mocks.parseMhlwExcelData.mockReturnValue([]);
     mocks.parseMhlwCsvData.mockReturnValue([]);
@@ -127,6 +135,7 @@ describe('drug-master-sync route deep coverage', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     // Restore env
     for (const key of ['DRUG_MASTER_SOURCE_URL', 'DRUG_MASTER_AUTO_SYNC', 'DRUG_MASTER_CHECK_INTERVAL_HOURS',
       'DRUG_PACKAGE_SOURCE_URL', 'DRUG_PACKAGE_AUTO_SYNC', 'DRUG_PACKAGE_CHECK_INTERVAL_HOURS']) {
@@ -142,7 +151,7 @@ describe('drug-master-sync route deep coverage', () => {
 
   describe('POST /api/admin/drug-master/sync', () => {
     it('returns 400 when no file uploaded', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .field('revisionDate', '2026-01-01');
@@ -152,7 +161,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns 400 for invalid revision date format', async () => {
       mocks.parseMhlwExcelData.mockReturnValueOnce([{ yjCode: '123456789012', drugName: 'test', yakkaPrice: 10 }] as never);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .attach('file', Buffer.from('dummy'), 'test.xlsx')
@@ -163,7 +172,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns 400 when parsed rows are empty', async () => {
       mocks.parseMhlwExcelData.mockReturnValueOnce([]);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .attach('file', Buffer.from('dummy'), 'test.xlsx')
@@ -174,7 +183,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns 400 when parse throws an error', async () => {
       mocks.parseExcelBuffer.mockRejectedValueOnce(new Error('corrupt file'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .attach('file', Buffer.from('dummy'), 'test.xlsx')
@@ -185,7 +194,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns success for valid xlsx upload', async () => {
       mocks.parseMhlwExcelData.mockReturnValueOnce([{ yjCode: '123456789012', drugName: 'test', yakkaPrice: 10 }] as never);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .attach('file', Buffer.from('dummy'), 'test.xlsx')
@@ -196,7 +205,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('handles csv file extension by calling parseMhlwCsvData', async () => {
       mocks.parseMhlwCsvData.mockReturnValueOnce([{ yjCode: '123456789012', drugName: 'test', yakkaPrice: 10 }] as never);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .attach('file', Buffer.from('csv-data'), 'test.csv')
@@ -209,7 +218,7 @@ describe('drug-master-sync route deep coverage', () => {
     it('returns 500 when syncDrugMaster throws', async () => {
       mocks.parseMhlwExcelData.mockReturnValueOnce([{ yjCode: '123456789012', drugName: 'test', yakkaPrice: 10 }] as never);
       mocks.syncDrugMaster.mockRejectedValueOnce(new Error('sync failed'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .attach('file', Buffer.from('dummy'), 'test.xlsx')
@@ -220,7 +229,7 @@ describe('drug-master-sync route deep coverage', () => {
     it('defaults to today YYYY-MM-DD when revisionDate is omitted', async () => {
       // normalizeRevisionDate(undefined) → new Date().toISOString().slice(0,10) → valid YYYY-MM-DD
       mocks.parseMhlwExcelData.mockReturnValueOnce([{ yjCode: '123456789012', drugName: 'test', yakkaPrice: 10 }] as never);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/sync')
         .attach('file', Buffer.from('dummy'), 'test.xlsx');
@@ -233,7 +242,7 @@ describe('drug-master-sync route deep coverage', () => {
 
   describe('POST /api/admin/drug-master/upload-packages', () => {
     it('returns 400 when no file uploaded', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).post('/api/admin/drug-master/upload-packages');
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('ファイルが必要');
@@ -241,7 +250,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns 400 when parsed package rows are empty', async () => {
       mocks.parsePackageExcelData.mockReturnValueOnce([]);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('dummy'), 'pkg.xlsx');
@@ -251,7 +260,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns success for valid xlsx upload', async () => {
       mocks.parsePackageExcelData.mockReturnValueOnce([{ yjCode: '123456789012', gs1Code: '12345' }] as never);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('dummy'), 'pkg.xlsx');
@@ -261,7 +270,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('handles csv package file', async () => {
       mocks.parsePackageCsvData.mockReturnValueOnce([{ yjCode: '123456789012', gs1Code: '12345' }] as never);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('csv'), 'pkg.csv');
@@ -271,7 +280,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('handles xml package file', async () => {
       mocks.parsePackageXmlData.mockReturnValueOnce([{ yjCode: '123456789012', gs1Code: '12345' }] as never);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('<xml></xml>'), 'pkg.xml');
@@ -281,7 +290,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('handles zip package file', async () => {
       mocks.parsePackageZipData.mockResolvedValueOnce([{ yjCode: '123456789012', gs1Code: '12345' }] as never);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('zipdata'), 'pkg.zip');
@@ -291,7 +300,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns 400 on parse failure', async () => {
       mocks.parseExcelBuffer.mockRejectedValueOnce(new Error('bad file'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('bad'), 'pkg.xlsx');
@@ -301,7 +310,7 @@ describe('drug-master-sync route deep coverage', () => {
     it('returns 500 on unexpected sync error', async () => {
       mocks.parsePackageExcelData.mockReturnValueOnce([{ yjCode: '123456789012', gs1Code: '12345' }] as never);
       mocks.syncPackageData.mockRejectedValueOnce(new Error('db error'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/upload-packages')
         .attach('file', Buffer.from('data'), 'pkg.xlsx');
@@ -314,7 +323,7 @@ describe('drug-master-sync route deep coverage', () => {
   describe('GET /api/admin/drug-master/sync-logs', () => {
     it('returns sync logs', async () => {
       mocks.getSyncLogs.mockResolvedValueOnce([{ id: 1, status: 'success' }] as never);
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/sync-logs');
       expect(res.status).toBe(200);
       expect(res.body.data).toHaveLength(1);
@@ -322,7 +331,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns 500 when getSyncLogs throws', async () => {
       mocks.getSyncLogs.mockRejectedValueOnce(new Error('db err'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/sync-logs');
       expect(res.status).toBe(500);
     });
@@ -332,7 +341,7 @@ describe('drug-master-sync route deep coverage', () => {
 
   describe('POST /api/admin/drug-master/auto-sync', () => {
     it('triggers auto-sync with sourceUrl', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync')
         .send({ sourceUrl: 'https://example.com/data.xlsx' });
@@ -341,7 +350,7 @@ describe('drug-master-sync route deep coverage', () => {
     });
 
     it('triggers auto-sync without sourceUrl', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync')
         .send({});
@@ -350,7 +359,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns 500 on error', async () => {
       mocks.triggerManualAutoSync.mockRejectedValueOnce(new Error('fail'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync')
         .send({});
@@ -358,7 +367,7 @@ describe('drug-master-sync route deep coverage', () => {
     });
 
     it('handles sourceMode=single', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync')
         .send({ sourceMode: 'single' });
@@ -380,7 +389,7 @@ describe('drug-master-sync route deep coverage', () => {
       ] as never);
       process.env.DRUG_MASTER_SOURCE_URL = 'https://www.mhlw.go.jp/test';
       process.env.DRUG_MASTER_AUTO_SYNC = 'true';
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/auto-sync/status');
       expect(res.status).toBe(200);
       expect(res.body.sourceMode).toBe('index');
@@ -392,7 +401,7 @@ describe('drug-master-sync route deep coverage', () => {
       mocks.getConfiguredSourceMode.mockReturnValueOnce('single');
       process.env.DRUG_MASTER_SOURCE_URL = '';
       process.env.DRUG_MASTER_AUTO_SYNC = 'false';
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/auto-sync/status');
       expect(res.status).toBe(200);
       expect(res.body.enabled).toBe(false);
@@ -401,7 +410,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns 500 on error', async () => {
       mocks.getConfiguredSourceMode.mockImplementationOnce(() => { throw new Error('fail'); });
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/auto-sync/status');
       expect(res.status).toBe(500);
     });
@@ -411,7 +420,7 @@ describe('drug-master-sync route deep coverage', () => {
 
   describe('POST /api/admin/drug-master/auto-sync/packages', () => {
     it('triggers package auto-sync with sourceUrl', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync/packages')
         .send({ sourceUrl: 'https://example.com/pkg.zip' });
@@ -421,7 +430,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('triggers package auto-sync without sourceUrl', async () => {
       mocks.triggerManualPackageAutoSync.mockResolvedValueOnce({ triggered: false, message: 'not configured' });
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync/packages')
         .send({});
@@ -431,7 +440,7 @@ describe('drug-master-sync route deep coverage', () => {
 
     it('returns 500 on error', async () => {
       mocks.triggerManualPackageAutoSync.mockRejectedValueOnce(new Error('fail'));
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/drug-master/auto-sync/packages')
         .send({});
@@ -446,7 +455,7 @@ describe('drug-master-sync route deep coverage', () => {
       process.env.DRUG_PACKAGE_SOURCE_URL = 'https://example.com/pkg.zip';
       process.env.DRUG_PACKAGE_AUTO_SYNC = 'true';
       process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS = '12';
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/auto-sync/packages/status');
       expect(res.status).toBe(200);
       expect(res.body.enabled).toBe(true);
@@ -458,7 +467,7 @@ describe('drug-master-sync route deep coverage', () => {
       // Actually, let's just throw from the route handler
       // We'll test the normal fallback for bad interval hours
       process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS = 'not-a-number';
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app).get('/api/admin/drug-master/auto-sync/packages/status');
       expect(res.status).toBe(200);
       expect(res.body.checkIntervalHours).toBe(24); // fallback

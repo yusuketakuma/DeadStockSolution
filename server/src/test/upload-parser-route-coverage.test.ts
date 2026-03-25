@@ -30,88 +30,93 @@ const mocks = vi.hoisted(() => ({
   getClientIp: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-}));
+function mockUploadParserRouteCoverageDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+  }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
 
-vi.mock('../services/upload-service', () => ({
-  parseExcelBuffer: mocks.parseExcelBuffer,
-  getPreviewRows: mocks.getPreviewRows,
-}));
+  vi.doMock('../services/upload-service', () => ({
+    parseExcelBuffer: mocks.parseExcelBuffer,
+    getPreviewRows: mocks.getPreviewRows,
+  }));
 
-vi.mock('../services/column-mapper', () => ({
-  detectHeaderRow: mocks.detectHeaderRow,
-  detectUploadType: mocks.detectUploadType,
-  suggestMapping: mocks.suggestMapping,
-  computeHeaderHash: mocks.computeHeaderHash,
-}));
+  vi.doMock('../services/column-mapper', () => ({
+    detectHeaderRow: mocks.detectHeaderRow,
+    detectUploadType: mocks.detectUploadType,
+    suggestMapping: mocks.suggestMapping,
+    computeHeaderHash: mocks.computeHeaderHash,
+  }));
 
-vi.mock('../services/data-extractor', () => ({
-  extractDeadStockRows: mocks.extractDeadStockRows,
-  extractUsedMedicationRows: mocks.extractUsedMedicationRows,
-}));
+  vi.doMock('../services/data-extractor', () => ({
+    extractDeadStockRows: mocks.extractDeadStockRows,
+    extractUsedMedicationRows: mocks.extractUsedMedicationRows,
+  }));
 
-vi.mock('../services/drug-master-enrichment', () => ({
-  enrichWithDrugMaster: mocks.enrichWithDrugMaster,
-}));
+  vi.doMock('../services/drug-master-enrichment', () => ({
+    enrichWithDrugMaster: mocks.enrichWithDrugMaster,
+  }));
 
-vi.mock('../services/upload-diff-service', () => ({
-  previewDeadStockDiff: mocks.previewDeadStockDiff,
-  previewUsedMedicationDiff: mocks.previewUsedMedicationDiff,
-}));
+  vi.doMock('../services/upload-diff-service', () => ({
+    previewDeadStockDiff: mocks.previewDeadStockDiff,
+    previewUsedMedicationDiff: mocks.previewUsedMedicationDiff,
+  }));
 
-vi.mock('../services/upload-confirm-service', () => ({
-  runUploadConfirm: vi.fn(),
-}));
+  vi.doMock('../services/upload-confirm-service', () => ({
+    runUploadConfirm: vi.fn(),
+  }));
 
-vi.mock('../services/upload-confirm-job-service', () => ({
-  enqueueUploadConfirmJob: mocks.enqueueUploadConfirmJob,
-  isUploadConfirmQueueLimitError: mocks.isUploadConfirmQueueLimitError,
-  isUploadConfirmIdempotencyConflictError: mocks.isUploadConfirmIdempotencyConflictError,
-  getUploadConfirmJobForPharmacy: mocks.getUploadConfirmJobForPharmacy,
-  cancelUploadConfirmJobForPharmacy: mocks.cancelUploadConfirmJobForPharmacy,
-}));
+  vi.doMock('../services/upload-confirm-job-service', () => ({
+    enqueueUploadConfirmJob: mocks.enqueueUploadConfirmJob,
+    isUploadConfirmQueueLimitError: mocks.isUploadConfirmQueueLimitError,
+    isUploadConfirmIdempotencyConflictError: mocks.isUploadConfirmIdempotencyConflictError,
+    getUploadConfirmJobForPharmacy: mocks.getUploadConfirmJobForPharmacy,
+    cancelUploadConfirmJobForPharmacy: mocks.cancelUploadConfirmJobForPharmacy,
+  }));
 
-vi.mock('../services/upload-row-issue-service', () => ({
-  getUploadRowIssuesForJob: mocks.getUploadRowIssuesForJob,
-  getUploadRowIssueSummary: mocks.getUploadRowIssueSummary,
-  buildUploadRowIssueCsv: mocks.buildUploadRowIssueCsv,
-}));
+  vi.doMock('../services/upload-row-issue-service', () => ({
+    getUploadRowIssuesForJob: mocks.getUploadRowIssuesForJob,
+    getUploadRowIssueSummary: mocks.getUploadRowIssueSummary,
+    buildUploadRowIssueCsv: mocks.buildUploadRowIssueCsv,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: mocks.loggerWarn,
-    error: mocks.loggerError,
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: mocks.loggerWarn,
+      error: mocks.loggerError,
+    },
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+  vi.doMock('../routes/upload-validation', async () => vi.importActual('../routes/upload-validation'));
+  vi.doMock('../routes/upload-parser-helpers', async () => vi.importActual('../routes/upload-parser-helpers'));
+}
 
-import uploadRouter from '../routes/upload';
 import { createAuthenticatedApp } from './helpers/mock-builders';
 
-function createApp() {
-  return createAuthenticatedApp('/api/upload', uploadRouter);
+let uploadParserRouter: (typeof import('../routes/upload-parser'))['default'];
+
+async function createApp() {
+  return createAuthenticatedApp('/api/upload', uploadParserRouter);
 }
 
 const VALID_MAPPING = JSON.stringify({
@@ -122,6 +127,13 @@ const VALID_MAPPING = JSON.stringify({
   yakka_unit_price: null,
   expiration_date: null,
   lot_number: null,
+});
+
+beforeEach(async () => {
+  vi.resetModules();
+  vi.resetAllMocks();
+  mockUploadParserRouteCoverageDependencies();
+  ({ default: uploadParserRouter } = await import('../routes/upload-parser'));
 });
 
 describe('upload-parser route coverage: preview edge cases', () => {
@@ -165,7 +177,7 @@ describe('upload-parser route coverage: preview edge cases', () => {
   });
 
   it('returns 400 when preview file has no data rows', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.parseExcelBuffer.mockResolvedValueOnce([]);
 
     const response = await request(app)
@@ -181,7 +193,7 @@ describe('upload-parser route coverage: preview edge cases', () => {
   });
 
   it('returns 500 when preview throws unexpected error', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.parseExcelBuffer.mockRejectedValueOnce(new Error('unexpected'));
     // The parseExcelRowsOrReject will catch and return 400 for parse errors.
     // To trigger the outer 500, we need the error to occur AFTER parsing.
@@ -203,7 +215,7 @@ describe('upload-parser route coverage: preview edge cases', () => {
   });
 
   it('returns 400 when auto mapping fails for resolved upload type', async () => {
-    const app = createApp();
+    const app = await createApp();
     // Make suggestMapping return a mapping without drug_name so parseMapping will throw
     mocks.suggestMapping.mockReturnValue({
       drug_code: null, drug_name: null, quantity: null,
@@ -252,7 +264,7 @@ describe('upload-parser route coverage: diff-preview edge cases', () => {
   });
 
   it('returns 400 when diff-preview applyMode is not diff', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/upload/diff-preview')
@@ -273,7 +285,7 @@ describe('upload-parser route coverage: diff-preview edge cases', () => {
   });
 
   it('returns 400 when diff-preview applyMode is invalid', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/upload/diff-preview')
@@ -294,7 +306,7 @@ describe('upload-parser route coverage: diff-preview edge cases', () => {
   });
 
   it('returns 400 when diff-preview headerRowIndex is out of range', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/upload/diff-preview')
@@ -312,7 +324,7 @@ describe('upload-parser route coverage: diff-preview edge cases', () => {
   });
 
   it('returns 500 when diff-preview service throws unexpected error', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.extractDeadStockRows.mockReturnValue([]);
     mocks.enrichWithDrugMaster.mockRejectedValueOnce(new Error('DB connection lost'));
 
@@ -332,7 +344,7 @@ describe('upload-parser route coverage: diff-preview edge cases', () => {
   });
 
   it('returns used_medication diff preview successfully', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/upload/diff-preview')
@@ -366,7 +378,7 @@ describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
   });
 
   it('returns 400 for invalid jobId on cancel', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app).post('/api/upload/jobs/abc/cancel');
 
@@ -375,7 +387,7 @@ describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
   });
 
   it('returns 404 when job not found on cancel', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.cancelUploadConfirmJobForPharmacy.mockResolvedValueOnce(null);
 
     const response = await request(app).post('/api/upload/jobs/999/cancel');
@@ -385,7 +397,7 @@ describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
   });
 
   it('returns 409 when job cancel is not cancelable', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.cancelUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       canceledAt: null,
       cancelRequestedAt: null,
@@ -400,7 +412,7 @@ describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
   });
 
   it('returns 409 when cancel request has race condition on cancelable job', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.cancelUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       canceledAt: null,
       cancelRequestedAt: null,
@@ -415,7 +427,7 @@ describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
   });
 
   it('returns success when cancel request is accepted (deferred)', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.cancelUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       canceledAt: null,
       cancelRequestedAt: '2026-03-01T00:00:00.000Z',
@@ -431,7 +443,7 @@ describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
   });
 
   it('returns success when job is immediately canceled', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.cancelUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       canceledAt: '2026-03-01T00:00:00.000Z',
       cancelRequestedAt: '2026-03-01T00:00:00.000Z',
@@ -447,7 +459,7 @@ describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
   });
 
   it('returns 500 when cancel throws unexpected error', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.cancelUploadConfirmJobForPharmacy.mockRejectedValueOnce(new Error('DB down'));
 
     const response = await request(app).post('/api/upload/jobs/100/cancel');
@@ -464,7 +476,7 @@ describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
   });
 
   it('returns 400 for invalid jobId on error-report', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app).get('/api/upload/jobs/abc/error-report');
 
@@ -473,7 +485,7 @@ describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
   });
 
   it('returns 404 when job not found on error-report', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce(null);
 
     const response = await request(app).get('/api/upload/jobs/999/error-report');
@@ -483,7 +495,7 @@ describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
   });
 
   it('returns 404 when no issues exist for the job', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 100, pharmacyId: 1, status: 'completed', issueCount: 0,
     });
@@ -496,7 +508,7 @@ describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
   });
 
   it('returns JSON error report when format=json', async () => {
-    const app = createApp();
+    const app = await createApp();
     const issues = [
       { rowNumber: 2, issueCode: 'MISSING_DRUG_NAME', message: '薬剤名が空です' },
     ];
@@ -514,7 +526,7 @@ describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
   });
 
   it('returns CSV error report by default', async () => {
-    const app = createApp();
+    const app = await createApp();
     const issues = [
       { rowNumber: 2, issueCode: 'MISSING_DRUG_NAME' },
     ];
@@ -533,7 +545,7 @@ describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
   });
 
   it('returns 500 when error-report throws unexpected error', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockRejectedValueOnce(new Error('DB error'));
 
     const response = await request(app).get('/api/upload/jobs/100/error-report');
@@ -550,7 +562,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('returns 400 for invalid jobId on status', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app).get('/api/upload/jobs/0');
 
@@ -559,7 +571,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('returns 404 when job not found on status', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce(null);
 
     const response = await request(app).get('/api/upload/jobs/999');
@@ -569,7 +581,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('maps cancel-requested job to canceled status', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 200, pharmacyId: 1, status: 'processing', attempts: 1,
       lastError: null, resultJson: null,
@@ -587,7 +599,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('maps FILE_LIMIT_EXCEEDED error code correctly', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 201, pharmacyId: 1, status: 'failed', attempts: 1,
       lastError: 'ファイル行数が上限(50000)を超えています',
@@ -607,7 +619,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('maps ヘッダー行指定が不正 error correctly', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 202, pharmacyId: 1, status: 'failed', attempts: 1,
       lastError: 'ヘッダー行指定が不正: index=100 は範囲外',
@@ -626,7 +638,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('maps FILE_PARSE_FAILED error code for ファイルの解析', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 203, pharmacyId: 1, status: 'failed', attempts: 1,
       lastError: 'ファイルの解析に失敗しました',
@@ -645,7 +657,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('maps JOB_CANCELED error code for キャンセル', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 204, pharmacyId: 1, status: 'failed', attempts: 1,
       lastError: 'ジョブはキャンセルされました',
@@ -665,7 +677,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('falls back to UPLOAD_CONFIRM_FAILED for unknown errors', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 205, pharmacyId: 1, status: 'failed', attempts: 1,
       lastError: 'some obscure internal error message',
@@ -685,7 +697,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('returns 500 when job status check throws unexpected error', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockRejectedValueOnce(new Error('connection error'));
 
     const response = await request(app).get('/api/upload/jobs/100');
@@ -695,7 +707,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('handles null resultJson gracefully', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 206, pharmacyId: 1, status: 'completed', attempts: 1,
       lastError: null, resultJson: null,
@@ -716,7 +728,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
   });
 
   it('detects errorReportAvailable from errorReportAvailable flag in result', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getUploadConfirmJobForPharmacy.mockResolvedValueOnce({
       id: 207, pharmacyId: 1, status: 'completed', attempts: 1,
       lastError: null,
@@ -760,7 +772,7 @@ describe('upload-parser route coverage: confirm headerRowIndex out of range', ()
   });
 
   it('returns 400 when confirm-async headerRowIndex exceeds row count', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/upload/confirm-async')

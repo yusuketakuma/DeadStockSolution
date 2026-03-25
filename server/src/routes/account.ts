@@ -326,20 +326,6 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
       return;
     }
 
-    // 住所または都道府県が変更された場合、再ジオコーディング
-    if (address !== undefined || prefecture !== undefined) {
-      const newPrefecture = (updates.prefecture as string) ?? currentAccount.prefecture;
-      const newAddress = (updates.address as string) ?? currentAccount.address;
-      const fullAddress = `${newPrefecture}${newAddress}`;
-      const coords = await geocodeAddress(fullAddress);
-      if (!coords) {
-        sendBadRequest(res, '住所から位置情報を特定できませんでした。正しい住所を入力してください');
-        return;
-      }
-      updates.latitude = coords.lat;
-      updates.longitude = coords.lng;
-    }
-
     const phoneError = assignOptionalTrimmedUpdate(updates, 'phone', phone, 30, '電話番号が不正です');
     if (phoneError) {
       sendBadRequest(res, phoneError);
@@ -356,6 +342,20 @@ router.put('/', requireLogin, passwordChangeLimiter, async (req: AuthRequest, re
     if (prefectureError) {
       sendBadRequest(res, prefectureError);
       return;
+    }
+
+    // 住所または都道府県が変更された場合、再ジオコーディング
+    if (address !== undefined || prefecture !== undefined) {
+      const newPrefecture = (updates.prefecture as string) ?? currentAccount.prefecture;
+      const newAddress = (updates.address as string) ?? currentAccount.address;
+      const fullAddress = `${newPrefecture}${newAddress}`;
+      const coords = await geocodeAddress(fullAddress);
+      if (!coords) {
+        sendBadRequest(res, '住所から位置情報を特定できませんでした。正しい住所を入力してください');
+        return;
+      }
+      updates.latitude = coords.lat;
+      updates.longitude = coords.lng;
     }
 
     const licenseNumberError = assignOptionalTrimmedUpdate(

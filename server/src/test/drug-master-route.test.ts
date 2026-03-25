@@ -101,9 +101,9 @@ vi.mock('drizzle-orm', () => ({
   sql: vi.fn(() => ({})),
 }));
 
-import drugMasterRouter from '../routes/drug-master';
-
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  const { default: drugMasterRouter } = await import('../routes/drug-master');
   const app = express();
   app.use(express.json());
   app.use('/api/admin/drug-master', drugMasterRouter);
@@ -129,7 +129,7 @@ describe('drug master routes', () => {
   });
 
   it('syncs drug master from xlsx file', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/admin/drug-master/sync')
@@ -156,7 +156,7 @@ describe('drug master routes', () => {
   });
 
   it('returns bad request when revisionDate is invalid', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/admin/drug-master/sync')
@@ -179,7 +179,7 @@ describe('drug master routes', () => {
   });
 
   it('closes sync log as failed when parser throws without duplicate app warn log', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.parseMhlwExcelData.mockImplementation(() => {
       throw new Error('invalid excel');
     });
@@ -216,7 +216,7 @@ describe('drug master routes', () => {
   });
 
   it('logs error context and returns 500 when sync process fails', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.syncDrugMaster.mockRejectedValueOnce(new Error('sync failed'));
 
     const response = await request(app)

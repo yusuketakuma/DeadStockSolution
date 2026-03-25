@@ -7,18 +7,17 @@ const mocks = vi.hoisted(() => ({
   getOpenClawRetryQueueSnapshot: vi.fn(),
 }));
 
-vi.mock('../services/openclaw-retry-service', () => ({
-  processPendingOpenClawRetries: mocks.processPendingOpenClawRetries,
-  getOpenClawRetryQueueSnapshot: mocks.getOpenClawRetryQueueSnapshot,
-}));
+async function createApp() {
+  vi.resetModules();
+  vi.doMock('../services/openclaw-retry-service', () => ({
+    processPendingOpenClawRetries: mocks.processPendingOpenClawRetries,
+    getOpenClawRetryQueueSnapshot: mocks.getOpenClawRetryQueueSnapshot,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-
-import internalOpenClawRetriesRouter from '../routes/internal-openclaw-retries';
-
-function createApp() {
+  const { default: internalOpenClawRetriesRouter } = await import('../routes/internal-openclaw-retries');
   const app = express();
   app.use(express.json());
   app.use('/api/internal/openclaw-retries', internalOpenClawRetriesRouter);
@@ -36,13 +35,15 @@ describe('internal openclaw retries route', () => {
   });
 
   it('returns 401 when authorization header is missing', async () => {
-    const res = await request(createApp()).get('/api/internal/openclaw-retries/run');
+    const app = await createApp();
+    const res = await request(app).get('/api/internal/openclaw-retries/run');
     expect(res.status).toBe(401);
   });
 
   it('returns 503 when cron secret is not configured', async () => {
     delete process.env.OPENCLAW_RETRIES_CRON_SECRET;
-    const res = await request(createApp())
+    const app = await createApp();
+    const res = await request(app)
       .get('/api/internal/openclaw-retries/run')
       .set('Authorization', 'Bearer secret-123');
     expect(res.status).toBe(503);
@@ -63,7 +64,8 @@ describe('internal openclaw retries route', () => {
       failed: 1,
     });
 
-    const res = await request(createApp())
+    const app = await createApp();
+    const res = await request(app)
       .post('/api/internal/openclaw-retries/run?limit=10')
       .set('Authorization', 'Bearer secret-123');
 

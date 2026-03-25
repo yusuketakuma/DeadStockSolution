@@ -13,55 +13,49 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-}));
+async function createApp() {
+  vi.resetModules();
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+  }));
+  vi.doMock('../middleware/csrf', () => ({
+    csrfMiddleware: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+  }));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
+  vi.doMock('../services/drug-master-service', () => ({
+    getDrugMasterStats: mocks.getDrugMasterStats,
+    getDrugDetail: mocks.getDrugDetail,
+    updateDrugMasterItem: mocks.updateDrugMasterItem,
+  }));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
+  vi.doMock('drizzle-orm', () => ({
+    asc: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    like: vi.fn(() => ({})),
+    ilike: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    isNotNull: vi.fn(() => ({})),
+    sql: Object.assign(
+      (..._args: unknown[]) => ({}),
+      { join: vi.fn(() => ({})) },
+    ),
+  }));
 
-vi.mock('../middleware/csrf', () => ({
-  csrfMiddleware: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-}));
-
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
-
-vi.mock('../services/drug-master-service', () => ({
-  getDrugMasterStats: mocks.getDrugMasterStats,
-  getDrugDetail: mocks.getDrugDetail,
-  updateDrugMasterItem: mocks.updateDrugMasterItem,
-}));
-
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-
-vi.mock('drizzle-orm', () => ({
-  asc: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  like: vi.fn(() => ({})),
-  ilike: vi.fn(() => ({})),
-  or: vi.fn(() => ({})),
-  isNotNull: vi.fn(() => ({})),
-  sql: Object.assign(
-    (..._args: unknown[]) => ({}),
-    { join: vi.fn(() => ({})) },
-  ),
-}));
-
-import drugMasterRouter from '../routes/drug-master';
-
-function createApp() {
+  const { default: drugMasterRouter } = await import('../routes/drug-master');
   const app = express();
   app.use(express.json());
   app.use('/api/admin/drug-master', drugMasterRouter);
@@ -75,7 +69,7 @@ describe('drug-master-crud ultra coverage', () => {
 
   describe('GET / (list) with filters', () => {
     it('applies status=listed filter', async () => {
-      const app = createApp();
+      const app = await createApp();
       let callCount = 0;
       mocks.db.select.mockImplementation(() => {
         callCount++;
@@ -103,7 +97,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('applies status=delisted filter', async () => {
-      const app = createApp();
+      const app = await createApp();
       let callCount = 0;
       mocks.db.select.mockImplementation(() => {
         callCount++;
@@ -127,7 +121,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('applies status=transition filter', async () => {
-      const app = createApp();
+      const app = await createApp();
       let callCount = 0;
       mocks.db.select.mockImplementation(() => {
         callCount++;
@@ -151,7 +145,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('applies category filter', async () => {
-      const app = createApp();
+      const app = await createApp();
       let callCount = 0;
       mocks.db.select.mockImplementation(() => {
         callCount++;
@@ -175,7 +169,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('applies search with YJ code pattern', async () => {
-      const app = createApp();
+      const app = await createApp();
       let callCount = 0;
       mocks.db.select.mockImplementation(() => {
         callCount++;
@@ -200,7 +194,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('applies search with Japanese text (no YJ code branch)', async () => {
-      const app = createApp();
+      const app = await createApp();
       let callCount = 0;
       mocks.db.select.mockImplementation(() => {
         callCount++;
@@ -226,7 +220,7 @@ describe('drug-master-crud ultra coverage', () => {
 
   describe('PUT /detail/:yjCode field parsing', () => {
     it('handles genericName set to null', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.updateDrugMasterItem.mockResolvedValue({ yjCode: 'ABC', drugName: '薬A' });
 
       const res = await request(app)
@@ -236,7 +230,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('handles specification set to empty string (null)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.updateDrugMasterItem.mockResolvedValue({ yjCode: 'ABC', drugName: '薬A' });
 
       const res = await request(app)
@@ -246,7 +240,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('handles unit set to non-string type', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.updateDrugMasterItem.mockResolvedValue({ yjCode: 'ABC', drugName: '薬A' });
 
       const res = await request(app)
@@ -257,7 +251,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('handles manufacturer set to empty string', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.updateDrugMasterItem.mockResolvedValue({ yjCode: 'ABC', drugName: '薬A' });
 
       const res = await request(app)
@@ -267,7 +261,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('ignores yakkaPrice when negative', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .put('/api/admin/drug-master/detail/ABC')
         .send({ yakkaPrice: -1 });
@@ -276,7 +270,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('ignores yakkaPrice when not a number', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .put('/api/admin/drug-master/detail/ABC')
         .send({ yakkaPrice: 'abc' });
@@ -284,7 +278,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('handles transitionDeadline set to null', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.updateDrugMasterItem.mockResolvedValue({ yjCode: 'ABC', drugName: '薬A' });
 
       const res = await request(app)
@@ -294,7 +288,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('handles transitionDeadline set to empty string (null)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.updateDrugMasterItem.mockResolvedValue({ yjCode: 'ABC', drugName: '薬A' });
 
       const res = await request(app)
@@ -304,7 +298,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('handles drugName with whitespace only (no update)', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .put('/api/admin/drug-master/detail/ABC')
         .send({ drugName: '   ' });
@@ -313,7 +307,7 @@ describe('drug-master-crud ultra coverage', () => {
     });
 
     it('truncates long drugName to 500 chars', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.updateDrugMasterItem.mockResolvedValue({ yjCode: 'ABC', drugName: 'a'.repeat(500) });
 
       const res = await request(app)

@@ -52,63 +52,6 @@ const mocks = vi.hoisted(() => ({
   loggerWarn: vi.fn(),
 }));
 
-// ── auth middleware ──────────────────────────────────────────────
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
-  invalidateAuthUserCache: vi.fn(),
-}));
-
-// ── database ─────────────────────────────────────────────────────
-vi.mock('../config/database', () => ({ db: mocks.db }));
-
-// ── drizzle-orm ───────────────────────────────────────────────────
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  or: vi.fn(() => ({})),
-  like: vi.fn(() => ({})),
-  notExists: vi.fn(() => ({})),
-  ilike: vi.fn(() => ({})),
-  isNotNull: vi.fn(() => ({})),
-  isNull: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-  count: vi.fn(() => ({})),
-  sum: vi.fn(() => ({})),
-  max: vi.fn(() => ({})),
-  countDistinct: vi.fn(() => ({})),
-}));
-
-// ── logger ────────────────────────────────────────────────────────
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: mocks.loggerWarn,
-    error: mocks.loggerError,
-  },
-}));
-
-// ── notification-service ──────────────────────────────────────────
-vi.mock('../services/notification-service', () => ({
-  getDashboardUnreadCount: mocks.getDashboardUnreadCount,
-  invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
-  markAsRead: mocks.markAsRead,
-  markAllDashboardAsRead: mocks.markAllDashboardAsRead,
-}));
-
-// ── expiry-risk-service ───────────────────────────────────────────
-vi.mock('../services/expiry-risk-service', () => ({
-  getAdminRiskOverview: mocks.getAdminRiskOverview,
-  getAdminPharmacyRiskPage: mocks.getAdminPharmacyRiskPage,
-  getPharmacyRiskDetail: mocks.getPharmacyRiskDetail,
-}));
-
 // ── matching-rule-service ─────────────────────────────────────────
 const { MatchingRuleValidationError, MatchingRuleVersionConflictError } = vi.hoisted(() => {
   class MatchingRuleValidationError extends Error { }
@@ -116,56 +59,101 @@ const { MatchingRuleValidationError, MatchingRuleVersionConflictError } = vi.hoi
   return { MatchingRuleValidationError, MatchingRuleVersionConflictError };
 });
 
-vi.mock('../services/matching-rule-service', () => ({
-  getActiveMatchingRuleProfile: mocks.getActiveMatchingRuleProfile,
-  updateActiveMatchingRuleProfile: mocks.updateActiveMatchingRuleProfile,
-  MatchingRuleValidationError,
-  MatchingRuleVersionConflictError,
-}));
+function mockRoutesFinalCoverageDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+    invalidateAuthUserCache: vi.fn(),
+  }));
 
-// ── admin-write-limiter ───────────────────────────────────────────
-vi.mock('../routes/admin-write-limiter', () => ({
-  adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
 
-// ── admin-utils ────────────────────────────────────────────────────
-vi.mock('../routes/admin-utils', () => ({
-  handleAdminError: mocks.handleAdminError,
-  parseListPagination: mocks.parseListPagination,
-  sendPaginated: mocks.sendPaginated,
-}));
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    like: vi.fn(() => ({})),
+    notExists: vi.fn(() => ({})),
+    ilike: vi.fn(() => ({})),
+    isNotNull: vi.fn(() => ({})),
+    isNull: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+    count: vi.fn(() => ({})),
+    sum: vi.fn(() => ({})),
+    max: vi.fn(() => ({})),
+    countDistinct: vi.fn(() => ({})),
+  }));
 
-// ── log-service ────────────────────────────────────────────────────
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: mocks.loggerWarn,
+      error: mocks.loggerError,
+    },
+  }));
 
-// ── business-hours-utils ─────────────────────────────────────────
-vi.mock('../utils/business-hours-utils', () => ({
-  getBusinessHoursStatus: mocks.getBusinessHoursStatus,
-}));
+  vi.doMock('../services/notification-service', () => ({
+    getDashboardUnreadCount: mocks.getDashboardUnreadCount,
+    invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
+    markAsRead: mocks.markAsRead,
+    markAllDashboardAsRead: mocks.markAllDashboardAsRead,
+  }));
 
-// ── upload-service ────────────────────────────────────────────────
-vi.mock('../services/upload-service', () => ({
-  parseExcelBuffer: mocks.parseExcelBuffer,
-}));
+  vi.doMock('../services/expiry-risk-service', () => ({
+    getAdminRiskOverview: mocks.getAdminRiskOverview,
+    getAdminPharmacyRiskPage: mocks.getAdminPharmacyRiskPage,
+    getPharmacyRiskDetail: mocks.getPharmacyRiskDetail,
+  }));
 
-// ── column-mapper ─────────────────────────────────────────────────
-vi.mock('../services/column-mapper', () => ({
-  suggestMapping: mocks.suggestMapping,
-}));
+  vi.doMock('../services/matching-rule-service', () => ({
+    getActiveMatchingRuleProfile: mocks.getActiveMatchingRuleProfile,
+    updateActiveMatchingRuleProfile: mocks.updateActiveMatchingRuleProfile,
+    MatchingRuleValidationError,
+    MatchingRuleVersionConflictError,
+  }));
 
-// ── path-utils ────────────────────────────────────────────────────
-vi.mock('../utils/path-utils', () => ({
-  sanitizeInternalPath: (p: string | null) => p ?? null,
-}));
+  vi.doMock('../routes/admin-write-limiter', () => ({
+    adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
 
-// ── cursor-pagination ────────────────────────────────────────────
-vi.mock('../utils/cursor-pagination', () => ({
-  decodeCursor: vi.fn(() => null),
-  encodeCursor: vi.fn(() => 'cursor123'),
-}));
+  vi.doMock('../routes/admin-utils', () => ({
+    handleAdminError: mocks.handleAdminError,
+    parseListPagination: mocks.parseListPagination,
+    sendPaginated: mocks.sendPaginated,
+  }));
+
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+
+  vi.doMock('../utils/business-hours-utils', () => ({
+    getBusinessHoursStatus: mocks.getBusinessHoursStatus,
+  }));
+
+  vi.doMock('../services/upload-service', () => ({
+    parseExcelBuffer: mocks.parseExcelBuffer,
+  }));
+
+  vi.doMock('../services/column-mapper', () => ({
+    suggestMapping: mocks.suggestMapping,
+  }));
+
+  vi.doMock('../utils/path-utils', () => ({
+    sanitizeInternalPath: (p: string | null) => p ?? null,
+  }));
+
+  vi.doMock('../utils/cursor-pagination', () => ({
+    decodeCursor: vi.fn(() => null),
+    encodeCursor: vi.fn(() => 'cursor123'),
+  }));
+}
 
 // ─────────────────────────────────────────────────────────────────
 // Helpers
@@ -205,11 +193,30 @@ function makeSelectChainImmediate(result: unknown) {
   return q;
 }
 
+let notificationsRouter: express.Router;
+let adminRiskRouter: express.Router;
+let adminMatchingRulesRouter: express.Router;
+let inventoryRouter: express.Router;
+let adminLogsRouter: express.Router;
+let statisticsRouter: express.Router;
+let clearStatisticsSummaryCacheForTests: typeof import('../routes/statistics').clearStatisticsSummaryCacheForTests;
+
+beforeEach(async () => {
+  vi.resetModules();
+  mockRoutesFinalCoverageDependencies();
+  ({ default: notificationsRouter } = await import('../routes/notifications'));
+  ({ default: adminRiskRouter } = await import('../routes/admin-risk'));
+  ({ default: adminMatchingRulesRouter } = await import('../routes/admin-matching-rules'));
+  ({ default: inventoryRouter } = await import('../routes/inventory'));
+  ({ default: adminLogsRouter } = await import('../routes/admin-logs'));
+  const statisticsModule = await import('../routes/statistics');
+  statisticsRouter = statisticsModule.default;
+  clearStatisticsSummaryCacheForTests = statisticsModule.clearStatisticsSummaryCacheForTests;
+});
+
 // ─────────────────────────────────────────────────────────────────
 // SECTION 1: notifications.ts — error paths & remaining endpoints
 // ─────────────────────────────────────────────────────────────────
-
-import notificationsRouter from '../routes/notifications';
 
 function createNotificationsApp() {
   const app = express();
@@ -338,8 +345,6 @@ describe('notifications route — additional coverage', () => {
 // SECTION 2: admin-risk.ts
 // ─────────────────────────────────────────────────────────────────
 
-import adminRiskRouter from '../routes/admin-risk';
-
 function createAdminRiskApp() {
   const app = express();
   app.use(express.json());
@@ -405,8 +410,6 @@ describe('admin-risk routes', () => {
 // SECTION 3: admin-matching-rules.ts — remaining paths
 // ─────────────────────────────────────────────────────────────────
 
-import adminMatchingRulesRouter from '../routes/admin-matching-rules';
-
 function createAdminMatchingRulesApp() {
   const app = express();
   app.use(express.json());
@@ -469,8 +472,6 @@ describe('admin-matching-rules — additional coverage', () => {
 // ─────────────────────────────────────────────────────────────────
 // SECTION 4: inventory.ts — error paths
 // ─────────────────────────────────────────────────────────────────
-
-import inventoryRouter from '../routes/inventory';
 
 function createInventoryApp() {
   const app = express();
@@ -572,8 +573,6 @@ describe('inventory route — additional coverage', () => {
 // ─────────────────────────────────────────────────────────────────
 // SECTION 5: admin-logs.ts — additional filter paths
 // ─────────────────────────────────────────────────────────────────
-
-import adminLogsRouter from '../routes/admin-logs';
 
 function createAdminLogsApp() {
   const app = express();
@@ -760,8 +759,6 @@ describe('admin-logs routes — additional coverage', () => {
 // ─────────────────────────────────────────────────────────────────
 // SECTION 6: statistics.ts — error path
 // ─────────────────────────────────────────────────────────────────
-
-import statisticsRouter, { clearStatisticsSummaryCacheForTests } from '../routes/statistics';
 
 function createStatisticsApp() {
   const app = express();

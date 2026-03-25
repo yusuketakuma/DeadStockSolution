@@ -150,13 +150,41 @@ DeadStockSolution/
 
 ```bash
 npm run test              # 全テスト（server + client）
-npm run test:server       # サーバーテストのみ（4,592テスト）
+npm run test:server       # サーバー full suite
 npm run test:client       # クライアントテストのみ
 npm run test:integration:server  # PGlite統合テスト
+npm run test:perf:server  # パフォーマンス退行チェック
 npm run test:coverage     # カバレッジレポート
 ```
 
-**カバレッジ**: Lines 80%+, Functions 83%+
+## 品質ゲート
+
+```bash
+npm run verify:preview    # preview に載せる前の必須 gate
+npm run verify:release    # release candidate + smoke まで含む最終 gate
+```
+
+`verify:preview` には server/client full suite に加えて integration / perf / OpenAPI contract も含まれる。
+
+release 判定時の基本形:
+
+```bash
+RELEASE_SMOKE_BASE_URL=https://<release-candidate>.vercel.app \
+RELEASE_PROTECTION_BYPASS=<vercel_automation_bypass_secret> \
+npm run verify:release
+```
+
+deployment 疎通だけ確認する場合:
+
+```bash
+SMOKE_BASE_URL=https://<preview-deployment>.vercel.app npm run smoke:preview
+```
+
+CI では `VERCEL_TOKEN` と `GITHUB_SHA` / `GITHUB_REF_NAME` から最新 preview deployment を自動解決できる。手元では share URL か branch-specific URL を `SMOKE_BASE_URL` に渡してもよい。
+
+GitHub Actions で token 自動解決を使わない場合は、repository variable `PREVIEW_BRANCH_SMOKE_BASE_URL` に branch-specific URL を設定する。
+
+詳細は [docs/operations/release-quality-gate.md](docs/operations/release-quality-gate.md) を参照。
 
 ---
 

@@ -38,7 +38,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import notificationsRouter from '../routes/notifications';
+let notificationsRouter: express.Router;
 
 function createSelectQuery(result: unknown) {
   const query = {
@@ -60,6 +60,12 @@ function createApp() {
   app.use('/api/notifications', notificationsRouter);
   return app;
 }
+
+beforeEach(async () => {
+  vi.resetModules();
+  const { default: router } = await import('../routes/notifications');
+  notificationsRouter = router;
+});
 
 it('GET /api/notifications maps predictive alert notifications to status updates routed to /matching', async () => {
   const app = createApp();

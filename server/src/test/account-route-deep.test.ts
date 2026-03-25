@@ -23,79 +23,94 @@ const mocks = vi.hoisted(() => ({
   clearCsrfCookie: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+function mockAccountRouteDeepDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
 
-vi.mock('../services/auth-service', () => ({
-  hashPassword: mocks.hashPassword,
-  verifyPassword: mocks.verifyPassword,
-  generateToken: mocks.generateToken,
-  deriveSessionVersion: mocks.deriveSessionVersion,
-}));
+  vi.doMock('../services/auth-service', () => ({
+    hashPassword: mocks.hashPassword,
+    verifyPassword: mocks.verifyPassword,
+    generateToken: mocks.generateToken,
+    deriveSessionVersion: mocks.deriveSessionVersion,
+  }));
 
-vi.mock('../services/geocode-service', () => ({
-  geocodeAddress: mocks.geocodeAddress,
-}));
+  vi.doMock('../services/geocode-service', () => ({
+    geocodeAddress: mocks.geocodeAddress,
+  }));
 
-vi.mock('../services/pharmacy-verification-service', () => ({
-  detectChangedReverificationFields: mocks.detectChangedReverificationFields,
-  triggerReverification: mocks.triggerReverification,
-  ReverificationTriggerError: mocks.ReverificationTriggerError,
-  sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
-}));
+  vi.doMock('../services/pharmacy-verification-service', () => ({
+    detectChangedReverificationFields: mocks.detectChangedReverificationFields,
+    triggerReverification: mocks.triggerReverification,
+    ReverificationTriggerError: mocks.ReverificationTriggerError,
+    sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../middleware/csrf', () => ({
-  clearCsrfCookie: mocks.clearCsrfCookie,
-}));
+  vi.doMock('../middleware/csrf', () => ({
+    clearCsrfCookie: mocks.clearCsrfCookie,
+  }));
 
-vi.mock('../middleware/error-handler', () => ({
-  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-}));
+  vi.doMock('../middleware/error-handler', () => ({
+    getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+  }));
 
-vi.mock('../utils/validators', () => ({
-  emailSchema: {
-    safeParse: vi.fn((val: string) => {
-      if (val.includes('@')) return { success: true, data: val };
-      return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
-    }),
-  },
-}));
+  vi.doMock('../utils/email-utils', async () => await vi.importActual('../utils/email-utils'));
+  vi.doMock('../routes/response-helpers', async () => await vi.importActual('../routes/response-helpers'));
+  vi.doMock('../routes/auth-helpers', async () => await vi.importActual('../routes/auth-helpers'));
+  vi.doMock('../services/password-reset-service', async () => await vi.importActual('../services/password-reset-service'));
+  vi.doMock('../routes/account-inventory-search', async () => await vi.importActual('../routes/account-inventory-search'));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  isNull: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('../utils/validators', () => ({
+    emailSchema: {
+      safeParse: vi.fn((val: string) => {
+        if (val.includes('@')) return { success: true, data: val };
+        return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
+      }),
+    },
+  }));
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    isNull: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
 
-import accountRouter from '../routes/account';
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-function createApp() {
+let accountRouter: express.Router;
+
+async function createApp() {
   const app = express();
   app.use(express.json());
   app.use('/api/account', accountRouter);
   return app;
 }
+
+beforeEach(async () => {
+  vi.resetAllMocks();
+  vi.resetModules();
+  mockAccountRouteDeepDependencies();
+  ({ default: accountRouter } = await import('../routes/account'));
+});
 
 function createLimitQuery(result: unknown) {
   const query = { from: vi.fn(), where: vi.fn(), limit: vi.fn() };
@@ -127,7 +142,7 @@ const TEST_ACCOUNT = {
 
 describe('account routes — deep coverage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.db.transaction.mockImplementation(async (callback: (tx: typeof mocks.db) => Promise<unknown>) => callback(mocks.db));
     mocks.detectChangedReverificationFields.mockReturnValue([]);
     mocks.generateToken.mockReturnValue('new-token');
@@ -143,7 +158,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — password change flow', () => {
     it('changes password successfully', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_ACCOUNT]))
         .mockReturnValueOnce(createLimitQuery([{ passwordHash: 'old-hash' }]));
@@ -167,7 +182,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 when current password is wrong during password change', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_ACCOUNT]))
         .mockReturnValueOnce(createLimitQuery([{ passwordHash: 'old-hash' }]));
@@ -182,7 +197,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 404 when account not found during password change', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_ACCOUNT]))
         .mockReturnValueOnce(createLimitQuery([]));
@@ -195,7 +210,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('updates testAccountPassword when changing password on test account', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([TEST_ACCOUNT]))
         .mockReturnValueOnce(createLimitQuery([{ passwordHash: 'old-hash' }]));
@@ -218,7 +233,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — email update with conflict', () => {
     it('returns 409 when email is already taken by another user', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_ACCOUNT]))
         .mockReturnValueOnce(createLimitQuery([{ id: 999 }]));
@@ -232,7 +247,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('allows same user email (no conflict)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_ACCOUNT]))
         .mockReturnValueOnce(createLimitQuery([{ id: 1 }]));
@@ -248,7 +263,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for non-string email', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
 
       const res = await request(app)
@@ -262,7 +277,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — licenseNumber conflict', () => {
     it('returns 409 when licenseNumber is already taken', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select
         .mockReturnValueOnce(createLimitQuery([BASE_ACCOUNT]))
         .mockReturnValueOnce(createLimitQuery([{ id: 999 }]));
@@ -278,7 +293,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — address and geocode', () => {
     it('returns 400 for invalid address (empty)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
 
       const res = await request(app)
@@ -290,7 +305,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 when geocode fails', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
       mocks.geocodeAddress.mockResolvedValue(null);
 
@@ -303,7 +318,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('geocodes when prefecture is changed', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
       mocks.geocodeAddress.mockResolvedValue({ lat: 35.0, lng: 139.0 });
       mocks.db.update.mockReturnValue(createUpdateQuery([{
@@ -321,7 +336,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — field validation edge cases', () => {
     it('returns 400 for invalid phone (too long)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
 
       const res = await request(app)
@@ -333,7 +348,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid fax (empty)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
 
       const res = await request(app)
@@ -345,7 +360,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid prefecture (too long)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
 
       const res = await request(app)
@@ -357,7 +372,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for invalid licenseNumber (empty)', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
 
       const res = await request(app)
@@ -369,7 +384,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for non-string postalCode', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
 
       const res = await request(app)
@@ -381,7 +396,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for non-boolean matchingAutoNotifyEnabled', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
 
       const res = await request(app)
@@ -395,7 +410,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — testAccountPassword flow', () => {
     it('returns 400 when setting testAccountPassword on non-test account', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
 
       const res = await request(app)
@@ -407,7 +422,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for non-string testAccountPassword', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([TEST_ACCOUNT]));
 
       const res = await request(app)
@@ -419,7 +434,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for empty testAccountPassword', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([TEST_ACCOUNT]));
 
       const res = await request(app)
@@ -431,7 +446,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 when test account has no display password after update', async () => {
-      const app = createApp();
+      const app = await createApp();
       const testAccountNoPass = { ...TEST_ACCOUNT, testAccountPassword: '' };
       mocks.db.select.mockReturnValue(createLimitQuery([testAccountNoPass]));
 
@@ -446,7 +461,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — reverification trigger', () => {
     it('triggers reverification when reverification fields change', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
       mocks.detectChangedReverificationFields.mockReturnValue(['name']);
       mocks.geocodeAddress.mockResolvedValue({ lat: 35.0, lng: 139.0 });
@@ -465,7 +480,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('handles ReverificationTriggerError', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
       mocks.detectChangedReverificationFields.mockReturnValue(['name']);
       mocks.db.update.mockReturnValue(createUpdateQuery([{
@@ -488,7 +503,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — inactive account after update', () => {
     it('returns 401 when account becomes inactive after update', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
       mocks.db.update.mockReturnValue(createUpdateQuery([{
         id: 1, version: 2, email: 'test@example.com', isAdmin: false, isActive: false, passwordHash: 'hash',
@@ -505,7 +520,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — version edge cases', () => {
     it('returns 400 for version 0', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .put('/api/account')
@@ -516,7 +531,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for negative version', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .put('/api/account')
@@ -526,7 +541,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for float version', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .put('/api/account')
@@ -536,7 +551,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 for string version', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .put('/api/account')
@@ -548,7 +563,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — 404 when account not found for update', () => {
     it('returns 404 when account is not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([]));
 
       const res = await request(app)
@@ -561,7 +576,7 @@ describe('account routes — deep coverage', () => {
 
   describe('PUT / — 500 on unexpected error', () => {
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -581,7 +596,7 @@ describe('account routes — deep coverage', () => {
 
   describe('DELETE / — edge cases', () => {
     it('returns 500 on database error during deletion', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue(createLimitQuery([{ passwordHash: 'hashed' }]));
       mocks.verifyPassword.mockResolvedValue(true);
       mocks.db.update.mockReturnValue({
@@ -599,7 +614,7 @@ describe('account routes — deep coverage', () => {
     });
 
     it('handles non-string currentPassword gracefully', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .delete('/api/account')

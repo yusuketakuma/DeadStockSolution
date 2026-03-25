@@ -17,28 +17,32 @@ const mocks = vi.hoisted(() => ({
   isDependencyServiceUnavailableError: vi.fn(),
 }));
 
-vi.mock('../config/database', () => ({
-  db: {
-    select: mocks.select,
-  },
-}));
+function mockAuthMiddlewareDeepDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: {
+      select: mocks.select,
+    },
+  }));
 
-vi.mock('../services/auth-service', () => ({
-  verifyToken: mocks.verifyToken,
-  deriveSessionVersion: mocks.deriveSessionVersion,
-  isJwtSecretMissingError: mocks.isJwtSecretMissingError,
-}));
+  vi.doMock('../services/auth-service', () => ({
+    verifyToken: mocks.verifyToken,
+    deriveSessionVersion: mocks.deriveSessionVersion,
+    isJwtSecretMissingError: mocks.isJwtSecretMissingError,
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  sql: {},
-}));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    sql: {},
+  }));
 
-vi.mock('../routes/auth-helpers', () => ({
-  isDependencyServiceUnavailableError: mocks.isDependencyServiceUnavailableError,
-}));
+  vi.doMock('../routes/auth-helpers', () => ({
+    isDependencyServiceUnavailableError: mocks.isDependencyServiceUnavailableError,
+  }));
+}
 
-import { clearAuthUserCacheForTests, requireLogin, requireAdmin } from '../middleware/auth';
+let clearAuthUserCacheForTests: typeof import('../middleware/auth').clearAuthUserCacheForTests;
+let requireLogin: typeof import('../middleware/auth').requireLogin;
+let requireAdmin: typeof import('../middleware/auth').requireAdmin;
 
 function createSelectQuery(result: unknown) {
   const query = {
@@ -71,7 +75,14 @@ function createRes() {
 }
 
 describe('auth middleware deep coverage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    mockAuthMiddlewareDeepDependencies();
+    ({
+      clearAuthUserCacheForTests,
+      requireLogin,
+      requireAdmin,
+    } = await import('../middleware/auth'));
     vi.clearAllMocks();
     clearAuthUserCacheForTests();
     mocks.isJwtSecretMissingError.mockReturnValue(false);

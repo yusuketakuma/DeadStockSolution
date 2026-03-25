@@ -6,13 +6,21 @@ import {
   ddsAgentJobs,
   ddsBootstrapTokens,
   ddsWorkItems,
+  openclawRequestMessages,
   requestMessageAttachments,
-  userRequestMessages,
   userRequests,
 } from '../db/schema';
 import { ApiError } from '../utils/api-error';
+import { decodeAttachmentContent } from '../utils/attachment-utils';
+import {
+  computeRequestWaitingState,
+  getAdminRequestDetail,
+  getRequestAttachmentDownload,
+  listRequestInternalNotes,
+} from './request-collaboration-service';
 import { getOpenClawConfig } from './openclaw-status';
 import { recordOpenClawRequestEvent } from './openclaw-request-event-service';
+import { listOpenClawRequestMessages } from './openclaw-thread-service';
 
 export type DdsWorkItemType = 'incident_autofix' | 'product_update';
 export type DdsWorkflowStatus =
@@ -29,6 +37,8 @@ export type UserRequestMessageAuthor = 'user' | 'dds_agent' | 'system' | 'admin'
 const DDS_ENVIRONMENT = 'production';
 const DEFAULT_BOOTSTRAP_TTL_SECONDS = 900;
 const DEFAULT_LEASE_SECONDS = 180;
+const DDS_INTERNAL_NOTE_LIMIT = 5;
+const DDS_ATTACHMENT_PREVIEW_LIMIT = 2000;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -88,6 +98,52 @@ function inferSource(input: {
   return typeof input.context?.source === 'string' && input.context.source.trim()
     ? input.context.source.trim().slice(0, 64)
     : 'user_request';
+}
+
+function isTextPreviewableMimeType(mimeType: string | null | undefined): boolean {
+  if (!mimeType) {
+    return false;
+  }
+  const normalized = mimeType.toLowerCase();
+  return normalized.startsWith('text/')
+    || normalized === 'application/json'
+    || normalized === 'application/vnd.ms-excel';
+}
+
+function buildAttachmentPreviewText(contentBase64: string, mimeType: string): string | null {
+  if (!isTextPreviewableMimeType(mimeType)) {
+    return null;
+  }
+
+  const decoded = decodeAttachmentContent(contentBase64)
+    .toString('utf8')
+    .replace(/\u0000/g, '')
+    .trim();
+
+  return decoded ? decoded.slice(0, DDS_ATTACHMENT_PREVIEW_LIMIT) : null;
+}
+
+function buildAttachmentDownloadUrl(workItemId: number, attachmentId: number, leaseToken: string): string {
+  const url = new URL(buildAbsoluteApiUrl(`/api/openclaw/connect/work-items/${workItemId}/attachments/${attachmentId}`));
+  url.searchParams.set('leaseToken', leaseToken);
+  return url.toString();
+}
+
+function buildDdsWorkItemSummary(input: {
+  requestText: string;
+  resultSummary?: string | null;
+  latestSummary?: string | null;
+  openclawSummary?: string | null;
+  lastConversationBody?: string | null;
+}): string {
+  return (
+    input.resultSummary?.trim()
+    || input.latestSummary?.trim()
+    || input.openclawSummary?.trim()
+    || input.lastConversationBody?.trim()
+    || input.requestText.trim()
+    || 'DDS work item'
+  ).slice(0, 4000);
 }
 
 export async function issueDdsBootstrapToken(adminId: number | null): Promise<{
@@ -326,19 +382,19 @@ async function ensureInitialRequestMessage(input: {
   requestText: string;
   type: DdsWorkItemType;
 }): Promise<void> {
-  const [existing] = await db.select({ id: userRequestMessages.id })
-    .from(userRequestMessages)
-    .where(eq(userRequestMessages.requestId, input.requestId))
+  const [existing] = await db.select({ id: openclawRequestMessages.id })
+    .from(openclawRequestMessages)
+    .where(eq(openclawRequestMessages.requestId, input.requestId))
     .limit(1);
 
   if (existing) {
     return;
   }
 
-  await db.insert(userRequestMessages).values({
+  await db.insert(openclawRequestMessages).values({
     requestId: input.requestId,
     authorType: input.type === 'product_update' ? 'user' : 'system',
-    authorPharmacyId: input.type === 'product_update' ? input.pharmacyId : null,
+    messageType: 'message',
     body: input.requestText,
   });
 }
@@ -429,23 +485,40 @@ export async function claimNextDdsJob(token: string): Promise<null | {
     workflowStatus: DdsWorkflowStatus;
     requestId: number | null;
     pharmacyId: number;
+    pharmacyName: string | null;
     requestText: string;
+    summary: string;
     source: string;
     context: Record<string, unknown> | null;
     category: string | null;
     priority: string | null;
     closeReason: string | null;
     assignedAdminId: number | null;
+    assignedAdminName: string | null;
+    waitingOn: 'user' | 'admin' | 'openclaw' | null;
+    isOverdue: boolean;
+    openclawStatus: string | null;
+    internalNotes: Array<{
+      id: number;
+      body: string;
+      createdAt: string;
+      authorAdminId: number | null;
+      authorAdminName: string | null;
+    }>;
     conversation: Array<{
       id: number;
       authorType: string;
+      messageType: string;
       body: string;
       createdAt: string;
+      metadata: Record<string, unknown> | null;
       attachments: Array<{
         id: number;
         fileName: string;
         mimeType: string;
         fileSize: number;
+        downloadUrl: string;
+        previewText: string | null;
       }>;
     }>;
   };
@@ -518,18 +591,6 @@ export async function claimNextDdsJob(token: string): Promise<null | {
     return null;
   }
 
-  const [requestMeta] = workItem.requestId
-    ? await db.select({
-      category: userRequests.category,
-      priority: userRequests.priority,
-      closeReason: userRequests.closeReason,
-      assignedAdminId: userRequests.assignedAdminId,
-    })
-      .from(userRequests)
-      .where(eq(userRequests.id, workItem.requestId))
-      .limit(1)
-    : [];
-
   await db.update(ddsWorkItems)
     .set({
       workflowStatus: 'analyzing',
@@ -537,54 +598,68 @@ export async function claimNextDdsJob(token: string): Promise<null | {
     })
     .where(eq(ddsWorkItems.id, workItem.id));
 
-  const conversationRows = workItem.requestId
-    ? await db.select({
-      id: userRequestMessages.id,
-      authorType: userRequestMessages.authorType,
-      body: userRequestMessages.body,
-      createdAt: userRequestMessages.createdAt,
+  const requestDetail = workItem.requestId
+    ? await getAdminRequestDetail(workItem.requestId)
+    : null;
+  const waitingState = requestDetail
+    ? computeRequestWaitingState({
+      latestUserMessageAt: requestDetail.latestUserMessageAt,
+      latestStaffMessageAt: requestDetail.latestStaffMessageAt,
+      workflowStatus: requestDetail.openclawStatus,
     })
-      .from(userRequestMessages)
-      .where(eq(userRequestMessages.requestId, workItem.requestId))
-      .orderBy(asc(userRequestMessages.createdAt), asc(userRequestMessages.id))
+    : { waitingOn: null, isOverdue: false } satisfies { waitingOn: 'user' | 'admin' | 'openclaw' | null; isOverdue: boolean };
+
+  const internalNotes = workItem.requestId
+    ? await listRequestInternalNotes(workItem.requestId)
     : [];
 
-  const conversationMessageIds = conversationRows.map((row) => row.id);
-  const attachmentRows = conversationMessageIds.length > 0
+  const conversationRows = workItem.requestId
+    ? await listOpenClawRequestMessages(workItem.requestId)
+    : [];
+
+  const attachmentIds = conversationRows.flatMap((row) => row.attachments.map((attachment) => attachment.id));
+  const attachmentRows = attachmentIds.length > 0
     ? await db.select({
       id: requestMessageAttachments.id,
-      messageId: requestMessageAttachments.messageId,
-      fileName: requestMessageAttachments.fileName,
       mimeType: requestMessageAttachments.mimeType,
-      fileSize: requestMessageAttachments.fileSize,
+      contentBase64: requestMessageAttachments.contentBase64,
     })
       .from(requestMessageAttachments)
-      .where(inArray(requestMessageAttachments.messageId, conversationMessageIds))
-      .orderBy(asc(requestMessageAttachments.id))
+      .where(inArray(requestMessageAttachments.id, attachmentIds))
     : [];
 
-  const attachmentsByMessageId = new Map<number, Array<{
-    id: number;
-    fileName: string;
-    mimeType: string;
-    fileSize: number;
-  }>>();
-
+  const attachmentPreviewById = new Map<number, string | null>();
   for (const attachment of attachmentRows) {
-    const existing = attachmentsByMessageId.get(attachment.messageId) ?? [];
-    existing.push({
+    attachmentPreviewById.set(
+      attachment.id,
+      buildAttachmentPreviewText(attachment.contentBase64, attachment.mimeType),
+    );
+  }
+
+  const conversation = conversationRows.map((row) => ({
+    id: row.id,
+    authorType: row.authorType,
+    messageType: row.messageType,
+    body: row.body,
+    createdAt: row.createdAt ?? nowIso(),
+    metadata: row.metadata ?? null,
+    attachments: row.attachments.map((attachment) => ({
       id: attachment.id,
       fileName: attachment.fileName,
       mimeType: attachment.mimeType,
       fileSize: attachment.fileSize,
-    });
-    attachmentsByMessageId.set(attachment.messageId, existing);
-  }
-
-  const conversation = conversationRows.map((row) => ({
-    ...row,
-    attachments: attachmentsByMessageId.get(row.id) ?? [],
+      downloadUrl: buildAttachmentDownloadUrl(workItem.id, attachment.id, leaseToken),
+      previewText: attachmentPreviewById.get(attachment.id) ?? null,
+    })),
   }));
+
+  const summary = buildDdsWorkItemSummary({
+    requestText: workItem.requestText ?? '',
+    resultSummary: workItem.resultSummary,
+    latestSummary: workItem.latestSummary,
+    openclawSummary: requestDetail?.openclawSummary ?? null,
+    lastConversationBody: conversation.at(-1)?.body ?? null,
+  });
 
   return {
     jobId: job.id,
@@ -596,13 +671,26 @@ export async function claimNextDdsJob(token: string): Promise<null | {
       workflowStatus: 'analyzing',
       requestId: workItem.requestId,
       pharmacyId: workItem.pharmacyId,
+      pharmacyName: requestDetail?.pharmacyName ?? null,
       requestText: workItem.requestText ?? '',
+      summary,
       source: workItem.source ?? 'user_request',
       context: (workItem.contextJson as Record<string, unknown> | null) ?? null,
-      category: requestMeta?.category ?? null,
-      priority: requestMeta?.priority ?? null,
-      closeReason: requestMeta?.closeReason ?? null,
-      assignedAdminId: requestMeta?.assignedAdminId ?? null,
+      category: requestDetail?.category ?? null,
+      priority: requestDetail?.priority ?? null,
+      closeReason: requestDetail?.closeReason ?? null,
+      assignedAdminId: requestDetail?.assignedAdminId ?? null,
+      assignedAdminName: requestDetail?.assignedAdminName ?? null,
+      waitingOn: waitingState.waitingOn,
+      isOverdue: waitingState.isOverdue,
+      openclawStatus: requestDetail?.openclawStatus ?? null,
+      internalNotes: internalNotes.slice(-DDS_INTERNAL_NOTE_LIMIT).map((note) => ({
+        id: note.id,
+        body: note.body.slice(0, 4000),
+        createdAt: note.createdAt,
+        authorAdminId: note.authorAdminId,
+        authorAdminName: note.authorAdminName,
+      })),
       conversation,
     },
   };
@@ -643,6 +731,38 @@ async function ensureAgentLease(
   return workItem;
 }
 
+export async function getDdsWorkItemAttachmentDownload(
+  token: string,
+  workItemId: number,
+  leaseToken: string,
+  attachmentId: number,
+): Promise<{
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  content: Buffer;
+} | null> {
+  const workItem = await ensureAgentLease(token, workItemId, leaseToken);
+  if (!workItem.requestId) {
+    throw new ApiError(400, '添付を持たない work item です');
+  }
+
+  const attachment = await getRequestAttachmentDownload(attachmentId);
+  if (!attachment) {
+    return null;
+  }
+  if (attachment.requestId !== workItem.requestId) {
+    throw new ApiError(403, 'この添付ファイルにはアクセスできません');
+  }
+
+  return {
+    fileName: attachment.fileName,
+    mimeType: attachment.mimeType,
+    fileSize: attachment.fileSize,
+    content: attachment.content,
+  };
+}
+
 export async function postDdsQuestion(token: string, workItemId: number, leaseToken: string, body: string): Promise<void> {
   const workItem = await ensureAgentLease(token, workItemId, leaseToken);
   if (!workItem.requestId) {
@@ -652,9 +772,10 @@ export async function postDdsQuestion(token: string, workItemId: number, leaseTo
   const currentTime = nowIso();
   const leaseTokenHash = hashToken(leaseToken);
   await db.transaction(async (tx) => {
-    await tx.insert(userRequestMessages).values({
+    await tx.insert(openclawRequestMessages).values({
       requestId: workItem.requestId!,
-      authorType: 'dds_agent',
+      authorType: 'openclaw_agent',
+      messageType: 'question',
       body,
     });
     await tx.update(ddsWorkItems)
@@ -733,15 +854,16 @@ export async function reportDdsPullRequest(token: string, input: {
       ));
 
     if (workItem.requestId) {
-      await tx.insert(userRequestMessages).values({
+      await tx.insert(openclawRequestMessages).values({
         requestId: workItem.requestId,
         authorType: 'system',
+        messageType: 'pr_report',
         body: `PR を作成しました: ${input.prUrl}\n${input.summary}`,
-        metadataJson: {
+        metadataJson: JSON.stringify({
           prNumber: input.prNumber ?? null,
           branchName: input.branchName,
           prUrl: input.prUrl,
-        },
+        }),
       });
       await tx.update(userRequests)
         .set({
@@ -808,13 +930,14 @@ export async function completeDdsWorkItem(token: string, input: {
         })
         .where(eq(userRequests.id, workItem.requestId));
 
-      await tx.insert(userRequestMessages).values({
+      await tx.insert(openclawRequestMessages).values({
         requestId: workItem.requestId,
         authorType: 'system',
+        messageType: input.status === 'failed' ? 'status_update' : 'message',
         body: input.summary,
-        metadataJson: {
+        metadataJson: JSON.stringify({
           ddsStatus: input.status,
-        },
+        }),
       });
     }
   });
@@ -836,9 +959,9 @@ export async function listRequestMessagesForUser(requestId: number, pharmacyId: 
   }
 
   return db.select()
-    .from(userRequestMessages)
-    .where(eq(userRequestMessages.requestId, requestId))
-    .orderBy(asc(userRequestMessages.createdAt), asc(userRequestMessages.id));
+    .from(openclawRequestMessages)
+    .where(eq(openclawRequestMessages.requestId, requestId))
+    .orderBy(asc(openclawRequestMessages.createdAt), asc(openclawRequestMessages.id));
 }
 
 export async function addUserReplyToRequest(requestId: number, pharmacyId: number, body: string): Promise<void> {
@@ -860,10 +983,10 @@ export async function addUserReplyToRequest(requestId: number, pharmacyId: numbe
 
   const currentTime = nowIso();
   await db.transaction(async (tx) => {
-    await tx.insert(userRequestMessages).values({
+    await tx.insert(openclawRequestMessages).values({
       requestId,
       authorType: 'user',
-      authorPharmacyId: pharmacyId,
+      messageType: 'message',
       body,
     });
 

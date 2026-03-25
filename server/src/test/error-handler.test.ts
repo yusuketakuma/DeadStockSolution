@@ -1,9 +1,33 @@
 import express from 'express';
 import request from 'supertest';
-import { afterEach, describe, expect, it } from 'vitest';
-import { errorHandler } from '../middleware/error-handler';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-function createApp() {
+let errorHandler: typeof import('../middleware/error-handler').errorHandler;
+
+async function createApp() {
+  vi.resetModules();
+  vi.doMock('../config/sentry', () => ({
+    captureException: () => 'evt-test',
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
+  vi.doMock('../services/system-event-service', () => ({
+    recordHttpUnhandledError: vi.fn(),
+  }));
+  vi.doMock('../services/error-fix-context', () => ({
+    buildErrorFixContext: vi.fn(() => ({})),
+    extractSourceLocation: vi.fn(() => null),
+  }));
+  vi.doMock('../services/openclaw-error-autofix-service', () => ({
+    handoffErrorToOpenClaw: vi.fn(),
+  }));
+  ({ errorHandler } = await import('../middleware/error-handler'));
   const app = express();
   app.use(express.json());
 
@@ -51,7 +75,7 @@ describe('error-handler', () => {
   });
 
   it('returns 400 for malformed JSON body', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/json')
       .set('content-type', 'application/json')
@@ -62,7 +86,7 @@ describe('error-handler', () => {
   });
 
   it('preserves explicit HTTP status errors', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/http-error');
 
     expect(res.status).toBe(404);
@@ -71,7 +95,7 @@ describe('error-handler', () => {
 
   it('hides 4xx details in production', async () => {
     process.env.NODE_ENV = 'production';
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/http-error');
 
     expect(res.status).toBe(404);
@@ -80,7 +104,7 @@ describe('error-handler', () => {
 
   it('hides 500 details in production', async () => {
     process.env.NODE_ENV = 'production';
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/boom');
 
     expect(res.status).toBe(500);
@@ -88,7 +112,7 @@ describe('error-handler', () => {
   });
 
   it('does not expose non-whitelisted internal error codes', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/unsafe-code');
 
     expect(res.status).toBe(400);
@@ -96,7 +120,7 @@ describe('error-handler', () => {
   });
 
   it('keeps whitelisted application error codes', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/safe-code');
 
     expect(res.status).toBe(429);

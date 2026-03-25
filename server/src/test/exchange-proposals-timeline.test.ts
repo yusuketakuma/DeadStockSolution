@@ -9,72 +9,65 @@ const mocks = vi.hoisted(() => ({
   loggerError: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 2, email: 'user@example.com', isAdmin: false };
-    next();
-  },
-  rejectAdmin: (_req: unknown, _res: unknown, next: () => void) => {
-    next();
-  },
-}));
+function mockExchangeProposalTimelineDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
+  vi.doMock('../services/matching-service', () => ({
+    findMatches: vi.fn(),
+  }));
+  vi.doMock('../services/exchange-execution-service', () => ({
+    createProposal: vi.fn(),
+    acceptProposal: vi.fn(),
+    rejectProposal: vi.fn(),
+    completeProposal: vi.fn(),
+  }));
+  vi.doMock('../services/matching-refresh-service', () => ({
+    processPendingMatchingRefreshJobs: vi.fn(),
+  }));
+  vi.doMock('../services/trust-score-service', () => ({
+    recalculateTrustScoreForPharmacy: vi.fn(),
+  }));
+  vi.doMock('../services/notification-service', () => ({
+    createNotification: vi.fn(),
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: mocks.loggerError,
+    },
+  }));
+  vi.doMock('../services/proposal-priority-service', () => ({
+    getProposalPriority: vi.fn().mockReturnValue({ score: 0, label: 'low' }),
+  }));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+    ipKeyGenerator: vi.fn(() => '127.0.0.1'),
+  }));
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    asc: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
+}
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
-
-vi.mock('../services/matching-service', () => ({
-  findMatches: vi.fn(),
-}));
-
-vi.mock('../services/exchange-service', () => ({
-  createProposal: vi.fn(),
-  acceptProposal: vi.fn(),
-  rejectProposal: vi.fn(),
-  completeProposal: vi.fn(),
-}));
-
-vi.mock('../services/matching-refresh-service', () => ({
-  processPendingMatchingRefreshJobs: vi.fn(),
-}));
-
-vi.mock('../services/trust-score-service', () => ({
-  recalculateTrustScoreForPharmacy: vi.fn(),
-}));
-
-vi.mock('../services/notification-service', () => ({
-  createNotification: vi.fn(),
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: mocks.loggerError,
-  },
-}));
-
-vi.mock('../services/proposal-priority-service', () => ({
-  getProposalPriority: vi.fn().mockReturnValue({ score: 0, label: 'low' }),
-}));
-
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  or: vi.fn(() => ({})),
-  asc: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
-
-import exchangeRouter from '../routes/exchange';
+let exchangeProposalsRouter: express.Router;
 
 function createApp() {
   const app = express();
   app.use(express.json());
-  app.use('/api/exchange', exchangeRouter);
+  app.use('/api/exchange', (req, _res, next) => {
+    (req as express.Request & {
+      user?: { id: number; email: string; isAdmin: boolean };
+    }).user = { id: 2, email: 'user@example.com', isAdmin: false };
+    next();
+  }, exchangeProposalsRouter);
   return app;
 }
 
@@ -185,8 +178,11 @@ function setupDetailQueries(opts?: {
 }
 
 describe('GET /api/exchange/proposals/:id — enrichedTimeline', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    vi.resetModules();
+    mockExchangeProposalTimelineDependencies();
+    ({ default: exchangeProposalsRouter } = await import('../routes/exchange-proposals'));
   });
 
   it('returns enrichedTimeline field in response', async () => {

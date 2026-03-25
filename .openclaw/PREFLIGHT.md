@@ -52,6 +52,8 @@ full baseline before terminal completion.
 ## Runtime Hygiene
 
 - Runtime case log target: `~/.openclaw/agents/dss-manager/runtime/case-state.ndjson`
+- DDS runner shared snapshot: `~/.openclaw/agents/dds-agent-runner/runtime/current-work-item.json`
+- DDS attachment hydrate cache: `~/.openclaw/agents/dds-agent-runner/runtime/attachments/`
 - Do not store secrets in repo-side `.openclaw/`
 - Treat `agent/auth-profiles.json` and similar home-directory auth files as local machine state
 - Do not commit machine-local runtime or auth artifacts back into this repository

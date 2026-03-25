@@ -100,3 +100,10 @@ When webhook delivery fails:
 3. implement and verify
 4. `reportUrl kind=pr_opened`
 5. `callbackUrl status=completed`
+
+### Answer-only / no-action task
+
+1. `reportUrl kind=analysis`
+2. `callbackUrl status=completed`
+
+Use this when the issue can be closed by explanation or existing evidence without a code change.

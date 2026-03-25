@@ -14,43 +14,49 @@ const mocks = vi.hoisted(() => ({
   publishAdminMessagesRefresh: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-  rejectAdmin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, res: Response, next: () => void) => {
-    if (req.user?.isAdmin) {
-      res.status(403).json({ error: '管理者アカウントではこの機能を利用できません' });
-      return;
-    }
-    next();
-  },
-}));
+function mockMessagesRouteDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+    rejectAdmin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, res: Response, next: () => void) => {
+      if (req.user?.isAdmin) {
+        res.status(403).json({ error: '管理者アカウントではこの機能を利用できません' });
+        return;
+      }
+      next();
+    },
+  }));
 
-vi.mock('../services/messaging-service', () => ({
-  sendMessage: mocks.sendMessage,
-  getThreads: mocks.getThreads,
-  getThread: mocks.getThread,
-  markThreadRead: mocks.markThreadRead,
-  getUnreadCount: mocks.getUnreadCount,
-  pharmacyExists: mocks.pharmacyExists,
-}));
+  vi.doMock('../services/messaging-service', () => ({
+    sendMessage: mocks.sendMessage,
+    getThreads: mocks.getThreads,
+    getThread: mocks.getThread,
+    markThreadRead: mocks.markThreadRead,
+    getUnreadCount: mocks.getUnreadCount,
+    pharmacyExists: mocks.pharmacyExists,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../services/realtime-service', () => ({
-  publishMessagesRefresh: mocks.publishMessagesRefresh,
-  publishAdminMessagesRefresh: mocks.publishAdminMessagesRefresh,
-}));
+  vi.doMock('../services/realtime-service', () => ({
+    publishMessagesRefresh: mocks.publishMessagesRefresh,
+    publishAdminMessagesRefresh: mocks.publishAdminMessagesRefresh,
+  }));
+
+  vi.doMock('../middleware/attachment-upload', async () => await vi.importActual('../middleware/attachment-upload'));
+  vi.doMock('../utils/request-utils', async () => await vi.importActual('../utils/request-utils'));
+}
 
 let app: express.Express;
 
 beforeEach(async () => {
   vi.resetModules();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  mockMessagesRouteDependencies();
 
   const { default: messagesRouter } = await import('../routes/messages');
   app = express();

@@ -89,113 +89,115 @@ const mocks = vi.hoisted(() => ({
   loggerError: vi.fn(),
 }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
-vi.mock('drizzle-orm', () => {
-  const sqlFn = Object.assign((..._args: unknown[]) => ({}), { raw: (..._args: unknown[]) => ({}) });
-  return {
-    eq: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    or: vi.fn(() => ({})),
-    asc: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    inArray: vi.fn(() => ({})),
-    sql: sqlFn,
-  };
-});
-vi.mock('../services/auth-service', () => ({
-  assertJwtSecretConfigured: mocks.assertJwtSecretConfigured,
-  hashPassword: mocks.hashPassword,
-  verifyPassword: mocks.verifyPassword,
-  generateToken: mocks.generateToken,
-  verifyToken: mocks.verifyToken,
-  deriveSessionVersion: mocks.deriveSessionVersion,
-  isJwtSecretMissingError: mocks.isJwtSecretMissingError,
-}));
-vi.mock('../utils/validators', () => ({
-  validateRegistration: mocks.validateRegistration,
-  validateLogin: mocks.validateLogin,
-  emailSchema: mocks.emailSchema,
-  passwordSchema: mocks.passwordSchema,
-}));
-vi.mock('../services/geocode-service', () => ({ geocodeAddress: mocks.geocodeAddress }));
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
-vi.mock('../services/password-reset-service', () => ({
-  createPasswordResetToken: mocks.createPasswordResetToken,
-  resetPasswordWithToken: mocks.resetPasswordWithToken,
-}));
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-  rejectAdmin: (req: { user?: { isAdmin?: boolean } }, res: Response, next: () => void) => {
-    if (req.user?.isAdmin) {
-      res.status(403).json({ error: '管理者はこの操作を実行できません' });
-      return;
-    }
-    next();
-  },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
-vi.mock('../middleware/csrf', () => ({
-  setCsrfCookie: mocks.setCsrfCookie,
-  clearCsrfCookie: mocks.clearCsrfCookie,
-  ensureCsrfCookie: mocks.ensureCsrfCookie,
-  generateCsrfToken: mocks.generateCsrfToken,
-}));
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: mocks.loggerDebug,
-    info: mocks.loggerInfo,
-    warn: mocks.loggerWarn,
-    error: mocks.loggerError,
-  },
-}));
-vi.mock('../middleware/error-handler', () => ({
-  handleRouteError: mocks.handleRouteError,
-  getErrorMessage: vi.fn((err: unknown) => (err instanceof Error ? err.message : String(err))),
-}));
-vi.mock('../services/registration-screening-service', () => ({
-  evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
-}));
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: mocks.handoffToOpenClaw,
-}));
-vi.mock('../services/pharmacy-verification-service', () => ({
-  PHARMACY_VERIFICATION_REQUEST_TYPE: 'pharmacy_verification',
-}));
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
-vi.mock('../services/matching-service', () => ({ findMatches: mocks.findMatches }));
-vi.mock('../services/exchange-service', () => ({
-  createProposal: mocks.createProposal,
-  acceptProposal: mocks.acceptProposal,
-  rejectProposal: mocks.rejectProposal,
-  completeProposal: mocks.completeProposal,
-}));
-vi.mock('../services/proposal-priority-service', () => ({
-  getProposalPriority: mocks.getProposalPriority,
-}));
-vi.mock('../services/proposal-timeline-service', () => ({
-  fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
-  buildProposalTimeline: mocks.buildProposalTimeline,
-}));
-vi.mock('../services/notification-service', () => ({
-  createNotification: mocks.createNotification,
-}));
-vi.mock('../utils/request-utils', () => ({
-  parsePagination: vi.fn(() => ({ page: 1, limit: 50, offset: 0 })),
-  parsePositiveInt: mocks.parsePositiveInt,
-  isPositiveSafeInteger: vi.fn((v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v > 0),
-}));
-vi.mock('../utils/http-utils', () => ({
-  sleep: vi.fn(async () => undefined),
-}));
-vi.mock('../utils/db-utils', () => ({ rowCount: {} }));
+function mockRouteDependencies() {
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('drizzle-orm', () => {
+    const sqlFn = Object.assign((..._args: unknown[]) => ({}), { raw: (..._args: unknown[]) => ({}) });
+    return {
+      eq: vi.fn(() => ({})),
+      and: vi.fn(() => ({})),
+      or: vi.fn(() => ({})),
+      asc: vi.fn(() => ({})),
+      desc: vi.fn(() => ({})),
+      inArray: vi.fn(() => ({})),
+      sql: sqlFn,
+    };
+  });
+  vi.doMock('../services/auth-service', () => ({
+    assertJwtSecretConfigured: mocks.assertJwtSecretConfigured,
+    hashPassword: mocks.hashPassword,
+    verifyPassword: mocks.verifyPassword,
+    generateToken: mocks.generateToken,
+    verifyToken: mocks.verifyToken,
+    deriveSessionVersion: mocks.deriveSessionVersion,
+    isJwtSecretMissingError: mocks.isJwtSecretMissingError,
+  }));
+  vi.doMock('../utils/validators', () => ({
+    validateRegistration: mocks.validateRegistration,
+    validateLogin: mocks.validateLogin,
+    emailSchema: mocks.emailSchema,
+    passwordSchema: mocks.passwordSchema,
+  }));
+  vi.doMock('../services/geocode-service', () => ({ geocodeAddress: mocks.geocodeAddress }));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+  vi.doMock('../services/password-reset-service', () => ({
+    createPasswordResetToken: mocks.createPasswordResetToken,
+    resetPasswordWithToken: mocks.resetPasswordWithToken,
+  }));
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+    rejectAdmin: (req: { user?: { isAdmin?: boolean } }, res: Response, next: () => void) => {
+      if (req.user?.isAdmin) {
+        res.status(403).json({ error: '管理者はこの操作を実行できません' });
+        return;
+      }
+      next();
+    },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
+  vi.doMock('../middleware/csrf', () => ({
+    setCsrfCookie: mocks.setCsrfCookie,
+    clearCsrfCookie: mocks.clearCsrfCookie,
+    ensureCsrfCookie: mocks.ensureCsrfCookie,
+    generateCsrfToken: mocks.generateCsrfToken,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: mocks.loggerDebug,
+      info: mocks.loggerInfo,
+      warn: mocks.loggerWarn,
+      error: mocks.loggerError,
+    },
+  }));
+  vi.doMock('../middleware/error-handler', () => ({
+    handleRouteError: mocks.handleRouteError,
+    getErrorMessage: vi.fn((err: unknown) => (err instanceof Error ? err.message : String(err))),
+  }));
+  vi.doMock('../services/registration-screening-service', () => ({
+    evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
+  }));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: mocks.handoffToOpenClaw,
+  }));
+  vi.doMock('../services/pharmacy-verification-service', () => ({
+    PHARMACY_VERIFICATION_REQUEST_TYPE: 'pharmacy_verification',
+  }));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+  vi.doMock('../services/matching-service', () => ({ findMatches: mocks.findMatches }));
+  vi.doMock('../services/exchange-service', () => ({
+    createProposal: mocks.createProposal,
+    acceptProposal: mocks.acceptProposal,
+    rejectProposal: mocks.rejectProposal,
+    completeProposal: mocks.completeProposal,
+  }));
+  vi.doMock('../services/proposal-priority-service', () => ({
+    getProposalPriority: mocks.getProposalPriority,
+  }));
+  vi.doMock('../services/proposal-timeline-service', () => ({
+    fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
+    buildProposalTimeline: mocks.buildProposalTimeline,
+  }));
+  vi.doMock('../services/notification-service', () => ({
+    createNotification: mocks.createNotification,
+  }));
+  vi.doMock('../utils/request-utils', () => ({
+    parsePagination: vi.fn(() => ({ page: 1, limit: 50, offset: 0 })),
+    parsePositiveInt: mocks.parsePositiveInt,
+    isPositiveSafeInteger: vi.fn((v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v > 0),
+  }));
+  vi.doMock('../utils/http-utils', () => ({
+    sleep: vi.fn(async () => undefined),
+  }));
+  vi.doMock('../utils/db-utils', () => ({ rowCount: {} }));
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Helpers
@@ -290,7 +292,11 @@ describe('auth.ts — ultra coverage', () => {
   afterEach(() => { process.env = { ...origEnv }; });
 
   async function createAuthApp() {
-    const { default: router } = await import('../routes/auth');
+    vi.resetModules();
+    mockRouteDependencies();
+    const authModule = await import('../routes/auth');
+    authModule.clearTestPharmacyPreviewStateForTests();
+    const router = authModule.default;
     const app = express();
     app.use(express.json());
     app.use(cookieParser());
@@ -300,7 +306,10 @@ describe('auth.ts — ultra coverage', () => {
 
   async function createFreshAuthApp() {
     vi.resetModules();
-    const { default: freshRouter } = await import('../routes/auth');
+    mockRouteDependencies();
+    const authModule = await import('../routes/auth');
+    authModule.clearTestPharmacyPreviewStateForTests();
+    const freshRouter = authModule.default;
     const app = express();
     app.use(express.json());
     app.use(cookieParser());
@@ -487,6 +496,8 @@ describe('exchange-proposals.ts — ultra coverage', () => {
   beforeEach(() => { resetDefaultMocks(); });
 
   async function createProposalApp() {
+    vi.resetModules();
+    mockRouteDependencies();
     const { default: router } = await import('../routes/exchange-proposals');
     const app = express();
     app.use(express.json());
@@ -546,6 +557,8 @@ describe('exchange-comments.ts — ultra coverage', () => {
   beforeEach(() => { resetDefaultMocks(); });
 
   async function createCommentsApp(isAdmin = false) {
+    vi.resetModules();
+    mockRouteDependencies();
     const { default: router } = await import('../routes/exchange-comments');
     const app = express();
     app.use(express.json());

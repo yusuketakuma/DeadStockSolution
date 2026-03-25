@@ -10,11 +10,43 @@ const mocks = vi.hoisted(() => ({
   requireLoginEnabled: { value: true },
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (
-    req: { user?: { id: number; email: string; isAdmin: boolean } },
-    res: { status: (code: number) => { json: (body: unknown) => void } },
-    next: () => void,
+function mockAlertRouteDependencies() {
+  vi.doMock('../services/alert-read-service', () => ({
+    listAlerts: mocks.listAlerts,
+    getAlertDetail: mocks.getAlertDetail,
+    resolveAlert: mocks.resolveAlert,
+    getAlertStats: mocks.getAlertStats,
+  }));
+
+  vi.doMock('../config/database', () => ({
+    db: {},
+  }));
+
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
+
+  vi.doMock('../services/system-event-service', () => ({
+    recordHttpUnhandledError: vi.fn(),
+  }));
+
+  vi.doMock('../db/schema', async () => await vi.importActual('../db/schema'));
+  vi.doMock('../utils/request-utils', async () => await vi.importActual('../utils/request-utils'));
+  vi.doMock('../utils/cursor-pagination', async () => await vi.importActual('../utils/cursor-pagination'));
+}
+
+async function createApp() {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/alerts', (
+    req: express.Request & { user?: { id: number; email: string; isAdmin: boolean } },
+    res: express.Response,
+    next: express.NextFunction,
   ) => {
     if (!mocks.requireLoginEnabled.value) {
       res.status(401).json({ error: 'ログインが必要です' });
@@ -22,42 +54,11 @@ vi.mock('../middleware/auth', () => ({
     }
     req.user = { id: 1, email: 'pharmacy@example.com', isAdmin: false };
     next();
-  },
-}));
-
-vi.mock('../services/alert-read-service', () => ({
-  listAlerts: mocks.listAlerts,
-  getAlertDetail: mocks.getAlertDetail,
-  resolveAlert: mocks.resolveAlert,
-  getAlertStats: mocks.getAlertStats,
-}));
-
-vi.mock('../config/database', () => ({
-  db: {},
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
-vi.mock('../services/system-event-service', () => ({
-  recordHttpUnhandledError: vi.fn(),
-}));
-
-import { requireLogin } from '../middleware/auth';
-import alertsRouter from '../routes/alerts';
-
-function createApp() {
-  const app = express();
-  app.use(express.json());
-  app.use('/api/alerts', requireLogin as unknown as express.RequestHandler, alertsRouter);
+  }, alertsRouter);
   return app;
 }
+
+let alertsRouter: (typeof import('../routes/alerts'))['default'];
 
 const BASE_ALERT_ITEM = {
   id: 1,
@@ -72,8 +73,11 @@ const BASE_ALERT_ITEM = {
 };
 
 describe('alert routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    mockAlertRouteDependencies();
+    ({ default: alertsRouter } = await import('../routes/alerts'));
     mocks.requireLoginEnabled.value = true;
   });
 
@@ -89,7 +93,7 @@ describe('alert routes', () => {
         unresolvedCount: 1,
       };
       mocks.listAlerts.mockResolvedValue(listResult);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts');
 
@@ -107,7 +111,7 @@ describe('alert routes', () => {
 
     it('200 — resolved=false フィルタ', async () => {
       mocks.listAlerts.mockResolvedValue({ alerts: [], total: 0, offset: 0, limit: 20, unresolvedCount: 0 });
-      const app = createApp();
+      const app = await createApp();
 
       await request(app).get('/api/alerts?resolved=false');
 
@@ -122,10 +126,11 @@ describe('alert routes', () => {
 
     it('200 — resolved=true フィルタ', async () => {
       mocks.listAlerts.mockResolvedValue({ alerts: [], total: 0, offset: 0, limit: 20, unresolvedCount: 0 });
-      const app = createApp();
+      const app = await createApp();
 
-      await request(app).get('/api/alerts?resolved=true');
+      const res = await request(app).get('/api/alerts?resolved=true');
 
+      expect(res.status).toBe(200);
       expect(mocks.listAlerts).toHaveBeenCalledWith(1, {
         resolved: true,
         type: undefined,
@@ -137,7 +142,7 @@ describe('alert routes', () => {
 
     it('200 — type フィルタ', async () => {
       mocks.listAlerts.mockResolvedValue({ alerts: [], total: 0, offset: 0, limit: 20, unresolvedCount: 0 });
-      const app = createApp();
+      const app = await createApp();
 
       await request(app).get('/api/alerts?type=near_expiry');
 
@@ -152,7 +157,7 @@ describe('alert routes', () => {
 
     it('200 — legacy alertType フィルタ alias', async () => {
       mocks.listAlerts.mockResolvedValue({ alerts: [], total: 0, offset: 0, limit: 20, unresolvedCount: 0 });
-      const app = createApp();
+      const app = await createApp();
 
       await request(app).get('/api/alerts?alertType=near_expiry');
 
@@ -167,7 +172,7 @@ describe('alert routes', () => {
 
     it('200 — offset/limit パラメータ', async () => {
       mocks.listAlerts.mockResolvedValue({ alerts: [], total: 0, offset: 10, limit: 5, unresolvedCount: 0 });
-      const app = createApp();
+      const app = await createApp();
 
       await request(app).get('/api/alerts?offset=10&limit=5');
 
@@ -191,7 +196,7 @@ describe('alert routes', () => {
         unresolvedCount: 0,
         pagination: { mode: 'cursor', hasMore: false, nextCursor: null },
       });
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get(`/api/alerts?cursor=${encodedCursor}`);
 
@@ -207,7 +212,7 @@ describe('alert routes', () => {
     });
 
     it('400 — 不正な cursor', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts?cursor=!!!invalid!!!');
 
@@ -217,7 +222,7 @@ describe('alert routes', () => {
     });
 
     it('400 — 不正な type', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts?type=invalid_type');
 
@@ -227,7 +232,7 @@ describe('alert routes', () => {
 
     it('500 — サービスエラー', async () => {
       mocks.listAlerts.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts');
 
@@ -236,7 +241,7 @@ describe('alert routes', () => {
 
     it('401 — 未認証', async () => {
       mocks.requireLoginEnabled.value = false;
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts');
 
@@ -250,7 +255,7 @@ describe('alert routes', () => {
     it('200 — 統計情報を返す', async () => {
       const stats = { unresolvedCount: 5, byType: { near_expiry: 3, excess_stock: 2 } };
       mocks.getAlertStats.mockResolvedValue(stats);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts/stats');
 
@@ -262,7 +267,7 @@ describe('alert routes', () => {
 
     it('500 — サービスエラー', async () => {
       mocks.getAlertStats.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts/stats');
 
@@ -275,7 +280,7 @@ describe('alert routes', () => {
   describe('GET /api/alerts/:id', () => {
     it('200 — アラート詳細を返す', async () => {
       mocks.getAlertDetail.mockResolvedValue(BASE_ALERT_ITEM);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts/1');
 
@@ -287,7 +292,7 @@ describe('alert routes', () => {
 
     it('404 — 存在しないアラート', async () => {
       mocks.getAlertDetail.mockResolvedValue(null);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts/999');
 
@@ -295,7 +300,7 @@ describe('alert routes', () => {
     });
 
     it('400 — 不正なID', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts/abc');
 
@@ -304,7 +309,7 @@ describe('alert routes', () => {
 
     it('500 — サービスエラー', async () => {
       mocks.getAlertDetail.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/alerts/1');
 
@@ -318,7 +323,7 @@ describe('alert routes', () => {
     it('200 — アラートを解決済みにする', async () => {
       const resolved = { ...BASE_ALERT_ITEM, resolvedAt: '2025-03-01T00:00:00.000Z' };
       mocks.resolveAlert.mockResolvedValue(resolved);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).patch('/api/alerts/1/resolve');
 
@@ -329,7 +334,7 @@ describe('alert routes', () => {
 
     it('404 — 存在しないアラート', async () => {
       mocks.resolveAlert.mockResolvedValue(null);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).patch('/api/alerts/999/resolve');
 
@@ -337,7 +342,7 @@ describe('alert routes', () => {
     });
 
     it('400 — 不正なID', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).patch('/api/alerts/abc/resolve');
 
@@ -346,7 +351,7 @@ describe('alert routes', () => {
 
     it('500 — サービスエラー', async () => {
       mocks.resolveAlert.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).patch('/api/alerts/1/resolve');
 

@@ -1,3 +1,4 @@
+import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,77 +20,94 @@ const mocks = vi.hoisted(() => ({
   loggerWarn: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+function mockExchangeSubrouteDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 2, email: 'user@example.com', isAdmin: false };
+      next();
+    },
+    rejectAdmin: (_req: unknown, _res: unknown, next: () => void) => {
+      next();
+    },
+  }));
+
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
+
+  vi.doMock('../services/exchange-execution-service', () => ({
+    createProposal: vi.fn(),
+    acceptProposal: mocks.acceptProposal,
+    rejectProposal: mocks.rejectProposal,
+    completeProposal: mocks.completeProposal,
+  }));
+
+  vi.doMock('../services/matching-service', () => ({
+    findMatches: vi.fn(),
+  }));
+
+  vi.doMock('../services/matching-refresh-service', () => ({
+    processPendingMatchingRefreshJobs: vi.fn(),
+  }));
+
+  vi.doMock('../services/trust-score-service', () => ({
+    recalculateTrustScoreForPharmacy: mocks.recalculateTrustScoreForPharmacy,
+  }));
+
+  vi.doMock('../services/statistics-cache-service', () => ({
+    invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
+  }));
+
+  vi.doMock('../services/notification-service', () => ({
+    createNotification: mocks.createNotification,
+  }));
+
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: vi.fn(() => '127.0.0.1'),
+  }));
+
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: mocks.loggerWarn,
+      error: mocks.loggerError,
+    },
+  }));
+
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    lt: vi.fn(() => ({})),
+    asc: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
+}
+let exchangeProposalsRouter: (typeof import('../routes/exchange-proposals'))['default'];
+let exchangeFeedbackRouter: (typeof import('../routes/exchange-feedback'))['default'];
+let exchangeHistoryRouter: (typeof import('../routes/exchange-history'))['default'];
+let exchangeCommentsRouter: (typeof import('../routes/exchange-comments'))['default'];
+
+async function createApp() {
+  const app = express();
+  app.use(express.json());
+  const attachUser = (
+    req: express.Request & { user?: { id: number; email: string; isAdmin: boolean } },
+    _res: express.Response,
+    next: express.NextFunction,
+  ) => {
     req.user = { id: 2, email: 'user@example.com', isAdmin: false };
     next();
-  },
-  rejectAdmin: (_req: unknown, _res: unknown, next: () => void) => {
-    next();
-  },
-}));
-
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
-
-vi.mock('../services/exchange-execution-service', () => ({
-  createProposal: vi.fn(),
-  acceptProposal: mocks.acceptProposal,
-  rejectProposal: mocks.rejectProposal,
-  completeProposal: mocks.completeProposal,
-}));
-
-vi.mock('../services/matching-service', () => ({
-  findMatches: vi.fn(),
-}));
-
-vi.mock('../services/matching-refresh-service', () => ({
-  processPendingMatchingRefreshJobs: vi.fn(),
-}));
-
-vi.mock('../services/trust-score-service', () => ({
-  recalculateTrustScoreForPharmacy: mocks.recalculateTrustScoreForPharmacy,
-}));
-
-vi.mock('../services/statistics-cache-service', () => ({
-  invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
-}));
-
-vi.mock('../services/notification-service', () => ({
-  createNotification: mocks.createNotification,
-}));
-
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: vi.fn(() => '127.0.0.1'),
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    debug: vi.fn(),
-    warn: mocks.loggerWarn,
-    error: mocks.loggerError,
-  },
-}));
-
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  or: vi.fn(() => ({})),
-  lt: vi.fn(() => ({})),
-  asc: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
-
-import exchangeRouter from '../routes/exchange';
-import { createAuthenticatedApp } from './helpers/mock-builders';
-
-function createApp() {
-  return createAuthenticatedApp('/api/exchange', exchangeRouter);
+  };
+  app.use('/api/exchange', attachUser, exchangeProposalsRouter);
+  app.use('/api/exchange', attachUser, exchangeFeedbackRouter);
+  app.use('/api/exchange', attachUser, exchangeHistoryRouter);
+  app.use('/api/exchange', attachUser, exchangeCommentsRouter);
+  return app;
 }
 
 function createLimitQuery(rows: unknown[]) {
@@ -166,13 +184,30 @@ function createUpdateQuery(result: unknown = undefined) {
   return query;
 }
 
+beforeEach(async () => {
+  vi.resetModules();
+  vi.resetAllMocks();
+  mockExchangeSubrouteDependencies();
+  [
+    { default: exchangeProposalsRouter },
+    { default: exchangeFeedbackRouter },
+    { default: exchangeHistoryRouter },
+    { default: exchangeCommentsRouter },
+  ] = await Promise.all([
+    import('../routes/exchange-proposals'),
+    import('../routes/exchange-feedback'),
+    import('../routes/exchange-history'),
+    import('../routes/exchange-comments'),
+  ]);
+});
+
 describe('exchange sub-routes: single proposal actions', () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
   it('POST /proposals/:id/accept returns 200 with confirmed status', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.acceptProposal.mockResolvedValue('confirmed');
 
     const response = await request(app)
@@ -187,7 +222,7 @@ describe('exchange sub-routes: single proposal actions', () => {
   });
 
   it('POST /proposals/:id/reject returns 200', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.rejectProposal.mockResolvedValue(undefined);
 
     const response = await request(app)
@@ -199,7 +234,7 @@ describe('exchange sub-routes: single proposal actions', () => {
   });
 
   it('POST /proposals/:id/complete returns 200', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.completeProposal.mockResolvedValue(undefined);
 
     const response = await request(app)
@@ -211,7 +246,7 @@ describe('exchange sub-routes: single proposal actions', () => {
   });
 
   it('POST /proposals/:id/accept returns 404 for not found', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.acceptProposal.mockRejectedValue(new Error('見つかりません'));
 
     const response = await request(app)
@@ -222,7 +257,7 @@ describe('exchange sub-routes: single proposal actions', () => {
   });
 
   it('POST /proposals/:id/accept returns 409 on stale state', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.acceptProposal.mockRejectedValue(new Error('状態が変更された'));
 
     const response = await request(app)
@@ -239,7 +274,7 @@ describe('exchange sub-routes: bulk action', () => {
   });
 
   it('POST /proposals/bulk-action returns summary and item errors', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.acceptProposal
       .mockResolvedValueOnce('confirmed')
       .mockRejectedValueOnce(new Error('アクセス権限がありません'));
@@ -257,7 +292,7 @@ describe('exchange sub-routes: bulk action', () => {
   });
 
   it('POST /proposals/bulk-action returns 400 for invalid payload', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/bulk-action')
@@ -274,7 +309,7 @@ describe('exchange sub-routes: feedback', () => {
   });
 
   it('POST /proposals/:id/feedback returns 201 on valid feedback', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 10, status: 'completed', pharmacyAId: 2, pharmacyBId: 5 };
 
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([proposal]));
@@ -292,7 +327,7 @@ describe('exchange sub-routes: feedback', () => {
   });
 
   it('POST /proposals/:id/feedback returns 400 for invalid id', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/abc/feedback')
@@ -303,7 +338,7 @@ describe('exchange sub-routes: feedback', () => {
   });
 
   it('POST /proposals/:id/feedback returns 400 for invalid rating', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/10/feedback')
@@ -314,7 +349,7 @@ describe('exchange sub-routes: feedback', () => {
   });
 
   it('POST /proposals/:id/feedback returns 400 for rating below minimum', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/10/feedback')
@@ -325,7 +360,7 @@ describe('exchange sub-routes: feedback', () => {
   });
 
   it('POST /proposals/:id/feedback returns 400 for too long comment', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/10/feedback')
@@ -336,7 +371,7 @@ describe('exchange sub-routes: feedback', () => {
   });
 
   it('POST /proposals/:id/feedback returns 404 when proposal not found', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([]));
 
     const response = await request(app)
@@ -348,7 +383,7 @@ describe('exchange sub-routes: feedback', () => {
   });
 
   it('POST /proposals/:id/feedback returns 400 for non-completed proposal', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 10, status: 'proposed', pharmacyAId: 2, pharmacyBId: 5 };
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([proposal]));
 
@@ -361,7 +396,7 @@ describe('exchange sub-routes: feedback', () => {
   });
 
   it('POST /proposals/:id/feedback returns 500 on unexpected error', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => {
       throw new Error('DB connection lost');
     });
@@ -381,7 +416,7 @@ describe('exchange sub-routes: history', () => {
   });
 
   it('GET /history returns paginated exchange history', async () => {
-    const app = createApp();
+    const app = await createApp();
     const historyRows = [
       { id: 1, pharmacyAId: 2, pharmacyBId: 3, completedAt: '2026-02-01' },
       { id: 2, pharmacyAId: 2, pharmacyBId: 4, completedAt: '2026-01-15' },
@@ -414,7 +449,7 @@ describe('exchange sub-routes: history', () => {
   });
 
   it('GET /history returns empty list when no history', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     mocks.db.select
       .mockImplementationOnce(() => createPaginatedQuery([]))
@@ -429,7 +464,7 @@ describe('exchange sub-routes: history', () => {
   });
 
   it('GET /history supports cursor pagination', async () => {
-    const app = createApp();
+    const app = await createApp();
     const cursorPayload = Buffer.from(JSON.stringify({
       completedAt: '2026-02-01T00:00:00.000Z',
       id: 99,
@@ -466,7 +501,7 @@ describe('exchange sub-routes: history', () => {
   });
 
   it('GET /history returns 400 for invalid cursor', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .get('/api/exchange/history')
@@ -478,7 +513,7 @@ describe('exchange sub-routes: history', () => {
   });
 
   it('GET /history returns 500 on DB error', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => {
       throw new Error('DB error');
     });
@@ -497,7 +532,7 @@ describe('exchange sub-routes: comments GET', () => {
   });
 
   it('GET /proposals/:id/comments returns paginated comments', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 1, pharmacyAId: 2, pharmacyBId: 3 };
     const comments = [
       { id: 10, proposalId: 1, authorPharmacyId: 2, authorName: '薬局A', body: 'test comment', isDeleted: false, createdAt: '2026-02-01', updatedAt: '2026-02-01' },
@@ -523,7 +558,7 @@ describe('exchange sub-routes: comments GET', () => {
   });
 
   it('GET /proposals/:id/comments masks deleted comment body', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 1, pharmacyAId: 2, pharmacyBId: 3 };
     const comments = [
       { id: 11, proposalId: 1, authorPharmacyId: 2, authorName: '薬局A', body: 'secret', isDeleted: true, createdAt: '2026-02-01', updatedAt: '2026-02-01' },
@@ -542,7 +577,7 @@ describe('exchange sub-routes: comments GET', () => {
   });
 
   it('GET /proposals/:id/comments returns 400 for invalid id', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .get('/api/exchange/proposals/abc/comments');
@@ -552,7 +587,7 @@ describe('exchange sub-routes: comments GET', () => {
   });
 
   it('GET /proposals/:id/comments returns 404 when proposal not found', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([]));
 
     const response = await request(app)
@@ -563,7 +598,7 @@ describe('exchange sub-routes: comments GET', () => {
   });
 
   it('GET /proposals/:id/comments returns 500 on unexpected error', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => {
       throw new Error('connection lost');
     });
@@ -582,7 +617,7 @@ describe('exchange sub-routes: comments POST', () => {
   });
 
   it('POST /proposals/:id/comments returns 400 for empty body', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 1, pharmacyAId: 2, pharmacyBId: 3 };
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([proposal]));
 
@@ -595,7 +630,7 @@ describe('exchange sub-routes: comments POST', () => {
   });
 
   it('POST /proposals/:id/comments returns 400 for body exceeding 1000 chars', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 1, pharmacyAId: 2, pharmacyBId: 3 };
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([proposal]));
 
@@ -608,7 +643,7 @@ describe('exchange sub-routes: comments POST', () => {
   });
 
   it('POST /proposals/:id/comments returns 404 when proposal not found', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([]));
 
     const response = await request(app)
@@ -620,7 +655,7 @@ describe('exchange sub-routes: comments POST', () => {
   });
 
   it('POST /proposals/:id/comments returns 201 on success', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 1, pharmacyAId: 2, pharmacyBId: 3 };
     const insertedComment = {
       id: 20,
@@ -667,7 +702,7 @@ describe('exchange sub-routes: comments POST', () => {
   });
 
   it('POST /proposals/:id/comments returns 429 on rate limit short interval', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 1, pharmacyAId: 2, pharmacyBId: 3 };
 
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([proposal]));
@@ -699,7 +734,7 @@ describe('exchange sub-routes: comments POST', () => {
   });
 
   it('POST /proposals/:id/comments returns 500 on unexpected error', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 1, pharmacyAId: 2, pharmacyBId: 3 };
 
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([proposal]));
@@ -720,7 +755,7 @@ describe('exchange sub-routes: proposals print', () => {
   });
 
   it('GET /proposals/:id/print returns print payload', async () => {
-    const app = createApp();
+    const app = await createApp();
     const proposal = { id: 8, pharmacyAId: 2, pharmacyBId: 3 };
     const items = [{ id: 50, drugName: '薬A', quantity: 2 }];
     const pharmA = { name: '薬局A', phone: '03-0000-0001', fax: null, address: '東京都', prefecture: '東京都', licenseNumber: 'A-1' };
@@ -745,7 +780,7 @@ describe('exchange sub-routes: proposals print', () => {
   });
 
   it('GET /proposals/:id/print returns 404 when proposal not found', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([]));
 
     const response = await request(app)
@@ -762,7 +797,7 @@ describe('exchange sub-routes: comments mutation', () => {
   });
 
   it('PATCH /proposals/:id/comments/:commentId updates own comment', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([{ id: 20, proposalId: 1, isDeleted: false }]));
     mocks.db.update.mockImplementationOnce(() => createUpdateQuery());
 
@@ -776,7 +811,7 @@ describe('exchange sub-routes: comments mutation', () => {
   });
 
   it('DELETE /proposals/:id/comments/:commentId soft-deletes own comment', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([{ id: 20, proposalId: 1, isDeleted: false }]));
     mocks.db.update.mockImplementationOnce(() => createUpdateQuery());
 

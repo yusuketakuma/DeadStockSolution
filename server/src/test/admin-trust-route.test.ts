@@ -7,31 +7,38 @@ const mocks = vi.hoisted(() => ({
   triggerTrustScoreRecalculation: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+function mockAdminTrustDependencies() {
+  vi.doMock('../services/trust-score-service', () => ({
+    listTrustScores: mocks.listTrustScores,
+    triggerTrustScoreRecalculation: mocks.triggerTrustScoreRecalculation,
+  }));
+  vi.doMock('../routes/admin-utils', async () => vi.importActual('../routes/admin-utils'));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-vi.mock('../services/trust-score-service', () => ({
-  listTrustScores: mocks.listTrustScores,
-  triggerTrustScoreRecalculation: mocks.triggerTrustScoreRecalculation,
-}));
-
-import adminTrustRouter from '../routes/admin-trust';
+let adminTrustRouter: express.Router;
 
 function createApp() {
   const app = express();
   app.use(express.json());
-  app.use('/api/admin', adminTrustRouter);
+  app.use('/api/admin', (req, _res, next) => {
+    (req as express.Request & {
+      user?: { id: number; email: string; isAdmin: boolean };
+    }).user = { id: 1, email: 'admin@example.com', isAdmin: true };
+    next();
+  }, adminTrustRouter);
   return app;
 }
 
 describe('admin trust routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    mockAdminTrustDependencies();
+    const { default: router } = await import('../routes/admin-trust');
+    adminTrustRouter = router;
   });
 
   it('returns trust scores with pagination', async () => {

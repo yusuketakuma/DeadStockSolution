@@ -13,46 +13,48 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-}));
+function mockDrugMasterCrudDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+  }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../services/drug-master-service', () => ({
-  getDrugMasterStats: mocks.getDrugMasterStats,
-  getDrugDetail: mocks.getDrugDetail,
-  updateDrugMasterItem: mocks.updateDrugMasterItem,
-}));
+  vi.doMock('../services/drug-master-service', () => ({
+    getDrugMasterStats: mocks.getDrugMasterStats,
+    getDrugDetail: mocks.getDrugDetail,
+    updateDrugMasterItem: mocks.updateDrugMasterItem,
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  asc: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  like: vi.fn(() => ({})),
-  ilike: vi.fn(() => ({})),
-  or: vi.fn(() => ({})),
-  isNotNull: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    asc: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    like: vi.fn(() => ({})),
+    ilike: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    isNotNull: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
+}
 
-import drugMasterRouter from '../routes/drug-master';
+let drugMasterRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -60,6 +62,13 @@ function createApp() {
   app.use('/api/admin/drug-master', drugMasterRouter);
   return app;
 }
+
+beforeEach(async () => {
+  vi.resetModules();
+  mockDrugMasterCrudDependencies();
+  const { default: router } = await import('../routes/drug-master');
+  drugMasterRouter = router;
+});
 
 function createPaginatedQuery(rows: unknown[], total: number) {
   let callCount = 0;

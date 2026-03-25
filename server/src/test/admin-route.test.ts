@@ -22,70 +22,75 @@ const mocks = vi.hoisted(() => ({
   getClientIp: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => {
-    next();
-  },
-}));
-
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
-
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: mocks.handoffToOpenClaw,
-  isOpenClawConnectorConfigured: mocks.isOpenClawConnectorConfigured,
-  isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
-  getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
-}));
-
-vi.mock('../services/openclaw-log-context-service', () => ({
-  buildOpenClawLogContext: mocks.buildOpenClawLogContext,
-}));
-
-vi.mock('../services/openclaw-thread-service', () => ({
-  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
-  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
-  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
-}));
-
-vi.mock('../services/observability-service', () => ({
-  getObservabilitySnapshot: mocks.getObservabilitySnapshot,
-}));
-
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: mocks.loggerWarn,
-    error: mocks.loggerError,
-  },
-}));
-
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-  like: vi.fn(() => ({})),
-}));
-
-import adminRouter from '../routes/admin';
-
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: mocks.handoffToOpenClaw,
+    isOpenClawConnectorConfigured: mocks.isOpenClawConnectorConfigured,
+    isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
+    getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
+  }));
+  vi.doMock('../services/openclaw-log-context-service', () => ({
+    buildOpenClawLogContext: mocks.buildOpenClawLogContext,
+  }));
+  vi.doMock('../services/openclaw-thread-service', () => ({
+    mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+    isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
+    updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+  }));
+  vi.doMock('../services/observability-service', () => ({
+    getObservabilitySnapshot: mocks.getObservabilitySnapshot,
+  }));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+  vi.doMock('../services/realtime-service', () => ({
+    publishAdminRequestsRefresh: vi.fn(),
+    publishRequestsRefresh: vi.fn(),
+    publishTimelineRefresh: vi.fn(),
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: mocks.loggerWarn,
+      error: mocks.loggerError,
+    },
+  }));
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+    like: vi.fn(() => ({})),
+  }));
+  vi.doMock('../routes/admin-utils', async () => vi.importActual('../routes/admin-utils'));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+  const [{ default: adminLogsRouter }, { default: adminPharmaciesActionsRouter }] = await Promise.all([
+    import('../routes/admin-logs'),
+    import('../routes/admin-pharmacies-actions'),
+  ]);
   const app = express();
   app.use(express.json());
-  app.use('/api/admin', adminRouter);
+  app.use('/api/admin', (req, _res, next) => {
+    (req as express.Request & {
+      user?: { id: number; email: string; isAdmin: boolean };
+    }).user = { id: 1, email: 'admin@example.com', isAdmin: true };
+    next();
+  }, adminLogsRouter);
+  app.use('/api/admin', (req, _res, next) => {
+    (req as express.Request & {
+      user?: { id: number; email: string; isAdmin: boolean };
+    }).user = { id: 1, email: 'admin@example.com', isAdmin: true };
+    next();
+  }, adminPharmaciesActionsRouter);
   return app;
 }
 
@@ -169,7 +174,7 @@ function createUpdateQuery() {
 
 describe('admin routes', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.isOpenClawConnectorConfigured.mockReturnValue(true);
     mocks.isOpenClawWebhookConfigured.mockReturnValue(true);
     mocks.getOpenClawImplementationBranch.mockReturnValue('feature/openclaw');
@@ -181,7 +186,7 @@ describe('admin routes', () => {
   });
 
   it('returns paginated logs with failure summary', async () => {
-    const app = createApp();
+    const app = await createApp();
     const logs = [
       {
         id: 101,
@@ -243,7 +248,7 @@ describe('admin routes', () => {
   });
 
   it('returns paginated system events with summary', async () => {
-    const app = createApp();
+    const app = await createApp();
     const events = [
       {
         id: 201,
@@ -285,7 +290,7 @@ describe('admin routes', () => {
   });
 
   it('re-handoffs request to OpenClaw and updates request when accepted', async () => {
-    const app = createApp();
+    const app = await createApp();
     const requestRow = [{
       id: 12,
       pharmacyId: 10,
@@ -343,7 +348,7 @@ describe('admin routes', () => {
   });
 
   it('re-handoffs request with fallback query when openclaw schema is missing', async () => {
-    const app = createApp();
+    const app = await createApp();
     const missingSchemaError = Object.assign(new Error('relation "openclaw_work_items" does not exist'), { code: '42P01' });
     const requestRow = [{
       id: 14,
@@ -383,7 +388,7 @@ describe('admin routes', () => {
   });
 
   it('returns accepted pending response when context collection fails', async () => {
-    const app = createApp();
+    const app = await createApp();
     const requestRow = [{
       id: 13,
       pharmacyId: 20,
@@ -429,7 +434,7 @@ describe('admin routes', () => {
   });
 
   it('returns bad request for non-numeric request id', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .post('/api/admin/requests/invalid-id/handoff');
@@ -441,7 +446,7 @@ describe('admin routes', () => {
   });
 
   it('returns not found when request record does not exist', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([]));
 
@@ -454,7 +459,7 @@ describe('admin routes', () => {
   });
 
   it('returns bad request when request is already completed', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([{
       id: 44,
       pharmacyId: 10,
@@ -472,7 +477,7 @@ describe('admin routes', () => {
   });
 
   it('returns bad request when request status is not pending_handoff', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([{
       id: 45,
       pharmacyId: 10,

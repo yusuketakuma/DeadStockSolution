@@ -1,7 +1,7 @@
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import request from 'supertest';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createPasswordResetToken: vi.fn(),
@@ -30,90 +30,88 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
-
-vi.mock('../services/password-reset-service', () => ({
-  createPasswordResetToken: mocks.createPasswordResetToken,
-  resetPasswordWithToken: mocks.resetPasswordWithToken,
-}));
-
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
-vi.mock('../services/auth-service', () => ({
-  assertJwtSecretConfigured: mocks.authService.assertJwtSecretConfigured,
-  isJwtSecretMissingError: mocks.authService.isJwtSecretMissingError,
-  hashPassword: mocks.authService.hashPassword,
-  verifyPassword: mocks.authService.verifyPassword,
-  deriveSessionVersion: mocks.authService.deriveSessionVersion,
-  generateToken: mocks.authService.generateToken,
-  verifyToken: mocks.authService.verifyToken,
-}));
-
-vi.mock('../services/geocode-service', () => ({
-  geocodeAddress: mocks.geocodeAddress,
-}));
-
-vi.mock('../services/registration-screening-service', () => ({
-  evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
-}));
-
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: mocks.handoffToOpenClaw,
-}));
-
-vi.mock('../services/pharmacy-verification-service', () => ({
-  PHARMACY_VERIFICATION_REQUEST_TYPE: 'pharmacy_verification',
-}));
-
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-  invalidateAuthUserCache: vi.fn(),
-}));
-
-vi.mock('../middleware/csrf', () => ({
-  clearCsrfCookie: vi.fn(),
-  ensureCsrfCookie: vi.fn((_req: unknown, _res: unknown) => 'mock-csrf-token'),
-  generateCsrfToken: vi.fn(() => 'mock-csrf-token'),
-  setCsrfCookie: vi.fn(),
-}));
-
-vi.mock('../middleware/error-handler', () => ({
-  handleRouteError: vi.fn((_err: unknown, _ctx: string, msg: string, res: { status: (s: number) => { json: (b: unknown) => void } }) => {
-    res.status(500).json({ error: msg });
-  }),
-  getErrorMessage: vi.fn((err: unknown) => (err instanceof Error ? err.message : String(err))),
-}));
-
-vi.mock('../utils/http-utils', () => ({
-  sleep: vi.fn(async () => undefined),
-}));
-
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
-
 let authRouter: (typeof import('../routes/auth'))['default'];
 
-beforeAll(async () => {
-  ({ default: authRouter } = await import('../routes/auth'));
-});
+function mockAuthRouteCoverageDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
+
+  vi.doMock('../services/password-reset-service', () => ({
+    createPasswordResetToken: mocks.createPasswordResetToken,
+    resetPasswordWithToken: mocks.resetPasswordWithToken,
+  }));
+
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
+
+  vi.doMock('../services/auth-service', () => ({
+    assertJwtSecretConfigured: mocks.authService.assertJwtSecretConfigured,
+    isJwtSecretMissingError: mocks.authService.isJwtSecretMissingError,
+    hashPassword: mocks.authService.hashPassword,
+    verifyPassword: mocks.authService.verifyPassword,
+    deriveSessionVersion: mocks.authService.deriveSessionVersion,
+    generateToken: mocks.authService.generateToken,
+    verifyToken: mocks.authService.verifyToken,
+  }));
+
+  vi.doMock('../services/geocode-service', () => ({
+    geocodeAddress: mocks.geocodeAddress,
+  }));
+
+  vi.doMock('../services/registration-screening-service', () => ({
+    evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
+  }));
+
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: mocks.handoffToOpenClaw,
+  }));
+
+  vi.doMock('../services/pharmacy-verification-service', () => ({
+    PHARMACY_VERIFICATION_REQUEST_TYPE: 'pharmacy_verification',
+  }));
+
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+    invalidateAuthUserCache: vi.fn(),
+  }));
+
+  vi.doMock('../middleware/csrf', () => ({
+    clearCsrfCookie: vi.fn(),
+    ensureCsrfCookie: vi.fn((_req: unknown, _res: unknown) => 'mock-csrf-token'),
+    generateCsrfToken: vi.fn(() => 'mock-csrf-token'),
+    setCsrfCookie: vi.fn(),
+  }));
+
+  vi.doMock('../middleware/error-handler', () => ({
+    handleRouteError: vi.fn((_err: unknown, _ctx: string, msg: string, res: { status: (s: number) => { json: (b: unknown) => void } }) => {
+      res.status(500).json({ error: msg });
+    }),
+    getErrorMessage: vi.fn((err: unknown) => (err instanceof Error ? err.message : String(err))),
+  }));
+
+  vi.doMock('../utils/http-utils', () => ({
+    sleep: vi.fn(async () => undefined),
+  }));
+
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
 function createApp() {
   const app = express();
@@ -127,6 +125,7 @@ function createApp() {
 // testPharmacyCache), resetModules + dynamic import is used.
 async function createFreshApp() {
   vi.resetModules();
+  mockAuthRouteCoverageDependencies();
   const freshApp = express();
   freshApp.use(express.json());
   freshApp.use(cookieParser());
@@ -207,13 +206,16 @@ describe('auth routes — additional coverage', () => {
   const originalExposeTestPharmacyPasswords = process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
   const originalTestLoginFeatureEnabled = process.env.TEST_LOGIN_FEATURE_ENABLED;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     vi.resetAllMocks();
     process.env.NODE_ENV = 'test';
     delete process.env.VERCEL_ENV;
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';
     delete process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
     delete process.env.TEST_LOGIN_FEATURE_ENABLED;
+    mockAuthRouteCoverageDependencies();
+    ({ default: authRouter } = await import('../routes/auth'));
     mocks.authService.assertJwtSecretConfigured.mockImplementation(() => undefined);
   });
 

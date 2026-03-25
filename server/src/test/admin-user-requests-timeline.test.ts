@@ -14,34 +14,37 @@ const mocks = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock('../services/admin-user-request-service', () => ({
-  listUserRequests: mocks.listUserRequests,
-}));
+function mockAdminUserRequestsTimelineDependencies() {
+  vi.doMock('../services/admin-user-request-service', () => ({
+    listUserRequests: mocks.listUserRequests,
+  }));
 
-vi.mock('../services/openclaw-request-event-service', () => ({
-  listRequestEventTimeline: mocks.listRequestEventTimeline,
-}));
+  vi.doMock('../services/openclaw-request-event-service', () => ({
+    listRequestEventTimeline: mocks.listRequestEventTimeline,
+  }));
 
-vi.mock('../routes/admin-utils', () => ({
-  parseListPagination: mocks.parseListPagination,
-  sendPaginated: mocks.sendPaginated,
-  handleAdminError: mocks.handleAdminError,
-}));
+  vi.doMock('../routes/admin-utils', () => ({
+    parseListPagination: mocks.parseListPagination,
+    sendPaginated: mocks.sendPaginated,
+    handleAdminError: mocks.handleAdminError,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../utils/request-utils', () => ({
-  parsePositiveInt: vi.fn((val: unknown) => {
-    const n = Number(val);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }),
-}));
+  vi.doMock('../utils/request-utils', () => ({
+    parsePositiveInt: vi.fn((val: unknown) => {
+      const n = Number(val);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }),
+  }));
+}
 
-import userRequestsRouter from '../routes/admin-user-requests';
-
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  mockAdminUserRequestsTimelineDependencies();
+  const { default: userRequestsRouter } = await import('../routes/admin-user-requests');
   const app = express();
   app.use(express.json());
   app.use('/admin', userRequestsRouter);
@@ -84,7 +87,7 @@ describe('GET /admin/user-requests/:id/events', () => {
     ];
     mocks.listRequestEventTimeline.mockResolvedValue(events);
 
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/admin/user-requests/42/events');
 
     expect(res.status).toBe(200);
@@ -95,7 +98,7 @@ describe('GET /admin/user-requests/:id/events', () => {
   it('returns 200 with empty events array for a request with no events', async () => {
     mocks.listRequestEventTimeline.mockResolvedValue([]);
 
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/admin/user-requests/99/events');
 
     expect(res.status).toBe(200);
@@ -104,7 +107,7 @@ describe('GET /admin/user-requests/:id/events', () => {
   });
 
   it('returns empty events array for an invalid (non-positive) ID without calling service', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/admin/user-requests/0/events');
 
     expect(res.status).toBe(200);
@@ -113,7 +116,7 @@ describe('GET /admin/user-requests/:id/events', () => {
   });
 
   it('returns empty events array for a non-numeric ID without calling service', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/admin/user-requests/abc/events');
 
     expect(res.status).toBe(200);
@@ -124,7 +127,7 @@ describe('GET /admin/user-requests/:id/events', () => {
   it('returns 500 when service throws', async () => {
     mocks.listRequestEventTimeline.mockRejectedValue(new Error('DB error'));
 
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/admin/user-requests/42/events');
 
     expect(res.status).toBe(500);

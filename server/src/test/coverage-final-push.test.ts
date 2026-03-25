@@ -129,8 +129,6 @@ vi.mock('../middleware/error-handler', () => ({
 // Section 1: notifications.ts — cursor pagination / resolveNotificationActionPath
 // ─────────────────────────────────────────────────────────────────────────────
 
-import notificationsRouter from '../routes/notifications';
-
 function createNotificationsSelectQuery(result: unknown) {
   const resolved = Promise.resolve(result);
   const query = {
@@ -149,7 +147,9 @@ function createNotificationsSelectQuery(result: unknown) {
   return query;
 }
 
-function createNotificationsApp() {
+async function createNotificationsApp() {
+  vi.resetModules();
+  const notificationsRouter = (await import('../routes/notifications')).default;
   const app = express();
   app.use(express.json());
   app.use('/api/notifications', notificationsRouter);
@@ -173,7 +173,7 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
   });
 
   it('handles cursor-based pagination with exact match (exactIndex >= 0)', async () => {
-    const app = createNotificationsApp();
+    const app = await createNotificationsApp();
 
     const messages = [
       { id: 1, title: 'msg1', body: 'body1', actionPath: null, createdAt: '2026-01-03T00:00:00.000Z' },
@@ -200,7 +200,7 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
   });
 
   it('handles cursor fallback logic (cursor not found by id, finds by time/priority)', async () => {
-    const app = createNotificationsApp();
+    const app = await createNotificationsApp();
 
     const messages = [
       { id: 10, title: 'urgent', body: 'body', actionPath: null, createdAt: '2026-01-03T00:00:00.000Z' },
@@ -226,7 +226,7 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
   });
 
   it('handles notification with referenceType=request (resolves to /)', async () => {
-    const app = createNotificationsApp();
+    const app = await createNotificationsApp();
 
     const notification = {
       id: 50,
@@ -256,7 +256,7 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
   });
 
   it('handles proposedAt=null in buildProposalDeadlineAt (deadlineAt should be null)', async () => {
-    const app = createNotificationsApp();
+    const app = await createNotificationsApp();
 
     const proposal = {
       id: 99,
@@ -282,7 +282,7 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
   });
 
   it('handles notification with referenceType=null (resolves to /)', async () => {
-    const app = createNotificationsApp();
+    const app = await createNotificationsApp();
 
     const notification = {
       id: 55,
@@ -311,7 +311,7 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
   });
 
   it('handles accepted_b proposal notice for isA=true', async () => {
-    const app = createNotificationsApp();
+    const app = await createNotificationsApp();
 
     const proposal = {
       id: 100,
@@ -336,7 +336,7 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
   });
 
   it('handles hasMore=false (no nextCursor when notices fit in one page)', async () => {
-    const app = createNotificationsApp();
+    const app = await createNotificationsApp();
 
     const message = { id: 20, title: 'msg', body: 'body', actionPath: null, createdAt: '2026-01-01T00:00:00.000Z' };
 
@@ -358,10 +358,10 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
 // Section 2: upload-validation.ts — uploadSingleFile multer error branches
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { uploadSingleFile } from '../routes/upload-validation';
-
 describe('upload-validation.ts — uploadSingleFile middleware', () => {
-  function createTestApp() {
+  async function createTestApp() {
+    vi.resetModules();
+    const { uploadSingleFile } = await import('../routes/upload-validation');
     const app = express();
     app.use(express.json());
     app.use((req, res, next) => {
@@ -374,14 +374,14 @@ describe('upload-validation.ts — uploadSingleFile middleware', () => {
   }
 
   it('passes through when no file is uploaded (no error)', async () => {
-    const app = createTestApp();
+    const app = await createTestApp();
     const res = await request(app).post('/test').send({});
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
   });
 
   it('returns 400 with file too large message when LIMIT_FILE_SIZE multer error', async () => {
-    const app = createTestApp();
+    const app = await createTestApp();
     const largeContent = Buffer.alloc(51 * 1024 * 1024, 'x'); // 51MB > 50MB limit
 
     const res = await request(app)
@@ -393,7 +393,7 @@ describe('upload-validation.ts — uploadSingleFile middleware', () => {
   });
 
   it('returns 400 with file filter rejected message for non-xlsx file', async () => {
-    const app = createTestApp();
+    const app = await createTestApp();
 
     const res = await request(app)
       .post('/test')
@@ -462,9 +462,9 @@ vi.mock('../services/log-service', () => ({
   getClientIp: drugMasterSyncMocks.getClientIp,
 }));
 
-import drugMasterSyncRouter from '../routes/drug-master-sync';
-
-function createDrugMasterSyncApp() {
+async function createDrugMasterSyncApp() {
+  vi.resetModules();
+  const drugMasterSyncRouter = (await import('../routes/drug-master-sync')).default;
   const app = express();
   app.use(express.json());
   app.use('/api/admin/drug-master', (req, _res, next) => {
@@ -493,7 +493,7 @@ describe('drug-master-sync.ts — parsePackageRows branches', () => {
   });
 
   it('POST /upload-packages accepts .xml file and calls parsePackageXmlData', async () => {
-    const app = createDrugMasterSyncApp();
+    const app = await createDrugMasterSyncApp();
     const xmlContent = Buffer.from('<packages><package><code>12345</code></package></packages>');
 
     const res = await request(app)
@@ -505,7 +505,7 @@ describe('drug-master-sync.ts — parsePackageRows branches', () => {
   });
 
   it('POST /upload-packages accepts .zip file and calls parsePackageZipData', async () => {
-    const app = createDrugMasterSyncApp();
+    const app = await createDrugMasterSyncApp();
     const zipContent = Buffer.from([0x50, 0x4B, 0x03, 0x04]); // PK zip header
 
     const res = await request(app)
@@ -517,7 +517,7 @@ describe('drug-master-sync.ts — parsePackageRows branches', () => {
   });
 
   it('POST /upload-packages returns 500 on internal error during syncPackageData', async () => {
-    const app = createDrugMasterSyncApp();
+    const app = await createDrugMasterSyncApp();
     drugMasterSyncMocks.parsePackageXmlData.mockReturnValue([{ dummy: 'xml-row' }]);
     drugMasterSyncMocks.syncPackageData.mockRejectedValue(new Error('DB error'));
 
@@ -530,7 +530,7 @@ describe('drug-master-sync.ts — parsePackageRows branches', () => {
   });
 
   it('POST /upload-packages returns 400 on unsupported file extension', async () => {
-    const app = createDrugMasterSyncApp();
+    const app = await createDrugMasterSyncApp();
 
     const res = await request(app)
       .post('/api/admin/drug-master/upload-packages')
@@ -540,7 +540,7 @@ describe('drug-master-sync.ts — parsePackageRows branches', () => {
   });
 
   it('POST /auto-sync/packages does not write log when triggered=false', async () => {
-    const app = createDrugMasterSyncApp();
+    const app = await createDrugMasterSyncApp();
     drugMasterSyncMocks.triggerManualPackageAutoSync.mockResolvedValue({ triggered: false });
 
     const res = await request(app)
@@ -552,7 +552,7 @@ describe('drug-master-sync.ts — parsePackageRows branches', () => {
   });
 
   it('GET /auto-sync/status with index mode returns discoveredFiles', async () => {
-    const app = createDrugMasterSyncApp();
+    const app = await createDrugMasterSyncApp();
     drugMasterSyncMocks.getConfiguredSourceMode.mockReturnValue('index');
     drugMasterSyncMocks.getSourceStatesByPrefix.mockResolvedValue([
       { sourceKey: 'drug:index_page', url: 'https://example.com', lastCheckedAt: '2026-01-01T00:00:00.000Z', lastChangedAt: null },

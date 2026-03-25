@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
+import type { ImportFailureAlertConfig } from '../services/import-failure-alert-scheduler';
 
 const PERF_REGRESSION_ENABLED = isTruthy(process.env.PERF_REGRESSION_ENABLED);
 const PERF_BASELINE_UPDATE = isTruthy(process.env.PERF_BASELINE_UPDATE);
@@ -214,6 +216,98 @@ vi.mock('../services/openclaw-auto-handoff-service', () => ({
   handoffImportFailureAlertToOpenClaw: mockState.handoffImportFailureAlertToOpenClaw,
 }));
 
+vi.mock('../routes/upload-validation', () => ({
+  getBaseContext: vi.fn(() => ({})),
+  getErrorMessage: vi.fn((err: unknown) => (err instanceof Error ? err.message : String(err))),
+  logUploadFailure: vi.fn(),
+  uploadSingleFile: (
+    req: express.Request & { body?: Record<string, unknown>; file?: Express.Multer.File },
+    _res: express.Response,
+    next: () => void,
+  ) => {
+    req.body = {
+      uploadType: 'dead_stock',
+      headerRowIndex: '0',
+      mapping: JSON.stringify(DEFAULT_MAPPING),
+      ...(req.body ?? {}),
+    };
+    req.file = {
+      fieldname: 'file',
+      buffer: BENCHMARK_FILE_BUFFER,
+      originalname: BENCHMARK_FILE_NAME,
+      encoding: '7bit',
+      mimetype: XLSX_CONTENT_TYPE,
+      size: BENCHMARK_FILE_BUFFER.length,
+      stream: Readable.from(BENCHMARK_FILE_BUFFER),
+      destination: '',
+      filename: BENCHMARK_FILE_NAME,
+      path: BENCHMARK_FILE_NAME,
+    };
+    next();
+  },
+  parseMapping: vi.fn(() => DEFAULT_MAPPING),
+  getUploadFileOrReject: vi.fn((req: express.Request & { file?: { buffer: Buffer } }) => req.file ?? null),
+  getUploadTypeOrReject: vi.fn(() => 'dead_stock'),
+  parseUploadType: vi.fn((value: unknown) => (value === 'used_medication' ? 'used_medication' : 'dead_stock')),
+  parseExcelRowsOrReject: vi.fn(async () => PARSED_ROWS),
+  parseHeaderRowIndexOrReject: vi.fn(() => 0),
+  resolveMappingFromTemplate: vi.fn(() => DEFAULT_MAPPING),
+  resolveMappingFromTemplateWithSource: vi.fn(() => ({ mapping: DEFAULT_MAPPING, source: 'benchmark' })),
+  validateMappingAgainstHeader: vi.fn(() => ({ valid: true, issues: [] })),
+}));
+
+vi.mock('../routes/upload-parser-helpers', () => ({
+  parseApplyMode: vi.fn(() => 'replace'),
+  parseDeleteMissing: vi.fn(() => false),
+  isUploadConfirmEnqueueFallbackEnabled: vi.fn(() => true),
+  toPublicUploadJobError: vi.fn(() => ({ message: 'error', code: 'benchmark' })),
+  parseIdempotencyKey: vi.fn(() => 'perf-idempotency-key'),
+  mapUploadTypes: vi.fn(() => ['dead_stock']),
+  loadMappingTemplatesByHeaderHash: vi.fn(async () => []),
+  findTemplateByUploadType: vi.fn(() => null),
+  validateSuggestedPreviewMapping: vi.fn(() => DEFAULT_MAPPING),
+  buildPreviewMappings: vi.fn(() => ({
+    suggestedByType: {
+      dead_stock: { fromSavedTemplate: false },
+      used_medication: { fromSavedTemplate: false },
+    },
+    validatedByType: {
+      dead_stock: DEFAULT_MAPPING,
+      used_medication: DEFAULT_MAPPING,
+    },
+  })),
+  resolveMappingFromRequestOrAuto: vi.fn(async () => DEFAULT_MAPPING),
+  resolveAndValidateMappingOrReject: vi.fn(async () => DEFAULT_MAPPING),
+  parseJobIdOrReject: vi.fn(() => 1),
+  loadUploadJobOrReject: vi.fn(async () => ({
+    jobId: 1,
+    row: {
+      id: 1,
+      status: 'completed',
+      attempts: 1,
+      lastError: null,
+      resultJson: null,
+      deduplicated: false,
+      cancelable: false,
+      canceledAt: null,
+      cancelRequestedAt: null,
+      issueCount: 0,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      completedAt: '2026-01-01T00:00:00.000Z',
+    },
+  })),
+  handleConfirmAsyncEnqueue: vi.fn(async (_req: express.Request, res: express.Response) => {
+    res.status(202).json({
+      jobId: 9001,
+      status: 'pending',
+      deduplicated: false,
+      cancelable: true,
+      canceledAt: null,
+    });
+  }),
+}));
+
 vi.mock('../services/logger', () => ({
   logger: {
     debug: mockState.loggerDebug,
@@ -223,15 +317,34 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import exchangeRouter from '../routes/exchange';
-import inventoryRouter from '../routes/inventory';
-import pharmaciesRouter from '../routes/pharmacies';
-import uploadRouter from '../routes/upload';
-import {
-  resetImportFailureAlertStateForTests,
-  runImportFailureAlertCheck,
-  type ImportFailureAlertConfig,
-} from '../services/import-failure-alert-scheduler';
+let resetImportFailureAlertStateForTests: typeof import('../services/import-failure-alert-scheduler').resetImportFailureAlertStateForTests;
+let runImportFailureAlertCheck: typeof import('../services/import-failure-alert-scheduler').runImportFailureAlertCheck;
+
+async function loadPerformanceTargets() {
+  const [
+    { default: exchangeRouter },
+    { default: uploadRouter },
+    { default: inventoryRouter },
+    { default: pharmaciesRouter },
+    schedulerModule,
+  ] = await Promise.all([
+    import('../routes/exchange-proposals'),
+    import('../routes/upload-parser'),
+    import('../routes/inventory'),
+    import('../routes/pharmacies'),
+    import('../services/import-failure-alert-scheduler'),
+  ]);
+
+  resetImportFailureAlertStateForTests = schedulerModule.resetImportFailureAlertStateForTests;
+  runImportFailureAlertCheck = schedulerModule.runImportFailureAlertCheck;
+
+  return {
+    exchangeRouter,
+    uploadRouter,
+    inventoryRouter,
+    pharmaciesRouter,
+  };
+}
 
 function isTruthy(value: string | undefined): boolean {
   return value === '1' || value === 'true';
@@ -255,12 +368,26 @@ function parseEnvFloat(name: string, fallback: number, min: number, max: number)
   return Math.min(max, Math.max(min, parsed));
 }
 
-function createApp() {
+async function createApp() {
+  const {
+    exchangeRouter,
+    uploadRouter,
+    inventoryRouter,
+    pharmaciesRouter,
+  } = await loadPerformanceTargets();
   const app = express();
-  app.use('/api/exchange', exchangeRouter);
-  app.use('/api/upload', uploadRouter);
-  app.use('/api/inventory', inventoryRouter);
-  app.use('/api/pharmacies', pharmaciesRouter);
+  const attachPerfUser = (
+    req: express.Request & { user?: { id: number; email: string; isAdmin: boolean } },
+    _res: express.Response,
+    next: () => void,
+  ) => {
+    req.user = { id: 1, email: 'perf@example.com', isAdmin: false };
+    next();
+  };
+  app.use('/api/exchange', attachPerfUser, exchangeRouter);
+  app.use('/api/upload', attachPerfUser, uploadRouter);
+  app.use('/api/inventory', attachPerfUser, inventoryRouter);
+  app.use('/api/pharmacies', attachPerfUser, pharmaciesRouter);
   return app;
 }
 
@@ -640,7 +767,7 @@ const perfSuite = PERF_REGRESSION_ENABLED ? describe : describe.skip;
 
 perfSuite('performance regression guard', () => {
   it('tracks benchmark baseline and detects meaningful regressions', async () => {
-    const app = createApp();
+    const app = await createApp();
     const api = request(app);
     const schedulerConfig = configureSchedulerBenchmark(2);
 

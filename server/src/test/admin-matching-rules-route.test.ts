@@ -14,29 +14,26 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../services/matching-rule-service', () => ({
-  getActiveMatchingRuleProfile: mocks.getActiveMatchingRuleProfile,
-  updateActiveMatchingRuleProfile: mocks.updateActiveMatchingRuleProfile,
-  MatchingRuleValidationError: mocks.MatchingRuleValidationError,
-  MatchingRuleVersionConflictError: mocks.MatchingRuleVersionConflictError,
-}));
-
-vi.mock('../routes/admin-write-limiter', () => ({
-  adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
-import adminMatchingRulesRouter from '../routes/admin-matching-rules';
-
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  vi.doMock('../services/matching-rule-service', () => ({
+    getActiveMatchingRuleProfile: mocks.getActiveMatchingRuleProfile,
+    updateActiveMatchingRuleProfile: mocks.updateActiveMatchingRuleProfile,
+    MatchingRuleValidationError: mocks.MatchingRuleValidationError,
+    MatchingRuleVersionConflictError: mocks.MatchingRuleVersionConflictError,
+  }));
+  vi.doMock('../routes/admin-write-limiter', () => ({
+    adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
+  const { default: adminMatchingRulesRouter } = await import('../routes/admin-matching-rules');
   const app = express();
   app.use(express.json());
   app.use('/api/admin', adminMatchingRulesRouter);
@@ -72,7 +69,7 @@ describe('admin matching rules routes', () => {
   });
 
   it('GET /matching-rules/profile returns active profile', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .get('/api/admin/matching-rules/profile');
@@ -87,7 +84,7 @@ describe('admin matching rules routes', () => {
   });
 
   it('PUT /matching-rules/profile returns 400 when no update fields are provided', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .put('/api/admin/matching-rules/profile')
@@ -125,7 +122,7 @@ describe('admin matching rules routes', () => {
       favoriteBonus: 15,
     });
 
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .put('/api/admin/matching-rules/profile')
@@ -150,7 +147,7 @@ describe('admin matching rules routes', () => {
     mocks.updateActiveMatchingRuleProfile.mockRejectedValue(
       new mocks.MatchingRuleVersionConflictError('マッチングルールが更新済みです。再取得してから再実行してください'),
     );
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .put('/api/admin/matching-rules/profile')

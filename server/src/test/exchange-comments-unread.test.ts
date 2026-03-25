@@ -12,64 +12,62 @@ const mocks = vi.hoisted(() => ({
   createNotification: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-    next();
-  },
-  rejectAdmin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, res: Response, next: () => void) => {
-    if (req.user?.isAdmin) {
-      res.status(403).json({ error: '管理者アカウントではこの機能を利用できません。一般ユーザーアカウントでログインしてください' });
-      return;
-    }
-    next();
-  },
-}));
-
-vi.mock('../config/database', () => ({ db: mocks.db }));
-
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-
-vi.mock('../services/notification-service', () => ({
-  createNotification: mocks.createNotification,
-}));
-
-vi.mock('drizzle-orm', () => {
-  const sqlFn = Object.assign(
-    (..._args: unknown[]) => ({}),
-    { raw: (..._args: unknown[]) => ({}) },
-  );
-  return {
-    eq: vi.fn(() => ({})),
-    ne: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    or: vi.fn(() => ({})),
-    asc: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    sql: sqlFn,
-  };
-});
-
-vi.mock('../utils/db-utils', () => ({
-  rowCount: {},
-}));
-
-vi.mock('../db/schema', () => ({
-  exchangeProposals: { id: 'id', pharmacyAId: 'pharmacyAId', pharmacyBId: 'pharmacyBId' },
-  pharmacies: { id: 'id', name: 'name' },
-  proposalComments: {
-    id: 'id', proposalId: 'proposalId', authorPharmacyId: 'authorPharmacyId',
-    body: 'body', isDeleted: 'isDeleted', createdAt: 'createdAt', updatedAt: 'updatedAt',
-    readByRecipient: 'readByRecipient',
-  },
-}));
+function mockExchangeCommentUnreadDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+    rejectAdmin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, res: Response, next: () => void) => {
+      if (req.user?.isAdmin) {
+        res.status(403).json({ error: '管理者アカウントではこの機能を利用できません。一般ユーザーアカウントでログインしてください' });
+        return;
+      }
+      next();
+    },
+  }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
+  vi.doMock('../services/notification-service', () => ({
+    createNotification: mocks.createNotification,
+  }));
+  vi.doMock('drizzle-orm', () => {
+    const sqlFn = Object.assign(
+      (..._args: unknown[]) => ({}),
+      { raw: (..._args: unknown[]) => ({}) },
+    );
+    return {
+      eq: vi.fn(() => ({})),
+      ne: vi.fn(() => ({})),
+      and: vi.fn(() => ({})),
+      or: vi.fn(() => ({})),
+      asc: vi.fn(() => ({})),
+      desc: vi.fn(() => ({})),
+      sql: sqlFn,
+    };
+  });
+  vi.doMock('../utils/db-utils', () => ({
+    rowCount: {},
+  }));
+  vi.doMock('../db/schema', () => ({
+    exchangeProposals: { id: 'id', pharmacyAId: 'pharmacyAId', pharmacyBId: 'pharmacyBId' },
+    pharmacies: { id: 'id', name: 'name' },
+    proposalComments: {
+      id: 'id', proposalId: 'proposalId', authorPharmacyId: 'authorPharmacyId',
+      body: 'body', isDeleted: 'isDeleted', createdAt: 'createdAt', updatedAt: 'updatedAt',
+      readByRecipient: 'readByRecipient',
+    },
+  }));
+}
 
 let exchangeCommentsRouter: express.Router;
 
 beforeEach(async () => {
   vi.resetModules();
+  vi.resetAllMocks();
+  mockExchangeCommentUnreadDependencies();
   ({ default: exchangeCommentsRouter } = await import('../routes/exchange-comments'));
 });
 
@@ -113,7 +111,7 @@ function createAdminApp() {
 
 describe('exchange-comments unread routes', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe('GET /proposals/:id/comments/unread-count', () => {

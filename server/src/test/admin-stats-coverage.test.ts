@@ -8,39 +8,48 @@ const mocks = vi.hoisted(() => ({
   },
   getObservabilitySnapshot: vi.fn(),
   getMonitoringKpiSnapshot: vi.fn(),
+  getLogPushStats: vi.fn(),
 }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+function mockAdminStatsCoverageDependencies() {
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../services/observability-service', () => ({
-  getObservabilitySnapshot: mocks.getObservabilitySnapshot,
-}));
+  vi.doMock('../services/observability-service', () => ({
+    getObservabilitySnapshot: mocks.getObservabilitySnapshot,
+  }));
 
-vi.mock('../services/monitoring-kpi-service', () => ({
-  getMonitoringKpiSnapshot: mocks.getMonitoringKpiSnapshot,
-}));
+  vi.doMock('../services/monitoring-kpi-service', () => ({
+    getMonitoringKpiSnapshot: mocks.getMonitoringKpiSnapshot,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
+  vi.doMock('../services/openclaw-log-push-service', () => ({
+    getLogPushStats: mocks.getLogPushStats,
+  }));
 
-vi.mock('../middleware/error-handler', () => ({
-  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  gte: vi.fn(() => ({})),
-  sql: Object.assign(
-    vi.fn(() => ({})),
-    { raw: vi.fn(() => ({})) },
-  ),
-}));
+  vi.doMock('../middleware/error-handler', () => ({
+    getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+  }));
 
-import adminStatsRouter from '../routes/admin-stats';
+  vi.doMock('../routes/admin-utils', async () => await vi.importActual('../routes/admin-utils'));
+
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    gte: vi.fn(() => ({})),
+    sql: Object.assign(
+      vi.fn(() => ({})),
+      { raw: vi.fn(() => ({})) },
+    ),
+  }));
+}
+
+let adminStatsRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -63,8 +72,16 @@ function createSelectChain(result: unknown[]) {
 }
 
 describe('admin-stats routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    mockAdminStatsCoverageDependencies();
+    ({ default: adminStatsRouter } = await import('../routes/admin-stats'));
+    mocks.getLogPushStats.mockReturnValue({
+      pendingCount: 0,
+      lastPushedAt: null,
+      lastErrorAt: null,
+    });
   });
 
   describe('GET /stats', () => {

@@ -15,62 +15,61 @@ const mocks = vi.hoisted(() => ({
   recordAuditLog: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+async function createApp() {
+  vi.resetModules();
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
+  vi.doMock('../middleware/error-handler', () => ({
+    getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+  }));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: vi.fn(),
+  }));
+  vi.doMock('../services/openclaw-log-context-service', () => ({
+    buildOpenClawLogContext: vi.fn(),
+  }));
+  vi.doMock('../services/proposal-timeline-service', () => ({
+    buildProposalTimeline: vi.fn(),
+    fetchProposalTimelineActionRows: vi.fn(),
+  }));
+  vi.doMock('../utils/path-utils', () => ({
+    isSafeInternalPath: (path: string) => path.startsWith('/'),
+  }));
+  vi.doMock('../services/audit-log-service', () => ({
+    recordAuditLog: mocks.recordAuditLog,
+  }));
+  vi.doMock('drizzle-orm', () => {
+    const sqlFn = Object.assign(
+      (..._args: unknown[]) => ({}),
+      { raw: (..._args: unknown[]) => ({}) },
+    );
+    return {
+      eq: vi.fn(() => ({})),
+      and: vi.fn(() => ({})),
+      desc: vi.fn(() => ({})),
+      inArray: vi.fn(() => ({})),
+      sql: sqlFn,
+    };
+  });
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-vi.mock('../middleware/error-handler', () => ({
-  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-}));
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: vi.fn(),
-}));
-vi.mock('../services/openclaw-log-context-service', () => ({
-  buildOpenClawLogContext: vi.fn(),
-}));
-vi.mock('../services/proposal-timeline-service', () => ({
-  buildProposalTimeline: vi.fn(),
-  fetchProposalTimelineActionRows: vi.fn(),
-}));
-vi.mock('../utils/path-utils', () => ({
-  isSafeInternalPath: (path: string) => path.startsWith('/'),
-}));
-vi.mock('../services/audit-log-service', () => ({
-  recordAuditLog: mocks.recordAuditLog,
-}));
-vi.mock('drizzle-orm', () => {
-  const sqlFn = Object.assign(
-    (..._args: unknown[]) => ({}),
-    { raw: (..._args: unknown[]) => ({}) },
-  );
-  return {
-    eq: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    inArray: vi.fn(() => ({})),
-    sql: sqlFn,
-  };
-});
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
-
-import adminRouter from '../routes/admin';
-
-function createApp() {
+  const { default: adminRouter } = await import('../routes/admin');
   const app = express();
   app.use(express.json());
   app.use('/api/admin', adminRouter);
@@ -98,7 +97,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
       { id: 2, name: '薬局B', verificationStatus: 'pending_verification', isActive: false },
     ]);
 
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/bulk-actions/preview')
       .send({ pharmacyIds: [1, 2], action: 'verify' });
@@ -120,7 +119,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
       { id: 3, name: '薬局C', verificationStatus: 'verified', isActive: true },
     ]);
 
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/bulk-actions/preview')
       .send({ pharmacyIds: [3], action: 'verify' });
@@ -141,7 +140,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
       { id: 4, name: '薬局D', verificationStatus: 'verified', isActive: false },
     ]);
 
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/bulk-actions/preview')
       .send({ pharmacyIds: [4], action: 'activate' });
@@ -159,7 +158,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
       { id: 5, name: '薬局E', verificationStatus: 'verified', isActive: false },
     ]);
 
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/bulk-actions/preview')
       .send({ pharmacyIds: [5], action: 'deactivate' });
@@ -176,7 +175,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
       { id: 6, name: '薬局F', verificationStatus: 'pending_verification', isActive: false },
     ]);
 
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/bulk-actions/preview')
       .send({ pharmacyIds: [6], action: 'reject' });
@@ -192,7 +191,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
       { id: 7, name: '薬局G', verificationStatus: 'pending_verification', isActive: false },
     ]);
 
-    const app = createApp();
+    const app = await createApp();
     await request(app)
       .post('/api/admin/bulk-actions/preview')
       .send({ pharmacyIds: [7], action: 'verify' });
@@ -202,7 +201,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
   });
 
   it('pharmacyIds が空の場合 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/bulk-actions/preview')
       .send({ pharmacyIds: [], action: 'verify' });
@@ -212,7 +211,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
   });
 
   it('pharmacyIds が 100 件を超える場合 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const ids = Array.from({ length: 101 }, (_, i) => i + 1);
     const res = await request(app)
       .post('/api/admin/bulk-actions/preview')
@@ -223,7 +222,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
   });
 
   it('不正な action の場合 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/bulk-actions/preview')
       .send({ pharmacyIds: [1], action: 'invalid_action' });
@@ -233,7 +232,7 @@ describe('POST /bulk-actions/preview (ドライラン)', () => {
   });
 
   it('不正な pharmacyId（負の数）の場合 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/bulk-actions/preview')
       .send({ pharmacyIds: [1, -1], action: 'verify' });

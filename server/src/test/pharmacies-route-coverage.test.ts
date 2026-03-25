@@ -1,3 +1,4 @@
+import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,64 +9,69 @@ const mocks = vi.hoisted(() => ({
     delete: vi.fn(),
   },
 }));
-
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+async function createApp() {
+  vi.resetModules();
+  vi.resetAllMocks();
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+      next();
+    },
+  }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
+  vi.doMock('../utils/business-hours-utils', () => ({
+    getBusinessHoursStatus: vi.fn(() => ({ isOpen: false, label: '休業' })),
+  }));
+  vi.doMock('../utils/array-utils', () => ({
+    groupBy: vi.fn(() => new Map()),
+  }));
+  vi.doMock('../utils/geo-utils', () => ({
+    haversineDistance: vi.fn(() => 10.5),
+  }));
+  vi.doMock('../utils/kana-utils', () => ({
+    katakanaToHiragana: vi.fn((s: string) => s),
+    hiraganaToKatakana: vi.fn((s: string) => s),
+    normalizeKana: vi.fn((s: string) => s),
+  }));
+  vi.doMock('../utils/request-utils', async () => await vi.importActual('../utils/request-utils'));
+  vi.doMock('../utils/search-utils', async () => await vi.importActual('../utils/search-utils'));
+  vi.doMock('../utils/db-utils', async () => await vi.importActual('../utils/db-utils'));
+  vi.doMock('../db/schema', async () => await vi.importActual('../db/schema'));
+  vi.doMock('drizzle-orm', () => ({
+    eq: vi.fn(() => ({})),
+    and: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    like: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    asc: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
+  const { default: pharmaciesRouter } = await import('../routes/pharmacies');
+  const app = express();
+  app.use(express.json());
+  app.use('/api/pharmacies', (_req, _res, next) => {
+    (_req as unknown as { user: { id: number; email: string; isAdmin: boolean } }).user = {
+      id: 1,
+      email: 'test@example.com',
+      isAdmin: false,
+    };
     next();
-  },
-}));
-
-vi.mock('../config/database', () => ({ db: mocks.db }));
-
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-
-vi.mock('../utils/business-hours-utils', () => ({
-  getBusinessHoursStatus: vi.fn(() => ({ isOpen: false, label: '休業' })),
-}));
-
-vi.mock('../utils/array-utils', () => ({
-  groupBy: vi.fn(() => new Map()),
-}));
-
-vi.mock('../utils/geo-utils', () => ({
-  haversineDistance: vi.fn(() => 10.5),
-}));
-
-vi.mock('../utils/kana-utils', () => ({
-  katakanaToHiragana: vi.fn((s: string) => s),
-  hiraganaToKatakana: vi.fn((s: string) => s),
-  normalizeKana: vi.fn((s: string) => s),
-}));
-
-vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => ({})),
-  and: vi.fn(() => ({})),
-  or: vi.fn(() => ({})),
-  like: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  asc: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
-
-import pharmaciesRouter from '../routes/pharmacies';
-import { createAuthenticatedApp } from './helpers/mock-builders';
-
-function createApp() {
-  return createAuthenticatedApp('/api/pharmacies', pharmaciesRouter);
+  }, pharmaciesRouter);
+  return app;
 }
 
 describe('pharmacies routes — coverage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe('GET /:id', () => {
     it('returns pharmacy detail', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -84,7 +90,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 404 when pharmacy not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -100,7 +106,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 400 for invalid id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/pharmacies/abc');
 
@@ -109,7 +115,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -127,7 +133,7 @@ describe('pharmacies routes — coverage', () => {
 
   describe('POST /:id/favorite', () => {
     it('adds favorite successfully', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -148,7 +154,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 400 for self-favorite', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/pharmacies/1/favorite');
 
@@ -157,7 +163,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 404 when target pharmacy not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -173,7 +179,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 400 for invalid id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/pharmacies/abc/favorite');
 
@@ -181,7 +187,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -198,7 +204,7 @@ describe('pharmacies routes — coverage', () => {
 
   describe('DELETE /:id/favorite', () => {
     it('removes favorite', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.delete.mockReturnValue({
         where: vi.fn().mockResolvedValue(undefined),
       });
@@ -210,7 +216,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 400 for invalid id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/pharmacies/abc/favorite');
 
@@ -218,7 +224,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.delete.mockReturnValue({
         where: vi.fn().mockRejectedValue(new Error('DB error')),
       });
@@ -231,7 +237,7 @@ describe('pharmacies routes — coverage', () => {
 
   describe('POST /:id/block', () => {
     it('blocks pharmacy successfully', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -252,7 +258,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 400 for self-block', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/pharmacies/1/block');
 
@@ -261,7 +267,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 404 when target not found', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -276,7 +282,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -293,7 +299,7 @@ describe('pharmacies routes — coverage', () => {
 
   describe('DELETE /:id/block', () => {
     it('removes block', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.delete.mockReturnValue({
         where: vi.fn().mockResolvedValue(undefined),
       });
@@ -305,7 +311,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 400 for invalid id', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/pharmacies/abc/block');
 
@@ -313,7 +319,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.delete.mockReturnValue({
         where: vi.fn().mockRejectedValue(new Error('DB error')),
       });
@@ -326,7 +332,7 @@ describe('pharmacies routes — coverage', () => {
 
   describe('GET /relationships', () => {
     it('returns relationships list', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           innerJoin: vi.fn().mockReturnValue({
@@ -346,7 +352,7 @@ describe('pharmacies routes — coverage', () => {
     });
 
     it('returns 500 on database error', async () => {
-      const app = createApp();
+      const app = await createApp();
       mocks.db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           innerJoin: vi.fn().mockReturnValue({

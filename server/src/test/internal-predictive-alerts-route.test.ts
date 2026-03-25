@@ -6,25 +6,24 @@ const mocks = vi.hoisted(() => ({
   runPredictiveAlertsJob: vi.fn(),
 }));
 
-vi.mock('../services/predictive-alert-service', () => ({
-  runPredictiveAlertsJob: mocks.runPredictiveAlertsJob,
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
-import internalPredictiveAlertsRouter from '../routes/internal-predictive-alerts';
-
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
 const ORIGINAL_PREDICTIVE_ALERTS_CRON_SECRET = process.env.PREDICTIVE_ALERTS_CRON_SECRET;
 
-function createApp() {
+async function createApp() {
+  vi.resetModules();
+  vi.doMock('../services/predictive-alert-service', () => ({
+    runPredictiveAlertsJob: mocks.runPredictiveAlertsJob,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
+
+  const { default: internalPredictiveAlertsRouter } = await import('../routes/internal-predictive-alerts');
   const app = express();
   app.use('/api/internal/predictive-alerts', internalPredictiveAlertsRouter);
   return app;
@@ -61,7 +60,7 @@ describe('internal predictive alerts route auth', () => {
   });
 
   it('returns 503 when cron secret is not configured', async () => {
-    const app = createApp();
+    const app = await createApp();
     const response = await request(app).get('/api/internal/predictive-alerts/run');
 
     expect(response.status).toBe(503);
@@ -70,7 +69,7 @@ describe('internal predictive alerts route auth', () => {
 
   it('returns 401 when authorization header is invalid', async () => {
     process.env.PREDICTIVE_ALERTS_CRON_SECRET = 'predictive-secret';
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .get('/api/internal/predictive-alerts/run')
@@ -83,7 +82,7 @@ describe('internal predictive alerts route auth', () => {
 
   it('does not accept CRON_SECRET as fallback', async () => {
     process.env.CRON_SECRET = 'shared-cron-secret';
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .get('/api/internal/predictive-alerts/run')
@@ -96,7 +95,7 @@ describe('internal predictive alerts route auth', () => {
 
   it('runs predictive alert job when authorized', async () => {
     process.env.PREDICTIVE_ALERTS_CRON_SECRET = 'predictive-secret';
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app)
       .get('/api/internal/predictive-alerts/run?nearExpiryDays=20&excessStockMonths=4')

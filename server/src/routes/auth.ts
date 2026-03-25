@@ -136,6 +136,11 @@ let testPharmacyCache: {
   rows: Array<{ id: number; name: string; email: string; prefecture: string; password: string | null }>;
 } | null = null;
 
+export function clearTestPharmacyPreviewStateForTests(): void {
+  isTestAccountColumnAvailable = null;
+  testPharmacyCache = null;
+}
+
 router.post('/register', rejectIfLegacyPasswordDisabled, registerLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const errors = validateRegistration(req.body);

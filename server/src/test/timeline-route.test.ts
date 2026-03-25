@@ -11,48 +11,50 @@ const mocks = vi.hoisted(() => ({
   requireLoginEnabled: { value: true },
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (
-    req: { user?: { id: number; email: string; isAdmin: boolean }; cookies?: Record<string, string> },
-    res: { status: (code: number) => { json: (body: unknown) => void } },
-    next: () => void,
-  ) => {
-    if (!mocks.requireLoginEnabled.value) {
-      res.status(401).json({ error: 'ログインが必要です' });
-      return;
-    }
-    req.user = { id: 1, email: 'pharmacy@example.com', isAdmin: false };
-    next();
-  },
-}));
+function mockTimelineRouteDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (
+      req: { user?: { id: number; email: string; isAdmin: boolean }; cookies?: Record<string, string> },
+      res: { status: (code: number) => { json: (body: unknown) => void } },
+      next: () => void,
+    ) => {
+      if (!mocks.requireLoginEnabled.value) {
+        res.status(401).json({ error: 'ログインが必要です' });
+        return;
+      }
+      req.user = { id: 1, email: 'pharmacy@example.com', isAdmin: false };
+      next();
+    },
+  }));
 
-vi.mock('../services/timeline-service', () => ({
-  getTimeline: mocks.getTimeline,
-  getTimelineUnreadCount: mocks.getTimelineUnreadCount,
-  markTimelineViewed: mocks.markTimelineViewed,
-  getSmartDigest: mocks.getSmartDigest,
-}));
+  vi.doMock('../services/timeline-service', () => ({
+    getTimeline: mocks.getTimeline,
+    getTimelineUnreadCount: mocks.getTimelineUnreadCount,
+    markTimelineViewed: mocks.markTimelineViewed,
+    getSmartDigest: mocks.getSmartDigest,
+  }));
 
-vi.mock('../config/database', () => ({
-  db: {},
-}));
+  vi.doMock('../config/database', () => ({
+    db: {},
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
 
-vi.mock('../services/system-event-service', () => ({
-  recordHttpUnhandledError: vi.fn(),
-}));
+  vi.doMock('../services/system-event-service', () => ({
+    recordHttpUnhandledError: vi.fn(),
+  }));
+}
 
-import timelineRouter from '../routes/timeline';
+let timelineRouter: express.Router;
 
-function createApp() {
+async function createApp() {
   const app = express();
   app.use(express.json());
   app.use(cookieParser());
@@ -75,14 +77,17 @@ const sampleEvents = [
 ];
 
 describe('timeline routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    mockTimelineRouteDependencies();
+    ({ default: timelineRouter } = await import('../routes/timeline'));
     mocks.requireLoginEnabled.value = true;
   });
 
   it('GET /api/timeline — 認証なしで 401 を返す', async () => {
     mocks.requireLoginEnabled.value = false;
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app).get('/api/timeline');
 
@@ -92,7 +97,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline — 認証ありでイベント一覧を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getTimeline.mockResolvedValue({
       events: sampleEvents,
       total: 1,
@@ -124,7 +129,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline?priority=critical — critical フィルタが動作する', async () => {
-    const app = createApp();
+    const app = await createApp();
     const criticalEvents = [
       {
         ...sampleEvents[0],
@@ -151,7 +156,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline — 無効な priority はフィルタしない（undefined で呼び出す）', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getTimeline.mockResolvedValue({
       events: sampleEvents,
       total: 1,
@@ -170,7 +175,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline/unread-count — 未読数を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getTimelineUnreadCount.mockResolvedValue(5);
 
     const response = await request(app).get('/api/timeline/unread-count');
@@ -181,7 +186,7 @@ describe('timeline routes', () => {
   });
 
   it('PATCH /api/timeline/mark-viewed — 閲覧済みマーク成功', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.markTimelineViewed.mockResolvedValue(undefined);
 
     const response = await request(app).patch('/api/timeline/mark-viewed');
@@ -192,7 +197,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline/digest — ダイジェストを返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getSmartDigest.mockResolvedValue(sampleEvents);
 
     const response = await request(app).get('/api/timeline/digest');
@@ -203,7 +208,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline/bootstrap — 初期データをまとめて返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getTimeline.mockResolvedValue({
       events: sampleEvents,
       total: 1,
@@ -243,7 +248,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline — サービスエラー時に 500 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getTimeline.mockRejectedValue(new Error('DB接続エラー'));
 
     const response = await request(app).get('/api/timeline');
@@ -253,7 +258,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline?since=2026-01-01T00:00:00.000Z — since パラメータが渡される', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getTimeline.mockResolvedValue({
       events: [],
       total: 0,
@@ -272,7 +277,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline?cursor=... — cursor パラメータが渡される', async () => {
-    const app = createApp();
+    const app = await createApp();
     const cursor = Buffer.from(JSON.stringify({
       timestamp: '2026-03-01T10:00:00.000Z',
       id: 'notification_1',
@@ -308,7 +313,7 @@ describe('timeline routes', () => {
   });
 
   it('GET /api/timeline?cursor=invalid — 不正な cursor は 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const response = await request(app).get('/api/timeline').query({ cursor: 'invalid' });
 

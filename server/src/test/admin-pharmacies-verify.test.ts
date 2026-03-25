@@ -21,69 +21,71 @@ const mocks = vi.hoisted(() => ({
   loggerError: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => {
-    next();
-  },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+function mockAdminPharmaciesVerifyDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => {
+      next();
+    },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: mocks.loggerError,
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: mocks.loggerError,
+    },
+  }));
 
-vi.mock('../services/pharmacy-verification-callback-service', () => ({
-  processVerificationCallback: mocks.processVerificationCallback,
-}));
+  vi.doMock('../services/pharmacy-verification-callback-service', () => ({
+    processVerificationCallback: mocks.processVerificationCallback,
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/geocode-service', () => ({
-  geocodeAddress: mocks.geocodeAddress,
-}));
+  vi.doMock('../services/geocode-service', () => ({
+    geocodeAddress: mocks.geocodeAddress,
+  }));
 
-vi.mock('../routes/business-hours', () => ({
-  fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
-  validateBusinessHours: mocks.validateBusinessHours,
-  validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
-}));
+  vi.doMock('../routes/business-hours', () => ({
+    fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
+    validateBusinessHours: mocks.validateBusinessHours,
+    validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
+  }));
 
-vi.mock('../utils/validators', () => ({
-  emailSchema: {
-    safeParse: vi.fn((val: string) => {
-      if (val.includes('@')) return { success: true, data: val };
-      return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
-    }),
-  },
-}));
+  vi.doMock('../utils/validators', () => ({
+    emailSchema: {
+      safeParse: vi.fn((val: string) => {
+        if (val.includes('@')) return { success: true, data: val };
+        return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
+      }),
+    },
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+  }));
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-import adminRouter from '../routes/admin';
+let adminRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -93,7 +95,10 @@ function createApp() {
 }
 
 describe('POST /api/admin/pharmacies/:id/verify', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    mockAdminPharmaciesVerifyDependencies();
+    ({ default: adminRouter } = await import('../routes/admin'));
     vi.clearAllMocks();
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });

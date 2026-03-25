@@ -10,39 +10,39 @@ const mocks = vi.hoisted(() => ({
   isMissingOpenClawRetrySchemaError: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-}));
+function mockAdminOpenClawRetriesDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+  }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../services/openclaw-retry-service', () => ({
-  getOpenClawRetryQueueSnapshot: mocks.getOpenClawRetryQueueSnapshot,
-  isMissingOpenClawRetrySchemaError: mocks.isMissingOpenClawRetrySchemaError,
-}));
+  vi.doMock('../services/openclaw-retry-service', () => ({
+    getOpenClawRetryQueueSnapshot: mocks.getOpenClawRetryQueueSnapshot,
+    isMissingOpenClawRetrySchemaError: mocks.isMissingOpenClawRetrySchemaError,
+  }));
 
-vi.mock('drizzle-orm', () => {
-  return {
+  vi.doMock('drizzle-orm', () => ({
     eq: vi.fn(() => ({})),
     and: vi.fn(() => ({})),
     desc: vi.fn(() => ({})),
     count: vi.fn(() => ({})),
-  };
-});
+  }));
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-import adminOpenClawRetriesRouter from '../routes/admin-openclaw-retries';
+let adminOpenClawRetriesRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -77,8 +77,12 @@ const sampleJob = {
 };
 
 describe('GET /admin/openclaw-retries', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    mockAdminOpenClawRetriesDependencies();
+    const { default: router } = await import('../routes/admin-openclaw-retries');
+    adminOpenClawRetriesRouter = router;
     mocks.getOpenClawRetryQueueSnapshot.mockResolvedValue(defaultStats);
     mocks.isMissingOpenClawRetrySchemaError.mockReturnValue(false);
   });

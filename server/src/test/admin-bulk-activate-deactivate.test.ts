@@ -15,60 +15,62 @@ const mocks = vi.hoisted(() => ({
   recordAuditLog: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+function mockAdminBulkActivateDeactivateDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-vi.mock('../middleware/error-handler', () => ({
-  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-}));
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: vi.fn(),
-}));
-vi.mock('../services/openclaw-log-context-service', () => ({
-  buildOpenClawLogContext: vi.fn(),
-}));
-vi.mock('../services/proposal-timeline-service', () => ({
-  buildProposalTimeline: vi.fn(),
-  fetchProposalTimelineActionRows: vi.fn(),
-}));
-vi.mock('../utils/path-utils', () => ({
-  isSafeInternalPath: (path: string) => path.startsWith('/'),
-}));
-vi.mock('../services/audit-log-service', () => ({
-  recordAuditLog: mocks.recordAuditLog,
-}));
-vi.mock('drizzle-orm', () => {
-  const sqlFn = Object.assign(
-    (..._args: unknown[]) => ({}),
-    { raw: (..._args: unknown[]) => ({}) },
-  );
-  return {
-    eq: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    inArray: vi.fn(() => ({})),
-    sql: sqlFn,
-  };
-});
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
+  vi.doMock('../middleware/error-handler', () => ({
+    getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+  }));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: vi.fn(),
+  }));
+  vi.doMock('../services/openclaw-log-context-service', () => ({
+    buildOpenClawLogContext: vi.fn(),
+  }));
+  vi.doMock('../services/proposal-timeline-service', () => ({
+    buildProposalTimeline: vi.fn(),
+    fetchProposalTimelineActionRows: vi.fn(),
+  }));
+  vi.doMock('../utils/path-utils', () => ({
+    isSafeInternalPath: (path: string) => path.startsWith('/'),
+  }));
+  vi.doMock('../services/audit-log-service', () => ({
+    recordAuditLog: mocks.recordAuditLog,
+  }));
+  vi.doMock('drizzle-orm', () => {
+    const sqlFn = Object.assign(
+      (..._args: unknown[]) => ({}),
+      { raw: (..._args: unknown[]) => ({}) },
+    );
+    return {
+      eq: vi.fn(() => ({})),
+      and: vi.fn(() => ({})),
+      desc: vi.fn(() => ({})),
+      inArray: vi.fn(() => ({})),
+      sql: sqlFn,
+    };
+  });
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-import adminRouter from '../routes/admin';
+let adminRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -93,7 +95,10 @@ function makeTx(pharmacies: { id: number; verificationStatus: string | null; isA
 }
 
 describe('Admin Bulk Actions — activate / deactivate', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    mockAdminBulkActivateDeactivateDependencies();
+    ({ default: adminRouter } = await import('../routes/admin'));
     vi.resetAllMocks();
     mocks.recordAuditLog.mockResolvedValue({});
   });

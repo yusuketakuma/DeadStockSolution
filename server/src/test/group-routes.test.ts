@@ -17,54 +17,59 @@ const mocks = vi.hoisted(() => ({
   requireLoginEnabled: { value: true },
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (
-    req: { user?: { id: number; email: string; isAdmin: boolean } },
-    res: { status: (code: number) => { json: (body: unknown) => void } },
-    next: () => void,
-  ) => {
-    if (!mocks.requireLoginEnabled.value) {
-      res.status(401).json({ error: 'ログインが必要です' });
-      return;
-    }
-    req.user = { id: 1, email: 'pharmacy@example.com', isAdmin: false };
-    next();
-  },
-}));
+function mockGroupRouteDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (
+      req: { user?: { id: number; email: string; isAdmin: boolean } },
+      res: { status: (code: number) => { json: (body: unknown) => void } },
+      next: () => void,
+    ) => {
+      if (!mocks.requireLoginEnabled.value) {
+        res.status(401).json({ error: 'ログインが必要です' });
+        return;
+      }
+      req.user = { id: 1, email: 'pharmacy@example.com', isAdmin: false };
+      next();
+    },
+  }));
 
-vi.mock('../services/group-service', () => ({
-  createGroup: mocks.createGroup,
-  updateGroup: mocks.updateGroup,
-  deleteGroup: mocks.deleteGroup,
-  listGroups: mocks.listGroups,
-  getMembershipSummary: mocks.getMembershipSummary,
-  getGroupDetail: mocks.getGroupDetail,
-  inviteMember: mocks.inviteMember,
-  acceptInvitation: mocks.acceptInvitation,
-  joinPublicGroup: mocks.joinPublicGroup,
-  removeMember: mocks.removeMember,
-  leaveGroup: mocks.leaveGroup,
-}));
+  vi.doMock('../services/group-service', () => ({
+    createGroup: mocks.createGroup,
+    updateGroup: mocks.updateGroup,
+    deleteGroup: mocks.deleteGroup,
+    listGroups: mocks.listGroups,
+    getMembershipSummary: mocks.getMembershipSummary,
+    getGroupDetail: mocks.getGroupDetail,
+    inviteMember: mocks.inviteMember,
+    acceptInvitation: mocks.acceptInvitation,
+    joinPublicGroup: mocks.joinPublicGroup,
+    removeMember: mocks.removeMember,
+    leaveGroup: mocks.leaveGroup,
+  }));
 
-vi.mock('../config/database', () => ({
-  db: {},
-}));
+  vi.doMock('../config/database', () => ({
+    db: {},
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
 
-vi.mock('../services/system-event-service', () => ({
-  recordHttpUnhandledError: vi.fn(),
-}));
+  vi.doMock('../services/system-event-service', () => ({
+    recordHttpUnhandledError: vi.fn(),
+  }));
 
-import { requireLogin } from '../middleware/auth';
-import groupsRouter from '../routes/groups';
+  vi.doMock('../utils/request-utils', async () => await vi.importActual('../utils/request-utils'));
+  vi.doMock('../utils/cursor-pagination', async () => await vi.importActual('../utils/cursor-pagination'));
+}
+
+let groupsRouter: express.Router;
+let requireLogin: express.RequestHandler;
 
 function createApp() {
   const app = express();
@@ -74,9 +79,13 @@ function createApp() {
 }
 
 describe('group routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.resetAllMocks();
     mocks.requireLoginEnabled.value = true;
+    mockGroupRouteDependencies();
+    ({ requireLogin } = await import('../middleware/auth'));
+    ({ default: groupsRouter } = await import('../routes/groups'));
   });
 
   // ── POST /api/groups ──────────────────────────────────
@@ -84,7 +93,7 @@ describe('group routes', () => {
     it('201 — グループ作成成功', async () => {
       const created = { id: 1, name: 'テストグループ', description: null, visibility: 'public', ownerPharmacyId: 1, createdAt: '', updatedAt: '', members: [], memberCount: 1 };
       mocks.createGroup.mockResolvedValue(created);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups')
@@ -98,7 +107,7 @@ describe('group routes', () => {
     it('201 — description 付きで作成', async () => {
       const created = { id: 2, name: 'G', description: '説明', visibility: 'invite_only', ownerPharmacyId: 1, createdAt: '', updatedAt: '', members: [], memberCount: 1 };
       mocks.createGroup.mockResolvedValue(created);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups')
@@ -109,7 +118,7 @@ describe('group routes', () => {
     });
 
     it('400 — name が空', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups')
@@ -120,7 +129,7 @@ describe('group routes', () => {
     });
 
     it('400 — visibility が不正', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups')
@@ -131,7 +140,7 @@ describe('group routes', () => {
     });
 
     it('400 — body なし', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups')
@@ -143,7 +152,7 @@ describe('group routes', () => {
 
     it('500 — サービスエラー', async () => {
       mocks.createGroup.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups')
@@ -158,7 +167,7 @@ describe('group routes', () => {
     it('200 — グループ一覧取得', async () => {
       const result = { groups: [], total: 0, offset: 0, limit: 20 };
       mocks.listGroups.mockResolvedValue(result);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups');
 
@@ -170,7 +179,7 @@ describe('group routes', () => {
     it('200 — limit/offset パラメータ付き', async () => {
       const result = { groups: [], total: 0, offset: 10, limit: 5 };
       mocks.listGroups.mockResolvedValue(result);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups?limit=5&offset=10');
 
@@ -181,7 +190,7 @@ describe('group routes', () => {
     it('200 — tab パラメータ付き', async () => {
       const result = { groups: [], total: 0, offset: 0, limit: 20 };
       mocks.listGroups.mockResolvedValue(result);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups?tab=mine');
 
@@ -200,7 +209,7 @@ describe('group routes', () => {
         pagination: { mode: 'cursor', hasMore: false, nextCursor: null },
       };
       mocks.listGroups.mockResolvedValue(result);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get(`/api/groups?cursor=${encodedCursor}`);
 
@@ -216,7 +225,7 @@ describe('group routes', () => {
     });
 
     it('400 — 不正な cursor', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups?cursor=!!!invalid!!!');
 
@@ -227,7 +236,7 @@ describe('group routes', () => {
 
     it('500 — サービスエラー', async () => {
       mocks.listGroups.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups');
 
@@ -242,7 +251,7 @@ describe('group routes', () => {
         groupPharmacyIds: [1, 2],
       };
       mocks.getMembershipSummary.mockResolvedValue(result);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups/membership-summary');
 
@@ -253,7 +262,7 @@ describe('group routes', () => {
 
     it('500 — サービスエラー', async () => {
       mocks.getMembershipSummary.mockRejectedValue(new Error('DB error'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups/membership-summary');
 
@@ -266,7 +275,7 @@ describe('group routes', () => {
     it('200 — グループ詳細取得', async () => {
       const detail = { id: 1, name: 'G', description: null, visibility: 'public', ownerPharmacyId: 1, createdAt: '', updatedAt: '', members: [], memberCount: 0 };
       mocks.getGroupDetail.mockResolvedValue(detail);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups/1');
 
@@ -276,7 +285,7 @@ describe('group routes', () => {
     });
 
     it('400 — 不正なID', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups/abc');
 
@@ -286,7 +295,7 @@ describe('group routes', () => {
 
     it('404 — グループが存在しない', async () => {
       mocks.getGroupDetail.mockRejectedValue(new Error('グループが見つかりません'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups/999');
 
@@ -295,7 +304,7 @@ describe('group routes', () => {
 
     it('403 — 閲覧権限なし', async () => {
       mocks.getGroupDetail.mockRejectedValue(new Error('このグループを閲覧する権限がありません'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups/1');
 
@@ -308,7 +317,7 @@ describe('group routes', () => {
     it('200 — グループ更新成功', async () => {
       const updated = { id: 1, name: '新名前', description: null, visibility: 'public', ownerPharmacyId: 1, createdAt: '', updatedAt: '', members: [], memberCount: 1 };
       mocks.updateGroup.mockResolvedValue(updated);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .put('/api/groups/1')
@@ -320,7 +329,7 @@ describe('group routes', () => {
     });
 
     it('400 — 不正なID', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .put('/api/groups/abc')
@@ -332,7 +341,7 @@ describe('group routes', () => {
 
     it('403 — オーナー以外が更新', async () => {
       mocks.updateGroup.mockRejectedValue(new Error('グループオーナーのみ更新できます'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .put('/api/groups/1')
@@ -346,7 +355,7 @@ describe('group routes', () => {
   describe('DELETE /api/groups/:id', () => {
     it('204 — グループ削除成功', async () => {
       mocks.deleteGroup.mockResolvedValue(undefined);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/1');
 
@@ -355,7 +364,7 @@ describe('group routes', () => {
     });
 
     it('400 — 不正なID', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/abc');
 
@@ -365,7 +374,7 @@ describe('group routes', () => {
 
     it('403 — オーナー以外が削除', async () => {
       mocks.deleteGroup.mockRejectedValue(new Error('グループオーナーのみ削除できます'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/1');
 
@@ -374,7 +383,7 @@ describe('group routes', () => {
 
     it('404 — グループが見つからない', async () => {
       mocks.deleteGroup.mockRejectedValue(new Error('グループが見つかりません'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/999');
 
@@ -386,7 +395,7 @@ describe('group routes', () => {
   describe('POST /api/groups/:id/invite', () => {
     it('201 — 招待送信成功', async () => {
       mocks.inviteMember.mockResolvedValue(undefined);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups/1/invite')
@@ -397,7 +406,7 @@ describe('group routes', () => {
     });
 
     it('400 — pharmacyId なし', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups/1/invite')
@@ -408,7 +417,7 @@ describe('group routes', () => {
     });
 
     it('400 — pharmacyId が不正', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups/1/invite')
@@ -420,7 +429,7 @@ describe('group routes', () => {
 
     it('403 — 権限不足', async () => {
       mocks.inviteMember.mockRejectedValue(new Error('招待できるのはオーナーまたは管理者のみです'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups/1/invite')
@@ -431,7 +440,7 @@ describe('group routes', () => {
 
     it('409 — 既にメンバー', async () => {
       mocks.inviteMember.mockRejectedValue(new Error('既にグループメンバーです'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups/1/invite')
@@ -442,7 +451,7 @@ describe('group routes', () => {
 
     it('409 — 既に招待済み', async () => {
       mocks.inviteMember.mockRejectedValue(new Error('既に招待済みです'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app)
         .post('/api/groups/1/invite')
@@ -456,7 +465,7 @@ describe('group routes', () => {
   describe('POST /api/groups/:id/join', () => {
     it('200 — グループ参加成功', async () => {
       mocks.joinPublicGroup.mockResolvedValue(undefined);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/1/join');
 
@@ -465,7 +474,7 @@ describe('group routes', () => {
     });
 
     it('400 — 不正なID', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/abc/join');
 
@@ -475,7 +484,7 @@ describe('group routes', () => {
 
     it('409 — 既にメンバー', async () => {
       mocks.joinPublicGroup.mockRejectedValue(new Error('既にグループメンバーです'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/1/join');
 
@@ -487,7 +496,7 @@ describe('group routes', () => {
   describe('POST /api/groups/:id/accept', () => {
     it('200 — 招待承認成功', async () => {
       mocks.acceptInvitation.mockResolvedValue(undefined);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/1/accept');
 
@@ -496,7 +505,7 @@ describe('group routes', () => {
     });
 
     it('400 — 不正なID', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/abc/accept');
 
@@ -506,7 +515,7 @@ describe('group routes', () => {
 
     it('404 — 招待が見つからない', async () => {
       mocks.acceptInvitation.mockRejectedValue(new Error('有効な招待が見つかりません'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/1/accept');
 
@@ -518,7 +527,7 @@ describe('group routes', () => {
   describe('POST /api/groups/:id/leave', () => {
     it('200 — グループ脱退成功', async () => {
       mocks.leaveGroup.mockResolvedValue(undefined);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/1/leave');
 
@@ -527,7 +536,7 @@ describe('group routes', () => {
     });
 
     it('400 — 不正なID', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/abc/leave');
 
@@ -537,7 +546,7 @@ describe('group routes', () => {
 
     it('403 — オーナーは脱退不可', async () => {
       mocks.leaveGroup.mockRejectedValue(new Error('オーナーはグループを脱退できません'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/1/leave');
 
@@ -546,7 +555,7 @@ describe('group routes', () => {
 
     it('403 — メンバーではない', async () => {
       mocks.leaveGroup.mockRejectedValue(new Error('グループメンバーではありません'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).post('/api/groups/1/leave');
 
@@ -558,7 +567,7 @@ describe('group routes', () => {
   describe('DELETE /api/groups/:id/members/:pharmacyId', () => {
     it('204 — メンバー削除成功', async () => {
       mocks.removeMember.mockResolvedValue(undefined);
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/1/members/2');
 
@@ -567,7 +576,7 @@ describe('group routes', () => {
     });
 
     it('400 — グループID不正', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/abc/members/2');
 
@@ -576,7 +585,7 @@ describe('group routes', () => {
     });
 
     it('400 — pharmacyId 不正', async () => {
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/1/members/abc');
 
@@ -586,7 +595,7 @@ describe('group routes', () => {
 
     it('403 — 権限不足', async () => {
       mocks.removeMember.mockRejectedValue(new Error('招待できるのはオーナーまたは管理者のみです'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/1/members/2');
 
@@ -595,7 +604,7 @@ describe('group routes', () => {
 
     it('404 — メンバーが見つからない', async () => {
       mocks.removeMember.mockRejectedValue(new Error('対象メンバーが見つかりません'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/1/members/999');
 
@@ -604,7 +613,7 @@ describe('group routes', () => {
 
     it('403 — オーナーは削除不可', async () => {
       mocks.removeMember.mockRejectedValue(new Error('オーナーは削除できません'));
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).delete('/api/groups/1/members/2');
 
@@ -616,7 +625,7 @@ describe('group routes', () => {
   describe('認証', () => {
     it('401 — 未認証でアクセス', async () => {
       mocks.requireLoginEnabled.value = false;
-      const app = createApp();
+      const app = await createApp();
 
       const res = await request(app).get('/api/groups');
 

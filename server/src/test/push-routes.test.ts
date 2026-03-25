@@ -57,8 +57,7 @@ vi.mock('../services/system-event-service', () => ({
   recordHttpUnhandledError: vi.fn(),
 }));
 
-import { requireLogin } from '../middleware/auth';
-import pushRouter from '../routes/push';
+let pushRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -67,6 +66,12 @@ function createApp() {
   app.use('/api/push', pushRouter);
   return app;
 }
+
+beforeEach(async () => {
+  vi.resetModules();
+  const { default: router } = await import('../routes/push');
+  pushRouter = router;
+});
 
 const BASE_SUBSCRIPTION_RECORD = {
   id: 1,

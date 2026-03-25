@@ -19,62 +19,63 @@ const mocks = vi.hoisted(() => ({
   recordAuditLog: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-}));
+function mockAdminBulkActionsDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+  }));
+  vi.doMock('../config/database', () => ({ db: mocks.db }));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
+  vi.doMock('../middleware/error-handler', () => ({
+    getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+  }));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: mocks.handoffToOpenClaw,
+  }));
+  vi.doMock('../services/openclaw-log-context-service', () => ({
+    buildOpenClawLogContext: mocks.buildOpenClawLogContext,
+  }));
+  vi.doMock('../services/proposal-timeline-service', () => ({
+    buildProposalTimeline: mocks.buildProposalTimeline,
+    fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
+  }));
+  vi.doMock('../utils/path-utils', () => ({
+    isSafeInternalPath: (path: string) => path.startsWith('/'),
+  }));
+  vi.doMock('../services/audit-log-service', () => ({
+    recordAuditLog: mocks.recordAuditLog,
+  }));
+  vi.doMock('drizzle-orm', () => {
+    const sqlFn = Object.assign(
+      (..._args: unknown[]) => ({}),
+      { raw: (..._args: unknown[]) => ({}) },
+    );
+    return {
+      eq: vi.fn(() => ({})),
+      and: vi.fn(() => ({})),
+      desc: vi.fn(() => ({})),
+      inArray: vi.fn(() => ({})),
+      sql: sqlFn,
+    };
+  });
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
-vi.mock('../config/database', () => ({ db: mocks.db }));
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
-vi.mock('../middleware/error-handler', () => ({
-  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-}));
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: mocks.handoffToOpenClaw,
-}));
-vi.mock('../services/openclaw-log-context-service', () => ({
-  buildOpenClawLogContext: mocks.buildOpenClawLogContext,
-}));
-vi.mock('../services/proposal-timeline-service', () => ({
-  buildProposalTimeline: mocks.buildProposalTimeline,
-  fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
-}));
-vi.mock('../utils/path-utils', () => ({
-  isSafeInternalPath: (path: string) => path.startsWith('/'),
-}));
-vi.mock('../services/audit-log-service', () => ({
-  recordAuditLog: mocks.recordAuditLog,
-}));
-vi.mock('drizzle-orm', () => {
-  const sqlFn = Object.assign(
-    (..._args: unknown[]) => ({}),
-    { raw: (..._args: unknown[]) => ({}) },
-  );
-  return {
-    eq: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    inArray: vi.fn(() => ({})),
-    sql: sqlFn,
-  };
-});
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+let adminRouter: express.Router;
 
-import adminRouter from '../routes/admin';
-
-function createApp() {
+async function createApp() {
   const app = express();
   app.use(express.json());
   app.use('/api/admin', adminRouter);
@@ -82,8 +83,11 @@ function createApp() {
 }
 
 describe('Admin Bulk Actions', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.resetModules();
+    mockAdminBulkActionsDependencies();
+    ({ default: adminRouter } = await import('../routes/admin'));
     mocks.recordAuditLog.mockResolvedValue({});
   });
 
@@ -108,7 +112,7 @@ describe('Admin Bulk Actions', () => {
         return fn(tx);
       });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [1, 2], action: 'verify' });
@@ -120,7 +124,7 @@ describe('Admin Bulk Actions', () => {
     });
 
     it('薬局IDが空の場合400を返す', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [], action: 'verify' });
@@ -130,7 +134,7 @@ describe('Admin Bulk Actions', () => {
     });
 
     it('薬局IDが100件を超える場合400を返す', async () => {
-      const app = createApp();
+      const app = await createApp();
       const ids = Array.from({ length: 101 }, (_, i) => i + 1);
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
@@ -141,7 +145,7 @@ describe('Admin Bulk Actions', () => {
     });
 
     it('不正な薬局IDを含む場合400を返す', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [1, -1, 'abc'], action: 'verify' });
@@ -162,7 +166,7 @@ describe('Admin Bulk Actions', () => {
         return fn(tx);
       });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [999], action: 'verify' });
@@ -184,7 +188,7 @@ describe('Admin Bulk Actions', () => {
         return fn(tx);
       });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [1], action: 'verify' });
@@ -214,7 +218,7 @@ describe('Admin Bulk Actions', () => {
         return fn(tx);
       });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [1], action: 'reject', reason: '不適切な登録' });
@@ -225,7 +229,7 @@ describe('Admin Bulk Actions', () => {
     });
 
     it('却下理由なしの場合400を返す', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [1], action: 'reject' });
@@ -248,7 +252,7 @@ describe('Admin Bulk Actions', () => {
         return fn(tx);
       });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [1], action: 'reject', reason: '不適切' });
@@ -278,7 +282,7 @@ describe('Admin Bulk Actions', () => {
         return fn(tx);
       });
 
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [5], action: 'activate' });
@@ -289,7 +293,7 @@ describe('Admin Bulk Actions', () => {
     });
 
     it('returns 400 for invalid action', async () => {
-      const app = createApp();
+      const app = await createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
         .send({ pharmacyIds: [1], action: 'invalid' });

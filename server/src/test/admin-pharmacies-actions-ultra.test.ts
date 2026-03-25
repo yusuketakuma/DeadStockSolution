@@ -19,75 +19,77 @@ const mocks = vi.hoisted(() => ({
   updateOpenClawWorkItem: vi.fn(),
 }));
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-}));
+function mockAdminPharmaciesActionsUltraDependencies() {
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+  }));
 
-vi.mock('../config/database', () => ({
-  db: mocks.db,
-}));
+  vi.doMock('../config/database', () => ({
+    db: mocks.db,
+  }));
 
-vi.mock('../services/openclaw-service', () => ({
-  handoffToOpenClaw: mocks.handoffToOpenClaw,
-}));
+  vi.doMock('../services/openclaw-service', () => ({
+    handoffToOpenClaw: mocks.handoffToOpenClaw,
+  }));
 
-vi.mock('../services/openclaw-log-context-service', () => ({
-  buildOpenClawLogContext: mocks.buildOpenClawLogContext,
-}));
+  vi.doMock('../services/openclaw-log-context-service', () => ({
+    buildOpenClawLogContext: mocks.buildOpenClawLogContext,
+  }));
 
-vi.mock('../services/log-service', () => ({
-  writeLog: mocks.writeLog,
-  getClientIp: mocks.getClientIp,
-}));
+  vi.doMock('../services/log-service', () => ({
+    writeLog: mocks.writeLog,
+    getClientIp: mocks.getClientIp,
+  }));
 
-vi.mock('../services/proposal-timeline-service', () => ({
-  buildProposalTimeline: mocks.buildProposalTimeline,
-  fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
-}));
+  vi.doMock('../services/proposal-timeline-service', () => ({
+    buildProposalTimeline: mocks.buildProposalTimeline,
+    fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
+  }));
 
-vi.mock('../services/openclaw-thread-service', () => ({
-  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
-  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
-  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
-}));
+  vi.doMock('../services/openclaw-thread-service', () => ({
+    mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+    isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
+    updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+  }));
 
-vi.mock('../services/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+  vi.doMock('../services/logger', () => ({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  }));
 
-vi.mock('../utils/path-utils', () => ({
-  isSafeInternalPath: vi.fn((p: string) => p.startsWith('/')),
-}));
+  vi.doMock('../utils/path-utils', () => ({
+    isSafeInternalPath: vi.fn((p: string) => p.startsWith('/')),
+  }));
 
-vi.mock('express-rate-limit', () => ({
-  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  vi.doMock('express-rate-limit', () => ({
+    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
 
-vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  desc: vi.fn(() => ({})),
-  sql: vi.fn(() => ({})),
-  or: vi.fn(() => ({})),
-  asc: vi.fn(() => ({})),
-  gte: vi.fn(() => ({})),
-  lte: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
-  isNull: vi.fn(() => ({})),
-  exists: vi.fn(() => ({})),
-  not: vi.fn(() => ({})),
-  ilike: vi.fn(() => ({})),
-  count: vi.fn(() => ({})),
-  ne: vi.fn(() => ({})),
-  lt: vi.fn(() => ({})),
-  notInArray: vi.fn(() => ({})),
-}));
+  vi.doMock('drizzle-orm', () => ({
+    and: vi.fn(() => ({})),
+    eq: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    sql: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    asc: vi.fn(() => ({})),
+    gte: vi.fn(() => ({})),
+    lte: vi.fn(() => ({})),
+    inArray: vi.fn(() => ({})),
+    isNull: vi.fn(() => ({})),
+    exists: vi.fn(() => ({})),
+    not: vi.fn(() => ({})),
+    ilike: vi.fn(() => ({})),
+    count: vi.fn(() => ({})),
+    ne: vi.fn(() => ({})),
+    lt: vi.fn(() => ({})),
+    notInArray: vi.fn(() => ({})),
+  }));
+}
 
-import adminRouter from '../routes/admin';
+let adminRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -148,7 +150,10 @@ function createInsertQuery() {
 }
 
 describe('admin-pharmacies-actions ultra coverage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    mockAdminPharmaciesActionsUltraDependencies();
+    ({ default: adminRouter } = await import('../routes/admin'));
     vi.resetAllMocks();
     mocks.writeLog.mockReturnValue(undefined);
     mocks.getClientIp.mockReturnValue('127.0.0.1');

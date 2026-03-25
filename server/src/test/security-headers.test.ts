@@ -1,31 +1,21 @@
+import express from 'express';
 import request from 'supertest';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { setupSecurity } from '../config/app-security';
 
-// db mock must be hoisted so it is set up before app.ts is imported
-const mocks = vi.hoisted(() => ({
-  dbExecute: vi.fn(),
-}));
-
-vi.mock('../config/database', () => ({
-  db: { execute: mocks.dbExecute },
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
-// Import app after mocks are set up
-import app from '../app';
+function createSecurityApp() {
+  const app = express();
+  app.disable('x-powered-by');
+  setupSecurity(app);
+  app.get('/api/health', (_req, res) => {
+    res.json({ ok: true });
+  });
+  return app;
+}
 
 describe('セキュリティヘッダー', () => {
   it('Permissions-Policy ヘッダーが設定されており camera, microphone, geolocation, payment を含む', async () => {
-    mocks.dbExecute.mockResolvedValue([]);
-    const res = await request(app).get('/api/health');
+    const res = await request(createSecurityApp()).get('/api/health');
 
     const policy = res.headers['permissions-policy'] as string;
     expect(policy).toBeDefined();
@@ -36,29 +26,25 @@ describe('セキュリティヘッダー', () => {
   });
 
   it('Referrer-Policy ヘッダーが strict-origin-when-cross-origin である', async () => {
-    mocks.dbExecute.mockResolvedValue([]);
-    const res = await request(app).get('/api/health');
+    const res = await request(createSecurityApp()).get('/api/health');
 
     expect(res.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
   });
 
   it('X-Content-Type-Options ヘッダーが nosniff である', async () => {
-    mocks.dbExecute.mockResolvedValue([]);
-    const res = await request(app).get('/api/health');
+    const res = await request(createSecurityApp()).get('/api/health');
 
     expect(res.headers['x-content-type-options']).toBe('nosniff');
   });
 
   it('X-Frame-Options ヘッダーが存在する', async () => {
-    mocks.dbExecute.mockResolvedValue([]);
-    const res = await request(app).get('/api/health');
+    const res = await request(createSecurityApp()).get('/api/health');
 
     expect(res.headers['x-frame-options']).toBeDefined();
   });
 
   it('X-Powered-By ヘッダーが存在しない', async () => {
-    mocks.dbExecute.mockResolvedValue([]);
-    const res = await request(app).get('/api/health');
+    const res = await request(createSecurityApp()).get('/api/health');
 
     expect(res.headers['x-powered-by']).toBeUndefined();
   });

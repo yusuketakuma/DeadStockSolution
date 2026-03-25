@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Response } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,52 +16,85 @@ const mocks = vi.hoisted(() => ({
   loggerError: vi.fn(),
 }));
 
-vi.mock('../services/log-center-service', () => ({
-  queryLogs: mocks.queryLogs,
-  getLogSummary: mocks.getLogSummary,
-  getLogInsights: mocks.getLogInsights,
-  getLogEntryById: mocks.getLogEntryById,
-  getLogInsightForEntry: mocks.getLogInsightForEntry,
-  LOG_ISSUE_WORKFLOW_STATUSES: ['new', 'investigating', 'resolved', 'false_positive'],
-  LOG_SOURCES: ['activity_logs', 'system_events', 'drug_master_sync_logs'],
-  LOG_LEVELS: ['critical', 'error', 'warning', 'info'],
-  isLogLevel: (v: string) => ['critical', 'error', 'warning', 'info'].includes(v),
-}));
-
-vi.mock('../services/log-center-issue-service', () => ({
-  getLogIssueHistory: mocks.getLogIssueHistory,
-  updateLogIssueState: mocks.updateLogIssueState,
-}));
-
-vi.mock('../services/openclaw-log-push-service', () => ({
-  escalateLogAlertToOpenClaw: mocks.escalateLogAlertToOpenClaw,
-}));
-
-vi.mock('../services/logger', () => ({
-  logger: {
-    error: mocks.loggerError,
-    info: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
-
-vi.mock('../services/observability-service', () => ({
-  recordRequestMetric: vi.fn(),
-}));
-
 // Default user injected by requireLogin mock
 let currentUser = { id: 1, email: 'admin@example.com', isAdmin: true };
+let adminLogCenterRouter: express.Router;
 
-vi.mock('../middleware/auth', () => ({
-  requireLogin: (req: { user?: unknown }, _res: unknown, next: () => void) => {
-    req.user = currentUser;
-    next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
-
-import adminLogCenterRouter from '../routes/admin-log-center';
+function mockAdminLogCenterRouteDependencies() {
+  vi.doMock('../services/log-center-service', () => ({
+    queryLogs: mocks.queryLogs,
+    getLogSummary: mocks.getLogSummary,
+    getLogInsights: mocks.getLogInsights,
+    getLogEntryById: mocks.getLogEntryById,
+    getLogInsightForEntry: mocks.getLogInsightForEntry,
+    LOG_ISSUE_WORKFLOW_STATUSES: ['new', 'investigating', 'resolved', 'false_positive'],
+    LOG_SOURCES: ['activity_logs', 'system_events', 'drug_master_sync_logs'],
+    LOG_LEVELS: ['critical', 'error', 'warning', 'info'],
+    isLogLevel: (v: string) => ['critical', 'error', 'warning', 'info'].includes(v),
+  }));
+  vi.doMock('../services/log-center-issue-service', () => ({
+    getLogIssueHistory: mocks.getLogIssueHistory,
+    updateLogIssueState: mocks.updateLogIssueState,
+  }));
+  vi.doMock('../services/openclaw-log-push-service', () => ({
+    escalateLogAlertToOpenClaw: mocks.escalateLogAlertToOpenClaw,
+  }));
+  vi.doMock('../services/logger', () => ({
+    logger: {
+      error: mocks.loggerError,
+      info: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn(),
+    },
+  }));
+  vi.doMock('../services/observability-service', () => ({
+    recordRequestMetric: vi.fn(),
+  }));
+  vi.doMock('../utils/request-utils', () => ({
+    parsePositiveInt: (raw: unknown) => {
+      if (typeof raw !== 'string') return undefined;
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+    },
+    normalizeSearchTerm: (raw: unknown) => (typeof raw === 'string' ? raw.trim() || undefined : undefined),
+    parseTimestamp: (raw: unknown) => {
+      if (typeof raw !== 'string') return null;
+      const date = new Date(raw);
+      return Number.isNaN(date.getTime()) ? null : date;
+    },
+  }));
+  vi.doMock('../routes/admin-utils', () => ({
+    handleAdminError: (_err: unknown, _logMessage: string, userMessage: string, res: Response) => {
+      res.status(500).json({ error: userMessage });
+    },
+    sendPaginated: (res: Response, data: unknown[], page: number, limit: number, total: number) => {
+      res.json({
+        data,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    },
+    parseListPagination: (req: { query: Record<string, unknown> }, defaultLimit = 50) => {
+      const pageRaw = typeof req.query.page === 'string' ? Number.parseInt(req.query.page, 10) : NaN;
+      const limitRaw = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : NaN;
+      return {
+        page: Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1,
+        limit: Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : defaultLimit,
+      };
+    },
+  }));
+  vi.doMock('../middleware/auth', () => ({
+    requireLogin: (req: { user?: unknown }, _res: unknown, next: () => void) => {
+      req.user = currentUser;
+      next();
+    },
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+  }));
+}
 
 // ── テスト用アプリ ────────────────────────────────────────
 
@@ -76,6 +109,14 @@ function createApp(userOverride?: Partial<{ id: number; email: string; isAdmin: 
   app.use('/api/admin/log-center', adminLogCenterRouter);
   return app;
 }
+
+beforeEach(async () => {
+  currentUser = { id: 1, email: 'admin@example.com', isAdmin: true };
+  vi.clearAllMocks();
+  vi.resetModules();
+  mockAdminLogCenterRouteDependencies();
+  ({ default: adminLogCenterRouter } = await import('../routes/admin-log-center'));
+});
 
 // ── サンプルデータ ──────────────────────────────────────
 
@@ -118,7 +159,7 @@ describe('GET /api/admin/log-center', () => {
   });
 
   it('クエリパラメータなしで 200 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('data');
@@ -128,7 +169,7 @@ describe('GET /api/admin/log-center', () => {
   });
 
   it('有効な source パラメータでフィルタする', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center?source=system_events');
     expect(res.status).toBe(200);
     expect(mocks.queryLogs).toHaveBeenCalledWith(
@@ -137,7 +178,7 @@ describe('GET /api/admin/log-center', () => {
   });
 
   it('有効な level パラメータでフィルタする', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center?level=error');
     expect(res.status).toBe(200);
     expect(mocks.queryLogs).toHaveBeenCalledWith(
@@ -146,7 +187,7 @@ describe('GET /api/admin/log-center', () => {
   });
 
   it('不正な level パラメータで 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center?level=invalid_level');
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('level');
@@ -154,7 +195,7 @@ describe('GET /api/admin/log-center', () => {
   });
 
   it('有効な日付範囲パラメータでフィルタする', async () => {
-    const app = createApp();
+    const app = await createApp();
     const from = '2026-01-01T00:00:00Z';
     const to = '2026-01-31T23:59:59Z';
     const res = await request(app)
@@ -166,21 +207,21 @@ describe('GET /api/admin/log-center', () => {
   });
 
   it('不正な from パラメータで 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center?from=not-a-date');
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('from');
   });
 
   it('不正な to パラメータで 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center?to=not-a-date');
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('to');
   });
 
   it('from が to より後の場合に 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .get('/api/admin/log-center?from=2026-03-10T00:00:00Z&to=2026-03-01T00:00:00Z');
     expect(res.status).toBe(400);
@@ -188,7 +229,7 @@ describe('GET /api/admin/log-center', () => {
   });
 
   it('90日を超える期間指定で 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .get('/api/admin/log-center?from=2025-01-01T00:00:00Z&to=2025-12-31T00:00:00Z');
     expect(res.status).toBe(400);
@@ -196,7 +237,7 @@ describe('GET /api/admin/log-center', () => {
   });
 
   it('ページネーションパラメータを受け取る', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.queryLogs.mockResolvedValue({ ...samplePaginatedResult, page: 2, limit: 10 });
     const res = await request(app).get('/api/admin/log-center?page=2&limit=10');
     expect(res.status).toBe(200);
@@ -206,7 +247,7 @@ describe('GET /api/admin/log-center', () => {
   });
 
   it('サービスエラー時に 500 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.queryLogs.mockRejectedValue(new Error('DB error'));
     const res = await request(app).get('/api/admin/log-center');
     expect(res.status).toBe(500);
@@ -222,7 +263,7 @@ describe('GET /api/admin/log-center/summary', () => {
   });
 
   it('サマリー統計を 200 で返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const summary = {
       total: 100,
       errors: 20,
@@ -240,7 +281,7 @@ describe('GET /api/admin/log-center/summary', () => {
   });
 
   it('サービスエラー時に 500 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogSummary.mockRejectedValue(new Error('DB error'));
     const res = await request(app).get('/api/admin/log-center/summary');
     expect(res.status).toBe(500);
@@ -275,7 +316,7 @@ describe('GET /api/admin/log-center/insights', () => {
   };
 
   it('インサイト集計を 200 で返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogInsights.mockResolvedValue(sampleInsights);
     const res = await request(app).get('/api/admin/log-center/insights');
     expect(res.status).toBe(200);
@@ -287,7 +328,7 @@ describe('GET /api/admin/log-center/insights', () => {
   });
 
   it('topLimit パラメータを渡す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogInsights.mockResolvedValue(sampleInsights);
     const res = await request(app).get('/api/admin/log-center/insights?topLimit=10');
     expect(res.status).toBe(200);
@@ -297,7 +338,7 @@ describe('GET /api/admin/log-center/insights', () => {
   });
 
   it('topLimit の上限は 50 に制限される', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogInsights.mockResolvedValue(sampleInsights);
     const res = await request(app).get('/api/admin/log-center/insights?topLimit=999');
     expect(res.status).toBe(200);
@@ -307,14 +348,14 @@ describe('GET /api/admin/log-center/insights', () => {
   });
 
   it('不正な level パラメータで 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center/insights?level=bad');
     expect(res.status).toBe(400);
     expect(mocks.getLogInsights).not.toHaveBeenCalled();
   });
 
   it('サービスエラー時に 500 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogInsights.mockRejectedValue(new Error('DB error'));
     const res = await request(app).get('/api/admin/log-center/insights');
     expect(res.status).toBe(500);
@@ -330,7 +371,7 @@ describe('GET /api/admin/log-center/export', () => {
   });
 
   it('JSON エクスポートで正しいヘッダーとボディを返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center/export');
     expect(res.status).toBe(200);
     expect(res.headers['content-disposition']).toMatch(/attachment.*\.json/);
@@ -341,7 +382,7 @@ describe('GET /api/admin/log-center/export', () => {
   });
 
   it('JSON エクスポートで複数ページの結果を取り切る', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.queryLogs
       .mockResolvedValueOnce({
         entries: [sampleEntry],
@@ -373,7 +414,7 @@ describe('GET /api/admin/log-center/export', () => {
   });
 
   it('CSV エクスポートで正しい Content-Type と Content-Disposition を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center/export?format=csv');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/csv');
@@ -381,7 +422,7 @@ describe('GET /api/admin/log-center/export', () => {
   });
 
   it('CSV エクスポートでヘッダー行を含む', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center/export?format=csv');
     expect(res.status).toBe(200);
     expect(res.text).toContain('"id"');
@@ -391,7 +432,7 @@ describe('GET /api/admin/log-center/export', () => {
   });
 
   it('CSV エクスポートでエントリのデータを含む', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center/export?format=csv');
     expect(res.status).toBe(200);
     expect(res.text).toContain('"system_events"');
@@ -399,14 +440,14 @@ describe('GET /api/admin/log-center/export', () => {
   });
 
   it('不正な日付パラメータで 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app).get('/api/admin/log-center/export?from=bad-date');
     expect(res.status).toBe(400);
     expect(mocks.queryLogs).not.toHaveBeenCalled();
   });
 
   it('サービスエラー時に 500 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.queryLogs.mockRejectedValue(new Error('DB error'));
     const res = await request(app).get('/api/admin/log-center/export');
     expect(res.status).toBe(500);
@@ -424,7 +465,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('有効なリクエストでエスカレーション成功 (200)', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
       .send({ source: 'system_events', logId: 101 });
@@ -439,7 +480,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('note パラメータをエスカレーションに渡す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
       .send({ source: 'system_events', logId: 101, note: 'テスト注記' });
@@ -451,7 +492,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('空の note は undefined として渡す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
       .send({ source: 'system_events', logId: 101, note: '   ' });
@@ -463,7 +504,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('source がない場合に 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
       .send({ logId: 101 });
@@ -472,7 +513,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('logId がない場合に 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
       .send({ source: 'system_events' });
@@ -481,7 +522,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('不正な source で 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
       .send({ source: 'invalid_source', logId: 101 });
@@ -489,7 +530,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('存在しない logId で 404 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogEntryById.mockResolvedValue(null);
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
@@ -499,7 +540,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('critical レベルのエントリは severity=critical でエスカレーション', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogEntryById.mockResolvedValue({ ...sampleEntry, level: 'critical' });
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
@@ -512,7 +553,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('warning レベルのエントリは severity=warning でエスカレーション', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogEntryById.mockResolvedValue({ ...sampleEntry, level: 'warning' });
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
@@ -525,7 +566,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('insight が null の場合も正常に動作する', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogInsightForEntry.mockResolvedValue(null);
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
@@ -539,7 +580,7 @@ describe('POST /api/admin/log-center/openclaw', () => {
   });
 
   it('サービスエラー時に 500 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.escalateLogAlertToOpenClaw.mockRejectedValue(new Error('OpenClaw error'));
     const res = await request(app)
       .post('/api/admin/log-center/openclaw')
@@ -564,7 +605,7 @@ describe('PATCH /api/admin/log-center/status', () => {
   });
 
   it('有効なステータス更新で 200 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .patch('/api/admin/log-center/status')
       .send({ source: 'system_events', logId: 101, status: 'investigating' });
@@ -579,7 +620,7 @@ describe('PATCH /api/admin/log-center/status', () => {
   });
 
   it('note 付きのステータス更新', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .patch('/api/admin/log-center/status')
       .send({ source: 'system_events', logId: 101, status: 'resolved', note: '修正完了' });
@@ -590,7 +631,7 @@ describe('PATCH /api/admin/log-center/status', () => {
   });
 
   it('不正な status enum で 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .patch('/api/admin/log-center/status')
       .send({ source: 'system_events', logId: 101, status: 'invalid_status' });
@@ -600,7 +641,7 @@ describe('PATCH /api/admin/log-center/status', () => {
   });
 
   it('source がない場合に 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .patch('/api/admin/log-center/status')
       .send({ logId: 101, status: 'investigating' });
@@ -608,7 +649,7 @@ describe('PATCH /api/admin/log-center/status', () => {
   });
 
   it('logId がない場合に 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .patch('/api/admin/log-center/status')
       .send({ source: 'system_events', status: 'investigating' });
@@ -616,7 +657,7 @@ describe('PATCH /api/admin/log-center/status', () => {
   });
 
   it('存在しない logId で 404 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogEntryById.mockResolvedValue(null);
     const res = await request(app)
       .patch('/api/admin/log-center/status')
@@ -625,7 +666,7 @@ describe('PATCH /api/admin/log-center/status', () => {
   });
 
   it('全ての有効なステータス値を受け付ける', async () => {
-    const app = createApp();
+    const app = await createApp();
     for (const status of ['new', 'investigating', 'resolved', 'false_positive']) {
       mocks.updateLogIssueState.mockResolvedValue({ status, note: null, updatedAt: null, updatedBy: null });
       const res = await request(app)
@@ -636,7 +677,7 @@ describe('PATCH /api/admin/log-center/status', () => {
   });
 
   it('actor の pharmacyId と email を updateLogIssueState に渡す', async () => {
-    const app = createApp({ id: 42, email: 'actor@example.com' });
+    const app = await createApp({ id: 42, email: 'actor@example.com' });
     const res = await request(app)
       .patch('/api/admin/log-center/status')
       .send({ source: 'system_events', logId: 101, status: 'investigating' });
@@ -650,7 +691,7 @@ describe('PATCH /api/admin/log-center/status', () => {
   });
 
   it('サービスエラー時に 500 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.updateLogIssueState.mockRejectedValue(new Error('DB error'));
     const res = await request(app)
       .patch('/api/admin/log-center/status')
@@ -681,7 +722,7 @@ describe('GET /api/admin/log-center/status-history', () => {
   ];
 
   it('有効な source と logId でヒストリーを返す (200)', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogIssueHistory.mockResolvedValue(sampleHistory);
     const res = await request(app)
       .get('/api/admin/log-center/status-history?source=system_events&logId=101');
@@ -695,7 +736,7 @@ describe('GET /api/admin/log-center/status-history', () => {
   });
 
   it('source がない場合に 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .get('/api/admin/log-center/status-history?logId=101');
     expect(res.status).toBe(400);
@@ -703,21 +744,21 @@ describe('GET /api/admin/log-center/status-history', () => {
   });
 
   it('logId がない場合に 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .get('/api/admin/log-center/status-history?source=system_events');
     expect(res.status).toBe(400);
   });
 
   it('不正な source で 400 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     const res = await request(app)
       .get('/api/admin/log-center/status-history?source=invalid_source&logId=101');
     expect(res.status).toBe(400);
   });
 
   it('空のヒストリーも正常に返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogIssueHistory.mockResolvedValue([]);
     const res = await request(app)
       .get('/api/admin/log-center/status-history?source=system_events&logId=101');
@@ -726,7 +767,7 @@ describe('GET /api/admin/log-center/status-history', () => {
   });
 
   it('サービスエラー時に 500 を返す', async () => {
-    const app = createApp();
+    const app = await createApp();
     mocks.getLogIssueHistory.mockRejectedValue(new Error('DB error'));
     const res = await request(app)
       .get('/api/admin/log-center/status-history?source=system_events&logId=101');
