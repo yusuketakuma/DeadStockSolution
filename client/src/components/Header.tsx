@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Badge } from 'react-bootstrap';
 import AppButton from './ui/AppButton';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useTimeline } from '../contexts/TimelineContext';
 import AppUpdatesPopover from './header/AppUpdatesPopover';
+import NotificationDropdown from './header/NotificationDropdown';
 import { sanitizeInternalPath } from '../utils/navigation';
 import { APP_VERSION } from '../constants/appVersion';
 
@@ -56,7 +56,7 @@ function isTrackablePath(pathname: string): boolean {
 
 export default function Header({ onToggleSidebar }: Props) {
   const { user } = useAuth();
-  const { unreadCount } = useTimeline();
+  const { events, unreadCount, markViewed } = useTimeline();
   const navigate = useNavigate();
   const location = useLocation();
   const [previousPath, setPreviousPath] = useState('');
@@ -65,6 +65,7 @@ export default function Header({ onToggleSidebar }: Props) {
   const [updatesError, setUpdatesError] = useState('');
   const [updatesData, setUpdatesData] = useState<GitHubUpdatesResponse | null>(null);
   const [updatesHistoryOpen, setUpdatesHistoryOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
 
   useEffect(() => {
     const nextPath = `${location.pathname}${location.search}${location.hash}`;
@@ -108,8 +109,19 @@ export default function Header({ onToggleSidebar }: Props) {
       setUpdatesHistoryOpen(false);
       return;
     }
+    // 排他制御: 通知ドロップダウンを閉じる
+    setNotificationOpen(false);
     if (!updatesLoading) {
       void loadGitHubUpdates();
+    }
+  };
+
+  const handleNotificationToggle = (nextOpen: boolean) => {
+    setNotificationOpen(nextOpen);
+    if (nextOpen) {
+      // 排他制御: アップデートポップオーバーを閉じる
+      setUpdatesPopoverOpen(false);
+      setUpdatesHistoryOpen(false);
     }
   };
 
@@ -164,17 +176,14 @@ export default function Header({ onToggleSidebar }: Props) {
               前回の画面へ戻る
             </Link>
           )}
-          {!user?.isAdmin && unreadCount > 0 && (
-            <Badge
-              bg="danger"
-              pill
-              className="me-2"
-              style={{ cursor: 'pointer' }}
-              onClick={() => navigate('/')}
-              title={`${unreadCount}件の未読`}
-            >
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </Badge>
+          {!user?.isAdmin && (
+            <NotificationDropdown
+              events={events}
+              unreadCount={unreadCount}
+              show={notificationOpen}
+              onToggle={handleNotificationToggle}
+              onMarkViewed={() => { void markViewed(); }}
+            />
           )}
           {quickActions.map((action) => (
             <Link key={action.to} to={action.to} className="app-header-quick-link">
@@ -185,6 +194,15 @@ export default function Header({ onToggleSidebar }: Props) {
       </div>
 
       <div className="app-header-quick-mobile d-lg-none" aria-label="ヘッダークイック導線">
+        {!user?.isAdmin && (
+          <NotificationDropdown
+            events={events}
+            unreadCount={unreadCount}
+            show={notificationOpen}
+            onToggle={handleNotificationToggle}
+            onMarkViewed={() => { void markViewed(); }}
+          />
+        )}
         {previousPath && (
           <Link to={previousPath} className="app-header-quick-link app-header-quick-link-muted">
             前回の画面へ戻る
