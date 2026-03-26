@@ -4,10 +4,10 @@
   "state": "stopped",
   "state_version": 1,
   "started_at": "2026-03-26T06:55:28Z",
-  "updated_at": "2026-03-26T12:34:09Z",
+  "updated_at": "2026-03-26T12:33:35Z",
   "resume_token": "1494DBFD-DE1B-4CCE-9FB6-4C5617272839",
-  "event_seq": 22,
-  "last_event_id": "event-000022",
+  "event_seq": 21,
+  "last_event_id": "event-000021",
   "fork_count": 0,
   "orchestration": {
     "max_state_retries": 3,
@@ -15,7 +15,7 @@
   },
   "cwd": "/Users/yusuke/DeadStockSolution",
   "project_name": "DeadStockSolution",
-  "prompt_seq": 2,
+  "prompt_seq": 1,
   "git": {
     "branch": "preview",
     "uncommitted_changes": 82,
