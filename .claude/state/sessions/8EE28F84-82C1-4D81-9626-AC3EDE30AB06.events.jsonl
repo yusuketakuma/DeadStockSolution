@@ -541,4 +541,3 @@ E"}}
 {"id":"event-000019","type":"tool.bash","ts":"2026-03-26T12:33:21Z","state":"initialized","data":{"command":"git checkout preview && git merge main --no-edit && git push origin preview"}}
 {"id":"event-000020","type":"tool.bash","ts":"2026-03-26T12:33:26Z","state":"initialized","data":{"command":"git stash pop 2>/dev/null; echo "done""}}
 {"id":"event-000021","type":"session.stop","ts":"2026-03-26T12:33:35Z","state":"stopped"}
-{"id":"event-000022","type":"tool.bash","ts":"2026-03-26T12:34:09Z","state":"stopped","data":{"command":"git status --short"}}

@@ -913,3 +913,32 @@
 ```
 
 ---
+
+## セッション: 2026-03-26T12:33:35Z
+
+- session_id: `8EE28F84-82C1-4D81-9626-AC3EDE30AB06`
+- project: `DeadStockSolution`
+- branch: `preview`
+- started_at: `2026-03-26T06:55:28Z`
+- ended_at: `2026-03-26T12:33:35Z`
+- duration_minutes: 878
+- changes: 1
+- commits: 4
+
+### 変更ファイル
+- `CHANGELOG.md`
+
+### 重要な変更（important=true）
+- （なし）
+
+### 次回への引き継ぎ（任意）
+
+**Plans.md のWIP/依頼中（抜粋）**:
+
+```
+80:- [ ] T951: ダッシュボード グラフ可視化 `cc:WIP` depends:T950
+143:- [ ] T983: クライアントバンドル最適化 `cc:WIP`
+161:- [ ] T993: フィーチャーフラグ段階有効化 runbook `cc:WIP`
+```
+
+---
