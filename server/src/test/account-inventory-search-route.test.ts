@@ -38,7 +38,7 @@ vi.mock('../middleware/error-handler', () => ({
   getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
 }));
 
-import accountInventorySearchRouter from '../routes/account-inventory-search';
+let accountInventorySearchRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -70,8 +70,10 @@ const validPreferences = {
 };
 
 describe('account inventory search routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: accountInventorySearchRouter } = await import('../routes/account-inventory-search'));
   });
 
   it('GET /api/account/inventory-search-preferences returns the saved preferences', async () => {

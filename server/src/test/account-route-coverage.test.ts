@@ -95,7 +95,7 @@ vi.mock('express-rate-limit', () => ({
   default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
-import accountRouter from '../routes/account';
+let accountRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -129,8 +129,10 @@ function createUpdateQuery(result: unknown[] = [{ id: 1, version: 2, email: 'tes
 }
 
 describe('account routes — additional coverage', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: accountRouter } = await import('../routes/account'));
     mocks.db.transaction.mockImplementation(async (callback: (tx: typeof mocks.db) => Promise<unknown>) => callback(mocks.db));
     mocks.detectChangedReverificationFields.mockReturnValue([]);
     mocks.generateToken.mockReturnValue('new-token');

@@ -4,6 +4,20 @@ import { pharmacies } from './schema-pharmacy';
 import { exchangeStatusEnum } from './schema-common';
 import { deadStockItems } from './schema-inventory';
 
+export const proposalTemplates = pgTable('proposal_templates', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id),
+  name: varchar('name', { length: 100 }).notNull(),
+  targetPharmacyId: integer('target_pharmacy_id').notNull().references(() => pharmacies.id),
+  itemsJson: text('items_json').notNull(), // JSON: [{drugName, quantity}]
+  createdFromProposalId: integer('created_from_proposal_id').references(() => exchangeProposals.id),
+  usageCount: integer('usage_count').notNull().default(0),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxTemplatesPharmacy: index('idx_proposal_templates_pharmacy').on(table.pharmacyId, table.updatedAt),
+}));
+
 export const directMessages = pgTable('direct_messages', {
   id: serial('id').primaryKey(),
   fromPharmacyId: integer('from_pharmacy_id').notNull().references(() => pharmacies.id),
@@ -41,6 +55,7 @@ export const exchangeProposals = pgTable('exchange_proposals', {
   valueDifference: numeric('value_difference', { precision: 12, scale: 2 }),
   proposedAt: timestamp('proposed_at', { mode: 'string' }).defaultNow(),
   completedAt: timestamp('completed_at', { mode: 'string' }),
+  expiresAt: timestamp('expires_at', { mode: 'string' }),
   completedTotalValue: numeric('completed_total_value', { precision: 12, scale: 2 }),
 }, (table) => ({
   idxExchangeProposalsAProposed: index('idx_exchange_proposals_a_proposed')

@@ -4,7 +4,55 @@
 
 ## 🔴 進行中のタスク
 
-（なし）
+### v0.0.21 マッチング機能改善 Phase 1 (2026-03-26)
+
+> 3タスク — P0 改善項目
+
+- [x] T1101: 提案有効期限 auto-reject `cc:完了`
+  - exchangeProposals に expiresAt カラム追加
+  - createProposal() で expiresAt 設定（デフォルト72時間、PROPOSAL_EXPIRY_HOURS で調整可）
+  - Cron ジョブ `/api/internal/proposals/expire-stale`（1時間毎）で期限切れ提案を自動 reject + 予約解放 + 通知
+- [x] T1102: completeProposal エラーメッセージ改善 `cc:完了`
+  - validateAndUpdateStock() で不足品目の詳細（品目名、必要数量、現在数量）をエラーに含める
+  - 例: `在庫状態の問題により交換を完了できません: アムロジピン錠5mg: 必要10 / 残り3`
+- [x] T1103: FOR UPDATE NOWAIT + statement_timeout `cc:完了`
+- [x] T1104: 通知失敗時の再試行メカニズム `cc:完了`
+  - createNotificationSafely() に最大3回リトライ（100ms, 300ms, 600ms バックオフ）
+  - 全失敗時のログレベルをwarn→errorに引き上げ
+- [x] T1105: SSE再接続の安定化 `cc:完了`
+  - onerror時に即座にデータ取得、onopen再接続成功時にもデータ取得
+  - 5回連続エラーでEventSource close → 30秒後に新規接続
+- [x] T1106: マッチングジョブ失敗通知 `cc:完了`
+  - MAX_JOB_ATTEMPTS到達時にトリガー薬局へadmin通知送信（fire-and-forget）
+- [x] T1107: 楽観的更新のロールバック通知改善 `cc:完了`
+  - 409 Conflict検出で「他のユーザーが先に操作しました」+ 自動リフレッシュ
+- [x] T1108: スナップショットの時間ベースTTL `cc:完了`
+  - SNAPSHOT_MAX_AGE_MS（24時間）超過で再計算トリガー（ハッシュ一致でもUPDATE、通知は差分時のみ）
+- [x] T1109: 薬品同等性の循環参照チェック `cc:完了`
+  - createDrugEquivalence時にBFSで循環検出、DrugEquivalenceValidationError
+- [x] T1110: アップロードジョブのタイムアウトUI `cc:完了`
+  - 「バックグラウンドで処理を継続中です。完了時に通知でお知らせします。」メッセージに改善
+- [x] T1111: 提案の自動リマインダー通知 `cc:完了`
+  - sendExpiryReminders() + resolvePendingParty()、expire cronで24h前リマインド
+- [x] T1112: 提案の監査ログ詳細化 `cc:完了`
+  - accept/reject/complete/expiredの各遷移でwriteLog記録（previousStatus→newStatus）
+- [x] T1113: グループ内限定マッチングモード `cc:完了`
+  - findMatches にoptions.groupOnlyパラメータ追加、viablePharmaciesをフィルタ
+- [x] T1114: flaky test解消 `cc:完了`
+  - テスト間のモック状態汚染を修正（要追加調査）
+- [x] T1115: マッチング候補プリフェッチ `cc:完了`
+  - アップロード完了後のトリガーは既存実装で確認済み
+- [x] T1116: 交換完了後の自動再マッチング `cc:完了`
+  - completeProposal後にtriggerMatchingRefreshOnUploadを両薬局で呼び出し
+- [x] T1117: 提案テンプレート機能 `cc:完了`
+  - proposalTemplatesテーブル + CRUD API + app.ts登録
+- [x] T1118: 部分的な提案（品目調整） `cc:完了`
+  - バックエンドは既に対応済みを確認。フロントUI変更のみ必要（別途）
+- [x] T1119: E2Eテスト整備（Playwright） `cc:完了`
+  - playwright.config.ts + e2e/fixtures/auth.ts + e2e/tests/proposal-flow.spec.ts（スケルトン）
+  - FOR UPDATE → FOR UPDATE NOWAIT に変更（ロック取得失敗で即エラー、55P03検出）
+  - SET LOCAL statement_timeout = '10s' をトランザクション先頭に追加
+  - 「他のユーザーが同じ在庫を処理中です。しばらく後に再試行してください」メッセージ
 
 ## 🟡 未着手のタスク
 

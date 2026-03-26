@@ -623,6 +623,7 @@ export async function findMatchesBatch(
 
 export async function findMatches(
   pharmacyId: number,
+  options: { groupOnly?: boolean } = {},
   deps: ServiceDependencies = getServiceDeps(),
 ): Promise<MatchCandidate[]> {
   const [matchingRuleProfile, [currentPharmacy], equivalenceMap] = await Promise.all([
@@ -659,11 +660,17 @@ export async function findMatches(
 
   if (viablePharmacies.length === 0) return [];
 
+  let filteredViablePharmacies = viablePharmacies;
+  if (options.groupOnly) {
+    filteredViablePharmacies = viablePharmacies.filter((p) => groupMemberIds.has(p.id));
+    if (filteredViablePharmacies.length === 0) return [];
+  }
+
   const favoriteIds = new Set(favoriteRows.map((row) => row.targetPharmacyId));
   const [matchingIndexes, successCountByPharmacy] = await Promise.all([
     buildSingleMatchingIndexes(
       pharmacyId,
-      viablePharmacies.map((pharmacy) => pharmacy.id),
+      filteredViablePharmacies.map((pharmacy) => pharmacy.id),
       myDeadStock,
       myUsedMeds,
       deps,
@@ -677,7 +684,7 @@ export async function findMatches(
   return buildCandidatesForSource({
     currentPharmacy,
     sourcePharmacyId: pharmacyId,
-    viablePharmacies,
+    viablePharmacies: filteredViablePharmacies,
     favoriteIds,
     groupMemberIds,
     preparedDeadStockByPharmacy: matchingIndexes.preparedDeadStockByPharmacy,
@@ -700,6 +707,6 @@ export function createMatchingService(
 } {
   return {
     findMatchesBatch: (pharmacyIds: number[]) => findMatchesBatch(pharmacyIds, deps),
-    findMatches: (pharmacyId: number) => findMatches(pharmacyId, deps),
+    findMatches: (pharmacyId: number) => findMatches(pharmacyId, {}, deps),
   };
 }

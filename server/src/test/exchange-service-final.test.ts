@@ -56,6 +56,18 @@ vi.mock('../services/statistics-cache-service', () => ({
   invalidateStatisticsSummaryCacheForPharmacies: mocks.invalidateStatisticsSummaryCacheForPharmacies,
 }));
 
+vi.mock('../services/log-service', () => ({
+  writeLog: vi.fn(),
+}));
+
+vi.mock('../utils/http-utils', () => ({
+  sleep: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../services/matching-refresh-service', () => ({
+  triggerMatchingRefreshOnUpload: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { completeProposal, createProposal } from '../services/exchange-execution-service';
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -73,6 +85,7 @@ describe('exchange-service-final', () => {
         update: vi.fn(),
         insert: vi.fn(),
         delete: vi.fn(),
+        execute: vi.fn().mockResolvedValue(undefined),
       };
 
       tx.select
@@ -156,7 +169,7 @@ describe('exchange-service-final', () => {
         async (cb: (t: typeof tx) => Promise<void>) => cb(tx),
       );
 
-      await expect(completeProposal(100, 1)).rejects.toThrow('在庫状態が変更されているため、交換を完了できません');
+      await expect(completeProposal(100, 1)).rejects.toThrow('在庫状態の問題により交換を完了できません');
     });
 
     it('throws when stock.pharmacyId does not match item.fromPharmacyId', async () => {
@@ -193,7 +206,7 @@ describe('exchange-service-final', () => {
         async (cb: (t: typeof tx) => Promise<void>) => cb(tx),
       );
 
-      await expect(completeProposal(100, 1)).rejects.toThrow('在庫状態が変更されているため、交換を完了できません');
+      await expect(completeProposal(100, 1)).rejects.toThrow('在庫状態の問題により交換を完了できません');
     });
   });
 
@@ -448,8 +461,8 @@ describe('exchange-service-final', () => {
       });
 
       expect(proposalId).toBe(55);
-      expect(mocks.logger.warn).toHaveBeenCalledWith(
-        'Proposal notification could not be persisted',
+      expect(mocks.logger.error).toHaveBeenCalledWith(
+        'Proposal notification failed after all retries',
         expect.any(Object),
       );
     });

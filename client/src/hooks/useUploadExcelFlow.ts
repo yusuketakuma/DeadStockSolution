@@ -292,8 +292,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
         return;
       }
       if (err instanceof Error && err.message.includes('待機時間が長くなっています')) {
-        setFailed('アップロード処理の待機時間が上限を超えました。');
-        setError(err.message);
+        setFailed('バックグラウンドで処理を継続中です。完了時に通知でお知らせします。');
         setMessage(resolvePossiblyRunningJobMessage(currentJobId));
         return;
       }

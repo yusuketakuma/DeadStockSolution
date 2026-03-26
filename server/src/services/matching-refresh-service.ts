@@ -247,6 +247,8 @@ function logRefreshJobAttemptOutcome(job: RefreshJob, nextAttempts: number, erro
       attempts: nextAttempts,
       error: errorMessage,
     });
+
+    void notifyMatchingRefreshFailure(job, nextAttempts, errorMessage);
     return;
   }
 
@@ -257,6 +259,26 @@ function logRefreshJobAttemptOutcome(job: RefreshJob, nextAttempts: number, erro
     attempts: nextAttempts,
     error: errorMessage,
   });
+}
+
+async function notifyMatchingRefreshFailure(
+  job: RefreshJob,
+  attempts: number,
+  errorMessage: string,
+): Promise<void> {
+  try {
+    await createNotification({
+      pharmacyId: job.triggerPharmacyId,
+      type: 'matching_refresh_complete',
+      title: 'マッチング再計算が失敗しました',
+      message: `薬局ID ${job.triggerPharmacyId} のマッチング再計算が${attempts}回試行後に失敗しました: ${errorMessage}`,
+    });
+  } catch (err) {
+    logger.warn('Failed to send matching refresh failure notification', {
+      jobId: job.id,
+      error: getErrorMessage(err),
+    });
+  }
 }
 
 async function persistSnapshotEntries(

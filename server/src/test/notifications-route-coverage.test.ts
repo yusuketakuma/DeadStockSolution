@@ -75,6 +75,13 @@ function createApp() {
 describe('notifications routes — additional coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.db.select.mockReset();
+    mocks.db.update.mockReset();
+    mocks.db.insert.mockReset();
+    mocks.getDashboardUnreadCount.mockReset();
+    mocks.invalidateDashboardUnreadCache.mockReset();
+    mocks.markAsRead.mockReset();
+    mocks.markAllDashboardAsRead.mockReset();
     mocks.db.select.mockImplementation(() => createSelectQuery([]));
     mocks.db.update.mockImplementation(() => ({
       set: vi.fn(() => ({

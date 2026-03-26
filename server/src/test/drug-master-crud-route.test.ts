@@ -64,6 +64,7 @@ function createApp() {
 }
 
 beforeEach(async () => {
+  vi.resetAllMocks();
   vi.resetModules();
   mockDrugMasterCrudDependencies();
   const { default: router } = await import('../routes/drug-master');
@@ -98,7 +99,7 @@ function createPaginatedQuery(rows: unknown[], total: number) {
 
 describe('drug-master-crud routes', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe('GET /stats', () => {

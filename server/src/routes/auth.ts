@@ -711,13 +711,13 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
       return;
     }
 
-    // 結果をキャッシュ（テスト薬局データはほぼ変わらない）
-    testPharmacyCache = { expiresAt: Date.now() + TEST_PHARMACY_CACHE_TTL_MS, rows };
-
     if (rows.length === 0) {
       res.status(404).json({ error: 'テスト薬局がDBに登録されていません（5件登録を確認してください）' });
       return;
     }
+
+    // 空結果はキャッシュせず、登録直後の 404 残留を避ける。
+    testPharmacyCache = { expiresAt: Date.now() + TEST_PHARMACY_CACHE_TTL_MS, rows };
 
     res.setHeader('Cache-Control', cacheControlValue);
     res.json({

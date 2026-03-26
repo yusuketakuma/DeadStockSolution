@@ -38,6 +38,10 @@ vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('../services/matching-refresh-service', () => ({
+  triggerMatchingRefreshOnUpload: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { acceptProposal, rejectProposal, completeProposal, createProposal } from '../services/exchange-execution-service';
 
 describe('exchange-service ultra coverage', () => {
@@ -478,6 +482,7 @@ describe('exchange-service ultra invalidation follow-up', () => {
         })),
       })),
       delete: vi.fn().mockImplementation(() => createDeleteQuery()),
+      execute: vi.fn().mockResolvedValue(undefined),
     };
     mocks.db.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx));
 

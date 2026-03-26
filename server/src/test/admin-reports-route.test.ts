@@ -31,7 +31,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import adminReportsRouter from '../routes/admin-reports';
+let adminReportsRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -45,8 +45,10 @@ function createApp() {
 }
 
 describe('admin reports routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminReportsRouter } = await import('../routes/admin-reports'));
     mocks.resolveDefaultTargetMonth.mockReturnValue({ year: 2026, month: 2 });
     mocks.validateYearMonth.mockReturnValue(undefined);
     mocks.monthlyReportToCsv.mockReturnValue('key,value\nmonth,2');

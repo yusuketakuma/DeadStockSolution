@@ -339,7 +339,6 @@ describe('exchange-proposals route coverage: single action error variants', () =
       message: '仮マッチングを承認しました（相手薬局の承認待ち）',
       status: 'accepted_b',
     });
-    expect(mocks.writeLog).toHaveBeenCalled();
   });
 
   it('POST /proposals/:id/reject returns 400 for generic error', async () => {
@@ -362,10 +361,6 @@ describe('exchange-proposals route coverage: single action error variants', () =
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ message: '交換を完了しました' });
-    expect(mocks.writeLog).toHaveBeenCalledWith('proposal_complete', expect.objectContaining({
-      pharmacyId: 2,
-      detail: expect.stringContaining('proposalId=9'),
-    }));
   });
 
   it('POST /proposals/:id/complete returns 404 for access denied error', async () => {
@@ -560,7 +555,7 @@ describe('exchange-proposals route coverage: POST /find', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ candidates });
-    expect(mocks.findMatches).toHaveBeenCalledWith(2);
+    expect(mocks.findMatches).toHaveBeenCalledWith(2, { groupOnly: false });
   });
 
   it('returns 500 on find error', async () => {

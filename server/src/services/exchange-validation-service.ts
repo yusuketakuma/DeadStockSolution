@@ -221,19 +221,27 @@ export async function validateAndUpdateStock(
     pharmacyId: deadStockItems.pharmacyId,
     quantity: deadStockItems.quantity,
     isAvailable: deadStockItems.isAvailable,
+    drugName: deadStockItems.drugName,
   })
     .from(deadStockItems)
     .where(inArray(deadStockItems.id, itemIds));
 
   const stockMap = new Map(stockRows.map((row) => [row.id, row]));
+  const issues: string[] = [];
   for (const item of items) {
     const stock = stockMap.get(item.deadStockItemId);
     if (!stock || stock.pharmacyId !== item.fromPharmacyId || !stock.isAvailable) {
-      throw new Error('在庫状態が変更されているため、交換を完了できません');
+      const name = stock?.drugName ?? `ID:${item.deadStockItemId}`;
+      issues.push(`${name}: 利用不可`);
+      continue;
     }
-    if (Number(stock.quantity) < Number(item.quantity)) {
-      throw new Error('在庫数量が不足しているため、交換を完了できません');
+    const currentQty = Number(stock.quantity);
+    if (currentQty < Number(item.quantity)) {
+      issues.push(`${stock.drugName}: 必要${item.quantity} / 残り${currentQty}`);
     }
+  }
+  if (issues.length > 0) {
+    throw new Error(`在庫状態の問題により交換を完了できません: ${issues.join(', ')}`);
   }
   // N回の逐次UPDATEをPromise.allで並列化しDBラウンドトリップを削減
   const updateResults = await Promise.all(
