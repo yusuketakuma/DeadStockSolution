@@ -6,7 +6,7 @@
     "client"
   ],
   "engines": {
-    "node": "24.x"
+    "node": "24.14.1"
   },
   "scripts": {
     "dev:server": "npm run dev --workspace=server",
