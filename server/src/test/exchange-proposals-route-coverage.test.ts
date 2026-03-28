@@ -88,7 +88,7 @@ vi.mock('../services/matching-refresh-service', () => ({
   processPendingMatchingRefreshJobs: vi.fn(),
 }));
 
-import exchangeRouter from '../routes/exchange';
+let exchangeRouter: (typeof import('../routes/exchange'))['default'];
 
 function createApp() {
   const app = express();
@@ -164,8 +164,11 @@ function createLeftJoinOrderByQuery(rows: unknown[]) {
 }
 
 describe('exchange-proposals route coverage: POST /proposals', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: exchangeRouter } = await import('../routes/exchange'));
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
@@ -230,8 +233,11 @@ describe('exchange-proposals route coverage: POST /proposals', () => {
 });
 
 describe('exchange-proposals route coverage: POST /proposals/bulk-action', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: exchangeRouter } = await import('../routes/exchange'));
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
@@ -280,7 +286,6 @@ describe('exchange-proposals route coverage: POST /proposals/bulk-action', () =>
   });
 
   it('returns 500 when bulk-action throws top-level error', async () => {
-    const app = createApp();
     // Simulate a top-level error by making parseBulkIds succeed but throwing afterward
     // This is hard to trigger directly - the simplest way is to mock the req to cause issues
     // We'll test the outer catch by making the action handler throw before the loop
@@ -290,6 +295,7 @@ describe('exchange-proposals route coverage: POST /proposals/bulk-action', () =>
     // Test this by verifying the 400 paths work reliably instead.
     // Let's focus on the 'accept' path message variants
     mocks.acceptProposal.mockResolvedValueOnce('accepted_a');
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/bulk-action')
@@ -322,14 +328,17 @@ describe('exchange-proposals route coverage: POST /proposals/bulk-action', () =>
 });
 
 describe('exchange-proposals route coverage: single action error variants', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: exchangeRouter } = await import('../routes/exchange'));
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
   it('POST /proposals/:id/accept returns accepted_a with waiting message', async () => {
-    const app = createApp();
     mocks.acceptProposal.mockResolvedValueOnce('accepted_b');
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/5/accept');
@@ -342,8 +351,8 @@ describe('exchange-proposals route coverage: single action error variants', () =
   });
 
   it('POST /proposals/:id/reject returns 400 for generic error', async () => {
-    const app = createApp();
     mocks.rejectProposal.mockRejectedValueOnce(new Error('何か問題'));
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/6/reject');
@@ -353,8 +362,8 @@ describe('exchange-proposals route coverage: single action error variants', () =
   });
 
   it('POST /proposals/:id/complete writes log on success', async () => {
-    const app = createApp();
     mocks.completeProposal.mockResolvedValueOnce(undefined);
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/9/complete');
@@ -364,8 +373,8 @@ describe('exchange-proposals route coverage: single action error variants', () =
   });
 
   it('POST /proposals/:id/complete returns 404 for access denied error', async () => {
-    const app = createApp();
     mocks.completeProposal.mockRejectedValueOnce(new Error('アクセス権限がありません'));
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/exchange/proposals/9/complete');
@@ -472,7 +481,6 @@ describe('exchange-proposals route coverage: GET /proposals/:id detail', () => {
   });
 
   it('returns proposal detail with timeline', async () => {
-    const app = createApp();
     const proposal = {
       id: 10, pharmacyAId: 2, pharmacyBId: 3, status: 'proposed',
       proposedAt: '2026-03-01T00:00:00.000Z',
@@ -493,6 +501,7 @@ describe('exchange-proposals route coverage: GET /proposals/:id detail', () => {
     mocks.buildProposalTimeline.mockReturnValueOnce([
       { type: 'proposed', label: '提案', at: '2026-03-01T00:00:00.000Z' },
     ]);
+    const app = createApp();
 
     const response = await request(app)
       .get('/api/exchange/proposals/10');
@@ -506,8 +515,8 @@ describe('exchange-proposals route coverage: GET /proposals/:id detail', () => {
   });
 
   it('returns 404 when proposal not found', async () => {
-    const app = createApp();
     mocks.db.select.mockImplementationOnce(() => createLimitQuery([]));
+    const app = createApp();
 
     const response = await request(app)
       .get('/api/exchange/proposals/999');
@@ -527,10 +536,10 @@ describe('exchange-proposals route coverage: GET /proposals/:id detail', () => {
   });
 
   it('returns 500 on detail DB error', async () => {
-    const app = createApp();
     mocks.db.select.mockImplementationOnce(() => {
       throw new Error('DB error');
     });
+    const app = createApp();
 
     const response = await request(app)
       .get('/api/exchange/proposals/10');

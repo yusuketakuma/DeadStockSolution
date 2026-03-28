@@ -26,7 +26,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import monthlyReportsRouter from '../routes/internal-monthly-reports';
+let monthlyReportsRouter: (typeof import('../routes/internal-monthly-reports'))['default'];
 
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
 const ORIGINAL_MONTHLY_REPORT_CRON_SECRET = process.env.MONTHLY_REPORT_CRON_SECRET;
@@ -38,13 +38,16 @@ function createApp() {
 }
 
 describe('internal monthly reports route auth and validation', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.clearAllMocks();
+    vi.resetModules();
     delete process.env.CRON_SECRET;
     delete process.env.MONTHLY_REPORT_CRON_SECRET;
     mocks.resolveDefaultTargetMonth.mockReturnValue({ year: 2026, month: 2 });
     mocks.validateYearMonth.mockImplementation(() => undefined);
     mocks.triggerManualMonthlyReport.mockResolvedValue(undefined);
+    ({ default: monthlyReportsRouter } = await import('../routes/internal-monthly-reports'));
   });
 
   afterEach(() => {

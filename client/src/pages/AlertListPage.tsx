@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Badge, Nav, Tab, Form, Row, Col } from 'react-bootstrap';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import AppButton from '../components/ui/AppButton';
 import AppDataPanel from '../components/ui/AppDataPanel';
@@ -117,8 +117,9 @@ function resolveAlertRequestError(err: unknown, fallback: string): string {
 
 // ── メインコンポーネント ──────────────────────────────────────
 export default function AlertListPage() {
-  const [resolvedTab, setResolvedTab] = useState<'unresolved' | 'resolved'>('unresolved');
-  const [alertTypeFilter, setAlertTypeFilter] = useState<string>('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [resolvedTab, setResolvedTab] = useState<'unresolved' | 'resolved'>(() => searchParams.get('tab') === 'resolved' ? 'resolved' : 'unresolved');
+  const [alertTypeFilter, setAlertTypeFilter] = useState<string>(() => searchParams.get('type') ?? '');
   const [page, setPage] = useState(1);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -173,6 +174,19 @@ export default function AlertListPage() {
   useEffect(() => {
     setPage(1);
   }, [resolvedTab, alertTypeFilter]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', resolvedTab);
+    if (alertTypeFilter) {
+      nextParams.set('type', alertTypeFilter);
+    } else {
+      nextParams.delete('type');
+    }
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [alertTypeFilter, resolvedTab, searchParams, setSearchParams]);
 
   // ── アクション ──────────────────────────────────────
   const handleResolve = async (alertId: number) => {

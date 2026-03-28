@@ -47,6 +47,7 @@ describe('calculateCandidateScoreWithBreakdown', () => {
     expect(result).toHaveProperty('breakdown');
     const { breakdown } = result;
     expect(breakdown).toHaveProperty('valueScore');
+    expect(breakdown).toHaveProperty('balanceScore');
     expect(breakdown).toHaveProperty('distanceScore');
     expect(breakdown).toHaveProperty('expiryScore');
     expect(breakdown).toHaveProperty('diversityScore');
@@ -98,6 +99,7 @@ describe('calculateCandidateScoreWithBreakdown', () => {
     // total includes balanceScore, so we can't simply sum all breakdown fields.
     // Instead, verify each component is non-negative and total is consistent.
     expect(breakdown.valueScore).toBeGreaterThanOrEqual(0);
+    expect(breakdown.balanceScore).toBeGreaterThanOrEqual(0);
     expect(breakdown.distanceScore).toBeGreaterThanOrEqual(0);
     expect(breakdown.expiryScore).toBeGreaterThanOrEqual(0);
     expect(breakdown.diversityScore).toBeGreaterThanOrEqual(0);
@@ -365,5 +367,37 @@ describe('calculateCandidateScoreWithBreakdown', () => {
     );
 
     expect(nearResult.breakdown.distanceScore).toBeGreaterThan(farResult.breakdown.distanceScore);
+  });
+
+  it('balanceScore decreases when the exchange values drift apart', () => {
+    const items = [makeItem({ yakkaValue: 5000 })];
+
+    const balancedResult = calculateCandidateScoreWithBreakdown(
+      5000,
+      5000,
+      0,
+      10,
+      items,
+      items,
+      DEFAULT_MATCHING_SCORING_RULES,
+      false,
+      false,
+      referenceDate,
+    );
+
+    const imbalancedResult = calculateCandidateScoreWithBreakdown(
+      5000,
+      4500,
+      500,
+      10,
+      items,
+      items,
+      DEFAULT_MATCHING_SCORING_RULES,
+      false,
+      false,
+      referenceDate,
+    );
+
+    expect(balancedResult.breakdown.balanceScore).toBeGreaterThan(imbalancedResult.breakdown.balanceScore);
   });
 });

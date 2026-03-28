@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createDeleteQuery,
+  createSimpleSelectQuery,
   createSelectQuery,
   createUpdateReturningQuery,
 } from './helpers/mock-builders';
@@ -8,7 +9,12 @@ import {
 const mocks = vi.hoisted(() => ({
   db: {
     transaction: vi.fn(),
+    select: vi.fn(),
+    update: vi.fn(),
   },
+  and: vi.fn(() => ({})),
+  eq: vi.fn(() => ({})),
+  inArray: vi.fn(() => ({})),
   or: vi.fn(() => ({})),
   createNotification: vi.fn(),
   invalidateStatisticsSummaryCacheForPharmacies: vi.fn(),
@@ -23,9 +29,9 @@ vi.mock('../config/database', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
-  and: vi.fn(() => ({})),
-  eq: vi.fn(() => ({})),
-  inArray: vi.fn(() => ({})),
+  and: mocks.and,
+  eq: mocks.eq,
+  inArray: mocks.inArray,
   or: mocks.or,
   sql: vi.fn(() => ({})),
 }));
@@ -42,7 +48,14 @@ vi.mock('../services/matching-refresh-service', () => ({
   triggerMatchingRefreshOnUpload: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { acceptProposal, rejectProposal, completeProposal, createProposal } from '../services/exchange-execution-service';
+import {
+  acceptProposal,
+  rejectProposal,
+  completeProposal,
+  createProposal,
+  expireStaleProposals,
+  sendExpiryReminders,
+} from '../services/exchange-execution-service';
 
 describe('exchange-service ultra coverage', () => {
   beforeEach(() => {
@@ -107,18 +120,24 @@ describe('exchange-service ultra coverage', () => {
     });
 
     it('advances accepted_a -> confirmed when pharmacy B accepts', async () => {
+      const updateQuery = createUpdateReturningQuery([{ id: 100 }]);
       const tx = {
         select: vi.fn().mockImplementation(() => createSelectQuery([{
           pharmacyAId: 1,
           pharmacyBId: 2,
           status: 'accepted_a',
         }])),
-        update: vi.fn().mockImplementation(() => createUpdateReturningQuery([{ id: 100 }])),
+        update: vi.fn().mockReturnValue(updateQuery),
       };
       mocks.db.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<string>) => cb(tx));
 
       const result = await acceptProposal(100, 2);
       expect(result).toBe('confirmed');
+      expect(updateQuery.set).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'confirmed',
+        expiresAt: null,
+        expiryReminderSentAt: null,
+      }));
     });
 
     it('advances accepted_b -> confirmed when pharmacy A accepts', async () => {
@@ -347,6 +366,45 @@ describe('exchange-service ultra coverage', () => {
       mocks.db.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<void>) => cb(tx));
 
       await expect(completeProposal(100, 1)).rejects.toThrow('提案アイテムが存在しません');
+    });
+  });
+
+  describe('proposal expiry helpers', () => {
+    it('uses only pending statuses for stale proposal expiry queries', async () => {
+      mocks.db.select.mockImplementation(() => createSimpleSelectQuery([]));
+
+      const result = await expireStaleProposals();
+
+      expect(result).toEqual({ expiredCount: 0 });
+      expect(mocks.inArray).toHaveBeenCalledWith(expect.anything(), ['proposed', 'accepted_a', 'accepted_b']);
+    });
+
+    it('sends one reminder and records reminder timestamp', async () => {
+      const updateQuery = {
+        set: vi.fn(),
+        where: vi.fn(),
+      };
+      updateQuery.set.mockReturnValue(updateQuery);
+      updateQuery.where.mockResolvedValue(undefined);
+      mocks.db.select.mockImplementation(() => createSimpleSelectQuery([{
+        id: 55,
+        pharmacyAId: 10,
+        pharmacyBId: 20,
+        status: 'proposed',
+      }]));
+      mocks.db.update.mockReturnValue(updateQuery);
+
+      const result = await sendExpiryReminders();
+
+      expect(result).toEqual({ reminderCount: 1 });
+      expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
+        pharmacyId: 20,
+        referenceId: 55,
+        title: '交換提案の期限が近づいています',
+      }));
+      expect(updateQuery.set).toHaveBeenCalledWith(expect.objectContaining({
+        expiryReminderSentAt: expect.any(String),
+      }));
     });
   });
 

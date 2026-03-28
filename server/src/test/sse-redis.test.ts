@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
  
 const fetchMock = vi.hoisted(() => vi.fn<any>());
-vi.stubGlobal('fetch', fetchMock);
 
 // ── redis-pubsub-service をモック (SSE Route テスト用) ──────────────────────────────────
 
@@ -46,7 +45,9 @@ describe('SSE Route', () => {
   let sseRouter: express.Router;
 
   beforeEach(async () => {
+    vi.useRealTimers();
     vi.clearAllMocks();
+    vi.stubGlobal('fetch', fetchMock);
     vi.resetModules();
     ({ default: sseRouter } = await import('../routes/sse'));
   });
@@ -93,6 +94,8 @@ describe('Redis PubSub Service — enqueueNotification (real fetch behavior)', (
   // テスト用にインラインで同等ロジックを検証する
 
   beforeEach(() => {
+    vi.useRealTimers();
+    vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
   });
 
@@ -205,6 +208,11 @@ describe('isRedisConfigured — env var logic', () => {
     } else {
       delete process.env.UPSTASH_REDIS_REST_TOKEN;
     }
+  });
+
+  beforeEach(() => {
+    vi.useRealTimers();
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   // ロジック: url && token → true, それ以外 → false

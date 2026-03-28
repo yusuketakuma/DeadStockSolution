@@ -15,6 +15,7 @@ import { isSafeInternalPath } from '../utils/path-utils';
 import { rowCount } from '../utils/db-utils';
 import { writeLog, getClientIp } from '../services/log-service';
 import { logger } from '../services/logger';
+import { invalidateDashboardUnreadCache } from '../services/notification-service';
 import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
 import {
   handoffToOpenClaw,
@@ -34,6 +35,7 @@ import {
   publishRequestsRefresh,
   publishTimelineRefresh,
 } from '../services/realtime-service';
+import { dispatchCustomPush, dispatchCustomPushToMany } from '../services/push-notification-dispatcher';
 import { adminWriteLimiter } from './admin-write-limiter';
 import { sendPaginated, parseListPagination, parseIdOrBadRequest, getErrorMessage, handleAdminError } from './admin-utils';
 
@@ -238,6 +240,19 @@ router.post('/messages', adminWriteLimiter, async (req: AuthRequest, res: Respon
       return;
     }
 
+    let targetPharmacyIds: number[] = [];
+    if (targetType === 'all') {
+      const rows = await db.select({ id: pharmacies.id })
+        .from(pharmacies)
+        .where(and(
+          eq(pharmacies.isActive, true),
+          eq(pharmacies.isAdmin, false),
+        ));
+      targetPharmacyIds = rows.map((row) => row.id);
+    } else if (targetPharmacyId) {
+      targetPharmacyIds = [targetPharmacyId];
+    }
+
     await db.insert(adminMessages).values({
       senderAdminId: req.user!.id,
       targetType,
@@ -246,6 +261,32 @@ router.post('/messages', adminWriteLimiter, async (req: AuthRequest, res: Respon
       body,
       actionPath: actionPath || null,
     });
+
+    for (const pharmacyId of targetPharmacyIds) {
+      invalidateDashboardUnreadCache(pharmacyId);
+    }
+
+    if (targetType === 'all') {
+      void dispatchCustomPushToMany({
+        pharmacyIds: targetPharmacyIds,
+        title,
+        message: body,
+        url: actionPath || '/',
+        type: 'admin_message',
+        category: 'admin',
+        priority: 'high',
+      });
+    } else if (targetPharmacyId) {
+      void dispatchCustomPush({
+        pharmacyId: targetPharmacyId,
+        title,
+        message: body,
+        url: actionPath || '/',
+        type: 'admin_message',
+        category: 'admin',
+        priority: 'high',
+      });
+    }
 
     if (targetType === 'all') {
       publishTimelineRefresh({

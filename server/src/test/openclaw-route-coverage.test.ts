@@ -26,59 +26,62 @@ const mocks = vi.hoisted(() => ({
   recordOpenClawRequestMessage: vi.fn(),
   isOpenClawWorkflowStatus: vi.fn(),
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
+  createNotification: vi.fn(),
 }));
 
-function mockOpenClawRouteDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-  }));
+let openclawRouter: (typeof import('../routes/openclaw'))['default'];
 
-  vi.doMock('../config/database', () => ({ db: mocks.db }));
+vi.mock('../middleware/auth', () => ({
+  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+}));
 
-  vi.doMock('../services/logger', () => ({
-    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  }));
+vi.mock('../config/database', () => ({ db: mocks.db }));
 
-  vi.doMock('../services/openclaw-service', () => ({
-    isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
-    verifyOpenClawWebhookSignature: mocks.verifyOpenClawWebhookSignature,
-    isOpenClawWebhookReplay: mocks.isOpenClawWebhookReplay,
-    consumeOpenClawWebhookReplay: mocks.consumeOpenClawWebhookReplay,
-    releaseOpenClawWebhookReplay: mocks.releaseOpenClawWebhookReplay,
-    isOpenClawStatus: mocks.isOpenClawStatus,
-    canTransitionOpenClawStatus: mocks.canTransitionOpenClawStatus,
-    isImplementationBranchAllowed: mocks.isImplementationBranchAllowed,
-    getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
-  }));
+vi.mock('../services/logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
-  vi.doMock('../services/pharmacy-verification-callback-service', () => ({
-    processVerificationCallback: mocks.processVerificationCallback,
-  }));
+vi.mock('../services/openclaw-service', () => ({
+  isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
+  verifyOpenClawWebhookSignature: mocks.verifyOpenClawWebhookSignature,
+  isOpenClawWebhookReplay: mocks.isOpenClawWebhookReplay,
+  consumeOpenClawWebhookReplay: mocks.consumeOpenClawWebhookReplay,
+  releaseOpenClawWebhookReplay: mocks.releaseOpenClawWebhookReplay,
+  isOpenClawStatus: mocks.isOpenClawStatus,
+  canTransitionOpenClawStatus: mocks.canTransitionOpenClawStatus,
+  isImplementationBranchAllowed: mocks.isImplementationBranchAllowed,
+  getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
+}));
 
-  vi.doMock('../services/pharmacy-verification-service', () => ({
-    isVerificationRequestType: mocks.isVerificationRequestType,
-  }));
+vi.mock('../services/pharmacy-verification-callback-service', () => ({
+  processVerificationCallback: mocks.processVerificationCallback,
+}));
 
-  vi.doMock('../services/openclaw-thread-service', () => ({
-    ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
-    updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
-    recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
-    isOpenClawWorkflowStatus: mocks.isOpenClawWorkflowStatus,
-    mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
-  }));
+vi.mock('../services/pharmacy-verification-service', () => ({
+  isVerificationRequestType: mocks.isVerificationRequestType,
+}));
 
-  vi.doMock('drizzle-orm', () => ({
-    eq: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    ne: vi.fn(() => ({})),
-  }));
+vi.mock('../services/openclaw-thread-service', () => ({
+  ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
+  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+  recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
+  isOpenClawWorkflowStatus: mocks.isOpenClawWorkflowStatus,
+  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+}));
 
-  vi.doMock('express-rate-limit', () => ({
-    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-  }));
-}
+vi.mock('../services/notification-service', () => ({
+  createNotification: mocks.createNotification,
+}));
 
-let openclawRouter: express.Router;
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(() => ({})),
+  and: vi.fn(() => ({})),
+  ne: vi.fn(() => ({})),
+}));
+
+vi.mock('express-rate-limit', () => ({
+  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 
 function createApp() {
   const app = express();
@@ -94,9 +97,9 @@ function createApp() {
 
 describe('openclaw routes — coverage', () => {
   beforeEach(async () => {
-    vi.clearAllMocks();
+    vi.useRealTimers();
+    vi.resetAllMocks();
     vi.resetModules();
-    mockOpenClawRouteDependencies();
     ({ default: openclawRouter } = await import('../routes/openclaw'));
     mocks.mapOpenClawStatusToWorkflowStatus.mockReturnValue('implementing');
     mocks.isOpenClawWorkflowStatus.mockReturnValue(true);
@@ -341,6 +344,11 @@ describe('openclaw routes — coverage', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.openclawStatus).toBe('completed');
+      expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
+        pharmacyId: 5,
+        type: 'request_update',
+        referenceId: 1,
+      }));
     });
 
     it('returns 500 on unexpected error', async () => {
@@ -559,6 +567,55 @@ describe('openclaw routes — coverage', () => {
 
       expect(res.status).toBe(200);
       expect(mocks.recordOpenClawRequestMessage).not.toHaveBeenCalled();
+      expect(mocks.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('creates a request notification when report kind is failed', async () => {
+      const app = createApp();
+      mocks.isOpenClawWebhookConfigured.mockReturnValue(true);
+      mocks.verifyOpenClawWebhookSignature.mockReturnValue(true);
+      mocks.isOpenClawWebhookReplay.mockReturnValue(false);
+      mocks.consumeOpenClawWebhookReplay.mockReturnValue(true);
+      mocks.db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{
+              id: 11,
+              pharmacyId: 8,
+              openclawStatus: 'implementing',
+              openclawThreadId: 'thread-11',
+              openclawSummary: '解析中',
+              requestText: 'request',
+            }]),
+          }),
+        }),
+      });
+      mocks.db.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        await fn({
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        });
+      });
+
+      const res = await request(app)
+        .post('/api/openclaw/report')
+        .send({
+          requestId: 11,
+          kind: 'failed',
+          message: '外部依存のエラーで再試行が必要です',
+          workflowStatus: 'failed',
+        });
+
+      expect(res.status).toBe(200);
+      expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
+        pharmacyId: 8,
+        title: 'ご要望対応で確認が必要です',
+        type: 'request_update',
+        referenceId: 11,
+      }));
     });
   });
 });

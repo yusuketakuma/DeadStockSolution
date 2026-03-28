@@ -56,8 +56,8 @@ vi.mock('drizzle-orm', () => ({
   ),
 }));
 
-import pharmaciesRouter from '../routes/pharmacies';
 import { eq } from 'drizzle-orm';
+let pharmaciesRouter: (typeof import('../routes/pharmacies'))['default'];
 
 function createWhereQuery(result: unknown) {
   const query = {
@@ -135,14 +135,17 @@ function createApp() {
 }
 
 describe('pharmacies routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.clearAllMocks();
+    vi.resetModules();
     mocks.db.select.mockReset();
     mocks.db.insert.mockReset();
     mocks.db.delete.mockReset();
     mocks.loggerError.mockReset();
     mocks.getBusinessHoursStatus.mockReturnValue({ isOpen: true, statusText: '営業中' });
     mocks.haversineDistance.mockReturnValue(12.34);
+    ({ default: pharmaciesRouter } = await import('../routes/pharmacies'));
   });
 
   it('returns paginated pharmacies with business status', async () => {

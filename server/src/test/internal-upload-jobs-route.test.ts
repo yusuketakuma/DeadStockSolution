@@ -21,7 +21,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import internalUploadJobsRouter from '../routes/internal-upload-jobs';
+let internalUploadJobsRouter: (typeof import('../routes/internal-upload-jobs'))['default'];
 
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
 const ORIGINAL_UPLOAD_JOBS_CRON_SECRET = process.env.UPLOAD_JOBS_CRON_SECRET;
@@ -33,8 +33,11 @@ function createApp() {
 }
 
 describe('internal upload jobs route auth', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: internalUploadJobsRouter } = await import('../routes/internal-upload-jobs'));
     delete process.env.CRON_SECRET;
     delete process.env.UPLOAD_JOBS_CRON_SECRET;
     mocks.processPendingUploadConfirmJobs.mockResolvedValue(4);

@@ -190,6 +190,20 @@
       "when": 1774346900000,
       "tag": "0041_request_message_collaboration",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1774581000000,
+      "tag": "0042_proposal_expiry_reminder_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1774667400000,
+      "tag": "0043_push_notification_preferences",
+      "breakpoints": true
     }
   ]
 }

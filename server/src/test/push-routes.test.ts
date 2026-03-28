@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   unsubscribe: vi.fn(),
   listSubscriptions: vi.fn(),
   cleanupStale: vi.fn(),
+  getPushNotificationPreferences: vi.fn(),
+  upsertPushNotificationPreferences: vi.fn(),
   requireLoginEnabled: { value: true },
   vapidPublicKey: { value: 'test-vapid-public-key' },
 }));
@@ -38,6 +40,10 @@ vi.mock('../services/push-subscription-service', () => ({
   unsubscribe: mocks.unsubscribe,
   listSubscriptions: mocks.listSubscriptions,
   cleanupStale: mocks.cleanupStale,
+}));
+vi.mock('../services/push-notification-preferences-service', () => ({
+  getPushNotificationPreferences: mocks.getPushNotificationPreferences,
+  upsertPushNotificationPreferences: mocks.upsertPushNotificationPreferences,
 }));
 
 vi.mock('../config/database', () => ({
@@ -68,6 +74,7 @@ function createApp() {
 }
 
 beforeEach(async () => {
+  vi.useRealTimers();
   vi.resetModules();
   const { default: router } = await import('../routes/push');
   pushRouter = router;
@@ -86,9 +93,34 @@ const BASE_SUBSCRIPTION_RECORD = {
 
 describe('push routes', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     mocks.requireLoginEnabled.value = true;
     mocks.vapidPublicKey.value = 'test-vapid-public-key';
+    mocks.getPushNotificationPreferences.mockResolvedValue({
+      categories: {
+        proposals: true,
+        requests: true,
+        comments: true,
+        matching: true,
+        groups: true,
+        alerts: true,
+        admin: true,
+      },
+      allowCritical: true,
+    });
+    mocks.upsertPushNotificationPreferences.mockResolvedValue({
+      categories: {
+        proposals: true,
+        requests: true,
+        comments: true,
+        matching: true,
+        groups: true,
+        alerts: true,
+        admin: true,
+      },
+      allowCritical: true,
+    });
     vi.stubEnv('VAPID_PUBLIC_KEY', 'test-vapid-public-key');
   });
 
@@ -122,6 +154,51 @@ describe('push routes', () => {
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBeDefined();
+    });
+  });
+
+  describe('GET /api/push/preferences', () => {
+    it('200 - 現在の push 設定を返す', async () => {
+      const app = createApp();
+
+      const res = await request(app).get('/api/push/preferences');
+
+      expect(res.status).toBe(200);
+      expect(mocks.getPushNotificationPreferences).toHaveBeenCalledWith(1);
+      expect(res.body.allowCritical).toBe(true);
+    });
+  });
+
+  describe('PUT /api/push/preferences', () => {
+    it('200 - push 設定を更新する', async () => {
+      mocks.upsertPushNotificationPreferences.mockResolvedValue({
+        categories: {
+          proposals: false,
+          requests: true,
+          comments: true,
+          matching: true,
+          groups: true,
+          alerts: true,
+          admin: true,
+        },
+        allowCritical: false,
+      });
+      const app = createApp();
+
+      const res = await request(app)
+        .put('/api/push/preferences')
+        .send({
+          categories: { proposals: false },
+          allowCritical: false,
+        });
+
+      expect(res.status).toBe(200);
+      expect(mocks.upsertPushNotificationPreferences).toHaveBeenCalledWith(1, {
+        categories: { proposals: false },
+        allowCritical: false,
+      });
+      expect(res.body.categories.proposals).toBe(false);
+      expect(res.body.allowCritical).toBe(false);
     });
   });
 

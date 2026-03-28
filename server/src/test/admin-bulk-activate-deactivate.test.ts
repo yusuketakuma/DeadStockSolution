@@ -36,19 +36,6 @@ function mockAdminBulkActivateDeactivateDependencies() {
   vi.doMock('../middleware/error-handler', () => ({
     getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
   }));
-  vi.doMock('../services/openclaw-service', () => ({
-    handoffToOpenClaw: vi.fn(),
-  }));
-  vi.doMock('../services/openclaw-log-context-service', () => ({
-    buildOpenClawLogContext: vi.fn(),
-  }));
-  vi.doMock('../services/proposal-timeline-service', () => ({
-    buildProposalTimeline: vi.fn(),
-    fetchProposalTimelineActionRows: vi.fn(),
-  }));
-  vi.doMock('../utils/path-utils', () => ({
-    isSafeInternalPath: (path: string) => path.startsWith('/'),
-  }));
   vi.doMock('../services/audit-log-service', () => ({
     recordAuditLog: mocks.recordAuditLog,
   }));
@@ -96,6 +83,7 @@ function makeTx(pharmacies: { id: number; verificationStatus: string | null; isA
 
 describe('Admin Bulk Actions — activate / deactivate', () => {
   beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetModules();
     mockAdminBulkActivateDeactivateDependencies();
     ({ default: adminRouter } = await import('../routes/admin'));
@@ -160,6 +148,7 @@ describe('Admin Bulk Actions — activate / deactivate', () => {
       const app = createApp();
       const res = await request(app)
         .post('/api/admin/bulk-actions/execute')
+        .timeout({ response: 15_000, deadline: 20_000 })
         .send({ pharmacyIds: [1], action: 'activate' });
 
       expect(res.status).toBe(200);

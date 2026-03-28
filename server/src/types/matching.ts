@@ -73,6 +73,7 @@ export interface UsedMedIndex {
 export interface DrugMatchResult {
   score: number;
   matchedByEquivalence?: boolean;
+  matchedNormalizedName?: string;
 }
 
 export interface PreparedDrugName {

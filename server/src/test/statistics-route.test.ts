@@ -43,11 +43,9 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import statisticsRouter from '../routes/statistics';
-import {
-  clearStatisticsSummaryCacheForTests,
-  invalidateStatisticsSummaryCache,
-} from '../services/statistics-cache-service';
+let statisticsRouter: (typeof import('../routes/statistics'))['default'];
+let clearStatisticsSummaryCacheForTests: typeof import('../services/statistics-cache-service')['clearStatisticsSummaryCacheForTests'];
+let invalidateStatisticsSummaryCache: typeof import('../services/statistics-cache-service')['invalidateStatisticsSummaryCache'];
 
 function createApp() {
   const app = express();
@@ -100,8 +98,15 @@ function mockSummarySelectSequence(): void {
 }
 
 describe('statistics routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetModules();
     vi.resetAllMocks();
+    ({ default: statisticsRouter } = await import('../routes/statistics'));
+    ({
+      clearStatisticsSummaryCacheForTests,
+      invalidateStatisticsSummaryCache,
+    } = await import('../services/statistics-cache-service'));
     clearStatisticsSummaryCacheForTests();
     mocks.requireLoginEnabled.value = true;
   });

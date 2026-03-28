@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import MessagesPage from '../pages/MessagesPage';
 import { markThreadRead } from '../api/messages';
@@ -19,7 +20,7 @@ vi.mock('../api/messages', () => ({
       unreadCount: 1,
     }],
   }),
-  fetchThread: vi.fn().mockResolvedValue({ data: [] }),
+  fetchThread: vi.fn().mockResolvedValue({ data: [], pagination: { totalPages: 1 } }),
   sendMessage: vi.fn().mockResolvedValue({}),
   markThreadRead: vi.fn().mockResolvedValue({}),
 }));
@@ -28,7 +29,11 @@ window.HTMLElement.prototype.scrollIntoView = vi.fn();
 
 describe('MessagesPage', () => {
   it('uses document-level vertical scrolling instead of fixed-height inner scrolling', async () => {
-    const { container } = render(<MessagesPage />);
+    const { container } = render(
+      <MemoryRouter initialEntries={['/messages']}>
+        <MessagesPage />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
       expect(screen.getAllByText('相手薬局').length).toBeGreaterThan(0);
@@ -41,7 +46,11 @@ describe('MessagesPage', () => {
   it('dispatches sidebar refresh event after marking a thread as read', async () => {
     const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
 
-    render(<MessagesPage />);
+    render(
+      <MemoryRouter initialEntries={['/messages']}>
+        <MessagesPage />
+      </MemoryRouter>,
+    );
 
     fireEvent.click((await screen.findAllByText('相手薬局'))[0]);
 

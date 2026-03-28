@@ -32,7 +32,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import { uploadSingleFile } from '../routes/upload-validation';
+let uploadSingleFile: (typeof import('../routes/upload-validation'))['uploadSingleFile'];
 
 function createUploadApp() {
   const app = express();
@@ -44,10 +44,13 @@ function createUploadApp() {
 }
 
 describe('upload-validation-final — uploadSingleFile multer paths', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
     mocks.writeLog.mockResolvedValue(undefined);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
+    ({ uploadSingleFile } = await import('../routes/upload-validation'));
   });
 
   it('returns 400 when file exceeds size limit (LIMIT_FILE_SIZE)', async () => {
@@ -135,10 +138,13 @@ describe('upload-validation-final — uploadSingleFile multer paths', () => {
 });
 
 describe('upload-validation-final — uploadSingleFile error paths via mock', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
     mocks.writeLog.mockResolvedValue(undefined);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
+    ({ uploadSingleFile } = await import('../routes/upload-validation'));
   });
 
   it('handles MulterError LIMIT_FILE_SIZE via middleware simulation', async () => {

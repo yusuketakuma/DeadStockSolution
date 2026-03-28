@@ -37,114 +37,112 @@ let mockUser: { id: number; email: string; isAdmin: boolean } | undefined = {
   isAdmin: false,
 };
 
-function mockRequestsRouteDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: typeof mockUser }, _res: unknown, next: () => void) => {
-      if (!mockUser) {
-        const res = _res as express.Response;
-        res.status(401).json({ error: 'ログインが必要です' });
-        return;
-      }
-      req.user = mockUser;
-      next();
-    },
-  }));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: typeof mockUser }, _res: unknown, next: () => void) => {
+    if (!mockUser) {
+      const res = _res as express.Response;
+      res.status(401).json({ error: 'ログインが必要です' });
+      return;
+    }
+    req.user = mockUser;
+    next();
+  },
+}));
 
-  vi.doMock('../config/database', () => ({
-    db: mocks.db,
-  }));
+vi.mock('../config/database', () => ({
+  db: mocks.db,
+}));
 
-  vi.doMock('drizzle-orm', () => ({
-    eq: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-  }));
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(() => ({})),
+  desc: vi.fn(() => ({})),
+}));
 
-  vi.doMock('../services/logger', () => ({
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-  }));
+vi.mock('../services/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
-  vi.doMock('../services/openclaw-log-context-service', () => ({
-    buildOpenClawLogContext: mocks.buildOpenClawLogContext,
-  }));
+vi.mock('../services/openclaw-log-context-service', () => ({
+  buildOpenClawLogContext: mocks.buildOpenClawLogContext,
+}));
 
-  vi.doMock('../services/openclaw-service', () => ({
-    handoffToOpenClaw: mocks.handoffToOpenClaw,
-  }));
+vi.mock('../services/openclaw-service', () => ({
+  handoffToOpenClaw: mocks.handoffToOpenClaw,
+}));
 
-  vi.doMock('../services/openclaw-thread-service', () => ({
-    buildOpenClawConversationContext: mocks.buildOpenClawConversationContext,
-    ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
-    isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
-    listOpenClawRequestMessages: mocks.listOpenClawRequestMessages,
-    mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
-    recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
-    updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
-  }));
+vi.mock('../services/openclaw-thread-service', () => ({
+  buildOpenClawConversationContext: mocks.buildOpenClawConversationContext,
+  ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
+  isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
+  listOpenClawRequestMessages: mocks.listOpenClawRequestMessages,
+  mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
+  recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
+  updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+}));
 
-  vi.doMock('../services/realtime-service', () => ({
-    publishAdminRequestsRefresh: mocks.publishAdminRequestsRefresh,
-    publishRequestsRefresh: mocks.publishRequestsRefresh,
-  }));
+vi.mock('../services/realtime-service', () => ({
+  publishAdminRequestsRefresh: mocks.publishAdminRequestsRefresh,
+  publishRequestsRefresh: mocks.publishRequestsRefresh,
+}));
 
-  vi.doMock('../services/request-collaboration-service', () => ({
-    computeRequestWaitingState: mocks.computeRequestWaitingState,
-    createRequestMessageAttachments: mocks.createRequestMessageAttachments,
-    getRequestAttachmentDownload: mocks.getRequestAttachmentDownload,
-    hasRequesterUnreadMessages: mocks.hasRequesterUnreadMessages,
-    isRequestCategory: mocks.isRequestCategory,
-    isRequestPriority: mocks.isRequestPriority,
-    listRequestDuplicateSuggestions: mocks.listRequestDuplicateSuggestions,
-    touchRequestViewed: mocks.touchRequestViewed,
-    updateRequestActivity: mocks.updateRequestActivity,
-  }));
+vi.mock('../services/request-collaboration-service', () => ({
+  computeRequestWaitingState: mocks.computeRequestWaitingState,
+  createRequestMessageAttachments: mocks.createRequestMessageAttachments,
+  getRequestAttachmentDownload: mocks.getRequestAttachmentDownload,
+  hasRequesterUnreadMessages: mocks.hasRequesterUnreadMessages,
+  isRequestCategory: mocks.isRequestCategory,
+  isRequestPriority: mocks.isRequestPriority,
+  listRequestDuplicateSuggestions: mocks.listRequestDuplicateSuggestions,
+  touchRequestViewed: mocks.touchRequestViewed,
+  updateRequestActivity: mocks.updateRequestActivity,
+}));
 
-  vi.doMock('../db/schema', () => ({
-    pharmacies: {
-      id: 'id',
-      name: 'name',
-    },
-    openclawWorkItems: {
-      requestId: 'requestId',
-      workflowStatus: 'workflowStatus',
-      latestSummary: 'latestSummary',
-      branchName: 'branchName',
-      prUrl: 'prUrl',
-      prNumber: 'prNumber',
-      lastQuestion: 'lastQuestion',
-      lastError: 'lastError',
-    },
-    userRequests: {
-      id: 'id',
-      pharmacyId: 'pharmacyId',
-      requestText: 'requestText',
-      category: 'category',
-      priority: 'priority',
-      closeReason: 'closeReason',
-      assignedAdminId: 'assignedAdminId',
-      requesterLastViewedAt: 'requesterLastViewedAt',
-      adminLastViewedAt: 'adminLastViewedAt',
-      latestUserMessageAt: 'latestUserMessageAt',
-      latestStaffMessageAt: 'latestStaffMessageAt',
-      openclawStatus: 'openclawStatus',
-      openclawThreadId: 'openclawThreadId',
-      openclawSummary: 'openclawSummary',
-      createdAt: 'createdAt',
-      updatedAt: 'updatedAt',
-    },
-  }));
+vi.mock('../db/schema', () => ({
+  pharmacies: {
+    id: 'id',
+    name: 'name',
+  },
+  openclawWorkItems: {
+    requestId: 'requestId',
+    workflowStatus: 'workflowStatus',
+    latestSummary: 'latestSummary',
+    branchName: 'branchName',
+    prUrl: 'prUrl',
+    prNumber: 'prNumber',
+    lastQuestion: 'lastQuestion',
+    lastError: 'lastError',
+  },
+  userRequests: {
+    id: 'id',
+    pharmacyId: 'pharmacyId',
+    requestText: 'requestText',
+    category: 'category',
+    priority: 'priority',
+    closeReason: 'closeReason',
+    assignedAdminId: 'assignedAdminId',
+    requesterLastViewedAt: 'requesterLastViewedAt',
+    adminLastViewedAt: 'adminLastViewedAt',
+    latestUserMessageAt: 'latestUserMessageAt',
+    latestStaffMessageAt: 'latestStaffMessageAt',
+    openclawStatus: 'openclawStatus',
+    openclawThreadId: 'openclawThreadId',
+    openclawSummary: 'openclawSummary',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt',
+  },
+}));
 
-  vi.doMock('../utils/request-utils', () => ({
-    parsePositiveInt: vi.fn((val: string) => {
-      const n = parseInt(val, 10);
-      return isNaN(n) || n <= 0 ? null : n;
-    }),
-  }));
-}
+vi.mock('../utils/request-utils', () => ({
+  parsePositiveInt: vi.fn((val: string) => {
+    const n = parseInt(val, 10);
+    return isNaN(n) || n <= 0 ? null : n;
+  }),
+}));
 
 let requestsRouter: express.Router;
 
@@ -156,8 +154,9 @@ function createApp() {
 }
 
 beforeEach(async () => {
+  vi.useRealTimers();
   vi.resetModules();
-  mockRequestsRouteDependencies();
+  vi.resetAllMocks();
   const { default: router } = await import('../routes/requests');
   requestsRouter = router;
 });

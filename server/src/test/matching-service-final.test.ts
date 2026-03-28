@@ -244,6 +244,89 @@ describe('matching-service-final', () => {
     });
   });
 
+  describe('findMatchesBatch — pharmacy specific rule profile', () => {
+    it('loads source pharmacy specific scoring rules for each source pharmacy', async () => {
+      const futureDate = '2099-12-31';
+      mocks.getActiveMatchingRuleProfile.mockImplementation(async (options?: { pharmacyId?: number }) => ({
+        ...DEFAULT_PROFILE,
+        favoriteBonus: options?.pharmacyId === 1 ? 21 : DEFAULT_PROFILE.favoriteBonus,
+      }));
+
+      mocks.db.select.mockImplementation((fields: unknown) => {
+        const type = classifySelect(fields);
+        if (type === 'currentPharmacy') {
+          return createWhereQuery([{ id: 1, name: 'A', latitude: 35.0, longitude: 139.0 }]);
+        }
+        if (type === 'relationships') return createWhereQuery([]);
+        if (type === 'viablePharmacies') {
+          return createWhereQuery([{ id: 2, name: 'B', phone: '000', fax: '000', latitude: 35.1, longitude: 139.1 }]);
+        }
+        if (type === 'deadStock') {
+          return createOrderByQuery([
+            { id: 11, pharmacyId: 1, drugName: 'アムロジピン錠5mg', quantity: 200, unit: '錠', yakkaUnitPrice: '100', expirationDate: futureDate, expirationDateIso: futureDate, lotNumber: null, createdAt: null },
+            { id: 12, pharmacyId: 2, drugName: 'アムロジピン錠5mg', quantity: 200, unit: '錠', yakkaUnitPrice: '100', expirationDate: futureDate, expirationDateIso: futureDate, lotNumber: null, createdAt: null },
+          ]);
+        }
+        if (type === 'usedMed') {
+          return createOrderByQuery([
+            { pharmacyId: 1, drugName: 'アムロジピン錠5mg' },
+            { pharmacyId: 2, drugName: 'アムロジピン錠5mg' },
+          ]);
+        }
+        if (type === 'reservations') return createGroupByQuery([]);
+        if (type === 'businessHours') return createWhereQuery([]);
+        if (type === 'specialHours') return createWhereQuery([]);
+        return createSubQueryBuilder();
+      });
+
+      await findMatchesBatch([1]);
+
+      expect(mocks.getActiveMatchingRuleProfile).toHaveBeenCalledWith({ pharmacyId: 1 });
+    });
+  });
+
+  describe('findMatches — pharmacy specific rule profile', () => {
+    it('loads the source pharmacy specific scoring rule profile', async () => {
+      const futureDate = '2099-12-31';
+      mocks.getActiveMatchingRuleProfile.mockResolvedValue({
+        ...DEFAULT_PROFILE,
+        favoriteBonus: 19,
+      });
+
+      mocks.db.select.mockImplementation((fields: unknown) => {
+        const type = classifySelect(fields);
+        if (type === 'currentPharmacy') {
+          return createLimitQuery([{ id: 1, name: 'A', latitude: 35.0, longitude: 139.0 }]);
+        }
+        if (type === 'favoriteRows') return createWhereQuery([]);
+        if (type === 'viablePharmacies') {
+          return createWhereQuery([{ id: 2, name: 'B', phone: '000', fax: '000', latitude: 35.1, longitude: 139.1 }]);
+        }
+        if (type === 'deadStock') {
+          return createOrderByQuery([
+            { id: 11, pharmacyId: 1, drugName: 'アムロジピン錠5mg', quantity: 200, unit: '錠', yakkaUnitPrice: '100', expirationDate: futureDate, expirationDateIso: futureDate, lotNumber: null, createdAt: null },
+            { id: 12, pharmacyId: 2, drugName: 'アムロジピン錠5mg', quantity: 200, unit: '錠', yakkaUnitPrice: '100', expirationDate: futureDate, expirationDateIso: futureDate, lotNumber: null, createdAt: null },
+          ]);
+        }
+        if (type === 'usedMed') {
+          return createOrderByQuery([
+            { pharmacyId: 1, drugName: 'アムロジピン錠5mg' },
+            { pharmacyId: 2, drugName: 'アムロジピン錠5mg' },
+          ]);
+        }
+        if (type === 'relationships') return createWhereQuery([]);
+        if (type === 'reservations') return createGroupByQuery([]);
+        if (type === 'businessHours') return createWhereQuery([]);
+        if (type === 'specialHours') return createWhereQuery([]);
+        return createSubQueryBuilder();
+      });
+
+      await findMatches(1);
+
+      expect(mocks.getActiveMatchingRuleProfile).toHaveBeenCalledWith({ pharmacyId: 1 });
+    });
+  });
+
   describe('findMatchesBatch — viablePharmacies empty after blocking filter', () => {
     it('sets empty candidates when all viable pharmacies are filtered by block + self-exclusion', async () => {
       const futureDate = '2099-12-31';

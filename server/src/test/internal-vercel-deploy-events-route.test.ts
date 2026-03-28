@@ -20,10 +20,9 @@ vi.mock('../services/logger', () => ({
 }));
 
 const ORIGINAL_SECRET = process.env.VERCEL_DEPLOY_WEBHOOK_SECRET;
+let internalVercelDeployEventsRouter: (typeof import('../routes/internal-vercel-deploy-events'))['default'];
 
-async function createApp() {
-  vi.resetModules();
-  const { default: internalVercelDeployEventsRouter } = await import('../routes/internal-vercel-deploy-events');
+function createApp() {
   const app = express();
   app.use(express.json());
   app.use('/api/internal/vercel', internalVercelDeployEventsRouter);
@@ -31,8 +30,11 @@ async function createApp() {
 }
 
 describe('internal vercel deploy events route', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetModules();
     vi.clearAllMocks();
+    ({ default: internalVercelDeployEventsRouter } = await import('../routes/internal-vercel-deploy-events'));
     mocks.recordVercelDeployEvent.mockResolvedValue(true);
     delete process.env.VERCEL_DEPLOY_WEBHOOK_SECRET;
   });
@@ -46,7 +48,7 @@ describe('internal vercel deploy events route', () => {
   });
 
   it('returns 503 when webhook secret is not configured', async () => {
-    const app = await createApp();
+    const app = createApp();
     const response = await request(app)
       .post('/api/internal/vercel/deploy-events')
       .send({ type: 'deployment.error' });
@@ -57,7 +59,7 @@ describe('internal vercel deploy events route', () => {
 
   it('returns 401 when authorization header is invalid', async () => {
     process.env.VERCEL_DEPLOY_WEBHOOK_SECRET = 'secret-token';
-    const app = await createApp();
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/internal/vercel/deploy-events')
@@ -71,7 +73,7 @@ describe('internal vercel deploy events route', () => {
 
   it('records vercel deploy event when authorized', async () => {
     process.env.VERCEL_DEPLOY_WEBHOOK_SECRET = 'secret-token';
-    const app = await createApp();
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/internal/vercel/deploy-events')
@@ -101,7 +103,7 @@ describe('internal vercel deploy events route', () => {
   it('returns 500 when event persistence fails', async () => {
     process.env.VERCEL_DEPLOY_WEBHOOK_SECRET = 'secret-token';
     mocks.recordVercelDeployEvent.mockResolvedValueOnce(false);
-    const app = await createApp();
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/internal/vercel/deploy-events')

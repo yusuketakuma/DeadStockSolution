@@ -21,6 +21,7 @@ export interface RiskBucketCounts {
 
 export interface RiskBucketBarChartProps {
   bucketCounts: RiskBucketCounts;
+  onBucketClick?: (bucket: keyof RiskBucketCounts) => void;
 }
 
 const LABELS = ['期限切れ', '30日以内', '60日以内', '90日以内', '120日以内', '120日超', '不明'];
@@ -51,7 +52,7 @@ const OPTIONS = {
   },
 } as const;
 
-export default function RiskBucketBarChart({ bucketCounts }: RiskBucketBarChartProps) {
+export default function RiskBucketBarChart({ bucketCounts, onBucketClick }: RiskBucketBarChartProps) {
   const data = {
     labels: LABELS,
     datasets: [
@@ -74,7 +75,20 @@ export default function RiskBucketBarChart({ bucketCounts }: RiskBucketBarChartP
 
   return (
     <div style={{ height: 70 }}>
-      <Bar data={data} options={OPTIONS} />
+      <Bar
+        data={data}
+        options={{
+          ...OPTIONS,
+          onClick: (_event, elements) => {
+            const index = elements[0]?.index;
+            const keys: Array<keyof RiskBucketCounts> = ['expired', 'within30', 'within60', 'within90', 'within120', 'over120', 'unknown'];
+            const bucket = index !== undefined ? keys[index] : null;
+            if (bucket && onBucketClick) {
+              onBucketClick(bucket);
+            }
+          },
+        }}
+      />
     </div>
   );
 }

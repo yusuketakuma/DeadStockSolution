@@ -98,4 +98,35 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ── POST /:id/use — テンプレート利用回数を記録 ──────────────────────────────────
+
+router.post('/:id/use', async (req: AuthRequest, res: Response) => {
+  try {
+    const templateId = parseTemplateId(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+    if (!templateId) {
+      res.status(400).json({ error: '不正なIDです' });
+      return;
+    }
+
+    const pharmacyId = req.user!.id;
+    const template = await proposalTemplateService.recordTemplateUse(pharmacyId, templateId);
+    res.json(template);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+
+    if (message.includes('見つかりません')) {
+      res.status(404).json({ error: message });
+      return;
+    }
+
+    if (message.includes('権限がありません')) {
+      res.status(403).json({ error: message });
+      return;
+    }
+
+    logger.error('Use proposal template error', { error: message });
+    res.status(500).json({ error: 'テンプレート利用の記録に失敗しました' });
+  }
+});
+
 export default router;

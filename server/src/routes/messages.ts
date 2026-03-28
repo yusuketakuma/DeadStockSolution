@@ -18,6 +18,7 @@ import {
   publishAdminMessagesRefresh,
   publishMessagesRefresh,
 } from '../services/realtime-service';
+import { dispatchCustomPush } from '../services/push-notification-dispatcher';
 
 const router = Router();
 
@@ -65,6 +66,22 @@ function parsePharmacyId(raw: unknown): number | null {
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0) return null;
   return parsed;
+}
+
+function buildThreadPath(otherPharmacyId: number): string {
+  const params = new URLSearchParams();
+  params.set('pharmacyId', String(otherPharmacyId));
+  return `/messages?${params.toString()}`;
+}
+
+function buildPushPreview(body: string, hasAttachments: boolean): string {
+  if (body.length > 0) {
+    return body.slice(0, 120);
+  }
+  if (hasAttachments) {
+    return '添付ファイル付きのメッセージが届きました。';
+  }
+  return '新しいメッセージが届きました。';
 }
 
 // POST / — メッセージ送信
@@ -132,6 +149,17 @@ router.post('/', requireLogin, rejectAdmin, uploadOptionalAttachments, async (re
       pharmacyBId,
       messageId: message.id,
       reason: 'message_sent',
+    });
+    const attachmentCount = Array.isArray(message.attachments) ? message.attachments.length : 0;
+    void dispatchCustomPush({
+      pharmacyId: toId,
+      title: '薬局メッセージが届きました',
+      message: buildPushPreview(body, attachmentCount > 0),
+      url: buildThreadPath(fromId),
+      type: 'direct_message',
+      category: 'comments',
+      priority: 'high',
+      referenceId: message.id,
     });
     res.status(201).json({ message: 'メッセージを送信しました', data: message });
   } catch (err) {

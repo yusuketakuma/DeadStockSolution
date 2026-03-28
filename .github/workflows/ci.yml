@@ -126,8 +126,56 @@ jobs:
       - name: Test upload/drug-master integration flows
         run: npm run test:integration:server
 
+  proposal-flow-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      NODE_ENV: development
+      VERCEL_ENV: ""
+      POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      POSTGRES_URL_NON_POOLING: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      JWT_SECRET: ci-proposal-flow-jwt-secret
+      CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+      E2E_HELPER_SECRET: ci-proposal-flow-secret
+      E2E_BASE_URL: http://127.0.0.1:5173
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.1
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure rollup platform binary
+        run: npm rebuild rollup || true
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Proposal flow E2E smoke
+        run: npm run test:e2e:proposal-flow
+
   verify:
-    needs: [lint-typecheck, test-server, test-client, integration]
+    needs: [lint-typecheck, test-server, test-client, integration, proposal-flow-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

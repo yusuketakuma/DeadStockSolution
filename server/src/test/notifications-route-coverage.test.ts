@@ -44,7 +44,7 @@ vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import notificationsRouter from '../routes/notifications';
+let notificationsRouter: express.Router;
 
 function createSelectQuery(result: unknown) {
   const resolved = Promise.resolve(result);
@@ -73,8 +73,10 @@ function createApp() {
 }
 
 describe('notifications routes — additional coverage', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    ({ default: notificationsRouter } = await import('../routes/notifications'));
     mocks.db.select.mockReset();
     mocks.db.update.mockReset();
     mocks.db.insert.mockReset();

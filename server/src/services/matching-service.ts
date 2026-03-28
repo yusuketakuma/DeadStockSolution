@@ -59,6 +59,7 @@ type BatchSourceContext = {
   favoriteIdsByPharmacy: Map<number, Set<number>>;
   groupMemberIdsByPharmacy: Map<number, Set<number>>;
 };
+type SuccessCountByPharmacy = Map<number, number>;
 
 type PreparedPharmacyLocationById = {
   execute(params: { pharmacyId: number }): Promise<PharmacyLocation[]>;
@@ -332,6 +333,23 @@ async function fetchBatchSourceContext(
   };
 }
 
+async function fetchSuccessCountsBySourcePharmacy(
+  sourcePharmacyIds: number[],
+  deps: ServiceDependencies = getServiceDeps(),
+): Promise<Map<number, SuccessCountByPharmacy>> {
+  return new Map(await Promise.all(
+    sourcePharmacyIds.map(async (id) => [id, await getPharmacyPairSuccessCounts(id, deps)] as const),
+  ));
+}
+
+async function fetchMatchingRuleProfilesBySourcePharmacy(
+  sourcePharmacyIds: number[],
+): Promise<Map<number, MatchingRuleProfile>> {
+  return new Map(await Promise.all(
+    sourcePharmacyIds.map(async (id) => [id, await getActiveMatchingRuleProfile({ pharmacyId: id })] as const),
+  ));
+}
+
 async function fetchBlockedPairsForSources(
   sourcePharmacyIds: number[],
   viablePharmacyIds: number[],
@@ -517,10 +535,7 @@ export async function findMatchesBatch(
 
   const now = new Date();
   const firstOfMonth = getFirstOfMonthIso(now);
-  const [matchingRuleProfile, equivalenceMap] = await Promise.all([
-    getActiveMatchingRuleProfile(),
-    fetchEquivalenceMap(),
-  ]);
+  const equivalenceMap = await fetchEquivalenceMap();
 
   const currentPharmacies = await deps.db.select({
     ...PHARMACY_LOCATION_SELECT_FIELDS,
@@ -586,14 +601,16 @@ export async function findMatchesBatch(
     deps,
   );
 
-  const successCountsByPharmacy = await Promise.all(
-    existingSourcePharmacyIds.map(async (id) => [id, await getPharmacyPairSuccessCounts(id, deps)] as const),
-  );
-  const successCountsByPharmacyMap = new Map(successCountsByPharmacy);
+  const [successCountsByPharmacyMap, matchingRuleProfilesByPharmacy] = await Promise.all([
+    fetchSuccessCountsBySourcePharmacy(existingSourcePharmacyIds, deps),
+    fetchMatchingRuleProfilesBySourcePharmacy(existingSourcePharmacyIds),
+  ]);
 
   for (const sourcePharmacyId of existingSourcePharmacyIds) {
     const currentPharmacy = currentPharmacyById.get(sourcePharmacyId);
     if (!currentPharmacy) throw new Error('薬局が見つかりません');
+    const matchingRuleProfile = matchingRuleProfilesByPharmacy.get(sourcePharmacyId);
+    if (!matchingRuleProfile) throw new Error('マッチングルールが見つかりません');
 
     const viablePharmacies = viablePharmacyPool.filter((pharmacy) => (
       pharmacy.id !== sourcePharmacyId &&
@@ -627,7 +644,7 @@ export async function findMatches(
   deps: ServiceDependencies = getServiceDeps(),
 ): Promise<MatchCandidate[]> {
   const [matchingRuleProfile, [currentPharmacy], equivalenceMap] = await Promise.all([
-    getActiveMatchingRuleProfile(),
+    getActiveMatchingRuleProfile({ pharmacyId }),
     fetchPharmacyLocationById(pharmacyId, deps),
     fetchEquivalenceMap(),
   ]);

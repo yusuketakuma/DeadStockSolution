@@ -55,6 +55,7 @@ export interface BusinessHoursStatus {
 
 export interface ScoreBreakdown {
   valueScore: number;
+  balanceScore: number;
   distanceScore: number;
   expiryScore: number;
   diversityScore: number;

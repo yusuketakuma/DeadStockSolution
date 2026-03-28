@@ -56,9 +56,9 @@ vi.mock('../db/schema', () => {
 });
 
 // Imports after mocks
-import internalDailyStatisticsRouter from '../routes/internal-daily-statistics';
 import { db } from '../config/database';
 import { aggregateDailyStatistics } from '../services/daily-statistics-service';
+let internalDailyStatisticsRouter: (typeof import('../routes/internal-daily-statistics'))['default'];
 
 // ---- route tests ----
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
@@ -72,11 +72,14 @@ function createApp() {
 }
 
 describe('internal daily-statistics route auth', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+    vi.resetModules();
     delete process.env.CRON_SECRET;
     delete process.env.DAILY_STATISTICS_CRON_SECRET;
     mocks.aggregateDailyStatistics.mockResolvedValue({ processedCount: 5 });
+    ({ default: internalDailyStatisticsRouter } = await import('../routes/internal-daily-statistics'));
   });
 
   afterEach(() => {
@@ -168,17 +171,14 @@ describe('internal daily-statistics route auth', () => {
   });
 });
 
-// ---- service unit tests ----
-// These tests directly call aggregateDailyStatistics which is the real implementation
-// (the mock above is only for the route; here we import the real function separately)
-// We need to test the real service, so we import it from source while mocking db/schema.
-// Since vi.mock('../services/daily-statistics-service') hoisted, aggregateDailyStatistics
-// is the mock. We test behavior via the mock + route integration above.
-// Below we test the service logic by working around the top-level mock.
-
-describe('aggregateDailyStatistics service logic', () => {
+// ---- mock contract checks ----
+// This file hoists a route-level mock for daily-statistics-service, so the tests below
+// intentionally verify the mocked contract and local database wiring rather than the
+// real aggregation implementation.
+describe('aggregateDailyStatistics mock contract', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.useRealTimers();
+    vi.resetAllMocks();
   });
 
   it('mock returns processedCount=0 when configured to do so', async () => {

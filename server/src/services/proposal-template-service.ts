@@ -57,7 +57,7 @@ export async function listTemplates(pharmacyId: number): Promise<ProposalTemplat
     .select()
     .from(proposalTemplates)
     .where(eq(proposalTemplates.pharmacyId, pharmacyId))
-    .orderBy(desc(proposalTemplates.updatedAt))
+    .orderBy(desc(proposalTemplates.usageCount), desc(proposalTemplates.updatedAt))
     .limit(TEMPLATE_LIST_LIMIT);
 
   return rows.map(toProposalTemplate);
@@ -159,11 +159,41 @@ export async function deleteTemplate(pharmacyId: number, templateId: number): Pr
   logger.info('Proposal template deleted', { templateId, pharmacyId });
 }
 
-export async function incrementUsageCount(templateId: number): Promise<void> {
+export async function recordTemplateUse(
+  pharmacyId: number,
+  templateId: number,
+): Promise<ProposalTemplate> {
+  const [existing] = await db
+    .select()
+    .from(proposalTemplates)
+    .where(eq(proposalTemplates.id, templateId))
+    .limit(1);
+
+  if (!existing) {
+    throw new Error('テンプレートが見つかりません');
+  }
+
+  if (existing.pharmacyId !== pharmacyId) {
+    throw new Error('このテンプレートを利用する権限がありません');
+  }
+
   await db
     .update(proposalTemplates)
     .set({
       usageCount: sql`${proposalTemplates.usageCount} + 1`,
+      updatedAt: sql`CURRENT_TIMESTAMP`,
     })
     .where(eq(proposalTemplates.id, templateId));
+
+  const [updated] = await db
+    .select()
+    .from(proposalTemplates)
+    .where(eq(proposalTemplates.id, templateId))
+    .limit(1);
+
+  if (!updated) {
+    throw new Error('テンプレート更新後の再取得に失敗しました');
+  }
+
+  return toProposalTemplate(updated);
 }

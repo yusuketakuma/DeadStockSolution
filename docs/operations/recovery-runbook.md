@@ -1,5 +1,12 @@
 # DeadStockSolution / OpenClaw Recovery Runbook
 
+## UI 起点の一次切り分け
+
+1. `/admin/openclaw` を開き、Connector / Webhook / DDS の状態を確認する。
+2. Retry Queue で `failed` と `pending` の件数、最後の `lastError` を確認する。
+3. Request Event Timeline で `queued -> analyzing -> awaiting_user -> implementing -> pr_opened -> completed` のどこで止まっているかを見る。
+4. DDS remote agent を再登録する必要がある場合は、同画面から bootstrap token を発行して runner 側を再接続する。
+
 ## 1. 定期バックアップ
 
 ```bash

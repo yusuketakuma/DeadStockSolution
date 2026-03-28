@@ -64,7 +64,7 @@ OPENCLAW_WEBHOOK_SECRET=your-webhook-secret
 
    `connector.configured` と `webhook.configured` が両方 `true` であることを確認する。
 
-2. ハンドオフテスト: 管理画面からテスト薬局を選択し、リクエストの OpenClaw ハンドオフを実行する。
+2. ハンドオフテスト: 管理画面 `/admin/openclaw` からテスト薬局のリクエストを選択し、OpenClaw ハンドオフを実行する。
 3. `handoffSuccessRate` が上昇していることを確認する。
 
 ### ロールバック
@@ -223,7 +223,7 @@ OPENCLAW_AUTO_ESCALATE_ENABLED=false
 1. `OPENCLAW_BASE_URL` の疎通確認。
 2. `OPENCLAW_RETRY_MAX`（デフォルト: 2）と `OPENCLAW_RETRY_BASE_MS`（デフォルト: 400）を確認する。
 3. `OPENCLAW_TIMEOUT_MS`（デフォルト: 10000ms）を増やすことを検討する。
-4. 管理画面の OpenClaw Retries ページから手動リトライを実行する: `/admin/openclaw`
+4. 管理画面 `/admin/openclaw` の Retry Queue から pending / failed を確認し、対象リクエストの再連携を実行する。
 
 ### ヘルスエンドポイントが HTTP 503 を返す
 

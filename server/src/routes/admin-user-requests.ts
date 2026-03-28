@@ -30,6 +30,7 @@ import {
 } from '../services/request-collaboration-service';
 import { listUserRequests } from '../services/admin-user-request-service';
 import { listRequestEventTimeline } from '../services/openclaw-request-event-service';
+import { createNotification } from '../services/notification-service';
 import { handleAdminError, parseListPagination, sendPaginated } from './admin-utils';
 import { uploadOptionalAttachments } from '../middleware/attachment-upload';
 import {
@@ -334,6 +335,18 @@ router.post('/user-requests/:id/messages', uploadOptionalAttachments, async (req
 
     publishAdminRequestsRefresh({ requestId, reason: 'admin_reply_created' });
     publishRequestsRefresh({ pharmacyId: detail.pharmacyId, requestId, reason: 'admin_reply_created' });
+    await createNotification({
+      pharmacyId: detail.pharmacyId,
+      type: 'request_update',
+      title: '要望に管理者から返信がありました',
+      message: body || '添付ファイル付きの返信が届きました。内容をご確認ください。',
+      referenceType: 'request',
+      referenceId: requestId,
+      detailJson: {
+        source: 'admin_reply',
+        messageId: recorded.id,
+      },
+    });
 
     res.json({
       message: '管理者返信を送信しました',

@@ -7,6 +7,8 @@ const PROPOSAL_TIMELINE_ACTIONS = [
   'proposal_reject',
   'proposal_complete',
   'proposal_create',
+  'proposal_expired',
+  'proposal_expiry_reminder',
 ] as const;
 
 type ProposalTimelineAction = (typeof PROPOSAL_TIMELINE_ACTIONS)[number];
@@ -41,6 +43,8 @@ function toTimelineLabel(action: string): string {
   if (action === 'proposal_accept') return '承認';
   if (action === 'proposal_reject') return '拒否';
   if (action === 'proposal_complete') return '交換完了';
+  if (action === 'proposal_expired') return '期限切れで自動却下';
+  if (action === 'proposal_expiry_reminder') return '期限リマインド送信';
   return 'ステータス更新';
 }
 
@@ -53,6 +57,9 @@ function resolveNextStatus(action: string, detail: string | null): string | null
   }
   if (action === 'proposal_complete') {
     return 'completed';
+  }
+  if (action === 'proposal_expired') {
+    return 'rejected';
   }
   return null;
 }
@@ -68,7 +75,11 @@ function buildProposalTimelineEvent(
     label: toTimelineLabel(row.action),
     at: row.createdAt,
     actorPharmacyId: row.actorPharmacyId,
-    actorName: row.actorName ?? '不明',
+    actorName: row.actorName ?? (
+      row.action === 'proposal_expired' || row.action === 'proposal_expiry_reminder'
+        ? 'システム'
+        : '不明'
+    ),
   };
   if (includeStatusTransitions) {
     event.statusFrom = nextStatus ? previousStatus : null;

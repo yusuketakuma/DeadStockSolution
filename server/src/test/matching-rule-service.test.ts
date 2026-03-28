@@ -272,5 +272,53 @@ describe('matching-rule-service', () => {
       const result = await updateActiveMatchingRuleProfile({ valueScoreDivisor: 0.0001 });
       expect(result.valueScoreDivisor).toBe(0.0001);
     });
+
+    it('アクティブ行が無くても最初の行を再有効化して更新できる', async () => {
+      const inactiveRow = makeProfileRow({ id: 7, isActive: false, version: 2 });
+      const reactivatedRow = makeProfileRow({ id: 7, isActive: true, version: 2 });
+      const updatedRow = makeProfileRow({ id: 7, isActive: true, version: 3, valueScoreMax: 66 });
+
+      const activeLimit = vi.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+      const fallbackLimit = vi.fn().mockResolvedValue([inactiveRow]);
+      const selectChain = {
+        where: vi.fn(),
+        orderBy: vi.fn(),
+        limit: activeLimit,
+      };
+      selectChain.where.mockReturnValue(selectChain);
+      selectChain.orderBy.mockReturnValue({ limit: fallbackLimit });
+      const from = vi.fn().mockReturnValue(selectChain);
+      const txSelect = vi.fn().mockReturnValue({ from });
+
+      const reactivateReturning = vi.fn().mockResolvedValue([reactivatedRow]);
+      const reactivateWhere = vi.fn().mockReturnValue({ returning: reactivateReturning });
+      const reactivateSet = vi.fn().mockReturnValue({ where: reactivateWhere });
+
+      const updateReturning = vi.fn().mockResolvedValue([updatedRow]);
+      const updateWhere = vi.fn().mockReturnValue({ returning: updateReturning });
+      const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
+
+      const txUpdate = vi.fn()
+        .mockReturnValueOnce({ set: reactivateSet })
+        .mockReturnValueOnce({ set: updateSet });
+
+      const onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
+      const insertValues = vi.fn().mockReturnValue({ onConflictDoNothing });
+      const txInsert = vi.fn().mockReturnValue({ values: insertValues });
+
+      const tx = { select: txSelect, update: txUpdate, insert: txInsert };
+      mocks.db.transaction.mockImplementation(
+        async (callback: (tx: unknown) => Promise<unknown>) => callback(tx),
+      );
+
+      const result = await updateActiveMatchingRuleProfile({ valueScoreMax: 66 });
+
+      expect(result.id).toBe(7);
+      expect(result.version).toBe(3);
+      expect(result.valueScoreMax).toBe(66);
+      expect(txUpdate).toHaveBeenCalledTimes(2);
+    });
   });
 });

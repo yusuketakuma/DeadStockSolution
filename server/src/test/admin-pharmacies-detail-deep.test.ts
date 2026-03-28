@@ -24,83 +24,84 @@ const mocks = vi.hoisted(() => ({
   sendReverificationTriggerErrorResponse: vi.fn(),
 }));
 
-function mockAdminDetailDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-      next();
-    },
-    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
-    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-  }));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+    next();
+  },
+  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => { next(); },
+  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+}));
 
-  vi.doMock('../config/database', () => ({ db: mocks.db }));
+vi.mock('../config/database', () => ({ db: mocks.db }));
 
-  vi.doMock('../services/geocode-service', () => ({
-    geocodeAddress: mocks.geocodeAddress,
-  }));
+vi.mock('../services/geocode-service', () => ({
+  geocodeAddress: mocks.geocodeAddress,
+}));
 
-  vi.doMock('../services/log-service', () => ({
-    writeLog: mocks.writeLog,
-    getClientIp: mocks.getClientIp,
-  }));
+vi.mock('../services/log-service', () => ({
+  writeLog: mocks.writeLog,
+  getClientIp: mocks.getClientIp,
+}));
 
-  vi.doMock('../services/logger', () => ({
-    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  }));
+vi.mock('../services/logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
-  vi.doMock('../routes/business-hours', () => ({
-    fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
-    validateBusinessHours: mocks.validateBusinessHours,
-    validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
-  }));
+vi.mock('../routes/business-hours', () => ({
+  fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
+  validateBusinessHours: mocks.validateBusinessHours,
+  validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
+}));
 
-  vi.doMock('../services/pharmacy-verification-callback-service', () => ({
-    processVerificationCallback: mocks.processVerificationCallback,
-  }));
+vi.mock('../services/pharmacy-verification-callback-service', () => ({
+  processVerificationCallback: mocks.processVerificationCallback,
+}));
 
-  vi.doMock('../services/pharmacy-verification-service', () => ({
-    detectChangedReverificationFields: mocks.detectChangedReverificationFields,
-    triggerReverification: mocks.triggerReverification,
-    ReverificationTriggerError: mocks.ReverificationTriggerError,
-    sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
-  }));
+vi.mock('../services/pharmacy-verification-service', () => ({
+  detectChangedReverificationFields: mocks.detectChangedReverificationFields,
+  triggerReverification: mocks.triggerReverification,
+  ReverificationTriggerError: mocks.ReverificationTriggerError,
+  sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
+}));
 
-  vi.doMock('../routes/admin-write-limiter', () => ({
-    adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
-  }));
+vi.mock('../routes/admin-write-limiter', () => ({
+  adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 
-  vi.doMock('../routes/admin-utils', async () => await vi.importActual('../routes/admin-utils'));
-  vi.doMock('../routes/admin-pharmacies-detail-helpers', async () => await vi.importActual('../routes/admin-pharmacies-detail-helpers'));
-  vi.doMock('../db/schema', async () => await vi.importActual('../db/schema'));
+vi.mock('../utils/validators', () => ({
+  emailSchema: {
+    safeParse: vi.fn((val: string) => {
+      if (val.includes('@')) return { success: true, data: val };
+      return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
+    }),
+  },
+}));
 
-  vi.doMock('../utils/validators', () => ({
-    emailSchema: {
-      safeParse: vi.fn((val: string) => {
-        if (val.includes('@')) return { success: true, data: val };
-        return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
-      }),
-    },
-  }));
+vi.mock('drizzle-orm', () => ({
+  and: vi.fn(() => ({})),
+  desc: vi.fn(() => ({})),
+  eq: vi.fn(() => ({})),
+  sql: vi.fn(() => ({})),
+}));
 
-  vi.doMock('drizzle-orm', () => ({
-    and: vi.fn(() => ({})),
-    eq: vi.fn(() => ({})),
-    sql: vi.fn(() => ({})),
-  }));
+vi.mock('express-rate-limit', () => ({
+  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 
-  vi.doMock('express-rate-limit', () => ({
-    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-  }));
-}
+let adminPharmaciesDetailRouter: (typeof import('../routes/admin-pharmacies-detail'))['default'];
 
-async function createApp() {
-  vi.resetModules();
-  mockAdminDetailDependencies();
-  const { default: adminRouter } = await import('../routes/admin');
+function createApp() {
   const app = express();
   app.use(express.json());
-  app.use('/api/admin', adminRouter);
+  app.use('/api/admin', (
+    req: express.Request & { user?: { id: number; email: string; isAdmin: boolean } },
+    _res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+    next();
+  }, adminPharmaciesDetailRouter);
   return app;
 }
 
@@ -127,9 +128,12 @@ const BASE_PHARMACY = {
 };
 
 describe('admin-pharmacies-detail routes — deep coverage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetModules();
     vi.resetAllMocks();
     mocks.detectChangedReverificationFields.mockReturnValue([]);
+    ({ default: adminPharmaciesDetailRouter } = await import('../routes/admin-pharmacies-detail'));
   });
 
   describe('GET /pharmacies/:id — error handling', () => {
@@ -501,7 +505,9 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
     it('clears testAccountPassword when isTestAccount is set to false', async () => {
       const app = await createApp();
       const testPharmacy = { ...BASE_PHARMACY, isTestAccount: true, testAccountPassword: 'pass123' };
-      mocks.db.select.mockReturnValue(createLimitQuery([testPharmacy]));
+      mocks.db.select
+        .mockReturnValueOnce(createLimitQuery([testPharmacy]))
+        .mockReturnValueOnce(createLimitQuery([testPharmacy]));
       mocks.db.update.mockReturnValue(createUpdateQuery([{ id: 10, version: 2 }]));
 
       const res = await request(app)
@@ -513,7 +519,9 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
     it('updates test account with display password', async () => {
       const app = await createApp();
-      mocks.db.select.mockReturnValue(createLimitQuery([BASE_PHARMACY]));
+      mocks.db.select
+        .mockReturnValueOnce(createLimitQuery([BASE_PHARMACY]))
+        .mockReturnValueOnce(createLimitQuery([BASE_PHARMACY]));
       mocks.db.update.mockReturnValue(createUpdateQuery([{ id: 10, version: 2 }]));
 
       const res = await request(app)

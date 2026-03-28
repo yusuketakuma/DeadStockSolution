@@ -45,7 +45,7 @@ vi.mock('drizzle-orm', () => ({
   ),
 }));
 
-import adminStatsRouter from '../routes/admin-stats';
+let adminStatsRouter: (typeof import('../routes/admin-stats'))['default'];
 
 function createApp() {
   const app = express();
@@ -65,8 +65,11 @@ function createSelectChain(result: unknown[]) {
 }
 
 describe('GET /stats — new KPI fields', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminStatsRouter } = await import('../routes/admin-stats'));
   });
 
   it('includes activeRate30d, proposalCompletionRate, and monthlyExchangeValue in response', async () => {

@@ -27,7 +27,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import updatesRouter from '../routes/updates';
+let updatesRouter: (typeof import('../routes/updates'))['default'];
 
 function createApp() {
   const app = express();
@@ -36,8 +36,11 @@ function createApp() {
 }
 
 describe('updates route', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.clearAllMocks();
+    vi.resetModules();
+    ({ default: updatesRouter } = await import('../routes/updates'));
   });
 
   it('returns github updates payload', async () => {

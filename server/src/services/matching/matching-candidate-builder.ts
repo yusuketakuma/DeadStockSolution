@@ -7,6 +7,7 @@ import {
   calculateMatchRate,
   findBestDrugMatchWithEquivalences,
   isExpiredDate,
+  prepareDrugName,
   roundTo2,
 } from '../matching-score-service';
 import type { DrugMatchResult, MatchingRuleProfile, PharmacyWithDistance, PreparedStockRow, UsedMedIndex, ViablePharmacyRow } from '../../types/matching';
@@ -25,6 +26,103 @@ const MAX_COMPARISON_PHARMACIES_PER_SOURCE = resolveComparisonPharmacyLimit(
   process.env.MATCHING_MAX_COMPARISON_PHARMACIES_PER_SOURCE,
 );
 
+interface CandidateMatchItem {
+  item: MatchItem;
+  compatibilityKeys: Set<string>;
+}
+
+type PackageFormsByKey = Map<string, Set<string>>;
+
+function buildCompatibilityKeys(
+  preparedDrugName: PreparedStockRow['preparedDrugName'],
+  rawDrugName: string,
+  matchedNormalizedName?: string,
+): Set<string> {
+  const compatibilityKeys = new Set<string>();
+  if (preparedDrugName.normalizedDrugName) {
+    compatibilityKeys.add(preparedDrugName.normalizedDrugName);
+  }
+  if (matchedNormalizedName) {
+    compatibilityKeys.add(matchedNormalizedName);
+  }
+  if (compatibilityKeys.size === 0) {
+    const normalizedDrugName = prepareDrugName(rawDrugName).normalizedDrugName;
+    if (normalizedDrugName) {
+      compatibilityKeys.add(normalizedDrugName);
+    }
+  }
+  return compatibilityKeys;
+}
+
+function buildFormsByCompatibilityKey(items: CandidateMatchItem[]): Map<string, Set<string>> {
+  const formsByKey: PackageFormsByKey = new Map<string, Set<string>>();
+
+  for (const item of items) {
+    if (!item.item.packageForm) {
+      continue;
+    }
+    for (const key of item.compatibilityKeys) {
+      const forms = formsByKey.get(key) ?? new Set<string>();
+      forms.add(item.item.packageForm);
+      formsByKey.set(key, forms);
+    }
+  }
+
+  return formsByKey;
+}
+
+function hasCompatibleCounterpart(
+  item: CandidateMatchItem,
+  counterpartFormsByKey: PackageFormsByKey,
+): boolean {
+  if (!item.item.packageForm) {
+    return true;
+  }
+
+  let foundComparableKey = false;
+  for (const key of item.compatibilityKeys) {
+    const counterpartForms = counterpartFormsByKey.get(key);
+    if (!counterpartForms || counterpartForms.size === 0) {
+      continue;
+    }
+    foundComparableKey = true;
+    if ([...counterpartForms].some((form) => arePackageFormsCompatible(item.item.packageForm as PackageForm, form as PackageForm))) {
+      return true;
+    }
+  }
+
+  return !foundComparableKey;
+}
+
+function buildCandidateMatchItem(
+  stock: PreparedStockRow['stock'],
+  preparedDrugName: PreparedStockRow['preparedDrugName'],
+  price: number,
+  match: DrugMatchResult,
+): CandidateMatchItem {
+  return {
+    item: {
+      deadStockItemId: stock.id,
+      drugName: stock.drugName,
+      quantity: stock.quantity,
+      unit: stock.unit,
+      packageForm: classifyPackageFormFromUnit(stock.packageLabel ?? stock.unit),
+      yakkaUnitPrice: price,
+      yakkaValue: roundTo2(price * stock.quantity),
+      expirationDate: stock.expirationDate,
+      expirationDateIso: stock.expirationDateIso,
+      lotNumber: stock.lotNumber,
+      stockCreatedAt: stock.createdAt,
+      matchScore: roundTo2(match.score),
+    },
+    compatibilityKeys: buildCompatibilityKeys(
+      preparedDrugName,
+      stock.drugName,
+      match.matchedNormalizedName,
+    ),
+  };
+}
+
 function resolveComparisonPharmacyLimit(value: string | undefined): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -39,8 +137,9 @@ function buildMatchItems(
   matchCache: Map<string, DrugMatchResult>,
   nameMatchThreshold: number,
   equivalenceMap: Map<string, string[]>,
-): { items: MatchItem[]; hasEquivalenceMatch: boolean } {
-  const items: MatchItem[] = [];
+  referenceDate: Date,
+): { items: CandidateMatchItem[]; hasEquivalenceMatch: boolean } {
+  const items: CandidateMatchItem[] = [];
   let hasEquivalenceMatch = false;
 
   for (const { stock, preparedDrugName } of preparedStocks) {
@@ -48,7 +147,7 @@ function buildMatchItems(
     if (!price || price <= 0) continue;
 
     const expirySource = stock.expirationDateIso ?? stock.expirationDate;
-    if (isExpiredDate(expirySource)) continue;
+    if (isExpiredDate(expirySource, referenceDate)) continue;
 
     const match = findBestDrugMatchWithEquivalences(preparedDrugName, usedMedIndex, matchCache, equivalenceMap);
     if (match.score < nameMatchThreshold) continue;
@@ -57,20 +156,7 @@ function buildMatchItems(
       hasEquivalenceMatch = true;
     }
 
-    items.push({
-      deadStockItemId: stock.id,
-      drugName: stock.drugName,
-      quantity: stock.quantity,
-      unit: stock.unit,
-      packageForm: classifyPackageFormFromUnit(stock.packageLabel ?? stock.unit),
-      yakkaUnitPrice: price,
-      yakkaValue: roundTo2(price * stock.quantity),
-      expirationDate: stock.expirationDate,
-      expirationDateIso: stock.expirationDateIso,
-      lotNumber: stock.lotNumber,
-      stockCreatedAt: stock.createdAt,
-      matchScore: roundTo2(match.score),
-    });
+    items.push(buildCandidateMatchItem(stock, preparedDrugName, price, match));
   }
 
   return { items, hasEquivalenceMatch };
@@ -85,43 +171,18 @@ function buildMatchItems(
  * - 100T PTP ↔ 1000T PTP は互換（包装数量は無視、形態のみ比較）
  */
 function filterByPackageCompatibility(
-  itemsA: MatchItem[],
-  itemsB: MatchItem[],
+  itemsA: CandidateMatchItem[],
+  itemsB: CandidateMatchItem[],
 ): { itemsFromA: MatchItem[]; itemsFromB: MatchItem[] } {
-  // B側の薬品名→包装形態マップ（同一薬品名で複数形態がある場合は全て保持）
-  const bFormsByDrug = new Map<string, Set<string>>();
-  for (const item of itemsB) {
-    const key = item.drugName.normalize('NFKC').toLowerCase();
-    const forms = bFormsByDrug.get(key) ?? new Set<string>();
-    if (item.packageForm) forms.add(item.packageForm);
-    bFormsByDrug.set(key, forms);
-  }
+  const bFormsByKey = buildFormsByCompatibilityKey(itemsB);
+  const aFormsByKey = buildFormsByCompatibilityKey(itemsA);
 
-  const aFormsByDrug = new Map<string, Set<string>>();
-  for (const item of itemsA) {
-    const key = item.drugName.normalize('NFKC').toLowerCase();
-    const forms = aFormsByDrug.get(key) ?? new Set<string>();
-    if (item.packageForm) forms.add(item.packageForm);
-    aFormsByDrug.set(key, forms);
-  }
-
-  // A品目: B側に同一薬品名があり、包装形態が非互換なら除外
-  const filteredA = itemsA.filter((item) => {
-    if (!item.packageForm) return true;
-    const key = item.drugName.normalize('NFKC').toLowerCase();
-    const bForms = bFormsByDrug.get(key);
-    if (!bForms || bForms.size === 0) return true; // B側に形態情報なし→許容
-    return [...bForms].some((bf) => arePackageFormsCompatible(item.packageForm as PackageForm, bf as PackageForm));
-  });
-
-  // B品目: A側に同一薬品名があり、包装形態が非互換なら除外
-  const filteredB = itemsB.filter((item) => {
-    if (!item.packageForm) return true;
-    const key = item.drugName.normalize('NFKC').toLowerCase();
-    const aForms = aFormsByDrug.get(key);
-    if (!aForms || aForms.size === 0) return true;
-    return [...aForms].some((af) => arePackageFormsCompatible(item.packageForm as PackageForm, af as PackageForm));
-  });
+  const filteredA = itemsA
+    .filter((item) => hasCompatibleCounterpart(item, bFormsByKey))
+    .map((item) => item.item);
+  const filteredB = itemsB
+    .filter((item) => hasCompatibleCounterpart(item, aFormsByKey))
+    .map((item) => item.item);
 
   return { itemsFromA: filteredA, itemsFromB: filteredB };
 }
@@ -251,6 +312,7 @@ function buildCandidateFromPharmacy(params: {
     myToTheirCache,
     matchingRuleProfile.nameMatchThreshold,
     equivalenceMap,
+    now,
   );
   const { items: rawItemsFromB, hasEquivalenceMatch: bHasEquivalence } = buildMatchItems(
     theirPreparedDeadStock,
@@ -258,6 +320,7 @@ function buildCandidateFromPharmacy(params: {
     theirToMyCache,
     matchingRuleProfile.nameMatchThreshold,
     equivalenceMap,
+    now,
   );
   if (rawItemsFromA.length === 0 || rawItemsFromB.length === 0) return null;
 
@@ -283,7 +346,7 @@ function buildCandidateFromPharmacy(params: {
     matchingRuleProfile,
     isFavorite,
     isGroupMember,
-    new Date(),
+    now,
     successCount,
   );
   const matchRate = calculateMatchRate(balancedA, balancedB);
@@ -318,12 +381,15 @@ function buildCandidateFromPharmacy(params: {
   };
 }
 
-function isStockEligibleForMatch(stock: PreparedStockRow['stock']): boolean {
+function isStockEligibleForMatch(
+  stock: PreparedStockRow['stock'],
+  referenceDate: Date,
+): boolean {
   const price = Number(stock.yakkaUnitPrice);
   if (!price || price <= 0) return false;
 
   const expirySource = stock.expirationDateIso ?? stock.expirationDate;
-  return !isExpiredDate(expirySource);
+  return !isExpiredDate(expirySource, referenceDate);
 }
 
 function precomputeGlobalDrugMatches(params: {
@@ -332,6 +398,7 @@ function precomputeGlobalDrugMatches(params: {
   myUsedMedIndex: UsedMedIndex;
   nameMatchThreshold: number;
   equivalenceMap: Map<string, string[]>;
+  now: Date;
 }): {
   pharmaciesWithInboundMatches: Set<number>;
   globalDrugMatchCache: Map<string, DrugMatchResult>;
@@ -346,7 +413,7 @@ function precomputeGlobalDrugMatches(params: {
     if (!candidatePharmacyIds.has(pharmacyId)) continue;
 
     for (const { stock, preparedDrugName } of preparedStocks) {
-      if (!isStockEligibleForMatch(stock)) continue;
+      if (!isStockEligibleForMatch(stock, params.now)) continue;
       const key = preparedDrugName.normalizedDrugName;
       if (!key) continue;
 
@@ -409,6 +476,7 @@ export function collectCandidates(params: {
     myUsedMedIndex: params.myUsedMedIndex,
     nameMatchThreshold: params.matchingRuleProfile.nameMatchThreshold,
     equivalenceMap: params.equivalenceMap,
+    now: params.now,
   });
   if (pharmaciesWithInboundMatches.size === 0) {
     return candidates;

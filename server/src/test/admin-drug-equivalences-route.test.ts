@@ -50,7 +50,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import adminDrugEquivalencesRouter from '../routes/admin-drug-equivalences';
+let adminDrugEquivalencesRouter: (typeof import('../routes/admin-drug-equivalences'))['default'];
 
 function createApp() {
   const app = express();
@@ -70,8 +70,11 @@ const sampleEquivalence = {
 };
 
 describe('admin drug equivalences routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminDrugEquivalencesRouter } = await import('../routes/admin-drug-equivalences'));
   });
 
   describe('GET /drug-equivalences', () => {

@@ -30,6 +30,7 @@ import {
 } from './exchange-validation-service';
 
 type NotificationInput = Parameters<typeof createNotification>[0];
+const PROPOSAL_EXPIRY_PENDING_STATUSES: ProposalStatus[] = ['proposed', 'accepted_a', 'accepted_b'];
 
 interface ActionProposalRow {
   pharmacyAId: number;
@@ -166,8 +167,18 @@ async function updateProposalStatusWithOptimisticLock(
   currentStatus: ProposalStatus,
   newStatus: ProposalStatus,
 ): Promise<void> {
+  const nextValues: {
+    status: ProposalStatus;
+    expiresAt?: null;
+    expiryReminderSentAt?: null;
+  } = { status: newStatus };
+  if (newStatus === 'confirmed') {
+    nextValues.expiresAt = null;
+    nextValues.expiryReminderSentAt = null;
+  }
+
   const updated = await tx.update(exchangeProposals)
-    .set({ status: newStatus })
+    .set(nextValues)
     .where(and(
       eq(exchangeProposals.id, proposalId),
       eq(exchangeProposals.status, currentStatus),
@@ -458,7 +469,7 @@ export async function expireStaleProposals(): Promise<{ expiredCount: number }> 
   })
     .from(exchangeProposals)
     .where(and(
-      inArray(exchangeProposals.status, RESERVATION_ACTIVE_STATUSES),
+      inArray(exchangeProposals.status, PROPOSAL_EXPIRY_PENDING_STATUSES),
       sql`${exchangeProposals.expiresAt} IS NOT NULL`,
       sql`${exchangeProposals.expiresAt} < ${now}`,
     ));
@@ -476,7 +487,7 @@ export async function expireStaleProposals(): Promise<{ expiredCount: number }> 
       await notifyProposalEvent(proposal.pharmacyAId, 'proposal_status_changed', proposal.id, '交換提案が期限切れになりました', '提案の有効期限が過ぎたため、自動的に却下されました');
       await notifyProposalEvent(proposal.pharmacyBId, 'proposal_status_changed', proposal.id, '交換提案が期限切れになりました', '提案の有効期限が過ぎたため、自動的に却下されました');
       void writeLog('proposal_expired', {
-        pharmacyId: proposal.pharmacyAId,
+        pharmacyId: null,
         detail: `proposalId=${proposal.id}|status=rejected`,
         resourceType: 'proposal',
         resourceId: proposal.id,
@@ -528,10 +539,11 @@ export async function sendExpiryReminders(): Promise<{ reminderCount: number }> 
   })
     .from(exchangeProposals)
     .where(and(
-      inArray(exchangeProposals.status, RESERVATION_ACTIVE_STATUSES),
+      inArray(exchangeProposals.status, PROPOSAL_EXPIRY_PENDING_STATUSES),
       sql`${exchangeProposals.expiresAt} IS NOT NULL`,
       sql`${exchangeProposals.expiresAt} > ${now.toISOString()}`,
       sql`${exchangeProposals.expiresAt} <= ${reminderThreshold}`,
+      sql`${exchangeProposals.expiryReminderSentAt} IS NULL`,
     ));
 
   let reminderCount = 0;
@@ -545,6 +557,21 @@ export async function sendExpiryReminders(): Promise<{ reminderCount: number }> 
         message: `提案の有効期限が24時間以内です。ご確認ください。`,
         referenceType: 'proposal',
         referenceId: proposal.id,
+      });
+      await db.update(exchangeProposals)
+        .set({ expiryReminderSentAt: now.toISOString() })
+        .where(eq(exchangeProposals.id, proposal.id));
+      void writeLog('proposal_expiry_reminder', {
+        pharmacyId: null,
+        detail: `proposalId=${proposal.id}|status=${proposal.status}|reminder=24h`,
+        resourceType: 'proposal',
+        resourceId: proposal.id,
+        metadataJson: {
+          proposalId: proposal.id,
+          status: proposal.status,
+          pendingPharmacyId,
+          reminderWindowHours: 24,
+        },
       });
       reminderCount++;
     }

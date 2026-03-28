@@ -137,7 +137,7 @@ export default function NotificationDropdown({
             )}
             <div className="notification-dropdown-footer">
               <Link
-                to="/"
+                to="/notifications"
                 className="btn btn-link btn-sm w-100 text-decoration-none"
                 onClick={handleItemClick}
               >

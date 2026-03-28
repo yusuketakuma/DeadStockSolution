@@ -107,6 +107,18 @@ export const inventorySearchPreferences = pgTable('inventory_search_preferences'
     .on(table.pharmacyId),
 }));
 
+export const pushNotificationPreferences = pgTable('push_notification_preferences', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  categoriesJson: jsonb('categories_json').notNull(),
+  allowCritical: boolean('allow_critical').notNull().default(true),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxPushNotificationPreferencesPharmacy: uniqueIndex('idx_push_notification_preferences_pharmacy')
+    .on(table.pharmacyId),
+}));
+
 export const subscriptionPlanValues = ['light', 'standard', 'enterprise'] as const;
 export type SubscriptionPlan = (typeof subscriptionPlanValues)[number];
 

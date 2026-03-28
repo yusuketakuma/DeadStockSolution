@@ -148,8 +148,9 @@ describe('matching-rule-service-deep', () => {
       updatedRow: Record<string, unknown> | null,
     ) {
       const limit = vi.fn().mockResolvedValue(currentRow ? [currentRow] : []);
-      const where = vi.fn().mockReturnValue({ limit });
-      const txSelect = vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where, limit }) });
+      const orderBy = vi.fn().mockReturnValue({ limit });
+      const where = vi.fn().mockReturnValue({ limit, orderBy });
+      const txSelect = vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where, orderBy, limit }) });
 
       const returning = vi.fn().mockResolvedValue(updatedRow ? [updatedRow] : []);
       const updateWhere = vi.fn().mockReturnValue({ returning });
@@ -176,6 +177,9 @@ describe('matching-rule-service-deep', () => {
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockReturnValue({
               limit: vi.fn().mockResolvedValue([]),
+              orderBy: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([]),
+              }),
             }),
           }),
         })
@@ -183,6 +187,9 @@ describe('matching-rule-service-deep', () => {
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockReturnValue({
               limit: vi.fn().mockResolvedValue([newRow]),
+              orderBy: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([newRow]),
+              }),
             }),
           }),
         });
@@ -208,10 +215,13 @@ describe('matching-rule-service-deep', () => {
       expect(txInsert).toHaveBeenCalled();
     });
 
-    it('throws when no profile can be found or created', async () => {
+    it('wraps failure when no profile can be found or created', async () => {
       const txSelectImpl = vi.fn().mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+          orderBy: vi.fn().mockReturnValue({
             limit: vi.fn().mockResolvedValue([]),
           }),
         }),
@@ -233,7 +243,7 @@ describe('matching-rule-service-deep', () => {
 
       await expect(
         updateActiveMatchingRuleProfile({ valueScoreMax: 50 }),
-      ).rejects.toThrow('有効なマッチングルールプロファイルが存在しません');
+      ).rejects.toThrow('マッチングルールの更新に失敗しました');
     });
 
     it('throws VersionConflictError when optimistic lock fails (update returns empty)', async () => {

@@ -9,6 +9,7 @@ import AppAlert from '../components/ui/AppAlert';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import PageLoader from '../components/ui/PageLoader';
 import AppDataPanel from '../components/ui/AppDataPanel';
+import LoadingButton from '../components/ui/LoadingButton';
 import ProposalItemsPanel from '../components/ProposalItemsPanel';
 import ProposalTimeline from '../components/timeline/ProposalTimeline';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
@@ -18,7 +19,23 @@ import { ProposalProgressIndicator } from '../components/proposal/ProposalProgre
 import { ProposalFeedbackSection } from '../components/proposal/ProposalFeedbackSection';
 import { ProposalCommentSection, type ProposalComment } from '../components/proposal/ProposalCommentSection';
 import { ProposalActionButtons, ProposalMobileStickyActions } from '../components/proposal/ProposalActions';
+import ProposalTemplatePanel from '../components/proposal/ProposalTemplatePanel';
+import {
+  compareProposalTemplates,
+  createProposalTemplate,
+  deleteProposalTemplate,
+  listProposalTemplates,
+  markProposalTemplateUsed,
+  type ProposalTemplate,
+} from '../api/proposal-templates';
 import type { EnrichedProposalTimelineEvent } from '../types/timeline';
+import { formatDateTimeJa } from '../utils/formatters';
+import {
+  getProposalDeadlineMeta,
+  resolveProposalDeadline,
+} from '../utils/proposal-expiry';
+import { getProposalWaitingInfo } from '../utils/proposal-status';
+import { buildMessagesPath } from '../utils/message-links';
 
 interface PharmacyInfo {
   id: number;
@@ -50,6 +67,8 @@ interface ProposalDetail {
     totalValueB: number;
     valueDifference: number;
     proposedAt: string;
+    expiresAt?: string | null;
+    expiryReminderSentAt?: string | null;
   };
   items: ProposalItem[];
   pharmacyA: PharmacyInfo;
@@ -102,6 +121,10 @@ function optimisticNextStatus(
   return null;
 }
 
+function buildProposalMessageDraft(proposalId: number, otherName: string): string {
+  return `提案 #${proposalId} の内容確認ありがとうございます。${otherName}との交換条件についてメッセージで調整したいです。`;
+}
+
 export default function ProposalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -123,6 +146,12 @@ export default function ProposalDetailPage() {
   const [feedbackComment, setFeedbackComment] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [mobileTimelineKey, setMobileTimelineKey] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<ProposalTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateError, setTemplateError] = useState('');
+  const [templateName, setTemplateName] = useState('');
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null);
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -151,10 +180,29 @@ export default function ProposalDetailPage() {
     }
   }, [id, setError]);
 
+  const fetchTemplates = useCallback(async () => {
+    if (user?.isAdmin) {
+      setTemplates([]);
+      return;
+    }
+
+    setTemplatesLoading(true);
+    setTemplateError('');
+    try {
+      const nextTemplates = await listProposalTemplates();
+      setTemplates(nextTemplates.sort(compareProposalTemplates));
+    } catch (err) {
+      setTemplateError(err instanceof Error ? err.message : 'テンプレート一覧の取得に失敗しました');
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [user?.isAdmin]);
+
   useEffect(() => {
     void fetchDetail();
     void fetchComments();
-  }, [fetchDetail, fetchComments]);
+    void fetchTemplates();
+  }, [fetchComments, fetchDetail, fetchTemplates]);
 
   useEffect(() => {
     if (!data) return;
@@ -164,6 +212,16 @@ export default function ProposalDetailPage() {
     if (!timelineSection || typeof timelineSection.scrollIntoView !== 'function') return;
     timelineSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [data, location.hash]);
+
+  useEffect(() => {
+    if (!data || user?.isAdmin) return;
+    const otherName = data.proposal.pharmacyAId === user?.id ? data.pharmacyB.name : data.pharmacyA.name;
+    const proposedDate = data.proposal.proposedAt ? formatDateTimeJa(data.proposal.proposedAt, '') : '';
+    const nextName = proposedDate
+      ? `${otherName}向け提案 ${proposedDate}`
+      : `${otherName}向け提案`;
+    setTemplateName((current) => (current.trim().length > 0 ? current : nextName));
+  }, [data, user?.id, user?.isAdmin]);
 
   const proposalForItems = data?.proposal;
   const items = useMemo(() => data?.items ?? [], [data]);
@@ -181,6 +239,66 @@ export default function ProposalDetailPage() {
     setCommentBody(trimmed ? `${trimmed}\n${template}` : template);
   }, [commentBody]);
 
+  const buildTemplateMatchingPath = useCallback((template: ProposalTemplate) => {
+    const params = new URLSearchParams();
+    params.set('targetPharmacyId', String(template.targetPharmacyId));
+    const itemTerms = template.items
+      .map((item) => item.drugName.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    if (itemTerms.length > 0) {
+      params.set('inventorySearchDrugs', itemTerms.join('/'));
+    }
+    return `/matching?${params.toString()}`;
+  }, []);
+
+  const handleCreateTemplate = useCallback(async () => {
+    if (!id) return;
+    const normalizedName = templateName.trim();
+    if (!normalizedName) {
+      setTemplateError('テンプレート名を入力してください');
+      return;
+    }
+
+    setTemplateSaving(true);
+    setTemplateError('');
+    try {
+      const created = await createProposalTemplate(Number(id), normalizedName);
+      setTemplates((prev) => [created, ...prev.filter((template) => template.id !== created.id)].sort(compareProposalTemplates));
+      setMessage('提案テンプレートを保存しました');
+    } catch (err) {
+      setTemplateError(err instanceof Error ? err.message : 'テンプレートの保存に失敗しました');
+    } finally {
+      setTemplateSaving(false);
+    }
+  }, [id, templateName, setMessage]);
+
+  const handleDeleteTemplate = useCallback(async (templateId: number) => {
+    setDeletingTemplateId(templateId);
+    setTemplateError('');
+    try {
+      await deleteProposalTemplate(templateId);
+      setTemplates((prev) => prev.filter((template) => template.id !== templateId));
+    } catch (err) {
+      setTemplateError(err instanceof Error ? err.message : 'テンプレートの削除に失敗しました');
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  }, []);
+
+  const handleUseTemplate = useCallback((template: ProposalTemplate) => {
+    setMessage(`テンプレート「${template.name}」の条件で候補を確認します。`);
+    void markProposalTemplateUsed(template.id)
+      .then((updatedTemplate) => {
+        setTemplates((prev) => prev
+          .map((current) => (current.id === updatedTemplate.id ? updatedTemplate : current))
+          .sort(compareProposalTemplates));
+      })
+      .catch(() => {
+        // Do not block navigation when usage counter bookkeeping fails.
+      });
+  }, [setMessage]);
+
   if (loading && !data) return <PageLoader />;
   if (!data) {
     return (
@@ -190,6 +308,7 @@ export default function ProposalDetailPage() {
 
   const proposal = data.proposal;
   const { pharmacyA, pharmacyB } = data;
+  const otherPharmacy = proposal.pharmacyAId === user?.id ? pharmacyB : pharmacyA;
   const {
     isConfirmedPhase,
     isCompletedPhase,
@@ -342,6 +461,25 @@ export default function ProposalDetailPage() {
   };
 
   const hasStickyActions = canAccept || canReject || canComplete;
+  const proposalDeadline = resolveProposalDeadline({
+    proposedAt: proposal.proposedAt,
+    expiresAt: proposal.expiresAt,
+    status: proposal.status,
+  });
+  const proposalDeadlineMeta = getProposalDeadlineMeta(proposalDeadline);
+  const canSaveTemplate = !user?.isAdmin && proposal.status === 'completed';
+  const deadlineDescription = proposalDeadline
+    ? '仮マッチング中は 72 時間で自動失効します。承認前に双方で確認してください。'
+    : 'このステータスでは提案期限のカウントダウン対象外です。';
+  const reminderDescription = proposal.expiryReminderSentAt
+    ? `24時間前リマインド送信済み: ${formatDateTimeJa(proposal.expiryReminderSentAt)}`
+    : null;
+  const waitingInfo = getProposalWaitingInfo(
+    proposal.status,
+    proposal.pharmacyAId === user?.id,
+    pharmacyA.name,
+    pharmacyB.name,
+  );
 
   const TimelineSection = () => (
     <section id="proposal-timeline" style={{ scrollMarginTop: 96 }}>
@@ -402,6 +540,76 @@ export default function ProposalDetailPage() {
     </AppDataPanel>
   );
 
+  const ProposalDeadlineSection = () => (
+    <AppDataPanel title="提案期限" className="mb-3" bodyClassName="small">
+      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+          <div className="fw-semibold">{formatDateTimeJa(proposalDeadline)}</div>
+          <div className="text-muted">
+            {deadlineDescription}
+          </div>
+          {waitingInfo ? (
+            <div className="mt-1">
+              <span className={`badge ${waitingInfo.waitingForYou ? 'bg-warning text-dark' : 'bg-info text-dark'}`}>
+                現在: {waitingInfo.viewerLabel}
+              </span>
+            </div>
+          ) : null}
+          {reminderDescription ? (
+            <div className="text-warning-emphasis mt-1">{reminderDescription}</div>
+          ) : null}
+        </div>
+        <div>
+          {proposalDeadlineMeta.isExpired ? (
+            <span className="badge bg-danger">{proposalDeadlineMeta.remainingLabel}</span>
+          ) : proposalDeadlineMeta.isDueSoon ? (
+            <span className="badge bg-warning text-dark">{proposalDeadlineMeta.remainingLabel}</span>
+          ) : (
+            <span className="badge bg-secondary">{proposalDeadlineMeta.remainingLabel}</span>
+          )}
+        </div>
+      </div>
+    </AppDataPanel>
+  );
+
+  const ProposalTemplatesSection = () => (
+    <ProposalTemplatePanel
+      title="提案テンプレート"
+      templates={templates}
+      loading={templatesLoading}
+      error={templateError}
+      deletingTemplateId={deletingTemplateId}
+      onDelete={handleDeleteTemplate}
+      buildUseTo={buildTemplateMatchingPath}
+      onUse={handleUseTemplate}
+      actions={canSaveTemplate ? (
+        <div className="d-flex gap-2 flex-wrap">
+          <input
+            value={templateName}
+            onChange={(event) => setTemplateName(event.target.value)}
+            className="form-control form-control-sm"
+            style={{ minWidth: 220 }}
+            placeholder="テンプレート名"
+            maxLength={100}
+          />
+          <LoadingButton
+            type="button"
+            size="sm"
+            variant="primary"
+            loading={templateSaving}
+            loadingLabel="保存中..."
+            onClick={handleCreateTemplate}
+          >
+            この提案を保存
+          </LoadingButton>
+        </div>
+      ) : null}
+      emptyMessage={canSaveTemplate
+        ? '完了済み提案をテンプレートとして保存すると、次回の候補検索に再利用できます。'
+        : '保存済みテンプレートはありません。完了済み提案から保存できます。'}
+    />
+  );
+
   const DesktopLayout = () => (
     <ScrollArea>
       <ProposalProgressIndicator
@@ -411,6 +619,28 @@ export default function ProposalDetailPage() {
         phaseIndex={phaseIndex}
         statusLabel={statusLabel}
       />
+      {ProposalDeadlineSection()}
+      {!user?.isAdmin ? (
+        <AppDataPanel title="相手薬局との連絡" className="mb-3" bodyClassName="small d-flex justify-content-between align-items-center gap-3 flex-wrap">
+          <div>
+            <div className="fw-semibold">{otherPharmacy.name}</div>
+            <div className="text-muted">提案内容のすり合わせやFAX送信前の確認に使えます。</div>
+          </div>
+          <Link
+            to={buildMessagesPath({
+              pharmacyId: otherPharmacy.id,
+              pharmacyName: otherPharmacy.name,
+              draft: buildProposalMessageDraft(proposal.id, otherPharmacy.name),
+              context: 'proposal',
+              contextId: proposal.id,
+            })}
+            className="btn btn-outline-primary btn-sm"
+          >
+            メッセージを開く
+          </Link>
+        </AppDataPanel>
+      ) : null}
+      {!user?.isAdmin && ProposalTemplatesSection()}
       {TimelineSection()}
       {PharmacyInfoSection()}
       {ExchangeInstructions()}
@@ -478,6 +708,30 @@ export default function ProposalDetailPage() {
           phaseIndex={phaseIndex}
           statusLabel={statusLabel}
         />
+        {ProposalDeadlineSection()}
+        {!user?.isAdmin ? (
+          <AppDataPanel title="相手薬局との連絡" className="mb-3" bodyClassName="small">
+            <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+              <div>
+                <div className="fw-semibold">{otherPharmacy.name}</div>
+                <div className="text-muted">提案内容のすり合わせやFAX送信前の確認に使えます。</div>
+              </div>
+              <Link
+                to={buildMessagesPath({
+                  pharmacyId: otherPharmacy.id,
+                  pharmacyName: otherPharmacy.name,
+                  draft: buildProposalMessageDraft(proposal.id, otherPharmacy.name),
+                  context: 'proposal',
+                  contextId: proposal.id,
+                })}
+                className="btn btn-outline-primary btn-sm"
+              >
+                メッセージを開く
+              </Link>
+            </div>
+          </AppDataPanel>
+        ) : null}
+        {!user?.isAdmin && ProposalTemplatesSection()}
         {MobileTimelineAccordion()}
 
         {/* 概要 — デフォルト展開 */}

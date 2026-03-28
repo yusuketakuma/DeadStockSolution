@@ -4,8 +4,11 @@ import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pushSubscriptions } from '../db/schema';
 import { logger } from './logger';
+import { getPushNotificationPreferences } from './push-notification-preferences-service';
 import type {
+  PushNotificationCategory,
   PushNotificationPayload,
+  PushNotificationPriority,
   PushSendResult,
 } from '../types/push';
 
@@ -35,6 +38,57 @@ function toWebPushSubscription(sub: typeof pushSubscriptions.$inferSelect) {
       auth: sub.auth,
     },
   };
+}
+
+function resolvePayloadCategory(payload: PushNotificationPayload): PushNotificationCategory | null {
+  if (payload.data.category) {
+    return payload.data.category;
+  }
+
+  switch (payload.data.type) {
+    case 'proposal_received':
+    case 'proposal_status_changed':
+      return 'proposals';
+    case 'request_update':
+      return 'requests';
+    case 'new_comment':
+      return 'comments';
+    case 'match_update':
+    case 'matching_refresh_complete':
+      return 'matching';
+    case 'group_invitation':
+    case 'group_joined':
+    case 'group_left':
+      return 'groups';
+    case 'alert_near_expiry':
+    case 'alert_excess_stock':
+    case 'alert_resolved':
+      return 'alerts';
+    case 'admin_message':
+      return 'admin';
+    default:
+      return null;
+  }
+}
+
+function resolvePayloadPriority(payload: PushNotificationPayload): PushNotificationPriority {
+  if (payload.data.priority) {
+    return payload.data.priority;
+  }
+
+  if ([
+    'proposal_received',
+    'proposal_status_changed',
+    'request_update',
+    'new_comment',
+    'group_invitation',
+    'alert_near_expiry',
+    'alert_excess_stock',
+  ].includes(payload.data.type)) {
+    return 'high';
+  }
+
+  return 'normal';
 }
 
 async function touchSentSubscriptions(subscriptionIds: number[]): Promise<void> {
@@ -67,6 +121,18 @@ export async function sendToPharmacy(
       pharmacyId,
     });
     return result;
+  }
+
+  const category = resolvePayloadCategory(payload);
+  const priority = resolvePayloadPriority(payload);
+
+  if (category) {
+    const preferences = await getPushNotificationPreferences(pharmacyId);
+    const categoryEnabled = preferences.categories[category];
+    const allowByCriticalOverride = preferences.allowCritical && (priority === 'high' || priority === 'critical');
+    if (!categoryEnabled && !allowByCriticalOverride) {
+      return result;
+    }
   }
 
   webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);

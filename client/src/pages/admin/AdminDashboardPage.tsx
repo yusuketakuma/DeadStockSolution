@@ -89,6 +89,23 @@ interface MonitoringKpiSnapshot {
   };
 }
 
+interface OpenClawHealthSnapshot {
+  status: 'ok' | 'degraded';
+  timestamp: string;
+  connector: { configured: boolean; mode: string };
+  webhook: { configured: boolean };
+  retryQueue: { pending: number; processing: number; completed: number; failed: number };
+  handoffSuccessRate: number | null;
+  lastHandoffAt: string | null;
+  ddsAgent: {
+    connected: boolean;
+    agentId: string | null;
+    lastSeenAt: string | null;
+    queuedJobs: number;
+    awaitingUser: number;
+  };
+}
+
 interface PharmacyOption {
   id: number;
   name: string;
@@ -129,6 +146,7 @@ export default function AdminDashboardPage() {
   const [observability, setObservability] = useState<Observability | null>(null);
   const [alertsSummary, setAlertsSummary] = useState<AlertsSummary | null>(null);
   const [monitoringKpis, setMonitoringKpis] = useState<MonitoringKpiSnapshot | null>(null);
+  const [openClawHealth, setOpenClawHealth] = useState<OpenClawHealthSnapshot | null>(null);
   const [pharmacies, setPharmacies] = useState<PharmacyOption[]>([]);
   const [messages, setMessages] = useState<AdminMessage[]>([]);
   const [targetType, setTargetType] = useState<'all' | 'pharmacy'>('all');
@@ -144,7 +162,7 @@ export default function AdminDashboardPage() {
   const fetchData = async () => {
     setLoading(true);
     setError('');
-    const [statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult] = await Promise.allSettled([
+    const [statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult, openClawResult] = await Promise.allSettled([
       api.get<Stats>('/admin/stats'),
       api.get<RiskOverview>('/admin/risk/overview'),
       api.get<Observability>('/admin/observability?minutes=60'),
@@ -152,6 +170,7 @@ export default function AdminDashboardPage() {
       api.get<MonitoringKpiSnapshot>('/admin/kpis?minutes=60'),
       api.get<{ data: PharmacyOption[] }>('/admin/pharmacies/options'),
       api.get<MessagesResponse>('/admin/messages?page=1&limit=10'),
+      api.get<OpenClawHealthSnapshot>('/health/openclaw'),
     ]);
 
     const statsValue = resolveSettledValue(statsResult);
@@ -161,6 +180,7 @@ export default function AdminDashboardPage() {
     const kpisValue = resolveSettledValue(kpisResult);
     const pharmacyValue = resolveSettledValue(pharmacyResult);
     const messagesValue = resolveSettledValue(messagesResult);
+    const openClawValue = resolveSettledValue(openClawResult);
 
     if (statsValue) setStats(statsValue);
     if (riskValue) setRiskOverview(riskValue);
@@ -169,8 +189,9 @@ export default function AdminDashboardPage() {
     if (kpisValue) setMonitoringKpis(kpisValue);
     if (pharmacyValue) setPharmacies(pharmacyValue.data);
     if (messagesValue) setMessages(messagesValue.data);
+    if (openClawValue) setOpenClawHealth(openClawValue);
 
-    if (countRejectedResults([statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult]) > 0) {
+    if (countRejectedResults([statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult, openClawResult]) > 0) {
       setError('一部のデータの取得に失敗しました');
     }
     setLoading(false);
@@ -311,6 +332,41 @@ export default function AdminDashboardPage() {
           <AppKpiCard value={alertsSummary?.pendingProposalActions24h ?? '-'} label="要対応提案 (24h)" />
         </Col>
       </Row>
+
+      <AppDataPanel title="OpenClaw / DDS 状態" className="mb-3">
+        <Row className="g-3">
+          <Col md={3}>
+            <AppKpiCard
+              value={openClawHealth?.status === 'ok' ? '正常' : openClawHealth?.status === 'degraded' ? '要確認' : '-'}
+              label="OpenClaw ヘルス"
+              valueClassName={openClawHealth?.status === 'ok' ? 'h5 text-success' : 'h5 text-danger'}
+              action={<Link to="/admin/openclaw" className="btn btn-sm btn-outline-primary">詳細を見る</Link>}
+            />
+          </Col>
+          <Col md={3}>
+            <AppKpiCard
+              value={openClawHealth?.ddsAgent.connected ? '接続中' : '未接続'}
+              label="DDS Agent"
+              subLabel={openClawHealth?.ddsAgent.agentId ?? 'agent未登録'}
+              valueClassName={openClawHealth?.ddsAgent.connected ? 'h5 text-success' : 'h5 text-warning'}
+            />
+          </Col>
+          <Col md={3}>
+            <AppKpiCard
+              value={openClawHealth ? `${openClawHealth.retryQueue.pending}/${openClawHealth.retryQueue.failed}` : '-'}
+              label="retry pending / failed"
+              subLabel={openClawHealth?.lastHandoffAt ? `last handoff: ${openClawHealth.lastHandoffAt}` : undefined}
+            />
+          </Col>
+          <Col md={3}>
+            <AppKpiCard
+              value={openClawHealth?.handoffSuccessRate != null ? `${Math.round(openClawHealth.handoffSuccessRate * 100)}%` : '-'}
+              label="handoff 成功率 (30d)"
+              subLabel={openClawHealth ? `queued:${openClawHealth.ddsAgent.queuedJobs} awaiting:${openClawHealth.ddsAgent.awaitingUser}` : undefined}
+            />
+          </Col>
+        </Row>
+      </AppDataPanel>
 
       <Row className="g-3 mb-3">
         <Col md={3}>

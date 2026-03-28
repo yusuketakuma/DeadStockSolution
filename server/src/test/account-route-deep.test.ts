@@ -23,94 +23,78 @@ const mocks = vi.hoisted(() => ({
   clearCsrfCookie: vi.fn(),
 }));
 
-function mockAccountRouteDeepDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-      next();
-    },
-    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-  }));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+    next();
+  },
+  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+}));
 
-  vi.doMock('../config/database', () => ({ db: mocks.db }));
+vi.mock('../config/database', () => ({ db: mocks.db }));
 
-  vi.doMock('../services/auth-service', () => ({
-    hashPassword: mocks.hashPassword,
-    verifyPassword: mocks.verifyPassword,
-    generateToken: mocks.generateToken,
-    deriveSessionVersion: mocks.deriveSessionVersion,
-  }));
+vi.mock('../services/auth-service', () => ({
+  hashPassword: mocks.hashPassword,
+  verifyPassword: mocks.verifyPassword,
+  generateToken: mocks.generateToken,
+  deriveSessionVersion: mocks.deriveSessionVersion,
+}));
 
-  vi.doMock('../services/geocode-service', () => ({
-    geocodeAddress: mocks.geocodeAddress,
-  }));
+vi.mock('../services/geocode-service', () => ({
+  geocodeAddress: mocks.geocodeAddress,
+}));
 
-  vi.doMock('../services/pharmacy-verification-service', () => ({
-    detectChangedReverificationFields: mocks.detectChangedReverificationFields,
-    triggerReverification: mocks.triggerReverification,
-    ReverificationTriggerError: mocks.ReverificationTriggerError,
-    sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
-  }));
+vi.mock('../services/pharmacy-verification-service', () => ({
+  detectChangedReverificationFields: mocks.detectChangedReverificationFields,
+  triggerReverification: mocks.triggerReverification,
+  ReverificationTriggerError: mocks.ReverificationTriggerError,
+  sendReverificationTriggerErrorResponse: mocks.sendReverificationTriggerErrorResponse,
+}));
 
-  vi.doMock('../services/log-service', () => ({
-    writeLog: mocks.writeLog,
-    getClientIp: mocks.getClientIp,
-  }));
+vi.mock('../services/log-service', () => ({
+  writeLog: mocks.writeLog,
+  getClientIp: mocks.getClientIp,
+}));
 
-  vi.doMock('../services/logger', () => ({
-    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  }));
+vi.mock('../services/logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
-  vi.doMock('../middleware/csrf', () => ({
-    clearCsrfCookie: mocks.clearCsrfCookie,
-  }));
+vi.mock('../middleware/csrf', () => ({
+  clearCsrfCookie: mocks.clearCsrfCookie,
+}));
 
-  vi.doMock('../middleware/error-handler', () => ({
-    getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-  }));
+vi.mock('../middleware/error-handler', () => ({
+  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+}));
 
-  vi.doMock('../utils/email-utils', async () => await vi.importActual('../utils/email-utils'));
-  vi.doMock('../routes/response-helpers', async () => await vi.importActual('../routes/response-helpers'));
-  vi.doMock('../routes/auth-helpers', async () => await vi.importActual('../routes/auth-helpers'));
-  vi.doMock('../services/password-reset-service', async () => await vi.importActual('../services/password-reset-service'));
-  vi.doMock('../routes/account-inventory-search', async () => await vi.importActual('../routes/account-inventory-search'));
+vi.mock('../utils/validators', () => ({
+  emailSchema: {
+    safeParse: vi.fn((val: string) => {
+      if (val.includes('@')) return { success: true, data: val };
+      return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
+    }),
+  },
+}));
 
-  vi.doMock('../utils/validators', () => ({
-    emailSchema: {
-      safeParse: vi.fn((val: string) => {
-        if (val.includes('@')) return { success: true, data: val };
-        return { success: false, error: { issues: [{ message: 'メールアドレスが不正です' }] } };
-      }),
-    },
-  }));
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(() => ({})),
+  and: vi.fn(() => ({})),
+  isNull: vi.fn(() => ({})),
+  sql: vi.fn(() => ({})),
+}));
 
-  vi.doMock('drizzle-orm', () => ({
-    eq: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    isNull: vi.fn(() => ({})),
-    sql: vi.fn(() => ({})),
-  }));
-
-  vi.doMock('express-rate-limit', () => ({
-    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-  }));
-}
-
-let accountRouter: express.Router;
+vi.mock('express-rate-limit', () => ({
+  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 
 async function createApp() {
+  const { default: accountRouter } = await import('../routes/account');
   const app = express();
   app.use(express.json());
   app.use('/api/account', accountRouter);
   return app;
 }
-
-beforeEach(async () => {
-  vi.resetAllMocks();
-  vi.resetModules();
-  mockAccountRouteDeepDependencies();
-  ({ default: accountRouter } = await import('../routes/account'));
-});
 
 function createLimitQuery(result: unknown) {
   const query = { from: vi.fn(), where: vi.fn(), limit: vi.fn() };
@@ -514,7 +498,8 @@ describe('account routes — deep coverage', () => {
         .send({ name: '新名前', version: 1 });
 
       expect(res.status).toBe(401);
-      expect(res.body.error).toContain('アカウントが無効');
+      const errorMessage = typeof res.body?.error === 'string' ? res.body.error : res.text;
+      expect(errorMessage).toContain('アカウントが無効');
     });
   });
 

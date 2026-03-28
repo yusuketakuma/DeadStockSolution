@@ -145,6 +145,8 @@ describe('TimelineContext', () => {
     });
 
     expect(result.current.unreadCount).toBe(0);
+    expect(result.current.events.every((event) => event.isRead)).toBe(true);
+    expect(result.current.digestEvents.every((event) => event.isRead)).toBe(true);
   });
 
   it('polling does not fetch when document is hidden', async () => {

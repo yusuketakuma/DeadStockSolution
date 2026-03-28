@@ -12,51 +12,51 @@ const mocks = vi.hoisted(() => ({
   pharmacyExists: vi.fn(),
   publishMessagesRefresh: vi.fn(),
   publishAdminMessagesRefresh: vi.fn(),
+  dispatchCustomPush: vi.fn(),
 }));
 
-function mockMessagesRouteDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-      next();
-    },
-    rejectAdmin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, res: Response, next: () => void) => {
-      if (req.user?.isAdmin) {
-        res.status(403).json({ error: '管理者アカウントではこの機能を利用できません' });
-        return;
-      }
-      next();
-    },
-  }));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+    next();
+  },
+  rejectAdmin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, res: Response, next: () => void) => {
+    if (req.user?.isAdmin) {
+      res.status(403).json({ error: '管理者アカウントではこの機能を利用できません' });
+      return;
+    }
+    next();
+  },
+}));
 
-  vi.doMock('../services/messaging-service', () => ({
-    sendMessage: mocks.sendMessage,
-    getThreads: mocks.getThreads,
-    getThread: mocks.getThread,
-    markThreadRead: mocks.markThreadRead,
-    getUnreadCount: mocks.getUnreadCount,
-    pharmacyExists: mocks.pharmacyExists,
-  }));
+vi.mock('../services/messaging-service', () => ({
+  sendMessage: mocks.sendMessage,
+  getThreads: mocks.getThreads,
+  getThread: mocks.getThread,
+  markThreadRead: mocks.markThreadRead,
+  getUnreadCount: mocks.getUnreadCount,
+  pharmacyExists: mocks.pharmacyExists,
+}));
 
-  vi.doMock('../services/logger', () => ({
-    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  }));
+vi.mock('../services/logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
-  vi.doMock('../services/realtime-service', () => ({
-    publishMessagesRefresh: mocks.publishMessagesRefresh,
-    publishAdminMessagesRefresh: mocks.publishAdminMessagesRefresh,
-  }));
+vi.mock('../services/realtime-service', () => ({
+  publishMessagesRefresh: mocks.publishMessagesRefresh,
+  publishAdminMessagesRefresh: mocks.publishAdminMessagesRefresh,
+}));
 
-  vi.doMock('../middleware/attachment-upload', async () => await vi.importActual('../middleware/attachment-upload'));
-  vi.doMock('../utils/request-utils', async () => await vi.importActual('../utils/request-utils'));
-}
+vi.mock('../services/push-notification-dispatcher', () => ({
+  dispatchCustomPush: mocks.dispatchCustomPush,
+}));
 
 let app: express.Express;
 
 beforeEach(async () => {
-  vi.resetModules();
+  vi.useRealTimers();
   vi.resetAllMocks();
-  mockMessagesRouteDependencies();
+  vi.resetModules();
 
   const { default: messagesRouter } = await import('../routes/messages');
   app = express();
@@ -97,6 +97,13 @@ describe('POST /messages', () => {
       messageId: 10,
       reason: 'message_sent',
     });
+    expect(mocks.dispatchCustomPush).toHaveBeenCalledWith(expect.objectContaining({
+      pharmacyId: 2,
+      type: 'direct_message',
+      category: 'comments',
+      priority: 'high',
+      referenceId: 10,
+    }));
   });
 
   it('should return 400 when body is empty', async () => {

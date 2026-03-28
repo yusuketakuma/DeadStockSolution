@@ -8,57 +8,52 @@ const mocks = vi.hoisted(() => ({
   updateErrorCode: vi.fn(),
 }));
 
-function mockAdminErrorCodeDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-      next();
-    },
-    requireAdmin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, res: { status: (code: number) => { json: (body: unknown) => void } }, next: () => void) => {
-      if (!req.user?.isAdmin) {
-        res.status(403).json({ error: '管理者権限が必要です' });
-        return;
-      }
-      next();
-    },
-  }));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+    next();
+  },
+  requireAdmin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, res: { status: (code: number) => { json: (body: unknown) => void } }, next: () => void) => {
+    if (!req.user?.isAdmin) {
+      res.status(403).json({ error: '管理者権限が必要です' });
+      return;
+    }
+    next();
+  },
+}));
 
-  vi.doMock('../services/error-code-service', () => ({
-    listErrorCodes: mocks.listErrorCodes,
-    createErrorCode: mocks.createErrorCode,
-    updateErrorCode: mocks.updateErrorCode,
-  }));
+vi.mock('../services/error-code-service', () => ({
+  listErrorCodes: mocks.listErrorCodes,
+  createErrorCode: mocks.createErrorCode,
+  updateErrorCode: mocks.updateErrorCode,
+}));
 
-  vi.doMock('../db/schema', () => ({
-    errorCodeCategoryValues: ['upload', 'auth', 'sync', 'system', 'openclaw'],
-    errorCodeSeverityValues: ['critical', 'error', 'warning', 'info'],
-  }));
+vi.mock('../db/schema', () => ({
+  errorCodeCategoryValues: ['upload', 'auth', 'sync', 'system', 'openclaw'],
+  errorCodeSeverityValues: ['critical', 'error', 'warning', 'info'],
+}));
 
-  vi.doMock('../services/logger', () => ({
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-  }));
+vi.mock('../services/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
-  vi.doMock('../middleware/error-handler', () => ({
-    getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-  }));
+vi.mock('../middleware/error-handler', () => ({
+  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+}));
 
-  vi.doMock('../routes/admin-utils', async () => await vi.importActual('../routes/admin-utils'));
-}
-
-async function createApp() {
-  vi.resetModules();
-  mockAdminErrorCodeDependencies();
-  const { default: adminErrorCodesRouter } = await import('../routes/admin-error-codes');
+function createApp() {
   const app = express();
   app.use(express.json());
   app.use('/api/admin/error-codes', adminErrorCodesRouter);
   return app;
 }
+
+let adminErrorCodesRouter: (typeof import('../routes/admin-error-codes'))['default'];
 
 const sampleErrorCode = {
   id: 1,
@@ -73,13 +68,17 @@ const sampleErrorCode = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
+beforeEach(async () => {
+  vi.useRealTimers();
+  vi.resetModules();
+  vi.resetAllMocks();
+  ({ default: adminErrorCodesRouter } = await import('../routes/admin-error-codes'));
+});
+
 describe('GET /api/admin/error-codes', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
 
   it('returns error code list with default filters', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.listErrorCodes.mockResolvedValue({ items: [sampleErrorCode], total: 1 });
 
     const response = await request(app).get('/api/admin/error-codes');
@@ -91,7 +90,7 @@ describe('GET /api/admin/error-codes', () => {
   });
 
   it('applies category filter when valid category is provided', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.listErrorCodes.mockResolvedValue({ items: [], total: 0 });
 
     const response = await request(app)
@@ -104,7 +103,7 @@ describe('GET /api/admin/error-codes', () => {
   });
 
   it('ignores invalid category value', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.listErrorCodes.mockResolvedValue({ items: [], total: 0 });
 
     const response = await request(app)
@@ -117,7 +116,7 @@ describe('GET /api/admin/error-codes', () => {
   });
 
   it('applies severity filter when valid severity is provided', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.listErrorCodes.mockResolvedValue({ items: [], total: 0 });
 
     const response = await request(app)
@@ -130,7 +129,7 @@ describe('GET /api/admin/error-codes', () => {
   });
 
   it('applies search filter', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.listErrorCodes.mockResolvedValue({ items: [], total: 0 });
 
     const response = await request(app)
@@ -143,7 +142,7 @@ describe('GET /api/admin/error-codes', () => {
   });
 
   it('excludes inactive when activeOnly=false', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.listErrorCodes.mockResolvedValue({ items: [], total: 0 });
 
     const response = await request(app)
@@ -156,7 +155,7 @@ describe('GET /api/admin/error-codes', () => {
   });
 
   it('returns 500 on service error', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.listErrorCodes.mockRejectedValue(new Error('DB failure'));
 
     const response = await request(app).get('/api/admin/error-codes');
@@ -166,12 +165,8 @@ describe('GET /api/admin/error-codes', () => {
 });
 
 describe('POST /api/admin/error-codes', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
   it('returns 400 when required fields are missing', async () => {
-    const app = await createApp();
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/admin/error-codes')
@@ -182,7 +177,7 @@ describe('POST /api/admin/error-codes', () => {
   });
 
   it('returns 400 when code is missing', async () => {
-    const app = await createApp();
+    const app = createApp();
 
     const response = await request(app)
       .post('/api/admin/error-codes')
@@ -192,7 +187,7 @@ describe('POST /api/admin/error-codes', () => {
   });
 
   it('creates error code and returns 201', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.createErrorCode.mockResolvedValue(sampleErrorCode);
 
     const response = await request(app)
@@ -218,7 +213,7 @@ describe('POST /api/admin/error-codes', () => {
   });
 
   it('returns 500 when service returns null', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.createErrorCode.mockResolvedValue(null);
 
     const response = await request(app)
@@ -234,7 +229,7 @@ describe('POST /api/admin/error-codes', () => {
   });
 
   it('returns 500 on service exception', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.createErrorCode.mockRejectedValue(new Error('DB failure'));
 
     const response = await request(app)
@@ -251,12 +246,8 @@ describe('POST /api/admin/error-codes', () => {
 });
 
 describe('PUT /api/admin/error-codes/:id', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
   it('returns 400 for invalid (non-numeric) ID', async () => {
-    const app = await createApp();
+    const app = createApp();
 
     const response = await request(app)
       .put('/api/admin/error-codes/not-a-number')
@@ -267,7 +258,7 @@ describe('PUT /api/admin/error-codes/:id', () => {
   });
 
   it('returns 400 for ID of zero', async () => {
-    const app = await createApp();
+    const app = createApp();
 
     const response = await request(app)
       .put('/api/admin/error-codes/0')
@@ -277,7 +268,7 @@ describe('PUT /api/admin/error-codes/:id', () => {
   });
 
   it('returns 404 when error code is not found', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.updateErrorCode.mockResolvedValue(null);
 
     const response = await request(app)
@@ -289,7 +280,7 @@ describe('PUT /api/admin/error-codes/:id', () => {
   });
 
   it('updates error code and returns 200', async () => {
-    const app = await createApp();
+    const app = createApp();
     const updatedRecord = { ...sampleErrorCode, titleJa: 'Updated Title' };
     mocks.updateErrorCode.mockResolvedValue(updatedRecord);
 
@@ -305,7 +296,7 @@ describe('PUT /api/admin/error-codes/:id', () => {
   });
 
   it('returns 500 on service exception', async () => {
-    const app = await createApp();
+    const app = createApp();
     mocks.updateErrorCode.mockRejectedValue(new Error('DB failure'));
 
     const response = await request(app)

@@ -36,6 +36,7 @@ async function handleExpireStale(req: Request, res: Response): Promise<void> {
   }
 }
 
+router.get('/expire-stale', handleExpireStale);
 router.post('/expire-stale', handleExpireStale);
 
 export default router;

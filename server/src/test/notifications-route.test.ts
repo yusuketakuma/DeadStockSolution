@@ -38,7 +38,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-let notificationsRouter: express.Router;
+let notificationsRouter: (typeof import('../routes/notifications'))['default'];
 
 function createSelectQuery(result: unknown) {
   const query = {
@@ -62,6 +62,8 @@ function createApp() {
 }
 
 beforeEach(async () => {
+  vi.useRealTimers();
+  vi.resetAllMocks();
   vi.resetModules();
   const { default: router } = await import('../routes/notifications');
   notificationsRouter = router;

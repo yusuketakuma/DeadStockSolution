@@ -9,6 +9,7 @@ import {
   Row,
   Spinner,
 } from 'react-bootstrap';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   fetchThreads,
@@ -65,6 +66,7 @@ function threadStatusBadge(thread: MessageThread) {
 export default function MessagesPage() {
   const { user } = useAuth();
   const myPharmacyId = user?.id ?? 0;
+  const [searchParams] = useSearchParams();
 
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
@@ -77,6 +79,11 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [threadPage, setThreadPage] = useState(1);
+  const [threadTotalPages, setThreadTotalPages] = useState(1);
+  const [threadSearch, setThreadSearch] = useState('');
+  const [attachmentsOnly, setAttachmentsOnly] = useState(false);
 
   const [inputBody, setInputBody] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -85,6 +92,15 @@ export default function MessagesPage() {
 
   const [showDetail, setShowDetail] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialSelectionAppliedRef = useRef(false);
+  const requestedPharmacyId = useMemo(() => {
+    const value = Number(searchParams.get('pharmacyId'));
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }, [searchParams]);
+  const requestedPharmacyName = searchParams.get('pharmacyName') ?? '';
+  const requestedDraft = searchParams.get('draft') ?? '';
+  const requestedContext = searchParams.get('context') ?? '';
+  const requestedContextId = searchParams.get('contextId') ?? '';
 
   const loadThreads = useCallback(async (
     nextSearch: string,
@@ -116,27 +132,45 @@ export default function MessagesPage() {
 
   const loadMessages = useCallback(async (
     pharmacyId: number,
-    options: { background?: boolean } = {},
+    options: { background?: boolean; page?: number; append?: boolean } = {},
   ) => {
     const background = options.background ?? false;
+    const page = options.page ?? 1;
+    const append = options.append ?? false;
     if (!background) {
-      setMessagesLoading(true);
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setMessagesLoading(true);
+      }
       setMessagesError(null);
     }
     try {
-      const res = await fetchThread(pharmacyId);
+      const res = await fetchThread(pharmacyId, page);
       const sorted = [...res.data].sort(
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
       setMessagesError(null);
-      setMessages(sorted);
+      setThreadPage(page);
+      setThreadTotalPages(res.pagination.totalPages);
+      setMessages((prev) => {
+        if (!append) {
+          return sorted;
+        }
+        const seen = new Set(prev.map((message) => message.id));
+        return [...sorted.filter((message) => !seen.has(message.id)), ...prev];
+      });
     } catch (err) {
       if (!background) {
         setMessagesError(err instanceof Error ? err.message : 'メッセージの取得に失敗しました');
       }
     } finally {
       if (!background) {
-        setMessagesLoading(false);
+        if (append) {
+          setLoadingMore(false);
+        } else {
+          setMessagesLoading(false);
+        }
       }
     }
   }, []);
@@ -159,7 +193,22 @@ export default function MessagesPage() {
   });
 
   useEffect(() => {
-    if (messagesEndRef.current) {
+    if (initialSelectionAppliedRef.current) {
+      return;
+    }
+    initialSelectionAppliedRef.current = true;
+    if (requestedPharmacyId) {
+      setSelectedPharmacyId(requestedPharmacyId);
+      setSelectedPharmacyName(requestedPharmacyName);
+      setShowDetail(true);
+    }
+    if (requestedDraft) {
+      setInputBody(requestedDraft);
+    }
+  }, [requestedDraft, requestedPharmacyId, requestedPharmacyName]);
+
+  useEffect(() => {
+    if (messagesEndRef.current && typeof messagesEndRef.current.scrollIntoView === 'function') {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
@@ -174,16 +223,19 @@ export default function MessagesPage() {
     if (selectedPharmacyId && threads.some((thread) => thread.otherPharmacyId === selectedPharmacyId)) {
       return;
     }
+    if (selectedPharmacyId && requestedPharmacyId === selectedPharmacyId && requestedPharmacyName) {
+      return;
+    }
     const next = threads[0];
     setSelectedPharmacyId(next.otherPharmacyId);
     setSelectedPharmacyName(next.otherPharmacyName);
-  }, [threads, selectedPharmacyId]);
+  }, [requestedPharmacyId, requestedPharmacyName, selectedPharmacyId, threads]);
 
   useEffect(() => {
     if (!selectedPharmacyId) {
       return;
     }
-    void loadMessages(selectedPharmacyId);
+    void loadMessages(selectedPharmacyId, { page: 1 });
   }, [selectedPharmacyId, loadMessages]);
 
   const handleSelectThread = useCallback(
@@ -194,7 +246,9 @@ export default function MessagesPage() {
       setSelectedFiles([]);
       setSendError(null);
       setShowDetail(true);
-      await loadMessages(thread.otherPharmacyId);
+      setThreadSearch('');
+      setAttachmentsOnly(false);
+      await loadMessages(thread.otherPharmacyId, { page: 1 });
       try {
         await markThreadRead(thread.otherPharmacyId);
         setThreads((prev) =>
@@ -222,7 +276,7 @@ export default function MessagesPage() {
       await sendMessage(selectedPharmacyId, inputBody.trim(), selectedFiles);
       setInputBody('');
       setSelectedFiles([]);
-      await loadMessages(selectedPharmacyId);
+      await loadMessages(selectedPharmacyId, { page: 1 });
       await loadThreads(search);
       notifyMessageNavUpdated();
     } catch (err) {
@@ -246,6 +300,19 @@ export default function MessagesPage() {
     () => threads.find((thread) => thread.otherPharmacyId === selectedPharmacyId) ?? null,
     [selectedPharmacyId, threads],
   );
+  const filteredMessages = useMemo(() => messages.filter((message) => {
+    if (attachmentsOnly && message.attachments.length === 0) return false;
+    if (!threadSearch.trim()) return true;
+    const query = threadSearch.trim().toLowerCase();
+    if (message.body.toLowerCase().includes(query)) return true;
+    return message.attachments.some((attachment) => attachment.fileName.toLowerCase().includes(query));
+  }), [attachmentsOnly, messages, threadSearch]);
+  const canLoadOlderMessages = selectedPharmacyId !== null && threadPage < threadTotalPages;
+  const contextLabel = requestedContext === 'proposal'
+    ? `提案 #${requestedContextId || '-'} の文脈`
+    : requestedContext === 'matching'
+      ? 'マッチング候補の相談'
+      : '';
 
   const threadList = (
     <Card>
@@ -339,10 +406,20 @@ export default function MessagesPage() {
               {selectedThread.hasAttachments && <Badge bg="secondary">添付あり</Badge>}
             </div>
           )}
+          {!selectedThread && selectedPharmacyId ? (
+            <div className="d-flex flex-wrap gap-1 mt-1">
+              <Badge bg="secondary">新規スレッド</Badge>
+            </div>
+          ) : null}
         </div>
       </Card.Header>
 
       <div className="p-3">
+        {contextLabel ? (
+          <div className="mb-3">
+            <Badge bg="info">{contextLabel}</Badge>
+          </div>
+        ) : null}
         {!selectedPharmacyId ? (
           <p className="text-muted text-center mt-4">左のスレッドを選択してください</p>
         ) : messagesLoading ? (
@@ -354,7 +431,42 @@ export default function MessagesPage() {
         ) : messages.length === 0 ? (
           <p className="text-muted small text-center mt-4">まだメッセージがありません</p>
         ) : (
-          messages.map((message) => {
+          <>
+            <div className="d-flex flex-column flex-md-row gap-2 align-items-md-center justify-content-between mb-3">
+              <div className="d-flex gap-2 flex-wrap">
+                <Form.Control
+                  size="sm"
+                  value={threadSearch}
+                  onChange={(event) => setThreadSearch(event.target.value)}
+                  placeholder="本文・添付名で検索"
+                  aria-label="スレッド内検索"
+                  style={{ minWidth: 220 }}
+                />
+                <Form.Check
+                  type="switch"
+                  id="messages-attachments-only"
+                  label="添付ありのみ"
+                  checked={attachmentsOnly}
+                  onChange={(event) => setAttachmentsOnly(event.target.checked)}
+                />
+              </div>
+              {canLoadOlderMessages ? (
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  disabled={loadingMore}
+                  onClick={() => void loadMessages(selectedPharmacyId, {
+                    page: threadPage + 1,
+                    append: true,
+                  })}
+                >
+                  {loadingMore ? '読込中...' : '過去ログを読み込む'}
+                </Button>
+              ) : null}
+            </div>
+            {filteredMessages.length === 0 ? (
+              <p className="text-muted small text-center mt-4">検索条件に一致するメッセージはありません</p>
+            ) : filteredMessages.map((message) => {
             const isMine = message.fromPharmacyId === myPharmacyId;
             return (
               <div
@@ -387,7 +499,8 @@ export default function MessagesPage() {
                 </div>
               </div>
             );
-          })
+          })}
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>

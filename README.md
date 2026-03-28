@@ -93,7 +93,7 @@
 
 ### 前提条件
 
-- Node.js 25.8.2
+- Node.js 24.14.1
 - npm 11.11.1+
 - PostgreSQL（ローカル or Neon/Vercel Postgres）
 
@@ -185,6 +185,16 @@ CI では `VERCEL_TOKEN` と `GITHUB_SHA` / `GITHUB_REF_NAME` から最新 previ
 GitHub Actions で token 自動解決を使わない場合は、repository variable `PREVIEW_BRANCH_SMOKE_BASE_URL` に branch-specific URL を設定する。
 
 詳細は [docs/operations/release-quality-gate.md](docs/operations/release-quality-gate.md) を参照。
+
+---
+
+## 直近追加の運用導線
+
+- **提案期限とリマインド** — 仮マッチングは 72 時間で失効し、期限表示・残り時間・誰待ちかを一覧/詳細で確認できます。
+- **提案テンプレート** — 完了済み提案をテンプレート保存し、Matching / Proposal 詳細から再利用できます。
+- **サブスク管理** — アカウント画面で current plan / checkout / cancel を扱えます。決済完了後は `/subscription/success` で反映待ちも確認できます。
+- **通知センター** — ヘッダー通知から `/notifications` に移動し、未読・期限切迫・通知種別で一覧確認できます。
+- **OpenClaw / DDS 管理** — `/admin/openclaw` で retry queue、DDS bootstrap token、request event timeline を確認できます。
 
 ---
 

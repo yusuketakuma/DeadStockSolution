@@ -118,6 +118,8 @@ let accountRouter: express.Router;
 let businessHoursRouter: express.Router;
 
 beforeEach(async () => {
+  vi.useRealTimers();
+  vi.resetAllMocks();
   vi.resetModules();
   mockOptimisticLockingDependencies();
   ({ default: accountRouter } = await import('../routes/account'));

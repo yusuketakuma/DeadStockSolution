@@ -17,59 +17,95 @@ const mocks = vi.hoisted(() => ({
   requireLoginEnabled: { value: true },
 }));
 
-function mockGroupRouteDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (
-      req: { user?: { id: number; email: string; isAdmin: boolean } },
-      res: { status: (code: number) => { json: (body: unknown) => void } },
-      next: () => void,
-    ) => {
-      if (!mocks.requireLoginEnabled.value) {
-        res.status(401).json({ error: 'ログインが必要です' });
-        return;
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (
+    req: { user?: { id: number; email: string; isAdmin: boolean } },
+    res: { status: (code: number) => { json: (body: unknown) => void } },
+    next: () => void,
+  ) => {
+    if (!mocks.requireLoginEnabled.value) {
+      res.status(401).json({ error: 'ログインが必要です' });
+      return;
+    }
+    req.user = { id: 1, email: 'pharmacy@example.com', isAdmin: false };
+    next();
+  },
+}));
+
+vi.mock('../services/group-service', () => ({
+  createGroup: mocks.createGroup,
+  updateGroup: mocks.updateGroup,
+  deleteGroup: mocks.deleteGroup,
+  listGroups: mocks.listGroups,
+  getMembershipSummary: mocks.getMembershipSummary,
+  getGroupDetail: mocks.getGroupDetail,
+  inviteMember: mocks.inviteMember,
+  acceptInvitation: mocks.acceptInvitation,
+  joinPublicGroup: mocks.joinPublicGroup,
+  removeMember: mocks.removeMember,
+  leaveGroup: mocks.leaveGroup,
+}));
+
+vi.mock('../config/database', () => ({
+  db: {},
+}));
+
+vi.mock('../services/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock('../services/system-event-service', () => ({
+  recordHttpUnhandledError: vi.fn(),
+}));
+
+vi.mock('../utils/request-utils', () => ({
+  parsePositiveInt: (raw: unknown) => {
+    if (typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+
+    const parsed = Number(trimmed);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+    return parsed;
+  },
+  normalizeSearchTerm: (raw: unknown, maxLength: number = 100) => {
+    if (typeof raw !== 'string') return undefined;
+    const sanitized = raw
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      .trim();
+    if (!sanitized) return undefined;
+    return sanitized.slice(0, maxLength);
+  },
+}));
+
+vi.mock('../utils/cursor-pagination', () => ({
+  parseCursor: (raw: unknown, validate: (cursor: { id: number }) => boolean) => {
+    if (raw === undefined) return undefined;
+    if (typeof raw !== 'string' || raw.trim().length === 0) return null;
+    try {
+      const decoded = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+      if (!decoded || typeof decoded !== 'object') return null;
+      if (
+        typeof decoded.id !== 'number' ||
+        !Number.isInteger(decoded.id) ||
+        decoded.id <= 0
+      ) {
+        return null;
       }
-      req.user = { id: 1, email: 'pharmacy@example.com', isAdmin: false };
-      next();
-    },
-  }));
+      return validate(decoded as { id: number }) ? decoded : null;
+    } catch {
+      return null;
+    }
+  },
+}));
 
-  vi.doMock('../services/group-service', () => ({
-    createGroup: mocks.createGroup,
-    updateGroup: mocks.updateGroup,
-    deleteGroup: mocks.deleteGroup,
-    listGroups: mocks.listGroups,
-    getMembershipSummary: mocks.getMembershipSummary,
-    getGroupDetail: mocks.getGroupDetail,
-    inviteMember: mocks.inviteMember,
-    acceptInvitation: mocks.acceptInvitation,
-    joinPublicGroup: mocks.joinPublicGroup,
-    removeMember: mocks.removeMember,
-    leaveGroup: mocks.leaveGroup,
-  }));
-
-  vi.doMock('../config/database', () => ({
-    db: {},
-  }));
-
-  vi.doMock('../services/logger', () => ({
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-  }));
-
-  vi.doMock('../services/system-event-service', () => ({
-    recordHttpUnhandledError: vi.fn(),
-  }));
-
-  vi.doMock('../utils/request-utils', async () => await vi.importActual('../utils/request-utils'));
-  vi.doMock('../utils/cursor-pagination', async () => await vi.importActual('../utils/cursor-pagination'));
-}
-
-let groupsRouter: express.Router;
-let requireLogin: express.RequestHandler;
+let groupsRouter: (typeof import('../routes/groups'))['default'];
+let requireLogin: (typeof import('../middleware/auth'))['requireLogin'];
 
 function createApp() {
   const app = express();
@@ -80,10 +116,10 @@ function createApp() {
 
 describe('group routes', () => {
   beforeEach(async () => {
-    vi.resetModules();
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
     mocks.requireLoginEnabled.value = true;
-    mockGroupRouteDependencies();
     ({ requireLogin } = await import('../middleware/auth'));
     ({ default: groupsRouter } = await import('../routes/groups'));
   });

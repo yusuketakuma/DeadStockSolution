@@ -31,6 +31,9 @@ const mocks = vi.hoisted(() => ({
   publishAdminRequestsRefresh: vi.fn(),
   publishRequestsRefresh: vi.fn(),
   publishTimelineRefresh: vi.fn(),
+  invalidateDashboardUnreadCache: vi.fn(),
+  dispatchCustomPush: vi.fn(),
+  dispatchCustomPushToMany: vi.fn(),
 }));
 
 function mockAdminPharmaciesSubrouteDependencies() {
@@ -95,6 +98,15 @@ function mockAdminPharmaciesSubrouteDependencies() {
     publishAdminRequestsRefresh: mocks.publishAdminRequestsRefresh,
     publishRequestsRefresh: mocks.publishRequestsRefresh,
     publishTimelineRefresh: mocks.publishTimelineRefresh,
+  }));
+
+  vi.doMock('../services/notification-service', () => ({
+    invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
+  }));
+
+  vi.doMock('../services/push-notification-dispatcher', () => ({
+    dispatchCustomPush: mocks.dispatchCustomPush,
+    dispatchCustomPushToMany: mocks.dispatchCustomPushToMany,
   }));
 
   vi.doMock('../utils/validators', () => ({
@@ -757,6 +769,12 @@ describe('admin pharmacies actions routes', () => {
 
   it('POST /messages returns 201 on valid broadcast message', async () => {
     const app = createApp();
+    mocks.db.select.mockImplementationOnce(() => {
+      const query = { from: vi.fn(), where: vi.fn() };
+      query.from.mockReturnValue(query);
+      query.where.mockResolvedValue([{ id: 2 }, { id: 3 }]);
+      return query;
+    });
     mocks.db.insert.mockImplementationOnce(() => createInsertQuery());
 
     const response = await request(app)
@@ -769,6 +787,12 @@ describe('admin pharmacies actions routes', () => {
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ message: '加盟薬局へメッセージを送信しました' });
+    expect(mocks.invalidateDashboardUnreadCache).toHaveBeenCalledTimes(2);
+    expect(mocks.dispatchCustomPushToMany).toHaveBeenCalledWith(expect.objectContaining({
+      pharmacyIds: [2, 3],
+      type: 'admin_message',
+      category: 'admin',
+    }));
   });
 
   it('POST /messages returns 400 for missing target type', async () => {

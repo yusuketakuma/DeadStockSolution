@@ -7,34 +7,39 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
+let internalDeadStockArchiveRouter: (typeof import('../routes/internal-dead-stock-archive'))['default'];
 
-async function createApp() {
-  vi.resetModules();
-  vi.doMock('../services/dead-stock-archive-service', () => ({
-    archiveExpiredDeadStock: mocks.archiveExpiredDeadStock,
-  }));
-  vi.doMock('../services/logger', () => ({
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-  }));
-  vi.doMock('../config/database', () => ({
-    db: {
-      update: vi.fn(),
-    },
-  }));
-  const { default: internalDeadStockArchiveRouter } = await import('../routes/internal-dead-stock-archive');
+vi.mock('../services/dead-stock-archive-service', () => ({
+  archiveExpiredDeadStock: mocks.archiveExpiredDeadStock,
+}));
+
+vi.mock('../services/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock('../config/database', () => ({
+  db: {
+    update: vi.fn(),
+  },
+}));
+
+function createApp() {
   const app = express();
   app.use('/api/internal/dead-stock', internalDeadStockArchiveRouter);
   return app;
 }
 
 describe('POST /api/internal/dead-stock/archive-expired', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: internalDeadStockArchiveRouter } = await import('../routes/internal-dead-stock-archive'));
     delete process.env.CRON_SECRET;
     delete process.env.DEAD_STOCK_ARCHIVE_CRON_SECRET;
     mocks.archiveExpiredDeadStock.mockResolvedValue({ archivedCount: 0 });
@@ -50,7 +55,7 @@ describe('POST /api/internal/dead-stock/archive-expired', () => {
   });
 
   it('returns 503 when cron secret is not configured', async () => {
-    const app = await createApp();
+    const app = createApp();
     const response = await request(app)
       .post('/api/internal/dead-stock/archive-expired');
 
@@ -60,7 +65,7 @@ describe('POST /api/internal/dead-stock/archive-expired', () => {
 
   it('returns 401 when no authorization header provided', async () => {
     process.env.CRON_SECRET = 'test-secret';
-    const app = await createApp();
+    const app = createApp();
     const response = await request(app)
       .post('/api/internal/dead-stock/archive-expired');
 
@@ -70,7 +75,7 @@ describe('POST /api/internal/dead-stock/archive-expired', () => {
 
   it('returns 401 when wrong authorization header provided', async () => {
     process.env.CRON_SECRET = 'test-secret';
-    const app = await createApp();
+    const app = createApp();
     const response = await request(app)
       .post('/api/internal/dead-stock/archive-expired')
       .set('Authorization', 'Bearer wrong-secret');
@@ -82,7 +87,7 @@ describe('POST /api/internal/dead-stock/archive-expired', () => {
   it('returns 200 with archivedCount when authorized with CRON_SECRET', async () => {
     process.env.CRON_SECRET = 'test-secret';
     mocks.archiveExpiredDeadStock.mockResolvedValue({ archivedCount: 5 });
-    const app = await createApp();
+    const app = createApp();
     const response = await request(app)
       .post('/api/internal/dead-stock/archive-expired')
       .set('Authorization', 'Bearer test-secret');
@@ -94,7 +99,7 @@ describe('POST /api/internal/dead-stock/archive-expired', () => {
   it('returns 200 with archivedCount 0 when no expired items', async () => {
     process.env.CRON_SECRET = 'test-secret';
     mocks.archiveExpiredDeadStock.mockResolvedValue({ archivedCount: 0 });
-    const app = await createApp();
+    const app = createApp();
     const response = await request(app)
       .post('/api/internal/dead-stock/archive-expired')
       .set('Authorization', 'Bearer test-secret');
@@ -107,7 +112,7 @@ describe('POST /api/internal/dead-stock/archive-expired', () => {
     process.env.CRON_SECRET = 'fallback-secret';
     process.env.DEAD_STOCK_ARCHIVE_CRON_SECRET = 'specific-secret';
     mocks.archiveExpiredDeadStock.mockResolvedValue({ archivedCount: 3 });
-    const app = await createApp();
+    const app = createApp();
 
     // fallback should NOT work
     const responseWithFallback = await request(app)
@@ -125,7 +130,7 @@ describe('POST /api/internal/dead-stock/archive-expired', () => {
   it('returns 500 when archiveExpiredDeadStock throws', async () => {
     process.env.CRON_SECRET = 'test-secret';
     mocks.archiveExpiredDeadStock.mockRejectedValue(new Error('DB connection failed'));
-    const app = await createApp();
+    const app = createApp();
     const response = await request(app)
       .post('/api/internal/dead-stock/archive-expired')
       .set('Authorization', 'Bearer test-secret');
@@ -140,6 +145,7 @@ describe('archiveExpiredDeadStock service', () => {
   // since the actual DB calls require PGlite integration tests.
 
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     delete process.env.CRON_SECRET;
     delete process.env.DEAD_STOCK_ARCHIVE_CRON_SECRET;
