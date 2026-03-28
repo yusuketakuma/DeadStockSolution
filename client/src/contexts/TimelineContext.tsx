@@ -171,6 +171,8 @@ export function TimelineProvider({
     try {
       await timelineApi.markViewed();
       setUnreadCount(0);
+      setEvents((prev) => prev.map((event) => ({ ...event, isRead: true })));
+      setDigestEvents((prev) => prev.map((event) => ({ ...event, isRead: true })));
     } catch {
       // ベストエフォート
     }

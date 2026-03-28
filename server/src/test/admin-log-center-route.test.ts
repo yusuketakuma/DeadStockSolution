@@ -18,83 +18,81 @@ const mocks = vi.hoisted(() => ({
 
 // Default user injected by requireLogin mock
 let currentUser = { id: 1, email: 'admin@example.com', isAdmin: true };
-let adminLogCenterRouter: express.Router;
+vi.mock('../services/log-center-service', () => ({
+  queryLogs: mocks.queryLogs,
+  getLogSummary: mocks.getLogSummary,
+  getLogInsights: mocks.getLogInsights,
+  getLogEntryById: mocks.getLogEntryById,
+  getLogInsightForEntry: mocks.getLogInsightForEntry,
+  LOG_ISSUE_WORKFLOW_STATUSES: ['new', 'investigating', 'resolved', 'false_positive'],
+  LOG_SOURCES: ['activity_logs', 'system_events', 'drug_master_sync_logs'],
+  LOG_LEVELS: ['critical', 'error', 'warning', 'info'],
+  isLogLevel: (v: string) => ['critical', 'error', 'warning', 'info'].includes(v),
+}));
+vi.mock('../services/log-center-issue-service', () => ({
+  getLogIssueHistory: mocks.getLogIssueHistory,
+  updateLogIssueState: mocks.updateLogIssueState,
+}));
+vi.mock('../services/openclaw-log-push-service', () => ({
+  escalateLogAlertToOpenClaw: mocks.escalateLogAlertToOpenClaw,
+}));
+vi.mock('../services/logger', () => ({
+  logger: {
+    error: mocks.loggerError,
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+vi.mock('../services/observability-service', () => ({
+  recordRequestMetric: vi.fn(),
+}));
+vi.mock('../utils/request-utils', () => ({
+  parsePositiveInt: (raw: unknown) => {
+    if (typeof raw !== 'string') return undefined;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  },
+  normalizeSearchTerm: (raw: unknown) => (typeof raw === 'string' ? raw.trim() || undefined : undefined),
+  parseTimestamp: (raw: unknown) => {
+    if (typeof raw !== 'string') return null;
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date;
+  },
+}));
+vi.mock('../routes/admin-utils', () => ({
+  handleAdminError: (_err: unknown, _logMessage: string, userMessage: string, res: Response) => {
+    res.status(500).json({ error: userMessage });
+  },
+  sendPaginated: (res: Response, data: unknown[], page: number, limit: number, total: number) => {
+    res.json({
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  },
+  parseListPagination: (req: { query: Record<string, unknown> }, defaultLimit = 50) => {
+    const pageRaw = typeof req.query.page === 'string' ? Number.parseInt(req.query.page, 10) : NaN;
+    const limitRaw = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : NaN;
+    return {
+      page: Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1,
+      limit: Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : defaultLimit,
+    };
+  },
+}));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: unknown }, _res: unknown, next: () => void) => {
+    req.user = currentUser;
+    next();
+  },
+  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 
-function mockAdminLogCenterRouteDependencies() {
-  vi.doMock('../services/log-center-service', () => ({
-    queryLogs: mocks.queryLogs,
-    getLogSummary: mocks.getLogSummary,
-    getLogInsights: mocks.getLogInsights,
-    getLogEntryById: mocks.getLogEntryById,
-    getLogInsightForEntry: mocks.getLogInsightForEntry,
-    LOG_ISSUE_WORKFLOW_STATUSES: ['new', 'investigating', 'resolved', 'false_positive'],
-    LOG_SOURCES: ['activity_logs', 'system_events', 'drug_master_sync_logs'],
-    LOG_LEVELS: ['critical', 'error', 'warning', 'info'],
-    isLogLevel: (v: string) => ['critical', 'error', 'warning', 'info'].includes(v),
-  }));
-  vi.doMock('../services/log-center-issue-service', () => ({
-    getLogIssueHistory: mocks.getLogIssueHistory,
-    updateLogIssueState: mocks.updateLogIssueState,
-  }));
-  vi.doMock('../services/openclaw-log-push-service', () => ({
-    escalateLogAlertToOpenClaw: mocks.escalateLogAlertToOpenClaw,
-  }));
-  vi.doMock('../services/logger', () => ({
-    logger: {
-      error: mocks.loggerError,
-      info: vi.fn(),
-      warn: vi.fn(),
-      debug: vi.fn(),
-    },
-  }));
-  vi.doMock('../services/observability-service', () => ({
-    recordRequestMetric: vi.fn(),
-  }));
-  vi.doMock('../utils/request-utils', () => ({
-    parsePositiveInt: (raw: unknown) => {
-      if (typeof raw !== 'string') return undefined;
-      const parsed = Number.parseInt(raw, 10);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-    },
-    normalizeSearchTerm: (raw: unknown) => (typeof raw === 'string' ? raw.trim() || undefined : undefined),
-    parseTimestamp: (raw: unknown) => {
-      if (typeof raw !== 'string') return null;
-      const date = new Date(raw);
-      return Number.isNaN(date.getTime()) ? null : date;
-    },
-  }));
-  vi.doMock('../routes/admin-utils', () => ({
-    handleAdminError: (_err: unknown, _logMessage: string, userMessage: string, res: Response) => {
-      res.status(500).json({ error: userMessage });
-    },
-    sendPaginated: (res: Response, data: unknown[], page: number, limit: number, total: number) => {
-      res.json({
-        data,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      });
-    },
-    parseListPagination: (req: { query: Record<string, unknown> }, defaultLimit = 50) => {
-      const pageRaw = typeof req.query.page === 'string' ? Number.parseInt(req.query.page, 10) : NaN;
-      const limitRaw = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : NaN;
-      return {
-        page: Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1,
-        limit: Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : defaultLimit,
-      };
-    },
-  }));
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: unknown }, _res: unknown, next: () => void) => {
-      req.user = currentUser;
-      next();
-    },
-    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
-  }));
-}
+let adminLogCenterRouter: (typeof import('../routes/admin-log-center'))['default'];
 
 // ── テスト用アプリ ────────────────────────────────────────
 
@@ -111,10 +109,10 @@ function createApp(userOverride?: Partial<{ id: number; email: string; isAdmin: 
 }
 
 beforeEach(async () => {
+  vi.useRealTimers();
   currentUser = { id: 1, email: 'admin@example.com', isAdmin: true };
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.resetModules();
-  mockAdminLogCenterRouteDependencies();
   ({ default: adminLogCenterRouter } = await import('../routes/admin-log-center'));
 });
 

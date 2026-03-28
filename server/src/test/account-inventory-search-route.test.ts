@@ -71,6 +71,7 @@ const validPreferences = {
 
 describe('account inventory search routes', () => {
   beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
     vi.resetModules();
     ({ default: accountInventorySearchRouter } = await import('../routes/account-inventory-search'));

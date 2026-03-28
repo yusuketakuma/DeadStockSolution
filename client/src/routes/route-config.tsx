@@ -52,6 +52,7 @@ const GroupDetailPage = lazy(() => import('../pages/GroupDetailPage'));
 const AlertListPage = lazy(() => import('../pages/AlertListPage'));
 const BookmarksPage = lazy(() => import('../pages/BookmarksPage'));
 const MessagesPage = lazy(() => import('../pages/MessagesPage'));
+const NotificationsPage = lazy(() => import('../pages/NotificationsPage'));
 const SubscriptionSuccessPage = lazy(() => import('../pages/SubscriptionSuccessPage'));
 const SubscriptionCancelPage = lazy(() => import('../pages/SubscriptionCancelPage'));
 
@@ -110,6 +111,7 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/alerts', access: 'protected', userOnly: true, useLayout: true, component: AlertListPage, title: 'アラート' },
   { path: '/bookmarks', access: 'protected', userOnly: true, useLayout: true, component: BookmarksPage, title: 'ブックマーク' },
   { path: '/messages', access: 'protected', userOnly: true, useLayout: true, component: MessagesPage, title: 'メッセージ' },
+  { path: '/notifications', access: 'protected', userOnly: true, useLayout: true, component: NotificationsPage, title: '通知センター' },
   { path: '/subscription/success', access: 'protected', useLayout: false, component: SubscriptionSuccessPage },
   { path: '/subscription/cancel', access: 'protected', useLayout: false, component: SubscriptionCancelPage },
 

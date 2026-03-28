@@ -25,7 +25,39 @@ export interface PushNotificationPayload {
     url: string;
     type: string;
     referenceId?: string;
+    category?: PushNotificationCategory;
+    priority?: PushNotificationPriority;
   };
+}
+
+export const pushNotificationCategoryValues = [
+  'proposals',
+  'requests',
+  'comments',
+  'matching',
+  'groups',
+  'alerts',
+  'admin',
+] as const;
+
+export type PushNotificationCategory = (typeof pushNotificationCategoryValues)[number];
+
+export const pushNotificationPriorityValues = ['normal', 'high', 'critical'] as const;
+export type PushNotificationPriority = (typeof pushNotificationPriorityValues)[number];
+
+export interface PushNotificationPreferenceCategories {
+  proposals: boolean;
+  requests: boolean;
+  comments: boolean;
+  matching: boolean;
+  groups: boolean;
+  alerts: boolean;
+  admin: boolean;
+}
+
+export interface PushNotificationPreferences {
+  categories: PushNotificationPreferenceCategories;
+  allowCritical: boolean;
 }
 
 /**

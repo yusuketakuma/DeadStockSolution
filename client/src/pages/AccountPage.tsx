@@ -10,6 +10,7 @@ import ConflictAlert from '../components/ConflictAlert';
 import DraftRestoreAlert from '../components/DraftRestoreAlert';
 import AccountInfoForm from '../components/account/AccountInfoForm';
 import BusinessHoursSettings from '../components/account/BusinessHoursSettings';
+import SubscriptionSection from '../components/account/SubscriptionSection';
 import WithdrawSection from '../components/account/WithdrawSection';
 import PushNotificationSettings from '../components/account/PushNotificationSettings';
 import AppDataPanel from '../components/ui/AppDataPanel';
@@ -156,6 +157,8 @@ export default function AccountPage() {
       </AppDataPanel>
 
       <PushNotificationSettings />
+
+      <SubscriptionSection enabled={!user?.isAdmin} />
 
       <ConflictAlert
         show={hoursForm.hoursConflict}

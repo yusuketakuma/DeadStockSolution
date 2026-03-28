@@ -442,6 +442,7 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
       totalValueB: exchangeProposals.totalValueB,
       valueDifference: exchangeProposals.valueDifference,
       proposedAt: exchangeProposals.proposedAt,
+      expiryReminderSentAt: exchangeProposals.expiryReminderSentAt,
       pharmacyAName,
       pharmacyBName,
     };

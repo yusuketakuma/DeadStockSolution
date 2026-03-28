@@ -53,8 +53,8 @@ vi.mock('../services/notification-service', () => ({
   markAllDashboardAsRead: mocks.markAllDashboardAsRead,
 }));
 
-import notificationsRouter from '../routes/notifications';
 import { createAuthenticatedApp } from './helpers/mock-builders';
+let notificationsRouter: (typeof import('../routes/notifications'))['default'];
 
 /**
  * Build a chainable+thenable query mock: .from().where().orderBy().limit()
@@ -109,8 +109,11 @@ function mockSelectAlwaysEmpty() {
 }
 
 describe('notifications route deep coverage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: notificationsRouter } = await import('../routes/notifications'));
     mocks.db.update.mockImplementation(() => ({
       set: vi.fn(() => ({
         where: vi.fn().mockResolvedValue(undefined),

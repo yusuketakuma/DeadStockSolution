@@ -228,4 +228,65 @@ describe('MatchingPage — Group Badge', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(exchangeFindCalls.value).toBe(1);
   });
+
+  it('sorts by expiry using expirationDateIso when present', async () => {
+    const expiryCandidates = [
+      {
+        pharmacyId: 40,
+        pharmacyName: 'ISO優先候補',
+        pharmacyPhone: '03-4000-0000',
+        pharmacyFax: '03-4000-0001',
+        distance: 4,
+        itemsFromA: [{ deadStockItemId: 11, drugName: '薬A', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2027-12-31', expirationDateIso: '2026-04-01', matchScore: 0.9 }],
+        itemsFromB: [{ deadStockItemId: 12, drugName: '薬B', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2027-12-31', expirationDateIso: '2026-04-10', matchScore: 0.8 }],
+        totalValueA: 10000,
+        totalValueB: 10000,
+        valueDifference: 0,
+        score: 88,
+        matchRate: 0.9,
+        isFavorite: false,
+      },
+      {
+        pharmacyId: 41,
+        pharmacyName: '通常候補',
+        pharmacyPhone: '03-4100-0000',
+        pharmacyFax: '03-4100-0001',
+        distance: 5,
+        itemsFromA: [{ deadStockItemId: 21, drugName: '薬C', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2026-05-01', expirationDateIso: null, matchScore: 0.9 }],
+        itemsFromB: [{ deadStockItemId: 22, drugName: '薬D', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2026-05-05', expirationDateIso: null, matchScore: 0.8 }],
+        totalValueA: 10000,
+        totalValueB: 10000,
+        valueDifference: 0,
+        score: 87,
+        matchRate: 0.88,
+        isFavorite: false,
+      },
+    ];
+
+    setupFetchMock({
+      '/api/auth/me': mockUser,
+      '/api/upload/status': { deadStockUploaded: true, usedMedicationUploaded: true },
+      '/api/exchange/find': { candidates: expiryCandidates },
+      '/api/groups/membership-summary': membershipSummaryResponse,
+      '/api/timeline/bootstrap': { timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null }, digest: { events: [] }, unreadCount: 0 },
+      '/api/timeline/unread-count': { unreadCount: 0 },
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(<MatchingPage />, {
+      route: '/matching?sortBy=expiry&sortOrder=asc',
+    });
+
+    const matchButton = await screen.findByRole('button', { name: /マッチングを実行/ });
+    await user.click(matchButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('ISO優先候補')).toBeInTheDocument();
+      expect(screen.getByText('通常候補')).toBeInTheDocument();
+    });
+
+    const isoCandidate = screen.getByText('ISO優先候補');
+    const standardCandidate = screen.getByText('通常候補');
+    expect(isoCandidate.compareDocumentPosition(standardCandidate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

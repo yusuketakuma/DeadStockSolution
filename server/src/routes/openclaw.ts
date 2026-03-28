@@ -2,9 +2,10 @@ import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../config/database';
-import { userRequests, notifications } from '../db/schema';
+import { userRequests } from '../db/schema';
 import { invalidateAuthUserCache } from '../middleware/auth';
 import { logger } from '../services/logger';
+import { createNotification } from '../services/notification-service';
 import { processVerificationCallback } from '../services/pharmacy-verification-callback-service';
 import { isVerificationRequestType } from '../services/pharmacy-verification-service';
 import {
@@ -30,7 +31,6 @@ import {
 import {
   publishAdminRequestsRefresh,
   publishRequestsRefresh,
-  publishTimelineRefresh,
 } from '../services/realtime-service';
 import { recordOpenClawRequestEvent } from '../services/openclaw-request-event-service';
 import { completeOpenClawRetryForRequest } from '../services/openclaw-retry-service';
@@ -198,6 +198,8 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       return;
     }
 
+    let notificationToCreate: Parameters<typeof createNotification>[0] | null = null;
+
     try {
       await db.transaction(async (tx) => {
         const updatePayload = {
@@ -260,7 +262,7 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
           summary: summaryText,
           note: 'OpenClaw callback により状態を更新しました',
         }, tx);
-        await tx.insert(notifications).values({
+        notificationToCreate = {
           pharmacyId: current.pharmacyId,
           type: 'request_update',
           title: 'ご要望の対応が完了しました',
@@ -269,7 +271,11 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
             : `要望 #${requestId} の対応が完了しました。管理画面で詳細をご確認ください。`,
           referenceType: 'request',
           referenceId: requestId,
-        });
+          detailJson: {
+            source: 'openclaw_callback',
+            status,
+          },
+        };
       });
     } catch (err) {
       releaseOpenClawWebhookReplay({
@@ -346,6 +352,10 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       }
     }
 
+    if (notificationToCreate) {
+      await createNotification(notificationToCreate);
+    }
+
     publishRequestsRefresh({
       pharmacyId: current.pharmacyId,
       requestId,
@@ -355,13 +365,6 @@ router.post('/callback', callbackLimiter, async (req, res: Response) => {
       requestId,
       reason: 'openclaw_callback',
     });
-    if (status === 'completed') {
-      publishTimelineRefresh({
-        pharmacyId: current.pharmacyId,
-        reason: 'request_completion_notification',
-      });
-    }
-
     res.json({
       message: 'OpenClawコールバックを反映しました',
       requestId,
@@ -453,7 +456,7 @@ router.post('/report', callbackLimiter, async (req, res: Response) => {
     const isDuplicateCompletedReport = kind === 'completed'
       && current.openclawStatus === 'completed'
       && current.openclawSummary === nextSummary;
-    let shouldCreateCompletionNotification = false;
+    let notificationToCreate: Parameters<typeof createNotification>[0] | null = null;
 
     try {
       await db.transaction(async (tx) => {
@@ -467,8 +470,7 @@ router.post('/report', callbackLimiter, async (req, res: Response) => {
           .where(eq(userRequests.id, requestId));
 
         if (kind === 'completed' && current.openclawStatus !== 'completed') {
-          shouldCreateCompletionNotification = true;
-          await tx.insert(notifications).values({
+          notificationToCreate = {
             pharmacyId: current.pharmacyId,
             type: 'request_update',
             title: 'ご要望の対応が完了しました',
@@ -477,7 +479,26 @@ router.post('/report', callbackLimiter, async (req, res: Response) => {
               : `要望 #${requestId} の対応が完了しました。管理画面で詳細をご確認ください。`,
             referenceType: 'request',
             referenceId: requestId,
-          });
+            detailJson: {
+              source: 'openclaw_report',
+              kind,
+              workflowStatus: nextWorkflowStatus,
+            },
+          };
+        } else if (kind === 'failed') {
+          notificationToCreate = {
+            pharmacyId: current.pharmacyId,
+            type: 'request_update',
+            title: 'ご要望対応で確認が必要です',
+            message: `要望 #${requestId}: ${message}`,
+            referenceType: 'request',
+            referenceId: requestId,
+            detailJson: {
+              source: 'openclaw_report',
+              kind,
+              workflowStatus: nextWorkflowStatus,
+            },
+          };
         }
       });
     } catch (err) {
@@ -508,6 +529,7 @@ router.post('/report', callbackLimiter, async (req, res: Response) => {
     });
 
     if (!isDuplicateCompletedReport) {
+      const completionNotificationCreated = notificationToCreate !== null && kind === 'completed';
       await recordOpenClawRequestMessage({
         requestId,
         authorType: kind === 'completed' || kind === 'failed' ? 'system' : 'openclaw_agent',
@@ -520,9 +542,13 @@ router.post('/report', callbackLimiter, async (req, res: Response) => {
           branchName,
           prUrl,
           prNumber,
-          completionNotificationCreated: shouldCreateCompletionNotification,
+          completionNotificationCreated,
         },
       });
+    }
+
+    if (notificationToCreate) {
+      await createNotification(notificationToCreate);
     }
 
     publishRequestsRefresh({
@@ -534,13 +560,6 @@ router.post('/report', callbackLimiter, async (req, res: Response) => {
       requestId,
       reason: 'openclaw_report',
     });
-    if (shouldCreateCompletionNotification) {
-      publishTimelineRefresh({
-        pharmacyId: current.pharmacyId,
-        reason: 'request_completion_notification',
-      });
-    }
-
     res.json({
       message: 'OpenClawレポートを反映しました',
       requestId,

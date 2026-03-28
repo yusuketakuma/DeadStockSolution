@@ -74,7 +74,7 @@ vi.mock('drizzle-orm', () => ({
   ),
 }));
 
-import inventoryRouter from '../routes/inventory';
+let inventoryRouter: (typeof import('../routes/inventory'))['default'];
 
 function createOffsetQuery(result: unknown) {
   const query = {
@@ -180,8 +180,11 @@ function createApp() {
 }
 
 describe('inventory routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: inventoryRouter } = await import('../routes/inventory'));
     mocks.getClientIp.mockReturnValue('127.0.0.1');
     mocks.getBusinessHoursStatus.mockReturnValue({ isOpen: true, statusText: '営業中' });
   });

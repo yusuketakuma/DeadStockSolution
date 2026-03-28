@@ -41,7 +41,7 @@ const mocks = vi.hoisted(() => ({
   getClientIp: vi.fn(() => '127.0.0.1'),
 }));
 
-async function createApp() {
+function createApp() {
   const app = express();
   app.use(express.json());
   // Simulate the auth middleware that drug-master.ts applies
@@ -56,52 +56,58 @@ async function createApp() {
   return app;
 }
 
-function mockDrugMasterSyncRouteDeepDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-      req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
-      next();
-    },
-  }));
-  vi.doMock('../services/drug-master-service', () => ({
-    parseMhlwExcelData: mocks.parseMhlwExcelData,
-    parseMhlwCsvData: mocks.parseMhlwCsvData,
-    parsePackageExcelData: mocks.parsePackageExcelData,
-    parsePackageCsvData: mocks.parsePackageCsvData,
-    parsePackageXmlData: mocks.parsePackageXmlData,
-    parsePackageZipData: mocks.parsePackageZipData,
-    decodeCsvBuffer: mocks.decodeCsvBuffer,
-    syncDrugMaster: mocks.syncDrugMaster,
-    syncPackageData: mocks.syncPackageData,
-    getSyncLogs: mocks.getSyncLogs,
-    createSyncLog: mocks.createSyncLog,
-    completeSyncLog: mocks.completeSyncLog,
-  }));
-  vi.doMock('../services/drug-master-scheduler', () => ({
-    triggerManualAutoSync: mocks.triggerManualAutoSync,
-    getConfiguredSourceMode: mocks.getConfiguredSourceMode,
-  }));
-  vi.doMock('../services/drug-package-scheduler', () => ({
-    triggerManualPackageAutoSync: mocks.triggerManualPackageAutoSync,
-  }));
-  vi.doMock('../services/drug-master-source-state-service', () => ({
-    getSourceStatesByPrefix: mocks.getSourceStatesByPrefix,
-  }));
-  vi.doMock('../services/upload-service', () => ({
-    parseExcelBuffer: mocks.parseExcelBuffer,
-  }));
-  vi.doMock('../services/log-service', () => ({
-    writeLog: mocks.writeLog,
-    getClientIp: mocks.getClientIp,
-  }));
-  vi.doMock('../services/logger', () => ({
-    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  }));
-  vi.doMock('../middleware/upload-middleware', async () => await vi.importActual('../middleware/upload-middleware'));
-  vi.doMock('../routes/admin-utils', async () => await vi.importActual('../routes/admin-utils'));
-}
-
 let drugMasterSyncRouter: (typeof import('../routes/drug-master-sync'))['default'];
+
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+    req.user = { id: 1, email: 'admin@example.com', isAdmin: true };
+    next();
+  },
+}));
+
+vi.mock('../services/drug-master-service', () => ({
+  parseMhlwExcelData: mocks.parseMhlwExcelData,
+  parseMhlwCsvData: mocks.parseMhlwCsvData,
+  parsePackageExcelData: mocks.parsePackageExcelData,
+  parsePackageCsvData: mocks.parsePackageCsvData,
+  parsePackageXmlData: mocks.parsePackageXmlData,
+  parsePackageZipData: mocks.parsePackageZipData,
+  decodeCsvBuffer: mocks.decodeCsvBuffer,
+  syncDrugMaster: mocks.syncDrugMaster,
+  syncPackageData: mocks.syncPackageData,
+  getSyncLogs: mocks.getSyncLogs,
+  createSyncLog: mocks.createSyncLog,
+  completeSyncLog: mocks.completeSyncLog,
+}));
+
+vi.mock('../services/drug-master-scheduler', () => ({
+  triggerManualAutoSync: mocks.triggerManualAutoSync,
+  getConfiguredSourceMode: mocks.getConfiguredSourceMode,
+}));
+
+vi.mock('../services/drug-package-scheduler', () => ({
+  triggerManualPackageAutoSync: mocks.triggerManualPackageAutoSync,
+}));
+
+vi.mock('../services/drug-master-source-state-service', () => ({
+  getSourceStatesByPrefix: mocks.getSourceStatesByPrefix,
+}));
+
+vi.mock('../services/upload-service', () => ({
+  parseExcelBuffer: mocks.parseExcelBuffer,
+}));
+
+vi.mock('../services/log-service', () => ({
+  writeLog: mocks.writeLog,
+  getClientIp: mocks.getClientIp,
+}));
+
+vi.mock('../services/logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('../middleware/upload-middleware', async () => await vi.importActual('../middleware/upload-middleware'));
+vi.mock('../routes/admin-utils', async () => await vi.importActual('../routes/admin-utils'));
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -110,7 +116,6 @@ describe('drug-master-sync route deep coverage', () => {
     vi.useRealTimers();
     vi.resetAllMocks();
     vi.resetModules();
-    mockDrugMasterSyncRouteDeepDependencies();
     ({ default: drugMasterSyncRouter } = await import('../routes/drug-master-sync'));
     // Re-set defaults after resetAllMocks clears implementations
     mocks.parseMhlwExcelData.mockReturnValue([]);

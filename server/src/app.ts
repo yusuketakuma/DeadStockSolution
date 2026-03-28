@@ -39,6 +39,7 @@ import internalVercelDeployEventsRoutes from './routes/internal-vercel-deploy-ev
 import internalDeadStockArchiveRoutes from './routes/internal-dead-stock-archive';
 import internalProposalExpiryRoutes from './routes/internal-proposal-expiry';
 import internalDailyStatisticsRoutes from './routes/internal-daily-statistics';
+import internalE2EProposalFlowRoutes from './routes/internal-e2e-proposal-flow';
 import statisticsRoutes from './routes/statistics';
 import groupsRoutes from './routes/groups';
 import alertsRoutes from './routes/alerts';
@@ -404,6 +405,7 @@ registerApiRoute('/internal/vercel', internalVercelDeployEventsRoutes);
 registerApiRoute('/internal/dead-stock', internalDeadStockArchiveRoutes);
 registerApiRoute('/internal/proposals', internalProposalExpiryRoutes);
 registerApiRoute('/internal/daily-statistics', internalDailyStatisticsRoutes);
+registerApiRoute('/internal/e2e/proposal-flow', internalE2EProposalFlowRoutes);
 
 app.use(errorHandler);
 

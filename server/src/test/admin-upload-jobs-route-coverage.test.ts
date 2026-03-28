@@ -30,7 +30,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import adminUploadJobsRouter from '../routes/admin-upload-jobs';
+let adminUploadJobsRouter: (typeof import('../routes/admin-upload-jobs'))['default'];
 
 function createApp() {
   const app = express();
@@ -48,8 +48,11 @@ function createApp() {
 }
 
 describe('admin-upload-jobs route coverage: GET /upload-jobs filters', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminUploadJobsRouter } = await import('../routes/admin-upload-jobs'));
     mocks.isUploadConfirmRetryUnavailableError.mockImplementation(
       (error: unknown) => Boolean(
         error
@@ -159,8 +162,11 @@ describe('admin-upload-jobs route coverage: GET /upload-jobs filters', () => {
 });
 
 describe('admin-upload-jobs route coverage: GET /upload-jobs/:id', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminUploadJobsRouter } = await import('../routes/admin-upload-jobs'));
     mocks.isUploadConfirmRetryUnavailableError.mockReturnValue(false);
   });
 
@@ -213,8 +219,11 @@ describe('admin-upload-jobs route coverage: GET /upload-jobs/:id', () => {
 });
 
 describe('admin-upload-jobs route coverage: PATCH /upload-jobs/:id/cancel', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminUploadJobsRouter } = await import('../routes/admin-upload-jobs'));
     mocks.isUploadConfirmRetryUnavailableError.mockReturnValue(false);
   });
 

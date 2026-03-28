@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
     delete: vi.fn(),
     update: vi.fn(),
   },
+  preferences: {
+    getPushNotificationPreferences: vi.fn(),
+  },
   logger: {
     warn: vi.fn(),
     error: vi.fn(),
@@ -29,6 +32,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../config/database', () => ({ db: mocks.db }));
 vi.mock('../services/logger', () => ({ logger: mocks.logger }));
+vi.mock('../services/push-notification-preferences-service', () => ({
+  getPushNotificationPreferences: mocks.preferences.getPushNotificationPreferences,
+}));
 vi.mock('web-push', () => ({
   default: mocks.webpush,
   setVapidDetails: mocks.webpush.setVapidDetails,
@@ -66,6 +72,18 @@ const makeSub = (id: number, pharmacyId: number, endpoint: string) => ({
 describe('push-dispatch-service', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.preferences.getPushNotificationPreferences.mockResolvedValue({
+      categories: {
+        proposals: true,
+        requests: true,
+        comments: true,
+        matching: true,
+        groups: true,
+        alerts: true,
+        admin: true,
+      },
+      allowCritical: true,
+    });
     // VAPID 環境変数を設定
     vi.stubEnv('VAPID_PUBLIC_KEY', 'test-public-key');
     vi.stubEnv('VAPID_PRIVATE_KEY', 'test-private-key');
@@ -208,6 +226,52 @@ describe('push-dispatch-service', () => {
       const result = await sendToPharmacy(10, testPayload);
 
       expect(result).toEqual({ sent: 1, failed: 0, cleaned: 1 });
+    });
+
+    it('無効カテゴリは送信をスキップする', async () => {
+      mocks.preferences.getPushNotificationPreferences.mockResolvedValue({
+        categories: {
+          proposals: false,
+          requests: true,
+          comments: true,
+          matching: true,
+          groups: true,
+          alerts: true,
+          admin: true,
+        },
+        allowCritical: false,
+      });
+
+      const { sendToPharmacy } = await importService();
+      const result = await sendToPharmacy(10, testPayload);
+
+      expect(result).toEqual({ sent: 0, failed: 0, cleaned: 0 });
+      expect(mocks.webpush.sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('allowCritical が有効なら高優先通知は送信する', async () => {
+      const subs = [makeSub(1, 10, 'https://push.example.com/sub1')];
+      setupSelectMock(subs);
+      setupUpdateMock();
+      mocks.preferences.getPushNotificationPreferences.mockResolvedValue({
+        categories: {
+          proposals: false,
+          requests: true,
+          comments: true,
+          matching: true,
+          groups: true,
+          alerts: true,
+          admin: true,
+        },
+        allowCritical: true,
+      });
+      mocks.webpush.sendNotification.mockResolvedValue({ statusCode: 201 });
+
+      const { sendToPharmacy } = await importService();
+      const result = await sendToPharmacy(10, testPayload);
+
+      expect(result).toEqual({ sent: 1, failed: 0, cleaned: 0 });
+      expect(mocks.webpush.sendNotification).toHaveBeenCalledTimes(1);
     });
   });
 

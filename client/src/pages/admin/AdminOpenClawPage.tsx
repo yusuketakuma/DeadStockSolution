@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import { Badge } from 'react-bootstrap';
@@ -49,12 +49,94 @@ interface RequestThreadResponse {
   messages: RequestMessageItem[];
 }
 
+interface RequestEventItem {
+  id: number;
+  eventType: string;
+  createdAt: string | null;
+  summary: string | null;
+  note: string | null;
+}
+
 interface UserRequestsResponse {
   data: UserRequestItem[];
   connector?: {
     configured: boolean;
     webhookConfigured: boolean;
     implementationBranch: string;
+  };
+}
+
+interface OpenClawRetryItem {
+  id: number;
+  requestId: number;
+  pharmacyId: number;
+  pharmacyName: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  attemptCount: number;
+  maxAttempts: number;
+  nextRetryAt: string | null;
+  lastAttemptAt: string | null;
+  completedAt: string | null;
+  lastError: string | null;
+  triggerReason: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  requestText: string | null;
+}
+
+interface OpenClawRetryResponse {
+  data: OpenClawRetryItem[];
+  pagination: { page: number; totalPages: number; total: number };
+  stats?: {
+    pending: number;
+    processing: number;
+    completed: number;
+    failed: number;
+  };
+}
+
+interface OpenClawHealthSnapshot {
+  status: 'ok' | 'degraded';
+  timestamp: string;
+  connector: { configured: boolean; mode: string };
+  webhook: { configured: boolean };
+  commands: { enabled: boolean };
+  logPush: { enabled: boolean };
+  autoFix: { enabled: boolean };
+  autoEscalate: { enabled: boolean };
+  retryQueue: { pending: number; processing: number; completed: number; failed: number };
+  handoffSuccessRate: number | null;
+  lastHandoffAt: string | null;
+  ddsAgent: {
+    connected: boolean;
+    agentId: string | null;
+    lastSeenAt: string | null;
+    queuedJobs: number;
+    awaitingUser: number;
+  };
+}
+
+interface DdsAgentStatus {
+  environment: string;
+  connected: boolean;
+  agentId: string | null;
+  agentName: string | null;
+  lastSeenAt: string | null;
+  queuedJobs: number;
+  awaitingUser: number;
+  latestPrUrl: string | null;
+}
+
+interface BootstrapTokenResponse {
+  data: {
+    token: string;
+    expiresAt: string;
+    environment: string;
+    registerUrl: string;
+    callbackUrl: string;
+    reportUrl: string;
+    commandsUrl: string;
+    healthUrl: string;
   };
 }
 
@@ -115,8 +197,19 @@ export default function AdminOpenClawPage() {
   const [handoffingRequestId, setHandoffingRequestId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [threadLoading, setThreadLoading] = useState(false);
+  const [events, setEvents] = useState<RequestEventItem[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'queued' | 'analyzing' | 'awaiting_user' | 'implementing' | 'pr_opened' | 'completed' | 'failed'>('all');
+  const [retryStatusFilter, setRetryStatusFilter] = useState<'all' | 'pending' | 'processing' | 'completed' | 'failed'>('all');
   const [searchText, setSearchText] = useState('');
+  const [retryItems, setRetryItems] = useState<OpenClawRetryItem[]>([]);
+  const [retryStats, setRetryStats] = useState<OpenClawRetryResponse['stats'] | null>(null);
+  const [retryLoading, setRetryLoading] = useState(false);
+  const [health, setHealth] = useState<OpenClawHealthSnapshot | null>(null);
+  const [ddsStatus, setDdsStatus] = useState<DdsAgentStatus | null>(null);
+  const [bootstrapToken, setBootstrapToken] = useState<BootstrapTokenResponse['data'] | null>(null);
+  const [issuingBootstrapToken, setIssuingBootstrapToken] = useState(false);
+  const [rotatingControlToken, setRotatingControlToken] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -136,7 +229,7 @@ export default function AdminOpenClawPage() {
     return haystack.includes(normalizedQuery);
   });
 
-  const fetchRequests = async ({ background = false }: { background?: boolean } = {}) => {
+  const fetchRequests = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
     if (!background) {
       setLoading(true);
     }
@@ -159,9 +252,9 @@ export default function AdminOpenClawPage() {
         setLoading(false);
       }
     }
-  };
+  }, []);
 
-  const fetchThread = async (requestId: number, { background = false }: { background?: boolean } = {}) => {
+  const fetchThread = useCallback(async (requestId: number, { background = false }: { background?: boolean } = {}) => {
     if (!background) {
       setThreadLoading(true);
     }
@@ -178,19 +271,80 @@ export default function AdminOpenClawPage() {
         setThreadLoading(false);
       }
     }
-  };
+  }, []);
+
+  const fetchEvents = useCallback(async (requestId: number, { background = false }: { background?: boolean } = {}) => {
+    if (!background) {
+      setEventsLoading(true);
+    }
+    try {
+      const data = await api.get<{ events: RequestEventItem[] }>(`/admin/user-requests/${requestId}/events`);
+      setEvents(data.events);
+    } catch (err) {
+      if (!background) {
+        setError(err instanceof Error ? err.message : 'イベント履歴の取得に失敗しました');
+      }
+    } finally {
+      if (!background) {
+        setEventsLoading(false);
+      }
+    }
+  }, []);
+
+  const fetchRetryQueue = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    if (!background) {
+      setRetryLoading(true);
+    }
+    try {
+      const suffix = retryStatusFilter === 'all' ? '' : `&status=${retryStatusFilter}`;
+      const data = await api.get<OpenClawRetryResponse>(`/admin/openclaw-retries?page=1&limit=20${suffix}`);
+      setRetryItems(data.data);
+      setRetryStats(data.stats ?? null);
+    } catch (err) {
+      if (!background) {
+        setError(err instanceof Error ? err.message : 'リトライキューの取得に失敗しました');
+      }
+    } finally {
+      if (!background) {
+        setRetryLoading(false);
+      }
+    }
+  }, [retryStatusFilter]);
+
+  const fetchHealth = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    try {
+      const [healthData, ddsData] = await Promise.all([
+        api.get<OpenClawHealthSnapshot>('/health/openclaw'),
+        api.get<{ data: DdsAgentStatus }>('/admin/openclaw/dds-agent'),
+      ]);
+      setHealth(healthData);
+      setDdsStatus(ddsData.data);
+    } catch (err) {
+      if (!background) {
+        setError(err instanceof Error ? err.message : 'OpenClawヘルス情報の取得に失敗しました');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     void fetchRequests();
-  }, []);
+    void fetchRetryQueue();
+    void fetchHealth();
+  }, [fetchHealth, fetchRequests, fetchRetryQueue]);
 
   useEffect(() => {
     if (!selectedRequestId) {
       setThread(null);
+      setEvents([]);
       return;
     }
     void fetchThread(selectedRequestId);
-  }, [selectedRequestId]);
+    void fetchEvents(selectedRequestId);
+  }, [fetchEvents, fetchThread, selectedRequestId]);
+
+  useEffect(() => {
+    void fetchRetryQueue();
+  }, [fetchRetryQueue]);
 
   useSseRefresh({
     enabled: true,
@@ -198,8 +352,11 @@ export default function AdminOpenClawPage() {
     events: ['admin_requests.refresh'],
     onRefresh: async () => {
     await fetchRequests({ background: true });
+    await fetchRetryQueue({ background: true });
+    await fetchHealth({ background: true });
     if (selectedRequestId) {
       await fetchThread(selectedRequestId, { background: true });
+      await fetchEvents(selectedRequestId, { background: true });
     }
     },
     fallbackIntervalMs: LIVE_REFRESH_INTERVAL_MS,
@@ -225,6 +382,35 @@ export default function AdminOpenClawPage() {
     }
   };
 
+  const handleIssueBootstrapToken = async () => {
+    setIssuingBootstrapToken(true);
+    setError('');
+    try {
+      const result = await api.post<BootstrapTokenResponse>('/admin/openclaw/bootstrap-token', {});
+      setBootstrapToken(result.data);
+      setMessage('DDS bootstrap token を発行しました');
+      await fetchHealth({ background: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'bootstrap token の発行に失敗しました');
+    } finally {
+      setIssuingBootstrapToken(false);
+    }
+  };
+
+  const handleRotateControlToken = async () => {
+    setRotatingControlToken(true);
+    setError('');
+    try {
+      const result = await api.post<{ message: string }>('/admin/openclaw/control-token/rotate', {});
+      setMessage(result.message);
+      await fetchHealth({ background: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'control token のローテーションに失敗しました');
+    } finally {
+      setRotatingControlToken(false);
+    }
+  };
+
   return (
     <PageShell>
       <h4 className="page-title mb-3">OpenClaw連携</h4>
@@ -233,6 +419,114 @@ export default function AdminOpenClawPage() {
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
       <ScrollArea>
+      <AppCard className="mb-3">
+        <AppCard.Header>DDS / OpenClaw ヘルス</AppCard.Header>
+        <AppCard.Body>
+          <div className="d-flex gap-2 flex-wrap mb-3">
+            <Badge bg={health?.status === 'ok' ? 'success' : 'warning'}>{health?.status === 'ok' ? '稼働中' : '要確認'}</Badge>
+            <Badge bg={health?.connector.configured ? 'success' : 'secondary'}>Connector {health?.connector.configured ? '接続済み' : '未接続'}</Badge>
+            <Badge bg={health?.webhook.configured ? 'success' : 'secondary'}>Webhook {health?.webhook.configured ? '設定済み' : '未設定'}</Badge>
+            <Badge bg={ddsStatus?.connected ? 'success' : 'secondary'}>DDS {ddsStatus?.connected ? '接続中' : '未接続'}</Badge>
+          </div>
+          <div className="small text-muted mb-3">
+            最終 handoff: {formatDateTimeJa(health?.lastHandoffAt)} / 成功率: {health?.handoffSuccessRate != null ? `${Math.round(health.handoffSuccessRate * 100)}%` : '-'}
+          </div>
+          <div className="row g-2 mb-3">
+            <div className="col-md-3 col-6"><AppMobileDataCard title="保留ジョブ" fields={[{ label: 'pending', value: health?.retryQueue.pending ?? 0 }, { label: 'processing', value: health?.retryQueue.processing ?? 0 }]} /></div>
+            <div className="col-md-3 col-6"><AppMobileDataCard title="DDS状態" fields={[{ label: 'agentId', value: ddsStatus?.agentId ?? '-' }, { label: 'lastSeen', value: formatDateTimeJa(ddsStatus?.lastSeenAt) }]} /></div>
+            <div className="col-md-3 col-6"><AppMobileDataCard title="待機ジョブ" fields={[{ label: 'queued', value: ddsStatus?.queuedJobs ?? 0 }, { label: 'awaiting', value: ddsStatus?.awaitingUser ?? 0 }]} /></div>
+            <div className="col-md-3 col-6"><AppMobileDataCard title="feature flags" fields={[{ label: 'commands', value: health?.commands.enabled ? 'ON' : 'OFF' }, { label: 'autoFix', value: health?.autoFix.enabled ? 'ON' : 'OFF' }]} /></div>
+          </div>
+          <div className="d-flex gap-2 flex-wrap">
+            <LoadingButton
+              size="sm"
+              variant="outline-primary"
+              onClick={() => void handleIssueBootstrapToken()}
+              loading={issuingBootstrapToken}
+              loadingLabel="発行中..."
+            >
+              bootstrap token 発行
+            </LoadingButton>
+            <LoadingButton
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => void handleRotateControlToken()}
+              loading={rotatingControlToken}
+              loadingLabel="更新中..."
+            >
+              control token ローテーション
+            </LoadingButton>
+          </div>
+          {bootstrapToken ? (
+            <div className="mt-3 small">
+              <div className="fw-semibold">最新 bootstrap token</div>
+              <div className="text-break"><code>{bootstrapToken.token}</code></div>
+              <div className="text-muted">有効期限: {formatDateTimeJa(bootstrapToken.expiresAt)}</div>
+              <div className="text-muted text-break">register: {bootstrapToken.registerUrl}</div>
+              <div className="text-muted text-break">health: {bootstrapToken.healthUrl}</div>
+            </div>
+          ) : null}
+        </AppCard.Body>
+      </AppCard>
+
+      <AppCard className="mb-3">
+        <AppCard.Header>Retry Queue</AppCard.Header>
+        <AppCard.Body>
+          <div className="d-flex gap-2 align-items-center flex-wrap mb-3">
+            <Badge bg="secondary">pending: {retryStats?.pending ?? 0}</Badge>
+            <Badge bg="primary">processing: {retryStats?.processing ?? 0}</Badge>
+            <Badge bg="success">completed: {retryStats?.completed ?? 0}</Badge>
+            <Badge bg="danger">failed: {retryStats?.failed ?? 0}</Badge>
+            <AppSelect
+              size="sm"
+              value={retryStatusFilter}
+              ariaLabel="retry status"
+              onChange={(value) => setRetryStatusFilter(value as typeof retryStatusFilter)}
+              className="filter-select-compact"
+              options={[
+                { value: 'all', label: 'すべて' },
+                { value: 'pending', label: 'pending' },
+                { value: 'processing', label: 'processing' },
+                { value: 'completed', label: 'completed' },
+                { value: 'failed', label: 'failed' },
+              ]}
+            />
+          </div>
+          {retryLoading ? (
+            <InlineLoader text="リトライキューを読み込み中..." className="text-muted small" />
+          ) : retryItems.length === 0 ? (
+            <div className="text-muted small">対象のリトライジョブはありません。</div>
+          ) : (
+            <div className="table-responsive">
+              <AppTable striped size="sm" className="mobile-table mb-0">
+                <thead>
+                  <tr>
+                    <th>request</th>
+                    <th>薬局</th>
+                    <th>状態</th>
+                    <th>attempt</th>
+                    <th>次回</th>
+                    <th>失敗理由</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {retryItems.map((item) => (
+                    <tr key={item.id}>
+                      <td>#{item.requestId}</td>
+                      <td>{item.pharmacyName}</td>
+                      <td><Badge bg={item.status === 'failed' ? 'danger' : item.status === 'completed' ? 'success' : item.status === 'processing' ? 'primary' : 'secondary'}>{item.status}</Badge></td>
+                      <td>{item.attemptCount}/{item.maxAttempts}</td>
+                      <td>{formatDateTimeJa(item.nextRetryAt ?? item.lastAttemptAt)}</td>
+                      <td className="small text-muted">{item.lastError ?? item.triggerReason ?? '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </AppTable>
+            </div>
+          )}
+        </AppCard.Body>
+      </AppCard>
+
       <AppCard>
         <AppCard.Header>要望一覧（管理者専用）</AppCard.Header>
         <AppCard.Body>
@@ -463,6 +757,32 @@ export default function AdminOpenClawPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </AppCard.Body>
+      </AppCard>
+
+      <AppCard className="mt-3">
+        <AppCard.Header>Request Event Timeline</AppCard.Header>
+        <AppCard.Body>
+          {!selectedRequestId ? (
+            <div className="text-muted small">要望を選択するとイベント履歴を確認できます。</div>
+          ) : eventsLoading ? (
+            <InlineLoader text="イベント履歴を読み込み中..." className="text-muted small" />
+          ) : events.length === 0 ? (
+            <div className="text-muted small">イベント履歴はまだありません。</div>
+          ) : (
+            <div className="d-flex flex-column gap-2">
+              {events.map((event) => (
+                <div key={event.id} className="border rounded p-3 bg-light">
+                  <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+                    <div className="fw-semibold">{event.summary ?? event.eventType}</div>
+                    <Badge bg="secondary">{event.eventType}</Badge>
+                  </div>
+                  {event.note ? <div className="small mt-2" style={{ whiteSpace: 'pre-wrap' }}>{event.note}</div> : null}
+                  <div className="text-muted small mt-2">{formatDateTimeJa(event.createdAt)}</div>
+                </div>
+              ))}
             </div>
           )}
         </AppCard.Body>

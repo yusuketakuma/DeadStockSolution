@@ -19,7 +19,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import internalMonitoringRouter from '../routes/internal-monitoring';
+let internalMonitoringRouter: (typeof import('../routes/internal-monitoring'))['default'];
 
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
 const ORIGINAL_UPLOAD_JOBS_CRON_SECRET = process.env.UPLOAD_JOBS_CRON_SECRET;
@@ -32,8 +32,10 @@ function createApp() {
 }
 
 describe('internal monitoring route auth', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+    vi.resetModules();
     delete process.env.CRON_SECRET;
     delete process.env.UPLOAD_JOBS_CRON_SECRET;
     delete process.env.MONITORING_CRON_SECRET;
@@ -60,6 +62,7 @@ describe('internal monitoring route auth', () => {
         uploadWindowHours: 24,
       },
     });
+    ({ default: internalMonitoringRouter } = await import('../routes/internal-monitoring'));
   });
 
   afterEach(() => {

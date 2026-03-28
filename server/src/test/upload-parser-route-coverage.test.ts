@@ -30,86 +30,85 @@ const mocks = vi.hoisted(() => ({
   getClientIp: vi.fn(),
 }));
 
-function mockUploadParserRouteCoverageDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-      next();
-    },
-  }));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+    next();
+  },
+}));
 
-  vi.doMock('../config/database', () => ({
-    db: mocks.db,
-  }));
+vi.mock('../config/database', () => ({
+  db: mocks.db,
+}));
 
-  vi.doMock('drizzle-orm', () => ({
-    eq: vi.fn(() => ({})),
-    and: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    inArray: vi.fn(() => ({})),
-    sql: vi.fn(() => ({})),
-  }));
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(() => ({})),
+  and: vi.fn(() => ({})),
+  desc: vi.fn(() => ({})),
+  inArray: vi.fn(() => ({})),
+  sql: vi.fn(() => ({})),
+}));
 
-  vi.doMock('../services/upload-service', () => ({
-    parseExcelBuffer: mocks.parseExcelBuffer,
-    getPreviewRows: mocks.getPreviewRows,
-  }));
+vi.mock('../services/upload-service', () => ({
+  parseExcelBuffer: mocks.parseExcelBuffer,
+  getPreviewRows: mocks.getPreviewRows,
+}));
 
-  vi.doMock('../services/column-mapper', () => ({
-    detectHeaderRow: mocks.detectHeaderRow,
-    detectUploadType: mocks.detectUploadType,
-    suggestMapping: mocks.suggestMapping,
-    computeHeaderHash: mocks.computeHeaderHash,
-  }));
+vi.mock('../services/column-mapper', () => ({
+  detectHeaderRow: mocks.detectHeaderRow,
+  detectUploadType: mocks.detectUploadType,
+  suggestMapping: mocks.suggestMapping,
+  computeHeaderHash: mocks.computeHeaderHash,
+}));
 
-  vi.doMock('../services/data-extractor', () => ({
-    extractDeadStockRows: mocks.extractDeadStockRows,
-    extractUsedMedicationRows: mocks.extractUsedMedicationRows,
-  }));
+vi.mock('../services/data-extractor', () => ({
+  extractDeadStockRows: mocks.extractDeadStockRows,
+  extractUsedMedicationRows: mocks.extractUsedMedicationRows,
+}));
 
-  vi.doMock('../services/drug-master-enrichment', () => ({
-    enrichWithDrugMaster: mocks.enrichWithDrugMaster,
-  }));
+vi.mock('../services/drug-master-enrichment', () => ({
+  enrichWithDrugMaster: mocks.enrichWithDrugMaster,
+}));
 
-  vi.doMock('../services/upload-diff-service', () => ({
-    previewDeadStockDiff: mocks.previewDeadStockDiff,
-    previewUsedMedicationDiff: mocks.previewUsedMedicationDiff,
-  }));
+vi.mock('../services/upload-diff-service', () => ({
+  previewDeadStockDiff: mocks.previewDeadStockDiff,
+  previewUsedMedicationDiff: mocks.previewUsedMedicationDiff,
+}));
 
-  vi.doMock('../services/upload-confirm-service', () => ({
-    runUploadConfirm: vi.fn(),
-  }));
+vi.mock('../services/upload-confirm-service', () => ({
+  runUploadConfirm: vi.fn(),
+}));
 
-  vi.doMock('../services/upload-confirm-job-service', () => ({
-    enqueueUploadConfirmJob: mocks.enqueueUploadConfirmJob,
-    isUploadConfirmQueueLimitError: mocks.isUploadConfirmQueueLimitError,
-    isUploadConfirmIdempotencyConflictError: mocks.isUploadConfirmIdempotencyConflictError,
-    getUploadConfirmJobForPharmacy: mocks.getUploadConfirmJobForPharmacy,
-    cancelUploadConfirmJobForPharmacy: mocks.cancelUploadConfirmJobForPharmacy,
-  }));
+vi.mock('../services/upload-confirm-job-service', () => ({
+  enqueueUploadConfirmJob: mocks.enqueueUploadConfirmJob,
+  isUploadConfirmQueueLimitError: mocks.isUploadConfirmQueueLimitError,
+  isUploadConfirmIdempotencyConflictError: mocks.isUploadConfirmIdempotencyConflictError,
+  getUploadConfirmJobForPharmacy: mocks.getUploadConfirmJobForPharmacy,
+  cancelUploadConfirmJobForPharmacy: mocks.cancelUploadConfirmJobForPharmacy,
+}));
 
-  vi.doMock('../services/upload-row-issue-service', () => ({
-    getUploadRowIssuesForJob: mocks.getUploadRowIssuesForJob,
-    getUploadRowIssueSummary: mocks.getUploadRowIssueSummary,
-    buildUploadRowIssueCsv: mocks.buildUploadRowIssueCsv,
-  }));
+vi.mock('../services/upload-row-issue-service', () => ({
+  getUploadRowIssuesForJob: mocks.getUploadRowIssuesForJob,
+  getUploadRowIssueSummary: mocks.getUploadRowIssueSummary,
+  buildUploadRowIssueCsv: mocks.buildUploadRowIssueCsv,
+}));
 
-  vi.doMock('../services/logger', () => ({
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: mocks.loggerWarn,
-      error: mocks.loggerError,
-    },
-  }));
+vi.mock('../services/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: mocks.loggerWarn,
+    error: mocks.loggerError,
+  },
+}));
 
-  vi.doMock('../services/log-service', () => ({
-    writeLog: mocks.writeLog,
-    getClientIp: mocks.getClientIp,
-  }));
-  vi.doMock('../routes/upload-validation', async () => vi.importActual('../routes/upload-validation'));
-  vi.doMock('../routes/upload-parser-helpers', async () => vi.importActual('../routes/upload-parser-helpers'));
-}
+vi.mock('../services/log-service', () => ({
+  writeLog: mocks.writeLog,
+  getClientIp: mocks.getClientIp,
+}));
+
+vi.mock('../routes/upload-validation', async () => vi.importActual('../routes/upload-validation'));
+vi.mock('../routes/upload-parser-helpers', async () => vi.importActual('../routes/upload-parser-helpers'));
 
 import { createAuthenticatedApp } from './helpers/mock-builders';
 
@@ -130,15 +129,15 @@ const VALID_MAPPING = JSON.stringify({
 });
 
 beforeEach(async () => {
+  vi.useRealTimers();
   vi.resetModules();
   vi.resetAllMocks();
-  mockUploadParserRouteCoverageDependencies();
   ({ default: uploadParserRouter } = await import('../routes/upload-parser'));
 });
 
 describe('upload-parser route coverage: preview edge cases', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
 
     mocks.parseExcelBuffer.mockResolvedValue([
       ['YJコード', '薬剤名', '数量'],
@@ -236,7 +235,7 @@ describe('upload-parser route coverage: preview edge cases', () => {
 
 describe('upload-parser route coverage: diff-preview edge cases', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
 
     mocks.parseExcelBuffer.mockResolvedValue([
       ['YJコード', '薬剤名', '月間使用量', '単位', '薬価'],
@@ -373,7 +372,7 @@ describe('upload-parser route coverage: diff-preview edge cases', () => {
 
 describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
@@ -471,7 +470,7 @@ describe('upload-parser route coverage: jobs/:jobId/cancel', () => {
 
 describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
@@ -557,7 +556,7 @@ describe('upload-parser route coverage: jobs/:jobId/error-report', () => {
 
 describe('upload-parser route coverage: jobs/:jobId status', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     mocks.getClientIp.mockReturnValue('127.0.0.1');
   });
 
@@ -750,7 +749,7 @@ describe('upload-parser route coverage: jobs/:jobId status', () => {
 
 describe('upload-parser route coverage: confirm headerRowIndex out of range', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
 
     mocks.parseExcelBuffer.mockResolvedValue([
       ['YJコード', '薬剤名', '数量'],

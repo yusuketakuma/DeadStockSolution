@@ -4,7 +4,7 @@ import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
-import { Badge, Row, Col } from 'react-bootstrap';
+import { Badge, Col, Row } from 'react-bootstrap';
 import { api } from '../api/client';
 import {
   createBookmark,
@@ -14,8 +14,7 @@ import {
 import RequireUpload from '../components/RequireUpload';
 import { markMatchingDone, readOnboardingMatchingDone } from '../components/onboarding/onboardingSteps';
 import { useAuth } from '../contexts/AuthContext';
-import BusinessStatusBadge, { type BusinessHoursStatus } from '../components/BusinessStatusBadge';
-import ConfirmActionModal from '../components/ConfirmActionModal';
+import BusinessStatusBadge from '../components/BusinessStatusBadge';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppCard from '../components/ui/AppCard';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
@@ -27,35 +26,17 @@ import SwipeableListItem from '../components/gesture/SwipeableListItem';
 import SwipeCoachingOverlay from '../components/gesture/SwipeCoachingOverlay';
 import { useGroupMembership } from '../hooks/useGroupMembership';
 import MatchingFilters, { DEFAULT_FILTERS, type MatchingFilterState } from '../components/matching/MatchingFilters';
-
-interface MatchItem {
-  deadStockItemId: number;
-  drugName: string;
-  quantity: number;
-  unit: string | null;
-  yakkaUnitPrice: number;
-  yakkaValue: number;
-  expirationDate?: string | null;
-  matchScore?: number;
-}
-
-interface MatchCandidate {
-  pharmacyId: number;
-  pharmacyName: string;
-  pharmacyPhone?: string | null;
-  pharmacyFax?: string | null;
-  distance: number;
-  itemsFromA: MatchItem[];
-  itemsFromB: MatchItem[];
-  totalValueA: number;
-  totalValueB: number;
-  valueDifference: number;
-  score?: number;
-  matchRate?: number;
-  businessStatus?: BusinessHoursStatus;
-  isFavorite?: boolean;
-  matchType?: 'exact' | 'equivalent';
-}
+import ProposalTemplatePanel from '../components/proposal/ProposalTemplatePanel';
+import MatchCandidateInsightsPanel from '../components/matching/MatchCandidateInsightsPanel';
+import ProposalQuantityAdjustModal from '../components/matching/ProposalQuantityAdjustModal';
+import {
+  compareProposalTemplates,
+  listProposalTemplates,
+  markProposalTemplateUsed,
+  type ProposalTemplate,
+} from '../api/proposal-templates';
+import type { MatchCandidate, MatchItem } from '../types/matching';
+import { buildMessagesPath } from '../utils/message-links';
 
 interface ProposalMessageState {
   errorMessage: string;
@@ -94,6 +75,84 @@ function parseRequestedDrugTerms(requestedDrug: string, inventorySearchDrugs: st
     .split('/')
     .map((term) => term.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function buildCandidateMessageDraft(candidate: MatchCandidate): string {
+  const focusDrugs = candidate.itemsFromA
+    .slice(0, 3)
+    .map((item) => item.drugName)
+    .join(' / ');
+  return `マッチング候補 #${candidate.pharmacyId} について相談したいです。候補薬剤: ${focusDrugs || '候補明細を確認中'}。`;
+}
+
+const MATCHING_FILTER_STORAGE_KEY = 'matching-page-filters';
+
+function parseBooleanParam(value: string | null): boolean {
+  return value === '1';
+}
+
+function parseMatchingFiltersFromSearchParams(searchParams: URLSearchParams): MatchingFilterState | null {
+  const sortBy = searchParams.get('sortBy');
+  const sortOrder = searchParams.get('sortOrder');
+  const minScoreValue = searchParams.get('minScore');
+  if (!sortBy && !sortOrder && !searchParams.has('favoriteOnly') && !searchParams.has('groupOnly') && !minScoreValue) {
+    return null;
+  }
+  const parsedMinScore = minScoreValue === null || minScoreValue === '' ? null : Number(minScoreValue);
+  return {
+    sortBy: sortBy === 'distance' || sortBy === 'price' || sortBy === 'expiry' ? sortBy : 'score',
+    sortOrder: sortOrder === 'asc' ? 'asc' : 'desc',
+    favoriteOnly: parseBooleanParam(searchParams.get('favoriteOnly')),
+    groupOnly: parseBooleanParam(searchParams.get('groupOnly')),
+    minScore: Number.isFinite(parsedMinScore) ? parsedMinScore : null,
+  };
+}
+
+function parseMatchingFiltersFromStorage(): MatchingFilterState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(MATCHING_FILTER_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<MatchingFilterState>;
+    return {
+      sortBy: parsed.sortBy === 'distance' || parsed.sortBy === 'price' || parsed.sortBy === 'expiry' ? parsed.sortBy : 'score',
+      sortOrder: parsed.sortOrder === 'asc' ? 'asc' : 'desc',
+      favoriteOnly: parsed.favoriteOnly === true,
+      groupOnly: parsed.groupOnly === true,
+      minScore: typeof parsed.minScore === 'number' ? parsed.minScore : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistMatchingFilters(filters: MatchingFilterState): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(MATCHING_FILTER_STORAGE_KEY, JSON.stringify(filters));
+}
+
+function buildMatchingFilterParams(baseParams: URLSearchParams, filters: MatchingFilterState): URLSearchParams {
+  const nextParams = new URLSearchParams(baseParams);
+  nextParams.delete('sortBy');
+  nextParams.delete('sortOrder');
+  nextParams.delete('favoriteOnly');
+  nextParams.delete('groupOnly');
+  nextParams.delete('minScore');
+
+  if (filters.sortBy !== DEFAULT_FILTERS.sortBy) nextParams.set('sortBy', filters.sortBy);
+  if (filters.sortOrder !== DEFAULT_FILTERS.sortOrder) nextParams.set('sortOrder', filters.sortOrder);
+  if (filters.favoriteOnly) nextParams.set('favoriteOnly', '1');
+  if (filters.groupOnly) nextParams.set('groupOnly', '1');
+  if (filters.minScore !== null) nextParams.set('minScore', String(filters.minScore));
+
+  return nextParams;
+}
+
+function resolveCandidateExpiryTime(item: MatchItem): number | null {
+  const source = item.expirationDateIso ?? item.expirationDate;
+  if (!source) return null;
+  const parsed = new Date(source).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 interface MatchItemsTableProps {
@@ -159,15 +218,22 @@ function MatchItemsTable({ items, keyPrefix }: MatchItemsTableProps) {
 export default function MatchingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
-  const [filters, setFilters] = useState<MatchingFilterState>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<MatchingFilterState>(() =>
+    parseMatchingFiltersFromSearchParams(new URLSearchParams(window.location.search))
+    ?? parseMatchingFiltersFromStorage()
+    ?? DEFAULT_FILTERS,
+  );
   const { loading, setLoading, error, setError, message, setMessage } = useAsyncState();
   const [proposalSubmitting, setProposalSubmitting] = useState(false);
   const [searched, setSearched] = useState(false);
   const [proposalRetrySuggested, setProposalRetrySuggested] = useState(false);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [candidateForProposal, setCandidateForProposal] = useState<MatchCandidate | null>(null);
+  const [templates, setTemplates] = useState<ProposalTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateError, setTemplateError] = useState('');
   // bookmarks: map of "pharmacyId:drugCode" -> bookmark id
   const [bookmarkMap, setBookmarkMap] = useState<Map<string, number>>(new Map());
   const [bookmarkPending, setBookmarkPending] = useState<Set<string>>(new Set());
@@ -234,10 +300,8 @@ export default function MatchingPage() {
       } else if (filters.sortBy === 'expiry') {
         const getEarliestExpiry = (c: MatchCandidate): number => {
           const dates = [...c.itemsFromA, ...c.itemsFromB]
-            .map((item) => item.expirationDate)
-            .filter((d): d is string => !!d)
-            .map((d) => new Date(d).getTime())
-            .filter((t) => !Number.isNaN(t));
+            .map(resolveCandidateExpiryTime)
+            .filter((t): t is number => t !== null);
           return dates.length > 0 ? Math.min(...dates) : Infinity;
         };
         diff = getEarliestExpiry(a) - getEarliestExpiry(b);
@@ -264,6 +328,40 @@ export default function MatchingPage() {
     }
     void loadBookmarks();
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadTemplates() {
+      setTemplatesLoading(true);
+      setTemplateError('');
+      try {
+        const nextTemplates = await listProposalTemplates();
+        if (!mounted) return;
+        setTemplates(nextTemplates.sort(compareProposalTemplates));
+      } catch (err) {
+        if (!mounted) return;
+        setTemplateError(err instanceof Error ? err.message : 'テンプレート一覧の取得に失敗しました');
+      } finally {
+        if (mounted) {
+          setTemplatesLoading(false);
+        }
+      }
+    }
+
+    void loadTemplates();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    persistMatchingFilters(filters);
+    const nextParams = buildMatchingFilterParams(searchParams, filters);
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [filters, searchParams, setSearchParams]);
 
   const handleToggleBookmark = useCallback(async (candidate: MatchCandidate, drugCode: string) => {
     const key = `${candidate.pharmacyId}:${drugCode}`;
@@ -330,14 +428,13 @@ export default function MatchingPage() {
     setExpandedIdx(displayCandidates.length === 1 ? 0 : null);
   }, [displayCandidates.length, requestedTargetPharmacyId]);
 
-  const handleSendProposal = async () => {
-    if (!candidateForProposal) return;
+  const handleSendProposal = async (candidate: MatchCandidate) => {
     setProposalSubmitting(true);
     setProposalRetrySuggested(false);
     try {
-      await api.post('/exchange/proposals', { candidate: candidateForProposal });
-      setMessage(`${candidateForProposal.pharmacyName}との仮マッチングを開始しました。相手薬局の承認をお待ちください。`);
-      setCandidates((prev) => prev.filter((c) => c.pharmacyId !== candidateForProposal.pharmacyId));
+      await api.post('/exchange/proposals', { candidate });
+      setMessage(`${candidate.pharmacyName}との仮マッチングを開始しました。相手薬局の承認をお待ちください。`);
+      setCandidates((prev) => prev.filter((c) => c.pharmacyId !== candidate.pharmacyId));
       setCandidateForProposal(null);
     } catch (err) {
       const proposalMessageState = resolveProposalMessageState(err);
@@ -347,6 +444,32 @@ export default function MatchingPage() {
       setProposalSubmitting(false);
     }
   };
+
+  const buildTemplateMatchingPath = useCallback((template: ProposalTemplate) => {
+    const params = new URLSearchParams();
+    params.set('targetPharmacyId', String(template.targetPharmacyId));
+    const itemTerms = template.items
+      .map((item) => item.drugName.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    if (itemTerms.length > 0) {
+      params.set('inventorySearchDrugs', itemTerms.join('/'));
+    }
+    return `/matching?${params.toString()}`;
+  }, []);
+
+  const handleUseTemplate = useCallback((template: ProposalTemplate) => {
+    setMessage(`テンプレート「${template.name}」の条件で候補を確認します。`);
+    void markProposalTemplateUsed(template.id)
+      .then((updatedTemplate) => {
+        setTemplates((prev) => prev
+          .map((current) => (current.id === updatedTemplate.id ? updatedTemplate : current))
+          .sort(compareProposalTemplates));
+      })
+      .catch(() => {
+        // Navigation should not be blocked even if the usage counter update fails.
+      });
+  }, [setMessage]);
 
   return (
     <RequireUpload>
@@ -397,6 +520,17 @@ export default function MatchingPage() {
             </LoadingButton>
           </AppCard.Body>
         </AppCard>
+
+        <ProposalTemplatePanel
+          title="保存済み提案テンプレート"
+          templates={templates}
+          loading={templatesLoading}
+          error={templateError}
+          buildUseTo={buildTemplateMatchingPath}
+          useLabel="この条件で候補を探す"
+          emptyMessage="完了済み提案をテンプレート保存すると、交換先や品目を絞って再検索できます。"
+          onUse={handleUseTemplate}
+        />
 
         {searched && candidates.length > 0 && (
           <MatchingFilters filters={filters} onFilterChange={setFilters} />
@@ -475,6 +609,7 @@ export default function MatchingPage() {
                     この候補は同等品マッチングにより表示されています。薬品名が異なる場合でも、同等品として登録された薬剤が含まれます。
                   </AppAlert>
                 )}
+                <MatchCandidateInsightsPanel candidate={candidate} />
                 <Row className="g-3 mb-3">
                   <Col lg={6}>
                     <h6>あなた → {candidate.pharmacyName} ({candidate.totalValueA.toLocaleString()}円)</h6>
@@ -555,6 +690,18 @@ export default function MatchingPage() {
                   <LoadingButton variant="success" onClick={() => setCandidateForProposal(candidate)} loading={proposalSubmitting} loadingLabel="提案中...">
                     仮マッチングする
                   </LoadingButton>
+                  <AppButton
+                    as="a"
+                    href={buildMessagesPath({
+                      pharmacyId: candidate.pharmacyId,
+                      pharmacyName: candidate.pharmacyName,
+                      draft: buildCandidateMessageDraft(candidate),
+                      context: 'matching',
+                    })}
+                    variant="outline-primary"
+                  >
+                    メッセージを開く
+                  </AppButton>
                   {candidate.itemsFromA.concat(candidate.itemsFromB).map((item) => {
                     const key = `${candidate.pharmacyId}:${item.drugName}`;
                     const isBookmarked = bookmarkMap.has(key);
@@ -587,21 +734,9 @@ export default function MatchingPage() {
         )}
         </ScrollArea>
 
-        <ConfirmActionModal
+        <ProposalQuantityAdjustModal
           show={candidateForProposal !== null}
-          title="仮マッチングの開始"
-          body={candidateForProposal ? (
-            <>
-              <div className="mb-2">以下の薬局との仮マッチングを開始します。</div>
-              <div className="small text-muted">
-                対象: {candidateForProposal.pharmacyName}
-                <br />
-                双方の承認後に確定します。
-              </div>
-            </>
-          ) : null}
-          confirmLabel="仮マッチングを開始"
-          confirmVariant="success"
+          candidate={candidateForProposal}
           onCancel={() => setCandidateForProposal(null)}
           onConfirm={handleSendProposal}
           pending={proposalSubmitting}

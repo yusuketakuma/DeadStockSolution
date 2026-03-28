@@ -15,6 +15,7 @@ interface TrendRow {
   date: string;
   metrics: {
     deadStockCount?: number;
+    usedMedCount?: number;
     proposalsSent?: number;
     proposalsReceived?: number;
     proposalsCompleted?: number;
@@ -32,6 +33,7 @@ interface TrendResponse {
 interface TrendDataPoint {
   date: string;
   deadStockCount: number | null;
+  usedMedCount: number | null;
   proposalsSent: number | null;
   proposalsReceived: number | null;
   proposalsCompleted: number | null;
@@ -43,6 +45,7 @@ function normalizeTrends(rows: TrendRow[]): TrendDataPoint[] {
   return rows.map((row) => ({
     date: row.date,
     deadStockCount: row.metrics.deadStockCount ?? null,
+    usedMedCount: row.metrics.usedMedCount ?? null,
     proposalsSent: row.metrics.proposalsSent ?? null,
     proposalsReceived: row.metrics.proposalsReceived ?? null,
     proposalsCompleted: row.metrics.proposalsCompleted ?? null,
@@ -395,6 +398,15 @@ export default function StatisticsPage() {
               data={trendPoints}
               lines={[
                 { key: 'deadStockCount', label: 'デッドストック数', color: '#dc3545' },
+              ]}
+            />
+          </Col>
+          <Col xs={12} md={6}>
+            <p className="fw-semibold mb-1 small text-muted">医薬品使用量推移</p>
+            <TrendChart
+              data={trendPoints}
+              lines={[
+                { key: 'usedMedCount', label: '医薬品使用量', color: '#6f42c1' },
               ]}
             />
           </Col>

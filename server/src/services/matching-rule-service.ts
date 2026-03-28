@@ -23,6 +23,7 @@ interface RuleFieldSpec {
 type MatchingRuleProfileRow = typeof matchingRuleProfiles.$inferSelect;
 type MatchingRuleProfileInsertValues = typeof matchingRuleProfiles.$inferInsert;
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type ProfileAccessor = Pick<DbTransaction, 'select' | 'insert' | 'update'>;
 
 export class MatchingRuleValidationError extends Error {}
 export class MatchingRuleVersionConflictError extends Error {}
@@ -226,6 +227,23 @@ async function insertDefaultProfileIfMissing(writer: Pick<DbTransaction, 'insert
     .onConflictDoNothing({ target: matchingRuleProfiles.profileName });
 }
 
+async function reactivateFirstProfile(accessor: ProfileAccessor): Promise<MatchingRuleProfileRow | null> {
+  const firstRow = await selectFirstProfileRow(accessor);
+  if (!firstRow) {
+    return null;
+  }
+
+  const [updatedFirst] = await accessor.update(matchingRuleProfiles)
+    .set({
+      isActive: true,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(matchingRuleProfiles.id, firstRow.id))
+    .returning();
+
+  return updatedFirst ?? firstRow;
+}
+
 function validateExpectedVersion(expectedVersion: number | undefined): void {
   if (expectedVersion === undefined) {
     return;
@@ -254,45 +272,19 @@ function rethrowKnownUpdateErrors(err: unknown): never {
   throw new Error('マッチングルールの更新に失敗しました');
 }
 
-async function ensureActiveProfileRow(): Promise<MatchingRuleProfileRow | null> {
-  const currentActive = await selectActiveProfileRow(db);
-
+async function ensureActiveProfileRowWithAccessor(accessor: ProfileAccessor): Promise<MatchingRuleProfileRow | null> {
+  const currentActive = await selectActiveProfileRow(accessor);
   if (currentActive) {
     return currentActive;
   }
 
-  await insertDefaultProfileIfMissing(db);
-
-  const activeAfterInsert = await selectActiveProfileRow(db);
+  await insertDefaultProfileIfMissing(accessor);
+  const activeAfterInsert = await selectActiveProfileRow(accessor);
   if (activeAfterInsert) {
     return activeAfterInsert;
   }
 
-  const firstRow = await selectFirstProfileRow(db);
-
-  if (!firstRow) {
-    return null;
-  }
-
-  const [updatedFirst] = await db.update(matchingRuleProfiles)
-    .set({
-      isActive: true,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(matchingRuleProfiles.id, firstRow.id))
-    .returning();
-
-  return updatedFirst ?? firstRow;
-}
-
-async function ensureActiveProfileRowInTransaction(tx: DbTransaction): Promise<MatchingRuleProfileRow | null> {
-  const currentActive = await selectActiveProfileRow(tx);
-  if (currentActive) {
-    return currentActive;
-  }
-
-  await insertDefaultProfileIfMissing(tx);
-  return selectActiveProfileRow(tx);
+  return reactivateFirstProfile(accessor);
 }
 
 export async function getActiveMatchingRuleProfile(
@@ -340,7 +332,7 @@ export async function getActiveMatchingRuleProfile(
   }
 
   try {
-    const row = await ensureActiveProfileRow();
+    const row = await ensureActiveProfileRowWithAccessor(db);
     if (!row) {
       logger.warn('No matching rule profile row found, using fallback defaults');
       return storeCache(buildFallbackProfile());
@@ -375,7 +367,7 @@ export async function updateActiveMatchingRuleProfile(input: MatchingRuleProfile
 
   try {
     const updated = await db.transaction(async (tx) => {
-      const current = await ensureActiveProfileRowInTransaction(tx);
+      const current = await ensureActiveProfileRowWithAccessor(tx);
 
       if (!current) {
         throw new MatchingRuleValidationError('有効なマッチングルールプロファイルが存在しません');

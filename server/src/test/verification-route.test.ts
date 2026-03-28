@@ -40,6 +40,7 @@ async function createApp() {
 }
 
 beforeEach(async () => {
+  vi.useRealTimers();
   vi.resetModules();
   vi.resetAllMocks();
   mockVerificationRouteDependencies();

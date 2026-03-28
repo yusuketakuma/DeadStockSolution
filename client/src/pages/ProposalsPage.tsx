@@ -12,7 +12,8 @@ import Pagination from '../components/Pagination';
 import { usePaginatedList } from '../hooks/usePaginatedList';
 import AppSelect from '../components/ui/AppSelect';
 import { formatDateTimeJa, formatYen } from '../utils/formatters';
-import { getProposalPhaseInfo } from '../utils/proposal-status';
+import { getProposalPhaseInfo, getProposalWaitingInfo } from '../utils/proposal-status';
+import { getProposalDeadlineMeta } from '../utils/proposal-expiry';
 import AppActionBar from '../components/ui/AppActionBar';
 import AppDataTable from '../components/ui/AppDataTable';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
@@ -31,6 +32,7 @@ interface Proposal {
   valueDifference: number | null;
   proposedAt: string | null;
   deadlineAt?: string | null;
+  expiryReminderSentAt?: string | null;
   priorityScore?: number;
   priorityReasons?: string[];
 }
@@ -63,10 +65,34 @@ function getPriorityReasonBadge(reason: string): { bg: string; text?: string; la
 
 function getProposalUrgencyClass(proposal: Proposal): string {
   if (!proposal.deadlineAt) return '';
-  const hoursLeft = (new Date(proposal.deadlineAt).getTime() - Date.now()) / 3600000;
-  if (hoursLeft < 0) return 'border-start border-danger border-3 bg-danger bg-opacity-10';
-  if (hoursLeft < 24) return 'border-start border-warning border-3 bg-warning bg-opacity-10';
+  const meta = getProposalDeadlineMeta(proposal.deadlineAt);
+  if (meta.isExpired) return 'border-start border-danger border-3 bg-danger bg-opacity-10';
+  if (meta.isDueSoon) return 'border-start border-warning border-3 bg-warning bg-opacity-10';
   return '';
+}
+
+function renderDeadlineCell(deadlineAt: string | null | undefined) {
+  const meta = getProposalDeadlineMeta(deadlineAt);
+  const badgeClassName = meta.isExpired
+    ? 'bg-danger'
+    : meta.isDueSoon
+      ? 'bg-warning text-dark'
+      : 'bg-secondary';
+
+  return (
+    <div className="d-flex flex-column gap-1">
+      <span>{formatDateTimeJa(deadlineAt)}</span>
+      <span className={`badge ${badgeClassName} align-self-start`}>{meta.remainingLabel}</span>
+    </div>
+  );
+}
+
+function renderWaitingBadge(waitingLabel: string, waitingForYou: boolean) {
+  return (
+    <span className={`badge ${waitingForYou ? 'bg-warning text-dark' : 'bg-info text-dark'} align-self-start`}>
+      {waitingLabel}
+    </span>
+  );
 }
 
 function canAcceptProposal(proposal: Proposal, viewerId: number | undefined): boolean {
@@ -260,6 +286,7 @@ export default function ProposalsPage() {
                   const isA = p.pharmacyAId === user?.id;
                   const otherName = isA ? p.pharmacyBName : p.pharmacyAName;
                   const phaseInfo = getProposalPhaseInfo(p.status, isA);
+                  const waitingInfo = getProposalWaitingInfo(p.status, isA, p.pharmacyAName, p.pharmacyBName);
                   const selectable = canAcceptProposal(p, user?.id) || canRejectProposal(p);
 
                   const urgencyClass = getProposalUrgencyClass(p);
@@ -281,6 +308,10 @@ export default function ProposalsPage() {
                           <Badge bg={phaseInfo.variant}>{phaseInfo.phaseLabel}</Badge>
                           <span className="small text-muted">あなた: {phaseInfo.yourStatus}</span>
                           <span className="small text-muted">相手: {phaseInfo.theirStatus}</span>
+                          {waitingInfo ? renderWaitingBadge(waitingInfo.viewerLabel, waitingInfo.waitingForYou) : null}
+                          {p.expiryReminderSentAt ? (
+                            <span className="small text-warning-emphasis">24時間前リマインド済み</span>
+                          ) : null}
                         </div>
                       </td>
                       <td>
@@ -300,7 +331,7 @@ export default function ProposalsPage() {
                       <td>{formatYen(p.totalValueB)}</td>
                       <td>{formatYen(p.valueDifference)}</td>
                       <td>{formatDateTimeJa(p.proposedAt)}</td>
-                      <td>{formatDateTimeJa(p.deadlineAt)}</td>
+                      <td>{renderDeadlineCell(p.deadlineAt)}</td>
                       <td><Link to={`/proposals/${p.id}`} className="btn btn-sm btn-outline-primary">詳細</Link></td>
                     </tr>
                   );
@@ -315,6 +346,7 @@ export default function ProposalsPage() {
               const isA = p.pharmacyAId === user?.id;
               const otherName = isA ? p.pharmacyBName : p.pharmacyAName;
               const phaseInfo = getProposalPhaseInfo(p.status, isA);
+              const waitingInfo = getProposalWaitingInfo(p.status, isA, p.pharmacyAName, p.pharmacyBName);
               const selectable = canAcceptProposal(p, user?.id) || canRejectProposal(p);
               const urgencyClass = getProposalUrgencyClass(p);
               const priorityReasons = p.priorityReasons ?? [];
@@ -336,6 +368,10 @@ export default function ProposalsPage() {
                         <Badge bg={phaseInfo.variant}>{phaseInfo.phaseLabel}</Badge>
                         <span className="small text-muted">あなた: {phaseInfo.yourStatus}</span>
                         <span className="small text-muted">相手: {phaseInfo.theirStatus}</span>
+                        {waitingInfo ? renderWaitingBadge(waitingInfo.viewerLabel, waitingInfo.waitingForYou) : null}
+                        {p.expiryReminderSentAt ? (
+                          <span className="small text-warning-emphasis">24時間前リマインド済み</span>
+                        ) : null}
                       </div>
                     )}
                     fields={[
@@ -361,7 +397,7 @@ export default function ProposalsPage() {
                       { label: 'B側薬価', value: formatYen(p.totalValueB) },
                       { label: '差額', value: formatYen(p.valueDifference) },
                       { label: '開始日', value: formatDateTimeJa(p.proposedAt) },
-                      { label: '期限', value: formatDateTimeJa(p.deadlineAt) },
+                      { label: '期限', value: renderDeadlineCell(p.deadlineAt) },
                     ]}
                     actions={(
                       <div className="d-flex flex-column gap-2">

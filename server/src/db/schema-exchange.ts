@@ -56,6 +56,7 @@ export const exchangeProposals = pgTable('exchange_proposals', {
   proposedAt: timestamp('proposed_at', { mode: 'string' }).defaultNow(),
   completedAt: timestamp('completed_at', { mode: 'string' }),
   expiresAt: timestamp('expires_at', { mode: 'string' }),
+  expiryReminderSentAt: timestamp('expiry_reminder_sent_at', { mode: 'string' }),
   completedTotalValue: numeric('completed_total_value', { precision: 12, scale: 2 }),
 }, (table) => ({
   idxExchangeProposalsAProposed: index('idx_exchange_proposals_a_proposed')

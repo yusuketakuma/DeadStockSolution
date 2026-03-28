@@ -112,7 +112,8 @@ describe('auth routes', () => {
   const originalVitest = process.env.VITEST;
   const originalExposeTestPharmacyPasswords = process.env.EXPOSE_TEST_PHARMACY_PASSWORDS;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
     process.env.NODE_ENV = 'test';
     process.env.EXPOSE_PASSWORD_RESET_TOKEN = 'false';

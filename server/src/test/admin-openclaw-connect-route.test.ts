@@ -30,7 +30,7 @@ vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import adminRouter from '../routes/admin';
+let adminRouter: (typeof import('../routes/admin'))['default'];
 
 function createApp() {
   const app = express();
@@ -40,8 +40,11 @@ function createApp() {
 }
 
 describe('admin openclaw connect routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminRouter } = await import('../routes/admin'));
   });
 
   it('GET /openclaw/dds-agent returns connection status', async () => {

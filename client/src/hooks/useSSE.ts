@@ -1,57 +1,30 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { useSseRefresh } from './useSseRefresh';
 
 interface UseSSEOptions {
   onNotification: (data: unknown) => void;
   enabled?: boolean;
 }
 
+/**
+ * Legacy compatibility wrapper.
+ *
+ * New code should use useSseRefresh() directly with /realtime/stream topics.
+ * This hook stays as a thin adapter so any older callsite still rides the
+ * primary realtime path instead of the deprecated /api/sse/events endpoint.
+ */
 export function useSSE({ onNotification, enabled = true }: UseSSEOptions): void {
-  const retryDelayRef = useRef(1000);
-  const esRef = useRef<EventSource | null>(null);
   const onNotificationRef = useRef(onNotification);
-  const enabledRef = useRef(enabled);
   onNotificationRef.current = onNotification;
-  enabledRef.current = enabled;
 
-  useEffect(() => {
-    if (!enabled) return;
-
-    let disposed = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function connect() {
-      if (disposed) return;
-      const es = new EventSource('/api/sse/events', { withCredentials: true });
-
-      es.addEventListener('connected', () => {
-        retryDelayRef.current = 1000;
-      });
-
-      es.addEventListener('notification', (event: MessageEvent) => {
-        try {
-          onNotificationRef.current(JSON.parse(event.data as string));
-        } catch {
-          // JSON パースエラーは無視
-        }
-      });
-
-      es.onerror = () => {
-        es.close();
-        if (disposed) return;
-        const delay = Math.min(retryDelayRef.current, 30000);
-        retryDelayRef.current = Math.min(retryDelayRef.current * 2, 30000);
-        reconnectTimer = setTimeout(connect, delay);
-      };
-
-      esRef.current = es;
-    }
-
-    connect();
-
-    return () => {
-      disposed = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      esRef.current?.close();
-    };
-  }, [enabled]);
+  useSseRefresh({
+    enabled,
+    streamPath: '/realtime/stream?topics=timeline',
+    events: ['timeline.refresh'],
+    onRefresh: async () => {
+      onNotificationRef.current({ type: 'timeline.refresh' });
+    },
+    fallbackIntervalMs: 60_000,
+    minFetchIntervalMs: 5_000,
+  });
 }

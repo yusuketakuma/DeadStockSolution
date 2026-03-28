@@ -120,6 +120,14 @@ export default function DashboardPage() {
     navigate(path);
   }, [navigate]);
 
+  const handleRiskBucketClick = useCallback((bucket: 'expired' | 'within30' | 'within60' | 'within90' | 'within120' | 'over120' | 'unknown') => {
+    if (bucket === 'expired' || bucket === 'within30') {
+      navigate('/alerts?tab=unresolved&type=near_expiry');
+      return;
+    }
+    navigate(`/inventory/dead-stock?riskBucket=${bucket}`);
+  }, [navigate]);
+
   return (
     <PageShell>
       <ScrollArea>
@@ -179,7 +187,7 @@ export default function DashboardPage() {
                   </Col>
                 </Row>
                 <div className="mt-2">
-                  <RiskBucketBarChart bucketCounts={risk.bucketCounts} />
+                  <RiskBucketBarChart bucketCounts={risk.bucketCounts} onBucketClick={handleRiskBucketClick} />
                 </div>
               </>
             ) : (
@@ -249,13 +257,19 @@ export default function DashboardPage() {
             <Col xs={8}>
               <div className="d-flex gap-2 flex-wrap align-items-center h-100">
                 {alertStats.byType.near_expiry ? (
-                  <Badge bg="danger">{`期限切迫 ${alertStats.byType.near_expiry}`}</Badge>
+                  <Link to="/alerts?tab=unresolved&type=near_expiry" className="text-decoration-none">
+                    <Badge bg="danger">{`期限切迫 ${alertStats.byType.near_expiry}`}</Badge>
+                  </Link>
                 ) : null}
                 {alertStats.byType.excess_stock ? (
-                  <Badge bg="warning" text="dark">{`過剰在庫 ${alertStats.byType.excess_stock}`}</Badge>
+                  <Link to="/alerts?tab=unresolved&type=excess_stock" className="text-decoration-none">
+                    <Badge bg="warning" text="dark">{`過剰在庫 ${alertStats.byType.excess_stock}`}</Badge>
+                  </Link>
                 ) : null}
                 {alertStats.byType.no_movement ? (
-                  <Badge bg="info">{`不動在庫 ${alertStats.byType.no_movement}`}</Badge>
+                  <Link to="/inventory/dead-stock" className="text-decoration-none">
+                    <Badge bg="info">{`不動在庫 ${alertStats.byType.no_movement}`}</Badge>
+                  </Link>
                 ) : null}
               </div>
             </Col>

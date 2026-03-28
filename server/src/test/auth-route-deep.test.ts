@@ -61,69 +61,67 @@ const mocks = vi.hoisted(() => ({
   generateCsrfToken: vi.fn(() => 'csrf-tok'),
 }));
 
-function mockAuthRouteDependencies() {
-  vi.doMock('../config/database', () => ({ db: mocks.db }));
-  vi.doMock('drizzle-orm', () => ({
-    eq: vi.fn(() => ({})),
-    sql: vi.fn(() => ({})),
-    asc: vi.fn(() => ({})),
-  }));
-  vi.doMock('../services/auth-service', () => ({
-    assertJwtSecretConfigured: mocks.assertJwtSecretConfigured,
-    hashPassword: mocks.hashPassword,
-    verifyPassword: mocks.verifyPassword,
-    generateToken: mocks.generateToken,
-    verifyToken: mocks.verifyToken,
-    deriveSessionVersion: mocks.deriveSessionVersion,
-    isJwtSecretMissingError: mocks.isJwtSecretMissingError,
-  }));
-  vi.doMock('../utils/validators', () => ({
-    validateRegistration: mocks.validateRegistration,
-    validateLogin: mocks.validateLogin,
-    emailSchema: mocks.emailSchema,
-    passwordSchema: mocks.passwordSchema,
-  }));
-  vi.doMock('../services/geocode-service', () => ({ geocodeAddress: mocks.geocodeAddress }));
-  vi.doMock('../services/log-service', () => ({
-    writeLog: mocks.writeLog,
-    getClientIp: mocks.getClientIp,
-  }));
-  vi.doMock('../services/password-reset-service', () => ({
-    createPasswordResetToken: mocks.createPasswordResetToken,
-    resetPasswordWithToken: mocks.resetPasswordWithToken,
-  }));
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-      next();
-    },
-    invalidateAuthUserCache: mocks.invalidateAuthUserCache,
-  }));
-  vi.doMock('../middleware/csrf', () => ({
-    setCsrfCookie: mocks.setCsrfCookie,
-    clearCsrfCookie: mocks.clearCsrfCookie,
-    ensureCsrfCookie: mocks.ensureCsrfCookie,
-    generateCsrfToken: mocks.generateCsrfToken,
-  }));
-  vi.doMock('../services/logger', () => ({
-    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  }));
-  vi.doMock('../middleware/error-handler', () => ({
-    handleRouteError: mocks.handleRouteError,
-  }));
-  vi.doMock('../services/registration-screening-service', () => ({
-    evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
-  }));
-  vi.doMock('../services/openclaw-service', () => ({
-    handoffToOpenClaw: mocks.handoffToOpenClaw,
-  }));
-  vi.doMock('../services/pharmacy-verification-service', () => ({
-    PHARMACY_VERIFICATION_REQUEST_TYPE: 'pharmacy_verification',
-  }));
-  vi.doMock('express-rate-limit', () => ({
-    default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-  }));
-}
+vi.mock('../config/database', () => ({ db: mocks.db }));
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(() => ({})),
+  sql: vi.fn(() => ({})),
+  asc: vi.fn(() => ({})),
+}));
+vi.mock('../services/auth-service', () => ({
+  assertJwtSecretConfigured: mocks.assertJwtSecretConfigured,
+  hashPassword: mocks.hashPassword,
+  verifyPassword: mocks.verifyPassword,
+  generateToken: mocks.generateToken,
+  verifyToken: mocks.verifyToken,
+  deriveSessionVersion: mocks.deriveSessionVersion,
+  isJwtSecretMissingError: mocks.isJwtSecretMissingError,
+}));
+vi.mock('../utils/validators', () => ({
+  validateRegistration: mocks.validateRegistration,
+  validateLogin: mocks.validateLogin,
+  emailSchema: mocks.emailSchema,
+  passwordSchema: mocks.passwordSchema,
+}));
+vi.mock('../services/geocode-service', () => ({ geocodeAddress: mocks.geocodeAddress }));
+vi.mock('../services/log-service', () => ({
+  writeLog: mocks.writeLog,
+  getClientIp: mocks.getClientIp,
+}));
+vi.mock('../services/password-reset-service', () => ({
+  createPasswordResetToken: mocks.createPasswordResetToken,
+  resetPasswordWithToken: mocks.resetPasswordWithToken,
+}));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+    next();
+  },
+  invalidateAuthUserCache: mocks.invalidateAuthUserCache,
+}));
+vi.mock('../middleware/csrf', () => ({
+  setCsrfCookie: mocks.setCsrfCookie,
+  clearCsrfCookie: mocks.clearCsrfCookie,
+  ensureCsrfCookie: mocks.ensureCsrfCookie,
+  generateCsrfToken: mocks.generateCsrfToken,
+}));
+vi.mock('../services/logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock('../middleware/error-handler', () => ({
+  handleRouteError: mocks.handleRouteError,
+}));
+vi.mock('../services/registration-screening-service', () => ({
+  evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
+}));
+vi.mock('../services/openclaw-service', () => ({
+  handoffToOpenClaw: mocks.handoffToOpenClaw,
+}));
+vi.mock('../services/pharmacy-verification-service', () => ({
+  PHARMACY_VERIFICATION_REQUEST_TYPE: 'pharmacy_verification',
+}));
+vi.mock('express-rate-limit', () => ({
+  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 
 /* ── helpers ─────────────────────────────────────── */
 function createSelectQuery(result: unknown) {
@@ -145,8 +143,6 @@ function createSelectQuery(result: unknown) {
 }
 
 async function createApp() {
-  vi.resetModules();
-  mockAuthRouteDependencies();
   const { default: authRouter } = await import('../routes/auth');
   const app = express();
   app.use(express.json());

@@ -82,4 +82,46 @@ describe('proposal-timeline-service', () => {
       actorName: '不明',
     });
   });
+
+  it('marks system-generated reminder and expiry events clearly', () => {
+    const actionRows: ProposalTimelineActionRow[] = [
+      {
+        action: 'proposal_expiry_reminder',
+        detail: 'proposalId=12|status=accepted_a|reminder=24h',
+        createdAt: '2026-02-28T11:00:00.000Z',
+        actorPharmacyId: null,
+        actorName: null,
+      },
+      {
+        action: 'proposal_expired',
+        detail: 'proposalId=12|status=rejected',
+        createdAt: '2026-03-01T11:00:00.000Z',
+        actorPharmacyId: null,
+        actorName: null,
+      },
+    ];
+
+    const timeline = buildProposalTimeline({
+      proposedAt: '2026-02-28T10:00:00.000Z',
+      proposalCreatorPharmacyId: 1,
+      proposalCreatorName: '提案元薬局',
+      actionRows,
+      includeStatusTransitions: true,
+    });
+
+    expect(timeline[1]).toMatchObject({
+      action: 'proposal_expiry_reminder',
+      label: '期限リマインド送信',
+      actorName: 'システム',
+      statusFrom: null,
+      statusTo: null,
+    });
+    expect(timeline[2]).toMatchObject({
+      action: 'proposal_expired',
+      label: '期限切れで自動却下',
+      actorName: 'システム',
+      statusFrom: 'proposed',
+      statusTo: 'rejected',
+    });
+  });
 });

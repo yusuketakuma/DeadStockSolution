@@ -17,7 +17,13 @@ const mocks = vi.hoisted(() => ({
   ensureOpenClawWorkItem: vi.fn(),
   updateOpenClawWorkItem: vi.fn(),
   recordOpenClawRequestMessage: vi.fn(),
+  recordOpenClawRequestEvent: vi.fn(),
   completeOpenClawRetryForRequest: vi.fn(),
+  publishAdminRequestsRefresh: vi.fn(),
+  publishRequestsRefresh: vi.fn(),
+  publishTimelineRefresh: vi.fn(),
+  dispatchNotificationPush: vi.fn(),
+  createNotification: vi.fn(),
 }));
 
 function mockOpenClawCallbackRouteDependencies() {
@@ -56,10 +62,38 @@ function mockOpenClawCallbackRouteDependencies() {
     completeOpenClawRetryForRequest: mocks.completeOpenClawRetryForRequest,
   }));
 
+  vi.doMock('../services/openclaw-request-event-service', () => ({
+    recordOpenClawRequestEvent: mocks.recordOpenClawRequestEvent,
+  }));
+
+  vi.doMock('../services/realtime-service', () => ({
+    publishAdminRequestsRefresh: mocks.publishAdminRequestsRefresh,
+    publishRequestsRefresh: mocks.publishRequestsRefresh,
+    publishTimelineRefresh: mocks.publishTimelineRefresh,
+  }));
+
+  vi.doMock('../services/notification-service', () => ({
+    createNotification: mocks.createNotification,
+  }));
+
+  vi.doMock('../services/push-notification-dispatcher', () => ({
+    dispatchNotificationPush: mocks.dispatchNotificationPush,
+  }));
+
+  const sqlFn = Object.assign(
+    vi.fn(() => ({})),
+    { raw: vi.fn(() => ({})) },
+  );
+
   vi.doMock('drizzle-orm', () => ({
     eq: vi.fn(() => ({})),
     and: vi.fn(() => ({})),
     ne: vi.fn(() => ({})),
+    or: vi.fn(() => ({})),
+    isNull: vi.fn(() => ({})),
+    desc: vi.fn(() => ({})),
+    count: vi.fn(() => ({})),
+    sql: sqlFn,
   }));
 }
 
@@ -102,9 +136,13 @@ function createUpdateQuery(returningResult: unknown[] = [{ id: 1 }]) {
 }
 
 function createInsertQuery() {
-  return {
-    values: vi.fn().mockResolvedValue(undefined),
+  const query = {
+    values: vi.fn(),
+    returning: vi.fn(),
   };
+  query.values.mockReturnValue(query);
+  query.returning.mockResolvedValue([{ id: 1 }]);
+  return query;
 }
 
 function createFailingUpdateQuery(error: Error) {
@@ -136,6 +174,11 @@ describe('openclaw callback route', () => {
     process.env.OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS = '300';
     mocks.db.insert.mockImplementation(() => createInsertQuery());
     mocks.db.transaction.mockImplementation(async (callback: (tx: typeof mocks.db) => unknown) => callback(mocks.db));
+    mocks.createNotification.mockResolvedValue({
+      id: 1,
+      pharmacyId: 1,
+      type: 'request_update',
+    });
   });
 
   it('accepts callback with valid HMAC signature', async () => {
@@ -307,14 +350,9 @@ describe('openclaw callback route', () => {
       openclawSummary: null,
     }];
     const updateQuery = createUpdateQuery();
-    const eventInsertQuery = createInsertQuery();
-    const notificationInsertQuery = createInsertQuery();
 
     mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
     mocks.db.update.mockImplementationOnce(() => updateQuery);
-    mocks.db.insert
-      .mockImplementationOnce(() => eventInsertQuery)
-      .mockImplementationOnce(() => notificationInsertQuery);
 
     const payload = {
       requestId: 21,
@@ -338,8 +376,7 @@ describe('openclaw callback route', () => {
     vi.useRealTimers();
 
     expect(res.status).toBe(200);
-    expect(mocks.db.insert).toHaveBeenCalledTimes(2);
-    expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
       pharmacyId: 8,
       type: 'request_update',
       referenceType: 'request',
@@ -387,7 +424,7 @@ describe('openclaw callback route', () => {
     vi.useRealTimers();
 
     expect(res.status).toBe(200);
-    expect(mocks.db.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.createNotification).not.toHaveBeenCalled();
     expect(mocks.db.update).toHaveBeenCalledTimes(2);
   });
 
@@ -402,11 +439,9 @@ describe('openclaw callback route', () => {
       openclawSummary: null,
     }];
     const updateQuery = createUpdateQuery();
-    const insertQuery = createInsertQuery();
 
     mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
     mocks.db.update.mockImplementationOnce(() => updateQuery);
-    mocks.db.insert.mockImplementationOnce(() => insertQuery);
     mocks.processVerificationCallback.mockResolvedValue({
       verificationStatus: 'verified',
       pharmacyId: 9,
@@ -455,11 +490,9 @@ describe('openclaw callback route', () => {
       openclawSummary: null,
     }];
     const updateQuery = createUpdateQuery();
-    const insertQuery = createInsertQuery();
 
     mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
     mocks.db.update.mockImplementationOnce(() => updateQuery);
-    mocks.db.insert.mockImplementationOnce(() => insertQuery);
 
     const payload = {
       requestId: 41,
@@ -499,11 +532,9 @@ describe('openclaw callback route', () => {
       openclawSummary: null,
     }];
     const updateQuery = createUpdateQuery();
-    const insertQuery = createInsertQuery();
 
     mocks.db.select.mockImplementationOnce(() => createSelectLimitQuery(currentRow));
     mocks.db.update.mockImplementationOnce(() => updateQuery);
-    mocks.db.insert.mockImplementationOnce(() => insertQuery);
 
     const payload = {
       requestId: 51,

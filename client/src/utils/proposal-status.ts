@@ -22,6 +22,13 @@ export interface ProposalPhaseInfo {
   theirStatus: string;
 }
 
+export interface ProposalWaitingInfo {
+  waitingForPharmacy: 'a' | 'b';
+  waitingForYou: boolean;
+  label: string;
+  viewerLabel: string;
+}
+
 /**
  * 閲覧者が A 側か B 側かに応じて「あなたの状態」「相手の状態」を返す。
  * @param status  提案のステータス値
@@ -94,4 +101,46 @@ export function getProposalPhaseInfo(status: string, isA: boolean): ProposalPhas
         theirStatus: '-',
       };
   }
+}
+
+export function getProposalWaitingInfo(
+  status: string,
+  isA: boolean,
+  pharmacyAName = 'A側薬局',
+  pharmacyBName = 'B側薬局',
+): ProposalWaitingInfo | null {
+  if (status === 'proposed') {
+    const waitingForPharmacy: ProposalWaitingInfo['waitingForPharmacy'] = 'b';
+    const waitingForYou = !isA;
+    return {
+      waitingForPharmacy,
+      waitingForYou,
+      label: `${pharmacyBName}の確認待ち`,
+      viewerLabel: waitingForYou ? 'あなたの確認待ち' : '相手薬局の確認待ち',
+    };
+  }
+
+  if (status === 'accepted_a') {
+    const waitingForPharmacy: ProposalWaitingInfo['waitingForPharmacy'] = 'b';
+    const waitingForYou = !isA;
+    return {
+      waitingForPharmacy,
+      waitingForYou,
+      label: `${pharmacyBName}の承認待ち`,
+      viewerLabel: waitingForYou ? 'あなたの承認待ち' : '相手薬局の承認待ち',
+    };
+  }
+
+  if (status === 'accepted_b') {
+    const waitingForPharmacy: ProposalWaitingInfo['waitingForPharmacy'] = 'a';
+    const waitingForYou = isA;
+    return {
+      waitingForPharmacy,
+      waitingForYou,
+      label: `${pharmacyAName}の承認待ち`,
+      viewerLabel: waitingForYou ? 'あなたの承認待ち' : '相手薬局の承認待ち',
+    };
+  }
+
+  return null;
 }

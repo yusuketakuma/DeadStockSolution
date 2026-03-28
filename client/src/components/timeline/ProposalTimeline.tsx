@@ -24,8 +24,11 @@ function getNextStepMessage(events: EnrichedProposalTimelineEvent[]): string | n
   if (events.length === 0) return null;
   const lastAction = events[events.length - 1].action;
 
-  if (lastAction.includes('proposal_approved')) return '承認済みです。決済手続きへ進んでください。';
-  if (lastAction.includes('proposal_rejected')) return '提案が拒否されました。';
+  if (lastAction.includes('proposal_expired')) return '有効期限切れで自動却下されました。必要なら条件を見直して再提案してください。';
+  if (lastAction.includes('proposal_expiry_reminder')) return '期限が近い提案です。期限内に承認または拒否を行ってください。';
+  if (lastAction.includes('proposal_accept')) return '承認済みです。相手薬局の確認または確定手続きへ進んでください。';
+  if (lastAction.includes('proposal_reject') || lastAction.includes('proposal_rejected')) return '提案が拒否されました。';
+  if (lastAction.includes('proposal_complete')) return '交換完了が記録されました。必要に応じて評価を登録してください。';
   if (lastAction.includes('proposed')) return '承認または拒否を待っています。';
   return null;
 }

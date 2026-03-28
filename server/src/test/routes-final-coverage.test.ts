@@ -59,101 +59,151 @@ const { MatchingRuleValidationError, MatchingRuleVersionConflictError } = vi.hoi
   return { MatchingRuleValidationError, MatchingRuleVersionConflictError };
 });
 
-function mockRoutesFinalCoverageDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-      next();
-    },
-    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
-    invalidateAuthUserCache: vi.fn(),
-  }));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+    next();
+  },
+  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+  invalidateAuthUserCache: vi.fn(),
+}));
 
-  vi.doMock('../config/database', () => ({ db: mocks.db }));
+vi.mock('../config/database', () => ({ db: mocks.db }));
 
-  vi.doMock('drizzle-orm', () => ({
-    and: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    eq: vi.fn(() => ({})),
-    inArray: vi.fn(() => ({})),
-    or: vi.fn(() => ({})),
-    like: vi.fn(() => ({})),
-    notExists: vi.fn(() => ({})),
-    ilike: vi.fn(() => ({})),
-    isNotNull: vi.fn(() => ({})),
-    isNull: vi.fn(() => ({})),
-    sql: vi.fn(() => ({})),
-    count: vi.fn(() => ({})),
-    sum: vi.fn(() => ({})),
-    max: vi.fn(() => ({})),
-    countDistinct: vi.fn(() => ({})),
-  }));
+vi.mock('drizzle-orm', () => ({
+  and: vi.fn(() => ({})),
+  desc: vi.fn(() => ({})),
+  eq: vi.fn(() => ({})),
+  inArray: vi.fn(() => ({})),
+  or: vi.fn(() => ({})),
+  like: vi.fn(() => ({})),
+  notExists: vi.fn(() => ({})),
+  ilike: vi.fn(() => ({})),
+  isNotNull: vi.fn(() => ({})),
+  isNull: vi.fn(() => ({})),
+  sql: vi.fn(() => ({})),
+  count: vi.fn(() => ({})),
+  sum: vi.fn(() => ({})),
+  max: vi.fn(() => ({})),
+  countDistinct: vi.fn(() => ({})),
+}));
 
-  vi.doMock('../services/logger', () => ({
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: mocks.loggerWarn,
-      error: mocks.loggerError,
-    },
-  }));
+vi.mock('../services/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: mocks.loggerWarn,
+    error: mocks.loggerError,
+  },
+}));
 
-  vi.doMock('../services/notification-service', () => ({
-    getDashboardUnreadCount: mocks.getDashboardUnreadCount,
-    invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
-    markAsRead: mocks.markAsRead,
-    markAllDashboardAsRead: mocks.markAllDashboardAsRead,
-  }));
+vi.mock('../services/notification-service', () => ({
+  getDashboardUnreadCount: mocks.getDashboardUnreadCount,
+  invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
+  markAsRead: mocks.markAsRead,
+  markAllDashboardAsRead: mocks.markAllDashboardAsRead,
+}));
 
-  vi.doMock('../services/expiry-risk-service', () => ({
-    getAdminRiskOverview: mocks.getAdminRiskOverview,
-    getAdminPharmacyRiskPage: mocks.getAdminPharmacyRiskPage,
-    getPharmacyRiskDetail: mocks.getPharmacyRiskDetail,
-  }));
+vi.mock('../services/expiry-risk-service', () => ({
+  getAdminRiskOverview: mocks.getAdminRiskOverview,
+  getAdminPharmacyRiskPage: mocks.getAdminPharmacyRiskPage,
+  getPharmacyRiskDetail: mocks.getPharmacyRiskDetail,
+}));
 
-  vi.doMock('../services/matching-rule-service', () => ({
-    getActiveMatchingRuleProfile: mocks.getActiveMatchingRuleProfile,
-    updateActiveMatchingRuleProfile: mocks.updateActiveMatchingRuleProfile,
-    MatchingRuleValidationError,
-    MatchingRuleVersionConflictError,
-  }));
+vi.mock('../services/matching-rule-service', () => ({
+  getActiveMatchingRuleProfile: mocks.getActiveMatchingRuleProfile,
+  updateActiveMatchingRuleProfile: mocks.updateActiveMatchingRuleProfile,
+  MatchingRuleValidationError,
+  MatchingRuleVersionConflictError,
+}));
 
-  vi.doMock('../routes/admin-write-limiter', () => ({
-    adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
-  }));
+vi.mock('../routes/admin-write-limiter', () => ({
+  adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 
-  vi.doMock('../routes/admin-utils', () => ({
-    handleAdminError: mocks.handleAdminError,
-    parseListPagination: mocks.parseListPagination,
-    sendPaginated: mocks.sendPaginated,
-  }));
+vi.mock('../routes/admin-utils', () => ({
+  handleAdminError: mocks.handleAdminError,
+  parseListPagination: mocks.parseListPagination,
+  sendPaginated: mocks.sendPaginated,
+}));
 
-  vi.doMock('../services/log-service', () => ({
-    writeLog: mocks.writeLog,
-    getClientIp: mocks.getClientIp,
-  }));
+vi.mock('../services/log-service', () => ({
+  writeLog: mocks.writeLog,
+  getClientIp: mocks.getClientIp,
+}));
 
-  vi.doMock('../utils/business-hours-utils', () => ({
-    getBusinessHoursStatus: mocks.getBusinessHoursStatus,
-  }));
+vi.mock('../utils/business-hours-utils', () => ({
+  getBusinessHoursStatus: mocks.getBusinessHoursStatus,
+}));
 
-  vi.doMock('../services/upload-service', () => ({
-    parseExcelBuffer: mocks.parseExcelBuffer,
-  }));
+vi.mock('../services/upload-service', () => ({
+  parseExcelBuffer: mocks.parseExcelBuffer,
+}));
 
-  vi.doMock('../services/column-mapper', () => ({
-    suggestMapping: mocks.suggestMapping,
-  }));
+vi.mock('../services/column-mapper', () => ({
+  suggestMapping: mocks.suggestMapping,
+}));
 
-  vi.doMock('../utils/path-utils', () => ({
-    sanitizeInternalPath: (p: string | null) => p ?? null,
-  }));
+vi.mock('../utils/path-utils', () => ({
+  sanitizeInternalPath: (p: string | null) => p ?? null,
+}));
 
-  vi.doMock('../utils/cursor-pagination', () => ({
-    decodeCursor: vi.fn(() => null),
-    encodeCursor: vi.fn(() => 'cursor123'),
-  }));
-}
+vi.mock('../utils/request-utils', () => ({
+  parsePositiveInt: (value: unknown) => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+
+    const parsed = Number(trimmed);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+    return parsed;
+  },
+  parsePagination: (pageValue: unknown, limitValue: unknown, options: {
+    defaultPage?: number;
+    defaultLimit?: number;
+    maxLimit?: number;
+    maxPage?: number;
+  } = {}) => {
+    const defaultPage = options.defaultPage ?? 1;
+    const defaultLimit = options.defaultLimit ?? 20;
+    const maxLimit = options.maxLimit ?? 100;
+    const maxPage = options.maxPage ?? 10000;
+
+    const parsePositiveInt = (raw: unknown) => {
+      if (typeof raw !== 'string') return null;
+      const trimmed = raw.trim();
+      if (!/^\d+$/.test(trimmed)) return null;
+      const parsed = Number(trimmed);
+      if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+      return parsed;
+    };
+
+    const parsedPage = parsePositiveInt(pageValue);
+    const parsedLimit = parsePositiveInt(limitValue);
+    const page = Math.min(parsedPage ?? defaultPage, maxPage);
+    const limit = Math.min(parsedLimit ?? defaultLimit, maxLimit);
+
+    return {
+      page,
+      limit,
+      offset: (page - 1) * limit,
+    };
+  },
+  normalizeSearchTerm: (value: unknown, maxLength: number = 100) => {
+    if (typeof value !== 'string') return undefined;
+    const sanitized = value
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      .trim();
+    if (!sanitized) return undefined;
+    return sanitized.slice(0, maxLength);
+  },
+  escapeLikeWildcards: (value: string) => value.replace(/[%_\\]/g, (ch) => `\\${ch}`),
+}));
+
+vi.mock('../utils/cursor-pagination', () => ({
+  decodeCursor: vi.fn(() => null),
+  encodeCursor: vi.fn(() => 'cursor123'),
+}));
 
 // ─────────────────────────────────────────────────────────────────
 // Helpers
@@ -202,8 +252,9 @@ let statisticsRouter: express.Router;
 let clearStatisticsSummaryCacheForTests: typeof import('../routes/statistics').clearStatisticsSummaryCacheForTests;
 
 beforeEach(async () => {
+  vi.useRealTimers();
   vi.resetModules();
-  mockRoutesFinalCoverageDependencies();
+  vi.resetAllMocks();
   ({ default: notificationsRouter } = await import('../routes/notifications'));
   ({ default: adminRiskRouter } = await import('../routes/admin-risk'));
   ({ default: adminMatchingRulesRouter } = await import('../routes/admin-matching-rules'));
@@ -227,7 +278,7 @@ function createNotificationsApp() {
 
 describe('notifications route — additional coverage', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     mocks.invalidateDashboardUnreadCache.mockReturnValue(undefined);
     mocks.getDashboardUnreadCount.mockResolvedValue(3);
     mocks.markAsRead.mockResolvedValue(true);
@@ -354,7 +405,7 @@ function createAdminRiskApp() {
 
 describe('admin-risk routes', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     mocks.getAdminRiskOverview.mockResolvedValue({
       totalPharmacies: 10,
       highRiskPharmacies: 2,
@@ -419,7 +470,7 @@ function createAdminMatchingRulesApp() {
 
 describe('admin-matching-rules — additional coverage', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     mocks.getActiveMatchingRuleProfile.mockResolvedValue({
       id: 1, profileName: 'default', isActive: true, version: 1,
       nameMatchThreshold: 0.7, valueScoreMax: 55, valueScoreDivisor: 2500,
@@ -482,7 +533,7 @@ function createInventoryApp() {
 
 describe('inventory route — additional coverage', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     mocks.getPharmacyRiskDetail.mockResolvedValue({ riskScore: 20, bucketCounts: {} });
     mocks.getBusinessHoursStatus.mockReturnValue({ isOpen: true });
     mocks.getClientIp.mockReturnValue('127.0.0.1');
@@ -652,7 +703,7 @@ function makeQueryChain(terminalResult: unknown) {
 
 describe('admin-logs routes — additional coverage', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     mocks.handleAdminError.mockImplementation((err: unknown, _msg: string, userMsg: string, res: { status: (c: number) => { json: (b: unknown) => void } }) => {
       res.status(500).json({ error: userMsg });
     });
@@ -769,7 +820,7 @@ function createStatisticsApp() {
 
 describe('statistics route — additional coverage', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     clearStatisticsSummaryCacheForTests();
     mocks.getPharmacyRiskDetail.mockResolvedValue({ riskScore: 0, bucketCounts: {} });
   });

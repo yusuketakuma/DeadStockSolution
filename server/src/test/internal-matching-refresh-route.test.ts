@@ -36,6 +36,7 @@ function createApp() {
 
 describe('internal matching refresh route auth', () => {
   beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetModules();
     vi.resetAllMocks();
     mockInternalMatchingRefreshRouteDependencies();

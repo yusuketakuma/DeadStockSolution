@@ -11,6 +11,7 @@ import {
 import { rowCount } from '../utils/db-utils';
 import { logger } from './logger';
 import { publishTimelineRefresh } from './realtime-service';
+import { dispatchNotificationPush } from './push-notification-dispatcher';
 
 interface CreateNotificationInput {
   pharmacyId: number;
@@ -108,6 +109,14 @@ export async function createNotification(
     publishTimelineRefresh({
       pharmacyId: input.pharmacyId,
       reason: 'notification_created',
+    });
+    void dispatchNotificationPush({
+      pharmacyId: input.pharmacyId,
+      type: input.type,
+      title: input.title,
+      message: input.message,
+      referenceType: input.referenceType,
+      referenceId: input.referenceId,
     });
     return result ?? null;
   } catch (err) {

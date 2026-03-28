@@ -53,7 +53,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import exchangeRouter from '../routes/exchange';
+let exchangeRouter: (typeof import('../routes/exchange'))['default'];
 
 function createPriorityRowsQuery(rows: unknown[]) {
   const query = {
@@ -115,8 +115,11 @@ function createApp() {
 }
 
 describe('exchange route priority sorting', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: exchangeRouter } = await import('../routes/exchange'));
   });
 
   it('returns oldest inbound-waiting proposal first for priority sort page 1', async () => {

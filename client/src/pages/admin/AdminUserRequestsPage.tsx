@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Badge, Form } from 'react-bootstrap';
 import { api, buildApiUrl } from '../../api/client';
 import Pagination from '../../components/Pagination';
@@ -175,6 +175,25 @@ function authorLabel(authorType: string): string {
   return 'ユーザー';
 }
 
+type AdminQueueFilter = 'all' | 'my_turn' | 'overdue' | 'unread' | 'openclaw';
+
+function adminRequestSortRank(item: AdminUserRequestItem): number {
+  if (item.isOverdue) return 0;
+  if (item.waitingOn === 'admin') return 1;
+  if (item.hasUnread) return 2;
+  if (item.waitingOn === 'user') return 3;
+  if (item.waitingOn === 'openclaw') return 4;
+  return 5;
+}
+
+function matchesAdminQueueFilter(item: AdminUserRequestItem, filter: AdminQueueFilter): boolean {
+  if (filter === 'my_turn') return item.waitingOn === 'admin';
+  if (filter === 'overdue') return item.isOverdue;
+  if (filter === 'unread') return item.hasUnread;
+  if (filter === 'openclaw') return item.waitingOn === 'openclaw';
+  return true;
+}
+
 export default function AdminUserRequestsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -183,6 +202,7 @@ export default function AdminUserRequestsPage() {
   const [priorityFilter, setPriorityFilter] = useState('');
   const [waitingOnFilter, setWaitingOnFilter] = useState('');
   const [onlyUnread, setOnlyUnread] = useState(false);
+  const [queueFilter, setQueueFilter] = useState<AdminQueueFilter>('all');
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
   const [assignees, setAssignees] = useState<Array<{ id: number; name: string }>>([]);
   const [detail, setDetail] = useState<AdminUserRequestDetailResponse | null>(null);
@@ -416,6 +436,22 @@ export default function AdminUserRequestsPage() {
     setReplyFiles(Array.from(event.currentTarget.files ?? []));
   };
 
+  const itemSummary = useMemo(() => ({
+    myTurn: items.filter((item) => item.waitingOn === 'admin').length,
+    overdue: items.filter((item) => item.isOverdue).length,
+    unread: items.filter((item) => item.hasUnread).length,
+    openclaw: items.filter((item) => item.waitingOn === 'openclaw').length,
+  }), [items]);
+
+  const displayItems = useMemo(() => [...items]
+    .filter((item) => matchesAdminQueueFilter(item, queueFilter))
+    .sort((left, right) => {
+      const rankDiff = adminRequestSortRank(left) - adminRequestSortRank(right);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(right.updatedAt ?? right.createdAt ?? '').getTime()
+        - new Date(left.updatedAt ?? left.createdAt ?? '').getTime();
+    }), [items, queueFilter]);
+
   return (
     <PageShell>
       <div className="dl-page-header">
@@ -492,6 +528,13 @@ export default function AdminUserRequestsPage() {
                 絞り込む
               </button>
             </div>
+            <div className="col-12 d-flex flex-wrap gap-2">
+              <button type="button" className={`btn btn-sm ${queueFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setQueueFilter('all')}>すべて {items.length}</button>
+              <button type="button" className={`btn btn-sm ${queueFilter === 'my_turn' ? 'btn-primary' : 'btn-outline-warning'}`} onClick={() => setQueueFilter('my_turn')}>本日返答 {itemSummary.myTurn}</button>
+              <button type="button" className={`btn btn-sm ${queueFilter === 'overdue' ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setQueueFilter('overdue')}>24時間超 {itemSummary.overdue}</button>
+              <button type="button" className={`btn btn-sm ${queueFilter === 'unread' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setQueueFilter('unread')}>未読 {itemSummary.unread}</button>
+              <button type="button" className={`btn btn-sm ${queueFilter === 'openclaw' ? 'btn-dark' : 'btn-outline-dark'}`} onClick={() => setQueueFilter('openclaw')}>OpenClaw {itemSummary.openclaw}</button>
+            </div>
           </div>
         </AppCard.Body>
       </AppCard>
@@ -506,11 +549,11 @@ export default function AdminUserRequestsPage() {
               <AppCard.Body>
                 {loading ? (
                   <InlineLoader text="ユーザーリクエストを読み込み中..." className="text-muted small" />
-                ) : items.length === 0 ? (
+                ) : displayItems.length === 0 ? (
                   <AppEmptyState title="対象の要望がありません" description="条件に一致する要望がありません。" />
                 ) : (
                   <div className="d-flex flex-column gap-2">
-                    {items.map((item) => (
+                    {displayItems.map((item) => (
                       <button
                         key={item.id}
                         type="button"

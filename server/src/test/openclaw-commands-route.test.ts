@@ -22,53 +22,60 @@ let mockUser: { id: number; email: string; isAdmin: boolean } | undefined = {
   email: 'admin@example.com',
   isAdmin: true,
 };
+let openclawCommandsRouter: (typeof import('../routes/openclaw-commands'))['default'];
 
-async function createApp() {
-  vi.resetModules();
-  vi.doMock('../services/openclaw-service', () => ({
-    isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
-    verifyOpenClawWebhookSignature: mocks.verifyOpenClawWebhookSignature,
-    isOpenClawWebhookReplay: mocks.isOpenClawWebhookReplay,
-    consumeOpenClawWebhookReplay: mocks.consumeOpenClawWebhookReplay,
-    releaseOpenClawWebhookReplay: mocks.releaseOpenClawWebhookReplay,
-  }));
-  vi.doMock('../services/openclaw-command-service', () => ({
-    executeCommand: mocks.executeCommand,
-    listCommandHistory: mocks.listCommandHistory,
-  }));
-  vi.doMock('../services/logger', () => ({
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-  }));
-  vi.doMock('../routes/admin-utils', () => ({
-    parseListPagination: mocks.parseListPagination,
-    handleAdminError: mocks.handleAdminError,
-  }));
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: typeof mockUser }, _res: unknown, next: () => void) => {
-      if (!mockUser) {
-        const res = _res as express.Response;
-        res.status(401).json({ error: 'ログインが必要です' });
-        return;
-      }
-      req.user = mockUser;
-      next();
-    },
-    requireAdmin: (req: { user?: typeof mockUser }, _res: unknown, next: () => void) => {
-      if (!req.user?.isAdmin) {
-        const res = _res as express.Response;
-        res.status(403).json({ error: '管理者権限が必要です' });
-        return;
-      }
-      next();
-    },
-  }));
+vi.mock('../services/openclaw-service', () => ({
+  isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
+  verifyOpenClawWebhookSignature: mocks.verifyOpenClawWebhookSignature,
+  isOpenClawWebhookReplay: mocks.isOpenClawWebhookReplay,
+  consumeOpenClawWebhookReplay: mocks.consumeOpenClawWebhookReplay,
+  releaseOpenClawWebhookReplay: mocks.releaseOpenClawWebhookReplay,
+}));
 
-  const { default: openclawCommandsRouter } = await import('../routes/openclaw-commands');
+vi.mock('../services/openclaw-command-service', () => ({
+  executeCommand: mocks.executeCommand,
+  listCommandHistory: mocks.listCommandHistory,
+}));
+
+vi.mock('../services/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock('../routes/admin-utils', () => ({
+  parseListPagination: mocks.parseListPagination,
+  handleAdminError: mocks.handleAdminError,
+}));
+
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: typeof mockUser }, _res: unknown, next: () => void) => {
+    if (!mockUser) {
+      const res = _res as express.Response;
+      res.status(401).json({ error: 'ログインが必要です' });
+      return;
+    }
+    req.user = mockUser;
+    next();
+  },
+  requireAdmin: (req: { user?: typeof mockUser }, _res: unknown, next: () => void) => {
+    if (!req.user?.isAdmin) {
+      const res = _res as express.Response;
+      res.status(403).json({ error: '管理者権限が必要です' });
+      return;
+    }
+    next();
+  },
+}));
+
+vi.mock('express-rate-limit', () => ({
+  default: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
+function createApp() {
   const app = express();
   app.use(express.json());
   app.use('/api/openclaw-commands', openclawCommandsRouter);
@@ -79,8 +86,11 @@ const VALID_SIGNATURE = 'sha256=abc123';
 const VALID_TIMESTAMP = '1700000000';
 
 describe('POST /api/openclaw-commands', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: openclawCommandsRouter } = await import('../routes/openclaw-commands'));
     mockUser = { id: 1, email: 'admin@example.com', isAdmin: true };
     // Default: feature enabled, webhook configured
     process.env.OPENCLAW_COMMANDS_ENABLED = 'true';
@@ -97,7 +107,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 503 when feature is disabled', async () => {
     process.env.OPENCLAW_COMMANDS_ENABLED = 'false';
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -109,7 +119,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 503 when OPENCLAW_COMMANDS_ENABLED env var is not set', async () => {
     delete process.env.OPENCLAW_COMMANDS_ENABLED;
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -120,7 +130,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 503 when webhook is not configured', async () => {
     mocks.isOpenClawWebhookConfigured.mockReturnValue(false);
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -132,7 +142,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 401 when signature header is missing and verification fails', async () => {
     mocks.verifyOpenClawWebhookSignature.mockReturnValue(false);
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .send({ command: 'ping' });
@@ -142,7 +152,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 401 when signature is invalid', async () => {
     mocks.verifyOpenClawWebhookSignature.mockReturnValue(false);
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', 'bad-sig')
@@ -154,7 +164,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 401 when request is a replay', async () => {
     mocks.isOpenClawWebhookReplay.mockReturnValue(true);
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -165,7 +175,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 401 when consumeOpenClawWebhookReplay returns false', async () => {
     mocks.consumeOpenClawWebhookReplay.mockReturnValue(false);
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -175,7 +185,7 @@ describe('POST /api/openclaw-commands', () => {
   });
 
   it('returns 400 when command field is missing', async () => {
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -187,7 +197,7 @@ describe('POST /api/openclaw-commands', () => {
   });
 
   it('returns 400 when command is not a string', async () => {
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -198,7 +208,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 200 when valid command is received and executed successfully', async () => {
     mocks.executeCommand.mockResolvedValue({ status: 'ok', result: 'done' });
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -214,7 +224,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 403 when command is rejected', async () => {
     mocks.executeCommand.mockResolvedValue({ status: 'rejected', reason: 'not allowed' });
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -226,7 +236,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 500 when command execution fails', async () => {
     mocks.executeCommand.mockResolvedValue({ status: 'failed', error: 'something went wrong' });
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -238,7 +248,7 @@ describe('POST /api/openclaw-commands', () => {
 
   it('returns 500 and releases replay when executeCommand throws', async () => {
     mocks.executeCommand.mockRejectedValue(new Error('unexpected error'));
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app)
       .post('/api/openclaw-commands')
       .set('x-openclaw-signature', VALID_SIGNATURE)
@@ -250,8 +260,11 @@ describe('POST /api/openclaw-commands', () => {
 });
 
 describe('GET /api/openclaw-commands/history', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: openclawCommandsRouter } = await import('../routes/openclaw-commands'));
     mockUser = { id: 1, email: 'admin@example.com', isAdmin: true };
     mocks.parseListPagination.mockReturnValue({ page: 1, limit: 50, offset: 0 });
     mocks.listCommandHistory.mockResolvedValue([]);
@@ -259,21 +272,21 @@ describe('GET /api/openclaw-commands/history', () => {
 
   it('returns 401 when unauthenticated', async () => {
     mockUser = undefined;
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app).get('/api/openclaw-commands/history');
     expect(res.status).toBe(401);
   });
 
   it('returns 403 when user is not admin', async () => {
     mockUser = { id: 2, email: 'user@example.com', isAdmin: false };
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app).get('/api/openclaw-commands/history');
     expect(res.status).toBe(403);
   });
 
   it('returns 200 with empty history for admin', async () => {
     mocks.listCommandHistory.mockResolvedValue([]);
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app).get('/api/openclaw-commands/history');
     expect(res.status).toBe(200);
     expect(res.body.commands).toEqual([]);
@@ -287,7 +300,7 @@ describe('GET /api/openclaw-commands/history', () => {
       { id: 2, command: 'close-issue', status: 'ok', executedAt: '2026-03-02T10:00:00Z' },
     ];
     mocks.listCommandHistory.mockResolvedValue(history);
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app).get('/api/openclaw-commands/history');
     expect(res.status).toBe(200);
     expect(res.body.commands).toHaveLength(2);
@@ -297,7 +310,7 @@ describe('GET /api/openclaw-commands/history', () => {
   it('returns 200 with pagination params passed to service', async () => {
     mocks.parseListPagination.mockReturnValue({ page: 2, limit: 10, offset: 10 });
     mocks.listCommandHistory.mockResolvedValue([]);
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app).get('/api/openclaw-commands/history?page=2&limit=10');
     expect(res.status).toBe(200);
     expect(res.body.limit).toBe(10);
@@ -307,7 +320,7 @@ describe('GET /api/openclaw-commands/history', () => {
 
   it('calls handleAdminError when listCommandHistory throws', async () => {
     mocks.listCommandHistory.mockRejectedValue(new Error('db error'));
-    const app = await createApp();
+    const app = createApp();
     const res = await request(app).get('/api/openclaw-commands/history');
     expect(res.status).toBe(500);
     expect(mocks.handleAdminError).toHaveBeenCalledTimes(1);

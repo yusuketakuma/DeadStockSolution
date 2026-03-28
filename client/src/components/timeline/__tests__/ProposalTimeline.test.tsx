@@ -83,11 +83,11 @@ describe('ProposalTimeline', () => {
     expect(screen.getAllByText('💬').length).toBeGreaterThan(0);
   });
 
-  it('shows next step indicator for approved proposal', () => {
-    const events = [makeEvent({ action: 'proposal_approved' })];
+  it('shows next step indicator for accepted proposal', () => {
+    const events = [makeEvent({ action: 'proposal_accept' })];
     renderWithProviders(<ProposalTimeline events={events} currentPharmacyId={1} />);
     expect(screen.getByTestId('next-step-indicator')).toHaveTextContent(
-      '承認済みです。決済手続きへ進んでください。'
+      '承認済みです。相手薬局の確認または確定手続きへ進んでください。'
     );
   });
 
@@ -104,6 +104,22 @@ describe('ProposalTimeline', () => {
     renderWithProviders(<ProposalTimeline events={events} currentPharmacyId={1} />);
     expect(screen.getByTestId('next-step-indicator')).toHaveTextContent(
       '承認または拒否を待っています。'
+    );
+  });
+
+  it('shows reminder message for reminder event', () => {
+    const events = [makeEvent({ action: 'proposal_expiry_reminder' })];
+    renderWithProviders(<ProposalTimeline events={events} currentPharmacyId={1} />);
+    expect(screen.getByTestId('next-step-indicator')).toHaveTextContent(
+      '期限が近い提案です。期限内に承認または拒否を行ってください。'
+    );
+  });
+
+  it('shows expiry message for expired proposal', () => {
+    const events = [makeEvent({ action: 'proposal_expired' })];
+    renderWithProviders(<ProposalTimeline events={events} currentPharmacyId={1} />);
+    expect(screen.getByTestId('next-step-indicator')).toHaveTextContent(
+      '有効期限切れで自動却下されました。必要なら条件を見直して再提案してください。'
     );
   });
 });

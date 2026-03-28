@@ -53,6 +53,11 @@ interface CandidateScoreContext {
   isGroupMember: boolean;
 }
 
+interface BestNameScoreResult {
+  score: number;
+  matchedNormalizedName?: string;
+}
+
 export function setLimitedCacheEntry<T>(cache: Map<string, T>, key: string, value: T, maxSize: number): void {
   if (!cache.has(key) && cache.size >= maxSize) {
     const oldestKey = cache.keys().next().value;
@@ -231,8 +236,9 @@ function findBestNameScore(
   normalizedDrugName: string,
   tokenSet: Set<string>,
   names: Iterable<UsedMedName | undefined>,
-): number {
+): BestNameScoreResult {
   let bestScore = 0;
+  let matchedNormalizedName: string | undefined;
 
   for (const name of names) {
     if (!name) continue;
@@ -241,12 +247,15 @@ function findBestNameScore(
     if (score <= bestScore) continue;
 
     bestScore = score;
+    matchedNormalizedName = name.normalizedName;
     if (bestScore >= NAME_MATCH_EARLY_EXIT_SCORE) {
       break;
     }
   }
 
-  return bestScore;
+  return matchedNormalizedName
+    ? { score: bestScore, matchedNormalizedName }
+    : { score: bestScore };
 }
 
 export function findBestDrugMatch(
@@ -262,7 +271,7 @@ export function findBestDrugMatch(
   if (cached) return cached;
 
   if (index.exactNames.has(normalizedDrugName)) {
-    const result = { score: 1 };
+    const result = { score: 1, matchedNormalizedName: normalizedDrugName };
     setLimitedCacheEntry(cache, normalizedDrugName, result, MAX_DRUG_MATCH_CACHE_SIZE);
     return result;
   }
@@ -272,7 +281,7 @@ export function findBestDrugMatch(
     ? candidateIndices.map((candidateIndex) => index.names[candidateIndex])
     : index.names;
 
-  const result = { score: findBestNameScore(normalizedDrugName, tokenSet, namesToSearch) };
+  const result = findBestNameScore(normalizedDrugName, tokenSet, namesToSearch);
   setLimitedCacheEntry(cache, normalizedDrugName, result, MAX_DRUG_MATCH_CACHE_SIZE);
   return result;
 }
@@ -286,8 +295,10 @@ function resolveEquivalenceBoostScore(
   cache: Map<string, DrugMatchResult>,
   equivalenceMap: Map<string, string[]>,
   initialScore: number,
-): number {
+  initialMatchedNormalizedName?: string,
+): BestNameScoreResult {
   let bestScore = initialScore;
+  let matchedNormalizedName = initialMatchedNormalizedName;
 
   for (const [registeredName, equivalents] of equivalenceMap) {
     if (!hasContainmentRelationship(normalizedDrugName, registeredName)) {
@@ -302,11 +313,19 @@ function resolveEquivalenceBoostScore(
       }
 
       const boostedScore = Math.max(equivResult.score, EQUIVALENCE_MATCH_SCORE);
-      bestScore = Math.max(bestScore, boostedScore);
+      if (
+        boostedScore > bestScore
+        || (boostedScore === bestScore && !matchedNormalizedName && equivResult.matchedNormalizedName)
+      ) {
+        bestScore = boostedScore;
+        matchedNormalizedName = equivResult.matchedNormalizedName;
+      }
     }
   }
 
-  return bestScore;
+  return matchedNormalizedName
+    ? { score: bestScore, matchedNormalizedName }
+    : { score: bestScore };
 }
 
 /**
@@ -338,10 +357,15 @@ export function findBestDrugMatchWithEquivalences(
     cache,
     equivalenceMap,
     baseResult.score,
+    baseResult.matchedNormalizedName,
   );
 
-  if (bestScore > baseResult.score) {
-    const result: DrugMatchResult = { score: bestScore, matchedByEquivalence: true };
+  if (bestScore.score > baseResult.score) {
+    const result: DrugMatchResult = {
+      score: bestScore.score,
+      matchedByEquivalence: true,
+      matchedNormalizedName: bestScore.matchedNormalizedName,
+    };
     setLimitedCacheEntry(cache, normalizedDrugName, result, MAX_DRUG_MATCH_CACHE_SIZE);
     return result;
   }
@@ -624,6 +648,7 @@ export function calculateCandidateScoreWithBreakdown(
 
   const breakdown: ScoreBreakdown = {
     valueScore: roundTo2(context.valueScore),
+    balanceScore: roundTo2(context.balanceScore),
     distanceScore: roundTo2(context.distanceScore),
     expiryScore: roundTo2(nearExpiryScore),
     diversityScore: roundTo2(diversityScore),

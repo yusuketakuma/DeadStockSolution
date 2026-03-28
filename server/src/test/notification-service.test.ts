@@ -8,10 +8,14 @@ const mocks = vi.hoisted(() => ({
     execute: vi.fn(),
     transaction: vi.fn(),
   },
+  dispatchNotificationPush: vi.fn(),
 }));
 
 vi.mock('../config/database', () => ({
   db: mocks.db,
+}));
+vi.mock('../services/push-notification-dispatcher', () => ({
+  dispatchNotificationPush: mocks.dispatchNotificationPush,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -147,6 +151,14 @@ describe('notification-service', () => {
         }),
       );
       expect(result).toEqual({ id: 1 });
+      expect(mocks.dispatchNotificationPush).toHaveBeenCalledWith({
+        pharmacyId: 10,
+        type: 'proposal_received',
+        title: 'テスト通知',
+        message: '提案が届きました',
+        referenceType: 'proposal',
+        referenceId: 42,
+      });
     });
 
     it('does not throw on failure (best effort)', async () => {

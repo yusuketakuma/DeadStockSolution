@@ -15,51 +15,49 @@ const mocks = vi.hoisted(() => ({
   publishTimelineRefresh: vi.fn(),
 }));
 
-function mockNotificationsRouteDependencies() {
-  vi.doMock('../middleware/auth', () => ({
-    requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
-      req.user = { id: 1, email: 'test@example.com', isAdmin: false };
-      next();
-    },
-  }));
+vi.mock('../middleware/auth', () => ({
+  requireLogin: (req: { user?: { id: number; email: string; isAdmin: boolean } }, _res: unknown, next: () => void) => {
+    req.user = { id: 1, email: 'test@example.com', isAdmin: false };
+    next();
+  },
+}));
 
-  vi.doMock('../config/database', () => ({
-    db: mocks.db,
-  }));
+vi.mock('../config/database', () => ({
+  db: mocks.db,
+}));
 
-  vi.doMock('drizzle-orm', () => ({
-    and: vi.fn(() => ({})),
-    desc: vi.fn(() => ({})),
-    eq: vi.fn(() => ({})),
-    inArray: vi.fn(() => ({})),
-    sql: vi.fn(() => ({})),
-  }));
+vi.mock('drizzle-orm', () => ({
+  and: vi.fn(() => ({})),
+  desc: vi.fn(() => ({})),
+  eq: vi.fn(() => ({})),
+  inArray: vi.fn(() => ({})),
+  sql: vi.fn(() => ({})),
+}));
 
-  vi.doMock('../services/logger', () => ({
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-  }));
+vi.mock('../services/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
-  vi.doMock('../services/notification-service', () => ({
-    getDashboardUnreadCount: mocks.getDashboardUnreadCount,
-    invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
-    markAsRead: mocks.markAsRead,
-    markAllDashboardAsRead: mocks.markAllDashboardAsRead,
-  }));
+vi.mock('../services/notification-service', () => ({
+  getDashboardUnreadCount: mocks.getDashboardUnreadCount,
+  invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
+  markAsRead: mocks.markAsRead,
+  markAllDashboardAsRead: mocks.markAllDashboardAsRead,
+}));
 
-  vi.doMock('../services/realtime-service', () => ({
-    publishTimelineRefresh: mocks.publishTimelineRefresh,
-  }));
+vi.mock('../services/realtime-service', () => ({
+  publishTimelineRefresh: mocks.publishTimelineRefresh,
+}));
 
-  vi.doMock('../db/schema', async () => await vi.importActual('../db/schema'));
-  vi.doMock('../utils/request-utils', async () => await vi.importActual('../utils/request-utils'));
-  vi.doMock('../utils/cursor-pagination', async () => await vi.importActual('../utils/cursor-pagination'));
-  vi.doMock('../utils/path-utils', async () => await vi.importActual('../utils/path-utils'));
-}
+vi.mock('../db/schema', async () => await vi.importActual('../db/schema'));
+vi.mock('../utils/request-utils', async () => await vi.importActual('../utils/request-utils'));
+vi.mock('../utils/cursor-pagination', async () => await vi.importActual('../utils/cursor-pagination'));
+vi.mock('../utils/path-utils', async () => await vi.importActual('../utils/path-utils'));
 
 function createSelectQuery(result: unknown) {
   const query: Record<string, ReturnType<typeof vi.fn>> = {
@@ -93,9 +91,9 @@ async function createApp() {
 
 describe('notifications-route-ultra predictive alert follow-up', () => {
   beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
     vi.resetModules();
-    mockNotificationsRouteDependencies();
     ({ default: notificationsRouter } = await import('../routes/notifications'));
     mocks.db.select.mockImplementation(() => createSelectQuery([]));
     mocks.db.update.mockImplementation(() => ({
@@ -148,9 +146,9 @@ describe('notifications-route-ultra predictive alert follow-up', () => {
 
 describe('notifications-route-ultra', () => {
   beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
     vi.resetModules();
-    mockNotificationsRouteDependencies();
     ({ default: notificationsRouter } = await import('../routes/notifications'));
     mocks.db.select.mockImplementation(() => createSelectQuery([]));
     mocks.db.update.mockImplementation(() => ({

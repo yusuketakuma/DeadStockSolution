@@ -19,7 +19,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import internalVercelDeployEventsRouter from '../routes/internal-vercel-deploy-events';
+let internalVercelDeployEventsRouter: (typeof import('../routes/internal-vercel-deploy-events'))['default'];
 
 const ORIGINAL_SECRET = process.env.VERCEL_DEPLOY_WEBHOOK_SECRET;
 
@@ -31,8 +31,11 @@ function createApp() {
 }
 
 describe('internal vercel deploy events ultra coverage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.useRealTimers();
     vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: internalVercelDeployEventsRouter } = await import('../routes/internal-vercel-deploy-events'));
     mocks.recordVercelDeployEvent.mockResolvedValue(true);
     delete process.env.VERCEL_DEPLOY_WEBHOOK_SECRET;
   });

@@ -68,7 +68,7 @@ vi.mock('drizzle-orm', () => ({
   sql: vi.fn(() => ({})),
 }));
 
-import inventoryRouter from '../routes/inventory';
+let inventoryRouter: (typeof import('../routes/inventory'))['default'];
 
 function createApp() {
   const app = express();
@@ -116,8 +116,11 @@ const mockSearchResult = {
 };
 
 describe('POST /api/inventory/inventory-search', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: inventoryRouter } = await import('../routes/inventory'));
   });
 
   it('returns 400 when drugKeys is empty array', async () => {

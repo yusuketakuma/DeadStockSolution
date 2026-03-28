@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { Badge, Form } from 'react-bootstrap';
 import { api, buildApiUrl } from '../api/client';
 import AppAlert from '../components/ui/AppAlert';
@@ -171,6 +171,25 @@ function attachmentUrl(attachmentId: number): string {
   return buildApiUrl(`/requests/attachments/${attachmentId}`);
 }
 
+type RequestQueueFilter = 'all' | 'my_turn' | 'overdue' | 'unread' | 'openclaw';
+
+function requestSortRank(item: RequestItem): number {
+  if (item.isOverdue) return 0;
+  if (item.waitingOn === 'user') return 1;
+  if (item.hasUnread) return 2;
+  if (item.waitingOn === 'admin') return 3;
+  if (item.waitingOn === 'openclaw') return 4;
+  return 5;
+}
+
+function matchesQueueFilter(item: RequestItem, filter: RequestQueueFilter): boolean {
+  if (filter === 'my_turn') return item.waitingOn === 'user';
+  if (filter === 'overdue') return item.isOverdue;
+  if (filter === 'unread') return item.hasUnread;
+  if (filter === 'openclaw') return item.waitingOn === 'openclaw';
+  return true;
+}
+
 export default function MyRequestsPage() {
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
@@ -189,6 +208,7 @@ export default function MyRequestsPage() {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [queueFilter, setQueueFilter] = useState<RequestQueueFilter>('all');
 
   const loadRequests = async ({ background = false }: { background?: boolean } = {}) => {
     if (!background) {
@@ -371,6 +391,22 @@ export default function MyRequestsPage() {
     setReplyFiles(Array.from(event.currentTarget.files ?? []));
   };
 
+  const requestSummary = useMemo(() => ({
+    myTurn: requests.filter((item) => item.waitingOn === 'user').length,
+    overdue: requests.filter((item) => item.isOverdue).length,
+    unread: requests.filter((item) => item.hasUnread).length,
+    openclaw: requests.filter((item) => item.waitingOn === 'openclaw').length,
+  }), [requests]);
+
+  const displayRequests = useMemo(() => [...requests]
+    .filter((item) => matchesQueueFilter(item, queueFilter))
+    .sort((left, right) => {
+      const rankDiff = requestSortRank(left) - requestSortRank(right);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(right.updatedAt ?? right.createdAt ?? '').getTime()
+        - new Date(left.updatedAt ?? left.createdAt ?? '').getTime();
+    }), [queueFilter, requests]);
+
   return (
     <PageShell>
       <div className="dl-page-header">
@@ -512,13 +548,20 @@ export default function MyRequestsPage() {
                 <div className="text-muted small mb-3">
                   更新はリアルタイムで反映されます。OpenClaw の進行状況と管理者返信もここに集約されます。
                 </div>
+                <div className="d-flex gap-2 flex-wrap mb-3">
+                  <button type="button" className={`btn btn-sm ${queueFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setQueueFilter('all')}>すべて {requests.length}</button>
+                  <button type="button" className={`btn btn-sm ${queueFilter === 'my_turn' ? 'btn-primary' : 'btn-outline-warning'}`} onClick={() => setQueueFilter('my_turn')}>今日返答したい {requestSummary.myTurn}</button>
+                  <button type="button" className={`btn btn-sm ${queueFilter === 'overdue' ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setQueueFilter('overdue')}>24時間超 {requestSummary.overdue}</button>
+                  <button type="button" className={`btn btn-sm ${queueFilter === 'unread' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setQueueFilter('unread')}>未読あり {requestSummary.unread}</button>
+                  <button type="button" className={`btn btn-sm ${queueFilter === 'openclaw' ? 'btn-dark' : 'btn-outline-dark'}`} onClick={() => setQueueFilter('openclaw')}>OpenClaw {requestSummary.openclaw}</button>
+                </div>
                 {loading ? (
                   <InlineLoader text="読み込み中..." className="text-muted small" />
-                ) : requests.length === 0 ? (
+                ) : displayRequests.length === 0 ? (
                   <div className="text-muted small">送信済みの要望はまだありません。</div>
                 ) : (
                   <div className="d-flex flex-column gap-2">
-                    {requests.map((item) => {
+                    {displayRequests.map((item) => {
                       const badge = statusBadge(item.workflowStatus);
                       return (
                         <button

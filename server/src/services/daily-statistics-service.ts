@@ -4,6 +4,7 @@ import {
   dailyStatistics,
   deadStockItems,
   exchangeProposals,
+  usedMedicationItems,
   matchCandidateSnapshots,
   pharmacies,
 } from '../db/schema';
@@ -74,6 +75,11 @@ export async function aggregateDailyStatistics(
           eq(deadStockItems.isAvailable, true),
         ));
 
+      const [usedMedicationResult] = await db
+        .select({ cnt: count() })
+        .from(usedMedicationItems)
+        .where(eq(usedMedicationItems.pharmacyId, pharmacyId));
+
       // proposalsSent: 対象日に pharmacyAId として送信した提案
       const [proposalsSentResult] = await db
         .select({ cnt: count() })
@@ -124,7 +130,7 @@ export async function aggregateDailyStatistics(
 
       const metrics: DailyMetrics = {
         deadStockCount: Number(deadStockResult?.cnt ?? 0),
-        usedMedCount: 0, // usedMedicationItems テーブルは未実装
+        usedMedCount: Number(usedMedicationResult?.cnt ?? 0),
         proposalsSent: Number(proposalsSentResult?.cnt ?? 0),
         proposalsReceived: Number(proposalsReceivedResult?.cnt ?? 0),
         proposalsCompleted: Number(proposalsCompletedResult?.cnt ?? 0),

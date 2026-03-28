@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   mapOpenClawStatusToWorkflowStatus: vi.fn(),
   isMissingOpenClawSchemaError: vi.fn(),
   updateOpenClawWorkItem: vi.fn(),
+  invalidateDashboardUnreadCache: vi.fn(),
+  dispatchCustomPush: vi.fn(),
+  dispatchCustomPushToMany: vi.fn(),
 }));
 
 function mockAdminPharmaciesActionsUltraDependencies() {
@@ -54,6 +57,15 @@ function mockAdminPharmaciesActionsUltraDependencies() {
     mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
     isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
     updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
+  }));
+
+  vi.doMock('../services/notification-service', () => ({
+    invalidateDashboardUnreadCache: mocks.invalidateDashboardUnreadCache,
+  }));
+
+  vi.doMock('../services/push-notification-dispatcher', () => ({
+    dispatchCustomPush: mocks.dispatchCustomPush,
+    dispatchCustomPushToMany: mocks.dispatchCustomPushToMany,
   }));
 
   vi.doMock('../services/logger', () => ({
@@ -371,12 +383,24 @@ describe('admin-pharmacies-actions ultra coverage', () => {
 
     it('sends message to all pharmacies', async () => {
       const app = createApp();
+      mocks.db.select.mockImplementationOnce(() => {
+        const query = { from: vi.fn(), where: vi.fn() };
+        query.from.mockReturnValue(query);
+        query.where.mockResolvedValue([{ id: 5 }, { id: 6 }]);
+        return query;
+      });
       mocks.db.insert.mockImplementation(() => createInsertQuery());
 
       const res = await request(app)
         .post('/api/admin/messages')
         .send({ targetType: 'all', title: 'テスト', body: 'テスト本文' });
       expect(res.status).toBe(201);
+      expect(mocks.invalidateDashboardUnreadCache).toHaveBeenCalledTimes(2);
+      expect(mocks.dispatchCustomPushToMany).toHaveBeenCalledWith(expect.objectContaining({
+        pharmacyIds: [5, 6],
+        type: 'admin_message',
+        category: 'admin',
+      }));
     });
 
     it('sends message to specific pharmacy', async () => {
