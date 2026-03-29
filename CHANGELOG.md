@@ -5,6 +5,162 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.22] - 2026-03-29
+
+### テーマ: マッチング画面の大規模リファクタリング + 内部CRONセキュリティ強化 + Playwright E2E監査基盤 + 全画面UX改善
+
+**マッチングページを600行超の巨大ファイルから4つの独立コンポーネントに分割し、保守性・テスト容易性を大幅に向上。すべての内部CRONルートに構造化ログと `CRON_SECRET` 認証を追加してセキュリティを強化。Playwright による包括的なE2E監査（ログイン・ダッシュボード・提案フロー）を追加し、各ページのUXを統一・改善しました。**
+
+---
+
+#### 1. マッチングページのコンポーネント分割
+
+**今まで**: `MatchingPage.tsx` が **644行** の巨大な単一ファイルでした。検索バー、フィルタパネル、結果一覧テーブル/カード、提案テンプレート選択、ブックマーク管理、数量調整モーダルなど、すべてのロジックとUIが1ファイルに混在。ちょっとしたフィルタ条件の変更でもファイル全体を読み直す必要があり、複数人での同時修正はコンフリクト地獄でした。型定義（`MatchItem`, `MatchCandidate`, `ProposalMessageState`）やヘルパー関数（`formatPercent`）もすべてローカルに定義されていて、テストから個別にインポートすることもできませんでした。
+
+**今後**: 責務ごとに4つの独立コンポーネントに分割し、`MatchingPage.tsx` はオーケストレーション（状態管理とデータフロー）に専念するようになりました。
+
+```
+MatchingPage.tsx（150行程度、状態管理とデータフロー制御）
+├── MatchingSearchHeader.tsx     — 薬品名検索、並び替えドロップダウン、
+│                                  結果件数表示、テンプレート選択トリガー
+├── MatchingFiltersPanel.tsx     — 距離・薬価差・マッチ率・営業状況など
+│                                  フィルタ条件のアコーディオンパネル
+├── MatchingResultsList.tsx      — テーブル/モバイルカード切り替え、
+│                                  ブックマーク操作、スワイプ提案、
+│                                  PullToRefresh、空状態表示
+└── ProposalTemplateSelector.tsx — 過去の提案パターンから
+                                   テンプレートを選んで適用
+```
+
+型定義は `client/src/types/matching.ts` に集約。共通ユーティリティは `matching-page-utils.ts` に抽出。各コンポーネントは独立してユニットテスト可能になり、`matching-page-groups.test.tsx` にグループ別テストケースを追加しました。
+
+#### 2. 内部CRONルートのセキュリティ強化と構造化ログ
+
+**今まで**: 内部CRONルート（日次統計集計、デッドストックアーカイブ、OpenCLAWリトライ、提案期限切れ）は `CRON_SECRET` による認証は実装済みでしたが、ログ出力が最低限で、「いつ開始し、何件処理し、何ミリ秒かかったか」がログから読み取れませんでした。障害時にどのCRONジョブが問題かを特定するのに、Vercelのダッシュボードとコードを突き合わせる必要がありました。
+
+**今後**: すべての内部CRONルートに以下を統一的に追加しました:
+
+- **開始ログ**: `cronName`, `method`, ジョブ固有パラメータを記録
+- **完了ログ**: `durationMs`（実行時間ミリ秒）、処理件数を記録
+- **エラーログ**: `durationMs` を含むエラー情報を構造化出力
+
+```
+// ログ出力例（日次統計）
+{ cronName: "daily_statistics", method: "POST",
+  durationMs: 1234, processedCount: 42 }
+
+// ログ出力例（OpenCLAWリトライ）
+{ cronName: "openclaw_retries", method: "POST",
+  limit: 20, durationMs: 890,
+  processed: 5, succeeded: 4, failed: 1 }
+```
+
+対象ルート: `internal-daily-statistics`, `internal-dead-stock-archive`, `internal-openclaw-retries`, `internal-proposal-expiry`。提案期限切れルートには GET メソッドも追加し、ヘルスチェック用途にも対応。
+
+#### 3. テスト薬局モード別取得（ログインページ改善）
+
+**今まで**: テスト薬局プレビューAPIは `isTestAccount = true` の全アカウントを返していたため、ログイン画面で「一般ユーザー」モードと「管理者」モードを切り替えても、同じテストアカウント一覧が表示されていました。管理者としてテストログインしたいのに一般ユーザーアカウントばかり表示される、またはその逆が起きていました。
+
+**今後**: テスト薬局プレビューAPIに `mode` パラメータ（`user` / `admin`）を追加。ログイン画面の現在のモードに応じて、一般ユーザーアカウントまたは管理者アカウントのみをフィルタして返すようになりました。キャッシュもモード別に独立して管理するため、モード切り替え時に古いキャッシュが混ざることはありません。
+
+```typescript
+// ログイン画面から呼ばれるURL例
+GET /api/auth/test-pharmacies?includePassword=true&mode=user
+GET /api/auth/test-pharmacies?includePassword=true&mode=admin
+```
+
+#### 4. ダッシュボードの遅延読み込みとインタラクション改善
+
+**今まで**: `DashboardPage` でリスクバケットグラフ（`RiskBucketBarChart`）が同期的にインポートされていたため、チャートライブラリの読み込みがページ全体の初期表示を遅延させていました。また、リスクバケットの各バーをクリックしても何も起きず、「期限切れ間近の在庫を確認したい」というユーザーの自然な操作導線がありませんでした。
+
+**今後**: `RiskBucketBarChart` を `React.lazy()` + `Suspense` で遅延読み込みに変更。グラフ描画中はフォールバックテキストを表示し、ページの初期表示が高速化しました。さらにリスクバケットの各バー（期限切れ、30日以内、60日以内等）をクリックすると、該当フィルタが適用された在庫一覧ページに遷移する `handleRiskBucketClick` コールバックを追加しました。
+
+#### 5. DDS エージェントサービスの情報拡充
+
+**今まで**: DDS（デッドストック対応サポート）エージェントが作業アイテムを取得する際、`threadId`（OpenCLAWスレッドID）、`lastQuestion`（最後のユーザー質問）、`lastError`（最後のエラー）が含まれていませんでした。エージェントはこれらの情報を別途APIコールで取得する必要があり、処理効率が低下していました。
+
+**今後**: `claimNextDdsJob` のレスポンスに `threadId`, `lastQuestion`, `lastError` の3フィールドを追加。エージェントは1回のAPI呼び出しで作業に必要なコンテキストをすべて取得でき、処理ターンアラウンドが改善しました。
+
+#### 6. Playwright E2E監査の包括的拡充
+
+**今まで**: E2Eテストはスケルトン状態で、実際のブラウザ操作を伴うフロー検証ができていませんでした。ランタイムエラー（未ハンドルPromiseリジェクション、console.error等）の自動検出も仕組みがありませんでした。
+
+**今後**: 以下の3カテゴリのE2Eテストスイートを追加し、`artifacts/` にレポート・スクリーンショット・トレースを保存する体制を構築しました:
+
+**ログインスモークテスト** (`login-smoke.spec.ts`):
+- 一般ユーザーのログイン → ダッシュボード到達を検証
+- 管理者のログイン → 管理者ダッシュボード到達を検証
+- テスト薬局プレビューのモード別取得を検証
+
+**ダッシュボードランタイム監査** (`dashboard-runtime-audit.spec.ts`):
+- ダッシュボード初期表示でランタイム異常（console.error、未ハンドルrejection）を出さないことを検証
+- 各UIコンポーネントの描画完了を確認
+- page-level error をキャッチするリスナーを設置
+
+**提案フローE2E** (`run-proposal-flow-e2e.sh` + `auth.ts`):
+- **ハッピーパス**: seed → 提案作成 → 相互承認 → 完了
+- **拒否フロー**: 提案作成 → 相手方が拒否
+- **競合シナリオ**: 在庫減少後の完了失敗を検証
+- テスト用データシード/リセットAPI (`internal-e2e-proposal-flow.ts`) を新設
+- Playwright用アカウント設定 (`playwright-account-config.ts`, `seed-playwright-accounts.ts`) を追加
+
+#### 7. 各ページのUX統一と改善
+
+**今まで**: ダッシュボード、統計、通知、メッセージ、提案詳細、管理者ダッシュボードの各ページで、ローディング表示・エラー表示・空状態のUIが統一されておらず、画面ごとに異なるユーザー体験でした。
+
+**今後**: 以下の改善を各ページに実施:
+
+| ページ | 改善内容 |
+|--------|---------|
+| **StatisticsPage** | グラフ表示ロジックの改善、レイアウト最適化 |
+| **NotificationsPage** | フィルタ機能の強化、未読/既読の視認性向上 |
+| **MessagesPage** | レイアウト調整、テスト容易性のためのリファクタリング |
+| **ProposalDetailPage** | エラー表示の改善、競合状態のUXハンドリング |
+| **ProposalsPage** | 一覧表示の軽微な調整 |
+| **AdminDashboardPage** | レイアウト改善、情報密度の最適化 |
+
+#### 8. サーバーテストカバレッジの大幅拡充
+
+**今まで**: 以下の領域でテストが不足または未実装でした:
+- 認証ルートの境界ケース
+- OpenCLAWサービスのリトライロジック
+- プッシュ通知プリファレンスサービス
+- 提案テンプレートルート
+- Stripeウェブフックルート
+- サブスクリプションルート
+
+**今後**: 以下のテストファイルを新規追加・拡充:
+
+| テストファイル | 内容 |
+|---------------|------|
+| `auth-route-coverage.test.ts` | 認証ルートの網羅的カバレッジ（モード別テスト薬局取得含む） |
+| `auth-route.test.ts` | 認証ルートの追加ケース |
+| `openclaw-service.test.ts` | リトライ・エラーハンドリング・キュースナップショット |
+| `push-routes.test.ts` | プッシュ通知エンドポイントのテスト |
+| `push-notification-preferences-service.test.ts` | 通知プリファレンスCRUD |
+| `proposal-templates-route.test.ts` | テンプレートCRUD API |
+| `stripe-webhook-route.test.ts` | Stripe Webhook署名検証・イベント処理 |
+| `subscriptions-route.test.ts` | サブスクリプション状態管理 |
+| `exchange-proposals-route-coverage.test.ts` | 交換提案ルートの追加カバレッジ |
+| `matching-candidate-builder.test.ts` | マッチング候補生成の追加ケース |
+| `health-endpoint.test.ts` | ヘルスエンドポイントの改善 |
+
+#### 9. インフラ・CI・運用改善
+
+**今まで**: Node.jsバージョンがCI・ローカル・engines間で統一されておらず、「CIでは通るがローカルでは落ちる」問題が散発。Vitestのfork worker再利用によるテスト間の状態汚染でflakyテストが発生していました。
+
+**今後**:
+
+- **Node.js 24.14.1 統一**: `.nvmrc`, `package.json` engines, GitHub Actions の3箇所すべてを `24.14.1` に固定
+- **Flakyテスト対策**: Vitest の fork worker reuse を無効化（`--no-file-parallelism` ではなく `forks.reuse: false`）し、テスト間の状態リークを根絶
+- **Dependabot更新**: 自動依存関係更新の設定改善
+- **ビルドスクリプト**: `vercel-build.sh` にPlaywright関連の環境設定を追加
+- **運用ドキュメント新設**:
+  - `docs/operations/migration-rollback.md` — マイグレーション失敗時のロールバック手順
+  - `docs/operations/secrets-rotation.md` — シークレットローテーション手順
+
+---
+
 ## [0.0.21] - 2026-03-26
 
 ### テーマ: 提案ライフサイクル強化 + SSE 安定化 + E2E テスト基盤
