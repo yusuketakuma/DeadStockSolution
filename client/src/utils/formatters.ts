@@ -26,7 +26,7 @@ export function formatDateTimeJa(
   if (!value) return fallback;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return fallback;
-  return parsed.toLocaleString('ja-JP');
+  return parsed.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
 }
 
 export function formatDateJa(
@@ -36,7 +36,7 @@ export function formatDateJa(
   if (!value) return fallback;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return fallback;
-  return parsed.toLocaleDateString('ja-JP');
+  return parsed.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' });
 }
 
 /**
