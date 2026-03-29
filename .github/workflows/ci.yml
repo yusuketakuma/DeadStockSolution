@@ -12,9 +12,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-typecheck:
+  install:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -26,7 +26,36 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
+
+      - name: Ensure rollup platform binary
+        run: npm rebuild rollup || true
+
+      - name: Cache node_modules
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            node_modules
+            client/node_modules
+            server/node_modules
+          key: nm-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+
+  lint-typecheck:
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            client/node_modules
+            server/node_modules
+          key: nm-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
 
       - name: Lint
         run: npm run lint
@@ -35,23 +64,21 @@ jobs:
         run: npm run typecheck
 
   test-server:
+    needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Ensure rollup platform binary
-        run: npm rebuild rollup || true
+          path: |
+            node_modules
+            client/node_modules
+            server/node_modules
+          key: nm-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
 
       - name: Server full test suite
         run: npm run test:server
@@ -60,45 +87,41 @@ jobs:
         run: npm run test:perf:server
 
   test-client:
+    needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Ensure rollup platform binary
-        run: npm rebuild rollup || true
+          path: |
+            node_modules
+            client/node_modules
+            server/node_modules
+          key: nm-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
 
       - name: Client full test suite
         run: npm run test:client
 
   integration:
+    needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Ensure rollup platform binary
-        run: npm rebuild rollup || true
+          path: |
+            node_modules
+            client/node_modules
+            server/node_modules
+          key: nm-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
 
       - name: Test upload/drug-master integration flows
         run: npm run test:integration:server
@@ -111,17 +134,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Ensure rollup platform binary
-        run: npm rebuild rollup || true
+          path: |
+            node_modules
+            client/node_modules
+            server/node_modules
+          key: nm-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
 
       - name: Check OpenAPI contract
         run: npm run openapi:check
