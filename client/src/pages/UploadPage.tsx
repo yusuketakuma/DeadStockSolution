@@ -32,7 +32,7 @@ const ERROR_PATTERNS: Array<{ match: (msg: string) => boolean; structured: Struc
     match: (msg) => msg.includes('自動判定に必要な列が不足'),
     structured: {
       cause: '選択した取込種別に必要な列名がファイル内に見つかりませんでした。',
-      solution: '「薬品名」「数量」などの必須列が含まれているか、ページ内の「Excel 必須項目ガイド」を確認してください。',
+      solution: '「薬品名」「薬品コード」「数量」「薬価」などの必須列が含まれているか、ページ内の「Excel 必須項目ガイド」を確認してください。',
     },
   },
   {
@@ -221,34 +221,34 @@ export default function UploadPage() {
                   <td>医薬品の名称。マッチングの基本キーです</td>
                 </tr>
                 <tr>
+                  <td className="fw-bold">薬品コード</td>
+                  <td><span className="badge bg-danger">必須</span></td>
+                  <td>YJコード・JANコード・GS1コード・HOTコードのいずれか。医薬品マスターとの紐付けに使用し、薬価・単位・包装形態（PTP/バラ）を自動設定します</td>
+                </tr>
+                <tr>
                   <td className="fw-bold">数量</td>
                   <td><span className="badge bg-danger">必須</span></td>
                   <td>在庫数量（0より大きい数値）</td>
                 </tr>
                 <tr>
-                  <td className="fw-bold">薬品コード</td>
-                  <td><span className="badge bg-warning text-dark">強く推奨</span></td>
-                  <td>YJコード・JANコード・GS1コード等。入力すると薬価・単位・包装形態が自動設定されます</td>
+                  <td className="fw-bold">薬価単価</td>
+                  <td><span className="badge bg-danger">必須</span></td>
+                  <td>1単位あたりの薬価（円）。マッチングスコアの算出に使用します。薬品コードによるマスター紐付けで自動補完も可能です</td>
                 </tr>
                 <tr>
                   <td>単位</td>
                   <td><span className="badge bg-info text-dark">推奨</span></td>
-                  <td>錠・PTP・バラ等。薬品コードがあれば自動補完されます。包装形態の区別に使用します</td>
-                </tr>
-                <tr>
-                  <td>薬価単価</td>
-                  <td><span className="badge bg-info text-dark">推奨</span></td>
-                  <td>薬品コードがあればマスターから自動設定されます</td>
+                  <td>錠・PTP・バラ等。包装形態の区別に使用します</td>
                 </tr>
                 <tr>
                   <td>使用期限</td>
-                  <td><span className="badge bg-secondary">任意</span></td>
+                  <td><span className="badge bg-info text-dark">推奨</span></td>
                   <td>期限切れ品の自動除外・期限間近品の優先マッチに使用</td>
                 </tr>
                 <tr>
                   <td>ロット番号</td>
                   <td><span className="badge bg-secondary">任意</span></td>
-                  <td>トレーサビリティ用の参考情報</td>
+                  <td>交換成立後のトレーサビリティ（ロット回収対応等）に使用</td>
                 </tr>
               </tbody>
             </table>
@@ -272,26 +272,26 @@ export default function UploadPage() {
                 </tr>
                 <tr>
                   <td className="fw-bold">薬品コード</td>
-                  <td><span className="badge bg-warning text-dark">強く推奨</span></td>
-                  <td>マスター紐付けの精度を大幅に向上します</td>
+                  <td><span className="badge bg-danger">必須</span></td>
+                  <td>YJコード・JANコード・GS1コード・HOTコードのいずれか。マスター紐付けと包装互換性チェックに必須です</td>
                 </tr>
                 <tr>
                   <td>月間使用量</td>
-                  <td><span className="badge bg-secondary">任意</span></td>
-                  <td>将来の需要予測に使用予定</td>
+                  <td><span className="badge bg-info text-dark">推奨</span></td>
+                  <td>需要予測・消費可能期間の推定に使用</td>
                 </tr>
                 <tr>
                   <td>単位</td>
                   <td><span className="badge bg-info text-dark">推奨</span></td>
-                  <td>薬品コードがあれば自動補完されます</td>
+                  <td>包装バリアント選定の精度向上に使用</td>
                 </tr>
               </tbody>
             </table>
             </div>
           </div>
           <div className="small text-muted mt-2">
-            薬品コードを入力すると、薬価・単位・包装形態（PTP/バラ等）が医薬品マスターから自動設定されます。
-            PTP包装品とバラ品は区別してマッチングされるため、正確な包装情報が重要です。
+            薬品コードから医薬品マスターを参照し、薬価・単位・包装形態（PTP/バラ等）を自動設定します。
+            PTP包装品とバラ品は区別してマッチングされるため、正確な薬品コードの入力が重要です。
           </div>
         </AppCard.Body>
       </AppCard>

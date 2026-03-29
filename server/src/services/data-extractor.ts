@@ -138,17 +138,25 @@ export function extractDeadStockRowsWithIssues(
     }
 
     const drugCode = getStringValue(row, m.drugCodeIdx);
+    if (!drugCode) {
+      issues.push(createIssue(i, 'MISSING_DRUG_CODE', '薬品コードが入力されていません（YJコード・JANコード・GS1コード等）。マスター紐付け・薬価自動補完・包装判定に必須です', row));
+      continue;
+    }
+
     const unit = getStringValue(row, m.unitIdx);
     const yakkaUnitPrice = getNumberValue(row, m.yakkaUnitPriceIdx);
-    const yakkaTotal = yakkaUnitPrice !== null ? yakkaUnitPrice * quantity : null;
 
-    // 警告（行は取込むが品質注意）
-    if (!drugCode) {
-      issues.push(createIssue(i, 'MISSING_DRUG_CODE', '薬品コード未入力: マスター自動紐付けが行われないため、薬価・単位・包装の自動補完が制限されます', row));
+    if (yakkaUnitPrice === null) {
+      issues.push(createIssue(i, 'MISSING_YAKKA_PRICE', '薬価（単価）が入力されていません。マッチングスコアの算出に必須です', row));
+      continue;
     }
-    if (!unit && !drugCode) {
-      issues.push(createIssue(i, 'MISSING_UNIT_NO_CODE', '単位・薬品コードが両方未入力: 包装形態（PTP/バラ）の自動判定ができません', row));
+
+    if (yakkaUnitPrice < 0) {
+      issues.push(createIssue(i, 'NEGATIVE_YAKKA_PRICE', '薬価（単価）は0以上の値を指定してください', row));
+      continue;
     }
+
+    const yakkaTotal = yakkaUnitPrice * quantity;
 
     rows.push({
       drugCode,
@@ -202,7 +210,8 @@ export function extractUsedMedicationRowsWithIssues(
 
     const usedDrugCode = getStringValue(row, m.drugCodeIdx);
     if (!usedDrugCode) {
-      issues.push(createIssue(i, 'MISSING_DRUG_CODE', '薬品コード未入力: マスター自動紐付けが制限されます', row));
+      issues.push(createIssue(i, 'MISSING_DRUG_CODE', '薬品コードが入力されていません（YJコード・JANコード・GS1コード等）。マスター紐付け・包装互換性チェックに必須です', row));
+      continue;
     }
 
     rows.push({

@@ -184,8 +184,14 @@ export function parseMapping(raw: unknown, uploadType: UploadType): ColumnMappin
   if (!sanitized.drug_name) {
     throw new ApiError(400, '薬剤名カラムの割り当てが必要です', 'VALIDATION_ERROR');
   }
+  if (!sanitized.drug_code) {
+    throw new ApiError(400, '薬品コードカラムの割り当てが必要です（YJコード・JANコード・GS1コード等）', 'VALIDATION_ERROR');
+  }
   if (uploadType === 'dead_stock' && !sanitized.quantity) {
     throw new ApiError(400, '数量カラムの割り当てが必要です', 'VALIDATION_ERROR');
+  }
+  if (uploadType === 'dead_stock' && !sanitized.yakka_unit_price) {
+    throw new ApiError(400, '薬価（単価）カラムの割り当てが必要です', 'VALIDATION_ERROR');
   }
 
   return sanitized;

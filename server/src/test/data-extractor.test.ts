@@ -58,19 +58,12 @@ describe('extractDeadStockRowsWithIssues', () => {
       });
     });
 
-    it('薬価が未入力の場合 yakkaTotal が null になる', () => {
-      const rows = [['', '薬B', '5', '包', '', '', '']];
+    it('薬価が0の場合 yakkaTotal が0になる', () => {
+      const rows = [['YJ001', '薬B', '5', '包', '0', '', '']];
       const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
 
-      expect(result.rows[0].yakkaUnitPrice).toBeNull();
-      expect(result.rows[0].yakkaTotal).toBeNull();
-    });
-
-    it('drugCode が未入力の場合 null になる', () => {
-      const rows = [['', '薬C', '3', null, null, null, null]];
-      const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
-
-      expect(result.rows[0].drugCode).toBeNull();
+      expect(result.rows[0].yakkaUnitPrice).toBe(0);
+      expect(result.rows[0].yakkaTotal).toBe(0);
     });
 
     it('startIndex でヘッダー行をスキップできる', () => {
@@ -126,7 +119,7 @@ describe('extractDeadStockRowsWithIssues', () => {
 
   describe('異常系', () => {
     it('薬剤名が空の行はスキップされ issue が記録される', () => {
-      const rows = [['YJ001', '', '10', '錠', '', '', '']];
+      const rows = [['YJ001', '', '10', '錠', '100', '', '']];
       const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
 
       expect(result.rows).toHaveLength(0);
@@ -135,8 +128,35 @@ describe('extractDeadStockRowsWithIssues', () => {
       expect(result.issues[0].rowNumber).toBe(1);
     });
 
+    it('薬品コードが空の行はスキップされ issue が記録される', () => {
+      const rows = [['', '薬A', '10', '錠', '100', '', '']];
+      const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
+
+      expect(result.rows).toHaveLength(0);
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues[0].issueCode).toBe('MISSING_DRUG_CODE');
+    });
+
+    it('薬価が未入力の行はスキップされ issue が記録される', () => {
+      const rows = [['YJ001', '薬A', '10', '錠', '', '', '']];
+      const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
+
+      expect(result.rows).toHaveLength(0);
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues[0].issueCode).toBe('MISSING_YAKKA_PRICE');
+    });
+
+    it('薬価が負の値の場合 issue が記録される', () => {
+      const rows = [['YJ001', '薬A', '10', '錠', '-50', '', '']];
+      const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
+
+      expect(result.rows).toHaveLength(0);
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues[0].issueCode).toBe('NEGATIVE_YAKKA_PRICE');
+    });
+
     it('数量が数値でない場合 issue が記録される', () => {
-      const rows = [['YJ001', '薬A', 'abc', '錠', '', '', '']];
+      const rows = [['YJ001', '薬A', 'abc', '錠', '100', '', '']];
       const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
 
       expect(result.rows).toHaveLength(0);
@@ -145,8 +165,8 @@ describe('extractDeadStockRowsWithIssues', () => {
 
     it('数量が 0 以下の場合 issue が記録される', () => {
       const rows = [
-        ['YJ001', '薬A', '0', '錠', '', '', ''],
-        ['YJ002', '薬B', '-5', '錠', '', '', ''],
+        ['YJ001', '薬A', '0', '錠', '100', '', ''],
+        ['YJ002', '薬B', '-5', '錠', '100', '', ''],
       ];
       const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
 
@@ -158,10 +178,10 @@ describe('extractDeadStockRowsWithIssues', () => {
 
     it('有効行と無効行が混在する場合にそれぞれ正しく分類される', () => {
       const rows = [
-        ['YJ001', '薬A', '5', '錠', '', '', ''],    // 有効
-        ['YJ002', '', '10', '錠', '', '', ''],       // 薬名なし → issue
-        ['YJ003', '薬C', 'N/A', '錠', '', '', ''],  // 数量不正 → issue
-        ['YJ004', '薬D', '3', '包', '20', '', ''],  // 有効
+        ['YJ001', '薬A', '5', '錠', '100', '', ''],  // 有効
+        ['YJ002', '', '10', '錠', '100', '', ''],     // 薬名なし → issue
+        ['YJ003', '薬C', 'N/A', '錠', '100', '', ''], // 数量不正 → issue
+        ['YJ004', '薬D', '3', '包', '20', '', ''],    // 有効
       ];
       const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
 
@@ -171,7 +191,7 @@ describe('extractDeadStockRowsWithIssues', () => {
     });
 
     it('issue の rowData に元データが含まれる', () => {
-      const rows = [['YJ001', '', '10', '錠', '', '', '']];
+      const rows = [['YJ001', '', '10', '錠', '100', '', '']];
       const result = extractDeadStockRowsWithIssues(rows, DEAD_STOCK_MAPPING);
 
       expect(result.issues[0].rowData).not.toBeNull();
@@ -212,7 +232,7 @@ describe('extractUsedMedicationRowsWithIssues', () => {
     });
 
     it('monthlyUsage が未入力の場合 null になる', () => {
-      const rows = [['', '薬B', '', '錠', '']];
+      const rows = [['YJ001', '薬B', '', '錠', '']];
       const result = extractUsedMedicationRowsWithIssues(rows, USED_MED_MAPPING);
 
       expect(result.rows[0].monthlyUsage).toBeNull();
@@ -235,6 +255,14 @@ describe('extractUsedMedicationRowsWithIssues', () => {
       expect(result.rows).toHaveLength(0);
       expect(result.issues[0].issueCode).toBe('MISSING_DRUG_NAME');
     });
+
+    it('薬品コードが空の行は issue になる', () => {
+      const rows = [['', '薬A', '10', '錠', '100']];
+      const result = extractUsedMedicationRowsWithIssues(rows, USED_MED_MAPPING);
+
+      expect(result.rows).toHaveLength(0);
+      expect(result.issues[0].issueCode).toBe('MISSING_DRUG_CODE');
+    });
   });
 });
 
@@ -242,7 +270,7 @@ describe('extractUsedMedicationRowsWithIssues', () => {
 
 describe('extractUsedMedicationRows', () => {
   it('rows のみを返す', () => {
-    const rows = [['', '薬C', '15', '包', '50']];
+    const rows = [['YJ001', '薬C', '15', '包', '50']];
     const result = extractUsedMedicationRows(rows, USED_MED_MAPPING);
 
     expect(result[0].drugName).toBe('薬C');
