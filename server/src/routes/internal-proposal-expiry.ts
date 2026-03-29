@@ -6,6 +6,7 @@ import { logger } from '../services/logger';
 const router = Router();
 
 async function handleExpireStale(req: Request, res: Response): Promise<void> {
+  const startedAt = Date.now();
   try {
     const authHeader = typeof req.headers.authorization === 'string'
       ? req.headers.authorization
@@ -23,13 +24,25 @@ async function handleExpireStale(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    logger.info('Proposal expiry cron started', {
+      cronName: 'proposal_expiry',
+      method: req.method,
+    });
     const reminderResult = await sendExpiryReminders();
     const expireResult = await expireStaleProposals();
     const result = { ...reminderResult, ...expireResult };
-    logger.info('Proposal expiry cron completed', result);
+    logger.info('Proposal expiry cron completed', {
+      cronName: 'proposal_expiry',
+      method: req.method,
+      durationMs: Date.now() - startedAt,
+      ...result,
+    });
     res.json({ message: 'ok', ...result });
   } catch (err) {
     logger.error('Proposal expiry cron failed', {
+      cronName: 'proposal_expiry',
+      method: req.method,
+      durationMs: Date.now() - startedAt,
       error: err instanceof Error ? err.message : String(err),
     });
     res.status(500).json({ error: 'proposal expiry failed' });

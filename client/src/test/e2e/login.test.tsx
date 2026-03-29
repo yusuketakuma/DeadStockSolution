@@ -105,9 +105,10 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 2, name: '管理者ログイン' })).toBeInTheDocument();
     });
-    expect(screen.queryByText('開発者ログイン')).not.toBeInTheDocument();
     expect(screen.queryByText('新規登録はこちら')).not.toBeInTheDocument();
     expect(screen.getByText('管理者アカウントでログインしてください。')).toBeInTheDocument();
+    expect(screen.getByText('Playwright 検証用の管理者アカウントを入力して、管理画面の確認をすぐ始められます。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '管理者一覧から選ぶ' })).toBeInTheDocument();
   });
 
   it('shows error message when login fails', async () => {
@@ -256,7 +257,7 @@ describe('LoginPage', () => {
     expect(screen.getByText('テスト薬局東京店')).toBeInTheDocument();
     expect(screen.getByText('テスト薬局札幌店')).toBeInTheDocument();
     expect(
-      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies?includePassword=true')),
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies?includePassword=true&mode=user')),
     ).toBe(true);
 
     const applyButtons = screen.getAllByRole('button', { name: 'このIDを入力' });
@@ -265,6 +266,42 @@ describe('LoginPage', () => {
     expect(getInputByLabel('メールアドレス')).toHaveValue('test-tokyo@example.com');
     expect(getInputByLabel('パスワード')).toHaveValue('TokyoDemo!2026');
     expect(screen.getByText(/メールアドレスとパスワードを入力しました。そのままログインできます。/)).toBeInTheDocument();
+  });
+
+  it('opens developer login modal and applies selected admin credentials in desktop view', async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockUnauthFetch({
+      testPharmacies: [
+        {
+          id: 91,
+          name: 'Playwright 検証管理者',
+          email: 'playwright-admin@example.com',
+          prefecture: '東京都',
+          password: 'PlaywrightAdmin!2026',
+        },
+      ],
+    });
+    renderWithProviders(<LoginPage />, { route: '/login' });
+
+    await user.click(screen.getByRole('button', { name: '管理者ログイン' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '管理者一覧から選ぶ' })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: '管理者一覧から選ぶ' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Playwright 検証管理者')).toBeInTheDocument();
+    });
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/auth/test-pharmacies?includePassword=true&mode=admin')),
+    ).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'この管理者を入力' }));
+
+    expect(getInputByLabel('メールアドレス')).toHaveValue('playwright-admin@example.com');
+    expect(getInputByLabel('パスワード')).toHaveValue('PlaywrightAdmin!2026');
+    expect(screen.getByText(/そのまま管理者ログインできます。/)).toBeInTheDocument();
   });
 
   it('renders developer login modal list in mobile view', async () => {

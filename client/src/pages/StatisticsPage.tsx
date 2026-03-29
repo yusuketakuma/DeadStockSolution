@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Container, Row, Col, Badge, ButtonGroup, Button } from 'react-bootstrap';
 import AppKpiCard from '../components/ui/AppKpiCard';
 import AppDataPanel from '../components/ui/AppDataPanel';
@@ -7,7 +7,8 @@ import { useApiQuery } from '../hooks/useApiQuery';
 import { formatYen, formatDateJa } from '../utils/formatters';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import InlineLoader from '../components/ui/InlineLoader';
-import TrendChart from '../components/charts/TrendChart';
+
+const TrendChart = lazy(() => import('../components/charts/TrendChart'));
 
 type TrendDays = 30 | 60 | 90;
 
@@ -185,6 +186,10 @@ function StatisticsShell({ children }: { children: React.ReactNode }) {
       </ScrollArea>
     </PageShell>
   );
+}
+
+function ChartFallback({ text }: { text: string }) {
+  return <InlineLoader text={text} />;
 }
 
 export default function StatisticsPage() {
@@ -394,41 +399,49 @@ export default function StatisticsPage() {
         <Row className="g-4">
           <Col xs={12} md={6}>
             <p className="fw-semibold mb-1 small text-muted">デッドストック推移</p>
-            <TrendChart
-              data={trendPoints}
-              lines={[
-                { key: 'deadStockCount', label: 'デッドストック数', color: '#dc3545' },
-              ]}
-            />
+            <Suspense fallback={<ChartFallback text="デッドストック推移を読み込み中..." />}>
+              <TrendChart
+                data={trendPoints}
+                lines={[
+                  { key: 'deadStockCount', label: 'デッドストック数', color: '#dc3545' },
+                ]}
+              />
+            </Suspense>
           </Col>
           <Col xs={12} md={6}>
             <p className="fw-semibold mb-1 small text-muted">医薬品使用量推移</p>
-            <TrendChart
-              data={trendPoints}
-              lines={[
-                { key: 'usedMedCount', label: '医薬品使用量', color: '#6f42c1' },
-              ]}
-            />
+            <Suspense fallback={<ChartFallback text="医薬品使用量推移を読み込み中..." />}>
+              <TrendChart
+                data={trendPoints}
+                lines={[
+                  { key: 'usedMedCount', label: '医薬品使用量', color: '#6f42c1' },
+                ]}
+              />
+            </Suspense>
           </Col>
           <Col xs={12} md={6}>
             <p className="fw-semibold mb-1 small text-muted">提案数推移</p>
-            <TrendChart
-              data={trendPoints}
-              lines={[
-                { key: 'proposalsSent', label: '送信', color: '#0d6efd' },
-                { key: 'proposalsReceived', label: '受信', color: '#6f42c1' },
-                { key: 'proposalsCompleted', label: '完了', color: '#198754' },
-              ]}
-            />
+            <Suspense fallback={<ChartFallback text="提案数推移を読み込み中..." />}>
+              <TrendChart
+                data={trendPoints}
+                lines={[
+                  { key: 'proposalsSent', label: '送信', color: '#0d6efd' },
+                  { key: 'proposalsReceived', label: '受信', color: '#6f42c1' },
+                  { key: 'proposalsCompleted', label: '完了', color: '#198754' },
+                ]}
+              />
+            </Suspense>
           </Col>
           <Col xs={12} md={6}>
             <p className="fw-semibold mb-1 small text-muted">交換額推移 (円)</p>
-            <TrendChart
-              data={trendPoints}
-              lines={[
-                { key: 'exchangeValue', label: '交換薬価', color: '#fd7e14' },
-              ]}
-            />
+            <Suspense fallback={<ChartFallback text="交換額推移を読み込み中..." />}>
+              <TrendChart
+                data={trendPoints}
+                lines={[
+                  { key: 'exchangeValue', label: '交換薬価', color: '#fd7e14' },
+                ]}
+              />
+            </Suspense>
           </Col>
         </Row>
       </AppDataPanel>

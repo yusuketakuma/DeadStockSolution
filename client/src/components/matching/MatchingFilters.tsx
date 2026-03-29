@@ -71,6 +71,7 @@ export default function MatchingFilters({ filters, onFilterChange }: MatchingFil
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
         aria-controls="matching-filter-panel"
+        aria-label={open ? 'マッチングの絞り込みと並び替えを閉じる' : 'マッチングの絞り込みと並び替えを開く'}
         className="d-flex align-items-center gap-2"
       >
         <span aria-hidden="true">&#9776;</span>
@@ -160,6 +161,7 @@ export default function MatchingFilters({ filters, onFilterChange }: MatchingFil
                 {activeCount > 0 && (
                   <div className="col-12">
                     <AppButton type="button" variant="link" size="sm" onClick={handleReset} className="p-0 text-danger">
+                      <span className="visually-hidden">マッチングフィルタをリセット</span>
                       フィルタをリセット
                     </AppButton>
                   </div>

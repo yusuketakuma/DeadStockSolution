@@ -111,6 +111,7 @@ export interface MatchPriorityReason {
 
 export interface MatchItem {
   deadStockItemId: number;
+  drugCode?: string | null;
   drugName: string;
   quantity: number;
   unit: string | null;

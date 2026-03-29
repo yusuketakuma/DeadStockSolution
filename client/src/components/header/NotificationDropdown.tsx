@@ -152,7 +152,11 @@ export default function NotificationDropdown({
         type="button"
         variant="link"
         className="notification-dropdown-trigger"
-        aria-label={unreadCount > 0 ? `${unreadCount}件の未読通知` : '通知'}
+        aria-label={show
+          ? '通知ドロップダウンを閉じる'
+          : unreadCount > 0
+            ? `${unreadCount}件の未読通知を開く`
+            : '通知ドロップダウンを開く'}
       >
         <svg
           width="18"

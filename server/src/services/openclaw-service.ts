@@ -186,6 +186,7 @@ function connectorNotReadyMessage(config: OpenClawConfig): string {
 
 function resolveOpenClawConnectorMode(): OpenClawConnectorMode {
   const rawMode = (process.env.OPENCLAW_CONNECTOR_MODE ?? '').trim().toLowerCase();
+  if (rawMode === 'managed_remote_agent') return 'managed_remote_agent';
   if (rawMode === 'gateway_cli') return 'gateway_cli';
   return 'legacy_http';
 }

@@ -36,8 +36,8 @@ const matchCandidates = [
     pharmacyPhone: '03-1111-1111',
     pharmacyFax: '03-1111-2222',
     distance: 3,
-    itemsFromA: [{ deadStockItemId: 1, drugName: 'アスピリン 100mg', quantity: 10, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 1000, expirationDate: '2027-01-01', matchScore: 0.9 }],
-    itemsFromB: [{ deadStockItemId: 2, drugName: 'テスト薬B', quantity: 5, unit: '錠', yakkaUnitPrice: 200, yakkaValue: 1000, expirationDate: '2027-06-01', matchScore: 0.8 }],
+    itemsFromA: [{ deadStockItemId: 1, drugCode: 'ASP-100', drugName: 'アスピリン 100mg', quantity: 10, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 1000, expirationDate: '2027-01-01', matchScore: 0.9 }],
+    itemsFromB: [{ deadStockItemId: 2, drugCode: 'TEST-B', drugName: 'テスト薬B', quantity: 5, unit: '錠', yakkaUnitPrice: 200, yakkaValue: 1000, expirationDate: '2027-06-01', matchScore: 0.8 }],
     totalValueA: 10000,
     totalValueB: 10000,
     valueDifference: 0,
@@ -51,8 +51,8 @@ const matchCandidates = [
     pharmacyPhone: '06-2222-2222',
     pharmacyFax: '06-2222-3333',
     distance: 10,
-    itemsFromA: [{ deadStockItemId: 3, drugName: 'テスト薬C', quantity: 20, unit: '錠', yakkaUnitPrice: 50, yakkaValue: 1000, expirationDate: '2027-03-01', matchScore: 0.7 }],
-    itemsFromB: [{ deadStockItemId: 4, drugName: 'テスト薬D', quantity: 15, unit: '錠', yakkaUnitPrice: 70, yakkaValue: 1050, expirationDate: '2027-09-01', matchScore: 0.6 }],
+    itemsFromA: [{ deadStockItemId: 3, drugCode: 'TEST-C', drugName: 'テスト薬C', quantity: 20, unit: '錠', yakkaUnitPrice: 50, yakkaValue: 1000, expirationDate: '2027-03-01', matchScore: 0.7 }],
+    itemsFromB: [{ deadStockItemId: 4, drugCode: 'TEST-D', drugName: 'テスト薬D', quantity: 15, unit: '錠', yakkaUnitPrice: 70, yakkaValue: 1050, expirationDate: '2027-09-01', matchScore: 0.6 }],
     totalValueA: 10000,
     totalValueB: 10005,
     valueDifference: 5,
@@ -237,8 +237,8 @@ describe('MatchingPage — Group Badge', () => {
         pharmacyPhone: '03-4000-0000',
         pharmacyFax: '03-4000-0001',
         distance: 4,
-        itemsFromA: [{ deadStockItemId: 11, drugName: '薬A', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2027-12-31', expirationDateIso: '2026-04-01', matchScore: 0.9 }],
-        itemsFromB: [{ deadStockItemId: 12, drugName: '薬B', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2027-12-31', expirationDateIso: '2026-04-10', matchScore: 0.8 }],
+        itemsFromA: [{ deadStockItemId: 11, drugCode: 'DRUG-A', drugName: '薬A', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2027-12-31', expirationDateIso: '2026-04-01', matchScore: 0.9 }],
+        itemsFromB: [{ deadStockItemId: 12, drugCode: 'DRUG-B', drugName: '薬B', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2027-12-31', expirationDateIso: '2026-04-10', matchScore: 0.8 }],
         totalValueA: 10000,
         totalValueB: 10000,
         valueDifference: 0,
@@ -252,8 +252,8 @@ describe('MatchingPage — Group Badge', () => {
         pharmacyPhone: '03-4100-0000',
         pharmacyFax: '03-4100-0001',
         distance: 5,
-        itemsFromA: [{ deadStockItemId: 21, drugName: '薬C', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2026-05-01', expirationDateIso: null, matchScore: 0.9 }],
-        itemsFromB: [{ deadStockItemId: 22, drugName: '薬D', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2026-05-05', expirationDateIso: null, matchScore: 0.8 }],
+        itemsFromA: [{ deadStockItemId: 21, drugCode: 'DRUG-C', drugName: '薬C', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2026-05-01', expirationDateIso: null, matchScore: 0.9 }],
+        itemsFromB: [{ deadStockItemId: 22, drugCode: 'DRUG-D', drugName: '薬D', quantity: 100, unit: '錠', yakkaUnitPrice: 100, yakkaValue: 10000, expirationDate: '2026-05-05', expirationDateIso: null, matchScore: 0.8 }],
         totalValueA: 10000,
         totalValueB: 10000,
         valueDifference: 0,
@@ -288,5 +288,101 @@ describe('MatchingPage — Group Badge', () => {
     const isoCandidate = screen.getByText('ISO優先候補');
     const standardCandidate = screen.getByText('通常候補');
     expect(isoCandidate.compareDocumentPosition(standardCandidate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders saved bookmarks from drugCode keys and deletes them with the same key', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = init?.method ?? 'GET';
+
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/upload/status')) {
+        return new Response(JSON.stringify({ deadStockUploaded: true, usedMedicationUploaded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/groups/membership-summary')) {
+        return new Response(JSON.stringify(membershipSummaryResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/timeline/bootstrap')) {
+        return new Response(JSON.stringify({ timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null }, digest: { events: [] }, unreadCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/timeline/unread-count')) {
+        return new Response(JSON.stringify({ unreadCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/exchange/find')) {
+        return new Response(JSON.stringify({ candidates: matchCandidates }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/match-bookmarks?page=1&limit=100')) {
+        return new Response(JSON.stringify({
+          items: [{
+            id: 77,
+            pharmacyId: mockUser.id,
+            candidatePharmacyId: 5,
+            candidatePharmacyName: 'グループ内薬局',
+            drugCode: 'ASP-100',
+            memo: null,
+            createdAt: '2026-03-01T00:00:00.000Z',
+          }],
+          page: 1,
+          limit: 100,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/match-bookmarks/77') && method === 'DELETE') {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const user = userEvent.setup();
+    renderWithProviders(<MatchingPage />);
+
+    const matchButton = await screen.findByRole('button', { name: /マッチングを実行/ });
+    await user.click(matchButton);
+
+    const candidateToggle = await screen.findByRole('button', { name: /グループ内薬局/ });
+    await user.click(candidateToggle);
+
+    const bookmarkButton = await screen.findByRole('button', { name: 'アスピリン 100mg をブックマーク解除' });
+    expect(bookmarkButton).toHaveTextContent('★');
+
+    await user.click(bookmarkButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/api/match-bookmarks/77'),
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
   });
 });

@@ -2,9 +2,11 @@ import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pushNotificationPreferences } from '../db/schema';
 import type {
+  PushNotificationCategory,
   PushNotificationPreferenceCategories,
   PushNotificationPreferences,
 } from '../types/push';
+import { pushNotificationCategoryValues } from '../types/push';
 
 export const DEFAULT_PUSH_NOTIFICATION_CATEGORIES: PushNotificationPreferenceCategories = {
   proposals: true,
@@ -21,6 +23,8 @@ export const DEFAULT_PUSH_NOTIFICATION_PREFERENCES: PushNotificationPreferences 
   allowCritical: true,
 };
 
+const VALID_PUSH_NOTIFICATION_CATEGORIES = new Set<string>(pushNotificationCategoryValues);
+
 function normalizeCategories(raw: unknown): PushNotificationPreferenceCategories {
   const source = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
   return {
@@ -32,6 +36,27 @@ function normalizeCategories(raw: unknown): PushNotificationPreferenceCategories
     alerts: source.alerts !== false,
     admin: source.admin !== false,
   };
+}
+
+function assertValidCategoryInput(
+  categories: unknown,
+): asserts categories is Partial<Record<PushNotificationCategory, boolean>> | undefined {
+  if (categories == null) {
+    return;
+  }
+
+  if (typeof categories !== 'object' || Array.isArray(categories)) {
+    throw new Error('Push notification categories must be an object');
+  }
+
+  for (const [key, value] of Object.entries(categories as Record<string, unknown>)) {
+    if (!VALID_PUSH_NOTIFICATION_CATEGORIES.has(key)) {
+      throw new Error(`Invalid push notification category: ${key}`);
+    }
+    if (value !== undefined && typeof value !== 'boolean') {
+      throw new Error(`Push notification category "${key}" must be a boolean`);
+    }
+  }
 }
 
 export async function getPushNotificationPreferences(
@@ -59,6 +84,8 @@ export async function upsertPushNotificationPreferences(
     allowCritical?: boolean;
   },
 ): Promise<PushNotificationPreferences> {
+  assertValidCategoryInput(input.categories);
+
   const current = await getPushNotificationPreferences(pharmacyId);
   const next: PushNotificationPreferences = {
     categories: {

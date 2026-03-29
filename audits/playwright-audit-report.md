@@ -1,32 +1,33 @@
 # Playwright Audit Report
 
 ## 1. 実行概要
-- 対象: ローカル `http://127.0.0.1:5173` / API `http://127.0.0.1:3101`
-- スコープ:
-  - 一般ユーザー login -> dashboard 初期表示
-  - 管理者 login -> admin dashboard 初期表示
-  - admin dashboard 上の OpenClaw degraded 表示
-- 実施日: 2026-03-29 16:41 JST
+- 対象:
+  - Frontend `http://127.0.0.1:5173`
+  - API `http://127.0.0.1:3101`
+- 実施日:
+  - login/dashboard audit: 2026-03-29 17:51 JST
+  - proposal-flow audit: 2026-03-29 17:51 JST
 - 実施内容:
-  - Playwright CLI / config / 既存 suite の棚卸し
-  - 一時 Postgres DB を作成して `db:push` / Playwright seed / test pharmacy seed を実行
-  - server/client をローカル起動
-  - login smoke 2件 + dashboard runtime audit 2件を実行
-  - HTML report / JSON report / screenshot / trace を更新
+  - Playwright CLI / config / suite をローカル実体で棚卸し
+  - disposable local Postgres を一時生成し、`db:push` / seed / server / client / Playwright 実行 / cleanup まで wrapper 化
+  - `login-smoke.spec.ts` 2件、`dashboard-runtime-audit.spec.ts` 2件、`proposal-flow.spec.ts` 3件を実行
+  - HTML report / JSON report / screenshot / trace を `artifacts/playwright-audit/` に保存
+- 集計:
+  - 7 passed / 0 failed / 0 flaky / 0 skipped
 
 ## 2. 実際に使えた Playwright CLI capabilities
 - バージョン:
   - Node `v24.14.1`
   - npm `11.11.0`
-  - `@playwright/test` / Playwright `1.58.2`
-- `npx playwright --help` で確認した主要コマンド:
+  - Playwright / `@playwright/test` `1.58.2`
+- `npx playwright --help` で確認:
   - `test`
   - `codegen`
   - `show-report`
   - `show-trace`
   - `merge-reports`
   - `clear-cache`
-- `npx playwright test --help` で確認した主要オプション:
+- `npx playwright test --help` で確認:
   - `--project`
   - `--workers`
   - `--list`
@@ -38,80 +39,86 @@
   - `--last-failed`
 - 今回実際に使ったもの:
   - `npx playwright test --list`
-  - `npx playwright test ... --project chromium --workers=1`
-  - `npx playwright test ... --trace on --output ... --reporter=list,html`
-  - `npx playwright test ... --reporter=json`
+  - `npx playwright test ... --project chromium --workers=1 --trace on --output ... --reporter=list,html,json`
+  - `PLAYWRIGHT_HTML_OUTPUT_DIR`
+  - `PLAYWRIGHT_JSON_OUTPUT_FILE`
 
 ## 3. 対象フロー
-- user:
-  - `GET /api/auth/test-pharmacies?includePassword=1&mode=user`
-  - `POST /api/auth/login`
-  - `/` へ遷移し、`ダッシュボード` 見出しと welcome 表示を確認
-- admin:
-  - `GET /api/auth/test-pharmacies?includePassword=1&mode=admin`
-  - `POST /api/auth/login`
-  - `/admin` へ遷移し、`管理者ダッシュボード` / `OpenClaw連携` / `OpenClaw / DDS 状態` を確認
-- runtime audit:
-  - console error
-  - page error
-  - failed response (`document` / `fetch` / `xhr`)
-  - admin dashboard で generic error `一部のデータの取得に失敗しました` が出ていないこと
+- login/dashboard:
+  - 一般ユーザー login -> dashboard 初期表示
+  - 管理者 login -> admin dashboard 初期表示
+  - admin dashboard 上の OpenClaw degraded 表示確認
+  - console error / page error / failed response 採取
+- proposal-flow:
+  - seed -> 提案作成 -> 相互承認 -> 完了
+  - 提案拒否
+  - 在庫減少後の完了失敗
 
 ## 4. 発見事項
-- Product defect は今回のスコープでは検出されませんでした。
-- 4件すべて pass し、runtime audit でも console error / page error / failed response は 0 件でした。
-- 運用上のリスクは残っています。
-  - `server/.env` は preview 向け設定を含んでいるため、そのまま local audit を実行すると preview DB に触れる危険があります。
-  - 今回は shell 側で `POSTGRES_URL` / `POSTGRES_URL_NON_POOLING` / `PORT` / `CORS_ORIGINS` / `VERCEL_ENV` を上書きして回避しました。
+- product defect は今回の 7 ケースでは再現しませんでした。
+- login/dashboard runtime audit では console error / page error / failed response は 0 件でした。
+- proposal-flow は isolated local DB 上で 3 ケースとも通過しました。
+- 実装側の E2E 補助ルートには不整合がありました。
+  - `server/src/routes/internal-e2e-proposal-flow.ts` の seed 取得が admin test account を含んでおり、Playwright fixture の `mode=user` と index 対応がずれていました。
+  - その結果、`counterpartyIndex=1` が admin を指すケースがあり、reject / accept が 404 になる false negative を起こしていました。
+  - `isAdmin = false` で絞るよう修正し、fixture と seed の母集団を一致させました。
+- 運用上の既知リスクは残っています。
+  - `server/.env` は preview 系設定を含むため、wrapper なしのローカル監査は危険です。
+  - clean DB に対する `db:migrate` は現状 repo の migration chain 不整合で失敗します。
+  - 具体的には `server/drizzle/0019_upload_confirm_jobs.sql` と `server/drizzle/0021_clean_warpath.sql` が fresh DB 上で同じ `upload_job_status_enum` を重複作成します。
 
 ## 5. 再現手順
-1. ローカル Postgres 上に一時 DB を作る
-2. 以下の env を shell 側で上書きする
-   - `POSTGRES_URL=postgres://postgres:postgres@127.0.0.1:5432/<temp-db>`
-   - `POSTGRES_URL_NON_POOLING=$POSTGRES_URL`
-   - `JWT_SECRET=deadstock-playwright-audit-jwt-secret-2026`
-   - `PORT=3101`
-   - `CORS_ORIGINS=http://127.0.0.1:5173,http://localhost:5173`
-   - `VERCEL_ENV=`
-3. `npm run db:push --workspace=server`
-4. `npm run db:seed-playwright-accounts --workspace=server`
-5. `npm run db:seed-test-pharmacies --workspace=server`
-6. server を `3101`、client を `5173` で起動する
-7. `E2E_BASE_URL=http://127.0.0.1:5173 npx playwright test e2e/tests/login-smoke.spec.ts e2e/tests/dashboard-runtime-audit.spec.ts --project chromium --workers=1 --trace on --output artifacts/playwright-audit/test-results --reporter=list,html`
-8. JSON report が必要なら同じ対象を `--reporter=json` で再実行する
+1. `npm run test:e2e:local-login-dashboard` を実行する
+2. proposal flow まで含める場合は `npm run test:e2e:proposal-flow` を実行する
+3. clean DB migration chain の既知不整合を再現したい場合だけ `RUN_MIGRATION_SMOKE=1` を付ける
+4. local Postgres が `127.0.0.1:5432` 以外なら `LOCAL_POSTGRES_ADMIN_URL=postgres://...@127.0.0.1:<port>/postgres` を付ける
 
 ## 6. 証拠パス
+- HTML report:
+  - [login-dashboard html](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/html/login-dashboard/index.html)
+  - [proposal-flow html](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/html/proposal-flow/index.html)
+- JSON report:
+  - [login-dashboard-audit.json](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/json/login-dashboard-audit.json)
+  - [proposal-flow-audit.json](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/json/proposal-flow-audit.json)
 - screenshot:
   - [runtime-user-dashboard.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/runtime-user-dashboard.png)
   - [runtime-admin-dashboard.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/runtime-admin-dashboard.png)
-- HTML report:
-  - [index.html](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/html/index.html)
-- JSON report:
-  - [login-dashboard-audit.json](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/json/login-dashboard-audit.json)
 - trace:
-  - [user-runtime-trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/dashboard-runtime-audit-da-6e64e-board-%E5%88%9D%E6%9C%9F%E8%A1%A8%E7%A4%BA%E3%81%A7-runtime-%E7%95%B0%E5%B8%B8%E3%82%92%E5%87%BA%E3%81%95%E3%81%AA%E3%81%84-chromium-trace.zip)
-  - [admin-runtime-trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/dashboard-runtime-audit-da-edcaa-%E5%AE%B9%E3%81%97%E3%81%A4%E3%81%A4-page-level-error-%E3%82%92%E5%87%BA%E3%81%95%E3%81%AA%E3%81%84-chromium-trace.zip)
-  - [user-login-trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/login-smoke-%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3-smoke-%E4%B8%80%E8%88%AC%E3%83%A6%E3%83%BC%E3%82%B6%E3%83%BC%E3%81%8C%E3%83%80%E3%83%83%E3%82%B7%E3%83%A5%E3%83%9C%E3%83%BC%E3%83%89%E3%81%B8%E5%88%B0%E9%81%94%E3%81%A7%E3%81%8D%E3%82%8B-chromium-trace.zip)
-  - [admin-login-trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/login-smoke-%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3-smoke-%E7%AE%A1%E7%90%86%E8%80%85%E3%81%8C%E7%AE%A1%E7%90%86%E8%80%85%E3%83%80%E3%83%83%E3%82%B7%E3%83%A5%E3%83%9C%E3%83%BC%E3%83%89%E3%81%B8%E5%88%B0%E9%81%94%E3%81%A7%E3%81%8D%E3%82%8B-chromium-trace.zip)
+  - [login user trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/login-dashboard-login-smoke-%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3-smoke-%E4%B8%80%E8%88%AC%E3%83%A6%E3%83%BC%E3%82%B6%E3%83%BC%E3%81%8C%E3%83%80%E3%83%83%E3%82%B7%E3%83%A5%E3%83%9C%E3%83%BC%E3%83%89%E3%81%B8%E5%88%B0%E9%81%94%E3%81%A7%E3%81%8D%E3%82%8B-chromium-trace.zip)
+  - [login admin trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/login-dashboard-login-smoke-%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3-smoke-%E7%AE%A1%E7%90%86%E8%80%85%E3%81%8C%E7%AE%A1%E7%90%86%E8%80%85%E3%83%80%E3%83%83%E3%82%B7%E3%83%A5%E3%83%9C%E3%83%BC%E3%83%89%E3%81%B8%E5%88%B0%E9%81%94%E3%81%A7%E3%81%8D%E3%82%8B-chromium-trace.zip)
+  - [proposal happy path trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/proposal-flow-proposal-flow-%E6%8F%90%E6%A1%88%E3%83%95%E3%83%AD%E3%83%BC-%E3%83%8F%E3%83%83%E3%83%94%E3%83%BC%E3%83%91%E3%82%B9-seed%E2%86%92%E6%8F%90%E6%A1%88%E2%86%92%E7%9B%B8%E4%BA%92%E6%89%BF%E8%AA%8D%E2%86%92%E5%AE%8C%E4%BA%86-chromium-trace.zip)
+  - [proposal reject trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/proposal-flow-proposal-flow-%E6%8F%90%E6%A1%88%E3%83%95%E3%83%AD%E3%83%BC-%E6%8F%90%E6%A1%88%E6%8B%92%E5%90%A6%E3%83%95%E3%83%AD%E3%83%BC-chromium-trace.zip)
+  - [proposal conflict trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/proposal-flow-proposal-flow-%E6%8F%90%E6%A1%88%E3%83%95%E3%83%AD%E3%83%BC-%E7%AB%B6%E5%90%88%E3%82%B7%E3%83%8A%E3%83%AA%E3%82%AA-%E5%9C%A8%E5%BA%AB%E6%B8%9B%E5%B0%91%E5%BE%8C%E3%81%AE%E5%AE%8C%E4%BA%86%E5%A4%B1%E6%95%97%E3%82%92%E8%BF%94%E3%81%99-chromium-trace.zip)
 
 ## 7. 修正内容
-- なし。今回の対象フローでは修正が必要な不具合は再現しませんでした。
+- local audit 安全化:
+  - [playwright-local-db.sh](/Users/yusuke/workspace/DeadStockSolution/scripts/playwright-local-db.sh)
+  - [run-local-login-dashboard-audit.sh](/Users/yusuke/workspace/DeadStockSolution/scripts/run-local-login-dashboard-audit.sh)
+  - [run-proposal-flow-e2e.sh](/Users/yusuke/workspace/DeadStockSolution/scripts/run-proposal-flow-e2e.sh)
+  - [package.json](/Users/yusuke/workspace/DeadStockSolution/package.json)
+- proposal-flow false negative 修正:
+  - [internal-e2e-proposal-flow.ts](/Users/yusuke/workspace/DeadStockSolution/server/src/routes/internal-e2e-proposal-flow.ts)
+- prompt 固定化:
+  - [PROMPT_PLAYWRIGHT_AUDIT_LOCAL_LOGIN_DASHBOARD.md](/Users/yusuke/workspace/DeadStockSolution/PROMPT_PLAYWRIGHT_AUDIT_LOCAL_LOGIN_DASHBOARD.md)
+- wrapper は実行した suite ごとの `summary.json` も更新しますが、監査の source of truth は上記 per-suite JSON / HTML です。
 
 ## 8. 追加/更新テスト
-- なし。既存の Playwright suite を実行して監査しました。
+- 追加した新規 spec はありません。
+- proof として既存 Playwright suite を local isolated DB 上で実行しました。
 - 実行した spec:
-  - [e2e/tests/login-smoke.spec.ts](/Users/yusuke/workspace/DeadStockSolution/e2e/tests/login-smoke.spec.ts)
-  - [e2e/tests/dashboard-runtime-audit.spec.ts](/Users/yusuke/workspace/DeadStockSolution/e2e/tests/dashboard-runtime-audit.spec.ts)
+  - [login-smoke.spec.ts](/Users/yusuke/workspace/DeadStockSolution/e2e/tests/login-smoke.spec.ts)
+  - [dashboard-runtime-audit.spec.ts](/Users/yusuke/workspace/DeadStockSolution/e2e/tests/dashboard-runtime-audit.spec.ts)
+  - [proposal-flow.spec.ts](/Users/yusuke/workspace/DeadStockSolution/e2e/tests/proposal-flow.spec.ts)
 
 ## 9. 未解決事項
-- ローカル監査の安全性が shell 上書きに依存しています。
-- repo 既定の `server/.env` が preview 系設定を含む点は、そのままでは人為ミスを誘発します。
-- 今回は scoped prompt のうち destructive な proposal flow を intentionally 未実施にしました。
+- `RUN_MIGRATION_SMOKE=1` にすると fresh DB migration はまだ失敗します。
+- migration chain 問題自体は今回の task scope 外なので未修正です。
+- `artifacts/playwright-audit/` には過去実行の screenshot / trace も混在しています。今回分は `login-dashboard-` と `proposal-flow-` prefix で追加保存しています。
 
 ## 10. 次の一手
-1. Playwright local audit 用の専用 env ファイルか wrapper script を追加し、preview DB 誤接続を防ぐ
-2. `PROMPT_PLAYWRIGHT_AUDIT_LOCAL_LOGIN_DASHBOARD.md` に「必ず local DB を明示 override する」手順を固定で追記する
-3. 次の監査では `proposal-flow.spec.ts` を同じ一時 DB 戦略で実行し、destructive flow まで確認する
+1. `server/drizzle/0019_upload_confirm_jobs.sql` と `server/drizzle/0021_clean_warpath.sql` の duplicate enum 作成を整理し、`RUN_MIGRATION_SMOKE=1` を既定有効に戻す
+2. proposal-flow wrapper を repo の標準監査導線に昇格させ、master prompt にも destructive flow の安全手順を反映する
+3. 必要なら HTML report の index 集約運用を整理して、login-dashboard / proposal-flow のトップリンクを一箇所にまとめる
 
 ## 実行コマンド
 ```bash
@@ -119,33 +126,9 @@ npx playwright --help
 npx playwright test --help
 npx playwright test --list
 
-npm run db:push --workspace=server
-npm run db:seed-playwright-accounts --workspace=server
-npm run db:seed-test-pharmacies --workspace=server
+npm run test:e2e:local-login-dashboard
+npm run test:e2e:proposal-flow
 
-npm run dev --workspace=server
-npm run dev --workspace=client -- --host 127.0.0.1 --port 5173
-
-E2E_BASE_URL='http://127.0.0.1:5173' \
-PLAYWRIGHT_HTML_OUTPUT_DIR='artifacts/playwright-audit/reports/html' \
-PLAYWRIGHT_HTML_OPEN='never' \
-npx playwright test e2e/tests/login-smoke.spec.ts e2e/tests/dashboard-runtime-audit.spec.ts \
-  --project chromium \
-  --workers=1 \
-  --trace on \
-  --output artifacts/playwright-audit/test-results \
-  --reporter=list,html
-
-E2E_BASE_URL='http://127.0.0.1:5173' \
-npx playwright test e2e/tests/login-smoke.spec.ts e2e/tests/dashboard-runtime-audit.spec.ts \
-  --project chromium \
-  --workers=1 \
-  --trace on \
-  --output artifacts/playwright-audit/test-results \
-  --reporter=json \
-  > artifacts/playwright-audit/reports/json/login-dashboard-audit.json
+RUN_MIGRATION_SMOKE=1 npm run test:e2e:local-login-dashboard
+RUN_MIGRATION_SMOKE=1 npm run test:e2e:proposal-flow
 ```
-
-## 実行結果
-- `npx playwright test --list`: 7 tests in 3 files
-- login/dashboard 対象の実行結果: 4 passed / 0 failed / 0 flaky / duration 4.69s

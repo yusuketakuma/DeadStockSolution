@@ -8,7 +8,40 @@
 
 ## 🟡 未着手のタスク
 
-（なし）
+### v0.0.22 リリース前品質強化 (2026-03-28)
+
+> 14タスク — 3Phase構成、多角的レビュー結果ベース
+>
+> Phase 1 は全タスク並列可。Phase 2 は Phase 1 不要で並列可。Phase 3 は全独立。
+
+#### Phase 1: テスト・安全性 (P0) — 4タスク [P]
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| T1140 | Stripe webhook + subscriptions ルートテスト追加 | stripe-webhook.ts, subscriptions.ts の主要パス（正常/署名不正/イベント種別）をカバーするテストが通過 | - | cc:完了 |
+| T1141 | proposal-templates ルートテスト追加 | proposal-templates.ts の CRUD + バリデーションエラーケースをカバーするテストが通過 | - | cc:完了 |
+| T1142 | push 通知 preference バリデーション確認・補強 | push-notification-preferences-service の入力検証テスト追加、不正カテゴリ名の拒否を確認 | - | cc:完了 |
+| T1143 | E2E proposal flow CI 安定性検証 | CI の proposal-flow-e2e ジョブが seed helper + auth fixture で skip なし完走 | - | cc:完了 |
+
+#### Phase 2: UX・アクセシビリティ (P1) — 5タスク [P]
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| T1144 | NotificationsPage ローディング状態改善 | 初回読み込み時に Spinner/Skeleton 表示、エラー時に再試行ボタン表示を確認 | - | cc:完了 |
+| T1145 | MessagesPage スレッド一覧スケルトン追加 | スレッド読み込み中にプレースホルダー表示、空スレッド時のメッセージ表示を確認 | - | cc:完了 |
+| T1146 | アイコンボタン aria-label 追加 | MatchingPage フィルタ/ソート、BarcodeScanButton、NotificationDropdown の icon-only ボタンに aria-label 追加 | - | cc:完了 |
+| T1147 | 期限切迫表示のアクセシビリティ補強 | ProposalsPage/ProposalDetailPage の urgency 表示に色以外のテキストラベル（例:「期限間近」「期限超過」）を追加 | - | cc:完了 |
+| T1148 | Cron ジョブ実行メトリクスログ統一 | internal-proposal-expiry, dead-stock-archive, daily-statistics, openclaw-retries の各 cron に開始/完了/失敗のstructured log追加 | - | cc:完了 |
+
+#### Phase 3: 保守性・運用ドキュメント (P2) — 5タスク [P]
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| T1149 | MatchingPage コンポーネント分割 | MatchingFiltersPanel, MatchingResultsList, ProposalTemplateSelector を分離、MatchingPage が 300行以下、既存 client テスト全パス | T1146 | cc:完了 |
+| T1150 | チャートコンポーネント遅延ロード | RiskBucketBarChart 等の chart imports を React.lazy() 化、Suspense fallback 追加 | - | cc:完了 |
+| T1151 | Dependabot 設定追加 | `.github/dependabot.yml` 作成（npm weekly, PR上限5件） | - | cc:完了 |
+| T1152 | シークレットローテーション手順書 | `docs/operations/secrets-rotation.md` に JWT_SECRET, CRON_SECRET, Stripe キーの更新手順を記載 | - | cc:完了 |
+| T1153 | マイグレーションロールバック手順書 | `docs/operations/migration-rollback.md` に 0042/0043 含むロールバック手順、確認 SQL を記載 | - | cc:完了 |
 
 ## 🟢 完了タスク
 

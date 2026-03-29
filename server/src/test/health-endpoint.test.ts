@@ -164,10 +164,10 @@ describe('/api/health/openclaw', () => {
     else delete process.env.OPENCLAW_WEBHOOK_SECRET;
   });
 
-  it('returns 503 when OpenClaw connector/webhook are not configured', async () => {
+  it('returns 200 with degraded snapshot when OpenClaw connector/webhook are not configured', async () => {
     const res = await request(app).get('/api/health/openclaw');
 
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(200);
     expect(res.body.status).toBe('degraded');
     expect(res.body.connector.configured).toBe(false);
     expect(res.body.webhook.configured).toBe(false);
@@ -200,5 +200,17 @@ describe('/api/health/openclaw', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.retryQueue.failed).toBe(1);
+  });
+
+  it('returns 503 when health snapshot creation fails unexpectedly', async () => {
+    mocks.dbSelect.mockImplementationOnce(() => ({
+      from: vi.fn().mockRejectedValue(new Error('openclaw health db failed')),
+    }));
+
+    const res = await request(app).get('/api/health/openclaw');
+
+    expect(res.status).toBe(503);
+    expect(res.body.status).toBe('degraded');
+    expect(res.body.error).toBe('openclaw health check failed');
   });
 });

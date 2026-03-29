@@ -134,3 +134,5 @@
 {"id":"event-000121","type":"tool.bash","ts":"2026-03-16T12:05:43Z","state":"stopped","data":{"command":"cd /Users/yusuke/DeadStockSolution/client && npx tsc --noEmit 2>&1 | head -10"}}
 {"id":"event-000122","type":"tool.bash","ts":"2026-03-16T12:05:51Z","state":"stopped","data":{"command":"npm run lint 2>&1 | tail -15"}}
 {"id":"event-000123","type":"tool.bash","ts":"2026-03-25T11:23:24Z","state":"stopped","data":{"command":"cd client && npx vitest run src/__tests__/Header.test.tsx src/__tests__/timeline 2>&1 | tail -30"}}
+{"id":"event-000124","type":"tool.bash","ts":"2026-03-28T05:21:03Z","state":"stopped","data":{"command":"cd /Users/yusuke/workspace/DeadStockSolution/client && npx vitest run --reporter=verbose 2>&1 | tail -15"}}
+{"id":"event-000125","type":"tool.bash","ts":"2026-03-28T05:21:16Z","state":"stopped","data":{"command":"npx vitest run --reporter=verbose 2>&1 | grep "FAIL" | head -10"}}

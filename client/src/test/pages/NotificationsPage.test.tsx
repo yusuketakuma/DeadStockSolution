@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import NotificationsPage from '../../pages/NotificationsPage';
 import { mockUser, renderWithProviders } from '../helpers';
 
@@ -13,6 +13,15 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('NotificationsPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('shows a skeleton while the initial notices request is loading', () => {
+    const pendingFetch = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal('fetch', pendingFetch);
+
+    renderWithProviders(<NotificationsPage />, { route: '/notifications', authUser: mockUser });
+
+    expect(screen.getByLabelText('通知一覧を読み込み中')).toBeInTheDocument();
   });
 
   it('filters notices by unread state and renders the notification center link target', async () => {
@@ -68,5 +77,42 @@ describe('NotificationsPage', () => {
     await waitFor(() => {
       expect(screen.queryByText('運営からのお知らせ')).not.toBeInTheDocument();
     });
+  });
+
+  it('shows a retry button when the initial load fails and reloads successfully', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: '通知の取得に失敗しました' }, 500))
+      .mockResolvedValueOnce(jsonResponse({
+        notices: [
+          {
+            id: 'notification-9',
+            type: 'status_update',
+            title: '再試行後の通知',
+            body: '再読み込みで取得できました',
+            actionPath: '/proposals/9',
+            actionLabel: '詳細へ',
+            createdAt: '2026-03-28T00:00:00.000Z',
+            deadlineAt: null,
+            unread: true,
+            priority: 2,
+          },
+        ],
+        summary: { unreadMessages: 0, actionableRequests: 0, total: 1 },
+        pagination: { limit: 20, hasMore: false, nextCursor: null },
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<NotificationsPage />, { route: '/notifications', authUser: mockUser });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('再試行後の通知')).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

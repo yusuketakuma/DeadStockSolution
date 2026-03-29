@@ -103,6 +103,7 @@ function buildCandidateMatchItem(
   return {
     item: {
       deadStockItemId: stock.id,
+      drugCode: stock.drugCode,
       drugName: stock.drugName,
       quantity: stock.quantity,
       unit: stock.unit,

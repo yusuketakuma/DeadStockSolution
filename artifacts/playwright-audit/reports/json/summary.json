@@ -1,0 +1,40 @@
+{
+  "executedAt": "2026-03-29T08:51:20.180Z",
+  "playwrightVersion": "1.58.2",
+  "baseUrl": "http://127.0.0.1:5173",
+  "apiUrl": "http://127.0.0.1:3101",
+  "status": "passed",
+  "suites": [
+    {
+      "name": "proposal-flow",
+      "specs": [
+        "e2e/tests/proposal-flow.spec.ts"
+      ],
+      "reportJson": "artifacts/playwright-audit/reports/json/proposal-flow-audit.json",
+      "reportHtml": "artifacts/playwright-audit/reports/html/proposal-flow/index.html",
+      "expected": 3,
+      "unexpected": 0,
+      "flaky": 0,
+      "skipped": 0,
+      "durationMs": 5069.407999999999
+    }
+  ],
+  "totals": {
+    "expected": 3,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "durationMs": 5069.407999999999
+  },
+  "executedVia": [
+    "npm run test:e2e:proposal-flow"
+  ],
+  "appliedFixes": [
+    "local-playwright-db-wrapper",
+    "proposal-flow-seed-non-admin-account-filter",
+    "single-run-playwright-multi-reporter"
+  ],
+  "knownIssues": [
+    "db:migrate clean-db smoke is disabled by default because server/drizzle/0019_upload_confirm_jobs.sql and server/drizzle/0021_clean_warpath.sql both create upload_job_status_enum on a fresh database."
+  ]
+}

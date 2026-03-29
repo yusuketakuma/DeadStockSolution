@@ -44,7 +44,10 @@ async function loadTestAccounts(): Promise<TestAccountRow[]> {
     prefecture: pharmacies.prefecture,
   })
     .from(pharmacies)
-    .where(eq(pharmacies.isTestAccount, true))
+    .where(and(
+      eq(pharmacies.isTestAccount, true),
+      eq(pharmacies.isAdmin, false),
+    ))
     .orderBy(pharmacies.id);
 }
 
@@ -126,10 +129,10 @@ router.post('/seed', async (req, res: Response) => {
       uploadId: actorDeadUploadId,
       drugCode: 'E2E-DRUG-A',
       drugName: 'テスト薬A',
-      quantity: 10,
+      quantity: 100,
       unit: '錠',
       yakkaUnitPrice: '100',
-      yakkaTotal: '1000',
+      yakkaTotal: '10000',
       expirationDate: '2026-06-30',
       expirationDateIso: '2026-06-30',
       lotNumber: 'LOT-A',
@@ -141,10 +144,10 @@ router.post('/seed', async (req, res: Response) => {
       uploadId: counterpartyDeadUploadId,
       drugCode: 'E2E-DRUG-B',
       drugName: 'テスト薬B',
-      quantity: 10,
+      quantity: 100,
       unit: '錠',
       yakkaUnitPrice: '100',
-      yakkaTotal: '1000',
+      yakkaTotal: '10000',
       expirationDate: '2026-07-31',
       expirationDateIso: '2026-07-31',
       lotNumber: 'LOT-B',
@@ -208,16 +211,22 @@ router.post('/deplete', async (req, res: Response) => {
     }
 
     const deadStockItemId = Number(req.body?.deadStockItemId);
-    const quantity = Number(req.body?.quantity ?? 0);
-    const isAvailable = req.body?.isAvailable !== false ? false : false;
+    const hasQuantity = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'quantity');
+    const quantity = Number(req.body?.quantity);
+    const isAvailable = typeof req.body?.isAvailable === 'boolean' ? req.body.isAvailable : false;
     if (!Number.isInteger(deadStockItemId) || deadStockItemId <= 0) {
       res.status(400).json({ error: 'deadStockItemId is required' });
+      return;
+    }
+    if (hasQuantity && (!Number.isFinite(quantity) || quantity < 0)) {
+      res.status(400).json({ error: 'quantity must be a non-negative number' });
       return;
     }
 
     const [updated] = await db.update(deadStockItems)
       .set({
-        quantity: Number.isFinite(quantity) && quantity >= 0 ? quantity : 0,
+        // Schema requires quantity > 0, so "0" means mark the stock unavailable without writing zero.
+        ...(hasQuantity && quantity > 0 ? { quantity } : {}),
         isAvailable,
       })
       .where(eq(deadStockItems.id, deadStockItemId))

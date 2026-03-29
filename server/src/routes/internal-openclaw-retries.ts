@@ -10,6 +10,7 @@ import { parseBoundedInt } from '../utils/number-utils';
 const router = Router();
 
 async function handleRun(req: Request, res: Response): Promise<void> {
+  const startedAt = Date.now();
   try {
     const authHeader = typeof req.headers.authorization === 'string'
       ? req.headers.authorization
@@ -29,9 +30,22 @@ async function handleRun(req: Request, res: Response): Promise<void> {
 
     const limitStr = typeof req.query.limit === 'string' ? req.query.limit : undefined;
     const limit = parseBoundedInt(limitStr, 20, 1, 100);
+    logger.info('OpenClaw retries cron started', {
+      cronName: 'openclaw_retries',
+      method: req.method,
+      limit,
+    });
     const result = await processPendingOpenClawRetries(limit);
     const stats = await getOpenClawRetryQueueSnapshot();
 
+    logger.info('OpenClaw retries cron completed', {
+      cronName: 'openclaw_retries',
+      method: req.method,
+      limit,
+      durationMs: Date.now() - startedAt,
+      ...result,
+      stats,
+    });
     res.json({
       message: 'ok',
       ...result,
@@ -39,6 +53,9 @@ async function handleRun(req: Request, res: Response): Promise<void> {
     });
   } catch (err) {
     logger.error('OpenClaw retries cron run failed', {
+      cronName: 'openclaw_retries',
+      method: req.method,
+      durationMs: Date.now() - startedAt,
       error: err instanceof Error ? err.message : String(err),
     });
     res.status(500).json({ error: 'openclaw retries run failed' });

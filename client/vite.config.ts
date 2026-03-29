@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, projectRoot, '');
   const envVersion = env.VITE_APP_VERSION?.trim();
   const appVersion = normalizeVersion(envVersion || readVersionFile());
+  const apiProxyTarget = env.VITE_API_PROXY_TARGET?.trim() || 'http://127.0.0.1:3001';
 
   const plugins: PluginOption[] = [react()];
 
@@ -110,7 +111,7 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       proxy: {
         '/api': {
-          target: 'http://localhost:3001',
+          target: apiProxyTarget,
           changeOrigin: true,
         },
       },

@@ -106,6 +106,11 @@ function sanitizeProposalError(err: unknown): { status: number; message: string 
       message: 'マッチングが見つかりません',
     },
     {
+      tokens: ['在庫状態の問題により交換を完了できません'],
+      status: 400,
+      message: '在庫状態の問題により交換を完了できません',
+    },
+    {
       tokens: ['状態が変更された'],
       status: 409,
       message: '状態が変更されたため、再読み込みして再試行してください',
@@ -442,6 +447,7 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
       totalValueB: exchangeProposals.totalValueB,
       valueDifference: exchangeProposals.valueDifference,
       proposedAt: exchangeProposals.proposedAt,
+      expiresAt: exchangeProposals.expiresAt,
       expiryReminderSentAt: exchangeProposals.expiryReminderSentAt,
       pharmacyAName,
       pharmacyBName,
@@ -455,7 +461,7 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
       OR (${exchangeProposals.status} = 'accepted_a' AND ${exchangeProposals.pharmacyBId} = ${pharmacyId})
       OR (${exchangeProposals.status} = 'accepted_b' AND ${exchangeProposals.pharmacyAId} = ${pharmacyId})
     )`;
-    const deadlineAtExpr = sql`(${exchangeProposals.proposedAt} + interval '72 hours')`;
+    const deadlineAtExpr = sql`COALESCE(${exchangeProposals.expiresAt}, (${exchangeProposals.proposedAt} + interval '72 hours'))`;
     const priorityScoreExpr = sql<number>`(
       CASE
         WHEN ${exchangeProposals.status} = 'confirmed' THEN 70
@@ -510,6 +516,7 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
         pharmacyBId: row.pharmacyBId,
         status: row.status,
         proposedAt: row.proposedAt,
+        expiresAt: row.expiresAt,
       }, pharmacyId);
 
       return {

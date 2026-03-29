@@ -30,7 +30,7 @@ const PushPreferenceCategoriesBody = z.object({
   groups: z.boolean().optional(),
   alerts: z.boolean().optional(),
   admin: z.boolean().optional(),
-}).optional();
+}).strict().optional();
 
 const PushPreferencesBody = z.object({
   categories: PushPreferenceCategoriesBody,

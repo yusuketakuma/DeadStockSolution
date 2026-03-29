@@ -58,6 +58,18 @@ Rules:
 - `status_update` should be short and non-duplicative
 - `pr_opened` must include `branchName`, `prUrl`, and `prNumber`
 - `failed` must include a concrete blocking reason and the next best recovery step
+- preserve the existing `threadId` on follow-up cases; do not mint a new thread for resumed work
+
+## commandsUrl
+
+When `callbacks.commandsUrl` is present, `dss-manager` may ask the runner to execute app-side commands.
+
+Rules:
+
+- use commands only for app-side information retrieval or tightly scoped control actions
+- treat `callbacks.auth=openclaw_webhook_hmac` as the signing contract
+- keep command requests explicit and whitelist-safe
+- if a required command fails, report failure instead of pretending completion
 
 ## Idempotency
 

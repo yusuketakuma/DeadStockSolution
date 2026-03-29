@@ -6,6 +6,7 @@ export interface ProposalPriorityInput {
   pharmacyBId: number;
   status: string;
   proposedAt: string | null;
+  expiresAt?: string | null;
 }
 
 export interface ProposalPriority {
@@ -18,7 +19,13 @@ function to2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function buildDeadlineAt(proposedAt: string | null): string | null {
+function buildDeadlineAt(proposedAt: string | null, expiresAt?: string | null): string | null {
+  if (expiresAt) {
+    const explicitTs = new Date(expiresAt).getTime();
+    if (Number.isFinite(explicitTs)) {
+      return new Date(explicitTs).toISOString();
+    }
+  }
   if (!proposedAt) return null;
   const ts = new Date(proposedAt).getTime();
   if (!Number.isFinite(ts)) return null;
@@ -66,7 +73,7 @@ function isInboundWaiting(input: ProposalPriorityInput, viewerPharmacyId: number
 export function getProposalPriority(input: ProposalPriorityInput, viewerPharmacyId: number): ProposalPriority {
   const inboundWaiting = isInboundWaiting(input, viewerPharmacyId);
   const outbound = input.pharmacyAId === viewerPharmacyId;
-  const deadlineAt = buildDeadlineAt(input.proposedAt);
+  const deadlineAt = buildDeadlineAt(input.proposedAt, input.expiresAt);
   const basePriority = buildProposalStatusPriority(input, inboundWaiting, outbound);
   let score = basePriority.score;
   const reasons = [...basePriority.reasons];

@@ -88,6 +88,7 @@ export interface PreparedDrugName {
 export interface DeadStockRow {
   id: number;
   pharmacyId: number;
+  drugCode: string | null;
   drugName: string;
   quantity: number;
   unit: string | null;

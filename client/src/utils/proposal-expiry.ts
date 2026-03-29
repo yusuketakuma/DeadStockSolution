@@ -35,6 +35,7 @@ export function getProposalDeadlineMeta(deadlineAt: string | null | undefined): 
   isExpired: boolean;
   isDueSoon: boolean;
   remainingLabel: string;
+  urgencyLabel: string | null;
 } {
   const deadline = parseIso(deadlineAt);
   if (!deadline) {
@@ -42,6 +43,7 @@ export function getProposalDeadlineMeta(deadlineAt: string | null | undefined): 
       isExpired: false,
       isDueSoon: false,
       remainingLabel: '期限設定なし',
+      urgencyLabel: null,
     };
   }
 
@@ -51,6 +53,7 @@ export function getProposalDeadlineMeta(deadlineAt: string | null | undefined): 
       isExpired: true,
       isDueSoon: false,
       remainingLabel: '期限切れ',
+      urgencyLabel: '期限超過',
     };
   }
 
@@ -63,6 +66,7 @@ export function getProposalDeadlineMeta(deadlineAt: string | null | undefined): 
       isExpired: false,
       isDueSoon: true,
       remainingLabel: `残り${diffMinutes}分`,
+      urgencyLabel: '期限間近',
     };
   }
 
@@ -71,12 +75,15 @@ export function getProposalDeadlineMeta(deadlineAt: string | null | undefined): 
       isExpired: false,
       isDueSoon: true,
       remainingLabel: `残り${diffHours}時間`,
+      urgencyLabel: '期限間近',
     };
   }
 
+  const isDueSoon = diffDays <= 2;
   return {
     isExpired: false,
-    isDueSoon: diffDays <= 2,
+    isDueSoon,
     remainingLabel: `残り${diffDays}日`,
+    urgencyLabel: isDueSoon ? '期限間近' : null,
   };
 }

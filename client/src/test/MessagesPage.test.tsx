@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import MessagesPage from '../pages/MessagesPage';
-import { markThreadRead } from '../api/messages';
+import { fetchThreads, fetchThread, markThreadRead } from '../api/messages';
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -11,16 +11,8 @@ vi.mock('../contexts/AuthContext', () => ({
 }));
 
 vi.mock('../api/messages', () => ({
-  fetchThreads: vi.fn().mockResolvedValue({
-    data: [{
-      otherPharmacyId: 2,
-      otherPharmacyName: '相手薬局',
-      lastMessageBody: 'こんにちは',
-      lastMessageAt: '2026-03-24T10:00:00.000Z',
-      unreadCount: 1,
-    }],
-  }),
-  fetchThread: vi.fn().mockResolvedValue({ data: [], pagination: { totalPages: 1 } }),
+  fetchThreads: vi.fn(),
+  fetchThread: vi.fn(),
   sendMessage: vi.fn().mockResolvedValue({}),
   markThreadRead: vi.fn().mockResolvedValue({}),
 }));
@@ -28,6 +20,50 @@ vi.mock('../api/messages', () => ({
 window.HTMLElement.prototype.scrollIntoView = vi.fn();
 
 describe('MessagesPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fetchThreads).mockResolvedValue({
+      data: [{
+        otherPharmacyId: 2,
+        otherPharmacyName: '相手薬局',
+        lastMessageBody: 'こんにちは',
+        lastMessageAt: '2026-03-24T10:00:00.000Z',
+        lastMessageSenderId: 2,
+        unreadCount: 1,
+        waitingOn: null,
+        isOverdue: false,
+        hasAttachments: false,
+      }],
+    });
+    vi.mocked(fetchThread).mockResolvedValue({ data: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 1 } });
+  });
+
+  it('shows a thread list skeleton while loading threads', () => {
+    vi.mocked(fetchThreads).mockImplementation(() => new Promise(() => {}));
+
+    render(
+      <MemoryRouter initialEntries={['/messages']}>
+        <MessagesPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByLabelText('スレッド一覧を読み込み中').length).toBeGreaterThan(0);
+  });
+
+  it('shows an empty state when there are no threads', async () => {
+    vi.mocked(fetchThreads).mockResolvedValue({ data: [] });
+
+    render(
+      <MemoryRouter initialEntries={['/messages']}>
+        <MessagesPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('メッセージはありません').length).toBeGreaterThan(0);
+    });
+  });
+
   it('uses document-level vertical scrolling instead of fixed-height inner scrolling', async () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/messages']}>

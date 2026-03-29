@@ -3124,7 +3124,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OpenClaw healthy",
+            "description": "OpenClaw health snapshot",
             "content": {
               "application/json": {
                 "schema": {
@@ -3134,7 +3134,7 @@
             }
           },
           "503": {
-            "description": "OpenClaw degraded",
+            "description": "OpenClaw health check unavailable",
             "content": {
               "application/json": {
                 "schema": {

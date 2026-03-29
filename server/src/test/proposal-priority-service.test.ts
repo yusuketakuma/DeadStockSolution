@@ -25,6 +25,20 @@ describe('proposal-priority-service', () => {
     expect(result.deadlineAt).toBe('2026-03-02T00:00:00.000Z');
   });
 
+  it('uses explicit expiresAt when present', () => {
+    const result = getProposalPriority({
+      id: 12,
+      pharmacyAId: 1,
+      pharmacyBId: 2,
+      status: 'proposed',
+      proposedAt: '2026-02-27T00:00:00.000Z',
+      expiresAt: '2026-03-01T12:00:00.000Z',
+    }, 2);
+
+    expect(result.deadlineAt).toBe('2026-03-01T12:00:00.000Z');
+    expect(result.priorityReasons).toEqual(expect.arrayContaining(['あなたの承認待ち', '承認期限が24時間以内']));
+  });
+
   it('adds overdue reason when deadline is passed', () => {
     const result = getProposalPriority({
       id: 11,

@@ -1,14 +1,8 @@
 {
-  "F1BD3A88-A7E7-483F-A20E-43752D30E31B": {
-    "short_id": "F1BD3A88-A7E",
-    "last_seen": 1774487473,
-    "pid": "75733",
-    "status": "active"
-  },
-  "8EE28F84-82C1-4D81-9626-AC3EDE30AB06": {
-    "short_id": "8EE28F84-82C",
-    "last_seen": 1774524326,
-    "pid": "96965",
+  "83A05B2D-FCE8-4A24-B09A-66E293726058": {
+    "short_id": "83A05B2D-FCE",
+    "last_seen": 1774774483,
+    "pid": "58075",
     "status": "active"
   }
 }

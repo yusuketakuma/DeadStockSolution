@@ -16,7 +16,7 @@
     "preserveOutput": "always",
     "projects": [
       {
-        "outputDir": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results",
+        "outputDir": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results/login-dashboard",
         "repeatEach": 1,
         "retries": 1,
         "metadata": {
@@ -34,6 +34,12 @@
     ],
     "quiet": false,
     "reporter": [
+      [
+        "list"
+      ],
+      [
+        "html"
+      ],
       [
         "json"
       ]
@@ -81,18 +87,18 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1021,
+                      "duration": 1277,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-29T07:40:09.450Z",
+                      "startTime": "2026-03-29T08:51:06.363Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results/dashboard-runtime-audit-da-6e64e-board-初期表示で-runtime-異常を出さない-chromium/trace.zip"
+                          "path": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results/login-dashboard/dashboard-runtime-audit-da-6e64e-board-初期表示で-runtime-異常を出さない-chromium/trace.zip"
                         }
                       ]
                     }
@@ -121,18 +127,18 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 965,
+                      "duration": 1026,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-29T07:40:10.912Z",
+                      "startTime": "2026-03-29T08:51:08.440Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results/dashboard-runtime-audit-da-edcaa-容しつつ-page-level-error-を出さない-chromium/trace.zip"
+                          "path": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results/login-dashboard/dashboard-runtime-audit-da-edcaa-容しつつ-page-level-error-を出さない-chromium/trace.zip"
                         }
                       ]
                     }
@@ -178,18 +184,18 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 877,
+                      "duration": 899,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-29T07:40:11.919Z",
+                      "startTime": "2026-03-29T08:51:09.514Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results/login-smoke-ログイン-smoke-一般ユーザーがダッシュボードへ到達できる-chromium/trace.zip"
+                          "path": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results/login-dashboard/login-smoke-ログイン-smoke-一般ユーザーがダッシュボードへ到達できる-chromium/trace.zip"
                         }
                       ]
                     }
@@ -218,18 +224,18 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 851,
+                      "duration": 900,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-29T07:40:12.837Z",
+                      "startTime": "2026-03-29T08:51:10.457Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results/login-smoke-ログイン-smoke-管理者が管理者ダッシュボードへ到達できる-chromium/trace.zip"
+                          "path": "/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/test-results/login-dashboard/login-smoke-ログイン-smoke-管理者が管理者ダッシュボードへ到達できる-chromium/trace.zip"
                         }
                       ]
                     }
@@ -249,8 +255,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-03-29T07:40:09.070Z",
-    "duration": 4685.588,
+    "startTime": "2026-03-29T08:51:05.816Z",
+    "duration": 5620.416,
     "expected": 4,
     "skipped": 0,
     "unexpected": 0,
