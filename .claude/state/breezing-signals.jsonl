@@ -1,0 +1,1 @@
+{"signal":"ci_failure_detected","timestamp":"2026-03-29T09:05:42Z","conclusion":"failure","trigger_command":"git push origin preview"}
