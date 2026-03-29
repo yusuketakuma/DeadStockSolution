@@ -200,6 +200,13 @@
 }
 
 /* ===== Sidebar (Mobile Offcanvas) ===== */
+.sidebar-mobile {
+  --bs-offcanvas-bg: var(--sidebar-bg);
+  --bs-offcanvas-color: #e2e8f0;
+  background: var(--sidebar-bg);
+  color: #e2e8f0;
+}
+
 .sidebar-mobile .offcanvas-body {
   background: var(--sidebar-bg);
 }
@@ -208,6 +215,10 @@
   background: var(--sidebar-bg);
   color: #fff;
   border-bottom: 1px solid var(--sidebar-active-bg);
+}
+
+.sidebar-mobile .offcanvas-header .offcanvas-title {
+  color: #fff;
 }
 
 .sidebar-mobile .offcanvas-header .btn-close {
