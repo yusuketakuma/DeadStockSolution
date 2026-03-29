@@ -766,3 +766,25 @@ feat: v0.0.22 sprint — MatchingPage refactor, CRON auth, E2E
 {"id":"event-000081","type":"tool.bash","ts":"2026-03-29T13:36:52Z","state":"stopped","data":{"command":"npx tsc --noEmit --project client/tsconfig.json 2>&1 | grep -c "error" || echo "0 errors""}}
 {"id":"event-000082","type":"tool.bash","ts":"2026-03-29T13:37:31Z","state":"stopped","data":{"command":"git status -s"}}
 {"id":"event-000083","type":"tool.bash","ts":"2026-03-29T13:37:31Z","state":"stopped","data":{"command":"git diff --stat HEAD"}}
+{"id":"event-000084","type":"tool.bash","ts":"2026-03-29T13:37:42Z","state":"stopped","data":{"command":"git add client/src/components/Header.tsx client/src/pages/NotificationsPage.tsx client/src/styles/sections/mobile.css server/src/services/timeline-unread-counts.ts server/src/test/timeline-unread-coun"}}
+{"id":"event-000085","type":"tool.edit","ts":"2026-03-29T13:39:58Z","state":"stopped","data":{"file_path":"/Users/yusuke/workspace/DeadStockSolution/client/src/styles/sections/layout-sidebar.css"}}
+{"id":"event-000086","type":"tool.bash","ts":"2026-03-29T13:40:06Z","state":"stopped","data":{"command":"git add client/src/styles/sections/layout-sidebar.css && git commit -m "$(cat <<'EOF'
+fix: force dark background on mobile sidebar offcanvas
+
+Override Bootstrap's --bs-offcanvas-bg variable on .sideba"}}
+{"id":"event-000087","type":"tool.bash","ts":"2026-03-29T13:43:44Z","state":"stopped","data":{"command":"find /Users/yusuke/workspace/DeadStockSolution -type f -name "*.ts" | grep -E "(matching|schema)" | head -20"}}
+{"id":"event-000088","type":"tool.bash","ts":"2026-03-29T13:44:02Z","state":"stopped","data":{"command":"find /Users/yusuke/workspace/DeadStockSolution/server/src -name "types*" -type f | head -20"}}
+{"id":"event-000089","type":"tool.bash","ts":"2026-03-29T13:44:06Z","state":"stopped","data":{"command":"find /Users/yusuke/workspace/DeadStockSolution/server/src/types -name "*matching*" -type f"}}
+{"id":"event-000090","type":"tool.edit","ts":"2026-03-29T14:09:42Z","state":"stopped","data":{"file_path":"/Users/yusuke/workspace/DeadStockSolution/server/src/services/data-extractor.ts"}}
+{"id":"event-000091","type":"tool.edit","ts":"2026-03-29T14:09:49Z","state":"stopped","data":{"file_path":"/Users/yusuke/workspace/DeadStockSolution/server/src/services/data-extractor.ts"}}
+{"id":"event-000092","type":"tool.edit","ts":"2026-03-29T14:10:01Z","state":"stopped","data":{"file_path":"/Users/yusuke/workspace/DeadStockSolution/server/src/routes/upload-validation.ts"}}
+{"id":"event-000093","type":"tool.edit","ts":"2026-03-29T14:10:31Z","state":"stopped","data":{"file_path":"/Users/yusuke/workspace/DeadStockSolution/client/src/pages/UploadPage.tsx"}}
+{"id":"event-000094","type":"tool.edit","ts":"2026-03-29T14:10:38Z","state":"stopped","data":{"file_path":"/Users/yusuke/workspace/DeadStockSolution/client/src/pages/UploadPage.tsx"}}
+{"id":"event-000095","type":"tool.bash","ts":"2026-03-29T14:10:46Z","state":"stopped","data":{"command":"npx tsc --noEmit --project server/tsconfig.json 2>&1 | head -10"}}
+{"id":"event-000096","type":"tool.bash","ts":"2026-03-29T14:10:48Z","state":"stopped","data":{"command":"npx tsc --noEmit --project client/tsconfig.json 2>&1 | head -10"}}
+{"id":"event-000097","type":"tool.bash","ts":"2026-03-29T14:10:59Z","state":"stopped","data":{"command":"npx vitest run server/src/test/data-extractor.test.ts --reporter=verbose 2>&1 | tail -40"}}
+{"id":"event-000098","type":"tool.write","ts":"2026-03-29T14:11:37Z","state":"stopped","data":{"file_path":"/Users/yusuke/workspace/DeadStockSolution/server/src/test/data-extractor.test.ts"}}
+{"id":"event-000099","type":"tool.bash","ts":"2026-03-29T14:11:43Z","state":"stopped","data":{"command":"npx vitest run server/src/test/data-extractor.test.ts --reporter=verbose 2>&1 | tail -30"}}
+{"id":"event-000100","type":"tool.bash","ts":"2026-03-29T14:11:55Z","state":"stopped","data":{"command":"git add server/src/services/data-extractor.ts server/src/routes/upload-validation.ts server/src/test/data-extractor.test.ts client/src/pages/UploadPage.tsx && git commit -m "$(cat <<'EOF'
+feat: requir"}}
+{"id":"event-000101","type":"tool.bash","ts":"2026-03-29T15:08:22Z","state":"stopped","data":{"command":"git status -s"}}
