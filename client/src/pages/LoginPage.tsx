@@ -275,7 +275,7 @@ export default function LoginPage() {
             <div className="card-body p-4 p-md-5">
               <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
                 <div>
-                  <p className="text-uppercase text-muted small mb-1">Sign in</p>
+                  <p className="text-uppercase text-muted small mb-1">ログイン</p>
                   <h1 className="h3 mb-1">薬局デッドストック交換システム</h1>
                   <p className="text-muted mb-0">
                     登録済みアカウントでログインしてください。

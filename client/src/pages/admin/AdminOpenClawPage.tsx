@@ -3,7 +3,7 @@ import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import { Badge } from 'react-bootstrap';
 import AppCard from '../../components/ui/AppCard';
-import { api } from '../../api/client';
+import { api, ApiError } from '../../api/client';
 import AppSelect from '../../components/ui/AppSelect';
 import InlineLoader from '../../components/ui/InlineLoader';
 import LoadingButton from '../../components/ui/LoadingButton';
@@ -13,6 +13,10 @@ import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import { useSseRefresh } from '../../hooks/useSseRefresh';
 import { formatDateTimeJa } from '../../utils/formatters';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
+
+function isNotConfiguredError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 503;
+}
 
 const LIVE_REFRESH_INTERVAL_MS = 60_000;
 
@@ -212,6 +216,7 @@ export default function AdminOpenClawPage() {
   const [rotatingControlToken, setRotatingControlToken] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [notConfigured, setNotConfigured] = useState(false);
 
   const workflowCount = requests.reduce<Record<string, number>>((acc, item) => {
     const key = item.workflowStatus ?? 'queued';
@@ -237,6 +242,7 @@ export default function AdminOpenClawPage() {
       const data = await api.get<UserRequestsResponse>('/admin/requests?page=1&limit=50');
       setRequests(data.data);
       setConnectorMeta(data.connector ?? null);
+      setNotConfigured(false);
       setSelectedRequestId((current) => {
         if (current && data.data.some((item) => item.id === current)) {
           return current;
@@ -244,7 +250,9 @@ export default function AdminOpenClawPage() {
         return data.data[0]?.id ?? null;
       });
     } catch (err) {
-      if (!background) {
+      if (isNotConfiguredError(err)) {
+        if (!background) setNotConfigured(true);
+      } else if (!background) {
         setError(err instanceof Error ? err.message : 'OpenClaw連携情報の取得に失敗しました');
       }
     } finally {
@@ -301,7 +309,9 @@ export default function AdminOpenClawPage() {
       setRetryItems(data.data);
       setRetryStats(data.stats ?? null);
     } catch (err) {
-      if (!background) {
+      if (isNotConfiguredError(err)) {
+        // リトライキューは未設定時も503を返す — エラーバナーは出さない
+      } else if (!background) {
         setError(err instanceof Error ? err.message : 'リトライキューの取得に失敗しました');
       }
     } finally {
@@ -319,8 +329,11 @@ export default function AdminOpenClawPage() {
       ]);
       setHealth(healthData);
       setDdsStatus(ddsData.data);
+      setNotConfigured(false);
     } catch (err) {
-      if (!background) {
+      if (isNotConfiguredError(err)) {
+        if (!background) setNotConfigured(true);
+      } else if (!background) {
         setError(err instanceof Error ? err.message : 'OpenClawヘルス情報の取得に失敗しました');
       }
     }
@@ -417,6 +430,22 @@ export default function AdminOpenClawPage() {
 
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
+
+      {notConfigured && (
+        <AppCard className="mb-3">
+          <AppCard.Body>
+            <div className="d-flex align-items-center gap-2 mb-2">
+              <Badge bg="secondary">未設定</Badge>
+              <span className="fw-semibold">OpenClaw 連携は設定されていません</span>
+            </div>
+            <div className="text-muted small">
+              OpenClaw 連携を有効にするには、サーバー側で
+              <code className="mx-1">OPENCLAW_WEBHOOK_SECRET</code>
+              などの環境変数を設定してください。設定後にページを再読み込みすると連携状態が反映されます。
+            </div>
+          </AppCard.Body>
+        </AppCard>
+      )}
 
       <ScrollArea>
       <AppCard className="mb-3">

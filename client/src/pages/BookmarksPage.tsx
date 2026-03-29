@@ -133,7 +133,7 @@ export default function BookmarksPage() {
     <PageShell>
       <h4 className="page-title mb-3">ブックマーク</h4>
       <ScrollArea>
-        {error && (
+        {error && items.length > 0 && (
           <ErrorRetryAlert
             error={error}
             onRetry={() => { void loadPage(page); }}
@@ -155,10 +155,12 @@ export default function BookmarksPage() {
 
         {loading && <InlineLoader />}
 
-        {!loading && items.length === 0 && (
+        {!loading && items.length === 0 && !error && (
           <AppEmptyState
             title="ブックマークがありません"
             description="マッチングページで候補薬局をブックマークすると、ここに表示されます。"
+            actionLabel="マッチングへ"
+            actionTo="/matching"
           />
         )}
 

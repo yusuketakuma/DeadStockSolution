@@ -157,6 +157,18 @@ function hasAttentionSection(summary: StatisticsSummary): boolean {
   return summary.proposals.pendingAction > 0 || summary.alerts.activeCount > 0;
 }
 
+function isAllZero(summary: StatisticsSummary): boolean {
+  return (
+    summary.uploads.deadStockCount === 0 &&
+    summary.uploads.usedMedicationCount === 0 &&
+    summary.inventory.deadStockItems === 0 &&
+    summary.proposals.sent === 0 &&
+    summary.proposals.received === 0 &&
+    summary.proposals.completed === 0 &&
+    summary.exchanges.totalCount === 0
+  );
+}
+
 function BucketRiskBadges({ buckets }: { buckets: BucketCounts }) {
   const hasRisk = buckets.expired > 0 || buckets.within30 > 0 || buckets.within60 > 0 || buckets.within90 > 0;
 
@@ -243,6 +255,13 @@ export default function StatisticsPage() {
             )}
           </Row>
         </AppDataPanel>
+      )}
+
+      {/* ゼロデータ案内 */}
+      {!loading && isAllZero(summary) && (
+        <p className="text-muted small text-center mt-2 mb-3">
+          データがアップロードされると統計情報が表示されます
+        </p>
       )}
 
       {/* アップロード実績 */}

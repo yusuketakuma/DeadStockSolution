@@ -441,6 +441,8 @@ export default function AlertListPage() {
                 <AppEmptyState
                   title={resolvedTab === 'unresolved' ? '未解決のアラートはありません' : '解決済みのアラートはありません'}
                   description="アラートが検出されると、ここに表示されます。"
+                  actionLabel="ダッシュボードへ"
+                  actionTo="/"
                 />
               ) : (
                 <AppResponsiveSwitch

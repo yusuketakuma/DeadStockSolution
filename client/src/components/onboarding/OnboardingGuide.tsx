@@ -1,4 +1,4 @@
-import { Modal, ProgressBar, ListGroup } from 'react-bootstrap';
+import { Card, ProgressBar, ListGroup } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import AppButton from '../ui/AppButton';
 import { ONBOARDING_STEPS } from './onboardingSteps';
@@ -18,16 +18,21 @@ export default function OnboardingGuide({ status, onDismiss }: Props) {
   const progress = Math.round((completedCount / ONBOARDING_STEPS.length) * 100);
 
   const handleAction = (path: string) => {
-    onDismiss();
     navigate(path);
   };
 
   return (
-    <Modal show centered size="lg" onHide={onDismiss}>
-      <Modal.Header closeButton>
-        <Modal.Title>はじめてのセットアップガイド</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
+    <Card className="mb-3 border-primary">
+      <Card.Header className="d-flex justify-content-between align-items-center">
+        <span className="fw-semibold">はじめてのセットアップガイド</span>
+        <button
+          type="button"
+          className="btn-close"
+          aria-label="閉じる"
+          onClick={onDismiss}
+        />
+      </Card.Header>
+      <Card.Body>
         <ProgressBar now={progress} label={`${completedCount}/${ONBOARDING_STEPS.length}`} className="mb-3" />
         <ListGroup variant="flush">
           {ONBOARDING_STEPS.map((step) => {
@@ -56,10 +61,7 @@ export default function OnboardingGuide({ status, onDismiss }: Props) {
             );
           })}
         </ListGroup>
-      </Modal.Body>
-      <Modal.Footer>
-        <AppButton variant="link" onClick={onDismiss}>後で表示する</AppButton>
-      </Modal.Footer>
-    </Modal>
+      </Card.Body>
+    </Card>
   );
 }

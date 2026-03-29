@@ -122,7 +122,7 @@ export default function AdminRiskPage() {
               <AppKpiCard value={formatCountJa(overview?.mediumRiskPharmacies)} label="中リスク薬局" />
             </div>
             <div className="col-md-3">
-              <AppKpiCard value={overview ? Number(overview.avgRiskScore).toFixed(1) : '-'} label="平均リスクスコア" />
+              <AppKpiCard value={overview ? (overview.avgRiskScore === 0 ? '0' : Number(overview.avgRiskScore).toFixed(1)) : '-'} label="平均リスクスコア" />
             </div>
           </div>
 
@@ -151,7 +151,7 @@ export default function AdminRiskPage() {
                         <tr key={row.pharmacyId}>
                           <td>{row.pharmacyName}</td>
                           <td>{formatNumberJa(row.totalItems)}</td>
-                          <td className={getRiskBadgeClass(row.riskScore)}>{row.riskScore.toFixed(1)}</td>
+                          <td className={getRiskBadgeClass(row.riskScore)}>{row.riskScore === 0 ? '0' : row.riskScore.toFixed(1)}</td>
                           <td>{formatNumberJa(row.bucketCounts.expired)}</td>
                           <td>{formatNumberJa(row.bucketCounts.within30)}</td>
                           <td>{formatNumberJa(row.bucketCounts.within60)}</td>
@@ -171,7 +171,7 @@ export default function AdminRiskPage() {
                       title={row.pharmacyName}
                       subtitle={`総件数: ${formatCountJa(row.totalItems)}`}
                       fields={[
-                        { label: 'リスク', value: row.riskScore.toFixed(1) },
+                        { label: 'リスク', value: row.riskScore === 0 ? '0' : row.riskScore.toFixed(1) },
                         { label: '期限切れ', value: formatCountJa(row.bucketCounts.expired) },
                         { label: '30日以内', value: formatCountJa(row.bucketCounts.within30) },
                         { label: '60日以内', value: formatCountJa(row.bucketCounts.within60) },
