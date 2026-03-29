@@ -10,6 +10,7 @@ import AppSkeleton from '../components/ui/AppSkeleton';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { useSseRefresh } from '../hooks/useSseRefresh';
+import { useTimeline } from '../contexts/TimelineContext';
 import {
   fetchNotices,
   markAllNoticesRead,
@@ -51,6 +52,7 @@ function priorityLabel(priority: number): string {
 }
 
 export default function NotificationsPage() {
+  const { refreshUnreadCount } = useTimeline();
   const [items, setItems] = useState<NoticeItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -127,6 +129,7 @@ export default function NotificationsPage() {
         setItems((prev) => prev.map((current) => (
           current.id === item.id ? { ...current, unread: false } : current
         )));
+        void refreshUnreadCount();
       } else {
         setMessage('この通知は関連画面を開くと自動で既読になります。');
       }
@@ -144,6 +147,7 @@ export default function NotificationsPage() {
     try {
       const result = await markAllNoticesRead();
       setItems((prev) => prev.map((item) => ({ ...item, unread: false })));
+      void refreshUnreadCount();
       setMessage(result.message);
     } catch (err) {
       setError(err instanceof Error ? err.message : '一括既読に失敗しました');

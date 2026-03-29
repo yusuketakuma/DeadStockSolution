@@ -194,15 +194,6 @@ export default function Header({ onToggleSidebar }: Props) {
       </div>
 
       <div className="app-header-quick-mobile d-lg-none" aria-label="ヘッダークイック導線">
-        {!user?.isAdmin && (
-          <NotificationDropdown
-            events={events}
-            unreadCount={unreadCount}
-            show={notificationOpen}
-            onToggle={handleNotificationToggle}
-            onMarkViewed={() => { void markViewed(); }}
-          />
-        )}
         {previousPath && (
           <Link to={previousPath} className="app-header-quick-link app-header-quick-link-muted">
             前回の画面へ戻る

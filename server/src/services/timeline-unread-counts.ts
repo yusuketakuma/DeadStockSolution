@@ -140,23 +140,29 @@ export async function countUnreadAdminMessages(
   return rows[0]?.count ?? 0;
 }
 
-/** exchangeProposals: 常に unread → COUNT(*) */
+/** exchangeProposals: createdAt > lastViewed のみ */
 export async function countUnreadProposals(
   db: DbClient,
   pharmacyId: number,
+  lastViewed: string | null,
 ): Promise<number> {
-  return countRows(db, exchangeProposals, or(
+  const base = or(
     eq(exchangeProposals.pharmacyAId, pharmacyId),
     eq(exchangeProposals.pharmacyBId, pharmacyId),
-  ));
+  )!;
+  if (!lastViewed) return countRows(db, exchangeProposals, base);
+  return countRows(db, exchangeProposals, and(base, gt(exchangeProposals.proposedAt, lastViewed)));
 }
 
-/** exchangeFeedback: 常に unread → COUNT(*) */
+/** exchangeFeedback: createdAt > lastViewed のみ */
 export async function countUnreadFeedback(
   db: DbClient,
   pharmacyId: number,
+  lastViewed: string | null,
 ): Promise<number> {
-  return countRows(db, exchangeFeedback, eq(exchangeFeedback.toPharmacyId, pharmacyId));
+  const base = eq(exchangeFeedback.toPharmacyId, pharmacyId);
+  if (!lastViewed) return countRows(db, exchangeFeedback, base);
+  return countRows(db, exchangeFeedback, and(base, gt(exchangeFeedback.createdAt, lastViewed)));
 }
 
 /** deadStockItems: 常に unread (期限リスク条件付き) → COUNT(*) */
@@ -231,7 +237,11 @@ export async function countAllUnread(
         ), 0)
         + COALESCE((
           SELECT count(*)::int FROM exchange_proposals
-          WHERE pharmacy_a_id = ${pharmacyId} OR pharmacy_b_id = ${pharmacyId}
+          WHERE (pharmacy_a_id = ${pharmacyId} OR pharmacy_b_id = ${pharmacyId})
+            AND (
+              ${pharmacies.lastTimelineViewedAt} IS NULL
+              OR proposed_at > ${pharmacies.lastTimelineViewedAt}
+            )
         ), 0)
         + COALESCE((
           SELECT count(*)::int FROM proposal_comments pc
@@ -250,6 +260,10 @@ export async function countAllUnread(
         + COALESCE((
           SELECT count(*)::int FROM exchange_feedback
           WHERE to_pharmacy_id = ${pharmacyId}
+            AND (
+              ${pharmacies.lastTimelineViewedAt} IS NULL
+              OR created_at > ${pharmacies.lastTimelineViewedAt}
+            )
         ), 0)
         + COALESCE((
           SELECT count(*)::int FROM upload_confirm_jobs
@@ -280,6 +294,10 @@ export async function countAllUnread(
             AND expiration_date_iso IS NOT NULL
             AND expiration_date_iso >= ${todayStr}
             AND expiration_date_iso <= ${threeDaysLaterStr}
+            AND (
+              ${pharmacies.lastTimelineViewedAt} IS NULL
+              OR updated_at > ${pharmacies.lastTimelineViewedAt}
+            )
         ), 0)
       `,
     })

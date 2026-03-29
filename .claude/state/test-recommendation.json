@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-03-26T06:51:06Z",
-  "changed_file": "server/src/test/exchange-proposals-route-coverage.test.ts",
+  "timestamp": "2026-03-29T13:36:24Z",
+  "changed_file": "server/src/test/timeline-unread-counts.test.ts",
   "test_command": "npm test",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

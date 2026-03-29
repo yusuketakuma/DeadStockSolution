@@ -130,17 +130,17 @@ describe('timeline-unread-counts', () => {
 
   // --- countUnreadProposals ---
 
-  it('countUnreadProposals: 全件 COUNT を返す', async () => {
+  it('countUnreadProposals: lastViewed以降のCOUNTを返す', async () => {
     const db = makeMockDb(7) as MockDb;
-    const count = await countUnreadProposals(db, pharmacyId);
+    const count = await countUnreadProposals(db, pharmacyId, null);
     expect(count).toBe(7);
   });
 
   // --- countUnreadFeedback ---
 
-  it('countUnreadFeedback: 全件 COUNT を返す', async () => {
+  it('countUnreadFeedback: lastViewed以降のCOUNTを返す', async () => {
     const db = makeMockDb(2) as MockDb;
-    const count = await countUnreadFeedback(db, pharmacyId);
+    const count = await countUnreadFeedback(db, pharmacyId, null);
     expect(count).toBe(2);
   });
 
