@@ -678,5 +678,19 @@ fresh chil"}}
 {"id":"event-000004","type":"tool.bash","ts":"2026-03-29T08:55:05Z","state":"initialized","data":{"command":"git log --oneline -10"}}
 {"id":"event-000005","type":"tool.bash","ts":"2026-03-29T08:55:10Z","state":"initialized","data":{"command":"git status -s | tail -80"}}
 {"id":"event-000006","type":"tool.bash","ts":"2026-03-29T08:55:11Z","state":"initialized","data":{"command":"git diff --stat HEAD -- ':!.claude' ':!*.jsonl' ':!*.json' ':!*.png' ':!package-lock.json' | head -60"}}
-{"id":"event-000007","type":"tool.bash","ts":"2026-03-29T10:19:50Z","state":"initialized","data":{"command":"git checkout --theirs package-lock.json && npm install --package-lock-only 2>/dev/null && git add package-lock.json && git diff --name-only --diff-filter=U"}}
-{"id":"event-000008","type":"tool.bash","ts":"2026-03-29T10:20:01Z","state":"initialized","data":{"command":"git status --short | head -20"}}
+{"id":"event-000007","type":"tool.bash","ts":"2026-03-29T08:55:22Z","state":"initialized","data":{"command":"git add -A"}}
+{"id":"event-000008","type":"tool.bash","ts":"2026-03-29T08:55:42Z","state":"initialized","data":{"command":"git commit -m "$(cat <<'EOF'
+feat: v0.0.22 sprint — MatchingPage refactor, CRON auth, E2E
+
+- Refactor MatchingPage into modular components
+- Harden internal CRON routes with CRON_SECRET
+- Add Playwrig"}}
+{"id":"event-000009","type":"tool.bash","ts":"2026-03-29T08:55:50Z","state":"initialized","data":{"command":"git push origin preview"}}
+{"id":"event-000010","type":"session.stop","ts":"2026-03-29T08:55:54Z","state":"stopped"}
+{"id":"event-000011","type":"tool.bash","ts":"2026-03-29T08:58:37Z","state":"stopped","data":{"command":"command -v gh &>/dev/null && echo "gh: OK" || echo "gh: NOT FOUND""}}
+{"id":"event-000012","type":"tool.bash","ts":"2026-03-29T08:58:38Z","state":"stopped","data":{"command":"git diff --quiet && git diff --cached --quiet && echo "CLEAN" || echo "DIRTY""}}
+{"id":"event-000013","type":"tool.bash","ts":"2026-03-29T08:58:38Z","state":"stopped","data":{"command":"cat VERSION 2>/dev/null || jq -r '.version' package.json 2>/dev/null"}}
+{"id":"event-000014","type":"tool.bash","ts":"2026-03-29T08:58:39Z","state":"stopped","data":{"command":"git log --oneline v0.0.22..HEAD 2>/dev/null || git log --oneline -20"}}
+{"id":"event-000015","type":"tool.bash","ts":"2026-03-29T08:58:43Z","state":"stopped","data":{"command":"git tag --sort=-v:refname | head -5"}}
+{"id":"event-000016","type":"tool.bash","ts":"2026-03-29T08:58:44Z","state":"stopped","data":{"command":"git diff --stat HEAD"}}
+{"id":"event-000017","type":"tool.bash","ts":"2026-03-29T08:58:49Z","state":"stopped","data":{"command":"git log --oneline v0.0.21..HEAD"}}

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-03-29T08:54:42.485Z",
+  "updatedAt": "2026-03-29T08:58:31.261Z",
   "skills": {
     "parallel-workflows": {
       "count": 1,
@@ -89,8 +89,8 @@
       "lastUsed": "2026-03-04T21:44:49.796Z"
     },
     "harness-release": {
-      "count": 5,
-      "lastUsed": "2026-03-25T11:29:05.969Z"
+      "count": 6,
+      "lastUsed": "2026-03-29T08:58:31.260Z"
     },
     "writing-plans": {
       "count": 1,
