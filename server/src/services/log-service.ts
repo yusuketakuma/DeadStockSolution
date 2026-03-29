@@ -32,7 +32,8 @@ export type LogAction =
   | 'admin_bulk_reject'
   | 'admin_bulk_activate'
   | 'admin_bulk_deactivate'
-  | 'admin_csv_export';
+  | 'admin_csv_export'
+  | 'proposal_expired';
 
 export async function writeLog(
   action: LogAction,

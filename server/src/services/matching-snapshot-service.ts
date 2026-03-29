@@ -48,6 +48,14 @@ interface SnapshotDiff {
   afterCount: number;
 }
 
+const SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24時間
+
+function isSnapshotStale(updatedAt: string | null): boolean {
+  if (!updatedAt) return true;
+  const updatedTime = new Date(updatedAt).getTime();
+  return Date.now() - updatedTime > SNAPSHOT_MAX_AGE_MS;
+}
+
 function safeNumber(value: number | undefined): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return 0;
   return roundTo2(value);
@@ -160,23 +168,30 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
     candidateHash: matchCandidateSnapshots.candidateHash,
     candidateCount: matchCandidateSnapshots.candidateCount,
     topCandidatesJson: matchCandidateSnapshots.topCandidatesJson,
+    updatedAt: matchCandidateSnapshots.updatedAt,
   })
     .from(matchCandidateSnapshots)
     .where(eq(matchCandidateSnapshots.pharmacyId, pharmacyId))
     .limit(1);
 
   const beforeCount = Number(current?.candidateCount ?? 0);
-  const changed = !current || current.candidateHash !== next.hash || beforeCount !== next.candidateCount;
+  const hashOrCountChanged = !current || current.candidateHash !== next.hash || beforeCount !== next.candidateCount;
+  const stale = current ? isSnapshotStale(current.updatedAt) : false;
+  // 通知判定はハッシュ/件数の変化のみ（TTL超過のみの場合は通知しない）
+  const changed = hashOrCountChanged;
+  const needsUpdate = hashOrCountChanged || stale;
 
   if (current) {
-    await db.update(matchCandidateSnapshots)
-      .set({
-        candidateHash: next.hash,
-        candidateCount: next.candidateCount,
-        topCandidatesJson: JSON.stringify(next.topCandidates),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(matchCandidateSnapshots.id, current.id));
+    if (needsUpdate) {
+      await db.update(matchCandidateSnapshots)
+        .set({
+          candidateHash: next.hash,
+          candidateCount: next.candidateCount,
+          topCandidatesJson: JSON.stringify(next.topCandidates),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(matchCandidateSnapshots.id, current.id));
+    }
   } else {
     await db.insert(matchCandidateSnapshots).values({
       pharmacyId,
@@ -272,6 +287,7 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
     candidateHash: matchCandidateSnapshots.candidateHash,
     candidateCount: matchCandidateSnapshots.candidateCount,
     topCandidatesJson: matchCandidateSnapshots.topCandidatesJson,
+    updatedAt: matchCandidateSnapshots.updatedAt,
   })
     .from(matchCandidateSnapshots)
     .where(inArray(matchCandidateSnapshots.pharmacyId, allPharmacyIds));
@@ -297,17 +313,22 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
   for (const entry of entries) {
     const next = createSnapshotPayload(entry.candidates);
     const existing = existingMap.get(entry.pharmacyId);
-    const changed = !existing
+    const hashOrCountChanged = !existing
       || existing.candidateHash !== next.hash
       || Number(existing.candidateCount) !== next.candidateCount;
+    const stale = existing ? isSnapshotStale(existing.updatedAt) : false;
+    // 通知判定はハッシュ/件数の変化のみ（TTL超過のみの場合は通知しない）
+    const changed = hashOrCountChanged;
 
-    upsertValues.push({
-      pharmacyId: entry.pharmacyId,
-      candidateHash: next.hash,
-      candidateCount: next.candidateCount,
-      topCandidatesJson: JSON.stringify(next.topCandidates),
-      updatedAt: now,
-    });
+    if (hashOrCountChanged || stale) {
+      upsertValues.push({
+        pharmacyId: entry.pharmacyId,
+        candidateHash: next.hash,
+        candidateCount: next.candidateCount,
+        topCandidatesJson: JSON.stringify(next.topCandidates),
+        updatedAt: now,
+      });
+    }
 
     if (changed) {
       changedEntries.push({ entry, next, existing });
@@ -315,17 +336,19 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
   }
 
   // 3. 一括 UPSERT（INSERT ... ON CONFLICT DO UPDATE）
-  await db.insert(matchCandidateSnapshots)
-    .values(upsertValues)
-    .onConflictDoUpdate({
-      target: matchCandidateSnapshots.pharmacyId,
-      set: {
-        candidateHash: sql`excluded.candidate_hash`,
-        candidateCount: sql`excluded.candidate_count`,
-        topCandidatesJson: sql`excluded.top_candidates_json`,
-        updatedAt: sql`excluded.updated_at`,
-      },
-    });
+  if (upsertValues.length > 0) {
+    await db.insert(matchCandidateSnapshots)
+      .values(upsertValues)
+      .onConflictDoUpdate({
+        target: matchCandidateSnapshots.pharmacyId,
+        set: {
+          candidateHash: sql`excluded.candidate_hash`,
+          candidateCount: sql`excluded.candidate_count`,
+          topCandidatesJson: sql`excluded.top_candidates_json`,
+          updatedAt: sql`excluded.updated_at`,
+        },
+      });
+  }
 
   // 4. 変更があった薬局の通知を一括 INSERT
   const notificationValues: Array<{

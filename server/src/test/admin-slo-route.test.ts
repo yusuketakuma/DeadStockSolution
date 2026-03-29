@@ -41,7 +41,7 @@ vi.mock('../middleware/error-handler', () => ({
   getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
 }));
 
-import adminSloRouter from '../routes/admin-slo';
+let adminSloRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -66,8 +66,10 @@ const sampleBreaches = [
 ];
 
 describe('GET /api/admin/slo-breaches', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminSloRouter } = await import('../routes/admin-slo'));
   });
 
   afterEach(() => {
@@ -128,8 +130,10 @@ describe('GET /api/admin/slo-breaches', () => {
 });
 
 describe('DELETE /api/admin/slo-breaches', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminSloRouter } = await import('../routes/admin-slo'));
   });
 
   it('200 と { ok: true } を返す', async () => {

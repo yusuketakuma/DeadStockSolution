@@ -11,6 +11,9 @@ interface UseSseRefreshOptions {
   minFetchIntervalMs?: number;
 }
 
+const MAX_CONSECUTIVE_ERRORS = 5;
+const RECONNECT_DELAY_MS = 30_000;
+
 export function useSseRefresh(options: UseSseRefreshOptions): { connected: boolean } {
   const {
     enabled,
@@ -39,29 +42,55 @@ export function useSseRefresh(options: UseSseRefreshOptions): { connected: boole
       return;
     }
 
-    const source = new EventSource(buildApiUrl(streamPath), { withCredentials: true });
+    let source: EventSource | null = null;
+    let consecutiveErrors = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
 
-    source.onopen = () => {
-      setConnected(true);
-    };
+    function connect(): void {
+      if (disposed) return;
 
-    source.onerror = () => {
-      setConnected(false);
-    };
+      source = new EventSource(buildApiUrl(streamPath), { withCredentials: true });
 
-    const listeners = eventsRef.current.map((eventName) => {
-      const handler = () => {
+      source.onopen = () => {
+        consecutiveErrors = 0;
+        setConnected(true);
         void onRefreshRef.current();
       };
-      source.addEventListener(eventName, handler);
-      return { eventName, handler };
-    });
+
+      source.onerror = () => {
+        setConnected(false);
+        consecutiveErrors++;
+
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS && source) {
+          source.close();
+          source = null;
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            consecutiveErrors = 0;
+            connect();
+          }, RECONNECT_DELAY_MS);
+        }
+      };
+
+      const currentEvents = eventsRef.current;
+      for (const eventName of currentEvents) {
+        source.addEventListener(eventName, () => {
+          void onRefreshRef.current();
+        });
+      }
+    }
+
+    connect();
 
     return () => {
-      for (const listener of listeners) {
-        source.removeEventListener(listener.eventName, listener.handler);
+      disposed = true;
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer);
       }
-      source.close();
+      if (source) {
+        source.close();
+      }
     };
   }, [enabled, eventsKey, streamPath]);
 

@@ -1,81 +1,35 @@
 {
-  "session_id": "session-1774433681",
+  "session_id": "8EE28F84-82C1-4D81-9626-AC3EDE30AB06",
   "parent_session_id": null,
-  "state": "stopped",
-  "started_at": "2026-03-25T10:14:41Z",
-  "updated_at": "2026-03-25T11:29:19Z",
-  "event_seq": 35,
-  "last_event_id": "event-000035",
+  "state": "initialized",
   "state_version": 1,
-  "cwd": "/Users/yusuke/DeadStockSolution",
-  "project_name": "DeadStockSolution",
-  "resumed_at": "2026-03-25T11:10:27Z",
-  "git": {
-    "branch": "preview",
-    "uncommitted_changes": 3,
-    "last_commit": "4b41f43"
-  },
-  "plans": {
-    "exists": true,
-    "last_modified": 1774274691,
-    "wip_tasks": 3,
-    "todo_tasks": 0,
-    "pending_tasks": 0,
-    "completed_tasks": 75
-  },
+  "started_at": "2026-03-26T06:55:28Z",
+  "updated_at": "2026-03-26T11:27:22Z",
+  "resume_token": "1494DBFD-DE1B-4CCE-9FB6-4C5617272839",
+  "event_seq": 10,
+  "last_event_id": "event-000010",
+  "fork_count": 0,
   "orchestration": {
     "max_state_retries": 3,
     "retry_backoff_seconds": 10
   },
-  "prompt_seq": 7,
-  "intent": "literal",
-  "last_message_length": 104,
-  "last_message_hash": "b14e0fdc5393aec2",
-  "ended_at": "2026-03-25T11:11:48Z",
-  "duration_minutes": 597,
-  "memory_logged": true,
-  "changes_this_session": [
-    {
-      "file": "client/src/components/header/NotificationDropdown.tsx",
-      "action": "Write",
-      "timestamp": "2026-03-25T11:22:14Z",
-      "important": false
-    },
-    {
-      "file": "client/src/components/Header.tsx",
-      "action": "Edit",
-      "timestamp": "2026-03-25T11:22:24Z",
-      "important": false
-    },
-    {
-      "file": "client/src/components/Header.tsx",
-      "action": "Edit",
-      "timestamp": "2026-03-25T11:22:32Z",
-      "important": false
-    },
-    {
-      "file": "client/src/components/Header.tsx",
-      "action": "Edit",
-      "timestamp": "2026-03-25T11:22:40Z",
-      "important": false
-    },
-    {
-      "file": "client/src/styles/sections/header.css",
-      "action": "Edit",
-      "timestamp": "2026-03-25T11:23:11Z",
-      "important": false
-    },
-    {
-      "file": "client/src/components/Header.tsx",
-      "action": "Edit",
-      "timestamp": "2026-03-25T11:26:49Z",
-      "important": false
-    },
-    {
-      "file": "client/src/components/Header.tsx",
-      "action": "Edit",
-      "timestamp": "2026-03-25T11:27:02Z",
-      "important": false
-    }
-  ]
+  "cwd": "/Users/yusuke/DeadStockSolution",
+  "project_name": "DeadStockSolution",
+  "prompt_seq": 1,
+  "git": {
+    "branch": "preview",
+    "uncommitted_changes": 82,
+    "last_commit": "44b0e30"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1774507936,
+    "wip_tasks": 3,
+    "todo_tasks": 0,
+    "pending_tasks": 0,
+    "completed_tasks": 94
+  },
+  "changes_this_session": [],
+  "resumed_at": "2026-03-26T11:25:26Z",
+  "intent": "literal"
 }

@@ -1,7 +1,10 @@
 {
   "name": "server",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "openapi:generate": "node ../scripts/generate-openapi.mjs",
@@ -18,7 +21,7 @@
     "db:studio": "drizzle-kit studio",
     "db:seed-admin": "tsx src/db/seed-admin-account.ts",
     "db:seed-test-pharmacies": "tsx src/db/seed-test-pharmacy-accounts.ts",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "bash ./scripts/run-vitest-isolated.sh",
     "test:openapi-contract": "vitest run --config vitest.config.ts src/test/openapi-contract.test.ts",
     "test:integration": "vitest run --config vitest.config.ts src/test/upload-route.test.ts src/test/drug-master-route.test.ts src/test/upload-inventory-flow.test.ts",
     "test:perf": "PERF_REGRESSION_ENABLED=true vitest run --config vitest.config.ts src/test/performance-regression.test.ts",

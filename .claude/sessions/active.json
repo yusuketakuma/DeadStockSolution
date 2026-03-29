@@ -1,20 +1,14 @@
 {
-  "session-1774418387": {
-    "short_id": "session-1774",
-    "last_seen": 1774428490,
-    "pid": "52535",
+  "F1BD3A88-A7E7-483F-A20E-43752D30E31B": {
+    "short_id": "F1BD3A88-A7E",
+    "last_seen": 1774487473,
+    "pid": "75733",
     "status": "active"
   },
-  "session-1774431240": {
-    "short_id": "session-1774",
-    "last_seen": 1774431240,
-    "pid": "70659",
-    "status": "active"
-  },
-  "session-1774433681": {
-    "short_id": "session-1774",
-    "last_seen": 1774437028,
-    "pid": "21723",
+  "8EE28F84-82C1-4D81-9626-AC3EDE30AB06": {
+    "short_id": "8EE28F84-82C",
+    "last_seen": 1774524326,
+    "pid": "96965",
     "status": "active"
   }
 }

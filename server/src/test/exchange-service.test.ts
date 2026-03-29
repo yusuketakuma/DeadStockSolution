@@ -55,7 +55,7 @@ describe('exchange-service', () => {
 
     await expect(createProposal(1, candidate)).rejects.toThrow('ブロック中の薬局には提案できません');
     expect(mocks.or).toHaveBeenCalledTimes(1);
-    expect(tx.execute).not.toHaveBeenCalled();
+    expect(tx.execute).toHaveBeenCalledTimes(1); // SET LOCAL statement_timeout only
     expect(tx.insert).not.toHaveBeenCalled();
   });
 

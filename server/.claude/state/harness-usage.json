@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-03-25T10:14:41.497Z",
+  "updatedAt": "2026-03-26T02:36:34.918Z",
   "skills": {
     "impl": {
       "count": 1,
@@ -13,8 +13,8 @@
       "lastUsed": "2026-03-01T03:11:54.412Z"
     },
     "simplify": {
-      "count": 6,
-      "lastUsed": "2026-03-08T22:15:34.677Z"
+      "count": 7,
+      "lastUsed": "2026-03-26T02:36:34.917Z"
     }
   },
   "agents": {},
