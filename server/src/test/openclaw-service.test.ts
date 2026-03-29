@@ -18,6 +18,8 @@ const OPENCLAW_ENV_KEYS = [
   'OPENCLAW_BASE_URL',
   'OPENCLAW_API_KEY',
   'OPENCLAW_AGENT_ID',
+  'APP_BASE_URL',
+  'VERCEL_URL',
   'OPENCLAW_IMPLEMENT_BRANCH',
   'OPENCLAW_TIMEOUT_MS',
   'OPENCLAW_RETRY_MAX',
@@ -106,6 +108,15 @@ describe('openclaw-service', () => {
     expect(isOpenClawConnectorConfigured()).toBe(true);
   });
 
+  it('accepts managed_remote_agent mode without legacy connector fields', () => {
+    process.env.OPENCLAW_CONNECTOR_MODE = 'managed_remote_agent';
+    delete process.env.OPENCLAW_BASE_URL;
+    delete process.env.OPENCLAW_API_KEY;
+    delete process.env.OPENCLAW_AGENT_ID;
+
+    expect(isOpenClawConnectorConfigured()).toBe(true);
+  });
+
   it('rejects non-localhost HTTP base URL', () => {
     setConnectorEnv('http://openclaw.example.com');
     expect(isOpenClawConnectorConfigured()).toBe(false);
@@ -177,6 +188,50 @@ describe('openclaw-service', () => {
         openPullRequestWhenNeeded: true,
         implementationBranch: 'review',
       }),
+    }));
+  });
+
+  it('includes callback command contract and follow-up thread metadata in task payload', async () => {
+    setConnectorEnv('https://openclaw.example.com');
+    process.env.APP_BASE_URL = 'https://dead-stock-solution.example.com';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'in_dialogue',
+        threadId: 'thread-follow-up',
+        summary: 'follow-up accepted',
+      }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const context = {
+      source: 'user_request_follow_up',
+      threadId: 'thread-existing',
+      followUp: {
+        type: 'user_reply',
+        messageId: 44,
+        resumePolicy: 'continue_existing_case_without_reset',
+      },
+    };
+
+    await handoffToOpenClaw({
+      requestId: 56,
+      pharmacyId: 10,
+      requestText: '追加情報を受け取ったので続きから対応してください',
+      context,
+    });
+
+    const fetchCall = fetchMock.mock.calls[0];
+    const requestInit = fetchCall[1] as RequestInit;
+    const payload = JSON.parse(String(requestInit.body));
+    expect(payload.task.request.threadId).toBe('thread-existing');
+    expect(payload.task.context.followUp).toEqual(context.followUp);
+    expect(payload.task.callbacks).toEqual(expect.objectContaining({
+      callbackUrl: 'https://dead-stock-solution.example.com/api/openclaw/callback',
+      reportUrl: 'https://dead-stock-solution.example.com/api/openclaw/report',
+      commandsUrl: 'https://dead-stock-solution.example.com/api/openclaw/commands',
+      auth: 'openclaw_webhook_hmac',
     }));
   });
 

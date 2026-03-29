@@ -27,6 +27,7 @@ Common inputs include:
 When a `task envelope` is present, treat it as the source of truth. Extract at least:
 - `taskKind`
 - `source`
+- `request.threadId`
 - `request.summary`
 - `request.meta.category`
 - `request.meta.priority`
@@ -39,6 +40,8 @@ When a `task envelope` is present, treat it as the source of truth. Extract at l
 - `execution`
 - `callbacks`
 - `conversation`
+
+If `context.followUp` exists, treat it as canonical resume metadata for the current case.
 
 If `conversation[*].attachments` exists, treat attached screenshots / PDF / TXT / CSV as first-class evidence. Inspect `previewText` first, and if `localPath` is present, inspect that file before asking the user for the same information again.
 
@@ -66,7 +69,7 @@ Keep replies in Japanese and keep the first response short.
 Before sending the first answer, decide:
 - current internal state
 - missing information category, if any
-- whether the next action is `reportUrl`, `callbackUrl`, or repository work
+- whether the next action is `reportUrl`, `callbackUrl`, `commandsUrl`, or repository work
 
 Use `request.meta.category` and `request.meta.priority` as triage hints:
 - `bug_report` / `integration_issue` / `urgent` => bias toward faster reproduction and implementation
@@ -110,7 +113,7 @@ When `source` is `user_request_follow_up` or `context.followUp` is present, trea
 
 Resume rules:
 - do not restart intake from scratch
-- read `conversation.workItem`, the latest agent question, and `context.followUp`
+- read `conversation`, `request.threadId`, the latest agent question, and `context.followUp`
 - first decide whether the new reply closes the previously missing information
 - if it does, send a short resume notice to `callbacks.reportUrl` with `kind: "status_update"` and continue analysis or implementation
 - if it only partially helps, ask only the remaining delta question
@@ -158,6 +161,8 @@ When the task envelope provides `callbacks`, use them.
   - report failures with concrete blocking reasons
 - `callbacks.callbackUrl`
   - keep using this for coarse status transitions such as `implementing` and `completed`
+- `callbacks.commandsUrl`
+  - app-side の情報取得や制御が必要なときに runner 経由で使う
 
 Mandatory split:
 - `completed` should go to `callbackUrl`
@@ -170,6 +175,13 @@ Recommended `reportUrl` kinds:
 - `status_update`
 - `pr_opened`
 - `failed`
+
+Command guidance:
+
+- when more app-side information is required, return `status="needs_commands"` and a `commands` array
+- each command must include a concrete `reason`
+- use commands sparingly; prefer repository evidence first
+- if a command response resolves the uncertainty, continue implementation without re-asking the user
 
 For follow-up replies, prefer this sequence:
 1. `status_update`: "追加情報を受領し、解析を再開しました"
@@ -211,6 +223,7 @@ If the request can be solved by explanation only:
 - answer directly
 - use `reportUrl kind="analysis"` only when the app should persist the explanation thread
 - for answer-only tasks returned to the runner, use `status="no_action"` and put the user-facing final answer in `summary`
+- if app-side data must be fetched first, use `status="needs_commands"` with command requests before deciding `no_action`
 
 If the user asks for status mid-stream, answer with current understanding, current step, and what remains.
 

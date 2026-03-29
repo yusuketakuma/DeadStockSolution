@@ -200,6 +200,19 @@ describe('push routes', () => {
       expect(res.body.categories.proposals).toBe(false);
       expect(res.body.allowCritical).toBe(false);
     });
+
+    it('400 - 不正なカテゴリ名を拒否する', async () => {
+      const app = createApp();
+
+      const res = await request(app)
+        .put('/api/push/preferences')
+        .send({
+          categories: { proposals: false, invalidCategory: true },
+        });
+
+      expect(res.status).toBe(400);
+      expect(mocks.upsertPushNotificationPreferences).not.toHaveBeenCalled();
+    });
   });
 
   // ── POST /api/push/subscribe ──────────────────────────────────

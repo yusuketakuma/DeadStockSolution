@@ -303,7 +303,7 @@ const readinessHandler: RequestHandler = async (_req, res) => {
 const openClawHealthHandler: RequestHandler = async (_req, res) => {
   try {
     const snapshot = await getOpenClawHealthSnapshot();
-    res.status(snapshot.status === 'ok' ? 200 : 503).json(snapshot);
+    res.status(200).json(snapshot);
   } catch (err) {
     logger.error('OpenClaw health check failed', {
       error: err instanceof Error ? err.message : String(err),

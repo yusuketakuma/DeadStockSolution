@@ -29,6 +29,7 @@
     "test:perf:update:server": "npm run test:perf:update --workspace=server",
     "test:client": "npm run test --workspace=client",
     "test:e2e": "npx playwright test",
+    "test:e2e:local-login-dashboard": "bash scripts/run-local-login-dashboard-audit.sh",
     "test:e2e:proposal-flow": "bash scripts/run-proposal-flow-e2e.sh",
     "test:coverage": "npm run test:coverage --workspace=server && npm run test:coverage --workspace=client",
     "test:coverage:server": "npm run test:coverage --workspace=server",

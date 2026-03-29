@@ -82,7 +82,12 @@ function renderDeadlineCell(deadlineAt: string | null | undefined) {
   return (
     <div className="d-flex flex-column gap-1">
       <span>{formatDateTimeJa(deadlineAt)}</span>
-      <span className={`badge ${badgeClassName} align-self-start`}>{meta.remainingLabel}</span>
+      <div className="d-flex flex-wrap gap-1">
+        {meta.urgencyLabel ? (
+          <span className={`badge ${badgeClassName} align-self-start`}>{meta.urgencyLabel}</span>
+        ) : null}
+        <span className={`badge ${badgeClassName} align-self-start`}>{meta.remainingLabel}</span>
+      </div>
     </div>
   );
 }

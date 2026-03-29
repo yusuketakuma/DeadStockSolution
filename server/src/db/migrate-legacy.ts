@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createClient, type Client } from '@libsql/client';
 import { sql, type InferInsertModel } from 'drizzle-orm';
-import { migrate } from 'drizzle-orm/neon-serverless/migrator';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { db } from '../config/database';
 import { logger } from '../services/logger';
 import {

@@ -35,6 +35,7 @@ const BUSINESS_HOURS_CACHE = createCache<{
 export const DEAD_STOCK_SELECT_FIELDS = {
   id: deadStockItems.id,
   pharmacyId: deadStockItems.pharmacyId,
+  drugCode: deadStockItems.drugCode,
   drugName: deadStockItems.drugName,
   quantity: deadStockItems.quantity,
   unit: deadStockItems.unit,

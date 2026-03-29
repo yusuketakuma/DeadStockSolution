@@ -6,6 +6,7 @@ import { logger } from '../services/logger';
 const router = Router();
 
 async function handleArchiveExpired(req: Request, res: Response): Promise<void> {
+  const startedAt = Date.now();
   try {
     const authHeader = typeof req.headers.authorization === 'string'
       ? req.headers.authorization
@@ -23,11 +24,23 @@ async function handleArchiveExpired(req: Request, res: Response): Promise<void> 
       return;
     }
 
+    logger.info('Dead stock archive cron started', {
+      cronName: 'dead_stock_archive',
+      method: req.method,
+    });
     const result = await archiveExpiredDeadStock();
-    logger.info('Dead stock archive cron completed', result);
+    logger.info('Dead stock archive cron completed', {
+      cronName: 'dead_stock_archive',
+      method: req.method,
+      durationMs: Date.now() - startedAt,
+      ...result,
+    });
     res.json({ message: 'ok', ...result });
   } catch (err) {
     logger.error('Dead stock archive cron failed', {
+      cronName: 'dead_stock_archive',
+      method: req.method,
+      durationMs: Date.now() - startedAt,
       error: err instanceof Error ? err.message : String(err),
     });
     res.status(500).json({ error: 'dead stock archive failed' });

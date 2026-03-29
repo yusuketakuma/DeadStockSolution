@@ -695,6 +695,29 @@ describe('auth routes — additional coverage', () => {
       expect(mocks.db.select).toHaveBeenCalledTimes(1);
     });
 
+    it('separates cache between user previews and admin previews', async () => {
+      process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'true';
+      mocks.db.select
+        .mockReturnValueOnce(createSelectChain([
+          { id: 1, name: 'テスト薬局', email: 'test@example.com', prefecture: '東京都', password: 'UserSecret123' },
+        ]))
+        .mockReturnValueOnce(createSelectChain([
+          { id: 91, name: 'Playwright 検証管理者', email: 'playwright-admin@example.com', prefecture: '東京都', password: 'AdminSecret456' },
+        ]));
+      const app = await createFreshApp();
+
+      const userRes = await request(app)
+        .get('/api/auth/test-pharmacies?includePassword=true');
+      const adminRes = await request(app)
+        .get('/api/auth/test-pharmacies?includePassword=true&mode=admin');
+
+      expect(userRes.status).toBe(200);
+      expect(userRes.body.accounts[0].password).toBe('UserSecret123');
+      expect(adminRes.status).toBe(200);
+      expect(adminRes.body.accounts[0].password).toBe('AdminSecret456');
+      expect(mocks.db.select).toHaveBeenCalledTimes(2);
+    });
+
     it('returns password on preview when password exposure is enabled', async () => {
       process.env.VERCEL_ENV = 'preview';
       process.env.EXPOSE_TEST_PHARMACY_PASSWORDS = 'true';

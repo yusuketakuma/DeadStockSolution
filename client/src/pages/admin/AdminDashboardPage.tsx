@@ -3,7 +3,7 @@ import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import { Row, Col, Form } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { api } from '../../api/client';
+import { ApiError, api } from '../../api/client';
 import AppSelect from '../../components/ui/AppSelect';
 import LoadingButton from '../../components/ui/LoadingButton';
 import AppField from '../../components/ui/AppField';
@@ -124,6 +124,42 @@ function countRejectedResults(results: ReadonlyArray<PromiseSettledResult<unknow
   return results.filter((result) => result.status === 'rejected').length;
 }
 
+function isOpenClawHealthSnapshot(value: unknown): value is OpenClawHealthSnapshot {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Partial<OpenClawHealthSnapshot>;
+  return (candidate.status === 'ok' || candidate.status === 'degraded')
+    && typeof candidate.timestamp === 'string'
+    && !!candidate.connector
+    && typeof candidate.connector.configured === 'boolean'
+    && !!candidate.webhook
+    && typeof candidate.webhook.configured === 'boolean'
+    && !!candidate.retryQueue
+    && typeof candidate.retryQueue.pending === 'number'
+    && !!candidate.ddsAgent
+    && typeof candidate.ddsAgent.connected === 'boolean';
+}
+
+function resolveOpenClawHealthResult(
+  result: PromiseSettledResult<OpenClawHealthSnapshot>,
+): { value: OpenClawHealthSnapshot | null; shouldCountAsError: boolean } {
+  if (result.status === 'fulfilled') {
+    return { value: result.value, shouldCountAsError: false };
+  }
+
+  if (
+    result.reason instanceof ApiError
+    && result.reason.status === 503
+    && isOpenClawHealthSnapshot(result.reason.data)
+    && result.reason.data.status === 'degraded'
+  ) {
+    return { value: result.reason.data, shouldCountAsError: false };
+  }
+
+  return { value: null, shouldCountAsError: true };
+}
+
 function buildAdminMessagePayload(input: {
   targetType: 'all' | 'pharmacy';
   targetPharmacyId: string;
@@ -180,7 +216,7 @@ export default function AdminDashboardPage() {
     const kpisValue = resolveSettledValue(kpisResult);
     const pharmacyValue = resolveSettledValue(pharmacyResult);
     const messagesValue = resolveSettledValue(messagesResult);
-    const openClawValue = resolveSettledValue(openClawResult);
+    const openClawResolution = resolveOpenClawHealthResult(openClawResult);
 
     if (statsValue) setStats(statsValue);
     if (riskValue) setRiskOverview(riskValue);
@@ -189,9 +225,20 @@ export default function AdminDashboardPage() {
     if (kpisValue) setMonitoringKpis(kpisValue);
     if (pharmacyValue) setPharmacies(pharmacyValue.data);
     if (messagesValue) setMessages(messagesValue.data);
-    if (openClawValue) setOpenClawHealth(openClawValue);
+    if (openClawResolution.value) setOpenClawHealth(openClawResolution.value);
 
-    if (countRejectedResults([statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult, openClawResult]) > 0) {
+    const rejectedResults = [
+      statsResult,
+      riskResult,
+      observabilityResult,
+      alertsResult,
+      kpisResult,
+      pharmacyResult,
+      messagesResult,
+      ...(openClawResolution.shouldCountAsError ? [openClawResult] : []),
+    ];
+
+    if (countRejectedResults(rejectedResults) > 0) {
       setError('一部のデータの取得に失敗しました');
     }
     setLoading(false);

@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "0.0.21",
+  "version": "0.0.20",
   "private": true,
   "engines": {
     "node": "24.14.1"
@@ -16,10 +16,12 @@
     "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:push": "drizzle-kit push --force",
     "db:migrate:legacy": "tsx src/db/migrate-legacy.ts",
     "db:apply-performance-indexes": "tsx src/db/apply-performance-scale-indexes.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed-admin": "tsx src/db/seed-admin-account.ts",
+    "db:seed-playwright-accounts": "tsx src/db/seed-playwright-accounts.ts",
     "db:seed-test-pharmacies": "tsx src/db/seed-test-pharmacy-accounts.ts",
     "test": "bash ./scripts/run-vitest-isolated.sh",
     "test:openapi-contract": "vitest run --config vitest.config.ts src/test/openapi-contract.test.ts",
@@ -37,6 +39,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.213.0",
     "@opentelemetry/sdk-node": "^0.213.0",
     "@sentry/node": "^10.45.0",
+    "@types/pg": "^8.20.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
     "@workos-inc/node": "^8.9.0",
@@ -55,6 +58,7 @@
     "iconv-lite": "^0.7.2",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
+    "pg": "^8.20.0",
     "read-excel-file": "^7.0.2",
     "redis": "^5.11.0",
     "stripe": "^20.4.0",

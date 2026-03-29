@@ -20,6 +20,7 @@
 ## Key Files
 
 - Handoff format: `server/src/services/openclaw-service.ts`
+- DDS remote agent contract: `server/src/services/dds-agent-service.ts`
 - User report route: `server/src/routes/requests.ts`
 - OpenClaw callback route: `server/src/routes/openclaw.ts`
 - Realtime stream route: `server/src/routes/realtime.ts`
@@ -39,3 +40,25 @@
 - If recent OpenClaw schema is missing, user and admin routes may run in degraded fallback mode.
 - Do not confuse repo-side `.openclaw/` docs with home-side `~/.openclaw/agents/dss-manager/` runtime files.
 - Local DSS case log target: `~/.openclaw/agents/dss-manager/runtime/case-state.ndjson`
+
+## OpenClaw Commands
+
+`callbacks.commandsUrl` がある場合、app-side command は次の whitelist に限定される。
+
+- `system.status`
+- `logs.query`
+- `stats.summary`
+- `cache.clear`
+- `maintenance.enable`
+- `maintenance.disable`
+- `scheduler.restart`
+- `pharmacy.toggle`
+- `job.cancel`
+- `drug_master.sync`
+- `notification.send`
+
+原則:
+
+- 追加の app-side 情報取得や制御が必要なときだけ使う
+- 破壊的な command は理由を明示する
+- command が失敗したら完了扱いにしない

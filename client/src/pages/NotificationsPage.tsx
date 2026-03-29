@@ -6,7 +6,8 @@ import AppButton from '../components/ui/AppButton';
 import AppEmptyState from '../components/ui/AppEmptyState';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
-import InlineLoader from '../components/ui/InlineLoader';
+import AppSkeleton from '../components/ui/AppSkeleton';
+import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { useSseRefresh } from '../hooks/useSseRefresh';
 import {
@@ -169,7 +170,7 @@ export default function NotificationsPage() {
         </AppButton>
       </div>
 
-      {error && <AppAlert variant="danger">{error}</AppAlert>}
+      {error ? <ErrorRetryAlert error={error} onRetry={() => void loadNotices()} /> : null}
       {message && <AppAlert variant="success">{message}</AppAlert>}
 
       <ScrollArea>
@@ -228,7 +229,38 @@ export default function NotificationsPage() {
         </Card>
 
         {loading ? (
-          <InlineLoader text="通知を読み込み中..." className="text-muted small" />
+          <>
+            <Row className="g-3 mb-3">
+              {Array.from({ length: 3 }, (_, index) => (
+                <Col md={4} key={index}>
+                  <AppSkeleton
+                    variant="card"
+                    className="h-100"
+                    label={index === 0 ? '通知サマリーを読み込み中' : undefined}
+                  />
+                </Col>
+              ))}
+            </Row>
+            <AppResponsiveSwitch
+              desktop={() => <AppSkeleton variant="table" rows={5} cols={6} label="通知一覧を読み込み中" />}
+              mobile={() => (
+                <div className="d-flex flex-column gap-2">
+                  {Array.from({ length: 4 }, (_, index) => (
+                    <AppSkeleton
+                      key={index}
+                      variant="card"
+                      label={index === 0 ? '通知一覧を読み込み中' : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            />
+          </>
+        ) : error && items.length === 0 ? (
+          <AppEmptyState
+            title="通知を読み込めませんでした"
+            description="再試行ボタンからもう一度読み込みを試してください。"
+          />
         ) : filteredItems.length === 0 ? (
           <AppEmptyState
             title="表示できる通知がありません"

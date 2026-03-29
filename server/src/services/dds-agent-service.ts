@@ -483,24 +483,27 @@ export async function claimNextDdsJob(token: string): Promise<null | {
     id: number;
     type: DdsWorkItemType;
     workflowStatus: DdsWorkflowStatus;
-    requestId: number | null;
-    pharmacyId: number;
-    pharmacyName: string | null;
-    requestText: string;
-    summary: string;
-    source: string;
-    context: Record<string, unknown> | null;
+      requestId: number | null;
+      pharmacyId: number;
+      pharmacyName: string | null;
+      threadId: string | null;
+      requestText: string;
+      summary: string;
+      source: string;
+      context: Record<string, unknown> | null;
     category: string | null;
     priority: string | null;
     closeReason: string | null;
     assignedAdminId: number | null;
     assignedAdminName: string | null;
     waitingOn: 'user' | 'admin' | 'openclaw' | null;
-    isOverdue: boolean;
-    openclawStatus: string | null;
-    internalNotes: Array<{
-      id: number;
-      body: string;
+      isOverdue: boolean;
+      openclawStatus: string | null;
+      lastQuestion: string | null;
+      lastError: string | null;
+      internalNotes: Array<{
+        id: number;
+        body: string;
       createdAt: string;
       authorAdminId: number | null;
       authorAdminName: string | null;
@@ -672,6 +675,7 @@ export async function claimNextDdsJob(token: string): Promise<null | {
       requestId: workItem.requestId,
       pharmacyId: workItem.pharmacyId,
       pharmacyName: requestDetail?.pharmacyName ?? null,
+      threadId: requestDetail?.openclawThreadId ?? null,
       requestText: workItem.requestText ?? '',
       summary,
       source: workItem.source ?? 'user_request',
@@ -684,6 +688,8 @@ export async function claimNextDdsJob(token: string): Promise<null | {
       waitingOn: waitingState.waitingOn,
       isOverdue: waitingState.isOverdue,
       openclawStatus: requestDetail?.openclawStatus ?? null,
+      lastQuestion: workItem.lastQuestion ?? null,
+      lastError: workItem.lastError ?? null,
       internalNotes: internalNotes.slice(-DDS_INTERNAL_NOTE_LIMIT).map((note) => ({
         id: note.id,
         body: note.body.slice(0, 4000),

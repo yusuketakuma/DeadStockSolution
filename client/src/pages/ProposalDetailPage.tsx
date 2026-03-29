@@ -469,7 +469,7 @@ export default function ProposalDetailPage() {
   const proposalDeadlineMeta = getProposalDeadlineMeta(proposalDeadline);
   const canSaveTemplate = !user?.isAdmin && proposal.status === 'completed';
   const deadlineDescription = proposalDeadline
-    ? '仮マッチング中は 72 時間で自動失効します。承認前に双方で確認してください。'
+    ? '提案期限までに承認または拒否を行ってください。期限を過ぎると自動で失効します。'
     : 'このステータスでは提案期限のカウントダウン対象外です。';
   const reminderDescription = proposal.expiryReminderSentAt
     ? `24時間前リマインド送信済み: ${formatDateTimeJa(proposal.expiryReminderSentAt)}`
@@ -560,13 +560,20 @@ export default function ProposalDetailPage() {
           ) : null}
         </div>
         <div>
-          {proposalDeadlineMeta.isExpired ? (
-            <span className="badge bg-danger">{proposalDeadlineMeta.remainingLabel}</span>
-          ) : proposalDeadlineMeta.isDueSoon ? (
-            <span className="badge bg-warning text-dark">{proposalDeadlineMeta.remainingLabel}</span>
-          ) : (
-            <span className="badge bg-secondary">{proposalDeadlineMeta.remainingLabel}</span>
-          )}
+          <div className="d-flex flex-wrap gap-1 justify-content-end">
+            {proposalDeadlineMeta.urgencyLabel ? (
+              <span className={`badge ${proposalDeadlineMeta.isExpired ? 'bg-danger' : 'bg-warning text-dark'}`}>
+                {proposalDeadlineMeta.urgencyLabel}
+              </span>
+            ) : null}
+            {proposalDeadlineMeta.isExpired ? (
+              <span className="badge bg-danger">{proposalDeadlineMeta.remainingLabel}</span>
+            ) : proposalDeadlineMeta.isDueSoon ? (
+              <span className="badge bg-warning text-dark">{proposalDeadlineMeta.remainingLabel}</span>
+            ) : (
+              <span className="badge bg-secondary">{proposalDeadlineMeta.remainingLabel}</span>
+            )}
+          </div>
         </div>
       </div>
     </AppDataPanel>

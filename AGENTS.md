@@ -125,6 +125,30 @@ Skills provide your tools. When you need one, check its `SKILL.md`. Keep local n
 - **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
 - **WhatsApp:** No headers — use **bold** or CAPS for emphasis
 
+## Playwright Audits
+
+Playwright を使った監査・改善実装を行うときは、毎回 ad-hoc に進めず、次を固定ルールとして扱うこと。
+
+- source of truth はローカルに入っている Playwright CLI。まず `npx playwright --help` と `npx playwright test --list`、既存 `playwright.config.*` を確認する
+- 記憶で CLI 機能を決め打ちしない。`test` / `show-report` / `codegen` / `show-trace` / `merge-reports` / `clear-cache` / `install --with-deps` と、`--debug` / `--headed` / `--ui` / `--project` / `--workers` / `--last-failed` / `--list` / `--trace` / `--update-snapshots` の可否は実環境で確認する
+- 既存 config・reporter・auth state・testIdAttribute・project matrix を尊重し、置き換えではなく拡張を優先する
+- 監査は「動くか」ではなく「壊れ方・使いづらさ・backend/frontend 不整合・設計臭まで拾う」前提で行う
+- locator は `role` / `text` / `test id` 優先。`codegen` は locator 偵察用であり、生の生成コードは commit しない
+- auto-wait と web-first assertions を優先し、`sleep` や hydration 待ちのごまかしを入れない
+- hydration 不良、console error、page error、network failure、service worker 起因の観測欠落はテスト都合ではなくプロダクト不具合候補として扱う
+- 必要に応じて visual comparison、screenshot masking / stylePath、ARIA snapshots、axe、device / locale / timezone / colorScheme / offline / permissions / JS disabled / reduced motion、Clock、APIRequestContext、Chromium coverage、component testing を使う
+- 監査結果は必ずファイルに残す。標準成果物は `audits/playwright-audit-report.md` と `artifacts/playwright-audit/` 配下
+- 修正可能な問題は監査だけで終わらせず、最小変更で実装し、proof test まで追加する
+- 終了前に、関連 Playwright tests、影響範囲の unit/component tests、lint、typecheck、build を回し、pre-existing failure と今回起因を分けて報告する
+
+長い実行プロンプトは repo ルートの `PROMPT_PLAYWRIGHT_AUDIT_MASTER.md` を使うこと。毎回の task prompt には URL・認証・優先フロー・既知の pain point だけを渡す。
+
+Codex CLI の定型例:
+
+```bash
+cat PROMPT_PLAYWRIGHT_AUDIT_MASTER.md | codex exec --cd . --sandbox workspace-write --output-last-message audits/codex-final.md -
+```
+
 ## 💓 Heartbeats - Be Proactive!
 
 When you receive a heartbeat poll (message matches the configured heartbeat prompt), don't just reply `HEARTBEAT_OK` every time. Use heartbeats productively!

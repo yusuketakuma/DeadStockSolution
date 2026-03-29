@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { ensureTestPharmacyColumnsAtStartup } from '../config/test-pharmacy-schema';
 import { pharmacies, pharmacyRegistrationReviews, userRequests } from '../db/schema';
@@ -127,18 +127,33 @@ function isMissingTestPharmacyColumnError(err: unknown): boolean {
   return extractErrorCode(err) === '42703' || includesIsTestAccountToken(err);
 }
 let isTestAccountColumnAvailable: boolean | null = null;
+type TestAccountMode = 'user' | 'admin';
 
 // テスト薬局リストのメモリキャッシュ（cold start 時の DB往復を回避）
 const TEST_PHARMACY_CACHE_TTL_MS = 60_000;
 const TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS = 5;
-let testPharmacyCache: {
+type TestPharmacyCacheEntry = {
   expiresAt: number;
   rows: Array<{ id: number; name: string; email: string; prefecture: string; password: string | null }>;
-} | null = null;
+};
+let testPharmacyCache: Record<TestAccountMode, TestPharmacyCacheEntry | null> = {
+  user: null,
+  admin: null,
+};
 
 export function clearTestPharmacyPreviewStateForTests(): void {
   isTestAccountColumnAvailable = null;
-  testPharmacyCache = null;
+  testPharmacyCache = { user: null, admin: null };
+}
+
+function resolveTestAccountMode(value: unknown): TestAccountMode {
+  return value === 'admin' ? 'admin' : 'user';
+}
+
+function buildMissingTestAccountMessage(mode: TestAccountMode): string {
+  return mode === 'admin'
+    ? 'テスト管理者アカウントがDBに登録されていません（Playwright 検証用アカウントを確認してください）'
+    : 'テスト薬局がDBに登録されていません（5件登録を確認してください）';
 }
 
 router.post('/register', rejectIfLegacyPasswordDisabled, registerLimiter, async (req: AuthRequest, res: Response) => {
@@ -641,13 +656,15 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
   try {
     const includePasswordRaw = req.query.includePassword;
     const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
+    const mode = resolveTestAccountMode(req.query.mode);
     const cacheControlValue = includePassword ? 'no-store' : 'private, max-age=60';
+    const cachedEntry = testPharmacyCache[mode];
 
     // キャッシュが有効ならDBアクセスをスキップ
-    if (testPharmacyCache && testPharmacyCache.expiresAt > Date.now()) {
-      const cached = testPharmacyCache.rows;
+    if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+      const cached = cachedEntry.rows;
       if (cached.length === 0) {
-        res.status(404).json({ error: 'テスト薬局がDBに登録されていません（5件登録を確認してください）' });
+        res.status(404).json({ error: buildMissingTestAccountMessage(mode) });
         return;
       }
       res.setHeader('Cache-Control', cacheControlValue);
@@ -672,7 +689,10 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
         password: pharmacies.testAccountPassword,
       })
         .from(pharmacies)
-        .where(eq(pharmacies.isTestAccount, true))
+        .where(and(
+          eq(pharmacies.isTestAccount, true),
+          eq(pharmacies.isAdmin, mode === 'admin'),
+        ))
         .orderBy(asc(pharmacies.id))
         .limit(TEST_PHARMACY_PREVIEW_MAX_ACCOUNTS);
 
@@ -712,12 +732,12 @@ router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthReque
     }
 
     if (rows.length === 0) {
-      res.status(404).json({ error: 'テスト薬局がDBに登録されていません（5件登録を確認してください）' });
+      res.status(404).json({ error: buildMissingTestAccountMessage(mode) });
       return;
     }
 
     // 空結果はキャッシュせず、登録直後の 404 残留を避ける。
-    testPharmacyCache = { expiresAt: Date.now() + TEST_PHARMACY_CACHE_TTL_MS, rows };
+    testPharmacyCache[mode] = { expiresAt: Date.now() + TEST_PHARMACY_CACHE_TTL_MS, rows };
 
     res.setHeader('Cache-Control', cacheControlValue);
     res.json({

@@ -16,6 +16,7 @@ function makePreparedStockRow(params: {
     stock: {
       id: params.id,
       pharmacyId: params.pharmacyId,
+      drugCode: `CODE-${params.id}`,
       drugName: params.drugName,
       quantity: params.quantity,
       unit: '錠',

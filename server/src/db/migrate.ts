@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
-import { migrate } from 'drizzle-orm/neon-serverless/migrator';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { db } from '../config/database';
 import { logger } from '../services/logger';
 import { applyPerformanceScaleIndexes } from './performance-scale-indexes';

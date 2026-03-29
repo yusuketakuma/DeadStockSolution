@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { lazy, Suspense, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Badge, Row, Col } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,13 +7,14 @@ import { api } from '../api/client';
 import type { UploadStatus } from '../components/dashboard/types';
 import { useAsyncResource } from '../hooks/useAsyncResource';
 import AppDataPanel from '../components/ui/AppDataPanel';
-import RiskBucketBarChart from '../components/charts/RiskBucketBarChart';
 import SmartDigest from '../components/timeline/SmartDigest';
 import DashboardTimeline from '../components/timeline/DashboardTimeline';
 import OnboardingGuide from '../components/onboarding/OnboardingGuide';
 import { useOnboardingVisibility } from '../hooks/useOnboardingVisibility';
 import type { TimelineEvent } from '../types/timeline';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+
+const RiskBucketBarChart = lazy(() => import('../components/charts/RiskBucketBarChart'));
 
 interface PharmacyRisk {
   totalItems: number;
@@ -67,6 +68,10 @@ function buildDashboardPartialError(results: {
     errors.push('期限リスクの取得に失敗しました。');
   }
   return errors.join(' ').trim();
+}
+
+function ChartFallback({ text }: { text: string }) {
+  return <div className="small text-muted py-4">{text}</div>;
 }
 
 export default function DashboardPage() {
@@ -187,7 +192,9 @@ export default function DashboardPage() {
                   </Col>
                 </Row>
                 <div className="mt-2">
-                  <RiskBucketBarChart bucketCounts={risk.bucketCounts} onBucketClick={handleRiskBucketClick} />
+                  <Suspense fallback={<ChartFallback text="期限リスクグラフを読み込み中..." />}>
+                    <RiskBucketBarChart bucketCounts={risk.bucketCounts} onBucketClick={handleRiskBucketClick} />
+                  </Suspense>
                 </div>
               </>
             ) : (

@@ -445,6 +445,29 @@ describe('auth routes', () => {
     expect(selectChain.limit).toHaveBeenCalledWith(5);
   });
 
+  it('returns test admin previews when mode=admin', async () => {
+    const selectChain = createSelectChain([
+      { id: 91, name: 'Playwright 検証管理者', email: 'playwright-admin@example.com', prefecture: '東京都', password: 'PlaywrightAdmin!2026' },
+    ]);
+    mocks.db.select.mockReturnValue(selectChain);
+    const app = await createApp();
+
+    const res = await request(app).get('/api/auth/test-pharmacies?mode=admin&includePassword=1');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      accounts: [
+        {
+          id: 91,
+          name: 'Playwright 検証管理者',
+          email: 'playwright-admin@example.com',
+          prefecture: '東京都',
+          password: 'PlaywrightAdmin!2026',
+        },
+      ],
+    });
+  });
+
   it('returns 503 when test pharmacy columns are missing', async () => {
     process.env.NODE_ENV = 'production';
     process.env.TEST_LOGIN_FEATURE_ENABLED = 'true';

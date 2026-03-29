@@ -120,7 +120,7 @@ describe('AdminOpenClawPage - mobile layout', () => {
           handoffSuccessRate: 0.5,
           lastHandoffAt: '2026-03-23T10:00:00.000Z',
           ddsAgent: { connected: false, agentId: null, lastSeenAt: null, queuedJobs: 1, awaitingUser: 0 },
-        });
+        }, 200);
       }
       if (url.includes('/api/admin/openclaw/dds-agent')) {
         return jsonResponse({

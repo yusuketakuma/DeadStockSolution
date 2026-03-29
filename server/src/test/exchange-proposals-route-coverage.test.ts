@@ -426,7 +426,7 @@ describe('exchange-proposals route coverage: GET /proposals list', () => {
       {
         id: 1, pharmacyAId: 2, pharmacyBId: 3, status: 'proposed',
         totalValueA: '1000', totalValueB: '800', valueDifference: '200',
-        proposedAt: '2026-03-01T00:00:00.000Z',
+        proposedAt: '2026-03-01T00:00:00.000Z', expiresAt: '2026-03-05T00:00:00.000Z',
         pharmacyAName: '自薬局', pharmacyBName: '相手薬局',
       },
     ];
@@ -458,6 +458,9 @@ describe('exchange-proposals route coverage: GET /proposals list', () => {
       total: 1,
       totalPages: 1,
     }));
+    expect(mocks.getProposalPriority).toHaveBeenCalledWith(expect.objectContaining({
+      expiresAt: '2026-03-05T00:00:00.000Z',
+    }), 2);
   });
 
   it('returns 500 on list proposals DB error', async () => {

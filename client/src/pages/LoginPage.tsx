@@ -40,7 +40,14 @@ interface LoginFailureState {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TEST_PHARMACY_ENDPOINT = '/auth/test-pharmacies';
-const TEST_PHARMACY_PASSWORD_QUERY = '?includePassword=true';
+
+function buildTestPharmacyPreviewUrl(mode: LoginMode): string {
+  const params = new URLSearchParams({
+    includePassword: 'true',
+    mode,
+  });
+  return `${TEST_PHARMACY_ENDPOINT}?${params.toString()}`;
+}
 
 function isTestLoginFeatureEnabled(): boolean {
   return resolveClientTestLoginFeatureEnabled(import.meta.env as {
@@ -210,12 +217,11 @@ export default function LoginPage() {
     setAppliedTestPharmacyMessage('');
   };
 
-  const fetchTestPharmacies = async (forceRefresh = false): Promise<TestPharmacyPreview[]> => {
+  const fetchTestPharmacies = async (targetMode: LoginMode): Promise<TestPharmacyPreview[]> => {
     if (!testLoginFeatureEnabled) return [];
-    if (!forceRefresh && testPharmacies.length > 0) return testPharmacies;
     setTestPharmacyLoading(true);
     try {
-      const response = await api.get<TestPharmacyResponse>(`${TEST_PHARMACY_ENDPOINT}${TEST_PHARMACY_PASSWORD_QUERY}`);
+      const response = await api.get<TestPharmacyResponse>(buildTestPharmacyPreviewUrl(targetMode));
       const accounts = parseTestPharmacyAccounts(response);
       setTestPharmacies(accounts);
       setTestPharmacyError('');
@@ -231,15 +237,15 @@ export default function LoginPage() {
 
   const openTestPharmacyModal = async () => {
     if (!testLoginFeatureEnabled || testPharmacyLoading) return;
+    const targetMode = mode;
     setShowTestPharmacyModal(true);
     setTestPharmacyError('');
     setTestPharmacyQuery('');
-    if (testPharmacies.length > 0) return;
-    await fetchTestPharmacies(true);
+    await fetchTestPharmacies(targetMode);
   };
 
-  const applyTestPharmacy = (pharmacy: TestPharmacyPreview) => {
-    setMode('user');
+  const applyTestPharmacy = (pharmacy: TestPharmacyPreview, targetMode: LoginMode) => {
+    setMode(targetMode);
     setError('');
     setFieldErrors({});
     setCapsLockOn(false);
@@ -248,7 +254,7 @@ export default function LoginPage() {
     setPassword(pharmacy.password || '');
     setAppliedTestPharmacyMessage(
       pharmacy.password
-        ? `${pharmacy.name} のメールアドレスとパスワードを入力しました。そのままログインできます。`
+        ? `${pharmacy.name} のメールアドレスとパスワードを入力しました。そのまま${targetMode === 'admin' ? '管理者' : ''}ログインできます。`
         : `${pharmacy.name} のメールアドレスを入力しました。パスワードは別途入力してください。`,
     );
     setShowTestPharmacyModal(false);
@@ -408,12 +414,14 @@ export default function LoginPage() {
                 </>
               )}
 
-              {!isAdminMode && testLoginFeatureEnabled && (
+              {testLoginFeatureEnabled && (
                 <section className="border rounded-3 p-3 mt-4" aria-label="開発者ログイン">
                   <div className="mb-2">
                     <h3 className="h6 mb-1">開発者ログイン</h3>
                     <p className="text-muted small mb-0">
-                      テスト薬局のメールアドレスを選択して、動作確認をすぐ始められます。
+                      {isAdminMode
+                        ? 'Playwright 検証用の管理者アカウントを入力して、管理画面の確認をすぐ始められます。'
+                        : 'Playwright 検証用の一般ユーザーを入力して、業務画面の確認をすぐ始められます。'}
                     </p>
                   </div>
                   <div className="d-flex flex-wrap gap-2">
@@ -425,7 +433,7 @@ export default function LoginPage() {
                       }}
                       disabled={loading || testPharmacyLoading}
                     >
-                      一覧から選ぶ
+                      {isAdminMode ? '管理者一覧から選ぶ' : '一覧から選ぶ'}
                     </button>
                   </div>
                 </section>
@@ -436,7 +444,7 @@ export default function LoginPage() {
           <AppModalShell
             show={showTestPharmacyModal}
             onHide={() => setShowTestPharmacyModal(false)}
-            title="開発者ログイン"
+            title={isAdminMode ? '開発者ログイン（管理者）' : '開発者ログイン'}
             size="lg"
           >
             <div className="mb-3">
@@ -451,7 +459,9 @@ export default function LoginPage() {
             {testPharmacyLoading ? (
               <p className="text-muted mb-0">読み込み中...</p>
             ) : filteredTestPharmacies.length === 0 ? (
-              <p className="text-muted mb-0">表示できるテスト薬局がありません。</p>
+              <p className="text-muted mb-0">
+                {isAdminMode ? '表示できるテスト管理者アカウントがありません。' : '表示できるテスト薬局がありません。'}
+              </p>
             ) : (
               <AppResponsiveSwitch
                 desktop={(
@@ -460,7 +470,7 @@ export default function LoginPage() {
                       <thead>
                         <tr>
                           <th>ID</th>
-                          <th>薬局名</th>
+                          <th>{isAdminMode ? 'アカウント名' : '薬局名'}</th>
                           <th>メールアドレス</th>
                           <th>都道府県</th>
                           <th className="text-end">操作</th>
@@ -477,9 +487,9 @@ export default function LoginPage() {
                               <button
                                 type="button"
                                 className="btn btn-sm btn-primary"
-                                onClick={() => applyTestPharmacy(pharmacy)}
+                                onClick={() => applyTestPharmacy(pharmacy, mode)}
                               >
-                                このIDを入力
+                                {isAdminMode ? 'この管理者を入力' : 'このIDを入力'}
                               </button>
                             </td>
                           </tr>
@@ -503,9 +513,9 @@ export default function LoginPage() {
                           <button
                             type="button"
                             className="btn btn-primary w-100"
-                            onClick={() => applyTestPharmacy(pharmacy)}
+                            onClick={() => applyTestPharmacy(pharmacy, mode)}
                           >
-                            このIDを入力
+                            {isAdminMode ? 'この管理者を入力' : 'このIDを入力'}
                           </button>
                         )}
                       />

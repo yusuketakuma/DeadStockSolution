@@ -155,8 +155,8 @@ const ROUTE_BASELINE = [
     summary: 'Get OpenClaw health status',
     tags: ['System'],
     responses: [
-      { status: '200', description: 'OpenClaw healthy', schemaRef: '#/components/schemas/GenericResponse' },
-      { status: '503', description: 'OpenClaw degraded', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '200', description: 'OpenClaw health snapshot', schemaRef: '#/components/schemas/GenericResponse' },
+      { status: '503', description: 'OpenClaw health check unavailable', schemaRef: '#/components/schemas/GenericResponse' },
     ],
   },
   {

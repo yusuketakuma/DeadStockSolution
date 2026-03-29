@@ -23,6 +23,8 @@ import {
 import { notifyMessageNavUpdated } from '../lib/message-nav-events';
 import { useSseRefresh } from '../hooks/useSseRefresh';
 import AttachmentPreviewList from '../components/ui/AttachmentPreviewList';
+import AppEmptyState from '../components/ui/AppEmptyState';
+import AppSkeleton from '../components/ui/AppSkeleton';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
 const LIVE_REFRESH_INTERVAL_MS = 60_000;
@@ -336,8 +338,16 @@ export default function MessagesPage() {
         </Form>
       </Card.Body>
       {threadsLoading ? (
-        <Card.Body className="d-flex justify-content-center align-items-center">
-          <Spinner animation="border" size="sm" />
+        <Card.Body>
+          <div className="d-flex flex-column gap-2">
+            {Array.from({ length: 4 }, (_, index) => (
+              <AppSkeleton
+                key={index}
+                variant="card"
+                label={index === 0 ? 'スレッド一覧を読み込み中' : undefined}
+              />
+            ))}
+          </div>
         </Card.Body>
       ) : threadsError ? (
         <Card.Body>
@@ -347,8 +357,11 @@ export default function MessagesPage() {
           </Button>
         </Card.Body>
       ) : threads.length === 0 ? (
-        <Card.Body className="text-muted small">
-          {search ? '検索条件に一致するメッセージはありません' : 'メッセージはありません'}
+        <Card.Body>
+          <AppEmptyState
+            title={search ? '検索条件に一致するメッセージはありません' : 'メッセージはありません'}
+            description={search ? '検索条件を変えて再度確認してください。' : '新しいメッセージが届くとここに表示されます。'}
+          />
         </Card.Body>
       ) : (
         <ListGroup variant="flush">
