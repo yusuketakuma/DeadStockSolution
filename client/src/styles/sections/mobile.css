@@ -58,11 +58,19 @@
     padding: 0.18rem 0.4rem;
   }
 
+  .sidebar-toggle {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .app-header-updates-trigger {
     width: 1.3rem;
     height: 1.3rem;
-    min-width: 1.3rem;
-    min-height: 1.3rem;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .app-header-updates-trigger svg {
@@ -84,6 +92,9 @@
   .app-header-quick-mobile .app-header-quick-link {
     font-size: 0.65rem;
     padding: 0.2rem 0.4rem;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
   }
 
   .app-main {

@@ -62,6 +62,7 @@ export async function makeDeadStockItem(
   const defaults: typeof schema.deadStockItems.$inferInsert = {
     pharmacyId,
     uploadId,
+    drugCode: `YJ-TEST-${seq}`,
     drugName: `テスト薬品${seq}`,
     quantity: 10,
     ...overrides,

@@ -31,7 +31,9 @@ function mockSelectReturning(rows: Array<Record<string, unknown>>) {
 }
 
 // Helper: build multi-call select mock
-// First call = openclawRetryJobs (retry queue), second call = openclawRequestEvents (handoff KPI)
+// getOpenClawRetryQueueMetrics makes 3 parallel selects (status rows, failed count, oldest pending).
+// getHandoffKpi makes 1 select with .where().groupBy().
+// Calls 1-3 = retry metrics queries, call 4 = handoff KPI.
 function mockSelectSequence(
   retryRows: Array<{ status: string }>,
   handoffRows: Array<{ eventType: string; count: number; latest: string }>,
@@ -40,9 +42,29 @@ function mockSelectSequence(
   mocks.dbSelect.mockImplementation(() => {
     callCount += 1;
     if (callCount === 1) {
-      // retry queue: select({ status }) .from().  — no where clause
+      // retry metrics call 1: select({ status }).from() — no where clause
       return {
         from: vi.fn().mockResolvedValue(retryRows),
+      };
+    }
+    if (callCount === 2) {
+      // retry metrics call 2: select({ count }).from().where() — failed last 24h
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 0 }]),
+        }),
+      };
+    }
+    if (callCount === 3) {
+      // retry metrics call 3: select({ createdAt }).from().where().orderBy().limit()
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+        }),
       };
     }
     // handoff KPI: select().from().where().groupBy()

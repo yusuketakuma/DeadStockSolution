@@ -21,7 +21,9 @@ import {
   buildUploadRowIssueCsv,
   getUploadRowIssueSummary,
   getUploadRowIssuesForJob,
+  type UploadRowIssueRecord,
 } from '../services/upload-row-issue-service';
+import { searchDrugMaster } from '../services/drug-master-lookup-service';
 import { parsePositiveInt } from '../utils/request-utils';
 import {
   getBaseContext,
@@ -64,7 +66,82 @@ import {
 
 const router = Router();
 
+const DRUG_CODE_ISSUE_CODES = new Set(['MISSING_DRUG_CODE', 'DRUG_CODE_NOT_IN_MASTER']);
+const DRUG_CANDIDATE_ISSUE_LIMIT = 20;
+const DRUG_CANDIDATES_PER_ISSUE = 3;
 
+interface DrugCandidate {
+  yjCode: string;
+  drugName: string;
+  yakkaPrice: number;
+}
+
+function extractDrugNameFromRowData(rowDataJson: unknown): string | null {
+  if (!Array.isArray(rowDataJson) && (typeof rowDataJson !== 'object' || rowDataJson === null)) {
+    return null;
+  }
+
+  const values: unknown[] = Array.isArray(rowDataJson)
+    ? rowDataJson
+    : Object.values(rowDataJson as Record<string, unknown>);
+
+  let bestCandidate = '';
+  for (const cell of values) {
+    if (typeof cell !== 'string') continue;
+    const trimmed = cell.trim();
+    if (trimmed.length === 0) continue;
+    // Skip values that look like codes (all digits, or digit-heavy with dashes)
+    if (/^[\d\-\s]+$/.test(trimmed)) continue;
+    // Prefer longer strings (drug names are typically longer than codes)
+    if (trimmed.length > bestCandidate.length) {
+      bestCandidate = trimmed;
+    }
+  }
+
+  return bestCandidate.length > 0 ? bestCandidate : null;
+}
+
+async function enrichIssuesWithDrugCandidates(
+  issues: UploadRowIssueRecord[],
+): Promise<(UploadRowIssueRecord & { candidates?: DrugCandidate[] })[]> {
+  const enrichableIndices: number[] = [];
+  for (let i = 0; i < issues.length; i++) {
+    const issue = issues[i];
+    if (DRUG_CODE_ISSUE_CODES.has(issue.issueCode)) {
+      enrichableIndices.push(i);
+      if (enrichableIndices.length >= DRUG_CANDIDATE_ISSUE_LIMIT) break;
+    }
+  }
+
+  if (enrichableIndices.length === 0) {
+    return issues;
+  }
+
+  const enriched = [...issues] as (UploadRowIssueRecord & { candidates?: DrugCandidate[] })[];
+
+  await Promise.all(
+    enrichableIndices.map(async (idx) => {
+      const issue = enriched[idx];
+      const drugName = extractDrugNameFromRowData(issue.rowDataJson);
+      if (!drugName) {
+        issue.candidates = [];
+        return;
+      }
+      try {
+        const results = await searchDrugMaster(drugName, DRUG_CANDIDATES_PER_ISSUE);
+        issue.candidates = results.map((r) => ({
+          yjCode: r.yjCode,
+          drugName: r.drugName,
+          yakkaPrice: Number(r.yakkaPrice),
+        }));
+      } catch {
+        issue.candidates = [];
+      }
+    }),
+  );
+
+  return enriched;
+}
 
 // Preview: parse file and return headers + first 5 rows + suggested mapping
 router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response) => {
@@ -322,9 +399,12 @@ router.get('/jobs/:jobId/error-report', async (req: AuthRequest, res: Response) 
 
     const format = req.query.format === 'json' ? 'json' : 'csv';
     if (format === 'json') {
-      const summary = await getUploadRowIssueSummary(jobId);
+      const [summary, enrichedIssues] = await Promise.all([
+        getUploadRowIssueSummary(jobId),
+        enrichIssuesWithDrugCandidates(issues),
+      ]);
       res.json({
-        data: issues,
+        data: enrichedIssues,
         summary,
       });
       return;

@@ -32,9 +32,15 @@ type EnrichedRow<T> = T & {
   drugMasterId: number | null;
   drugMasterPackageId: number | null;
   packageLabel: string | null;
-  matchConfidence: 'exact' | 'fuzzy' | 'none';
+  matchConfidence: 'exact' | 'fuzzy' | 'code_not_found' | 'none';
   candidates?: MasterCandidate[];
 };
+
+export interface EnrichmentWarning {
+  rowIndex: number;
+  issueCode: 'DRUG_CODE_NOT_IN_MASTER';
+  issueMessage: string;
+}
 
 interface MasterMatchInfo {
   id: number;
@@ -399,10 +405,15 @@ async function populateCodeLookup(
   }
 }
 
+interface ResolveMasterResult {
+  masterInfoByRow: (MasterMatchInfo | null)[];
+  codeNotFoundIndexes: Set<number>;
+}
+
 async function resolveMasterInfoByRow<T extends BaseRow>(
   rows: T[],
   codeCache: Map<string, MasterMatchInfo>,
-): Promise<(MasterMatchInfo | null)[]> {
+): Promise<ResolveMasterResult> {
   const nameCache = new Map<string, MasterMatchInfo | null>();
   let masterByNormalizedName: Map<string, MasterMatchInfo> | null = null;
 
@@ -449,10 +460,16 @@ async function resolveMasterInfoByRow<T extends BaseRow>(
   };
 
   const masterInfoByRow = rows.map((row) => resolveByCode(row.drugCode));
+  // Track indexes where a drug_code was provided but didn't match any master code.
+  // These rows fall back to name matching and must NOT be reported as 'exact'.
+  const codeNotFoundIndexes = new Set<number>();
   const unresolvedNameIndexes: number[] = [];
   for (let index = 0; index < masterInfoByRow.length; index += 1) {
     if (!masterInfoByRow[index]) {
       unresolvedNameIndexes.push(index);
+      if (rows[index].drugCode) {
+        codeNotFoundIndexes.add(index);
+      }
     }
   }
 
@@ -463,7 +480,7 @@ async function resolveMasterInfoByRow<T extends BaseRow>(
     }
   }
 
-  return masterInfoByRow;
+  return { masterInfoByRow, codeNotFoundIndexes };
 }
 
 async function enrichRowsWithResolvedInfo<T extends BaseRow>(
@@ -471,6 +488,8 @@ async function enrichRowsWithResolvedInfo<T extends BaseRow>(
   type: 'dead_stock' | 'used_medication',
   masterInfoByRow: (MasterMatchInfo | null)[],
   state: DrugMasterLookupState,
+  codeNotFoundIndexes: Set<number>,
+  warnings?: EnrichmentWarning[],
 ): Promise<EnrichedRow<T>[]> {
   const masterIdsNeedingPackages = collectMasterIdsNeedingPackages(rows, masterInfoByRow);
   await loadPackageCandidatesForMasterIds(state, masterIdsNeedingPackages);
@@ -481,12 +500,38 @@ async function enrichRowsWithResolvedInfo<T extends BaseRow>(
       ? findPackageByUnit(state.packageCandidatesByMaster, masterInfo.id, row.unit)
       : null;
 
+    const isCodeNotFound = codeNotFoundIndexes.has(index);
+
+    // Determine match confidence:
+    // - 'exact'         : drug_code provided and matched a master code
+    // - 'code_not_found': drug_code provided but didn't match any master code; fell back to name
+    // - 'fuzzy'         : no drug_code provided; matched by name
+    // - 'none'          : no match found at all
+    let matchConfidence: 'exact' | 'fuzzy' | 'code_not_found' | 'none';
+    if (!masterInfo) {
+      matchConfidence = 'none';
+    } else if (row.drugCode && !isCodeNotFound) {
+      matchConfidence = 'exact';
+    } else if (isCodeNotFound) {
+      matchConfidence = 'code_not_found';
+    } else {
+      matchConfidence = 'fuzzy';
+    }
+
+    if (isCodeNotFound && warnings) {
+      warnings.push({
+        rowIndex: index,
+        issueCode: 'DRUG_CODE_NOT_IN_MASTER',
+        issueMessage: `薬品コード「${row.drugCode}」は医薬品マスターに存在しません。薬品名による照合にフォールバックしました`,
+      });
+    }
+
     const enriched: EnrichedRow<T> = {
       ...row,
       drugMasterId: masterInfo?.id ?? null,
       drugMasterPackageId: packageInfo?.id ?? masterInfo?.drugMasterPackageId ?? null,
       packageLabel: resolvePackageLabel(packageInfo, masterInfo),
-      matchConfidence: masterInfo ? (row.drugCode ? 'exact' : 'fuzzy') : 'none',
+      matchConfidence,
     };
 
     if (masterInfo) {
@@ -549,10 +594,14 @@ export async function searchMasterCandidates(
  * - drugCodeがある場合: YJコード/GS1コード/JANコードで検索
  * - yakkaUnitPriceが空の場合: マスターの薬価で補完
  * - unitが空の場合: マスターの単位で補完
+ *
+ * @param warnings - オプション。drug_codeが存在しない場合などの警告を収集する配列。
+ *                   渡された場合、DRUG_CODE_NOT_IN_MASTER 警告が追記される。
  */
 export async function enrichWithDrugMaster<T extends BaseRow>(
   rows: T[],
   type: 'dead_stock' | 'used_medication',
+  warnings?: EnrichmentWarning[],
 ): Promise<EnrichedRow<T>[]> {
   // マスターが空なら何もしない
   const [masterCheck] = await db.select({ id: drugMaster.id }).from(drugMaster).limit(1);
@@ -563,6 +612,6 @@ export async function enrichWithDrugMaster<T extends BaseRow>(
   const lookupState = createLookupState();
   await populateCodeLookup(normalizedCodes, lookupState);
 
-  const masterInfoByRow = await resolveMasterInfoByRow(rows, lookupState.codeCache);
-  return enrichRowsWithResolvedInfo(rows, type, masterInfoByRow, lookupState);
+  const { masterInfoByRow, codeNotFoundIndexes } = await resolveMasterInfoByRow(rows, lookupState.codeCache);
+  return enrichRowsWithResolvedInfo(rows, type, masterInfoByRow, lookupState, codeNotFoundIndexes, warnings);
 }

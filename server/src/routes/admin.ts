@@ -25,6 +25,7 @@ import uploadQualityRouter from './admin-upload-quality';
 import auditRouter from './admin-audit';
 import businessHoursRouter from './admin-business-hours';
 import sloRouter from './admin-slo';
+import cronStatusRouter from './admin-cron-status';
 
 const router = Router();
 
@@ -56,5 +57,7 @@ router.use(uploadQualityRouter);
 router.use(auditRouter);
 router.use(businessHoursRouter);
 router.use(sloRouter);
+
+router.use(cronStatusRouter);
 
 export default router;

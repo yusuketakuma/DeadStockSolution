@@ -3,7 +3,7 @@ import { db } from '../config/database';
 import { openclawRequestEvents } from '../db/schema';
 import { isFeatureEnabled } from '../config/feature-flags';
 import { getOpenClawConfig, isOpenClawConnectorConfigured, isOpenClawWebhookConfigured } from './openclaw-status';
-import { getOpenClawRetryQueueSnapshot } from './openclaw-retry-service';
+import { getOpenClawRetryQueueMetrics } from './openclaw-retry-service';
 import { getDdsConnectionStatus } from './dds-agent-service';
 
 const HANDOFF_EVENT_TYPES = ['handoff_accepted', 'handoff_deferred'] as const;
@@ -49,6 +49,22 @@ async function getHandoffKpi(): Promise<{
   };
 }
 
+const RETRY_QUEUE_WARNING_PENDING_THRESHOLD = 50;
+const RETRY_QUEUE_WARNING_OLDEST_PENDING_MS = 6 * 60 * 60 * 1000; // 6 hours in ms
+
+function resolveRetryQueueWarning(
+  pending: number,
+  oldestPendingCreatedAt: string | null,
+  nowMs: number,
+): boolean {
+  if (pending > RETRY_QUEUE_WARNING_PENDING_THRESHOLD) return true;
+  if (oldestPendingCreatedAt !== null) {
+    const ageMs = nowMs - new Date(oldestPendingCreatedAt).getTime();
+    if (ageMs > RETRY_QUEUE_WARNING_OLDEST_PENDING_MS) return true;
+  }
+  return false;
+}
+
 export async function getOpenClawHealthSnapshot(): Promise<{
   status: 'ok' | 'degraded';
   timestamp: string;
@@ -58,7 +74,15 @@ export async function getOpenClawHealthSnapshot(): Promise<{
   logPush: { enabled: boolean };
   autoFix: { enabled: boolean };
   autoEscalate: { enabled: boolean };
-  retryQueue: { pending: number; processing: number; completed: number; failed: number };
+  retryQueue: {
+    pending: number;
+    processing: number;
+    completed: number;
+    failed: number;
+    failedLast24h: number;
+    oldestPendingCreatedAt: string | null;
+    warning: boolean;
+  };
   handoffSuccessRate: number | null;
   lastHandoffAt: string | null;
   ddsAgent: {
@@ -71,16 +95,22 @@ export async function getOpenClawHealthSnapshot(): Promise<{
 }> {
   const connectorConfigured = isOpenClawConnectorConfigured();
   const webhookConfigured = isOpenClawWebhookConfigured();
-  const [retryQueue, handoffKpi, ddsStatus] = await Promise.all([
-    getOpenClawRetryQueueSnapshot(),
+  const nowMs = Date.now();
+  const [retryMetrics, handoffKpi, ddsStatus] = await Promise.all([
+    getOpenClawRetryQueueMetrics(),
     getHandoffKpi(),
     getDdsConnectionStatus().catch(() => null),
   ]);
   const status = connectorConfigured && webhookConfigured ? 'ok' : 'degraded';
+  const retryQueueWarning = resolveRetryQueueWarning(
+    retryMetrics.pending,
+    retryMetrics.oldestPendingCreatedAt,
+    nowMs,
+  );
 
   return {
     status,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(nowMs).toISOString(),
     connector: {
       configured: connectorConfigured,
       mode: getOpenClawConfig().mode,
@@ -100,7 +130,15 @@ export async function getOpenClawHealthSnapshot(): Promise<{
     autoEscalate: {
       enabled: isFeatureEnabled('OPENCLAW_AUTO_ESCALATE_ENABLED'),
     },
-    retryQueue,
+    retryQueue: {
+      pending: retryMetrics.pending,
+      processing: retryMetrics.processing,
+      completed: retryMetrics.completed,
+      failed: retryMetrics.failed,
+      failedLast24h: retryMetrics.failedLast24h,
+      oldestPendingCreatedAt: retryMetrics.oldestPendingCreatedAt,
+      warning: retryQueueWarning,
+    },
     handoffSuccessRate: handoffKpi.handoffSuccessRate,
     lastHandoffAt: handoffKpi.lastHandoffAt,
     ddsAgent: {

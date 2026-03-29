@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import { openclawRetryJobs, userRequests } from '../db/schema';
 import { logger } from './logger';
@@ -166,6 +166,54 @@ export async function getOpenClawRetryQueueSnapshot(): Promise<OpenClawRetryQueu
       });
     }
     return { ...EMPTY_SNAPSHOT };
+  }
+}
+
+export interface OpenClawRetryQueueMetrics extends OpenClawRetryQueueSnapshot {
+  failedLast24h: number;
+  oldestPendingCreatedAt: string | null;
+}
+
+export async function getOpenClawRetryQueueMetrics(): Promise<OpenClawRetryQueueMetrics> {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const [rows, failedRows, oldestRows] = await Promise.all([
+      db.select({ status: openclawRetryJobs.status })
+        .from(openclawRetryJobs),
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(openclawRetryJobs)
+        .where(and(
+          eq(openclawRetryJobs.status, 'failed'),
+          gte(openclawRetryJobs.updatedAt, cutoff),
+        )),
+      db.select({ createdAt: openclawRetryJobs.createdAt })
+        .from(openclawRetryJobs)
+        .where(eq(openclawRetryJobs.status, 'pending'))
+        .orderBy(asc(openclawRetryJobs.createdAt))
+        .limit(1),
+    ]);
+
+    const snapshot = rows.reduce<OpenClawRetryQueueSnapshot>((acc, row) => {
+      if (row.status === 'pending') acc.pending += 1;
+      if (row.status === 'processing') acc.processing += 1;
+      if (row.status === 'completed') acc.completed += 1;
+      if (row.status === 'failed') acc.failed += 1;
+      return acc;
+    }, { ...EMPTY_SNAPSHOT });
+
+    return {
+      ...snapshot,
+      failedLast24h: failedRows[0]?.count ?? 0,
+      oldestPendingCreatedAt: oldestRows[0]?.createdAt ?? null,
+    };
+  } catch (err) {
+    if (!isUndefinedTableError(err)) {
+      logger.warn('OpenClaw retry metrics query failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return { ...EMPTY_SNAPSHOT, failedLast24h: 0, oldestPendingCreatedAt: null };
   }
 }
 

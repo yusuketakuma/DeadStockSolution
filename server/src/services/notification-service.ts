@@ -5,6 +5,7 @@ import {
   adminMessageReads,
   matchNotifications,
   notifications,
+  pharmacies,
   type NotificationReferenceType,
   type NotificationType,
 } from '../db/schema';
@@ -278,6 +279,10 @@ export async function markAllDashboardAsRead(pharmacyId: number): Promise<number
 
     const matchUpdateCount = Number(matchUpdateRows.rows[0]?.count ?? 0);
     const adminMessageReadCount = Number(insertedAdminReadRows.rows[0]?.count ?? 0);
+
+    await tx.update(pharmacies)
+      .set({ lastTimelineViewedAt: new Date().toISOString() })
+      .where(eq(pharmacies.id, pharmacyId));
 
     return notificationCount + matchUpdateCount + adminMessageReadCount;
   });

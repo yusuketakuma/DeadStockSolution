@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { runPredictiveAlertsJob } from '../services/predictive-alert-service';
 import { logger } from '../services/logger';
-import { isAuthorizedCron } from './internal-cron-auth';
+import { isAuthorizedCron, resolveCronSecret } from './internal-cron-auth';
 import { parseBoundedInt } from '../utils/number-utils';
 
 const router = Router();
@@ -13,8 +13,7 @@ async function handleRun(req: Request, res: Response): Promise<void> {
     const authHeader = typeof req.headers.authorization === 'string'
       ? req.headers.authorization
       : undefined;
-    const configuredSecret = process.env.PREDICTIVE_ALERTS_CRON_SECRET?.trim();
-    const secret = configuredSecret && configuredSecret.length > 0 ? configuredSecret : null;
+    const secret = resolveCronSecret('PREDICTIVE_ALERTS_CRON_SECRET');
 
     if (!secret) {
       logger.error('Predictive alerts cron secret is not configured');

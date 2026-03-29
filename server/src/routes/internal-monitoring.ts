@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { logger } from '../services/logger';
 import { getMonitoringKpiSnapshot } from '../services/monitoring-kpi-service';
-import { isAuthorizedCron } from './internal-cron-auth';
+import { isAuthorizedCron, resolveCronSecret } from './internal-cron-auth';
 import { parseBoundedInt } from '../utils/number-utils';
 
 const router = Router();
@@ -11,8 +11,7 @@ async function handleKpiSnapshot(req: Request, res: Response): Promise<void> {
     const authHeader = typeof req.headers.authorization === 'string'
       ? req.headers.authorization
       : undefined;
-    const configuredSecret = process.env.MONITORING_CRON_SECRET?.trim();
-    const secret = configuredSecret && configuredSecret.length > 0 ? configuredSecret : null;
+    const secret = resolveCronSecret('MONITORING_CRON_SECRET');
 
     if (!secret) {
       logger.error('Monitoring cron secret is not configured');

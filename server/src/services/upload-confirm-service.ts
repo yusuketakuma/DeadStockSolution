@@ -13,7 +13,7 @@ import {
   extractUsedMedicationRowsWithIssues,
   type UploadExtractionIssue,
 } from './data-extractor';
-import { enrichWithDrugMaster } from './drug-master-enrichment';
+import { enrichWithDrugMaster, type EnrichmentWarning } from './drug-master-enrichment';
 import { invalidateAdminRiskSnapshotCache } from './expiry-risk-service';
 import { triggerMatchingRefreshOnUpload } from './matching-refresh-service';
 import {
@@ -74,6 +74,7 @@ export interface UploadConfirmExecutionResult {
   rowCount: number;
   diffSummary: DiffSummary | null;
   partialSummary: PartialSummary | null;
+  enrichmentWarnings: EnrichmentWarning[];
 }
 
 export interface PartialSummary {
@@ -285,11 +286,12 @@ export async function runUploadConfirm(
     ? buildPartialSummary(inspectedRows, parsedRowCount, extractedIssues)
     : null;
 
+  const enrichmentWarnings: EnrichmentWarning[] = [];
   const enrichedDeadStock = deadStockExtraction
-    ? await enrichWithDrugMaster(deadStockExtraction.rows, 'dead_stock')
+    ? await enrichWithDrugMaster(deadStockExtraction.rows, 'dead_stock', enrichmentWarnings)
     : null;
   const enrichedUsedMedication = usedMedicationExtraction
-    ? await enrichWithDrugMaster(usedMedicationExtraction.rows, 'used_medication')
+    ? await enrichWithDrugMaster(usedMedicationExtraction.rows, 'used_medication', enrichmentWarnings)
     : null;
   const requestedAtIso = staleGuardCreatedAt ?? new Date().toISOString();
   const mappingJson = JSON.stringify(mapping);
@@ -386,6 +388,7 @@ export async function runUploadConfirm(
       rowCount: persistedRowCount,
       diffSummary,
       partialSummary,
+      enrichmentWarnings,
     };
   });
 }

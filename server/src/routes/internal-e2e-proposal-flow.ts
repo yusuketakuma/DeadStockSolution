@@ -30,7 +30,7 @@ function isEnabled(): boolean {
 function isAuthorized(req: { headers: Record<string, unknown> }): boolean {
   const secret = process.env.E2E_HELPER_SECRET?.trim();
   if (!secret) {
-    return true;
+    return false;
   }
   const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : '';
   return authHeader === `Bearer ${secret}`;
