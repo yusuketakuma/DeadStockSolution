@@ -4,7 +4,7 @@ import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAsyncState } from '../hooks/useAsyncState';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { api } from '../api/client';
+import { api, isConflictError } from '../api/client';
 import AppAlert from '../components/ui/AppAlert';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import PageLoader from '../components/ui/PageLoader';
@@ -231,9 +231,14 @@ export default function ProposalDetailPage() {
     } catch (err) {
       // rollback: 楽観的更新を元のステータスに戻す
       setData((prev) => prev ? { ...prev, proposal: { ...prev.proposal, status: previousStatus } } : prev);
-      const errorMessage = err instanceof Error ? err.message : '操作に失敗しました';
-      showToastError(errorMessage);
-      setError(errorMessage);
+      if (isConflictError(err)) {
+        showToastError('他のユーザーが先に操作しました。画面を更新します');
+        void fetchDetail();
+      } else {
+        const errorMessage = err instanceof Error ? err.message : '操作に失敗しました';
+        showToastError(errorMessage);
+        setError(errorMessage);
+      }
     } finally {
       setActionSubmitting(false);
     }

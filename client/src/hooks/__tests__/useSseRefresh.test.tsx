@@ -74,13 +74,15 @@ describe('useSseRefresh', () => {
       source.emit('requests.refresh');
     });
 
-    expect(onRefresh).toHaveBeenCalledTimes(1);
+    // onopen時に再接続データ取得(1回) + requests.refreshイベント(1回) = 2回
+    expect(onRefresh).toHaveBeenCalledTimes(2);
 
     act(() => {
       vi.advanceTimersByTime(60_000);
     });
 
-    expect(onRefresh).toHaveBeenCalledTimes(1);
+    // SSE接続中はフォールバックポーリングが動かないため、呼び出し回数は変わらない
+    expect(onRefresh).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to polling when EventSource is unavailable', async () => {
@@ -120,6 +122,7 @@ describe('useSseRefresh', () => {
       vi.advanceTimersByTime(60_000);
     });
 
-    expect(onRefresh).toHaveBeenCalledTimes(1);
+    // onopen時(1回) + フォールバックポーリング(1回) = 2回
+    expect(onRefresh).toHaveBeenCalledTimes(2);
   });
 });

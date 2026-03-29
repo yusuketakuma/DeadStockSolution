@@ -33,7 +33,7 @@ vi.mock('drizzle-orm', () => ({
   sql: vi.fn(() => ({})),
 }));
 
-import businessHoursRouter from '../routes/business-hours';
+let businessHoursRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -79,8 +79,10 @@ function makeValidHours() {
 }
 
 describe('business-hours routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: businessHoursRouter } = await import('../routes/business-hours'));
   });
 
   describe('GET /', () => {

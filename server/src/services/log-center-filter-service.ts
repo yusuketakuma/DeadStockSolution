@@ -233,6 +233,8 @@ function mapActionToCodeLocation(action: string | null): string | null {
     case 'proposal_reject':
     case 'proposal_complete':
       return 'server/src/routes/exchange-proposals.ts';
+    case 'proposal_expired':
+      return 'server/src/services/exchange-execution-service.ts';
     case 'upload':
       return 'server/src/routes/upload.ts';
     case 'dead_stock_delete':

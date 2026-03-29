@@ -41,6 +41,7 @@ function createApp() {
 }
 
 beforeEach(async () => {
+  vi.resetAllMocks();
   vi.resetModules();
   mockBusinessHoursRouteDependencies();
   const { default: router } = await import('../routes/business-hours');

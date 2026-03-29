@@ -20,8 +20,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-// Import app after mocks are set up
-import app from '../app';
+let app: (typeof import('../app'))['default'];
 
 const ORIGINAL_OPENCLAW_CONNECTOR_MODE = process.env.OPENCLAW_CONNECTOR_MODE;
 const ORIGINAL_OPENCLAW_CLI_PATH = process.env.OPENCLAW_CLI_PATH;
@@ -47,10 +46,16 @@ function mockRetryQueueRows(rows: Array<{ status: string }>) {
   });
 }
 
+async function loadApp() {
+  vi.resetModules();
+  ({ default: app } = await import('../app'));
+}
+
 describe('/api/health', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
     mockRetryQueueRows([]);
+    await loadApp();
   });
 
   describe('DB 正常時', () => {
@@ -108,9 +113,10 @@ describe('/api/health', () => {
 });
 
 describe('/api/health/ready', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
     mockRetryQueueRows([]);
+    await loadApp();
   });
 
   describe('DB 正常時', () => {
@@ -137,13 +143,14 @@ describe('/api/health/ready', () => {
 });
 
 describe('/api/health/openclaw', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
     mockRetryQueueRows([]);
     delete process.env.OPENCLAW_CONNECTOR_MODE;
     delete process.env.OPENCLAW_CLI_PATH;
     delete process.env.OPENCLAW_AGENT_ID;
     delete process.env.OPENCLAW_WEBHOOK_SECRET;
+    await loadApp();
   });
 
   afterEach(() => {

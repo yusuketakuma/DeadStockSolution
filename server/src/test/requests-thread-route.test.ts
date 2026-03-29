@@ -83,7 +83,7 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(() => ({})),
 }));
 
-import requestsRouter from '../routes/requests';
+let requestsRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -109,8 +109,10 @@ function createLimitQuery(result: unknown) {
 }
 
 describe('requests routes — thread flow', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: requestsRouter } = await import('../routes/requests'));
     mocks.buildOpenClawLogContext.mockResolvedValue({ importFailures: { total: 1 } });
     mocks.buildOpenClawConversationContext.mockResolvedValue({
       latestMessageId: 1,

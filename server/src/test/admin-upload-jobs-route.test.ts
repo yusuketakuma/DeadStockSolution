@@ -30,7 +30,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import adminUploadJobsRouter from '../routes/admin-upload-jobs';
+let adminUploadJobsRouter: express.Router;
 
 function createApp() {
   const app = express();
@@ -48,8 +48,10 @@ function createApp() {
 }
 
 describe('admin upload jobs routes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    ({ default: adminUploadJobsRouter } = await import('../routes/admin-upload-jobs'));
     mocks.isUploadConfirmRetryUnavailableError.mockImplementation(
       (error: unknown) => Boolean(
         error

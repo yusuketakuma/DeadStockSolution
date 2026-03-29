@@ -396,8 +396,11 @@ describe('exchange-service coverage', () => {
       expect(mocks.invalidateStatisticsSummaryCacheForPharmacies).toHaveBeenCalledWith([1, 2]);
     });
 
-    it('logs warning when notification fails', async () => {
-      mocks.createNotification.mockResolvedValueOnce(null);
+    it('logs error when notification fails after retries', async () => {
+      mocks.createNotification
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
       const tx = { select: vi.fn(), update: vi.fn(), delete: vi.fn() };
       tx.select.mockImplementationOnce(() => createSelectQuery([{
         pharmacyAId: 1,
@@ -409,8 +412,8 @@ describe('exchange-service coverage', () => {
       mocks.db.transaction.mockImplementation(async (cb: (tx: unknown) => unknown | Promise<unknown>) => cb(tx));
 
       await rejectProposal(100, 1);
-      expect(mocks.logger.warn).toHaveBeenCalledWith(
-        'Proposal notification could not be persisted',
+      expect(mocks.logger.error).toHaveBeenCalledWith(
+        'Proposal notification failed after all retries',
         expect.any(Object),
       );
     });
@@ -499,7 +502,7 @@ describe('exchange-service coverage', () => {
       }]));
       mocks.db.transaction.mockImplementation(async (cb: (tx: unknown) => unknown | Promise<unknown>) => cb(tx));
 
-      await expect(completeProposal(100, 1)).rejects.toThrow('在庫状態が変更されているため');
+      await expect(completeProposal(100, 1)).rejects.toThrow('在庫状態の問題により交換を完了できません');
     });
 
     it('throws when stock quantity is insufficient', async () => {
@@ -529,7 +532,7 @@ describe('exchange-service coverage', () => {
       }]));
       mocks.db.transaction.mockImplementation(async (cb: (tx: unknown) => unknown | Promise<unknown>) => cb(tx));
 
-      await expect(completeProposal(100, 1)).rejects.toThrow('在庫数量が不足している');
+      await expect(completeProposal(100, 1)).rejects.toThrow('在庫状態の問題により交換を完了できません');
     });
 
     it('throws when stock update returns empty (concurrent modification)', async () => {

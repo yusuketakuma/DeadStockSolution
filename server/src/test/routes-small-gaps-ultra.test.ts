@@ -442,9 +442,9 @@ describe('auth.ts — ultra coverage', () => {
     expect(res.status).toBe(500);
   });
 
-  // --- Cover /test-pharmacies cached empty rows ---
-  it('GET /test-pharmacies — returns 404 when cache contains empty array', async () => {
-    mocks.db.select.mockReturnValueOnce(selectChainWithOrderBy([]));
+  // --- Cover /test-pharmacies empty rows ---
+  it('GET /test-pharmacies — does not cache empty rows', async () => {
+    mocks.db.select.mockReturnValue(selectChainWithOrderBy([]));
     const app = await createFreshAuthApp();
     const res1 = await request(app).get('/auth/test-pharmacies');
     expect(res1.status).toBe(404);
@@ -452,6 +452,7 @@ describe('auth.ts — ultra coverage', () => {
     const res2 = await request(app).get('/auth/test-pharmacies');
     expect(res2.status).toBe(404);
     expect(res2.body.error).toContain('テスト薬局がDBに登録されていません');
+    expect(mocks.db.select).toHaveBeenCalledTimes(2);
   });
 
   // --- Cover /test-pharmacies cache hit with data ---

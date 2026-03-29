@@ -78,8 +78,13 @@ const sampleEvents = [
 
 describe('timeline routes', () => {
   beforeEach(async () => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.resetModules();
+    vi.doUnmock('../middleware/auth');
+    vi.doUnmock('../services/timeline-service');
+    vi.doUnmock('../config/database');
+    vi.doUnmock('../services/logger');
+    vi.doUnmock('../services/system-event-service');
     mockTimelineRouteDependencies();
     ({ default: timelineRouter } = await import('../routes/timeline'));
     mocks.requireLoginEnabled.value = true;

@@ -93,8 +93,8 @@
 
 ### 前提条件
 
-- Node.js 20+
-- npm 10+
+- Node.js 25.8.2
+- npm 11.11.1+
 - PostgreSQL（ローカル or Neon/Vercel Postgres）
 
 ### セットアップ

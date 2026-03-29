@@ -305,9 +305,9 @@ describe('account routes — deep coverage', () => {
     });
 
     it('returns 400 when geocode fails', async () => {
-      const app = await createApp();
-      mocks.db.select.mockReturnValue(createLimitQuery([BASE_ACCOUNT]));
+      mocks.db.select.mockImplementation(() => createLimitQuery([BASE_ACCOUNT]));
       mocks.geocodeAddress.mockResolvedValue(null);
+      const app = await createApp();
 
       const res = await request(app)
         .put('/api/account')

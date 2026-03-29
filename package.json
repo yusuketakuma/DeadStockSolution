@@ -5,6 +5,9 @@
     "server",
     "client"
   ],
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev:server": "npm run dev --workspace=server",
     "dev:client": "npm run dev --workspace=client",
@@ -25,7 +28,7 @@
     "test:perf:server": "npm run test:perf --workspace=server",
     "test:perf:update:server": "npm run test:perf:update --workspace=server",
     "test:client": "npm run test --workspace=client",
-    "test:e2e": "npm run test --workspace=client",
+    "test:e2e": "npx playwright test",
     "test:coverage": "npm run test:coverage --workspace=server && npm run test:coverage --workspace=client",
     "test:coverage:server": "npm run test:coverage --workspace=server",
     "test:coverage:client": "npm run test:coverage --workspace=client",
@@ -55,6 +58,7 @@
     "@types/react": "$@types/react",
     "@types/react-dom": "$@types/react-dom",
     "flatted": "3.4.2",
+    "picomatch": "4.0.4",
     "react": "$react",
     "react-dom": "$react-dom"
   },
@@ -76,6 +80,7 @@
     "@commitlint/config-conventional": "^20.5.0",
     "@eslint/js": "^9.39.4",
     "@lhci/cli": "^0.15.1",
+    "@playwright/test": "^1.58.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.4",
@@ -86,5 +91,5 @@
     "lint-staged": "^16.4.0",
     "typescript-eslint": "^8.57.1"
   },
-  "version": "0.0.20"
+  "version": "0.0.21"
 }

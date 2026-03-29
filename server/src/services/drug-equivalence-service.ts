@@ -68,6 +68,42 @@ function buildPairCondition(drugNameA: string, drugNameB: string) {
   );
 }
 
+async function checkCircularEquivalence(
+  drugNameA: string,
+  drugNameB: string,
+): Promise<void> {
+  // 既存の同等性マップを取得（取得失敗時はスキップ — 新規DBなど）
+  let map: Map<string, string[]>;
+  try {
+    map = await fetchEquivalenceMap();
+  } catch {
+    return;
+  }
+
+  // BFS: drugNameB から出発して drugNameA に到達できるか
+  // （A→Bを追加しようとしているので、B→...→A のパスがあれば循環）
+  const visited = new Set<string>();
+  const queue = [drugNameB];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === drugNameA) {
+      throw new DrugEquivalenceValidationError(
+        `循環する同等性関係が検出されました: ${drugNameA} ↔ ${drugNameB} を追加すると循環が発生します`,
+      );
+    }
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    const neighbors = map.get(current) ?? [];
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor)) {
+        queue.push(neighbor);
+      }
+    }
+  }
+}
+
 async function checkDuplicate(drugNameA: string, drugNameB: string): Promise<void> {
   // Check A-B
   const [existingAB] = await db.select()
@@ -96,6 +132,7 @@ export async function createDrugEquivalence(input: CreateDrugEquivalenceInput): 
   const trimmedB = trimDrugName(input.drugNameB);
 
   await checkDuplicate(trimmedA, trimmedB);
+  await checkCircularEquivalence(trimmedA, trimmedB);
 
   const now = new Date().toISOString();
   const [inserted] = await db.insert(drugEquivalences)

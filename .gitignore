@@ -160,3 +160,7 @@ stats.html
 
 # Lighthouse CI
 .lighthouseci/
+
+# Playwright
+playwright-report/
+test-results/

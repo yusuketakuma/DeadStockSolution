@@ -17,7 +17,6 @@ import { parsePagination, isPositiveSafeInteger } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
 import { getProposalPriority } from '../services/proposal-priority-service';
-import { getClientIp, writeLog } from '../services/log-service';
 import {
   buildProposalTimeline,
   fetchProposalTimelineActionRows,
@@ -61,7 +60,6 @@ const proposalWriteLimiter = rateLimit({
 
 type BulkActionType = 'accept' | 'reject';
 const BULK_ACTION_CONCURRENCY = 8;
-type ProposalLogAction = 'proposal_accept' | 'proposal_reject' | 'proposal_complete';
 
 function parseBulkAction(raw: unknown): BulkActionType | null {
   if (raw === 'accept' || raw === 'reject') return raw;
@@ -127,9 +125,7 @@ function sanitizeProposalError(err: unknown): { status: number; message: string 
 }
 
 interface ProposalActionHandlerConfig<TResult> {
-  logAction: ProposalLogAction;
   run: (proposalId: number, actorId: number) => Promise<TResult>;
-  buildLogDetail: (proposalId: number, result: TResult) => string;
   buildResponse: (result: TResult) => Record<string, unknown>;
 }
 
@@ -179,11 +175,6 @@ async function handleProposalAction<TResult>(
 
     const actorId = req.user!.id;
     const result = await config.run(id, actorId);
-    void writeLog(config.logAction, {
-      pharmacyId: actorId,
-      detail: config.buildLogDetail(id, result),
-      ipAddress: getClientIp(req),
-    });
     res.json(config.buildResponse(result));
   } catch (err) {
     const failure = sanitizeProposalError(err);
@@ -310,7 +301,8 @@ function compareTimelineAtDesc(
 
 const handleFind = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const candidates = await findMatches(req.user!.id);
+    const groupOnly = req.body?.groupOnly === true;
+    const candidates = await findMatches(req.user!.id, { groupOnly });
     res.json({ candidates });
   } catch (err) {
     logger.error('Find matches error:', { error: getErrorMessage(err) });
@@ -384,9 +376,7 @@ const handleBulkAction = async (req: AuthRequest, res: Response): Promise<void> 
 
 const handleAcceptProposal = async (req: AuthRequest, res: Response): Promise<void> => {
   await handleProposalAction(req, res, {
-    logAction: 'proposal_accept',
     run: acceptProposal,
-    buildLogDetail: (proposalId, status) => `proposalId=${proposalId}|status=${status}`,
     buildResponse: (status) => ({
       message: status === 'confirmed'
         ? '仮マッチングが確定しました'
@@ -398,18 +388,14 @@ const handleAcceptProposal = async (req: AuthRequest, res: Response): Promise<vo
 
 const handleRejectProposal = async (req: AuthRequest, res: Response): Promise<void> => {
   await handleProposalAction(req, res, {
-    logAction: 'proposal_reject',
     run: rejectProposal,
-    buildLogDetail: (proposalId) => `proposalId=${proposalId}|status=rejected`,
     buildResponse: () => ({ message: '仮マッチングを拒否しました' }),
   });
 };
 
 const handleCompleteProposal = async (req: AuthRequest, res: Response): Promise<void> => {
   await handleProposalAction(req, res, {
-    logAction: 'proposal_complete',
     run: completeProposal,
-    buildLogDetail: (proposalId) => `proposalId=${proposalId}|status=completed`,
     buildResponse: () => ({ message: '交換を完了しました' }),
   });
 };
