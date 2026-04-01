@@ -54,7 +54,7 @@ export const USED_MED_SELECT_FIELDS = {
 };
 
 type PreparedMatchingDeadStockByPharmacyId = {
-  execute(params: { pharmacyId: number }): Promise<any[]>;
+  execute(params: { pharmacyId: number }): Promise<DeadStockRow[]>;
 };
 type SelectExecutor = Pick<typeof db, 'select'>;
 

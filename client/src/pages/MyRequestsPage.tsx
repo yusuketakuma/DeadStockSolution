@@ -1,194 +1,20 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { Badge, Form } from 'react-bootstrap';
-import { api, buildApiUrl } from '../api/client';
+import { Badge } from 'react-bootstrap';
+import { api } from '../api/client';
 import AppAlert from '../components/ui/AppAlert';
-import AppCard from '../components/ui/AppCard';
-import AppControl from '../components/ui/AppControl';
-import AttachmentPreviewList from '../components/ui/AttachmentPreviewList';
-import InlineLoader from '../components/ui/InlineLoader';
-import LoadingButton from '../components/ui/LoadingButton';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { useSseRefresh } from '../hooks/useSseRefresh';
-import { formatDateTimeJa } from '../utils/formatters';
-
-const LIVE_REFRESH_INTERVAL_MS = 60_000;
-const REQUEST_TEMPLATES = [
-  '操作中にエラーが発生しました。再現手順は次のとおりです。',
-  '医薬品マスターの更新状況を確認したいです。',
-  '検索結果の表示順を改善してほしいです。',
-  'OpenClaw 連携の挙動を確認したいです。',
-] as const;
-
-interface RequestItem {
-  id: number;
-  requestText: string;
-  category: string;
-  priority: string;
-  closeReason: string | null;
-  assignedAdminId: number | null;
-  assignedAdminName: string | null;
-  requesterLastViewedAt: string | null;
-  adminLastViewedAt: string | null;
-  latestUserMessageAt: string | null;
-  latestStaffMessageAt: string | null;
-  openclawStatus: string;
-  openclawThreadId: string | null;
-  openclawSummary: string | null;
-  workflowStatus: string | null;
-  latestSummary: string | null;
-  branchName: string | null;
-  prUrl: string | null;
-  prNumber: number | null;
-  updatedAt: string | null;
-  createdAt: string | null;
-  hasUnread: boolean;
-  waitingOn: 'user' | 'admin' | 'openclaw' | null;
-  isOverdue: boolean;
-}
-
-interface RequestMessageItem {
-  id: number;
-  authorType: 'user' | 'openclaw_agent' | 'system' | 'admin';
-  messageType: 'message' | 'question' | 'status_update' | 'pr_report';
-  body: string;
-  createdAt: string | null;
-  metadata: Record<string, unknown> | null;
-  attachments: Array<{
-    id: number;
-    fileName: string;
-    mimeType: string;
-    fileSize: number;
-  }>;
-}
-
-interface DuplicateRequestSuggestion {
-  id: number;
-  requestText: string;
-  category: string;
-  priority: string;
-  closeReason: string | null;
-  createdAt: string | null;
-  score: number;
-}
-
-interface RequestThreadResponse {
-  request: RequestItem & {
-    lastQuestion?: string | null;
-    lastError?: string | null;
-  };
-  messages: RequestMessageItem[];
-}
-
-function statusBadge(status: string | null): { bg: 'secondary' | 'primary' | 'warning' | 'success' | 'danger'; label: string } {
-  switch (status) {
-    case 'awaiting_user':
-      return { bg: 'primary', label: '回答待ち' };
-    case 'implementing':
-      return { bg: 'warning', label: '実装中' };
-    case 'pr_opened':
-      return { bg: 'warning', label: 'PR作成済み' };
-    case 'completed':
-      return { bg: 'success', label: '完了' };
-    case 'failed':
-      return { bg: 'danger', label: '失敗' };
-    case 'analyzing':
-      return { bg: 'secondary', label: '解析中' };
-    case 'queued':
-    default:
-      return { bg: 'secondary', label: '受付済み' };
-  }
-}
-
-function authorLabel(authorType: RequestMessageItem['authorType']): string {
-  if (authorType === 'openclaw_agent') return 'DSS Manager';
-  if (authorType === 'system') return 'System';
-  if (authorType === 'admin') return 'Admin';
-  return 'あなた';
-}
-
-function categoryLabel(category: string): string {
-  switch (category) {
-    case 'bug_report':
-      return '不具合';
-    case 'question':
-      return '質問';
-    case 'master_update':
-      return 'マスター更新';
-    case 'integration_issue':
-      return '連携不具合';
-    case 'improvement':
-    default:
-      return '改善要望';
-  }
-}
-
-function priorityLabel(priority: string): string {
-  switch (priority) {
-    case 'urgent':
-      return '緊急';
-    case 'low':
-      return '低';
-    case 'normal':
-    default:
-      return '通常';
-  }
-}
-
-function closeReasonLabel(reason: string | null): string | null {
-  switch (reason) {
-    case 'completed':
-      return '完了';
-    case 'duplicate':
-      return '重複';
-    case 'rejected':
-      return '却下';
-    case 'cannot_reproduce':
-      return '再現不可';
-    case 'on_hold':
-      return '保留';
-    default:
-      return null;
-  }
-}
-
-function waitingBadge(item: RequestItem) {
-  if (item.isOverdue) {
-    return <Badge bg="warning" text="dark">24時間超</Badge>;
-  }
-  if (item.waitingOn === 'user') {
-    return <Badge bg="primary">回答待ち</Badge>;
-  }
-  if (item.waitingOn === 'admin') {
-    return <Badge bg="danger">管理者確認待ち</Badge>;
-  }
-  if (item.waitingOn === 'openclaw') {
-    return <Badge bg="secondary">処理中</Badge>;
-  }
-  return null;
-}
-
-function attachmentUrl(attachmentId: number): string {
-  return buildApiUrl(`/requests/attachments/${attachmentId}`);
-}
-
-type RequestQueueFilter = 'all' | 'my_turn' | 'overdue' | 'unread' | 'openclaw';
-
-function requestSortRank(item: RequestItem): number {
-  if (item.isOverdue) return 0;
-  if (item.waitingOn === 'user') return 1;
-  if (item.hasUnread) return 2;
-  if (item.waitingOn === 'admin') return 3;
-  if (item.waitingOn === 'openclaw') return 4;
-  return 5;
-}
-
-function matchesQueueFilter(item: RequestItem, filter: RequestQueueFilter): boolean {
-  if (filter === 'my_turn') return item.waitingOn === 'user';
-  if (filter === 'overdue') return item.isOverdue;
-  if (filter === 'unread') return item.hasUnread;
-  if (filter === 'openclaw') return item.waitingOn === 'openclaw';
-  return true;
-}
+import { matchesQueueFilter, requestSortRank } from './my-requests/helpers';
+import { NewRequestSection } from './my-requests/NewRequestSection';
+import { RequestListPane } from './my-requests/RequestListPane';
+import { RequestThreadPane } from './my-requests/RequestThreadPane';
+import {
+  LIVE_REFRESH_INTERVAL_MS,
+  type DuplicateRequestSuggestion,
+  type RequestItem,
+  type RequestQueueFilter,
+  type RequestThreadResponse,
+} from './my-requests/types';
 
 export default function MyRequestsPage() {
   const [requests, setRequests] = useState<RequestItem[]>([]);
@@ -391,6 +217,13 @@ export default function MyRequestsPage() {
     setReplyFiles(Array.from(event.currentTarget.files ?? []));
   };
 
+  const handleCancelCreateForm = () => {
+    setShowCreateForm(false);
+    setNewRequestText('');
+    setNewFiles([]);
+    setDuplicateSuggestions([]);
+  };
+
   const requestSummary = useMemo(() => ({
     myTurn: requests.filter((item) => item.waitingOn === 'user').length,
     overdue: requests.filter((item) => item.isOverdue).length,
@@ -421,313 +254,53 @@ export default function MyRequestsPage() {
       {message && <AppAlert variant="success" dismissible onClose={() => setMessage('')}>{message}</AppAlert>}
       {error && <AppAlert variant="danger" dismissible onClose={() => setError('')}>{error}</AppAlert>}
 
-      <AppCard className="mb-3">
-        <AppCard.Header>新しい要望</AppCard.Header>
-        <AppCard.Body>
-          {!showCreateForm ? (
-            <div className="d-flex flex-column gap-2 gap-md-0 flex-md-row justify-content-between align-items-md-center">
-              <div className="text-muted small">不具合修正や改善依頼を新しく登録できます。</div>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => setShowCreateForm(true)}
-              >
-                新しい要望を入力
-              </button>
-            </div>
-          ) : (
-            <div className="d-flex flex-column gap-3">
-              <div className="d-flex flex-wrap gap-2">
-                {REQUEST_TEMPLATES.map((template) => (
-                  <button
-                    key={template}
-                    type="button"
-                    className="btn btn-outline-secondary btn-sm"
-                    onClick={() => setNewRequestText(template)}
-                  >
-                    {template}
-                  </button>
-                ))}
-              </div>
-
-              <div className="row g-2">
-                <div className="col-12 col-md-4">
-                  <Form.Select value={newCategory} onChange={(event) => setNewCategory(event.target.value)}>
-                    <option value="improvement">改善要望</option>
-                    <option value="bug_report">不具合</option>
-                    <option value="question">質問</option>
-                    <option value="master_update">マスター更新</option>
-                    <option value="integration_issue">連携不具合</option>
-                  </Form.Select>
-                </div>
-                <div className="col-12 col-md-4">
-                  <Form.Select value={newPriority} onChange={(event) => setNewPriority(event.target.value)}>
-                    <option value="urgent">緊急</option>
-                    <option value="normal">通常</option>
-                    <option value="low">低</option>
-                  </Form.Select>
-                </div>
-                <div className="col-12 col-md-4">
-                  <Form.Control
-                    type="file"
-                    multiple
-                    onChange={handleNewFilesChange}
-                  />
-                </div>
-              </div>
-
-              <AppControl
-                as="textarea"
-                rows={4}
-                value={newRequestText}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewRequestText(e.target.value)}
-                placeholder="依頼したい内容や困っていることを入力してください"
-              />
-
-              {newFiles.length > 0 && (
-                <div className="small text-muted">{newFiles.map((file) => file.name).join(', ')}</div>
-              )}
-
-              {duplicateSuggestions.length > 0 && (
-                <div className="border rounded p-3 bg-light">
-                  <div className="fw-semibold small mb-2">似た要望が見つかりました</div>
-                  <div className="d-flex flex-column gap-2">
-                    {duplicateSuggestions.map((suggestion) => (
-                      <button
-                        key={suggestion.id}
-                        type="button"
-                        className="btn btn-outline-secondary text-start"
-                        onClick={() => setSelectedRequestId(suggestion.id)}
-                      >
-                        <div className="d-flex flex-wrap gap-1 mb-1">
-                          <Badge bg="secondary">#{suggestion.id}</Badge>
-                          <Badge bg="light" text="dark">{categoryLabel(suggestion.category)}</Badge>
-                          <Badge bg="light" text="dark">{priorityLabel(suggestion.priority)}</Badge>
-                        </div>
-                        <div className="small">{suggestion.requestText}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="d-flex justify-content-end gap-2">
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={() => {
-                    setShowCreateForm(false);
-                    setNewRequestText('');
-                    setNewFiles([]);
-                    setDuplicateSuggestions([]);
-                  }}
-                  disabled={creating}
-                >
-                  キャンセル
-                </button>
-                <LoadingButton
-                  variant="primary"
-                  onClick={handleCreateRequest}
-                  loading={creating}
-                  loadingLabel="送信中..."
-                >
-                  要望を送信
-                </LoadingButton>
-              </div>
-            </div>
-          )}
-        </AppCard.Body>
-      </AppCard>
+      <NewRequestSection
+        showCreateForm={showCreateForm}
+        newRequestText={newRequestText}
+        newCategory={newCategory}
+        newPriority={newPriority}
+        newFiles={newFiles}
+        duplicateSuggestions={duplicateSuggestions}
+        creating={creating}
+        onOpenCreateForm={() => setShowCreateForm(true)}
+        onCancel={handleCancelCreateForm}
+        onRequestTextChange={setNewRequestText}
+        onCategoryChange={setNewCategory}
+        onPriorityChange={setNewPriority}
+        onNewFilesChange={handleNewFilesChange}
+        onSubmit={handleCreateRequest}
+        onSelectSuggestion={setSelectedRequestId}
+      />
 
       <ScrollArea>
         <div className={`dl-two-pane-grid${selectedRequestId ? ' dl-pane-detail-active' : ''}`}>
           <div className="dl-stack-gap-md">
-            <AppCard>
-              <AppCard.Header>要望一覧</AppCard.Header>
-              <AppCard.Body>
-                <div className="text-muted small mb-3">
-                  更新はリアルタイムで反映されます。OpenClaw の進行状況と管理者返信もここに集約されます。
-                </div>
-                <div className="d-flex gap-2 flex-wrap mb-3">
-                  <button type="button" className={`btn btn-sm ${queueFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setQueueFilter('all')}>すべて {requests.length}</button>
-                  <button type="button" className={`btn btn-sm ${queueFilter === 'my_turn' ? 'btn-primary' : 'btn-outline-warning'}`} onClick={() => setQueueFilter('my_turn')}>今日返答したい {requestSummary.myTurn}</button>
-                  <button type="button" className={`btn btn-sm ${queueFilter === 'overdue' ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setQueueFilter('overdue')}>24時間超 {requestSummary.overdue}</button>
-                  <button type="button" className={`btn btn-sm ${queueFilter === 'unread' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setQueueFilter('unread')}>未読あり {requestSummary.unread}</button>
-                  <button type="button" className={`btn btn-sm ${queueFilter === 'openclaw' ? 'btn-dark' : 'btn-outline-dark'}`} onClick={() => setQueueFilter('openclaw')}>OpenClaw {requestSummary.openclaw}</button>
-                </div>
-                {loading ? (
-                  <InlineLoader text="読み込み中..." className="text-muted small" />
-                ) : displayRequests.length === 0 ? (
-                  <div className="text-muted small">送信済みの要望はまだありません。</div>
-                ) : (
-                  <div className="d-flex flex-column gap-2">
-                    {displayRequests.map((item) => {
-                      const badge = statusBadge(item.workflowStatus);
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          className={`btn text-start border ${selectedRequestId === item.id ? 'border-primary bg-light' : 'border-light-subtle'}`}
-                          onClick={() => setSelectedRequestId(item.id)}
-                        >
-                          <div className="d-flex justify-content-between align-items-start gap-2">
-                            <strong>要望 #{item.id}</strong>
-                            <Badge bg={badge.bg}>{badge.label}</Badge>
-                          </div>
-                          <div className="d-flex flex-wrap gap-1 mt-2">
-                            <Badge bg="light" text="dark">{categoryLabel(item.category)}</Badge>
-                            <Badge bg={item.priority === 'urgent' ? 'danger' : item.priority === 'low' ? 'secondary' : 'info'}>
-                              {priorityLabel(item.priority)}
-                            </Badge>
-                            {item.hasUnread && <Badge bg="danger">未読あり</Badge>}
-                            {waitingBadge(item)}
-                          </div>
-                          <div className="small mt-2">{item.requestText}</div>
-                          {(item.latestSummary || item.openclawSummary) && (
-                            <div className="text-muted small mt-2">{item.latestSummary ?? item.openclawSummary}</div>
-                          )}
-                          <div className="text-muted small mt-2">{formatDateTimeJa(item.updatedAt ?? item.createdAt)}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </AppCard.Body>
-            </AppCard>
+            <RequestListPane
+              loading={loading}
+              requests={requests}
+              displayRequests={displayRequests}
+              selectedRequestId={selectedRequestId}
+              queueFilter={queueFilter}
+              requestSummary={requestSummary}
+              onSelectRequest={setSelectedRequestId}
+              onQueueFilterChange={setQueueFilter}
+            />
           </div>
 
           <div className="dl-stack-gap-md">
-            <button
-              type="button"
-              className="btn btn-outline-secondary btn-sm d-xl-none mb-2"
-              onClick={() => setSelectedRequestId(null)}
-            >
-              ← 一覧に戻る
-            </button>
-            <AppCard>
-              <AppCard.Header>会話履歴</AppCard.Header>
-              <AppCard.Body>
-                {!selectedRequestId ? (
-                  <div className="text-muted small">表示する要望を選択してください。</div>
-                ) : threadLoading ? (
-                  <InlineLoader text="会話履歴を読み込み中..." className="text-muted small" />
-                ) : !thread ? (
-                  <div className="text-muted small">会話履歴を取得できませんでした。</div>
-                ) : (
-                  <div className="d-flex flex-column gap-3">
-                    <div className="border rounded p-3 bg-light">
-                      <div className="d-flex flex-wrap gap-2 align-items-center">
-                        <Badge bg={statusBadge(thread.request.workflowStatus).bg}>{statusBadge(thread.request.workflowStatus).label}</Badge>
-                        <Badge bg="light" text="dark">{categoryLabel(thread.request.category)}</Badge>
-                        <Badge bg={thread.request.priority === 'urgent' ? 'danger' : thread.request.priority === 'low' ? 'secondary' : 'info'}>
-                          {priorityLabel(thread.request.priority)}
-                        </Badge>
-                        {thread.request.closeReason && (
-                          <Badge bg="secondary">クローズ: {closeReasonLabel(thread.request.closeReason)}</Badge>
-                        )}
-                        {thread.request.assignedAdminName && (
-                          <Badge bg="dark">担当: {thread.request.assignedAdminName}</Badge>
-                        )}
-                        {waitingBadge(thread.request)}
-                      </div>
-                      <div className="small text-muted mt-2">元の要望: {thread.request.requestText}</div>
-                      {(thread.request.latestSummary || thread.request.openclawSummary) && (
-                        <div className="small mt-2">{thread.request.latestSummary ?? thread.request.openclawSummary}</div>
-                      )}
-                    </div>
-
-                    {(thread.request.branchName || thread.request.prUrl || thread.request.lastQuestion || thread.request.lastError) && (
-                      <div className="border rounded p-3">
-                        <div className="fw-semibold mb-2">実装・対応状況</div>
-                        {thread.request.prUrl && (
-                          <div className="small">
-                            PR: <a href={thread.request.prUrl} target="_blank" rel="noreferrer">#{thread.request.prNumber ?? '-'}</a>
-                          </div>
-                        )}
-                        {thread.request.branchName && (
-                          <div className="small text-muted">branch: {thread.request.branchName}</div>
-                        )}
-                        {thread.request.lastQuestion && (
-                          <div className="small mt-2">確認事項: {thread.request.lastQuestion}</div>
-                        )}
-                        {thread.request.lastError && (
-                          <div className="small text-danger mt-2">最新エラー: {thread.request.lastError}</div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="d-flex flex-column gap-2">
-                      {thread.messages.map((entry) => {
-                        const attachments = entry.attachments ?? [];
-                        return (
-                          <div key={entry.id} className={`border rounded p-3 ${entry.authorType === 'user' ? 'bg-light' : 'bg-white'}`}>
-                            <div className="d-flex justify-content-between align-items-center mb-1">
-                              <strong className="small">{authorLabel(entry.authorType)}</strong>
-                              <span className="text-muted small">{formatDateTimeJa(entry.createdAt)}</span>
-                            </div>
-                            {entry.body ? (
-                              <div className="small" style={{ whiteSpace: 'pre-wrap' }}>{entry.body}</div>
-                            ) : (
-                              <div className="small text-muted">添付ファイル</div>
-                            )}
-                            <AttachmentPreviewList
-                              attachments={attachments}
-                              getDownloadUrl={attachmentUrl}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="border-top pt-3">
-                      <div className="d-flex flex-wrap gap-2 mb-2">
-                        {REQUEST_TEMPLATES.map((template) => (
-                          <button
-                            key={template}
-                            type="button"
-                            className="btn btn-outline-secondary btn-sm"
-                            onClick={() => setReplyText(template)}
-                          >
-                            {template}
-                          </button>
-                        ))}
-                      </div>
-                      <AppControl
-                        as="textarea"
-                        rows={4}
-                        value={replyText}
-                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setReplyText(e.target.value)}
-                        placeholder="必要な追加情報や回答を入力"
-                      />
-                      <div className="d-flex flex-column flex-md-row justify-content-between gap-2 mt-2">
-                        <div className="d-flex flex-column gap-1">
-                          <Form.Control
-                            type="file"
-                            multiple
-                            onChange={handleReplyFilesChange}
-                          />
-                          {replyFiles.length > 0 && (
-                            <div className="text-muted small">{replyFiles.map((file) => file.name).join(', ')}</div>
-                          )}
-                        </div>
-                        <LoadingButton
-                          variant="primary"
-                          onClick={handleReply}
-                          loading={sending}
-                          loadingLabel="送信中..."
-                          disabled={thread.request.workflowStatus === 'completed'}
-                        >
-                          追加情報を送信
-                        </LoadingButton>
-                      </div>
-                      {thread.request.workflowStatus === 'completed' && (
-                        <div className="text-muted small mt-2">完了済み要望のため返信はできません。</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </AppCard.Body>
-            </AppCard>
+            <RequestThreadPane
+              selectedRequestId={selectedRequestId}
+              threadLoading={threadLoading}
+              thread={thread}
+              replyText={replyText}
+              replyFiles={replyFiles}
+              sending={sending}
+              onBack={() => setSelectedRequestId(null)}
+              onReplyTextChange={setReplyText}
+              onReplyFilesChange={handleReplyFilesChange}
+              onReplyTemplateSelect={setReplyText}
+              onSendReply={handleReply}
+            />
           </div>
         </div>
       </ScrollArea>

@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import type { FormEvent } from 'react';
+import { api } from '../api/client';
 import { useAdminPharmacyData } from './useAdminPharmacyData';
 import { useAdminPharmacyForm } from './useAdminPharmacyForm';
 import { useAdminBusinessHours } from './useAdminBusinessHours';
@@ -18,14 +19,58 @@ export function useAdminPharmacyEdit() {
     handleToggleActive, handleVerify,
   } = useAdminPharmacyData();
 
-  const formHook = useAdminPharmacyForm({
+  const {
+    form,
+    loading,
+    accountConflict,
+    setAccountConflict,
+    isAccountDirty,
+    isTestAccount,
+    testAccountPassword,
+    setTestAccountPassword,
+    handleTestAccountToggle,
+    handleChange,
+    handleSubmit: submitAccountForm,
+    syncFormFromPharmacy,
+  } = useAdminPharmacyForm({
     pharmacyId,
     hasValidId,
     pharmacy,
     setPharmacy,
   });
 
-  const hoursHook = useAdminBusinessHours({
+  const {
+    businessHours,
+    specialHours,
+    hoursLoaded,
+    setHoursLoaded,
+    hoursEditing,
+    hoursLoadFailed,
+    hoursSaving,
+    hoursMessage,
+    hoursError,
+    hoursConflict,
+    setHoursMessage,
+    setHoursError,
+    setHoursConflict,
+    isHoursDirty,
+    loadBusinessHours,
+    handleReloadBusinessHours,
+    handleHoursChange,
+    handleClosedChange,
+    handle24HoursChange,
+    handleHoursSave,
+    handleHoursEditStart,
+    handleHoursEditCancel,
+    handleAddSpecialHour,
+    handleRemoveSpecialHour,
+    handleSpecialTypeChange,
+    handleSpecialDateChange,
+    handleSpecialNoteChange,
+    handleSpecialHoursChange,
+    handleSpecialClosedChange,
+    handleSpecial24HoursChange,
+  } = useAdminBusinessHours({
     pharmacyId,
     hasValidId,
     setPharmacy,
@@ -34,12 +79,11 @@ export function useAdminPharmacyEdit() {
   // --- loadPharmacy をフォーム同期付きでラップ ---
   const loadPharmacy = useCallback(async (signal?: AbortSignal) => {
     if (!hasValidId) return;
-    const { api } = await import('../api/client');
     try {
       const fetchedData = await api.get<AdminPharmacyData>(`/admin/pharmacies/${pharmacyId}`, { signal });
       if (signal?.aborted) return;
       setPharmacy(fetchedData);
-      formHook.syncFormFromPharmacy(fetchedData);
+      syncFormFromPharmacy(fetchedData);
     } catch (err) {
       if (signal?.aborted) return;
       setError(err instanceof Error ? err.message : '薬局情報の取得に失敗しました');
@@ -48,14 +92,14 @@ export function useAdminPharmacyEdit() {
         setPharmacyLoaded(true);
       }
     }
-  }, [hasValidId, pharmacyId, setPharmacy, setPharmacyLoaded, setError, formHook.syncFormFromPharmacy]);
+  }, [hasValidId, pharmacyId, setPharmacy, syncFormFromPharmacy, setError, setPharmacyLoaded]);
 
   // --- handleSubmit をメッセージ制御付きでラップ ---
   const handleSubmit = useCallback(async (e: FormEvent) => {
     setError('');
     setMessage('');
     try {
-      await formHook.handleSubmit(e);
+      await submitAccountForm(e);
       setMessage('薬局情報を更新しました');
     } catch (err) {
       if (err && typeof err === 'object' && 'status' in err) {
@@ -71,18 +115,18 @@ export function useAdminPharmacyEdit() {
         setError(err instanceof Error ? err.message : '薬局情報の更新に失敗しました');
       }
     }
-  }, [formHook.handleSubmit, setError, setMessage]);
+  }, [submitAccountForm, setError, setMessage]);
 
   // --- handleReloadAccount ---
   const handleReloadAccount = useCallback(async () => {
-    formHook.setAccountConflict(false);
+    setAccountConflict(false);
     setError('');
     setMessage('');
     await loadPharmacy();
-  }, [loadPharmacy, formHook.setAccountConflict, setError, setMessage]);
+  }, [loadPharmacy, setAccountConflict, setError, setMessage]);
 
   // --- hasUnsavedChanges（navigateToList + beforeunload で利用） ---
-  const hasUnsavedChanges = formHook.isAccountDirty || hoursHook.isHoursDirty;
+  const hasUnsavedChanges = isAccountDirty || isHoursDirty;
 
   const navigateToList = useCallback(() => {
     if (hasUnsavedChanges && !window.confirm('未保存の変更があります。保存せずに一覧へ戻りますか？')) {
@@ -95,14 +139,14 @@ export function useAdminPharmacyEdit() {
   useEffect(() => {
     const controller = new AbortController();
     if (hasValidId) {
-      void Promise.all([loadPharmacy(controller.signal), hoursHook.loadBusinessHours(controller.signal)]);
+      void Promise.all([loadPharmacy(controller.signal), loadBusinessHours(controller.signal)]);
     } else {
       setError('薬局IDが不正です');
       setPharmacyLoaded(true);
-      hoursHook.setHoursLoaded(true);
+      setHoursLoaded(true);
     }
     return () => controller.abort();
-  }, [hasValidId, loadPharmacy, hoursHook.loadBusinessHours]);
+  }, [hasValidId, loadPharmacy, loadBusinessHours, setError, setPharmacyLoaded, setHoursLoaded]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -117,45 +161,45 @@ export function useAdminPharmacyEdit() {
   // --- 同一 API を返す ---
   return {
     pharmacy, pharmacyLoaded, hasValidId,
-    form: formHook.form, message, setMessage, error, setError,
-    loading: formHook.loading,
-    accountConflict: formHook.accountConflict,
-    setAccountConflict: formHook.setAccountConflict,
-    isAccountDirty: formHook.isAccountDirty,
-    isTestAccount: formHook.isTestAccount,
-    testAccountPassword: formHook.testAccountPassword,
-    setTestAccountPassword: formHook.setTestAccountPassword,
-    handleTestAccountToggle: formHook.handleTestAccountToggle,
+    form, message, setMessage, error, setError,
+    loading,
+    accountConflict,
+    setAccountConflict,
+    isAccountDirty,
+    isTestAccount,
+    testAccountPassword,
+    setTestAccountPassword,
+    handleTestAccountToggle,
     activeUpdating, verifyLoading,
-    businessHours: hoursHook.businessHours,
-    specialHours: hoursHook.specialHours,
-    hoursLoaded: hoursHook.hoursLoaded,
-    hoursEditing: hoursHook.hoursEditing,
-    hoursLoadFailed: hoursHook.hoursLoadFailed,
-    hoursSaving: hoursHook.hoursSaving,
-    hoursMessage: hoursHook.hoursMessage,
-    hoursError: hoursHook.hoursError,
-    hoursConflict: hoursHook.hoursConflict,
-    setHoursMessage: hoursHook.setHoursMessage,
-    setHoursError: hoursHook.setHoursError,
-    setHoursConflict: hoursHook.setHoursConflict,
-    loadPharmacy, handleChange: formHook.handleChange, handleSubmit,
+    businessHours,
+    specialHours,
+    hoursLoaded,
+    hoursEditing,
+    hoursLoadFailed,
+    hoursSaving,
+    hoursMessage,
+    hoursError,
+    hoursConflict,
+    setHoursMessage,
+    setHoursError,
+    setHoursConflict,
+    loadPharmacy, handleChange, handleSubmit,
     handleReloadAccount,
-    handleReloadBusinessHours: hoursHook.handleReloadBusinessHours,
+    handleReloadBusinessHours,
     handleToggleActive, handleVerify, navigateToList,
-    handleHoursChange: hoursHook.handleHoursChange,
-    handleClosedChange: hoursHook.handleClosedChange,
-    handle24HoursChange: hoursHook.handle24HoursChange,
-    handleHoursSave: hoursHook.handleHoursSave,
-    handleHoursEditStart: hoursHook.handleHoursEditStart,
-    handleHoursEditCancel: hoursHook.handleHoursEditCancel,
-    handleAddSpecialHour: hoursHook.handleAddSpecialHour,
-    handleRemoveSpecialHour: hoursHook.handleRemoveSpecialHour,
-    handleSpecialTypeChange: hoursHook.handleSpecialTypeChange,
-    handleSpecialDateChange: hoursHook.handleSpecialDateChange,
-    handleSpecialNoteChange: hoursHook.handleSpecialNoteChange,
-    handleSpecialHoursChange: hoursHook.handleSpecialHoursChange,
-    handleSpecialClosedChange: hoursHook.handleSpecialClosedChange,
-    handleSpecial24HoursChange: hoursHook.handleSpecial24HoursChange,
+    handleHoursChange,
+    handleClosedChange,
+    handle24HoursChange,
+    handleHoursSave,
+    handleHoursEditStart,
+    handleHoursEditCancel,
+    handleAddSpecialHour,
+    handleRemoveSpecialHour,
+    handleSpecialTypeChange,
+    handleSpecialDateChange,
+    handleSpecialNoteChange,
+    handleSpecialHoursChange,
+    handleSpecialClosedChange,
+    handleSpecial24HoursChange,
   };
 }
