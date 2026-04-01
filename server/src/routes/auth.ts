@@ -23,7 +23,7 @@ import { createPasswordResetToken, resetPasswordWithToken } from '../services/pa
 import { logger } from '../services/logger';
 import { handleRouteError } from '../middleware/error-handler';
 import { evaluateRegistrationScreening } from '../services/registration-screening-service';
-import { handoffToOpenClaw } from '../services/openclaw-service';
+import { handoffToOpenClaw } from '../services/openclaw';
 import { PHARMACY_VERIFICATION_REQUEST_TYPE } from '../services/pharmacy-verification-service';
 
 const router = Router();

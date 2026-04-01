@@ -5,7 +5,7 @@ import { rowCount } from '../utils/db-utils';
 import { parseBooleanFlag, parseBoundedInt } from '../utils/number-utils';
 import { normalizeHttpsOrLoopbackHttpUrl } from '../utils/url-config';
 import { logger } from './logger';
-import { handoffImportFailureAlertToOpenClaw } from './openclaw-auto-handoff-service';
+import { handoffImportFailureAlertToOpenClaw } from './openclaw/auto-handoff-service';
 
 type WebhookUrlError = 'invalid' | 'insecure';
 

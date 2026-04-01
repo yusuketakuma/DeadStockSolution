@@ -29,12 +29,12 @@ import {
 vi.mock('../services/column-mapper', () => ({
   suggestMapping: vi.fn(() => ({
     drug_name: '1',
+    drug_code: '0',
     quantity: '2',
     unit: null,
-    yakka_unit_price: null,
+    yakka_unit_price: '3',
     expiration_date: null,
     lot_number: null,
-    drug_code: null,
   })),
 }));
 
@@ -104,29 +104,34 @@ describe('upload-validation — parseMapping', () => {
   });
 
   it('skips __proto__ key', () => {
-    const raw = JSON.stringify({ drug_name: '0', quantity: '1', __proto__: '2' });
+    const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', __proto__: '4' });
     const result = parseMapping(raw, 'dead_stock');
     expect(result.drug_name).toBe('0');
   });
 
   it('throws when drug_name is missing', () => {
-    const raw = JSON.stringify({ quantity: '1' });
+    const raw = JSON.stringify({ drug_code: '0', quantity: '1', yakka_unit_price: '2' });
     expect(() => parseMapping(raw, 'dead_stock')).toThrow('薬剤名カラムの割り当てが必要です');
   });
 
+  it('throws when drug_code is missing for dead_stock', () => {
+    const raw = JSON.stringify({ drug_name: '0', quantity: '1', yakka_unit_price: '2' });
+    expect(() => parseMapping(raw, 'dead_stock')).toThrow('薬品コードカラムの割り当てが必要です');
+  });
+
   it('throws when quantity is missing for dead_stock', () => {
-    const raw = JSON.stringify({ drug_name: '0' });
+    const raw = JSON.stringify({ drug_name: '0', drug_code: '1', yakka_unit_price: '2' });
     expect(() => parseMapping(raw, 'dead_stock')).toThrow('数量カラムの割り当てが必要です');
   });
 
   it('succeeds for used_medication without quantity', () => {
-    const raw = JSON.stringify({ drug_name: '0', monthly_usage: '1' });
+    const raw = JSON.stringify({ drug_name: '0', drug_code: '1', monthly_usage: '2' });
     const result = parseMapping(raw, 'used_medication');
     expect(result.drug_name).toBe('0');
   });
 
   it('accepts valid column index as string', () => {
-    const raw = JSON.stringify({ drug_name: '0', quantity: '5' });
+    const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '5', yakka_unit_price: '3' });
     const result = parseMapping(raw, 'dead_stock');
     expect(result.drug_name).toBe('0');
     expect(result.quantity).toBe('5');
@@ -134,21 +139,21 @@ describe('upload-validation — parseMapping', () => {
 
   it('ignores out-of-range column index', () => {
     // MAX is 199; use 'monthly_usage' which is in USED_MEDICATION_FIELDS but value 200 exceeds MAX
-    const raw = JSON.stringify({ drug_name: '0', monthly_usage: '200' });
+    const raw = JSON.stringify({ drug_name: '0', drug_code: '1', monthly_usage: '200' });
     const result = parseMapping(raw, 'used_medication');
     // out-of-range index is ignored, so monthly_usage stays null
     expect(result.monthly_usage).toBeNull();
   });
 
   it('ignores non-numeric string values', () => {
-    const raw = JSON.stringify({ drug_name: '0', quantity: 'abc' });
+    const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: 'abc', yakka_unit_price: '3' });
     // quantity will be null because 'abc' is not numeric
-    // drug_name passes, quantity doesn't → throws about quantity
+    // drug_name passes, drug_code passes, quantity doesn't → throws about quantity
     expect(() => parseMapping(raw, 'dead_stock')).toThrow('数量カラムの割り当てが必要です');
   });
 
   it('sets null for null value in mapping', () => {
-    const raw = JSON.stringify({ drug_name: '0', quantity: '1', unit: null });
+    const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', unit: null });
     const result = parseMapping(raw, 'dead_stock');
     expect(result.unit).toBeNull();
   });
@@ -203,8 +208,8 @@ describe('upload-validation — validateMappingAgainstHeader', () => {
 
 describe('upload-validation — resolveMappingFromTemplate', () => {
   it('returns saved mapping when it parses correctly', () => {
-    const saved = JSON.stringify({ drug_name: '0', quantity: '1' });
-    const result = resolveMappingFromTemplateWithSource(saved, ['Drug', 'Qty'], 'dead_stock');
+    const saved = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3' });
+    const result = resolveMappingFromTemplateWithSource(saved, ['Drug', 'Code', 'Qty', 'Price'], 'dead_stock');
     expect(result.fromSavedTemplate).toBe(true);
     expect(result.mapping.drug_name).toBe('0');
   });
@@ -587,7 +592,7 @@ vi.mock('../services/upload-confirm-job-service', () => ({
   retryUploadConfirmJobByAdmin: vi.fn(),
 }));
 
-vi.mock('../services/drug-master-scheduler', () => ({
+vi.mock('../services/drug-master/scheduler', () => ({
   triggerManualAutoSync: vi.fn(async () => ({ triggered: true, message: 'ok' })),
   startDrugMasterScheduler: vi.fn(),
   stopDrugMasterScheduler: vi.fn(),
@@ -689,7 +694,7 @@ vi.mock('../config/database', () => {
 });
 
 // dynamic import to get the db mock after vi.mock setup
-import { BUILTIN_COMMANDS } from '../services/openclaw-command-service';
+import { BUILTIN_COMMANDS } from '../services/openclaw/command-service';
 import { db } from '../config/database';
 import { cancelUploadConfirmJobByAdmin } from '../services/upload-confirm-job-service';
 

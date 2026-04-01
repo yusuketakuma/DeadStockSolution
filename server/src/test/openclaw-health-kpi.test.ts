@@ -19,7 +19,7 @@ vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { getOpenClawHealthSnapshot } from '../services/openclaw-health-service';
+import { getOpenClawHealthSnapshot } from '../services/openclaw/health-service';
 
 // Helper: build a chainable select mock that resolves to `rows`
 function mockSelectReturning(rows: Array<Record<string, unknown>>) {

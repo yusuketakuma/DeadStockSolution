@@ -1,4 +1,4 @@
-import { parseYjCode } from './drug-master-parser-service';
+import { parseYjCode } from './drug-master/parser-service';
 
 const GS_SEPARATOR = '\u001D';
 const FNC1_PLACEHOLDER = '[FNC1]';

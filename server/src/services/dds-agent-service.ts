@@ -18,9 +18,9 @@ import {
   getRequestAttachmentDownload,
   listRequestInternalNotes,
 } from './request-collaboration-service';
-import { getOpenClawConfig } from './openclaw-status';
-import { recordOpenClawRequestEvent } from './openclaw-request-event-service';
-import { listOpenClawRequestMessages } from './openclaw-thread-service';
+import { getOpenClawConfig } from './openclaw/status';
+import { recordOpenClawRequestEvent } from './openclaw/request-event-service';
+import { listOpenClawRequestMessages } from './openclaw/thread-service';
 
 export type DdsWorkItemType = 'incident_autofix' | 'product_update';
 export type DdsWorkflowStatus =
@@ -949,7 +949,7 @@ export async function completeDdsWorkItem(token: string, input: {
   });
 }
 
-export async function listRequestMessagesForUser(requestId: number, pharmacyId: number) {
+export async function listRequestMessagesForUser(requestId: number, pharmacyId: number): Promise<(typeof openclawRequestMessages.$inferSelect)[]> {
   const [requestRow] = await db.select({
     id: userRequests.id,
   })

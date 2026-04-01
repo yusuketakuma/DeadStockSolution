@@ -27,16 +27,16 @@ async function createApp() {
   vi.doMock('../config/database', () => ({
     db: mocks.db,
   }));
-  vi.doMock('../services/openclaw-service', () => ({
+  vi.doMock('../services/openclaw', () => ({
     handoffToOpenClaw: mocks.handoffToOpenClaw,
     isOpenClawConnectorConfigured: mocks.isOpenClawConnectorConfigured,
     isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
     getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
   }));
-  vi.doMock('../services/openclaw-log-context-service', () => ({
+  vi.doMock('../services/openclaw/log-context-service', () => ({
     buildOpenClawLogContext: mocks.buildOpenClawLogContext,
   }));
-  vi.doMock('../services/openclaw-thread-service', () => ({
+  vi.doMock('../services/openclaw/thread-service', () => ({
     mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
     isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
     updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,

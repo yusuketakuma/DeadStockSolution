@@ -45,11 +45,11 @@ vi.mock('../middleware/error-handler', () => ({
   getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
 }));
 
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   handoffToOpenClaw: mocks.handoffToOpenClaw,
 }));
 
-vi.mock('../services/openclaw-log-context-service', () => ({
+vi.mock('../services/openclaw/log-context-service', () => ({
   buildOpenClawLogContext: mocks.buildOpenClawLogContext,
 }));
 
@@ -58,7 +58,7 @@ vi.mock('../services/proposal-timeline-service', () => ({
   fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
 }));
 
-vi.mock('../services/openclaw-thread-service', () => ({
+vi.mock('../services/openclaw/thread-service', () => ({
   mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
   isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
   updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,

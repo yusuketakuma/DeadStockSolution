@@ -71,51 +71,51 @@ describe('upload-validation deep coverage', () => {
     });
 
     it('skips __proto__ key (prototype pollution prevention)', () => {
-      const raw = JSON.stringify({ drug_name: '0', quantity: '1', __proto__: '2' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', __proto__: '4' });
       const result = parseMapping(raw, 'dead_stock');
       expect(result.drug_name).toBe('0');
     });
 
     it('skips constructor key', () => {
-      const raw = JSON.stringify({ drug_name: '0', quantity: '1', constructor: '2' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', constructor: '4' });
       const result = parseMapping(raw, 'dead_stock');
       expect(result.drug_name).toBe('0');
     });
 
     it('skips keys longer than 50 chars', () => {
       const longKey = 'a'.repeat(51);
-      const raw = JSON.stringify({ drug_name: '0', quantity: '1', [longKey]: '2' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', [longKey]: '4' });
       const result = parseMapping(raw, 'dead_stock');
       expect(result.drug_name).toBe('0');
     });
 
     it('skips fields not in allowed set', () => {
-      const raw = JSON.stringify({ drug_name: '0', quantity: '1', not_a_field: '2' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', not_a_field: '4' });
       const result = parseMapping(raw, 'dead_stock');
       expect(result).not.toHaveProperty('not_a_field');
     });
 
     it('sets null values', () => {
-      const raw = JSON.stringify({ drug_name: '0', quantity: '1', unit: null });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', unit: null });
       const result = parseMapping(raw, 'dead_stock');
       expect(result.unit).toBeNull();
     });
 
     it('validates string value as numeric column index', () => {
-      const raw = JSON.stringify({ drug_name: '0', quantity: '1', unit: '200' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', unit: '200' });
       const result = parseMapping(raw, 'dead_stock');
       // 200 > MAX_MAPPING_COLUMN_INDEX (199), so it should not be set
       expect(result.unit).toBeNull();
     });
 
     it('accepts valid column index string', () => {
-      const raw = JSON.stringify({ drug_name: '0', quantity: '1', unit: '5' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', unit: '5' });
       const result = parseMapping(raw, 'dead_stock');
       expect(result.unit).toBe('5');
     });
 
     it('rejects non-numeric string value', () => {
-      const raw = JSON.stringify({ drug_name: '0', quantity: '1', unit: 'abc' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3', unit: 'abc' });
       const result = parseMapping(raw, 'dead_stock');
       expect(result.unit).toBeNull();
     });
@@ -126,21 +126,21 @@ describe('upload-validation deep coverage', () => {
     });
 
     it('throws when quantity is missing for dead_stock', () => {
-      const raw = JSON.stringify({ drug_name: '0' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1' });
       expect(() => parseMapping(raw, 'dead_stock')).toThrow('数量カラム');
     });
 
     it('does not throw when quantity is missing for used_medication', () => {
-      const raw = JSON.stringify({ drug_name: '0' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1' });
       const result = parseMapping(raw, 'used_medication');
       expect(result.drug_name).toBe('0');
     });
 
     it('uses used_medication field set', () => {
-      const raw = JSON.stringify({ drug_name: '0', monthly_usage: '1' });
+      const raw = JSON.stringify({ drug_name: '0', drug_code: '1', monthly_usage: '2' });
       const result = parseMapping(raw, 'used_medication');
       expect(result.drug_name).toBe('0');
-      expect(result.monthly_usage).toBe('1');
+      expect(result.monthly_usage).toBe('2');
     });
   });
 
@@ -267,8 +267,8 @@ describe('upload-validation deep coverage', () => {
 
   describe('resolveMappingFromTemplateWithSource', () => {
     it('returns saved template when valid', () => {
-      const saved = JSON.stringify({ drug_name: '0', quantity: '1' });
-      const result = resolveMappingFromTemplateWithSource(saved, ['薬剤名', '数量'], 'dead_stock');
+      const saved = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3' });
+      const result = resolveMappingFromTemplateWithSource(saved, ['薬剤名', '数量', '薬品コード', '薬価'], 'dead_stock');
       expect(result.fromSavedTemplate).toBe(true);
       expect(result.mapping.drug_name).toBe('0');
     });

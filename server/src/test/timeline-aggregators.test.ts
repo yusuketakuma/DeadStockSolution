@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import type { DbClient } from '../types/timeline';
 import {
   mapNotificationToEvent,
   mapMatchNotificationToEvent,
@@ -274,11 +275,7 @@ describe('fetchCommentEvents', () => {
       update: vi.fn(),
     };
 
-    chain.select.mockReturnValue(chain);
-    chain.from.mockReturnValue(chain);
-    chain.innerJoin.mockReturnValue(chain);
-    chain.where.mockReturnValue(chain);
-    chain.orderBy.mockResolvedValue([
+    const commentRows = [
       {
         id: 40,
         proposalId: 900,
@@ -287,12 +284,21 @@ describe('fetchCommentEvents', () => {
         readByRecipient: false,
         createdAt: '2026-01-09T10:00:00.000Z',
       },
-    ]);
+    ];
+    const dynamicChain = {
+      limit: vi.fn().mockResolvedValue(commentRows),
+      then: (resolve: (v: unknown) => void) => Promise.resolve(commentRows).then(resolve),
+    };
+    chain.select.mockReturnValue(chain);
+    chain.from.mockReturnValue(chain);
+    chain.innerJoin.mockReturnValue(chain);
+    chain.where.mockReturnValue(chain);
+    chain.orderBy.mockReturnValue({ $dynamic: vi.fn().mockReturnValue(dynamicChain) });
 
     const db = {
       select: chain.select,
-      update: (() => undefined) as (...args: any[]) => any,
-    };
+      update: (() => undefined) as (...args: unknown[]) => unknown,
+    } as unknown as DbClient;
 
     const events = await fetchCommentEvents(db, 1, '2026-01-01T00:00:00.000Z');
 

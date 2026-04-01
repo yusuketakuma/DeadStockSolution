@@ -24,7 +24,7 @@ function mockAdminStatsCoverageDependencies() {
     getMonitoringKpiSnapshot: mocks.getMonitoringKpiSnapshot,
   }));
 
-  vi.doMock('../services/openclaw-log-push-service', () => ({
+  vi.doMock('../services/openclaw/log-push-service', () => ({
     getLogPushStats: mocks.getLogPushStats,
   }));
 

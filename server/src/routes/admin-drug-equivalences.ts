@@ -10,7 +10,7 @@ import {
   deleteDrugEquivalence,
   DrugEquivalenceValidationError,
   DrugEquivalenceDuplicateError,
-} from '../services/drug-equivalence-service';
+} from '../services/drug-master/equivalence-service';
 import { logger } from '../services/logger';
 import { parsePositiveInt } from '../utils/request-utils';
 

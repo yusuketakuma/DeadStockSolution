@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { triggerManualAutoSync, getConfiguredSourceMode } from '../services/drug-master-scheduler';
+import { triggerManualAutoSync, getConfiguredSourceMode } from '../services/drug-master/scheduler';
 
 const ORIGINAL_SOURCE_URL = process.env.DRUG_MASTER_SOURCE_URL;
 const ORIGINAL_SOURCE_MODE = process.env.DRUG_MASTER_SOURCE_MODE;

@@ -33,7 +33,7 @@ function mockDependencies() {
     normalizeSearchTerm: vi.fn((value: unknown) => (typeof value === 'string' ? value.trim() : '')),
     parsePositiveInt: mocks.parsePositiveInt,
   }));
-  vi.doMock('../services/openclaw-thread-service', () => ({
+  vi.doMock('../services/openclaw/thread-service', () => ({
     buildOpenClawConversationContext: mocks.buildOpenClawConversationContext,
     isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
     listOpenClawRequestMessages: vi.fn(),
@@ -41,10 +41,10 @@ function mockDependencies() {
     recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
     updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
   }));
-  vi.doMock('../services/openclaw-log-context-service', () => ({
+  vi.doMock('../services/openclaw/log-context-service', () => ({
     buildOpenClawLogContext: mocks.buildOpenClawLogContext,
   }));
-  vi.doMock('../services/openclaw-service', () => ({
+  vi.doMock('../services/openclaw', () => ({
     handoffToOpenClaw: mocks.handoffToOpenClaw,
   }));
   vi.doMock('../services/request-collaboration-service', () => ({
@@ -64,7 +64,7 @@ function mockDependencies() {
   vi.doMock('../services/admin-user-request-service', () => ({
     listUserRequests: vi.fn(),
   }));
-  vi.doMock('../services/openclaw-request-event-service', () => ({
+  vi.doMock('../services/openclaw/request-event-service', () => ({
     listRequestEventTimeline: vi.fn(),
   }));
   vi.doMock('../services/notification-service', () => ({

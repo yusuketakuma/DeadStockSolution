@@ -1,7 +1,7 @@
 import { db } from '../config/database';
 import { events } from '../db/schema';
 import { logger } from './logger';
-import { dispatchLogAlert } from './openclaw-log-push-service';
+import { dispatchLogAlert } from './openclaw/log-push-service';
 import { getLogEntryById, getLogInsightForEntry } from './log-center-service';
 import { recordLogIssueAutoEscalation } from './log-center-issue-service';
 

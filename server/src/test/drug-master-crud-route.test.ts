@@ -26,7 +26,7 @@ function mockDrugMasterCrudDependencies() {
     db: mocks.db,
   }));
 
-  vi.doMock('../services/drug-master-service', () => ({
+  vi.doMock('../services/drug-master/service', () => ({
     getDrugMasterStats: mocks.getDrugMasterStats,
     getDrugDetail: mocks.getDrugDetail,
     updateDrugMasterItem: mocks.updateDrugMasterItem,

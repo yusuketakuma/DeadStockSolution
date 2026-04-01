@@ -32,7 +32,7 @@ import {
   isBlockedPair,
 } from './matching/matching-data-preparer';
 import { sortAndLimitCandidates } from './matching/matching-ranker';
-import { fetchEquivalenceMap } from './drug-equivalence-service';
+import { fetchEquivalenceMap } from './drug-master/equivalence-service';
 import { getPharmacyPairSuccessCounts } from './success-rate-query-service';
 import { getServiceDeps, type ServiceDependencies } from './service-container';
 

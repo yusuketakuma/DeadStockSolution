@@ -13,10 +13,10 @@ import { db } from '../config/database';
 import { drugMaster, drugMasterPackages, drugMasterSyncLogs } from '../db/schema';
 import { eq, isNull } from 'drizzle-orm';
 import { discoverMhlwExcelUrls } from '../services/mhlw-index-scraper';
-import { parseMhlwDrugFile } from '../services/drug-master-parser-mhlw';
-import { parsePackageCsvData } from '../services/drug-master-parser-package';
-import { decodeCsvBuffer } from '../services/drug-master-parser-service';
-import { syncDrugMaster, syncPackageData, completeSyncLog } from '../services/drug-master-sync-service';
+import { parseMhlwDrugFile } from '../services/drug-master/parser-mhlw';
+import { parsePackageCsvData } from '../services/drug-master/parser-package';
+import { decodeCsvBuffer } from '../services/drug-master/parser-service';
+import { syncDrugMaster, syncPackageData, completeSyncLog } from '../services/drug-master/sync-service';
 import { createPinnedDnsAgent, validateExternalHttpsUrl } from '../utils/network-utils';
 import { fetchWithTimeout, type FetchDispatcher } from '../utils/http-utils';
 

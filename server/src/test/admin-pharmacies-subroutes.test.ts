@@ -52,14 +52,14 @@ function mockAdminPharmaciesSubrouteDependencies() {
     db: mocks.db,
   }));
 
-  vi.doMock('../services/openclaw-service', () => ({
+  vi.doMock('../services/openclaw', () => ({
     handoffToOpenClaw: mocks.handoffToOpenClaw,
     isOpenClawConnectorConfigured: mocks.isOpenClawConnectorConfigured,
     isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
     getOpenClawImplementationBranch: mocks.getOpenClawImplementationBranch,
   }));
 
-  vi.doMock('../services/openclaw-log-context-service', () => ({
+  vi.doMock('../services/openclaw/log-context-service', () => ({
     buildOpenClawLogContext: mocks.buildOpenClawLogContext,
   }));
 
@@ -87,7 +87,7 @@ function mockAdminPharmaciesSubrouteDependencies() {
     },
   }));
 
-  vi.doMock('../services/openclaw-thread-service', () => ({
+  vi.doMock('../services/openclaw/thread-service', () => ({
     listOpenClawRequestMessages: mocks.listOpenClawRequestMessages,
     isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
     updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,

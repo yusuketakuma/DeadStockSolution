@@ -275,7 +275,7 @@ describe('notification-service-deep', () => {
   describe('markAllDashboardAsRead', () => {
     it('marks all dashboard notifications as read across tables', async () => {
       mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
+        async (callback: (tx: { execute: typeof mocks.db.execute; update: typeof mocks.db.update }) => Promise<unknown>) => {
           const txExecute = vi.fn()
             // markNotificationsAsRead
             .mockResolvedValueOnce({ rows: [{ count: 3 }] })
@@ -286,7 +286,10 @@ describe('notification-service-deep', () => {
             // markAdminMessagesAsRead
             .mockResolvedValueOnce({ rows: [{ count: 1 }] });
 
-          return callback({ execute: txExecute });
+          const txUpdateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) });
+          const txUpdate = vi.fn().mockReturnValue({ set: txUpdateSet });
+
+          return callback({ execute: txExecute, update: txUpdate });
         },
       );
 
@@ -297,14 +300,17 @@ describe('notification-service-deep', () => {
 
     it('returns 0 when no updates across any table', async () => {
       mocks.db.transaction.mockImplementation(
-        async (callback: (tx: { execute: typeof mocks.db.execute }) => Promise<unknown>) => {
+        async (callback: (tx: { execute: typeof mocks.db.execute; update: typeof mocks.db.update }) => Promise<unknown>) => {
           const txExecute = vi.fn()
             .mockResolvedValueOnce({ rows: [{ count: 0 }] })
             .mockResolvedValueOnce({ rows: [{ exists: true }] })
             .mockResolvedValueOnce({ rows: [{ count: 0 }] })
             .mockResolvedValueOnce({ rows: [{ count: 0 }] });
 
-          return callback({ execute: txExecute });
+          const txUpdateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) });
+          const txUpdate = vi.fn().mockReturnValue({ set: txUpdateSet });
+
+          return callback({ execute: txExecute, update: txUpdate });
         },
       );
 

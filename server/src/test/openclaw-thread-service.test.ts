@@ -17,7 +17,7 @@ vi.mock('drizzle-orm', () => ({
   asc: vi.fn(() => ({})),
 }));
 
-import { ensureOpenClawWorkItem } from '../services/openclaw-thread-service';
+import { ensureOpenClawWorkItem } from '../services/openclaw/thread-service';
 
 function createLimitQuery(result: unknown) {
   const query = {

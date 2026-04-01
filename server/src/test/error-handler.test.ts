@@ -24,7 +24,7 @@ async function createApp() {
     buildErrorFixContext: vi.fn(() => ({})),
     extractSourceLocation: vi.fn(() => null),
   }));
-  vi.doMock('../services/openclaw-error-autofix-service', () => ({
+  vi.doMock('../services/openclaw/error-autofix-service', () => ({
     handoffErrorToOpenClaw: vi.fn(),
   }));
   ({ errorHandler } = await import('../middleware/error-handler'));

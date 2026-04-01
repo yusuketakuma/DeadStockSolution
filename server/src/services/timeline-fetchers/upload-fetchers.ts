@@ -71,7 +71,8 @@ export async function fetchUploadEvents(
     })
     .from(uploadJobs)
     .where(and(...conditions))
-    .orderBy(desc(uploadJobs.createdAt));
+    .orderBy(desc(uploadJobs.createdAt))
+    .$dynamic();
   if (limit) query = query.limit(limit);
 
   const rows = await query;

@@ -66,7 +66,7 @@ vi.mock('../services/data-extractor', () => ({
   extractUsedMedicationRows: mocks.extractUsedMedicationRows,
 }));
 
-vi.mock('../services/drug-master-enrichment', () => ({
+vi.mock('../services/drug-master/enrichment', () => ({
   enrichWithDrugMaster: mocks.enrichWithDrugMaster,
 }));
 
@@ -123,7 +123,7 @@ const VALID_MAPPING = JSON.stringify({
   drug_name: '1',
   quantity: '2',
   unit: null,
-  yakka_unit_price: null,
+  yakka_unit_price: '2',
   expiration_date: null,
   lot_number: null,
 });
@@ -153,7 +153,7 @@ describe('upload-parser route coverage: preview edge cases', () => {
     mocks.computeHeaderHash.mockReturnValue('hash-1');
     mocks.suggestMapping.mockReturnValue({
       drug_code: '0', drug_name: '1', quantity: '2',
-      unit: null, yakka_unit_price: null, expiration_date: null, lot_number: null,
+      unit: null, yakka_unit_price: '2', expiration_date: null, lot_number: null,
     });
     mocks.extractDeadStockRows.mockReturnValue([]);
     mocks.extractUsedMedicationRows.mockReturnValue([]);

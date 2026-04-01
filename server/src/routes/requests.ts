@@ -5,8 +5,8 @@ import { openclawWorkItems, pharmacies, userRequests } from '../db/schema';
 import { requireLogin } from '../middleware/auth';
 import { uploadOptionalAttachments } from '../middleware/attachment-upload';
 import { logger } from '../services/logger';
-import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
-import { handoffToOpenClaw } from '../services/openclaw-service';
+import { buildOpenClawLogContext } from '../services/openclaw/log-context-service';
+import { handoffToOpenClaw } from '../services/openclaw';
 import {
   buildOpenClawConversationContext,
   ensureOpenClawWorkItem,
@@ -15,7 +15,7 @@ import {
   mapOpenClawStatusToWorkflowStatus,
   recordOpenClawRequestMessage,
   updateOpenClawWorkItem,
-} from '../services/openclaw-thread-service';
+} from '../services/openclaw/thread-service';
 import {
   computeRequestWaitingState,
   createRequestMessageAttachments,

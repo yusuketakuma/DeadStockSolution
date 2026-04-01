@@ -429,7 +429,7 @@ const drugMasterSyncMocks = vi.hoisted(() => ({
   getClientIp: vi.fn(() => '127.0.0.1'),
 }));
 
-vi.mock('../services/drug-master-service', () => ({
+vi.mock('../services/drug-master/service', () => ({
   parseMhlwExcelData: drugMasterSyncMocks.parseMhlwExcelData,
   parseMhlwCsvData: drugMasterSyncMocks.parseMhlwCsvData,
   parsePackageExcelData: drugMasterSyncMocks.parsePackageExcelData,
@@ -444,7 +444,7 @@ vi.mock('../services/drug-master-service', () => ({
   completeSyncLog: drugMasterSyncMocks.completeSyncLog,
 }));
 
-vi.mock('../services/drug-master-scheduler', () => ({
+vi.mock('../services/drug-master/scheduler', () => ({
   triggerManualAutoSync: drugMasterSyncMocks.triggerManualAutoSync,
   getConfiguredSourceMode: drugMasterSyncMocks.getConfiguredSourceMode,
 }));
@@ -453,7 +453,7 @@ vi.mock('../services/drug-package-scheduler', () => ({
   triggerManualPackageAutoSync: drugMasterSyncMocks.triggerManualPackageAutoSync,
 }));
 
-vi.mock('../services/drug-master-source-state-service', () => ({
+vi.mock('../services/drug-master/source-state-service', () => ({
   getSourceStatesByPrefix: drugMasterSyncMocks.getSourceStatesByPrefix,
 }));
 
@@ -863,7 +863,7 @@ const alertMocks = vi.hoisted(() => ({
   handoffImportFailureAlertToOpenClaw: vi.fn(),
 }));
 
-vi.mock('../services/openclaw-auto-handoff-service', () => ({
+vi.mock('../services/openclaw/auto-handoff-service', () => ({
   handoffImportFailureAlertToOpenClaw: alertMocks.handoffImportFailureAlertToOpenClaw,
 }));
 

@@ -31,7 +31,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-vi.mock('../services/openclaw-auto-handoff-service', () => ({
+vi.mock('../services/openclaw/auto-handoff-service', () => ({
   handoffImportFailureAlertToOpenClaw: mocks.handoffImportFailureAlertToOpenClaw,
 }));
 

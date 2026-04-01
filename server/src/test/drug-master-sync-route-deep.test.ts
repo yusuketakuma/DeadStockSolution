@@ -65,7 +65,7 @@ vi.mock('../middleware/auth', () => ({
   },
 }));
 
-vi.mock('../services/drug-master-service', () => ({
+vi.mock('../services/drug-master/service', () => ({
   parseMhlwExcelData: mocks.parseMhlwExcelData,
   parseMhlwCsvData: mocks.parseMhlwCsvData,
   parsePackageExcelData: mocks.parsePackageExcelData,
@@ -80,7 +80,7 @@ vi.mock('../services/drug-master-service', () => ({
   completeSyncLog: mocks.completeSyncLog,
 }));
 
-vi.mock('../services/drug-master-scheduler', () => ({
+vi.mock('../services/drug-master/scheduler', () => ({
   triggerManualAutoSync: mocks.triggerManualAutoSync,
   getConfiguredSourceMode: mocks.getConfiguredSourceMode,
 }));
@@ -89,7 +89,7 @@ vi.mock('../services/drug-package-scheduler', () => ({
   triggerManualPackageAutoSync: mocks.triggerManualPackageAutoSync,
 }));
 
-vi.mock('../services/drug-master-source-state-service', () => ({
+vi.mock('../services/drug-master/source-state-service', () => ({
   getSourceStatesByPrefix: mocks.getSourceStatesByPrefix,
 }));
 

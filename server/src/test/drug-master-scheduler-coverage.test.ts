@@ -6,7 +6,7 @@ vi.mock('../config/database', () => ({
   db: {},
 }));
 
-vi.mock('../services/drug-master-service', () => ({
+vi.mock('../services/drug-master/service', () => ({
   syncDrugMaster: vi.fn().mockResolvedValue({
     itemsProcessed: 0,
     itemsAdded: 0,
@@ -17,7 +17,7 @@ vi.mock('../services/drug-master-service', () => ({
   completeSyncLog: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../services/drug-master-parser-service', () => ({
+vi.mock('../services/drug-master/parser-service', () => ({
   parseMhlwDrugFile: vi.fn().mockResolvedValue([]),
 }));
 
@@ -38,7 +38,7 @@ vi.mock('../utils/crypto-utils', () => ({
   sha256: vi.fn().mockReturnValue('mocksha256'),
 }));
 
-vi.mock('../services/drug-master-source-state-service', () => ({
+vi.mock('../services/drug-master/source-state-service', () => ({
   persistSourceHeaders: vi.fn().mockResolvedValue(undefined),
   SOURCE_KEY_SINGLE: 'single',
 }));
@@ -66,7 +66,7 @@ import {
   stopDrugMasterScheduler,
   triggerManualAutoSync,
   getConfiguredSourceMode,
-} from '../services/drug-master-scheduler';
+} from '../services/drug-master/scheduler';
 
 const ORIGINAL_ENV = { ...process.env };
 

@@ -13,7 +13,7 @@ import 'dotenv/config';
 import { discoverMhlwExcelUrls } from '../services/mhlw-index-scraper';
 import { validateExternalHttpsUrl, createPinnedDnsAgent } from '../utils/network-utils';
 import { fetchWithTimeout } from '../utils/http-utils';
-import { parseMhlwDrugFile } from '../services/drug-master-parser-mhlw';
+import { parseMhlwDrugFile } from '../services/drug-master/parser-mhlw';
 import dns from 'dns/promises';
 
 async function main() {

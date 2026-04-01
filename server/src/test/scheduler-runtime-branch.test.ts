@@ -47,18 +47,18 @@ async function loadMasterScheduler(env: Record<string, string | undefined>) {
     checkForUpdates: mocks.checkForUpdates,
     downloadFile: vi.fn(),
   }));
-  vi.doMock('../services/drug-master-service', () => ({
+  vi.doMock('../services/drug-master/service', () => ({
     syncDrugMaster: vi.fn(),
     createSyncLog: vi.fn(),
     completeSyncLog: vi.fn(),
   }));
-  vi.doMock('../services/drug-master-parser-service', () => ({ parseMhlwDrugFile: vi.fn() }));
-  vi.doMock('../services/drug-master-source-state-service', () => ({
+  vi.doMock('../services/drug-master/parser-service', () => ({ parseMhlwDrugFile: vi.fn() }));
+  vi.doMock('../services/drug-master/source-state-service', () => ({
     SOURCE_KEY_SINGLE: 'single',
     persistSourceHeaders: vi.fn(),
   }));
 
-  const mod = await import('../services/drug-master-scheduler');
+  const mod = await import('../services/drug-master/scheduler');
   return { mod, mocks };
 }
 
@@ -97,7 +97,7 @@ async function loadPackageScheduler(env: Record<string, string | undefined>) {
     checkForUpdates: mocks.checkForUpdates,
     downloadFile: vi.fn(),
   }));
-  vi.doMock('../services/drug-master-service', () => ({
+  vi.doMock('../services/drug-master/service', () => ({
     parsePackageExcelData: vi.fn().mockReturnValue([]),
     parsePackageCsvData: vi.fn().mockReturnValue([]),
     parsePackageXmlData: vi.fn().mockReturnValue([]),
@@ -108,7 +108,7 @@ async function loadPackageScheduler(env: Record<string, string | undefined>) {
     completeSyncLog: vi.fn(),
   }));
   vi.doMock('../services/upload-service', () => ({ parseExcelBuffer: vi.fn().mockResolvedValue([]) }));
-  vi.doMock('../services/drug-master-source-state-service', () => ({
+  vi.doMock('../services/drug-master/source-state-service', () => ({
     SOURCE_KEY_PACKAGE: 'package',
     persistSourceHeaders: vi.fn(),
   }));

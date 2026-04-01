@@ -35,11 +35,11 @@ function mockAdminPharmaciesActionsUltraDependencies() {
     db: mocks.db,
   }));
 
-  vi.doMock('../services/openclaw-service', () => ({
+  vi.doMock('../services/openclaw', () => ({
     handoffToOpenClaw: mocks.handoffToOpenClaw,
   }));
 
-  vi.doMock('../services/openclaw-log-context-service', () => ({
+  vi.doMock('../services/openclaw/log-context-service', () => ({
     buildOpenClawLogContext: mocks.buildOpenClawLogContext,
   }));
 
@@ -53,7 +53,7 @@ function mockAdminPharmaciesActionsUltraDependencies() {
     fetchProposalTimelineActionRows: mocks.fetchProposalTimelineActionRows,
   }));
 
-  vi.doMock('../services/openclaw-thread-service', () => ({
+  vi.doMock('../services/openclaw/thread-service', () => ({
     mapOpenClawStatusToWorkflowStatus: mocks.mapOpenClawStatusToWorkflowStatus,
     isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,
     updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,

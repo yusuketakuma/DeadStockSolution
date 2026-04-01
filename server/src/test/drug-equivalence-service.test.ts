@@ -148,7 +148,7 @@ import {
   findEquivalentDrugNames,
   DrugEquivalenceValidationError,
   DrugEquivalenceDuplicateError,
-} from '../services/drug-equivalence-service';
+} from '../services/drug-master/equivalence-service';
 
 const sampleRow = {
   id: 1,

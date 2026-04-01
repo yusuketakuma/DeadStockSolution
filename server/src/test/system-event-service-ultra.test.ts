@@ -18,7 +18,7 @@ vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock('../services/openclaw-log-push-service', () => ({
+vi.mock('../services/openclaw/log-push-service', () => ({
   dispatchLogAlert: mocks.dispatchLogAlert,
 }));
 

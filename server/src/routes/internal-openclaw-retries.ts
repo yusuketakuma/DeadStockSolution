@@ -3,7 +3,7 @@ import { logger } from '../services/logger';
 import {
   getOpenClawRetryQueueSnapshot,
   processPendingOpenClawRetries,
-} from '../services/openclaw-retry-service';
+} from '../services/openclaw/retry-service';
 import { isAuthorizedCron, resolveCronSecret } from './internal-cron-auth';
 import { parseBoundedInt } from '../utils/number-utils';
 

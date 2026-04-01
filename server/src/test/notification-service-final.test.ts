@@ -94,7 +94,9 @@ describe('notification-service-final', () => {
       for (const result of execResults) {
         execute.mockResolvedValueOnce(result);
       }
-      return { execute };
+      const updateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) });
+      const update = vi.fn().mockReturnValue({ set: updateSet });
+      return { execute, update };
     }
 
     it('marks notifications and admin messages as read in transaction', async () => {

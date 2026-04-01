@@ -33,7 +33,7 @@ vi.mock('../services/log-center-issue-service', () => ({
   getLogIssueHistory: mocks.getLogIssueHistory,
   updateLogIssueState: mocks.updateLogIssueState,
 }));
-vi.mock('../services/openclaw-log-push-service', () => ({
+vi.mock('../services/openclaw/log-push-service', () => ({
   escalateLogAlertToOpenClaw: mocks.escalateLogAlertToOpenClaw,
 }));
 vi.mock('../services/logger', () => ({

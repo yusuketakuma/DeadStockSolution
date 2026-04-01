@@ -31,7 +31,7 @@ vi.mock('../utils/package-utils', () => ({
 }));
 
 import { normalizePackageInfo } from '../utils/package-utils';
-import { syncDrugMaster, syncPackageData, createSyncLog, completeSyncLog } from '../services/drug-master-sync-service';
+import { syncDrugMaster, syncPackageData, createSyncLog, completeSyncLog } from '../services/drug-master/sync-service';
 
 interface ExistingDrugRow {
   id: number;

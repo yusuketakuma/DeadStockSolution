@@ -64,6 +64,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../config/database', () => ({ db: mocks.db }));
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
+  and: vi.fn(() => ({})),
   sql: vi.fn(() => ({})),
   asc: vi.fn(() => ({})),
 }));
@@ -113,7 +114,7 @@ vi.mock('../middleware/error-handler', () => ({
 vi.mock('../services/registration-screening-service', () => ({
   evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
 }));
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   handoffToOpenClaw: mocks.handoffToOpenClaw,
 }));
 vi.mock('../services/pharmacy-verification-service', () => ({
@@ -138,7 +139,7 @@ function createSelectQuery(result: unknown) {
   query.from.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
-  query.limit.mockResolvedValue(result);
+  query.limit.mockReturnValue(query);
   return query;
 }
 

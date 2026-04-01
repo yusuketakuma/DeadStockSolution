@@ -19,7 +19,7 @@ import {
   releaseOpenClawWebhookReplay,
   verifyOpenClawWebhookSignature,
   type OpenClawStatus,
-} from '../services/openclaw-service';
+} from '../services/openclaw';
 import {
   ensureOpenClawWorkItem,
   isOpenClawWorkflowStatus,
@@ -27,13 +27,13 @@ import {
   recordOpenClawRequestMessage,
   updateOpenClawWorkItem,
   type OpenClawWorkflowStatus,
-} from '../services/openclaw-thread-service';
+} from '../services/openclaw/thread-service';
 import {
   publishAdminRequestsRefresh,
   publishRequestsRefresh,
 } from '../services/realtime-service';
-import { recordOpenClawRequestEvent } from '../services/openclaw-request-event-service';
-import { completeOpenClawRetryForRequest } from '../services/openclaw-retry-service';
+import { recordOpenClawRequestEvent } from '../services/openclaw/request-event-service';
+import { completeOpenClawRetryForRequest } from '../services/openclaw/retry-service';
 import { isPositiveSafeInteger, parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();

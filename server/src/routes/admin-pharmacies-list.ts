@@ -17,8 +17,8 @@ import {
   getOpenClawImplementationBranch,
   isOpenClawConnectorConfigured,
   isOpenClawWebhookConfigured,
-} from '../services/openclaw-service';
-import { isMissingOpenClawSchemaError, listOpenClawRequestMessages } from '../services/openclaw-thread-service';
+} from '../services/openclaw';
+import { isMissingOpenClawSchemaError, listOpenClawRequestMessages } from '../services/openclaw/thread-service';
 import { sendPaginated, parseListPagination, handleAdminError } from './admin-utils';
 
 const router = Router();

@@ -66,7 +66,7 @@ function mockLegacyPasswordAuthFlagDependencies() {
   vi.doMock('../services/registration-screening-service', () => ({
     evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
   }));
-  vi.doMock('../services/openclaw-service', () => ({ handoffToOpenClaw: mocks.handoffToOpenClaw }));
+  vi.doMock('../services/openclaw', () => ({ handoffToOpenClaw: mocks.handoffToOpenClaw }));
   vi.doMock('../services/pharmacy-verification-service', () => ({
     PHARMACY_VERIFICATION_REQUEST_TYPE: 'pharmacy_verification',
   }));

@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../services/drug-equivalence-service', () => ({
+vi.mock('../services/drug-master/equivalence-service', () => ({
   createDrugEquivalence: mocks.createDrugEquivalence,
   getDrugEquivalenceById: mocks.getDrugEquivalenceById,
   listDrugEquivalences: mocks.listDrugEquivalences,

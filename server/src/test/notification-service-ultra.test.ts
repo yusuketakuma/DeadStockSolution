@@ -235,7 +235,9 @@ describe('notification-service-ultra', () => {
       for (const result of execResults) {
         execute.mockResolvedValueOnce(result);
       }
-      return { execute };
+      const updateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) });
+      const update = vi.fn().mockReturnValue({ set: updateSet });
+      return { execute, update };
     }
 
     it('sums notifications and admin message counts', async () => {

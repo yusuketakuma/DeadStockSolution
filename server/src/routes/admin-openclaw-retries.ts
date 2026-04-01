@@ -7,7 +7,7 @@ import { handleAdminError, parseListPagination, sendPaginated } from './admin-ut
 import {
   getOpenClawRetryQueueSnapshot,
   isMissingOpenClawRetrySchemaError,
-} from '../services/openclaw-retry-service';
+} from '../services/openclaw/retry-service';
 
 const router = Router();
 

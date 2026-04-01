@@ -25,7 +25,7 @@ function mockAdminOpenClawRetriesDependencies() {
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   }));
 
-  vi.doMock('../services/openclaw-retry-service', () => ({
+  vi.doMock('../services/openclaw/retry-service', () => ({
     getOpenClawRetryQueueSnapshot: mocks.getOpenClawRetryQueueSnapshot,
     isMissingOpenClawRetrySchemaError: mocks.isMissingOpenClawRetrySchemaError,
   }));

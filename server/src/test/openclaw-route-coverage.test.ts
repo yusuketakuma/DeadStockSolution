@@ -41,7 +41,7 @@ vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
   verifyOpenClawWebhookSignature: mocks.verifyOpenClawWebhookSignature,
   isOpenClawWebhookReplay: mocks.isOpenClawWebhookReplay,
@@ -61,7 +61,7 @@ vi.mock('../services/pharmacy-verification-service', () => ({
   isVerificationRequestType: mocks.isVerificationRequestType,
 }));
 
-vi.mock('../services/openclaw-thread-service', () => ({
+vi.mock('../services/openclaw/thread-service', () => ({
   ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
   updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
   recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,

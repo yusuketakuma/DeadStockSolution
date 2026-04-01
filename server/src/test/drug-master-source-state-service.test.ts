@@ -60,7 +60,7 @@ describe('drug-master-source-state-service', () => {
   });
 
   it('should import without errors', async () => {
-    const mod = await import('../services/drug-master-source-state-service');
+    const mod = await import('../services/drug-master/source-state-service');
     expect(mod.getSourceState).toBeDefined();
     expect(mod.upsertSourceState).toBeDefined();
     expect(mod.getAllSourceStates).toBeDefined();
@@ -68,13 +68,13 @@ describe('drug-master-source-state-service', () => {
   });
 
   it('getSourceState returns null when no matching row', async () => {
-    const { getSourceState } = await import('../services/drug-master-source-state-service');
+    const { getSourceState } = await import('../services/drug-master/source-state-service');
     const result = await getSourceState('nonexistent:key');
     expect(result).toBeNull();
   });
 
   it('upsertSourceState calls insert with correct data', async () => {
-    const { upsertSourceState } = await import('../services/drug-master-source-state-service');
+    const { upsertSourceState } = await import('../services/drug-master/source-state-service');
     await upsertSourceState('drug:test', {
       url: 'https://example.com/test.xlsx',
       etag: '"abc123"',
@@ -93,7 +93,7 @@ describe('drug-master-source-state-service', () => {
   });
 
   it('getSourceStatesByPrefix filters by prefix', async () => {
-    const { getSourceStatesByPrefix } = await import('../services/drug-master-source-state-service');
+    const { getSourceStatesByPrefix } = await import('../services/drug-master/source-state-service');
     // With empty results from mock, should return empty array
     const results = await getSourceStatesByPrefix('drug:');
     expect(Array.isArray(results)).toBe(true);

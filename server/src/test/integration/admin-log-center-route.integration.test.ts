@@ -25,8 +25,8 @@ vi.mock('../../services/observability-service', () => ({
   recordRequestMetric: vi.fn(),
 }));
 
-vi.mock('../../services/openclaw-log-push-service', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../services/openclaw-log-push-service')>();
+vi.mock('../../services/openclaw/log-push-service', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../services/openclaw/log-push-service')>();
   return {
     ...original,
     escalateLogAlertToOpenClaw: openClawMocks.escalateLogAlertToOpenClaw,

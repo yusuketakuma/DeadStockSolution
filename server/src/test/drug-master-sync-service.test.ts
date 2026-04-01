@@ -15,7 +15,7 @@ vi.mock('drizzle-orm', () => ({
   inArray: vi.fn(() => ({})),
 }));
 
-import { syncDrugMaster } from '../services/drug-master-sync-service';
+import { syncDrugMaster } from '../services/drug-master/sync-service';
 
 interface ExistingDrugRow {
   id: number;

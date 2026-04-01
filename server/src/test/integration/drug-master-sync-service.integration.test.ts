@@ -3,13 +3,13 @@ import { eq } from 'drizzle-orm';
 import { getTestDb, resetTestDb, closeTestDb, type TestDb } from './helpers/test-db';
 import { resetFactorySeq } from './helpers/factories';
 import * as schema from '../../db/schema';
-import type { ParsedDrugRow } from '../../services/drug-master-parser-service';
+import type { ParsedDrugRow } from '../../services/drug-master/parser-service';
 
 // Mock the db module to use our test db
 let testDb: TestDb;
-let syncDrugMaster: (typeof import('../../services/drug-master-sync-service'))['syncDrugMaster'];
-let createSyncLog: (typeof import('../../services/drug-master-sync-service'))['createSyncLog'];
-let completeSyncLog: (typeof import('../../services/drug-master-sync-service'))['completeSyncLog'];
+let syncDrugMaster: (typeof import('../../services/drug-master/sync-service'))['syncDrugMaster'];
+let createSyncLog: (typeof import('../../services/drug-master/sync-service'))['createSyncLog'];
+let completeSyncLog: (typeof import('../../services/drug-master/sync-service'))['completeSyncLog'];
 vi.mock('../../config/database', () => ({
   get db() { return testDb; },
 }));
@@ -22,7 +22,7 @@ vi.mock('../../services/logger', () => ({
 beforeAll(async () => {
   testDb = await getTestDb();
   ({ syncDrugMaster, createSyncLog, completeSyncLog } =
-    await import('../../services/drug-master-sync-service'));
+    await import('../../services/drug-master/sync-service'));
 }, 30_000);
 
 afterAll(async () => {

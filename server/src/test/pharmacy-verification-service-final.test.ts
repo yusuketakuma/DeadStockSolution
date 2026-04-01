@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../config/database', () => ({ db: mocks.db }));
 vi.mock('../services/logger', () => ({ logger: mocks.logger }));
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   handoffToOpenClaw: (...args: unknown[]) => mocks.handoffToOpenClaw(...args),
 }));
 vi.mock('../utils/request-utils', () => ({

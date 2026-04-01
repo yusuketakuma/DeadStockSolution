@@ -2,7 +2,7 @@ import 'dotenv/config';
 import app from './app';
 import { resolvePort, validateRequiredCronSecrets } from './config/env';
 import { ensureTestPharmacyColumnsAtStartup } from './config/test-pharmacy-schema';
-import { startDrugMasterScheduler, stopDrugMasterScheduler } from './services/drug-master-scheduler';
+import { startDrugMasterScheduler, stopDrugMasterScheduler } from './services/drug-master/scheduler';
 import { startDrugPackageScheduler, stopDrugPackageScheduler } from './services/drug-package-scheduler';
 import { startImportFailureAlertScheduler, stopImportFailureAlertScheduler } from './services/import-failure-alert-scheduler';
 import { startMatchingRefreshScheduler, stopMatchingRefreshScheduler } from './services/matching-refresh-scheduler';

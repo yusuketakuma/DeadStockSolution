@@ -9,7 +9,7 @@ vi.mock('../services/mhlw-index-scraper', () => ({
   DRUG_CATEGORIES: ['内用薬', '外用薬', '注射薬', '歯科用薬剤'],
 }));
 
-vi.mock('../services/drug-master-source-state-service', () => ({
+vi.mock('../services/drug-master/source-state-service', () => ({
   getSourceState: vi.fn().mockResolvedValue(null),
   getSourceStatesByPrefix: vi.fn().mockResolvedValue([]),
   upsertSourceState: vi.fn().mockResolvedValue(undefined),
@@ -23,7 +23,7 @@ vi.mock('../middleware/error-handler', () => ({
   getErrorMessage: (err: unknown) => err instanceof Error ? err.message : String(err),
 }));
 
-vi.mock('../services/drug-master-service', () => ({
+vi.mock('../services/drug-master/service', () => ({
   parseMhlwExcelData: vi.fn().mockReturnValue([]),
   parseMhlwCsvData: vi.fn().mockReturnValue([]),
   decodeCsvBuffer: vi.fn().mockReturnValue(''),
@@ -41,7 +41,7 @@ vi.mock('../services/upload-service', () => ({
   parseExcelBuffer: vi.fn().mockResolvedValue([['header1', 'header2']]),
 }));
 
-vi.mock('../services/drug-master-parser-mhlw', () => ({
+vi.mock('../services/drug-master/parser-mhlw', () => ({
   parseMhlwDrugFile: vi.fn().mockResolvedValue([
     { drugCode: '0001', drugName: 'テスト薬', unitPrice: 100, unit: '錠' },
   ]),
@@ -132,13 +132,13 @@ describe('mhlw-multi-file-fetcher', () => {
     });
 
     // Each category returns 2 parsed rows via parseMhlwDrugFile
-    const { parseMhlwDrugFile } = await import('../services/drug-master-parser-mhlw');
+    const { parseMhlwDrugFile } = await import('../services/drug-master/parser-mhlw');
     vi.mocked(parseMhlwDrugFile).mockResolvedValue([
       { yjCode: 'YJ001', drugName: 'テスト薬A', unitPrice: 100, unit: '錠' },
       { yjCode: 'YJ002', drugName: 'テスト薬B', unitPrice: 200, unit: '錠' },
     ] as never);
 
-    const { syncDrugMaster } = await import('../services/drug-master-service');
+    const { syncDrugMaster } = await import('../services/drug-master/service');
 
     const { runMultiFileSync } = await import('../services/mhlw-multi-file-fetcher');
     const result = await runMultiFileSync();
@@ -181,7 +181,7 @@ describe('mhlw-multi-file-fetcher', () => {
       } as never;
     });
 
-    const { syncDrugMaster } = await import('../services/drug-master-service');
+    const { syncDrugMaster } = await import('../services/drug-master/service');
 
     const { runMultiFileSync } = await import('../services/mhlw-multi-file-fetcher');
     await expect(runMultiFileSync()).rejects.toThrow('ファイル処理に失敗');
@@ -201,7 +201,7 @@ describe('mhlw-multi-file-fetcher', () => {
       files: [{ category: '内用薬', url: 'https://www.mhlw.go.jp/test_01.xlsx', label: '内用薬' }],
     });
 
-    const { getSourceStatesByPrefix } = await import('../services/drug-master-source-state-service');
+    const { getSourceStatesByPrefix } = await import('../services/drug-master/source-state-service');
     vi.mocked(getSourceStatesByPrefix).mockResolvedValue([{
       id: 1,
       sourceKey: 'drug:file:内用薬',
@@ -216,7 +216,7 @@ describe('mhlw-multi-file-fetcher', () => {
 
     const { downloadResponseBuffer } = await import('../utils/http-utils');
     vi.mocked(downloadResponseBuffer).mockResolvedValue(mockBuffer);
-    const { parseMhlwExcelData, syncDrugMaster } = await import('../services/drug-master-service');
+    const { parseMhlwExcelData, syncDrugMaster } = await import('../services/drug-master/service');
 
     const { runMultiFileSync } = await import('../services/mhlw-multi-file-fetcher');
     const result = await runMultiFileSync();
@@ -243,7 +243,7 @@ describe('mhlw-multi-file-fetcher', () => {
       ],
     });
 
-    const { getSourceStatesByPrefix } = await import('../services/drug-master-source-state-service');
+    const { getSourceStatesByPrefix } = await import('../services/drug-master/source-state-service');
     vi.mocked(getSourceStatesByPrefix).mockResolvedValue([
       {
         id: 1,
@@ -274,7 +274,7 @@ describe('mhlw-multi-file-fetcher', () => {
       .mockResolvedValueOnce(changedBuffer)
       .mockResolvedValueOnce(unchangedBuffer);
 
-    const { parseMhlwDrugFile } = await import('../services/drug-master-parser-mhlw');
+    const { parseMhlwDrugFile } = await import('../services/drug-master/parser-mhlw');
     vi.mocked(parseMhlwDrugFile)
       .mockResolvedValueOnce([
         { yjCode: 'YJ100', drugName: '変更薬', unitPrice: 100, unit: '錠' },
@@ -283,7 +283,7 @@ describe('mhlw-multi-file-fetcher', () => {
         { yjCode: 'YJ200', drugName: '未変更薬', unitPrice: 200, unit: '錠' },
       ] as never);
 
-    const { syncDrugMaster } = await import('../services/drug-master-service');
+    const { syncDrugMaster } = await import('../services/drug-master/service');
 
     const { runMultiFileSync } = await import('../services/mhlw-multi-file-fetcher');
     const result = await runMultiFileSync();

@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 function mockDrugMasterSyncRouteCoverageDependencies() {
-  vi.doMock('../services/drug-master-service', () => ({
+  vi.doMock('../services/drug-master/service', () => ({
     parseMhlwExcelData: mocks.parseMhlwExcelData,
     parseMhlwCsvData: mocks.parseMhlwCsvData,
     parsePackageExcelData: mocks.parsePackageExcelData,
@@ -41,14 +41,14 @@ function mockDrugMasterSyncRouteCoverageDependencies() {
     createSyncLog: mocks.createSyncLog,
     completeSyncLog: mocks.completeSyncLog,
   }));
-  vi.doMock('../services/drug-master-scheduler', () => ({
+  vi.doMock('../services/drug-master/scheduler', () => ({
     triggerManualAutoSync: mocks.triggerManualAutoSync,
     getConfiguredSourceMode: mocks.getConfiguredSourceMode,
   }));
   vi.doMock('../services/drug-package-scheduler', () => ({
     triggerManualPackageAutoSync: mocks.triggerManualPackageAutoSync,
   }));
-  vi.doMock('../services/drug-master-source-state-service', () => ({
+  vi.doMock('../services/drug-master/source-state-service', () => ({
     getSourceStatesByPrefix: mocks.getSourceStatesByPrefix,
   }));
   vi.doMock('../services/upload-service', () => ({

@@ -15,7 +15,7 @@ vi.mock('drizzle-orm', () => ({
   or: vi.fn(() => ({})),
 }));
 
-import { enrichWithDrugMaster } from '../services/drug-master-enrichment';
+import { enrichWithDrugMaster } from '../services/drug-master/enrichment';
 
 /** DB select チェーンのモックを作成するヘルパー */
 function makeChain(result: unknown[]) {

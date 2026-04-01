@@ -195,7 +195,7 @@ vi.mock('../services/data-extractor', () => ({
   extractUsedMedicationRows: mockState.extractUsedMedicationRows,
 }));
 
-vi.mock('../services/drug-master-enrichment', () => ({
+vi.mock('../services/drug-master/enrichment', () => ({
   enrichWithDrugMaster: mockState.enrichWithDrugMaster,
 }));
 
@@ -212,7 +212,7 @@ vi.mock('../services/log-service', () => ({
   getClientIp: mockState.getClientIp,
 }));
 
-vi.mock('../services/openclaw-auto-handoff-service', () => ({
+vi.mock('../services/openclaw/auto-handoff-service', () => ({
   handoffImportFailureAlertToOpenClaw: mockState.handoffImportFailureAlertToOpenClaw,
 }));
 

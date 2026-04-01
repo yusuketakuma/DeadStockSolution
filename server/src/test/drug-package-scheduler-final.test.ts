@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../config/database', () => ({ db: {} }));
 
-vi.mock('../services/drug-master-service', () => ({
+vi.mock('../services/drug-master/service', () => ({
   parsePackageExcelData: mocks.parsePackageExcelData,
   parsePackageCsvData: mocks.parsePackageCsvData,
   parsePackageXmlData: mocks.parsePackageXmlData,
@@ -58,7 +58,7 @@ vi.mock('../utils/crypto-utils', () => ({
   sha256: mocks.sha256,
 }));
 
-vi.mock('../services/drug-master-source-state-service', () => ({
+vi.mock('../services/drug-master/source-state-service', () => ({
   persistSourceHeaders: mocks.persistSourceHeaders,
   SOURCE_KEY_PACKAGE: 'package',
 }));

@@ -162,7 +162,7 @@ function mockRouteDependencies() {
   vi.doMock('../services/registration-screening-service', () => ({
     evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
   }));
-  vi.doMock('../services/openclaw-service', () => ({
+  vi.doMock('../services/openclaw', () => ({
     handoffToOpenClaw: mocks.handoffToOpenClaw,
   }));
   vi.doMock('../services/pharmacy-verification-service', () => ({

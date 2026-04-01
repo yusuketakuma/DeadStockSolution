@@ -50,13 +50,13 @@ function mockAdminCsvExportDependencies() {
     writeLog: vi.fn(),
     getClientIp: vi.fn(),
   }));
-  vi.doMock('../services/openclaw-service', () => ({
+  vi.doMock('../services/openclaw', () => ({
     handoffToOpenClaw: vi.fn(),
     isOpenClawConnectorConfigured: vi.fn(),
     isOpenClawWebhookConfigured: vi.fn(),
     getOpenClawImplementationBranch: vi.fn(),
   }));
-  vi.doMock('../services/openclaw-log-context-service', () => ({
+  vi.doMock('../services/openclaw/log-context-service', () => ({
     buildOpenClawLogContext: vi.fn(),
   }));
   vi.doMock('../services/observability-service', () => ({

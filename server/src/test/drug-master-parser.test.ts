@@ -1,6 +1,6 @@
 import AdmZip from 'adm-zip';
 import { describe, it, expect } from 'vitest';
-import { parseMhlwExcelData, parsePackageExcelData, parsePackageXmlData, parsePackageZipData } from '../services/drug-master-service';
+import { parseMhlwExcelData, parsePackageExcelData, parsePackageXmlData, parsePackageZipData } from '../services/drug-master/service';
 
 describe('drug-master parser', () => {
   it('keeps column index 0 headers mapped correctly for mhlw sheet', () => {

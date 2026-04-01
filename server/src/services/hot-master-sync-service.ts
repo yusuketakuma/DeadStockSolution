@@ -13,7 +13,7 @@ import { getErrorMessage } from '../middleware/error-handler';
 import { sha256 } from '../utils/crypto-utils';
 import { type FetchDispatcher } from '../utils/http-utils';
 import { createPinnedDnsAgent, validateExternalHttpsUrl } from '../utils/network-utils';
-import { persistSourceHeaders, SOURCE_KEY_HOT_MASTER } from './drug-master-source-state-service';
+import { persistSourceHeaders, SOURCE_KEY_HOT_MASTER } from './drug-master/source-state-service';
 import { logger } from './logger';
 import { checkForUpdates, downloadFile } from './mhlw-source-fetch';
 

@@ -51,7 +51,7 @@ vi.mock('../config/database', () => ({
   db: mocks.db,
 }));
 
-vi.mock('../services/drug-equivalence-service', () => ({
+vi.mock('../services/drug-master/equivalence-service', () => ({
   fetchEquivalenceMap: mocks.fetchEquivalenceMap,
 }));
 

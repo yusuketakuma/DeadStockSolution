@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   sendToOpenClawGateway: vi.fn(),
 }));
 
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   getOpenClawConfig: mocks.getOpenClawConfig,
   sendToOpenClawGateway: mocks.sendToOpenClawGateway,
 }));
@@ -18,7 +18,7 @@ import {
   buildAlertPayload,
   buildOpenClawLogAlertMessage,
   escalateLogAlertToOpenClaw,
-} from '../services/openclaw-log-push-service';
+} from '../services/openclaw/log-push-service';
 
 const originalLogPushEnabled = process.env.OPENCLAW_LOG_PUSH_ENABLED;
 

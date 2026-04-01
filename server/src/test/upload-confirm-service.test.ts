@@ -28,7 +28,7 @@ vi.mock('../services/data-extractor', () => ({
   extractUsedMedicationRowsWithIssues: mocks.extractUsedMedicationRowsWithIssues,
 }));
 
-vi.mock('../services/drug-master-enrichment', () => ({
+vi.mock('../services/drug-master/enrichment', () => ({
   enrichWithDrugMaster: mocks.enrichWithDrugMaster,
 }));
 

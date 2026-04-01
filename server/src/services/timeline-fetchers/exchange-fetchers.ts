@@ -162,7 +162,8 @@ export async function fetchAdminMessageEvents(
         ...(beforeCondition ? [beforeCondition] : []),
       ),
     )
-    .orderBy(desc(adminMessages.createdAt));
+    .orderBy(desc(adminMessages.createdAt))
+    .$dynamic();
   if (subLimit) allQuery = allQuery.limit(subLimit);
 
   let pharmacyQuery = db
@@ -176,7 +177,8 @@ export async function fetchAdminMessageEvents(
         ...(beforeCondition ? [beforeCondition] : []),
       ),
     )
-    .orderBy(desc(adminMessages.createdAt));
+    .orderBy(desc(adminMessages.createdAt))
+    .$dynamic();
   if (subLimit) pharmacyQuery = pharmacyQuery.limit(subLimit);
 
   const [allMessages, pharmacyMessages] = await Promise.all([allQuery, pharmacyQuery]);
@@ -237,7 +239,8 @@ export async function fetchExchangeHistoryEvents(
     })
     .from(exchangeProposals)
     .where(and(...conditions))
-    .orderBy(desc(exchangeProposals.completedAt));
+    .orderBy(desc(exchangeProposals.completedAt))
+    .$dynamic();
   if (limit) query = query.limit(limit);
 
   const rows = await query;
@@ -277,7 +280,8 @@ export async function fetchExpiryRiskEvents(
     })
     .from(deadStockItems)
     .where(and(...conditions))
-    .orderBy(desc(deadStockItems.createdAt));
+    .orderBy(desc(deadStockItems.createdAt))
+    .$dynamic();
   if (limit) query = query.limit(limit);
 
   const rows = await query;

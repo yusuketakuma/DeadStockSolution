@@ -30,7 +30,7 @@ vi.mock('../utils/package-utils', () => ({
   normalizePackageInfo: (...args: unknown[]) => normalizePackageInfoMock(...args),
 }));
 
-import { syncDrugMaster, syncPackageData } from '../services/drug-master-sync-service';
+import { syncDrugMaster, syncPackageData } from '../services/drug-master/sync-service';
 
 // ── Helpers ──
 

@@ -40,15 +40,15 @@ vi.mock('../config/database', () => ({
   db: mocks.db,
 }));
 
-vi.mock('../services/openclaw-log-context-service', () => ({
+vi.mock('../services/openclaw/log-context-service', () => ({
   buildOpenClawLogContext: mocks.buildOpenClawLogContext,
 }));
 
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   handoffToOpenClaw: mocks.handoffToOpenClaw,
 }));
 
-vi.mock('../services/openclaw-thread-service', () => ({
+vi.mock('../services/openclaw/thread-service', () => ({
   ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
   recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
   buildOpenClawConversationContext: mocks.buildOpenClawConversationContext,

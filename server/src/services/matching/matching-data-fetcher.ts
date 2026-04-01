@@ -16,6 +16,7 @@ import { groupByPharmacy } from '../matching-filter-service';
 import { createCache } from '../cache-service';
 
 import type {
+  DeadStockRow,
   ViablePharmacyRow,
 } from '../../types/matching';
 
@@ -198,7 +199,7 @@ export async function fetchReservationMap(
   return buildReservedByItemId(reservationRows);
 }
 
-export async function fetchAvailableDeadStockByPharmacy(pharmacyId: number) {
+export async function fetchAvailableDeadStockByPharmacy(pharmacyId: number): Promise<DeadStockRow[]> {
   const prepared = getPreparedMatchingDeadStockByPharmacyId();
   if (prepared) {
     return prepared.execute({ pharmacyId });

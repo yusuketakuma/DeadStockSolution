@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
 import { pharmacies, userRequests } from '../db/schema';
-import { handoffToOpenClaw } from './openclaw-service';
+import { handoffToOpenClaw } from './openclaw';
 import { logger } from './logger';
 import { isPositiveSafeInteger } from '../utils/request-utils';
 import { getErrorMessage } from '../middleware/error-handler';

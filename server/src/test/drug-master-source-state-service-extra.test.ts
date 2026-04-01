@@ -54,13 +54,13 @@ describe('drug-master-source-state-service-extra', () => {
     mockRows.whereRows = [{ id: 1, sourceKey: 'drug:file:a' }];
     mockRows.fromRows = [{ id: 10, sourceKey: 'drug:file:x' }, { id: 11, sourceKey: 'drug:file:y' }];
 
-    const mod = await import('../services/drug-master-source-state-service');
+    const mod = await import('../services/drug-master/source-state-service');
     await expect(mod.getSourceState('drug:file:a')).resolves.toEqual({ id: 1, sourceKey: 'drug:file:a' });
     await expect(mod.getAllSourceStates()).resolves.toEqual(mockRows.fromRows);
   });
 
   it('upsertSourceState writes nullable fields and selective update fields', async () => {
-    const mod = await import('../services/drug-master-source-state-service');
+    const mod = await import('../services/drug-master/source-state-service');
     await mod.upsertSourceState('drug:file:a', {
       url: 'https://example.com/a.csv',
       etag: null,
@@ -85,7 +85,7 @@ describe('drug-master-source-state-service-extra', () => {
   });
 
   it('persistSourceHeaders sets lastChangedAt only when changed=true', async () => {
-    const mod = await import('../services/drug-master-source-state-service');
+    const mod = await import('../services/drug-master/source-state-service');
     await mod.persistSourceHeaders('drug:file:a', 'https://example.com/a.csv', {
       etag: '"tag1"',
       lastModified: 'Mon, 01 Jan 2026 00:00:00 GMT',
@@ -109,7 +109,7 @@ describe('drug-master-source-state-service-extra', () => {
 
   it('provides expected source-key helpers and prefix query', async () => {
     mockRows.whereRows = [{ sourceKey: 'drug:file:price' }];
-    const mod = await import('../services/drug-master-source-state-service');
+    const mod = await import('../services/drug-master/source-state-service');
 
     expect(mod.SOURCE_KEY_SINGLE).toBe('drug:single');
     expect(mod.SOURCE_KEY_INDEX).toBe('drug:index_page');

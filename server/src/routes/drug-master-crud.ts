@@ -11,7 +11,7 @@ import {
   getDrugMasterStats,
   getDrugDetail,
   updateDrugMasterItem,
-} from '../services/drug-master-service';
+} from '../services/drug-master/service';
 import { logger } from '../services/logger';
 
 const router = Router();

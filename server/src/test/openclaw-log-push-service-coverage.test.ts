@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OpenClawConfig } from '../services/openclaw-service';
+import type { OpenClawConfig } from '../services/openclaw';
 
 // ── Hoisted mocks ──────────────────────────────────
 const mocks = vi.hoisted(() => ({
@@ -18,7 +18,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   getOpenClawConfig: mocks.getOpenClawConfig,
   sendToOpenClawGateway: mocks.sendToOpenClawGateway,
 }));
@@ -30,7 +30,7 @@ import {
   getBufferSize,
   clearBuffer,
   type LogAlertEntry,
-} from '../services/openclaw-log-push-service';
+} from '../services/openclaw/log-push-service';
 
 // ── Helpers ──────────────────────────────────
 function makeEntry(overrides: Partial<LogAlertEntry> = {}): LogAlertEntry {

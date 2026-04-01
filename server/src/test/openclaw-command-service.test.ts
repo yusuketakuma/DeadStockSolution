@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isCommandAllowed, BUILTIN_COMMANDS } from '../services/openclaw-command-service';
+import { isCommandAllowed, BUILTIN_COMMANDS } from '../services/openclaw/command-service';
 
 describe('openclaw-command-service', () => {
   describe('BUILTIN_COMMANDS', () => {

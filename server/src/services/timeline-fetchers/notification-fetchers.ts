@@ -203,7 +203,8 @@ export async function fetchNotificationEvents(
     })
     .from(notificationsTable)
     .where(and(...conditions))
-    .orderBy(desc(notificationsTable.createdAt));
+    .orderBy(desc(notificationsTable.createdAt))
+    .$dynamic();
   if (limit) query = query.limit(limit);
 
   const rows = await query;
@@ -238,7 +239,8 @@ export async function fetchMatchEvents(
     })
     .from(notificationsTable)
     .where(and(...conditions))
-    .orderBy(desc(notificationsTable.createdAt));
+    .orderBy(desc(notificationsTable.createdAt))
+    .$dynamic();
   if (limit) query = query.limit(limit);
 
   const rows = await query;
@@ -289,7 +291,8 @@ export async function fetchProposalEvents(
     })
     .from(exchangeProposals)
     .where(and(...whereConditions))
-    .orderBy(desc(exchangeProposals.proposedAt));
+    .orderBy(desc(exchangeProposals.proposedAt))
+    .$dynamic();
   if (limit) query = query.limit(limit);
 
   const rows = await query;
@@ -333,7 +336,8 @@ export async function fetchCommentEvents(
       eq(proposalComments.proposalId, exchangeProposals.id),
     )
     .where(and(...conditions))
-    .orderBy(desc(proposalComments.createdAt));
+    .orderBy(desc(proposalComments.createdAt))
+    .$dynamic();
   if (limit) query = query.limit(limit);
 
   const rows = await query;
@@ -366,7 +370,8 @@ export async function fetchFeedbackEvents(
     })
     .from(exchangeFeedback)
     .where(and(...conditions))
-    .orderBy(desc(exchangeFeedback.createdAt));
+    .orderBy(desc(exchangeFeedback.createdAt))
+    .$dynamic();
   if (limit) query = query.limit(limit);
 
   const rows = await query;

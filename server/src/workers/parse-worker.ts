@@ -1,5 +1,5 @@
 import { parentPort, workerData } from 'worker_threads';
-import { decodeCsvBuffer, parseCsvContent } from '../services/drug-master-parser-service';
+import { decodeCsvBuffer, parseCsvContent } from '../services/drug-master/parser-service';
 import { parseExcelBuffer } from '../services/upload-service';
 
 type ParseFormat = 'xlsx' | 'csv';

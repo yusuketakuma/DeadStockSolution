@@ -16,16 +16,16 @@ import { rowCount } from '../utils/db-utils';
 import { writeLog, getClientIp } from '../services/log-service';
 import { logger } from '../services/logger';
 import { invalidateDashboardUnreadCache } from '../services/notification-service';
-import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
+import { buildOpenClawLogContext } from '../services/openclaw/log-context-service';
 import {
   handoffToOpenClaw,
   type OpenClawHandoffResult,
-} from '../services/openclaw-service';
+} from '../services/openclaw';
 import {
   mapOpenClawStatusToWorkflowStatus,
   isMissingOpenClawSchemaError,
   updateOpenClawWorkItem,
-} from '../services/openclaw-thread-service';
+} from '../services/openclaw/thread-service';
 import {
   buildProposalTimeline,
   fetchProposalTimelineActionRows,

@@ -13,8 +13,8 @@ import {
 } from '../services/timeline-aggregators';
 
 function createQueryChain(result: unknown[]): DbClient & Record<string, ReturnType<typeof vi.fn>> {
-  const methods = ['select', 'update', 'from', 'where', 'orderBy', 'limit', 'innerJoin'];
-  const chain = {} as DbClient & Record<string, ReturnType<typeof vi.fn>>;
+  const methods = ['select', 'update', 'from', 'where', 'orderBy', 'limit', 'innerJoin', '$dynamic'];
+  const chain = {} as unknown as DbClient & Record<string, ReturnType<typeof vi.fn>>;
   for (const m of methods) {
     chain[m] = vi.fn();
   }
@@ -270,19 +270,22 @@ describe('timeline-aggregators coverage: fetcher functions', () => {
       const db = {
         select: vi.fn(),
         update: vi.fn(),
-      };
+      } as unknown as DbClient & { select: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
 
       function makeOrderByChain(result: unknown[]) {
+        const dynamicChain = {
+          limit: vi.fn(),
+          then: (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve),
+        };
+        dynamicChain.limit.mockResolvedValue(result);
         const c = {
           from: vi.fn(),
           where: vi.fn(),
           orderBy: vi.fn(),
-          limit: vi.fn(),
         };
         c.from.mockReturnValue(c);
         c.where.mockReturnValue(c);
-        c.orderBy.mockResolvedValue(result);
-        c.limit.mockResolvedValue(result);
+        c.orderBy.mockReturnValue({ $dynamic: vi.fn().mockReturnValue(dynamicChain) });
         return c;
       }
 
@@ -313,19 +316,21 @@ describe('timeline-aggregators coverage: fetcher functions', () => {
       const db = {
         select: vi.fn(),
         update: vi.fn(),
-      };
+      } as unknown as DbClient & { select: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
 
       function makeChain(result: unknown[]) {
+        const dynamicResult = {
+          limit: vi.fn().mockResolvedValue(result),
+          then: (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve),
+        };
         const c = {
           from: vi.fn(),
           where: vi.fn(),
           orderBy: vi.fn(),
-          limit: vi.fn(),
         };
         c.from.mockReturnValue(c);
         c.where.mockReturnValue(c);
-        c.orderBy.mockResolvedValue(result);
-        c.limit.mockResolvedValue(result);
+        c.orderBy.mockReturnValue({ $dynamic: vi.fn().mockReturnValue(dynamicResult) });
         return c;
       }
 
@@ -352,19 +357,21 @@ describe('timeline-aggregators coverage: fetcher functions', () => {
       const db = {
         select: vi.fn(),
         update: vi.fn(),
-      };
+      } as unknown as DbClient & { select: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
 
       function makeChain(result: unknown[]) {
+        const dynamicResult = {
+          limit: vi.fn().mockResolvedValue(result),
+          then: (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve),
+        };
         const c = {
           from: vi.fn(),
           where: vi.fn(),
           orderBy: vi.fn(),
-          limit: vi.fn(),
         };
         c.from.mockReturnValue(c);
         c.where.mockReturnValue(c);
-        c.orderBy.mockResolvedValue(result);
-        c.limit.mockResolvedValue(result);
+        c.orderBy.mockReturnValue({ $dynamic: vi.fn().mockReturnValue(dynamicResult) });
         return c;
       }
 
@@ -380,19 +387,21 @@ describe('timeline-aggregators coverage: fetcher functions', () => {
       const db = {
         select: vi.fn(),
         update: vi.fn(),
-      };
+      } as unknown as DbClient & { select: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
 
       function makeChain2(result: unknown[]) {
+        const dynamicResult = {
+          limit: vi.fn().mockResolvedValue(result),
+          then: (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve),
+        };
         const c = {
           from: vi.fn(),
           where: vi.fn(),
           orderBy: vi.fn(),
-          limit: vi.fn(),
         };
         c.from.mockReturnValue(c);
         c.where.mockReturnValue(c);
-        c.orderBy.mockResolvedValue(result);
-        c.limit.mockResolvedValue(result);
+        c.orderBy.mockReturnValue({ $dynamic: vi.fn().mockReturnValue(dynamicResult) });
         return c;
       }
 
@@ -408,19 +417,21 @@ describe('timeline-aggregators coverage: fetcher functions', () => {
       const db = {
         select: vi.fn(),
         update: vi.fn(),
-      };
+      } as unknown as DbClient & { select: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
 
       function makeChain3(result: unknown[]) {
+        const dynamicResult = {
+          limit: vi.fn().mockResolvedValue(result),
+          then: (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve),
+        };
         const c = {
           from: vi.fn(),
           where: vi.fn(),
           orderBy: vi.fn(),
-          limit: vi.fn(),
         };
         c.from.mockReturnValue(c);
         c.where.mockReturnValue(c);
-        c.orderBy.mockReturnValue(c);
-        c.limit.mockResolvedValue(result);
+        c.orderBy.mockReturnValue({ $dynamic: vi.fn().mockReturnValue(dynamicResult) });
         return c;
       }
 

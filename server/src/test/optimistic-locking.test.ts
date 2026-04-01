@@ -67,7 +67,7 @@ function mockOptimisticLockingDependencies() {
     csrfProtection: (_req: unknown, _res: unknown, next: () => void) => next(),
   }));
 
-  vi.doMock('../services/openclaw-service', () => ({
+  vi.doMock('../services/openclaw', () => ({
     handoffToOpenClaw: vi.fn(() => Promise.resolve({
       accepted: true,
       connectorConfigured: true,

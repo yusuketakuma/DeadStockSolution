@@ -198,11 +198,13 @@ describe('upload-validation-ultra', () => {
         constructor: '1',
         prototype: '2',
         drug_name: '3',
-        quantity: '4',
+        drug_code: '4',
+        quantity: '5',
+        yakka_unit_price: '6',
       });
       const result = parseMapping(mapping, 'dead_stock');
       expect(result.drug_name).toBe('3');
-      expect(result.quantity).toBe('4');
+      expect(result.quantity).toBe('5');
     });
 
     it('skips keys longer than 50 characters', () => {
@@ -210,7 +212,9 @@ describe('upload-validation-ultra', () => {
       const mapping = JSON.stringify({
         [longKey]: '0',
         drug_name: '1',
-        quantity: '2',
+        drug_code: '2',
+        quantity: '3',
+        yakka_unit_price: '4',
       });
       const result = parseMapping(mapping, 'dead_stock');
       expect(result.drug_name).toBe('1');
@@ -220,7 +224,9 @@ describe('upload-validation-ultra', () => {
       const mapping = JSON.stringify({
         invalid_field: '0',
         drug_name: '1',
-        quantity: '2',
+        drug_code: '2',
+        quantity: '3',
+        yakka_unit_price: '4',
       });
       const result = parseMapping(mapping, 'dead_stock');
       expect((result as Record<string, unknown>)['invalid_field']).toBeUndefined();
@@ -229,7 +235,9 @@ describe('upload-validation-ultra', () => {
     it('sets null for null values', () => {
       const mapping = JSON.stringify({
         drug_name: '1',
-        quantity: '2',
+        drug_code: '2',
+        quantity: '3',
+        yakka_unit_price: '4',
         lot_number: null,
       });
       const result = parseMapping(mapping, 'dead_stock');
@@ -239,7 +247,9 @@ describe('upload-validation-ultra', () => {
     it('rejects non-numeric string values', () => {
       const mapping = JSON.stringify({
         drug_name: '1',
+        drug_code: '2',
         quantity: 'abc',
+        yakka_unit_price: '3',
       });
       expect(() => parseMapping(mapping, 'dead_stock')).toThrow('数量カラムの割り当てが必要です');
     });
@@ -247,7 +257,9 @@ describe('upload-validation-ultra', () => {
     it('rejects column index exceeding MAX_MAPPING_COLUMN_INDEX', () => {
       const mapping = JSON.stringify({
         drug_name: '1',
+        drug_code: '2',
         quantity: '200', // exceeds 199
+        yakka_unit_price: '3',
       });
       expect(() => parseMapping(mapping, 'dead_stock')).toThrow('数量カラムの割り当てが必要です');
     });
@@ -255,7 +267,9 @@ describe('upload-validation-ultra', () => {
     it('rejects non-integer values in string form', () => {
       const mapping = JSON.stringify({
         drug_name: '1',
+        drug_code: '2',
         quantity: '1.5',
+        yakka_unit_price: '3',
       });
       expect(() => parseMapping(mapping, 'dead_stock')).toThrow('数量カラムの割り当てが必要です');
     });
@@ -270,6 +284,7 @@ describe('upload-validation-ultra', () => {
     it('throws for dead_stock when quantity mapping is missing', () => {
       const mapping = JSON.stringify({
         drug_name: '0',
+        drug_code: '1',
       });
       expect(() => parseMapping(mapping, 'dead_stock')).toThrow('数量カラムの割り当てが必要です');
     });
@@ -277,6 +292,7 @@ describe('upload-validation-ultra', () => {
     it('does not require quantity for used_medication', () => {
       const mapping = JSON.stringify({
         drug_name: '0',
+        drug_code: '1',
       });
       const result = parseMapping(mapping, 'used_medication');
       expect(result.drug_name).toBe('0');
@@ -285,7 +301,9 @@ describe('upload-validation-ultra', () => {
     it('ignores non-string, non-null values', () => {
       const mapping = JSON.stringify({
         drug_name: '0',
-        quantity: '1',
+        drug_code: '1',
+        quantity: '2',
+        yakka_unit_price: '3',
         unit: 42, // number, not string
       });
       const result = parseMapping(mapping, 'dead_stock');
@@ -295,11 +313,13 @@ describe('upload-validation-ultra', () => {
     it('trims whitespace from string values', () => {
       const mapping = JSON.stringify({
         drug_name: ' 0 ',
-        quantity: ' 1 ',
+        drug_code: ' 1 ',
+        quantity: ' 2 ',
+        yakka_unit_price: ' 3 ',
       });
       const result = parseMapping(mapping, 'dead_stock');
       expect(result.drug_name).toBe('0');
-      expect(result.quantity).toBe('1');
+      expect(result.quantity).toBe('2');
     });
   });
 
@@ -471,8 +491,8 @@ describe('upload-validation-ultra', () => {
   // ── resolveMappingFromTemplateWithSource ──
   describe('resolveMappingFromTemplateWithSource', () => {
     it('uses saved mapping when valid', () => {
-      const saved = JSON.stringify({ drug_name: '0', quantity: '1' });
-      const result = resolveMappingFromTemplateWithSource(saved, ['a', 'b'], 'dead_stock');
+      const saved = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3' });
+      const result = resolveMappingFromTemplateWithSource(saved, ['a', 'b', 'c', 'd'], 'dead_stock');
       expect(result.fromSavedTemplate).toBe(true);
       expect(result.mapping.drug_name).toBe('0');
     });
@@ -500,8 +520,8 @@ describe('upload-validation-ultra', () => {
   // ── resolveMappingFromTemplate ──
   describe('resolveMappingFromTemplate', () => {
     it('returns just the mapping (without source flag)', () => {
-      const saved = JSON.stringify({ drug_name: '0', quantity: '1' });
-      const result = resolveMappingFromTemplate(saved, ['a', 'b'], 'dead_stock');
+      const saved = JSON.stringify({ drug_name: '0', drug_code: '1', quantity: '2', yakka_unit_price: '3' });
+      const result = resolveMappingFromTemplate(saved, ['a', 'b', 'c', 'd'], 'dead_stock');
       expect(result.drug_name).toBe('0');
     });
   });

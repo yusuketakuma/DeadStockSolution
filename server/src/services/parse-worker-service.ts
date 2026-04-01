@@ -1,7 +1,7 @@
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { Worker } from 'worker_threads';
-import { decodeCsvBuffer, parseCsvContent } from './drug-master-parser-service';
+import { decodeCsvBuffer, parseCsvContent } from './drug-master/parser-service';
 import { parseExcelBuffer } from './upload-service';
 
 const WORKER_TIMEOUT_MS = 30_000;

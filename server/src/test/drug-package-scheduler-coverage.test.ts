@@ -6,7 +6,7 @@ vi.mock('../config/database', () => ({
   db: {},
 }));
 
-vi.mock('../services/drug-master-service', () => ({
+vi.mock('../services/drug-master/service', () => ({
   parsePackageExcelData: vi.fn().mockReturnValue([]),
   parsePackageCsvData: vi.fn().mockReturnValue([]),
   parsePackageXmlData: vi.fn().mockReturnValue([]),
@@ -38,7 +38,7 @@ vi.mock('../utils/crypto-utils', () => ({
   sha256: vi.fn().mockReturnValue('mocksha256'),
 }));
 
-vi.mock('../services/drug-master-source-state-service', () => ({
+vi.mock('../services/drug-master/source-state-service', () => ({
   persistSourceHeaders: vi.fn().mockResolvedValue(undefined),
   SOURCE_KEY_PACKAGE: 'package',
 }));

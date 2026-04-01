@@ -27,7 +27,7 @@ vi.mock('../services/upload-confirm-job-service', () => ({
   })),
 }));
 
-vi.mock('../services/drug-master-scheduler', () => ({
+vi.mock('../services/drug-master/scheduler', () => ({
   triggerManualAutoSync: vi.fn(async () => ({ triggered: true, message: 'ok' })),
   startDrugMasterScheduler: vi.fn(),
   stopDrugMasterScheduler: vi.fn(),
@@ -65,7 +65,7 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 // Must import after mocks
-import { executeCommand, listCommandHistory, BUILTIN_COMMANDS } from '../services/openclaw-command-service';
+import { executeCommand, listCommandHistory, BUILTIN_COMMANDS } from '../services/openclaw/command-service';
 
 describe('openclaw-command-service — additional coverage', () => {
   beforeEach(() => {

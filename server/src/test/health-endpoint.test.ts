@@ -32,10 +32,31 @@ function mockRetryQueueRows(rows: Array<{ status: string }>) {
   mocks.dbSelect.mockImplementation(() => {
     callCount += 1;
     if (callCount === 1) {
-      // First call: retry queue (select().from() — no where)
+      // getOpenClawRetryQueueMetrics query 1: status snapshot (select().from())
       return { from: vi.fn().mockResolvedValue(rows) };
     }
-    // Second call: handoff KPI (select().from().where().groupBy())
+    if (callCount === 2) {
+      // getOpenClawRetryQueueMetrics query 2: failed count (select().from().where())
+      const failedCount = rows.filter(r => r.status === 'failed').length;
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: failedCount }]),
+        }),
+      };
+    }
+    if (callCount === 3) {
+      // getOpenClawRetryQueueMetrics query 3: oldest pending (select().from().where().orderBy().limit())
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+        }),
+      };
+    }
+    // Call 4+: handoff KPI (select().from().where().groupBy())
     return {
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
@@ -203,8 +224,10 @@ describe('/api/health/openclaw', () => {
   });
 
   it('returns 503 when health snapshot creation fails unexpectedly', async () => {
-    mocks.dbSelect.mockImplementationOnce(() => ({
-      from: vi.fn().mockRejectedValue(new Error('openclaw health db failed')),
+    mocks.dbSelect.mockImplementation(() => ({
+      from: vi.fn().mockImplementation(() => {
+        throw new Error('openclaw health db failed');
+      }),
     }));
 
     const res = await request(app).get('/api/health/openclaw');

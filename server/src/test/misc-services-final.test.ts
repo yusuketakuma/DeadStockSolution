@@ -40,7 +40,7 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-import { BUILTIN_COMMANDS } from '../services/openclaw-command-service';
+import { BUILTIN_COMMANDS } from '../services/openclaw/command-service';
 
 describe('openclaw-command-service — BUILTIN_COMMANDS handlers', () => {
   describe('logs.query handler (lines 72-82)', () => {

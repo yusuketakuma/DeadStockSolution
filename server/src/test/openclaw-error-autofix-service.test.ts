@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   executeOpenClawHandoff: vi.fn(),
 }));
 
-vi.mock('../services/openclaw-handoff-executor', () => ({
+vi.mock('../services/openclaw/handoff-executor', () => ({
   executeOpenClawHandoff: mocks.executeOpenClawHandoff,
   skippedHandoff: (reason: string) => ({
     triggered: false,
@@ -23,7 +23,7 @@ vi.mock('../services/logger', () => ({
 import {
   handoffErrorToOpenClaw,
   _resetDedupCacheForTests,
-} from '../services/openclaw-error-autofix-service';
+} from '../services/openclaw/error-autofix-service';
 
 function makeContext(overrides?: Partial<ErrorFixContext>): ErrorFixContext {
   return {

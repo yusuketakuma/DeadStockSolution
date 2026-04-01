@@ -24,7 +24,7 @@ let mockUser: { id: number; email: string; isAdmin: boolean } | undefined = {
 };
 let openclawCommandsRouter: (typeof import('../routes/openclaw-commands'))['default'];
 
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   isOpenClawWebhookConfigured: mocks.isOpenClawWebhookConfigured,
   verifyOpenClawWebhookSignature: mocks.verifyOpenClawWebhookSignature,
   isOpenClawWebhookReplay: mocks.isOpenClawWebhookReplay,
@@ -32,7 +32,7 @@ vi.mock('../services/openclaw-service', () => ({
   releaseOpenClawWebhookReplay: mocks.releaseOpenClawWebhookReplay,
 }));
 
-vi.mock('../services/openclaw-command-service', () => ({
+vi.mock('../services/openclaw/command-service', () => ({
   executeCommand: mocks.executeCommand,
   listCommandHistory: mocks.listCommandHistory,
 }));

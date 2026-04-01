@@ -14,7 +14,7 @@ vi.mock('../utils/http-utils', () => ({
   MHLW_FETCH_TIMEOUT_MS: 120_000,
 }));
 
-vi.mock('../services/drug-master-source-state-service', () => ({
+vi.mock('../services/drug-master/source-state-service', () => ({
   getSourceState: mocks.getSourceState,
 }));
 

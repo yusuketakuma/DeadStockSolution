@@ -11,9 +11,9 @@ import {
   mapOpenClawStatusToWorkflowStatus,
   recordOpenClawRequestMessage,
   updateOpenClawWorkItem,
-} from '../services/openclaw-thread-service';
-import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
-import { handoffToOpenClaw } from '../services/openclaw-service';
+} from '../services/openclaw/thread-service';
+import { buildOpenClawLogContext } from '../services/openclaw/log-context-service';
+import { handoffToOpenClaw } from '../services/openclaw';
 import {
   addRequestInternalNote,
   createRequestMessageAttachments,
@@ -29,7 +29,7 @@ import {
   updateRequestAdminMetadata,
 } from '../services/request-collaboration-service';
 import { listUserRequests } from '../services/admin-user-request-service';
-import { listRequestEventTimeline } from '../services/openclaw-request-event-service';
+import { listRequestEventTimeline } from '../services/openclaw/request-event-service';
 import { createNotification } from '../services/notification-service';
 import { handleAdminError, parseListPagination, sendPaginated } from './admin-utils';
 import { uploadOptionalAttachments } from '../middleware/attachment-upload';

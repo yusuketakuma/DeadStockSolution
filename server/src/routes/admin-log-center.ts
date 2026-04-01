@@ -19,7 +19,7 @@ import type {
   LogInsightsQuery,
   LogIssueWorkflowStatus,
 } from '../services/log-center-service';
-import { escalateLogAlertToOpenClaw } from '../services/openclaw-log-push-service';
+import { escalateLogAlertToOpenClaw } from '../services/openclaw/log-push-service';
 import { AuthRequest } from '../types';
 import { handleAdminError, sendPaginated, parseListPagination } from './admin-utils';
 import { parsePositiveInt, normalizeSearchTerm, parseTimestamp } from '../utils/request-utils';

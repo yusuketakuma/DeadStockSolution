@@ -16,11 +16,11 @@ import {
   getSyncLogs,
   createSyncLog,
   completeSyncLog,
-} from '../services/drug-master-service';
-import { triggerManualAutoSync, getConfiguredSourceMode } from '../services/drug-master-scheduler';
-import type { SourceMode } from '../services/drug-master-scheduler';
+} from '../services/drug-master/service';
+import { triggerManualAutoSync, getConfiguredSourceMode } from '../services/drug-master/scheduler';
+import type { SourceMode } from '../services/drug-master/scheduler';
 import { triggerManualPackageAutoSync } from '../services/drug-package-scheduler';
-import { getSourceStatesByPrefix } from '../services/drug-master-source-state-service';
+import { getSourceStatesByPrefix } from '../services/drug-master/source-state-service';
 import { parseExcelBuffer } from '../services/upload-service';
 import { logger } from '../services/logger';
 import { getErrorMessage } from './admin-utils';

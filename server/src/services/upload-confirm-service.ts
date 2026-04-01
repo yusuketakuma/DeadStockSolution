@@ -13,7 +13,7 @@ import {
   extractUsedMedicationRowsWithIssues,
   type UploadExtractionIssue,
 } from './data-extractor';
-import { enrichWithDrugMaster, type EnrichmentWarning } from './drug-master-enrichment';
+import { enrichWithDrugMaster, type EnrichmentWarning } from './drug-master/enrichment';
 import { invalidateAdminRiskSnapshotCache } from './expiry-risk-service';
 import { triggerMatchingRefreshOnUpload } from './matching-refresh-service';
 import {

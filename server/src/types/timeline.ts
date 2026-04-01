@@ -1,3 +1,5 @@
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+
 export type TimelinePriority = 'critical' | 'high' | 'medium' | 'low';
 
 export type TimelineSource =
@@ -76,8 +78,8 @@ export interface TimelineUnreadCount {
   unreadCount: number;
 }
 
-/** Drizzle ORM db クライアントの緩い型（テスト時のモック注入用） */
-export type DbClient = { select: (...args: any[]) => any; update: (...args: any[]) => any };
+/** Drizzle ORM db クライアント型（テスト時のモック注入用） */
+export type DbClient = NodePgDatabase<Record<string, unknown>>;
 
 export const TIMELINE_EVENT_TYPES = new Set<TimelineEventType>([
   'match_update',

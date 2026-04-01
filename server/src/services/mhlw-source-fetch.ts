@@ -5,7 +5,7 @@
  * checkForUpdates / downloadFile を一元化。
  */
 import { downloadResponseBuffer, fetchWithTimeout, MHLW_MAX_DOWNLOAD_SIZE, MHLW_FETCH_TIMEOUT_MS, type FetchDispatcher } from '../utils/http-utils';
-import { getSourceState } from './drug-master-source-state-service';
+import { getSourceState } from './drug-master/source-state-service';
 import { decideSourceUpdate } from './source-update-detection';
 
 export interface CheckForUpdatesResult {

@@ -3,6 +3,10 @@ import { fetchNotificationEvents } from '../services/timeline-aggregators';
 import type { DbClient } from '../types/timeline';
 
 function createSelectChain(result: unknown) {
+  const dynamicChain = {
+    limit: vi.fn().mockResolvedValue(result),
+    then: (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve),
+  };
   const chain = {
     from: vi.fn(),
     where: vi.fn(),
@@ -10,7 +14,7 @@ function createSelectChain(result: unknown) {
   };
   chain.from.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
-  chain.orderBy.mockResolvedValue(result);
+  chain.orderBy.mockReturnValue({ $dynamic: vi.fn().mockReturnValue(dynamicChain) });
   return chain;
 }
 

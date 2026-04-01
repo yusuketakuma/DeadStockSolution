@@ -48,7 +48,7 @@ function mockOpenClawCallbackRouteDependencies() {
     invalidateAuthUserCache: mocks.invalidateAuthUserCache,
   }));
 
-  vi.doMock('../services/openclaw-thread-service', () => ({
+  vi.doMock('../services/openclaw/thread-service', () => ({
     ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
     updateOpenClawWorkItem: mocks.updateOpenClawWorkItem,
     recordOpenClawRequestMessage: mocks.recordOpenClawRequestMessage,
@@ -58,11 +58,11 @@ function mockOpenClawCallbackRouteDependencies() {
     )),
   }));
 
-  vi.doMock('../services/openclaw-retry-service', () => ({
+  vi.doMock('../services/openclaw/retry-service', () => ({
     completeOpenClawRetryForRequest: mocks.completeOpenClawRetryForRequest,
   }));
 
-  vi.doMock('../services/openclaw-request-event-service', () => ({
+  vi.doMock('../services/openclaw/request-event-service', () => ({
     recordOpenClawRequestEvent: mocks.recordOpenClawRequestEvent,
   }));
 
@@ -98,7 +98,7 @@ function mockOpenClawCallbackRouteDependencies() {
 }
 
 let openclawRouter: express.Router;
-let resetOpenClawWebhookReplayCacheForTests: typeof import('../services/openclaw-service').resetOpenClawWebhookReplayCacheForTests;
+let resetOpenClawWebhookReplayCacheForTests: typeof import('../services/openclaw').resetOpenClawWebhookReplayCacheForTests;
 
 function createApp() {
   const app = express();
@@ -168,7 +168,7 @@ describe('openclaw callback route', () => {
     vi.resetModules();
     mockOpenClawCallbackRouteDependencies();
     ({ default: openclawRouter } = await import('../routes/openclaw'));
-    ({ resetOpenClawWebhookReplayCacheForTests } = await import('../services/openclaw-service'));
+    ({ resetOpenClawWebhookReplayCacheForTests } = await import('../services/openclaw'));
     resetOpenClawWebhookReplayCacheForTests();
     process.env.OPENCLAW_WEBHOOK_SECRET = 'webhook-secret';
     process.env.OPENCLAW_WEBHOOK_MAX_SKEW_SECONDS = '300';

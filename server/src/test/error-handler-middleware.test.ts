@@ -43,7 +43,7 @@ vi.mock('../services/error-fix-context', () => ({
   extractSourceLocation: mocks.extractSourceLocation,
 }));
 
-vi.mock('../services/openclaw-error-autofix-service', () => ({
+vi.mock('../services/openclaw/error-autofix-service', () => ({
   handoffErrorToOpenClaw: mocks.handoffErrorToOpenClaw,
 }));
 

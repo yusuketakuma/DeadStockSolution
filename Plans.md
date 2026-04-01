@@ -45,6 +45,34 @@
 
 ## 🟢 完了タスク
 
+### v0.0.24 リファクタリング — ファイル分割・重複削減・型安全性 (2026-03-31) — 完了 (2026-03-31)
+
+> 15タスク — 3 Tier全完了。型チェック・テスト全パス確認済み。
+
+#### Tier 1: 巨大ファイル分割 (5タスク)
+
+- [x] T1170: ProposalDetailPage.tsx 分割 (890→197行、9コンポーネント抽出) `cc:完了`
+- [x] T1171: AdminOpenClawPage.tsx 分割 (822→339行、6コンポーネント抽出) `cc:完了`
+- [x] T1172: dds-agent-service.ts 分割 (1035→51行ファサード、6モジュール抽出) `cc:完了`
+- [x] T1173: openclaw-service.ts 分割 (994→55行ファサード、4モジュール抽出) `cc:完了`
+- [x] T1174: auth-helper-service.ts 分割 (852→503行、4モジュール抽出) `cc:完了`
+
+#### Tier 2: 重複コード削減・構造整理 (5タスク)
+
+- [x] T1175: wrapRoute() ラッパーファクトリ抽出 + 5ルート移行 `cc:完了`
+- [x] T1176: Exchange ルート6ファイル → routes/exchange/ 統合 `cc:完了`
+- [x] T1177: OpenClaw ルート7ファイル → routes/openclaw/ 統合 `cc:完了`
+- [x] T1178: OpenClaw サービス18ファイル → services/openclaw/ 移動 `cc:完了`
+- [x] T1179: Drug Master サービス10ファイル → services/drug-master/ 移動 `cc:完了`
+
+#### Tier 3: 型安全性向上 (5タスク)
+
+- [x] T1180: openclaw as any キャスト除去 → ChatCompletionResponse型導入 `cc:完了`
+- [x] T1181: dds-agent-service 戻り値型注釈追加 `cc:完了`
+- [x] T1182: matching-service 戻り値型注釈追加 `cc:完了`
+- [x] T1183: timeline.ts any型除去 → NodePgDatabase型導入 + $dynamic()対応 `cc:完了`
+- [x] T1184: useAdminPharmacyEdit.ts 分割 (678→161行、5フック抽出) `cc:完了`
+
 ### v0.0.22 直近差分レビュー後の追加改善バックログ (2026-03-28) — 完了 (2026-03-28)
 
 > 20タスク — P0/P1/P2 3段階優先度

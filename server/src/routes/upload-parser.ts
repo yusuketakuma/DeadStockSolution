@@ -3,7 +3,7 @@ import { AuthRequest } from '../types';
 import { detectHeaderRow, computeHeaderHash, detectUploadType } from '../services/column-mapper';
 import { getPreviewRows } from '../services/upload-service';
 import { extractDeadStockRows, extractUsedMedicationRows } from '../services/data-extractor';
-import { enrichWithDrugMaster } from '../services/drug-master-enrichment';
+import { enrichWithDrugMaster } from '../services/drug-master/enrichment';
 import { logger } from '../services/logger';
 import {
   previewDeadStockDiff,
@@ -23,7 +23,7 @@ import {
   getUploadRowIssuesForJob,
   type UploadRowIssueRecord,
 } from '../services/upload-row-issue-service';
-import { searchDrugMaster } from '../services/drug-master-lookup-service';
+import { searchDrugMaster } from '../services/drug-master/lookup-service';
 import { parsePositiveInt } from '../utils/request-utils';
 import {
   getBaseContext,

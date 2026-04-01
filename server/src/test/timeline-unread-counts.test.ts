@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import type { DbClient } from '../types/timeline';
 import {
   countAllUnread,
   countUnreadNotifications,
@@ -28,10 +29,13 @@ function makeMockDb(countResult: number) {
       from: vi.fn().mockReturnValue(fromChain),
     }),
     update: vi.fn(),
-  };
+  } as unknown as MockDb;
 }
 
-type MockDb = ReturnType<typeof makeMockDb>;
+type MockDb = DbClient & {
+  select: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+};
 
 function flattenSqlChunks(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -78,7 +82,7 @@ describe('timeline-unread-counts', () => {
         }),
       }),
       update: vi.fn(),
-    } as MockDb;
+    } as unknown as MockDb;
     const count = await countUnreadNotifications(db, pharmacyId, lastViewed);
     expect(count).toBe(0);
   });
@@ -193,7 +197,7 @@ describe('timeline-unread-counts', () => {
         }),
       }),
       update: vi.fn(),
-    } as MockDb;
+    } as unknown as MockDb;
     const count = await countAllUnread(db, pharmacyId);
     expect(count).toBe(15);
     // DB クエリは1回のみ（ラウンドトリップ削減を確認）
@@ -208,7 +212,7 @@ describe('timeline-unread-counts', () => {
         }),
       }),
       update: vi.fn(),
-    } as MockDb;
+    } as unknown as MockDb;
     const count = await countAllUnread(db, pharmacyId);
     expect(count).toBe(0);
   });
@@ -221,7 +225,7 @@ describe('timeline-unread-counts', () => {
         }),
       }),
       update: vi.fn(),
-    } as MockDb;
+    } as unknown as MockDb;
     const count = await countAllUnread(db, pharmacyId);
     expect(count).toBe(0);
   });
@@ -235,7 +239,7 @@ describe('timeline-unread-counts', () => {
     const db = {
       select,
       update: vi.fn(),
-    } as MockDb;
+    } as unknown as MockDb;
 
     await countAllUnread(db, pharmacyId);
 

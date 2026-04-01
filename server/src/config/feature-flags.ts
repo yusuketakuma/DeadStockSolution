@@ -102,7 +102,7 @@ export const FLAGS = {
 
   /**
    * OpenClaw エラー自動修正サービスを有効化するか。
-   * @see server/src/services/openclaw-error-autofix-service.ts
+   * @see server/src/services/openclaw/error-autofix-service.ts
    */
   OPENCLAW_ERROR_AUTOFIX_ENABLED: {
     key: 'OPENCLAW_ERROR_AUTOFIX_ENABLED',
@@ -113,7 +113,7 @@ export const FLAGS = {
 
   /**
    * OpenClaw のログ自動エスカレーションを有効化するか。
-   * @see server/src/services/openclaw-log-push-service.ts
+   * @see server/src/services/openclaw/log-push-service.ts
    */
   OPENCLAW_AUTO_ESCALATE_ENABLED: {
     key: 'OPENCLAW_AUTO_ESCALATE_ENABLED',
@@ -124,7 +124,7 @@ export const FLAGS = {
 
   /**
    * OpenClaw へのログプッシュを有効化するか。
-   * @see server/src/services/openclaw-log-push-service.ts
+   * @see server/src/services/openclaw/log-push-service.ts
    */
   OPENCLAW_LOG_PUSH_ENABLED: {
     key: 'OPENCLAW_LOG_PUSH_ENABLED',
@@ -146,7 +146,7 @@ export const FLAGS = {
 
   /**
    * インポート失敗アラート時に OpenClaw への自動ハンドオフを有効化するか。
-   * @see server/src/services/openclaw-auto-handoff-service.ts
+   * @see server/src/services/openclaw/auto-handoff-service.ts
    */
   IMPORT_FAILURE_ALERT_OPENCLAW_AUTO_HANDOFF: {
     key: 'IMPORT_FAILURE_ALERT_OPENCLAW_AUTO_HANDOFF',

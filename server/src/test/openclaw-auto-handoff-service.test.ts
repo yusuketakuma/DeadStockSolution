@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   handoffImportFailureAlertToOpenClaw,
   type ImportFailureAlertForOpenClaw,
-} from '../services/openclaw-auto-handoff-service';
+} from '../services/openclaw/auto-handoff-service';
 
 const mocks = vi.hoisted(() => ({
   db: {
@@ -21,11 +21,11 @@ vi.mock('../config/database', () => ({
   db: mocks.db,
 }));
 
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   handoffToOpenClaw: mocks.handoffToOpenClaw,
 }));
 
-vi.mock('../services/openclaw-log-context-service', () => ({
+vi.mock('../services/openclaw/log-context-service', () => ({
   buildOpenClawLogContext: mocks.buildOpenClawLogContext,
 }));
 

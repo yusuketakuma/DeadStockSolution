@@ -4,7 +4,7 @@ import { getErrorMessage } from '../utils/error-utils';
 import { logger } from '../services/logger';
 import { recordHttpUnhandledError } from '../services/system-event-service';
 import { buildErrorFixContext, extractSourceLocation } from '../services/error-fix-context';
-import { handoffErrorToOpenClaw } from '../services/openclaw-error-autofix-service';
+import { handoffErrorToOpenClaw } from '../services/openclaw/error-autofix-service';
 
 export { getErrorMessage } from '../utils/error-utils';
 

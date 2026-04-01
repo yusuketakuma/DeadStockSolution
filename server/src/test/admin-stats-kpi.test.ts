@@ -23,7 +23,7 @@ vi.mock('../services/monitoring-kpi-service', () => ({
   getMonitoringKpiSnapshot: mocks.getMonitoringKpiSnapshot,
 }));
 
-vi.mock('../services/openclaw-log-push-service', () => ({
+vi.mock('../services/openclaw/log-push-service', () => ({
   getLogPushStats: mocks.getLogPushStats,
 }));
 

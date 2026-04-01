@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { parseCameraCode } from '../services/gs1-parser';
-import * as drugMasterParserService from '../services/drug-master-parser-service';
+import * as drugMasterParserService from '../services/drug-master/parser-service';
 
 describe('gs1-parser', () => {
   describe('parseCameraCode()', () => {

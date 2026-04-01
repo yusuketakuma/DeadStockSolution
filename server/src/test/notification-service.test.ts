@@ -120,7 +120,9 @@ function createTxWithExecuteRows(...rowsList: unknown[][]) {
   for (const rows of rowsList) {
     execute.mockResolvedValueOnce(createExecuteResult(rows));
   }
-  return { execute };
+  const updateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) });
+  const update = vi.fn().mockReturnValue({ set: updateSet });
+  return { execute, update };
 }
 
 describe('notification-service', () => {

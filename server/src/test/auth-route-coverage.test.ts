@@ -74,7 +74,7 @@ function mockAuthRouteCoverageDependencies() {
     evaluateRegistrationScreening: mocks.evaluateRegistrationScreening,
   }));
 
-  vi.doMock('../services/openclaw-service', () => ({
+  vi.doMock('../services/openclaw', () => ({
     handoffToOpenClaw: mocks.handoffToOpenClaw,
   }));
 

@@ -73,7 +73,7 @@ vi.mock('../services/data-extractor', () => ({
   extractUsedMedicationRows: mocks.extractUsedMedicationRows,
 }));
 
-vi.mock('../services/drug-master-enrichment', () => ({
+vi.mock('../services/drug-master/enrichment', () => ({
   enrichWithDrugMaster: mocks.enrichWithDrugMaster,
 }));
 
@@ -174,7 +174,7 @@ describe('upload routes', () => {
       drug_name: '1',
       quantity: '2',
       unit: null,
-      yakka_unit_price: null,
+      yakka_unit_price: '2',
       expiration_date: null,
       lot_number: null,
     });
@@ -377,7 +377,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -416,7 +416,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -449,7 +449,7 @@ describe('upload routes', () => {
         drug_name: '9',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -476,7 +476,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -505,7 +505,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -544,7 +544,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -575,7 +575,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -610,7 +610,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -675,7 +675,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -705,7 +705,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -739,7 +739,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))
@@ -778,7 +778,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       }))

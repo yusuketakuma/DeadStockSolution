@@ -69,7 +69,7 @@ function mockUploadInventoryDependencies() {
     };
   });
 
-  vi.doMock('../services/drug-master-enrichment', () => ({
+  vi.doMock('../services/drug-master/enrichment', () => ({
     enrichWithDrugMaster: mocks.enrichWithDrugMaster,
   }));
 
@@ -98,6 +98,33 @@ function mockUploadInventoryDependencies() {
     writeLog: mocks.writeLog,
     getClientIp: mocks.getClientIp,
   }));
+
+  vi.doMock('../services/column-mapper', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../services/column-mapper')>();
+    return {
+      ...actual,
+      suggestMapping: (_headerRow: unknown[], uploadType: string) => {
+        if (uploadType === 'dead_stock') {
+          return {
+            drug_code: '0',
+            drug_name: '1',
+            quantity: '2',
+            unit: '3',
+            yakka_unit_price: '2',
+            expiration_date: null,
+            lot_number: null,
+          };
+        }
+        return {
+          drug_code: '0',
+          drug_name: '1',
+          monthly_usage: '2',
+          unit: '3',
+          yakka_unit_price: null,
+        };
+      },
+    };
+  });
 }
 
 let uploadRouter: express.Router;
@@ -398,7 +425,7 @@ describe('upload -> inventory flow', () => {
         drug_name: '1',
         quantity: '2',
         unit: '3',
-        yakka_unit_price: null,
+        yakka_unit_price: '2',
         expiration_date: null,
         lot_number: null,
       })), 'dead-stock.xlsx');

@@ -5,7 +5,7 @@ import {
   markTimelineViewed,
   getSmartDigest,
 } from '../services/timeline-service';
-import type { RawTimelineEvent } from '../types/timeline';
+import type { DbClient, RawTimelineEvent } from '../types/timeline';
 
 // --- モック設定 ---
 
@@ -121,10 +121,13 @@ function makeMockDb(lastTimelineViewedAt: string | null = null) {
         where: vi.fn().mockResolvedValue(undefined),
       }),
     }),
-  };
+  } as unknown as MockDb;
 }
 
-type MockDb = ReturnType<typeof makeMockDb>;
+type MockDb = DbClient & {
+  select: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+};
 
 // --- テスト ---
 
@@ -312,7 +315,7 @@ describe('timeline-service', () => {
     const mockSet = vi.fn().mockReturnValue({ where: mockWhere });
     const mockUpdate = vi.fn().mockReturnValue({ set: mockSet });
 
-    const db = { update: mockUpdate } as MockDb;
+    const db = { update: mockUpdate } as unknown as MockDb;
 
     await markTimelineViewed(db, pharmacyId);
 

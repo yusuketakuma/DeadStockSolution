@@ -7,8 +7,8 @@ import {
   isOpenClawWebhookReplay,
   consumeOpenClawWebhookReplay,
   releaseOpenClawWebhookReplay,
-} from '../services/openclaw-service';
-import { executeCommand, listCommandHistory } from '../services/openclaw-command-service';
+} from '../services/openclaw';
+import { executeCommand, listCommandHistory } from '../services/openclaw/command-service';
 import { logger } from '../services/logger';
 import { AuthRequest } from '../types';
 import { handleAdminError, parseListPagination } from './admin-utils';

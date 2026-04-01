@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePackageExcelData, parsePackageCsvData } from '../services/drug-master-service';
+import { parsePackageExcelData, parsePackageCsvData } from '../services/drug-master/service';
 
 describe('medhot package parser', () => {
   describe('medhot CSV keyword detection', () => {

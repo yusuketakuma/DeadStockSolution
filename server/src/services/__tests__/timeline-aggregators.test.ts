@@ -21,6 +21,10 @@ type SelectChain = {
 };
 
 function createSelectChain(result: unknown): SelectChain {
+  const dynamicChain = {
+    limit: vi.fn().mockResolvedValue(result),
+    then: (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve),
+  };
   const chain: SelectChain = {
     from: vi.fn(),
     where: vi.fn(),
@@ -30,7 +34,7 @@ function createSelectChain(result: unknown): SelectChain {
   chain.from.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
   chain.innerJoin.mockReturnValue(chain);
-  chain.orderBy.mockResolvedValue(result);
+  chain.orderBy.mockReturnValue({ $dynamic: vi.fn().mockReturnValue(dynamicChain) });
   return chain;
 }
 

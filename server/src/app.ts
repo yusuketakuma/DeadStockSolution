@@ -60,7 +60,7 @@ import { requireLogin, rejectAdmin, requireAdmin } from './middleware/auth';
 import { db } from './config/database';
 import { sql } from 'drizzle-orm';
 import { logger } from './services/logger';
-import { getOpenClawHealthSnapshot } from './services/openclaw-health-service';
+import { getOpenClawHealthSnapshot } from './services/openclaw/health-service';
 import { resolveTrustProxySetting } from './utils/trust-proxy';
 
 const app = express();

@@ -49,7 +49,7 @@ import {
   getDrugDetail,
   getSyncLogs,
   updateDrugMasterItem,
-} from '../services/drug-master-lookup-service';
+} from '../services/drug-master/lookup-service';
 
 function createSelectChain(result: unknown[]) {
   const chain = {

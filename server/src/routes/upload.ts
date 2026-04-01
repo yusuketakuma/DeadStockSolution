@@ -5,7 +5,7 @@ import { uploadJobs } from '../db/schema';
 import { AuthRequest } from '../types';
 import { requireLogin } from '../middleware/auth';
 import { logger } from '../services/logger';
-import { searchMasterCandidates } from '../services/drug-master-enrichment';
+import { searchMasterCandidates } from '../services/drug-master/enrichment';
 import parserRouter from './upload-parser';
 import { getBaseContext, getErrorMessage } from './upload-validation';
 
@@ -33,7 +33,7 @@ router.post('/enrich-preview', async (req: AuthRequest, res: Response) => {
       yakkaUnitPrice: null,
     })).filter((r: { drugName: string }) => r.drugName.length > 0);
 
-    const { enrichWithDrugMaster } = await import('../services/drug-master-enrichment');
+    const { enrichWithDrugMaster } = await import('../services/drug-master/enrichment');
     const enriched = await enrichWithDrugMaster(inputRows, 'dead_stock');
 
     const summary = {

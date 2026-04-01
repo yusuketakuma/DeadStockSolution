@@ -19,7 +19,7 @@ function mockAdminUserRequestsTimelineDependencies() {
     listUserRequests: mocks.listUserRequests,
   }));
 
-  vi.doMock('../services/openclaw-request-event-service', () => ({
+  vi.doMock('../services/openclaw/request-event-service', () => ({
     listRequestEventTimeline: mocks.listRequestEventTimeline,
   }));
 

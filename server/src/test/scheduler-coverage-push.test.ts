@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../config/database', () => ({ db: {} }));
 
-vi.mock('../services/drug-master-service', () => ({
+vi.mock('../services/drug-master/service', () => ({
   syncDrugMaster: mocks.syncDrugMaster,
   createSyncLog: mocks.createSyncLog,
   completeSyncLog: mocks.completeSyncLog,
@@ -42,7 +42,7 @@ vi.mock('../services/drug-master-service', () => ({
   syncPackageData: mocks.syncPackageData,
 }));
 
-vi.mock('../services/drug-master-parser-mhlw', () => ({
+vi.mock('../services/drug-master/parser-mhlw', () => ({
   parseMhlwDrugFile: mocks.parseMhlwDrugFile,
 }));
 
@@ -68,7 +68,7 @@ vi.mock('../utils/crypto-utils', () => ({
   sha256: mocks.sha256,
 }));
 
-vi.mock('../services/drug-master-source-state-service', () => ({
+vi.mock('../services/drug-master/source-state-service', () => ({
   persistSourceHeaders: mocks.persistSourceHeaders,
   SOURCE_KEY_SINGLE: 'single',
   SOURCE_KEY_PACKAGE: 'package',
@@ -128,12 +128,12 @@ function setDefaultMocks() {
 // ══════════════════════════════════════════════════════════
 
 describe('drug-master-scheduler coverage-push', () => {
-  let mod: typeof import('../services/drug-master-scheduler');
+  let mod: typeof import('../services/drug-master/scheduler');
 
   beforeEach(async () => {
     vi.resetAllMocks();
     setDefaultMocks();
-    mod = await import('../services/drug-master-scheduler');
+    mod = await import('../services/drug-master/scheduler');
     mod.stopDrugMasterScheduler();
   });
 

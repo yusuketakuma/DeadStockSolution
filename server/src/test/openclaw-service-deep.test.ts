@@ -20,7 +20,7 @@ import {
   resetOpenClawWebhookReplayCacheForTests,
   sendToOpenClawGateway,
   verifyOpenClawWebhookSignature,
-} from '../services/openclaw-service';
+} from '../services/openclaw';
 
 const OPENCLAW_ENV_KEYS = [
   'OPENCLAW_CONNECTOR_MODE',

@@ -67,15 +67,15 @@ vi.mock('../services/logger', () => ({
   },
 }));
 
-vi.mock('../services/openclaw-log-context-service', () => ({
+vi.mock('../services/openclaw/log-context-service', () => ({
   buildOpenClawLogContext: mocks.buildOpenClawLogContext,
 }));
 
-vi.mock('../services/openclaw-service', () => ({
+vi.mock('../services/openclaw', () => ({
   handoffToOpenClaw: mocks.handoffToOpenClaw,
 }));
 
-vi.mock('../services/openclaw-thread-service', () => ({
+vi.mock('../services/openclaw/thread-service', () => ({
   buildOpenClawConversationContext: mocks.buildOpenClawConversationContext,
   ensureOpenClawWorkItem: mocks.ensureOpenClawWorkItem,
   isMissingOpenClawSchemaError: mocks.isMissingOpenClawSchemaError,

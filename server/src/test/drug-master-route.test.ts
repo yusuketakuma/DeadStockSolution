@@ -42,7 +42,7 @@ vi.mock('../middleware/auth', () => ({
   },
 }));
 
-vi.mock('../services/drug-master-service', () => ({
+vi.mock('../services/drug-master/service', () => ({
   parseMhlwExcelData: mocks.parseMhlwExcelData,
   parseMhlwCsvData: mocks.parseMhlwCsvData,
   parsePackageExcelData: mocks.parsePackageExcelData,
@@ -62,7 +62,7 @@ vi.mock('../services/drug-master-service', () => ({
   updateDrugMasterItem: mocks.updateDrugMasterItem,
 }));
 
-vi.mock('../services/drug-master-scheduler', () => ({
+vi.mock('../services/drug-master/scheduler', () => ({
   triggerManualAutoSync: mocks.triggerManualAutoSync,
 }));
 

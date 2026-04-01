@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildOpenClawLogContext } from '../services/openclaw-log-context-service';
+import { buildOpenClawLogContext } from '../services/openclaw/log-context-service';
 
 const mocks = vi.hoisted(() => ({
   db: {

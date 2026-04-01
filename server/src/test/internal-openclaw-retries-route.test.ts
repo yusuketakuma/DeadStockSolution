@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 
 async function createApp() {
   vi.resetModules();
-  vi.doMock('../services/openclaw-retry-service', () => ({
+  vi.doMock('../services/openclaw/retry-service', () => ({
     processPendingOpenClawRetries: mocks.processPendingOpenClawRetries,
     getOpenClawRetryQueueSnapshot: mocks.getOpenClawRetryQueueSnapshot,
   }));

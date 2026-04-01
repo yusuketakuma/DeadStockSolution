@@ -7,7 +7,7 @@ import {
   syncPackageData,
   createSyncLog,
   completeSyncLog,
-} from './drug-master-service';
+} from './drug-master/service';
 import { parseExcelBuffer } from './upload-service';
 import { logger } from './logger';
 import { createPinnedDnsAgent, validateExternalHttpsUrl } from '../utils/network-utils';
@@ -16,7 +16,7 @@ import { summarizeSourceUrl, MHLW_DEFAULT_FETCH_RETRIES, type FetchDispatcher } 
 import { getErrorMessage } from '../middleware/error-handler';
 import { clearSchedulerHandle } from './scheduler-utils';
 import { sha256 } from '../utils/crypto-utils';
-import { persistSourceHeaders, SOURCE_KEY_PACKAGE } from './drug-master-source-state-service';
+import { persistSourceHeaders, SOURCE_KEY_PACKAGE } from './drug-master/source-state-service';
 import { checkForUpdates, downloadFile } from './mhlw-source-fetch';
 
 const CHECK_INTERVAL_HOURS = parseBoundedInt(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS, 24, 1, 24 * 30);

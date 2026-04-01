@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getOpenClawConfig, isOpenClawConnectorConfigured, isOpenClawWebhookConfigured } from '../services/openclaw-status';
+import { getOpenClawConfig, isOpenClawConnectorConfigured, isOpenClawWebhookConfigured } from '../services/openclaw/status';
 
 const OPENCLAW_ENV_KEYS = [
   'OPENCLAW_CONNECTOR_MODE',

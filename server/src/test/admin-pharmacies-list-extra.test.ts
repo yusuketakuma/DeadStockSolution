@@ -36,7 +36,7 @@ function mockAdminPharmaciesListExtraDependencies() {
     },
   }));
 
-  vi.doMock('../services/openclaw-service', () => ({
+  vi.doMock('../services/openclaw', () => ({
     getOpenClawImplementationBranch: () => 'main',
     isOpenClawConnectorConfigured: () => true,
     isOpenClawWebhookConfigured: () => true,
