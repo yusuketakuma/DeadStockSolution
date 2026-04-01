@@ -13,14 +13,14 @@ function jsonResponse(data: unknown, status = 200): Response {
 
 function createPreviewResponse(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    headers: ['コード', '薬剤名', '数量', '単位', '期限'],
-    rows: [['111', '薬A', '10', '錠', '2026-03-31']],
+    headers: ['コード', '薬剤名', '数量', '単位', '期限', '薬価'],
+    rows: [['111', '薬A', '10', '錠', '2026-03-31', '100']],
     suggestedMapping: {
       drug_code: '0',
       drug_name: '1',
       quantity: '2',
       unit: '3',
-      yakka_unit_price: null,
+      yakka_unit_price: '5',
       expiration_date: '4',
       lot_number: null,
     },
@@ -30,7 +30,7 @@ function createPreviewResponse(overrides: Partial<Record<string, unknown>> = {})
         drug_name: '1',
         quantity: '2',
         unit: '3',
-        yakka_unit_price: null,
+        yakka_unit_price: '5',
         expiration_date: '4',
         lot_number: null,
       },
@@ -52,6 +52,9 @@ function createPreviewResponse(overrides: Partial<Record<string, unknown>> = {})
       dead_stock: 28,
       used_medication: 9,
     },
+    mappingComplete: true,
+    missingRequiredFields: [],
+    fieldHints: {},
     ...overrides,
   };
 }

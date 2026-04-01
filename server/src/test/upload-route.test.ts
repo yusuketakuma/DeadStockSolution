@@ -66,6 +66,16 @@ vi.mock('../services/column-mapper', () => ({
   detectUploadType: mocks.detectUploadType,
   suggestMapping: mocks.suggestMapping,
   computeHeaderHash: mocks.computeHeaderHash,
+  KEYWORD_MAP: {
+    drug_code: ['薬品コード', 'コード'],
+    drug_name: ['薬品名', '薬剤名'],
+    quantity: ['数量'],
+    unit: ['単位'],
+    yakka_unit_price: ['薬価', '単価'],
+    expiration_date: ['使用期限'],
+    lot_number: ['ロット'],
+    monthly_usage: ['月間使用量'],
+  },
 }));
 
 vi.mock('../services/data-extractor', () => ({

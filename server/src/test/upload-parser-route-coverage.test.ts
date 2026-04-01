@@ -59,6 +59,16 @@ vi.mock('../services/column-mapper', () => ({
   detectUploadType: mocks.detectUploadType,
   suggestMapping: mocks.suggestMapping,
   computeHeaderHash: mocks.computeHeaderHash,
+  KEYWORD_MAP: {
+    drug_code: ['薬品コード', 'コード'],
+    drug_name: ['薬品名', '薬剤名'],
+    quantity: ['数量'],
+    unit: ['単位'],
+    yakka_unit_price: ['薬価', '単価'],
+    expiration_date: ['使用期限'],
+    lot_number: ['ロット'],
+    monthly_usage: ['月間使用量'],
+  },
 }));
 
 vi.mock('../services/data-extractor', () => ({
@@ -213,7 +223,7 @@ describe('upload-parser route coverage: preview edge cases', () => {
     expect(response.body).toEqual({ error: 'ファイルの解析に失敗しました' });
   });
 
-  it('returns 400 when auto mapping fails for resolved upload type', async () => {
+  it('returns 200 with mappingComplete=false when auto mapping fails for resolved upload type', async () => {
     const app = await createApp();
     // Make suggestMapping return a mapping without drug_name so parseMapping will throw
     mocks.suggestMapping.mockReturnValue({
@@ -228,8 +238,12 @@ describe('upload-parser route coverage: preview edge cases', () => {
         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: '医薬品列の自動判定に失敗しました。ファイルの見出しを確認してください。' });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      mappingComplete: false,
+      missingRequiredFields: expect.arrayContaining(['drug_name', 'drug_code']),
+      fieldHints: expect.any(Object),
+    }));
   });
 });
 

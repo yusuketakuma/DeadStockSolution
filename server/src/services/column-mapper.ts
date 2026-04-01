@@ -4,7 +4,7 @@ import { parseNumber } from '../utils/string-utils';
 
 type FieldName = typeof DEAD_STOCK_FIELDS[number] | typeof USED_MEDICATION_FIELDS[number];
 
-const KEYWORD_MAP: Record<FieldName, string[]> = {
+export const KEYWORD_MAP: Record<FieldName, string[]> = {
   drug_code: ['薬品コード', '医薬品コード', 'JANコード', 'YJコード', '統一商品コード', 'コード', 'code'],
   drug_name: ['薬品名', '医薬品名', '薬剤名', '品名', '品目名', '商品名', '名称', 'drug_name', 'name'],
   quantity: ['数量', '在庫数', '在庫数量', '残数', '個数', 'quantity', 'qty'],

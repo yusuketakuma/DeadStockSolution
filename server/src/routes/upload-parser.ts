@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
-import { AuthRequest } from '../types';
-import { detectHeaderRow, computeHeaderHash, detectUploadType } from '../services/column-mapper';
+import { AuthRequest, ColumnMapping, DEAD_STOCK_FIELDS, USED_MEDICATION_FIELDS } from '../types';
+import { detectHeaderRow, computeHeaderHash, detectUploadType, KEYWORD_MAP } from '../services/column-mapper';
 import { getPreviewRows } from '../services/upload-service';
 import { extractDeadStockRows, extractUsedMedicationRows } from '../services/data-extractor';
 import { enrichWithDrugMaster } from '../services/drug-master/enrichment';
@@ -143,7 +143,20 @@ async function enrichIssuesWithDrugCandidates(
   return enriched;
 }
 
-// Preview: parse file and return headers + first 5 rows + suggested mapping
+// Helper: compute missing required fields for a given mapping and upload type
+function computeMissingRequiredFields(
+  mapping: ColumnMapping | null,
+  uploadType: 'dead_stock' | 'used_medication',
+): string[] {
+  const requiredFields: string[] = ['drug_name', 'drug_code'];
+  if (uploadType === 'dead_stock') {
+    requiredFields.push('quantity', 'yakka_unit_price');
+  }
+  if (!mapping) return requiredFields;
+  return requiredFields.filter((field) => !mapping[field]);
+}
+
+// Preview: parse file and return headers + first 10 rows + suggested mapping
 router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response) => {
   try {
     const uploadFile = getUploadFileOrReject(req, res);
@@ -185,21 +198,25 @@ router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response
     const resolvedUploadType = requestedUploadType
       ?? (validatedByType[autoPrimaryType] ? autoPrimaryType : autoFallbackType);
     const mapping = validatedByType[resolvedUploadType];
-    if (!mapping) {
+    const mappingComplete = mapping !== null;
+    const missingRequiredFields = computeMissingRequiredFields(
+      mapping ?? suggestedByType[resolvedUploadType].mapping as ColumnMapping | null,
+      resolvedUploadType,
+    );
+
+    if (!mappingComplete) {
       logUploadFailure(req, 'preview', 'auto_mapping_failed', {
         resolvedUploadType,
         detectedUploadType: detected.detectedType,
         rememberedUploadType,
       });
-      res.status(400).json({ error: '医薬品列の自動判定に失敗しました。ファイルの見出しを確認してください。' });
-      return;
     }
     const templateUsedForResolvedType = suggestedByType[resolvedUploadType].fromSavedTemplate;
 
     res.json({
       headers: headerRow.map((h) => String(h || '')),
       rows: previewRows.map((row) => row.map((cell) => String(cell ?? ''))),
-      suggestedMapping: mapping,
+      suggestedMapping: mapping ?? suggestedByType[resolvedUploadType].mapping,
       suggestedMappingByType: validatedByType,
       headerRowIndex,
       hasSavedMapping: templateUsedForResolvedType,
@@ -208,6 +225,9 @@ router.post('/preview', uploadSingleFile, async (req: AuthRequest, res: Response
       rememberedUploadType,
       uploadTypeConfidence: detected.confidence,
       uploadTypeScores: detected.scores,
+      mappingComplete,
+      missingRequiredFields,
+      fieldHints: KEYWORD_MAP,
     });
   } catch (err) {
     logger.error('Upload preview error', () => ({

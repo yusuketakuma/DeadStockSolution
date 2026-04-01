@@ -52,6 +52,11 @@ export interface UseUploadExcelFlowReturn {
   handlePreview: (e: FormEvent) => Promise<void>; handleConfirm: () => Promise<void>; handleDiffPreview: () => Promise<void>;
   handleCancelJob: () => Promise<void>; triggerErrorReportDownload: () => void; resetDiffPreviewState: () => void;
   resolveConfidenceLabel: typeof resolveConfidenceLabel;
+  currentMapping: Record<string, string | null>;
+  mappingComplete: boolean;
+  missingRequiredFields: string[];
+  fieldHints: Record<string, string[]>;
+  handleMappingChange: (field: string, columnIndex: string | null) => void;
 }
 
 const UPLOAD_CONFIRM_ENQUEUE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -149,7 +154,8 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const hasCurrentDiffPreview = diffPreviewFlow.hasCurrentDiffPreview;
   const requiresDeleteImpactAcknowledgement = diffPreviewFlow.requiresDeleteImpactAcknowledgement;
   const canSubmit = Boolean(preview) && hasPreviewRows && hasResolvableMapping && hasCurrentDiffPreview
-    && (!requiresDeleteImpactAcknowledgement || diffPreviewFlow.acknowledgeDeleteImpact);
+    && (!requiresDeleteImpactAcknowledgement || diffPreviewFlow.acknowledgeDeleteImpact)
+    && previewFlow.mappingComplete;
   const hasManualTypeOverride = Boolean(preview && uploadType !== preview.resolvedUploadType);
   const partialSummaryEntries = resolvePartialSummaryEntries(jobPolling.job.partialSummary);
   const uploadProgressVariant = jobPolling.progress.phase === 'failed' ? 'danger' : jobPolling.progress.phase === 'completed' ? 'success' : 'info';
@@ -401,5 +407,10 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     triggerErrorReportDownload,
     resetDiffPreviewState,
     resolveConfidenceLabel,
+    currentMapping: previewFlow.currentMapping,
+    mappingComplete: previewFlow.mappingComplete,
+    missingRequiredFields: previewFlow.missingRequiredFields,
+    fieldHints: previewFlow.fieldHints,
+    handleMappingChange: previewFlow.handleMappingChange,
   };
 }

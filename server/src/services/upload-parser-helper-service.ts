@@ -206,7 +206,9 @@ export function resolveMappingFromRequestOrAuto(
   try {
     return parseMapping(JSON.stringify(suggestedMapping), uploadType);
   } catch {
-    throw new Error('医薬品列の自動判定に失敗しました。ファイルの見出しを確認してください。');
+    // Return the partial/null mapping instead of throwing so the preview
+    // endpoint can respond with mappingComplete: false.
+    return suggestedMapping;
   }
 }
 

@@ -17,6 +17,9 @@ export interface PreviewResponse {
     dead_stock: number;
     used_medication: number;
   };
+  mappingComplete?: boolean;
+  missingRequiredFields?: string[];
+  fieldHints?: Record<string, string[]>;
 }
 
 export interface UseUploadPreviewOptions {
@@ -32,6 +35,11 @@ export interface UseUploadPreviewReturn {
   resolveSubmittedMapping: (selectedUploadType: UploadType) => Record<string, string | null> | null;
   resolveConfidenceLabel: (confidence: PreviewResponse['uploadTypeConfidence']) => string;
   reset: () => void;
+  currentMapping: Record<string, string | null>;
+  mappingComplete: boolean;
+  missingRequiredFields: string[];
+  fieldHints: Record<string, string[]>;
+  handleMappingChange: (field: string, columnIndex: string | null) => void;
 }
 
 /**
@@ -72,12 +80,29 @@ export function resolveSubmittedMapping(
  * Hook for managing upload preview state and operations.
  * Handles file preview fetching and mapping resolution.
  */
+const REQUIRED_FIELDS_BY_TYPE: Record<UploadType, string[]> = {
+  dead_stock: ['drug_name', 'drug_code', 'quantity', 'yakka_unit_price'],
+  used_medication: ['drug_name', 'drug_code'],
+};
+
+function computeMissingRequiredFields(
+  mapping: Record<string, string | null>,
+  uploadType: UploadType,
+): string[] {
+  const requiredFields = REQUIRED_FIELDS_BY_TYPE[uploadType] ?? [];
+  return requiredFields.filter((f) => mapping[f] === null || mapping[f] === undefined);
+}
+
 export function useUploadPreview(options: UseUploadPreviewOptions = {}): UseUploadPreviewReturn {
   const { onPreviewSuccess } = options;
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+  const [currentMapping, setCurrentMapping] = useState<Record<string, string | null>>({});
+  const [mappingComplete, setMappingComplete] = useState(false);
+  const [missingRequiredFields, setMissingRequiredFields] = useState<string[]>([]);
+  const [fieldHints, setFieldHints] = useState<Record<string, string[]>>({});
 
   const handlePreview = useCallback(
     async (file: File, externalSignal?: AbortSignal): Promise<PreviewResponse | null> => {
@@ -108,6 +133,16 @@ export function useUploadPreview(options: UseUploadPreviewOptions = {}): UseUplo
         if (controller.signal.aborted) return null;
 
         setPreview(data);
+
+        // Initialize mapping state from preview response
+        const initialMapping = data.suggestedMapping ?? {};
+        setCurrentMapping(initialMapping);
+        setFieldHints(data.fieldHints ?? {});
+        const resolvedType = data.resolvedUploadType ?? 'dead_stock';
+        const missing = data.missingRequiredFields ?? computeMissingRequiredFields(initialMapping, resolvedType);
+        setMissingRequiredFields(missing);
+        setMappingComplete(data.mappingComplete ?? missing.length === 0);
+
         onPreviewSuccess?.(data);
         return data;
       } catch (err) {
@@ -134,10 +169,29 @@ export function useUploadPreview(options: UseUploadPreviewOptions = {}): UseUplo
     [preview],
   );
 
+  const handleMappingChange = useCallback(
+    (field: string, columnIndex: string | null) => {
+      setCurrentMapping((prev) => {
+        const next = { ...prev, [field]: columnIndex };
+        // Recalculate missing required fields locally
+        const uploadType = preview?.resolvedUploadType ?? 'dead_stock';
+        const missing = computeMissingRequiredFields(next, uploadType);
+        setMissingRequiredFields(missing);
+        setMappingComplete(missing.length === 0);
+        return next;
+      });
+    },
+    [preview],
+  );
+
   const reset = useCallback(() => {
     setPreview(null);
     setError('');
     setLoading(false);
+    setCurrentMapping({});
+    setMappingComplete(false);
+    setMissingRequiredFields([]);
+    setFieldHints({});
     abortRef.current?.abort();
     abortRef.current = null;
   }, []);
@@ -151,5 +205,10 @@ export function useUploadPreview(options: UseUploadPreviewOptions = {}): UseUplo
     resolveSubmittedMapping: resolveMappingForType,
     resolveConfidenceLabel,
     reset,
+    currentMapping,
+    mappingComplete,
+    missingRequiredFields,
+    fieldHints,
+    handleMappingChange,
   };
 }

@@ -8,6 +8,7 @@ import AppCard from '../components/ui/AppCard';
 import AppButton from '../components/ui/AppButton';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import EnrichmentPreview from '../components/upload/EnrichmentPreview';
+import ColumnMappingForm from '../components/upload/ColumnMappingForm';
 import { resolveUploadTypeLabel } from './upload/upload-job-utils';
 import { useUploadExcelFlow } from '../hooks/useUploadExcelFlow';
 
@@ -195,7 +196,7 @@ export default function UploadPage() {
             <li>「この設定でデータを登録」を押して反映します。</li>
           </ol>
           <div className="small text-muted mt-1">
-            列の対応付けは自動で行われるため、手動での設定は不要です。
+            列の対応付けは自動で行われますが、必要に応じて手動で変更できます。
           </div>
         </AppCard.Body>
       </AppCard>
@@ -383,6 +384,18 @@ export default function UploadPage() {
               />
             )}
 
+            {flow.preview && (
+              <ColumnMappingForm
+                headers={flow.preview.headers}
+                mapping={flow.currentMapping}
+                uploadType={flow.uploadType}
+                missingRequiredFields={flow.missingRequiredFields}
+                fieldHints={flow.fieldHints}
+                mappingComplete={flow.mappingComplete}
+                onChange={flow.handleMappingChange}
+              />
+            )}
+
             {!flow.hasPreviewRows && (
               <AppAlert variant="warning" className="small">
                 <div><strong>原因:</strong> ヘッダー行の下にデータ行が見つかりませんでした。</div>
@@ -467,6 +480,11 @@ export default function UploadPage() {
                     checked={flow.acknowledgeDeleteImpact}
                     onChange={(e) => flow.setAcknowledgeDeleteImpact(e.currentTarget.checked)}
                   />
+                </div>
+              )}
+              {!flow.mappingComplete && (
+                <div className="small text-warning mt-2">
+                  必須フィールドのマッピングを設定してから登録してください。
                 </div>
               )}
               {flow.requiresDiffPreviewRefresh && !flow.diffSummary && (

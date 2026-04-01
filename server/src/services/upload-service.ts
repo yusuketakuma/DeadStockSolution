@@ -108,7 +108,7 @@ export async function parseExcelBuffer(buffer: Buffer): Promise<unknown[][]> {
   return normalized;
 }
 
-export function getPreviewRows(allRows: unknown[][], headerRowIndex: number, count: number = 5): unknown[][] {
+export function getPreviewRows(allRows: unknown[][], headerRowIndex: number, count: number = 10): unknown[][] {
   const start = headerRowIndex + 1;
   return allRows.slice(start, start + count);
 }
