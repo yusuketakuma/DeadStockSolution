@@ -206,11 +206,10 @@ export async function getTimeline(
   const since = options?.since;
   const cursor = options?.cursor ?? null;
   const cursorBefore = cursor?.timestamp;
-  // カーソルなし・優先度フィルタなしの初回リクエストでは各テーブルからの取得数を抑制
-  const needsOverfetch = cursor !== null || priority !== undefined;
-  const perTableLimit = needsOverfetch
-    ? Math.min(Math.max(limit * CURSOR_FETCH_FACTOR, limit + 1), CURSOR_PER_TABLE_LIMIT_MAX)
-    : limit + 1;
+  const perTableLimit = Math.min(
+    Math.max(limit * CURSOR_FETCH_FACTOR, limit + 1),
+    CURSOR_PER_TABLE_LIMIT_MAX,
+  );
 
   const now = new Date();
   const [rawEvents, lastViewedAt] = await Promise.all([

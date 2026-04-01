@@ -497,8 +497,7 @@ describe('timeline-service', () => {
     const db = makeMockDb() as MockDb;
     const result = await getTimeline(db, pharmacyId, { limit: 3 });
 
-    // 初回リクエスト（カーソルなし・優先度なし）では perTableLimit = limit + 1
-    expect(vi.mocked(fetchNotificationEvents)).toHaveBeenCalledWith(db, pharmacyId, undefined, 4, undefined);
+    expect(vi.mocked(fetchNotificationEvents)).toHaveBeenCalledWith(db, pharmacyId, undefined, 12, undefined);
     expect(result.total).toBe(5);
     expect(result.events).toHaveLength(3);
     expect(result.hasMore).toBe(true);
