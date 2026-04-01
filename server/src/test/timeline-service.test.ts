@@ -37,6 +37,10 @@ vi.mock('../services/timeline-unread-counts', () => ({
   countUnreadExchangeHistory: vi.fn(),
 }));
 
+vi.mock('../services/notification-service', () => ({
+  invalidateDashboardUnreadCache: vi.fn(),
+}));
+
 import {
   fetchNotificationEvents,
   fetchMatchEvents,
@@ -60,6 +64,7 @@ import {
   countUnreadUploads,
   countUnreadExchangeHistory,
 } from '../services/timeline-unread-counts';
+import { invalidateDashboardUnreadCache } from '../services/notification-service';
 import { decodeCursor } from '../utils/cursor-pagination';
 
 // --- ヘルパー ---
@@ -121,12 +126,14 @@ function makeMockDb(lastTimelineViewedAt: string | null = null) {
         where: vi.fn().mockResolvedValue(undefined),
       }),
     }),
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
   } as unknown as MockDb;
 }
 
 type MockDb = DbClient & {
   select: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
+  execute: ReturnType<typeof vi.fn>;
 };
 
 // --- テスト ---
@@ -159,6 +166,77 @@ describe('timeline-service', () => {
     expect(result.events[1].id).toBe('match_2');
     expect(result.events[2].id).toBe('notification_1'); // 最古
     expect(result.hasMore).toBe(false);
+  });
+
+  it('getTimeline: time-based source の isRead は lastTimelineViewedAt から導出する', async () => {
+    const proposalOld = makeRawEvent({
+      id: 'proposal_old',
+      timestamp: '2026-01-01T10:00:00.000Z',
+      source: 'proposal',
+      type: 'proposal_proposed',
+      isRead: false,
+    });
+    const proposalNew = makeRawEvent({
+      id: 'proposal_new',
+      timestamp: '2026-01-03T10:00:00.000Z',
+      source: 'proposal',
+      type: 'proposal_proposed',
+      isRead: false,
+    });
+    const notificationEvent = makeRawEvent({
+      id: 'notification_1',
+      timestamp: '2026-01-02T10:00:00.000Z',
+      source: 'notification',
+      type: 'request_update',
+      isRead: false,
+    });
+
+    vi.mocked(fetchProposalEvents).mockResolvedValue([proposalOld, proposalNew]);
+    vi.mocked(fetchNotificationEvents).mockResolvedValue([notificationEvent]);
+    mockAssignPriority('medium');
+
+    const db = makeMockDb('2026-01-02T00:00:00.000Z') as MockDb;
+    const result = await getTimeline(db, pharmacyId, { limit: 10 });
+
+    expect(result.events.find((event) => event.id === 'proposal_old')?.isRead).toBe(true);
+    expect(result.events.find((event) => event.id === 'proposal_new')?.isRead).toBe(false);
+    expect(result.events.find((event) => event.id === 'notification_1')?.isRead).toBe(false);
+  });
+
+  it('getTimeline: lastTimelineViewedAt 未設定時は source ごとの既定 isRead を維持する', async () => {
+    const uploadEvent = makeRawEvent({
+      id: 'upload_1',
+      timestamp: '2026-01-02T10:00:00.000Z',
+      source: 'upload',
+      type: 'upload_dead_stock',
+      isRead: true,
+    });
+    const exchangeHistoryEvent = makeRawEvent({
+      id: 'exchange_history_1',
+      timestamp: '2026-01-03T10:00:00.000Z',
+      source: 'exchange_history',
+      type: 'exchange_completed',
+      isRead: true,
+    });
+    const feedbackEvent = makeRawEvent({
+      id: 'feedback_1',
+      timestamp: '2026-01-01T10:00:00.000Z',
+      source: 'feedback',
+      type: 'exchange_feedback',
+      isRead: false,
+    });
+
+    vi.mocked(fetchUploadEvents).mockResolvedValue([uploadEvent]);
+    vi.mocked(fetchExchangeHistoryEvents).mockResolvedValue([exchangeHistoryEvent]);
+    vi.mocked(fetchFeedbackEvents).mockResolvedValue([feedbackEvent]);
+    mockAssignPriority('medium');
+
+    const db = makeMockDb(null) as MockDb;
+    const result = await getTimeline(db, pharmacyId, { limit: 10 });
+
+    expect(result.events.find((event) => event.id === 'upload_1')?.isRead).toBe(true);
+    expect(result.events.find((event) => event.id === 'exchange_history_1')?.isRead).toBe(true);
+    expect(result.events.find((event) => event.id === 'feedback_1')?.isRead).toBe(false);
   });
 
   it('getTimeline: timestamp が不正な値を含んでも有効日時を優先して降順ソートする', async () => {
@@ -314,15 +392,19 @@ describe('timeline-service', () => {
     const mockWhere = vi.fn().mockResolvedValue(undefined);
     const mockSet = vi.fn().mockReturnValue({ where: mockWhere });
     const mockUpdate = vi.fn().mockReturnValue({ set: mockSet });
+    const mockExecute = vi.fn().mockResolvedValue({ rows: [] });
 
-    const db = { update: mockUpdate } as unknown as MockDb;
+    const db = { update: mockUpdate, execute: mockExecute } as unknown as MockDb;
 
     await markTimelineViewed(db, pharmacyId);
 
-    expect(mockUpdate).toHaveBeenCalledTimes(1);
-    expect(mockSet).toHaveBeenCalledTimes(1);
-    // set に渡された値に lastTimelineViewedAt が含まれることを確認
-    const setArg = mockSet.mock.calls[0][0];
+    expect(mockUpdate).toHaveBeenCalledTimes(4);
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+    expect(mockSet).toHaveBeenCalledTimes(4);
+    expect(mockSet).toHaveBeenNthCalledWith(2, { isRead: true });
+    expect(vi.mocked(invalidateDashboardUnreadCache)).toHaveBeenCalledWith(pharmacyId);
+    // pharmacies 更新に渡された値に lastTimelineViewedAt が含まれることを確認
+    const setArg = mockSet.mock.calls[3][0];
     expect(setArg).toHaveProperty('lastTimelineViewedAt');
     expect(typeof (setArg as Record<string, unknown>)['lastTimelineViewedAt']).toBe('string');
     // ISO 文字列形式であること
@@ -415,7 +497,8 @@ describe('timeline-service', () => {
     const db = makeMockDb() as MockDb;
     const result = await getTimeline(db, pharmacyId, { limit: 3 });
 
-    expect(vi.mocked(fetchNotificationEvents)).toHaveBeenCalledWith(db, pharmacyId, undefined, 12, undefined);
+    // 初回リクエスト（カーソルなし・優先度なし）では perTableLimit = limit + 1
+    expect(vi.mocked(fetchNotificationEvents)).toHaveBeenCalledWith(db, pharmacyId, undefined, 4, undefined);
     expect(result.total).toBe(5);
     expect(result.events).toHaveLength(3);
     expect(result.hasMore).toBe(true);

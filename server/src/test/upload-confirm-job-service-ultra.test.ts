@@ -120,7 +120,7 @@ function createJobRecord(overrides: Record<string, unknown> = {}) {
     idempotencyKey: null,
     fileHash: 'abc123',
     headerRowIndex: 0,
-    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' },
+    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3', yakka_unit_price: '4' },
     status: 'pending',
     applyMode: 'replace',
     deleteMissing: false,
@@ -282,7 +282,7 @@ describe('upload-confirm-job-service-ultra', () => {
       const claimedJob = createJobRecord({
         status: 'processing',
         uploadType: 'used_medication',
-        mappingJson: { drug_name: '1' }, // no quantity needed for used_medication
+        mappingJson: { drug_code: '0', drug_name: '1' }, // no quantity needed for used_medication
         fileBase64: compressedPayload,
       });
 

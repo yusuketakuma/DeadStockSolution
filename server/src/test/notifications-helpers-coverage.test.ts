@@ -6,6 +6,7 @@ import {
   resolveNotificationType,
   parseMatchDiff,
   buildProposalDeadlineAt,
+  isUnreadByLastViewedAt,
   timestampSortValue,
   buildLatestProposalNotificationMap,
   toAdminMessageNotice,
@@ -195,6 +196,23 @@ describe('buildProposalDeadlineAt', () => {
   it('returns ISO string 72 hours after proposedAt', () => {
     const result = buildProposalDeadlineAt('2024-01-01T00:00:00.000Z');
     expect(result).toBe('2024-01-04T00:00:00.000Z');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isUnreadByLastViewedAt
+// ---------------------------------------------------------------------------
+describe('isUnreadByLastViewedAt', () => {
+  it('returns true when createdAt is null', () => {
+    expect(isUnreadByLastViewedAt(null, '2024-01-02T00:00:00.000Z')).toBe(true);
+  });
+
+  it('returns true when lastTimelineViewedAt is null', () => {
+    expect(isUnreadByLastViewedAt('2024-01-03T00:00:00.000Z', null)).toBe(true);
+  });
+
+  it('returns false when createdAt is not newer than lastTimelineViewedAt', () => {
+    expect(isUnreadByLastViewedAt('2024-01-01T00:00:00.000Z', '2024-01-02T00:00:00.000Z')).toBe(false);
   });
 });
 
@@ -528,6 +546,16 @@ describe('proposalActionNotice', () => {
   it('uses fallback proposal-inbound id when no linkedNotification', () => {
     const notice = proposalActionNotice(baseProposal, 20);
     expect(notice?.id).toBe('proposal-1-inbound');
+  });
+
+  it('uses lastTimelineViewedAt to clear fallback inbound unread state', () => {
+    const notice = proposalActionNotice(baseProposal, 20, undefined, '2024-01-02T00:00:00.000Z');
+    expect(notice?.unread).toBe(false);
+  });
+
+  it('keeps fallback inbound unread when proposal is newer than lastTimelineViewedAt', () => {
+    const notice = proposalActionNotice(baseProposal, 20, undefined, '2023-12-31T23:59:59.000Z');
+    expect(notice?.unread).toBe(true);
   });
 });
 

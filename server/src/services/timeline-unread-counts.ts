@@ -4,8 +4,7 @@
  * テーブルごとに軽量な COUNT(*) クエリを発行し、全行フェッチを回避する。
  */
 
-import { and, eq, gt, gte, isNull, isNotNull, lte, ne, or, sql } from 'drizzle-orm';
-import type { Column } from 'drizzle-orm';
+import { and, eq, gt, gte, isNull, isNotNull, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import {
   notifications as notificationsTable,
@@ -21,34 +20,10 @@ import {
 import type { DbClient } from '../types/timeline';
 import { rowCount } from '../utils/db-utils';
 import { getExpiryDateRange } from './timeline-aggregators';
-
-/**
- * isRead フラグパターン共通ヘルパー。
- * pharmacyId 一致 + (isRead=false OR createdAt > lastViewed) の COUNT を返す。
- */
-async function countUnreadByIsReadFlag(
-  db: DbClient,
-  table: PgTable,
-  pharmacyIdCol: Column,
-  isReadCol: Column,
-  createdAtCol: Column,
-  pharmacyId: number,
-  lastViewed: string | null,
-): Promise<number> {
-  const conditions = [eq(pharmacyIdCol, pharmacyId)];
-
-  if (lastViewed) {
-    conditions.push(or(eq(isReadCol, false), gt(createdAtCol, lastViewed))!);
-  } else {
-    conditions.push(eq(isReadCol, false));
-  }
-
-  const rows = await db
-    .select({ count: rowCount })
-    .from(table)
-    .where(and(...conditions));
-  return rows[0]?.count ?? 0;
-}
+import {
+  TIMELINE_SEPARATE_NOTIFICATION_TYPES,
+  buildTimelineExcludedNotificationTypesSql,
+} from './timeline-notification-rules';
 
 async function countRows(
   db: DbClient,
@@ -62,28 +37,30 @@ async function countRows(
   return rows[0]?.count ?? 0;
 }
 
-/** notifications: isRead=false OR createdAt > lastViewed */
+/** notifications: 明示的な isRead=false のみを未読として数える */
 export async function countUnreadNotifications(
   db: DbClient,
   pharmacyId: number,
-  lastViewed: string | null,
+  _lastViewed: string | null,
 ): Promise<number> {
-  return countUnreadByIsReadFlag(
-    db,
-    notificationsTable,
-    notificationsTable.pharmacyId,
-    notificationsTable.isRead,
-    notificationsTable.createdAt,
-    pharmacyId,
-    lastViewed,
-  );
+  const conditions = [
+    eq(notificationsTable.pharmacyId, pharmacyId),
+    eq(notificationsTable.isRead, false),
+    notInArray(notificationsTable.type, TIMELINE_SEPARATE_NOTIFICATION_TYPES),
+  ];
+
+  const rows = await db
+    .select({ count: rowCount })
+    .from(notificationsTable)
+    .where(and(...conditions));
+  return rows[0]?.count ?? 0;
 }
 
-/** proposalComments: 参加中提案のみ + readByRecipient=false OR createdAt > lastViewed */
+/** proposalComments: 参加中提案のみ + readByRecipient=false */
 export async function countUnreadComments(
   db: DbClient,
   pharmacyId: number,
-  lastViewed: string | null,
+  _lastViewed: string | null,
 ): Promise<number> {
   const baseConditions = [
     eq(proposalComments.isDeleted, false),
@@ -92,15 +69,8 @@ export async function countUnreadComments(
       eq(exchangeProposals.pharmacyAId, pharmacyId),
       eq(exchangeProposals.pharmacyBId, pharmacyId),
     ),
+    eq(proposalComments.readByRecipient, false),
   ];
-
-  if (lastViewed) {
-    baseConditions.push(
-      or(eq(proposalComments.readByRecipient, false), gt(proposalComments.createdAt, lastViewed))!,
-    );
-  } else {
-    baseConditions.push(eq(proposalComments.readByRecipient, false));
-  }
 
   const rows = await db
     .select({ count: rowCount })
@@ -110,20 +80,16 @@ export async function countUnreadComments(
   return rows[0]?.count ?? 0;
 }
 
-/** adminMessages: LEFT JOIN adminMessageReads → IS NULL (未読) + lastViewed */
+/** adminMessages: LEFT JOIN adminMessageReads → IS NULL (未読) */
 export async function countUnreadAdminMessages(
   db: DbClient,
   pharmacyId: number,
-  lastViewed: string | null,
+  _lastViewed: string | null,
 ): Promise<number> {
   const targetCondition = or(
     eq(adminMessages.targetType, 'all'),
     and(eq(adminMessages.targetType, 'pharmacy'), eq(adminMessages.targetPharmacyId, pharmacyId)),
   );
-
-  const unreadCondition = lastViewed
-    ? or(isNull(adminMessageReads.id), gt(adminMessages.createdAt, lastViewed))
-    : isNull(adminMessageReads.id);
 
   const rows = await db
     .select({ count: rowCount })
@@ -135,7 +101,7 @@ export async function countUnreadAdminMessages(
         eq(adminMessageReads.pharmacyId, pharmacyId),
       ),
     )
-    .where(and(targetCondition, unreadCondition));
+    .where(and(targetCondition, isNull(adminMessageReads.id)));
 
   return rows[0]?.count ?? 0;
 }
@@ -230,10 +196,13 @@ export async function countAllUnread(
         COALESCE((
           SELECT count(*)::int FROM notifications
           WHERE pharmacy_id = ${pharmacyId}
-            AND (is_read = false OR (
-              ${pharmacies.lastTimelineViewedAt} IS NOT NULL
-              AND created_at > ${pharmacies.lastTimelineViewedAt}
-            ))
+            AND is_read = false
+            AND type NOT IN (${buildTimelineExcludedNotificationTypesSql()})
+        ), 0)
+        + COALESCE((
+          SELECT count(*)::int FROM match_notifications
+          WHERE pharmacy_id = ${pharmacyId}
+            AND is_read = false
         ), 0)
         + COALESCE((
           SELECT count(*)::int FROM exchange_proposals
@@ -252,10 +221,7 @@ export async function countAllUnread(
               WHERE ep.id = pc.proposal_id
                 AND (ep.pharmacy_a_id = ${pharmacyId} OR ep.pharmacy_b_id = ${pharmacyId})
             )
-            AND (pc.read_by_recipient = false OR (
-              ${pharmacies.lastTimelineViewedAt} IS NOT NULL
-              AND pc.created_at > ${pharmacies.lastTimelineViewedAt}
-            ))
+            AND pc.read_by_recipient = false
         ), 0)
         + COALESCE((
           SELECT count(*)::int FROM exchange_feedback
@@ -275,10 +241,7 @@ export async function countAllUnread(
           SELECT count(*)::int FROM admin_messages am
           LEFT JOIN admin_message_reads amr ON amr.message_id = am.id AND amr.pharmacy_id = ${pharmacyId}
           WHERE (am.target_type = 'all' OR (am.target_type = 'pharmacy' AND am.target_pharmacy_id = ${pharmacyId}))
-            AND (amr.id IS NULL OR (
-              ${pharmacies.lastTimelineViewedAt} IS NOT NULL
-              AND am.created_at > ${pharmacies.lastTimelineViewedAt}
-            ))
+            AND amr.id IS NULL
         ), 0)
         + COALESCE((
           SELECT count(*)::int FROM exchange_proposals
@@ -296,7 +259,7 @@ export async function countAllUnread(
             AND expiration_date_iso <= ${threeDaysLaterStr}
             AND (
               ${pharmacies.lastTimelineViewedAt} IS NULL
-              OR updated_at > ${pharmacies.lastTimelineViewedAt}
+              OR created_at > ${pharmacies.lastTimelineViewedAt}
             )
         ), 0)
       `,

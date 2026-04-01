@@ -396,8 +396,8 @@ async function buildBatchMatchingIndexes(
 
   const allDeadStockIds = uniqueNumbers(allDeadStockRows.map((row) => row.id));
   const [reservedByItemId, { businessHoursByPharmacy, specialHoursByPharmacy }] = await Promise.all([
-    fetchReservationMap(allDeadStockIds),
-    fetchBusinessHoursMaps(viablePharmacyIds),
+    fetchReservationMap(allDeadStockIds, deps.db),
+    fetchBusinessHoursMaps(viablePharmacyIds, deps.db),
   ]);
   const adjustedAllDeadStock = applyReservationsToStockRows(allDeadStockRows, reservedByItemId);
 
@@ -502,8 +502,8 @@ async function buildSingleMatchingIndexes(
 
   const allDeadStockIds = uniqueNumbers([...myDeadStock, ...allOtherDeadStock].map((row) => row.id));
   const [reservedByItemId, { businessHoursByPharmacy, specialHoursByPharmacy }] = await Promise.all([
-    fetchReservationMap(allDeadStockIds),
-    fetchBusinessHoursMaps(viablePharmacyIds),
+    fetchReservationMap(allDeadStockIds, deps.db),
+    fetchBusinessHoursMaps(viablePharmacyIds, deps.db),
   ]);
 
   const adjustedMyDeadStock = applyReservationsToStockRows(myDeadStock, reservedByItemId);
@@ -564,13 +564,15 @@ export async function findMatchesBatch(
     .from(pharmacies)
     .where(and(
       eq(pharmacies.isActive, true),
+      eq(pharmacies.isAdmin, false),
       exists(
         deps.db.select({ id: uploadJobs.id })
           .from(uploadJobs)
           .where(and(
             eq(uploadJobs.pharmacyId, pharmacies.id),
             eq(uploadJobs.uploadType, 'used_medication'),
-            gte(uploadJobs.createdAt, firstOfMonth),
+            eq(uploadJobs.status, 'completed'),
+            gte(uploadJobs.completedAt, firstOfMonth),
           )),
       ),
       exists(
@@ -652,7 +654,7 @@ export async function findMatches(
   if (!currentPharmacy) throw new Error('薬局が見つかりません');
 
   const [myDeadStock, myUsedMeds] = await Promise.all([
-    fetchAvailableDeadStockByPharmacy(pharmacyId),
+    fetchAvailableDeadStockByPharmacy(pharmacyId, deps.db),
     fetchUsedMedRowsByPharmacyIds([pharmacyId], deps),
   ]);
 
@@ -671,7 +673,7 @@ export async function findMatches(
         eq(pharmacyRelationships.pharmacyId, pharmacyId),
         eq(pharmacyRelationships.relationshipType, 'favorite'),
       )),
-    fetchViablePharmacies(pharmacyId, firstOfMonth),
+    fetchViablePharmacies(pharmacyId, firstOfMonth, deps.db),
     fetchSingleGroupMemberIds(pharmacyId, deps),
   ]);
 

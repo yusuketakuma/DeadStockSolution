@@ -51,6 +51,35 @@ describe('timeline-aggregators coverage: fetcher functions', () => {
       expect(events[0].id).toBe('notification_1');
     });
 
+    it('filters mirrored match/comment notifications from generic timeline rows', async () => {
+      const rows = [
+        {
+          id: 1,
+          type: 'new_comment',
+          title: 'コメント',
+          message: 'comment row handles this',
+          referenceType: 'proposal',
+          referenceId: 10,
+          isRead: false,
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+        {
+          id: 2,
+          type: 'match_update',
+          title: 'マッチ更新',
+          message: 'match row handles this',
+          referenceType: 'match',
+          referenceId: null,
+          isRead: false,
+          createdAt: '2026-01-01T00:01:00Z',
+        },
+      ];
+      const db = createQueryChain(rows);
+
+      const events = await fetchNotificationEvents(db, 1);
+      expect(events).toEqual([]);
+    });
+
     it('applies since filter', async () => {
       const db = createQueryChain([]);
       await fetchNotificationEvents(db, 1, '2026-01-01');
@@ -87,6 +116,7 @@ describe('timeline-aggregators coverage: fetcher functions', () => {
       expect(events).toHaveLength(1);
       expect(events[0].id).toBe('match_1');
       expect(events[0].type).toBe('match_update');
+      expect(events[0].body).toContain('+2');
     });
 
     it('applies since and before filters', async () => {

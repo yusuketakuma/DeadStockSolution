@@ -56,6 +56,7 @@ export const USED_MED_SELECT_FIELDS = {
 type PreparedMatchingDeadStockByPharmacyId = {
   execute(params: { pharmacyId: number }): Promise<any[]>;
 };
+type SelectExecutor = Pick<typeof db, 'select'>;
 
 let prepared_matching_dead_stock_by_pharmacy_id: PreparedMatchingDeadStockByPharmacyId | null = null;
 
@@ -87,21 +88,22 @@ function getPreparedMatchingDeadStockByPharmacyId(): PreparedMatchingDeadStockBy
   return prepared_matching_dead_stock_by_pharmacy_id;
 }
 
-function buildActiveUploadExistsClause(firstOfMonth: string) {
+function buildActiveUploadExistsClause(firstOfMonth: string, executor: SelectExecutor = db) {
   return exists(
-    db.select({ id: uploadJobs.id })
+    executor.select({ id: uploadJobs.id })
       .from(uploadJobs)
       .where(and(
         eq(uploadJobs.pharmacyId, pharmacies.id),
         eq(uploadJobs.uploadType, 'used_medication'),
-        gte(uploadJobs.createdAt, firstOfMonth),
+        eq(uploadJobs.status, 'completed'),
+        gte(uploadJobs.completedAt, firstOfMonth),
       )),
   );
 }
 
-function buildBlockedRelationshipClause(pharmacyId: number) {
+function buildBlockedRelationshipClause(pharmacyId: number, executor: SelectExecutor = db) {
   return notExists(
-    db.select({ id: pharmacyRelationships.id })
+    executor.select({ id: pharmacyRelationships.id })
       .from(pharmacyRelationships)
       .where(or(
         and(
@@ -118,9 +120,9 @@ function buildBlockedRelationshipClause(pharmacyId: number) {
   );
 }
 
-function buildHasAvailableDeadStockClause() {
+function buildHasAvailableDeadStockClause(executor: SelectExecutor = db) {
   return exists(
-    db.select({ id: deadStockItems.id })
+    executor.select({ id: deadStockItems.id })
       .from(deadStockItems)
       .where(and(
         eq(deadStockItems.pharmacyId, pharmacies.id),
@@ -129,9 +131,9 @@ function buildHasAvailableDeadStockClause() {
   );
 }
 
-function buildHasUsedMedicationClause() {
+function buildHasUsedMedicationClause(executor: SelectExecutor = db) {
   return exists(
-    db.select({ id: usedMedicationItems.id })
+    executor.select({ id: usedMedicationItems.id })
       .from(usedMedicationItems)
       .where(eq(usedMedicationItems.pharmacyId, pharmacies.id)),
   );
@@ -159,8 +161,9 @@ function businessHoursCacheKey(pharmacyId: number): string {
 export async function fetchViablePharmacies(
   pharmacyId: number,
   firstOfMonth: string,
+  executor: SelectExecutor = db,
 ): Promise<ViablePharmacyRow[]> {
-  return db.select({
+  return executor.select({
     id: pharmacies.id,
     name: pharmacies.name,
     phone: pharmacies.phone,
@@ -172,18 +175,20 @@ export async function fetchViablePharmacies(
     .where(and(
       ne(pharmacies.id, pharmacyId),
       eq(pharmacies.isActive, true),
-      buildActiveUploadExistsClause(firstOfMonth),
-      buildBlockedRelationshipClause(pharmacyId),
-      buildHasAvailableDeadStockClause(),
-      buildHasUsedMedicationClause(),
+      eq(pharmacies.isAdmin, false),
+      buildActiveUploadExistsClause(firstOfMonth, executor),
+      buildBlockedRelationshipClause(pharmacyId, executor),
+      buildHasAvailableDeadStockClause(executor),
+      buildHasUsedMedicationClause(executor),
     ));
 }
 
 export async function fetchReservationMap(
   allDeadStockIds: number[],
+  executor: SelectExecutor = db,
 ): Promise<Map<number, number>> {
   const reservationRows = allDeadStockIds.length > 0
-    ? await db.select({
+    ? await executor.select({
       deadStockItemId: deadStockReservations.deadStockItemId,
       reservedQty: sql<number>`coalesce(sum(${deadStockReservations.reservedQuantity}), 0)`,
     })
@@ -199,12 +204,15 @@ export async function fetchReservationMap(
   return buildReservedByItemId(reservationRows);
 }
 
-export async function fetchAvailableDeadStockByPharmacy(pharmacyId: number): Promise<DeadStockRow[]> {
-  const prepared = getPreparedMatchingDeadStockByPharmacyId();
+export async function fetchAvailableDeadStockByPharmacy(
+  pharmacyId: number,
+  executor: SelectExecutor = db,
+): Promise<DeadStockRow[]> {
+  const prepared = executor === db ? getPreparedMatchingDeadStockByPharmacyId() : null;
   if (prepared) {
     return prepared.execute({ pharmacyId });
   }
-  return db.select(DEAD_STOCK_SELECT_FIELDS)
+  return executor.select(DEAD_STOCK_SELECT_FIELDS)
     .from(deadStockItems)
     .where(and(
       eq(deadStockItems.pharmacyId, pharmacyId),
@@ -215,6 +223,7 @@ export async function fetchAvailableDeadStockByPharmacy(pharmacyId: number): Pro
 
 export async function fetchBusinessHoursMaps(
   pharmacyIds: number[],
+  executor: SelectExecutor = db,
 ): Promise<{
   businessHoursByPharmacy: Map<number, BusinessHoursRows>;
   specialHoursByPharmacy: Map<number, SpecialHoursRows>;
@@ -243,7 +252,7 @@ export async function fetchBusinessHoursMaps(
   }
 
   const [allBusinessHours, allSpecialHours] = await Promise.all([
-    db.select({
+    executor.select({
       pharmacyId: pharmacyBusinessHours.pharmacyId,
       dayOfWeek: pharmacyBusinessHours.dayOfWeek,
       openTime: pharmacyBusinessHours.openTime,
@@ -253,7 +262,7 @@ export async function fetchBusinessHoursMaps(
     })
       .from(pharmacyBusinessHours)
       .where(inArray(pharmacyBusinessHours.pharmacyId, cacheMissPharmacyIds)),
-    db.select({
+    executor.select({
       pharmacyId: pharmacySpecialHours.pharmacyId,
       id: pharmacySpecialHours.id,
       specialType: pharmacySpecialHours.specialType,

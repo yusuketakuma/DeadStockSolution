@@ -77,6 +77,7 @@ import {
   triggerMatchingRefreshOnUpload,
   __testables,
 } from '../services/matching-refresh-service';
+import { uploadJobs } from '../db/schema';
 
 /**
  * Universal select chain: every method returns the chain AND is thenable.
@@ -190,6 +191,8 @@ describe('matching-refresh-service coverage', () => {
 
       const result = await processPendingMatchingRefreshJobs(3);
       expect(result).toBe(1);
+      expect(mocks.drizzle.eq).toHaveBeenCalledWith(uploadJobs.status, 'completed');
+      expect(mocks.drizzle.gte).toHaveBeenCalledWith(uploadJobs.completedAt, expect.any(String));
     });
 
     it('handles job failure by incrementing attempts', async () => {

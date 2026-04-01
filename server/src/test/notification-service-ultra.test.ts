@@ -196,6 +196,23 @@ describe('notification-service-ultra', () => {
       const result = await markAsRead(1, 1);
       expect(result).toBe(true);
     });
+
+    it('marks proposal comments too when the notification is new_comment', async () => {
+      const returning = vi.fn().mockResolvedValue([{
+        id: 1,
+        type: 'new_comment',
+        referenceType: 'proposal',
+        referenceId: 5,
+      }]);
+      const where = vi.fn().mockReturnValue({ returning });
+      const set = vi.fn().mockReturnValue({ where });
+      mocks.db.update.mockReturnValue({ set });
+      mocks.db.execute.mockResolvedValue({ rows: [{ count: 1 }] });
+
+      const result = await markAsRead(1, 1);
+      expect(result).toBe(true);
+      expect(mocks.db.execute).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ── markAllAsRead edge cases ──
@@ -245,6 +262,7 @@ describe('notification-service-ultra', () => {
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
             { rows: [{ count: 1 }] }, // markNotificationsAsRead
+            { rows: [{ count: 2 }] }, // markProposalCommentsAsRead
             { rows: [{ exists: true }] }, // match_notifications table exists
             { rows: [{ count: 0 }] }, // matchNotifications markAsRead
             { rows: [{ count: 3 }] }, // markAdminMessagesAsRead
@@ -261,6 +279,7 @@ describe('notification-service-ultra', () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
+            { rows: [{ count: 0 }] },
             { rows: [{ count: 0 }] },
             { rows: [{ exists: true }] },
             { rows: [{ count: 0 }] },
@@ -279,6 +298,7 @@ describe('notification-service-ultra', () => {
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
             { rows: [{}] },
+            { rows: [{}] },
             { rows: [{ exists: true }] },
             { rows: [{ count: 0 }] },
             { rows: [{ count: 0 }] },
@@ -295,6 +315,7 @@ describe('notification-service-ultra', () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
+            { rows: [] },
             { rows: [] },
             { rows: [{ exists: true }] },
             { rows: [{ count: 0 }] },

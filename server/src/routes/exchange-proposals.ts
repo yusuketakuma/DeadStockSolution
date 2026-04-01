@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../config/database';
 import {
   exchangeProposals,
@@ -436,8 +437,8 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
       maxLimit: 100,
     });
     const pharmacyId = req.user!.id;
-    const pharmacyAName = sql<string>`(SELECT name FROM pharmacies WHERE id = ${exchangeProposals.pharmacyAId})`.as('pharmacy_a_name');
-    const pharmacyBName = sql<string>`(SELECT name FROM pharmacies WHERE id = ${exchangeProposals.pharmacyBId})`.as('pharmacy_b_name');
+    const pharmacyA = alias(pharmacies, 'pharmacy_a');
+    const pharmacyB = alias(pharmacies, 'pharmacy_b');
     const proposalSelect = {
       id: exchangeProposals.id,
       pharmacyAId: exchangeProposals.pharmacyAId,
@@ -449,8 +450,8 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
       proposedAt: exchangeProposals.proposedAt,
       expiresAt: exchangeProposals.expiresAt,
       expiryReminderSentAt: exchangeProposals.expiryReminderSentAt,
-      pharmacyAName,
-      pharmacyBName,
+      pharmacyAName: pharmacyA.name,
+      pharmacyBName: pharmacyB.name,
     };
     const ownershipFilter = or(
       eq(exchangeProposals.pharmacyAId, pharmacyId),
@@ -490,6 +491,8 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
     const [rows, [countRow]] = await Promise.all([
       db.select(proposalSelect)
         .from(exchangeProposals)
+        .leftJoin(pharmacyA, eq(exchangeProposals.pharmacyAId, pharmacyA.id))
+        .leftJoin(pharmacyB, eq(exchangeProposals.pharmacyBId, pharmacyB.id))
         .where(ownershipFilter)
         .orderBy(
           ...(sort === 'priority'
@@ -553,9 +556,35 @@ const handleProposalDetail = async (req: AuthRequest, res: Response): Promise<vo
 
     const { proposal, items } = data;
 
-    const [pharmA, pharmB] = await fetchProposalDetailPharmacies(proposal);
+    // 独立した4クエリを並列実行（fetchProposalData完了後）
+    const [[pharmA, pharmB], actionRows, commentRows, feedbackRows] = await Promise.all([
+      fetchProposalDetailPharmacies(proposal),
+      fetchProposalTimelineActionRows(id),
+      db.select({
+        id: proposalComments.id,
+        body: proposalComments.body,
+        createdAt: proposalComments.createdAt,
+        authorPharmacyId: proposalComments.authorPharmacyId,
+        authorName: pharmacies.name,
+      })
+        .from(proposalComments)
+        .leftJoin(pharmacies, eq(proposalComments.authorPharmacyId, pharmacies.id))
+        .where(eq(proposalComments.proposalId, id))
+        .orderBy(asc(proposalComments.createdAt)),
+      db.select({
+        id: exchangeFeedback.id,
+        rating: exchangeFeedback.rating,
+        comment: exchangeFeedback.comment,
+        createdAt: exchangeFeedback.createdAt,
+        fromPharmacyId: exchangeFeedback.fromPharmacyId,
+        fromName: pharmacies.name,
+      })
+        .from(exchangeFeedback)
+        .leftJoin(pharmacies, eq(exchangeFeedback.fromPharmacyId, pharmacies.id))
+        .where(eq(exchangeFeedback.proposalId, id))
+        .orderBy(asc(exchangeFeedback.createdAt)),
+    ]);
 
-    const actionRows = await fetchProposalTimelineActionRows(id);
     const timeline = buildProposalTimeline({
       proposedAt: proposal.proposedAt,
       proposalCreatorPharmacyId: proposal.pharmacyAId,
@@ -563,33 +592,6 @@ const handleProposalDetail = async (req: AuthRequest, res: Response): Promise<vo
       actionRows,
       includeStatusTransitions: true,
     });
-
-    // Fetch comments for enriched timeline
-    const commentRows = await db.select({
-      id: proposalComments.id,
-      body: proposalComments.body,
-      createdAt: proposalComments.createdAt,
-      authorPharmacyId: proposalComments.authorPharmacyId,
-      authorName: pharmacies.name,
-    })
-      .from(proposalComments)
-      .leftJoin(pharmacies, eq(proposalComments.authorPharmacyId, pharmacies.id))
-      .where(eq(proposalComments.proposalId, id))
-      .orderBy(asc(proposalComments.createdAt));
-
-    // Fetch feedback for enriched timeline
-    const feedbackRows = await db.select({
-      id: exchangeFeedback.id,
-      rating: exchangeFeedback.rating,
-      comment: exchangeFeedback.comment,
-      createdAt: exchangeFeedback.createdAt,
-      fromPharmacyId: exchangeFeedback.fromPharmacyId,
-      fromName: pharmacies.name,
-    })
-      .from(exchangeFeedback)
-      .leftJoin(pharmacies, eq(exchangeFeedback.fromPharmacyId, pharmacies.id))
-      .where(eq(exchangeFeedback.proposalId, id))
-      .orderBy(asc(exchangeFeedback.createdAt));
 
     // Build enriched timeline combining status changes, comments, and feedback
     const enrichedTimeline: EnrichedProposalTimelineEvent[] = [

@@ -188,6 +188,12 @@ describe('MatchingPage — Group Badge', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      if (url.includes('/api/proposal-templates')) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       if (url.includes('/api/timeline/bootstrap')) {
         return new Response(JSON.stringify({ timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null }, digest: { events: [] }, unreadCount: 0 }), {
           status: 200,
@@ -227,6 +233,77 @@ describe('MatchingPage — Group Badge', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(exchangeFindCalls.value).toBe(1);
+  });
+
+  it('sends groupOnly filter to the matching API', async () => {
+    const exchangeFindBodies: Array<string | null> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/upload/status')) {
+        return new Response(JSON.stringify({ deadStockUploaded: true, usedMedicationUploaded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/groups/membership-summary')) {
+        return new Response(JSON.stringify(membershipSummaryResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/proposal-templates')) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/timeline/bootstrap')) {
+        return new Response(JSON.stringify({ timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null }, digest: { events: [] }, unreadCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/timeline/unread-count')) {
+        return new Response(JSON.stringify({ unreadCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/exchange/find')) {
+        exchangeFindBodies.push(typeof init?.body === 'string' ? init.body : null);
+        return new Response(JSON.stringify({ candidates: matchCandidates }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const user = userEvent.setup();
+    renderWithProviders(<MatchingPage />);
+
+    await user.click(await screen.findByRole('button', { name: /マッチングを実行/ }));
+    await screen.findByRole('button', { name: /グループ内薬局/ });
+    await user.click(await screen.findByRole('button', { name: /絞り込みと並び替えを開く/ }));
+    await user.click(await screen.findByLabelText('グループのみ'));
+    await user.click(await screen.findByRole('button', { name: /マッチングを実行/ }));
+
+    await waitFor(() => {
+      expect(exchangeFindBodies[exchangeFindBodies.length - 1]).toBe(JSON.stringify({ groupOnly: true }));
+    });
   });
 
   it('sorts by expiry using expirationDateIso when present', async () => {

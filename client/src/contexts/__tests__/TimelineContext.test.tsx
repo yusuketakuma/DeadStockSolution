@@ -130,8 +130,70 @@ describe('TimelineContext', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/timeline'))).toBe(true);
   });
 
-  it('markViewed sets unreadCount to 0', async () => {
-    setupTimelineFetchMock();
+  it('markViewed refetches bootstrap and syncs unread/read state from server', async () => {
+    const firstEvent = createEvent({ id: 'event-1', isRead: false });
+    const readEvent = createEvent({ id: 'event-1', isRead: true });
+    let bootstrapCalls = 0;
+
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify({
+          id: 1,
+          email: 'test@example.com',
+          name: 'テスト',
+          prefecture: '東京都',
+          isAdmin: false,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/timeline/bootstrap')) {
+        bootstrapCalls += 1;
+        const payload = bootstrapCalls === 1
+          ? {
+            timeline: {
+              events: [firstEvent],
+              total: 1,
+              hasMore: false,
+              nextCursor: null,
+            },
+            digest: { events: [firstEvent] },
+            unreadCount: 5,
+          }
+          : {
+            timeline: {
+              events: [readEvent],
+              total: 1,
+              hasMore: false,
+              nextCursor: null,
+            },
+            digest: { events: [readEvent] },
+            unreadCount: 0,
+          };
+
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url.includes('/api/timeline/mark-viewed')) {
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
     const wrapper = createWrapper();
 
     const { result } = renderHook(() => useTimeline(), { wrapper });
@@ -144,7 +206,10 @@ describe('TimelineContext', () => {
       await result.current.markViewed();
     });
 
-    expect(result.current.unreadCount).toBe(0);
+    await waitFor(() => {
+      expect(result.current.unreadCount).toBe(0);
+    });
+    expect(bootstrapCalls).toBe(2);
     expect(result.current.events.every((event) => event.isRead)).toBe(true);
     expect(result.current.digestEvents.every((event) => event.isRead)).toBe(true);
   });

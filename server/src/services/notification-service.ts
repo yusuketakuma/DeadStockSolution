@@ -93,6 +93,33 @@ async function markNotificationsAsRead(executor: NotificationSqlExecutor, pharma
   return Number(updatedRows.rows[0]?.count ?? 0);
 }
 
+async function markProposalCommentsAsRead(
+  executor: NotificationSqlExecutor,
+  pharmacyId: number,
+  proposalId?: number,
+): Promise<number> {
+  const proposalFilter = proposalId ? sql`AND ep.id = ${proposalId}` : sql``;
+  const updatedRows = await executor.execute<{ count: number }>(sql`
+    WITH updated AS (
+      UPDATE proposal_comments AS pc
+      SET read_by_recipient = true
+      WHERE pc.read_by_recipient = false
+        AND pc.is_deleted = false
+        AND pc.author_pharmacy_id != ${pharmacyId}
+        AND EXISTS (
+          SELECT 1
+          FROM exchange_proposals ep
+          WHERE ep.id = pc.proposal_id
+            AND (ep.pharmacy_a_id = ${pharmacyId} OR ep.pharmacy_b_id = ${pharmacyId})
+            ${proposalFilter}
+        )
+      RETURNING 1
+    )
+    SELECT COUNT(*)::int AS count FROM updated
+  `);
+  return Number(updatedRows.rows[0]?.count ?? 0);
+}
+
 export async function createNotification(
   input: CreateNotificationInput,
 ): Promise<{ id: number } | null> {
@@ -209,14 +236,29 @@ export async function markAsRead(
   notificationId: number,
   pharmacyId: number,
 ): Promise<boolean> {
+  const now = new Date().toISOString();
   const result = await db.update(notifications)
-    .set({ isRead: true, readAt: new Date().toISOString() })
+    .set({ isRead: true, readAt: now })
     .where(and(
       eq(notifications.id, notificationId),
       eq(notifications.pharmacyId, pharmacyId),
     ))
-    .returning({ id: notifications.id });
+    .returning({
+      id: notifications.id,
+      type: notifications.type,
+      referenceType: notifications.referenceType,
+      referenceId: notifications.referenceId,
+    });
   if (result.length > 0) {
+    const readNotification = result[0];
+    if (
+      readNotification?.type === 'new_comment'
+      && readNotification.referenceType === 'proposal'
+      && typeof readNotification.referenceId === 'number'
+    ) {
+      await markProposalCommentsAsRead(db, pharmacyId, readNotification.referenceId);
+    }
+
     invalidateDashboardUnreadCache(pharmacyId);
     publishTimelineRefresh({
       pharmacyId,
@@ -241,6 +283,7 @@ export async function markAllAsRead(pharmacyId: number): Promise<number> {
 export async function markAllDashboardAsRead(pharmacyId: number): Promise<number> {
   const total = await db.transaction(async (tx) => {
     const notificationCount = await markNotificationsAsRead(tx, pharmacyId);
+    await markProposalCommentsAsRead(tx, pharmacyId);
 
     const matchTableExistsRows = await tx.execute<{ exists: boolean | string | number }>(sql`
       SELECT to_regclass('public.match_notifications') IS NOT NULL AS exists

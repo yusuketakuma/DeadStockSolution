@@ -1,16 +1,26 @@
 import { useEffect, useRef } from 'react';
 import { useToast } from '../contexts/ToastContext';
-import { useNotifications } from '../contexts/NotificationContext';
+import { useTimeline } from '../contexts/TimelineContext';
 
 export function useMatchNotificationToast() {
   const { showInfo } = useToast();
-  const { unreadCount } = useNotifications();
-  const prevRef = useRef<number | null>(null);
+  const { events } = useTimeline();
+  const prevUnreadMatchIdsRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
-    if (prevRef.current !== null && unreadCount > prevRef.current) {
+    const unreadMatchIds = new Set(
+      events
+        .filter((event) => !event.isRead && (event.source === 'match' || event.type === 'match_update'))
+        .map((event) => event.id),
+    );
+
+    const hasNewUnreadMatch = prevUnreadMatchIdsRef.current !== null
+      && Array.from(unreadMatchIds).some((id) => !prevUnreadMatchIdsRef.current?.has(id));
+
+    if (hasNewUnreadMatch) {
       showInfo('新しいマッチング候補が見つかりました');
     }
-    prevRef.current = unreadCount;
-  }, [unreadCount, showInfo]);
+
+    prevUnreadMatchIdsRef.current = unreadMatchIds;
+  }, [events, showInfo]);
 }

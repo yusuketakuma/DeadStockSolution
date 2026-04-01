@@ -170,13 +170,11 @@ export function TimelineProvider({
     if (!user) return;
     try {
       await timelineApi.markViewed();
-      setUnreadCount(0);
-      setEvents((prev) => prev.map((event) => ({ ...event, isRead: true })));
-      setDigestEvents((prev) => prev.map((event) => ({ ...event, isRead: true })));
+      await fetchBootstrap(selectedPriority);
     } catch {
       // ベストエフォート
     }
-  }, [user]);
+  }, [fetchBootstrap, selectedPriority, user]);
 
   const loadMore = useCallback(async () => {
     if (!user || !hasMore || !nextCursor) return;

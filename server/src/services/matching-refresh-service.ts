@@ -125,7 +125,8 @@ async function resolveImpactedPharmacyIds(triggerPharmacyId: number): Promise<nu
           .where(and(
             eq(uploadJobs.pharmacyId, pharmacies.id),
             eq(uploadJobs.uploadType, 'used_medication'),
-            gte(uploadJobs.createdAt, firstOfMonth),
+            eq(uploadJobs.status, 'completed'),
+            gte(uploadJobs.completedAt, firstOfMonth),
           )),
       ),
     ));

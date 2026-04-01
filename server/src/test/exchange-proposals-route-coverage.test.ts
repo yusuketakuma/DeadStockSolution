@@ -117,11 +117,13 @@ function createPaginatedQuery(rows: unknown[]) {
     limit: vi.fn(),
     offset: vi.fn(),
     innerJoin: vi.fn(),
+    leftJoin: vi.fn(),
   };
   query.from.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
   query.innerJoin.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   query.offset.mockResolvedValue(rows);
   return query;
@@ -579,5 +581,18 @@ describe('exchange-proposals route coverage: POST /find', () => {
 
     expect(response.status).toBe(500);
     expect(response.body.error).toBeDefined();
+  });
+
+  it('passes groupOnly=true through to matching service', async () => {
+    const app = createApp();
+    mocks.findMatches.mockResolvedValueOnce([]);
+
+    const response = await request(app)
+      .post('/api/exchange/find')
+      .send({ groupOnly: true });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ candidates: [] });
+    expect(mocks.findMatches).toHaveBeenCalledWith(2, { groupOnly: true });
   });
 });

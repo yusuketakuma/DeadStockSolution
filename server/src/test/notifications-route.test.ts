@@ -332,4 +332,34 @@ describe('notifications routes GET /', () => {
       nextCursor: null,
     }));
   });
+
+  it('derives fallback proposal unread from lastTimelineViewedAt when linked notification is absent', async () => {
+    const app = createApp();
+    const proposalRows = [{
+      id: 102,
+      pharmacyAId: 2,
+      pharmacyBId: 1,
+      status: 'proposed',
+      proposedAt: '2026-02-20T00:00:00.000Z',
+    }];
+
+    mocks.db.select
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery(proposalRows))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([{ lastTimelineViewedAt: '2026-02-21T00:00:00.000Z' }]));
+
+    const response = await request(app).get('/api/notifications');
+
+    expect(response.status).toBe(200);
+    expect(response.body.notices).toHaveLength(1);
+    expect(response.body.notices[0]).toEqual(expect.objectContaining({
+      id: 'proposal-102-inbound',
+      type: 'inbound_request',
+      unread: false,
+    }));
+  });
 });

@@ -79,24 +79,25 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
 
     const lastUploadRows = await db.select({
       uploadType: uploadJobs.uploadType,
-      createdAt: sql<string | null>`max(${uploadJobs.createdAt})`,
+      completedAt: sql<string | null>`max(${uploadJobs.completedAt})`,
     })
       .from(uploadJobs)
       .where(and(
         eq(uploadJobs.pharmacyId, pharmacyId),
         inArray(uploadJobs.uploadType, ['dead_stock', 'used_medication']),
+        eq(uploadJobs.status, 'completed'),
       ))
       .groupBy(uploadJobs.uploadType);
 
     let lastDeadStockDate: string | null = null;
     let lastUsedMedDate: string | null = null;
     for (const row of lastUploadRows) {
-      if (row.uploadType === 'dead_stock') lastDeadStockDate = row.createdAt;
-      if (row.uploadType === 'used_medication') lastUsedMedDate = row.createdAt;
+      if (row.uploadType === 'dead_stock') lastDeadStockDate = row.completedAt;
+      if (row.uploadType === 'used_medication') lastUsedMedDate = row.completedAt;
     }
 
     res.json({
-      deadStockUploaded: lastDeadStockDate !== null,
+      deadStockUploaded: lastDeadStockDate !== null && lastDeadStockDate >= firstOfMonth,
       usedMedicationUploaded: lastUsedMedDate !== null && lastUsedMedDate >= firstOfMonth,
       lastDeadStockUpload: lastDeadStockDate,
       lastUsedMedicationUpload: lastUsedMedDate,

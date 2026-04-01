@@ -234,6 +234,24 @@ describe('notification-service-deep', () => {
       expect(result).toBe(true);
     });
 
+    it('marks linked proposal comments as read for new_comment notifications', async () => {
+      const returning = vi.fn().mockResolvedValue([{
+        id: 1,
+        type: 'new_comment',
+        referenceType: 'proposal',
+        referenceId: 10,
+      }]);
+      const where = vi.fn().mockReturnValue({ returning });
+      const set = vi.fn().mockReturnValue({ where });
+      mocks.db.update.mockReturnValue({ set });
+      mocks.db.execute.mockResolvedValue({ rows: [{ count: 3 }] });
+
+      const result = await markAsRead(1, 1);
+
+      expect(result).toBe(true);
+      expect(mocks.db.execute).toHaveBeenCalledTimes(1);
+    });
+
     it('returns false when notification is not found', async () => {
       const returning = vi.fn().mockResolvedValue([]);
       const where = vi.fn().mockReturnValue({ returning });
@@ -279,6 +297,8 @@ describe('notification-service-deep', () => {
           const txExecute = vi.fn()
             // markNotificationsAsRead
             .mockResolvedValueOnce({ rows: [{ count: 3 }] })
+            // mark proposal comments as read
+            .mockResolvedValueOnce({ rows: [{ count: 2 }] })
             // match_notifications table exists
             .mockResolvedValueOnce({ rows: [{ exists: true }] })
             // mark match_notifications as read
@@ -302,6 +322,7 @@ describe('notification-service-deep', () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: typeof mocks.db.execute; update: typeof mocks.db.update }) => Promise<unknown>) => {
           const txExecute = vi.fn()
+            .mockResolvedValueOnce({ rows: [{ count: 0 }] })
             .mockResolvedValueOnce({ rows: [{ count: 0 }] })
             .mockResolvedValueOnce({ rows: [{ exists: true }] })
             .mockResolvedValueOnce({ rows: [{ count: 0 }] })

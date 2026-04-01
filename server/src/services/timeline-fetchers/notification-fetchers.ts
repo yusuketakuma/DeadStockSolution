@@ -1,5 +1,6 @@
-import { and, desc, eq, gte, lte, ne, or } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, ne, notInArray, or } from 'drizzle-orm';
 import {
+  matchNotifications,
   notifications as notificationsTable,
   exchangeProposals,
   proposalComments,
@@ -7,6 +8,10 @@ import {
 } from '../../db/schema';
 import { type DbClient, type RawTimelineEvent } from '../../types/timeline';
 import { toTimelineEventType } from '../../utils/timeline-utils';
+import {
+  TIMELINE_SEPARATE_NOTIFICATION_TYPES,
+  filterNotificationRowsForTimeline,
+} from '../timeline-notification-rules';
 
 function resolveEventTimestamp(timestamp: string | null): string {
   return timestamp ?? new Date().toISOString();
@@ -181,7 +186,10 @@ export async function fetchNotificationEvents(
   limit?: number,
   before?: string,
 ): Promise<RawTimelineEvent[]> {
-  const conditions = [eq(notificationsTable.pharmacyId, pharmacyId)];
+  const conditions = [
+    eq(notificationsTable.pharmacyId, pharmacyId),
+    notInArray(notificationsTable.type, TIMELINE_SEPARATE_NOTIFICATION_TYPES),
+  ];
   appendDateRangeConditions(
     conditions,
     since,
@@ -207,7 +215,7 @@ export async function fetchNotificationEvents(
     .$dynamic();
   if (limit) query = query.limit(limit);
 
-  const rows = await query;
+  const rows = filterNotificationRowsForTimeline(await query);
   return rows.map(mapNotificationToEvent);
 }
 
@@ -218,45 +226,37 @@ export async function fetchMatchEvents(
   limit?: number,
   before?: string,
 ): Promise<RawTimelineEvent[]> {
-  const conditions = [
-    eq(notificationsTable.pharmacyId, pharmacyId),
-    eq(notificationsTable.type, 'match_update'),
-  ];
+  const conditions = [eq(matchNotifications.pharmacyId, pharmacyId)];
   appendDateRangeConditions(
     conditions,
     since,
     before,
-    (value) => gte(notificationsTable.createdAt, value),
-    (value) => lte(notificationsTable.createdAt, value),
+    (value) => gte(matchNotifications.createdAt, value),
+    (value) => lte(matchNotifications.createdAt, value),
   );
 
   let query = db
     .select({
-      id: notificationsTable.id,
-      detailJson: notificationsTable.detailJson,
-      isRead: notificationsTable.isRead,
-      createdAt: notificationsTable.createdAt,
+      id: matchNotifications.id,
+      candidateCountBefore: matchNotifications.candidateCountBefore,
+      candidateCountAfter: matchNotifications.candidateCountAfter,
+      isRead: matchNotifications.isRead,
+      createdAt: matchNotifications.createdAt,
     })
-    .from(notificationsTable)
+    .from(matchNotifications)
     .where(and(...conditions))
-    .orderBy(desc(notificationsTable.createdAt))
+    .orderBy(desc(matchNotifications.createdAt))
     .$dynamic();
   if (limit) query = query.limit(limit);
 
   const rows = await query;
-  return rows.map((row: { id: number; detailJson: unknown; isRead: boolean; createdAt: string | null }) => {
-    const detail = (row.detailJson && typeof row.detailJson === 'object' ? row.detailJson : {}) as {
-      candidate_count_before?: number;
-      candidate_count_after?: number;
-    };
-    return mapMatchNotificationToEvent({
-      id: row.id,
-      candidateCountBefore: detail.candidate_count_before ?? 0,
-      candidateCountAfter: detail.candidate_count_after ?? 0,
-      isRead: row.isRead,
-      createdAt: row.createdAt,
-    });
-  });
+  return rows.map((row: typeof rows[number]) => mapMatchNotificationToEvent({
+    id: row.id,
+    candidateCountBefore: row.candidateCountBefore ?? 0,
+    candidateCountAfter: row.candidateCountAfter ?? 0,
+    isRead: row.isRead,
+    createdAt: row.createdAt,
+  }));
 }
 
 export async function fetchProposalEvents(

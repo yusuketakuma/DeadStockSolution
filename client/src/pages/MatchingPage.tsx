@@ -167,7 +167,9 @@ export default function MatchingPage() {
     setMessage('');
     setProposalRetrySuggested(false);
     try {
-      const data = await api.post<{ candidates: MatchCandidate[] }>('/exchange/find');
+      const data = await api.post<{ candidates: MatchCandidate[] }>('/exchange/find', {
+        groupOnly: filters.groupOnly,
+      });
       setCandidates(data.candidates);
       setSearched(true);
       if (!readOnboardingMatchingDone(user?.id)) {
@@ -178,7 +180,7 @@ export default function MatchingPage() {
     } finally {
       setLoading(false);
     }
-  }, [setError, setLoading, setMessage, user?.id]);
+  }, [filters.groupOnly, setError, setLoading, setMessage, user?.id]);
 
   useEffect(() => {
     if (!hasSearchContext) {

@@ -135,7 +135,7 @@ function createJobRecord(overrides: Record<string, unknown> = {}) {
     idempotencyKey: null,
     fileHash: 'abc123',
     headerRowIndex: 0,
-    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' },
+    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3', yakka_unit_price: '4' },
     status: 'pending',
     applyMode: 'replace',
     deleteMissing: false,
@@ -483,7 +483,7 @@ describe('upload-confirm-job-service-final', () => {
         idempotencyKey: null,
         fileHash: 'abc123',
         headerRowIndex: 0,
-        mappingJson: { drug_name: '1', quantity: '2' },
+        mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', yakka_unit_price: '3' },
         status: 'failed',
         applyMode: 'replace',
         deleteMissing: false,
@@ -513,11 +513,11 @@ describe('upload-confirm-job-service-final', () => {
   describe('parseStoredMapping — null value sets mapping key to null', () => {
     it('processes mapping where a valid field has null value', async () => {
       const compressedPayload = await createCompressedPayload('file-content');
-      // mapping has drug_code = null (explicitly null), but drug_name and quantity valid
+      // mapping has unit = null (explicitly null), but required fields are valid
       const claimedJob = createJobRecord({
         status: 'processing',
         fileBase64: compressedPayload,
-        mappingJson: { drug_name: '1', quantity: '2', drug_code: null },
+        mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', yakka_unit_price: '3', unit: null },
         attempts: 0,
       });
 

@@ -203,6 +203,22 @@ describe('notification-service', () => {
       );
     });
 
+    it('also marks proposal comments as read for new_comment notifications', async () => {
+      const chain = createUpdateChain([{
+        id: 1,
+        type: 'new_comment',
+        referenceType: 'proposal',
+        referenceId: 42,
+      }]);
+      mocks.db.update.mockReturnValue(chain);
+      mocks.db.execute.mockResolvedValue(createExecuteResult([{ count: 2 }]));
+
+      const result = await markAsRead(1, 10);
+
+      expect(result).toBe(true);
+      expect(mocks.db.execute).toHaveBeenCalledTimes(1);
+    });
+
     it('returns false when no rows updated', async () => {
       const chain = createUpdateChain([]);
       mocks.db.update.mockReturnValue(chain);
@@ -251,6 +267,7 @@ describe('notification-service', () => {
     it('updates notifications and admin messages in a single transaction', async () => {
       const tx = createTxWithExecuteRows(
         [{ count: 2 }],
+        [{ count: 1 }],
         [{ exists: false }],
         [{ count: 3 }],
       );
@@ -260,7 +277,7 @@ describe('notification-service', () => {
 
       expect(result).toBe(5);
       expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
-      expect(tx.execute).toHaveBeenCalledTimes(3);
+      expect(tx.execute).toHaveBeenCalledTimes(4);
     });
 
     it('propagates transaction errors', async () => {

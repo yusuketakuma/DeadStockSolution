@@ -14,6 +14,7 @@ import {
   markAsRead,
   markAllDashboardAsRead,
 } from '../services/notification-service';
+import { isUnreadByLastViewedAt } from '../services/notification-helper-service';
 import { publishTimelineRefresh } from '../services/realtime-service';
 
 type NoticeType = 'inbound_request' | 'outbound_request' | 'status_update' | 'admin_message' | 'match_update' | 'new_comment';
@@ -127,13 +128,15 @@ function proposalActionNotice(proposal: {
   id: number;
   isRead: boolean;
   createdAt: string | null;
-}): NoticeItem | null {
+}, lastTimelineViewedAt?: string | null): NoticeItem | null {
   const isA = proposal.pharmacyAId === currentPharmacyId;
   const actionPath = `/proposals/${proposal.id}`;
   const deadlineAt = buildProposalDeadlineAt(proposal.proposedAt);
   const linkedId = linkedNotification ? `notification-${linkedNotification.id}` : null;
   const linkedCreatedAt = linkedNotification?.createdAt ?? proposal.proposedAt;
-  const linkedUnread = linkedNotification ? !linkedNotification.isRead : true;
+  const linkedUnread = linkedNotification
+    ? !linkedNotification.isRead
+    : isUnreadByLastViewedAt(proposal.proposedAt, lastTimelineViewedAt);
 
   if (proposal.status === 'proposed') {
     if (isA) {
@@ -416,11 +419,17 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       });
     }
 
+    const needsProposalViewedAt = proposalRows.some((proposal) => {
+      if (latestProposalNotificationById.has(proposal.id)) return false;
+      const isSender = proposal.pharmacyAId === pharmacyId;
+      return !(proposal.status === 'proposed' && isSender);
+    });
+
     // messageReads と triggerPharmacy names を並列取得
     const messageIds = messageRows.map((message) => message.id);
     const triggerPharmacyIds = [...new Set(matchRows.map((row) => row.triggerPharmacyId).filter((id): id is number => id != null))];
 
-    const [messageReadRows, triggerPharmacyRows] = await Promise.all([
+    const [messageReadRows, triggerPharmacyRows, pharmacyRows] = await Promise.all([
       messageIds.length > 0
         ? db.select({ messageId: adminMessageReads.messageId })
           .from(adminMessageReads)
@@ -433,17 +442,24 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         ? db.select({ id: pharmacies.id, name: pharmacies.name })
           .from(pharmacies)
           .where(inArray(pharmacies.id, triggerPharmacyIds))
-        : Promise.resolve([]),
+        : Promise.resolve([] as { id: number; name: string | null }[]),
+      needsProposalViewedAt
+        ? db.select({ lastTimelineViewedAt: pharmacies.lastTimelineViewedAt })
+          .from(pharmacies)
+          .where(eq(pharmacies.id, pharmacyId))
+          .limit(1)
+        : Promise.resolve([] as { lastTimelineViewedAt: string | null }[]),
     ]);
 
     const readMessageIdSet = new Set(messageReadRows.map((row) => row.messageId));
+    const lastTimelineViewedAt = pharmacyRows[0]?.lastTimelineViewedAt ?? null;
 
     const notices: NoticeItem[] = [];
     const mappedProposalReferenceIds = new Set<number>();
 
     for (const proposal of proposalRows) {
       const linkedNotification = latestProposalNotificationById.get(proposal.id);
-      const item = proposalActionNotice(proposal, pharmacyId, linkedNotification);
+      const item = proposalActionNotice(proposal, pharmacyId, linkedNotification, lastTimelineViewedAt);
       if (item) notices.push(item);
       if (item && linkedNotification) {
         mappedProposalReferenceIds.add(proposal.id);

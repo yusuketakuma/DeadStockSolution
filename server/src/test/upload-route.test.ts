@@ -998,9 +998,11 @@ describe('upload routes', () => {
   it('returns upload status from a grouped upload query', async () => {
     const app = createApp();
     const nowIso = new Date().toISOString();
+    const firstOfMonthIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+    const firstOfMonthPlusOneMinuteIso = new Date(Date.parse(firstOfMonthIso) + 60_000).toISOString();
     const selectGroupByMock = vi.fn().mockResolvedValue([
-      { uploadType: 'dead_stock', createdAt: '2025-12-01T00:00:00.000Z' },
-      { uploadType: 'used_medication', createdAt: nowIso },
+      { uploadType: 'dead_stock', completedAt: firstOfMonthPlusOneMinuteIso },
+      { uploadType: 'used_medication', completedAt: nowIso },
     ]);
     const selectWhereMock = vi.fn(() => ({ groupBy: selectGroupByMock }));
     const selectFromMock = vi.fn(() => ({ where: selectWhereMock }));
@@ -1012,10 +1014,34 @@ describe('upload routes', () => {
     expect(response.body).toEqual({
       deadStockUploaded: true,
       usedMedicationUploaded: true,
-      lastDeadStockUpload: '2025-12-01T00:00:00.000Z',
+      lastDeadStockUpload: firstOfMonthPlusOneMinuteIso,
       lastUsedMedicationUpload: nowIso,
     });
     expect(selectGroupByMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats dead stock uploads from a previous month as not uploaded', async () => {
+    const app = createApp();
+    const now = new Date();
+    const firstOfMonthIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const previousMonthIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1, 0, 1, 0)).toISOString();
+    const selectGroupByMock = vi.fn().mockResolvedValue([
+      { uploadType: 'dead_stock', completedAt: previousMonthIso },
+      { uploadType: 'used_medication', completedAt: firstOfMonthIso },
+    ]);
+    const selectWhereMock = vi.fn(() => ({ groupBy: selectGroupByMock }));
+    const selectFromMock = vi.fn(() => ({ where: selectWhereMock }));
+    mocks.db.select.mockImplementationOnce(() => ({ from: selectFromMock }));
+
+    const response = await request(app).get('/api/upload/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      deadStockUploaded: false,
+      usedMedicationUploaded: true,
+      lastDeadStockUpload: previousMonthIso,
+      lastUsedMedicationUpload: firstOfMonthIso,
+    });
   });
 
   it('auto-detects upload type when preview upload type is omitted', async () => {

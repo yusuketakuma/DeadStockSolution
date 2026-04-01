@@ -85,6 +85,12 @@ export function buildProposalDeadlineAt(proposedAt: string | null): string | nul
   return new Date(deadlineMs).toISOString();
 }
 
+export function isUnreadByLastViewedAt(createdAt: string | null, lastTimelineViewedAt?: string | null): boolean {
+  if (!createdAt) return true;
+  if (!lastTimelineViewedAt) return true;
+  return timestampSortValue(createdAt) > timestampSortValue(lastTimelineViewedAt);
+}
+
 export function timestampSortValue(timestamp: string | null): number {
   if (timestamp === null) return Number.NEGATIVE_INFINITY;
   const value = Date.parse(timestamp);
@@ -242,13 +248,15 @@ export function proposalActionNotice(proposal: {
   id: number;
   isRead: boolean;
   createdAt: string | null;
-}): NoticeItem | null {
+}, lastTimelineViewedAt?: string | null): NoticeItem | null {
   const isA = proposal.pharmacyAId === currentPharmacyId;
   const actionPath = `/proposals/${proposal.id}`;
   const deadlineAt = buildProposalDeadlineAt(proposal.proposedAt);
   const linkedId = linkedNotification ? `notification-${linkedNotification.id}` : null;
   const linkedCreatedAt = linkedNotification?.createdAt ?? proposal.proposedAt;
-  const linkedUnread = linkedNotification ? !linkedNotification.isRead : true;
+  const linkedUnread = linkedNotification
+    ? !linkedNotification.isRead
+    : isUnreadByLastViewedAt(proposal.proposedAt, lastTimelineViewedAt);
 
   if (proposal.status === 'proposed') {
     if (isA) {

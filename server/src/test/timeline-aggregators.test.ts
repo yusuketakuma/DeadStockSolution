@@ -5,6 +5,7 @@ import {
   mapMatchNotificationToEvent,
   mapProposalToEvent,
   mapCommentToEvent,
+  fetchNotificationEvents,
   fetchCommentEvents,
   mapFeedbackToEvent,
   mapUploadToEvent,
@@ -312,6 +313,72 @@ describe('fetchCommentEvents', () => {
       source: 'comment',
       type: 'new_comment',
       metadata: { proposalId: 900 },
+    });
+  });
+});
+
+describe('fetchNotificationEvents', () => {
+  it('timeline 専用 source を持つ通知タイプは generic notification から除外する', async () => {
+    const chain = {
+      select: vi.fn(),
+      from: vi.fn(),
+      where: vi.fn(),
+      orderBy: vi.fn(),
+      update: vi.fn(),
+    };
+
+    const notificationRows = [
+      {
+        id: 90,
+        type: 'request_update',
+        title: '通常通知',
+        message: '通常通知は残る',
+        referenceType: null,
+        referenceId: null,
+        isRead: false,
+        createdAt: '2026-01-20T10:00:00.000Z',
+      },
+      {
+        id: 91,
+        type: 'new_comment',
+        title: 'コメント通知',
+        message: 'comment row に寄せる',
+        referenceType: 'proposal',
+        referenceId: 12,
+        isRead: false,
+        createdAt: '2026-01-20T10:01:00.000Z',
+      },
+      {
+        id: 92,
+        type: 'match_update',
+        title: 'マッチ通知',
+        message: 'match row に寄せる',
+        referenceType: 'match',
+        referenceId: null,
+        isRead: false,
+        createdAt: '2026-01-20T10:02:00.000Z',
+      },
+    ];
+    const dynamicChain = {
+      limit: vi.fn().mockResolvedValue(notificationRows),
+      then: (resolve: (v: unknown) => void) => Promise.resolve(notificationRows).then(resolve),
+    };
+    chain.select.mockReturnValue(chain);
+    chain.from.mockReturnValue(chain);
+    chain.where.mockReturnValue(chain);
+    chain.orderBy.mockReturnValue({ $dynamic: vi.fn().mockReturnValue(dynamicChain) });
+
+    const db = {
+      select: chain.select,
+      update: (() => undefined) as (...args: unknown[]) => unknown,
+    } as unknown as DbClient;
+
+    const events = await fetchNotificationEvents(db, 1);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      id: 'notification_90',
+      type: 'request_update',
     });
   });
 });

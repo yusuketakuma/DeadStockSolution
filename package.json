@@ -62,7 +62,9 @@
     "flatted": "3.4.2",
     "picomatch": "4.0.4",
     "react": "$react",
-    "react-dom": "$react-dom"
+    "react-dom": "$react-dom",
+    "@rollup/plugin-terser": "1.0.0",
+    "tmp": "0.2.5"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.438",

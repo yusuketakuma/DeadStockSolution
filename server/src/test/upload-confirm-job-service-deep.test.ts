@@ -148,7 +148,7 @@ function createJobRecord(overrides: Record<string, unknown> = {}) {
     idempotencyKey: null,
     fileHash: 'abc123',
     headerRowIndex: 0,
-    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' },
+    mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3', yakka_unit_price: '4' },
     status: 'pending',
     applyMode: 'replace',
     deleteMissing: false,
@@ -456,6 +456,36 @@ describe('processUploadConfirmJobById deep coverage', () => {
 
     const result = await processUploadConfirmJobById(1);
     expect(result).toBe(true);
+    expect(mocks.runUploadConfirm).not.toHaveBeenCalled();
+  });
+
+  it('handles mapping missing drug_code', async () => {
+    const compressedPayload = await createCompressedPayload('file-content');
+    const claimedJob = createJobRecord({
+      status: 'processing',
+      mappingJson: { drug_name: '1', quantity: '2', unit: '3', yakka_unit_price: '4' },
+      fileBase64: compressedPayload,
+      attempts: 0,
+    });
+
+    const claimChain = createUpdateChain([claimedJob]);
+    mocks.db.update.mockReturnValueOnce(claimChain);
+
+    mocks.clearUploadRowIssuesForJob.mockResolvedValue(undefined);
+
+    const cancelCheck = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([{ cancelRequestedAt: null, canceledAt: null }]),
+    };
+    mocks.db.select.mockReturnValueOnce(cancelCheck);
+
+    const errorUpdateChain = createUpdateChain([{ id: 1 }]);
+    mocks.db.update.mockReturnValueOnce(errorUpdateChain);
+
+    const result = await processUploadConfirmJobById(1);
+    expect(result).toBe(true);
+    expect(mocks.runUploadConfirm).not.toHaveBeenCalled();
   });
 
   it('handles mapping missing quantity for dead_stock type', async () => {
@@ -486,6 +516,37 @@ describe('processUploadConfirmJobById deep coverage', () => {
 
     const result = await processUploadConfirmJobById(1);
     expect(result).toBe(true);
+    expect(mocks.runUploadConfirm).not.toHaveBeenCalled();
+  });
+
+  it('handles mapping missing yakka_unit_price for dead_stock type', async () => {
+    const compressedPayload = await createCompressedPayload('file-content');
+    const claimedJob = createJobRecord({
+      status: 'processing',
+      uploadType: 'dead_stock',
+      mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', unit: '3' },
+      fileBase64: compressedPayload,
+      attempts: 0,
+    });
+
+    const claimChain = createUpdateChain([claimedJob]);
+    mocks.db.update.mockReturnValueOnce(claimChain);
+
+    mocks.clearUploadRowIssuesForJob.mockResolvedValue(undefined);
+
+    const cancelCheck = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([{ cancelRequestedAt: null, canceledAt: null }]),
+    };
+    mocks.db.select.mockReturnValueOnce(cancelCheck);
+
+    const errorUpdateChain = createUpdateChain([{ id: 1 }]);
+    mocks.db.update.mockReturnValueOnce(errorUpdateChain);
+
+    const result = await processUploadConfirmJobById(1);
+    expect(result).toBe(true);
+    expect(mocks.runUploadConfirm).not.toHaveBeenCalled();
   });
 
   it('handles job cancellation detected mid-processing', async () => {

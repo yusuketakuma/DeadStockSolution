@@ -797,7 +797,7 @@ describe('upload-confirm-job-service.ts — decodeUploadJobFilePayload non-compr
       uploadType: 'dead_stock',
       originalFilename: 'test.xlsx',
       headerRowIndex: 0,
-      mappingJson: { drug_name: '0', quantity: '1' },
+      mappingJson: { drug_code: '0', drug_name: '1', quantity: '2', yakka_unit_price: '3' },
       status: 'processing',
       applyMode: 'replace',
       deleteMissing: false,

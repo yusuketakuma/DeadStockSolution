@@ -4,8 +4,15 @@
  * 全 aggregator を並列実行し、優先度付与・ページネーションを行うメイン API。
  */
 
-import { eq } from 'drizzle-orm';
-import { pharmacies } from '../db/schema';
+import { and, eq, ne, sql } from 'drizzle-orm';
+import {
+  adminMessageReads,
+  adminMessages,
+  matchNotifications,
+  notifications as notificationsTable,
+  pharmacies,
+  proposalComments,
+} from '../db/schema';
 import type {
   TimelineEvent,
   TimelinePriority,
@@ -27,6 +34,7 @@ import {
 } from './timeline-aggregators';
 import { assignPriority } from './timeline-priority-engine';
 import { countAllUnread } from './timeline-unread-counts';
+import { invalidateDashboardUnreadCache } from './notification-service';
 import { encodeCursor } from '../utils/cursor-pagination';
 
 export interface TimelineQueryOptions {
@@ -43,6 +51,12 @@ const DIGEST_PER_TABLE_LIMIT = 100;
 const CURSOR_FETCH_FACTOR = 4;
 const CURSOR_PER_TABLE_LIMIT_MAX = 200;
 const DEFAULT_FETCH_CONCURRENCY = 4;
+const EXPLICIT_READ_SOURCES = new Set<RawTimelineEvent['source']>([
+  'notification',
+  'match',
+  'comment',
+  'admin_message',
+]);
 
 interface TimelineSortable {
   timestamp: string;
@@ -101,12 +115,38 @@ function buildNextCursor(events: TimelineEvent[], hasMore: boolean): string | nu
   return encodeCursor(buildCursorFromEvent(tail));
 }
 
+async function getLastTimelineViewedAt(
+  db: DbClient,
+  pharmacyId: number,
+): Promise<string | null> {
+  const rows = await db
+    .select({ lastTimelineViewedAt: pharmacies.lastTimelineViewedAt })
+    .from(pharmacies)
+    .where(eq(pharmacies.id, pharmacyId));
+
+  return rows[0]?.lastTimelineViewedAt ?? null;
+}
+
+function resolveReadState(raw: RawTimelineEvent, lastViewedAt: string | null): boolean {
+  if (EXPLICIT_READ_SOURCES.has(raw.source)) {
+    return raw.isRead;
+  }
+
+  if (!lastViewedAt) {
+    return raw.isRead;
+  }
+
+  return timestampSortValue(raw.timestamp) <= timestampSortValue(lastViewedAt);
+}
+
 /**
  * RawTimelineEvent に優先度を付与して TimelineEvent に変換する。
  */
-function enrichEvent(raw: RawTimelineEvent, now: Date): TimelineEvent {
+function enrichEvent(raw: RawTimelineEvent, now: Date, lastViewedAt: string | null): TimelineEvent {
+  const isRead = resolveReadState(raw, lastViewedAt);
   return {
     ...raw,
+    isRead,
     priority: assignPriority(raw, now),
   };
 }
@@ -166,16 +206,20 @@ export async function getTimeline(
   const since = options?.since;
   const cursor = options?.cursor ?? null;
   const cursorBefore = cursor?.timestamp;
-  const perTableLimit = Math.min(
-    Math.max(limit * CURSOR_FETCH_FACTOR, limit + 1),
-    CURSOR_PER_TABLE_LIMIT_MAX,
-  );
+  // カーソルなし・優先度フィルタなしの初回リクエストでは各テーブルからの取得数を抑制
+  const needsOverfetch = cursor !== null || priority !== undefined;
+  const perTableLimit = needsOverfetch
+    ? Math.min(Math.max(limit * CURSOR_FETCH_FACTOR, limit + 1), CURSOR_PER_TABLE_LIMIT_MAX)
+    : limit + 1;
 
   const now = new Date();
-  const rawEvents = await fetchAllEvents(db, pharmacyId, since, perTableLimit, cursorBefore);
+  const [rawEvents, lastViewedAt] = await Promise.all([
+    fetchAllEvents(db, pharmacyId, since, perTableLimit, cursorBefore),
+    getLastTimelineViewedAt(db, pharmacyId),
+  ]);
 
   // 優先度付与
-  let enriched = rawEvents.map((raw) => enrichEvent(raw, now));
+  let enriched = rawEvents.map((raw) => enrichEvent(raw, now, lastViewedAt));
 
   // 優先度フィルタ
   if (priority) {
@@ -220,10 +264,59 @@ export async function markTimelineViewed(
   db: DbClient,
   pharmacyId: number,
 ): Promise<void> {
+  const viewedAt = new Date().toISOString();
+
+  await db
+    .update(notificationsTable)
+    .set({ isRead: true, readAt: viewedAt })
+    .where(and(
+      eq(notificationsTable.pharmacyId, pharmacyId),
+      eq(notificationsTable.isRead, false),
+    ));
+
+  await db
+    .update(matchNotifications)
+    .set({ isRead: true })
+    .where(and(
+      eq(matchNotifications.pharmacyId, pharmacyId),
+      eq(matchNotifications.isRead, false),
+    ));
+
+  await db
+    .update(proposalComments)
+    .set({ readByRecipient: true })
+    .where(and(
+      eq(proposalComments.readByRecipient, false),
+      eq(proposalComments.isDeleted, false),
+      ne(proposalComments.authorPharmacyId, pharmacyId),
+      sql`EXISTS (
+        SELECT 1
+        FROM exchange_proposals ep
+        WHERE ep.id = ${proposalComments.proposalId}
+          AND (ep.pharmacy_a_id = ${pharmacyId} OR ep.pharmacy_b_id = ${pharmacyId})
+      )`,
+    ));
+
+  await db.execute(sql`
+    INSERT INTO admin_message_reads (message_id, pharmacy_id)
+    SELECT m.id, ${pharmacyId}
+    FROM ${adminMessages} AS m
+    LEFT JOIN ${adminMessageReads} AS reads
+      ON reads.message_id = m.id AND reads.pharmacy_id = ${pharmacyId}
+    WHERE (
+      m.target_type = 'all'
+      OR (m.target_type = 'pharmacy' AND m.target_pharmacy_id = ${pharmacyId})
+    )
+      AND reads.message_id IS NULL
+    ON CONFLICT (message_id, pharmacy_id) DO NOTHING
+  `);
+
   await db
     .update(pharmacies)
-    .set({ lastTimelineViewedAt: new Date().toISOString() })
+    .set({ lastTimelineViewedAt: viewedAt })
     .where(eq(pharmacies.id, pharmacyId));
+
+  invalidateDashboardUnreadCache(pharmacyId);
 }
 
 /**
@@ -236,9 +329,12 @@ export async function getSmartDigest(
   pharmacyId: number,
 ): Promise<TimelineEvent[]> {
   const now = new Date();
-  const rawEvents = await fetchAllEvents(db, pharmacyId, undefined, DIGEST_PER_TABLE_LIMIT);
+  const [rawEvents, lastViewedAt] = await Promise.all([
+    fetchAllEvents(db, pharmacyId, undefined, DIGEST_PER_TABLE_LIMIT),
+    getLastTimelineViewedAt(db, pharmacyId),
+  ]);
 
-  const enriched = rawEvents.map((raw) => enrichEvent(raw, now));
+  const enriched = rawEvents.map((raw) => enrichEvent(raw, now, lastViewedAt));
 
   const highPriority = enriched.filter(
     (e) => e.priority === 'critical' || e.priority === 'high',

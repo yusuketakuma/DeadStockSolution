@@ -58,6 +58,7 @@ let exchangeRouter: (typeof import('../routes/exchange'))['default'];
 function createPriorityRowsQuery(rows: unknown[]) {
   const query = {
     from: vi.fn(),
+    leftJoin: vi.fn(),
     where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
@@ -65,6 +66,7 @@ function createPriorityRowsQuery(rows: unknown[]) {
   };
   let currentLimit = rows.length;
   query.from.mockReturnValue(query);
+  query.leftJoin.mockReturnValue(query);
   query.where.mockReturnValue(query);
   query.orderBy.mockReturnValue(query);
   query.limit.mockImplementation((limit) => {

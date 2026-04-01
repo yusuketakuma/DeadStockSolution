@@ -399,6 +399,7 @@ export async function handleConfirmAsyncEnqueue(
           uploadType: executionParams.uploadType,
           applyMode: executionParams.applyMode,
         }));
+        const fallbackRejectedRows = syncResult.partialSummary?.rejectedRows ?? 0;
         res.status(200).json({
           message: 'キュー登録に失敗したため同期処理で適用しました',
           status: 'completed_sync_fallback',
@@ -409,7 +410,7 @@ export async function handleConfirmAsyncEnqueue(
           uploadId: syncResult.uploadId,
           rowCount: syncResult.rowCount,
           partialSummary: syncResult.partialSummary,
-          errorReportAvailable: false,
+          errorReportAvailable: fallbackRejectedRows > 0,
         });
         return;
       } catch (fallbackErr) {

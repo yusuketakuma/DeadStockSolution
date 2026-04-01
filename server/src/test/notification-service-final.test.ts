@@ -104,6 +104,7 @@ describe('notification-service-final', () => {
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
             { rows: [{ count: 3 }] }, // markNotificationsAsRead
+            { rows: [{ count: 1 }] }, // markProposalCommentsAsRead
             { rows: [{ exists: true }] }, // match_notifications table exists
             { rows: [{ count: 0 }] }, // mark match_notifications as read
             { rows: [{ count: 2 }] }, // markAdminMessagesAsRead
@@ -120,6 +121,7 @@ describe('notification-service-final', () => {
       mocks.db.transaction.mockImplementation(
         async (callback: (tx: { execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
           const tx = createTx(
+            { rows: [{ count: 0 }] },
             { rows: [{ count: 0 }] },
             { rows: [{ exists: true }] },
             { rows: [{ count: 0 }] },

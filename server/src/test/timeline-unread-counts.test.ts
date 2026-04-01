@@ -248,4 +248,69 @@ describe('timeline-unread-counts', () => {
     expect(sqlText).toContain('FROM upload_confirm_jobs');
     expect(sqlText).not.toContain('FROM uploads');
   });
+
+  it('countAllUnread: explicit read state がある通知は lastTimelineViewedAt で再未読化しない', async () => {
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ total: 0 }]),
+      }),
+    });
+    const db = {
+      select,
+      update: vi.fn(),
+    } as unknown as MockDb;
+
+    await countAllUnread(db, pharmacyId);
+
+    const projection = select.mock.calls[0]?.[0] as { total?: unknown } | undefined;
+    const sqlText = flattenSqlChunks(projection?.total);
+    expect(sqlText).toContain('FROM notifications');
+    expect(sqlText).toContain('FROM match_notifications');
+    expect(sqlText).toContain('AND is_read = ');
+    expect(sqlText).not.toContain('is_read = false OR');
+    expect(sqlText).toContain('AND pc.read_by_recipient = ');
+    expect(sqlText).not.toContain('pc.read_by_recipient = false OR');
+    expect(sqlText).toContain('AND amr.id IS NULL');
+    expect(sqlText).not.toContain('amr.id IS NULL OR');
+  });
+
+  it('countAllUnread: generic notifications から comment/match のミラー通知を除外する', async () => {
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ total: 0 }]),
+      }),
+    });
+    const db = {
+      select,
+      update: vi.fn(),
+    } as unknown as MockDb;
+
+    await countAllUnread(db, pharmacyId);
+
+    const projection = select.mock.calls[0]?.[0] as { total?: unknown } | undefined;
+    const sqlText = flattenSqlChunks(projection?.total);
+    expect(sqlText).toContain('type NOT IN');
+    expect(sqlText).toContain('match_update');
+    expect(sqlText).toContain('new_comment');
+  });
+
+  it('countAllUnread: expiry_risk は updated_at ではなく created_at を参照する', async () => {
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ total: 0 }]),
+      }),
+    });
+    const db = {
+      select,
+      update: vi.fn(),
+    } as unknown as MockDb;
+
+    await countAllUnread(db, pharmacyId);
+
+    const projection = select.mock.calls[0]?.[0] as { total?: unknown } | undefined;
+    const sqlText = flattenSqlChunks(projection?.total);
+    expect(sqlText).toContain('FROM dead_stock_items');
+    expect(sqlText).toContain('created_at >');
+    expect(sqlText).not.toContain('updated_at >');
+  });
 });

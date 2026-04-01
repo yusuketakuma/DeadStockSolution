@@ -46,7 +46,7 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 import { findMatches } from '../services/matching-service';
-import { pharmacies, pharmacyRelationships } from '../db/schema';
+import { pharmacies, pharmacyRelationships, uploadJobs } from '../db/schema';
 import {
   createLimitQuery,
   createOrderByQuery,
@@ -122,6 +122,75 @@ describe('matching-service block filtering', () => {
 
     expect(mocks.drizzle.eq).toHaveBeenCalledWith(pharmacyRelationships.pharmacyId, pharmacies.id);
     expect(mocks.drizzle.eq).toHaveBeenCalledWith(pharmacyRelationships.targetPharmacyId, 1);
+    expect(mocks.drizzle.eq).toHaveBeenCalledWith(uploadJobs.status, 'completed');
+    expect(mocks.drizzle.eq).toHaveBeenCalledWith(pharmacies.isAdmin, false);
+    expect(mocks.drizzle.gte).toHaveBeenCalledWith(uploadJobs.completedAt, expect.any(String));
     expect(mocks.drizzle.or).toHaveBeenCalled();
+  });
+
+  it('excludes admin pharmacies from batch viable pharmacy pool', async () => {
+    mocks.db.select.mockImplementation((fields: unknown) => {
+      const keys = Object.keys((fields ?? {}) as Record<string, unknown>);
+
+      if (keys.includes('name') && keys.includes('latitude') && !keys.includes('phone')) {
+        return createWhereQuery([
+          { id: 1, name: '自薬局', latitude: 35.0, longitude: 139.0 },
+        ]);
+      }
+
+      if (keys.length === 2 && keys.includes('pharmacyId') && keys.includes('targetPharmacyId')) {
+        return createWhereQuery([]);
+      }
+
+      if (keys.includes('phone') && keys.includes('fax')) {
+        return createWhereQuery([]);
+      }
+
+      if (keys.includes('quantity') && keys.includes('expirationDate')) {
+        return createOrderByQuery([]);
+      }
+
+      if (keys.length === 2 && keys.includes('pharmacyId') && keys.includes('drugName')) {
+        return createOrderByQuery([]);
+      }
+
+      if (keys.includes('deadStockItemId') && keys.includes('reservedQty')) {
+        const groupByQuery = {
+          from: vi.fn(),
+          innerJoin: vi.fn(),
+          where: vi.fn(),
+          groupBy: vi.fn(),
+        };
+        groupByQuery.from.mockReturnValue(groupByQuery);
+        groupByQuery.innerJoin.mockReturnValue(groupByQuery);
+        groupByQuery.where.mockReturnValue(groupByQuery);
+        groupByQuery.groupBy.mockResolvedValue([]);
+        return groupByQuery;
+      }
+
+      if (keys.includes('pharmacyAId') && keys.includes('pharmacyBId') && keys.includes('count')) {
+        const groupByQuery = {
+          from: vi.fn(),
+          where: vi.fn(),
+          groupBy: vi.fn(),
+        };
+        groupByQuery.from.mockReturnValue(groupByQuery);
+        groupByQuery.where.mockReturnValue(groupByQuery);
+        groupByQuery.groupBy.mockResolvedValue([]);
+        return groupByQuery;
+      }
+
+      if (keys.includes('dayOfWeek') || keys.includes('specialType')) {
+        return createWhereQuery([]);
+      }
+
+      return createSubQueryBuilder();
+    });
+
+    const { findMatchesBatch } = await import('../services/matching-service');
+    const result = await findMatchesBatch([1]);
+
+    expect(result.get(1)).toEqual([]);
+    expect(mocks.drizzle.eq).toHaveBeenCalledWith(pharmacies.isAdmin, false);
   });
 });

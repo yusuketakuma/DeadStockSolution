@@ -229,10 +229,26 @@ function parseStoredMapping(mappingJson: unknown, uploadType: UploadType): Colum
     );
   }
 
+  if (!mapping.drug_code) {
+    throw createUploadConfirmJobError(
+      'MAPPING_INVALID',
+      'ジョブ内のmappingで薬品コードカラムの割り当てが不足しています',
+      false,
+    );
+  }
+
   if (uploadType === 'dead_stock' && !mapping.quantity) {
     throw createUploadConfirmJobError(
       'MAPPING_INVALID',
       'ジョブ内のmappingで数量カラムの割り当てが不足しています',
+      false,
+    );
+  }
+
+  if (uploadType === 'dead_stock' && !mapping.yakka_unit_price) {
+    throw createUploadConfirmJobError(
+      'MAPPING_INVALID',
+      'ジョブ内のmappingで薬価カラムの割り当てが不足しています',
       false,
     );
   }
