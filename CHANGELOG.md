@@ -5,6 +5,111 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.23] - 2026-04-01
+
+### テーマ: APIパフォーマンス最適化 + サービス層モジュール化 + UI/UXバグ修正 + セキュリティ強化 + アップロードバリデーション厳格化
+
+**提案一覧APIのN+1クエリ排除と詳細画面の逐次クエリ並列化により、ユーザー体感速度を大幅に向上。サービス層を機能ドメインごとにサブディレクトリに整理し、保守性を改善。管理画面のトークン表示マスク化によるセキュリティ強化、アップロード時の薬品コード・薬価の必須バリデーション追加など、品質全体を底上げしました。**
+
+---
+
+#### 1. 提案一覧APIのN+1クエリ排除（LEFT JOIN化）
+
+**今まで**: `/api/exchange-proposals` の提案一覧取得時、各行ごとにスカラーサブクエリで薬局名を取得していました。ページに20件表示すると、メインクエリ1回 + 薬局名取得サブクエリ40回（pharmacyA/pharmacyBの2回 × 20行）= 合計41回のクエリが発生。提案数が増えるほど応答時間が線形に悪化する構造でした。
+
+**今後**: スカラーサブクエリを `LEFT JOIN` に変換し、1回のクエリで薬局名も含めて取得するようになりました。20件表示時のクエリ数が41回→2回（データ取得+カウント）に削減され、ページ表示が高速化されます。
+
+```sql
+-- Before: 各行ごとにサブクエリ
+SELECT *, (SELECT name FROM pharmacies WHERE id = pharmacy_a_id) AS pharmacy_a_name ...
+
+-- After: JOIN で一括取得
+SELECT ... FROM exchange_proposals
+LEFT JOIN pharmacies AS pharmacy_a ON pharmacy_a_id = pharmacy_a.id
+LEFT JOIN pharmacies AS pharmacy_b ON pharmacy_b_id = pharmacy_b.id
+```
+
+#### 2. 提案詳細画面の逐次クエリ並列化
+
+**今まで**: 提案詳細画面（`/api/exchange-proposals/:id`）では、薬局情報取得・タイムライン取得・コメント取得・評価取得の4つのクエリが順番に実行されていました。各クエリが50-100msかかると仮定すると、合計200-400msの待ち時間が発生。ユーザーが詳細画面を開くたびにこの遅延を体感していました。
+
+**今後**: 4つの独立したクエリを `Promise.all()` で並列実行するようにしました。最も遅いクエリの所要時間（50-100ms）で全データが揃い、200-400msの削減が見込めます。
+
+```typescript
+const [[pharmA, pharmB], actionRows, commentRows, feedbackRows] = await Promise.all([
+  fetchProposalDetailPharmacies(proposal),
+  fetchProposalTimelineActionRows(id),
+  db.select(...).from(proposalComments)...,
+  db.select(...).from(exchangeFeedback)...,
+]);
+```
+
+#### 3. サービス層のモジュール化（サブディレクトリ分割）
+
+**今まで**: `server/src/services/` 直下に全サービスファイルがフラットに配置され、timeline関連だけでも `timeline-service.ts`, `timeline-aggregators.ts`, `timeline-priority-engine.ts`, `timeline-unread-counts.ts` など複数ファイルが混在。exchange、openclaw、drug-master なども同様で、関連ファイルを探すのにディレクトリ内を横断的に検索する必要がありました。
+
+**今後**: ドメインごとにサブディレクトリを整理し、関連ファイルを近くに配置しました。
+
+```
+server/src/services/
+├── timeline-fetchers/        # タイムライン集約用フェッチャー群
+│   ├── notification-fetchers.ts
+│   ├── exchange-fetchers.ts
+│   └── upload-fetchers.ts
+├── matching/                 # マッチング関連
+│   └── matching-data-fetcher.ts
+├── upload-confirm/           # アップロード確認処理
+│   ├── upload-confirm-processor-service.ts
+│   ├── upload-confirm-query-service.ts
+│   └── upload-confirm-types.ts
+└── ...
+```
+
+#### 4. アップロード時の薬品コード・薬価バリデーション追加
+
+**今まで**: CSVアップロードのカラムマッピングでは `drug_name`（薬剤名）と `quantity`（数量）のみが必須でした。薬品コードや薬価カラムのマッピングが不足していても処理が進行し、後続のマッチングや薬価計算で不正なデータが発生する可能性がありました。
+
+**今後**: `drug_code`（薬品コード）を全アップロードタイプで必須に、`yakka_unit_price`（薬価単価）をデッドストック登録で必須にしました。マッピング不足時は処理開始前に明確なエラーメッセージで通知されます。
+
+```
+エラー例:
+- 「ジョブ内のmappingで薬品コードカラムの割り当てが不足しています」
+- 「ジョブ内のmappingで薬価カラムの割り当てが不足しています」
+```
+
+#### 5. Bootstrap Token のマスク表示（セキュリティ強化）
+
+**今まで**: 管理画面のDDS/OpenClawヘルスカードで、bootstrap tokenが平文のまま全文表示されていました。管理者が画面共有中やスクリーンショットを撮った際に、トークンが意図せず第三者に漏洩するリスクがありました。
+
+**今後**: トークンの先頭8文字と末尾4文字のみを表示し、中間部分をマスク化。「コピー」ボタンでクリップボードに全文をコピーできるため、運用上の利便性は維持されます。
+
+```
+表示: abc12345...Xq4b [コピー]
+```
+
+#### 6. UI/UXバグ修正（P0-P2）
+
+**今まで**: スクリーンショット監査により以下の問題が発見されていました:
+- モバイルサイドバーの背景色が不統一
+- 通知バッジの表示バグ
+- コンパクトモバイルヘッダーの崩れ
+
+**今後**: P0-P2の優先度で全修正を実施。モバイルサイドバーのオフキャンバスにダーク背景を強制適用、通知バッジの表示ロジックを修正、マッチ通知のトースト表示タイミングを最適化しました。
+
+#### 7. マッチ通知トーストの改善
+
+**今まで**: マッチ通知のトースト表示で、通知コンテキストとの連携が不完全でした。タイムラインの未読数との不整合が発生することがありました。
+
+**今後**: `useMatchNotificationToast` フックを改修し、TimelineContext との連携を強化。トースト表示後に未読数が正しく同期されるようになりました。
+
+#### 8. 12項目改善スプリント（P0-P2）の完了
+
+**今まで**: ユーザーフィードバックから収集された12項目のUI/UX改善要望が未対応でした。
+
+**今後**: 優先度P0-P2の全12項目を実装完了。具体的な改善項目は提案フロー、在庫検索、ダッシュボード表示に及びます。
+
+---
+
 ## [0.0.22] - 2026-03-29
 
 ### テーマ: マッチング画面の大規模リファクタリング + 内部CRONセキュリティ強化 + Playwright E2E監査基盤 + 全画面UX改善
