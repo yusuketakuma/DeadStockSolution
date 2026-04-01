@@ -67,7 +67,16 @@ export default function OpenClawHealthCard({
         {bootstrapToken ? (
           <div className="mt-3 small">
             <div className="fw-semibold">最新 bootstrap token</div>
-            <div className="text-break"><code>{bootstrapToken.token}</code></div>
+            <div className="text-break d-flex align-items-center gap-2">
+              <code>{bootstrapToken.token.slice(0, 8)}...{bootstrapToken.token.slice(-4)}</code>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary py-0 px-1"
+                onClick={() => navigator.clipboard.writeText(bootstrapToken.token)}
+              >
+                コピー
+              </button>
+            </div>
             <div className="text-muted">有効期限: {formatDateTimeJa(bootstrapToken.expiresAt)}</div>
             <div className="text-muted text-break">register: {bootstrapToken.registerUrl}</div>
             <div className="text-muted text-break">health: {bootstrapToken.healthUrl}</div>
