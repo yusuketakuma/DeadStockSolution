@@ -138,6 +138,41 @@ describe('ProposalDetailPage comment actions', () => {
 
     expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
     expect(screen.getByRole('link', { name: '交換履歴' })).toHaveAttribute('href', '/exchange-history');
+    expect(screen.getByRole('link', { name: '印刷用ページを開く' })).toHaveAttribute('href', '/proposals/1/print');
+  });
+
+  it('keeps proposals and history reachable when loading the detail fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/exchange/proposals/1/comments')) {
+        return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/exchange/proposals/1')) {
+        return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ error: `Unexpected mock route: ${url}` }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/proposals/:id" element={<ProposalDetailPage />} />
+      </Routes>,
+      { route: '/proposals/1' },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('提案詳細')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
+    expect(screen.getByRole('link', { name: '交換履歴' })).toHaveAttribute('href', '/exchange-history');
   });
 
   it('allows editing own comment', async () => {

@@ -128,12 +128,28 @@ export function useAdminPharmacyEdit() {
   // --- hasUnsavedChanges（navigateToList + beforeunload で利用） ---
   const hasUnsavedChanges = isAccountDirty || isHoursDirty;
 
-  const navigateToList = useCallback(() => {
-    if (hasUnsavedChanges && !window.confirm('未保存の変更があります。保存せずに一覧へ戻りますか？')) {
+  const navigateWithUnsavedGuard = useCallback((to: string, destinationLabel: string) => {
+    if (hasUnsavedChanges && !window.confirm(`未保存の変更があります。保存せずに${destinationLabel}へ移動しますか？`)) {
       return;
     }
-    navigate('/admin/pharmacies');
+    navigate(to);
   }, [hasUnsavedChanges, navigate]);
+
+  const navigateToList = useCallback(() => {
+    navigateWithUnsavedGuard('/admin/pharmacies', '一覧');
+  }, [navigateWithUnsavedGuard]);
+
+  const navigateToHealth = useCallback(() => {
+    navigateWithUnsavedGuard('/admin/pharmacy-health', '薬局ヘルス');
+  }, [navigateWithUnsavedGuard]);
+
+  const navigateToBusinessHours = useCallback(() => {
+    navigateWithUnsavedGuard('/admin/business-hours', '営業時間');
+  }, [navigateWithUnsavedGuard]);
+
+  const navigateToRelationships = useCallback(() => {
+    navigateWithUnsavedGuard('/admin/relationships', '関係性監査');
+  }, [navigateWithUnsavedGuard]);
 
   // --- Effects ---
   useEffect(() => {
@@ -186,7 +202,7 @@ export function useAdminPharmacyEdit() {
     loadPharmacy, handleChange, handleSubmit,
     handleReloadAccount,
     handleReloadBusinessHours,
-    handleToggleActive, handleVerify, navigateToList,
+    handleToggleActive, handleVerify, navigateToList, navigateToHealth, navigateToBusinessHours, navigateToRelationships,
     handleHoursChange,
     handleClosedChange,
     handle24HoursChange,

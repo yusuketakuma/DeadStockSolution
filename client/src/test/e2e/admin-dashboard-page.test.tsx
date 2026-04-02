@@ -157,7 +157,7 @@ describe('AdminDashboardPage', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('要確認')).toBeInTheDocument();
+    expect(screen.getByText('要確認')).toBeInTheDocument();
     });
 
     expect(screen.getByText('未接続')).toBeInTheDocument();
@@ -165,7 +165,9 @@ describe('AdminDashboardPage', () => {
     expect(screen.getByText('日次統計集計')).toBeInTheDocument();
     expect(screen.getByText('SLO 違反履歴')).toBeInTheDocument();
     expect(screen.getByText('今見る運用')).toBeInTheDocument();
-    expect(screen.getByText('設定・監査')).toBeInTheDocument();
+    expect(screen.getByText('薬局運用・承認')).toBeInTheDocument();
+    expect(screen.getByText('マッチング・マスター')).toBeInTheDocument();
+    expect(screen.getByText('監査・保守')).toBeInTheDocument();
     expect(screen.getByText('admin notifications endpoint exceeded threshold')).toBeInTheDocument();
     expect(
       screen.getAllByRole('link', { name: 'ログセンター' }).every((link) => link.getAttribute('href') === '/admin/log-center'),
@@ -178,6 +180,11 @@ describe('AdminDashboardPage', () => {
       screen.getAllByRole('link', { name: '監査ログ' }).every((link) => link.getAttribute('href') === '/admin/audit'),
     ).toBe(true);
     expect(screen.getAllByRole('link', { name: '操作ログ' }).every((link) => link.getAttribute('href') === '/admin/logs')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '営業時間' }).every((link) => link.getAttribute('href') === '/admin/business-hours')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '関係性監査' }).every((link) => link.getAttribute('href') === '/admin/relationships')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '薬局ヘルス' }).every((link) => link.getAttribute('href') === '/admin/pharmacy-health')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '薬品同等性' }).every((link) => link.getAttribute('href') === '/admin/drug-equivalences')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'レート制限設定' }).every((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
     expect(screen.queryByText('一部のデータの取得に失敗しました')).not.toBeInTheDocument();
   });
 });

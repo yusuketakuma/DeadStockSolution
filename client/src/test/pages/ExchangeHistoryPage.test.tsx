@@ -16,7 +16,7 @@ describe('ExchangeHistoryPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders header shortcuts to proposals and messages', async () => {
+  it('renders header shortcuts and print links for completed exchanges', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/me')) {
@@ -34,8 +34,19 @@ describe('ExchangeHistoryPage', () => {
       }
       if (url.includes('/api/exchange/history?page=1')) {
         return jsonResponse({
-          data: [],
-          pagination: { page: 1, totalPages: 1, total: 0 },
+          data: [
+            {
+              id: 9,
+              proposalId: 31,
+              pharmacyAId: 1,
+              pharmacyBId: 2,
+              pharmacyAName: 'テスト薬局',
+              pharmacyBName: '相手薬局',
+              totalValue: 15000,
+              completedAt: '2026-04-01T00:00:00.000Z',
+            },
+          ],
+          pagination: { page: 1, totalPages: 1, total: 1 },
         });
       }
       return jsonResponse({ error: 'Not found' }, 404);
@@ -51,10 +62,13 @@ describe('ExchangeHistoryPage', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('交換履歴')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: '印刷' })).toHaveAttribute('href', '/proposals/31/print');
     });
 
-    expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
-    expect(screen.getByRole('link', { name: 'メッセージ' })).toHaveAttribute('href', '/messages');
+    expect(screen.getAllByRole('link', { name: 'マッチング一覧' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'メッセージ' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
+    expect(screen.getByRole('link', { name: '印刷' })).toHaveAttribute('href', '/proposals/31/print');
+    expect(screen.getAllByRole('link', { name: '通知センター' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'ブックマーク' }).some((link) => link.getAttribute('href') === '/bookmarks')).toBe(true);
   });
 });

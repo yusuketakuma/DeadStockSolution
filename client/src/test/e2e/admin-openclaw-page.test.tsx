@@ -96,5 +96,7 @@ describe('AdminOpenClawPage', () => {
 
     expect(screen.getAllByText('失敗').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '再連携' })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'ユーザーリクエスト管理' }).some((link) => link.getAttribute('href') === '/admin/user-requests')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'レート制限設定' }).some((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
   });
 });

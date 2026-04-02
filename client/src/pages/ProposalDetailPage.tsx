@@ -302,7 +302,19 @@ export default function ProposalDetailPage() {
   if (loading && !data) return <PageLoader />;
   if (!data) {
     return (
-      <ErrorRetryAlert error={error || 'マッチング詳細を取得できませんでした。'} onRetry={() => void fetchDetail()} />
+      <PageShell>
+        <div className="dl-page-header">
+          <div className="dl-page-header-copy">
+            <h4 className="page-title mb-0">提案詳細</h4>
+            <div className="text-muted small">提案詳細を開けない場合でも、一覧や履歴から近い流れへ戻れます。</div>
+          </div>
+          <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
+            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+          </div>
+        </div>
+        <ErrorRetryAlert error={error || 'マッチング詳細を取得できませんでした。'} onRetry={() => void fetchDetail()} />
+      </PageShell>
     );
   }
 
@@ -579,6 +591,27 @@ export default function ProposalDetailPage() {
     </AppDataPanel>
   );
 
+  const ProposalWorkflowSection = () => (
+    <AppDataPanel title="印刷と次の操作" className="mb-3" bodyClassName="small">
+      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+          <div className="fw-semibold">FAX 確認と承認状況の往復をここから進めます。</div>
+          <div className="text-muted">
+            印刷用ページで様式を開き、送付後はメッセージ確認か進行履歴の確認へ戻ってください。
+          </div>
+        </div>
+        <div className="d-flex gap-2 flex-wrap">
+          <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
+            印刷用ページを開く
+          </Link>
+          <a href="#proposal-timeline" className="btn btn-outline-secondary btn-sm">
+            進行履歴へ
+          </a>
+        </div>
+      </div>
+    </AppDataPanel>
+  );
+
   const ProposalTemplatesSection = () => (
     <ProposalTemplatePanel
       title="提案テンプレート"
@@ -627,6 +660,7 @@ export default function ProposalDetailPage() {
         statusLabel={statusLabel}
       />
       {ProposalDeadlineSection()}
+      {ProposalWorkflowSection()}
       {!user?.isAdmin ? (
         <AppDataPanel title="相手薬局との連絡" className="mb-3" bodyClassName="small d-flex justify-content-between align-items-center gap-3 flex-wrap">
           <div>
@@ -716,6 +750,7 @@ export default function ProposalDetailPage() {
           statusLabel={statusLabel}
         />
         {ProposalDeadlineSection()}
+        {ProposalWorkflowSection()}
         {!user?.isAdmin ? (
           <AppDataPanel title="相手薬局との連絡" className="mb-3" bodyClassName="small">
             <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap">

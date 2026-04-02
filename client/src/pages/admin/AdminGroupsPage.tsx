@@ -14,6 +14,7 @@ import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa } from '../../utils/formatters';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 interface GroupItem {
   id: number;
@@ -49,6 +50,27 @@ const ROLE_LABELS: Record<string, string> = {
   admin: '管理者',
   member: 'メンバー',
 };
+
+const GROUP_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: '薬局・関係性',
+    description: 'グループ構成の前提になる関係性やヘルス状況を確認できます。',
+    links: [
+      { to: '/admin/pharmacies', label: '薬局管理' },
+      { to: '/admin/relationships', label: '関係性監査' },
+      { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+    ],
+  },
+  {
+    title: '周辺運用',
+    description: '営業時間や承認系の周辺運用に進めます。',
+    links: [
+      { to: '/admin/business-hours', label: '営業時間' },
+      { to: '/admin/bulk-actions', label: '一括操作' },
+      { to: '/admin/log-center', label: 'ログセンター' },
+    ],
+  },
+] as const;
 
 export default function AdminGroupsPage() {
   const [visibilityFilter, setVisibilityFilter] = useState('');
@@ -94,6 +116,8 @@ export default function AdminGroupsPage() {
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
           <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+          <Link to="/admin/relationships" className="btn btn-outline-secondary btn-sm">関係性監査</Link>
+          <Link to="/admin/business-hours" className="btn btn-outline-secondary btn-sm">営業時間</Link>
         </div>
       </div>
 
@@ -111,10 +135,21 @@ export default function AdminGroupsPage() {
       {error && <ErrorRetryAlert error={error} onRetry={() => void retry()} />}
 
       <ScrollArea>
+        <AdminNavigationLinks groups={GROUP_LINK_GROUPS} />
         {loading ? (
           <InlineLoader text="グループを読み込み中..." className="text-muted small" />
         ) : items.length === 0 ? (
-          <AppEmptyState title="グループがありません" description="グループが作成されるとここに表示されます。" />
+          <AppEmptyState
+            title="グループがありません"
+            description="グループが作成されるとここに表示されます。先に薬局の関係性や運用状態を確認する場合は近接画面へ進めます。"
+            action={(
+              <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                <Link to="/admin/relationships" className="btn btn-outline-secondary btn-sm">関係性監査を見る</Link>
+                <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+                <Link to="/admin/bulk-actions" className="btn btn-outline-secondary btn-sm">一括操作</Link>
+              </div>
+            )}
+          />
         ) : (
           <AppResponsiveSwitch
             desktop={() => (
@@ -141,7 +176,12 @@ export default function AdminGroupsPage() {
                         <td>{g.memberCount}</td>
                         <td>{formatDateTimeJa(g.createdAt)}</td>
                         <td>
-                          <AppButton size="sm" variant="outline-primary" onClick={() => void openMembers(g)}>メンバー</AppButton>
+                          <div className="d-flex gap-2 flex-wrap">
+                            <Link to={`/admin/pharmacies/${g.ownerPharmacyId}/edit`} className="btn btn-outline-secondary btn-sm">
+                              オーナーを編集
+                            </Link>
+                            <AppButton size="sm" variant="outline-primary" onClick={() => void openMembers(g)}>メンバー</AppButton>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -162,7 +202,12 @@ export default function AdminGroupsPage() {
                       { label: 'メンバー数', value: String(g.memberCount) },
                       { label: '作成日', value: formatDateTimeJa(g.createdAt) },
                     ]}
-                    actions={<AppButton size="sm" variant="outline-primary" onClick={() => void openMembers(g)}>メンバー</AppButton>}
+                    actions={(
+                      <div className="d-flex gap-2 flex-wrap">
+                        <Link to={`/admin/pharmacies/${g.ownerPharmacyId}/edit`} className="btn btn-outline-secondary btn-sm">オーナーを編集</Link>
+                        <AppButton size="sm" variant="outline-primary" onClick={() => void openMembers(g)}>メンバー</AppButton>
+                      </div>
+                    )}
                   />
                 ))}
               </div>

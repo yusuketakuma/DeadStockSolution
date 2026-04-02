@@ -11,7 +11,18 @@ interface Props {
   onClose: () => void;
 }
 
-const NAV_GROUPS = [
+interface SidebarNavItem {
+  to: string;
+  label: string;
+  end?: boolean;
+}
+
+interface SidebarNavGroup {
+  title: string;
+  items: readonly SidebarNavItem[];
+}
+
+const NAV_GROUPS: readonly SidebarNavGroup[] = [
   {
     title: '主要操作',
     items: [
@@ -46,25 +57,50 @@ const NAV_GROUPS = [
   },
 ];
 
-const ADMIN_ITEMS = [
-  { to: '/admin', label: '管理者ダッシュボード', end: true },
-  { to: '/admin/risk', label: '期限リスク分析' },
-  { to: '/admin/reports', label: '月次レポート' },
-  { to: '/admin/exchanges', label: '交換履歴' },
-  { to: '/admin/upload-jobs', label: '取込ジョブ管理' },
-  { to: '/admin/upload-quality', label: 'アップロード品質' },
-  { to: '/admin/pharmacies', label: '薬局管理' },
-  { to: '/admin/direct-messages', label: 'ユーザー間メッセージ' },
-  { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
-  { to: '/admin/notifications', label: '通知・配信状況' },
-  { to: '/admin/openclaw', label: 'OpenClaw連携' },
-  { to: '/admin/drug-master', label: '医薬品マスター管理' },
-  { to: '/admin/matching-experiments', label: 'マッチング実験' },
-  { to: '/admin/log-center', label: 'ログセンター' },
-  { to: '/admin/audit', label: '監査ログ' },
-  { to: '/admin/error-codes', label: 'エラーコード' },
-  { to: '/admin/logs', label: '操作ログ' },
-];
+const ADMIN_NAV_GROUPS: readonly SidebarNavGroup[] = [
+  {
+    title: '運用監視',
+    items: [
+      { to: '/admin', label: '管理者ダッシュボード', end: true },
+      { to: '/admin/notifications', label: '通知・配信状況' },
+      { to: '/admin/upload-jobs', label: '取込ジョブ管理' },
+      { to: '/admin/upload-quality', label: 'アップロード品質' },
+      { to: '/admin/risk', label: '期限リスク分析' },
+      { to: '/admin/reports', label: '月次レポート' },
+      { to: '/admin/log-center', label: 'ログセンター' },
+      { to: '/admin/error-codes', label: 'エラーコード' },
+      { to: '/admin/audit', label: '監査ログ' },
+      { to: '/admin/logs', label: '操作ログ' },
+    ],
+  },
+  {
+    title: '薬局運用',
+    items: [
+      { to: '/admin/pharmacies', label: '薬局管理' },
+      { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+      { to: '/admin/groups', label: 'グループ管理' },
+      { to: '/admin/business-hours', label: '営業時間' },
+      { to: '/admin/relationships', label: '関係性監査' },
+      { to: '/admin/bulk-actions', label: '一括操作' },
+      { to: '/admin/direct-messages', label: 'ユーザー間メッセージ' },
+      { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
+      { to: '/admin/alerts', label: 'アラート管理' },
+      { to: '/admin/exchanges', label: '交換履歴' },
+    ],
+  },
+  {
+    title: '最適化・基盤',
+    items: [
+      { to: '/admin/matching-rules', label: 'マッチングルール' },
+      { to: '/admin/matching-experiments', label: 'マッチング実験' },
+      { to: '/admin/matching-performance', label: 'マッチング性能' },
+      { to: '/admin/drug-master', label: '医薬品マスター管理' },
+      { to: '/admin/drug-equivalences', label: '薬品同等性' },
+      { to: '/admin/rate-limits', label: 'レート制限設定' },
+      { to: '/admin/openclaw', label: 'OpenClaw連携' },
+    ],
+  },
+] as const;
 
 function SidebarLink({
   to,
@@ -139,18 +175,25 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     <div className="sidebar-content d-flex flex-column h-100">
       <Nav className="flex-column flex-grow-1 pt-2">
         {user?.isAdmin && (
-          <div className="sidebar-group">
-            <div className="sidebar-group-title">管理者</div>
-            {ADMIN_ITEMS.map((item) => (
-              <SidebarLink
-                key={item.to}
-                to={item.to}
-                label={item.label}
-                onNavigate={onNavigate}
-                end={item.end}
-              />
+          <>
+            <div className="sidebar-group">
+              <div className="sidebar-group-title">管理者</div>
+            </div>
+            {ADMIN_NAV_GROUPS.map((group) => (
+              <div key={group.title} className="sidebar-group">
+                <div className="sidebar-group-title">{group.title}</div>
+                {group.items.map((item) => (
+                  <SidebarLink
+                    key={item.to}
+                    to={item.to}
+                    label={item.label}
+                    onNavigate={onNavigate}
+                    end={'end' in item ? item.end : false}
+                  />
+                ))}
+              </div>
             ))}
-          </div>
+          </>
         )}
         {NAV_GROUPS.map((group) => (
           <div key={group.title} className="sidebar-group">

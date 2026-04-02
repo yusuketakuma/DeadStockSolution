@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import AppButton from '../components/ui/AppButton';
@@ -78,8 +78,19 @@ export default function ProposalPrintPage() {
   if (loading && !data) return <PageLoader />;
   if (error && !data) {
     return (
-      <div className="p-3">
+      <div className="p-3 d-flex flex-column gap-3">
         <ErrorRetryAlert error={error} onRetry={() => void fetchPrintData()} />
+        <div className="d-flex gap-2 flex-wrap">
+          <Link to={id ? `/proposals/${id}` : '/proposals'} className="btn btn-outline-primary btn-sm">
+            提案詳細へ
+          </Link>
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">
+            マッチング一覧
+          </Link>
+          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">
+            交換履歴
+          </Link>
+        </div>
       </div>
     );
   }
@@ -94,6 +105,15 @@ export default function ProposalPrintPage() {
   return (
     <div className="proposal-print-sheet">
       <div className="proposal-print-actions no-print">
+        <Link to={`/proposals/${proposal.id}`} className="btn btn-outline-primary proposal-print-action-button">
+          提案詳細へ
+        </Link>
+        <Link to="/proposals" className="btn btn-outline-secondary proposal-print-action-button">
+          マッチング一覧
+        </Link>
+        <Link to="/exchange-history" className="btn btn-outline-secondary proposal-print-action-button">
+          交換履歴
+        </Link>
         <AppButton type="button" onClick={() => window.print()} className="proposal-print-action-button">
           印刷
         </AppButton>
@@ -105,6 +125,9 @@ export default function ProposalPrintPage() {
       <h1 className="proposal-print-title">医薬品交換様式（FAX確認用）</h1>
       <p className="proposal-print-meta">
         マッチング番号: {proposal.id} / 開始日: {formatDateJa(proposal.proposedAt)}
+      </p>
+      <p className="proposal-print-meta no-print">
+        印刷後は提案詳細に戻って、メッセージ確認と承認状況の更新を進めてください。
       </p>
 
       <table className="proposal-print-table proposal-print-table-md">

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import { api } from '../../api/client';
+import AppEmptyState from '../../components/ui/AppEmptyState';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 interface DrugEquivalence {
   id: number;
@@ -24,6 +27,27 @@ const EMPTY_FORM: { drugNameA: string; drugNameB: string; equivalenceType: DrugE
   equivalenceType: 'brand_generic',
   notes: '',
 };
+
+const DRUG_EQUIVALENCE_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: 'マスター整備',
+    description: '同等性の入力元や周辺マスターへ戻れます。',
+    links: [
+      { to: '/admin/drug-master', label: '医薬品マスター' },
+      { to: '/admin/matching-rules', label: 'マッチングルール' },
+      { to: '/admin/matching-experiments', label: 'マッチング実験' },
+    ],
+  },
+  {
+    title: '周辺監視',
+    description: '障害切り分けや挙動確認に近い画面です。',
+    links: [
+      { to: '/admin/matching-performance', label: 'マッチング性能' },
+      { to: '/admin/error-codes', label: 'エラーコード' },
+      { to: '/admin/log-center', label: 'ログセンター' },
+    ],
+  },
+] as const;
 
 function buildDrugEquivalencePayload(
   formData: typeof EMPTY_FORM,
@@ -143,25 +167,39 @@ export default function AdminDrugEquivalencesPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="page-title mb-0">薬品同等性マスター</h4>
-        <Button variant="primary" size="sm" onClick={openCreateModal}>
-          新規登録
-        </Button>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">薬品同等性マスター</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/drug-master" className="btn btn-outline-secondary btn-sm">医薬品マスター</Link>
+          <Link to="/admin/matching-rules" className="btn btn-outline-secondary btn-sm">マッチングルール</Link>
+          <Button variant="primary" size="sm" onClick={openCreateModal}>
+            新規登録
+          </Button>
+        </div>
       </div>
 
       {error && <Alert variant="danger" dismissible onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert variant="success" dismissible onClose={() => setSuccess('')}>{success}</Alert>}
 
       <ScrollArea>
+      <AdminNavigationLinks groups={DRUG_EQUIVALENCE_LINK_GROUPS} />
       {loading ? (
         <div className="text-center py-5">
           <Spinner animation="border" size="sm" /> 読み込み中...
         </div>
       ) : items.length === 0 ? (
-        <Card body className="text-center text-muted">
-          薬品同等性データがありません。「新規登録」から追加してください。
-        </Card>
+        <AppEmptyState
+          title="薬品同等性データがありません"
+          description="医薬品マスターやマッチングルールを確認したうえで、必要な同等性を登録してください。"
+          action={(
+            <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+              <Link to="/admin/drug-master" className="btn btn-outline-secondary btn-sm">医薬品マスター</Link>
+              <Link to="/admin/matching-rules" className="btn btn-outline-secondary btn-sm">マッチングルール</Link>
+            </div>
+          )}
+        />
       ) : (
         <Card>
           <Table responsive hover className="mb-0 mobile-table">

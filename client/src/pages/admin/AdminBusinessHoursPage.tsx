@@ -7,6 +7,7 @@ import AppTable from '../../components/ui/AppTable';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 interface BusinessHourItem {
   pharmacyId: number;
@@ -39,6 +40,27 @@ const SPECIAL_TYPE_LABELS: Record<string, string> = {
   temporary_closed: '臨時休業',
   special_open: '特別営業',
 };
+
+const BUSINESS_HOURS_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: '薬局運用',
+    description: '営業時間の整備対象を確認するときに使います。',
+    links: [
+      { to: '/admin/pharmacies', label: '薬局管理' },
+      { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+      { to: '/admin/groups', label: 'グループ管理' },
+    ],
+  },
+  {
+    title: '周辺設定・監査',
+    description: '関連設定や障害切り分けに移るときの導線です。',
+    links: [
+      { to: '/admin/relationships', label: '関係性監査' },
+      { to: '/admin/rate-limits', label: 'レート制限設定' },
+      { to: '/admin/log-center', label: 'ログセンター' },
+    ],
+  },
+] as const;
 
 function formatTime(item: { openTime: string | null; closeTime: string | null; isClosed: boolean | null; is24Hours: boolean | null }): string {
   if (item.isClosed) return '休業';
@@ -89,25 +111,40 @@ export default function AdminBusinessHoursPage() {
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
           <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+          <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+          <Link to="/admin/groups" className="btn btn-outline-secondary btn-sm">グループ管理</Link>
         </div>
       </div>
 
       {error && <ErrorRetryAlert error={error} onRetry={() => void fetchData()} />}
 
       <ScrollArea>
+        <AdminNavigationLinks groups={BUSINESS_HOURS_LINK_GROUPS} />
         {loading ? (
           <InlineLoader text="営業時間を読み込み中..." className="text-muted small" />
         ) : (
           <Tabs defaultActiveKey="regular" className="mb-3">
             <Tab eventKey="regular" title="通常営業時間">
               {grouped.size === 0 ? (
-                <AppEmptyState title="営業時間データがありません" />
+                <AppEmptyState
+                  title="営業時間データがありません"
+                  description="薬局情報やグループ設定を確認してから、営業時間登録の有無を見直してください。"
+                  action={(
+                    <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                      <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+                      <Link to="/admin/groups" className="btn btn-outline-secondary btn-sm">グループ管理</Link>
+                    </div>
+                  )}
+                />
               ) : (
                 <div className="d-flex flex-column gap-3">
                   {[...grouped.entries()].map(([pharmacyId, { name, hours }]) => (
                     <Card key={pharmacyId}>
-                      <Card.Header className="py-2">
-                        {name ?? `薬局ID:${pharmacyId}`}
+                      <Card.Header className="py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                        <span>{name ?? `薬局ID:${pharmacyId}`}</span>
+                        <Link to={`/admin/pharmacies/${pharmacyId}/edit`} className="btn btn-outline-primary btn-sm">
+                          編集
+                        </Link>
                       </Card.Header>
                       <Card.Body className="p-0">
                         <div className="table-responsive">
@@ -139,7 +176,16 @@ export default function AdminBusinessHoursPage() {
             </Tab>
             <Tab eventKey="special" title="特別営業・休業日">
               {special.length === 0 ? (
-                <AppEmptyState title="特別営業時間データがありません" />
+                <AppEmptyState
+                  title="特別営業時間データがありません"
+                  description="定休日や臨時休業の確認が必要な場合は、薬局管理と薬局ヘルスも合わせて確認してください。"
+                  action={(
+                    <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                      <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+                      <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+                    </div>
+                  )}
+                />
               ) : (
                 <div className="table-responsive">
                   <AppTable striped hover size="sm" className="mobile-table">
@@ -150,6 +196,7 @@ export default function AdminBusinessHoursPage() {
                         <th>期間</th>
                         <th>時間</th>
                         <th>備考</th>
+                        <th>操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -164,6 +211,11 @@ export default function AdminBusinessHoursPage() {
                           <td className="small">{s.startDate} 〜 {s.endDate}</td>
                           <td className="small">{formatTime(s)}</td>
                           <td className="small text-muted">{s.note ?? '—'}</td>
+                          <td>
+                            <Link to={`/admin/pharmacies/${s.pharmacyId}/edit`} className="btn btn-outline-primary btn-sm">
+                              編集
+                            </Link>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

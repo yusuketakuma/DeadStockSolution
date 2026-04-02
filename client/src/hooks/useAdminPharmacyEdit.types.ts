@@ -144,6 +144,9 @@ export interface UseAdminPharmacyEditReturn {
   handleToggleActive: () => Promise<void>;
   handleVerify: (approved: boolean, reason?: string) => Promise<void>;
   navigateToList: () => void;
+  navigateToHealth: () => void;
+  navigateToBusinessHours: () => void;
+  navigateToRelationships: () => void;
 
   // Business hours handlers
   handleReloadBusinessHours: () => Promise<void>;

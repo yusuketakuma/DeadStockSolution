@@ -103,6 +103,42 @@ function resolveUserQuickActions(pathname: string): QuickAction[] {
 }
 
 function resolveAdminQuickActions(pathname: string): QuickAction[] {
+  if (pathname.startsWith('/admin/bulk-actions')) {
+    return [
+      { to: '/admin/pharmacies', label: '薬局管理' },
+      { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
+      { to: '/admin/audit', label: '監査ログ' },
+      { to: '/admin/bulk-actions', label: '一括操作' },
+    ];
+  }
+
+  if (
+    pathname.startsWith('/admin/pharmacies')
+    || pathname.startsWith('/admin/groups')
+    || pathname.startsWith('/admin/business-hours')
+    || pathname.startsWith('/admin/pharmacy-health')
+    || pathname.startsWith('/admin/relationships')
+  ) {
+    return [
+      { to: '/admin/pharmacies', label: '薬局管理' },
+      { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+      { to: '/admin/business-hours', label: '営業時間' },
+      { to: '/admin/relationships', label: '関係性監査' },
+    ];
+  }
+
+  if (
+    pathname.startsWith('/admin/rate-limits')
+    || pathname.startsWith('/admin/openclaw')
+  ) {
+    return [
+      { to: '/admin/log-center', label: 'ログセンター' },
+      { to: '/admin/rate-limits', label: 'レート制限設定' },
+      { to: '/admin/business-hours', label: '営業時間' },
+      { to: '/admin/openclaw', label: 'OpenClaw連携' },
+    ];
+  }
+
   if (
     pathname.startsWith('/admin/matching-rules')
     || pathname.startsWith('/admin/matching-experiments')

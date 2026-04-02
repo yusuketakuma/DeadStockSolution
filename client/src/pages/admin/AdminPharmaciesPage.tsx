@@ -14,6 +14,7 @@ import InlineLoader from '../../components/ui/InlineLoader';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateJa, formatNumberJa } from '../../utils/formatters';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 interface Pharmacy {
   id: number;
@@ -54,6 +55,27 @@ function toggleSelectedPharmacy(current: Set<number>, id: number): Set<number> {
   }
   return next;
 }
+
+const PHARMACY_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: '薬局運用',
+    description: '薬局の状態確認と周辺設定をまとめています。',
+    links: [
+      { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+      { to: '/admin/business-hours', label: '営業時間' },
+      { to: '/admin/groups', label: 'グループ管理' },
+    ],
+  },
+  {
+    title: '承認・対応',
+    description: '審査や関係性確認に近い画面です。',
+    links: [
+      { to: '/admin/bulk-actions', label: '一括操作' },
+      { to: '/admin/relationships', label: '関係性監査' },
+      { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
+    ],
+  },
+] as const;
 
 export default function AdminPharmaciesPage() {
   const fetchPharmacies = useCallback((targetPage: number, signal?: AbortSignal) =>
@@ -183,9 +205,12 @@ export default function AdminPharmaciesPage() {
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
           <Link to="/admin/groups" className="btn btn-outline-secondary btn-sm">グループ管理</Link>
           <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+          <Link to="/admin/business-hours" className="btn btn-outline-secondary btn-sm">営業時間</Link>
+          <Link to="/admin/bulk-actions" className="btn btn-outline-secondary btn-sm">一括操作</Link>
         </div>
       </div>
       <ScrollArea>
+      <AdminNavigationLinks groups={PHARMACY_LINK_GROUPS} />
       <Nav variant="tabs" className="mb-3" activeKey={activeTab} onSelect={(k) => setActiveTab((k as 'all' | 'pending') || 'all')}>
         <Nav.Item>
           <Nav.Link eventKey="all">
@@ -235,6 +260,15 @@ export default function AdminPharmaciesPage() {
         <AppEmptyState
           title={activeTab === 'pending' ? '承認待ちの薬局はありません' : '薬局データがありません'}
           description={activeTab === 'pending' ? '現在、審査待ちの薬局はありません。' : '登録が追加されるとここに表示されます。'}
+          action={(
+            <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+              <Link to={activeTab === 'pending' ? '/admin/business-hours' : '/admin/pharmacy-health'} className="btn btn-outline-secondary btn-sm">
+                {activeTab === 'pending' ? '営業時間を確認' : '薬局ヘルスを見る'}
+              </Link>
+              <Link to="/admin/bulk-actions" className="btn btn-outline-secondary btn-sm">一括操作</Link>
+              <Link to="/admin/relationships" className="btn btn-outline-secondary btn-sm">関係性監査</Link>
+            </div>
+          )}
         />
       ) : (
         <AppResponsiveSwitch

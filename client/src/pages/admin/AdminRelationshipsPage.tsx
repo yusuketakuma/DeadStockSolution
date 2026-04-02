@@ -12,6 +12,7 @@ import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa } from '../../utils/formatters';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 interface RelationshipItem {
   id: number;
@@ -32,6 +33,27 @@ const TYPE_LABELS: Record<string, string> = {
   favorite: 'お気に入り',
   blocked: 'ブロック',
 };
+
+const RELATIONSHIP_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: '薬局・グループ',
+    description: '関係性の発生源や影響先を確認するときに使います。',
+    links: [
+      { to: '/admin/pharmacies', label: '薬局管理' },
+      { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+      { to: '/admin/groups', label: 'グループ管理' },
+    ],
+  },
+  {
+    title: '周辺運用',
+    description: '営業時間や一括対応と合わせて運用状況を追えます。',
+    links: [
+      { to: '/admin/business-hours', label: '営業時間' },
+      { to: '/admin/bulk-actions', label: '一括操作' },
+      { to: '/admin/log-center', label: 'ログセンター' },
+    ],
+  },
+] as const;
 
 export default function AdminRelationshipsPage() {
   const [typeFilter, setTypeFilter] = useState('');
@@ -61,6 +83,8 @@ export default function AdminRelationshipsPage() {
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
           <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+          <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+          <Link to="/admin/groups" className="btn btn-outline-secondary btn-sm">グループ管理</Link>
         </div>
       </div>
 
@@ -78,10 +102,21 @@ export default function AdminRelationshipsPage() {
       {error && <ErrorRetryAlert error={error} onRetry={() => void retry()} />}
 
       <ScrollArea>
+        <AdminNavigationLinks groups={RELATIONSHIP_LINK_GROUPS} />
         {loading ? (
           <InlineLoader text="関係性データを読み込み中..." className="text-muted small" />
         ) : items.length === 0 ? (
-          <AppEmptyState title="関係性データがありません" description="薬局間のお気に入り・ブロック関係が登録されるとここに表示されます。" />
+          <AppEmptyState
+            title="関係性データがありません"
+            description="薬局間のお気に入り・ブロック関係が登録されるとここに表示されます。薬局一覧やグループ設定から近い運用面を確認できます。"
+            action={(
+                  <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                    <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+                    <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+                    <Link to="/admin/business-hours" className="btn btn-outline-secondary btn-sm">営業時間</Link>
+                  </div>
+                )}
+              />
         ) : (
           <AppResponsiveSwitch
             desktop={() => (
@@ -94,6 +129,7 @@ export default function AdminRelationshipsPage() {
                       <th>対象薬局</th>
                       <th>タイプ</th>
                       <th>登録日</th>
+                      <th>操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -108,6 +144,12 @@ export default function AdminRelationshipsPage() {
                           </Badge>
                         </td>
                         <td>{formatDateTimeJa(r.createdAt)}</td>
+                        <td>
+                          <div className="d-flex gap-2 flex-wrap">
+                            <Link to={`/admin/pharmacies/${r.pharmacyId}/edit`} className="btn btn-outline-primary btn-sm">元薬局を編集</Link>
+                            <Link to={`/admin/pharmacies/${r.targetPharmacyId}/edit`} className="btn btn-outline-secondary btn-sm">対象薬局を編集</Link>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -129,6 +171,12 @@ export default function AdminRelationshipsPage() {
                     fields={[
                       { label: '登録日', value: formatDateTimeJa(r.createdAt) },
                     ]}
+                    actions={(
+                      <div className="d-flex gap-2 flex-wrap">
+                        <Link to={`/admin/pharmacies/${r.pharmacyId}/edit`} className="btn btn-outline-primary btn-sm">元薬局を編集</Link>
+                        <Link to={`/admin/pharmacies/${r.targetPharmacyId}/edit`} className="btn btn-outline-secondary btn-sm">対象薬局を編集</Link>
+                      </div>
+                    )}
                   />
                 ))}
               </div>

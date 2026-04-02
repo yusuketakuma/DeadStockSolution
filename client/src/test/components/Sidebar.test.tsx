@@ -33,6 +33,9 @@ describe('Sidebar', () => {
     );
 
     expect(screen.getAllByText('管理者')).toHaveLength(2);
+    expect(screen.getByText('運用監視')).toBeInTheDocument();
+    expect(screen.getByText('薬局運用')).toBeInTheDocument();
+    expect(screen.getByText('最適化・基盤')).toBeInTheDocument();
     expect(screen.getByText('主要操作')).toBeInTheDocument();
     expect(screen.getByText('通知・対応')).toBeInTheDocument();
     expect(screen.getByText('在庫・参照')).toBeInTheDocument();
@@ -49,6 +52,12 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: '薬局一覧' })).toHaveAttribute('href', '/pharmacies');
     expect(screen.getByRole('link', { name: '操作ログ' })).toHaveAttribute('href', '/admin/logs');
     expect(screen.getByRole('link', { name: '監査ログ' })).toHaveAttribute('href', '/admin/audit');
+    expect(screen.getByRole('link', { name: '営業時間' })).toHaveAttribute('href', '/admin/business-hours');
+    expect(screen.getByRole('link', { name: '関係性監査' })).toHaveAttribute('href', '/admin/relationships');
+    expect(screen.getByRole('link', { name: '一括操作' })).toHaveAttribute('href', '/admin/bulk-actions');
+    expect(screen.getByRole('link', { name: '薬局ヘルス' })).toHaveAttribute('href', '/admin/pharmacy-health');
+    expect(screen.getByRole('link', { name: '薬品同等性' })).toHaveAttribute('href', '/admin/drug-equivalences');
+    expect(screen.getByRole('link', { name: 'レート制限設定' })).toHaveAttribute('href', '/admin/rate-limits');
     expect(screen.getByRole('button', { name: 'ログアウト' })).toBeInTheDocument();
     expect(screen.queryByLabelText('サイドバーを折りたたむ')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('サイドバーを展開')).not.toBeInTheDocument();

@@ -63,9 +63,9 @@ describe('AdminNotificationsPage', () => {
 
     expect(screen.getByRole('link', { name: 'マッチング実験' })).toHaveAttribute('href', '/admin/matching-experiments');
     expect(screen.getByRole('link', { name: 'アップロード品質' })).toHaveAttribute('href', '/admin/upload-quality');
+    expect(screen.getAllByRole('link', { name: 'レート制限設定' }).some((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
     expect(screen.getAllByRole('link', { name: 'ユーザー間メッセージ' }).some((link) => link.getAttribute('href') === '/admin/direct-messages')).toBe(true);
     expect(screen.getByRole('link', { name: 'ログセンター' })).toHaveAttribute('href', '/admin/log-center');
-    expect(screen.getByRole('link', { name: '監査ログ' })).toHaveAttribute('href', '/admin/audit');
     expect(screen.getByRole('link', { name: 'エラーコード' })).toHaveAttribute('href', '/admin/error-codes');
     expect(screen.getByText('アラート解消: 3')).toBeInTheDocument();
     expect(screen.getByText('在庫アラートが解消しました')).toBeInTheDocument();
@@ -110,5 +110,8 @@ describe('AdminNotificationsPage', () => {
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([request]) => String(request).includes('/api/admin/notifications?page=1&type=matching_refresh_complete'))).toBe(true);
     });
+
+    expect(screen.getByText('通知がありません')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'レート制限設定' }).some((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
   });
 });

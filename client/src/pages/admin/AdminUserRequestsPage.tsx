@@ -13,6 +13,8 @@ import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { useSseRefresh } from '../../hooks/useSseRefresh';
 import { formatDateTimeJa } from '../../utils/formatters';
+import { Link } from 'react-router-dom';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 const LIVE_REFRESH_INTERVAL_MS = 60_000;
 
@@ -176,6 +178,27 @@ function authorLabel(authorType: string): string {
 }
 
 type AdminQueueFilter = 'all' | 'my_turn' | 'overdue' | 'unread' | 'openclaw';
+
+const USER_REQUEST_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: '連携・実装',
+    description: 'OpenClaw と内部運用を行き来する近接導線です。',
+    links: [
+      { to: '/admin/openclaw', label: 'OpenClaw連携' },
+      { to: '/admin/openclaw-commands', label: 'コマンド管理' },
+      { to: '/admin/log-center', label: 'ログセンター' },
+    ],
+  },
+  {
+    title: '周辺運用',
+    description: '通知異常や薬局運用の確認へ移れます。',
+    links: [
+      { to: '/admin/notifications', label: '通知・配信状況' },
+      { to: '/admin/pharmacies', label: '薬局管理' },
+      { to: '/admin/audit', label: '監査ログ' },
+    ],
+  },
+] as const;
 
 function adminRequestSortRank(item: AdminUserRequestItem): number {
   if (item.isOverdue) return 0;
@@ -542,6 +565,7 @@ export default function AdminUserRequestsPage() {
       {error && <ErrorRetryAlert error={error} onRetry={() => void retry()} />}
 
       <ScrollArea>
+        <AdminNavigationLinks groups={USER_REQUEST_LINK_GROUPS} />
         <div className={`dl-two-pane-grid${selectedRequestId ? ' dl-pane-detail-active' : ''}`}>
           <div className="dl-stack-gap-md">
             <AppCard className="h-100">
@@ -550,7 +574,17 @@ export default function AdminUserRequestsPage() {
                 {loading ? (
                   <InlineLoader text="ユーザーリクエストを読み込み中..." className="text-muted small" />
                 ) : displayItems.length === 0 ? (
-                  <AppEmptyState title="対象の要望がありません" description="条件に一致する要望がありません。" />
+                  <AppEmptyState
+                    title="対象の要望がありません"
+                    description="条件に一致する要望がありません。OpenClaw 連携や通知・ログ側の運用へ戻れます。"
+                    action={(
+                      <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                        <Link to="/admin/openclaw" className="btn btn-outline-secondary btn-sm">OpenClaw連携</Link>
+                        <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信状況</Link>
+                        <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+                      </div>
+                    )}
+                  />
                 ) : (
                   <div className="d-flex flex-column gap-2">
                     {displayItems.map((item) => (
@@ -596,13 +630,31 @@ export default function AdminUserRequestsPage() {
               <AppCard.Header>要望詳細</AppCard.Header>
               <AppCard.Body>
                 {!selectedRequestId ? (
-                  <AppEmptyState title="要望を選択してください" description="左の一覧から対象要望を選ぶと詳細を表示します。" />
+                  <AppEmptyState
+                    title="要望を選択してください"
+                    description="左の一覧から対象要望を選ぶと詳細を表示します。OpenClaw の会話や運用ログに切り替えることもできます。"
+                    action={(
+                      <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                        <Link to="/admin/openclaw" className="btn btn-outline-secondary btn-sm">OpenClaw連携</Link>
+                        <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+                      </div>
+                    )}
+                  />
                 ) : detailLoading ? (
                   <InlineLoader text="要望詳細を読み込み中..." className="text-muted small" />
                 ) : detailError ? (
                   <ErrorRetryAlert error={detailError} onRetry={() => void refreshListAndDetail()} />
                 ) : !detail ? (
-                  <AppEmptyState title="詳細を表示できません" description="対象要望の取得に失敗しました。" />
+                  <AppEmptyState
+                    title="詳細を表示できません"
+                    description="対象要望の取得に失敗しました。連携状態やログを確認してから再試行してください。"
+                    action={(
+                      <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                        <Link to="/admin/openclaw" className="btn btn-outline-secondary btn-sm">OpenClaw連携</Link>
+                        <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+                      </div>
+                    )}
+                  />
                 ) : (
                   <div className="d-flex flex-column gap-3">
                     <div className="border rounded p-3 bg-light">

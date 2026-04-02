@@ -5,6 +5,7 @@ import AdminPharmacyEditPage from '../../pages/admin/AdminPharmacyEditPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
 const mockNavigateToList = vi.fn();
+const mockNavigateToHealth = vi.fn();
 const mockHandleVerify = vi.fn();
 const mockApiGet = vi.fn();
 
@@ -88,6 +89,9 @@ vi.mock('../../hooks/useAdminPharmacyEdit', () => ({
     handleToggleActive: vi.fn(),
     handleVerify: mockHandleVerify,
     navigateToList: mockNavigateToList,
+    navigateToHealth: mockNavigateToHealth,
+    navigateToBusinessHours: vi.fn(),
+    navigateToRelationships: vi.fn(),
     handleHoursChange: vi.fn(),
     handleClosedChange: vi.fn(),
     handle24HoursChange: vi.fn(),
@@ -108,6 +112,7 @@ vi.mock('../../hooks/useAdminPharmacyEdit', () => ({
 describe('AdminPharmacyEditPage', () => {
   beforeEach(() => {
     mockNavigateToList.mockReset();
+    mockNavigateToHealth.mockReset();
     mockHandleVerify.mockReset();
     mockApiGet.mockReset();
     mockApiGet.mockResolvedValue({ logs: [], total: 0, page: 1, pageSize: 20 });
@@ -122,6 +127,8 @@ describe('AdminPharmacyEditPage', () => {
     await user.click(screen.getByRole('button', { name: '一覧へ戻る' }));
 
     expect(mockNavigateToList).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '薬局ヘルス' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '監査ログ' })).toHaveAttribute('href', '/admin/audit');
   });
 
   it('opens reject modal and submits the entered reason', async () => {
@@ -138,5 +145,14 @@ describe('AdminPharmacyEditPage', () => {
     });
 
     promptSpy.mockRestore();
+  });
+
+  it('routes nearby operations through the edit header buttons', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AdminPharmacyEditPage />, { authUser: { ...mockAdminUser } });
+
+    await user.click(screen.getByRole('button', { name: '薬局ヘルス' }));
+
+    expect(mockNavigateToHealth).toHaveBeenCalledTimes(1);
   });
 });

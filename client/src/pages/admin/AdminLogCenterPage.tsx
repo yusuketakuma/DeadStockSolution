@@ -156,6 +156,7 @@ export default function AdminLogCenterPage() {
           <Link to="/admin/logs" className="btn btn-outline-secondary btn-sm">操作ログ</Link>
           <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログ</Link>
           <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
+          <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
           <a href={buildApiUrl('/admin/csv/logs')} className="btn btn-outline-secondary btn-sm" download>
             CSVエクスポート
           </a>
@@ -166,12 +167,12 @@ export default function AdminLogCenterPage() {
       <AppDataPanel title="近接導線" className="mb-3">
         <div className="d-flex gap-2 flex-wrap">
           <Link to="/admin/error-codes" className="btn btn-outline-primary btn-sm">エラーコードを管理</Link>
-          <Link to="/admin/matching-experiments" className="btn btn-outline-secondary btn-sm">マッチング実験</Link>
+          <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
           <Link to="/admin/upload-quality" className="btn btn-outline-secondary btn-sm">アップロード品質</Link>
           <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信</Link>
         </div>
         <div className="small text-muted mt-2">
-          再発論点の確認後に、コード定義や品質監視へそのまま移れるようにしています。
+          再発論点の確認後に、コード定義や制限設定、品質監視へそのまま移れるようにしています。
         </div>
       </AppDataPanel>
 

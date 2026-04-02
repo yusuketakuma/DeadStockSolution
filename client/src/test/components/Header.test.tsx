@@ -29,6 +29,36 @@ describe('Header quick actions', () => {
     expect(screen.getAllByRole('link', { name: 'マッチング性能' }).some((link) => link.getAttribute('href') === '/admin/matching-performance')).toBe(true);
   });
 
+  it('links pharmacy-operations admin routes together', () => {
+    renderWithProviders(<Header onToggleSidebar={vi.fn()} />, {
+      route: '/admin/pharmacy-health',
+      authUser: mockAdminUser,
+    });
+
+    expect(screen.getAllByRole('link', { name: '薬局管理' }).some((link) => link.getAttribute('href') === '/admin/pharmacies')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '営業時間' }).some((link) => link.getAttribute('href') === '/admin/business-hours')).toBe(true);
+  });
+
+  it('links bulk-action routes back to requests and audit flows', () => {
+    renderWithProviders(<Header onToggleSidebar={vi.fn()} />, {
+      route: '/admin/bulk-actions',
+      authUser: mockAdminUser,
+    });
+
+    expect(screen.getAllByRole('link', { name: '薬局管理' }).some((link) => link.getAttribute('href') === '/admin/pharmacies')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'ユーザーリクエスト管理' }).some((link) => link.getAttribute('href') === '/admin/user-requests')).toBe(true);
+  });
+
+  it('links rate-limit routes back to logs and business-hours operations', () => {
+    renderWithProviders(<Header onToggleSidebar={vi.fn()} />, {
+      route: '/admin/rate-limits',
+      authUser: mockAdminUser,
+    });
+
+    expect(screen.getAllByRole('link', { name: 'ログセンター' }).some((link) => link.getAttribute('href') === '/admin/log-center')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '営業時間' }).some((link) => link.getAttribute('href') === '/admin/business-hours')).toBe(true);
+  });
+
   it('avoids duplicating request shortcuts on communication routes', () => {
     renderWithProviders(<Header onToggleSidebar={vi.fn()} />, {
       route: '/notifications',

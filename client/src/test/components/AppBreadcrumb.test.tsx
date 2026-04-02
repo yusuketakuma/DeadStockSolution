@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { screen } from '@testing-library/react';
 import AppBreadcrumb from '../../components/ui/AppBreadcrumb';
-import { renderWithProviders } from '../helpers';
+import { mockAdminUser, renderWithProviders } from '../helpers';
 
 describe('AppBreadcrumb', () => {
   it('should render nothing when on root path (/)', () => {
@@ -79,5 +79,35 @@ describe('AppBreadcrumb', () => {
     const homeLink = screen.getByText('ホーム');
     // "ホーム" should not be in an active breadcrumb item
     expect(homeLink.closest('.breadcrumb-item')).not.toHaveClass('active');
+  });
+
+  it('should use pharmacy management as the breadcrumb parent for nearby admin ops pages', () => {
+    renderWithProviders(<AppBreadcrumb />, {
+      route: '/admin/business-hours',
+      authUser: mockAdminUser,
+    });
+
+    expect(screen.getByText('ホーム')).toBeInTheDocument();
+    expect(screen.getByText('薬局管理')).toBeInTheDocument();
+    expect(screen.getByText('営業時間')).toBeInTheDocument();
+  });
+
+  it('should use log center as the breadcrumb parent for rate-limit settings', () => {
+    renderWithProviders(<AppBreadcrumb />, {
+      route: '/admin/rate-limits',
+      authUser: mockAdminUser,
+    });
+
+    expect(screen.getByText('ホーム')).toBeInTheDocument();
+    expect(screen.getByText('ログセンター')).toBeInTheDocument();
+    expect(screen.getByText('レート制限設定')).toBeInTheDocument();
+  });
+
+  it('should use proposals as the breadcrumb parent for exchange history', () => {
+    renderWithProviders(<AppBreadcrumb />, { route: '/exchange-history' });
+
+    expect(screen.getByText('ホーム')).toBeInTheDocument();
+    expect(screen.getByText('マッチング一覧')).toBeInTheDocument();
+    expect(screen.getByText('交換履歴')).toBeInTheDocument();
   });
 });

@@ -118,6 +118,7 @@ export default function AdminNotificationsPage() {
           <Link to="/admin/alerts" className="btn btn-outline-secondary btn-sm">アラート管理</Link>
           <Link to="/admin/matching-experiments" className="btn btn-outline-secondary btn-sm">マッチング実験</Link>
           <Link to="/admin/upload-quality" className="btn btn-outline-secondary btn-sm">アップロード品質</Link>
+          <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
           <Link to="/admin/direct-messages" className="btn btn-outline-secondary btn-sm">ユーザー間メッセージ</Link>
         </div>
       </div>
@@ -162,11 +163,11 @@ export default function AdminNotificationsPage() {
           <div className="d-flex gap-2 flex-wrap">
             <Link to="/admin/direct-messages" className="btn btn-outline-secondary btn-sm">ユーザー間メッセージ</Link>
             <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
-            <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログ</Link>
             <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
+            <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
           </div>
           <div className="small text-muted mt-2">
-            通知の異常は、配信確認からログ調査、エラーコード確認までこの近傍で追えます。
+            通知の異常は、配信確認からログ調査、エラーコード確認、制限設定確認までこの近傍で追えます。
           </div>
         </AppDataPanel>
 
@@ -188,7 +189,16 @@ export default function AdminNotificationsPage() {
             {loading ? (
               <InlineLoader text="通知を読み込み中..." className="text-muted small" />
             ) : items.length === 0 ? (
-              <AppEmptyState title="通知がありません" description="通知が送信されるとここに表示されます。" />
+              <AppEmptyState
+                title="通知がありません"
+                description="通知が送信されるとここに表示されます。配信条件や制限設定を見直したい場合は近接導線から確認できます。"
+                action={(
+                  <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                    <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+                    <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
+                  </div>
+                )}
+              />
             ) : (
               <AppResponsiveSwitch
                 desktop={() => (

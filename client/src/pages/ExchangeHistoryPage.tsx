@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { formatDateJa, formatYen } from '../utils/formatters';
 import AppDataTable from '../components/ui/AppDataTable';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import ProposalNavigationLinks, { type ProposalNavigationLinkGroup } from '../components/proposal/ProposalNavigationLinks';
 
 interface HistoryItem {
   id: number;
@@ -32,6 +33,26 @@ function timelineDetailTo(proposalId: number) {
     hash: '#proposal-timeline',
   };
 }
+
+const EXCHANGE_HISTORY_LINK_GROUPS: readonly ProposalNavigationLinkGroup[] = [
+  {
+    title: '履歴と提案',
+    description: '完了後でも提案詳細や一覧に戻れます。',
+    links: [
+      { to: '/proposals', label: 'マッチング一覧' },
+      { to: '/matching', label: 'マッチング' },
+      { to: '/messages', label: 'メッセージ' },
+    ],
+  },
+  {
+    title: '次の確認',
+    description: '次の交換候補や通知確認へ進めます。',
+    links: [
+      { to: '/notifications', label: '通知センター' },
+      { to: '/bookmarks', label: 'ブックマーク' },
+    ],
+  },
+] as const;
 
 export default function ExchangeHistoryPage() {
   const { user } = useAuth();
@@ -64,6 +85,7 @@ export default function ExchangeHistoryPage() {
         </div>
       </div>
       <ScrollArea>
+      <ProposalNavigationLinks groups={EXCHANGE_HISTORY_LINK_GROUPS} />
       <AppDataTable
         loading={loading}
         error={queryError}
@@ -71,7 +93,7 @@ export default function ExchangeHistoryPage() {
         loadingText="交換履歴を読み込み中..."
         isEmpty={items.length === 0}
         emptyTitle="交換履歴はまだありません"
-        emptyDescription="交換完了した履歴がここに表示されます。"
+        emptyDescription="交換完了した履歴がここに表示されます。マッチング一覧や通知確認に戻れます。"
         emptyActionLabel="マッチング一覧へ"
         emptyActionTo="/proposals"
         desktop={() => (
@@ -98,9 +120,14 @@ export default function ExchangeHistoryPage() {
                       <td>{formatYen(item.totalValue)}</td>
                       <td>{formatDateJa(item.completedAt, '')}</td>
                       <td>
-                        <Link to={timelineDetailTo(item.proposalId)} className="btn btn-sm btn-outline-primary">
-                          タイムライン
-                        </Link>
+                        <div className="d-flex gap-2 flex-wrap">
+                          <Link to={timelineDetailTo(item.proposalId)} className="btn btn-sm btn-outline-primary">
+                            タイムライン
+                          </Link>
+                          <Link to={`/proposals/${item.proposalId}/print`} className="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer">
+                            印刷
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -125,7 +152,12 @@ export default function ExchangeHistoryPage() {
                     { label: '合計薬価', value: formatYen(item.totalValue) },
                     { label: '完了日', value: formatDateJa(item.completedAt) },
                   ]}
-                  actions={<Link to={timelineDetailTo(item.proposalId)} className="btn btn-sm btn-outline-primary w-100">タイムライン</Link>}
+                  actions={(
+                    <div className="d-flex flex-column gap-2">
+                      <Link to={timelineDetailTo(item.proposalId)} className="btn btn-sm btn-outline-primary w-100">タイムライン</Link>
+                      <Link to={`/proposals/${item.proposalId}/print`} className="btn btn-sm btn-outline-secondary w-100" target="_blank" rel="noopener noreferrer">印刷</Link>
+                    </div>
+                  )}
                 />
               );
             })}

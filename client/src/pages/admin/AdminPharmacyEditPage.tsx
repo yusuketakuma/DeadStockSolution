@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Form, Table } from 'react-bootstrap';
 import AppAlert from '../../components/ui/AppAlert';
@@ -13,6 +13,7 @@ import { formatDateTimeJa } from '../../utils/formatters';
 import { api } from '../../api/client';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { useAdminPharmacyEdit } from '../../hooks/useAdminPharmacyEdit';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 
 interface AuditLogEntry {
@@ -46,6 +47,50 @@ function formatAction(action: AuditLogEntry['action']): string {
   }
 }
 
+const EDIT_FALLBACK_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: '薬局運用',
+    description: '対象薬局が見つからない場合は、一覧と状態確認から戻れます。',
+    links: [
+      { to: '/admin/pharmacies', label: '薬局一覧' },
+      { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+      { to: '/admin/business-hours', label: '営業時間' },
+    ],
+  },
+  {
+    title: '監査・対応',
+    description: '登録状況や影響範囲を周辺画面で確認できます。',
+    links: [
+      { to: '/admin/relationships', label: '関係性監査' },
+      { to: '/admin/bulk-actions', label: '一括操作' },
+      { to: '/admin/audit', label: '監査ログ' },
+    ],
+  },
+] as const;
+
+function buildEditLinkGroups(pharmacyId: number): readonly AdminNavigationLinkGroup[] {
+  return [
+    {
+      title: '同じ薬局の確認',
+      description: '編集後に確認しやすい近接導線です。',
+      links: [
+        { to: '/admin/pharmacies', label: '薬局一覧' },
+        { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+        { to: '/admin/business-hours', label: '営業時間' },
+      ],
+    },
+    {
+      title: '承認・監査',
+      description: '影響範囲や運用履歴を追う導線です。',
+      links: [
+        { to: '/admin/relationships', label: '関係性監査' },
+        { to: '/admin/audit', label: '監査ログ' },
+        { to: `/admin/pharmacies/${pharmacyId}/edit`, label: 'この画面を再読込' },
+      ],
+    },
+  ] as const;
+}
+
 export default function AdminPharmacyEditPage() {
   const {
     pharmacy, pharmacyLoaded, hasValidId,
@@ -58,7 +103,7 @@ export default function AdminPharmacyEditPage() {
     setHoursMessage, setHoursError, setHoursConflict,
     loadPharmacy, handleChange, handleSubmit,
     handleReloadAccount, handleReloadBusinessHours,
-    handleToggleActive, handleVerify, navigateToList,
+    handleToggleActive, handleVerify, navigateToList, navigateToHealth, navigateToBusinessHours, navigateToRelationships,
     handleHoursChange, handleClosedChange, handle24HoursChange,
     handleHoursSave, handleHoursEditStart, handleHoursEditCancel,
     handleAddSpecialHour, handleRemoveSpecialHour,
@@ -69,6 +114,7 @@ export default function AdminPharmacyEditPage() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditLogsLoading, setAuditLogsLoading] = useState(false);
   const [auditLogsError, setAuditLogsError] = useState('');
+  const auditLogRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!pharmacy?.id) return;
@@ -108,13 +154,16 @@ export default function AdminPharmacyEditPage() {
         <div className="dl-page-header">
           <div className="dl-page-header-copy">
             <h4 className="page-title mb-0">薬局情報編集</h4>
+            <div className="text-muted small">対象薬局を取得できない場合は、近い運用画面へ戻って状態を確認してください。</div>
           </div>
           <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
             <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局一覧</Link>
+            <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
           </div>
         </div>
         {error && <AppAlert variant="danger">{error}</AppAlert>}
-        <div className="d-flex gap-2">
+        <AdminNavigationLinks groups={EDIT_FALLBACK_LINK_GROUPS} />
+        <div className="d-flex gap-2 flex-wrap">
           <AppButton variant="outline-secondary" onClick={navigateToList}>一覧へ戻る</AppButton>
           <AppButton variant="outline-primary" onClick={() => void loadPharmacy()}>再読み込み</AppButton>
         </div>
@@ -125,12 +174,28 @@ export default function AdminPharmacyEditPage() {
   return (
     <PageShell>
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <h4 className="page-title mb-0">薬局情報編集（ID: {pharmacy.id}）</h4>
-        <AppButton size="sm" variant="outline-secondary" onClick={navigateToList}>
-          一覧へ戻る
-        </AppButton>
+        <div>
+          <h4 className="page-title mb-0">薬局情報編集（ID: {pharmacy.id}）</h4>
+          <div className="text-muted small">基本情報、営業時間、操作履歴を確認しながら周辺運用へ戻れます。</div>
+        </div>
+        <div className="d-flex gap-2 flex-wrap">
+          <AppButton size="sm" variant="outline-secondary" onClick={navigateToList}>
+            一覧へ戻る
+          </AppButton>
+          <AppButton size="sm" variant="outline-secondary" onClick={navigateToHealth}>
+            薬局ヘルス
+          </AppButton>
+          <AppButton
+            size="sm"
+            variant="outline-secondary"
+            onClick={() => auditLogRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          >
+            操作履歴へ
+          </AppButton>
+        </div>
       </div>
       <ScrollArea>
+      <AdminNavigationLinks groups={buildEditLinkGroups(pharmacy.id)} />
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}
 
@@ -182,6 +247,12 @@ export default function AdminPharmacyEditPage() {
             disabled={activeUpdating}
           >
             {activeUpdating ? '更新中...' : pharmacy.isActive ? '無効にする' : '有効にする'}
+          </AppButton>
+          <AppButton size="sm" variant="outline-secondary" onClick={navigateToBusinessHours}>
+            営業時間を見る
+          </AppButton>
+          <AppButton size="sm" variant="outline-secondary" onClick={navigateToRelationships}>
+            関係性監査
           </AppButton>
           <span className="text-muted small">この操作は即時反映されます</span>
         </div>
@@ -262,6 +333,7 @@ export default function AdminPharmacyEditPage() {
       />
 
       {/* 操作履歴 */}
+      <div ref={auditLogRef}>
       <AppDataPanel className="mt-4">
         <h5 className="mb-3">操作履歴</h5>
         {auditLogsLoading ? (
@@ -295,6 +367,7 @@ export default function AdminPharmacyEditPage() {
           </Table>
         )}
       </AppDataPanel>
+      </div>
       </ScrollArea>
     </PageShell>
   );

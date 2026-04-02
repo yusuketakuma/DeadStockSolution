@@ -14,6 +14,7 @@ import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa } from '../../utils/formatters';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 interface AlertItem {
   id: number;
@@ -36,6 +37,27 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
   near_expiry: '期限切れ間近',
   excess_stock: '過剰在庫',
 };
+
+const ALERT_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: '通知・分析',
+    description: 'アラートの発火理由と配信状態を確認するときに使います。',
+    links: [
+      { to: '/admin/notifications', label: '通知・配信状況' },
+      { to: '/admin/risk', label: '期限リスク分析' },
+      { to: '/admin/log-center', label: 'ログセンター' },
+    ],
+  },
+  {
+    title: '薬局運用',
+    description: '影響薬局の状態確認や一括対応に戻れます。',
+    links: [
+      { to: '/admin/pharmacies', label: '薬局管理' },
+      { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+      { to: '/admin/bulk-actions', label: '一括操作' },
+    ],
+  },
+] as const;
 
 export default function AdminAlertsPage() {
   const [typeFilter, setTypeFilter] = useState('');
@@ -125,10 +147,21 @@ export default function AdminAlertsPage() {
       {error && <ErrorRetryAlert error={error} onRetry={() => void retry()} />}
 
       <ScrollArea>
+        <AdminNavigationLinks groups={ALERT_LINK_GROUPS} />
         {loading ? (
           <InlineLoader text="アラートを読み込み中..." className="text-muted small" />
         ) : items.length === 0 ? (
-          <AppEmptyState title="アラートがありません" description="予測アラートが検出されるとここに表示されます。" />
+          <AppEmptyState
+            title="アラートがありません"
+            description="予測アラートが検出されるとここに表示されます。通知設定やリスク分析、薬局側の状態確認に戻れます。"
+            action={(
+              <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信状況</Link>
+                <Link to="/admin/risk" className="btn btn-outline-secondary btn-sm">期限リスク分析</Link>
+                <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+              </div>
+            )}
+          />
         ) : (
           <AppResponsiveSwitch
             desktop={() => (

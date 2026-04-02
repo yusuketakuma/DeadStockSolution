@@ -14,6 +14,7 @@ import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import { useSseRefresh } from '../../hooks/useSseRefresh';
 import { formatDateTimeJa } from '../../utils/formatters';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 function isNotConfiguredError(err: unknown): boolean {
   return err instanceof ApiError && err.status === 503;
@@ -189,6 +190,27 @@ function workflowStatusMeta(status: string | null): { label: string; bg: 'second
       return { label: '受付済み', bg: 'secondary' };
   }
 }
+
+const OPENCLAW_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: '要望対応',
+    description: '要望の一次確認と会話履歴の近接導線です。',
+    links: [
+      { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
+      { to: '/admin/openclaw-commands', label: 'コマンド管理' },
+      { to: '/admin/log-center', label: 'ログセンター' },
+    ],
+  },
+  {
+    title: '周辺運用',
+    description: '通知異常や監査に戻るときに使います。',
+    links: [
+      { to: '/admin/notifications', label: '通知・配信状況' },
+      { to: '/admin/audit', label: '監査ログ' },
+      { to: '/admin/rate-limits', label: 'レート制限設定' },
+    ],
+  },
+] as const;
 
 export default function AdminOpenClawPage() {
   const [requests, setRequests] = useState<UserRequestItem[]>([]);
@@ -456,6 +478,7 @@ export default function AdminOpenClawPage() {
       )}
 
       <ScrollArea>
+      <AdminNavigationLinks groups={OPENCLAW_LINK_GROUPS} />
       <AppCard className="mb-3">
         <AppCard.Header>DDS / OpenClaw ヘルス</AppCard.Header>
         <AppCard.Body>
@@ -532,7 +555,11 @@ export default function AdminOpenClawPage() {
           {retryLoading ? (
             <InlineLoader text="リトライキューを読み込み中..." className="text-muted small" />
           ) : retryItems.length === 0 ? (
-            <div className="text-muted small">対象のリトライジョブはありません。</div>
+            <div className="d-flex flex-wrap align-items-center gap-2 small text-muted">
+              <span>対象のリトライジョブはありません。</span>
+              <Link to="/admin/user-requests" className="btn btn-outline-secondary btn-sm">ユーザーリクエスト管理</Link>
+              <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+            </div>
           ) : (
             <div className="table-responsive">
               <AppTable striped size="sm" className="mobile-table mb-0">
@@ -615,8 +642,10 @@ export default function AdminOpenClawPage() {
           {loading ? (
             <InlineLoader text="読み込み中..." className="text-muted small" />
           ) : filteredRequests.length === 0 ? (
-            <div className="text-muted small">
-              {requests.length === 0 ? '受信した要望はまだありません。' : '条件に一致する要望はありません。'}
+            <div className="d-flex flex-wrap align-items-center gap-2 small text-muted">
+              <span>{requests.length === 0 ? '受信した要望はまだありません。' : '条件に一致する要望はありません。'}</span>
+              <Link to="/admin/user-requests" className="btn btn-outline-secondary btn-sm">ユーザーリクエスト管理</Link>
+              <Link to="/admin/openclaw-commands" className="btn btn-outline-secondary btn-sm">コマンド管理</Link>
             </div>
           ) : (
             <AppResponsiveSwitch
@@ -749,7 +778,10 @@ export default function AdminOpenClawPage() {
         <AppCard.Header>DSS会話履歴</AppCard.Header>
         <AppCard.Body>
           {!selectedRequestId ? (
-            <div className="text-muted small">要望を選択すると詳細が表示されます。</div>
+            <div className="d-flex flex-wrap align-items-center gap-2 small text-muted">
+              <span>要望を選択すると詳細が表示されます。</span>
+              <Link to="/admin/user-requests" className="btn btn-outline-secondary btn-sm">ユーザーリクエスト管理</Link>
+            </div>
           ) : threadLoading ? (
             <InlineLoader text="会話履歴を読み込み中..." className="text-muted small" />
           ) : !thread ? (
@@ -803,7 +835,10 @@ export default function AdminOpenClawPage() {
         <AppCard.Header>Request Event Timeline</AppCard.Header>
         <AppCard.Body>
           {!selectedRequestId ? (
-            <div className="text-muted small">要望を選択するとイベント履歴を確認できます。</div>
+            <div className="d-flex flex-wrap align-items-center gap-2 small text-muted">
+              <span>要望を選択するとイベント履歴を確認できます。</span>
+              <Link to="/admin/user-requests" className="btn btn-outline-secondary btn-sm">ユーザーリクエスト管理</Link>
+            </div>
           ) : eventsLoading ? (
             <InlineLoader text="イベント履歴を読み込み中..." className="text-muted small" />
           ) : events.length === 0 ? (

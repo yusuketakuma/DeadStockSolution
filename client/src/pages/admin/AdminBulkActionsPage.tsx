@@ -4,6 +4,7 @@ import { Alert, Badge, Card, Col, Form, Row } from 'react-bootstrap';
 import { api } from '../../api/client';
 import AppButton from '../../components/ui/AppButton';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
+import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 interface ParseResult {
   pharmacyIds: number[];
@@ -16,6 +17,27 @@ interface BulkActionResponse {
   failed: number;
   results: { pharmacyId: number; success: boolean; error?: string }[];
 }
+
+const BULK_ACTION_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
+  {
+    title: '承認・監査',
+    description: '一括実行の前後で対象確認と証跡確認を並べて見られます。',
+    links: [
+      { to: '/admin/pharmacies', label: '薬局管理' },
+      { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+      { to: '/admin/audit', label: '監査ログ' },
+    ],
+  },
+  {
+    title: '周辺運用',
+    description: '実行後の関連ジョブや周辺運用へそのまま移れます。',
+    links: [
+      { to: '/admin/upload-jobs', label: '取込ジョブ管理' },
+      { to: '/admin/relationships', label: '関係性監査' },
+      { to: '/admin/log-center', label: 'ログセンター' },
+    ],
+  },
+] as const;
 
 export default function AdminBulkActionsPage() {
   const [csvContent, setCsvContent] = useState('');
@@ -82,6 +104,8 @@ export default function AdminBulkActionsPage() {
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
           <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+          <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+          <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログ</Link>
         </div>
       </div>
 
@@ -89,6 +113,7 @@ export default function AdminBulkActionsPage() {
       {success && <Alert variant="success" dismissible onClose={() => setSuccess('')}>{success}</Alert>}
 
       <ScrollArea>
+        <AdminNavigationLinks groups={BULK_ACTION_LINK_GROUPS} />
         <Card className="mb-3">
           <Card.Header>CSVアップロード</Card.Header>
           <Card.Body>
@@ -170,6 +195,13 @@ export default function AdminBulkActionsPage() {
                   ))}
                 </div>
               )}
+              <div className="small text-muted mt-3">
+                実行後は <Link to="/admin/audit">監査ログ</Link> と <Link to="/admin/log-center">ログセンター</Link> で証跡を確認できます。
+              </div>
+              <div className="mt-3 d-flex gap-2 flex-wrap">
+                <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理で確認</Link>
+                <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログを見る</Link>
+              </div>
             </Card.Body>
           </Card>
         )}

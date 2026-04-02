@@ -140,7 +140,7 @@ describe('AdminLogCenterPage feedback helpers', () => {
     });
   });
 
-  it('renders nearby links for standalone error-code and quality follow-up', async () => {
+  it('renders nearby links for standalone error-code and rate-limit follow-up', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/admin/log-center/summary')) {
@@ -181,6 +181,7 @@ describe('AdminLogCenterPage feedback helpers', () => {
     });
 
     expect(screen.getAllByRole('link', { name: 'エラーコードを管理' })[0]).toHaveAttribute('href', '/admin/error-codes');
+    expect(screen.getAllByRole('link', { name: 'レート制限設定' }).some((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
     expect(screen.getByRole('link', { name: 'アップロード品質' })).toHaveAttribute('href', '/admin/upload-quality');
   });
 });

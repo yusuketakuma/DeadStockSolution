@@ -19,6 +19,7 @@ import AppDataTable from '../components/ui/AppDataTable';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
 import SwipeableListItem from '../components/gesture/SwipeableListItem';
+import ProposalNavigationLinks, { type ProposalNavigationLinkGroup } from '../components/proposal/ProposalNavigationLinks';
 
 interface Proposal {
   id: number;
@@ -111,6 +112,26 @@ function canAcceptProposal(proposal: Proposal, viewerId: number | undefined): bo
 function canRejectProposal(proposal: Proposal): boolean {
   return ['proposed', 'accepted_a', 'accepted_b'].includes(proposal.status);
 }
+
+const PROPOSALS_LINK_GROUPS: readonly ProposalNavigationLinkGroup[] = [
+  {
+    title: '候補確認',
+    description: '一覧の前後で比較する主要画面です。',
+    links: [
+      { to: '/matching', label: 'マッチング' },
+      { to: '/exchange-history', label: '交換履歴' },
+      { to: '/messages', label: 'メッセージ' },
+    ],
+  },
+  {
+    title: '次の確認',
+    description: '空振り時でも通知や保存候補に戻れます。',
+    links: [
+      { to: '/bookmarks', label: 'ブックマーク' },
+      { to: '/notifications', label: '通知センター' },
+    ],
+  },
+] as const;
 
 export default function ProposalsPage() {
   const { user } = useAuth();
@@ -219,6 +240,8 @@ export default function ProposalsPage() {
       {bulkError && <AppAlert variant="danger">{bulkError}</AppAlert>}
       {message && <AppAlert variant="success">{message}</AppAlert>}
 
+      <ProposalNavigationLinks groups={PROPOSALS_LINK_GROUPS} />
+
       <AppActionBar
         className="mb-3"
         leading={(
@@ -273,7 +296,7 @@ export default function ProposalsPage() {
         loadingText="マッチング一覧を読み込み中..."
         isEmpty={proposals.length === 0}
         emptyTitle="マッチング履歴はまだありません"
-        emptyDescription="マッチング実行後に履歴が表示されます。"
+        emptyDescription="マッチング実行後に履歴が表示されます。交換履歴やメッセージにも戻れます。"
         emptyActionLabel="マッチングへ進む"
         emptyActionTo="/matching"
         desktop={() => (
@@ -345,7 +368,14 @@ export default function ProposalsPage() {
                       <td>{formatYen(p.valueDifference)}</td>
                       <td>{formatDateTimeJa(p.proposedAt)}</td>
                       <td>{renderDeadlineCell(p.deadlineAt)}</td>
-                      <td><Link to={`/proposals/${p.id}`} className="btn btn-sm btn-outline-primary">詳細</Link></td>
+                      <td>
+                        <div className="d-flex gap-2 flex-wrap">
+                          <Link to={`/proposals/${p.id}`} className="btn btn-sm btn-outline-primary">詳細</Link>
+                          <Link to={`/proposals/${p.id}/print`} className="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer">
+                            印刷
+                          </Link>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -422,6 +452,14 @@ export default function ProposalsPage() {
                           aria-label={`${otherName}との提案を一括対象に追加`}
                         />
                         <Link to={`/proposals/${p.id}`} className="btn btn-sm btn-outline-primary w-100">詳細</Link>
+                        <Link
+                          to={`/proposals/${p.id}/print`}
+                          className="btn btn-sm btn-outline-secondary w-100"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          印刷
+                        </Link>
                       </div>
                     )}
                   />
