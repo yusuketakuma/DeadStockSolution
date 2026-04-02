@@ -266,9 +266,11 @@ export async function getLogInsightForEntry(
 }
 
 export async function getLogSummary(): Promise<LogSummary> {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayStr = todayStart.toISOString();
+  // JST (Asia/Tokyo) の深夜0時を基準にする（サーバーTZに依存しない）
+  const now = new Date();
+  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const jstDateStr = jstNow.toISOString().split('T')[0]; // YYYY-MM-DD in JST
+  const todayStr = new Date(jstDateStr + 'T00:00:00+09:00').toISOString();
 
   const [activityRow, systemRow, syncRow] = await Promise.all([
     db.select({

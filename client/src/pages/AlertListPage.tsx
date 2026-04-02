@@ -14,6 +14,7 @@ import Pagination from '../components/Pagination';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
 import SwipeableListItem from '../components/gesture/SwipeableListItem';
+import { formatDateTimeJa } from '../utils/formatters';
 
 // ── 型定義 ──────────────────────────────────────
 type AlertType = 'near_expiry' | 'excess_stock';
@@ -64,20 +65,6 @@ const ALERT_TYPE_VARIANTS: Record<AlertType, string> = {
 const PAGE_SIZE = 20;
 
 // ── ヘルパー関数 ──────────────────────────────────────
-function formatDateTime(iso: string): string {
-  try {
-    const date = new Date(iso);
-    return date.toLocaleDateString('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
-}
 
 function parseAffectedItems(detailJson: Record<string, unknown>): AffectedItem[] {
   if (!detailJson || !Array.isArray(detailJson.affectedItems)) return [];
@@ -255,7 +242,7 @@ export default function AlertListPage() {
           <Badge bg={ALERT_TYPE_VARIANTS[detailAlert.alertType]} className="me-2">
             {ALERT_TYPE_LABELS[detailAlert.alertType]}
           </Badge>
-          <small className="text-muted">{formatDateTime(detailAlert.detectedAt)}</small>
+          <small className="text-muted">{formatDateTimeJa(detailAlert.detectedAt)}</small>
         </div>
         <p className="text-muted">{detailAlert.message}</p>
 
@@ -304,7 +291,7 @@ export default function AlertListPage() {
         {detailAlert.resolvedAt && (
           <div className="mt-3">
             <Badge bg="success">解決済み</Badge>
-            <small className="text-muted ms-2">{formatDateTime(detailAlert.resolvedAt)}</small>
+            <small className="text-muted ms-2">{formatDateTimeJa(detailAlert.resolvedAt)}</small>
           </div>
         )}
       </AppModalShell>
@@ -323,7 +310,7 @@ export default function AlertListPage() {
         <div className="fw-semibold">{alert.title}</div>
         <small className="text-muted">{alert.message}</small>
       </td>
-      <td className="text-nowrap">{formatDateTime(alert.detectedAt)}</td>
+      <td className="text-nowrap">{formatDateTimeJa(alert.detectedAt)}</td>
       <td>
         <div className="d-flex gap-1">
           <AppButton size="sm" variant="outline-primary" onClick={() => void handleShowDetail(alert.id)}>
@@ -359,7 +346,7 @@ export default function AlertListPage() {
         </Badge>
       }
       fields={[
-        { label: '検出日時', value: formatDateTime(alert.detectedAt) },
+        { label: '検出日時', value: formatDateTimeJa(alert.detectedAt) },
         { label: '状態', value: alert.resolvedAt ? '解決済み' : '未解決' },
       ]}
       actions={

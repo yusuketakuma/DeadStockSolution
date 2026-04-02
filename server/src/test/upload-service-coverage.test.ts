@@ -109,7 +109,7 @@ describe('upload-service coverage', () => {
       ];
 
       const result = getPreviewRows(allRows, 0);
-      expect(result).toHaveLength(5);
+      expect(result).toHaveLength(6);
       expect(result[0]).toEqual(['row1-1', 'row1-2']);
     });
 

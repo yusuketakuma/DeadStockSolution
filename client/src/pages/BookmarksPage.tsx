@@ -18,23 +18,9 @@ import {
   fetchBookmarksPage,
   updateBookmarkMemo,
 } from '../api/match-bookmarks';
+import { formatDateTimeJa } from '../utils/formatters';
 
 const PAGE_SIZE = 20;
-
-function formatDateTime(iso: string): string {
-  try {
-    const date = new Date(iso);
-    return date.toLocaleDateString('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
-}
 
 function buildMatchingCandidateLink(bookmark: Bookmark): string {
   return `/matching?targetPharmacyId=${bookmark.candidatePharmacyId}`;
@@ -148,7 +134,7 @@ export default function BookmarksPage() {
         </div>
       </div>
       <ScrollArea>
-        {error && items.length > 0 && (
+        {error && (
           <ErrorRetryAlert
             error={error}
             onRetry={() => { void loadPage(page); }}
@@ -217,7 +203,7 @@ export default function BookmarksPage() {
                                 : <span className="text-muted small">—</span>}
                             </td>
                             <td className="text-nowrap small text-muted">
-                              {formatDateTime(b.createdAt)}
+                              {formatDateTimeJa(b.createdAt)}
                             </td>
                             <td className="text-nowrap">
                               <Link to={buildMatchingCandidateLink(b)} className="btn btn-outline-primary btn-sm me-1">
@@ -256,7 +242,7 @@ export default function BookmarksPage() {
                         fields={[
                           { label: '薬品コード', value: b.drugCode },
                           { label: 'メモ', value: b.memo || '—' },
-                          { label: 'ブックマーク日時', value: formatDateTime(b.createdAt) },
+                          { label: 'ブックマーク日時', value: formatDateTimeJa(b.createdAt) },
                         ]}
                         actions={
                           <div className="d-flex gap-2 mt-2">

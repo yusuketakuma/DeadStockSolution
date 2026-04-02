@@ -65,6 +65,8 @@ export const exchangeProposals = pgTable('exchange_proposals', {
     .on(table.pharmacyBId, table.proposedAt),
   idxExchangeProposalsStatusProposed: index('idx_exchange_proposals_status_proposed')
     .on(table.status, table.proposedAt),
+  idxExchangeProposalsStatusExpires: index('idx_exchange_proposals_status_expires')
+    .on(table.status, table.expiresAt),
   idxExchangeProposalsCompletedA: index('idx_exchange_proposals_completed_a')
     .on(table.pharmacyAId, table.completedAt)
     .where(sql`${table.status} = 'completed'`),

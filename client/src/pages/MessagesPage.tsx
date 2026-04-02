@@ -39,14 +39,17 @@ function formatDateTime(iso: string): string {
   try {
     const d = new Date(iso);
     const now = new Date();
+    const jstOptions = { timeZone: 'Asia/Tokyo' as const };
+    const dJst = new Date(d.toLocaleString('en-US', jstOptions));
+    const nowJst = new Date(now.toLocaleString('en-US', jstOptions));
     const isToday =
-      d.getFullYear() === now.getFullYear()
-      && d.getMonth() === now.getMonth()
-      && d.getDate() === now.getDate();
+      dJst.getFullYear() === nowJst.getFullYear()
+      && dJst.getMonth() === nowJst.getMonth()
+      && dJst.getDate() === nowJst.getDate();
     if (isToday) {
-      return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
     }
-    return d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
   } catch {
     return '';
   }

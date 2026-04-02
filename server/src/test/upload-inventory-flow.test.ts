@@ -110,7 +110,7 @@ function mockUploadInventoryDependencies() {
             drug_name: '1',
             quantity: '2',
             unit: '3',
-            yakka_unit_price: '2',
+            yakka_unit_price: '4',
             expiration_date: null,
             lot_number: null,
           };
@@ -356,9 +356,9 @@ describe('upload -> inventory flow', () => {
     setupDbMock();
 
     mocks.parseExcelBuffer.mockResolvedValue([
-      ['YJコード', '薬剤名', '数量', '単位'],
-      ['1111111F1111', 'アムロジピン錠5mg', 10, '錠'],
-      ['2222222F2222', 'ロキソプロフェン錠60mg', 5, '錠'],
+      ['YJコード', '薬剤名', '数量', '単位', '薬価'],
+      ['1111111F1111', 'アムロジピン錠5mg', 10, '錠', 100],
+      ['2222222F2222', 'ロキソプロフェン錠60mg', 5, '錠', 200],
     ]);
     mocks.enrichWithDrugMaster.mockImplementation(async (rows: unknown[]) => rows);
     mocks.triggerMatchingRefreshOnUpload.mockResolvedValue(undefined);
@@ -411,7 +411,7 @@ describe('upload -> inventory flow', () => {
 
     expect(previewResponse.status).toBe(200);
     expect(previewResponse.body).toEqual(expect.objectContaining({
-      headers: ['YJコード', '薬剤名', '数量', '単位'],
+      headers: ['YJコード', '薬剤名', '数量', '単位', '薬価'],
       headerRowIndex: 0,
     }));
 
@@ -425,7 +425,7 @@ describe('upload -> inventory flow', () => {
         drug_name: '1',
         quantity: '2',
         unit: '3',
-        yakka_unit_price: '2',
+        yakka_unit_price: '4',
         expiration_date: null,
         lot_number: null,
       })), 'dead-stock.xlsx');

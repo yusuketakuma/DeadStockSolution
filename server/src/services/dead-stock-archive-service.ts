@@ -4,7 +4,10 @@ import { and, eq, lt, isNotNull } from 'drizzle-orm';
 import { logger } from './logger';
 
 export async function archiveExpiredDeadStock(): Promise<{ archivedCount: number }> {
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  // JST (Asia/Tokyo) の日付を取得（サーバーTZに依存しない）
+  const now = new Date();
+  const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const today = jstDate.toISOString().split('T')[0]; // YYYY-MM-DD in JST
   const result = await db
     .update(deadStockItems)
     .set({ isAvailable: false })

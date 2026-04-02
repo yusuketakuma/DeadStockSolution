@@ -157,10 +157,10 @@ describe('upload-service ultra coverage', () => {
       expect(preview).toEqual([['data1']]);
     });
 
-    it('uses default count of 5', () => {
-      const allRows = Array.from({ length: 10 }, (_, i) => [`row${i}`]);
+    it('uses default count of 10', () => {
+      const allRows = Array.from({ length: 12 }, (_, i) => [`row${i}`]);
       const preview = getPreviewRows(allRows, 0);
-      expect(preview).toHaveLength(5);
+      expect(preview).toHaveLength(10);
     });
 
     it('handles headerRowIndex > 0', () => {
