@@ -6,19 +6,22 @@ import TimelineEventCard from './TimelineEventCard';
 import type { TimelineEvent, TimelinePriority } from '../../types/timeline';
 
 function getDateLabel(timestamp: string): string {
+  const jstOptions = { timeZone: 'Asia/Tokyo' as const };
+  const fmt = (d: Date) => {
+    const parts = new Intl.DateTimeFormat('en-CA', { ...jstOptions, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    return parts; // YYYY-MM-DD
+  };
+
   const eventDate = new Date(timestamp);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 86400000);
 
-  const isSameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
+  const eventStr = fmt(eventDate);
+  if (eventStr === fmt(now)) return '今日';
+  if (eventStr === fmt(yesterday)) return '昨日';
 
-  if (isSameDay(eventDate, today)) return '今日';
-  if (isSameDay(eventDate, yesterday)) return '昨日';
-  return `${eventDate.getFullYear()}/${eventDate.getMonth() + 1}/${eventDate.getDate()}`;
+  const [y, m, d] = eventStr.split('-');
+  return `${y}/${Number(m)}/${Number(d)}`;
 }
 
 function groupEventsByDate(events: TimelineEvent[]): Array<{ label: string; events: TimelineEvent[] }> {
