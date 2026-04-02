@@ -71,6 +71,10 @@
     {
       "path": "/api/internal/proposals/expire-stale",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/internal/drug-master-sync/run",
+      "schedule": "0 19 * * *"
     }
   ]
 }

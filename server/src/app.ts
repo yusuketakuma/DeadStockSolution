@@ -40,6 +40,7 @@ import internalDeadStockArchiveRoutes from './routes/internal-dead-stock-archive
 import internalProposalExpiryRoutes from './routes/internal-proposal-expiry';
 import internalDailyStatisticsRoutes from './routes/internal-daily-statistics';
 import internalE2EProposalFlowRoutes from './routes/internal-e2e-proposal-flow';
+import internalDrugMasterSyncRoutes from './routes/internal-drug-master-sync';
 import statisticsRoutes from './routes/statistics';
 import groupsRoutes from './routes/groups';
 import alertsRoutes from './routes/alerts';
@@ -406,6 +407,7 @@ registerApiRoute('/internal/dead-stock', internalDeadStockArchiveRoutes);
 registerApiRoute('/internal/proposals', internalProposalExpiryRoutes);
 registerApiRoute('/internal/daily-statistics', internalDailyStatisticsRoutes);
 registerApiRoute('/internal/e2e/proposal-flow', internalE2EProposalFlowRoutes);
+  registerApiRoute('/internal/drug-master-sync', internalDrugMasterSyncRoutes);
 
 app.use(errorHandler);
 
