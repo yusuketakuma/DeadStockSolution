@@ -14,6 +14,7 @@ import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import SearchInput from '../components/SearchInput';
 import SearchChips from '../components/search/SearchChips';
 import SearchResultStatus from '../components/search/SearchResultStatus';
+import AppDataPanel from '../components/ui/AppDataPanel';
 import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 import { useToast } from '../contexts/ToastContext';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
@@ -201,12 +202,40 @@ export default function DeadStockListPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="page-title mb-0">デッドストックリスト ({total}件)</h4>
-        <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">デッドストックリスト ({total}件)</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
+          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">アップロード品質</Link>
+          <Link to="/alerts" className="btn btn-outline-warning btn-sm">アラート</Link>
+        </div>
       </div>
 
+      <AppDataPanel title="関連画面" className="mb-2">
+        <div className="d-flex gap-2 flex-wrap align-items-center">
+          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫参照</Link>
+          <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm">在庫検索</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
+          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計</Link>
+          <span className="small text-muted">在庫参照や使用量比較はここから切り替えます。</span>
+        </div>
+      </AppDataPanel>
+
       <ScrollArea>
+      <AppDataPanel title="次にやること" className="mb-3">
+        <div className="d-flex gap-2 flex-wrap">
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
+          <Link to="/groups" className="btn btn-outline-secondary btn-sm">グループ</Link>
+          <Link to="/pharmacies" className="btn btn-outline-secondary btn-sm">薬局一覧</Link>
+          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
+        </div>
+        <div className="small text-muted mt-2">
+          在庫確認のあとに交換先探索や連絡へ進みやすい導線をまとめています。
+        </div>
+      </AppDataPanel>
+
       <div className="mb-2">
         <SearchInput
           placeholder="薬品名で検索（スペース区切りで絞り込み）..."

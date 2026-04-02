@@ -189,6 +189,93 @@ function mockFetchForRoutes(user: typeof mockUser | null, route: string) {
       });
     }
 
+    if (route === '/upload-quality' && url.includes('/api/upload-quality/my-summary')) {
+      return new Response(JSON.stringify({
+        totalIssues: 1,
+        issuesByCode: [{ issueCode: 'MISSING_DRUG_NAME', count: 1 }],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (route === '/upload-quality' && url.includes('/api/upload-quality/my-issues')) {
+      return new Response(JSON.stringify({
+        issues: [
+          {
+            id: 1,
+            jobId: 10,
+            uploadType: 'dead_stock',
+            rowNumber: 2,
+            issueCode: 'MISSING_DRUG_NAME',
+            issueMessage: '薬品名がありません',
+            createdAt: '2026-03-01T09:00:00.000Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (route === '/admin/matching-experiments' && url.includes('/api/admin/matching-experiments/1/results')) {
+      return new Response(JSON.stringify({
+        results: {
+          experimentId: 1,
+          totalAssignments: 20,
+          controlCount: 10,
+          treatmentCount: 10,
+        },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (route === '/admin/matching-experiments' && url.includes('/api/admin/matching-experiments')) {
+      return new Response(JSON.stringify({
+        experiments: [
+          {
+            id: 1,
+            name: 'default experiment',
+            controlProfileId: 1,
+            treatmentProfileId: 2,
+            trafficPercentage: 50,
+            status: 'running',
+            startedAt: '2026-03-01T09:00:00.000Z',
+            endedAt: null,
+            createdAt: '2026-03-01T08:30:00.000Z',
+          },
+        ],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (route === '/admin/error-codes' && url.includes('/api/admin/error-codes')) {
+      return new Response(JSON.stringify({
+        items: [
+          {
+            id: 1,
+            code: 'E001',
+            category: 'upload',
+            severity: 'error',
+            titleJa: 'CSV形式エラー',
+            descriptionJa: 'CSVの列構成が不正です',
+            resolutionJa: 'テンプレートを再確認してください',
+            isActive: true,
+          },
+        ],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({}), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -276,5 +363,38 @@ describe('Route meta integration', () => {
       expect(heading?.textContent).toBe('統計');
     });
     expect(screen.getByText('アップロード実績')).toBeInTheDocument();
+  });
+
+  it('renders upload-quality route for authenticated user', async () => {
+    mockFetchForRoutes(mockUser, '/upload-quality');
+    const { container } = renderAppAtRoute('/upload-quality');
+
+    await waitFor(() => {
+      const heading = container.querySelector('h4.page-title');
+      expect(heading?.textContent).toBe('アップロード品質');
+    });
+    expect(screen.getByText('問題総数')).toBeInTheDocument();
+  });
+
+  it('renders admin matching experiments route for admin user', async () => {
+    mockFetchForRoutes({ ...mockUser, isAdmin: true }, '/admin/matching-experiments');
+    const { container } = renderAppAtRoute('/admin/matching-experiments');
+
+    await waitFor(() => {
+      const heading = container.querySelector('h4.page-title');
+      expect(heading?.textContent).toBe('マッチング実験');
+    });
+    expect(screen.getByText('default experiment')).toBeInTheDocument();
+  });
+
+  it('renders admin error-codes route for admin user', async () => {
+    mockFetchForRoutes({ ...mockUser, isAdmin: true }, '/admin/error-codes');
+    const { container } = renderAppAtRoute('/admin/error-codes');
+
+    await waitFor(() => {
+      const heading = container.querySelector('h4.page-title');
+      expect(heading?.textContent).toContain('エラーコード');
+    });
+    expect(screen.getByText('CSV形式エラー')).toBeInTheDocument();
   });
 });

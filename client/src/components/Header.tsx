@@ -42,7 +42,7 @@ const HIDDEN_PATH_PREFIXES = ['/login', '/register', '/password-reset'];
 const USER_QUICK_ACTIONS: QuickAction[] = [
   { to: '/upload', label: 'アップロード' },
   { to: '/matching', label: 'マッチング' },
-  { to: '/requests', label: '要望対応' },
+  { to: '/notifications', label: '通知センター' },
 ];
 const ADMIN_QUICK_ACTIONS: QuickAction[] = [
   { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
@@ -52,6 +52,98 @@ const ADMIN_QUICK_ACTIONS: QuickAction[] = [
 
 function isTrackablePath(pathname: string): boolean {
   return !HIDDEN_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+function dedupeQuickActions(actions: readonly QuickAction[]): QuickAction[] {
+  const seen = new Set<string>();
+  return actions.filter((action) => {
+    if (seen.has(action.to)) {
+      return false;
+    }
+    seen.add(action.to);
+    return true;
+  });
+}
+
+function resolveUserQuickActions(pathname: string): QuickAction[] {
+  if (pathname.startsWith('/upload') || pathname.startsWith('/inventory')) {
+    return [
+      { to: '/upload-quality', label: 'アップロード品質' },
+      { to: '/matching', label: 'マッチング' },
+      { to: '/statistics', label: '統計' },
+    ];
+  }
+
+  if (pathname.startsWith('/groups') || pathname.startsWith('/pharmacies')) {
+    return [
+      { to: '/groups', label: 'グループ' },
+      { to: '/pharmacies', label: '薬局一覧' },
+      { to: '/messages', label: 'メッセージ' },
+    ];
+  }
+
+  if (pathname.startsWith('/messages') || pathname.startsWith('/requests') || pathname.startsWith('/notifications') || pathname.startsWith('/alerts')) {
+    return [
+      { to: '/notifications', label: '通知センター' },
+      { to: '/messages', label: 'メッセージ' },
+      { to: '/account', label: '薬局設定' },
+      { to: '/alerts', label: 'アラート一覧' },
+    ];
+  }
+
+  if (pathname.startsWith('/account')) {
+    return [
+      { to: '/notifications', label: '通知センター' },
+      { to: '/groups', label: 'グループ' },
+      { to: '/statistics', label: '統計' },
+    ];
+  }
+
+  return USER_QUICK_ACTIONS;
+}
+
+function resolveAdminQuickActions(pathname: string): QuickAction[] {
+  if (
+    pathname.startsWith('/admin/matching-rules')
+    || pathname.startsWith('/admin/matching-experiments')
+    || pathname.startsWith('/admin/matching-performance')
+  ) {
+    return [
+      { to: '/admin/matching-rules', label: 'マッチングルール' },
+      { to: '/admin/matching-experiments', label: 'マッチング実験' },
+      { to: '/admin/matching-performance', label: 'マッチング性能' },
+    ];
+  }
+
+  if (
+    pathname.startsWith('/admin/log-center')
+    || pathname.startsWith('/admin/logs')
+    || pathname.startsWith('/admin/audit')
+    || pathname.startsWith('/admin/error-codes')
+  ) {
+    return [
+      { to: '/admin/log-center', label: 'ログセンター' },
+      { to: '/admin/audit', label: '監査ログ' },
+      { to: '/admin/error-codes', label: 'エラーコード' },
+      { to: '/admin/logs', label: '操作ログ' },
+    ];
+  }
+
+  if (
+    pathname.startsWith('/admin/notifications')
+    || pathname.startsWith('/admin/alerts')
+    || pathname.startsWith('/admin/direct-messages')
+    || pathname.startsWith('/admin/user-requests')
+  ) {
+    return [
+      { to: '/admin/notifications', label: '通知・配信' },
+      { to: '/admin/direct-messages', label: 'ユーザー間メッセージ' },
+      { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
+      { to: '/admin/alerts', label: 'アラート管理' },
+    ];
+  }
+
+  return ADMIN_QUICK_ACTIONS;
 }
 
 export default function Header({ onToggleSidebar }: Props) {
@@ -86,8 +178,12 @@ export default function Header({ onToggleSidebar }: Props) {
   }, [location.pathname, location.search, location.hash]);
 
   const quickActions = useMemo(() => {
-    const source = user?.isAdmin ? ADMIN_QUICK_ACTIONS : USER_QUICK_ACTIONS;
-    return source.filter((item) => !location.pathname.startsWith(item.to)).slice(0, 2);
+    const source = user?.isAdmin
+      ? resolveAdminQuickActions(location.pathname)
+      : resolveUserQuickActions(location.pathname);
+    return dedupeQuickActions(source)
+      .filter((item) => !location.pathname.startsWith(item.to))
+      .slice(0, 2);
   }, [location.pathname, user?.isAdmin]);
 
   const loadGitHubUpdates = async () => {

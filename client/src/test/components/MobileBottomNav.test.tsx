@@ -106,6 +106,20 @@ describe('MobileBottomNav', () => {
     expect(propLink).toHaveClass('active');
   });
 
+  it('keeps matching active on bookmarked candidates', () => {
+    renderWithProviders(<MobileBottomNav />, { route: '/bookmarks' });
+
+    const matchingLink = screen.getByText('マッチング').closest('a');
+    expect(matchingLink).toHaveClass('active');
+  });
+
+  it('keeps proposals active on exchange history', () => {
+    renderWithProviders(<MobileBottomNav />, { route: '/exchange-history' });
+
+    const proposalLink = screen.getByText('提案').closest('a');
+    expect(proposalLink).toHaveClass('active');
+  });
+
   it('shows unread badge on alerts when count > 0', () => {
     vi.mocked(useTimeline).mockReturnValue({
       unreadCount: 5,

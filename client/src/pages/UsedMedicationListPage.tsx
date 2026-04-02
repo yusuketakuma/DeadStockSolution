@@ -8,6 +8,7 @@ import AppEmptyState from '../components/ui/AppEmptyState';
 import InlineLoader from '../components/ui/InlineLoader';
 import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
+import AppDataPanel from '../components/ui/AppDataPanel';
 import { useApiQuery } from '../hooks/useApiQuery';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 
@@ -44,16 +45,43 @@ export default function UsedMedicationListPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="page-title mb-0">医薬品使用量リスト ({total}件)</h4>
-        <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">医薬品使用量リスト ({total}件)</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
+          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">アップロード品質</Link>
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
+        </div>
       </div>
+
+      <AppDataPanel title="関連画面" className="mb-2">
+        <div className="d-flex gap-2 flex-wrap align-items-center">
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
+          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫参照</Link>
+          <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm">在庫検索</Link>
+          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計</Link>
+          <span className="small text-muted">需要確認後に在庫比較や統計へすぐ戻れます。</span>
+        </div>
+      </AppDataPanel>
 
       {queryError && (
         <ErrorRetryAlert error={queryError} onRetry={() => void refetch()} />
       )}
 
       <ScrollArea>
+      <AppDataPanel title="次にやること" className="mb-3">
+        <div className="d-flex gap-2 flex-wrap">
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧</Link>
+          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計</Link>
+        </div>
+        <div className="small text-muted mt-2">
+          使用量更新後は、候補確認と提案状況の確認へ進めます。
+        </div>
+      </AppDataPanel>
+
       {loading ? (
         <InlineLoader text="医薬品使用量一覧を読み込み中..." className="text-muted small" />
       ) : queryError ? null : items.length === 0 ? (

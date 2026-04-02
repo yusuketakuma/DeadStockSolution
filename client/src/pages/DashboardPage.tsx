@@ -9,10 +9,12 @@ import { useAsyncResource } from '../hooks/useAsyncResource';
 import AppDataPanel from '../components/ui/AppDataPanel';
 import SmartDigest from '../components/timeline/SmartDigest';
 import DashboardTimeline from '../components/timeline/DashboardTimeline';
+import DashboardNextAction from '../components/dashboard/DashboardNextAction';
 import OnboardingGuide from '../components/onboarding/OnboardingGuide';
 import { useOnboardingVisibility } from '../hooks/useOnboardingVisibility';
 import type { TimelineEvent } from '../types/timeline';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import { sanitizeInternalPath } from '../utils/navigation';
 
 const RiskBucketBarChart = lazy(() => import('../components/charts/RiskBucketBarChart'));
 
@@ -51,6 +53,41 @@ interface StatusAndRiskData {
   alertStats: AlertStatsData | null;
   partialError: string;
 }
+
+const DASHBOARD_SHORTCUT_GROUPS = [
+  {
+    title: 'アップロード・在庫',
+    description: '在庫更新と品質確認をここから進めます。',
+    links: [
+      { to: '/upload', label: 'アップロード', className: 'btn btn-outline-primary btn-sm py-0' },
+      { to: '/upload-quality', label: 'アップロード品質', className: 'btn btn-outline-danger btn-sm py-0' },
+      { to: '/inventory/browse', label: '在庫参照', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/inventory/search', label: '医薬品在庫検索', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/statistics', label: '統計', className: 'btn btn-outline-secondary btn-sm py-0' },
+    ],
+  },
+  {
+    title: 'マッチング・対応',
+    description: '候補確認から連絡対応までをまとめています。',
+    links: [
+      { to: '/matching', label: 'マッチング', className: 'btn btn-outline-primary btn-sm py-0' },
+      { to: '/proposals', label: 'マッチング状況', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/exchange-history', label: '交換履歴', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/notifications', label: '通知センター', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/requests', label: '要望一覧', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/bookmarks', label: 'ブックマーク', className: 'btn btn-outline-secondary btn-sm py-0' },
+    ],
+  },
+  {
+    title: 'ネットワーク・設定',
+    description: '薬局間のつながりとアカウント設定を確認します。',
+    links: [
+      { to: '/groups', label: 'グループ', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/pharmacies', label: '薬局一覧', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/account', label: '薬局設定', className: 'btn btn-outline-secondary btn-sm py-0' },
+    ],
+  },
+] as const;
 
 function resolveSettledValue<T>(result: PromiseSettledResult<T>): T | null {
   return result.status === 'fulfilled' ? result.value : null;
@@ -111,18 +148,66 @@ export default function DashboardPage() {
     () => timelineError || (data?.partialError ?? '') || (error ?? ''),
     [data?.partialError, error, timelineError],
   );
+  const nextAction = useMemo(() => {
+    if (!status?.deadStockUploaded) {
+      return {
+        title: 'まずはデッドストックをアップロード',
+        description: '一覧と品質確認がそろうと、後続の在庫確認とマッチング準備が進めやすくなります。',
+        primaryLabel: 'アップロード',
+        primaryPath: '/upload',
+        secondaryLabel: 'アップロード品質',
+        secondaryPath: '/upload-quality',
+        badge: 'warning' as const,
+      };
+    }
+    if (!status?.usedMedicationUploaded) {
+      return {
+        title: '当月の使用量リストを更新',
+        description: 'マッチング候補の精度を出すため、今月の使用量データを先に入れてください。',
+        primaryLabel: 'アップロード',
+        primaryPath: '/upload',
+        secondaryLabel: '統計を見る',
+        secondaryPath: '/statistics',
+        badge: 'warning' as const,
+      };
+    }
+    if ((alertStats?.unresolvedCount ?? 0) > 0) {
+      return {
+        title: '未解決アラートを先に確認',
+        description: '期限切迫や過剰在庫の整理を優先すると、後続の提案確認がしやすくなります。',
+        primaryLabel: 'アラート一覧',
+        primaryPath: '/alerts',
+        secondaryLabel: '在庫参照',
+        secondaryPath: '/inventory/browse',
+        badge: 'primary' as const,
+      };
+    }
+    return {
+      title: '候補を確認して交換を進める',
+      description: 'アップロードが揃っているので、候補確認から提案・交換履歴の確認へ進めます。',
+      primaryLabel: 'マッチング',
+      primaryPath: '/matching',
+      secondaryLabel: 'マッチング状況',
+      secondaryPath: '/proposals',
+      badge: 'success' as const,
+    };
+  }, [alertStats?.unresolvedCount, status?.deadStockUploaded, status?.usedMedicationUploaded]);
 
   const { shouldShow: showOnboarding, dismiss: dismissOnboarding } = useOnboardingVisibility(status);
 
   const handleEventClick = useCallback((event: TimelineEvent) => {
-    if (event.actionPath) {
-      navigate(event.actionPath);
+    const safePath = sanitizeInternalPath(event.actionPath ?? '', '');
+    if (safePath) {
+      navigate(safePath);
     }
     void markViewed();
   }, [navigate, markViewed]);
 
   const handleDigestActionPath = useCallback((path: string) => {
-    navigate(path);
+    const safePath = sanitizeInternalPath(path, '');
+    if (safePath) {
+      navigate(safePath);
+    }
   }, [navigate]);
 
   const handleRiskBucketClick = useCallback((bucket: 'expired' | 'within30' | 'within60' | 'within90' | 'within120' | 'over120' | 'unknown') => {
@@ -146,6 +231,28 @@ export default function DashboardPage() {
           <small className="text-muted">ようこそ、{user?.name} さん</small>
         </div>
       </div>
+
+      <DashboardNextAction nextAction={nextAction} />
+
+      <AppDataPanel title="機能ショートカット" className="mb-2">
+        <Row className="g-3">
+          {DASHBOARD_SHORTCUT_GROUPS.map((group) => (
+            <Col key={group.title} md={4}>
+              <div className="border rounded-3 p-3 h-100">
+                <div className="fw-semibold mb-1">{group.title}</div>
+                <div className="small text-muted mb-2">{group.description}</div>
+                <div className="d-flex gap-2 flex-wrap">
+                  {group.links.map((shortcut) => (
+                    <Link key={shortcut.to} to={shortcut.to} className={shortcut.className}>
+                      {shortcut.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </Col>
+          ))}
+        </Row>
+      </AppDataPanel>
 
       {/* Top row: SmartDigest (left) + Risk & Status (right) */}
       <Row className="g-3 mb-2">
@@ -232,11 +339,8 @@ export default function DashboardPage() {
             </Row>
             <div className="dl-inline-actions">
               <Link to="/upload" className="btn btn-outline-primary btn-sm py-0">アップロード</Link>
-              <Link to="/matching" className="btn btn-outline-primary btn-sm py-0">マッチングを実行</Link>
+              <Link to="/upload-quality" className="btn btn-outline-danger btn-sm py-0">アップロード品質</Link>
               <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm py-0">在庫参照</Link>
-              <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm py-0">医薬品在庫検索</Link>
-              <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">マッチング状況</Link>
-              <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm py-0">交換履歴</Link>
             </div>
             {!status?.usedMedicationUploaded && (
               <div className="text-info mt-1 small">
@@ -271,11 +375,6 @@ export default function DashboardPage() {
                 {alertStats.byType.excess_stock ? (
                   <Link to="/alerts?tab=unresolved&type=excess_stock" className="text-decoration-none">
                     <Badge bg="warning" text="dark">{`過剰在庫 ${alertStats.byType.excess_stock}`}</Badge>
-                  </Link>
-                ) : null}
-                {alertStats.byType.no_movement ? (
-                  <Link to="/inventory/dead-stock" className="text-decoration-none">
-                    <Badge bg="info">{`不動在庫 ${alertStats.byType.no_movement}`}</Badge>
                   </Link>
                 ) : null}
               </div>

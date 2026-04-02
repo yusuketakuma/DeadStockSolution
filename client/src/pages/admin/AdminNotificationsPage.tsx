@@ -1,16 +1,41 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge, Card, Col, Form, Row, Tab, Tabs } from 'react-bootstrap';
 import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppTable from '../../components/ui/AppTable';
 import AppEmptyState from '../../components/ui/AppEmptyState';
+import AppDataPanel from '../../components/ui/AppDataPanel';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa } from '../../utils/formatters';
+
+const ADMIN_NOTIFICATION_TYPE_OPTIONS = [
+  { value: 'proposal_received', label: '提案受信' },
+  { value: 'proposal_status_changed', label: '提案ステータス変更' },
+  { value: 'new_comment', label: '新規コメント' },
+  { value: 'request_update', label: '要望更新' },
+  { value: 'alert_near_expiry', label: '期限切れ間近' },
+  { value: 'alert_excess_stock', label: '過剰在庫' },
+  { value: 'alert_resolved', label: 'アラート解消' },
+  { value: 'match_update', label: '候補更新' },
+  { value: 'matching_refresh_complete', label: '候補再計算完了' },
+  { value: 'group_invitation', label: 'グループ招待' },
+  { value: 'group_join', label: 'グループ参加' },
+  { value: 'group_leave', label: 'グループ離脱' },
+] as const;
+
+const ADMIN_NOTIFICATION_TYPE_LABELS = Object.fromEntries(
+  ADMIN_NOTIFICATION_TYPE_OPTIONS.map((option) => [option.value, option.label]),
+) as Record<string, string>;
+
+function getNotificationTypeLabel(type: string): string {
+  return ADMIN_NOTIFICATION_TYPE_LABELS[type] ?? type;
+}
 
 interface NotificationStats {
   totalNotifications: number;
@@ -85,7 +110,17 @@ export default function AdminNotificationsPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">通知・配信状況</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">通知・配信状況</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/alerts" className="btn btn-outline-secondary btn-sm">アラート管理</Link>
+          <Link to="/admin/matching-experiments" className="btn btn-outline-secondary btn-sm">マッチング実験</Link>
+          <Link to="/admin/upload-quality" className="btn btn-outline-secondary btn-sm">アップロード品質</Link>
+          <Link to="/admin/direct-messages" className="btn btn-outline-secondary btn-sm">ユーザー間メッセージ</Link>
+        </div>
+      </div>
 
       <ScrollArea>
         {statsLoading ? (
@@ -115,7 +150,7 @@ export default function AdminNotificationsPage() {
                 <div className="small text-muted">タイプ別</div>
                 <div className="d-flex flex-wrap gap-1 justify-content-center">
                   {stats.typeBreakdown.slice(0, 3).map((t) => (
-                    <Badge key={t.type} bg="secondary" className="small">{t.type}: {t.count}</Badge>
+                    <Badge key={t.type} bg="secondary" className="small">{getNotificationTypeLabel(t.type)}: {t.count}</Badge>
                   ))}
                 </div>
               </Card>
@@ -123,18 +158,27 @@ export default function AdminNotificationsPage() {
           </Row>
         )}
 
+        <AppDataPanel title="関連運用" className="mb-3">
+          <div className="d-flex gap-2 flex-wrap">
+            <Link to="/admin/direct-messages" className="btn btn-outline-secondary btn-sm">ユーザー間メッセージ</Link>
+            <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+            <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログ</Link>
+            <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
+          </div>
+          <div className="small text-muted mt-2">
+            通知の異常は、配信確認からログ調査、エラーコード確認までこの近傍で追えます。
+          </div>
+        </AppDataPanel>
+
         <Tabs defaultActiveKey="notifications" className="mb-3" onSelect={(k) => { if (k === 'subscriptions') loadSubscriptions(); }}>
           <Tab eventKey="notifications" title="通知一覧">
             <Row className="mb-3 g-2">
               <Col xs={12} md={4}>
                 <Form.Select size="sm" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}>
                   <option value="">すべてのタイプ</option>
-                  <option value="proposal_received">提案受信</option>
-                  <option value="proposal_status_changed">提案ステータス変更</option>
-                  <option value="new_comment">新規コメント</option>
-                  <option value="request_update">要望更新</option>
-                  <option value="alert_near_expiry">期限切れ間近</option>
-                  <option value="alert_excess_stock">過剰在庫</option>
+                  {ADMIN_NOTIFICATION_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
                 </Form.Select>
               </Col>
             </Row>
@@ -165,7 +209,7 @@ export default function AdminNotificationsPage() {
                           <tr key={n.id}>
                             <td>{n.id}</td>
                             <td>{n.pharmacyName ?? `ID:${n.pharmacyId}`}</td>
-                            <td><Badge bg="secondary">{n.type}</Badge></td>
+                            <td><Badge bg="secondary">{getNotificationTypeLabel(n.type)}</Badge></td>
                             <td>
                               <div>{n.title}</div>
                               <div className="small text-muted">{n.message}</div>
@@ -187,7 +231,7 @@ export default function AdminNotificationsPage() {
                         subtitle={n.pharmacyName ?? `薬局ID:${n.pharmacyId}`}
                         badges={
                           <>
-                            <Badge bg="secondary" className="me-1">{n.type}</Badge>
+                            <Badge bg="secondary" className="me-1">{getNotificationTypeLabel(n.type)}</Badge>
                             {n.isRead ? <Badge bg="success">既読</Badge> : <Badge bg="warning">未読</Badge>}
                           </>
                         }

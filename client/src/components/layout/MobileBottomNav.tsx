@@ -9,6 +9,8 @@ interface NavItem {
   icon: React.ReactNode;
   /** 完全一致 (end) でアクティブ判定 */
   end?: boolean;
+  /** 近接ルートでも同じタブをアクティブ扱いする */
+  activeAliases?: string[];
   /** バッジ数を返すキー */
   badgeKey?: 'proposals' | 'alerts';
 }
@@ -54,19 +56,61 @@ function AdminIcon() {
 }
 
 export const USER_NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'ホーム', icon: <DashboardIcon />, end: true },
-  { to: '/matching', label: 'マッチング', icon: <MatchingIcon /> },
-  { to: '/proposals', label: '提案', icon: <ProposalIcon />, badgeKey: 'proposals' },
-  { to: '/messages', label: 'メッセージ', icon: <MessageIcon /> },
-  { to: '/alerts', label: 'アラート', icon: <AlertIcon />, badgeKey: 'alerts' },
+  {
+    to: '/',
+    label: 'ホーム',
+    icon: <DashboardIcon />,
+    end: true,
+    activeAliases: [
+      '/upload',
+      '/upload-quality',
+      '/inventory',
+      '/groups',
+      '/pharmacies',
+      '/statistics',
+      '/account',
+    ],
+  },
+  { to: '/matching', label: 'マッチング', icon: <MatchingIcon />, activeAliases: ['/bookmarks'] },
+  { to: '/proposals', label: '提案', icon: <ProposalIcon />, badgeKey: 'proposals', activeAliases: ['/exchange-history'] },
+  { to: '/messages', label: 'メッセージ', icon: <MessageIcon />, activeAliases: ['/requests'] },
+  { to: '/alerts', label: 'アラート', icon: <AlertIcon />, badgeKey: 'alerts', activeAliases: ['/notifications'] },
 ];
 
 export const ADMIN_NAV_ITEMS: NavItem[] = [
-  { to: '/admin', label: 'ホーム', icon: <AdminIcon />, end: true },
+  {
+    to: '/admin',
+    label: 'ホーム',
+    icon: <AdminIcon />,
+    end: true,
+    activeAliases: [
+      '/admin/risk',
+      '/admin/reports',
+      '/admin/exchanges',
+      '/admin/upload-jobs',
+      '/admin/pharmacies',
+      '/admin/groups',
+      '/admin/alerts',
+      '/admin/notifications',
+      '/admin/matching-rules',
+      '/admin/matching-performance',
+      '/admin/matching-experiments',
+      '/admin/upload-quality',
+      '/admin/audit',
+      '/admin/business-hours',
+      '/admin/bulk-actions',
+      '/admin/relationships',
+      '/admin/log-center',
+      '/admin/logs',
+      '/admin/error-codes',
+      '/admin/rate-limits',
+      '/admin/pharmacy-health',
+    ],
+  },
   { to: '/admin/user-requests', label: '要望', icon: <RequestIcon /> },
   { to: '/admin/direct-messages', label: 'メッセージ', icon: <MessageIcon /> },
-  { to: '/admin/drug-master', label: 'マスター', icon: <ProposalIcon /> },
-  { to: '/admin/openclaw', label: 'OpenClaw', icon: <GroupIcon /> },
+  { to: '/admin/drug-master', label: 'マスター', icon: <ProposalIcon />, activeAliases: ['/admin/drug-equivalences'] },
+  { to: '/admin/openclaw', label: 'OpenClaw', icon: <GroupIcon />, activeAliases: ['/admin/openclaw-commands'] },
 ];
 
 // 互換用。ページスワイプや既存テストは利用者向けナビを基準に扱う。
@@ -93,9 +137,12 @@ export default function MobileBottomNav() {
     return 0;
   };
 
-  const isActive = (to: string, end?: boolean): boolean => {
-    if (end) return location.pathname === to;
-    return location.pathname.startsWith(to);
+  const isActive = (item: NavItem): boolean => {
+    if (item.end && location.pathname === item.to) return true;
+    if (item.activeAliases?.some((alias) => location.pathname.startsWith(alias))) return true;
+    if (item.end) return false;
+    if (item.to === '/') return location.pathname === '/';
+    return location.pathname.startsWith(item.to);
   };
 
   return (
@@ -106,7 +153,7 @@ export default function MobileBottomNav() {
     >
       <Nav className="mobile-bottom-nav-inner justify-content-around">
         {navItems.map((item) => {
-          const active = isActive(item.to, item.end);
+          const active = isActive(item);
           const badgeCount = getBadgeCount(item.badgeKey);
           return (
             <Nav.Item key={item.to} className="mobile-bottom-nav-item">

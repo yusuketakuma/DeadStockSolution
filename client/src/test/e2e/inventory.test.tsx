@@ -138,6 +138,8 @@ describe('DeadStockListPage', () => {
       expect(uploadLink).toBeInTheDocument();
       expect(uploadLink).toHaveAttribute('href', '/upload');
     });
+    expect(screen.getByRole('link', { name: 'アップロード品質' })).toHaveAttribute('href', '/upload-quality');
+    expect(screen.getAllByRole('link', { name: '統計' }).every((link) => link.getAttribute('href') === '/statistics')).toBe(true);
   });
 
   it('has delete button for each item', async () => {
@@ -230,6 +232,8 @@ describe('UsedMedicationListPage', () => {
     await waitFor(() => {
       expect(screen.getByText('アムロジピン錠5mg')).toBeInTheDocument();
     });
+    expect(screen.getByRole('link', { name: 'アップロード品質' })).toHaveAttribute('href', '/upload-quality');
+    expect(screen.getAllByRole('link', { name: '統計' }).every((link) => link.getAttribute('href') === '/statistics')).toBe(true);
   });
 });
 

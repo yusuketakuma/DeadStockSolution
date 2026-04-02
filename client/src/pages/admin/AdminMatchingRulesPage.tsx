@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Alert, Button, Card, Col, Form, Row, Spinner } from 'react-bootstrap';
 import { api } from '../../api/client';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
@@ -174,7 +175,16 @@ export default function AdminMatchingRulesPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">マッチングルール設定</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">マッチングルール設定</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/drug-master" className="btn btn-outline-secondary btn-sm">医薬品マスター</Link>
+          <Link to="/admin/drug-equivalences" className="btn btn-outline-secondary btn-sm">薬品同等性</Link>
+          <Link to="/admin/matching-experiments" className="btn btn-outline-secondary btn-sm">マッチング実験</Link>
+        </div>
+      </div>
 
       {error && <Alert variant="danger" dismissible onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert variant="success" dismissible onClose={() => setSuccess('')}>{success}</Alert>}

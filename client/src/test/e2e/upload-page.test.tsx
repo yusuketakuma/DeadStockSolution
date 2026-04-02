@@ -82,6 +82,10 @@ describe('UploadPage', () => {
       expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
     });
 
+    expect(screen.getAllByRole('link', { name: 'アップロード品質' }).every((link) => link.getAttribute('href') === '/upload-quality')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'デッドストック' }).every((link) => link.getAttribute('href') === '/inventory/dead-stock')).toBe(true);
+    expect(screen.getByRole('link', { name: 'マッチング' })).toHaveAttribute('href', '/matching');
+
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement | null;
     expect(fileInput).not.toBeNull();
     if (!fileInput) {

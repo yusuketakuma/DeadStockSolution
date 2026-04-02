@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
-import { Row, Col, Form } from 'react-bootstrap';
+import { Badge, Row, Col, Form } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../api/client';
 import AppSelect from '../../components/ui/AppSelect';
@@ -13,7 +13,7 @@ import InlineLoader from '../../components/ui/InlineLoader';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import AdminSentMessagesPanel, { type AdminMessage } from './components/AdminSentMessagesPanel';
-import { formatNumberJa } from '../../utils/formatters';
+import { formatDateTimeJa, formatNumberJa } from '../../utils/formatters';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface Stats {
@@ -116,6 +116,40 @@ interface MessagesResponse {
   data: AdminMessage[];
 }
 
+interface CronStatusItem {
+  name: string;
+  label: string;
+  lastActivityAt: string | null;
+  evidenceNote: string;
+}
+
+interface CronStatusResponse {
+  crons: CronStatusItem[];
+}
+
+interface SloBreachItem {
+  id: number;
+  type: 'db_health' | 'readiness' | 'rate_limit' | 'custom';
+  details: string;
+  timestamp: string;
+}
+
+interface SloBreachesResponse {
+  data: SloBreachItem[];
+  total: number;
+}
+
+const SLO_BREACH_LABELS: Record<SloBreachItem['type'], string> = {
+  db_health: 'DBヘルス',
+  readiness: 'Readiness',
+  rate_limit: 'Rate Limit',
+  custom: 'Custom',
+};
+
+function formatCronLastActivity(value: string | null): string {
+  return value ? formatDateTimeJa(value) : '証跡なし';
+}
+
 function resolveSettledValue<T>(result: PromiseSettledResult<T>): T | null {
   return result.status === 'fulfilled' ? result.value : null;
 }
@@ -176,6 +210,39 @@ function buildAdminMessagePayload(input: {
   };
 }
 
+const ADMIN_SHORTCUT_GROUPS = [
+  {
+    title: '今見る運用',
+    description: '日次の監視、通知確認、取込品質確認をここから進めます。',
+    links: [
+      { to: '/admin/notifications', label: '通知・配信', className: 'btn btn-sm btn-outline-secondary' },
+      { to: '/admin/upload-jobs', label: '取込ジョブ管理', className: 'btn btn-sm btn-outline-warning' },
+      { to: '/admin/upload-quality', label: 'アップロード品質', className: 'btn btn-sm btn-outline-danger' },
+      { to: '/admin/matching-experiments', label: 'マッチング実験', className: 'btn btn-sm btn-outline-primary' },
+      { to: '/admin/matching-performance', label: 'マッチング性能', className: 'btn btn-sm btn-outline-secondary' },
+      { to: '/admin/risk', label: '期限リスク分析', className: 'btn btn-sm btn-outline-danger' },
+      { to: '/admin/openclaw', label: 'OpenClaw連携', className: 'btn btn-sm btn-primary' },
+    ],
+  },
+  {
+    title: '設定・監査',
+    description: '設定変更、障害解析、監査証跡の確認をまとめています。',
+    links: [
+      { to: '/admin/drug-master', label: '医薬品マスター', className: 'btn btn-sm btn-outline-primary' },
+      { to: '/admin/pharmacies', label: '薬局管理', className: 'btn btn-sm btn-outline-secondary' },
+      { to: '/admin/groups', label: 'グループ管理', className: 'btn btn-sm btn-outline-info' },
+      { to: '/admin/direct-messages', label: 'ユーザー間メッセージ', className: 'btn btn-sm btn-outline-secondary' },
+      { to: '/admin/user-requests', label: 'ユーザーリクエスト', className: 'btn btn-sm btn-outline-info' },
+      { to: '/admin/alerts', label: 'アラート管理', className: 'btn btn-sm btn-outline-warning' },
+      { to: '/admin/log-center', label: 'ログセンター', className: 'btn btn-sm btn-outline-dark' },
+      { to: '/admin/error-codes', label: 'エラーコード', className: 'btn btn-sm btn-outline-dark' },
+      { to: '/admin/audit', label: '監査ログ', className: 'btn btn-sm btn-outline-dark' },
+      { to: '/admin/logs', label: '操作ログ', className: 'btn btn-sm btn-outline-dark' },
+      { to: '/admin/reports', label: '月次レポート', className: 'btn btn-sm btn-outline-success' },
+    ],
+  },
+] as const;
+
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [riskOverview, setRiskOverview] = useState<RiskOverview | null>(null);
@@ -183,6 +250,8 @@ export default function AdminDashboardPage() {
   const [alertsSummary, setAlertsSummary] = useState<AlertsSummary | null>(null);
   const [monitoringKpis, setMonitoringKpis] = useState<MonitoringKpiSnapshot | null>(null);
   const [openClawHealth, setOpenClawHealth] = useState<OpenClawHealthSnapshot | null>(null);
+  const [cronStatus, setCronStatus] = useState<CronStatusItem[]>([]);
+  const [sloBreaches, setSloBreaches] = useState<SloBreachesResponse | null>(null);
   const [pharmacies, setPharmacies] = useState<PharmacyOption[]>([]);
   const [messages, setMessages] = useState<AdminMessage[]>([]);
   const [targetType, setTargetType] = useState<'all' | 'pharmacy'>('all');
@@ -198,7 +267,7 @@ export default function AdminDashboardPage() {
   const fetchData = async () => {
     setLoading(true);
     setError('');
-    const [statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult, openClawResult] = await Promise.allSettled([
+    const [statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult, openClawResult, cronStatusResult, sloBreachesResult] = await Promise.allSettled([
       api.get<Stats>('/admin/stats'),
       api.get<RiskOverview>('/admin/risk/overview'),
       api.get<Observability>('/admin/observability?minutes=60'),
@@ -207,6 +276,8 @@ export default function AdminDashboardPage() {
       api.get<{ data: PharmacyOption[] }>('/admin/pharmacies/options'),
       api.get<MessagesResponse>('/admin/messages?page=1&limit=10'),
       api.get<OpenClawHealthSnapshot>('/health/openclaw'),
+      api.get<CronStatusResponse>('/admin/cron-status'),
+      api.get<SloBreachesResponse>('/admin/slo-breaches?limit=5'),
     ]);
 
     const statsValue = resolveSettledValue(statsResult);
@@ -217,6 +288,8 @@ export default function AdminDashboardPage() {
     const pharmacyValue = resolveSettledValue(pharmacyResult);
     const messagesValue = resolveSettledValue(messagesResult);
     const openClawResolution = resolveOpenClawHealthResult(openClawResult);
+    const cronStatusValue = resolveSettledValue(cronStatusResult);
+    const sloBreachesValue = resolveSettledValue(sloBreachesResult);
 
     if (statsValue) setStats(statsValue);
     if (riskValue) setRiskOverview(riskValue);
@@ -226,6 +299,8 @@ export default function AdminDashboardPage() {
     if (pharmacyValue) setPharmacies(pharmacyValue.data);
     if (messagesValue) setMessages(messagesValue.data);
     if (openClawResolution.value) setOpenClawHealth(openClawResolution.value);
+    if (cronStatusValue) setCronStatus(cronStatusValue.crons);
+    if (sloBreachesValue) setSloBreaches(sloBreachesValue);
 
     const rejectedResults = [
       statsResult,
@@ -235,6 +310,8 @@ export default function AdminDashboardPage() {
       kpisResult,
       pharmacyResult,
       messagesResult,
+      cronStatusResult,
+      sloBreachesResult,
       ...(openClawResolution.shouldCountAsError ? [openClawResult] : []),
     ];
 
@@ -288,22 +365,24 @@ export default function AdminDashboardPage() {
         <InlineLoader text="管理データを読み込み中..." className="text-muted small mb-3" />
       )}
 
-      <AppDataPanel title="運用クイック導線" className="mb-3" bodyClassName="d-flex gap-2 flex-wrap mobile-stack">
-          <Link to="/admin/openclaw" className="btn btn-sm btn-primary">OpenClaw連携</Link>
-          <Link to="/admin/risk" className="btn btn-sm btn-outline-danger">期限リスク分析</Link>
-          <Link to="/admin/reports" className="btn btn-sm btn-outline-success">月次レポート</Link>
-          <Link to="/admin/upload-jobs" className="btn btn-sm btn-outline-warning">取込ジョブ管理</Link>
-          <Link to="/admin/drug-master" className="btn btn-sm btn-outline-primary">医薬品マスター</Link>
-          <Link to="/admin/pharmacies" className="btn btn-sm btn-outline-secondary">薬局管理</Link>
-          <Link to="/admin/groups" className="btn btn-sm btn-outline-info">グループ管理</Link>
-          <Link to="/admin/direct-messages" className="btn btn-sm btn-outline-secondary">ユーザー間メッセージ</Link>
-          <Link to="/admin/user-requests" className="btn btn-sm btn-outline-info">ユーザーリクエスト</Link>
-          <Link to="/admin/alerts" className="btn btn-sm btn-outline-warning">アラート管理</Link>
-          <Link to="/admin/notifications" className="btn btn-sm btn-outline-secondary">通知・配信</Link>
-          <Link to="/admin/audit" className="btn btn-sm btn-outline-dark">監査ログ</Link>
-          <Link to="/admin/pharmacy-health" className="btn btn-sm btn-outline-success">薬局ヘルス</Link>
-          <Link to="/admin/matching-performance" className="btn btn-sm btn-outline-primary">マッチング性能</Link>
-          <Link to="/admin/upload-quality" className="btn btn-sm btn-outline-danger">アップロード品質</Link>
+      <AppDataPanel title="運用クイック導線" className="mb-3">
+        <Row className="g-3">
+          {ADMIN_SHORTCUT_GROUPS.map((group) => (
+            <Col key={group.title} lg={6}>
+              <div className="border rounded-3 p-3 h-100">
+                <div className="fw-semibold mb-1">{group.title}</div>
+                <div className="small text-muted mb-2">{group.description}</div>
+                <div className="d-flex gap-2 flex-wrap mobile-stack">
+                  {group.links.map((link) => (
+                    <Link key={link.to} to={link.to} className={link.className}>
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </Col>
+          ))}
+        </Row>
       </AppDataPanel>
 
       <Row className="g-3 mb-3">
@@ -479,6 +558,61 @@ export default function AdminDashboardPage() {
             label="OpenClawログ送信 成功/失敗"
             subLabel={observability?.logPush ? `queued:${observability.logPush.enqueued} retry:${observability.logPush.retried}` : undefined}
           />
+        </Col>
+      </Row>
+
+      <Row className="g-3 mb-3">
+        <Col lg={7}>
+          <AppDataPanel
+            title="CRON ステータス"
+            actions={<Link to="/admin/log-center" className="btn btn-sm btn-outline-secondary">ログセンター</Link>}
+          >
+            {cronStatus.length === 0 ? (
+              <div className="text-muted small">CRON 実行証跡はまだありません。</div>
+            ) : (
+              <div className="d-flex flex-column gap-2">
+                {cronStatus.map((cron) => (
+                  <div key={cron.name} className="border rounded p-2">
+                    <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                      <div>
+                        <div className="fw-semibold">{cron.label}</div>
+                        <div className="small text-muted">{cron.evidenceNote}</div>
+                      </div>
+                      <Badge bg={cron.lastActivityAt ? 'success' : 'secondary'}>
+                        {cron.lastActivityAt ? '実績あり' : '証跡なし'}
+                      </Badge>
+                    </div>
+                    <div className="small mt-2">{formatCronLastActivity(cron.lastActivityAt)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </AppDataPanel>
+        </Col>
+        <Col lg={5}>
+          <AppDataPanel
+            title="SLO 違反履歴"
+            actions={<Link to="/admin/logs" className="btn btn-sm btn-outline-secondary">操作ログ</Link>}
+          >
+            <div className="small text-muted mb-2">
+              保存件数: {sloBreaches?.total ?? 0}
+            </div>
+            {!sloBreaches || sloBreaches.data.length === 0 ? (
+              <div className="text-muted small">現在表示できる SLO 違反はありません。</div>
+            ) : (
+              <div className="d-flex flex-column gap-2">
+                {sloBreaches.data.map((breach) => (
+                  <div key={breach.id} className="border rounded p-2">
+                    <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                      <Badge bg="warning" text="dark">{SLO_BREACH_LABELS[breach.type]}</Badge>
+                      <div className="small text-muted">{formatDateTimeJa(breach.timestamp)}</div>
+                    </div>
+                    <div className="small mt-2">{breach.details}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </AppDataPanel>
         </Col>
       </Row>
 

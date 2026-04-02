@@ -1,6 +1,7 @@
 import { Suspense, lazy, useMemo, type ReactNode } from 'react';
 import AppAlert from '../components/ui/AppAlert';
 import { Form, ProgressBar } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
 import AppSelect from '../components/ui/AppSelect';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppControl from '../components/ui/AppControl';
@@ -100,7 +101,16 @@ export default function UploadPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">{pageTitle}</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">{pageTitle}</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">アップロード品質</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
+        </div>
+      </div>
       <AppCard className="mb-3 upload-entry-card-shell">
         <AppCard.Body className="upload-entry-grid">
           <section className="upload-entry-card-item" aria-labelledby="upload-entry-excel">
@@ -121,6 +131,17 @@ export default function UploadPage() {
               カメラ取込へ移動
             </AppButton>
           </section>
+        </AppCard.Body>
+      </AppCard>
+      <AppCard className="mb-3">
+        <AppCard.Header>取込後に確認する画面</AppCard.Header>
+        <AppCard.Body className="d-flex gap-2 flex-wrap align-items-center">
+          <Link to="/upload-quality" className="btn btn-sm btn-outline-danger">アップロード品質</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-sm btn-outline-secondary">デッドストック</Link>
+          <Link to="/inventory/used-medication" className="btn btn-sm btn-outline-secondary">使用量リスト</Link>
+          <Link to="/matching" className="btn btn-sm btn-outline-primary">マッチング</Link>
+          <Link to="/statistics" className="btn btn-sm btn-outline-secondary">統計</Link>
+          <span className="small text-muted">取込結果の品質確認、在庫反映、候補確認までこの画面から戻れます。</span>
         </AppCard.Body>
       </AppCard>
       {flow.error && <StructuredErrorAlert errorMessage={flow.error} />}

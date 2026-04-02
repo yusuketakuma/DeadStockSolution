@@ -269,13 +269,21 @@ export default function GroupListPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="page-title mb-0">グループ一覧</h4>
-        {user && (
-          <AppButton variant="primary" size="sm" onClick={() => setShowCreateModal(true)}>
-            グループ作成
-          </AppButton>
-        )}
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">グループ一覧</h4>
+          <div className="text-muted small">グループ作成、参加、関連薬局やメッセージ画面への移動をまとめています。</div>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/pharmacies" className="btn btn-outline-secondary btn-sm">登録薬局一覧</Link>
+          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
+          <Link to="/account" className="btn btn-outline-secondary btn-sm">薬局設定</Link>
+          {user && (
+            <AppButton variant="primary" size="sm" onClick={() => setShowCreateModal(true)}>
+              グループ作成
+            </AppButton>
+          )}
+        </div>
       </div>
 
       <Tab.Container activeKey={activeTab} onSelect={handleTabChange}>
@@ -323,6 +331,20 @@ export default function GroupListPage() {
                 activeTab === 'mine'
                   ? '「グループ作成」ボタンから新しいグループを作成するか、公開グループに参加しましょう。'
                   : undefined
+              }
+              action={
+                activeTab === 'mine' ? (
+                  <div className="mt-3 d-flex gap-2 justify-content-center flex-wrap">
+                    {user ? (
+                      <AppButton size="sm" variant="primary" onClick={() => setShowCreateModal(true)}>
+                        グループ作成
+                      </AppButton>
+                    ) : null}
+                    <AppButton size="sm" variant="outline-secondary" onClick={() => setActiveTab('public')}>
+                      公開グループを見る
+                    </AppButton>
+                  </div>
+                ) : undefined
               }
             />
           ) : (

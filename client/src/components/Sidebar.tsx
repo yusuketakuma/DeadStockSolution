@@ -17,11 +17,22 @@ const NAV_GROUPS = [
     items: [
       { to: '/', label: 'ダッシュボード', end: true },
       { to: '/upload', label: 'アップロード' },
+      { to: '/upload-quality', label: 'アップロード品質' },
       { to: '/matching', label: 'マッチング' },
       { to: '/proposals', label: 'マッチング一覧' },
       { to: '/messages', label: 'メッセージ' },
       { to: '/exchange-history', label: '交換履歴' },
       { to: '/statistics', label: '統計' },
+    ],
+  },
+  {
+    title: '通知・対応',
+    items: [
+      { to: '/notifications', label: '通知センター' },
+      { to: '/alerts', label: 'アラート一覧' },
+      { to: '/requests', label: '要望一覧' },
+      { to: '/bookmarks', label: 'ブックマーク' },
+      { to: '/groups', label: 'グループ' },
     ],
   },
   {
@@ -41,12 +52,18 @@ const ADMIN_ITEMS = [
   { to: '/admin/reports', label: '月次レポート' },
   { to: '/admin/exchanges', label: '交換履歴' },
   { to: '/admin/upload-jobs', label: '取込ジョブ管理' },
+  { to: '/admin/upload-quality', label: 'アップロード品質' },
   { to: '/admin/pharmacies', label: '薬局管理' },
   { to: '/admin/direct-messages', label: 'ユーザー間メッセージ' },
   { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
+  { to: '/admin/notifications', label: '通知・配信状況' },
   { to: '/admin/openclaw', label: 'OpenClaw連携' },
   { to: '/admin/drug-master', label: '医薬品マスター管理' },
+  { to: '/admin/matching-experiments', label: 'マッチング実験' },
   { to: '/admin/log-center', label: 'ログセンター' },
+  { to: '/admin/audit', label: '監査ログ' },
+  { to: '/admin/error-codes', label: 'エラーコード' },
+  { to: '/admin/logs', label: '操作ログ' },
 ];
 
 function SidebarLink({

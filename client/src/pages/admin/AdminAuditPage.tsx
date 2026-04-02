@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Badge, Col, Form, Row } from 'react-bootstrap';
-import { api } from '../../api/client';
+import { Link } from 'react-router-dom';
+import { Badge, Form } from 'react-bootstrap';
+import { api, buildApiUrl } from '../../api/client';
 import Pagination from '../../components/Pagination';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppTable from '../../components/ui/AppTable';
@@ -8,6 +9,7 @@ import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
+import AppDataPanel from '../../components/ui/AppDataPanel';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa } from '../../utils/formatters';
@@ -64,26 +66,53 @@ export default function AdminAuditPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">監査ログ</h4>
-
-      <Row className="mb-3 g-2">
-        <Col xs={12} md={4}>
-          <Form.Select size="sm" value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}>
-            <option value="">すべてのアクション</option>
-            {Object.entries(ACTION_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
-            ))}
-          </Form.Select>
-        </Col>
-      </Row>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">監査ログ</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/logs" className="btn btn-outline-secondary btn-sm">操作ログ</Link>
+          <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+          <a href={buildApiUrl('/admin/csv/audit-logs')} className="btn btn-outline-secondary btn-sm" download>
+            CSVエクスポート
+          </a>
+        </div>
+      </div>
 
       {error && <ErrorRetryAlert error={error} onRetry={() => void retry()} />}
 
       <ScrollArea>
+        <AppDataPanel title="絞り込みと関連画面" className="mb-3">
+          <div className="d-flex gap-2 flex-wrap align-items-center">
+            <Form.Select
+              size="sm"
+              value={actionFilter}
+              onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
+              style={{ maxWidth: 220 }}
+              aria-label="監査アクション"
+            >
+              <option value="">すべてのアクション</option>
+              {Object.entries(ACTION_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </Form.Select>
+            <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
+            <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信</Link>
+          </div>
+          <div className="small text-muted mt-2">
+            監査結果の確認、CSV 出力、その後の通知運用やコード更新までを同じ入口にまとめています。
+          </div>
+        </AppDataPanel>
+
         {loading ? (
           <InlineLoader text="監査ログを読み込み中..." className="text-muted small" />
         ) : items.length === 0 ? (
-          <AppEmptyState title="監査ログがありません" description="管理者操作が記録されるとここに表示されます。" />
+          <AppEmptyState
+            title="監査ログがありません"
+            description="管理者操作が記録されるとここに表示されます。"
+            actionLabel="ログセンターへ"
+            actionTo="/admin/log-center"
+          />
         ) : (
           <AppResponsiveSwitch
             desktop={() => (

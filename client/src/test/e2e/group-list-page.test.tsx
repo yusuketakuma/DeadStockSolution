@@ -151,6 +151,9 @@ describe('GroupListPage', () => {
     await waitFor(() => {
       expect(screen.getByText('まだグループに参加していません')).toBeInTheDocument();
     });
+
+    expect(screen.getAllByRole('button', { name: 'グループ作成' }).length).toBeGreaterThan(1);
+    expect(screen.getByRole('button', { name: '公開グループを見る' })).toBeInTheDocument();
   });
 
   it('shows loading state', async () => {

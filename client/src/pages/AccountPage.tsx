@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Form } from 'react-bootstrap';
 import AppAlert from '../components/ui/AppAlert';
 import AppButton from '../components/ui/AppButton';
@@ -24,6 +25,27 @@ function clearAccountPageMessages(accountForm: Pick<ReturnType<typeof useAccount
   accountForm.setError('');
   accountForm.setMessage('');
 }
+
+const ACCOUNT_SHORTCUT_GROUPS = [
+  {
+    title: '運用確認',
+    description: '設定変更の反映先をまとめています。',
+    links: [
+      { to: '/pharmacies', label: '薬局一覧' },
+      { to: '/upload-quality', label: 'アップロード品質' },
+      { to: '/statistics', label: '統計' },
+    ],
+  },
+  {
+    title: '連絡・ネットワーク',
+    description: '通知やグループ運用にすぐ戻れます。',
+    links: [
+      { to: '/notifications', label: '通知センター' },
+      { to: '/messages', label: 'メッセージ' },
+      { to: '/groups', label: 'グループ' },
+    ],
+  },
+] as const;
 
 export default function AccountPage() {
   const { user, refreshUser, logout } = useAuth();
@@ -102,7 +124,14 @@ export default function AccountPage() {
   if (!accountForm.account) {
     return (
       <PageShell>
-        <h4 className="page-title mb-3">薬局登録情報の編集</h4>
+        <div className="dl-page-header">
+          <div className="dl-page-header-copy">
+            <h4 className="page-title mb-0">薬局登録情報の編集</h4>
+          </div>
+          <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+            <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボード</Link>
+          </div>
+        </div>
         {accountForm.error && <AppAlert variant="danger">{accountForm.error}</AppAlert>}
         <AppButton variant="outline-secondary" onClick={() => void accountForm.handleReloadAccount()}>
           再読み込み
@@ -113,12 +142,39 @@ export default function AccountPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">薬局登録情報の編集</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">薬局登録情報の編集</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボード</Link>
+        </div>
+      </div>
       {accountForm.message && <AppAlert variant="success" onClose={() => accountForm.setMessage('')} dismissible>{accountForm.message}</AppAlert>}
       {accountForm.warning && <AppAlert variant="warning" onClose={() => accountForm.setWarning('')} dismissible>{accountForm.warning}</AppAlert>}
       {accountForm.error && <AppAlert variant="danger" onClose={() => accountForm.setError('')} dismissible>{accountForm.error}</AppAlert>}
 
       <ScrollArea>
+      <AppDataPanel title="設定後に確認する画面" className="mb-3">
+        <div className="row g-3">
+          {ACCOUNT_SHORTCUT_GROUPS.map((group) => (
+            <div key={group.title} className="col-md-6">
+              <div className="border rounded-3 p-3 h-100">
+                <div className="fw-semibold mb-1">{group.title}</div>
+                <div className="small text-muted mb-2">{group.description}</div>
+                <div className="d-flex gap-2 flex-wrap">
+                  {group.links.map((link) => (
+                    <Link key={link.to} to={link.to} className="btn btn-outline-secondary btn-sm">
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </AppDataPanel>
+
       <ConflictAlert
         show={accountForm.accountConflict}
         onReload={accountForm.handleReloadAccount}

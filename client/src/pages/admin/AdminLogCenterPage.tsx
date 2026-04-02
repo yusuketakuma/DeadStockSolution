@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Row, Col, Tabs, Tab } from 'react-bootstrap';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
 import AppCard from '../../components/ui/AppCard';
+import AppDataPanel from '../../components/ui/AppDataPanel';
 import AppSelect from '../../components/ui/AppSelect';
 import AppTable from '../../components/ui/AppTable';
 import LazyTab from '../../components/ui/LazyTab';
@@ -146,14 +148,33 @@ export default function AdminLogCenterPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="page-title mb-0">ログセンター</h4>
-        <a href={buildApiUrl('/admin/csv/logs')} className="btn btn-outline-secondary btn-sm" download>
-          CSVエクスポート
-        </a>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">ログセンター</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/logs" className="btn btn-outline-secondary btn-sm">操作ログ</Link>
+          <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログ</Link>
+          <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
+          <a href={buildApiUrl('/admin/csv/logs')} className="btn btn-outline-secondary btn-sm" download>
+            CSVエクスポート
+          </a>
+        </div>
       </div>
 
       <ScrollArea>
+      <AppDataPanel title="近接導線" className="mb-3">
+        <div className="d-flex gap-2 flex-wrap">
+          <Link to="/admin/error-codes" className="btn btn-outline-primary btn-sm">エラーコードを管理</Link>
+          <Link to="/admin/matching-experiments" className="btn btn-outline-secondary btn-sm">マッチング実験</Link>
+          <Link to="/admin/upload-quality" className="btn btn-outline-secondary btn-sm">アップロード品質</Link>
+          <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信</Link>
+        </div>
+        <div className="small text-muted mt-2">
+          再発論点の確認後に、コード定義や品質監視へそのまま移れるようにしています。
+        </div>
+      </AppDataPanel>
+
       {summaryError && (
         <AppAlert variant="warning" className="mb-3">
           {summaryError}

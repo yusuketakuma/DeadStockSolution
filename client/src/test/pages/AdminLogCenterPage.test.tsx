@@ -1,9 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import AdminLogCenterPage from '../../pages/admin/AdminLogCenterPage';
 import { LogEntriesView } from '../../pages/admin/components/AdminLogCenterLogEntriesView';
 import { LogDetailModal, getActionStatusAlertVariant } from '../../pages/admin/components/AdminLogCenterLogDetailModal';
 import type { NormalizedLogEntry } from '../../types/admin-log-center';
+import { mockAdminUser, renderWithProviders } from '../helpers';
 
 const longMessage = '非常に長いログメッセージ'.repeat(20);
 const longImprovement = '改善案テキスト'.repeat(20);
@@ -136,5 +138,49 @@ describe('AdminLogCenterPage feedback helpers', () => {
       expect(screen.queryByText('レベル: Error')).not.toBeInTheDocument();
       expect(screen.queryByText('検索: ERR_TEST')).not.toBeInTheDocument();
     });
+  });
+
+  it('renders nearby links for standalone error-code and quality follow-up', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/admin/log-center/summary')) {
+        return jsonResponse({
+          totalLogs: 1,
+          totalErrors: 1,
+          totalWarnings: 0,
+          impactedTenants: 1,
+          sourceBreakdown: [],
+          latestLogAt: '2026-04-02T00:00:00.000Z',
+        });
+      }
+      if (url.includes('/api/admin/log-center/insights')) {
+        return jsonResponse({ topIssues: [] });
+      }
+      if (url.includes('/api/admin/log-center?')) {
+        return jsonResponse({
+          data: [sampleEntry],
+          pagination: { page: 1, totalPages: 1, total: 1, limit: 50 },
+        });
+      }
+      if (url.includes('/api/admin/log-center/status-history')) {
+        return jsonResponse({ source: 'system_events', logId: 101, history: [] });
+      }
+      if (url.includes('/api/admin/error-codes')) {
+        return jsonResponse({ items: [] });
+      }
+      return jsonResponse({});
+    }));
+
+    renderWithProviders(<AdminLogCenterPage />, {
+      route: '/admin/log-center',
+      authUser: mockAdminUser,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('ログセンター')).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByRole('link', { name: 'エラーコードを管理' })[0]).toHaveAttribute('href', '/admin/error-codes');
+    expect(screen.getByRole('link', { name: 'アップロード品質' })).toHaveAttribute('href', '/admin/upload-quality');
   });
 });

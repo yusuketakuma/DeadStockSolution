@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, Col, Form, Row } from 'react-bootstrap';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import AppAlert from '../components/ui/AppAlert';
 import AppButton from '../components/ui/AppButton';
 import AppEmptyState from '../components/ui/AppEmptyState';
@@ -18,10 +18,12 @@ import {
   type NoticeItem,
 } from '../api/notifications';
 import { formatDateTimeJa } from '../utils/formatters';
+import { sanitizeInternalPath } from '../utils/navigation';
 
 const LIVE_REFRESH_INTERVAL_MS = 60_000;
 
 const TYPE_LABELS: Record<string, string> = {
+  alert: 'アラート',
   inbound_request: '対応待ち',
   outbound_request: '送信済み',
   status_update: 'ステータス更新',
@@ -51,8 +53,22 @@ function priorityLabel(priority: number): string {
   return '参考';
 }
 
+function resolveEmptyStateAction(typeFilter: string): { label: string; to: string } {
+  if (typeFilter === 'inbound_request' || typeFilter === 'outbound_request' || typeFilter === 'status_update') {
+    return { label: '要望一覧を見る', to: '/requests' };
+  }
+  if (typeFilter === 'new_comment' || typeFilter === 'admin_message') {
+    return { label: 'メッセージを見る', to: '/messages' };
+  }
+  if (typeFilter === 'match_update') {
+    return { label: 'マッチングを見る', to: '/matching' };
+  }
+  return { label: 'アラート一覧を見る', to: '/alerts' };
+}
+
 export default function NotificationsPage() {
   const { refreshUnreadCount } = useTimeline();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<NoticeItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -62,9 +78,12 @@ export default function NotificationsPage() {
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
-  const [showDeadlineOnly, setShowDeadlineOnly] = useState(false);
+  const requestedTypeFilter = searchParams.get('type') ?? 'all';
+  const requestedUnreadOnly = searchParams.get('unread') === '1';
+  const requestedDeadlineOnly = searchParams.get('deadline') === '1';
+  const [typeFilter, setTypeFilter] = useState(requestedTypeFilter);
+  const [showUnreadOnly, setShowUnreadOnly] = useState(requestedUnreadOnly);
+  const [showDeadlineOnly, setShowDeadlineOnly] = useState(requestedDeadlineOnly);
 
   const loadNotices = useCallback(async (cursor?: string, mode: 'replace' | 'append' = 'replace') => {
     if (mode === 'replace') {
@@ -95,6 +114,40 @@ export default function NotificationsPage() {
     void loadNotices();
   }, [loadNotices]);
 
+  useEffect(() => {
+    setTypeFilter((current) => (current === requestedTypeFilter ? current : requestedTypeFilter));
+  }, [requestedTypeFilter]);
+
+  useEffect(() => {
+    setShowUnreadOnly((current) => (current === requestedUnreadOnly ? current : requestedUnreadOnly));
+  }, [requestedUnreadOnly]);
+
+  useEffect(() => {
+    setShowDeadlineOnly((current) => (current === requestedDeadlineOnly ? current : requestedDeadlineOnly));
+  }, [requestedDeadlineOnly]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (typeFilter !== 'all') {
+      nextParams.set('type', typeFilter);
+    } else {
+      nextParams.delete('type');
+    }
+    if (showUnreadOnly) {
+      nextParams.set('unread', '1');
+    } else {
+      nextParams.delete('unread');
+    }
+    if (showDeadlineOnly) {
+      nextParams.set('deadline', '1');
+    } else {
+      nextParams.delete('deadline');
+    }
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, showDeadlineOnly, showUnreadOnly, typeFilter]);
+
   useSseRefresh({
     enabled: true,
     streamPath: '/realtime/stream?topics=timeline',
@@ -115,9 +168,19 @@ export default function NotificationsPage() {
 
   const summary = useMemo(() => ({
     unread: items.filter((item) => item.unread).length,
-    actionable: items.filter((item) => item.unread && ['inbound_request', 'status_update', 'match_update'].includes(item.type)).length,
+    actionable: items.filter((item) => item.unread && ['alert', 'inbound_request', 'status_update', 'match_update'].includes(item.type)).length,
     dueSoon: items.filter((item) => isDeadlineSoon(item.deadlineAt)).length,
   }), [items]);
+  const relatedActionLinks = useMemo(() => [
+    { to: '/matching', label: 'マッチング', variant: summary.actionable > 0 ? 'outline-primary' : 'outline-secondary' },
+    { to: '/messages', label: 'メッセージ', variant: 'outline-secondary' },
+    { to: '/requests', label: '要望一覧', variant: summary.actionable > 0 ? 'outline-primary' : 'outline-secondary' },
+    { to: '/alerts', label: 'アラート一覧', variant: summary.dueSoon > 0 ? 'outline-warning' : 'outline-secondary' },
+    { to: '/groups', label: 'グループ', variant: 'outline-secondary' },
+    { to: '/bookmarks', label: 'ブックマーク', variant: 'outline-secondary' },
+    { to: '/account', label: '通知設定', variant: 'outline-secondary' },
+  ] as const, [summary.actionable, summary.dueSoon]);
+  const emptyStateAction = useMemo(() => resolveEmptyStateAction(typeFilter), [typeFilter]);
 
   const handleMarkSingleRead = async (item: NoticeItem) => {
     setMessage('');
@@ -156,6 +219,8 @@ export default function NotificationsPage() {
     }
   };
 
+  const resolveActionPath = useCallback((path: string | null | undefined) => sanitizeInternalPath(path, '/'), []);
+
   return (
     <PageShell>
       <div className="dl-page-header">
@@ -163,15 +228,19 @@ export default function NotificationsPage() {
           <h4 className="page-title mb-0">通知センター</h4>
           <div className="text-muted small">対応待ち、運営連絡、候補更新を一画面で追跡します。</div>
         </div>
-        <AppButton
-          type="button"
-          size="sm"
-          variant="outline-secondary"
-          onClick={() => void handleMarkAllRead()}
-          disabled={markingAll || summary.unread === 0}
-        >
-          {markingAll ? '既読化中...' : '未読をすべて既読'}
-        </AppButton>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/alerts" className="btn btn-outline-secondary btn-sm">アラート一覧</Link>
+          <Link to="/account" className="btn btn-outline-secondary btn-sm">通知設定</Link>
+          <AppButton
+            type="button"
+            size="sm"
+            variant="outline-secondary"
+            onClick={() => void handleMarkAllRead()}
+            disabled={markingAll || summary.unread === 0}
+          >
+            {markingAll ? '既読化中...' : '未読をすべて既読'}
+          </AppButton>
+        </div>
       </div>
 
       {error ? <ErrorRetryAlert error={error} onRetry={() => void loadNotices()} /> : null}
@@ -200,6 +269,18 @@ export default function NotificationsPage() {
         </Row>
 
         <Card className="mb-3">
+          <Card.Header>関連画面</Card.Header>
+          <Card.Body className="d-flex gap-2 flex-wrap align-items-center">
+            {relatedActionLinks.map((link) => (
+              <Link key={link.to} to={link.to} className={`btn btn-sm btn-${link.variant}`}>
+                {link.label}
+              </Link>
+            ))}
+            <span className="small text-muted">通知内容に応じて、対応画面と通知設定の両方へすぐ移動できます。</span>
+          </Card.Body>
+        </Card>
+
+        <Card className="mb-3">
           <Card.Body className="d-flex gap-2 flex-wrap align-items-center">
             <Form.Select
               size="sm"
@@ -209,6 +290,7 @@ export default function NotificationsPage() {
               aria-label="通知タイプ"
             >
               <option value="all">すべての通知</option>
+              <option value="alert">アラート</option>
               <option value="inbound_request">対応待ち</option>
               <option value="status_update">ステータス更新</option>
               <option value="admin_message">運営連絡</option>
@@ -269,6 +351,8 @@ export default function NotificationsPage() {
           <AppEmptyState
             title="表示できる通知がありません"
             description="フィルタ条件を変更するか、新しい通知の到着をお待ちください。"
+            actionLabel={emptyStateAction.label}
+            actionTo={emptyStateAction.to}
           />
         ) : (
           <AppResponsiveSwitch
@@ -305,7 +389,7 @@ export default function NotificationsPage() {
                         <td>{formatDateTimeJa(item.createdAt)}</td>
                         <td>
                           <div className="d-flex gap-2 flex-wrap">
-                            <Link to={item.actionPath || '/'} className="btn btn-outline-primary btn-sm">
+                            <Link to={resolveActionPath(item.actionPath)} className="btn btn-outline-primary btn-sm">
                               {item.actionLabel || '開く'}
                             </Link>
                             {item.unread ? (
@@ -347,8 +431,8 @@ export default function NotificationsPage() {
                     ]}
                     actions={(
                       <div className="d-flex gap-2 flex-wrap">
-                        <Link to={item.actionPath || '/'} className="btn btn-outline-primary btn-sm">
-                          開く
+                        <Link to={resolveActionPath(item.actionPath)} className="btn btn-outline-primary btn-sm">
+                          {item.actionLabel || '開く'}
                         </Link>
                         {item.unread ? (
                           <Button

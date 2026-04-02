@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { Container, Row, Col, Badge, ButtonGroup, Button } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
 import AppKpiCard from '../components/ui/AppKpiCard';
 import AppDataPanel from '../components/ui/AppDataPanel';
 import { api } from '../api/client';
@@ -190,9 +191,31 @@ function BucketRiskBadges({ buckets }: { buckets: BucketCounts }) {
 function StatisticsShell({ children }: { children: React.ReactNode }) {
   return (
     <PageShell>
-      <h4 className="page-title mb-3">統計</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">統計</h4>
+          <div className="text-muted small">アップロード、在庫、マッチング、ネットワークの集計をまとめて確認します。</div>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボード</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
+          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">アップロード品質</Link>
+        </div>
+      </div>
       <ScrollArea>
         <Container>
+          <AppDataPanel title="関連画面" className="mb-3">
+            <div className="d-flex gap-2 flex-wrap">
+              <Link to="/upload-quality" className="btn btn-outline-danger btn-sm py-0">アップロード品質</Link>
+              <Link to="/alerts" className="btn btn-outline-warning btn-sm py-0">アラート</Link>
+              <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">提案一覧</Link>
+              <Link to="/groups" className="btn btn-outline-secondary btn-sm py-0">グループ</Link>
+            </div>
+            <div className="small text-muted mt-2">
+              数値確認のあとに見直す画面を、在庫・対応・ネットワーク単位でまとめています。
+            </div>
+          </AppDataPanel>
           {children}
         </Container>
       </ScrollArea>
@@ -202,6 +225,22 @@ function StatisticsShell({ children }: { children: React.ReactNode }) {
 
 function ChartFallback({ text }: { text: string }) {
   return <InlineLoader text={text} />;
+}
+
+function SectionActions({ links }: { links: Array<{ to: string; label: string; variant?: string }> }) {
+  return (
+    <div className="d-flex gap-2 flex-wrap">
+      {links.map((link) => (
+        <Link
+          key={`${link.to}:${link.label}`}
+          to={link.to}
+          className={`btn btn-sm ${link.variant ?? 'btn-outline-secondary'} py-0`}
+        >
+          {link.label}
+        </Link>
+      ))}
+    </div>
+  );
 }
 
 export default function StatisticsPage() {
@@ -235,7 +274,20 @@ export default function StatisticsPage() {
         {queryError && <div className="alert alert-danger">{queryError}</div>}
       {/* アクション待ち・アラート */}
       {hasAttentionSection(summary) && (
-        <AppDataPanel title="要対応" className="mb-3">
+        <AppDataPanel
+          title="要対応"
+          className="mb-3"
+          actions={(
+            <div className="d-flex gap-2 flex-wrap">
+              {summary.proposals.pendingAction > 0 ? (
+                <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">提案を確認</Link>
+              ) : null}
+              {summary.alerts.activeCount > 0 ? (
+                <Link to="/alerts" className="btn btn-outline-danger btn-sm py-0">アラートを見る</Link>
+              ) : null}
+            </div>
+          )}
+        >
           <Row className="g-3">
             {summary.proposals.pendingAction > 0 && (
               <Col xs={6}>
@@ -265,7 +317,10 @@ export default function StatisticsPage() {
       )}
 
       {/* アップロード実績 */}
-      <AppDataPanel title="アップロード実績">
+      <AppDataPanel
+        title="アップロード実績"
+        actions={<SectionActions links={[{ to: '/upload', label: 'アップロード', variant: 'btn-outline-primary' }]} />}
+      >
         <Row className="g-3">
           <Col xs={6} md={3}>
             <AppKpiCard
@@ -301,7 +356,15 @@ export default function StatisticsPage() {
       </AppDataPanel>
 
       {/* 在庫状況 */}
-      <AppDataPanel title="在庫状況" className="mt-3">
+      <AppDataPanel
+        title="在庫状況"
+        className="mt-3"
+        actions={<SectionActions links={[
+          { to: '/inventory/dead-stock', label: 'デッドストック', variant: 'btn-outline-primary' },
+          { to: '/inventory/used-medication', label: '使用量リスト' },
+          { to: '/inventory/browse', label: '在庫参照' },
+        ]} />}
+      >
         <Row className="g-3">
           <Col xs={6} md={3}>
             <AppKpiCard
@@ -334,7 +397,19 @@ export default function StatisticsPage() {
       </AppDataPanel>
 
       {/* マッチング・交換 */}
-      <AppDataPanel title="マッチング・交換" className="mt-3">
+      <AppDataPanel
+        title="マッチング・交換"
+        className="mt-3"
+        actions={(
+          <SectionActions
+            links={[
+              { to: '/matching', label: 'マッチング', variant: 'btn-outline-primary' },
+              { to: '/proposals', label: '提案一覧' },
+              { to: '/exchange-history', label: '交換履歴' },
+            ]}
+          />
+        )}
+      >
         <Row className="g-3">
           <Col xs={6} md={4}>
             <AppKpiCard value={summary.proposals.sent} label="送信した提案" />
@@ -384,7 +459,18 @@ export default function StatisticsPage() {
       </AppDataPanel>
 
       {/* 取引ネットワーク */}
-      <AppDataPanel title="取引ネットワーク" className="mt-3">
+      <AppDataPanel
+        title="取引ネットワーク"
+        className="mt-3"
+        actions={(
+          <SectionActions
+            links={[
+              { to: '/pharmacies', label: '薬局一覧', variant: 'btn-outline-primary' },
+              { to: '/groups', label: 'グループ' },
+            ]}
+          />
+        )}
+      >
         <Row className="g-3">
           <Col xs={6}>
             <AppKpiCard

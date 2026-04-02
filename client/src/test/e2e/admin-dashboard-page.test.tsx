@@ -98,6 +98,31 @@ describe('AdminDashboardPage', () => {
       if (url.includes('/api/admin/messages?page=1&limit=10')) {
         return jsonResponse({ data: [] });
       }
+      if (url.includes('/api/admin/cron-status')) {
+        return jsonResponse({
+          crons: [
+            {
+              name: 'daily_statistics',
+              label: '日次統計集計',
+              lastActivityAt: '2026-03-29T09:00:00.000Z',
+              evidenceNote: 'daily_statistics テーブルの最終レコード作成日時',
+            },
+          ],
+        });
+      }
+      if (url.includes('/api/admin/slo-breaches?limit=5')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 1,
+              type: 'rate_limit',
+              details: 'admin notifications endpoint exceeded threshold',
+              timestamp: '2026-03-29T09:30:00.000Z',
+            },
+          ],
+          total: 1,
+        });
+      }
       if (url.includes('/api/health/openclaw')) {
         return jsonResponse({
           status: 'degraded',
@@ -136,6 +161,23 @@ describe('AdminDashboardPage', () => {
     });
 
     expect(screen.getByText('未接続')).toBeInTheDocument();
+    expect(screen.getByText('CRON ステータス')).toBeInTheDocument();
+    expect(screen.getByText('日次統計集計')).toBeInTheDocument();
+    expect(screen.getByText('SLO 違反履歴')).toBeInTheDocument();
+    expect(screen.getByText('今見る運用')).toBeInTheDocument();
+    expect(screen.getByText('設定・監査')).toBeInTheDocument();
+    expect(screen.getByText('admin notifications endpoint exceeded threshold')).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('link', { name: 'ログセンター' }).every((link) => link.getAttribute('href') === '/admin/log-center'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'マッチング性能' }).every((link) => link.getAttribute('href') === '/admin/matching-performance'),
+    ).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'エラーコード' }).every((link) => link.getAttribute('href') === '/admin/error-codes')).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: '監査ログ' }).every((link) => link.getAttribute('href') === '/admin/audit'),
+    ).toBe(true);
+    expect(screen.getAllByRole('link', { name: '操作ログ' }).every((link) => link.getAttribute('href') === '/admin/logs')).toBe(true);
     expect(screen.queryByText('一部のデータの取得に失敗しました')).not.toBeInTheDocument();
   });
 });

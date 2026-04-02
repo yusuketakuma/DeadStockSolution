@@ -4,8 +4,9 @@ interface ColumnMappingFormProps {
   headers: string[];
   mapping: Record<string, string | null>;
   uploadType: 'dead_stock' | 'used_medication';
-  missingRequiredFields: string[];
-  fieldHints: Record<string, string[]>;
+  missingRequiredFields?: string[];
+  duplicateAssignedFields?: string[];
+  fieldHints?: Record<string, string[]>;
   mappingComplete: boolean;
   onChange: (field: string, columnIndex: string | null) => void;
 }
@@ -37,8 +38,9 @@ export default function ColumnMappingForm({
   headers,
   mapping,
   uploadType,
-  missingRequiredFields,
-  fieldHints,
+  missingRequiredFields = [],
+  duplicateAssignedFields = [],
+  fieldHints = {},
   mappingComplete,
   onChange,
 }: ColumnMappingFormProps) {
@@ -52,15 +54,22 @@ export default function ColumnMappingForm({
 
       {!mappingComplete && (
         <Alert variant="warning" className="small py-2">
-          必須フィールドの割り当てが不足しています
+          必須フィールドの割り当て不足または重複があります。同じ列は複数項目へ割り当てできません。
         </Alert>
       )}
 
       {visibleFields.map((field) => {
         const required = isFieldRequired(field, uploadType);
         const isMissing = missingRequiredFields.includes(field.key);
+        const isDuplicated = duplicateAssignedFields.includes(field.key);
         const currentValue = mapping[field.key] ?? '';
         const hints = fieldHints[field.key];
+        const columnsAssignedToOtherFields = new Set(
+          visibleFields
+            .filter((candidate) => candidate.key !== field.key)
+            .map((candidate) => mapping[candidate.key])
+            .filter((value): value is string => value !== null && value !== undefined && value !== ''),
+        );
 
         return (
           <Form.Group
@@ -83,7 +92,7 @@ export default function ColumnMappingForm({
               <Form.Select
                 size="sm"
                 value={currentValue}
-                className={isMissing ? 'border-danger' : ''}
+                className={isMissing || isDuplicated ? 'border-danger' : ''}
                 onChange={(e) => {
                   const val = e.target.value;
                   onChange(field.key, val === '' ? null : val);
@@ -91,7 +100,11 @@ export default function ColumnMappingForm({
               >
                 <option value="">未設定</option>
                 {headers.map((header, idx) => (
-                  <option key={idx} value={String(idx)}>
+                  <option
+                    key={idx}
+                    value={String(idx)}
+                    disabled={columnsAssignedToOtherFields.has(String(idx))}
+                  >
                     {header || `列${idx + 1}`}
                   </option>
                 ))}
@@ -99,6 +112,11 @@ export default function ColumnMappingForm({
               {isMissing && (
                 <div className="small text-danger mt-1">
                   このフィールドは必須です
+                </div>
+              )}
+              {isDuplicated && (
+                <div className="small text-danger mt-1">
+                  この列は他の項目と重複しています
                 </div>
               )}
               {hints && hints.length > 0 && (
