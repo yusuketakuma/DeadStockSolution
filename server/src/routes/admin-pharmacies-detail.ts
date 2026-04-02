@@ -8,6 +8,7 @@ import {
   pharmacySpecialHours,
 } from '../db/schema';
 import { invalidateAuthUserCache } from '../middleware/auth';
+import { invalidateBusinessHoursCacheForPharmacy } from '../services/matching/matching-data-fetcher';
 import { processVerificationCallback } from '../services/pharmacy-verification-callback-service';
 import {
   detectChangedReverificationFields,
@@ -234,6 +235,7 @@ router.put('/pharmacies/:id/business-hours', adminWriteLimiter, async (req: Auth
     }
 
     invalidateAuthUserCache(id);
+    invalidateBusinessHoursCacheForPharmacy(id);
     void writeLog('account_update', {
       pharmacyId: req.user!.id,
       detail: `管理者が薬局ID:${id}の営業時間を更新`,

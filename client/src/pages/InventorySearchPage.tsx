@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Spinner } from 'react-bootstrap';
 import { api } from '../api/client';
 import { useInventorySearch } from '../hooks/useInventorySearch';
@@ -211,10 +211,29 @@ export default function InventorySearchPage() {
     }
     navigate(`/matching?${params.toString()}`);
   };
+  const matchingHref = useMemo(() => {
+    const params = new URLSearchParams();
+    const selectedDrugs = chips.map((chip) => chip.displayLabel).filter(Boolean).join(' / ');
+    if (selectedDrugs) {
+      params.set('inventorySearchDrugs', selectedDrugs);
+    }
+    return params.size > 0 ? `/matching?${params.toString()}` : '/matching';
+  }, [chips]);
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">医薬品在庫検索</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">医薬品在庫検索</h4>
+          <div className="text-muted small">検索条件を保ったままマッチングや在庫参照へ移動できます。</div>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
+          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫参照</Link>
+          <Link to={matchingHref} className="btn btn-outline-primary btn-sm">この条件でマッチング</Link>
+        </div>
+      </div>
       <ScrollArea>
         <InventorySearchForm
           chips={chips}

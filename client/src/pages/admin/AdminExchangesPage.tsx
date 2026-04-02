@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
@@ -91,11 +92,17 @@ export default function AdminExchangesPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="page-title mb-0">交換履歴（管理者）</h4>
-        <a href={buildApiUrl('/admin/csv/exchanges')} className="btn btn-outline-secondary btn-sm" download>
-          CSVエクスポート
-        </a>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">交換履歴（管理者）</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+          <Link to="/admin/reports" className="btn btn-outline-secondary btn-sm">月次レポート</Link>
+          <a href={buildApiUrl('/admin/csv/exchanges')} className="btn btn-outline-secondary btn-sm" download>
+            CSVエクスポート
+          </a>
+        </div>
       </div>
       {error && (
         <ErrorRetryAlert error={error} onRetry={() => void retry()} />

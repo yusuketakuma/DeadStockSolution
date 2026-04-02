@@ -153,7 +153,10 @@ export function RequestThreadPane({
                 />
                 <div className="d-flex flex-column flex-md-row justify-content-between gap-2 mt-2">
                   <div className="d-flex flex-column gap-1">
+                    <Form.Label htmlFor="request-reply-files" className="small mb-0">返信添付ファイル</Form.Label>
                     <Form.Control
+                      id="request-reply-files"
+                      aria-label="返信添付ファイル"
                       type="file"
                       multiple
                       onChange={onReplyFilesChange}

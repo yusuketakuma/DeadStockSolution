@@ -112,10 +112,14 @@ export async function countUnreadProposals(
   pharmacyId: number,
   lastViewed: string | null,
 ): Promise<number> {
-  const base = or(
+  const ownershipCondition = or(
     eq(exchangeProposals.pharmacyAId, pharmacyId),
     eq(exchangeProposals.pharmacyBId, pharmacyId),
   )!;
+  const base = and(
+    ownershipCondition,
+    ne(exchangeProposals.status, 'completed'),
+  );
   if (!lastViewed) return countRows(db, exchangeProposals, base);
   return countRows(db, exchangeProposals, and(base, gt(exchangeProposals.proposedAt, lastViewed)));
 }
@@ -207,6 +211,7 @@ export async function countAllUnread(
         + COALESCE((
           SELECT count(*)::int FROM exchange_proposals
           WHERE (pharmacy_a_id = ${pharmacyId} OR pharmacy_b_id = ${pharmacyId})
+            AND status != 'completed'
             AND (
               ${pharmacies.lastTimelineViewedAt} IS NULL
               OR proposed_at > ${pharmacies.lastTimelineViewedAt}

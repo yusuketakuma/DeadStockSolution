@@ -122,6 +122,24 @@ describe('ProposalDetailPage comment actions', () => {
     setMatchMedia(false);
   });
 
+  it('renders navigation links back to proposals and exchange history', async () => {
+    createProposalDetailFetch([]);
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/proposals/:id" element={<ProposalDetailPage />} />
+      </Routes>,
+      { route: '/proposals/1' },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('マッチング #1')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
+    expect(screen.getByRole('link', { name: '交換履歴' })).toHaveAttribute('href', '/exchange-history');
+  });
+
   it('allows editing own comment', async () => {
     const user = userEvent.setup();
     const commentsState: ProposalCommentMock[] = [

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   fetchBusinessHourSettings: vi.fn(),
   validateBusinessHours: vi.fn(),
   validateSpecialBusinessHours: vi.fn(),
+  invalidateBusinessHoursCacheForPharmacy: vi.fn(),
   processVerificationCallback: vi.fn(),
   detectChangedReverificationFields: vi.fn(),
   triggerReverification: vi.fn(),
@@ -52,6 +53,10 @@ vi.mock('../routes/business-hours', () => ({
   fetchBusinessHourSettings: mocks.fetchBusinessHourSettings,
   validateBusinessHours: mocks.validateBusinessHours,
   validateSpecialBusinessHours: mocks.validateSpecialBusinessHours,
+}));
+
+vi.mock('../services/matching/matching-data-fetcher', () => ({
+  invalidateBusinessHoursCacheForPharmacy: mocks.invalidateBusinessHoursCacheForPharmacy,
 }));
 
 vi.mock('../services/pharmacy-verification-callback-service', () => ({
@@ -686,6 +691,7 @@ describe('admin-pharmacies-detail routes — deep coverage', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('営業時間を更新');
+      expect(mocks.invalidateBusinessHoursCacheForPharmacy).toHaveBeenCalledWith(1);
     });
 
     it('returns 500 on business hours update error', async () => {

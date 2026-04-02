@@ -17,7 +17,7 @@ interface UseIncrementalSearchReturn<T> {
   setPage: (p: number) => void;
   isSearching: boolean;
   clear: () => void;
-  executeImmediate: () => void;
+  executeImmediate: (queryOverride?: string, pageOverride?: number) => void;
   tokens: string[];
 }
 
@@ -165,14 +165,16 @@ export function useIncrementalSearch<T>(
     setIsSearching(false);
   }, [cancelPending]);
 
-  const executeImmediate = useCallback(() => {
+  const executeImmediate = useCallback((queryOverride?: string, pageOverride?: number) => {
     // デバウンスタイマーをキャンセルして即座にフェッチ
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    const nextQuery = queryOverride ?? queryRef.current;
+    const nextPage = pageOverride ?? pageRef.current;
     setIsSearching(true);
-    void doFetch(queryRef.current, pageRef.current);
+    void doFetch(nextQuery, nextPage);
   }, [doFetch]);
 
   const tokens = splitTokens(query);

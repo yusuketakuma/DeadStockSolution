@@ -54,6 +54,69 @@ describe('MatchingPage bookmarks', () => {
     vi.restoreAllMocks();
   });
 
+  it('shows quick links to bookmarks and proposals in the page header', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/upload/status')) {
+        return new Response(JSON.stringify({ deadStockUploaded: true, usedMedicationUploaded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/groups/membership-summary')) {
+        return new Response(JSON.stringify(membershipSummaryResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/match-bookmarks?page=1&limit=100')) {
+        return new Response(JSON.stringify({ items: [], page: 1, limit: 100 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/timeline/bootstrap')) {
+        return new Response(JSON.stringify({
+          timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null },
+          digest: { events: [] },
+          unreadCount: 0,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/timeline/unread-count')) {
+        return new Response(JSON.stringify({ unreadCount: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<MatchingPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('マッチング')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('link', { name: 'ブックマーク' })).toHaveAttribute('href', '/bookmarks');
+    expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
+  });
+
   it('marks an item as bookmarked using the API drugCode contract', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();

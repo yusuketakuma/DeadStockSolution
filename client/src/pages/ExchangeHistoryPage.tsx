@@ -52,7 +52,17 @@ export default function ExchangeHistoryPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">交換履歴</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">交換履歴</h4>
+          <div className="text-muted small">完了した交換から提案タイムラインや関連メッセージへ戻れます。</div>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
+          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
+        </div>
+      </div>
       <ScrollArea>
       <AppDataTable
         loading={loading}

@@ -694,9 +694,9 @@ describe('predictive-alert-service coverage', () => {
       });
 
       expect(capturedNotifValues).toMatchObject({
-        type: 'proposal_status_changed',
+        type: 'alert_excess_stock',
         pharmacyId: 20,
-        referenceType: 'match',
+        referenceType: 'alert',
         referenceId: null,
       });
     });

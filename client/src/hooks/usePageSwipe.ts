@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { NAV_ITEMS } from '../components/layout/MobileBottomNav';
+import { ADMIN_NAV_ITEMS, USER_NAV_ITEMS } from '../components/layout/MobileBottomNav';
 
 interface UsePageSwipeOptions {
   disabled?: boolean;
@@ -21,8 +21,8 @@ export function usePageSwipe(
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
 
-  // Extract route paths from NAV_ITEMS
-  const paths = NAV_ITEMS.map((item) => item.to);
+  const navItems = location.pathname.startsWith('/admin') ? ADMIN_NAV_ITEMS : USER_NAV_ITEMS;
+  const paths = navItems.map((item) => item.to);
 
   // Find current tab index based on location
   const getCurrentIndex = useCallback((): number => {
@@ -30,11 +30,13 @@ export function usePageSwipe(
     // Exact match first (for '/')
     const exactIdx = paths.findIndex((p) => p === pathname);
     if (exactIdx !== -1) return exactIdx;
+    const aliasIdx = navItems.findIndex((item) => item.activeAliases?.some((alias) => pathname.startsWith(alias)));
+    if (aliasIdx !== -1) return aliasIdx;
     // Prefix match (for '/matching', '/proposals', etc.)
     const prefixIdx = paths.findIndex((p) => p !== '/' && pathname.startsWith(p));
     if (prefixIdx !== -1) return prefixIdx;
     return -1;
-  }, [location.pathname, paths]);
+  }, [location.pathname, navItems, paths]);
 
   useEffect(() => {
     const el = containerRef.current;

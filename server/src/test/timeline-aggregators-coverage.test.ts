@@ -12,6 +12,20 @@ import {
   getExpiryDateRange,
 } from '../services/timeline-aggregators';
 
+function flattenSqlChunks(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(flattenSqlChunks).join('');
+  if (value && typeof value === 'object') {
+    if ('value' in value) {
+      return flattenSqlChunks((value as { value: unknown }).value);
+    }
+    if ('queryChunks' in value) {
+      return flattenSqlChunks((value as { queryChunks: unknown }).queryChunks);
+    }
+  }
+  return '';
+}
+
 function createQueryChain(result: unknown[]): DbClient & Record<string, ReturnType<typeof vi.fn>> {
   const methods = ['select', 'update', 'from', 'where', 'orderBy', 'limit', 'innerJoin', '$dynamic'];
   const chain = {} as unknown as DbClient & Record<string, ReturnType<typeof vi.fn>>;
@@ -153,6 +167,16 @@ describe('timeline-aggregators coverage: fetcher functions', () => {
       const db = createQueryChain([]);
       await fetchProposalEvents(db, 1, '2026-01-01', undefined, '2026-06-01');
       expect(db.where).toHaveBeenCalled();
+    });
+
+    it('excludes completed proposals because exchange history handles them separately', async () => {
+      const db = createQueryChain([]);
+      await fetchProposalEvents(db, 1);
+
+      const whereArg = db.where.mock.calls[0]?.[0];
+      const sqlText = flattenSqlChunks(whereArg);
+      expect(sqlText).toContain('completed');
+      expect(sqlText).toContain('<>');
     });
 
     it('applies limit when provided', async () => {

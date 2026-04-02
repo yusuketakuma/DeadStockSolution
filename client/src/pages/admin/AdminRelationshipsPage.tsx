@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge, Col, Form, Row } from 'react-bootstrap';
 import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
@@ -54,7 +55,14 @@ export default function AdminRelationshipsPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">関係性監査</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">関係性監査</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+        </div>
+      </div>
 
       <Row className="mb-3 g-2">
         <Col xs={12} md={4}>

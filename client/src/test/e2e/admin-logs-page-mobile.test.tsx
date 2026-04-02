@@ -75,6 +75,9 @@ describe('AdminLogsPage - Mobile Card View', () => {
     expect(mobileContainer).toBeInTheDocument();
 
     expect(screen.getByText('ログ #1001')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'ログセンター' })).toHaveAttribute('href', '/admin/log-center');
+    expect(screen.getByRole('link', { name: '監査ログ' })).toHaveAttribute('href', '/admin/audit');
+    expect(screen.getByRole('link', { name: 'エラーコード' })).toHaveAttribute('href', '/admin/error-codes');
   });
 
   it('displays log data in mobile card fields', async () => {

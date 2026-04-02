@@ -285,6 +285,18 @@ describe('upload-validation: validateMappingAgainstHeader', () => {
   it('skips null values in validation', () => {
     expect(() => validateMappingAgainstHeader({ drug_name: '0', unit: null }, ['A', 'B'])).not.toThrow();
   });
+
+  it('rejects duplicate column assignments across fields', () => {
+    expect(() => validateMappingAgainstHeader(
+      {
+        drug_name: '0',
+        drug_code: '0',
+        quantity: '1',
+        yakka_unit_price: '2',
+      },
+      ['薬剤名', '数量', '薬価'],
+    )).toThrow('薬品コードカラムの割り当てが薬剤名と重複しています');
+  });
 });
 
 describe('upload-validation: sanitizeLogValue', () => {

@@ -16,9 +16,33 @@ const ignoredDirs = new Set([
   '.turbo',
   '.npm-cache',
   '.claude',
+  '.openclaw',
+  '.serena',
+  '.sisyphus',
+  '.omc',
+  '.vercel',
+  'artifacts',
+  'audits',
+  'reports',
+  'memory',
+  'playwright-report',
+  'test-results',
 ]);
 
 const disallowedFiles = new Set(['.DS_Store']);
+const allowedTrackedRootDirs = new Set([
+  '.claude',
+  '.codex',
+  '.github',
+  '.husky',
+  'api',
+  'client',
+  'dev',
+  'docs',
+  'scripts',
+  'server',
+  'shared',
+]);
 const violations = [];
 
 // ─── 1. Filesystem walk: .DS_Store ───────────────────────────────────────────
@@ -76,6 +100,37 @@ const LOCAL_STATE_PATTERNS = [
   /\/\.claude\/state\//,
   /^\.claude\/sessions\//,
   /\/\.claude\/sessions\//,
+  /^\.claude\/memory\//,
+  /\/\.claude\/memory\//,
+  /^\.claude\/agent-memory\//,
+  /\/\.claude\/agent-memory\//,
+  /^\.claude\/memory\/session-log\.md$/,
+  /\/\.claude\/memory\/session-log\.md$/,
+  /^\.claude\/settings\.local\.json$/,
+  /\/\.claude\/settings\.local\.json$/,
+  /^client\/\.claude\//,
+  /^server\/\.claude\//,
+  /^\.cursor\//,
+  /\/\.cursor\//,
+  /^\.codex-verify\//,
+  /\/\.codex-verify\//,
+  /^\.omc\//,
+  /\/\.omc\//,
+  /^\.openclaw\//,
+  /\/\.openclaw\//,
+  /^\.serena\//,
+  /\/\.serena\//,
+  /^\.sisyphus\//,
+  /\/\.sisyphus\//,
+  /^artifacts\//,
+  /\/artifacts\//,
+  /^audits\//,
+  /\/audits\//,
+  /^reports\//,
+  /\/reports\//,
+  /^memory\//,
+  /^\.deep-review-findings\.md$/,
+  /\/\{"decision":"approve","reason":"WorktreeCreate: initialized worktree state"\}\//,
   /\.env\.local$/,
   /\.env\.\w+\.local$/,
 ];
@@ -96,7 +151,38 @@ try {
   // Ignore
 }
 
-const filesToCheck = [...new Set([...trackedFiles, ...stagedFiles])];
+let stagedDeletedFiles = [];
+try {
+  const output = execSync('git diff --cached --name-only --diff-filter=D', {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
+  stagedDeletedFiles = output.split('\n').filter(Boolean);
+} catch {
+  // Ignore
+}
+
+const stagedDeletedSet = new Set(stagedDeletedFiles);
+const filesToCheck = [...new Set([...trackedFiles, ...stagedFiles])].filter(
+  (file) => !stagedDeletedSet.has(file),
+);
+
+const trackedRootDirs = new Set();
+for (const file of filesToCheck) {
+  const [rootEntry, ...rest] = file.split('/');
+  if (rest.length > 0) {
+    trackedRootDirs.add(rootEntry);
+  }
+}
+
+for (const rootDirName of trackedRootDirs) {
+  if (!allowedTrackedRootDirs.has(rootDirName)) {
+    violations.push({
+      file: rootDirName,
+      reason: 'unexpected tracked top-level directory (would add GitHub root clutter)',
+    });
+  }
+}
 
 for (const file of filesToCheck) {
   for (const pattern of GENERATED_DIR_PATTERNS) {

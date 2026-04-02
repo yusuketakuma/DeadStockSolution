@@ -46,6 +46,10 @@ interface NotificationIdRow {
   id: number;
 }
 
+interface InvitationReferenceRow {
+  groupId: number | null;
+}
+
 const DEFAULT_LIMIT = 20;
 const GROUP_MEMBER_BATCH_LIMIT = 1000 as const;
 
@@ -83,9 +87,10 @@ function normalizePaging(limit?: number, offset?: number): { limit: number; offs
   return { limit: safeLimit, offset: safeOffset };
 }
 
-function toGroup(group: PharmacyGroupRow): PharmacyGroup {
+function toGroup(group: PharmacyGroupRow, hasPendingInvitation = false): PharmacyGroup {
   return {
     ...group,
+    ...(hasPendingInvitation ? { hasPendingInvitation: true } : {}),
     createdAt: group.createdAt ?? '',
     updatedAt: group.updatedAt ?? '',
   };
@@ -372,6 +377,19 @@ export async function listGroups(pharmacyId: number, filters: ListGroupFilters =
     .from(groupMembers)
     .where(eq(groupMembers.pharmacyId, pharmacyId));
   const memberGroupIds = memberRows.map((row) => row.groupId);
+  const invitationRows = filters.tab === 'mine'
+    ? []
+    : await db.select({ groupId: notifications.referenceId })
+      .from(notifications)
+      .where(and(
+        eq(notifications.pharmacyId, pharmacyId),
+        eq(notifications.type, 'group_invitation'),
+        eq(notifications.isRead, false),
+      ));
+  const invitedGroupIds = invitationRows
+    .map((row: InvitationReferenceRow) => row.groupId)
+    .filter((value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0);
+  const invitedGroupIdSet = new Set(invitedGroupIds);
 
   const ownConditions: SQL[] = [];
   if (memberGroupIds.length > 0) ownConditions.push(inArray(pharmacyGroups.id, memberGroupIds));
@@ -391,11 +409,27 @@ export async function listGroups(pharmacyId: number, filters: ListGroupFilters =
       .where(and(...publicConditions))
       .limit(500);
 
+  const invitedConditions: SQL[] = invitedGroupIds.length > 0
+    ? [inArray(pharmacyGroups.id, invitedGroupIds)]
+    : [];
+  if (invitedConditions.length > 0 && memberGroupIds.length > 0) {
+    invitedConditions.push(notInArray(pharmacyGroups.id, memberGroupIds));
+  }
+  if (invitedConditions.length > 0 && searchCondition) {
+    invitedConditions.push(searchCondition);
+  }
+
+  const invitedGroups = filters.tab === 'mine' || invitedConditions.length === 0
+    ? []
+    : await db.select().from(pharmacyGroups)
+      .where(and(...invitedConditions))
+      .limit(500);
+
   const groups = filters.tab === 'mine'
     ? sortGroups(ownGroups)
     : filters.tab === 'public'
-      ? sortGroups(publicGroups)
-      : dedupeAndSortGroups(ownGroups, publicGroups);
+      ? dedupeAndSortGroups(publicGroups, invitedGroups)
+      : dedupeAndSortGroups(ownGroups, dedupeAndSortGroups(publicGroups, invitedGroups));
   const orderedGroups = filters.search
     ? sortGroupsBySearchRelevance(groups, filters.search)
     : groups;
@@ -417,7 +451,7 @@ export async function listGroups(pharmacyId: number, filters: ListGroupFilters =
       : null;
 
     return {
-      groups: items.map(toGroup),
+      groups: items.map((group) => toGroup(group, invitedGroupIdSet.has(group.id))),
       total: orderedGroups.length,
       offset: 0,
       limit,
@@ -426,7 +460,7 @@ export async function listGroups(pharmacyId: number, filters: ListGroupFilters =
   }
 
   return {
-    groups: orderedGroups.slice(offset, offset + limit).map(toGroup),
+    groups: orderedGroups.slice(offset, offset + limit).map((group) => toGroup(group, invitedGroupIdSet.has(group.id))),
     total: orderedGroups.length,
     offset,
     limit,
@@ -554,7 +588,7 @@ export async function inviteMember(
     title: 'グループ招待',
     body: `グループID:${groupId} に招待されています`,
     data: {
-      url: '/groups',
+      url: '/groups?tab=public',
       type: 'group_invitation',
       referenceId: String(groupId),
     },

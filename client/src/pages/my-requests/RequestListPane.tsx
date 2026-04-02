@@ -26,6 +26,10 @@ export function RequestListPane({
   onSelectRequest,
   onQueueFilterChange,
 }: RequestListPaneProps) {
+  const emptyStateMessage = requests.length === 0
+    ? '送信済みの要望はまだありません。'
+    : '現在の絞り込み条件に一致する要望はありません。';
+
   return (
     <AppCard>
       <AppCard.Header>要望一覧</AppCard.Header>
@@ -43,7 +47,7 @@ export function RequestListPane({
         {loading ? (
           <InlineLoader text="読み込み中..." className="text-muted small" />
         ) : displayRequests.length === 0 ? (
-          <div className="text-muted small">送信済みの要望はまだありません。</div>
+          <div className="text-muted small">{emptyStateMessage}</div>
         ) : (
           <div className="d-flex flex-column gap-2">
             {displayRequests.map((item) => {

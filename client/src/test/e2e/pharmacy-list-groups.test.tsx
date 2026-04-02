@@ -75,6 +75,22 @@ describe('PharmacyListPage — Group Features', () => {
   });
 
   describe('Group Badges', () => {
+    it('renders cross-links to my groups, public groups, and messages in the page header', async () => {
+      mockPharmacyListFetch();
+      renderWithProviders(<PharmacyListPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('登録薬局一覧')).toBeInTheDocument();
+      });
+
+      const matchingLinks = screen.getAllByRole('link', { name: 'マッチング' });
+      expect(matchingLinks.some((link) => link.getAttribute('href') === '/matching')).toBe(true);
+      expect(screen.getByRole('link', { name: 'マイグループ' })).toHaveAttribute('href', '/groups');
+      expect(screen.getByRole('link', { name: '公開グループを探す' })).toHaveAttribute('href', '/groups?tab=public');
+      const messageLinks = screen.getAllByRole('link', { name: 'メッセージ' });
+      expect(messageLinks.some((link) => link.getAttribute('href') === '/messages')).toBe(true);
+    });
+
     it('shows group name badge for pharmacy in a single group', async () => {
       mockPharmacyListFetch();
       renderWithProviders(<PharmacyListPage />);
@@ -90,7 +106,7 @@ describe('PharmacyListPage — Group Features', () => {
         const badgeMatch = matches.find((el) => el.classList.contains('badge'));
         expect(badgeMatch).toBeTruthy();
       });
-
+      expect(screen.getByRole('link', { name: '東京グループ' })).toHaveAttribute('href', '/groups/10');
     });
     it('shows "グループ" badge for pharmacy in multiple groups', async () => {
       mockPharmacyListFetch();
@@ -106,6 +122,7 @@ describe('PharmacyListPage — Group Features', () => {
         const badges = screen.getAllByText('グループ');
         expect(badges.length).toBeGreaterThanOrEqual(1);
       });
+      expect(screen.getByRole('link', { name: 'グループ' })).toHaveAttribute('href', '/groups?tab=mine');
     });
 
     it('shows group badge for pharmacy in one group with specific name', async () => {
@@ -122,7 +139,7 @@ describe('PharmacyListPage — Group Features', () => {
         const badgeMatch = matches.find((el) => el.classList.contains('badge'));
         expect(badgeMatch).toBeTruthy();
       });
-
+      expect(screen.getByRole('link', { name: '全国ネットワーク' })).toHaveAttribute('href', '/groups/20');
     });
     it('does not show group badges when user has no groups', async () => {
       mockPharmacyListFetch({ emptyGroups: true });
@@ -139,6 +156,20 @@ describe('PharmacyListPage — Group Features', () => {
   });
 
   describe('Group Filter', () => {
+    it('applies the group filter from the URL query', async () => {
+      mockPharmacyListFetch();
+      renderWithProviders(<PharmacyListPage />, { route: '/pharmacies?group=10' });
+
+      await waitFor(() => {
+        expect(screen.getByText('テスト薬局')).toBeInTheDocument();
+        expect(screen.getByText('サンプル薬局')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('ヘルス薬局')).not.toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'グループで絞り込み' })).toHaveValue('10');
+      expect(screen.getByRole('link', { name: '選択中グループを開く' })).toHaveAttribute('href', '/groups/10');
+    });
+
     it('fetches incrementally while typing without clicking search', async () => {
       const mockFetch = mockPharmacyListFetch();
       const user = userEvent.setup();
@@ -269,12 +300,13 @@ describe('PharmacyListPage — Group Features', () => {
       await waitFor(() => {
         expect(screen.getByText('このグループに属する薬局が見つかりません')).toBeInTheDocument();
       });
+      expect(screen.getByRole('link', { name: '東京グループを見る' })).toHaveAttribute('href', '/groups/10');
     });
 
     it('shows all pharmacies again when group filter is cleared', async () => {
       mockPharmacyListFetch();
       const user = userEvent.setup();
-      renderWithProviders(<PharmacyListPage />);
+      renderWithProviders(<PharmacyListPage />, { route: '/pharmacies?group=10' });
 
       await waitFor(() => {
         expect(screen.getByText('テスト薬局')).toBeInTheDocument();
@@ -293,6 +325,7 @@ describe('PharmacyListPage — Group Features', () => {
       await waitFor(() => {
         expect(screen.getByText('ヘルス薬局')).toBeInTheDocument();
       });
+      expect(window.location.search).not.toContain('group=');
     });
 
     it('does not show group filter options when user has no groups', async () => {

@@ -220,7 +220,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Login and dashboard E2E
-        run: npx playwright test e2e/tests/login-smoke.spec.ts e2e/tests/dashboard-runtime-audit.spec.ts
+        run: npx playwright test dev/e2e/tests/login-smoke.spec.ts dev/e2e/tests/dashboard-runtime-audit.spec.ts
 
   verify:
     needs: [lint-typecheck, test-server, test-client, integration, proposal-flow-e2e, login-dashboard-e2e]

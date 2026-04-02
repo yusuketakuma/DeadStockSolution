@@ -240,8 +240,8 @@ export default function AlertListPage() {
               <Link to="/inventory/dead-stock" className="btn btn-outline-primary btn-sm">
                 在庫を見る
               </Link>
-              <Link to="/proposals" className="btn btn-outline-primary btn-sm">
-                提案を作成
+              <Link to="/matching" className="btn btn-outline-primary btn-sm">
+                マッチングを見る
               </Link>
             </div>
             <AppButton variant="secondary" size="sm" onClick={() => setDetailAlert(null)}>
@@ -385,13 +385,21 @@ export default function AlertListPage() {
   // ── レンダリング ──────────────────────────────────────
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="page-title mb-0">アラート一覧</h4>
-        {stats && (
-          <Badge bg="danger" pill>
-            未解決 {stats.unresolvedCount}件
-          </Badge>
-        )}
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy d-flex align-items-center gap-2">
+          <h4 className="page-title mb-0">アラート一覧</h4>
+          {stats && (
+            <Badge bg="danger" pill>
+              未解決 {stats.unresolvedCount}件
+            </Badge>
+          )}
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/notifications" className="btn btn-outline-secondary btn-sm">通知センター</Link>
+          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">アップロード品質</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
+          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫参照</Link>
+        </div>
       </div>
 
       {error && (
@@ -440,9 +448,9 @@ export default function AlertListPage() {
               ) : alerts.length === 0 ? (
                 <AppEmptyState
                   title={resolvedTab === 'unresolved' ? '未解決のアラートはありません' : '解決済みのアラートはありません'}
-                  description="アラートが検出されると、ここに表示されます。"
-                  actionLabel="ダッシュボードへ"
-                  actionTo="/"
+                  description={resolvedTab === 'unresolved' ? 'アラートが検出されると、ここに表示されます。通知センターや在庫画面もあわせて確認できます。' : '過去に解決したアラートがあると、ここに表示されます。'}
+                  actionLabel={resolvedTab === 'unresolved' ? '通知センターへ' : 'ダッシュボードへ'}
+                  actionTo={resolvedTab === 'unresolved' ? '/notifications' : '/'}
                 />
               ) : (
                 <AppResponsiveSwitch

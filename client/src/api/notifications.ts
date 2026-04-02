@@ -6,7 +6,8 @@ export type NoticeType =
   | 'status_update'
   | 'admin_message'
   | 'match_update'
-  | 'new_comment';
+  | 'new_comment'
+  | 'alert';
 
 export interface NoticeItem {
   id: string;

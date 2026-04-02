@@ -24,6 +24,7 @@ export interface PharmacyGroup {
   description: string | null;
   visibility: GroupVisibility;
   ownerPharmacyId: number;
+  hasPendingInvitation?: boolean;
   createdAt: string; // ISO string
   updatedAt: string; // ISO string
 }

@@ -158,6 +158,10 @@ function businessHoursCacheKey(pharmacyId: number): string {
   return String(pharmacyId);
 }
 
+export function invalidateBusinessHoursCacheForPharmacy(pharmacyId: number): void {
+  BUSINESS_HOURS_CACHE.invalidate(businessHoursCacheKey(pharmacyId));
+}
+
 export async function fetchViablePharmacies(
   pharmacyId: number,
   firstOfMonth: string,

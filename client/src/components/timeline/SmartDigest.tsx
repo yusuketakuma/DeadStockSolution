@@ -5,6 +5,7 @@ import AppCard from '../ui/AppCard';
 import InlineLoader from '../ui/InlineLoader';
 import type { TimelineEvent, TimelinePriority } from '../../types/timeline';
 import type { UploadStatus } from '../dashboard/types';
+import { sanitizeInternalPath } from '../../utils/navigation';
 
 const MAX_DIGEST_ITEMS = 5;
 
@@ -38,6 +39,7 @@ interface SmartDigestProps {
 }
 
 function mapEventToDigestItem(event: TimelineEvent): DigestItem {
+  const actionPath = sanitizeInternalPath(event.actionPath, '/');
   if (event.priority === 'critical') {
     return {
       id: event.id,
@@ -47,7 +49,7 @@ function mapEventToDigestItem(event: TimelineEvent): DigestItem {
       badgeVariant: 'danger',
       priority: event.priority,
       actionLabel: '今すぐ確認',
-      actionPath: event.actionPath ?? '/',
+      actionPath,
       event,
     };
   }
@@ -59,7 +61,7 @@ function mapEventToDigestItem(event: TimelineEvent): DigestItem {
     badgeVariant: 'warning',
     priority: event.priority,
     actionLabel: '確認する',
-    actionPath: event.actionPath ?? '/',
+    actionPath,
     event,
   };
 }

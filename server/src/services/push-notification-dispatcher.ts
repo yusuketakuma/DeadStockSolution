@@ -38,7 +38,21 @@ interface DispatchCustomPushToManyInput {
   referenceId?: number | string;
 }
 
-function resolveActionUrl(referenceType: NotificationReferenceType | undefined, referenceId: number | undefined): string {
+function isAlertNotificationType(type: NotificationType | string | undefined): boolean {
+  return type === 'alert_near_expiry' || type === 'alert_excess_stock' || type === 'alert_resolved';
+}
+
+function resolveActionUrl(
+  referenceType: NotificationReferenceType | undefined,
+  referenceId: number | undefined,
+  type?: NotificationType,
+): string {
+  if (isAlertNotificationType(type) || referenceType === 'alert') {
+    return '/alerts';
+  }
+  if (type === 'matching_refresh_complete') {
+    return '/matching';
+  }
   if ((referenceType === 'proposal' || referenceType === 'comment') && referenceId) {
     return `/proposals/${referenceId}`;
   }
@@ -46,7 +60,7 @@ function resolveActionUrl(referenceType: NotificationReferenceType | undefined, 
     return '/matching';
   }
   if (referenceType === 'request') {
-    return '/requests';
+    return referenceId ? `/requests?requestId=${referenceId}` : '/requests';
   }
   return '/';
 }
@@ -122,7 +136,7 @@ export async function dispatchNotificationPush(input: DispatchNotificationPushIn
     title: input.title,
     body: input.message,
     data: {
-      url: resolveActionUrl(input.referenceType, input.referenceId),
+      url: resolveActionUrl(input.referenceType, input.referenceId, input.type),
       type: input.type,
       referenceId: input.referenceId ? String(input.referenceId) : undefined,
       category,

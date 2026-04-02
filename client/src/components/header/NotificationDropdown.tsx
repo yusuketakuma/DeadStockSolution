@@ -2,6 +2,7 @@ import { Badge, ListGroup, OverlayTrigger, Popover } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import AppButton from '../ui/AppButton';
 import type { TimelineEvent, TimelinePriority, TimelineSource } from '../../types/timeline';
+import { sanitizeInternalPath } from '../../utils/navigation';
 
 const MAX_DROPDOWN_ITEMS = 8;
 
@@ -95,7 +96,8 @@ export default function NotificationDropdown({
               <ListGroup variant="flush" className="notification-dropdown-list">
                 {displayEvents.map((event) => {
                   const icon = SOURCE_ICON[event.source] ?? '📌';
-                  const linkTo = event.actionPath ?? '/';
+                  const linkTo = sanitizeInternalPath(event.actionPath, '/');
+                  const actionHint = linkTo === '/' ? 'ダッシュボードへ →' : '詳細を見る →';
 
                   return (
                     <ListGroup.Item
@@ -125,7 +127,7 @@ export default function NotificationDropdown({
                           <div className="d-flex align-items-center justify-content-between mt-1">
                             <span className="notification-dropdown-time">{getRelativeTime(event.timestamp)}</span>
                             <span className="notification-dropdown-action-hint">
-                              {event.actionPath ? '詳細を見る →' : 'ダッシュボードへ →'}
+                              {actionHint}
                             </span>
                           </div>
                         </div>

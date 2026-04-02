@@ -6,11 +6,13 @@ import {
   deadStockItems,
 } from '../../db/schema';
 import { type DbClient, type RawTimelineEvent } from '../../types/timeline';
+import { sanitizeInternalPath } from '../../utils/path-utils';
 
 type AdminMessageRow = {
   id: number;
   title: string;
   body: string;
+  actionPath: string | null;
   createdAt: string | null;
 };
 
@@ -48,6 +50,7 @@ export function mapAdminMessageToEvent(row: {
   id: number;
   title: string;
   body: string;
+  actionPath: string | null;
   isRead: boolean;
   createdAt: string | null;
 }): RawTimelineEvent {
@@ -59,7 +62,7 @@ export function mapAdminMessageToEvent(row: {
     body: row.body,
     timestamp: resolveEventTimestamp(row.createdAt),
     isRead: row.isRead,
-    actionPath: '/',
+    actionPath: sanitizeInternalPath(row.actionPath) ?? '/',
     metadata: {
       messageId: row.id,
     },
@@ -115,7 +118,7 @@ export function mapExpiryRiskToEvent(row: {
     body: `有効期限: ${expiryLabel} / 数量: ${row.quantity}`,
     timestamp: resolveEventTimestamp(row.createdAt),
     isRead: false,
-    actionPath: '/upload',
+    actionPath: '/alerts',
     metadata: {
       drugName: row.drugName,
       expirationDateIso: row.expirationDateIso,
@@ -147,6 +150,7 @@ export async function fetchAdminMessageEvents(
     id: adminMessages.id,
     title: adminMessages.title,
     body: adminMessages.body,
+    actionPath: adminMessages.actionPath,
     createdAt: adminMessages.createdAt,
   };
 

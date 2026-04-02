@@ -69,15 +69,15 @@ beforeEach(async () => {
   notificationsRouter = router;
 });
 
-it('GET /api/notifications maps predictive alert notifications to status updates routed to /matching', async () => {
+it('GET /api/notifications maps alert notifications to alert notices routed to /alerts', async () => {
   const app = createApp();
   const notificationRows = [{
     id: 7001,
     pharmacyId: 1,
-    type: 'proposal_status_changed',
+    type: 'alert_near_expiry',
     title: '期限切迫在庫の予兆があります',
     message: '2件の在庫が期限到来予定です。',
-    referenceType: 'match',
+    referenceType: 'alert',
     referenceId: null,
     isRead: false,
     readAt: null,
@@ -98,9 +98,50 @@ it('GET /api/notifications maps predictive alert notifications to status updates
   expect(response.body.notices).toHaveLength(1);
   expect(response.body.notices[0]).toEqual(expect.objectContaining({
     id: 'notification-7001',
-    type: 'status_update',
-    actionPath: '/matching',
-    actionLabel: '確認する',
+    type: 'alert',
+    actionPath: '/alerts',
+    actionLabel: 'アラートを確認',
+  }));
+  expect(response.body.summary).toEqual(expect.objectContaining({
+    actionableRequests: 1,
+    total: 1,
+  }));
+});
+
+it('GET /api/notifications routes alert notices to /alerts even when legacy metadata says match', async () => {
+  const app = createApp();
+  const notificationRows = [{
+    id: 7002,
+    pharmacyId: 1,
+    type: 'alert_near_expiry',
+    title: '期限切迫アラート',
+    message: '期限切れ間近の在庫があります。',
+    referenceType: 'match',
+    referenceId: null,
+    isRead: false,
+    readAt: null,
+    createdAt: '2026-02-26T05:00:00.000Z',
+  }];
+
+  mocks.db.select
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery([]))
+    .mockImplementationOnce(() => createSelectQuery(notificationRows));
+
+  const response = await request(app).get('/api/notifications');
+
+  expect(response.status).toBe(200);
+  expect(response.body.notices).toHaveLength(1);
+  expect(response.body.notices[0]).toEqual(expect.objectContaining({
+    id: 'notification-7002',
+    type: 'alert',
+    actionPath: '/alerts',
+    actionLabel: 'アラートを確認',
+    priority: 2,
+    unread: true,
   }));
   expect(response.body.summary).toEqual(expect.objectContaining({
     actionableRequests: 1,

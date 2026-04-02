@@ -9,14 +9,14 @@ import type { TimelineEvent } from '../../types/timeline';
 function createEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
   return {
     id: 'event-1',
-    source: 'notification',
+    source: 'match',
     type: 'match_update',
     title: 'New match',
     body: 'A new match is available',
     timestamp: new Date().toISOString(),
     priority: 'high',
     isRead: false,
-    actionPath: '/matches/1',
+    actionPath: '/matching',
     ...overrides,
   };
 }
@@ -128,6 +128,23 @@ describe('TimelineContext', () => {
     });
 
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/timeline'))).toBe(true);
+  });
+
+  it('keeps match-source events intact when bootstrap hydrates the timeline', async () => {
+    setupTimelineFetchMock();
+    const wrapper = createWrapper();
+
+    const { result } = renderHook(() => useTimeline(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.events).toHaveLength(1);
+    });
+
+    expect(result.current.events[0]).toMatchObject({
+      source: 'match',
+      type: 'match_update',
+      actionPath: '/matching',
+    });
   });
 
   it('markViewed refetches bootstrap and syncs unread/read state from server', async () => {

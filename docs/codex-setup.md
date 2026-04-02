@@ -8,6 +8,11 @@
 1) repo ルートに `.codex/` と `AGENTS.md` を置く
 2) プロジェクトを trusted にする（trusted でないと `.codex/` が読み込まれない）
 
+### repo 配置
+- 共有する Codex ルールは repo ルートの `.codex/` に置く
+- `artifacts/`, `audits/`, `reports/`, `memory/` は実行成果物・ローカルメモ置き場として使い、Git には載せない
+- 監査や検証を再実行すると必要なディレクトリは再生成される前提で運用する
+
 ### trust の最小例（ユーザー側）
 `~/.codex/config.toml` に以下を追加（パスは自分の環境に合わせる）:
 
@@ -24,4 +29,3 @@ trust_level = "trusted"
 
 - この設定は `approval_policy = "never"` かつ `sandbox_mode = "danger-full-access"`。
   “速い”が、事故ったら致命的。運用で縛りたいなら workspace-write へ戻すこと。
-

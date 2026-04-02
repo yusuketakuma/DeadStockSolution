@@ -17,7 +17,7 @@ import PullToRefresh from '../components/gesture/PullToRefresh';
 import MobileFilterSheet from '../components/mobile/MobileFilterSheet';
 import MobileSortSheet from '../components/mobile/MobileSortSheet';
 import type { SortOption } from '../components/mobile/MobileSortSheet';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { daysUntilExpiry } from '../utils/expiry-risk';
 import BarcodeScanButton from '../components/mobile/BarcodeScanButton';
 
@@ -54,6 +54,7 @@ export default function InventoryBrowsePage() {
   const [sortOption, setSortOption] = useState<BrowseSortKey>('drugName');
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get('search') || '';
+  const requestedSearch = searchParams.get('search') || '';
 
   const fetchBrowse = useCallback(
     async (query: string, page: number, signal: AbortSignal) => {
@@ -70,22 +71,35 @@ export default function InventoryBrowsePage() {
     minChars: 0,
     initialQuery,
   });
+  const {
+    query,
+    setQuery,
+    executeImmediate,
+  } = incrementalSearch;
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
-    if (incrementalSearch.query) {
-      params.set('search', incrementalSearch.query);
+    if (query) {
+      params.set('search', query);
     } else {
       params.delete('search');
     }
     setSearchParams(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [incrementalSearch.query]);
+  }, [query]);
 
   useEffect(() => {
-    incrementalSearch.executeImmediate();
+    executeImmediate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (requestedSearch === query) {
+      return;
+    }
+    setQuery(requestedSearch);
+    executeImmediate(requestedSearch, 1);
+  }, [executeImmediate, query, requestedSearch, setQuery]);
 
   const items = incrementalSearch.results;
   const total = incrementalSearch.total;
@@ -117,6 +131,9 @@ export default function InventoryBrowsePage() {
     const newTokens = incrementalSearch.tokens.filter((t) => t !== token);
     incrementalSearch.setQuery(newTokens.join(' '));
   };
+  const matchingHref = incrementalSearch.query
+    ? `/matching?drug=${encodeURIComponent(query)}`
+    : '/matching';
 
   const resultsStyle = {
     opacity: incrementalSearch.isSearching ? 0.6 : 1,
@@ -125,28 +142,39 @@ export default function InventoryBrowsePage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">全薬局の在庫参照</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">全薬局の在庫参照</h4>
+          <div className="text-muted small">在庫確認から医薬品在庫検索やマッチングへ移動できます。</div>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
+          <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm">医薬品在庫検索</Link>
+          <Link to={matchingHref} className="btn btn-outline-primary btn-sm">マッチング</Link>
+        </div>
+      </div>
       <ScrollArea>
         <div className="mb-2 d-flex gap-2 mobile-stack">
           <div className="flex-grow-1">
             <SearchInput
               placeholder="薬品名で検索（ひらがな・カタカナ対応）..."
-              value={incrementalSearch.query}
-              onChange={incrementalSearch.setQuery}
-              onSearch={() => incrementalSearch.executeImmediate()}
+              value={query}
+              onChange={setQuery}
+              onSearch={() => executeImmediate()}
               suggestUrl="/search/drugs"
               trailingIcon={
                 <BarcodeScanButton
                   onScanResult={(drugName) => {
-                    incrementalSearch.setQuery(drugName);
-                    incrementalSearch.executeImmediate();
+                    setQuery(drugName);
+                    executeImmediate();
                   }}
                 />
               }
             />
           </div>
-          <AppButton variant="primary" onClick={() => incrementalSearch.executeImmediate()}>検索</AppButton>
-          {incrementalSearch.query && (
+          <AppButton variant="primary" onClick={() => executeImmediate()}>検索</AppButton>
+          {query && (
             <AppButton variant="outline-secondary" onClick={() => incrementalSearch.clear()}>
               クリア
             </AppButton>
@@ -165,7 +193,7 @@ export default function InventoryBrowsePage() {
           <SearchResultStatus
             totalCount={total}
             isSearching={incrementalSearch.isSearching}
-            searchQuery={incrementalSearch.query}
+            searchQuery={query}
           />
         </div>
 
@@ -206,8 +234,10 @@ export default function InventoryBrowsePage() {
             <InlineLoader text="在庫データを読み込み中..." className="text-muted small" />
           ) : items.length === 0 ? (
             <AppEmptyState
-              title={incrementalSearch.query ? `「${incrementalSearch.query}」に一致する在庫が見つかりません` : '在庫データがありません'}
-              description={incrementalSearch.query ? '検索条件を変えて再度お試しください。' : '在庫データが登録されると表示されます。'}
+              title={query ? `「${query}」に一致する在庫が見つかりません` : '在庫データがありません'}
+              description={query ? '検索条件を変えて再度お試しください。' : '在庫データが登録されると表示されます。'}
+              actionLabel={query ? 'この条件でマッチング' : '医薬品在庫検索へ'}
+              actionTo={query ? matchingHref : '/inventory/search'}
             />
           ) : (
             <AppResponsiveSwitch

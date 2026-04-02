@@ -83,6 +83,7 @@ describe('AlertListPage', () => {
     await waitFor(() => {
       expect(screen.getByText('アラート一覧')).toBeInTheDocument();
     });
+    expect(screen.getByRole('link', { name: 'アップロード品質' })).toHaveAttribute('href', '/upload-quality');
   });
 
   it('アラートカードが表示される', async () => {
@@ -242,6 +243,45 @@ describe('AlertListPage', () => {
     });
   });
 
+  it('details modal links matching from the alert detail footer', async () => {
+    const user = userEvent.setup();
+
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/alerts/stats')) {
+        return new Response(JSON.stringify(mockAlertStats), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.match(/\/api\/alerts\/\d+$/)) {
+        return new Response(JSON.stringify(makeAlert({ id: 1 })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/alerts')) {
+        return new Response(JSON.stringify(mockAlertList), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: '詳細' }).length).toBeGreaterThan(0);
+    });
+
+    await user.click(screen.getAllByRole('button', { name: '詳細' })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'マッチングを見る' })).toHaveAttribute('href', '/matching');
+    });
+  });
+
   it('ローディング中はスピナーが表示される', () => {
     // fetch never resolves
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
@@ -331,5 +371,33 @@ describe('DashboardPage alert widget', () => {
       const link = screen.getByRole('link', { name: /全て見る/ });
       expect(link).toHaveAttribute('href', '/alerts');
     });
+  });
+
+  it('does not render stale no_movement chips in the dashboard alert widget', async () => {
+    setupFetchMock({
+      '/api/alerts/stats': { unresolvedCount: 3, byType: { near_expiry: 1, excess_stock: 1, no_movement: 1 } },
+      '/api/auth/me': { id: 1, email: 'test@example.com', name: 'テスト薬局', prefecture: '東京都', isAdmin: false },
+      '/api/upload/status': { deadStockUploaded: true, usedMedicationUploaded: true },
+      '/api/inventory/dead-stock/risk': {
+        totalItems: 10,
+        riskScore: 5.0,
+        bucketCounts: { expired: 2, within30: 3, within60: 1, within90: 1, within120: 1, over120: 2, unknown: 0 },
+        computedAt: '2026-03-01T00:00:00Z',
+      },
+      '/api/timeline': { events: [], total: 0 },
+      '/api/timeline/bootstrap': { events: [], total: 0, unreadCount: 0 },
+      '/api/timeline/unread-count': { count: 0 },
+      '/api/alerts?': { alerts: [makeAlert()], total: 1, offset: 0, limit: 1, unresolvedCount: 3 },
+    });
+
+    const { default: DashboardPage } = await import('../pages/DashboardPage');
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('期限切迫 1')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('過剰在庫 1')).toBeInTheDocument();
+    expect(screen.queryByText('不動在庫 1')).not.toBeInTheDocument();
   });
 });

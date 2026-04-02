@@ -134,8 +134,8 @@ const suiteConfigs = [
     reportJson: 'artifacts/playwright-audit/reports/json/login-dashboard-audit.json',
     reportHtml: 'artifacts/playwright-audit/reports/html/login-dashboard/index.html',
     specs: [
-      'e2e/tests/login-smoke.spec.ts',
-      'e2e/tests/dashboard-runtime-audit.spec.ts',
+      'dev/e2e/tests/login-smoke.spec.ts',
+      'dev/e2e/tests/dashboard-runtime-audit.spec.ts',
     ],
     command: 'npm run test:e2e:local-login-dashboard',
   },
@@ -144,7 +144,7 @@ const suiteConfigs = [
     reportJson: 'artifacts/playwright-audit/reports/json/proposal-flow-audit.json',
     reportHtml: 'artifacts/playwright-audit/reports/html/proposal-flow/index.html',
     specs: [
-      'e2e/tests/proposal-flow.spec.ts',
+      'dev/e2e/tests/proposal-flow.spec.ts',
     ],
     command: 'npm run test:e2e:proposal-flow',
   },

@@ -4,10 +4,10 @@
   "state": "stopped",
   "state_version": 1,
   "started_at": "2026-02-28T06:10:58Z",
-  "updated_at": "2026-03-29T15:35:44Z",
+  "updated_at": "2026-04-02T03:07:23Z",
   "resume_token": "8DCC9BC2-FA6D-4F29-9510-9BA5AB250BA2",
-  "event_seq": 150,
-  "last_event_id": "event-000150",
+  "event_seq": 156,
+  "last_event_id": "event-000156",
   "fork_count": 0,
   "orchestration": {
     "max_state_retries": 3,
@@ -287,6 +287,18 @@
       "action": "Edit",
       "timestamp": "2026-03-29T15:35:36Z",
       "important": false
+    },
+    {
+      "file": "src/test/e2e/pharmacy-list-groups.test.tsx",
+      "action": "Edit",
+      "timestamp": "2026-04-02T02:56:16Z",
+      "important": true
+    },
+    {
+      "file": "src/test/pages/StatisticsPage.test.tsx",
+      "action": "Edit",
+      "timestamp": "2026-04-02T03:07:23Z",
+      "important": true
     }
   ],
   "resumed_at": "2026-02-28T06:11:19Z",

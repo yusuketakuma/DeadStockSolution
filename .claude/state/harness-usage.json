@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-03-29T08:58:31.261Z",
+  "updatedAt": "2026-04-02T02:41:42.906Z",
   "skills": {
     "parallel-workflows": {
       "count": 1,
@@ -11,16 +11,16 @@
       "lastUsed": "2026-02-27T16:55:05.205Z"
     },
     "harness-setup": {
-      "count": 3,
-      "lastUsed": "2026-03-25T08:44:22.078Z"
+      "count": 4,
+      "lastUsed": "2026-04-01T13:10:36.048Z"
     },
     "brainstorming": {
-      "count": 2,
-      "lastUsed": "2026-03-07T01:20:13.240Z"
+      "count": 3,
+      "lastUsed": "2026-04-01T14:23:08.188Z"
     },
     "harness-work": {
-      "count": 2,
-      "lastUsed": "2026-03-26T01:23:28.445Z"
+      "count": 4,
+      "lastUsed": "2026-04-02T02:41:42.905Z"
     },
     "harness-plan": {
       "count": 2,
@@ -29,6 +29,14 @@
     "writing-plans": {
       "count": 1,
       "lastUsed": "2026-03-07T01:24:55.294Z"
+    },
+    "cron-jobs": {
+      "count": 1,
+      "lastUsed": "2026-04-02T00:06:08.216Z"
+    },
+    "crud": {
+      "count": 1,
+      "lastUsed": "2026-04-02T00:06:55.141Z"
     }
   },
   "commands": {
@@ -57,8 +65,8 @@
       "lastUsed": "2026-02-25T04:21:25.400Z"
     },
     "breezing": {
-      "count": 8,
-      "lastUsed": "2026-03-08T21:51:57.731Z"
+      "count": 9,
+      "lastUsed": "2026-04-01T15:28:46.718Z"
     },
     "plan-with-agent": {
       "count": 1,
@@ -89,8 +97,8 @@
       "lastUsed": "2026-03-04T21:44:49.796Z"
     },
     "harness-release": {
-      "count": 6,
-      "lastUsed": "2026-03-29T08:58:31.260Z"
+      "count": 7,
+      "lastUsed": "2026-04-01T14:06:55.439Z"
     },
     "writing-plans": {
       "count": 1,
@@ -111,6 +119,22 @@
     "harness-plan": {
       "count": 2,
       "lastUsed": "2026-03-28T06:05:06.973Z"
+    },
+    "deep-interview": {
+      "count": 2,
+      "lastUsed": "2026-04-01T14:26:15.939Z"
+    },
+    "ralph": {
+      "count": 1,
+      "lastUsed": "2026-04-01T13:13:52.521Z"
+    },
+    "omc-teams": {
+      "count": 1,
+      "lastUsed": "2026-04-01T14:30:12.722Z"
+    },
+    "team": {
+      "count": 1,
+      "lastUsed": "2026-04-01T15:26:07.595Z"
     }
   },
   "agents": {
@@ -133,9 +157,9 @@
   },
   "hooks": {
     "session-init": {
-      "triggered": 64,
+      "triggered": 70,
       "blocked": 0,
-      "lastTriggered": "2026-03-29T08:54:42.481Z"
+      "lastTriggered": "2026-04-02T02:39:20.181Z"
     }
   }
 }

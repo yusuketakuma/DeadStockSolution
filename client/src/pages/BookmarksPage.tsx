@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Form, Modal, Table } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
 import AppAlert from '../components/ui/AppAlert';
 import AppButton from '../components/ui/AppButton';
 import AppCard from '../components/ui/AppCard';
@@ -33,6 +34,10 @@ function formatDateTime(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function buildMatchingCandidateLink(bookmark: Bookmark): string {
+  return `/matching?targetPharmacyId=${bookmark.candidatePharmacyId}`;
 }
 
 export default function BookmarksPage() {
@@ -131,7 +136,17 @@ export default function BookmarksPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">ブックマーク</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">ブックマーク</h4>
+          <div className="text-muted small">保存した候補からマッチングや一覧確認へ戻れます。</div>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチングへ</Link>
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
+          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫参照</Link>
+        </div>
+      </div>
       <ScrollArea>
         {error && items.length > 0 && (
           <ErrorRetryAlert
@@ -150,6 +165,15 @@ export default function BookmarksPage() {
             <p className="mb-0 text-muted small">
               マッチング候補としてブックマークした薬局・薬品の一覧です。
             </p>
+          </AppCard.Body>
+        </AppCard>
+
+        <AppCard className="mb-3">
+          <AppCard.Header>次にやること</AppCard.Header>
+          <AppCard.Body className="d-flex gap-2 flex-wrap">
+            <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチングへ</Link>
+            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧</Link>
+            <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
           </AppCard.Body>
         </AppCard>
 
@@ -196,6 +220,9 @@ export default function BookmarksPage() {
                               {formatDateTime(b.createdAt)}
                             </td>
                             <td className="text-nowrap">
+                              <Link to={buildMatchingCandidateLink(b)} className="btn btn-outline-primary btn-sm me-1">
+                                候補を見る
+                              </Link>
                               <AppButton
                                 type="button"
                                 variant="outline-secondary"
@@ -233,6 +260,9 @@ export default function BookmarksPage() {
                         ]}
                         actions={
                           <div className="d-flex gap-2 mt-2">
+                            <Link to={buildMatchingCandidateLink(b)} className="btn btn-outline-primary btn-sm">
+                              候補を見る
+                            </Link>
                             <AppButton
                               type="button"
                               variant="outline-secondary"

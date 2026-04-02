@@ -49,4 +49,29 @@ describe('timeline-aggregators alert routing', () => {
       actionPath: '/alerts',
     });
   });
+
+  it('maps alert notifications to /alerts even when legacy referenceType is match', async () => {
+    const db = createDbMock([
+      {
+        id: 44,
+        type: 'alert_excess_stock',
+        title: '過剰在庫の予兆があります',
+        message: '確認してください',
+        referenceType: 'match',
+        referenceId: null,
+        isRead: false,
+        createdAt: '2026-03-01T08:35:00.000Z',
+      },
+    ]);
+
+    const events = await fetchNotificationEvents(db, 1);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      id: 'notification_44',
+      source: 'notification',
+      type: 'alert_excess_stock',
+      actionPath: '/alerts',
+    });
+  });
 });

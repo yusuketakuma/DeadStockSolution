@@ -3,6 +3,7 @@ import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppAlert from '../components/ui/AppAlert';
 import { Badge, Row, Col } from 'react-bootstrap';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { GroupMembershipSummaryResponse } from '../../../server/src/types/group';
 import { useAuth } from '../contexts/AuthContext';
@@ -74,6 +75,7 @@ function buildPharmacyQuery(page: number, filters: { search: string; prefecture:
 function buildGroupMaps(groups: GroupInfo[]) {
   const pharmacyIds = new Set<number>();
   const pharmacyNames = new Map<number, string[]>();
+  const pharmacyGroups = new Map<number, GroupInfo[]>();
 
   for (const group of groups) {
     for (const pharmacyId of group.memberPharmacyIds) {
@@ -81,21 +83,26 @@ function buildGroupMaps(groups: GroupInfo[]) {
       const existing = pharmacyNames.get(pharmacyId) ?? [];
       existing.push(group.name);
       pharmacyNames.set(pharmacyId, existing);
+      const existingGroups = pharmacyGroups.get(pharmacyId) ?? [];
+      existingGroups.push(group);
+      pharmacyGroups.set(pharmacyId, existingGroups);
     }
   }
 
-  return { pharmacyIds, pharmacyNames };
+  return { pharmacyIds, pharmacyNames, pharmacyGroups };
 }
 
 export default function PharmacyListPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [totalPages, setTotalPages] = useState(1);
   const [prefecture, setPrefecture] = useState('');
   const [sortBy, setSortBy] = useState('');
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
   const [blockedIds, setBlockedIds] = useState<Set<number>>(new Set());
   const [myGroups, setMyGroups] = useState<GroupInfo[]>([]);
-  const [groupFilter, setGroupFilter] = useState('');
+  const requestedGroupFilter = searchParams.get('group') ?? '';
+  const [groupFilter, setGroupFilter] = useState(requestedGroupFilter);
   const [message, setMessage] = useState('');
   const [pendingBlockId, setPendingBlockId] = useState<number | null>(null);
   const [blockSubmitting, setBlockSubmitting] = useState(false);
@@ -179,7 +186,27 @@ export default function PharmacyListPage() {
   useEffect(() => { fetchRelationships(); }, [fetchRelationships]);
   useEffect(() => { void fetchGroupData(); }, [fetchGroupData]);
 
-  const { pharmacyIds: groupPharmacyIds, pharmacyNames: pharmacyGroupNames } = useMemo(
+  useEffect(() => {
+    setGroupFilter((current) => (current === requestedGroupFilter ? current : requestedGroupFilter));
+  }, [requestedGroupFilter]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (groupFilter) {
+      nextParams.set('group', groupFilter);
+    } else {
+      nextParams.delete('group');
+    }
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [groupFilter, searchParams, setSearchParams]);
+
+  const {
+    pharmacyIds: groupPharmacyIds,
+    pharmacyNames: pharmacyGroupNames,
+    pharmacyGroups: pharmacyGroupLinks,
+  } = useMemo(
     () => buildGroupMaps(myGroups),
     [myGroups],
   );
@@ -195,11 +222,23 @@ export default function PharmacyListPage() {
     return pharmacies.filter((p) => memberSet.has(p.id));
   }, [pharmacies, groupFilter, myGroups]);
 
+  const selectedGroup = useMemo(
+    () => myGroups.find((group) => group.id === Number(groupFilter)) ?? null,
+    [groupFilter, myGroups],
+  );
+
   const getGroupBadgeText = (pharmacyId: number): string => {
     const names = pharmacyGroupNames.get(pharmacyId);
     if (!names || names.length === 0) return 'グループ';
     if (names.length === 1) return names[0];
     return 'グループ';
+  };
+
+  const getGroupBadgePath = (pharmacyId: number): string => {
+    const groups = pharmacyGroupLinks.get(pharmacyId);
+    if (!groups || groups.length === 0) return '/groups?tab=mine';
+    if (groups.length === 1) return `/groups/${groups[0].id}`;
+    return '/groups?tab=mine';
   };
 
   const handleSearch = (nextQuery?: string) => {
@@ -258,9 +297,31 @@ export default function PharmacyListPage() {
     ? null
     : pharmacies.find((p) => p.id === pendingBlockId) ?? null;
 
+  const renderGroupBadgeLink = (pharmacyId: number) => {
+    if (!groupPharmacyIds.has(pharmacyId)) return null;
+    return (
+      <Link to={getGroupBadgePath(pharmacyId)} className="ms-1 text-decoration-none">
+        <Badge bg="success">{getGroupBadgeText(pharmacyId)}</Badge>
+      </Link>
+    );
+  };
+
   return (
     <PageShell>
-      <h4 className="page-title mb-3">登録薬局一覧</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">登録薬局一覧</h4>
+        <div className="text-muted small">薬局ネットワークとグループ参加状況をまとめて確認できます。</div>
+      </div>
+      <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+        <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
+        <Link to={selectedGroup ? `/groups/${selectedGroup.id}` : '/groups'} className="btn btn-outline-secondary btn-sm">
+          {selectedGroup ? '選択中グループを開く' : 'マイグループ'}
+        </Link>
+        <Link to="/groups?tab=public" className="btn btn-outline-secondary btn-sm">公開グループを探す</Link>
+        <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
+      </div>
+    </div>
 
       <Row className="mb-3 g-2">
         <Col md={4}>
@@ -317,6 +378,8 @@ export default function PharmacyListPage() {
         <AppEmptyState
           title={query ? `「${query}」に一致する薬局が見つかりません` : groupFilter ? 'このグループに属する薬局が見つかりません' : '薬局が見つかりません'}
           description={query ? '検索条件を変更して再度お試しください。' : groupFilter ? 'グループフィルターを解除してお試しください。' : undefined}
+          actionLabel={selectedGroup ? `${selectedGroup.name}を見る` : myGroups.length > 0 ? 'グループ一覧へ' : undefined}
+          actionTo={selectedGroup ? `/groups/${selectedGroup.id}` : myGroups.length > 0 ? '/groups' : undefined}
         />
       ) : (
         <AppResponsiveSwitch
@@ -342,7 +405,7 @@ export default function PharmacyListPage() {
                         {p.name}
                         {favoriteIds.has(p.id) && <Badge bg="warning" className="ms-1" text="dark">お気に入り</Badge>}
                         {blockedIds.has(p.id) && <Badge bg="dark" className="ms-1">ブロック</Badge>}
-                        {groupPharmacyIds.has(p.id) && <Badge bg="success" className="ms-1">{getGroupBadgeText(p.id)}</Badge>}
+                        {renderGroupBadgeLink(p.id)}
                       </td>
                       <td>{p.prefecture}</td>
                       <td className="small">{p.address}</td>
@@ -356,7 +419,9 @@ export default function PharmacyListPage() {
                       </td>
                       <td>
                         {p.id !== user?.id ? (
-                          <div className="d-flex gap-1">
+                          <div className="d-flex gap-1 flex-wrap">
+                            <Link to={`/matching?targetPharmacyId=${p.id}`} className="btn btn-sm btn-outline-primary">マッチング</Link>
+                            <Link to={`/messages?pharmacyId=${p.id}&pharmacyName=${encodeURIComponent(p.name)}`} className="btn btn-sm btn-outline-secondary">メッセージ</Link>
                             <AppButton
                               size="sm"
                               variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
@@ -399,7 +464,11 @@ export default function PharmacyListPage() {
                       {favoriteIds.has(p.id) && <Badge bg="warning" text="dark">お気に入り</Badge>}
                       {blockedIds.has(p.id) && <Badge bg="dark">ブロック</Badge>}
                       {p.distance !== null ? <Badge bg="info">{p.distance}km</Badge> : null}
-                      {groupPharmacyIds.has(p.id) && <Badge bg="success">{getGroupBadgeText(p.id)}</Badge>}
+                      {groupPharmacyIds.has(p.id) ? (
+                        <Link to={getGroupBadgePath(p.id)} className="text-decoration-none">
+                          <Badge bg="success">{getGroupBadgeText(p.id)}</Badge>
+                        </Link>
+                      ) : null}
                     </>
                   )}
                   fields={[
@@ -410,6 +479,8 @@ export default function PharmacyListPage() {
                   ]}
                   actions={p.id !== user?.id ? (
                     <>
+                      <Link to={`/matching?targetPharmacyId=${p.id}`} className="btn btn-sm btn-outline-primary">マッチング</Link>
+                      <Link to={`/messages?pharmacyId=${p.id}&pharmacyName=${encodeURIComponent(p.name)}`} className="btn btn-sm btn-outline-secondary">メッセージ</Link>
                       <AppButton
                         size="sm"
                         variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}

@@ -114,6 +114,8 @@ describe('InventorySearchPage', () => {
     expect(
       screen.getByText('検索したい薬剤を追加して在庫を確認してください'),
     ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '在庫参照' })).toHaveAttribute('href', '/inventory/browse');
+    expect(screen.getByRole('link', { name: 'この条件でマッチング' })).toHaveAttribute('href', '/matching');
   });
 
   it('does not show the guidance message while searching', () => {
@@ -161,6 +163,20 @@ describe('InventorySearchPage', () => {
     expect(
       screen.queryByText('検索したい薬剤を追加して在庫を確認してください'),
     ).not.toBeInTheDocument();
+  });
+
+  it('carries selected chips into the matching link', () => {
+    vi.mocked(useInventorySearch).mockReturnValue({
+      ...defaultHookReturn,
+      chips: [{ drugMasterId: 1, genericName: 'アスピリン', specification: '100mg', displayLabel: 'アスピリン 100mg' }],
+    });
+
+    renderPage();
+
+    expect(screen.getByRole('link', { name: 'この条件でマッチング' })).toHaveAttribute(
+      'href',
+      '/matching?inventorySearchDrugs=%E3%82%A2%E3%82%B9%E3%83%94%E3%83%AA%E3%83%B3+100mg',
+    );
   });
 
   it('seeds the hydrated route state as the autosave baseline when preferences load fails', async () => {

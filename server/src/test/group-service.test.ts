@@ -171,10 +171,12 @@ describe('group-service', () => {
     }];
 
     const memberQuery = createSelectWhereResult([{ groupId: 10 }]);
+    const invitationQuery = createSelectWhereResult([]);
     const ownQuery = createSelectWhereResult(ownGroups);
     const publicQuery = createSelectWhereResult(publicGroups);
     mocks.db.select
       .mockReturnValueOnce({ from: memberQuery.from })
+      .mockReturnValueOnce({ from: invitationQuery.from })
       .mockReturnValueOnce({ from: ownQuery.from })
       .mockReturnValueOnce({ from: publicQuery.from });
 
@@ -218,16 +220,45 @@ describe('group-service', () => {
       updatedAt: '2026-03-03T00:00:00.000Z',
     }];
     const memberQuery = createSelectWhereResult([{ groupId: 10 }]);
+    const invitationQuery = createSelectWhereResult([]);
     const publicQuery = createSelectWhereResult(publicGroups);
 
     mocks.db.select
       .mockReturnValueOnce({ from: memberQuery.from })
+      .mockReturnValueOnce({ from: invitationQuery.from })
       .mockReturnValueOnce({ from: publicQuery.from });
 
     const result = await listGroups(1, { tab: 'public', offset: 0, limit: 20 });
 
     expect(result.total).toBe(1);
     expect(result.groups.map((g: { id: number }) => g.id)).toEqual([20]);
+  });
+
+  it('listGroups with tab=public includes invite-only groups when there is a pending invitation', async () => {
+    const invitedGroups = [{
+      id: 30,
+      name: '招待制ネットワーク',
+      description: null,
+      visibility: 'invite_only' as const,
+      ownerPharmacyId: 3,
+      createdAt: '2026-03-04T00:00:00.000Z',
+      updatedAt: '2026-03-04T00:00:00.000Z',
+    }];
+    const memberQuery = createSelectWhereResult([{ groupId: 10 }]);
+    const invitationQuery = createSelectWhereResult([{ groupId: 30 }]);
+    const publicQuery = createSelectWhereResult([]);
+    const invitedQuery = createSelectWhereResult(invitedGroups);
+
+    mocks.db.select
+      .mockReturnValueOnce({ from: memberQuery.from })
+      .mockReturnValueOnce({ from: invitationQuery.from })
+      .mockReturnValueOnce({ from: publicQuery.from })
+      .mockReturnValueOnce({ from: invitedQuery.from });
+
+    const result = await listGroups(1, { tab: 'public', offset: 0, limit: 20 });
+
+    expect(result.total).toBe(1);
+    expect(result.groups[0]).toMatchObject({ id: 30, hasPendingInvitation: true });
   });
 
   it('listGroups with search prioritizes higher relevance over createdAt order', async () => {

@@ -52,9 +52,11 @@ export interface UseUploadExcelFlowReturn {
   handlePreview: (e: FormEvent) => Promise<void>; handleConfirm: () => Promise<void>; handleDiffPreview: () => Promise<void>;
   handleCancelJob: () => Promise<void>; triggerErrorReportDownload: () => void; resetDiffPreviewState: () => void;
   resolveConfidenceLabel: typeof resolveConfidenceLabel;
+  canDownloadErrorReport: boolean;
   currentMapping: Record<string, string | null>;
   mappingComplete: boolean;
   missingRequiredFields: string[];
+  duplicateAssignedFields: string[];
   fieldHints: Record<string, string[]>;
   handleMappingChange: (field: string, columnIndex: string | null) => void;
 }
@@ -104,6 +106,7 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const navigateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmAbortRef = useRef<AbortController | null>(null);
   const cancelFailureRef = useRef(false);
+  const previewRequestIdRef = useRef(0);
   const navigate = useNavigate();
 
   const previewFlow = useUploadPreview();
@@ -160,9 +163,11 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const partialSummaryEntries = resolvePartialSummaryEntries(jobPolling.job.partialSummary);
   const uploadProgressVariant = jobPolling.progress.phase === 'failed' ? 'danger' : jobPolling.progress.phase === 'completed' ? 'success' : 'info';
   const uploadProgressAnimated = jobPolling.progress.phase !== 'completed' && jobPolling.progress.phase !== 'failed';
+  const canDownloadErrorReport = jobPolling.job.jobId !== null && jobPolling.job.errorReportAvailable;
   const loading = submitting || previewFlow.loading || diffPreviewFlow.loading || jobPolling.isPolling;
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    previewRequestIdRef.current += 1;
     clearPendingUploadSideEffects();
     resetExcelTransientUiState();
     cancelFailureRef.current = false;
@@ -177,11 +182,14 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
   const handlePreview = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     if (!file) return;
+    const previewRequestId = previewRequestIdRef.current + 1;
+    previewRequestIdRef.current = previewRequestId;
     clearPendingUploadSideEffects();
     clearTransientFeedback();
     cancelFailureRef.current = false;
     jobPolling.setProgress({ phase: 'previewing', percent: 20, label: 'Excelファイルを解析しています...' });
     const nextPreview = await previewFlow.handlePreview(file);
+    if (previewRequestId !== previewRequestIdRef.current) return;
     if (!nextPreview) { setFailed('Excel解析に失敗しました。'); return; }
     setUploadTypeState(nextPreview.resolvedUploadType);
     diffPreviewFlow.resetDiffPreviewState();
@@ -190,6 +198,10 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
 
   const handleConfirm = useCallback(async () => {
     if (!file || !previewFlow.preview) { setError('先にプレビューを実行してください'); return; }
+    if (!previewFlow.mappingComplete) {
+      setError('必須フィールドの割り当て不足または重複を修正してください。');
+      return;
+    }
     const submittedMapping = previewFlow.resolveSubmittedMapping(uploadType);
     if (!submittedMapping) {
       setError('選択した取込種別の自動判定に必要な列が不足しています。ファイル見出しを確認してください。');
@@ -328,7 +340,14 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     uploadType,
   ]);
 
-  const handleDiffPreview = useCallback(async () => { clearTransientFeedback(); await diffPreviewFlow.handleDiffPreview(); }, [clearTransientFeedback, diffPreviewFlow]);
+  const handleDiffPreview = useCallback(async () => {
+    clearTransientFeedback();
+    if (!previewFlow.mappingComplete) {
+      setError('必須フィールドの割り当て不足または重複を修正してください。');
+      return;
+    }
+    await diffPreviewFlow.handleDiffPreview();
+  }, [clearTransientFeedback, diffPreviewFlow, previewFlow.mappingComplete]);
 
   const handleCancelJob = useCallback(async () => {
     if (jobPolling.job.jobId === null || !jobPolling.job.cancelable || cancellingJob) return;
@@ -355,7 +374,15 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     window.open(buildApiUrl(`/upload/jobs/${jobPolling.job.jobId}/error-report`), '_blank', 'noopener');
   }, [jobPolling.job.errorReportAvailable, jobPolling.job.jobId]);
 
-  const handleSetUploadType = useCallback((type: UploadType) => { setUploadTypeState(type); diffPreviewFlow.resetDiffPreviewState(); }, [diffPreviewFlow]);
+  const handleSetUploadType = useCallback((type: UploadType) => {
+    previewFlow.setActiveMappingUploadType(type);
+    setUploadTypeState(type);
+    diffPreviewFlow.resetDiffPreviewState();
+  }, [diffPreviewFlow, previewFlow]);
+  const handleMappingChange = useCallback((field: string, columnIndex: string | null) => {
+    previewFlow.handleMappingChange(field, columnIndex);
+    diffPreviewFlow.resetDiffPreviewState();
+  }, [diffPreviewFlow, previewFlow]);
   const handleSetApplyMode = useCallback((mode: 'replace' | 'diff') => { diffPreviewFlow.setApplyMode(mode); diffPreviewFlow.resetDiffPreviewState(); }, [diffPreviewFlow]);
   const handleSetDeleteMissing = useCallback((value: boolean) => { diffPreviewFlow.setDeleteMissing(value); diffPreviewFlow.resetDiffPreviewState(); }, [diffPreviewFlow]);
 
@@ -407,10 +434,12 @@ export function useUploadExcelFlow(): UseUploadExcelFlowReturn {
     triggerErrorReportDownload,
     resetDiffPreviewState,
     resolveConfidenceLabel,
+    canDownloadErrorReport,
     currentMapping: previewFlow.currentMapping,
     mappingComplete: previewFlow.mappingComplete,
     missingRequiredFields: previewFlow.missingRequiredFields,
+    duplicateAssignedFields: previewFlow.duplicateAssignedFields,
     fieldHints: previewFlow.fieldHints,
-    handleMappingChange: previewFlow.handleMappingChange,
+    handleMappingChange,
   };
 }

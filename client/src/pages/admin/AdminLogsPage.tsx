@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
@@ -181,7 +182,16 @@ export default function AdminLogsPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">操作ログ ({total}件)</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">操作ログ ({total}件)</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+          <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログ</Link>
+          <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
+        </div>
+      </div>
       {error && (
         <ErrorRetryAlert error={error} onRetry={() => void retry()} />
       )}

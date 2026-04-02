@@ -858,11 +858,29 @@ export default function ProposalDetailPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3 mobile-card-header">
-        <h4 className="page-title mb-0">マッチング #{proposal.id}</h4>
-        <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
-          印刷用ページ
-        </Link>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">マッチング #{proposal.id}</h4>
+          <div className="text-muted small">提案詳細、タイムライン、コメント、相手薬局との連絡をここで確認します。</div>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link
+            to={buildMessagesPath({
+              pharmacyId: otherPharmacy.id,
+              pharmacyName: otherPharmacy.name,
+              context: 'proposal',
+              contextId: proposal.id,
+            })}
+            className="btn btn-outline-primary btn-sm"
+          >
+            相手にメッセージ
+          </Link>
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
+          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+          <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
+            印刷用ページ
+          </Link>
+        </div>
       </div>
 
       {error && <AppAlert variant="danger">{error}</AppAlert>}

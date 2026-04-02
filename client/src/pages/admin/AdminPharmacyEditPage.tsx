@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge, Form, Table } from 'react-bootstrap';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
@@ -104,7 +105,14 @@ export default function AdminPharmacyEditPage() {
   if (!pharmacy || !hasValidId) {
     return (
       <div>
-        <h4 className="page-title mb-3">薬局情報編集</h4>
+        <div className="dl-page-header">
+          <div className="dl-page-header-copy">
+            <h4 className="page-title mb-0">薬局情報編集</h4>
+          </div>
+          <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+            <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局一覧</Link>
+          </div>
+        </div>
         {error && <AppAlert variant="danger">{error}</AppAlert>}
         <div className="d-flex gap-2">
           <AppButton variant="outline-secondary" onClick={navigateToList}>一覧へ戻る</AppButton>

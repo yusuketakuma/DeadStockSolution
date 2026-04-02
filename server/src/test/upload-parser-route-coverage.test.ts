@@ -133,7 +133,7 @@ const VALID_MAPPING = JSON.stringify({
   drug_name: '1',
   quantity: '2',
   unit: null,
-  yakka_unit_price: '2',
+  yakka_unit_price: '3',
   expiration_date: null,
   lot_number: null,
 });
@@ -150,10 +150,10 @@ describe('upload-parser route coverage: preview edge cases', () => {
     vi.clearAllMocks();
 
     mocks.parseExcelBuffer.mockResolvedValue([
-      ['YJコード', '薬剤名', '数量'],
-      ['1111111F1111', '薬A', 10],
+      ['YJコード', '薬剤名', '数量', '薬価'],
+      ['1111111F1111', '薬A', 10, 100],
     ]);
-    mocks.getPreviewRows.mockReturnValue([['1111111F1111', '薬A', '10']]);
+    mocks.getPreviewRows.mockReturnValue([['1111111F1111', '薬A', '10', '100']]);
     mocks.detectHeaderRow.mockReturnValue(0);
     mocks.detectUploadType.mockReturnValue({
       detectedType: 'dead_stock',
@@ -163,7 +163,7 @@ describe('upload-parser route coverage: preview edge cases', () => {
     mocks.computeHeaderHash.mockReturnValue('hash-1');
     mocks.suggestMapping.mockReturnValue({
       drug_code: '0', drug_name: '1', quantity: '2',
-      unit: null, yakka_unit_price: '2', expiration_date: null, lot_number: null,
+      unit: null, yakka_unit_price: '3', expiration_date: null, lot_number: null,
     });
     mocks.extractDeadStockRows.mockReturnValue([]);
     mocks.extractUsedMedicationRows.mockReturnValue([]);
@@ -766,8 +766,8 @@ describe('upload-parser route coverage: confirm headerRowIndex out of range', ()
     vi.clearAllMocks();
 
     mocks.parseExcelBuffer.mockResolvedValue([
-      ['YJコード', '薬剤名', '数量'],
-      ['1111111F1111', '薬A', 10],
+      ['YJコード', '薬剤名', '数量', '薬価'],
+      ['1111111F1111', '薬A', 10, 100],
     ]);
     mocks.getClientIp.mockReturnValue('127.0.0.1');
     mocks.isUploadConfirmQueueLimitError.mockReturnValue(false);

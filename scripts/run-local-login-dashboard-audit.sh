@@ -121,7 +121,7 @@ run_step \
     PLAYWRIGHT_HTML_OUTPUT_DIR="$PLAYWRIGHT_HTML_OUTPUT_DIR" \
     PLAYWRIGHT_HTML_OPEN=never \
     PLAYWRIGHT_JSON_OUTPUT_FILE="$PLAYWRIGHT_JSON_REPORT_FILE" \
-    npx playwright test e2e/tests/login-smoke.spec.ts e2e/tests/dashboard-runtime-audit.spec.ts \
+    npx playwright test dev/e2e/tests/login-smoke.spec.ts dev/e2e/tests/dashboard-runtime-audit.spec.ts \
       --project chromium \
       --workers=1 \
       --trace on \

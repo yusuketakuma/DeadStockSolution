@@ -79,7 +79,7 @@ export type ErrorCodeSeverity = (typeof errorCodeSeverityValues)[number];
 export const notificationTypeValues = ['proposal_received', 'proposal_status_changed', 'new_comment', 'request_update', 'group_invitation', 'group_join', 'group_leave', 'alert_near_expiry', 'alert_excess_stock', 'alert_resolved', 'match_update', 'matching_refresh_complete'] as const;
 export type NotificationType = (typeof notificationTypeValues)[number];
 
-export const notificationReferenceTypeValues = ['proposal', 'match', 'comment', 'request'] as const;
+export const notificationReferenceTypeValues = ['proposal', 'match', 'comment', 'request', 'alert'] as const;
 export type NotificationReferenceType = (typeof notificationReferenceTypeValues)[number];
 
 export const predictiveAlertTypeValues = ['near_expiry', 'excess_stock'] as const;

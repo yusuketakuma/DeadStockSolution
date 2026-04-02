@@ -199,14 +199,44 @@ describe('usePageSwipe', () => {
   });
 
   it('does not navigate beyond last tab', () => {
-    // At '/groups' (last tab), swipe left → nothing
-    const { container } = renderPageSwipe({ pathname: '/groups' });
+    // At '/alerts' (last tab), swipe left → nothing
+    const { container } = renderPageSwipe({ pathname: '/alerts' });
 
     container.dispatchEvent(createTouchEvent('touchstart', container, 300));
     container.dispatchEvent(createTouchEvent('touchmove', container, 150));
     container.dispatchEvent(createTouchEvent('touchend', container, 150));
 
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('uses admin mobile nav order on admin routes', () => {
+    const { container } = renderPageSwipe({ pathname: '/admin' });
+
+    container.dispatchEvent(createTouchEvent('touchstart', container, 300));
+    container.dispatchEvent(createTouchEvent('touchmove', container, 150));
+    container.dispatchEvent(createTouchEvent('touchend', container, 150));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/user-requests');
+  });
+
+  it('resolves alias routes to the closest mobile tab', () => {
+    const { container } = renderPageSwipe({ pathname: '/notifications' });
+
+    container.dispatchEvent(createTouchEvent('touchstart', container, 100));
+    container.dispatchEvent(createTouchEvent('touchmove', container, 250));
+    container.dispatchEvent(createTouchEvent('touchend', container, 250));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/messages');
+  });
+
+  it('treats groups routes as part of the home tab when swiping', () => {
+    const { container } = renderPageSwipe({ pathname: '/groups' });
+
+    container.dispatchEvent(createTouchEvent('touchstart', container, 300));
+    container.dispatchEvent(createTouchEvent('touchmove', container, 150));
+    container.dispatchEvent(createTouchEvent('touchend', container, 150));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/matching');
   });
 
   it('cleans up listeners on unmount', () => {

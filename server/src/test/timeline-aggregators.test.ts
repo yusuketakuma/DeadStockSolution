@@ -86,7 +86,26 @@ describe('mapNotificationToEvent', () => {
     expect(event.metadata).toMatchObject({ referenceType: 'alert', referenceId: 77 });
   });
 
-  it('referenceTypeが不明の場合はデフォルトの/パスを使用する', () => {
+  it('alertタイプの通知は旧referenceTypeがmatchでも/alertsパスに変換する', () => {
+    const row = {
+      id: 5,
+      type: 'alert_excess_stock',
+      title: '過剰在庫の予兆があります',
+      message: '在庫を確認してください。',
+      referenceType: 'match',
+      referenceId: null,
+      isRead: false,
+      createdAt: '2026-01-02T10:30:00.000Z',
+    };
+
+    const event = mapNotificationToEvent(row);
+
+    expect(event.type).toBe('alert_excess_stock');
+    expect(event.actionPath).toBe('/alerts');
+    expect(event.metadata).toMatchObject({ referenceType: 'match', referenceId: null });
+  });
+
+  it('request通知は要望一覧へ誘導する', () => {
     const row = {
       id: 3,
       type: 'request_update',
@@ -100,8 +119,61 @@ describe('mapNotificationToEvent', () => {
 
     const event = mapNotificationToEvent(row);
 
-    expect(event.actionPath).toBe('/');
+    expect(event.actionPath).toBe('/requests');
     expect(event.timestamp).toBeTruthy();
+  });
+
+  it('request通知にreferenceIdがある場合は対象要望へ深くリンクする', () => {
+    const row = {
+      id: 4,
+      type: 'request_update',
+      title: 'リクエスト更新',
+      message: '要望 #44 が更新されました。',
+      referenceType: 'request',
+      referenceId: 44,
+      isRead: false,
+      createdAt: null,
+    };
+
+    const event = mapNotificationToEvent(row);
+
+    expect(event.actionPath).toBe('/requests?requestId=44');
+  });
+
+  it('matching refresh notifications become matching timeline events', () => {
+    const row = {
+      id: 5,
+      type: 'matching_refresh_complete',
+      title: 'マッチング更新完了',
+      message: '12件の候補が見つかりました',
+      referenceType: null,
+      referenceId: null,
+      isRead: false,
+      createdAt: '2026-04-02T00:00:00.000Z',
+    };
+
+    const event = mapNotificationToEvent(row);
+
+    expect(event.type).toBe('match_update');
+    expect(event.actionPath).toBe('/matching');
+  });
+
+  it('group invitation notifications route to the public groups tab', () => {
+    const row = {
+      id: 6,
+      type: 'group_invitation',
+      title: 'グループ招待',
+      message: 'グループに招待されています',
+      referenceType: 'request',
+      referenceId: 10,
+      isRead: false,
+      createdAt: '2026-04-02T00:00:00.000Z',
+    };
+
+    const event = mapNotificationToEvent(row);
+
+    expect(event.type).toBe('request_update');
+    expect(event.actionPath).toBe('/groups?tab=public');
   });
 });
 
@@ -481,6 +553,7 @@ describe('mapAdminMessageToEvent', () => {
       id: 60,
       title: 'システムメンテナンスのお知らせ',
       body: '1月20日（月）午前2時から5時の間、システムメンテナンスを行います。',
+      actionPath: '/groups',
       isRead: false,
       createdAt: '2026-01-13T08:00:00.000Z',
     };
@@ -494,7 +567,7 @@ describe('mapAdminMessageToEvent', () => {
     expect(event.title).toContain('システムメンテナンスのお知らせ');
     expect(event.body).toBe('1月20日（月）午前2時から5時の間、システムメンテナンスを行います。');
     expect(event.isRead).toBe(false);
-    expect(event.actionPath).toBe('/');
+    expect(event.actionPath).toBe('/groups');
     expect(event.metadata).toMatchObject({ messageId: 60 });
   });
 
@@ -509,6 +582,7 @@ describe('mapAdminMessageToEvent', () => {
       id: 61,
       title: '既読メッセージ',
       body: '既読です。',
+      actionPath: null,
       isRead: true,
       createdAt: '2026-01-14T09:00:00.000Z',
     };
@@ -591,7 +665,7 @@ describe('mapExpiryRiskToEvent', () => {
     expect(event.body).toContain('2026-01-18');
     expect(event.body).toContain('50');
     expect(event.isRead).toBe(false);
-    expect(event.actionPath).toBe('/upload');
+    expect(event.actionPath).toBe('/alerts');
     expect(event.metadata).toMatchObject({
       drugName: 'アスピリン錠100mg',
       expirationDateIso: '2026-01-18',

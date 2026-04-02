@@ -276,12 +276,22 @@ export function validateMappingAgainstHeader(
     throw new ApiError(400, 'ヘッダー行が不正です', 'VALIDATION_ERROR');
   }
 
+  const assignedFieldByColumnIndex = new Map<number, string>();
   for (const [field, value] of Object.entries(mapping) as Array<[string, string | null]>) {
     if (value === null) continue;
     const colIndex = parseMappingColumnIndex(value);
     if (colIndex === null || colIndex < 0 || colIndex >= headerLength) {
       throw new ApiError(400, `${resolveMappingFieldLabel(field)}カラムの割り当てが見出し範囲外です`, 'VALIDATION_ERROR');
     }
+    const existingField = assignedFieldByColumnIndex.get(colIndex);
+    if (existingField) {
+      throw new ApiError(
+        400,
+        `${resolveMappingFieldLabel(field)}カラムの割り当てが${resolveMappingFieldLabel(existingField)}と重複しています`,
+        'VALIDATION_ERROR',
+      );
+    }
+    assignedFieldByColumnIndex.set(colIndex, field);
   }
 }
 

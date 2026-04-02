@@ -239,6 +239,27 @@ describe('timeline-service', () => {
     expect(result.events.find((event) => event.id === 'feedback_1')?.isRead).toBe(false);
   });
 
+  it('getTimeline: completed proposal は exchange history 側だけに出る前提で二重計上しない', async () => {
+    const exchangeHistoryEvent = makeRawEvent({
+      id: 'exchange_history_99',
+      timestamp: '2026-01-04T10:00:00.000Z',
+      source: 'exchange_history',
+      type: 'exchange_completed',
+      isRead: true,
+    });
+
+    vi.mocked(fetchProposalEvents).mockResolvedValue([]);
+    vi.mocked(fetchExchangeHistoryEvents).mockResolvedValue([exchangeHistoryEvent]);
+    mockAssignPriority('low');
+
+    const db = makeMockDb() as MockDb;
+    const result = await getTimeline(db, pharmacyId, { limit: 10 });
+
+    expect(result.total).toBe(1);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].id).toBe('exchange_history_99');
+  });
+
   it('getTimeline: timestamp が不正な値を含んでも有効日時を優先して降順ソートする', async () => {
     const validOld = makeRawEvent({ id: 'notification_old', timestamp: '2026-01-01T10:00:00.000Z', source: 'notification' });
     const validNew = makeRawEvent({ id: 'notification_new', timestamp: '2026-01-03T10:00:00.000Z', source: 'notification' });

@@ -1,4 +1,4 @@
-# codex/rules/default.rules
+# .codex/rules/default.rules
 # Guardrails for danger-full-access + approval_policy=never.
 # Goal: keep speed, block catastrophic commands that would be unrecoverable or hang non-interactive runs.
 

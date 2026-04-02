@@ -78,7 +78,7 @@
 
 | レイヤー | 技術 |
 |---------|------|
-| **フロントエンド** | React 18 + TypeScript + Vite + React Bootstrap |
+| **フロントエンド** | React 19 + TypeScript + Vite + React Bootstrap |
 | **バックエンド** | Express 5 + TypeScript + Drizzle ORM |
 | **データベース** | PostgreSQL (Vercel Postgres / Neon) |
 | **認証** | WorkOS AuthKit (OAuth 2.0) + JWT |
@@ -140,9 +140,18 @@ DeadStockSolution/
 │       ├── middleware/        # 認証・CSRF・エラーハンドリング
 │       └── test/              # テスト (280ファイル, 4,592テスト)
 ├── docs/                      # ドキュメント
+├── scripts/                   # 運用・検証・OpenAPI 補助スクリプト
+├── dev/                       # Playwright / Remotion / fixture 類の開発補助資産
+├── .codex/                    # repo 共有の Codex ルール
 ├── vercel.json                # Vercel設定
 └── package.json               # ルート (npm workspaces)
 ```
+
+### ローカル生成物の扱い
+
+- `artifacts/`, `audits/`, `reports/`, `memory/` は実行時に再生成されるローカル成果物として扱い、Git には載せない
+- `.claude/state/`, `.claude/sessions/`, `client/.claude/`, `server/.claude/` などの agent state もローカル専用
+- 共有すべき設定は `.codex/`, `docs/`, `scripts/`, `AGENTS.md` 側へ寄せる
 
 ---
 

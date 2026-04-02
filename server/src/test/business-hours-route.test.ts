@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     insert: vi.fn(),
     transaction: vi.fn(),
   },
+  invalidateBusinessHoursCacheForPharmacy: vi.fn(),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -25,6 +26,10 @@ vi.mock('../config/database', () => ({
 
 vi.mock('../services/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('../services/matching/matching-data-fetcher', () => ({
+  invalidateBusinessHoursCacheForPharmacy: mocks.invalidateBusinessHoursCacheForPharmacy,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -223,6 +228,7 @@ describe('business-hours routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('更新しました');
       expect(res.body.version).toBe(2);
+      expect(mocks.invalidateBusinessHoursCacheForPharmacy).toHaveBeenCalledWith(1);
     });
 
     it('returns 409 on optimistic lock conflict', async () => {

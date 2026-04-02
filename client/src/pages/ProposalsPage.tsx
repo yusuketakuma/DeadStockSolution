@@ -207,7 +207,15 @@ export default function ProposalsPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">マッチング一覧</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">マッチング一覧</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
+          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+        </div>
+      </div>
       {bulkError && <AppAlert variant="danger">{bulkError}</AppAlert>}
       {message && <AppAlert variant="success">{message}</AppAlert>}
 

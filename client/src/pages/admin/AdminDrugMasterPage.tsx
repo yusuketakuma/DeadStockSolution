@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import AppAlert from '../../components/ui/AppAlert';
 import { useToast } from '../../contexts/ToastContext';
 import { Badge, Col, Form, Row } from 'react-bootstrap';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import AppButton from '../../components/ui/AppButton';
 import MobileFilterSheet from '../../components/mobile/MobileFilterSheet';
 import { api, apiUpload } from '../../api/client';
@@ -474,6 +474,10 @@ export default function AdminDrugMasterPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">医薬品マスター管理</h4>
           <div className="text-muted small">更新状況の追跡、絞り込み、手動メンテナンスを device 幅に合わせて配置します。</div>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/drug-equivalences" className="btn btn-outline-secondary btn-sm">薬品同等性</Link>
+          <Link to="/admin/matching-rules" className="btn btn-outline-secondary btn-sm">マッチングルール</Link>
         </div>
       </div>
 

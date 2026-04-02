@@ -57,8 +57,27 @@ export function parseNoticeCursor(raw: unknown): NoticeCursor | null {
 export function resolveNotificationType(type: string): NoticeType | null {
   if (type === 'new_comment') return 'new_comment';
   if (type === 'alert_near_expiry' || type === 'alert_excess_stock' || type === 'alert_resolved') return 'alert';
+  if (type === 'matching_refresh_complete') return 'match_update';
+  if (type === 'group_invitation' || type === 'group_join' || type === 'group_leave') return 'status_update';
   if (type === 'proposal_received' || type === 'proposal_status_changed' || type === 'request_update') return 'status_update';
   return null;
+}
+
+function resolveNotificationActionLabel(noticeType: NoticeType, notificationType?: string | null): string {
+  if (noticeType === 'alert') return 'アラートを確認';
+  if (noticeType === 'match_update') return '候補を見る';
+  if (notificationType === 'group_invitation') {
+    return '招待を確認';
+  }
+  if (notificationType === 'group_join' || notificationType === 'group_leave') {
+    return 'グループを見る';
+  }
+  if (notificationType === 'request_update') return '要望を見る';
+  return '確認する';
+}
+
+function isAlertNotificationType(type: string | null | undefined): boolean {
+  return type === 'alert_near_expiry' || type === 'alert_excess_stock' || type === 'alert_resolved';
 }
 
 // ============================================================================
@@ -131,13 +150,27 @@ export function toAdminMessageNotice(message: AdminMessageRow, unread: boolean):
   };
 }
 
-export function resolveNotificationActionPath(referenceType: string | null, referenceId: number | null): string {
+export function resolveNotificationActionPath(
+  referenceType: string | null,
+  referenceId: number | null,
+  notificationType?: string | null,
+): string {
+  if (isAlertNotificationType(notificationType)) return '/alerts';
+  if (notificationType === 'matching_refresh_complete') return '/matching';
+  if (notificationType === 'group_invitation') {
+    return '/groups?tab=public';
+  }
+  if (notificationType === 'group_join' || notificationType === 'group_leave') {
+    return '/groups';
+  }
   if (referenceType === 'alert') return '/alerts';
   if (referenceType === 'match') return '/matching';
   if ((referenceType === 'proposal' || referenceType === 'comment') && referenceId) {
     return `/proposals/${referenceId}`;
   }
-  if (referenceType === 'request') return '/';
+  if (referenceType === 'request') {
+    return referenceId ? `/requests?requestId=${referenceId}` : '/requests';
+  }
   return '/';
 }
 
@@ -153,8 +186,8 @@ export function notificationToNotice(n: NotificationNoticeRow): NoticeItem | nul
     type: noticeType,
     title: n.title,
     body: n.message,
-    actionPath: resolveNotificationActionPath(n.referenceType, n.referenceId),
-    actionLabel: noticeType === 'alert' ? 'アラートを確認' : '確認する',
+    actionPath: resolveNotificationActionPath(n.referenceType, n.referenceId, n.type),
+    actionLabel: resolveNotificationActionLabel(noticeType, n.type),
     createdAt: n.createdAt,
     deadlineAt: null,
     unread: !n.isRead,

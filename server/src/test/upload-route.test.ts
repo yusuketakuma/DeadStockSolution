@@ -161,13 +161,13 @@ describe('upload routes', () => {
     delete process.env.UPLOAD_CONFIRM_FALLBACK_SYNC_ON_ENQUEUE_ERROR;
 
     mocks.parseExcelBuffer.mockResolvedValue([
-      ['YJコード', '薬剤名', '数量'],
-      ['1111111F1111', '薬A', 10],
-      ['2222222F2222', '薬B', 5],
+      ['YJコード', '薬剤名', '数量', '薬価'],
+      ['1111111F1111', '薬A', 10, 100],
+      ['2222222F2222', '薬B', 5, 80],
     ]);
     mocks.getPreviewRows.mockReturnValue([
-      ['1111111F1111', '薬A', '10'],
-      ['2222222F2222', '薬B', '5'],
+      ['1111111F1111', '薬A', '10', '100'],
+      ['2222222F2222', '薬B', '5', '80'],
     ]);
     mocks.detectHeaderRow.mockReturnValue(0);
     mocks.detectUploadType.mockReturnValue({
@@ -184,7 +184,7 @@ describe('upload routes', () => {
       drug_name: '1',
       quantity: '2',
       unit: null,
-      yakka_unit_price: '2',
+      yakka_unit_price: '3',
       expiration_date: null,
       lot_number: null,
     });
@@ -291,7 +291,7 @@ describe('upload routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual(expect.objectContaining({
-      headers: ['YJコード', '薬剤名', '数量'],
+      headers: ['YJコード', '薬剤名', '数量', '薬価'],
       headerRowIndex: 0,
       hasSavedMapping: false,
       detectedUploadType: 'dead_stock',
@@ -387,7 +387,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -426,7 +426,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -459,7 +459,7 @@ describe('upload routes', () => {
         drug_name: '9',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -470,6 +470,60 @@ describe('upload routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: '薬剤名カラムの割り当てが見出し範囲外です' });
+    expect(mocks.enqueueUploadConfirmJob).not.toHaveBeenCalled();
+  });
+
+  it('returns bad request when mapping reuses the same column for multiple fields on confirm-async', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/api/upload/confirm-async')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
+      .field('mapping', JSON.stringify({
+        drug_code: '1',
+        drug_name: '1',
+        quantity: '2',
+        unit: null,
+        yakka_unit_price: '3',
+        expiration_date: null,
+        lot_number: null,
+      }))
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: '薬剤名カラムの割り当てが薬品コードと重複しています' });
+    expect(mocks.enqueueUploadConfirmJob).not.toHaveBeenCalled();
+  });
+
+  it('returns bad request when auto mapping is incomplete and mapping is omitted on confirm-async', async () => {
+    const app = createApp();
+    mocks.suggestMapping.mockReturnValue({
+      drug_code: null,
+      drug_name: '1',
+      quantity: '2',
+      unit: null,
+      yakka_unit_price: '3',
+      expiration_date: null,
+      lot_number: null,
+    });
+
+    const response = await request(app)
+      .post('/api/upload/confirm-async')
+      .field('uploadType', 'dead_stock')
+      .field('headerRowIndex', '0')
+      .field('applyMode', 'replace')
+      .attach('file', Buffer.from('dummy-xlsx-content'), {
+        filename: 'dead-stock.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: '医薬品列の自動判定に失敗しました。ファイルの見出しを確認してください。' });
     expect(mocks.enqueueUploadConfirmJob).not.toHaveBeenCalled();
   });
 
@@ -486,7 +540,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -515,7 +569,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -554,7 +608,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -585,7 +639,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -620,7 +674,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -685,7 +739,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -715,7 +769,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -749,7 +803,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))
@@ -788,7 +842,7 @@ describe('upload routes', () => {
         drug_name: '1',
         quantity: '2',
         unit: null,
-        yakka_unit_price: '2',
+        yakka_unit_price: '3',
         expiration_date: null,
         lot_number: null,
       }))

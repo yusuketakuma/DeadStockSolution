@@ -17,6 +17,10 @@ function resolveEventTimestamp(timestamp: string | null): string {
   return timestamp ?? new Date().toISOString();
 }
 
+function isAlertNotificationType(type: string | null | undefined): boolean {
+  return type === 'alert_near_expiry' || type === 'alert_excess_stock' || type === 'alert_resolved';
+}
+
 function appendDateRangeConditions<T>(
   conditions: T[],
   since: string | undefined,
@@ -42,11 +46,24 @@ export function mapNotificationToEvent(row: {
   isRead: boolean;
   createdAt: string | null;
 }): RawTimelineEvent {
+  const eventType = row.type === 'matching_refresh_complete'
+    ? 'match_update'
+    : (row.type === 'group_invitation' || row.type === 'group_join' || row.type === 'group_leave'
+      ? 'request_update'
+      : toTimelineEventType(row.type));
   let actionPath = '/';
-  if (row.referenceType === 'proposal' && row.referenceId) {
-    actionPath = `/proposals/${row.referenceId}`;
-  } else if (row.referenceType === 'alert') {
+  if (row.type === 'matching_refresh_complete') {
+    actionPath = '/matching';
+  } else if (row.type === 'group_invitation') {
+    actionPath = '/groups?tab=public';
+  } else if (row.type === 'group_join' || row.type === 'group_leave') {
+    actionPath = '/groups';
+  } else if (isAlertNotificationType(row.type) || row.referenceType === 'alert') {
     actionPath = '/alerts';
+  } else if (row.referenceType === 'proposal' && row.referenceId) {
+    actionPath = `/proposals/${row.referenceId}`;
+  } else if (row.referenceType === 'request') {
+    actionPath = row.referenceId ? `/requests?requestId=${row.referenceId}` : '/requests';
   } else if (row.referenceType === 'match') {
     actionPath = '/matching';
   }
@@ -54,7 +71,7 @@ export function mapNotificationToEvent(row: {
   return {
     id: `notification_${row.id}`,
     source: 'notification',
-    type: toTimelineEventType(row.type),
+    type: eventType,
     title: row.title,
     body: row.message,
     timestamp: resolveEventTimestamp(row.createdAt),
@@ -267,11 +284,14 @@ export async function fetchProposalEvents(
   before?: string,
 ): Promise<RawTimelineEvent[]> {
   const conditions = [
+    ne(exchangeProposals.status, 'completed'),
+  ];
+  const ownershipCondition = or(
     eq(exchangeProposals.pharmacyAId, pharmacyId),
     eq(exchangeProposals.pharmacyBId, pharmacyId),
-  ];
-  const ownershipCondition = or(...conditions);
+  );
   const whereConditions = [ownershipCondition];
+  whereConditions.push(...conditions);
   appendDateRangeConditions(
     whereConditions,
     since,

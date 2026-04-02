@@ -140,6 +140,17 @@ describe('timeline-unread-counts', () => {
     expect(count).toBe(7);
   });
 
+  it('countUnreadProposals: completed proposal は exchange history 側に寄せるため除外する', async () => {
+    const db = makeMockDb(7) as MockDb;
+
+    await countUnreadProposals(db, pharmacyId, lastViewed);
+
+    const whereArg = db.select.mock.results[0]?.value.from.mock.results[0]?.value.where.mock.calls[0]?.[0];
+    const sqlText = flattenSqlChunks(whereArg);
+    expect(sqlText).toContain('completed');
+    expect(sqlText).toContain('<>');
+  });
+
   // --- countUnreadFeedback ---
 
   it('countUnreadFeedback: lastViewed以降のCOUNTを返す', async () => {
@@ -272,6 +283,25 @@ describe('timeline-unread-counts', () => {
     expect(sqlText).not.toContain('pc.read_by_recipient = false OR');
     expect(sqlText).toContain('AND amr.id IS NULL');
     expect(sqlText).not.toContain('amr.id IS NULL OR');
+  });
+
+  it('countAllUnread: completed proposal を proposal 未読数へ二重計上しない', async () => {
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ total: 0 }]),
+      }),
+    });
+    const db = {
+      select,
+      update: vi.fn(),
+    } as unknown as MockDb;
+
+    await countAllUnread(db, pharmacyId);
+
+    const projection = select.mock.calls[0]?.[0] as { total?: unknown } | undefined;
+    const sqlText = flattenSqlChunks(projection?.total);
+    expect(sqlText).toContain("FROM exchange_proposals");
+    expect(sqlText).toContain("status != 'completed'");
   });
 
   it('countAllUnread: generic notifications から comment/match のミラー通知を除外する', async () => {

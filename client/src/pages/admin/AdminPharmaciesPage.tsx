@@ -176,7 +176,15 @@ export default function AdminPharmaciesPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">薬局管理</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">薬局管理</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/groups" className="btn btn-outline-secondary btn-sm">グループ管理</Link>
+          <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+        </div>
+      </div>
       <ScrollArea>
       <Nav variant="tabs" className="mb-3" activeKey={activeTab} onSelect={(k) => setActiveTab((k as 'all' | 'pending') || 'all')}>
         <Nav.Item>

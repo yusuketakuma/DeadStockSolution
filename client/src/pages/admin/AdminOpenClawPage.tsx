@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import { Badge } from 'react-bootstrap';
@@ -426,7 +427,14 @@ export default function AdminOpenClawPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">OpenClaw連携</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">OpenClaw連携</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/openclaw-commands" className="btn btn-outline-secondary btn-sm">コマンド管理</Link>
+        </div>
+      </div>
 
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {error && <AppAlert variant="danger" onClose={() => setError('')} dismissible>{error}</AppAlert>}

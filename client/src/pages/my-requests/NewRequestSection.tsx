@@ -73,7 +73,13 @@ export function NewRequestSection({
 
             <div className="row g-2">
               <div className="col-12 col-md-4">
-                <Form.Select value={newCategory} onChange={(event) => onCategoryChange(event.target.value)}>
+                <Form.Label htmlFor="new-request-category" className="small mb-1">要望カテゴリ</Form.Label>
+                <Form.Select
+                  id="new-request-category"
+                  aria-label="要望カテゴリ"
+                  value={newCategory}
+                  onChange={(event) => onCategoryChange(event.target.value)}
+                >
                   <option value="improvement">改善要望</option>
                   <option value="bug_report">不具合</option>
                   <option value="question">質問</option>
@@ -82,14 +88,23 @@ export function NewRequestSection({
                 </Form.Select>
               </div>
               <div className="col-12 col-md-4">
-                <Form.Select value={newPriority} onChange={(event) => onPriorityChange(event.target.value)}>
+                <Form.Label htmlFor="new-request-priority" className="small mb-1">優先度</Form.Label>
+                <Form.Select
+                  id="new-request-priority"
+                  aria-label="優先度"
+                  value={newPriority}
+                  onChange={(event) => onPriorityChange(event.target.value)}
+                >
                   <option value="urgent">緊急</option>
                   <option value="normal">通常</option>
                   <option value="low">低</option>
                 </Form.Select>
               </div>
               <div className="col-12 col-md-4">
+                <Form.Label htmlFor="new-request-files" className="small mb-1">添付ファイル</Form.Label>
                 <Form.Control
+                  id="new-request-files"
+                  aria-label="添付ファイル"
                   type="file"
                   multiple
                   onChange={onNewFilesChange}

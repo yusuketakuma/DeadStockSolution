@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getGroupDetail: vi.fn(),
   inviteMember: vi.fn(),
   acceptInvitation: vi.fn(),
+  declineInvitation: vi.fn(),
   joinPublicGroup: vi.fn(),
   removeMember: vi.fn(),
   leaveGroup: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock('../services/group-service', () => ({
   getGroupDetail: mocks.getGroupDetail,
   inviteMember: mocks.inviteMember,
   acceptInvitation: mocks.acceptInvitation,
+  declineInvitation: mocks.declineInvitation,
   joinPublicGroup: mocks.joinPublicGroup,
   removeMember: mocks.removeMember,
   leaveGroup: mocks.leaveGroup,
@@ -556,6 +558,28 @@ describe('group routes', () => {
       const res = await request(app).post('/api/groups/1/accept');
 
       expect(res.status).toBe(404);
+    });
+  });
+
+  // ── POST /api/groups/:id/leave ──────────────────────────────
+  describe('POST /api/groups/:id/decline', () => {
+    it('200 — 招待辞退成功', async () => {
+      mocks.declineInvitation.mockResolvedValue(undefined);
+      const app = await createApp();
+
+      const res = await request(app).post('/api/groups/1/decline');
+
+      expect(res.status).toBe(200);
+      expect(mocks.declineInvitation).toHaveBeenCalledWith(1, 1);
+    });
+
+    it('400 — 不正なID', async () => {
+      const app = await createApp();
+
+      const res = await request(app).post('/api/groups/abc/decline');
+
+      expect(res.status).toBe(400);
+      expect(mocks.declineInvitation).not.toHaveBeenCalled();
     });
   });
 

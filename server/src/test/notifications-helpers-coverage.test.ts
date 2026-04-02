@@ -141,6 +141,14 @@ describe('resolveNotificationType', () => {
     expect(resolveNotificationType('alert_resolved')).toBe('alert');
   });
 
+  it('returns match_update for matching_refresh_complete', () => {
+    expect(resolveNotificationType('matching_refresh_complete')).toBe('match_update');
+  });
+
+  it('returns status_update for group invitation notifications', () => {
+    expect(resolveNotificationType('group_invitation')).toBe('status_update');
+  });
+
   it('returns status_update for proposal_received', () => {
     expect(resolveNotificationType('proposal_received')).toBe('status_update');
   });
@@ -332,6 +340,10 @@ describe('resolveNotificationActionPath', () => {
     expect(resolveNotificationActionPath('alert', null)).toBe('/alerts');
   });
 
+  it('returns /alerts for alert notification type even with legacy match referenceType', () => {
+    expect(resolveNotificationActionPath('match', null, 'alert_near_expiry')).toBe('/alerts');
+  });
+
   it('returns /matching for match referenceType', () => {
     expect(resolveNotificationActionPath('match', null)).toBe('/matching');
   });
@@ -352,8 +364,20 @@ describe('resolveNotificationActionPath', () => {
     expect(resolveNotificationActionPath('comment', null)).toBe('/');
   });
 
-  it('returns / for request referenceType', () => {
-    expect(resolveNotificationActionPath('request', null)).toBe('/');
+  it('returns /requests for request referenceType', () => {
+    expect(resolveNotificationActionPath('request', null)).toBe('/requests');
+  });
+
+  it('returns request deep link when request reference has an id', () => {
+    expect(resolveNotificationActionPath('request', 77)).toBe('/requests?requestId=77');
+  });
+
+  it('returns /matching for matching refresh notifications without a reference type', () => {
+    expect(resolveNotificationActionPath(null, null, 'matching_refresh_complete')).toBe('/matching');
+  });
+
+  it('returns /groups?tab=public for group invitation notifications', () => {
+    expect(resolveNotificationActionPath('request', 10, 'group_invitation')).toBe('/groups?tab=public');
   });
 
   it('returns / for unknown referenceType', () => {
@@ -392,6 +416,12 @@ describe('notificationToNotice', () => {
     expect(result?.priority).toBe(2);
   });
 
+  it('routes alert notice to /alerts even when legacy referenceType is match', () => {
+    const n = { ...baseNotification, referenceType: 'match' as const };
+    const result = notificationToNotice(n);
+    expect(result?.actionPath).toBe('/alerts');
+  });
+
   it('returns alert notice with priority 4 for read alert', () => {
     const n = { ...baseNotification, isRead: true };
     const result = notificationToNotice(n);
@@ -409,6 +439,37 @@ describe('notificationToNotice', () => {
     const n = { ...baseNotification, type: 'request_update', referenceType: 'request' as const, isRead: true };
     const result = notificationToNotice(n as never);
     expect(result?.priority).toBe(5);
+    expect(result?.actionPath).toBe('/requests');
+  });
+
+  it('preserves request referenceId in request notice action path', () => {
+    const n = {
+      ...baseNotification,
+      type: 'request_update',
+      referenceType: 'request' as const,
+      referenceId: 88,
+      isRead: false,
+    };
+    const result = notificationToNotice(n as never);
+    expect(result?.actionPath).toBe('/requests?requestId=88');
+  });
+
+  it('uses request-specific action labels for request updates', () => {
+    const n = { ...baseNotification, type: 'request_update', referenceType: 'request' as const, referenceId: 21 };
+    const result = notificationToNotice(n as never);
+    expect(result?.actionLabel).toBe('要望を見る');
+  });
+
+  it('uses matching-specific action labels for matching refresh notifications', () => {
+    const n = { ...baseNotification, type: 'matching_refresh_complete', referenceType: null, referenceId: null };
+    const result = notificationToNotice(n as never);
+    expect(result?.actionLabel).toBe('候補を見る');
+  });
+
+  it('uses group-specific action labels for group invitations', () => {
+    const n = { ...baseNotification, type: 'group_invitation', referenceType: 'request' as const, referenceId: 10 };
+    const result = notificationToNotice(n as never);
+    expect(result?.actionLabel).toBe('招待を確認');
   });
 });
 

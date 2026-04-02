@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Badge } from 'react-bootstrap';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import AppAlert from '../components/ui/AppAlert';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
@@ -17,6 +18,7 @@ import {
 } from './my-requests/types';
 
 export default function MyRequestsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
   const [thread, setThread] = useState<RequestThreadResponse | null>(null);
@@ -35,32 +37,63 @@ export default function MyRequestsPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [queueFilter, setQueueFilter] = useState<RequestQueueFilter>('all');
+  const selectedRequestIdRef = useRef<number | null>(null);
+  const preserveNullSelectionRef = useRef(false);
+  const requestedRequestId = useMemo(() => {
+    const raw = searchParams.get('requestId');
+    if (!raw) return null;
+    const value = Number(raw);
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }, [searchParams]);
 
-  const loadRequests = async ({ background = false }: { background?: boolean } = {}) => {
+  const syncSelectedRequestSearchParam = useCallback((requestId: number | null) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (requestId) {
+      nextParams.set('requestId', String(requestId));
+    } else {
+      nextParams.delete('requestId');
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const resolveNextSelectedRequestId = useCallback((items: RequestItem[]) => {
+    const currentSelectedRequestId = selectedRequestIdRef.current;
+    if (currentSelectedRequestId && items.some((item) => item.id === currentSelectedRequestId)) {
+      return currentSelectedRequestId;
+    }
+    if (requestedRequestId && items.some((item) => item.id === requestedRequestId)) {
+      return requestedRequestId;
+    }
+    if (currentSelectedRequestId === null && preserveNullSelectionRef.current) {
+      return null;
+    }
+    return items[0]?.id ?? null;
+  }, [requestedRequestId]);
+
+  const loadRequests = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
     if (!background) {
       setLoading(true);
     }
     try {
       const response = await api.get<{ data: RequestItem[] }>('/requests/me');
       setRequests(response.data);
-      setSelectedRequestId((current) => {
-        if (current && response.data.some((item) => item.id === current)) {
-          return current;
-        }
-        return response.data[0]?.id ?? null;
-      });
+      const nextSelectedRequestId = resolveNextSelectedRequestId(response.data);
+      selectedRequestIdRef.current = nextSelectedRequestId;
+      setSelectedRequestId(nextSelectedRequestId);
+      return nextSelectedRequestId;
     } catch (err) {
       if (!background) {
         setError(err instanceof Error ? err.message : '要望一覧の取得に失敗しました');
       }
+      return undefined;
     } finally {
       if (!background) {
         setLoading(false);
       }
     }
-  };
+  }, [resolveNextSelectedRequestId]);
 
-  const loadThread = async (requestId: number, { background = false }: { background?: boolean } = {}) => {
+  const loadThread = useCallback(async (requestId: number, { background = false }: { background?: boolean } = {}) => {
     if (!background) {
       setThreadLoading(true);
     }
@@ -76,11 +109,19 @@ export default function MyRequestsPage() {
         setThreadLoading(false);
       }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    selectedRequestIdRef.current = selectedRequestId;
+  }, [selectedRequestId]);
+
+  useEffect(() => {
+    syncSelectedRequestSearchParam(selectedRequestId);
+  }, [selectedRequestId, syncSelectedRequestSearchParam]);
 
   useEffect(() => {
     void loadRequests();
-  }, []);
+  }, [loadRequests]);
 
   useEffect(() => {
     if (!selectedRequestId) {
@@ -88,7 +129,7 @@ export default function MyRequestsPage() {
       return;
     }
     void loadThread(selectedRequestId);
-  }, [selectedRequestId]);
+  }, [loadThread, selectedRequestId]);
 
   useEffect(() => {
     if (!showCreateForm) {
@@ -101,14 +142,26 @@ export default function MyRequestsPage() {
       return;
     }
 
+    let disposed = false;
     const timer = window.setTimeout(() => {
       void api
         .get<{ data: DuplicateRequestSuggestion[] }>(`/requests/suggestions?query=${encodeURIComponent(query)}`)
-        .then((response) => setDuplicateSuggestions(response.data))
-        .catch(() => setDuplicateSuggestions([]));
+        .then((response) => {
+          if (!disposed) {
+            setDuplicateSuggestions(response.data);
+          }
+        })
+        .catch(() => {
+          if (!disposed) {
+            setDuplicateSuggestions([]);
+          }
+        });
     }, 300);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+    };
   }, [newRequestText, showCreateForm]);
 
   const { connected: realtimeConnected } = useSseRefresh({
@@ -116,9 +169,19 @@ export default function MyRequestsPage() {
     streamPath: '/realtime/stream?topics=requests',
     events: ['requests.refresh'],
     onRefresh: async () => {
-      await loadRequests({ background: true });
-      if (selectedRequestId) {
-        await loadThread(selectedRequestId, { background: true });
+      const shouldKeepListCollapsed = selectedRequestIdRef.current === null && preserveNullSelectionRef.current;
+      const previousSelectedRequestId = selectedRequestIdRef.current;
+      const nextSelectedRequestId = await loadRequests({ background: true });
+      if (shouldKeepListCollapsed) {
+        selectedRequestIdRef.current = null;
+        setSelectedRequestId(null);
+        setThread(null);
+        return;
+      }
+      if (nextSelectedRequestId && nextSelectedRequestId === previousSelectedRequestId) {
+        await loadThread(nextSelectedRequestId, { background: true });
+      } else if (nextSelectedRequestId === null) {
+        setThread(null);
       }
     },
     fallbackIntervalMs: LIVE_REFRESH_INTERVAL_MS,
@@ -200,6 +263,8 @@ export default function MyRequestsPage() {
       setMessage(response.nextStep ? `${response.message} ${response.nextStep}` : response.message);
       await loadRequests();
       if (createdRequestId) {
+        preserveNullSelectionRef.current = false;
+        selectedRequestIdRef.current = createdRequestId;
         setSelectedRequestId(createdRequestId);
       }
     } catch (err) {
@@ -220,8 +285,23 @@ export default function MyRequestsPage() {
   const handleCancelCreateForm = () => {
     setShowCreateForm(false);
     setNewRequestText('');
+    setNewCategory('improvement');
+    setNewPriority('normal');
     setNewFiles([]);
     setDuplicateSuggestions([]);
+  };
+
+  const handleSelectRequest = (requestId: number) => {
+    preserveNullSelectionRef.current = false;
+    selectedRequestIdRef.current = requestId;
+    setSelectedRequestId(requestId);
+  };
+
+  const handleSelectDuplicateSuggestion = (requestId: number) => {
+    handleCancelCreateForm();
+    preserveNullSelectionRef.current = false;
+    selectedRequestIdRef.current = requestId;
+    setSelectedRequestId(requestId);
   };
 
   const requestSummary = useMemo(() => ({
@@ -247,9 +327,12 @@ export default function MyRequestsPage() {
           <h4 className="page-title mb-0">ユーザーリクエストとバグ報告</h4>
           <div className="text-muted small">新規要望の登録と、OpenClaw・管理者とのやり取りをここで追えます。</div>
         </div>
-        <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
-          自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
-        </Badge>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap align-items-center">
+          <Link to="/messages" className="btn btn-outline-secondary btn-sm">薬局間メッセージ</Link>
+          <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
+            自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
+          </Badge>
+        </div>
       </div>
       {message && <AppAlert variant="success" dismissible onClose={() => setMessage('')}>{message}</AppAlert>}
       {error && <AppAlert variant="danger" dismissible onClose={() => setError('')}>{error}</AppAlert>}
@@ -269,7 +352,7 @@ export default function MyRequestsPage() {
         onPriorityChange={setNewPriority}
         onNewFilesChange={handleNewFilesChange}
         onSubmit={handleCreateRequest}
-        onSelectSuggestion={setSelectedRequestId}
+        onSelectSuggestion={handleSelectDuplicateSuggestion}
       />
 
       <ScrollArea>
@@ -282,7 +365,7 @@ export default function MyRequestsPage() {
               selectedRequestId={selectedRequestId}
               queueFilter={queueFilter}
               requestSummary={requestSummary}
-              onSelectRequest={setSelectedRequestId}
+              onSelectRequest={handleSelectRequest}
               onQueueFilterChange={setQueueFilter}
             />
           </div>
@@ -295,7 +378,11 @@ export default function MyRequestsPage() {
               replyText={replyText}
               replyFiles={replyFiles}
               sending={sending}
-              onBack={() => setSelectedRequestId(null)}
+              onBack={() => {
+                preserveNullSelectionRef.current = true;
+                selectedRequestIdRef.current = null;
+                setSelectedRequestId(null);
+              }}
               onReplyTextChange={setReplyText}
               onReplyFilesChange={handleReplyFilesChange}
               onReplyTemplateSelect={setReplyText}

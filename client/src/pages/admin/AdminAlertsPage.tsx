@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge, Col, Form, Row } from 'react-bootstrap';
 import { api } from '../../api/client';
 import Pagination from '../../components/Pagination';
@@ -85,7 +86,15 @@ export default function AdminAlertsPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">アラート管理</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">アラート管理</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信状況</Link>
+          <Link to="/admin/risk" className="btn btn-outline-secondary btn-sm">期限リスク分析</Link>
+        </div>
+      </div>
 
       <Row className="mb-3 g-2">
         <Col xs={6} md={3}>

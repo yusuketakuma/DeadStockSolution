@@ -18,7 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useGroupMembership } from '../hooks/useGroupMembership';
 import { useAsyncState } from '../hooks/useAsyncState';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { MatchCandidate } from '../types/matching';
 import {
   buildMatchingFilterParams,
@@ -217,7 +217,17 @@ export default function MatchingPage() {
   return (
     <RequireUpload>
       <PageShell>
-        <h4 className="page-title mb-3">マッチング</h4>
+        <div className="dl-page-header">
+          <div className="dl-page-header-copy">
+            <h4 className="page-title mb-0">マッチング</h4>
+            <div className="text-muted small">候補検索、ブックマーク、提案作成をこの画面から進めます。</div>
+          </div>
+          <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+            <Link to="/bookmarks" className="btn btn-outline-secondary btn-sm">ブックマーク</Link>
+            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
+            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+          </div>
+        </div>
         <ScrollArea>
           {error && <ErrorRetryAlert error={error} onRetry={() => { setError(''); void handleSearch(); }} />}
           <MatchingSearchHeader

@@ -133,6 +133,26 @@ describe('useIncrementalSearch', () => {
     expect(fetchFn).toHaveBeenCalledWith('テスト', 1, expect.any(AbortSignal));
   });
 
+  it('executeImmediate は override された query と page を優先する', async () => {
+    const fetchFn = createMockFetch([{ id: 2 }], 1);
+
+    const { result } = renderHook(() =>
+      useIncrementalSearch({ fetchFn }),
+    );
+
+    act(() => {
+      result.current.setQuery('旧クエリ');
+      result.current.setPage(3);
+    });
+
+    await act(async () => {
+      result.current.executeImmediate('新クエリ', 1);
+    });
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(fetchFn).toHaveBeenCalledWith('新クエリ', 1, expect.any(AbortSignal));
+  });
+
   it('クエリ変更時にページを 1 にリセットする', async () => {
     const fetchFn = createMockFetch([{ id: 1 }], 10);
 

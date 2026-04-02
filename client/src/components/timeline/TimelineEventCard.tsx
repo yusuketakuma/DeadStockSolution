@@ -2,6 +2,7 @@ import type { KeyboardEvent } from 'react';
 import { Badge } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import type { TimelineEvent, TimelinePriority, TimelineSource } from '../../types/timeline';
+import { sanitizeInternalPath } from '../../utils/navigation';
 
 const SOURCE_ICON: Record<TimelineSource, string> = {
   proposal: '↔️',
@@ -75,11 +76,12 @@ interface TimelineEventCardProps {
 
 export default function TimelineEventCard({ event }: TimelineEventCardProps) {
   const navigate = useNavigate();
-  const isClickable = Boolean(event.actionPath);
+  const actionPath = sanitizeInternalPath(event.actionPath, '');
+  const isClickable = Boolean(actionPath);
 
   const handleClick = () => {
-    if (event.actionPath) {
-      navigate(event.actionPath);
+    if (actionPath) {
+      navigate(actionPath);
     }
   };
 
@@ -146,7 +148,7 @@ export default function TimelineEventCard({ event }: TimelineEventCardProps) {
 
         <div className="dl-timeline-meta">
           <span className="text-muted">{absoluteTime}</span>
-          {event.actionPath && <span className="dl-timeline-action-hint">詳細を開く</span>}
+          {actionPath && <span className="dl-timeline-action-hint">詳細を開く</span>}
         </div>
       </div>
     </div>

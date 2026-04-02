@@ -244,8 +244,14 @@ export function useUploadJobPolling() {
           setIsPolling(false);
           return { result: null, error: new Error('アップロード処理結果の取得に失敗しました'), wasAborted: false };
         }
+        const completedResult: UploadConfirmJobResult = {
+          ...job.result,
+          partialSummary: job.partialSummary ?? job.result.partialSummary ?? latestPartialSummary,
+          errorReportAvailable: job.errorReportAvailable ?? job.result.errorReportAvailable ?? latestErrorReportAvailable,
+          deduplicated: job.deduplicated ?? job.result.deduplicated ?? latestDeduplicated,
+        };
         setIsPolling(false);
-        return { result: job.result, error: null, wasAborted: false };
+        return { result: completedResult, error: null, wasAborted: false };
       }
       if (job.status === 'failed') {
         setJobState((prev) => ({ ...prev, status: null, cancelable: false }));

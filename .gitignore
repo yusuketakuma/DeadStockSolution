@@ -155,6 +155,31 @@ data/
 .claude-code-harness/
 .vercel
 
+# Workspace-local state and generated evidence
+/.cursor/
+/.codex-verify/
+/.deep-review-findings.md
+.omc/
+**/.omc/
+/.openclaw/
+/.serena/
+/.sisyphus/
+/artifacts/
+/audits/
+/reports/
+/memory/
+/{"decision":"approve","reason":"WorktreeCreate: initialized worktree state"}/
+
+# Claude workspace state (keep shared rules/config tracked)
+client/.claude/
+server/.claude/
+**/.claude/agent-memory/
+**/.claude/memory/archive/
+**/.claude/sessions/
+**/.claude/state/
+**/.claude/memory/session-log.md
+**/.claude/settings.local.json
+
 # Bundle analysis output
 stats.html
 

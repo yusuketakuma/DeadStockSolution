@@ -224,6 +224,20 @@ router.post('/:id/accept', async (req: AuthRequest, res: Response) => {
   }
 });
 
+router.post('/:id/decline', async (req: AuthRequest, res: Response) => {
+  try {
+    const groupId = parseGroupId(req.params.id);
+    if (!groupId) {
+      respondInvalidId(res);
+      return;
+    }
+    await groupService.declineInvitation(groupId, req.user!.id);
+    res.json({ message: '招待を辞退しました' });
+  } catch (err) {
+    handleRouteError(res, 'Decline invitation error', err);
+  }
+});
+
 // ── POST /:id/leave — グループ脱退 ──────────────────────────────────
 
 router.post('/:id/leave', async (req: AuthRequest, res: Response) => {

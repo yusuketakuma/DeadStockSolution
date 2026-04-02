@@ -49,8 +49,8 @@
     "smoke:preview": "node scripts/smoke-check.mjs",
     "prepare": "node scripts/prepare.mjs",
     "lighthouse": "npm run build:client && npx lhci autorun",
-    "remotion": "npx remotion studio remotion/src/index.ts",
-    "remotion:render": "npx remotion render remotion/src/index.ts ProductVideo out/video.mp4"
+    "remotion": "npx remotion studio dev/remotion/src/index.ts",
+    "remotion:render": "npx remotion render dev/remotion/src/index.ts ProductVideo out/video.mp4"
   },
   "lint-staged": {
     "VERSION": "node scripts/sync-version.mjs",
@@ -95,5 +95,5 @@
     "lint-staged": "^16.4.0",
     "typescript-eslint": "^8.57.1"
   },
-  "version": "0.0.23"
+  "version": "0.0.22"
 }

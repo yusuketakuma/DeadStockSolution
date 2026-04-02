@@ -108,4 +108,16 @@ describe('SmartDigest', () => {
     renderWithProviders(<SmartDigest events={[]} status={makeCompleteStatus()} loading={false} />);
     expect(screen.getByText('今日やること')).toBeInTheDocument();
   });
+
+  it('sanitizes unsafe event paths before rendering the action link', () => {
+    renderWithProviders(
+      <SmartDigest
+        events={[makeEvent({ actionPath: '//evil.example/phish' })]}
+        status={makeCompleteStatus()}
+        loading={false}
+      />,
+    );
+
+    expect(screen.getByTestId('action-link')).toHaveAttribute('href', '/');
+  });
 });

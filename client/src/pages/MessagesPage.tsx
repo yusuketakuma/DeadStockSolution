@@ -9,7 +9,7 @@ import {
   Row,
   Spinner,
 } from 'react-bootstrap';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   fetchThreads,
@@ -68,7 +68,7 @@ function threadStatusBadge(thread: MessageThread) {
 export default function MessagesPage() {
   const { user } = useAuth();
   const myPharmacyId = user?.id ?? 0;
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
@@ -240,6 +240,32 @@ export default function MessagesPage() {
     void loadMessages(selectedPharmacyId, { page: 1 });
   }, [selectedPharmacyId, loadMessages]);
 
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (selectedPharmacyId) {
+      nextParams.set('pharmacyId', String(selectedPharmacyId));
+      if (selectedPharmacyName) {
+        nextParams.set('pharmacyName', selectedPharmacyName);
+      } else {
+        nextParams.delete('pharmacyName');
+      }
+      if (requestedPharmacyId !== selectedPharmacyId) {
+        nextParams.delete('draft');
+        nextParams.delete('context');
+        nextParams.delete('contextId');
+      }
+    } else {
+      nextParams.delete('pharmacyId');
+      nextParams.delete('pharmacyName');
+      nextParams.delete('draft');
+      nextParams.delete('context');
+      nextParams.delete('contextId');
+    }
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [requestedPharmacyId, searchParams, selectedPharmacyId, selectedPharmacyName, setSearchParams]);
+
   const handleSelectThread = useCallback(
     async (thread: MessageThread) => {
       setSelectedPharmacyId(thread.otherPharmacyId);
@@ -360,7 +386,9 @@ export default function MessagesPage() {
         <Card.Body>
           <AppEmptyState
             title={search ? '検索条件に一致するメッセージはありません' : 'メッセージはありません'}
-            description={search ? '検索条件を変えて再度確認してください。' : '新しいメッセージが届くとここに表示されます。'}
+            description={search ? '検索条件を変えて再度確認してください。' : '薬局一覧やマッチングから相手を選んでメッセージを開始できます。'}
+            actionLabel={search ? undefined : '薬局一覧へ'}
+            actionTo={search ? undefined : '/pharmacies'}
           />
         </Card.Body>
       ) : (
@@ -589,9 +617,13 @@ export default function MessagesPage() {
           <h4 className="page-title mb-0">薬局間メッセージ</h4>
           <div className="text-muted small">一覧と会話を device 幅に合わせて切り替えます。</div>
         </div>
-        <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
-          自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
-        </Badge>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap align-items-center">
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
+          <Link to="/requests" className="btn btn-outline-secondary btn-sm">要望一覧</Link>
+          <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
+            自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
+          </Badge>
+        </div>
       </div>
 
       <ScrollArea>

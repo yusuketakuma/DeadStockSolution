@@ -90,7 +90,7 @@ function createTxInsertNotificationReturning(notificationId: number | null) {
   return { values };
 }
 
-it('runPredictiveAlertsJob persists predictive alert notifications with matching routing metadata', async () => {
+it('runPredictiveAlertsJob persists predictive alert notifications with alert routing metadata', async () => {
   vi.resetAllMocks();
   vi.stubEnv('VAPID_PUBLIC_KEY', 'test-public-key');
   vi.stubEnv('VAPID_PRIVATE_KEY', 'test-private-key');
@@ -137,8 +137,8 @@ it('runPredictiveAlertsJob persists predictive alert notifications with matching
   expect(txRef!.insert).toHaveBeenCalledTimes(2);
   expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
     pharmacyId: 10,
-    type: 'proposal_status_changed',
-    referenceType: 'match',
+    type: 'alert_near_expiry',
+    referenceType: 'alert',
     referenceId: null,
   }));
 });
@@ -190,8 +190,8 @@ describe('alert/group push integration', () => {
     expect(mocks.sendToPharmacy).not.toHaveBeenCalled();
     expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
       pharmacyId: 10,
-      type: 'proposal_status_changed',
-      referenceType: 'match',
+      type: 'alert_near_expiry',
+      referenceType: 'alert',
       referenceId: null,
     }));
   });
@@ -233,8 +233,8 @@ describe('alert/group push integration', () => {
     await runPredictiveAlertsJob({ now: new Date('2026-03-01T00:00:00.000Z') });
 
     expect(notificationInsertQuery.values).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'proposal_status_changed',
-      referenceType: 'match',
+      type: 'alert_near_expiry',
+      referenceType: 'alert',
       referenceId: null,
     }));
     expect(mocks.sendToPharmacy).not.toHaveBeenCalled();
@@ -259,7 +259,7 @@ describe('alert/group push integration', () => {
       expect.objectContaining({
         title: 'グループ招待',
         data: expect.objectContaining({
-          url: '/groups',
+          url: '/groups?tab=public',
           type: 'group_invitation',
         }),
       }),

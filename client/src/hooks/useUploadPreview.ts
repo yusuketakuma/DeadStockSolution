@@ -38,13 +38,12 @@ export interface UseUploadPreviewReturn {
   currentMapping: Record<string, string | null>;
   mappingComplete: boolean;
   missingRequiredFields: string[];
+  duplicateAssignedFields: string[];
   fieldHints: Record<string, string[]>;
   handleMappingChange: (field: string, columnIndex: string | null) => void;
+  setActiveMappingUploadType: (uploadType: UploadType) => void;
 }
 
-/**
- * Resolve confidence level to human-readable label.
- */
 export function resolveConfidenceLabel(confidence: PreviewResponse['uploadTypeConfidence']): string {
   switch (confidence) {
     case 'high':
@@ -58,9 +57,6 @@ export function resolveConfidenceLabel(confidence: PreviewResponse['uploadTypeCo
   }
 }
 
-/**
- * Resolve the mapping to be submitted based on selected upload type.
- */
 export function resolveSubmittedMapping(
   preview: PreviewResponse | null,
   selectedUploadType: UploadType,
@@ -76,10 +72,6 @@ export function resolveSubmittedMapping(
   return null;
 }
 
-/**
- * Hook for managing upload preview state and operations.
- * Handles file preview fetching and mapping resolution.
- */
 const REQUIRED_FIELDS_BY_TYPE: Record<UploadType, string[]> = {
   dead_stock: ['drug_name', 'drug_code', 'quantity', 'yakka_unit_price'],
   used_medication: ['drug_name', 'drug_code'],
@@ -90,7 +82,44 @@ function computeMissingRequiredFields(
   uploadType: UploadType,
 ): string[] {
   const requiredFields = REQUIRED_FIELDS_BY_TYPE[uploadType] ?? [];
-  return requiredFields.filter((f) => mapping[f] === null || mapping[f] === undefined);
+  return requiredFields.filter((field) => mapping[field] === null || mapping[field] === undefined);
+}
+
+function computeDuplicateAssignedFields(
+  mapping: Record<string, string | null>,
+): string[] {
+  const firstFieldByColumnIndex = new Map<string, string>();
+  const duplicateFields = new Set<string>();
+
+  for (const [field, columnIndex] of Object.entries(mapping)) {
+    if (columnIndex === null || columnIndex === undefined || columnIndex === '') continue;
+    const existingField = firstFieldByColumnIndex.get(columnIndex);
+    if (existingField) {
+      duplicateFields.add(existingField);
+      duplicateFields.add(field);
+      continue;
+    }
+    firstFieldByColumnIndex.set(columnIndex, field);
+  }
+
+  return [...duplicateFields];
+}
+
+function resolveInitialMappingForType(
+  preview: PreviewResponse,
+  uploadType: UploadType,
+): Record<string, string | null> {
+  return preview.suggestedMappingByType[uploadType]
+    ?? (uploadType === preview.resolvedUploadType ? preview.suggestedMapping : {});
+}
+
+function buildInitialMappingByType(
+  preview: PreviewResponse,
+): Record<UploadType, Record<string, string | null>> {
+  return {
+    dead_stock: { ...resolveInitialMappingForType(preview, 'dead_stock') },
+    used_medication: { ...resolveInitialMappingForType(preview, 'used_medication') },
+  };
 }
 
 export function useUploadPreview(options: UseUploadPreviewOptions = {}): UseUploadPreviewReturn {
@@ -99,24 +128,53 @@ export function useUploadPreview(options: UseUploadPreviewOptions = {}): UseUplo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const abortRef = useRef<AbortController | null>(null);
-  const [currentMapping, setCurrentMapping] = useState<Record<string, string | null>>({});
+  const [activeMappingUploadType, setActiveMappingUploadTypeState] = useState<UploadType>('dead_stock');
+  const [mappingByType, setMappingByType] = useState<Record<UploadType, Record<string, string | null>>>({
+    dead_stock: {},
+    used_medication: {},
+  });
   const [mappingComplete, setMappingComplete] = useState(false);
   const [missingRequiredFields, setMissingRequiredFields] = useState<string[]>([]);
+  const [duplicateAssignedFields, setDuplicateAssignedFields] = useState<string[]>([]);
   const [fieldHints, setFieldHints] = useState<Record<string, string[]>>({});
+  const currentMapping = mappingByType[activeMappingUploadType] ?? {};
+
+  const applyDerivedState = useCallback((
+    nextMappingByType: Record<UploadType, Record<string, string | null>>,
+    nextActiveUploadType: UploadType,
+  ) => {
+    const activeMapping = nextMappingByType[nextActiveUploadType] ?? {};
+    const missing = computeMissingRequiredFields(activeMapping, nextActiveUploadType);
+    const duplicates = computeDuplicateAssignedFields(activeMapping);
+    setMissingRequiredFields(missing);
+    setDuplicateAssignedFields(duplicates);
+    setMappingComplete(missing.length === 0 && duplicates.length === 0);
+  }, []);
+
+  const resetDerivedState = useCallback(() => {
+    setMappingByType({ dead_stock: {}, used_medication: {} });
+    setActiveMappingUploadTypeState('dead_stock');
+    setMappingComplete(false);
+    setMissingRequiredFields([]);
+    setDuplicateAssignedFields([]);
+    setFieldHints({});
+  }, []);
 
   const handlePreview = useCallback(
     async (file: File, externalSignal?: AbortSignal): Promise<PreviewResponse | null> => {
-      // Abort any previous request
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+      const onExternalAbort = () => controller.abort();
 
-      // Link to external signal if provided
       if (externalSignal) {
         if (externalSignal.aborted) {
+          if (abortRef.current === controller) {
+            abortRef.current = null;
+          }
           return null;
         }
-        externalSignal.addEventListener('abort', () => controller.abort());
+        externalSignal.addEventListener('abort', onExternalAbort, { once: true });
       }
 
       setLoading(true);
@@ -130,75 +188,100 @@ export function useUploadPreview(options: UseUploadPreviewOptions = {}): UseUplo
           signal: controller.signal,
         });
 
-        if (controller.signal.aborted) return null;
+        if (controller.signal.aborted) {
+          return null;
+        }
 
+        const initialMappings = buildInitialMappingByType(data);
         setPreview(data);
-
-        // Initialize mapping state from preview response
-        const initialMapping = data.suggestedMapping ?? {};
-        setCurrentMapping(initialMapping);
+        setMappingByType(initialMappings);
+        setActiveMappingUploadTypeState(data.resolvedUploadType);
         setFieldHints(data.fieldHints ?? {});
-        const resolvedType = data.resolvedUploadType ?? 'dead_stock';
-        const missing = data.missingRequiredFields ?? computeMissingRequiredFields(initialMapping, resolvedType);
-        setMissingRequiredFields(missing);
-        setMappingComplete(data.mappingComplete ?? missing.length === 0);
+        applyDerivedState(initialMappings, data.resolvedUploadType);
 
         onPreviewSuccess?.(data);
         return data;
       } catch (err) {
-        if (controller.signal.aborted) return null;
-        const errorMessage = err instanceof Error ? err.message : 'プレビューに失敗しました';
-        setError(errorMessage);
+        if (controller.signal.aborted) {
+          return null;
+        }
+        setError(err instanceof Error ? err.message : 'プレビューに失敗しました');
         return null;
       } finally {
-        if (abortRef.current === controller) {
+        const isLatestController = abortRef.current === controller;
+        if (isLatestController) {
           abortRef.current = null;
         }
-        if (!controller.signal.aborted) {
+        if (externalSignal) {
+          externalSignal.removeEventListener('abort', onExternalAbort);
+        }
+        if (!controller.signal.aborted || isLatestController) {
           setLoading(false);
         }
       }
     },
-    [onPreviewSuccess],
+    [applyDerivedState, onPreviewSuccess],
   );
 
   const resolveMappingForType = useCallback(
     (selectedUploadType: UploadType): Record<string, string | null> | null => {
-      return resolveSubmittedMapping(preview, selectedUploadType);
+      if (!preview) {
+        return null;
+      }
+      const mapping = mappingByType[selectedUploadType] ?? resolveInitialMappingForType(preview, selectedUploadType);
+      const missing = computeMissingRequiredFields(mapping, selectedUploadType);
+      const duplicates = computeDuplicateAssignedFields(mapping);
+      return missing.length === 0 && duplicates.length === 0 ? mapping : null;
     },
-    [preview],
+    [mappingByType, preview],
   );
 
   const handleMappingChange = useCallback(
     (field: string, columnIndex: string | null) => {
-      setCurrentMapping((prev) => {
-        const next = { ...prev, [field]: columnIndex };
-        // Recalculate missing required fields locally
-        const uploadType = preview?.resolvedUploadType ?? 'dead_stock';
-        const missing = computeMissingRequiredFields(next, uploadType);
-        setMissingRequiredFields(missing);
-        setMappingComplete(missing.length === 0);
+      setMappingByType((prev) => {
+        const next = {
+          ...prev,
+          [activeMappingUploadType]: {
+            ...(prev[activeMappingUploadType] ?? {}),
+            [field]: columnIndex,
+          },
+        };
+        applyDerivedState(next, activeMappingUploadType);
         return next;
       });
     },
-    [preview],
+    [activeMappingUploadType, applyDerivedState],
   );
+
+  const setActiveMappingUploadType = useCallback((uploadType: UploadType) => {
+    setActiveMappingUploadTypeState(uploadType);
+    applyDerivedState(mappingByType, uploadType);
+  }, [applyDerivedState, mappingByType]);
+
+  const setPreviewState = useCallback((value: React.SetStateAction<PreviewResponse | null>) => {
+    setPreview((prev) => {
+      const next = typeof value === 'function'
+        ? (value as (current: PreviewResponse | null) => PreviewResponse | null)(prev)
+        : value;
+      if (next === null) {
+        resetDerivedState();
+      }
+      return next;
+    });
+  }, [resetDerivedState]);
 
   const reset = useCallback(() => {
     setPreview(null);
     setError('');
     setLoading(false);
-    setCurrentMapping({});
-    setMappingComplete(false);
-    setMissingRequiredFields([]);
-    setFieldHints({});
+    resetDerivedState();
     abortRef.current?.abort();
     abortRef.current = null;
-  }, []);
+  }, [resetDerivedState]);
 
   return {
     preview,
-    setPreview,
+    setPreview: setPreviewState,
     loading,
     error,
     handlePreview,
@@ -208,7 +291,9 @@ export function useUploadPreview(options: UseUploadPreviewOptions = {}): UseUplo
     currentMapping,
     mappingComplete,
     missingRequiredFields,
+    duplicateAssignedFields,
     fieldHints,
     handleMappingChange,
+    setActiveMappingUploadType,
   };
 }

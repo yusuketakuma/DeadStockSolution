@@ -97,6 +97,29 @@ describe('useMatchNotificationToast', () => {
     expect(mockShowInfo).not.toHaveBeenCalled();
   });
 
+  it('should not show toast for mirrored notification events typed as match_update', () => {
+    mockEvents = [];
+    const { rerender } = renderHook(() => useMatchNotificationToast(), { wrapper });
+    mockShowInfo.mockClear();
+
+    mockEvents = [
+      {
+        id: 'notification_match_1',
+        source: 'notification',
+        type: 'match_update',
+        title: '候補更新通知',
+        body: '通知ミラーです',
+        timestamp: '2026-04-01T02:30:00.000Z',
+        priority: 'high',
+        isRead: false,
+        actionPath: '/matching',
+      },
+    ];
+    rerender();
+
+    expect(mockShowInfo).not.toHaveBeenCalled();
+  });
+
   it('should show toast when a different unread match event replaces the previous one', () => {
     mockEvents = [
       {
@@ -130,5 +153,41 @@ describe('useMatchNotificationToast', () => {
     rerender();
 
     expect(mockShowInfo).toHaveBeenCalledWith('新しいマッチング候補が見つかりました');
+  });
+
+  it('should not show toast when an older unread match event is appended later', () => {
+    mockEvents = [
+      {
+        id: 'match_latest',
+        source: 'match',
+        type: 'match_update',
+        title: '最新候補',
+        body: '新しい候補です',
+        timestamp: '2026-04-01T05:00:00.000Z',
+        priority: 'high',
+        isRead: false,
+        actionPath: '/matching',
+      },
+    ];
+    const { rerender } = renderHook(() => useMatchNotificationToast(), { wrapper });
+    mockShowInfo.mockClear();
+
+    mockEvents = [
+      ...mockEvents,
+      {
+        id: 'match_older',
+        source: 'match',
+        type: 'match_update',
+        title: '過去候補',
+        body: '過去の未読候補です',
+        timestamp: '2026-04-01T04:00:00.000Z',
+        priority: 'high',
+        isRead: false,
+        actionPath: '/matching',
+      },
+    ];
+    rerender();
+
+    expect(mockShowInfo).not.toHaveBeenCalled();
   });
 });

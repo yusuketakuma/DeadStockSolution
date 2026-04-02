@@ -5,6 +5,7 @@ import { pharmacies, pharmacyBusinessHours, pharmacySpecialHours } from '../db/s
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { logger } from '../services/logger';
+import { invalidateBusinessHoursCacheForPharmacy } from '../services/matching/matching-data-fetcher';
 import { sendBadRequest } from './response-helpers';
 import { ApiError } from '../utils/api-error';
 import { isRecord } from '../utils/type-guards';
@@ -525,6 +526,7 @@ const updateBusinessHoursHandler: RouteHandler = withRouteErrorHandling(
       return;
     }
 
+    invalidateBusinessHoursCacheForPharmacy(pharmacyId);
     res.json({ message: '営業時間を更新しました', version: result.newVersion });
   },
 );

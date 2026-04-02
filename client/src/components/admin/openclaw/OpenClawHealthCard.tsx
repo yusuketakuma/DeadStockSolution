@@ -25,6 +25,15 @@ export default function OpenClawHealthCard({
   onIssueBootstrapToken,
   onRotateControlToken,
 }: OpenClawHealthCardProps) {
+  const handleCopyBootstrapToken = () => {
+    const writeText = navigator.clipboard?.writeText;
+    if (!bootstrapToken?.token || typeof writeText !== 'function') {
+      return;
+    }
+
+    void writeText.call(navigator.clipboard, bootstrapToken.token).catch(() => {});
+  };
+
   return (
     <AppCard className="mb-3">
       <AppCard.Header>DDS / OpenClaw ヘルス</AppCard.Header>
@@ -72,7 +81,7 @@ export default function OpenClawHealthCard({
               <button
                 type="button"
                 className="btn btn-sm btn-outline-secondary py-0 px-1"
-                onClick={() => navigator.clipboard.writeText(bootstrapToken.token)}
+                onClick={handleCopyBootstrapToken}
               >
                 コピー
               </button>

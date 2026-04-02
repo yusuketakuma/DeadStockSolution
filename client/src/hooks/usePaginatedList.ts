@@ -48,9 +48,9 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
   const responseCacheRef = useRef(new Map<number, TResponse>());
 
   const fetcherRef = useRef(fetcher);
+  const previousFetcherRef = useRef(fetcher);
   useEffect(() => {
     fetcherRef.current = fetcher;
-    responseCacheRef.current.clear();
   }, [fetcher]);
 
   const fetchPage = useCallback(async (targetPage: number, options?: { force?: boolean }) => {
@@ -111,6 +111,13 @@ export function usePaginatedList<TItem, TResponse extends PaginatedResponse<TIte
   useEffect(() => {
     void fetchPage(page);
   }, [fetchPage, page]);
+
+  useEffect(() => {
+    if (previousFetcherRef.current === fetcher) return;
+    previousFetcherRef.current = fetcher;
+    responseCacheRef.current.clear();
+    void fetchPage(page, { force: true });
+  }, [fetchPage, fetcher, page]);
 
   useEffect(() => () => {
     latestRequestIdRef.current += 1;

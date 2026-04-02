@@ -225,7 +225,7 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
     expect(Array.isArray(res.body.notices)).toBe(true);
   });
 
-  it('handles notification with referenceType=request (resolves to /)', async () => {
+  it('handles notification with referenceType=request (resolves to /requests)', async () => {
     const app = await createNotificationsApp();
 
     const notification = {
@@ -252,7 +252,7 @@ describe('notifications.ts — cursor pagination and edge cases', () => {
     expect(res.status).toBe(200);
     const notice = res.body.notices.find((n: { type: string }) => n.type === 'status_update');
     expect(notice).toBeTruthy();
-    expect(notice.actionPath).toBe('/');
+    expect(notice.actionPath).toBe('/requests');
   });
 
   it('handles proposedAt=null in buildProposalDeadlineAt (deadlineAt should be null)', async () => {

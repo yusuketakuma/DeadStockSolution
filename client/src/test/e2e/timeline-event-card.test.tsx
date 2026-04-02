@@ -77,6 +77,13 @@ describe('TimelineEventCard', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/proposals/1');
   });
 
+  it('ignores unsafe action paths', () => {
+    const event = makeEvent({ actionPath: '//evil.example/phish' });
+    render(<TimelineEventCard event={event} />);
+    fireEvent.click(screen.getByTestId('card-title'));
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   // --- 相対時間表示テスト ---
   it('shows relative time for timestamps a few minutes ago', () => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();

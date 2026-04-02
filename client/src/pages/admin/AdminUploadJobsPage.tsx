@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge, Col, Row } from 'react-bootstrap';
 import { api, buildApiUrl } from '../../api/client';
 import AppAlert from '../../components/ui/AppAlert';
@@ -221,7 +222,15 @@ export default function AdminUploadJobsPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">アップロードジョブ管理 ({formatCountJa(pagination?.total ?? 0)})</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">アップロードジョブ管理 ({formatCountJa(pagination?.total ?? 0)})</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/upload-quality" className="btn btn-outline-secondary btn-sm">アップロード品質</Link>
+          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+        </div>
+      </div>
 
       {message && <AppAlert variant="success" onClose={() => setMessage('')} dismissible>{message}</AppAlert>}
       {actionError && <AppAlert variant="danger" onClose={() => setActionError('')} dismissible>{actionError}</AppAlert>}

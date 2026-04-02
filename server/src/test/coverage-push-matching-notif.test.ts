@@ -724,7 +724,7 @@ describe('notifications.ts — internal helper functions (reimplemented for cove
       if ((referenceType === 'proposal' || referenceType === 'comment') && referenceId) {
         return `/proposals/${referenceId}`;
       }
-      if (referenceType === 'request') return '/';
+      if (referenceType === 'request') return '/requests';
       return '/';
     }
 
@@ -749,8 +749,8 @@ describe('notifications.ts — internal helper functions (reimplemented for cove
       expect(resolveNotificationActionPath('proposal', null)).toBe('/');
     });
 
-    it('returns / for request reference type', () => {
-      expect(resolveNotificationActionPath('request', null)).toBe('/');
+    it('returns /requests for request reference type', () => {
+      expect(resolveNotificationActionPath('request', null)).toBe('/requests');
     });
 
     it('returns / for null reference type', () => {

@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import AppAlert from '../../components/ui/AppAlert';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import LoadingButton from '../../components/ui/LoadingButton';
@@ -82,7 +83,15 @@ export default function AdminMonthlyReportsPage() {
 
   return (
     <PageShell>
-      <h4 className="page-title mb-3">月次レポート</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">月次レポート</h4>
+        </div>
+        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <Link to="/admin/exchanges" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+          <Link to="/admin/risk" className="btn btn-outline-secondary btn-sm">期限リスク分析</Link>
+        </div>
+      </div>
       {message && <AppAlert variant="success">{message}</AppAlert>}
       {actionError && <AppAlert variant="danger">{actionError}</AppAlert>}
       {error && (
