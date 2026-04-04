@@ -4,9 +4,9 @@ import userEvent from '@testing-library/user-event';
 import AdminUserRequestsPage from '../../pages/admin/AdminUserRequestsPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
-function jsonResponse(data: unknown): Response {
+function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
-    status: 200,
+    status,
     headers: { 'Content-Type': 'application/json' },
   });
 }
@@ -17,18 +17,21 @@ describe('AdminUserRequestsPage', () => {
   });
 
   it('keeps openclaw and log-center exits visible when no requests match', async () => {
+    const requestUrls: string[] = [];
+
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
-      if (url.includes('/api/admin/requests?page=1&limit=20')) {
+      if (url.includes('/api/admin/user-requests?page=1&limit=20')) {
+        requestUrls.push(url);
         return jsonResponse({
           data: [],
           pagination: { page: 1, totalPages: 1, total: 0 },
         });
       }
-      if (url.includes('/api/admin/admin-users')) {
+      if (url.includes('/api/admin/user-requests/assignees')) {
         return jsonResponse({ data: [] });
       }
-      return jsonResponse({});
+      return jsonResponse({ error: 'not found' }, 404);
     }));
 
     renderWithProviders(<AdminUserRequestsPage />, {
@@ -40,7 +43,10 @@ describe('AdminUserRequestsPage', () => {
       expect(screen.getByText('ユーザーリクエスト管理')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('対象の要望がありません')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(requestUrls).toContain('/api/admin/user-requests?page=1&limit=20');
+      expect(screen.getByText('対象の要望がありません')).toBeInTheDocument();
+    });
     expect(screen.getAllByRole('link', { name: 'OpenClaw連携' }).some((link) => link.getAttribute('href') === '/admin/openclaw')).toBe(true);
     expect(screen.getAllByRole('link', { name: 'ログセンター' }).some((link) => link.getAttribute('href') === '/admin/log-center')).toBe(true);
   });

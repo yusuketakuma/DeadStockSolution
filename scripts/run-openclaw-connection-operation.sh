@@ -2,11 +2,12 @@
 set -euo pipefail
 PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
 
-ROOT_DIR="/Users/yusuke/workspace/DeadStockSolution"
-RUNNER_DIR="/Users/yusuke/.openclaw/agents/dds-agent-runner"
-STATE_PATH="${RUNNER_DIR}/runtime/state.json"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="${OPENCLAW_ROOT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+RUNNER_DIR="${OPENCLAW_RUNNER_DIR:-${HOME}/.openclaw/agents/dds-agent-runner}"
+STATE_PATH="${OPENCLAW_RUNNER_STATE_PATH:-${RUNNER_DIR}/runtime/state.json}"
 BASE_URL="${1:-${OPENCLAW_PRECHECK_BASE_URL:-https://dead-stock-solution.vercel.app}}"
-LOG_ROOT="${OPENCLAW_OPS_LOG_DIR:-/Users/yusuke/.openclaw/runtime/openclaw-ops}"
+LOG_ROOT="${OPENCLAW_OPS_LOG_DIR:-${HOME}/.openclaw/runtime/openclaw-ops}"
 RUN_ID="$(date '+%Y%m%d-%H%M%S')"
 PREFLIGHT_LOG="${LOG_ROOT}/openclaw-preflight-${RUN_ID}.log"
 RUNNER_LOG="${LOG_ROOT}/openclaw-runner-${RUN_ID}.log"
@@ -18,6 +19,8 @@ REASON_JSON="/tmp/openclaw-ops-reasons-${RUN_ID}.jsonl"
 # monitoring thresholds
 AWAITING_USER_WARNING_THRESHOLD="${OPENCLAW_AWAITING_USER_WARNING_THRESHOLD:-0}"
 AWAITING_USER_CRITICAL_THRESHOLD="${OPENCLAW_AWAITING_USER_CRITICAL_THRESHOLD:-}"
+
+RUNNER_SCRIPT="${RUNNER_DIR}/scripts/run-dds-agent-runner.mjs"
 
 log() {
   printf '[openclaw-ops] %s\n' "$*"
@@ -68,8 +71,8 @@ run_preflight() {
 }
 
 run_runner_tick() {
-  if [[ ! -x "${RUNNER_DIR}/scripts/run-dds-agent-runner.mjs" ]]; then
-    log "runner script missing: ${RUNNER_DIR}/scripts/run-dds-agent-runner.mjs"
+  if [[ ! -r "${RUNNER_SCRIPT}" ]]; then
+    log "runner script missing: ${RUNNER_SCRIPT}"
     return 127
   fi
 
@@ -79,7 +82,7 @@ run_runner_tick() {
 
 run_health_check() {
   local http_code
-  http_code=$(curl -sS -o "${HEALTH_JSON}" -w '%{http_code}' "${BASE_URL%/}/api/health/openclaw" || echo 000)
+  http_code=$(curl -sS -o "${HEALTH_JSON}" -w '%{http_code}' "${BASE_URL%/}/api/health/openclaw" 2>/dev/null || echo 000)
   if [[ "${http_code}" != "200" ]]; then
     echo '{"connector":{"configured":false},"webhook":{"configured":false},"ddsAgent":{"connected":false,"awaitingUser":0,"lastSeenAt":""}}' >"${HEALTH_JSON}"
   fi
@@ -88,13 +91,8 @@ run_health_check() {
 preflight_status=0
 run_status=0
 
-if ! run_preflight; then
-  preflight_status=$?
-fi
-
-if ! run_runner_tick; then
-  run_status=$?
-fi
+run_preflight || preflight_status=$?
+run_runner_tick || run_status=$?
 
 run_health_check
 
@@ -162,6 +160,18 @@ if [[ -z "${reasons}" ]]; then
   reasons='[]'
 fi
 
+runner_state_json='{}'
+if [[ -f "${STATE_PATH}" ]]; then
+  if ! runner_state_json="$(jq -c '.' "${STATE_PATH}" 2>/dev/null)"; then
+    runner_state_json='{}'
+    append_reason warning "runner_state_invalid" "runner state JSON の解析に失敗した"
+    reasons=$(jq -s '.' "${REASON_JSON}" 2>/dev/null)
+    if [[ -z "${reasons}" ]]; then
+      reasons='[]'
+    fi
+  fi
+fi
+
 if [[ "${status_level}" == "warning" || "${status_level}" == "degraded" ]]; then
   jq -n \
     --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -214,7 +224,7 @@ jq -n \
   --arg summaryPath "${SUMMARY_PATH}" \
   --arg alertLog "${ALERT_LOG}" \
   --argjson reasons "${reasons}" \
-  --slurpfile state "${STATE_PATH}" \
+  --argjson runnerState "${runner_state_json}" \
   '{
     timestamp: $ts,
     baseUrl: $baseUrl,
@@ -238,7 +248,7 @@ jq -n \
       preflightLog: $preflightLog,
       runnerLog: $runnerLog,
       summaryPath: $summaryPath,
-      runnerState: (if $state | length > 0 then $state[0] else {} end)
+      runnerState: $runnerState
     }
   }' >"${SUMMARY_PATH}"
 
@@ -258,9 +268,9 @@ echo "runner_status=${run_status}"
 echo "status=${status_level}"
 echo "reason=${status_message}"
 
-tail -n 1 "${RUNNER_LOG}" || true
+tail -n 1 "${RUNNER_LOG}" 2>/dev/null || true
 
-tail -n 1 "${PREFLIGHT_LOG}" || true
+tail -n 1 "${PREFLIGHT_LOG}" 2>/dev/null || true
 
 if [[ "${status_level}" == "degraded" ]]; then
   exit 1

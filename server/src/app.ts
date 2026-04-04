@@ -407,7 +407,7 @@ registerApiRoute('/internal/dead-stock', internalDeadStockArchiveRoutes);
 registerApiRoute('/internal/proposals', internalProposalExpiryRoutes);
 registerApiRoute('/internal/daily-statistics', internalDailyStatisticsRoutes);
 registerApiRoute('/internal/e2e/proposal-flow', internalE2EProposalFlowRoutes);
-  registerApiRoute('/internal/drug-master-sync', internalDrugMasterSyncRoutes);
+registerApiRoute('/internal/drug-master-sync', internalDrugMasterSyncRoutes);
 
 app.use(errorHandler);
 

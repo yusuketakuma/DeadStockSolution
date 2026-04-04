@@ -26,8 +26,15 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Get raw body
-  const payload = (req as Request & { rawBody?: string }).rawBody ?? JSON.stringify(req.body);
+  // rawBody is required for valid Stripe signature verification.
+  // JSON.stringify of a parsed body may differ from the original payload bytes.
+  const rawBody = (req as Request & { rawBody?: string }).rawBody;
+  if (!rawBody && process.env.NODE_ENV === 'production') {
+    logger.error('Stripe webhook missing rawBody — route may not be registered in isRawBodyRoute()');
+    res.status(500).json({ error: 'Webhook configuration error' });
+    return;
+  }
+  const payload = rawBody ?? JSON.stringify(req.body);
 
   // Verify signature
   const verifyResult = verifyWebhookSignature(payload, signature);

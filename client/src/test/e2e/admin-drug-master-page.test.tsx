@@ -387,6 +387,88 @@ describe('AdminDrugMasterPage', () => {
     });
   });
 
+  it('resets pagination to page 1 when a filter changes', async () => {
+    const user = userEvent.setup();
+    const listRequestUrls: string[] = [];
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return jsonResponse(mockAdminUser);
+      }
+      if (url.includes('/api/timeline/bootstrap')) {
+        return jsonResponse({
+          timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null },
+          digest: { events: [] },
+          unreadCount: 0,
+        });
+      }
+      if (url.includes('/api/timeline/unread-count')) {
+        return jsonResponse({ unreadCount: 0 });
+      }
+      if (url.includes('/api/admin/drug-master/stats')) {
+        return jsonResponse({
+          totalItems: 100,
+          listedItems: 80,
+          transitionItems: 10,
+          delistedItems: 10,
+          lastSyncAt: '2026-03-24T09:00:00.000Z',
+        });
+      }
+      if (url.includes('/api/admin/drug-master/sync-logs')) {
+        return jsonResponse({ data: [] });
+      }
+      if (url.includes('/api/admin/drug-master/auto-sync/status')) {
+        return jsonResponse({
+          enabled: true,
+          sourceHost: 'mhlw.go.jp',
+          hasSourceUrl: false,
+          checkIntervalHours: 6,
+          supportsManualUrlOverride: false,
+          sourceMode: 'index',
+        });
+      }
+      if (url.includes('/api/admin/drug-master/auto-sync/packages/status')) {
+        return jsonResponse({
+          enabled: true,
+          sourceHost: 'pmda.go.jp',
+          hasSourceUrl: true,
+          checkIntervalHours: 24,
+          supportsManualUrlOverride: false,
+        });
+      }
+      if (url.includes('/api/admin/drug-master?')) {
+        listRequestUrls.push(url);
+        const page = Number(new URL(url, 'https://dead-stock-solution.test').searchParams.get('page') ?? '1');
+        return jsonResponse({
+          data: [sampleDrugMasterItem],
+          pagination: { page, limit: 100, total: 3, totalPages: 3 },
+        });
+      }
+      return jsonResponse({ error: 'Not found' }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<AdminDrugMasterPage />, {
+      authUser: mockAdminUser,
+      route: '/admin/drug-master?search=ロキソ',
+    });
+
+    await screen.findByRole('button', { name: 'ページ 2' });
+    await user.click(screen.getByRole('button', { name: 'ページ 2' }));
+
+    await waitFor(() => {
+      expect(listRequestUrls.some((url) => url.includes('page=2'))).toBe(true);
+    });
+
+    await user.selectOptions(screen.getByLabelText('ステータスで絞り込み'), 'listed');
+
+    await waitFor(() => {
+      expect(listRequestUrls.some((url) =>
+        url.includes('page=1') && url.includes('status=listed'))).toBe(true);
+    });
+  });
+
   it('runs manual sync and refreshes dependent data', async () => {
     const user = userEvent.setup();
     const syncUrls: string[] = [];

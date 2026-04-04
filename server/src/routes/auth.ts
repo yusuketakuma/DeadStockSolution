@@ -655,7 +655,10 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
 router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const includePasswordRaw = req.query.includePassword;
-    const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
+    // In production, password exposure requires explicit opt-in via env var to prevent accidental credential leakage
+    const isPasswordExposureAllowed = process.env.NODE_ENV !== 'production'
+      || process.env.EXPOSE_TEST_PHARMACY_PASSWORDS === 'true';
+    const includePassword = (includePasswordRaw === '1' || includePasswordRaw === 'true') && isPasswordExposureAllowed;
     const mode = resolveTestAccountMode(req.query.mode);
     const cacheControlValue = includePassword ? 'no-store' : 'private, max-age=60';
     const cachedEntry = testPharmacyCache[mode];

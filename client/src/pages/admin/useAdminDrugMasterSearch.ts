@@ -90,7 +90,7 @@ export function useAdminDrugMasterSearch() {
   }, [query, searchParams, setSearchParams]);
 
   useEffect(() => {
-    executeImmediate();
+    executeImmediate(undefined, 1);
   }, [categoryFilter, executeImmediate, statusFilter]);
 
   const handleRemoveToken = useCallback((token: string) => {
