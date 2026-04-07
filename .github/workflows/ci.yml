@@ -219,6 +219,18 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Start dev server and client
+        run: |
+          npm run dev:server &
+          npm run dev:client &
+
+      - name: Wait for dev server
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:5173 > /dev/null && break
+            sleep 1
+          done
+
       - name: Login and dashboard E2E
         run: npx playwright test dev/e2e/tests/login-smoke.spec.ts dev/e2e/tests/dashboard-runtime-audit.spec.ts
 
