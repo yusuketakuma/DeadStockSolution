@@ -219,20 +219,34 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Start dev server and client
+      - name: DB push and seed
         run: |
-          npm run dev:server &
-          npm run dev:client &
+          npm run db:push --workspace=server
+          npm run db:seed-playwright-accounts --workspace=server
 
-      - name: Wait for dev server
+      - name: Start server
         run: |
-          for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:5173 > /dev/null && break
-            sleep 1
-          done
+          PORT=3101 npm run dev --workspace=server &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Start client
+        run: |
+          npm run dev --workspace=client -- --host 127.0.0.1 --port 5173 &
+          echo "CLIENT_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for servers
+        run: |
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3101/api/health && break; sleep 1; done
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5173 && break; sleep 1; done
 
       - name: Login and dashboard E2E
         run: npx playwright test dev/e2e/tests/login-smoke.spec.ts dev/e2e/tests/dashboard-runtime-audit.spec.ts
+
+      - name: Stop servers
+        if: always()
+        run: |
+          kill $SERVER_PID 2>/dev/null || true
+          kill $CLIENT_PID 2>/dev/null || true
 
   verify:
     needs: [lint-typecheck, test-server, test-client, integration, proposal-flow-e2e, login-dashboard-e2e]
