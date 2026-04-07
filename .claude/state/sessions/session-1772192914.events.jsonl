@@ -1,6 +1,0 @@
-{"type":"session.start","ts":"2026-02-27T11:48:34Z","state":"initialized","data":{"cc_session_id":"671dc0b9-be8b-4292-81cf-ca475d46f062"}}
-{"id":"event-000001","type":"session.resume","ts":"2026-02-27T11:48:34Z","state":"initialized"}
-{"id":"event-000002","type":"session.resume","ts":"2026-02-27T11:56:25Z","state":"initialized"}
-{"id":"event-000003","type":"session.resume","ts":"2026-02-27T15:59:12Z","state":"initialized"}
-{"id":"event-000004","type":"tool.write","ts":"2026-02-27T15:59:36Z","state":"initialized","data":{"file_path":"/Users/yusuke/DeadStockSolution/.claude/launch.json"}}
-{"id":"event-000005","type":"session.stop","ts":"2026-02-27T15:59:53Z","state":"stopped"}
