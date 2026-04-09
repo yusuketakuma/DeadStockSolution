@@ -4,10 +4,10 @@ import { AuthRequest } from '../types';
 import { adminWriteLimiter } from './admin-write-limiter';
 import { handleAdminError } from './admin-utils';
 import {
-  getDdsConnectionStatus,
   issueDdsBootstrapToken,
   rotateDdsControlToken,
 } from '../services/dds-agent-service';
+import { getAdminDdsConnectionStatus } from '../services/openclaw/admin-runtime-status-service';
 
 const router = Router();
 
@@ -17,7 +17,7 @@ const bootstrapSchema = z.object({
 
 router.get('/openclaw/dds-agent', async (_req: AuthRequest, res: Response) => {
   try {
-    const data = await getDdsConnectionStatus();
+    const data = await getAdminDdsConnectionStatus();
     res.json({ data });
   } catch (err) {
     handleAdminError(err, 'Admin DDS agent status error', 'DDSエージェント状態の取得に失敗しました', res);

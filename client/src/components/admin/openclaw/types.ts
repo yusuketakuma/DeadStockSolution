@@ -1,4 +1,11 @@
 // OpenClaw管理画面で共有される型定義
+import type {
+  DdsRuntimeDigest,
+  DdsRuntimeBufferedError,
+  DdsRuntimeCodexResult,
+  DdsRuntimeHealthSummary,
+  DdsRuntimeReason,
+} from '@shared/openclaw-runtime';
 
 export interface UserRequestItem {
   id: number;
@@ -109,7 +116,16 @@ export interface DdsAgentStatus {
   queuedJobs: number;
   awaitingUser: number;
   latestPrUrl: string | null;
+  runtimeDigest: DdsRuntimeDigest;
 }
+
+export type {
+  DdsRuntimeDigest,
+  DdsRuntimeBufferedError,
+  DdsRuntimeCodexResult,
+  DdsRuntimeHealthSummary,
+  DdsRuntimeReason,
+};
 
 export interface BootstrapTokenResponse {
   data: {

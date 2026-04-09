@@ -4,10 +4,10 @@
   "state": "stopped",
   "state_version": 1,
   "started_at": "2026-02-28T06:10:58Z",
-  "updated_at": "2026-04-02T03:07:23Z",
+  "updated_at": "2026-04-04T10:55:44Z",
   "resume_token": "8DCC9BC2-FA6D-4F29-9510-9BA5AB250BA2",
-  "event_seq": 156,
-  "last_event_id": "event-000156",
+  "event_seq": 161,
+  "last_event_id": "event-000161",
   "fork_count": 0,
   "orchestration": {
     "max_state_retries": 3,

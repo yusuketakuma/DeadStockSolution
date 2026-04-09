@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import AdminOpenClawPage from '../../pages/admin/AdminOpenClawPage';
@@ -133,6 +134,65 @@ describe('AdminOpenClawPage - mobile layout', () => {
             queuedJobs: 1,
             awaitingUser: 0,
             latestPrUrl: null,
+            runtimeDigest: {
+              generatedAt: '2026-03-23T10:41:00.000Z',
+              latestConnection: {
+                schema: 'dss-runtime-v2',
+                source: 'dss-health-monitor',
+                runId: '20260323-104100',
+                timestamp: '2026-03-23T10:41:00.000Z',
+                baseUrl: 'https://dead-stock-solution.vercel.app',
+                preflightStatus: 0,
+                runnerStatus: 1,
+                healthHttpCode: 200,
+                status: 'degraded',
+                reason: 'execution_failed',
+                runtime: { script: 'run-openclaw-connection-operation.sh', rootDir: '/repo', runnerDir: '/runner', statePath: '/state.json', hostName: 'devbox' },
+                notifications: { telegramDmEnabled: true, telegramGroupEnabled: true, codexAutofixEnabled: false },
+                thresholds: { awaitingUserWarning: 0, awaitingUserCritical: null },
+                health: { connectorConfigured: true, webhookConfigured: true, ddsConnected: false, awaitingUser: 1, lastSeenAt: null },
+                diagnostics: { preflightLogTail: 'preflight ok', runnerLogTail: 'runner failed' },
+                alerts: { enabled: true, log: '/tmp/alerts.ndjson', reasons: [] },
+              },
+              bufferedErrors: {
+                count: 1,
+                bySeverity: { error: 1 },
+                bySource: { 'dss-ci-monitor': 1 },
+                recent: [{
+                  ts: '2026-03-23T10:40:30.000Z',
+                  schema: 'dss-runtime-v2',
+                  source: 'dss-ci-monitor',
+                  component: 'github-actions',
+                  severity: 'error',
+                  category: 'ci',
+                  event: 'ci_failure',
+                  code: 'ci_failure',
+                  msg: 'CI失敗: unit-test (main)',
+                  context: {},
+                  artifacts: {},
+                }],
+              },
+              codexResults: {
+                todayCount: 1,
+                todayByStatus: { failed: 1 },
+                recent: [{
+                  ts: '2026-03-23T10:41:00.000Z',
+                  schema: 'dss-runtime-v2',
+                  source: 'dss-health-monitor',
+                  component: 'codex-dispatch',
+                  status: 'failed',
+                  type: 'health-degraded',
+                  summary: 'codex auto-fix dispatch failed',
+                  log: '/tmp/codex.log',
+                  errorHash: 'abc',
+                  attempt: 1,
+                  maxAttempts: 3,
+                  dedupWindowSec: 7200,
+                  context: {},
+                  artifacts: {},
+                }],
+              },
+            },
           },
         });
       }
@@ -143,12 +203,13 @@ describe('AdminOpenClawPage - mobile layout', () => {
     renderWithProviders(<AdminOpenClawPage />, { authUser: mockAdminUser });
 
     await waitFor(() => {
-      expect(screen.getByText('OpenClaw連携')).toBeInTheDocument();
+      expect(screen.getByText('OpenClaw連携')).toBeTruthy();
     });
 
-    expect(screen.getByText('DDS / OpenClaw ヘルス')).toBeInTheDocument();
-    expect(screen.getByText('Retry Queue')).toBeInTheDocument();
-    expect(document.querySelector('.dl-mobile-data-list')).toBeInTheDocument();
+    expect(screen.getByText('DDS / OpenClaw ヘルス')).toBeTruthy();
+    expect(screen.getByText('DSS Runtime ログ')).toBeTruthy();
+    expect(screen.getByText('Retry Queue')).toBeTruthy();
+    expect(document.querySelector('.dl-mobile-data-list')).toBeTruthy();
     expect(screen.getAllByText('薬局A').length).toBeGreaterThan(0);
   });
 });

@@ -189,3 +189,4 @@ stats.html
 # Playwright
 playwright-report/
 test-results/
+.omx/
