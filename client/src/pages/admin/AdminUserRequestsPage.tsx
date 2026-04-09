@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Badge, Form } from 'react-bootstrap';
 import { api, buildApiUrl } from '../../api/client';
 import Pagination from '../../components/Pagination';
@@ -10,14 +10,25 @@ import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import InlineLoader from '../../components/ui/InlineLoader';
 import LoadingButton from '../../components/ui/LoadingButton';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
+import SavedViewsPanel from '../../components/ui/SavedViewsPanel';
+import WorkContextBar from '../../components/ui/WorkContextBar';
+import { useListDetailRouteState } from '../../hooks/useListDetailRouteState';
+import { useKeyboardListNavigation } from '../../hooks/useKeyboardListNavigation';
+import { useSavedViews } from '../../hooks/useSavedViews';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { useSseRefresh } from '../../hooks/useSseRefresh';
+import { useTrackRecentWork } from '../../hooks/useRecentWork';
+import { useToast } from '../../contexts/ToastContext';
 import { formatDateTimeJa } from '../../utils/formatters';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
-import { useAdminUserRequestsQueue } from './useAdminUserRequestsQueue';
+import { type AdminQueueFilter, useAdminUserRequestsQueue } from './useAdminUserRequestsQueue';
+import { getRequestSlaSummary } from '../../utils/request-sla';
+import { addStoredTemplate, loadStoredTemplates, persistStoredTemplates, removeStoredTemplate } from '../../utils/text-template-store';
 
 const LIVE_REFRESH_INTERVAL_MS = 60_000;
+const ADMIN_REQUESTS_SAVED_VIEWS_KEY = 'admin-user-requests:saved-views';
+const ADMIN_REQUESTS_REPLY_TEMPLATES_KEY = 'admin-user-requests:reply-templates';
 
 const REPLY_TEMPLATES = [
   '追加情報ありがとうございます。内容を確認して進めます。',
@@ -52,6 +63,7 @@ interface AdminUserRequestItem {
   hasUnread: boolean;
   waitingOn: 'user' | 'admin' | 'openclaw' | null;
   isOverdue: boolean;
+  latestEscalatedAt: string | null;
 }
 
 interface AdminUserRequestsResponse {
@@ -199,21 +211,60 @@ const USER_REQUEST_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
   },
 ] as const;
 
+interface AdminUserRequestSavedFilters {
+  search: string;
+  statusFilter: string;
+  categoryFilter: string;
+  priorityFilter: string;
+  waitingOnFilter: string;
+  onlyUnread: boolean;
+  queueFilter: string;
+}
+
 export default function AdminUserRequestsPage() {
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
-  const [waitingOnFilter, setWaitingOnFilter] = useState('');
-  const [onlyUnread, setOnlyUnread] = useState(false);
-  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
+  const { showSuccess } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const {
+    requestedSelectedValue: requestedRequestValue,
+    requestedPage,
+  } = useListDetailRouteState(searchParams, setSearchParams, { selectedParam: 'requestId' });
+  const requestedSearch = searchParams.get('search') ?? '';
+  const requestedStatusFilter = searchParams.get('status') ?? '';
+  const requestedCategoryFilter = searchParams.get('category') ?? '';
+  const requestedPriorityFilter = searchParams.get('priority') ?? '';
+  const requestedWaitingOnFilter = searchParams.get('waitingOn') ?? '';
+  const requestedOnlyUnread = searchParams.get('onlyUnread') === '1';
+  const requestedQueueFilter = (searchParams.get('queue') as AdminQueueFilter | null) ?? 'all';
+  const requestedRequestId = Number(requestedRequestValue ?? '');
+  const [searchInput, setSearchInput] = useState(requestedSearch);
+  const [search, setSearch] = useState(requestedSearch.trim());
+  const [statusFilter, setStatusFilter] = useState(requestedStatusFilter);
+  const [categoryFilter, setCategoryFilter] = useState(requestedCategoryFilter);
+  const [priorityFilter, setPriorityFilter] = useState(requestedPriorityFilter);
+  const [waitingOnFilter, setWaitingOnFilter] = useState(requestedWaitingOnFilter);
+  const [onlyUnread, setOnlyUnread] = useState(requestedOnlyUnread);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(
+    Number.isInteger(requestedRequestId) && requestedRequestId > 0 ? requestedRequestId : null,
+  );
   const [assignees, setAssignees] = useState<Array<{ id: number; name: string }>>([]);
   const [detail, setDetail] = useState<AdminUserRequestDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [actionError, setActionError] = useState('');
+  const [bulkPreview, setBulkPreview] = useState<null | {
+    count: number;
+    updates: string[];
+    sample: Array<{ id: number; pharmacyName: string | null; requestText: string }>;
+    diffs: Array<{
+      id: number;
+      category: { from: string | null; to: string | null };
+      priority: { from: string | null; to: string | null };
+      assignedAdminId: { from: number | null; to: number | null };
+      closeReason: { from: string | null; to: string | null };
+    }>;
+  }>(null);
   const [savingMeta, setSavingMeta] = useState(false);
   const [sendingReply, setSendingReply] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
@@ -226,6 +277,13 @@ export default function AdminUserRequestsPage() {
     assignedAdminId: '',
     closeReason: '',
   });
+  const {
+    savedViews,
+    createSavedView,
+    deleteSavedView,
+  } = useSavedViews<AdminUserRequestSavedFilters>(ADMIN_REQUESTS_SAVED_VIEWS_KEY);
+  const [savedReplyTemplates, setSavedReplyTemplates] = useState<string[]>(() =>
+    loadStoredTemplates(ADMIN_REQUESTS_REPLY_TEMPLATES_KEY));
   const filtersInitializedRef = useRef(false);
 
   const {
@@ -251,14 +309,56 @@ export default function AdminUserRequestsPage() {
       if (onlyUnread) params.set('onlyUnread', 'true');
       return api.get<AdminUserRequestsResponse>(`/admin/user-requests?${params}`, { signal });
     },
-    { errorMessage: 'ユーザーリクエストの取得に失敗しました' },
+    { errorMessage: 'ユーザーリクエストの取得に失敗しました', initialPage: requestedPage },
   );
   const {
     queueFilter,
     setQueueFilter,
     itemSummary,
     displayItems,
-  } = useAdminUserRequestsQueue(items);
+  } = useAdminUserRequestsQueue(items, requestedQueueFilter);
+  const escalatedItems = items.filter((item) => item.latestEscalatedAt).slice(0, 5);
+
+  useEffect(() => {
+    persistStoredTemplates(ADMIN_REQUESTS_REPLY_TEMPLATES_KEY, savedReplyTemplates);
+  }, [savedReplyTemplates]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (search.trim()) nextParams.set('search', search.trim());
+    else nextParams.delete('search');
+    if (statusFilter) nextParams.set('status', statusFilter);
+    else nextParams.delete('status');
+    if (categoryFilter) nextParams.set('category', categoryFilter);
+    else nextParams.delete('category');
+    if (priorityFilter) nextParams.set('priority', priorityFilter);
+    else nextParams.delete('priority');
+    if (waitingOnFilter) nextParams.set('waitingOn', waitingOnFilter);
+    else nextParams.delete('waitingOn');
+    if (onlyUnread) nextParams.set('onlyUnread', '1');
+    else nextParams.delete('onlyUnread');
+    if (queueFilter !== 'all') nextParams.set('queue', queueFilter);
+    else nextParams.delete('queue');
+    if (selectedRequestId) nextParams.set('requestId', String(selectedRequestId));
+    else nextParams.delete('requestId');
+    if (page > 1) nextParams.set('page', String(page));
+    else nextParams.delete('page');
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [
+    categoryFilter,
+    onlyUnread,
+    page,
+    priorityFilter,
+    queueFilter,
+    search,
+    searchParams,
+    selectedRequestId,
+    setSearchParams,
+    statusFilter,
+    waitingOnFilter,
+  ]);
 
   const loadRequestDetail = useCallback(async (
     requestId: number,
@@ -301,16 +401,16 @@ export default function AdminUserRequestsPage() {
   }, []);
 
   useEffect(() => {
-    if (items.length === 0) {
+    if (displayItems.length === 0) {
       setSelectedRequestId(null);
       setDetail(null);
       return;
     }
-    if (selectedRequestId && items.some((item) => item.id === selectedRequestId)) {
+    if (selectedRequestId && displayItems.some((item) => item.id === selectedRequestId)) {
       return;
     }
-    setSelectedRequestId(items[0].id);
-  }, [items, selectedRequestId]);
+    setSelectedRequestId(displayItems[0].id);
+  }, [displayItems, selectedRequestId]);
 
   useEffect(() => {
     if (!selectedRequestId) {
@@ -338,6 +438,10 @@ export default function AdminUserRequestsPage() {
     setPage(1);
   }, [categoryFilter, fetchPage, onlyUnread, page, priorityFilter, setPage, statusFilter, waitingOnFilter]);
 
+  useEffect(() => {
+    setBulkPreview(null);
+  }, [meta, selectedIds]);
+
   const refreshListAndDetail = async (options: { background?: boolean } = {}) => {
     await fetchPage(page, { force: true });
     if (selectedRequestId) {
@@ -358,6 +462,12 @@ export default function AdminUserRequestsPage() {
 
   const handleSaveMeta = async () => {
     if (!selectedRequestId) return;
+    const previousMeta = detail ? {
+      category: detail.request.category,
+      priority: detail.request.priority,
+      assignedAdminId: detail.request.assignedAdminId,
+      closeReason: detail.request.closeReason,
+    } : null;
     setSavingMeta(true);
     setActionError('');
     setActionMessage('');
@@ -369,11 +479,72 @@ export default function AdminUserRequestsPage() {
         closeReason: meta.closeReason || null,
       });
       setActionMessage('要望の管理情報を更新しました');
+      if (previousMeta) {
+        showSuccess('要望の管理情報を更新しました', {
+          actionLabel: '元に戻す',
+          onAction: async () => {
+            await api.patch(`/admin/user-requests/${selectedRequestId}`, previousMeta);
+            await refreshListAndDetail();
+          },
+          autoDismissMs: 5000,
+        });
+      }
       await refreshListAndDetail();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '要望の更新に失敗しました');
     } finally {
       setSavingMeta(false);
+    }
+  };
+
+  const handleBulkSaveMeta = async () => {
+    if (selectedIds.length === 0) return;
+    setSavingMeta(true);
+    setActionError('');
+    setActionMessage('');
+    try {
+      const result = await api.post<{ message: string }>('/admin/user-requests/bulk-update', {
+        ids: selectedIds,
+        category: meta.category,
+        priority: meta.priority,
+        assignedAdminId: meta.assignedAdminId ? Number(meta.assignedAdminId) : null,
+        closeReason: meta.closeReason || null,
+      });
+      setActionMessage(result.message);
+      setSelectedIds([]);
+      await refreshListAndDetail();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '要望の一括更新に失敗しました');
+    } finally {
+      setSavingMeta(false);
+    }
+  };
+
+  const handlePreviewBulkSaveMeta = async () => {
+    if (selectedIds.length === 0) return;
+    setActionError('');
+    try {
+      const preview = await api.post<{
+        count: number;
+        updates: string[];
+        sample: Array<{ id: number; pharmacyName: string | null; requestText: string }>;
+        diffs: Array<{
+          id: number;
+          category: { from: string | null; to: string | null };
+          priority: { from: string | null; to: string | null };
+          assignedAdminId: { from: number | null; to: number | null };
+          closeReason: { from: string | null; to: string | null };
+        }>;
+      }>('/admin/user-requests/bulk-preview', {
+        ids: selectedIds,
+        category: meta.category,
+        priority: meta.priority,
+        assignedAdminId: meta.assignedAdminId ? Number(meta.assignedAdminId) : null,
+        closeReason: meta.closeReason || null,
+      });
+      setBulkPreview(preview);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '要望の一括更新プレビューに失敗しました');
     }
   };
 
@@ -446,6 +617,83 @@ export default function AdminUserRequestsPage() {
     setReplyFiles(Array.from(event.currentTarget.files ?? []));
   };
 
+  const toggleSelectedId = (requestId: number) => {
+    setSelectedIds((prev) => (prev.includes(requestId) ? prev.filter((id) => id !== requestId) : [...prev, requestId]));
+  };
+
+  const applyMetaPreset = (preset: 'urgent_bug' | 'duplicate' | 'on_hold') => {
+    if (preset === 'urgent_bug') {
+      setMeta((prev) => ({ ...prev, category: 'bug_report', priority: 'urgent', closeReason: '' }));
+      return;
+    }
+    if (preset === 'duplicate') {
+      setMeta((prev) => ({ ...prev, closeReason: 'duplicate' }));
+      return;
+    }
+    setMeta((prev) => ({ ...prev, closeReason: 'on_hold' }));
+  };
+
+  const saveCurrentView = () => {
+    const name = window.prompt('保存ビュー名を入力してください');
+    if (!name) return;
+    createSavedView(name, {
+      search: searchInput,
+      statusFilter,
+      categoryFilter,
+      priorityFilter,
+      waitingOnFilter,
+      onlyUnread,
+      queueFilter,
+    });
+  };
+
+  const applySavedView = (filters: AdminUserRequestSavedFilters) => {
+    setSearchInput(filters.search);
+    setSearch(filters.search.trim());
+    setStatusFilter(filters.statusFilter);
+    setCategoryFilter(filters.categoryFilter);
+    setPriorityFilter(filters.priorityFilter);
+    setWaitingOnFilter(filters.waitingOnFilter);
+    setOnlyUnread(filters.onlyUnread);
+    setQueueFilter((filters.queueFilter as typeof queueFilter) ?? 'all');
+    setPage(1);
+  };
+
+  const saveCurrentReplyTemplate = () => {
+    if (!replyText.trim()) return;
+    setSavedReplyTemplates((prev) => addStoredTemplate(prev, replyText));
+  };
+
+  const recentRequestWork = useMemo(() => {
+    if (!detail?.request) return null;
+    const params = new URLSearchParams();
+    if (search.trim()) params.set('search', search.trim());
+    if (statusFilter) params.set('status', statusFilter);
+    if (categoryFilter) params.set('category', categoryFilter);
+    if (priorityFilter) params.set('priority', priorityFilter);
+    if (waitingOnFilter) params.set('waitingOn', waitingOnFilter);
+    if (onlyUnread) params.set('onlyUnread', '1');
+    if (queueFilter !== 'all') params.set('queue', queueFilter);
+    params.set('requestId', String(detail.request.id));
+    if (page > 1) params.set('page', String(page));
+    return {
+      id: `admin-request-${detail.request.id}`,
+      label: `要望 #${detail.request.id}`,
+      to: `/admin/user-requests?${params.toString()}`,
+      section: 'ユーザーリクエスト',
+      subtitle: detail.request.pharmacyName ?? detail.request.requestText,
+    };
+  }, [categoryFilter, detail, onlyUnread, page, priorityFilter, queueFilter, search, statusFilter, waitingOnFilter]);
+
+  useTrackRecentWork(recentRequestWork);
+  useKeyboardListNavigation({
+    ids: displayItems.map((item) => item.id),
+    selectedId: selectedRequestId,
+    setSelectedId: (id) => setSelectedRequestId(id),
+    onEnter: (id) => setSelectedRequestId(id),
+    searchTargetId: 'admin-user-requests-search',
+  });
+
   return (
     <PageShell>
       <div className="dl-page-header">
@@ -457,15 +705,84 @@ export default function AdminUserRequestsPage() {
           自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
         </Badge>
       </div>
+      <WorkContextBar
+        title={detail?.request ? `要望 #${detail.request.id} を処理中` : 'ユーザーリクエスト運用キュー'}
+        currentLabel={detail?.request ? (detail.request.pharmacyName ?? `薬局ID:${detail.request.pharmacyId}`) : '一覧から対象を選ぶと詳細を右ペインで処理できます'}
+        description="filter、queue、選択中案件を URL に保持するので、戻っても同じ状態から再開できます。"
+        backTo="/admin"
+        backLabel="管理ダッシュボードへ"
+        badges={[
+          { label: realtimeConnected ? '自動更新中' : 'ポーリング', bg: realtimeConnected ? 'success' : 'secondary' },
+          { label: `queue: ${queueFilter}`, bg: queueFilter === 'escalated' ? 'warning' : 'secondary', text: queueFilter === 'escalated' ? 'dark' : undefined },
+          selectedIds.length > 0 ? { label: `一括対象 ${selectedIds.length} 件`, bg: 'info', text: 'dark' } : null,
+        ]}
+        nextActions={[
+          { to: '/admin/openclaw', label: 'OpenClaw 連携', variant: 'outline-secondary' },
+          { to: '/admin/notifications', label: '通知・配信', variant: 'outline-secondary' },
+          { to: '/admin/log-center', label: 'ログセンター', variant: 'outline-secondary' },
+        ]}
+      />
       {actionMessage && <AppAlert variant="success" dismissible onClose={() => setActionMessage('')}>{actionMessage}</AppAlert>}
       {actionError && <AppAlert variant="danger" dismissible onClose={() => setActionError('')}>{actionError}</AppAlert>}
 
       <AppCard className="mb-3">
         <AppCard.Header>絞り込み</AppCard.Header>
         <AppCard.Body>
+          <SavedViewsPanel
+            description="現在の絞り込みを保存ビューとして再利用できます。"
+            savedViews={savedViews}
+            presets={[
+              {
+                key: 'request-my-turn',
+                name: '本日返答',
+                description: '管理者待ちの要望に絞ります。',
+                filters: {
+                  search: '',
+                  statusFilter: '',
+                  categoryFilter: '',
+                  priorityFilter: '',
+                  waitingOnFilter: '',
+                  onlyUnread: false,
+                  queueFilter: 'my_turn',
+                },
+              },
+              {
+                key: 'request-escalated',
+                name: '再催促対応',
+                description: '再催促キューに絞ります。',
+                filters: {
+                  search: '',
+                  statusFilter: '',
+                  categoryFilter: '',
+                  priorityFilter: '',
+                  waitingOnFilter: '',
+                  onlyUnread: false,
+                  queueFilter: 'escalated',
+                },
+              },
+              {
+                key: 'request-openclaw',
+                name: 'OpenClaw処理中',
+                description: 'OpenClaw 待ち案件に絞ります。',
+                filters: {
+                  search: '',
+                  statusFilter: '',
+                  categoryFilter: '',
+                  priorityFilter: '',
+                  waitingOnFilter: '',
+                  onlyUnread: false,
+                  queueFilter: 'openclaw',
+                },
+              },
+            ]}
+            onSave={saveCurrentView}
+            onApply={applySavedView}
+            onDelete={deleteSavedView}
+          />
           <div className="row g-2">
             <div className="col-12 col-md-4">
               <Form.Control
+                id="admin-user-requests-search"
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="要望本文で検索"
@@ -528,12 +845,69 @@ export default function AdminUserRequestsPage() {
               <button type="button" className={`btn btn-sm ${queueFilter === 'overdue' ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setQueueFilter('overdue')}>24時間超 {itemSummary.overdue}</button>
               <button type="button" className={`btn btn-sm ${queueFilter === 'unread' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setQueueFilter('unread')}>未読 {itemSummary.unread}</button>
               <button type="button" className={`btn btn-sm ${queueFilter === 'openclaw' ? 'btn-dark' : 'btn-outline-dark'}`} onClick={() => setQueueFilter('openclaw')}>OpenClaw {itemSummary.openclaw}</button>
+              <button type="button" className={`btn btn-sm ${queueFilter === 'escalated' ? 'btn-warning' : 'btn-outline-warning'}`} onClick={() => setQueueFilter('escalated')}>再催促 {itemSummary.escalated ?? 0}</button>
             </div>
           </div>
         </AppCard.Body>
       </AppCard>
 
       {error && <ErrorRetryAlert error={error} onRetry={() => void retry()} />}
+      {selectedIds.length > 0 && (
+        <AppAlert variant="warning">
+          <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <span>{selectedIds.length} 件を選択中です。現在の管理メタデータをまとめて適用できます。</span>
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setSelectedIds([])}>
+              選択をクリア
+            </button>
+          </div>
+        </AppAlert>
+      )}
+      {bulkPreview && (
+        <AppCard className="mb-3">
+          <AppCard.Header>一括更新プレビュー</AppCard.Header>
+          <AppCard.Body>
+            <div className="small text-muted mb-2">対象 {bulkPreview.count} 件 / 適用内容: {bulkPreview.updates.join(' / ') || '変更なし'}</div>
+            <div className="d-flex flex-column gap-2">
+              {bulkPreview.sample.map((item) => (
+                <div key={`bulk-preview-${item.id}`} className="border rounded p-2 small">
+                  #{item.id} {item.pharmacyName ?? '薬局名不明'} / {item.requestText}
+                </div>
+              ))}
+              {bulkPreview.diffs.map((diff) => (
+                <div key={`bulk-diff-${diff.id}`} className="border rounded p-2 small text-muted">
+                  #{diff.id}
+                  {' '}category {diff.category.from ?? '-'} {'->'} {diff.category.to ?? '-'}
+                  {' / '}priority {diff.priority.from ?? '-'} {'->'} {diff.priority.to ?? '-'}
+                  {' / '}assignee {diff.assignedAdminId.from ?? '-'} {'->'} {diff.assignedAdminId.to ?? '-'}
+                  {' / '}close {diff.closeReason.from ?? '-'} {'->'} {diff.closeReason.to ?? '-'}
+                </div>
+              ))}
+            </div>
+          </AppCard.Body>
+        </AppCard>
+      )}
+      {itemSummary.escalated > 0 && queueFilter !== 'escalated' && (
+        <AppCard className="mb-3">
+          <AppCard.Header>Escalation Queue</AppCard.Header>
+          <AppCard.Body className="d-flex flex-column gap-2">
+            {escalatedItems.map((item) => (
+              <button
+                key={`escalated-${item.id}`}
+                type="button"
+                className="btn text-start border border-warning bg-warning bg-opacity-10"
+                onClick={() => {
+                  setQueueFilter('escalated');
+                  setSelectedRequestId(item.id);
+                }}
+              >
+                <div className="fw-semibold">#{item.id} {item.pharmacyName ?? `薬局ID:${item.pharmacyId}`}</div>
+                <div className="small text-muted mt-1">{item.requestText}</div>
+                <div className="small text-warning-emphasis mt-1">再催促: {formatDateTimeJa(item.latestEscalatedAt)}</div>
+              </button>
+            ))}
+          </AppCard.Body>
+        </AppCard>
+      )}
 
       <ScrollArea>
         <AdminNavigationLinks groups={USER_REQUEST_LINK_GROUPS} />
@@ -558,30 +932,62 @@ export default function AdminUserRequestsPage() {
                   />
                 ) : (
                   <div className="d-flex flex-column gap-2">
-                    {displayItems.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`btn text-start border ${selectedRequestId === item.id ? 'border-primary bg-light' : 'border-light-subtle'}`}
-                        onClick={() => setSelectedRequestId(item.id)}
-                      >
-                        <div className="d-flex justify-content-between align-items-start gap-2">
-                          <strong>#{item.id} {item.pharmacyName ?? `薬局ID:${item.pharmacyId}`}</strong>
-                          {workflowBadge(item.workflowStatus)}
-                        </div>
-                        <div className="d-flex flex-wrap gap-1 mt-2">
-                          <Badge bg="light" text="dark">{categoryLabel(item.category)}</Badge>
-                          {priorityBadge(item.priority)}
-                          {item.hasUnread && <Badge bg="danger">未読</Badge>}
-                          {waitingBadge(item)}
-                        </div>
-                        <div className="small mt-2">{item.requestText}</div>
-                        {(item.latestSummary || item.openclawSummary) && (
-                          <div className="small text-muted mt-2">{item.latestSummary ?? item.openclawSummary}</div>
-                        )}
-                        <div className="small text-muted mt-2">{formatDateTimeJa(item.updatedAt ?? item.createdAt)}</div>
-                      </button>
-                    ))}
+                    {displayItems.map((item) => {
+                      const slaSummary = getRequestSlaSummary(item);
+
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`btn text-start border ${
+                            selectedRequestId === item.id
+                              ? 'border-primary bg-light'
+                              : item.isOverdue
+                                ? 'border-danger bg-danger bg-opacity-10'
+                                : 'border-light-subtle'
+                          }`}
+                          onClick={() => setSelectedRequestId(item.id)}
+                        >
+                          <div className="d-flex justify-content-end mb-2">
+                            <Form.Check
+                              type="checkbox"
+                              id={`admin-request-select-${item.id}`}
+                              label=""
+                              checked={selectedIds.includes(item.id)}
+                              onChange={(event) => {
+                                event.stopPropagation();
+                                toggleSelectedId(item.id);
+                              }}
+                              onClick={(event) => event.stopPropagation()}
+                            />
+                          </div>
+                          <div className="d-flex justify-content-between align-items-start gap-2">
+                            <strong>#{item.id} {item.pharmacyName ?? `薬局ID:${item.pharmacyId}`}</strong>
+                            {workflowBadge(item.workflowStatus)}
+                          </div>
+                          <div className="d-flex flex-wrap gap-1 mt-2">
+                            <Badge bg="light" text="dark">{categoryLabel(item.category)}</Badge>
+                            {priorityBadge(item.priority)}
+                            {item.hasUnread && <Badge bg="danger">未読</Badge>}
+                            {waitingBadge(item)}
+                            {item.latestEscalatedAt && <Badge bg="warning" text="dark">再催促あり</Badge>}
+                          </div>
+                          <div className="small mt-2">{item.requestText}</div>
+                          {(item.latestSummary || item.openclawSummary) && (
+                            <div className="small text-muted mt-2">{item.latestSummary ?? item.openclawSummary}</div>
+                          )}
+                          <div className="small mt-2">
+                            <span className={`badge bg-${slaSummary.tone} ${slaSummary.tone === 'warning' ? 'text-dark' : ''}`}>
+                              {slaSummary.nextActionLabel}
+                            </span>
+                            <span className="text-muted ms-2">
+                              {slaSummary.dueLabel} / {slaSummary.elapsedLabel}
+                            </span>
+                          </div>
+                          <div className="small text-muted mt-2">{formatDateTimeJa(item.updatedAt ?? item.createdAt)}</div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </AppCard.Body>
@@ -628,6 +1034,28 @@ export default function AdminUserRequestsPage() {
                   />
                 ) : (
                   <div className="d-flex flex-column gap-3">
+                    {(() => {
+                      const slaSummary = getRequestSlaSummary(detail.request);
+                      return (
+                        <div className="border rounded p-3">
+                          <div className="fw-semibold mb-2">SLA / 次アクション</div>
+                          <div className="d-flex flex-wrap gap-2 align-items-center">
+                            <Badge bg={slaSummary.tone} text={slaSummary.tone === 'warning' ? 'dark' : undefined}>
+                              {slaSummary.nextActionLabel}
+                            </Badge>
+                            <span className="small text-muted">
+                              {slaSummary.dueLabel} / {slaSummary.elapsedLabel}
+                            </span>
+                            {slaSummary.dueAt && (
+                              <span className="small text-muted">
+                                目安: {formatDateTimeJa(slaSummary.dueAt)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     <div className="border rounded p-3 bg-light">
                       <div className="d-flex flex-wrap gap-2">
                         {workflowBadge(detail.request.workflowStatus)}
@@ -644,6 +1072,43 @@ export default function AdminUserRequestsPage() {
                       {(detail.request.latestSummary || detail.request.openclawSummary) && (
                         <div className="small text-muted mt-2">{detail.request.latestSummary ?? detail.request.openclawSummary}</div>
                       )}
+                      {detail.request.latestEscalatedAt && (
+                        <div className="small text-warning-emphasis mt-2">直近再催促: {formatDateTimeJa(detail.request.latestEscalatedAt)}</div>
+                      )}
+                    </div>
+
+                    <div className="border rounded p-3">
+                      <div className="fw-semibold mb-2">トリアージ補助</div>
+                      <div className="d-flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => applyMetaPreset('urgent_bug')}
+                        >
+                          緊急不具合に寄せる
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => applyMetaPreset('duplicate')}
+                        >
+                          重複候補にする
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-warning"
+                          onClick={() => applyMetaPreset('on_hold')}
+                        >
+                          保留にする
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={() => setReplyText(REPLY_TEMPLATES[1])}
+                        >
+                          確認依頼文を入れる
+                        </button>
+                      </div>
                     </div>
 
                     <div className="border rounded p-3">
@@ -685,9 +1150,21 @@ export default function AdminUserRequestsPage() {
                         </div>
                       </div>
                       <div className="d-flex justify-content-end mt-3">
-                        <LoadingButton variant="primary" onClick={handleSaveMeta} loading={savingMeta} loadingLabel="保存中...">
-                          管理情報を保存
-                        </LoadingButton>
+                        <div className="d-flex gap-2 flex-wrap">
+                          {selectedIds.length > 0 && (
+                            <button type="button" className="btn btn-outline-secondary" onClick={() => void handlePreviewBulkSaveMeta()}>
+                              一括適用をプレビュー
+                            </button>
+                          )}
+                          {selectedIds.length > 0 && (
+                            <LoadingButton variant="outline-primary" onClick={handleBulkSaveMeta} loading={savingMeta} loadingLabel="適用中...">
+                              選択中に一括適用
+                            </LoadingButton>
+                          )}
+                          <LoadingButton variant="primary" onClick={handleSaveMeta} loading={savingMeta} loadingLabel="保存中...">
+                            管理情報を保存
+                          </LoadingButton>
+                        </div>
                       </div>
                     </div>
 
@@ -724,6 +1201,16 @@ export default function AdminUserRequestsPage() {
                             {template}
                           </button>
                         ))}
+                        {savedReplyTemplates.map((template) => (
+                          <button
+                            key={`saved-${template}`}
+                            type="button"
+                            className="btn btn-outline-primary btn-sm"
+                            onClick={() => setReplyText(template)}
+                          >
+                            {template.slice(0, 18)}{template.length > 18 ? '…' : ''}
+                          </button>
+                        ))}
                       </div>
                       <Form.Control
                         as="textarea"
@@ -742,11 +1229,40 @@ export default function AdminUserRequestsPage() {
                           {replyFiles.length > 0 && (
                             <div className="small text-muted">{replyFiles.map((file) => file.name).join(', ')}</div>
                           )}
+                          {savedReplyTemplates.length > 0 && (
+                            <div className="small text-muted">保存済みテンプレート: {savedReplyTemplates.length} 件</div>
+                          )}
                         </div>
-                        <LoadingButton variant="primary" onClick={handleReply} loading={sendingReply} loadingLabel="送信中...">
-                          管理者返信を送信
-                        </LoadingButton>
+                        <div className="d-flex gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary btn-sm"
+                            onClick={saveCurrentReplyTemplate}
+                            disabled={!replyText.trim()}
+                          >
+                            現在文面を保存
+                          </button>
+                          <LoadingButton variant="primary" onClick={handleReply} loading={sendingReply} loadingLabel="送信中...">
+                            管理者返信を送信
+                          </LoadingButton>
+                        </div>
                       </div>
+                      {savedReplyTemplates.length > 0 && (
+                        <div className="d-flex gap-2 flex-wrap mt-2">
+                          {savedReplyTemplates.map((template) => (
+                            <div key={`delete-${template}`} className="small text-muted d-flex align-items-center gap-1">
+                              <span>{template.slice(0, 24)}{template.length > 24 ? '…' : ''}</span>
+                              <button
+                                type="button"
+                                className="btn btn-link btn-sm p-0 text-danger text-decoration-none"
+                                onClick={() => setSavedReplyTemplates((prev) => removeStoredTemplate(prev, template))}
+                              >
+                                削除
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="border rounded p-3">
@@ -800,6 +1316,21 @@ export default function AdminUserRequestsPage() {
                         ))}
                       </div>
                     </div>
+
+                    {detail.events.some((event) => event.eventType === 'assignee_changed') && (
+                      <div className="border rounded p-3">
+                        <div className="fw-semibold mb-2">担当変更履歴</div>
+                        <div className="d-flex flex-column gap-2">
+                          {detail.events.filter((event) => event.eventType === 'assignee_changed').map((event) => (
+                            <div key={`assignee-${event.id}`} className="small border-bottom pb-2">
+                              <div className="fw-semibold">{event.summary ?? '担当変更'}</div>
+                              {event.note && <div>{event.note}</div>}
+                              <div className="text-muted mt-1">{formatDateTimeJa(event.createdAt)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {detail.events.length > 0 && (
                       <div className="border rounded p-3">

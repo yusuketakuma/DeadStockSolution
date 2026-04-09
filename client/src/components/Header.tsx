@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppButton from './ui/AppButton';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useTimeline } from '../contexts/TimelineContext';
 import AppUpdatesPopover from './header/AppUpdatesPopover';
+import QuickJumpPalette, { type QuickJumpItem } from './header/QuickJumpPalette';
 import NotificationDropdown from './header/NotificationDropdown';
 import { sanitizeInternalPath } from '../utils/navigation';
 import { APP_VERSION } from '../constants/appVersion';
+import { ROUTE_META } from '../routes/route-config';
+import { useRecentWorkList } from '../hooks/useRecentWork';
 
 interface Props {
   onToggleSidebar: () => void;
@@ -34,6 +37,27 @@ export interface GitHubUpdatesResponse {
   stale: boolean;
   fetchedAt: string;
   items: GitHubUpdateItem[];
+}
+
+interface HeaderQuickJumpProposal {
+  id: number;
+  pharmacyAName: string;
+  pharmacyBName: string;
+  status: string;
+}
+
+interface HeaderQuickJumpAdminRequest {
+  id: number;
+  pharmacyName: string | null;
+  requestText: string;
+  workflowStatus: string | null;
+}
+
+interface HeaderQuickJumpOpenClawRequest {
+  id: number;
+  pharmacyName: string;
+  requestText: string;
+  workflowStatus: string | null;
 }
 
 const PATH_TRACK_CURRENT_KEY = 'dss.currentPath';
@@ -194,6 +218,10 @@ export default function Header({ onToggleSidebar }: Props) {
   const [updatesData, setUpdatesData] = useState<GitHubUpdatesResponse | null>(null);
   const [updatesHistoryOpen, setUpdatesHistoryOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [quickJumpOpen, setQuickJumpOpen] = useState(false);
+  const [quickJumpCases, setQuickJumpCases] = useState<QuickJumpItem[]>([]);
+  const [quickJumpCasesLoading, setQuickJumpCasesLoading] = useState(false);
+  const recentWork = useRecentWorkList(6);
 
   useEffect(() => {
     const nextPath = `${location.pathname}${location.search}${location.hash}`;
@@ -222,6 +250,37 @@ export default function Header({ onToggleSidebar }: Props) {
       .slice(0, 2);
   }, [location.pathname, user?.isAdmin]);
 
+  const quickJumpRoutes = useMemo<QuickJumpItem[]>(() => ROUTE_META
+    .filter((route) => route.access === 'protected')
+    .filter((route) => route.useLayout !== false)
+    .filter((route) => typeof route.title === 'string' && route.title.length > 0)
+    .filter((route) => !route.path.includes(':'))
+    .filter((route) => {
+      if (route.adminOnly) return Boolean(user?.isAdmin);
+      if (route.userOnly) return !user?.isAdmin;
+      return true;
+    })
+    .map((route) => ({
+      id: `route-${route.path}`,
+      label: route.title ?? route.path,
+      to: route.path,
+      section: route.adminOnly ? '管理画面' : '通常画面',
+      subtitle: route.parent ? `親: ${route.parent}` : undefined,
+    }))
+    .filter((route) => route.to !== location.pathname)
+    .slice(0, 24), [location.pathname, user?.isAdmin]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setQuickJumpOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const loadGitHubUpdates = async () => {
     setUpdatesLoading(true);
     setUpdatesError('');
@@ -234,6 +293,65 @@ export default function Header({ onToggleSidebar }: Props) {
       setUpdatesLoading(false);
     }
   };
+
+  const loadQuickJumpCases = useCallback(async () => {
+    setQuickJumpCasesLoading(true);
+    try {
+      if (user?.isAdmin) {
+        const [requests, openclawRequests] = await Promise.all([
+          api.get<{ data: HeaderQuickJumpAdminRequest[] }>('/admin/user-requests?page=1&limit=10'),
+          api.get<{ data: HeaderQuickJumpOpenClawRequest[] }>('/admin/requests?page=1&limit=10'),
+        ]);
+        setQuickJumpCases([
+          ...requests.data.map((item) => ({
+            id: `admin-request-${item.id}`,
+            label: `要望 #${item.id}`,
+            to: `/admin/user-requests?requestId=${item.id}`,
+            section: 'ユーザーリクエスト',
+            subtitle: item.pharmacyName ?? item.requestText,
+          })),
+          ...openclawRequests.data.map((item) => ({
+            id: `openclaw-request-${item.id}`,
+            label: `OpenClaw #${item.id}`,
+            to: `/admin/openclaw?requestId=${item.id}`,
+            section: 'OpenClaw',
+            subtitle: item.pharmacyName || item.requestText,
+          })),
+        ]);
+        return;
+      }
+
+      const [proposals, notices] = await Promise.all([
+        api.get<{ data: HeaderQuickJumpProposal[] }>('/exchange/proposals?page=1&sort=priority'),
+        api.get<{ notices: Array<{ id: string; title: string; actionPath: string; type: string }> }>('/notifications?limit=10'),
+      ]);
+      setQuickJumpCases([
+        ...proposals.data.map((proposal) => ({
+          id: `proposal-${proposal.id}`,
+          label: `提案 #${proposal.id}`,
+          to: `/proposals/${proposal.id}`,
+          section: '提案',
+          subtitle: `${proposal.pharmacyAName} ↔ ${proposal.pharmacyBName} / ${proposal.status}`,
+        })),
+        ...notices.notices.map((notice) => ({
+          id: `notice-${notice.id}`,
+          label: notice.title,
+          to: sanitizeInternalPath(notice.actionPath, '/notifications'),
+          section: '通知',
+          subtitle: notice.type,
+        })),
+      ]);
+    } catch {
+      setQuickJumpCases([]);
+    } finally {
+      setQuickJumpCasesLoading(false);
+    }
+  }, [user?.isAdmin]);
+
+  useEffect(() => {
+    if (!quickJumpOpen) return;
+    void loadQuickJumpCases();
+  }, [loadQuickJumpCases, quickJumpOpen]);
 
   const handleUpdatesPopoverToggle = (nextOpen: boolean) => {
     setUpdatesPopoverOpen(nextOpen);
@@ -308,6 +426,14 @@ export default function Header({ onToggleSidebar }: Props) {
               前回の画面へ戻る
             </Link>
           )}
+          <AppButton
+            type="button"
+            variant="outline-light"
+            size="sm"
+            onClick={() => setQuickJumpOpen(true)}
+          >
+            クイックジャンプ
+          </AppButton>
           {!user?.isAdmin && (
             <NotificationDropdown
               events={events}
@@ -331,13 +457,27 @@ export default function Header({ onToggleSidebar }: Props) {
             前回の画面へ戻る
           </Link>
         )}
+        <button
+          type="button"
+          className="app-header-quick-link"
+          onClick={() => setQuickJumpOpen(true)}
+        >
+          クイックジャンプ
+        </button>
         {quickActions.map((action) => (
           <Link key={`mobile-${action.to}`} to={action.to} className="app-header-quick-link">
             {action.label}
           </Link>
         ))}
       </div>
-
+      <QuickJumpPalette
+        show={quickJumpOpen}
+        onHide={() => setQuickJumpOpen(false)}
+        routes={quickJumpRoutes}
+        recentWork={recentWork}
+        cases={quickJumpCases}
+        loadingCases={quickJumpCasesLoading}
+      />
     </header>
   );
 }

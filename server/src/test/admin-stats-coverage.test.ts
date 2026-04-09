@@ -133,7 +133,8 @@ describe('admin-stats routes', () => {
         .mockReturnValueOnce(createSelectChain([{ count: 3 }]))   // failedUploadJobs
         .mockReturnValueOnce(createSelectChain([{ count: 1 }]))   // stalledUploadJobs
         .mockReturnValueOnce(createSelectChain([{ count: 5 }]))   // unreadNotifications
-        .mockReturnValueOnce(createSelectChain([{ count: 4 }]));  // pendingProposals
+        .mockReturnValueOnce(createSelectChain([{ count: 4 }]))   // pendingProposals
+        .mockReturnValueOnce(createSelectChain([{ count: 2 }]));  // escalatedRequests
 
       const app = createApp();
       const res = await request(app).get('/api/admin/alerts');
@@ -143,6 +144,7 @@ describe('admin-stats routes', () => {
       expect(res.body.stalledUploadJobs24h).toBe(1);
       expect(res.body.unreadNotifications).toBe(5);
       expect(res.body.pendingProposalActions24h).toBe(4);
+      expect(res.body.escalatedRequests24h).toBe(2);
     });
 
     it('returns 500 on db error', async () => {

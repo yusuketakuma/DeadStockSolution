@@ -7,6 +7,7 @@ import AppCard from '../ui/AppCard';
 import AppMobileDataCard from '../ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../ui/AppResponsiveSwitch';
 import AppTable from '../ui/AppTable';
+import AppDropdownMenu from '../ui/AppDropdownMenu';
 import BusinessStatusBadge from '../BusinessStatusBadge';
 import LoadingButton from '../ui/LoadingButton';
 import PullToRefresh from '../gesture/PullToRefresh';
@@ -90,6 +91,8 @@ function MatchItemsTable({ items, keyPrefix }: MatchItemsTableProps) {
 interface MatchCandidateCardProps {
   candidate: MatchCandidate;
   expanded: boolean;
+  compareSelected: boolean;
+  compareDisabled: boolean;
   groupPharmacyIds: Set<number>;
   proposalSubmitting: boolean;
   bookmarkMap: Map<string, number>;
@@ -97,12 +100,15 @@ interface MatchCandidateCardProps {
   onToggleExpanded: () => void;
   onDismiss: () => void;
   onOpenProposal: () => void;
+  onToggleCompare: () => void;
   onToggleBookmark: (candidate: MatchCandidate, drugCode: string) => Promise<void> | void;
 }
 
 function MatchCandidateCard({
   candidate,
   expanded,
+  compareSelected,
+  compareDisabled,
   groupPharmacyIds,
   proposalSubmitting,
   bookmarkMap,
@@ -110,8 +116,29 @@ function MatchCandidateCard({
   onToggleExpanded,
   onDismiss,
   onOpenProposal,
+  onToggleCompare,
   onToggleBookmark,
 }: MatchCandidateCardProps) {
+  const bookmarkItems = candidate.itemsFromA.concat(candidate.itemsFromB)
+    .map((item) => {
+      const bookmarkCode = item.drugCode?.trim();
+      if (!bookmarkCode) return null;
+      const key = `${candidate.pharmacyId}:${bookmarkCode}`;
+      const isBookmarked = bookmarkMap.has(key);
+      const isPending = bookmarkPending.has(key);
+      return {
+        key,
+        label: `${isBookmarked ? '★' : '☆'} ${item.drugName}`,
+        onClick: () => {
+          if (!isPending) {
+            void onToggleBookmark(candidate, bookmarkCode);
+          }
+        },
+        disabled: isPending,
+      };
+    })
+    .filter((item): item is { key: string; label: string; onClick: () => void; disabled: boolean } => item !== null);
+
   return (
     <SwipeableListItem
       onSwipeLeft={onDismiss}
@@ -133,6 +160,7 @@ function MatchCandidateCard({
             <span>
               <strong>{candidate.pharmacyName}</strong>
               {candidate.isFavorite && <Badge bg="warning" text="dark" className="ms-2">お気に入り</Badge>}
+              {compareSelected && <Badge bg="primary" className="ms-2">比較中</Badge>}
               {groupPharmacyIds.has(candidate.pharmacyId) && <Badge bg="success" className="ms-2">グループ</Badge>}
               {candidate.matchType === 'equivalent' && <Badge bg="info" className="ms-2">同等品</Badge>}
               {candidate.matchType === 'exact' && <Badge bg="success" className="ms-2">同一薬剤</Badge>}
@@ -241,46 +269,82 @@ function MatchCandidateCard({
               </AppCard.Body>
             </AppCard>
 
-            <div className="d-flex gap-2 mobile-stack flex-wrap">
-              <LoadingButton variant="success" onClick={onOpenProposal} loading={proposalSubmitting} loadingLabel="提案中...">
-                仮マッチングする
-              </LoadingButton>
-              <AppButton
-                as="a"
-                href={buildMessagesPath({
-                  pharmacyId: candidate.pharmacyId,
-                  pharmacyName: candidate.pharmacyName,
-                  draft: buildCandidateMessageDraft(candidate),
-                  context: 'matching',
-                })}
-                variant="outline-primary"
-              >
-                メッセージを開く
-              </AppButton>
-              {candidate.itemsFromA.concat(candidate.itemsFromB).map((item) => {
-                const bookmarkCode = item.drugCode?.trim();
-                if (!bookmarkCode) {
-                  return null;
-                }
-                const key = `${candidate.pharmacyId}:${bookmarkCode}`;
-                const isBookmarked = bookmarkMap.has(key);
-                const isPending = bookmarkPending.has(key);
-                return (
-                  <LoadingButton
-                    key={key}
-                    variant={isBookmarked ? 'warning' : 'outline-secondary'}
-                    size="sm"
-                    loading={isPending}
-                    loadingLabel="..."
-                    onClick={() => void onToggleBookmark(candidate, bookmarkCode)}
-                    title={isBookmarked ? 'ブックマーク解除' : 'ブックマーク'}
-                    aria-label={`${item.drugName} を${isBookmarked ? 'ブックマーク解除' : 'ブックマーク'}`}
-                  >
-                    {isBookmarked ? '\u2605' : '\u2606'} {item.drugName}
+            <AppResponsiveSwitch
+              desktop={() => (
+                <div className="d-flex gap-2 mobile-stack flex-wrap">
+                  <LoadingButton variant="success" onClick={onOpenProposal} loading={proposalSubmitting} loadingLabel="提案中...">
+                    仮マッチングする
                   </LoadingButton>
-                );
-              })}
-            </div>
+                  <AppButton
+                    as="a"
+                    href={buildMessagesPath({
+                      pharmacyId: candidate.pharmacyId,
+                      pharmacyName: candidate.pharmacyName,
+                      draft: buildCandidateMessageDraft(candidate),
+                      context: 'matching',
+                    })}
+                    variant="outline-primary"
+                  >
+                    メッセージを開く
+                  </AppButton>
+                  <AppButton
+                    type="button"
+                    variant={compareSelected ? 'primary' : 'outline-secondary'}
+                    disabled={compareDisabled}
+                    onClick={onToggleCompare}
+                  >
+                    {compareSelected ? '比較から外す' : '比較に追加'}
+                  </AppButton>
+                  {bookmarkItems.map((item) => (
+                    <LoadingButton
+                      key={item.key}
+                      variant={item.label.startsWith('★') ? 'warning' : 'outline-secondary'}
+                      size="sm"
+                      loading={item.disabled}
+                      loadingLabel="..."
+                      onClick={item.onClick}
+                    >
+                      {item.label}
+                    </LoadingButton>
+                  ))}
+                </div>
+              )}
+              mobile={() => (
+                <div className="d-flex gap-2 flex-wrap">
+                  <LoadingButton variant="success" onClick={onOpenProposal} loading={proposalSubmitting} loadingLabel="提案中..." className="flex-grow-1">
+                    仮マッチングする
+                  </LoadingButton>
+                  <AppDropdownMenu
+                    label="その他"
+                    items={[
+                      {
+                        key: 'message',
+                        label: 'メッセージを開く',
+                        href: buildMessagesPath({
+                          pharmacyId: candidate.pharmacyId,
+                          pharmacyName: candidate.pharmacyName,
+                          draft: buildCandidateMessageDraft(candidate),
+                          context: 'matching',
+                        }),
+                      },
+                      {
+                        key: 'compare',
+                        label: compareSelected ? '比較から外す' : '比較に追加',
+                        onClick: onToggleCompare,
+                        disabled: compareDisabled,
+                      },
+                      {
+                        key: 'dismiss',
+                        label: '候補から外す',
+                        onClick: onDismiss,
+                        danger: true,
+                      },
+                      ...bookmarkItems,
+                    ]}
+                  />
+                </div>
+              )}
+            />
           </AppCard.Body>
         )}
       </AppCard>
@@ -298,12 +362,14 @@ interface MatchingResultsListProps {
   requestedTargetPharmacyId: number | null;
   groupPharmacyIds: Set<number>;
   expandedIdx: number | null;
+  comparePharmacyIds: number[];
   proposalSubmitting: boolean;
   bookmarkMap: Map<string, number>;
   bookmarkPending: Set<string>;
   onToggleExpanded: (idx: number) => void;
-  onDismissCandidate: (pharmacyId: number) => void;
+  onDismissCandidate: (candidate: MatchCandidate) => void;
   onOpenProposal: (candidate: MatchCandidate) => void;
+  onToggleCompareCandidate: (candidate: MatchCandidate) => void;
   onToggleBookmark: (candidate: MatchCandidate, drugCode: string) => Promise<void> | void;
   onRefresh: () => Promise<void>;
   onShowAllCandidates: () => void;
@@ -319,12 +385,14 @@ export default function MatchingResultsList({
   requestedTargetPharmacyId,
   groupPharmacyIds,
   expandedIdx,
+  comparePharmacyIds,
   proposalSubmitting,
   bookmarkMap,
   bookmarkPending,
   onToggleExpanded,
   onDismissCandidate,
   onOpenProposal,
+  onToggleCompareCandidate,
   onToggleBookmark,
   onRefresh,
   onShowAllCandidates,
@@ -356,13 +424,16 @@ export default function MatchingResultsList({
             key={`candidate-${candidate.pharmacyId}`}
             candidate={candidate}
             expanded={expandedIdx === idx}
+            compareSelected={comparePharmacyIds.includes(candidate.pharmacyId)}
+            compareDisabled={comparePharmacyIds.length >= 2 && !comparePharmacyIds.includes(candidate.pharmacyId)}
             groupPharmacyIds={groupPharmacyIds}
             proposalSubmitting={proposalSubmitting}
             bookmarkMap={bookmarkMap}
             bookmarkPending={bookmarkPending}
             onToggleExpanded={() => onToggleExpanded(idx)}
-            onDismiss={() => onDismissCandidate(candidate.pharmacyId)}
+            onDismiss={() => onDismissCandidate(candidate)}
             onOpenProposal={() => onOpenProposal(candidate)}
+            onToggleCompare={() => onToggleCompareCandidate(candidate)}
             onToggleBookmark={onToggleBookmark}
           />
         ))}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { api } from '../../api/client';
 import { useSseRefresh } from '../../hooks/useSseRefresh';
 import { useOpenClawRequestState, type OpenClawWorkflowFilter } from './useOpenClawRequestState';
 import { useOpenClawRuntimeState, type OpenClawRetryFilter } from './useOpenClawRuntimeState';
@@ -12,6 +13,7 @@ export function useAdminOpenClawData() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [notConfigured, setNotConfigured] = useState(false);
+  const [runbookLogs, setRunbookLogs] = useState<Array<{ id: number; action: string; status: string; detail: string | null; resultSummary?: string | null; createdAt: string | null; adminId?: number | null; adminName?: string | null }>>([]);
 
   const requestState = useOpenClawRequestState({
     statusFilter,
@@ -43,7 +45,29 @@ export function useAdminOpenClawData() {
     void fetchRequests();
     void fetchRetryQueue();
     void fetchHealth();
+    void api.get<{ data: Array<{ id: number; action: string; status: string; detail: string | null; resultSummary?: string | null; createdAt: string | null; adminId?: number | null; adminName?: string | null }> }>('/admin/openclaw/runbook-logs')
+      .then((response) => setRunbookLogs(response.data))
+      .catch(() => {
+        // noop
+      });
   }, [fetchHealth, fetchRequests, fetchRetryQueue]);
+
+  const appendRunbookLog = async (action: string, detail?: string, status = 'success', resultSummary?: string) => {
+    const response = await api.post<{ data: { id: number; action: string; status: string; detail: string | null; resultSummary?: string | null; createdAt: string | null } }>('/admin/openclaw/runbook-logs', {
+      action,
+      detail: detail ?? null,
+      status,
+      resultSummary: resultSummary ?? null,
+    });
+    setRunbookLogs((prev) => [response.data, ...prev].slice(0, 20));
+    return response.data;
+  };
+
+  const updateRunbookLog = async (id: number, patch: { status?: string; detail?: string; resultSummary?: string }) => {
+    const response = await api.put<{ data: { id: number; action: string; status: string; detail: string | null; resultSummary?: string | null; createdAt: string | null } }>(`/admin/openclaw/runbook-logs/${id}`, patch);
+    setRunbookLogs((prev) => prev.map((entry) => (entry.id === id ? { ...entry, ...response.data } : entry)));
+    return response.data;
+  };
 
   useSseRefresh({
     enabled: true,
@@ -53,6 +77,8 @@ export function useAdminOpenClawData() {
       await fetchRequests({ background: true });
       await fetchRetryQueue({ background: true });
       await fetchHealth({ background: true });
+      const logs = await api.get<{ data: Array<{ id: number; action: string; status: string; detail: string | null; resultSummary?: string | null; createdAt: string | null; adminId?: number | null; adminName?: string | null }> }>('/admin/openclaw/runbook-logs').catch(() => null);
+      if (logs) setRunbookLogs(logs.data);
       if (selectedRequestId) {
         await fetchThread(selectedRequestId, { background: true });
         await fetchEvents(selectedRequestId, { background: true });
@@ -92,10 +118,13 @@ export function useAdminOpenClawData() {
     error,
     setError,
     notConfigured,
+    runbookLogs,
     handoffingRequestId: requestState.handoffingRequestId,
     setSelectedRequestId: requestState.setSelectedRequestId,
     handleRetryHandoff: requestState.handleRetryHandoff,
     handleIssueBootstrapToken: runtimeState.handleIssueBootstrapToken,
     handleRotateControlToken: runtimeState.handleRotateControlToken,
+    appendRunbookLog,
+    updateRunbookLog,
   };
 }

@@ -12,6 +12,7 @@ import DashboardTimeline from '../components/timeline/DashboardTimeline';
 import DashboardNextAction from '../components/dashboard/DashboardNextAction';
 import OnboardingGuide from '../components/onboarding/OnboardingGuide';
 import { useOnboardingVisibility } from '../hooks/useOnboardingVisibility';
+import { useRecentWorkList } from '../hooks/useRecentWork';
 import type { TimelineEvent } from '../types/timeline';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { sanitizeInternalPath } from '../utils/navigation';
@@ -114,6 +115,7 @@ function ChartFallback({ text }: { text: string }) {
 export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const recentWork = useRecentWorkList(5);
   const {
     events, total, hasMore, loading: timelineLoading, error: timelineError,
     digestEvents, digestLoading,
@@ -233,6 +235,18 @@ export default function DashboardPage() {
       </div>
 
       <DashboardNextAction nextAction={nextAction} />
+
+      {recentWork.length > 0 && (
+        <AppDataPanel title="作業再開" className="mb-2">
+          <div className="d-flex gap-2 flex-wrap">
+            {recentWork.map((item) => (
+              <Link key={item.id} to={item.to} className="btn btn-outline-secondary btn-sm">
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </AppDataPanel>
+      )}
 
       <AppDataPanel title="機能ショートカット" className="mb-2">
         <Row className="g-3">

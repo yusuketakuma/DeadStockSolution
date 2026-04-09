@@ -85,6 +85,7 @@ export interface MatchCandidate {
   businessStatus?: BusinessHoursStatus;
   isFavorite?: boolean;
   matchType?: 'exact' | 'equivalent'; // 同一薬剤 or 同等品マッチング
+  dismissPenalty?: number;
 }
 
 export interface MatchPriorityBreakdown {

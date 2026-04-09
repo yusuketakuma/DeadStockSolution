@@ -65,6 +65,7 @@ describe('AdminDashboardPage', () => {
           stalledUploadJobs24h: 0,
           unreadNotifications: 0,
           pendingProposalActions24h: 0,
+          escalatedRequests24h: 0,
         });
       }
       if (url.includes('/api/admin/kpis?minutes=60')) {
@@ -121,6 +122,40 @@ describe('AdminDashboardPage', () => {
             },
           ],
           total: 1,
+        });
+      }
+      if (url.includes('/api/admin/dashboard-trends')) {
+        return jsonResponse({
+          current: {
+            totalUploads: 33,
+            totalExchanges: 7,
+            unreadNotifications: 0,
+            failedUploadJobs24h: 0,
+            pendingProposalActions24h: 0,
+            escalatedRequests24h: 0,
+          },
+          previous: {
+            totalUploads: 30,
+            totalExchanges: 6,
+            unreadNotifications: 1,
+            failedUploadJobs24h: 1,
+            pendingProposalActions24h: 2,
+            escalatedRequests24h: 1,
+            createdAt: '2026-03-28T10:00:00.000Z',
+          },
+          average: {
+            totalUploads: 28,
+            totalExchanges: 5,
+            unreadNotifications: 1,
+            failedUploadJobs24h: 1,
+            pendingProposalActions24h: 2,
+            escalatedRequests24h: 0,
+          },
+          spikes: {
+            failedUploadJobs24h: false,
+            pendingProposalActions24h: false,
+            unreadNotifications: false,
+          },
         });
       }
       if (url.includes('/api/health/openclaw')) {

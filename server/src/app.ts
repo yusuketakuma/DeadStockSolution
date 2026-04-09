@@ -38,6 +38,7 @@ import internalPredictiveAlertsRoutes from './routes/internal-predictive-alerts'
 import internalVercelDeployEventsRoutes from './routes/internal-vercel-deploy-events';
 import internalDeadStockArchiveRoutes from './routes/internal-dead-stock-archive';
 import internalProposalExpiryRoutes from './routes/internal-proposal-expiry';
+import internalAdminDashboardSnapshotRoutes from './routes/internal-admin-dashboard-snapshot';
 import internalDailyStatisticsRoutes from './routes/internal-daily-statistics';
 import internalE2EProposalFlowRoutes from './routes/internal-e2e-proposal-flow';
 import internalDrugMasterSyncRoutes from './routes/internal-drug-master-sync';
@@ -405,6 +406,7 @@ registerApiRoute('/internal/predictive-alerts', internalPredictiveAlertsRoutes);
 registerApiRoute('/internal/vercel', internalVercelDeployEventsRoutes);
 registerApiRoute('/internal/dead-stock', internalDeadStockArchiveRoutes);
 registerApiRoute('/internal/proposals', internalProposalExpiryRoutes);
+registerApiRoute('/internal/admin-dashboard', internalAdminDashboardSnapshotRoutes);
 registerApiRoute('/internal/daily-statistics', internalDailyStatisticsRoutes);
 registerApiRoute('/internal/e2e/proposal-flow', internalE2EProposalFlowRoutes);
 registerApiRoute('/internal/drug-master-sync', internalDrugMasterSyncRoutes);

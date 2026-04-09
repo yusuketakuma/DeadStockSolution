@@ -1,16 +1,15 @@
 import { Router, Response } from 'express';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
-  pharmacies,
-  uploadJobs,
-  exchangeProposals,
-  exchangeProposalItems,
-  notifications,
-  events,
+  adminDashboardSnapshots,
 } from '../db/schema';
 import { AuthRequest } from '../types';
-import { rowCount } from '../utils/db-utils';
+import {
+  createAdminDashboardSnapshot,
+  fetchAdminAlertSnapshot,
+  fetchAdminStatsSnapshot,
+} from '../services/admin-dashboard-snapshot-service';
 import { getObservabilitySnapshot } from '../services/observability-service';
 import { getMonitoringKpiSnapshot } from '../services/monitoring-kpi-service';
 import { getLogPushStats } from '../services/openclaw/log-push-service';
@@ -23,102 +22,67 @@ function parseRequestedMinutes(rawValue: unknown, fallback = 60): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-async function fetchAdminStatsSnapshot() {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+router.get('/dashboard-trends', async (_req: AuthRequest, res: Response) => {
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const [statsSnapshot, alertSnapshot, latestRows] = await Promise.all([
+      fetchAdminStatsSnapshot(),
+      fetchAdminAlertSnapshot(since),
+      db.select()
+        .from(adminDashboardSnapshots)
+        .orderBy(sql`${adminDashboardSnapshots.createdAt} desc`)
+        .limit(8),
+    ]);
 
-  const [
-    [pharmacyCount],
-    [activePharmacyCount],
-    [uploadCount],
-    [proposalCount],
-    [historyCount],
-    [pickupCount],
-    [exchangeAmount],
-    [activePharmacies30d],
-    [monthlyExchangeValue],
-  ] = await Promise.all([
-    db.select({ count: rowCount }).from(pharmacies),
-    db.select({ count: rowCount })
-      .from(pharmacies)
-      .where(eq(pharmacies.isActive, true)),
-    db.select({ count: rowCount }).from(uploadJobs),
-    db.select({ count: rowCount }).from(exchangeProposals),
-    db.select({ count: rowCount }).from(exchangeProposals).where(eq(exchangeProposals.status, 'completed')),
-    db.select({ count: rowCount })
-      .from(exchangeProposalItems)
-      .innerJoin(exchangeProposals, eq(exchangeProposalItems.proposalId, exchangeProposals.id))
-      .where(eq(exchangeProposals.status, 'completed')),
-    db.select({
-      total: sql<number>`coalesce(sum(${exchangeProposals.completedTotalValue}), 0)`,
-    }).from(exchangeProposals).where(eq(exchangeProposals.status, 'completed')),
-    db.select({
-      count: sql<number>`count(distinct ${events.pharmacyId})::int`,
-    }).from(events).where(
-      and(
-        sql`${events.action} IN ('login', 'admin_login')`,
-        gte(events.createdAt, thirtyDaysAgo),
-      ),
-    ),
-    db.select({
-      total: sql<number>`coalesce(sum(${exchangeProposals.completedTotalValue}), 0)`,
-    }).from(exchangeProposals).where(
-      and(
-        eq(exchangeProposals.status, 'completed'),
-        gte(exchangeProposals.completedAt, monthStart),
-      ),
-    ),
-  ]);
+    const current = {
+      totalUploads: statsSnapshot.uploadCount,
+      totalExchanges: statsSnapshot.historyCount,
+      unreadNotifications: alertSnapshot.unreadNotifications,
+      failedUploadJobs24h: alertSnapshot.failedUploadJobs24h,
+      pendingProposalActions24h: alertSnapshot.pendingProposalActions24h,
+      escalatedRequests24h: alertSnapshot.escalatedRequests24h ?? 0,
+    };
 
-  const totalPharmacies = pharmacyCount.count;
-  const activeRate30d = totalPharmacies > 0 ? activePharmacies30d.count / totalPharmacies : 0;
-  const proposalCompletionRate = proposalCount.count > 0 ? historyCount.count / proposalCount.count : 0;
+    const latest = latestRows[0] ?? null;
+    const previous = latestRows[1] ?? latestRows[0] ?? null;
+    const latestAgeMs = latest?.createdAt ? Date.now() - Date.parse(latest.createdAt) : Number.POSITIVE_INFINITY;
 
-  return {
-    pharmacyCount: totalPharmacies,
-    activePharmacyCount: activePharmacyCount.count,
-    uploadCount: uploadCount.count,
-    proposalCount: proposalCount.count,
-    historyCount: historyCount.count,
-    pickupCount: pickupCount.count,
-    exchangeAmount: Number(exchangeAmount.total ?? 0),
-    activeRate30d,
-    proposalCompletionRate,
-    monthlyExchangeValue: Number(monthlyExchangeValue.total ?? 0),
-  };
-}
+    if (!latest || latestAgeMs > 30 * 60 * 1000) {
+      await createAdminDashboardSnapshot(since);
+    }
 
-async function fetchAdminAlertSnapshot(since: string) {
-  const [
-    [failedUploadJobs],
-    [stalledUploadJobs],
-    [unreadNotificationsCount],
-    [pendingProposalsCount],
-  ] = await Promise.all([
-    db.select({ count: rowCount })
-      .from(uploadJobs)
-      .where(and(eq(uploadJobs.status, 'failed'), gte(uploadJobs.createdAt, since))),
-    db.select({ count: rowCount })
-      .from(uploadJobs)
-      .where(and(eq(uploadJobs.status, 'pending'), gte(uploadJobs.createdAt, since))),
-    db.select({ count: rowCount })
-      .from(notifications)
-      .where(eq(notifications.isRead, false)),
-    db.select({ count: rowCount })
-      .from(exchangeProposals)
-      .where(and(
-        gte(exchangeProposals.proposedAt, since),
-        sql`${exchangeProposals.status} IN ('proposed', 'accepted_a', 'accepted_b')`,
-      )),
-  ]);
-
-  return {
-    failedUploadJobs24h: failedUploadJobs.count,
-    stalledUploadJobs24h: stalledUploadJobs.count,
-    unreadNotifications: unreadNotificationsCount.count,
-    pendingProposalActions24h: pendingProposalsCount.count,
-  };
-}
+    const base = previous ?? latest;
+    const historyRows = latestRows.slice(0, 7);
+    const average = historyRows.length > 0 ? {
+      totalUploads: Math.round(historyRows.reduce((sum, row) => sum + row.totalUploads, 0) / historyRows.length),
+      totalExchanges: Math.round(historyRows.reduce((sum, row) => sum + row.totalExchanges, 0) / historyRows.length),
+      unreadNotifications: Math.round(historyRows.reduce((sum, row) => sum + row.unreadNotifications, 0) / historyRows.length),
+      failedUploadJobs24h: Math.round(historyRows.reduce((sum, row) => sum + row.failedUploadJobs24h, 0) / historyRows.length),
+      pendingProposalActions24h: Math.round(historyRows.reduce((sum, row) => sum + row.pendingProposalActions24h, 0) / historyRows.length),
+      escalatedRequests24h: Math.round(historyRows.reduce((sum, row) => sum + (row.escalatedRequests24h ?? 0), 0) / historyRows.length),
+    } : null;
+    res.json({
+      current,
+      previous: base ? {
+        totalUploads: base.totalUploads,
+        totalExchanges: base.totalExchanges,
+        unreadNotifications: base.unreadNotifications,
+        failedUploadJobs24h: base.failedUploadJobs24h,
+        pendingProposalActions24h: base.pendingProposalActions24h,
+        escalatedRequests24h: base.escalatedRequests24h,
+        createdAt: base.createdAt,
+      } : null,
+      average,
+      spikes: average ? {
+        failedUploadJobs24h: current.failedUploadJobs24h >= Math.max(average.failedUploadJobs24h * 2, 3),
+        pendingProposalActions24h: current.pendingProposalActions24h >= Math.max(average.pendingProposalActions24h * 2, 5),
+        unreadNotifications: current.unreadNotifications >= Math.max(average.unreadNotifications * 2, 5),
+      } : null,
+    });
+  } catch (err) {
+    handleAdminError(err, 'Admin dashboard trends error', 'ダッシュボード差分の取得に失敗しました', res);
+  }
+});
 
 router.get('/stats', async (_req: AuthRequest, res: Response) => {
   try {

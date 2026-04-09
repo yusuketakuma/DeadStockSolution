@@ -141,3 +141,29 @@ export const uploadRowIssues = pgTable('upload_row_issues', {
     .on(table.pharmacyId, table.createdAt),
   chkUploadRowIssuesRowNumber: check('chk_upload_row_issues_row_number', sql`${table.rowNumber} > 0`),
 }));
+
+export const uploadIssueRemediations = pgTable('upload_issue_remediations', {
+  id: serial('id').primaryKey(),
+  issueCode: text('issue_code').notNull(),
+  cause: text('cause').notNull(),
+  fix: text('fix').notNull(),
+  verify: text('verify').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  uqUploadIssueRemediationCode: uniqueIndex('uq_upload_issue_remediation_code')
+    .on(table.issueCode),
+}));
+
+export const uploadIssueRemediationHistory = pgTable('upload_issue_remediation_history', {
+  id: serial('id').primaryKey(),
+  issueCode: text('issue_code').notNull(),
+  cause: text('cause').notNull(),
+  fix: text('fix').notNull(),
+  verify: text('verify').notNull(),
+  updatedByAdminId: integer('updated_by_admin_id').references(() => pharmacies.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxUploadIssueRemediationHistoryCode: index('idx_upload_issue_remediation_history_code')
+    .on(table.issueCode, table.createdAt),
+}));

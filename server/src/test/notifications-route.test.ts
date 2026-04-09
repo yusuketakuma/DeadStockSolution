@@ -391,6 +391,7 @@ describe('notifications routes GET /', () => {
       .mockImplementationOnce(() => createSelectQuery([]))
       .mockImplementationOnce(() => createSelectQuery([]))
       .mockImplementationOnce(() => createSelectQuery([]))
+      .mockImplementationOnce(() => createSelectQuery([]))
       .mockImplementationOnce(() => createSelectQuery([{ lastTimelineViewedAt: '2026-02-21T00:00:00.000Z' }]));
 
     const response = await request(app).get('/api/notifications');

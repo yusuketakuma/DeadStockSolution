@@ -5,6 +5,14 @@ export interface ToastItem {
   variant: 'success' | 'danger' | 'warning' | 'info';
   message: string;
   autoDismissMs: number | null;
+  actionLabel?: string;
+  onAction?: () => void | Promise<void>;
+}
+
+interface ToastOptions {
+  autoDismissMs?: number | null;
+  actionLabel?: string;
+  onAction?: () => void | Promise<void>;
 }
 
 interface ToastDataValue {
@@ -13,10 +21,10 @@ interface ToastDataValue {
 }
 
 interface ToastActionsValue {
-  showSuccess: (message: string) => void;
-  showError: (message: string) => void;
-  showWarning: (message: string) => void;
-  showInfo: (message: string) => void;
+  showSuccess: (message: string, options?: ToastOptions) => void;
+  showError: (message: string, options?: ToastOptions) => void;
+  showWarning: (message: string, options?: ToastOptions) => void;
+  showInfo: (message: string, options?: ToastOptions) => void;
 }
 
 const MAX_TOASTS = 5;
@@ -36,13 +44,15 @@ const ToastActionsContext = createContext<ToastActionsValue>({
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const addToast = useCallback((variant: ToastItem['variant'], message: string) => {
-    const autoDismissMs = variant === 'danger' ? null : 3000;
+  const addToast = useCallback((variant: ToastItem['variant'], message: string, options?: ToastOptions) => {
+    const autoDismissMs = options?.autoDismissMs ?? (variant === 'danger' ? null : 3000);
     const toast: ToastItem = {
       id: crypto.randomUUID(),
       variant,
       message,
       autoDismissMs,
+      actionLabel: options?.actionLabel,
+      onAction: options?.onAction,
     };
     setToasts((prev) => {
       const next = [...prev, toast];
@@ -54,10 +64,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showSuccess = useCallback((message: string) => addToast('success', message), [addToast]);
-  const showError = useCallback((message: string) => addToast('danger', message), [addToast]);
-  const showWarning = useCallback((message: string) => addToast('warning', message), [addToast]);
-  const showInfo = useCallback((message: string) => addToast('info', message), [addToast]);
+  const showSuccess = useCallback((message: string, options?: ToastOptions) => addToast('success', message, options), [addToast]);
+  const showError = useCallback((message: string, options?: ToastOptions) => addToast('danger', message, options), [addToast]);
+  const showWarning = useCallback((message: string, options?: ToastOptions) => addToast('warning', message, options), [addToast]);
+  const showInfo = useCallback((message: string, options?: ToastOptions) => addToast('info', message, options), [addToast]);
 
   const dataValue = useMemo<ToastDataValue>(() => ({
     toasts, removeToast,

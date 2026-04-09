@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useMemo, FormEvent } from 'react';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
 import { Badge, Row, Col, Form } from 'react-bootstrap';
@@ -15,6 +15,8 @@ import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import AdminSentMessagesPanel, { type AdminMessage } from './components/AdminSentMessagesPanel';
 import { formatDateTimeJa, formatNumberJa } from '../../utils/formatters';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
+import { deriveAdminPriorityActions } from '../../utils/admin-dashboard-actions';
+import { useRecentWorkList } from '../../hooks/useRecentWork';
 
 interface Stats {
   totalPharmacies: number;
@@ -63,6 +65,7 @@ interface AlertsSummary {
   stalledUploadJobs24h: number;
   unreadNotifications: number;
   pendingProposalActions24h: number;
+  escalatedRequests24h?: number;
 }
 
 interface MonitoringKpiSnapshot {
@@ -139,6 +142,27 @@ interface SloBreachesResponse {
   total: number;
 }
 
+interface AdminDashboardTrendSnapshot {
+  totalUploads: number;
+  totalExchanges: number;
+  unreadNotifications: number;
+  failedUploadJobs24h: number;
+  pendingProposalActions24h: number;
+  escalatedRequests24h?: number;
+  createdAt?: string;
+}
+
+interface AdminDashboardTrendResponse {
+  current: AdminDashboardTrendSnapshot;
+  previous: AdminDashboardTrendSnapshot | null;
+  average: AdminDashboardTrendSnapshot | null;
+  spikes: {
+    failedUploadJobs24h: boolean;
+    pendingProposalActions24h: boolean;
+    unreadNotifications: boolean;
+  } | null;
+}
+
 const SLO_BREACH_LABELS: Record<SloBreachItem['type'], string> = {
   db_health: 'DBヘルス',
   readiness: 'Readiness',
@@ -192,6 +216,51 @@ function resolveOpenClawHealthResult(
   }
 
   return { value: null, shouldCountAsError: true };
+}
+
+function formatTrendDelta(current: number | null | undefined, previous: number | null | undefined): string | undefined {
+  if (current == null || previous == null) return undefined;
+  const delta = current - previous;
+  if (delta === 0) return '前回確認比 ±0';
+  return `前回確認比 ${delta > 0 ? '+' : ''}${delta}`;
+}
+
+function TrendMiniBars({
+  title,
+  current,
+  previous,
+  average,
+}: {
+  title: string;
+  current: number;
+  previous: number;
+  average: number;
+}) {
+  const max = Math.max(current, previous, average, 1);
+  const toWidth = (value: number) => `${Math.max(8, Math.round((value / max) * 100))}%`;
+  return (
+    <div className="border rounded p-3">
+      <div className="fw-semibold mb-2">{title}</div>
+      <div className="small text-muted mb-2">current / previous / average</div>
+      <div className="d-flex flex-column gap-2">
+        {[
+          { key: 'current', label: 'current', value: current, className: 'bg-primary' },
+          { key: 'previous', label: 'previous', value: previous, className: 'bg-secondary' },
+          { key: 'average', label: 'average', value: average, className: 'bg-info' },
+        ].map((row) => (
+          <div key={row.key}>
+            <div className="d-flex justify-content-between small">
+              <span>{row.label}</span>
+              <span>{row.value}</span>
+            </div>
+            <div className="progress" style={{ height: 8 }}>
+              <div className={`progress-bar ${row.className}`} style={{ width: toWidth(row.value) }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function buildAdminMessagePayload(input: {
@@ -264,6 +333,7 @@ const ADMIN_SHORTCUT_GROUPS = [
 ] as const;
 
 export default function AdminDashboardPage() {
+  const recentWork = useRecentWorkList(5);
   const [stats, setStats] = useState<Stats | null>(null);
   const [riskOverview, setRiskOverview] = useState<RiskOverview | null>(null);
   const [observability, setObservability] = useState<Observability | null>(null);
@@ -283,11 +353,21 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [previousTrendSnapshot, setPreviousTrendSnapshot] = useState<AdminDashboardTrendSnapshot | null>(null);
+  const [trendAverageSnapshot, setTrendAverageSnapshot] = useState<AdminDashboardTrendSnapshot | null>(null);
+  const [trendSpikes, setTrendSpikes] = useState<AdminDashboardTrendResponse['spikes']>(null);
+  const priorityActions = useMemo(() => deriveAdminPriorityActions({
+    alertsSummary,
+    monitoringKpis,
+    openClawHealth,
+    sloBreaches,
+    cronStatus,
+  }), [alertsSummary, cronStatus, monitoringKpis, openClawHealth, sloBreaches]);
 
   const fetchData = async () => {
     setLoading(true);
     setError('');
-    const [statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult, openClawResult, cronStatusResult, sloBreachesResult] = await Promise.allSettled([
+    const [statsResult, riskResult, observabilityResult, alertsResult, kpisResult, pharmacyResult, messagesResult, openClawResult, cronStatusResult, sloBreachesResult, trendResult] = await Promise.allSettled([
       api.get<Stats>('/admin/stats'),
       api.get<RiskOverview>('/admin/risk/overview'),
       api.get<Observability>('/admin/observability?minutes=60'),
@@ -298,6 +378,7 @@ export default function AdminDashboardPage() {
       api.get<OpenClawHealthSnapshot>('/health/openclaw'),
       api.get<CronStatusResponse>('/admin/cron-status'),
       api.get<SloBreachesResponse>('/admin/slo-breaches?limit=5'),
+      api.get<AdminDashboardTrendResponse>('/admin/dashboard-trends'),
     ]);
 
     const statsValue = resolveSettledValue(statsResult);
@@ -310,6 +391,7 @@ export default function AdminDashboardPage() {
     const openClawResolution = resolveOpenClawHealthResult(openClawResult);
     const cronStatusValue = resolveSettledValue(cronStatusResult);
     const sloBreachesValue = resolveSettledValue(sloBreachesResult);
+    const trendValue = resolveSettledValue(trendResult);
 
     if (statsValue) setStats(statsValue);
     if (riskValue) setRiskOverview(riskValue);
@@ -321,6 +403,11 @@ export default function AdminDashboardPage() {
     if (openClawResolution.value) setOpenClawHealth(openClawResolution.value);
     if (cronStatusValue) setCronStatus(cronStatusValue.crons);
     if (sloBreachesValue) setSloBreaches(sloBreachesValue);
+    if (trendValue) {
+      setPreviousTrendSnapshot(trendValue.previous);
+      setTrendAverageSnapshot(trendValue.average);
+      setTrendSpikes(trendValue.spikes);
+    }
 
     const rejectedResults = [
       statsResult,
@@ -332,6 +419,7 @@ export default function AdminDashboardPage() {
       messagesResult,
       cronStatusResult,
       sloBreachesResult,
+      trendResult,
       ...(openClawResolution.shouldCountAsError ? [openClawResult] : []),
     ];
 
@@ -405,6 +493,115 @@ export default function AdminDashboardPage() {
         </Row>
       </AppDataPanel>
 
+      <AppDataPanel title="今やる運用" className="mb-3">
+        {priorityActions.length === 0 ? (
+          <div className="small text-muted">
+            直ちに片付けるべきアラートはありません。OpenClaw、通知、取込品質の巡回確認を継続してください。
+          </div>
+        ) : (
+          <Row className="g-3">
+            {priorityActions.map((action) => (
+              <Col key={action.id} lg={6}>
+                <div className={`border rounded-3 p-3 h-100 ${
+                  action.tone === 'danger'
+                    ? 'border-danger bg-danger bg-opacity-10'
+                    : action.tone === 'warning'
+                      ? 'border-warning bg-warning bg-opacity-10'
+                      : 'border-info bg-info bg-opacity-10'
+                }`}
+                >
+                  <div className="d-flex justify-content-between align-items-start gap-2">
+                    <div className="fw-semibold">{action.title}</div>
+                    <span className={`badge ${
+                      action.tone === 'danger'
+                        ? 'bg-danger'
+                        : action.tone === 'warning'
+                          ? 'bg-warning text-dark'
+                          : 'bg-info text-dark'
+                    }`}
+                    >
+                      {action.tone === 'danger' ? '高' : action.tone === 'warning' ? '中' : '低'}
+                    </span>
+                  </div>
+                  <div className="small text-muted mt-2">{action.description}</div>
+                  <div className="mt-3">
+                    <Link to={action.to} className="btn btn-sm btn-outline-dark">
+                      対応画面を開く
+                    </Link>
+                  </div>
+                </div>
+              </Col>
+            ))}
+          </Row>
+        )}
+      </AppDataPanel>
+
+      {recentWork.length > 0 && (
+        <AppDataPanel title="作業再開" className="mb-3">
+          <Row className="g-3">
+            {recentWork.map((item) => (
+              <Col key={item.id} lg={6}>
+                <div className="border rounded-3 p-3 h-100">
+                  <div className="fw-semibold">{item.label}</div>
+                  <div className="small text-muted mt-1">
+                    {item.section}{item.subtitle ? ` / ${item.subtitle}` : ''}
+                  </div>
+                  <div className="small text-muted mt-1">最終参照: {formatDateTimeJa(item.updatedAt)}</div>
+                  <div className="mt-3">
+                    <Link to={item.to} className="btn btn-sm btn-outline-primary">
+                      続きから開く
+                    </Link>
+                  </div>
+                </div>
+              </Col>
+            ))}
+          </Row>
+        </AppDataPanel>
+      )}
+
+      {trendAverageSnapshot && (
+        <AppDataPanel title="トレンド要約" className="mb-3">
+          <div className="small text-muted">
+            7回平均: 取込失敗 {trendAverageSnapshot.failedUploadJobs24h ?? 0} / 未読通知 {trendAverageSnapshot.unreadNotifications} / 要対応提案 {trendAverageSnapshot.pendingProposalActions24h}
+          </div>
+          {trendSpikes && (
+            <div className="d-flex gap-2 flex-wrap mt-2">
+              {trendSpikes.failedUploadJobs24h && <span className="badge bg-danger">取込失敗が急増</span>}
+              {trendSpikes.unreadNotifications && <span className="badge bg-warning text-dark">未読通知が急増</span>}
+              {trendSpikes.pendingProposalActions24h && <span className="badge bg-warning text-dark">要対応提案が急増</span>}
+            </div>
+          )}
+          {previousTrendSnapshot && (
+            <Row className="g-3 mt-1">
+              <Col md={4}>
+                <TrendMiniBars
+                  title="取込失敗"
+                  current={alertsSummary?.failedUploadJobs24h ?? 0}
+                  previous={previousTrendSnapshot.failedUploadJobs24h ?? 0}
+                  average={trendAverageSnapshot.failedUploadJobs24h ?? 0}
+                />
+              </Col>
+              <Col md={4}>
+                <TrendMiniBars
+                  title="未読通知"
+                  current={alertsSummary?.unreadNotifications ?? 0}
+                  previous={previousTrendSnapshot.unreadNotifications ?? 0}
+                  average={trendAverageSnapshot.unreadNotifications ?? 0}
+                />
+              </Col>
+              <Col md={4}>
+                <TrendMiniBars
+                  title="要対応提案"
+                  current={alertsSummary?.pendingProposalActions24h ?? 0}
+                  previous={previousTrendSnapshot.pendingProposalActions24h ?? 0}
+                  average={trendAverageSnapshot.pendingProposalActions24h ?? 0}
+                />
+              </Col>
+            </Row>
+          )}
+        </AppDataPanel>
+      )}
+
       <Row className="g-3 mb-3">
         <Col md={4} xl={3}>
           <AppKpiCard
@@ -424,6 +621,7 @@ export default function AdminDashboardPage() {
           <AppKpiCard
             value={stats?.totalExchanges ?? '-'}
             label="交換履歴件数"
+            subLabel={formatTrendDelta(stats?.totalExchanges ?? null, previousTrendSnapshot?.totalExchanges ?? null)}
             action={<Link to="/admin/exchanges" className="btn btn-sm btn-outline-primary">交換履歴を見る</Link>}
           />
         </Col>
@@ -431,6 +629,7 @@ export default function AdminDashboardPage() {
           <AppKpiCard
             value={stats?.totalUploads ?? '-'}
             label="アップロード件数"
+            subLabel={formatTrendDelta(stats?.totalUploads ?? null, previousTrendSnapshot?.totalUploads ?? null)}
             action={<Link to="/admin/upload-jobs" className="btn btn-sm btn-outline-secondary">ジョブ一覧を見る</Link>}
           />
         </Col>
@@ -466,16 +665,28 @@ export default function AdminDashboardPage() {
 
       <Row className="g-3 mb-3">
         <Col md={3}>
-          <AppKpiCard value={alertsSummary?.failedUploadJobs24h ?? '-'} label="取込失敗ジョブ (24h)" />
+          <AppKpiCard
+            value={alertsSummary?.failedUploadJobs24h ?? '-'}
+            label="取込失敗ジョブ (24h)"
+            subLabel={formatTrendDelta(alertsSummary?.failedUploadJobs24h ?? null, previousTrendSnapshot?.failedUploadJobs24h ?? null)}
+          />
         </Col>
         <Col md={3}>
           <AppKpiCard value={alertsSummary?.stalledUploadJobs24h ?? '-'} label="取込保留ジョブ (24h)" />
         </Col>
         <Col md={3}>
-          <AppKpiCard value={alertsSummary?.unreadNotifications ?? '-'} label="未読通知" />
+          <AppKpiCard
+            value={alertsSummary?.unreadNotifications ?? '-'}
+            label="未読通知"
+            subLabel={formatTrendDelta(alertsSummary?.unreadNotifications ?? null, previousTrendSnapshot?.unreadNotifications ?? null)}
+          />
         </Col>
         <Col md={3}>
-          <AppKpiCard value={alertsSummary?.pendingProposalActions24h ?? '-'} label="要対応提案 (24h)" />
+          <AppKpiCard
+            value={alertsSummary?.pendingProposalActions24h ?? '-'}
+            label="要対応提案 (24h)"
+            subLabel={formatTrendDelta(alertsSummary?.pendingProposalActions24h ?? null, previousTrendSnapshot?.pendingProposalActions24h ?? null)}
+          />
         </Col>
       </Row>
 

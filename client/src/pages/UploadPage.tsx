@@ -1,7 +1,7 @@
 import { Suspense, lazy, useMemo, type ReactNode } from 'react';
 import AppAlert from '../components/ui/AppAlert';
 import { Form, ProgressBar } from 'react-bootstrap';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import AppSelect from '../components/ui/AppSelect';
 import LoadingButton from '../components/ui/LoadingButton';
 import AppControl from '../components/ui/AppControl';
@@ -12,6 +12,7 @@ import EnrichmentPreview from '../components/upload/EnrichmentPreview';
 import ColumnMappingForm from '../components/upload/ColumnMappingForm';
 import { resolveUploadTypeLabel } from './upload/upload-job-utils';
 import { useUploadExcelFlow } from '../hooks/useUploadExcelFlow';
+import { useRecentWorkList } from '../hooks/useRecentWork';
 
 const CameraDeadStockRegisterPanel = lazy(() => import('./upload/CameraDeadStockRegisterPanel'));
 
@@ -87,7 +88,13 @@ function scrollToFlow(id: 'upload-excel-flow' | 'upload-camera-flow') {
 }
 
 export default function UploadPage() {
+  const [searchParams] = useSearchParams();
   const flow = useUploadExcelFlow();
+  const recentWork = useRecentWorkList(4);
+  const inventoryDestination = flow.uploadType === 'dead_stock' ? '/inventory/dead-stock' : '/inventory/used-medication';
+  const failedCount = flow.uploadJob.partialSummary?.rejectedRows ?? flow.uploadJob.partialSummary?.failed ?? 0;
+  const reuseSavedMapping = searchParams.get('reuseSavedMapping') === '1';
+  const issueCodeHint = (searchParams.get('issueCode') ?? '').trim();
 
   const enrichmentMapping = useMemo(() => {
     if (!flow.preview) return null;
@@ -144,12 +151,66 @@ export default function UploadPage() {
           <span className="small text-muted">取込結果の品質確認、在庫反映、候補確認までこの画面から戻れます。</span>
         </AppCard.Body>
       </AppCard>
+      {recentWork.length > 0 && (
+        <AppCard className="mb-3">
+          <AppCard.Header>最近触った案件</AppCard.Header>
+          <AppCard.Body className="d-flex gap-2 flex-wrap align-items-center">
+            {recentWork.map((item) => (
+              <Link key={item.id} to={item.to} className="btn btn-sm btn-outline-secondary">
+                {item.label}
+              </Link>
+            ))}
+            <span className="small text-muted">アップロード後に戻ることが多い案件や画面へすぐ再開できます。</span>
+          </AppCard.Body>
+        </AppCard>
+      )}
       {flow.error && <StructuredErrorAlert errorMessage={flow.error} />}
+      {reuseSavedMapping && (
+        <AppAlert variant="info">
+          保存済みの列マッピングを再利用する前提で再アップロードを進めます。
+          {issueCodeHint && <> 確認対象: <strong>{issueCodeHint}</strong></>}
+          {' '}ファイルを選択してプレビューすると、前回設定があれば自動で反映されます。
+        </AppAlert>
+      )}
       {flow.message && <AppAlert variant="success">{flow.message}</AppAlert>}
       {flow.showMatchingHint && (
         <AppAlert variant="info">
           交換候補をすぐ確認する場合は「マッチング」ページで再実行してください。
         </AppAlert>
+      )}
+      {flow.showMatchingHint && (
+        <AppCard className="mb-3">
+          <AppCard.Header>取込後の次アクション</AppCard.Header>
+          <AppCard.Body className="d-flex flex-column gap-3">
+            <div className="small text-muted">
+              取込結果の確認、問題行の確認、候補再計算の確認をこの流れで進められます。
+            </div>
+            <div className="d-flex gap-2 flex-wrap">
+              <Link
+                to="/upload-quality"
+                className={`btn btn-sm ${failedCount > 0 || flow.canDownloadErrorReport ? 'btn-danger' : 'btn-outline-danger'}`}
+              >
+                {failedCount > 0 || flow.canDownloadErrorReport ? '問題行を確認' : 'アップロード品質'}
+              </Link>
+              <Link to={inventoryDestination} className="btn btn-sm btn-outline-secondary">
+                反映済み在庫を見る
+              </Link>
+              <Link to="/matching" className="btn btn-sm btn-outline-primary">
+                マッチングを再実行
+              </Link>
+              {flow.canDownloadErrorReport && (
+                <AppButton size="sm" variant="outline-secondary" onClick={flow.triggerErrorReportDownload}>
+                  エラーレポート
+                </AppButton>
+              )}
+            </div>
+            <div className="small text-muted">
+              {failedCount > 0
+                ? `今回の取込では ${failedCount} 件の要確認データがあります。先に品質画面を開くことを推奨します。`
+                : '品質画面で問題がなければ、そのまま在庫反映とマッチング候補確認へ進めます。'}
+            </div>
+          </AppCard.Body>
+        </AppCard>
       )}
 
       <ScrollArea>

@@ -1,11 +1,12 @@
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { db } from '../config/database';
-import { matchCandidateBookmarks, pharmacies } from '../db/schema';
+import { matchCandidateBookmarks, matchDismissFeedback, pharmacies } from '../db/schema';
 import { AuthRequest } from '../types';
 import { wrapRoute } from '../middleware/wrap-route';
 
 const router = Router();
+const VALID_DISMISS_REASONS = ['distance', 'expiry', 'value_gap', 'item_fit', 'other'] as const;
 
 // POST / — ブックマーク作成
 router.post('/', wrapRoute<AuthRequest>(async (req, res) => {
@@ -160,6 +161,110 @@ router.delete('/:id', wrapRoute<AuthRequest>(async (req, res) => {
     .where(eq(matchCandidateBookmarks.id, id));
 
   res.json({ ok: true });
+}));
+
+router.get('/dismiss-feedback', wrapRoute<AuthRequest>(async (req, res) => {
+  const pharmacyId = req.user!.id;
+
+  const rows = await db.select({
+    reason: matchDismissFeedback.reason,
+    count: sql<number>`coalesce(sum(${matchDismissFeedback.dismissCount}), 0)::int`,
+  })
+    .from(matchDismissFeedback)
+    .where(eq(matchDismissFeedback.pharmacyId, pharmacyId))
+    .groupBy(matchDismissFeedback.reason);
+
+  const stats = {
+    distance: 0,
+    expiry: 0,
+    value_gap: 0,
+    item_fit: 0,
+    other: 0,
+  };
+
+  for (const row of rows) {
+    if (row.reason in stats) {
+      stats[row.reason as keyof typeof stats] = Number(row.count ?? 0);
+    }
+  }
+
+  res.json({ stats });
+}));
+
+router.post('/dismiss-feedback', wrapRoute<AuthRequest>(async (req, res) => {
+  const pharmacyId = req.user!.id;
+  const { candidatePharmacyId, reason, drugCodes } = req.body as {
+    candidatePharmacyId?: unknown;
+    reason?: unknown;
+    drugCodes?: unknown;
+  };
+
+  if (!Number.isInteger(candidatePharmacyId) || (candidatePharmacyId as number) <= 0) {
+    res.status(400).json({ error: 'candidatePharmacyId が不正です' });
+    return;
+  }
+  if (typeof reason !== 'string' || !VALID_DISMISS_REASONS.includes(reason as typeof VALID_DISMISS_REASONS[number])) {
+    res.status(400).json({ error: 'reason が不正です' });
+    return;
+  }
+
+  const normalizedDrugCodes = Array.isArray(drugCodes)
+    ? [...new Set(drugCodes
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean))]
+    : [];
+  const targets = normalizedDrugCodes.length > 0 ? normalizedDrugCodes : [''];
+
+  const now = new Date();
+  for (const drugCode of targets) {
+    await db.insert(matchDismissFeedback).values({
+      pharmacyId,
+      candidatePharmacyId: candidatePharmacyId as number,
+      reason,
+      drugCode,
+      drugGroup: drugCode ? drugCode.split('-')[0] ?? '' : '',
+      dismissCount: 1,
+      lastDismissedAt: now,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [
+        matchDismissFeedback.pharmacyId,
+        matchDismissFeedback.candidatePharmacyId,
+        matchDismissFeedback.reason,
+        matchDismissFeedback.drugCode,
+        matchDismissFeedback.drugGroup,
+      ],
+      set: {
+        dismissCount: sql`${matchDismissFeedback.dismissCount} + 1`,
+        lastDismissedAt: now,
+        updatedAt: now,
+      },
+    });
+  }
+
+  const rows = await db.select({
+    reason: matchDismissFeedback.reason,
+    count: sql<number>`coalesce(sum(${matchDismissFeedback.dismissCount}), 0)::int`,
+  })
+    .from(matchDismissFeedback)
+    .where(eq(matchDismissFeedback.pharmacyId, pharmacyId))
+    .groupBy(matchDismissFeedback.reason);
+
+  const stats = {
+    distance: 0,
+    expiry: 0,
+    value_gap: 0,
+    item_fit: 0,
+    other: 0,
+  };
+
+  for (const row of rows) {
+    if (row.reason in stats) {
+      stats[row.reason as keyof typeof stats] = Number(row.count ?? 0);
+    }
+  }
+
+  res.status(201).json({ stats });
 }));
 
 export default router;

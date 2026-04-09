@@ -120,3 +120,23 @@ export const exchangeFeedback = pgTable('exchange_feedback', {
     .on(table.toPharmacyId, table.createdAt),
   chkExchangeFeedbackRating: check('chk_exchange_feedback_rating', sql`${table.rating} >= 1 AND ${table.rating} <= 5`),
 }));
+
+export const proposalCounterOffers = pgTable('proposal_counter_offers', {
+  id: serial('id').primaryKey(),
+  proposalId: integer('proposal_id').notNull().references(() => exchangeProposals.id, { onDelete: 'cascade' }),
+  proposerPharmacyId: integer('proposer_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  responderPharmacyId: integer('responder_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 24 }).notNull().default('pending'),
+  summary: text('summary').notNull(),
+  itemsJson: text('items_json').notNull(),
+  responseNote: text('response_note'),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  respondedAt: timestamp('responded_at', { mode: 'string' }),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  idxProposalCounterOffersProposalCreated: index('idx_proposal_counter_offers_proposal_created')
+    .on(table.proposalId, table.createdAt),
+  idxProposalCounterOffersResponderStatus: index('idx_proposal_counter_offers_responder_status')
+    .on(table.responderPharmacyId, table.status, table.createdAt),
+  chkProposalCounterOfferStatus: check('chk_proposal_counter_offer_status', sql`${table.status} IN ('pending','accepted','rejected','superseded')`),
+}));

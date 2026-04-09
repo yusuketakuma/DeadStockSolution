@@ -4,6 +4,7 @@ import InlineLoader from '../../components/ui/InlineLoader';
 import { categoryLabel, priorityBadge, statusBadge, waitingBadge } from './helpers';
 import type { RequestItem, RequestQueueFilter, RequestSummary } from './types';
 import { formatDateTimeJa } from '../../utils/formatters';
+import { getRequestSlaSummary } from '../../utils/request-sla';
 
 interface RequestListPaneProps {
   loading: boolean;
@@ -54,12 +55,19 @@ export function RequestListPane({
               const workflowMeta = statusBadge(item.workflowStatus);
               const priorityMeta = priorityBadge(item.priority);
               const waitingMeta = waitingBadge(item);
+              const slaSummary = getRequestSlaSummary(item);
 
               return (
                 <button
                   key={item.id}
                   type="button"
-                  className={`btn text-start border ${selectedRequestId === item.id ? 'border-primary bg-light' : 'border-light-subtle'}`}
+                  className={`btn text-start border ${
+                    selectedRequestId === item.id
+                      ? 'border-primary bg-light'
+                      : item.isOverdue
+                        ? 'border-danger bg-danger bg-opacity-10'
+                        : 'border-light-subtle'
+                  }`}
                   onClick={() => onSelectRequest(item.id)}
                 >
                   <div className="d-flex justify-content-between align-items-start gap-2">
@@ -76,6 +84,14 @@ export function RequestListPane({
                   {(item.latestSummary || item.openclawSummary) && (
                     <div className="text-muted small mt-2">{item.latestSummary ?? item.openclawSummary}</div>
                   )}
+                  <div className="small mt-2">
+                    <span className={`badge bg-${slaSummary.tone} ${slaSummary.tone === 'warning' ? 'text-dark' : ''}`}>
+                      {slaSummary.nextActionLabel}
+                    </span>
+                    <span className="text-muted ms-2">
+                      {slaSummary.dueLabel} / {slaSummary.elapsedLabel}
+                    </span>
+                  </div>
                   <div className="text-muted small mt-2">{formatDateTimeJa(item.updatedAt ?? item.createdAt)}</div>
                 </button>
               );

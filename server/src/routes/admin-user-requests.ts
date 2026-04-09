@@ -27,9 +27,12 @@ import {
   touchRequestViewed,
   updateRequestActivity,
   updateRequestAdminMetadata,
+  type RequestCategory,
+  type RequestCloseReason,
+  type RequestPriority,
 } from '../services/request-collaboration-service';
 import { listUserRequests } from '../services/admin-user-request-service';
-import { listRequestEventTimeline } from '../services/openclaw/request-event-service';
+import { listRequestEventTimeline, recordOpenClawRequestEvent } from '../services/openclaw/request-event-service';
 import { createNotification } from '../services/notification-service';
 import { handleAdminError, parseListPagination, sendPaginated } from './admin-utils';
 import { uploadOptionalAttachments } from '../middleware/attachment-upload';
@@ -42,6 +45,88 @@ const router = Router();
 
 const VALID_OPENCLAW_STATUSES = ['pending_handoff', 'in_dialogue', 'implementing', 'completed'] as const;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+
+interface AdminRequestMetadataPatch {
+  category?: RequestCategory | null;
+  priority?: RequestPriority | null;
+  closeReason?: RequestCloseReason | null | 'invalid';
+  assignedAdminId?: number | null;
+}
+
+function parseAdminRequestMetadataPatch(body: Record<string, unknown>): AdminRequestMetadataPatch {
+  const category = body.category === undefined
+    ? undefined
+    : isRequestCategory(body.category)
+      ? body.category
+      : null;
+  const priority = body.priority === undefined
+    ? undefined
+    : isRequestPriority(body.priority)
+      ? body.priority
+      : null;
+  const closeReason = body.closeReason === undefined
+    ? undefined
+    : body.closeReason === null || body.closeReason === ''
+      ? null
+      : isRequestCloseReason(body.closeReason)
+        ? body.closeReason
+        : 'invalid';
+  const assignedAdminId = body.assignedAdminId === undefined
+    ? undefined
+    : body.assignedAdminId === null || body.assignedAdminId === ''
+      ? null
+      : Number(body.assignedAdminId);
+
+  return { category, priority, closeReason, assignedAdminId };
+}
+
+async function recordAdminMetadataEvents(
+  requestId: number,
+  pharmacyId: number,
+  adminId: number | null,
+  detail: Awaited<ReturnType<typeof getAdminRequestDetail>>,
+  updated: Awaited<ReturnType<typeof getAdminRequestDetail>>,
+  patch: ReturnType<typeof parseAdminRequestMetadataPatch>,
+) {
+  if (!detail || !updated) return;
+
+  const changedFields: string[] = [];
+  if (patch.category !== undefined && patch.category !== detail.category) {
+    changedFields.push(`category: ${detail.category} -> ${patch.category}`);
+  }
+  if (patch.priority !== undefined && patch.priority !== detail.priority) {
+    changedFields.push(`priority: ${detail.priority} -> ${patch.priority}`);
+  }
+  if (patch.closeReason !== undefined && patch.closeReason !== detail.closeReason) {
+    changedFields.push(`closeReason: ${detail.closeReason ?? '-'} -> ${patch.closeReason ?? '-'}`);
+  }
+  if (patch.assignedAdminId !== undefined && patch.assignedAdminId !== detail.assignedAdminId) {
+    await recordOpenClawRequestEvent({
+      requestId,
+      pharmacyId,
+      eventType: 'assignee_changed',
+      summary: '担当者が更新されました',
+      note: `${detail.assignedAdminName ?? '未設定'} -> ${updated.assignedAdminName ?? '未設定'}`,
+      metadata: {
+        adminId,
+        fromAssignedAdminId: detail.assignedAdminId ?? null,
+        toAssignedAdminId: updated.assignedAdminId ?? null,
+      },
+    });
+  }
+  if (changedFields.length > 0) {
+    await recordOpenClawRequestEvent({
+      requestId,
+      pharmacyId,
+      eventType: 'admin_metadata_updated',
+      summary: '管理メタデータが更新されました',
+      note: changedFields.join(' / '),
+      metadata: {
+        adminId,
+      },
+    });
+  }
+}
 
 async function buildAdminRequestHandoffContext(
   pharmacyId: number,
@@ -172,28 +257,7 @@ router.patch('/user-requests/:id', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const category = req.body.category === undefined
-      ? undefined
-      : isRequestCategory(req.body.category)
-        ? req.body.category
-        : null;
-    const priority = req.body.priority === undefined
-      ? undefined
-      : isRequestPriority(req.body.priority)
-        ? req.body.priority
-        : null;
-    const closeReason = req.body.closeReason === undefined
-      ? undefined
-      : req.body.closeReason === null || req.body.closeReason === ''
-        ? null
-        : isRequestCloseReason(req.body.closeReason)
-          ? req.body.closeReason
-          : 'invalid';
-    const assignedAdminId = req.body.assignedAdminId === undefined
-      ? undefined
-      : req.body.assignedAdminId === null || req.body.assignedAdminId === ''
-        ? null
-        : Number(req.body.assignedAdminId);
+    const { category, priority, closeReason, assignedAdminId } = parseAdminRequestMetadataPatch(req.body ?? {});
 
     if (category === null) {
       res.status(400).json({ error: 'カテゴリが不正です' });
@@ -232,9 +296,151 @@ router.patch('/user-requests/:id', async (req: AuthRequest, res: Response) => {
     publishRequestsRefresh({ pharmacyId: detail.pharmacyId, requestId, reason: 'request_updated' });
 
     const updated = await getAdminRequestDetail(requestId);
+    await recordAdminMetadataEvents(
+      requestId,
+      detail.pharmacyId,
+      req.user?.id ?? null,
+      detail,
+      updated,
+      { category, priority, closeReason, assignedAdminId },
+    );
+
     res.json({ request: updated });
   } catch (err) {
     handleAdminError(err, 'Admin user request update error', '要望の更新に失敗しました', res);
+  }
+});
+
+router.post('/user-requests/bulk-update', async (req: AuthRequest, res: Response) => {
+  try {
+    const ids: number[] = Array.isArray(req.body?.ids)
+      ? req.body.ids
+        .map((value: unknown) => Number(value))
+        .filter((value: number): value is number => Number.isSafeInteger(value) && value > 0)
+      : [];
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'ids が不正です' });
+      return;
+    }
+    if (ids.length > 50) {
+      res.status(400).json({ error: '一括更新は最大50件までです' });
+      return;
+    }
+
+    const patch = parseAdminRequestMetadataPatch(req.body ?? {});
+    const { category, priority, closeReason, assignedAdminId } = patch;
+    if (category === null) {
+      res.status(400).json({ error: 'カテゴリが不正です' });
+      return;
+    }
+    if (priority === null) {
+      res.status(400).json({ error: '優先度が不正です' });
+      return;
+    }
+    if (closeReason === 'invalid') {
+      res.status(400).json({ error: 'クローズ理由が不正です' });
+      return;
+    }
+    if (assignedAdminId !== undefined && assignedAdminId !== null && (!Number.isInteger(assignedAdminId) || assignedAdminId <= 0)) {
+      res.status(400).json({ error: '担当者IDが不正です' });
+      return;
+    }
+    if (category === undefined && priority === undefined && closeReason === undefined && assignedAdminId === undefined) {
+      res.status(400).json({ error: '更新内容がありません' });
+      return;
+    }
+
+    let updatedCount = 0;
+    for (const requestId of [...new Set(ids)]) {
+      const detail = await getAdminRequestDetail(requestId);
+      if (!detail) {
+        continue;
+      }
+
+      await updateRequestAdminMetadata(requestId, {
+        ...(category !== undefined ? { category } : {}),
+        ...(priority !== undefined ? { priority } : {}),
+        ...(assignedAdminId !== undefined ? { assignedAdminId } : {}),
+        ...(closeReason !== undefined ? { closeReason } : {}),
+        ...(closeReason ? { markCompleted: true } : {}),
+      });
+
+      if (closeReason) {
+        await updateOpenClawWorkItem({
+          requestId,
+          workflowStatus: 'completed',
+          latestSummary: '管理者によりクローズされました',
+        });
+      }
+
+      const updated = await getAdminRequestDetail(requestId);
+      await recordAdminMetadataEvents(
+        requestId,
+        detail.pharmacyId,
+        req.user?.id ?? null,
+        detail,
+        updated,
+        patch,
+      );
+
+      publishAdminRequestsRefresh({ requestId, reason: 'request_bulk_updated' });
+      publishRequestsRefresh({ pharmacyId: detail.pharmacyId, requestId, reason: 'request_bulk_updated' });
+      updatedCount += 1;
+    }
+
+    res.json({ message: `${updatedCount} 件の要望を更新しました`, updatedCount });
+  } catch (err) {
+    handleAdminError(err, 'Admin user request bulk update error', '要望の一括更新に失敗しました', res);
+  }
+});
+
+router.post('/user-requests/bulk-preview', async (req: AuthRequest, res: Response) => {
+  try {
+    const ids: number[] = Array.isArray(req.body?.ids)
+      ? req.body.ids
+        .map((value: unknown) => Number(value))
+        .filter((value: number): value is number => Number.isSafeInteger(value) && value > 0)
+      : [];
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'ids が不正です' });
+      return;
+    }
+
+    const patch = parseAdminRequestMetadataPatch(req.body ?? {});
+    const updates: string[] = [];
+    if (patch.category !== undefined) updates.push(`category -> ${patch.category}`);
+    if (patch.priority !== undefined) updates.push(`priority -> ${patch.priority}`);
+    if (patch.assignedAdminId !== undefined) updates.push(`assignedAdminId -> ${patch.assignedAdminId ?? 'null'}`);
+    if (patch.closeReason !== undefined) updates.push(`closeReason -> ${patch.closeReason ?? 'null'}`);
+
+    const sample = [];
+    const diffs = [];
+    for (const requestId of [...new Set(ids)].slice(0, 5)) {
+      const detail = await getAdminRequestDetail(requestId);
+      if (detail) {
+        sample.push({
+          id: detail.id,
+          pharmacyName: detail.pharmacyName,
+          requestText: detail.requestText.slice(0, 120),
+        });
+        diffs.push({
+          id: detail.id,
+          category: { from: detail.category, to: patch.category ?? detail.category },
+          priority: { from: detail.priority, to: patch.priority ?? detail.priority },
+          assignedAdminId: { from: detail.assignedAdminId, to: patch.assignedAdminId ?? detail.assignedAdminId },
+          closeReason: { from: detail.closeReason, to: patch.closeReason ?? detail.closeReason },
+        });
+      }
+    }
+
+    res.json({
+      count: ids.length,
+      updates,
+      sample,
+      diffs,
+    });
+  } catch (err) {
+    handleAdminError(err, 'Admin user request bulk preview error', '要望の一括更新プレビューに失敗しました', res);
   }
 });
 

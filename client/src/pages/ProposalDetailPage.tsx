@@ -20,6 +20,7 @@ import { ProposalFeedbackSection } from '../components/proposal/ProposalFeedback
 import { ProposalCommentSection, type ProposalComment } from '../components/proposal/ProposalCommentSection';
 import { ProposalActionButtons, ProposalMobileStickyActions } from '../components/proposal/ProposalActions';
 import ProposalTemplatePanel from '../components/proposal/ProposalTemplatePanel';
+import WorkContextBar from '../components/ui/WorkContextBar';
 import {
   compareProposalTemplates,
   createProposalTemplate,
@@ -36,6 +37,10 @@ import {
 } from '../utils/proposal-expiry';
 import { getProposalWaitingInfo } from '../utils/proposal-status';
 import { buildMessagesPath } from '../utils/message-links';
+import { sanitizeInternalPath } from '../utils/navigation';
+import { useTrackRecentWork } from '../hooks/useRecentWork';
+
+const PROPOSAL_FAX_SENT_STORAGE_KEY = 'proposal:faxes:sent-at';
 
 interface PharmacyInfo {
   id: number;
@@ -74,6 +79,17 @@ interface ProposalDetail {
   pharmacyA: PharmacyInfo;
   pharmacyB: PharmacyInfo;
   enrichedTimeline?: EnrichedProposalTimelineEvent[];
+  counterOffers?: Array<{
+    id: number;
+    proposerPharmacyId: number;
+    responderPharmacyId: number;
+    status: 'pending' | 'accepted' | 'rejected' | 'superseded';
+    summary: string;
+    items: Array<{ proposalItemId?: number; drugName: string; quantity: number }>;
+    responseNote: string | null;
+    createdAt: string | null;
+    respondedAt: string | null;
+  }>;
 }
 
 function resolveProposalStatusMeta(proposal: ProposalDetail['proposal'], currentUserId: number | undefined) {
@@ -125,6 +141,58 @@ function buildProposalMessageDraft(proposalId: number, otherName: string): strin
   return `提案 #${proposalId} の内容確認ありがとうございます。${otherName}との交換条件についてメッセージで調整したいです。`;
 }
 
+function buildProposalReminderDraft(proposalId: number, otherName: string): string {
+  return `提案 #${proposalId} の確認をお願いします。${otherName}との交換条件に問題がなければ、承認または差し戻しコメントをお願いします。`;
+}
+
+function buildCounterProposalDraft(
+  proposalId: number,
+  otherName: string,
+  itemsAtoB: ProposalItem[],
+  itemsBtoA: ProposalItem[],
+): string {
+  const summarizeItems = (items: ProposalItem[]) => items
+    .slice(0, 3)
+    .map((item) => `${item.drugName} x${item.quantity}`)
+    .join(' / ');
+
+  return [
+    `提案 #${proposalId} の確認ありがとうございます。${otherName}向けに条件を再調整したいです。`,
+    itemsAtoB.length > 0 ? `こちらからの候補: ${summarizeItems(itemsAtoB)}` : null,
+    itemsBtoA.length > 0 ? `相手側候補: ${summarizeItems(itemsBtoA)}` : null,
+    '数量や対象薬剤の入れ替えも含めてすり合わせしたいです。',
+  ].filter(Boolean).join('\n');
+}
+
+function buildProposalAdjustmentMatchingPath(
+  targetPharmacyId: number,
+  items: ProposalItem[],
+): string {
+  const params = new URLSearchParams();
+  params.set('targetPharmacyId', String(targetPharmacyId));
+  const terms = [...new Set(items.map((item) => item.drugName.trim()).filter(Boolean))].slice(0, 5);
+  if (terms.length > 0) {
+    params.set('inventorySearchDrugs', terms.join('/'));
+  }
+  return `/matching?${params.toString()}`;
+}
+
+function loadFaxSentMap(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(PROPOSAL_FAX_SENT_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function persistFaxSentMap(value: Record<string, string>) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(PROPOSAL_FAX_SENT_STORAGE_KEY, JSON.stringify(value));
+}
+
 export default function ProposalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -146,12 +214,27 @@ export default function ProposalDetailPage() {
   const [feedbackComment, setFeedbackComment] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [mobileTimelineKey, setMobileTimelineKey] = useState<string | null>(null);
+  const [counterOfferSubmitting, setCounterOfferSubmitting] = useState(false);
+  const [counterOfferResponding, setCounterOfferResponding] = useState<'accepted' | 'rejected' | null>(null);
   const [templates, setTemplates] = useState<ProposalTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateError, setTemplateError] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [templateSaving, setTemplateSaving] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null);
+  const [faxSentMap, setFaxSentMap] = useState<Record<string, string>>(() => loadFaxSentMap());
+  const recentProposalWork = useMemo(() => {
+    if (!data) return null;
+    return {
+      id: `proposal-${data.proposal.id}`,
+      label: `提案 #${data.proposal.id}`,
+      to: `/proposals/${data.proposal.id}`,
+      section: '提案',
+      subtitle: `${data.pharmacyA.name} ↔ ${data.pharmacyB.name}`,
+    };
+  }, [data]);
+
+  useTrackRecentWork(recentProposalWork);
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -222,6 +305,10 @@ export default function ProposalDetailPage() {
       : `${otherName}向け提案`;
     setTemplateName((current) => (current.trim().length > 0 ? current : nextName));
   }, [data, user?.id, user?.isAdmin]);
+
+  useEffect(() => {
+    persistFaxSentMap(faxSentMap);
+  }, [faxSentMap]);
 
   const proposalForItems = data?.proposal;
   const items = useMemo(() => data?.items ?? [], [data]);
@@ -492,6 +579,33 @@ export default function ProposalDetailPage() {
     pharmacyA.name,
     pharmacyB.name,
   );
+  const counterProposalDraft = buildCounterProposalDraft(proposal.id, otherPharmacy.name, itemsAtoB, itemsBtoA);
+  const reminderDraft = buildProposalReminderDraft(proposal.id, otherPharmacy.name);
+  const proposalAdjustmentMatchingPath = buildProposalAdjustmentMatchingPath(otherPharmacy.id, itemsAtoB.concat(itemsBtoA));
+  const faxSentAt = faxSentMap[String(proposal.id)] ?? null;
+  const latestComment = comments.length > 0 ? comments[comments.length - 1] : null;
+  const timelineEvents = data.enrichedTimeline ?? [];
+  const latestTimelineEvent = timelineEvents.length > 0 ? timelineEvents[timelineEvents.length - 1] : null;
+  const counterOffers = data.counterOffers ?? [];
+  const latestCounterOffer = counterOffers.length > 0 ? counterOffers[0] : null;
+  const pendingCounterOffer = counterOffers.find((offer) => offer.status === 'pending') ?? null;
+  const latestCounterOfferDiffs = latestCounterOffer
+    ? latestCounterOffer.items
+      .map((item) => {
+        const baseItem = items.find((proposalItem) => proposalItem.id === item.proposalItemId);
+        if (!baseItem) return null;
+        if (baseItem.quantity === item.quantity) return null;
+        return {
+          id: item.proposalItemId ?? baseItem.id,
+          drugName: item.drugName,
+          fromQuantity: baseItem.quantity,
+          toQuantity: item.quantity,
+        };
+      })
+      .filter((value): value is { id: number; drugName: string; fromQuantity: number; toQuantity: number } => value !== null)
+    : [];
+  const returnTo = sanitizeInternalPath((location.state as { from?: string } | null)?.from, '/proposals');
+  const printPath = `/proposals/${id}/print`;
 
   const TimelineSection = () => (
     <section id="proposal-timeline" style={{ scrollMarginTop: 96 }}>
@@ -612,6 +726,228 @@ export default function ProposalDetailPage() {
     </AppDataPanel>
   );
 
+  const ProposalReminderSection = () => (!user?.isAdmin && !isCompletedPhase && !isTerminalPhase ? (
+    <AppDataPanel title="リマインド / 再送" className="mb-3" bodyClassName="small">
+      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+          <div className="fw-semibold">承認待ちやFAX確認が滞留しているときの再送導線です。</div>
+          <div className="text-muted">
+            メッセージで確認依頼を送り、FAX 送付済みメモも残せます。
+          </div>
+          {faxSentAt && (
+            <div className="text-muted mt-2">FAX送付済みメモ: {formatDateTimeJa(faxSentAt)}</div>
+          )}
+        </div>
+        <div className="d-flex gap-2 flex-wrap">
+          <Link
+            to={buildMessagesPath({
+              pharmacyId: otherPharmacy.id,
+              pharmacyName: otherPharmacy.name,
+              draft: reminderDraft,
+              context: 'proposal',
+              contextId: proposal.id,
+            })}
+            className="btn btn-outline-primary btn-sm"
+          >
+            リマインドを送る
+          </Link>
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => setFaxSentMap((prev) => ({
+              ...prev,
+              [String(proposal.id)]: prev[String(proposal.id)] ? '' : new Date().toISOString(),
+            }))}
+          >
+            {faxSentAt ? 'FAX送付メモを解除' : 'FAX送付済みにする'}
+          </button>
+        </div>
+      </div>
+    </AppDataPanel>
+  ) : null);
+
+  const ProposalRecentInteractionSection = () => (
+    <AppDataPanel title="直近やり取り要約" className="mb-3" bodyClassName="small">
+      <div className="d-flex flex-column gap-2">
+        <div>
+          <div className="fw-semibold">コメント</div>
+          <div className="text-muted">
+            {latestComment ? `${formatDateTimeJa(latestComment.createdAt)} / ${latestComment.body}` : 'まだコメントはありません。'}
+          </div>
+        </div>
+        <div>
+          <div className="fw-semibold">進行イベント</div>
+          <div className="text-muted">
+            {latestTimelineEvent
+              ? `${formatDateTimeJa(latestTimelineEvent.at)} / ${latestTimelineEvent.label ?? latestTimelineEvent.eventType}`
+              : '進行イベントはまだありません。'}
+          </div>
+        </div>
+        {waitingInfo && (
+          <div>
+            <div className="fw-semibold">現在の待ち先</div>
+            <div className="text-muted">{waitingInfo.viewerLabel}</div>
+          </div>
+        )}
+      </div>
+    </AppDataPanel>
+  );
+
+  const handleCreateCounterOffer = async () => {
+    setCounterOfferSubmitting(true);
+    setError('');
+    try {
+      const itemsPayload = (proposal.pharmacyAId === user?.id ? itemsAtoB : itemsBtoA)
+        .map((item) => ({ proposalItemId: item.id, drugName: item.drugName, quantity: item.quantity }))
+        .slice(0, 10);
+      await api.post(`/exchange/proposals/${id}/counter-offers`, {
+        summary: counterProposalDraft,
+        items: itemsPayload,
+      });
+      setMessage('正式な反対提案を送信しました');
+      await fetchDetail();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '正式な反対提案の送信に失敗しました');
+    } finally {
+      setCounterOfferSubmitting(false);
+    }
+  };
+
+  const handleRespondCounterOffer = async (decision: 'accepted' | 'rejected') => {
+    if (!pendingCounterOffer) return;
+    setCounterOfferResponding(decision);
+    setError('');
+    try {
+      await api.post(`/exchange/proposals/${id}/counter-offers/${pendingCounterOffer.id}/respond`, {
+        decision,
+      });
+      setMessage(decision === 'accepted' ? '反対提案を承認しました' : '反対提案を却下しました');
+      await fetchDetail();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '正式な反対提案への応答に失敗しました');
+    } finally {
+      setCounterOfferResponding(null);
+    }
+  };
+
+  const ProposalCounterOfferSection = () => (!user?.isAdmin ? (
+    <AppDataPanel title="正式な反対提案" className="mb-3" bodyClassName="small">
+      {pendingCounterOffer ? (
+        <div className="d-flex flex-column gap-2">
+          <div className="fw-semibold">
+            {pendingCounterOffer.proposerPharmacyId === user?.id ? '相手薬局の返答待ちです。' : '相手薬局から正式な反対提案が届いています。'}
+          </div>
+          <div className="text-muted">{pendingCounterOffer.summary}</div>
+          <div className="small text-muted">
+            提案項目: {pendingCounterOffer.items.map((item) => `${item.drugName} x${item.quantity}`).join(' / ')}
+          </div>
+          <div className="small text-muted">作成日時: {formatDateTimeJa(pendingCounterOffer.createdAt)}</div>
+          {pendingCounterOffer.proposerPharmacyId !== user?.id && latestCounterOfferDiffs.length > 0 && (
+            <div className="border rounded p-2 bg-warning bg-opacity-10">
+              <div className="fw-semibold">承認すると次の差分が反映されます</div>
+              <div className="small text-muted">
+                {latestCounterOfferDiffs.map((diff) => `${diff.drugName}: ${diff.fromQuantity} → ${diff.toQuantity}`).join(' / ')}
+              </div>
+            </div>
+          )}
+          {pendingCounterOffer.proposerPharmacyId !== user?.id && (
+            <div className="d-flex gap-2 flex-wrap mt-2">
+              <LoadingButton
+                type="button"
+                size="sm"
+                variant="primary"
+                loading={counterOfferResponding === 'accepted'}
+                loadingLabel="承認中..."
+                onClick={() => void handleRespondCounterOffer('accepted')}
+              >
+                反対提案を承認
+              </LoadingButton>
+              <LoadingButton
+                type="button"
+                size="sm"
+                variant="outline-danger"
+                loading={counterOfferResponding === 'rejected'}
+                loadingLabel="却下中..."
+                onClick={() => void handleRespondCounterOffer('rejected')}
+              >
+                反対提案を却下
+              </LoadingButton>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+          <div>
+            <div className="fw-semibold">数量や対象薬剤を変えた正式な反対提案を残せます。</div>
+            <div className="text-muted">
+              直近の informal 調整とは別に、相手が確認すべき提案状態として保持します。
+            </div>
+            {latestCounterOffer && (
+              <div className="small text-muted mt-2">
+                直近: {formatDateTimeJa(latestCounterOffer.createdAt)} / {latestCounterOffer.status}
+              </div>
+            )}
+          </div>
+          <LoadingButton
+            type="button"
+            size="sm"
+            variant="outline-primary"
+            loading={counterOfferSubmitting}
+            loadingLabel="送信中..."
+            onClick={() => void handleCreateCounterOffer()}
+          >
+            この内容で正式な反対提案
+          </LoadingButton>
+        </div>
+      )}
+    </AppDataPanel>
+  ) : null);
+
+  const ProposalCounterOfferDiffSection = () => (latestCounterOffer && latestCounterOfferDiffs.length > 0 ? (
+    <AppDataPanel title="反対提案の差分" className="mb-3" bodyClassName="small">
+      <div className="d-flex flex-column gap-2">
+        {latestCounterOfferDiffs.map((diff) => (
+          <div key={`counter-offer-diff-${diff.id}`} className="border rounded p-2">
+            <div className="fw-semibold">{diff.drugName}</div>
+            <div className="text-muted">
+              数量 {diff.fromQuantity} → {diff.toQuantity}
+            </div>
+          </div>
+        ))}
+      </div>
+    </AppDataPanel>
+  ) : null);
+
+  const ProposalAdjustmentSection = () => (!user?.isAdmin && !isCompletedPhase && !isTerminalPhase ? (
+    <AppDataPanel title="再調整" className="mb-3" bodyClassName="small">
+      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+          <div className="fw-semibold">数量や品目を少し変えて再提案できます。</div>
+          <div className="text-muted">
+            拒否に進む前に、相手薬局へ調整案を送りつつ同条件の候補を再確認できます。
+          </div>
+        </div>
+        <div className="d-flex gap-2 flex-wrap">
+          <Link
+            to={buildMessagesPath({
+              pharmacyId: otherPharmacy.id,
+              pharmacyName: otherPharmacy.name,
+              draft: counterProposalDraft,
+              context: 'proposal',
+              contextId: proposal.id,
+            })}
+            className="btn btn-outline-primary btn-sm"
+          >
+            再調整メッセージ
+          </Link>
+          <Link to={proposalAdjustmentMatchingPath} className="btn btn-outline-secondary btn-sm">
+            条件を変えて再検索
+          </Link>
+        </div>
+      </div>
+    </AppDataPanel>
+  ) : null);
+
   const ProposalTemplatesSection = () => (
     <ProposalTemplatePanel
       title="提案テンプレート"
@@ -661,6 +997,11 @@ export default function ProposalDetailPage() {
       />
       {ProposalDeadlineSection()}
       {ProposalWorkflowSection()}
+      {ProposalCounterOfferSection()}
+      {ProposalCounterOfferDiffSection()}
+      {ProposalReminderSection()}
+      {ProposalAdjustmentSection()}
+      {ProposalRecentInteractionSection()}
       {!user?.isAdmin ? (
         <AppDataPanel title="相手薬局との連絡" className="mb-3" bodyClassName="small d-flex justify-content-between align-items-center gap-3 flex-wrap">
           <div>
@@ -751,6 +1092,11 @@ export default function ProposalDetailPage() {
         />
         {ProposalDeadlineSection()}
         {ProposalWorkflowSection()}
+        {ProposalCounterOfferSection()}
+        {ProposalCounterOfferDiffSection()}
+        {ProposalReminderSection()}
+        {ProposalAdjustmentSection()}
+        {ProposalRecentInteractionSection()}
         {!user?.isAdmin ? (
           <AppDataPanel title="相手薬局との連絡" className="mb-3" bodyClassName="small">
             <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap">
@@ -910,9 +1256,9 @@ export default function ProposalDetailPage() {
           >
             相手にメッセージ
           </Link>
-          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
+          <Link to={returnTo} className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
           <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
-          <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
+          <Link to={printPath} state={{ from: returnTo, detailPath: `/proposals/${proposal.id}` }} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
             印刷用ページ
           </Link>
         </div>
@@ -920,6 +1266,29 @@ export default function ProposalDetailPage() {
 
       {error && <AppAlert variant="danger">{error}</AppAlert>}
       {message && <AppAlert variant="success">{message}</AppAlert>}
+
+      <WorkContextBar
+        title={`提案 #${proposal.id} を処理中`}
+        currentLabel={`${pharmacyA.name} ↔ ${pharmacyB.name}`}
+        description="承認判断、FAX確認、コメント、再調整の流れをこの画面から進めます。"
+        backTo={returnTo}
+        backLabel="一覧の状態で戻る"
+        badges={[
+          { label: statusLabel, bg: isTerminalPhase ? 'secondary' : isConfirmedPhase ? 'success' : 'warning', text: isConfirmedPhase ? 'light' : 'dark' },
+          waitingInfo ? { label: waitingInfo.viewerLabel, bg: waitingInfo.waitingForYou ? 'warning' : 'info', text: 'dark' } : null,
+          latestCounterOffer ? { label: `反対提案: ${latestCounterOffer.status}`, bg: latestCounterOffer.status === 'pending' ? 'danger' : 'secondary' } : null,
+        ]}
+        nextActions={[
+          { to: printPath, label: '印刷/FAX確認', variant: 'outline-secondary' },
+          { to: buildMessagesPath({
+            pharmacyId: otherPharmacy.id,
+            pharmacyName: otherPharmacy.name,
+            context: 'proposal',
+            contextId: proposal.id,
+          }), label: 'メッセージ調整', variant: 'outline-primary' },
+          { to: proposalAdjustmentMatchingPath, label: '候補を再検索', variant: 'outline-secondary' },
+        ]}
+      />
 
       <AppResponsiveSwitch
         desktop={DesktopLayout}

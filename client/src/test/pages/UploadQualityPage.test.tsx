@@ -63,7 +63,7 @@ describe('UploadQualityPage', () => {
     expect(screen.getByRole('link', { name: 'アップロード' })).toHaveAttribute('href', '/upload');
     expect(screen.getByRole('link', { name: '統計' })).toHaveAttribute('href', '/statistics');
     expect(screen.getByRole('link', { name: 'デッドストックへ' })).toHaveAttribute('href', '/inventory/dead-stock');
-    expect(screen.getByRole('link', { name: '再アップロードする' })).toHaveAttribute('href', '/upload');
+    expect(screen.getAllByRole('link', { name: '保存済み設定で再アップロード' })[0]).toHaveAttribute('href', expect.stringContaining('/upload?reuseSavedMapping=1'));
     expect(screen.getByRole('link', { name: '統計を見る' })).toHaveAttribute('href', '/statistics');
   });
 
