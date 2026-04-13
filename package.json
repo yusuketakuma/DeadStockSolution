@@ -67,7 +67,7 @@
     "tmp": "0.2.5"
   },
   "dependencies": {
-    "@remotion/cli": "^4.0.438",
+    "@remotion/cli": "^4.0.448",
     "@remotion/transitions": "^4.0.438",
     "@remotion/zod-types": "^4.0.438",
     "@types/node": "^25.5.0",
