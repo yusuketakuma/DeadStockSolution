@@ -869,8 +869,9 @@ export default function AdminUserRequestsPage() {
             <div className="small text-muted mb-2">対象 {bulkPreview.count} 件 / 適用内容: {bulkPreview.updates.join(' / ') || '変更なし'}</div>
             <div className="d-flex flex-column gap-2">
               {bulkPreview.sample.map((item) => (
-                <div key={`bulk-preview-${item.id}`} className="border rounded p-2 small">
-                  #{item.id} {item.pharmacyName ?? '薬局名不明'} / {item.requestText}
+                <div key={`bulk-preview-${item.id}`} className="border rounded p-2 small text-wrap-anywhere">
+                  <div className="fw-semibold">#{item.id} {item.pharmacyName ?? '薬局名不明'}</div>
+                  <div className="text-muted dl-line-clamp-2 mt-1">{item.requestText}</div>
                 </div>
               ))}
               {bulkPreview.diffs.map((diff) => (
@@ -894,14 +895,14 @@ export default function AdminUserRequestsPage() {
               <button
                 key={`escalated-${item.id}`}
                 type="button"
-                className="btn text-start border border-warning bg-warning bg-opacity-10"
+                className="btn text-start border border-warning bg-warning bg-opacity-10 w-100"
                 onClick={() => {
                   setQueueFilter('escalated');
                   setSelectedRequestId(item.id);
                 }}
               >
-                <div className="fw-semibold">#{item.id} {item.pharmacyName ?? `薬局ID:${item.pharmacyId}`}</div>
-                <div className="small text-muted mt-1">{item.requestText}</div>
+                <div className="fw-semibold text-wrap-anywhere">#{item.id} {item.pharmacyName ?? `薬局ID:${item.pharmacyId}`}</div>
+                <div className="small text-muted mt-1 dl-line-clamp-2">{item.requestText}</div>
                 <div className="small text-warning-emphasis mt-1">再催促: {formatDateTimeJa(item.latestEscalatedAt)}</div>
               </button>
             ))}
@@ -939,7 +940,7 @@ export default function AdminUserRequestsPage() {
                         <button
                           key={item.id}
                           type="button"
-                          className={`btn text-start border ${
+                          className={`btn text-start border w-100 ${
                             selectedRequestId === item.id
                               ? 'border-primary bg-light'
                               : item.isOverdue
@@ -962,8 +963,8 @@ export default function AdminUserRequestsPage() {
                             />
                           </div>
                           <div className="d-flex justify-content-between align-items-start gap-2">
-                            <strong>#{item.id} {item.pharmacyName ?? `薬局ID:${item.pharmacyId}`}</strong>
-                            {workflowBadge(item.workflowStatus)}
+                            <strong className="text-wrap-anywhere flex-grow-1">#{item.id} {item.pharmacyName ?? `薬局ID:${item.pharmacyId}`}</strong>
+                            <span className="flex-shrink-0">{workflowBadge(item.workflowStatus)}</span>
                           </div>
                           <div className="d-flex flex-wrap gap-1 mt-2">
                             <Badge bg="light" text="dark">{categoryLabel(item.category)}</Badge>
@@ -972,9 +973,9 @@ export default function AdminUserRequestsPage() {
                             {waitingBadge(item)}
                             {item.latestEscalatedAt && <Badge bg="warning" text="dark">再催促あり</Badge>}
                           </div>
-                          <div className="small mt-2">{item.requestText}</div>
+                          <div className="small mt-2 dl-line-clamp-3">{item.requestText}</div>
                           {(item.latestSummary || item.openclawSummary) && (
-                            <div className="small text-muted mt-2">{item.latestSummary ?? item.openclawSummary}</div>
+                            <div className="small text-muted mt-2 dl-line-clamp-2">{item.latestSummary ?? item.openclawSummary}</div>
                           )}
                           <div className="small mt-2">
                             <span className={`badge bg-${slaSummary.tone} ${slaSummary.tone === 'warning' ? 'text-dark' : ''}`}>
@@ -1067,10 +1068,10 @@ export default function AdminUserRequestsPage() {
                         {detail.request.hasUnread && <Badge bg="danger">管理者未読あり</Badge>}
                         {waitingBadge(detail.request)}
                       </div>
-                      <div className="fw-semibold mt-2">{detail.request.pharmacyName ?? `薬局ID:${detail.request.pharmacyId}`}</div>
-                      <div className="small mt-2">{detail.request.requestText}</div>
+                      <div className="fw-semibold mt-2 text-wrap-anywhere">{detail.request.pharmacyName ?? `薬局ID:${detail.request.pharmacyId}`}</div>
+                      <div className="small mt-2 text-wrap-anywhere" style={{ whiteSpace: 'pre-wrap' }}>{detail.request.requestText}</div>
                       {(detail.request.latestSummary || detail.request.openclawSummary) && (
-                        <div className="small text-muted mt-2">{detail.request.latestSummary ?? detail.request.openclawSummary}</div>
+                        <div className="small text-muted mt-2 text-wrap-anywhere" style={{ whiteSpace: 'pre-wrap' }}>{detail.request.latestSummary ?? detail.request.openclawSummary}</div>
                       )}
                       {detail.request.latestEscalatedAt && (
                         <div className="small text-warning-emphasis mt-2">直近再催促: {formatDateTimeJa(detail.request.latestEscalatedAt)}</div>
