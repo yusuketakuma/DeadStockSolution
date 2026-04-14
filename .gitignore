@@ -153,6 +153,9 @@ data/
 
 # Claude Code harness
 .claude-code-harness/
+/harness.toml
+/hooks/hooks.json
+/.claude-plugin/
 .vercel
 
 # Workspace-local state and generated evidence
