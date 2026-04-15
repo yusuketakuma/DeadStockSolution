@@ -28,8 +28,8 @@ describe('BookmarksPage', () => {
       expect(screen.getByText('ブックマーク')).toBeInTheDocument();
     });
 
-    expect(screen.getAllByRole('link', { name: 'マッチングへ' })[0]).toHaveAttribute('href', '/matching');
-    expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
+    expect(screen.getAllByRole('link', { name: '候補を探す' })[0]).toHaveAttribute('href', '/matching');
+    expect(screen.getAllByRole('link', { name: '提案一覧を確認' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
   });
 
   it('links saved bookmarks back to matching candidates', async () => {
@@ -50,9 +50,9 @@ describe('BookmarksPage', () => {
     renderWithProviders(<BookmarksPage />, { route: '/bookmarks', authUser: mockUser });
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: '候補を見る' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: '候補を確認' })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('link', { name: '候補を見る' })).toHaveAttribute('href', '/matching?targetPharmacyId=22');
+    expect(screen.getByRole('link', { name: '候補を確認' })).toHaveAttribute('href', '/matching?targetPharmacyId=22');
   });
 });

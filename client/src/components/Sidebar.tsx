@@ -24,42 +24,42 @@ interface SidebarNavGroup {
 
 const NAV_GROUPS: readonly SidebarNavGroup[] = [
   {
-    title: '主要操作',
+    title: '更新と確認',
     items: [
       { to: '/', label: 'ダッシュボード', end: true },
       { to: '/upload', label: 'アップロード' },
-      { to: '/upload-quality', label: 'アップロード品質' },
-      { to: '/matching', label: 'マッチング' },
-      { to: '/proposals', label: 'マッチング一覧' },
-      { to: '/messages', label: 'メッセージ' },
-      { to: '/exchange-history', label: '交換履歴' },
-      { to: '/statistics', label: '統計' },
+      { to: '/upload-quality', label: '品質を確認' },
+      { to: '/matching', label: '候補を確認' },
+      { to: '/proposals', label: '提案一覧を確認' },
+      { to: '/messages', label: 'メッセージを確認' },
+      { to: '/exchange-history', label: '交換履歴を確認' },
+      { to: '/statistics', label: '統計を確認' },
     ],
   },
   {
-    title: '通知・対応',
+    title: '交換と対応',
     items: [
-      { to: '/notifications', label: '通知センター' },
-      { to: '/alerts', label: 'アラート一覧' },
-      { to: '/requests', label: '要望一覧' },
-      { to: '/bookmarks', label: 'ブックマーク' },
-      { to: '/groups', label: 'グループ' },
+      { to: '/notifications', label: '通知を確認' },
+      { to: '/alerts', label: 'アラートを確認' },
+      { to: '/requests', label: '要望を確認' },
+      { to: '/bookmarks', label: 'ブックマークを確認' },
+      { to: '/groups', label: 'グループを確認' },
     ],
   },
   {
-    title: '在庫・参照',
+    title: '在庫とネットワーク',
     items: [
-      { to: '/inventory/dead-stock', label: 'デッドストックリスト' },
-      { to: '/inventory/used-medication', label: '医薬品使用量リスト' },
-      { to: '/inventory/browse', label: '在庫参照' },
-      { to: '/pharmacies', label: '薬局一覧' },
+      { to: '/inventory/dead-stock', label: 'デッドストックを確認' },
+      { to: '/inventory/used-medication', label: '使用量を確認' },
+      { to: '/inventory/browse', label: '在庫を確認' },
+      { to: '/pharmacies', label: '薬局を確認' },
     ],
   },
 ];
 
 const ADMIN_NAV_GROUPS: readonly SidebarNavGroup[] = [
   {
-    title: '運用監視',
+    title: '監視と障害対応',
     items: [
       { to: '/admin', label: '管理者ダッシュボード', end: true },
       { to: '/admin/notifications', label: '通知・配信状況' },
@@ -74,7 +74,7 @@ const ADMIN_NAV_GROUPS: readonly SidebarNavGroup[] = [
     ],
   },
   {
-    title: '薬局運用',
+    title: '薬局運用と承認',
     items: [
       { to: '/admin/pharmacies', label: '薬局管理' },
       { to: '/admin/pharmacy-health', label: '薬局ヘルス' },
@@ -89,7 +89,7 @@ const ADMIN_NAV_GROUPS: readonly SidebarNavGroup[] = [
     ],
   },
   {
-    title: '最適化・基盤',
+    title: '基盤と最適化',
     items: [
       { to: '/admin/matching-rules', label: 'マッチングルール' },
       { to: '/admin/matching-experiments', label: 'マッチング実験' },
@@ -195,11 +195,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             ))}
           </>
         )}
-        {NAV_GROUPS.map((group) => (
+        {(!user?.isAdmin ? NAV_GROUPS : []).map((group) => (
           <div key={group.title} className="sidebar-group">
             <div className="sidebar-group-title">{group.title}</div>
             {group.items
-              .filter((item) => !(user?.isAdmin && item.to === '/messages'))
               .map((item) => (
               <SidebarLink
                 key={item.to}

@@ -83,7 +83,7 @@ describe('AlertListPage', () => {
     await waitFor(() => {
       expect(screen.getByText('アラート一覧')).toBeInTheDocument();
     });
-    expect(screen.getByRole('link', { name: 'アップロード品質' })).toHaveAttribute('href', '/upload-quality');
+    expect(screen.getByRole('link', { name: '品質を確認' })).toHaveAttribute('href', '/upload-quality');
   });
 
   it('アラートカードが表示される', async () => {
@@ -232,10 +232,10 @@ describe('AlertListPage', () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getAllByRole('button', { name: '詳細' }).length).toBeGreaterThan(0);
+      expect(screen.getAllByRole('button', { name: 'アラートを確認' }).length).toBeGreaterThan(0);
     });
 
-    const detailButtons = screen.getAllByRole('button', { name: '詳細' });
+    const detailButtons = screen.getAllByRole('button', { name: 'アラートを確認' });
     await user.click(detailButtons[0]);
 
     await waitFor(() => {
@@ -272,10 +272,10 @@ describe('AlertListPage', () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getAllByRole('button', { name: '詳細' }).length).toBeGreaterThan(0);
+      expect(screen.getAllByRole('button', { name: 'アラートを確認' }).length).toBeGreaterThan(0);
     });
 
-    await user.click(screen.getAllByRole('button', { name: '詳細' })[0]);
+    await user.click(screen.getAllByRole('button', { name: 'アラートを確認' })[0]);
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: 'マッチングを見る' })).toHaveAttribute('href', '/matching');
@@ -317,6 +317,23 @@ describe('AlertListPage', () => {
       );
       expect(calls.some((u: string) => u.includes('type=near_expiry'))).toBe(true);
     });
+  });
+
+  it('empty state uses action-based recovery links', async () => {
+    const fetchMock = setupFetchMock({
+      '/api/alerts/stats': { unresolvedCount: 0, byType: {} },
+      '/api/alerts?': { alerts: [], total: 0, offset: 0, limit: 20, unresolvedCount: 0 },
+      '/api/auth/me': { id: 1, email: 'test@example.com', name: 'テスト薬局' },
+    });
+    void fetchMock;
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('未解決のアラートはありません')).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByRole('link', { name: '通知を確認' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(true);
   });
 });
 
@@ -363,12 +380,12 @@ describe('DashboardPage alert widget', () => {
     });
   });
 
-  it('全て見るリンクが /alerts を指す', async () => {
+  it('アラートを確認リンクが /alerts を指す', async () => {
     const { default: DashboardPage } = await import('../pages/DashboardPage');
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      const link = screen.getByRole('link', { name: /全て見る/ });
+      const link = screen.getByRole('link', { name: 'アラートを確認' });
       expect(link).toHaveAttribute('href', '/alerts');
     });
   });

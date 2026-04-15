@@ -31,18 +31,18 @@ const ACCOUNT_SHORTCUT_GROUPS = [
     title: '運用確認',
     description: '設定変更の反映先をまとめています。',
     links: [
-      { to: '/pharmacies', label: '薬局一覧' },
-      { to: '/upload-quality', label: 'アップロード品質' },
-      { to: '/statistics', label: '統計' },
+      { to: '/pharmacies', label: '薬局を確認' },
+      { to: '/upload-quality', label: '品質を確認' },
+      { to: '/statistics', label: '統計を確認' },
     ],
   },
   {
     title: '連絡・ネットワーク',
     description: '通知やグループ運用にすぐ戻れます。',
     links: [
-      { to: '/notifications', label: '通知センター' },
-      { to: '/messages', label: 'メッセージ' },
-      { to: '/groups', label: 'グループ' },
+      { to: '/notifications', label: '通知を確認' },
+      { to: '/messages', label: 'メッセージを確認' },
+      { to: '/groups', label: 'グループを確認' },
     ],
   },
 ] as const;
@@ -129,7 +129,7 @@ export default function AccountPage() {
             <h4 className="page-title mb-0">薬局登録情報の編集</h4>
           </div>
           <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-            <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボード</Link>
+            <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボードを確認</Link>
           </div>
         </div>
         {accountForm.error && <AppAlert variant="danger">{accountForm.error}</AppAlert>}
@@ -147,7 +147,7 @@ export default function AccountPage() {
           <h4 className="page-title mb-0">薬局登録情報の編集</h4>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボード</Link>
+          <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボードを確認</Link>
         </div>
       </div>
       {accountForm.message && <AppAlert variant="success" onClose={() => accountForm.setMessage('')} dismissible>{accountForm.message}</AppAlert>}

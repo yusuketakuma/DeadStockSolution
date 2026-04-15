@@ -28,7 +28,7 @@ export function ProposalContactPanel({ proposalId, otherPharmacy, mobile }: Prop
         })}
         className="btn btn-outline-primary btn-sm"
       >
-        メッセージを開く
+        メッセージを確認
       </Link>
     </>
   );

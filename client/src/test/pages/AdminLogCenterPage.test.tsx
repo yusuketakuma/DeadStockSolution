@@ -96,6 +96,7 @@ describe('AdminLogCenterPage feedback helpers', () => {
     expect(container.querySelector('.dl-log-center-table')).toBeTruthy();
     expect(screen.getByTitle(longMessage)).toHaveClass('dl-log-center-cell--headline');
     expect(screen.getByTitle(longCodeLocation)).toHaveClass('dl-log-center-code');
+    expect(screen.getAllByRole('button', { name: 'ログを確認' }).length).toBeGreaterThan(0);
   });
 
   it('keeps long code locations and detail json wrapped inside the detail modal', async () => {

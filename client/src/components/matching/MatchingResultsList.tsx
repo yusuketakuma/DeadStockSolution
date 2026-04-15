@@ -126,9 +126,14 @@ function MatchCandidateCard({
       const key = `${candidate.pharmacyId}:${bookmarkCode}`;
       const isBookmarked = bookmarkMap.has(key);
       const isPending = bookmarkPending.has(key);
+      const actionLabel = isBookmarked
+        ? `${item.drugName} をブックマーク解除`
+        : `${item.drugName} をブックマーク`;
       return {
         key,
-        label: `${isBookmarked ? '★' : '☆'} ${item.drugName}`,
+        buttonLabel: `${isBookmarked ? '★' : '☆'} ${item.drugName}`,
+        menuLabel: actionLabel,
+        actionLabel,
         onClick: () => {
           if (!isPending) {
             void onToggleBookmark(candidate, bookmarkCode);
@@ -137,7 +142,14 @@ function MatchCandidateCard({
         disabled: isPending,
       };
     })
-    .filter((item): item is { key: string; label: string; onClick: () => void; disabled: boolean } => item !== null);
+    .filter((item): item is {
+      key: string;
+      buttonLabel: string;
+      menuLabel: string;
+      actionLabel: string;
+      onClick: () => void;
+      disabled: boolean;
+    } => item !== null);
 
   return (
     <SwipeableListItem
@@ -285,7 +297,7 @@ function MatchCandidateCard({
                     })}
                     variant="outline-primary"
                   >
-                    メッセージを開く
+                    メッセージを確認
                   </AppButton>
                   <AppButton
                     type="button"
@@ -298,13 +310,15 @@ function MatchCandidateCard({
                   {bookmarkItems.map((item) => (
                     <LoadingButton
                       key={item.key}
-                      variant={item.label.startsWith('★') ? 'warning' : 'outline-secondary'}
+                      variant={item.buttonLabel.startsWith('★') ? 'warning' : 'outline-secondary'}
                       size="sm"
                       loading={item.disabled}
                       loadingLabel="..."
                       onClick={item.onClick}
+                      aria-label={item.actionLabel}
+                      title={item.actionLabel}
                     >
-                      {item.label}
+                      {item.buttonLabel}
                     </LoadingButton>
                   ))}
                 </div>
@@ -319,7 +333,7 @@ function MatchCandidateCard({
                     items={[
                       {
                         key: 'message',
-                        label: 'メッセージを開く',
+                        label: 'メッセージを確認',
                         href: buildMessagesPath({
                           pharmacyId: candidate.pharmacyId,
                           pharmacyName: candidate.pharmacyName,
@@ -339,7 +353,12 @@ function MatchCandidateCard({
                         onClick: onDismiss,
                         danger: true,
                       },
-                      ...bookmarkItems,
+                      ...bookmarkItems.map((item) => ({
+                        key: item.key,
+                        label: item.menuLabel,
+                        onClick: item.onClick,
+                        disabled: item.disabled,
+                      })),
                     ]}
                   />
                 </div>

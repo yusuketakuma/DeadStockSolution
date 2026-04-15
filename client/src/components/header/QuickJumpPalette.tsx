@@ -45,6 +45,16 @@ function renderJumpButton(
   );
 }
 
+function groupQuickJumpItems(items: QuickJumpItem[]) {
+  const grouped = new Map<string, QuickJumpItem[]>();
+  for (const item of items) {
+    const current = grouped.get(item.section) ?? [];
+    current.push(item);
+    grouped.set(item.section, current);
+  }
+  return [...grouped.entries()].map(([section, sectionItems]) => ({ section, items: sectionItems }));
+}
+
 export default function QuickJumpPalette({
   show,
   onHide,
@@ -79,6 +89,8 @@ export default function QuickJumpPalette({
   const caseItems = useMemo(() => cases
     .filter((item) => matchesQuery(item, query))
     .slice(0, 10), [cases, query]);
+  const groupedRouteItems = useMemo(() => groupQuickJumpItems(routeItems), [routeItems]);
+  const hasQuery = query.trim().length > 0;
 
   const handleSelect = (target: string) => {
     navigate(target);
@@ -105,13 +117,13 @@ export default function QuickJumpPalette({
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="提案、要望、OpenClaw、通知などで検索"
+          placeholder="画面名・作業名・案件名で検索"
           aria-label="クイックジャンプ検索"
         />
 
         {recentItems.length > 0 && (
           <div className="d-flex flex-column gap-2">
-            <div className="fw-semibold">最近触った案件</div>
+            <div className="fw-semibold">最近の作業</div>
             <div className="d-flex flex-column gap-2">
               {recentItems.map((item) => renderJumpButton(item, handleSelect, 'outline-primary'))}
             </div>
@@ -119,7 +131,7 @@ export default function QuickJumpPalette({
         )}
 
         <div className="d-flex flex-column gap-2">
-          <div className="fw-semibold">案件ジャンプ</div>
+          <div className="fw-semibold">対応中の案件</div>
           {loadingCases ? (
             <div className="small text-muted">案件候補を読み込み中...</div>
           ) : caseItems.length > 0 ? (
@@ -132,11 +144,24 @@ export default function QuickJumpPalette({
         </div>
 
         <div className="d-flex flex-column gap-2">
-          <div className="fw-semibold">主要画面</div>
+          <div className="fw-semibold">{hasQuery ? '一致する画面' : '画面を確認'}</div>
           {routeItems.length > 0 ? (
-            <div className="d-flex flex-column gap-2">
-              {routeItems.map((item) => renderJumpButton(item, handleSelect))}
-            </div>
+            hasQuery ? (
+              <div className="d-flex flex-column gap-2">
+                {routeItems.map((item) => renderJumpButton(item, handleSelect))}
+              </div>
+            ) : (
+              <div className="d-flex flex-column gap-3">
+                {groupedRouteItems.map((group) => (
+                  <div key={group.section} className="d-flex flex-column gap-2">
+                    <div className="small fw-semibold text-muted">{group.section}</div>
+                    <div className="d-flex flex-column gap-2">
+                      {group.items.map((item) => renderJumpButton(item, handleSelect))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           ) : (
             <div className="small text-muted">一致する画面がありません。</div>
           )}

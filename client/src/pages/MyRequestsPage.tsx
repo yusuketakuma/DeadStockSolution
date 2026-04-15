@@ -368,7 +368,7 @@ export default function MyRequestsPage() {
           <div className="text-muted small">新規要望の登録と、OpenClaw・管理者とのやり取りをここで追えます。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap align-items-center">
-          <Link to="/messages" className="btn btn-outline-secondary btn-sm">薬局間メッセージ</Link>
+          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
           <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
             自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
           </Badge>

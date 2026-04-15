@@ -132,17 +132,17 @@ const PROPOSALS_LINK_GROUPS: readonly ProposalNavigationLinkGroup[] = [
     title: '候補確認',
     description: '一覧の前後で比較する主要画面です。',
     links: [
-      { to: '/matching', label: 'マッチング' },
-      { to: '/exchange-history', label: '交換履歴' },
-      { to: '/messages', label: 'メッセージ' },
+      { to: '/matching', label: '候補を確認' },
+      { to: '/exchange-history', label: '交換履歴を確認' },
+      { to: '/messages', label: 'メッセージを確認' },
     ],
   },
   {
     title: '次の確認',
     description: '空振り時でも通知や保存候補に戻れます。',
     links: [
-      { to: '/bookmarks', label: 'ブックマーク' },
-      { to: '/notifications', label: '通知センター' },
+      { to: '/bookmarks', label: 'ブックマークを確認' },
+      { to: '/notifications', label: '通知を確認' },
     ],
   },
 ] as const;
@@ -400,8 +400,8 @@ export default function ProposalsPage() {
           <h4 className="page-title mb-0">マッチング一覧</h4>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
-          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
+          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴を確認</Link>
         </div>
       </div>
       {bulkError && <AppAlert variant="danger">{bulkError}</AppAlert>}
@@ -419,8 +419,8 @@ export default function ProposalsPage() {
           selectedProposal?.hasPendingCounterOffer ? { label: '反対提案あり', bg: 'warning', text: 'dark' } : null,
         ]}
         nextActions={[
-          { to: '/matching', label: '候補へ戻る', variant: 'outline-secondary' },
-          { to: '/exchange-history', label: '交換履歴', variant: 'outline-secondary' },
+          { to: '/matching', label: '候補を確認', variant: 'outline-secondary' },
+          { to: '/exchange-history', label: '交換履歴を確認', variant: 'outline-secondary' },
         ]}
       />
 
@@ -601,7 +601,7 @@ export default function ProposalsPage() {
                           <td>{renderDeadlineCell(p.deadlineAt)}</td>
                           <td onClick={(event) => event.stopPropagation()}>
                             <div className="d-flex gap-2 flex-wrap">
-                              <Link to={`/proposals/${p.id}`} state={{ from: returnTo }} className="btn btn-sm btn-outline-primary">詳細</Link>
+                              <Link to={`/proposals/${p.id}`} state={{ from: returnTo }} className="btn btn-sm btn-outline-primary">提案を確認</Link>
                               <Link
                                 to={`/proposals/${p.id}/print`}
                                 state={{ from: returnTo, detailPath: `/proposals/${p.id}` }}
@@ -640,7 +640,7 @@ export default function ProposalsPage() {
                 <SwipeableListItem
                   key={`swipe-${p.id}`}
                   onSwipeLeft={() => navigate(`/proposals/${p.id}`)}
-                  leftContent={<div className="swipe-bg-info"><span className="swipe-icon" aria-hidden="true">{'\u2192'}</span> 詳細</div>}
+                  leftContent={<div className="swipe-bg-info"><span className="swipe-icon" aria-hidden="true">{'\u2192'}</span> 確認</div>}
                   undoDuration={0}
                 >
                   <AppMobileDataCard
@@ -698,7 +698,7 @@ export default function ProposalsPage() {
                           label="一括対象に追加"
                           aria-label={`${otherName}との提案を一括対象に追加`}
                         />
-                        <Link to={`/proposals/${p.id}`} state={{ from: returnTo }} className="btn btn-sm btn-outline-primary w-100">詳細</Link>
+                        <Link to={`/proposals/${p.id}`} state={{ from: returnTo }} className="btn btn-sm btn-outline-primary w-100">提案を確認</Link>
                         <Link
                           to={`/proposals/${p.id}/print`}
                           state={{ from: returnTo, detailPath: `/proposals/${p.id}` }}

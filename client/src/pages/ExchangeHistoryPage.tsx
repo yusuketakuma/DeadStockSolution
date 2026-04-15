@@ -39,17 +39,17 @@ const EXCHANGE_HISTORY_LINK_GROUPS: readonly ProposalNavigationLinkGroup[] = [
     title: '履歴と提案',
     description: '完了後でも提案詳細や一覧に戻れます。',
     links: [
-      { to: '/proposals', label: 'マッチング一覧' },
-      { to: '/matching', label: 'マッチング' },
-      { to: '/messages', label: 'メッセージ' },
+      { to: '/proposals', label: '提案一覧を確認' },
+      { to: '/matching', label: '候補を確認' },
+      { to: '/messages', label: 'メッセージを確認' },
     ],
   },
   {
     title: '次の確認',
     description: '次の交換候補や通知確認へ進めます。',
     links: [
-      { to: '/notifications', label: '通知センター' },
-      { to: '/bookmarks', label: 'ブックマーク' },
+      { to: '/notifications', label: '通知を確認' },
+      { to: '/bookmarks', label: 'ブックマークを確認' },
     ],
   },
 ] as const;
@@ -79,9 +79,9 @@ export default function ExchangeHistoryPage() {
           <div className="text-muted small">完了した交換から提案タイムラインや関連メッセージへ戻れます。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
-          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
-          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
+          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
         </div>
       </div>
       <ScrollArea>
@@ -94,7 +94,7 @@ export default function ExchangeHistoryPage() {
         isEmpty={items.length === 0}
         emptyTitle="交換履歴はまだありません"
         emptyDescription="交換完了した履歴がここに表示されます。マッチング一覧や通知確認に戻れます。"
-        emptyActionLabel="マッチング一覧へ"
+        emptyActionLabel="提案一覧を確認"
         emptyActionTo="/proposals"
         desktop={() => (
           <div className="table-responsive">

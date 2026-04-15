@@ -16,21 +16,22 @@ export default function ProposalTemplateSelector({
 }: ProposalTemplateSelectorProps) {
   const [templates, setTemplates] = useState<ProposalTemplate[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
 
   useEffect(() => {
     let mounted = true;
 
     async function loadTemplates() {
       setLoading(true);
-      setError('');
+      setStatusMessage('');
       try {
         const nextTemplates = await listProposalTemplates();
         if (!mounted) return;
         setTemplates(nextTemplates.sort(compareProposalTemplates));
-      } catch (err) {
+      } catch {
         if (!mounted) return;
-        setError(err instanceof Error ? err.message : 'テンプレート一覧の取得に失敗しました');
+        setTemplates([]);
+        setStatusMessage('テンプレートは現在読み込めません。候補検索はそのまま利用できます。');
       } finally {
         if (mounted) setLoading(false);
       }
@@ -68,10 +69,9 @@ export default function ProposalTemplateSelector({
       title="保存済み提案テンプレート"
       templates={templates}
       loading={loading}
-      error={error}
       buildUseTo={buildTemplateMatchingPath}
       useLabel="この条件で候補を探す"
-      emptyMessage="完了済み提案をテンプレート保存すると、交換先や品目を絞って再検索できます。"
+      emptyMessage={statusMessage || '完了済み提案をテンプレート保存すると、交換先や品目を絞って再検索できます。'}
       onUse={handleUseTemplate}
     />
   );

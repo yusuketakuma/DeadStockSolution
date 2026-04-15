@@ -113,9 +113,9 @@ export default function UploadPage() {
           <h4 className="page-title mb-0">{pageTitle}</h4>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">アップロード品質</Link>
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
+          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">品質を確認</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リストを確認</Link>
         </div>
       </div>
       <AppCard className="mb-3 upload-entry-card-shell">
@@ -141,13 +141,13 @@ export default function UploadPage() {
         </AppCard.Body>
       </AppCard>
       <AppCard className="mb-3">
-        <AppCard.Header>取込後に確認する画面</AppCard.Header>
+        <AppCard.Header>取込後の確認先</AppCard.Header>
         <AppCard.Body className="d-flex gap-2 flex-wrap align-items-center">
-          <Link to="/upload-quality" className="btn btn-sm btn-outline-danger">アップロード品質</Link>
-          <Link to="/inventory/dead-stock" className="btn btn-sm btn-outline-secondary">デッドストック</Link>
-          <Link to="/inventory/used-medication" className="btn btn-sm btn-outline-secondary">使用量リスト</Link>
-          <Link to="/matching" className="btn btn-sm btn-outline-primary">マッチング</Link>
-          <Link to="/statistics" className="btn btn-sm btn-outline-secondary">統計</Link>
+          <Link to="/upload-quality" className="btn btn-sm btn-outline-danger">品質を確認</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-sm btn-outline-secondary">デッドストックを確認</Link>
+          <Link to="/inventory/used-medication" className="btn btn-sm btn-outline-secondary">使用量リストを確認</Link>
+          <Link to="/matching" className="btn btn-sm btn-outline-primary">候補を探す</Link>
+          <Link to="/statistics" className="btn btn-sm btn-outline-secondary">統計を確認</Link>
           <span className="small text-muted">取込結果の品質確認、在庫反映、候補確認までこの画面から戻れます。</span>
         </AppCard.Body>
       </AppCard>
@@ -190,13 +190,13 @@ export default function UploadPage() {
                 to="/upload-quality"
                 className={`btn btn-sm ${failedCount > 0 || flow.canDownloadErrorReport ? 'btn-danger' : 'btn-outline-danger'}`}
               >
-                {failedCount > 0 || flow.canDownloadErrorReport ? '問題行を確認' : 'アップロード品質'}
+                {failedCount > 0 || flow.canDownloadErrorReport ? '問題行を確認' : '品質を確認'}
               </Link>
               <Link to={inventoryDestination} className="btn btn-sm btn-outline-secondary">
-                反映済み在庫を見る
+                反映済み在庫を確認
               </Link>
               <Link to="/matching" className="btn btn-sm btn-outline-primary">
-                マッチングを再実行
+                候補を再計算
               </Link>
               {flow.canDownloadErrorReport && (
                 <AppButton size="sm" variant="outline-secondary" onClick={flow.triggerErrorReportDownload}>

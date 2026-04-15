@@ -314,7 +314,7 @@ export default function AlertListPage() {
       <td>
         <div className="d-flex gap-1">
           <AppButton size="sm" variant="outline-primary" onClick={() => void handleShowDetail(alert.id)}>
-            詳細
+            アラートを確認
           </AppButton>
           {!alert.resolvedAt && (
             <AppButton
@@ -352,7 +352,7 @@ export default function AlertListPage() {
       actions={
         <div className="d-flex gap-1">
           <AppButton size="sm" variant="outline-primary" onClick={() => void handleShowDetail(alert.id)}>
-            詳細
+            アラートを確認
           </AppButton>
           {!alert.resolvedAt && (
             <AppButton
@@ -382,10 +382,10 @@ export default function AlertListPage() {
           )}
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/notifications" className="btn btn-outline-secondary btn-sm">通知センター</Link>
-          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">アップロード品質</Link>
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
-          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫参照</Link>
+          <Link to="/notifications" className="btn btn-outline-secondary btn-sm">通知を確認</Link>
+          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">品質を確認</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
+          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
         </div>
       </div>
 
@@ -436,7 +436,7 @@ export default function AlertListPage() {
                 <AppEmptyState
                   title={resolvedTab === 'unresolved' ? '未解決のアラートはありません' : '解決済みのアラートはありません'}
                   description={resolvedTab === 'unresolved' ? 'アラートが検出されると、ここに表示されます。通知センターや在庫画面もあわせて確認できます。' : '過去に解決したアラートがあると、ここに表示されます。'}
-                  actionLabel={resolvedTab === 'unresolved' ? '通知センターへ' : 'ダッシュボードへ'}
+                  actionLabel={resolvedTab === 'unresolved' ? '通知を確認' : 'ダッシュボードを確認'}
                   actionTo={resolvedTab === 'unresolved' ? '/notifications' : '/'}
                 />
               ) : (

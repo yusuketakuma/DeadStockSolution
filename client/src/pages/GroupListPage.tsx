@@ -189,7 +189,7 @@ export default function GroupListPage() {
               <td>
                 {activeTab === 'mine' ? (
                   <Link to={`/groups/${g.id}`}>
-                    <AppButton size="sm" variant="outline-primary">詳細</AppButton>
+                    <AppButton size="sm" variant="outline-primary">グループを確認</AppButton>
                   </Link>
                 ) : g.visibility === 'public' ? (
                   <LoadingButton
@@ -229,7 +229,7 @@ export default function GroupListPage() {
           actions={
             activeTab === 'mine' ? (
               <Link to={`/groups/${g.id}`}>
-                <AppButton size="sm" variant="outline-primary">詳細</AppButton>
+                <AppButton size="sm" variant="outline-primary">グループを確認</AppButton>
               </Link>
             ) : g.visibility === 'public' ? (
               <LoadingButton
@@ -275,9 +275,9 @@ export default function GroupListPage() {
           <div className="text-muted small">グループ作成、参加、関連薬局やメッセージ画面への移動をまとめています。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/pharmacies" className="btn btn-outline-secondary btn-sm">登録薬局一覧</Link>
-          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
-          <Link to="/account" className="btn btn-outline-secondary btn-sm">薬局設定</Link>
+          <Link to="/pharmacies" className="btn btn-outline-secondary btn-sm">薬局を確認</Link>
+          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
+          <Link to="/account" className="btn btn-outline-secondary btn-sm">薬局設定を確認</Link>
           {user && (
             <AppButton variant="primary" size="sm" onClick={() => setShowCreateModal(true)}>
               グループ作成
@@ -341,7 +341,7 @@ export default function GroupListPage() {
                       </AppButton>
                     ) : null}
                     <AppButton size="sm" variant="outline-secondary" onClick={() => setActiveTab('public')}>
-                      公開グループを見る
+                      公開グループを確認
                     </AppButton>
                   </div>
                 ) : undefined

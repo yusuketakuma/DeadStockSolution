@@ -81,7 +81,7 @@ describe('MessagesPage', () => {
       expect(screen.getAllByText('メッセージはありません').length).toBeGreaterThan(0);
     });
 
-    expect(screen.getByRole('link', { name: '要望一覧' })).toHaveAttribute('href', '/requests');
+    expect(screen.getAllByRole('link', { name: '薬局を確認' }).some((link) => link.getAttribute('href') === '/pharmacies')).toBe(true);
   });
 
   it('uses document-level vertical scrolling instead of fixed-height inner scrolling', async () => {

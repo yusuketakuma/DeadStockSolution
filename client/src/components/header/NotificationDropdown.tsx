@@ -41,6 +41,15 @@ function getRelativeTime(timestamp: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+function resolveActionHint(source: TimelineSource, linkTo: string): string {
+  if (linkTo === '/') return '通知を確認 →';
+  if (linkTo.startsWith('/alerts') || source === 'expiry_risk') return 'アラートを確認 →';
+  if (linkTo.startsWith('/messages') || source === 'comment' || source === 'admin_message') return 'メッセージを確認 →';
+  if (linkTo.startsWith('/matching') || source === 'match') return '候補を確認 →';
+  if (linkTo.startsWith('/proposals') || source === 'proposal' || source === 'notification') return '案件を確認 →';
+  return '内容を確認 →';
+}
+
 interface NotificationDropdownProps {
   events: TimelineEvent[];
   unreadCount: number;
@@ -97,7 +106,7 @@ export default function NotificationDropdown({
                 {displayEvents.map((event) => {
                   const icon = SOURCE_ICON[event.source] ?? '📌';
                   const linkTo = sanitizeInternalPath(event.actionPath, '/');
-                  const actionHint = linkTo === '/' ? 'ダッシュボードへ →' : '詳細を見る →';
+                  const actionHint = resolveActionHint(event.source, linkTo);
 
                   return (
                     <ListGroup.Item

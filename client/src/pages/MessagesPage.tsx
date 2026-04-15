@@ -390,7 +390,7 @@ export default function MessagesPage() {
           <AppEmptyState
             title={search ? '検索条件に一致するメッセージはありません' : 'メッセージはありません'}
             description={search ? '検索条件を変えて再度確認してください。' : '薬局一覧やマッチングから相手を選んでメッセージを開始できます。'}
-            actionLabel={search ? undefined : '薬局一覧へ'}
+            actionLabel={search ? undefined : '薬局を確認'}
             actionTo={search ? undefined : '/pharmacies'}
           />
         </Card.Body>
@@ -621,8 +621,8 @@ export default function MessagesPage() {
           <div className="text-muted small">一覧と会話を device 幅に合わせて切り替えます。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap align-items-center">
-          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
-          <Link to="/requests" className="btn btn-outline-secondary btn-sm">要望一覧</Link>
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
+          <Link to="/requests" className="btn btn-outline-secondary btn-sm">要望一覧を確認</Link>
           <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
             自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
           </Badge>

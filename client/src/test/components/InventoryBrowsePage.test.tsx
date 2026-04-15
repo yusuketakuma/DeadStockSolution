@@ -59,8 +59,8 @@ describe('InventoryBrowsePage', () => {
     await waitFor(() => {
       expect(screen.getByText('全薬局の在庫参照')).toBeInTheDocument();
     });
-    expect(screen.getByRole('link', { name: '医薬品在庫検索' })).toHaveAttribute('href', '/inventory/search');
-    expect(screen.getByRole('link', { name: 'マッチング' })).toHaveAttribute('href', '/matching');
+    expect(screen.getAllByRole('link', { name: '検索条件を確認' }).some((link) => link.getAttribute('href') === '/inventory/search')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '候補を確認' }).some((link) => link.getAttribute('href') === '/matching')).toBe(true);
     expect(screen.getByPlaceholderText('薬品名で検索（ひらがな・カタカナ対応）...')).toBeInTheDocument();
   });
 
@@ -70,7 +70,7 @@ describe('InventoryBrowsePage', () => {
     await waitFor(() => {
       expect(screen.getByText('在庫データがありません')).toBeInTheDocument();
     });
-    expect(screen.getByRole('link', { name: '医薬品在庫検索へ' })).toHaveAttribute('href', '/inventory/search');
+    expect(screen.getAllByRole('link', { name: '検索条件を確認' }).some((link) => link.getAttribute('href') === '/inventory/search')).toBe(true);
   });
 
   it('reacts to later URL search param changes', async () => {
@@ -89,6 +89,6 @@ describe('InventoryBrowsePage', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText('薬品名で検索（ひらがな・カタカナ対応）...')).toHaveValue('アスピリン');
     });
-    expect(screen.getByRole('link', { name: 'この条件でマッチング' })).toHaveAttribute('href', '/matching?drug=%E3%82%A2%E3%82%B9%E3%83%94%E3%83%AA%E3%83%B3');
+    expect(screen.getByRole('link', { name: 'この条件で候補を確認' })).toHaveAttribute('href', '/matching?drug=%E3%82%A2%E3%82%B9%E3%83%94%E3%83%AA%E3%83%B3');
   });
 });

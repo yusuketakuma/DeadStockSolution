@@ -393,11 +393,11 @@ export default function ProposalDetailPage() {
         <div className="dl-page-header">
           <div className="dl-page-header-copy">
             <h4 className="page-title mb-0">提案詳細</h4>
-            <div className="text-muted small">提案詳細を開けない場合でも、一覧や履歴から近い流れへ戻れます。</div>
+          <div className="text-muted small">提案詳細を開けない場合でも、一覧や履歴から近い流れへ戻れます。</div>
           </div>
           <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
-            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
+            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴を確認</Link>
           </div>
         </div>
         <ErrorRetryAlert error={error || 'マッチング詳細を取得できませんでした。'} onRetry={() => void fetchDetail()} />
@@ -1256,10 +1256,10 @@ export default function ProposalDetailPage() {
           >
             相手にメッセージ
           </Link>
-          <Link to={returnTo} className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
-          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+          <Link to={returnTo} className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
+          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴を確認</Link>
           <Link to={printPath} state={{ from: returnTo, detailPath: `/proposals/${proposal.id}` }} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
-            印刷用ページ
+            印刷ページを確認
           </Link>
         </div>
       </div>

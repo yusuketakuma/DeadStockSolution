@@ -314,9 +314,9 @@ export default function MatchingPage() {
             <div className="text-muted small">候補検索、ブックマーク、提案作成をこの画面から進めます。</div>
           </div>
           <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-            <Link to="/bookmarks" className="btn btn-outline-secondary btn-sm">ブックマーク</Link>
-            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
-            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+            <Link to="/bookmarks" className="btn btn-outline-secondary btn-sm">ブックマークを確認</Link>
+            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
+            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴を確認</Link>
           </div>
         </div>
         <ScrollArea>

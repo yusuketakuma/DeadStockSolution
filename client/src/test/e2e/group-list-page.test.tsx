@@ -153,7 +153,7 @@ describe('GroupListPage', () => {
     });
 
     expect(screen.getAllByRole('button', { name: 'グループ作成' }).length).toBeGreaterThan(1);
-    expect(screen.getByRole('button', { name: '公開グループを見る' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '公開グループを確認' })).toBeInTheDocument();
   });
 
   it('shows loading state', async () => {

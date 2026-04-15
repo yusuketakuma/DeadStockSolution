@@ -20,7 +20,7 @@ function makeEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
 }
 
 describe('NotificationDropdown', () => {
-  it('uses dashboard hint when an unsafe action path is sanitized to root', () => {
+  it('uses a role-based hint when an unsafe action path is sanitized to root', () => {
     render(
       <MemoryRouter>
         <NotificationDropdown
@@ -35,6 +35,6 @@ describe('NotificationDropdown', () => {
 
     const item = screen.getByRole('link', { name: /通知タイトル/ });
     expect(item).toHaveAttribute('href', '/');
-    expect(within(item).getByText('ダッシュボードへ →')).toBeInTheDocument();
+    expect(within(item).getByText('通知を確認 →')).toBeInTheDocument();
   });
 });

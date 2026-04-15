@@ -36,6 +36,7 @@ const LIVE_REFRESH_INTERVAL_MS = 60_000;
 const NOTICE_SNOOZE_STORAGE_KEY = 'notifications:snoozedUntil';
 const ACTIONABLE_NOTICE_TYPES = new Set(['alert', 'inbound_request', 'status_update', 'match_update']);
 const NOTIFICATION_SAVED_VIEWS_KEY = 'notifications:saved-views';
+const GENERIC_NOTICE_ACTION_LABELS = new Set(['開く', '詳細へ', '確認する', 'アラートを見る']);
 
 const TYPE_LABELS: Record<string, string> = {
   alert: 'アラート',
@@ -70,15 +71,45 @@ function priorityLabel(priority: number): string {
 
 function resolveEmptyStateAction(typeFilter: string): { label: string; to: string } {
   if (typeFilter === 'inbound_request' || typeFilter === 'outbound_request' || typeFilter === 'status_update') {
-    return { label: '要望一覧を見る', to: '/requests' };
+    return { label: '要望を確認', to: '/requests' };
   }
   if (typeFilter === 'new_comment' || typeFilter === 'admin_message') {
-    return { label: 'メッセージを見る', to: '/messages' };
+    return { label: 'メッセージを確認', to: '/messages' };
   }
   if (typeFilter === 'match_update') {
-    return { label: 'マッチングを見る', to: '/matching' };
+    return { label: '候補を確認', to: '/matching' };
   }
-  return { label: 'アラート一覧を見る', to: '/alerts' };
+  return { label: 'アラートを確認', to: '/alerts' };
+}
+
+function resolveNoticeActionLabel(item: Pick<NoticeItem, 'type' | 'actionPath' | 'actionLabel'>): string {
+  const rawLabel = typeof item.actionLabel === 'string' ? item.actionLabel.trim() : '';
+  if (rawLabel && !GENERIC_NOTICE_ACTION_LABELS.has(rawLabel)) {
+    return rawLabel;
+  }
+
+  const safePath = sanitizeInternalPath(item.actionPath, '/');
+  if (safePath === '/alerts' || item.type === 'alert') {
+    return 'アラートを確認';
+  }
+  if (
+    safePath.startsWith('/proposals')
+    || item.type === 'status_update'
+    || item.type === 'inbound_request'
+    || item.type === 'outbound_request'
+  ) {
+    return '案件を確認';
+  }
+  if (safePath.startsWith('/messages') || item.type === 'admin_message' || item.type === 'new_comment') {
+    return 'メッセージを確認';
+  }
+  if (safePath.startsWith('/matching') || item.type === 'match_update') {
+    return '候補を確認';
+  }
+  if (safePath === '/') {
+    return '通知を確認';
+  }
+  return rawLabel || '内容を確認';
 }
 
 function readSnoozedNoticeMap(): Record<string, number> {
@@ -302,12 +333,12 @@ export default function NotificationsPage() {
       .slice(0, 5);
   }, [filteredItems, groupedCasesState, resolveActionPath, showDeadlineOnly, showUnreadOnly, typeFilter]);
   const relatedActionLinks = useMemo(() => [
-    { to: '/matching', label: 'マッチング', variant: summary.actionable > 0 ? 'outline-primary' : 'outline-secondary' },
-    { to: '/messages', label: 'メッセージ', variant: 'outline-secondary' },
-    { to: '/requests', label: '要望一覧', variant: summary.actionable > 0 ? 'outline-primary' : 'outline-secondary' },
-    { to: '/alerts', label: 'アラート一覧', variant: summary.dueSoon > 0 ? 'outline-warning' : 'outline-secondary' },
-    { to: '/groups', label: 'グループ', variant: 'outline-secondary' },
-    { to: '/bookmarks', label: 'ブックマーク', variant: 'outline-secondary' },
+    { to: '/matching', label: '候補を確認', variant: summary.actionable > 0 ? 'outline-primary' : 'outline-secondary' },
+    { to: '/messages', label: 'メッセージを確認', variant: 'outline-secondary' },
+    { to: '/requests', label: '要望を確認', variant: summary.actionable > 0 ? 'outline-primary' : 'outline-secondary' },
+    { to: '/alerts', label: 'アラートを確認', variant: summary.dueSoon > 0 ? 'outline-warning' : 'outline-secondary' },
+    { to: '/groups', label: 'グループを確認', variant: 'outline-secondary' },
+    { to: '/bookmarks', label: 'ブックマークを確認', variant: 'outline-secondary' },
     { to: '/account', label: '通知設定', variant: 'outline-secondary' },
   ] as const, [summary.actionable, summary.dueSoon]);
   const emptyStateAction = useMemo(() => resolveEmptyStateAction(typeFilter), [typeFilter]);
@@ -418,7 +449,7 @@ export default function NotificationsPage() {
       .then((result) => {
         setMessage(result.message);
         showInfo(result.message, {
-          actionLabel: '元に戻す',
+      actionLabel: '元に戻す',
           onAction: async () => {
             await clearNotificationGroupState(actionPath);
             await loadNotices(undefined, 'replace');
@@ -514,8 +545,8 @@ export default function NotificationsPage() {
           <div className="text-muted small">対応待ち、運営連絡、候補更新を一画面で追跡します。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/alerts" className="btn btn-outline-secondary btn-sm">アラート一覧</Link>
-          <Link to="/account" className="btn btn-outline-secondary btn-sm">通知設定</Link>
+          <Link to="/alerts" className="btn btn-outline-secondary btn-sm">アラートを確認</Link>
+          <Link to="/account" className="btn btn-outline-secondary btn-sm">通知設定を確認</Link>
           <AppButton
             type="button"
             size="sm"
@@ -663,10 +694,10 @@ export default function NotificationsPage() {
                     </div>
                     <div className="d-flex gap-2 flex-wrap">
                       <Link to={group.actionPath} className="btn btn-outline-primary btn-sm">
-                        案件を開く
+                        {resolveNoticeActionLabel(group.latest)}
                       </Link>
                       <AppButton type="button" size="sm" variant="outline-secondary" onClick={() => void handleOpenNotice(group.latest)}>
-                        最新を開いて既読
+                        最新を確認して既読
                       </AppButton>
                       <AppButton type="button" size="sm" variant="outline-secondary" onClick={() => void handleMarkGroupRead(group.actionPath)}>
                         案件を一括既読
@@ -822,7 +853,7 @@ export default function NotificationsPage() {
                             <td onClick={(event) => event.stopPropagation()}>
                               <div className="d-flex gap-2 flex-wrap">
                                 <Link to={resolveActionPath(item.actionPath)} className="btn btn-outline-primary btn-sm">
-                                  {item.actionLabel || '開く'}
+                                  {resolveNoticeActionLabel(item)}
                                 </Link>
                                 <Button
                                   size="sm"
@@ -830,7 +861,7 @@ export default function NotificationsPage() {
                                   disabled={markingId === item.id}
                                   onClick={() => void handleOpenNotice(item)}
                                 >
-                                  {markingId === item.id ? '移動中...' : '開いて既読'}
+                                  {markingId === item.id ? '移動中...' : '確認して既読'}
                                 </Button>
                                 <Button
                                   size="sm"
@@ -878,10 +909,10 @@ export default function NotificationsPage() {
                           </div>
                           <div className="d-flex gap-2 flex-wrap">
                             <Link to={resolveActionPath(selectedNotice.actionPath)} className="btn btn-sm btn-outline-primary">
-                              処理画面へ
+                              {resolveNoticeActionLabel(selectedNotice)}
                             </Link>
                             <Button size="sm" variant="outline-primary" onClick={() => void handleOpenNotice(selectedNotice)}>
-                              開いて既読
+                              確認して既読
                             </Button>
                             <Button size="sm" variant="outline-secondary" onClick={() => handleSnoozeNotice(selectedNotice)}>
                               後で
@@ -918,7 +949,7 @@ export default function NotificationsPage() {
                     actions={(
                       <div className="d-flex gap-2 flex-wrap">
                         <Link to={resolveActionPath(item.actionPath)} className="btn btn-outline-primary btn-sm">
-                          {item.actionLabel || '開く'}
+                          {resolveNoticeActionLabel(item)}
                         </Link>
                         <Button
                           size="sm"
@@ -926,14 +957,14 @@ export default function NotificationsPage() {
                           disabled={markingId === item.id}
                           onClick={() => void handleOpenNotice(item)}
                         >
-                          {markingId === item.id ? '移動中...' : '開いて既読'}
+                          {markingId === item.id ? '移動中...' : '確認して既読'}
                         </Button>
                         <AppDropdownMenu
                           label="その他"
                           items={[
                             {
                               key: 'open',
-                              label: item.actionLabel || '開く',
+                              label: resolveNoticeActionLabel(item),
                               href: resolveActionPath(item.actionPath),
                             },
                             {

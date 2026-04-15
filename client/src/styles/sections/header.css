@@ -54,6 +54,23 @@ body {
   min-width: 0;
 }
 
+.app-header-context-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(32vw, 220px);
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  background: rgba(15, 23, 42, 0.22);
+  color: #e2e8f0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .app-header-brand {
   display: inline-flex;
   align-items: baseline;
@@ -301,6 +318,10 @@ body {
     width: 100%;
     margin-left: 0 !important;
     justify-content: flex-start;
+  }
+
+  .app-header-context-chip {
+    max-width: 100%;
   }
 }
 

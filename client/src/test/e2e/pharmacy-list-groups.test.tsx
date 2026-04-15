@@ -83,11 +83,11 @@ describe('PharmacyListPage — Group Features', () => {
         expect(screen.getByText('登録薬局一覧')).toBeInTheDocument();
       });
 
-      const matchingLinks = screen.getAllByRole('link', { name: 'マッチング' });
+      const matchingLinks = screen.getAllByRole('link', { name: '候補を確認' });
       expect(matchingLinks.some((link) => link.getAttribute('href') === '/matching')).toBe(true);
-      expect(screen.getByRole('link', { name: 'マイグループ' })).toHaveAttribute('href', '/groups');
-      expect(screen.getByRole('link', { name: '公開グループを探す' })).toHaveAttribute('href', '/groups?tab=public');
-      const messageLinks = screen.getAllByRole('link', { name: 'メッセージ' });
+      expect(screen.getByRole('link', { name: 'グループを確認' })).toHaveAttribute('href', '/groups');
+      expect(screen.getByRole('link', { name: '公開グループを確認' })).toHaveAttribute('href', '/groups?tab=public');
+      const messageLinks = screen.getAllByRole('link', { name: 'メッセージを確認' });
       expect(messageLinks.some((link) => link.getAttribute('href') === '/messages')).toBe(true);
     });
 
@@ -167,7 +167,7 @@ describe('PharmacyListPage — Group Features', () => {
 
       expect(screen.queryByText('ヘルス薬局')).not.toBeInTheDocument();
       expect(screen.getByRole('combobox', { name: 'グループで絞り込み' })).toHaveValue('10');
-      expect(screen.getByRole('link', { name: '選択中グループを開く' })).toHaveAttribute('href', '/groups/10');
+      expect(screen.getByRole('link', { name: '選択中グループを確認' })).toHaveAttribute('href', '/groups/10');
     });
 
     it('fetches incrementally while typing without clicking search', async () => {
@@ -300,7 +300,7 @@ describe('PharmacyListPage — Group Features', () => {
       await waitFor(() => {
         expect(screen.getByText('このグループに属する薬局が見つかりません')).toBeInTheDocument();
       });
-      expect(screen.getByRole('link', { name: '東京グループを見る' })).toHaveAttribute('href', '/groups/10');
+      expect(screen.getByRole('link', { name: '東京グループを確認' })).toHaveAttribute('href', '/groups/10');
     });
 
     it('shows all pharmacies again when group filter is cleared', async () => {

@@ -92,13 +92,13 @@ export default function ProposalPrintPage() {
         <ErrorRetryAlert error={error} onRetry={() => void fetchPrintData()} />
         <div className="d-flex gap-2 flex-wrap">
           <Link to={id ? `/proposals/${id}` : '/proposals'} className="btn btn-outline-primary btn-sm">
-            提案詳細へ
+            提案を確認
           </Link>
           <Link to="/proposals" className="btn btn-outline-secondary btn-sm">
-            マッチング一覧
+            提案一覧を確認
           </Link>
           <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">
-            交換履歴
+            交換履歴を確認
           </Link>
         </div>
       </div>
@@ -129,13 +129,13 @@ export default function ProposalPrintPage() {
     <div className="proposal-print-sheet">
       <div className="proposal-print-actions no-print">
         <Link to={detailPath} className="btn btn-outline-primary proposal-print-action-button">
-          提案詳細へ
+          提案を確認
         </Link>
         <Link to={returnTo} className="btn btn-outline-secondary proposal-print-action-button">
           一覧の状態で戻る
         </Link>
         <Link to="/exchange-history" className="btn btn-outline-secondary proposal-print-action-button">
-          交換履歴
+          交換履歴を確認
         </Link>
         <AppButton type="button" onClick={() => window.print()} className="proposal-print-action-button">
           印刷

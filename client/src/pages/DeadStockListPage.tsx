@@ -208,17 +208,17 @@ export default function DeadStockListPage() {
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
           <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
-          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">アップロード品質</Link>
-          <Link to="/alerts" className="btn btn-outline-warning btn-sm">アラート</Link>
+          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">品質を確認</Link>
+          <Link to="/alerts" className="btn btn-outline-warning btn-sm">アラートを確認</Link>
         </div>
       </div>
 
       <AppDataPanel title="関連画面" className="mb-2">
         <div className="d-flex gap-2 flex-wrap align-items-center">
-          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫参照</Link>
-          <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm">在庫検索</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
-          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計</Link>
+          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
+          <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm">検索条件を確認</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量を確認</Link>
+          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計を確認</Link>
           <span className="small text-muted">在庫参照や使用量比較はここから切り替えます。</span>
         </div>
       </AppDataPanel>
@@ -226,10 +226,10 @@ export default function DeadStockListPage() {
       <ScrollArea>
       <AppDataPanel title="次にやること" className="mb-3">
         <div className="d-flex gap-2 flex-wrap">
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
-          <Link to="/groups" className="btn btn-outline-secondary btn-sm">グループ</Link>
-          <Link to="/pharmacies" className="btn btn-outline-secondary btn-sm">薬局一覧</Link>
-          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
+          <Link to="/groups" className="btn btn-outline-secondary btn-sm">グループを確認</Link>
+          <Link to="/pharmacies" className="btn btn-outline-secondary btn-sm">薬局を確認</Link>
+          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
         </div>
         <div className="small text-muted mt-2">
           在庫確認のあとに交換先探索や連絡へ進みやすい導線をまとめています。

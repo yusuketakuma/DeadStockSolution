@@ -309,17 +309,17 @@ export default function PharmacyListPage() {
   return (
     <PageShell>
       <div className="dl-page-header">
-        <div className="dl-page-header-copy">
-          <h4 className="page-title mb-0">登録薬局一覧</h4>
+      <div className="dl-page-header-copy">
+        <h4 className="page-title mb-0">登録薬局一覧</h4>
         <div className="text-muted small">薬局ネットワークとグループ参加状況をまとめて確認できます。</div>
       </div>
       <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-        <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
+        <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
         <Link to={selectedGroup ? `/groups/${selectedGroup.id}` : '/groups'} className="btn btn-outline-secondary btn-sm">
-          {selectedGroup ? '選択中グループを開く' : 'マイグループ'}
+          {selectedGroup ? '選択中グループを確認' : 'グループを確認'}
         </Link>
-        <Link to="/groups?tab=public" className="btn btn-outline-secondary btn-sm">公開グループを探す</Link>
-        <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
+        <Link to="/groups?tab=public" className="btn btn-outline-secondary btn-sm">公開グループを確認</Link>
+        <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
       </div>
     </div>
 
@@ -378,7 +378,7 @@ export default function PharmacyListPage() {
         <AppEmptyState
           title={query ? `「${query}」に一致する薬局が見つかりません` : groupFilter ? 'このグループに属する薬局が見つかりません' : '薬局が見つかりません'}
           description={query ? '検索条件を変更して再度お試しください。' : groupFilter ? 'グループフィルターを解除してお試しください。' : undefined}
-          actionLabel={selectedGroup ? `${selectedGroup.name}を見る` : myGroups.length > 0 ? 'グループ一覧へ' : undefined}
+          actionLabel={selectedGroup ? `${selectedGroup.name}を確認` : myGroups.length > 0 ? 'グループを確認' : undefined}
           actionTo={selectedGroup ? `/groups/${selectedGroup.id}` : myGroups.length > 0 ? '/groups' : undefined}
         />
       ) : (

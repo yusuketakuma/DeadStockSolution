@@ -128,9 +128,9 @@ export default function BookmarksPage() {
           <div className="text-muted small">保存した候補からマッチングや一覧確認へ戻れます。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチングへ</Link>
-          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
-          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫参照</Link>
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を探す</Link>
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
+          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
         </div>
       </div>
       <ScrollArea>
@@ -157,9 +157,9 @@ export default function BookmarksPage() {
         <AppCard className="mb-3">
           <AppCard.Header>次にやること</AppCard.Header>
           <AppCard.Body className="d-flex gap-2 flex-wrap">
-            <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチングへ</Link>
-            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧</Link>
-            <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージ</Link>
+            <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を探す</Link>
+            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
+            <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
           </AppCard.Body>
         </AppCard>
 
@@ -169,7 +169,7 @@ export default function BookmarksPage() {
           <AppEmptyState
             title="ブックマークがありません"
             description="マッチングページで候補薬局をブックマークすると、ここに表示されます。"
-            actionLabel="マッチングへ"
+            actionLabel="候補を探す"
             actionTo="/matching"
           />
         )}
@@ -207,7 +207,7 @@ export default function BookmarksPage() {
                             </td>
                             <td className="text-nowrap">
                               <Link to={buildMatchingCandidateLink(b)} className="btn btn-outline-primary btn-sm me-1">
-                                候補を見る
+                                候補を確認
                               </Link>
                               <AppButton
                                 type="button"
@@ -247,7 +247,7 @@ export default function BookmarksPage() {
                         actions={
                           <div className="d-flex gap-2 mt-2">
                             <Link to={buildMatchingCandidateLink(b)} className="btn btn-outline-primary btn-sm">
-                              候補を見る
+                              候補を確認
                             </Link>
                             <AppButton
                               type="button"

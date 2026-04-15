@@ -148,10 +148,10 @@ export default function InventoryBrowsePage() {
           <div className="text-muted small">在庫確認から医薬品在庫検索やマッチングへ移動できます。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
-          <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm">医薬品在庫検索</Link>
-          <Link to={matchingHref} className="btn btn-outline-primary btn-sm">マッチング</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量を確認</Link>
+          <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm">検索条件を確認</Link>
+          <Link to={matchingHref} className="btn btn-outline-primary btn-sm">候補を確認</Link>
         </div>
       </div>
       <ScrollArea>
@@ -236,7 +236,7 @@ export default function InventoryBrowsePage() {
             <AppEmptyState
               title={query ? `「${query}」に一致する在庫が見つかりません` : '在庫データがありません'}
               description={query ? '検索条件を変えて再度お試しください。' : '在庫データが登録されると表示されます。'}
-              actionLabel={query ? 'この条件でマッチング' : '医薬品在庫検索へ'}
+              actionLabel={query ? 'この条件で候補を確認' : '検索条件を確認'}
               actionTo={query ? matchingHref : '/inventory/search'}
             />
           ) : (

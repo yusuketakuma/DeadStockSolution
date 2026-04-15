@@ -191,8 +191,12 @@ describe('AdminDashboardPage', () => {
       expect(screen.getByText('管理者ダッシュボード')).toBeInTheDocument();
     });
 
+    expect(screen.getByText('緊急監視サマリー')).toBeInTheDocument();
+    expect(screen.getByText('運用監視')).toBeInTheDocument();
+    expect(screen.getByText('事業サマリー')).toBeInTheDocument();
+    expect(screen.getByText('運用連絡')).toBeInTheDocument();
     await waitFor(() => {
-    expect(screen.getByText('要確認')).toBeInTheDocument();
+    expect(screen.getAllByText('要確認').length).toBeGreaterThan(0);
     });
 
     expect(screen.getByText('未接続')).toBeInTheDocument();

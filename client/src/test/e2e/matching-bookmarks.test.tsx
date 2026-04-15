@@ -113,8 +113,8 @@ describe('MatchingPage bookmarks', () => {
       expect(screen.getByText('マッチング')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('link', { name: 'ブックマーク' })).toHaveAttribute('href', '/bookmarks');
-    expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
+    expect(screen.getByRole('link', { name: 'ブックマークを確認' })).toHaveAttribute('href', '/bookmarks');
+    expect(screen.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
   });
 
   it('marks an item as bookmarked using the API drugCode contract', async () => {

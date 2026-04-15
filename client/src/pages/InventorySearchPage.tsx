@@ -228,10 +228,10 @@ export default function InventorySearchPage() {
           <div className="text-muted small">検索条件を保ったままマッチングや在庫参照へ移動できます。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
-          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫参照</Link>
-          <Link to={matchingHref} className="btn btn-outline-primary btn-sm">この条件でマッチング</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量を確認</Link>
+          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
+          <Link to={matchingHref} className="btn btn-outline-primary btn-sm">この条件で候補を確認</Link>
         </div>
       </div>
       <ScrollArea>

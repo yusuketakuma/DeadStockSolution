@@ -59,7 +59,15 @@ interface UploadQualitySavedFilters {
   issueCodeFilter: string;
 }
 
-const DEFAULT_ISSUE_REMEDIATION: Record<string, { cause: string; fix: string; verify: string }> = {
+interface IssueRemediation {
+  cause: string;
+  fix: string;
+  verify: string;
+}
+
+type IssueRemediationMap = Record<string, IssueRemediation>;
+
+const DEFAULT_ISSUE_REMEDIATION: IssueRemediationMap = {
   MISSING_EXPIRY: {
     cause: '使用期限列が空か、Excel 内で日付として解釈できていません。',
     fix: '対象行の使用期限を YYYY-MM-DD 形式または Excel の日付セルで埋めて再アップロードしてください。',
@@ -80,6 +88,31 @@ function resolveIssueDestinationLabel(uploadType: UploadType): string {
   return uploadType === 'used_medication' ? '使用量リストへ' : 'デッドストックへ';
 }
 
+function normalizeIssueRemediations(value: unknown): IssueRemediationMap {
+  const normalized: IssueRemediationMap = { ...DEFAULT_ISSUE_REMEDIATION };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return normalized;
+  }
+
+  for (const [issueCode, rawRemediation] of Object.entries(value as Record<string, unknown>)) {
+    if (!rawRemediation || typeof rawRemediation !== 'object' || Array.isArray(rawRemediation)) {
+      continue;
+    }
+
+    const remediation = rawRemediation as Partial<IssueRemediation>;
+    const cause = typeof remediation.cause === 'string' ? remediation.cause.trim() : '';
+    const fix = typeof remediation.fix === 'string' ? remediation.fix.trim() : '';
+    const verify = typeof remediation.verify === 'string' ? remediation.verify.trim() : '';
+    if (!cause || !fix || !verify) {
+      continue;
+    }
+
+    normalized[issueCode] = { cause, fix, verify };
+  }
+
+  return normalized;
+}
+
 function normalizeIssuesPayload(payload: UploadQualityIssuesPayload): UploadQualityIssuesResponse {
   const totalPages = Math.max(1, Math.ceil(payload.total / Math.max(payload.limit, 1)));
   return {
@@ -96,7 +129,7 @@ function normalizeIssuesPayload(payload: UploadQualityIssuesPayload): UploadQual
 export default function UploadQualityPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState<QualitySummary | null>(null);
-  const [remediations, setRemediations] = useState(DEFAULT_ISSUE_REMEDIATION);
+  const [remediations, setRemediations] = useState<IssueRemediationMap>(DEFAULT_ISSUE_REMEDIATION);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState('');
   const requestedIssueCodeFilter = searchParams.get('issueCode') ?? '';
@@ -112,8 +145,8 @@ export default function UploadQualityPage() {
         setSummaryError(err instanceof Error ? err.message : 'アップロード品質サマリーの取得に失敗しました');
       })
       .finally(() => setSummaryLoading(false));
-    void api.get<{ data: typeof DEFAULT_ISSUE_REMEDIATION }>('/upload-quality/remediations')
-      .then((res) => setRemediations(res.data))
+    void api.get<{ data?: IssueRemediationMap }>('/upload-quality/remediations')
+      .then((res) => setRemediations(normalizeIssueRemediations(res?.data)))
       .catch(() => setRemediations(DEFAULT_ISSUE_REMEDIATION));
   }, []);
 
@@ -133,8 +166,8 @@ export default function UploadQualityPage() {
     }
   }, [issueCodeFilter, searchParams, setSearchParams]);
 
-  const getIssueRemediation = useCallback((issueCode: string): { cause: string; fix: string; verify: string } | null => (
-    remediations[issueCode] ?? DEFAULT_ISSUE_REMEDIATION[issueCode] ?? null
+  const getIssueRemediation = useCallback((issueCode: string): IssueRemediation | null => (
+    remediations[issueCode] ?? null
   ), [remediations]);
 
   const fetchIssues = useCallback(async (targetPage: number, signal?: AbortSignal) => {
@@ -208,9 +241,9 @@ export default function UploadQualityPage() {
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
           <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
-          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量を確認</Link>
+          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計を確認</Link>
         </div>
       </div>
 
@@ -386,6 +419,7 @@ export default function UploadQualityPage() {
             <Card.Body className="d-flex flex-column gap-2">
               {groupedVisibleIssues.map((group) => {
                 const firstIssue = group.items[0];
+                const remediation = getIssueRemediation(group.issueCode);
                 return (
                   <div key={`group-${group.issueCode}`} className="border rounded p-3">
                     <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
@@ -394,9 +428,9 @@ export default function UploadQualityPage() {
                         <div className="small text-muted">
                           {group.items.length} 件 / 最新メッセージ: {firstIssue?.issueMessage ?? '-'}
                         </div>
-                        {getIssueRemediation(group.issueCode) && (
+                        {remediation && (
                           <div className="small text-muted mt-2">
-                            原因: {getIssueRemediation(group.issueCode)?.cause}
+                            原因: {remediation.cause}
                           </div>
                         )}
                       </div>
@@ -419,10 +453,10 @@ export default function UploadQualityPage() {
                         </Link>
                       </div>
                     </div>
-                    {getIssueRemediation(group.issueCode) && (
+                    {remediation && (
                       <div className="small mt-3">
-                        <div><strong>修正方法:</strong> {getIssueRemediation(group.issueCode)?.fix}</div>
-                        <div className="text-muted mt-1"><strong>再確認:</strong> {getIssueRemediation(group.issueCode)?.verify}</div>
+                        <div><strong>修正方法:</strong> {remediation.fix}</div>
+                        <div className="text-muted mt-1"><strong>再確認:</strong> {remediation.verify}</div>
                       </div>
                     )}
                   </div>

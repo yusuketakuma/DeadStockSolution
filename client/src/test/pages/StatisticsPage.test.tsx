@@ -78,8 +78,8 @@ describe('StatisticsPage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: '提案を確認' })).toHaveAttribute('href', '/proposals');
-    expect(screen.getByRole('link', { name: 'アラートを見る' })).toHaveAttribute('href', '/alerts');
+    expect(screen.getAllByRole('link', { name: '提案を確認' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'アラートを確認' }).some((link) => link.getAttribute('href') === '/alerts')).toBe(true);
   });
 
   it('renders section shortcuts back to upload, inventory, matching, and network pages', () => {
@@ -126,16 +126,16 @@ describe('StatisticsPage', () => {
     );
 
     expect(screen.getByRole('link', { name: 'アップロード' })).toHaveAttribute('href', '/upload');
-    const deadStockLinks = screen.getAllByRole('link', { name: 'デッドストック' });
+    const deadStockLinks = screen.getAllByRole('link', { name: 'デッドストックを確認' });
     expect(deadStockLinks.some((link) => link.getAttribute('href') === '/inventory/dead-stock')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '使用量リスト' }).some((link) => link.getAttribute('href') === '/inventory/used-medication')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '在庫参照' }).some((link) => link.getAttribute('href') === '/inventory/browse')).toBe(true);
-    const matchingLinks = screen.getAllByRole('link', { name: 'マッチング' });
+    expect(screen.getAllByRole('link', { name: '使用量リストを確認' }).some((link) => link.getAttribute('href') === '/inventory/used-medication')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '在庫参照を確認' }).some((link) => link.getAttribute('href') === '/inventory/browse')).toBe(true);
+    const matchingLinks = screen.getAllByRole('link', { name: '候補を確認' });
     expect(matchingLinks.some((link) => link.getAttribute('href') === '/matching')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '提案一覧' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '交換履歴' }).some((link) => link.getAttribute('href') === '/exchange-history')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '提案一覧を確認' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '交換履歴を確認' }).some((link) => link.getAttribute('href') === '/exchange-history')).toBe(true);
     expect(screen.getByRole('link', { name: '薬局一覧' })).toHaveAttribute('href', '/pharmacies');
-    expect(screen.getAllByRole('link', { name: 'グループ' }).some((link) => link.getAttribute('href') === '/groups')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'アップロード品質' }).some((link) => link.getAttribute('href') === '/upload-quality')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'グループを確認' }).some((link) => link.getAttribute('href') === '/groups')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '品質を確認' }).some((link) => link.getAttribute('href') === '/upload-quality')).toBe(true);
   });
 });
