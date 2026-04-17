@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.26] - 2026-04-17
+
+### テーマ: 依存関係アップデート + ESLint 10 / TypeScript 6 対応
+
+**OpenTelemetry, ESLint, TypeScript, Vite, undici など major バージョン含めて一括アップデート。** ESLint 10 / react-hooks 7.1 で新たに有効化された rule に合わせてコードを修正し、Error cause 構文対応のため client を ES2022 へ移行。TypeScript 6 へのアップグレードに伴う moduleResolution 調整も実施。既存テスト 10 件の失敗（実装変更に mock が追従していなかったもの）を修復しました。
+
 ### Changed
 
 - 依存関係アップデート: patch/minor 全て + 選択的 major
@@ -30,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `notifications-route-deep` / `notifications-route-ultra`: `listNotificationGroupStates` 挿入分の db.select 呼び出し順を更新
   - `exchange-subroutes`: print payload に `counterOffers` フィールド追加
 - `server/package.json` に誤混入した `vite` devDependency を削除
+- `drug-package-scheduler-final.test` の flakiness 修復: `source-state-service` mock に `SOURCE_KEY_HOT_MASTER` を追加 (Vitest 4 の stricter mock 挙動対応)
 
 ### Security
 
@@ -1726,6 +1733,8 @@ npm run remotion:render # 90秒動画を out/video.mp4 に出力
 - Preview DB同期とテストアカウントパスワード更新
 - 本番環境でのCORS同一ホストオリジンチェック
 
+[Unreleased]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.26...HEAD
+[0.0.26]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.25...v0.0.26
 [0.0.13]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.10...v0.0.11
