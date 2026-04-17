@@ -229,7 +229,7 @@ export default function MatchingPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters.groupOnly, setError, setLoading, setMessage, user?.id]);
+  }, [filters.groupOnly, setError, setLoading, setMessage, user]);
 
   useEffect(() => {
     if (!hasSearchContext) {

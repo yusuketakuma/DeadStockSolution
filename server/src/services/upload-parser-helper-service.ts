@@ -389,7 +389,7 @@ export async function handleConfirmAsyncEnqueue(
     if (isUploadConfirmEnqueueFallbackEnabled()) {
       try {
         if (!fallbackExecutionParams) {
-          throw new Error('fallback context is unavailable');
+          throw new Error('fallback context is unavailable', { cause: err });
         }
         const executionParams = fallbackExecutionParams;
         const syncResult = await runUploadConfirm(executionParams);

@@ -298,7 +298,7 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
       env: process.env,
     });
 
-    let parsed: Record<string, unknown> = {};
+    let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(stdout) as Record<string, unknown>;
     } catch {

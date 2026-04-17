@@ -257,7 +257,7 @@ const HEALTH_CHECK_DB_TIMEOUT_MS = 5_000;
 const healthHandler: RequestHandler = async (_req, res) => {
   const start = Date.now();
   let dbStatus: 'ok' | 'error' = 'ok';
-  let dbResponseTime: number | null = null;
+  let dbResponseTime: number;
 
   try {
     await Promise.race([

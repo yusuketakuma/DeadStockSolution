@@ -6,8 +6,6 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 
 const commonTsRules = {
   'no-undef': 'off',
-  'no-useless-assignment': 'off',
-  'preserve-caught-error': 'off',
   '@typescript-eslint/no-explicit-any': 'off',
   '@typescript-eslint/no-unused-vars': 'off',
   '@typescript-eslint/ban-ts-comment': 'off',
@@ -44,9 +42,6 @@ export default tseslint.config(
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/no-access-state-in-render': 'off',
       'react-hooks/refs': 'off',
-      'react-hooks/purity': 'off',
-      'react-hooks/immutability': 'off',
-      'react-hooks/preserve-manual-memoization': 'off',
       'react-refresh/only-export-components': 'off',
     },
   },

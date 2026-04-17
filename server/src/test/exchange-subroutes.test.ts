@@ -788,6 +788,7 @@ describe('exchange sub-routes: proposals print', () => {
       items,
       pharmacyA: pharmA,
       pharmacyB: pharmB,
+      counterOffers: [],
     });
   });
 

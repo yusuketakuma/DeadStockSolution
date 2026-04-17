@@ -147,6 +147,7 @@ const FEEDBACK_ROWS = [
  *   5. actionRows (orderBy)
  *   6. commentRows (orderBy)
  *   7. feedbackRows (orderBy)
+ *   8. counterOfferRows (orderBy)
  */
 function setupDetailQueries(opts?: {
   proposal?: unknown[];
@@ -156,6 +157,7 @@ function setupDetailQueries(opts?: {
   actionRows?: unknown[];
   commentRows?: unknown[];
   feedbackRows?: unknown[];
+  counterOfferRows?: unknown[];
 }) {
   const callIndex = { value: 0 };
   const queries = [
@@ -166,14 +168,14 @@ function setupDetailQueries(opts?: {
     createLimitlessSelectChain(opts?.actionRows ?? ACTION_ROWS), // 5: actionRows
     createLimitlessSelectChain(opts?.commentRows ?? COMMENT_ROWS), // 6: commentRows
     createLimitlessSelectChain(opts?.feedbackRows ?? FEEDBACK_ROWS), // 7: feedbackRows
+    createLimitlessSelectChain(opts?.counterOfferRows ?? []), // 8: counterOfferRows
   ];
 
   mocks.db.select.mockImplementation(() => {
     const idx = callIndex.value;
     callIndex.value++;
     if (idx < queries.length) return queries[idx];
-    // Fallback for any additional calls
-    return createSelectChain([]);
+    return createLimitlessSelectChain([]);
   });
 }
 

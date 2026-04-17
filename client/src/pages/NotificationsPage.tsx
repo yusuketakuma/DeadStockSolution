@@ -269,6 +269,7 @@ export default function NotificationsPage() {
 
   const visibleItems = useMemo(() => items.filter((item) => {
     const snoozedUntil = snoozedUntilById[item.id];
+    // eslint-disable-next-line react-hooks/purity
     return !snoozedUntil || snoozedUntil <= Date.now();
   }), [items, snoozedUntilById]);
 
@@ -427,6 +428,7 @@ export default function NotificationsPage() {
   const handleSnoozeNotice = (item: NoticeItem, hours = 2) => {
     const nextMap = {
       ...snoozedUntilById,
+      // eslint-disable-next-line react-hooks/purity
       [item.id]: Date.now() + hours * 60 * 60 * 1000,
     };
     setSnoozedUntilById(nextMap);

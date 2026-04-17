@@ -120,7 +120,10 @@ function parseSeedPayloadFromEnv(): SeedPayload {
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`TEST_PHARMACY_SEED_JSON のJSON解析に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `TEST_PHARMACY_SEED_JSON のJSON解析に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
   }
 
   if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { accounts?: unknown }).accounts)) {

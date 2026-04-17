@@ -433,7 +433,7 @@ export default function Header({ onToggleSidebar }: Props) {
     } finally {
       setQuickJumpCasesLoading(false);
     }
-  }, [user?.isAdmin]);
+  }, [user]);
 
   useEffect(() => {
     if (!quickJumpOpen) return;

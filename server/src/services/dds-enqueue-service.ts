@@ -51,7 +51,7 @@ export async function enqueueDdsWorkItemFromHandoff(input: {
     .where(eq(ddsWorkItems.requestId, input.requestId))
     .limit(1);
 
-  let workItemId = existing?.id ?? 0;
+  let workItemId: number;
   let created = false;
 
   if (!existing) {

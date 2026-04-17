@@ -97,6 +97,7 @@ export default function AccountPage() {
 
   // --- Initial data load ---
   useEffect(() => {
+    /* eslint-disable react-hooks/immutability */
     accountForm.initialLoadAbortRef.current?.abort();
     const controller = new AbortController();
     accountForm.initialLoadAbortRef.current = controller;
@@ -110,6 +111,7 @@ export default function AccountPage() {
         accountForm.initialLoadAbortRef.current = null;
       }
     };
+    /* eslint-enable react-hooks/immutability */
     // メソッド参照のみが依存: フック全体のオブジェクト参照変更は無関係
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountForm.loadAccount, hoursForm.loadBusinessHours]);
