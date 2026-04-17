@@ -12,7 +12,7 @@ import { db } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '../services/logger';
-import Stripe from 'stripe';
+import type { Stripe } from 'stripe/cjs/stripe.core';
 
 const router = Router();
 
