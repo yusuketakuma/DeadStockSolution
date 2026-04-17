@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- 依存関係アップデート: patch/minor 全て + 選択的 major
+  - OpenTelemetry 0.71 → 0.72, exporter/sdk 0.213 → 0.214
+  - ESLint 9 → 10, @eslint/js 9 → 10
+  - TypeScript 5 → 6
+  - vite 7 → 8 (client), undici 7 → 8 (server)
+  - eslint-plugin-react-hooks 5 → 7 (client)
+  - その他 @sentry, @tanstack/react-query, drizzle-orm, redis, vitest など patch/minor
+- ESLint 10 / react-hooks 7.1 の新 rule を有効化
+  - `no-useless-assignment` 8 箇所修正
+  - `preserve-caught-error` 7 箇所に `{ cause: err }` 付与
+  - `react-hooks/purity` / `immutability` / `preserve-manual-memoization` を有効化し該当箇所を修正
+- `client/tsconfig.json` target/lib を ES2020 → ES2022 (Error cause 構文対応)
+- `server/tsconfig.json` moduleResolution を `node` → `node10` + `ignoreDeprecations: "6.0"` (TypeScript 6 対応)
+
+### Fixed
+
+- 既存テスト 10 件の失敗を修復(実装変更に test mock が追従していなかったため)
+  - `exchange-proposals-timeline`: counterOfferRows クエリ追加に対応
+  - `notifications-route-deep` / `notifications-route-ultra`: `listNotificationGroupStates` 挿入分の db.select 呼び出し順を更新
+  - `exchange-subroutes`: print payload に `counterOffers` フィールド追加
+- `server/package.json` に誤混入した `vite` devDependency を削除
+
+### Security
+
+- prod 依存の脆弱性: 0 件 (`npm audit --omit=dev` 確認済み)
+- dev 側 8 件は `vite-plugin-pwa` → `workbox-build` → `@rollup/plugin-terser` 連鎖で upstream 更新待ち
+
 ## [0.0.25] - 2026-04-04
 
 ### テーマ: セキュリティ強化 + タイムゾーン統一 + 管理画面リファクタリング + 11件バグ修正
