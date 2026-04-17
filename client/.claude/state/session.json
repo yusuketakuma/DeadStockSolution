@@ -274,7 +274,7 @@
   "cwd": "/Users/yusuke/DeadStockSolution/client",
   "duration_minutes": 540,
   "ended_at": "2026-02-28T06:11:33Z",
-  "event_seq": 175,
+  "event_seq": 219,
   "fork_count": 0,
   "git": {
     "branch": "(no git)",
@@ -282,7 +282,7 @@
     "uncommitted_changes": 0
   },
   "intent": "semantic",
-  "last_event_id": "event-000175",
+  "last_event_id": "event-000219",
   "last_message_hash": "2e356d18fb362442",
   "last_message_length": 2088,
   "memory_logged": true,
@@ -307,5 +307,5 @@
   "started_at": "2026-02-28T06:10:58Z",
   "state": "stopped",
   "state_version": 1,
-  "updated_at": "2026-04-14T14:00:42Z"
+  "updated_at": "2026-04-17T12:45:53Z"
 }

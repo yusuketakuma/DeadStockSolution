@@ -12,3 +12,6 @@
 {"event":"teammate_idle","teammate":"reviewer","team":"breezing-simplify-refactoring","timestamp":"2026-02-28T06:39:30Z"}
 {"event":"task_completed","teammate":"","task_id":"2","subject":"Phase 1: バックエンド WorkOS 統合","description":"WorkOS サービス作成、認証ルート改修、callback/complete-registration エンドポイント、ミドルウェア改修","agent_id":"","agent_type":"","timestamp":"2026-03-15T23:17:24Z"}
 {"event":"task_completed","teammate":"","task_id":"6","subject":"テスト・型チェック・Lint通過","description":"npm run typecheck && npm run lint && npm run test 通過確認","agent_id":"","agent_type":"","timestamp":"2026-03-15T23:27:39Z"}
+{"event":"task_completed","teammate":"","task_id":"2","subject":"patch/minor 更新を適用","description":"npm update で後方互換の更新をまとめて適用","timestamp":"2026-04-17T10:32:03Z"}
+{"event":"task_completed","teammate":"","task_id":"8","subject":"ESLint 新 rule を有効化しコード修正","description":"no-useless-assignment, preserve-caught-error, react-hooks/purity/immutability/preserve-manual-memoiz","timestamp":"2026-04-17T11:06:44Z"}
+{"event":"task_completed","teammate":"","task_id":"9","subject":"tsconfig moduleResolution を bundler/nodenext に移行","description":"TS 7 互換のため node10 + ignoreDeprecations から正道へ移行","timestamp":"2026-04-17T11:07:18Z"}
