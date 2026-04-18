@@ -1,11 +1,19 @@
 /// <reference lib="WebWorker" />
 
+import { clientsClaim } from 'workbox-core';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { precacheAndRoute, matchPrecache } from 'workbox-precaching';
 import { registerRoute, setCatchHandler } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<string | { url: string; revision: string | null }> };
+
+// Activate the new service worker immediately so stale bundles (e.g. the one
+// that still imports zustand via default export and triggers the deprecation
+// warning) are replaced on next deploy without requiring a manual
+// unregister/clear-storage step.
+self.skipWaiting();
+clientsClaim();
 
 // Injected by vite-plugin-pwa at build time
 precacheAndRoute(self.__WB_MANIFEST);

@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
 
   plugins.push(
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
