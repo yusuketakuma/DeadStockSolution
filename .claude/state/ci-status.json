@@ -1,6 +1,0 @@
-{
-  "timestamp": "2026-03-29T10:21:50Z",
-  "trigger_command": "git push origin preview",
-  "status": "completed",
-  "conclusion": "failure"
-}

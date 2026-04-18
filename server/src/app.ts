@@ -38,6 +38,7 @@ import internalPredictiveAlertsRoutes from './routes/internal-predictive-alerts'
 import internalVercelDeployEventsRoutes from './routes/internal-vercel-deploy-events';
 import internalDeadStockArchiveRoutes from './routes/internal-dead-stock-archive';
 import internalProposalExpiryRoutes from './routes/internal-proposal-expiry';
+import internalAdminDashboardSnapshotRoutes from './routes/internal-admin-dashboard-snapshot';
 import internalDailyStatisticsRoutes from './routes/internal-daily-statistics';
 import internalE2EProposalFlowRoutes from './routes/internal-e2e-proposal-flow';
 import internalDrugMasterSyncRoutes from './routes/internal-drug-master-sync';
@@ -256,7 +257,7 @@ const HEALTH_CHECK_DB_TIMEOUT_MS = 5_000;
 const healthHandler: RequestHandler = async (_req, res) => {
   const start = Date.now();
   let dbStatus: 'ok' | 'error' = 'ok';
-  let dbResponseTime: number | null = null;
+  let dbResponseTime: number;
 
   try {
     await Promise.race([
@@ -405,9 +406,10 @@ registerApiRoute('/internal/predictive-alerts', internalPredictiveAlertsRoutes);
 registerApiRoute('/internal/vercel', internalVercelDeployEventsRoutes);
 registerApiRoute('/internal/dead-stock', internalDeadStockArchiveRoutes);
 registerApiRoute('/internal/proposals', internalProposalExpiryRoutes);
+registerApiRoute('/internal/admin-dashboard', internalAdminDashboardSnapshotRoutes);
 registerApiRoute('/internal/daily-statistics', internalDailyStatisticsRoutes);
 registerApiRoute('/internal/e2e/proposal-flow', internalE2EProposalFlowRoutes);
-  registerApiRoute('/internal/drug-master-sync', internalDrugMasterSyncRoutes);
+registerApiRoute('/internal/drug-master-sync', internalDrugMasterSyncRoutes);
 
 app.use(errorHandler);
 

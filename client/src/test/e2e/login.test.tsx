@@ -107,7 +107,7 @@ describe('LoginPage', () => {
     });
     expect(screen.queryByText('新規登録はこちら')).not.toBeInTheDocument();
     expect(screen.getByText('管理者アカウントでログインしてください。')).toBeInTheDocument();
-    expect(screen.getByText('Playwright 検証用の管理者アカウントを入力して、管理画面の確認をすぐ始められます。')).toBeInTheDocument();
+    expect(screen.getByText('検証用の管理者アカウントを入力して、管理画面の確認をすぐ始められます。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '管理者一覧から選ぶ' })).toBeInTheDocument();
   });
 

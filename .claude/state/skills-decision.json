@@ -1,7 +1,0 @@
-{
-  "timestamp": "2026-03-25T00:00:00Z",
-  "decision": "no-skill",
-  "reason": "Mobile layout fix — converting AdminDirectMessagesPage from Row/Col to dl-two-pane-grid pattern for consistent mobile pane switching. CSS-level layout change, no complex design decisions.",
-  "evaluated": ["impl", "ui"],
-  "chosen": null
-}

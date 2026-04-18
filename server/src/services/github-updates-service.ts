@@ -193,7 +193,7 @@ async function fetchGitHubReleaseUpdates(repository: string): Promise<GitHubUpda
     };
   } catch (err) {
     if (err instanceof FetchTimeoutError || (err instanceof DOMException && err.name === 'AbortError')) {
-      throw new Error(`GitHub updates request timed out after ${timeoutMs}ms`);
+      throw new Error(`GitHub updates request timed out after ${timeoutMs}ms`, { cause: err });
     }
     throw err;
   }

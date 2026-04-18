@@ -249,7 +249,7 @@ export async function validateAndUpdateStock(
       tx.update(deadStockItems)
         .set({
           quantity: sql`CASE
-            WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN ${deadStockItems.quantity}
+            WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN 0
             ELSE ${deadStockItems.quantity} - ${item.quantity}
           END`,
           isAvailable: sql`CASE WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN false ELSE true END`,

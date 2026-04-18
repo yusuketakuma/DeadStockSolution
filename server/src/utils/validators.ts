@@ -56,8 +56,8 @@ const registrationSchema = z.object({
   address: trimmedText.min(1, '住所を入力してください').max(255, '住所は255文字以下で入力してください'),
   phone: phoneSchema,
   fax: faxSchema,
-  licenseNumber: trimmedText.min(1, '薬局開設許可番号を入力してください').max(50, '薬局開設許可番号が長すぎます'),
-  permitLicenseNumber: trimmedText.min(1, '許可証記載の許可番号を入力してください').max(50, '許可証記載の許可番号が長すぎます'),
+  licenseNumber: trimmedText.max(50, '薬局開設許可番号が長すぎます').optional().default(''),
+  permitLicenseNumber: trimmedText.max(50, '許可証記載の許可番号が長すぎます').optional().default(''),
   permitPharmacyName: trimmedText.min(1, '許可証記載の薬局名を入力してください').max(100, '許可証記載の薬局名が長すぎます'),
   permitAddress: trimmedText.min(1, '許可証記載の所在地を入力してください').max(255, '許可証記載の所在地が長すぎます'),
   prefecture: trimmedText.min(1, '都道府県を選択してください').refine(

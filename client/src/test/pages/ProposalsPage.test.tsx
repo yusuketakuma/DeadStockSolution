@@ -43,8 +43,8 @@ describe('ProposalsPage', () => {
       expect(screen.getByText('マッチング一覧')).toBeInTheDocument();
     });
 
-    expect(screen.getAllByRole('link', { name: '交換履歴' }).some((link) => link.getAttribute('href') === '/exchange-history')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'メッセージ' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '通知センター' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '交換履歴を確認' }).some((link) => link.getAttribute('href') === '/exchange-history')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'メッセージを確認' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '通知を確認' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(true);
   });
 });

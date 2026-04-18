@@ -114,8 +114,8 @@ describe('InventorySearchPage', () => {
     expect(
       screen.getByText('検索したい薬剤を追加して在庫を確認してください'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '在庫参照' })).toHaveAttribute('href', '/inventory/browse');
-    expect(screen.getByRole('link', { name: 'この条件でマッチング' })).toHaveAttribute('href', '/matching');
+    expect(screen.getByRole('link', { name: '在庫を確認' })).toHaveAttribute('href', '/inventory/browse');
+    expect(screen.getByRole('link', { name: 'この条件で候補を確認' })).toHaveAttribute('href', '/matching');
   });
 
   it('does not show the guidance message while searching', () => {
@@ -173,7 +173,7 @@ describe('InventorySearchPage', () => {
 
     renderPage();
 
-    expect(screen.getByRole('link', { name: 'この条件でマッチング' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'この条件で候補を確認' })).toHaveAttribute(
       'href',
       '/matching?inventorySearchDrugs=%E3%82%A2%E3%82%B9%E3%83%94%E3%83%AA%E3%83%B3+100mg',
     );

@@ -270,7 +270,7 @@ export async function processPendingOpenClawRetries(limit: number = 20): Promise
     pharmacyId: number;
     attemptCount: number;
     maxAttempts: number;
-  }> = [];
+  }>;
 
   try {
     jobs = await db.select({

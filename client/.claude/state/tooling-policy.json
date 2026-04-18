@@ -1,21 +1,21 @@
 {
+  "context_budget": {
+    "enabled": true,
+    "max_enabled_mcps": 10,
+    "max_installed_plugins": 10
+  },
   "lsp": {
     "available": true,
-    "plugins": " typescript-lsp",
     "available_by_ext": {
-      "ts": true,
-      "tsx": true,
       "js": true,
-      "jsx": true
+      "jsx": true,
+      "ts": true,
+      "tsx": true
     },
     "last_used_prompt_seq": 0,
     "last_used_tool_name": "mcp__harness__harness_lsp_diagnostics",
+    "plugins": " typescript-lsp",
     "used_since_last_prompt": false
-  },
-  "plugins": {
-    "installed": 0,
-    "enabled_estimate": null,
-    "source": ""
   },
   "mcp": {
     "configured": null,
@@ -23,13 +23,13 @@
     "enabled_estimate": null,
     "sources": []
   },
-  "context_budget": {
-    "enabled": true,
-    "max_enabled_mcps": 10,
-    "max_installed_plugins": 10
+  "plugins": {
+    "enabled_estimate": null,
+    "installed": 0,
+    "source": ""
   },
   "skills": {
-    "index": [],
-    "decision_required": false
+    "decision_required": true,
+    "index": []
   }
 }

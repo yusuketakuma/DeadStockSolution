@@ -86,7 +86,7 @@ export default function AppSortableTable<T extends Record<string, unknown>>({
       if (aVal == null && bVal == null) return 0;
       if (aVal == null) return 1;
       if (bVal == null) return -1;
-      let cmp = 0;
+      let cmp: number;
       if (typeof aVal === 'number' && typeof bVal === 'number') {
         cmp = aVal - bVal;
       } else {

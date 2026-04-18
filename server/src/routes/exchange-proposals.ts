@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../config/database';
 import {
@@ -10,6 +10,7 @@ import {
   pharmacies,
   proposalComments,
   exchangeFeedback,
+  proposalCounterOffers,
 } from '../db/schema';
 import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
@@ -18,6 +19,7 @@ import { parsePagination, isPositiveSafeInteger } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
 import { getProposalPriority } from '../services/proposal-priority-service';
+import { createNotification } from '../services/notification-service';
 import {
   buildProposalTimeline,
   fetchProposalTimelineActionRows,
@@ -153,6 +155,12 @@ interface ProposalDetailPharmacyRow {
 
 interface ProposalPrintPharmacyRow extends ProposalDetailPharmacyRow {
   licenseNumber: string | null;
+}
+
+interface ProposalCounterOfferItemInput {
+  proposalItemId?: number;
+  drugName: string;
+  quantity: number;
 }
 
 type ProposalData = {
@@ -511,6 +519,29 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
         .from(exchangeProposals)
         .where(ownershipFilter),
     ]);
+    const proposalIds = rows.map((row) => row.id);
+    const pendingCounterOffers = proposalIds.length > 0
+      ? await (async () => {
+        try {
+          return await db.select({
+            proposalId: proposalCounterOffers.proposalId,
+            proposerPharmacyId: proposalCounterOffers.proposerPharmacyId,
+            responderPharmacyId: proposalCounterOffers.responderPharmacyId,
+            status: proposalCounterOffers.status,
+          })
+            .from(proposalCounterOffers)
+            .where(and(
+              inArray(proposalCounterOffers.proposalId, proposalIds),
+              eq(proposalCounterOffers.status, 'pending'),
+            ));
+        } catch {
+          return [];
+        }
+      })()
+      : [];
+    const pendingCounterOfferByProposalId = new Map(
+      pendingCounterOffers.map((row) => [row.proposalId, row]),
+    );
     const totalCount = countRow.count;
     const enriched = rows.map((row) => {
       const priority = getProposalPriority({
@@ -521,6 +552,7 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
         proposedAt: row.proposedAt,
         expiresAt: row.expiresAt,
       }, pharmacyId);
+      const pendingCounterOffer = pendingCounterOfferByProposalId.get(row.id);
 
       return {
         ...row,
@@ -529,6 +561,10 @@ const handleListProposals = async (req: AuthRequest, res: Response): Promise<voi
         priorityScore: priority.priorityScore,
         priorityReasons: priority.priorityReasons,
         deadlineAt: priority.deadlineAt,
+        hasPendingCounterOffer: Boolean(pendingCounterOffer),
+        pendingCounterOfferRole: pendingCounterOffer
+          ? (pendingCounterOffer.proposerPharmacyId === pharmacyId ? 'sent' : 'received')
+          : null,
       };
     });
 
@@ -557,7 +593,7 @@ const handleProposalDetail = async (req: AuthRequest, res: Response): Promise<vo
     const { proposal, items } = data;
 
     // 独立した4クエリを並列実行（fetchProposalData完了後）
-    const [[pharmA, pharmB], actionRows, commentRows, feedbackRows] = await Promise.all([
+    const [[pharmA, pharmB], actionRows, commentRows, feedbackRows, counterOfferRows] = await Promise.all([
       fetchProposalDetailPharmacies(proposal),
       fetchProposalTimelineActionRows(id),
       db.select({
@@ -583,6 +619,26 @@ const handleProposalDetail = async (req: AuthRequest, res: Response): Promise<vo
         .leftJoin(pharmacies, eq(exchangeFeedback.fromPharmacyId, pharmacies.id))
         .where(eq(exchangeFeedback.proposalId, id))
         .orderBy(asc(exchangeFeedback.createdAt)),
+      (async () => {
+        try {
+          return await db.select({
+            id: proposalCounterOffers.id,
+            proposerPharmacyId: proposalCounterOffers.proposerPharmacyId,
+            responderPharmacyId: proposalCounterOffers.responderPharmacyId,
+            status: proposalCounterOffers.status,
+            summary: proposalCounterOffers.summary,
+            itemsJson: proposalCounterOffers.itemsJson,
+            responseNote: proposalCounterOffers.responseNote,
+            createdAt: proposalCounterOffers.createdAt,
+            respondedAt: proposalCounterOffers.respondedAt,
+          })
+            .from(proposalCounterOffers)
+            .where(eq(proposalCounterOffers.proposalId, id))
+            .orderBy(desc(proposalCounterOffers.createdAt));
+        } catch {
+          return [];
+        }
+      })(),
     ]);
 
     const timeline = buildProposalTimeline({
@@ -621,6 +677,21 @@ const handleProposalDetail = async (req: AuthRequest, res: Response): Promise<vo
         feedbackRating: f.rating,
         feedbackComment: f.comment ?? undefined,
       })),
+      ...counterOfferRows.map((row) => ({
+        action: `counter_offer_${row.status}`,
+        label: row.status === 'pending'
+          ? '正式な反対提案'
+          : row.status === 'accepted'
+            ? '反対提案承認'
+            : row.status === 'rejected'
+              ? '反対提案却下'
+              : '反対提案更新',
+        at: row.respondedAt ?? row.createdAt,
+        actorPharmacyId: row.proposerPharmacyId,
+        actorName: row.proposerPharmacyId === proposal.pharmacyAId ? pharmA?.name ?? '不明' : pharmB?.name ?? '不明',
+        eventType: 'comment' as const,
+        commentBody: row.summary,
+      })),
     ].sort(compareTimelineAtDesc);
 
     res.json({
@@ -630,10 +701,228 @@ const handleProposalDetail = async (req: AuthRequest, res: Response): Promise<vo
       pharmacyB: { id: proposal.pharmacyBId, ...pharmB },
       timeline,
       enrichedTimeline,
+      counterOffers: counterOfferRows.map((row) => ({
+        ...row,
+        items: JSON.parse(row.itemsJson) as ProposalCounterOfferItemInput[],
+      })),
     });
   } catch (err) {
     logger.error('Proposal detail error:', { error: getErrorMessage(err) });
     res.status(500).json({ error: 'マッチング詳細の取得に失敗しました' });
+  }
+};
+
+const handleCreateCounterOffer = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!proposalId) return;
+    const actorId = req.user!.id;
+
+    const [proposal] = await db.select()
+      .from(exchangeProposals)
+      .where(and(
+        eq(exchangeProposals.id, proposalId),
+        or(
+          eq(exchangeProposals.pharmacyAId, actorId),
+          eq(exchangeProposals.pharmacyBId, actorId),
+        ),
+      ))
+      .limit(1);
+
+    if (!proposal) {
+      res.status(404).json({ error: '提案が見つかりません' });
+      return;
+    }
+
+    const items = Array.isArray(req.body?.items) ? req.body.items as Array<Record<string, unknown>> : [];
+    const normalizedItems = items
+      .map((item: Record<string, unknown>) => ({
+        proposalItemId: Number.isInteger(item.proposalItemId) ? Number(item.proposalItemId) : undefined,
+        drugName: typeof item.drugName === 'string' ? item.drugName.trim() : '',
+        quantity: Number(item.quantity),
+      }))
+      .filter((item: ProposalCounterOfferItemInput) => item.drugName && Number.isFinite(item.quantity) && item.quantity > 0)
+      .slice(0, 20);
+    const summary = typeof req.body?.summary === 'string' ? req.body.summary.trim().slice(0, 2000) : '';
+
+    if (!summary || normalizedItems.length === 0) {
+      res.status(400).json({ error: 'summary と items が必要です' });
+      return;
+    }
+
+    await db.update(proposalCounterOffers)
+      .set({
+        status: 'superseded',
+        respondedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(and(
+        eq(proposalCounterOffers.proposalId, proposalId),
+        eq(proposalCounterOffers.status, 'pending'),
+      ));
+
+    const responderPharmacyId = proposal.pharmacyAId === actorId ? proposal.pharmacyBId : proposal.pharmacyAId;
+    const [created] = await db.insert(proposalCounterOffers).values({
+      proposalId,
+      proposerPharmacyId: actorId,
+      responderPharmacyId,
+      status: 'pending',
+      summary,
+      itemsJson: JSON.stringify(normalizedItems),
+      updatedAt: new Date().toISOString(),
+    }).returning({
+      id: proposalCounterOffers.id,
+      status: proposalCounterOffers.status,
+    });
+
+    await createNotification({
+      pharmacyId: responderPharmacyId,
+      type: 'proposal_status_changed',
+      title: '正式な反対提案が届きました',
+      message: summary.slice(0, 200),
+      referenceType: 'proposal',
+      referenceId: proposalId,
+      detailJson: {
+        counterOfferId: created.id,
+        source: 'counter_offer_created',
+      },
+    });
+
+    res.status(201).json({
+      message: '正式な反対提案を送信しました',
+      counterOfferId: created.id,
+      status: created.status,
+    });
+  } catch (err) {
+    logger.error('Create counter offer error:', { error: getErrorMessage(err) });
+    res.status(500).json({ error: '正式な反対提案の作成に失敗しました' });
+  }
+};
+
+const handleRespondCounterOffer = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
+    if (!proposalId) return;
+    const counterOfferId = Number(req.params.counterOfferId);
+    if (!Number.isInteger(counterOfferId) || counterOfferId <= 0) {
+      res.status(400).json({ error: 'counterOfferId が不正です' });
+      return;
+    }
+
+    const actorId = req.user!.id;
+    const decision = req.body?.decision === 'accepted' || req.body?.decision === 'rejected'
+      ? req.body.decision as 'accepted' | 'rejected'
+      : null;
+    const responseNote = typeof req.body?.responseNote === 'string' ? req.body.responseNote.trim().slice(0, 2000) : null;
+
+    if (!decision) {
+      res.status(400).json({ error: 'decision が不正です' });
+      return;
+    }
+
+    const [counterOffer] = await db.select()
+      .from(proposalCounterOffers)
+      .where(and(
+        eq(proposalCounterOffers.id, counterOfferId),
+        eq(proposalCounterOffers.proposalId, proposalId),
+      ))
+      .limit(1);
+
+    if (!counterOffer) {
+      res.status(404).json({ error: '正式な反対提案が見つかりません' });
+      return;
+    }
+    if (counterOffer.responderPharmacyId !== actorId) {
+      res.status(403).json({ error: 'この反対提案には応答できません' });
+      return;
+    }
+    if (counterOffer.status !== 'pending') {
+      res.status(409).json({ error: 'この反対提案はすでに応答済みです' });
+      return;
+    }
+
+    await db.update(proposalCounterOffers)
+      .set({
+        status: decision,
+        responseNote,
+        respondedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(proposalCounterOffers.id, counterOfferId));
+
+    if (decision === 'accepted') {
+      const [proposal] = await db.select()
+        .from(exchangeProposals)
+        .where(eq(exchangeProposals.id, proposalId))
+        .limit(1);
+      if (!proposal) {
+        res.status(404).json({ error: '提案が見つかりません' });
+        return;
+      }
+      const currentItems = await db.select({
+        id: exchangeProposalItems.id,
+        fromPharmacyId: exchangeProposalItems.fromPharmacyId,
+        quantity: exchangeProposalItems.quantity,
+        yakkaValue: exchangeProposalItems.yakkaValue,
+      })
+        .from(exchangeProposalItems)
+        .where(eq(exchangeProposalItems.proposalId, proposalId));
+
+      const parsedItems = JSON.parse(counterOffer.itemsJson) as ProposalCounterOfferItemInput[];
+      for (const item of parsedItems) {
+        if (!item.proposalItemId) continue;
+        const existing = currentItems.find((row) => row.id === item.proposalItemId);
+        if (!existing) continue;
+        const unitPrice = Number(existing.yakkaValue ?? 0) > 0 && existing.quantity > 0
+          ? Number(existing.yakkaValue) / existing.quantity
+          : 0;
+        await db.update(exchangeProposalItems)
+          .set({
+            quantity: item.quantity,
+            yakkaValue: unitPrice > 0 ? String(unitPrice * item.quantity) : existing.yakkaValue,
+          })
+          .where(eq(exchangeProposalItems.id, item.proposalItemId));
+      }
+
+      const updatedItems = await db.select({
+        fromPharmacyId: exchangeProposalItems.fromPharmacyId,
+        yakkaValue: exchangeProposalItems.yakkaValue,
+      })
+        .from(exchangeProposalItems)
+        .where(eq(exchangeProposalItems.proposalId, proposalId));
+      const totalValueA = updatedItems
+        .filter((item) => item.fromPharmacyId === proposal.pharmacyAId)
+        .reduce((sum, item) => sum + Number(item.yakkaValue ?? 0), 0);
+      const totalValueB = updatedItems
+        .filter((item) => item.fromPharmacyId === proposal.pharmacyBId)
+        .reduce((sum, item) => sum + Number(item.yakkaValue ?? 0), 0);
+      await db.update(exchangeProposals)
+        .set({
+          totalValueA: String(totalValueA),
+          totalValueB: String(totalValueB),
+          valueDifference: String(Math.abs(totalValueA - totalValueB)),
+        })
+        .where(eq(exchangeProposals.id, proposalId));
+    }
+
+    await createNotification({
+      pharmacyId: counterOffer.proposerPharmacyId,
+      type: 'proposal_status_changed',
+      title: decision === 'accepted' ? '正式な反対提案が承認されました' : '正式な反対提案が却下されました',
+      message: responseNote || (decision === 'accepted' ? '相手薬局が反対提案を承認しました。' : '相手薬局が反対提案を却下しました。'),
+      referenceType: 'proposal',
+      referenceId: proposalId,
+      detailJson: {
+        counterOfferId,
+        source: 'counter_offer_responded',
+        decision,
+      },
+    });
+
+    res.json({ message: decision === 'accepted' ? '反対提案を承認しました' : '反対提案を却下しました' });
+  } catch (err) {
+    logger.error('Respond counter offer error:', { error: getErrorMessage(err) });
+    res.status(500).json({ error: '正式な反対提案への応答に失敗しました' });
   }
 };
 
@@ -652,12 +941,34 @@ const handlePrintProposal = async (req: AuthRequest, res: Response): Promise<voi
     const { proposal, items } = data;
 
     const [pharmA, pharmB] = await fetchProposalPrintPharmacies(proposal);
+    const counterOffers = await (async () => {
+      try {
+        return await db.select({
+          id: proposalCounterOffers.id,
+          status: proposalCounterOffers.status,
+          summary: proposalCounterOffers.summary,
+          itemsJson: proposalCounterOffers.itemsJson,
+          createdAt: proposalCounterOffers.createdAt,
+          respondedAt: proposalCounterOffers.respondedAt,
+        })
+          .from(proposalCounterOffers)
+          .where(eq(proposalCounterOffers.proposalId, id))
+          .orderBy(desc(proposalCounterOffers.createdAt))
+          .limit(3);
+      } catch {
+        return [];
+      }
+    })();
 
     res.json({
       proposal,
       items,
       pharmacyA: pharmA ?? null,
       pharmacyB: pharmB ?? null,
+      counterOffers: counterOffers.map((row) => ({
+        ...row,
+        items: JSON.parse(row.itemsJson) as ProposalCounterOfferItemInput[],
+      })),
     });
   } catch (err) {
     logger.error('Print data error:', { error: getErrorMessage(err) });
@@ -691,6 +1002,9 @@ router.get('/proposals', handleListProposals);
 
 // Proposal detail
 router.get('/proposals/:id', handleProposalDetail);
+
+router.post('/proposals/:id/counter-offers', proposalWriteLimiter, handleCreateCounterOffer);
+router.post('/proposals/:id/counter-offers/:counterOfferId/respond', proposalWriteLimiter, handleRespondCounterOffer);
 
 // Print data
 router.get('/proposals/:id/print', handlePrintProposal);

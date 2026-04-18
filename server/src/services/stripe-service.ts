@@ -9,7 +9,8 @@
  * - Enterprise: ¥19,800/month
  */
 
-import Stripe from 'stripe';
+import StripeCtor from 'stripe';
+import type { Stripe } from 'stripe/cjs/stripe.core';
 import { logger } from './logger';
 
 // Plan types
@@ -61,8 +62,8 @@ function getStripe(): Stripe | null {
     return null;
   }
 
-  return new Stripe(secretKey, {
-    apiVersion: '2026-02-25.clover',
+  return new StripeCtor(secretKey, {
+    apiVersion: '2026-03-25.dahlia',
   });
 }
 

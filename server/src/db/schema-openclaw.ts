@@ -126,6 +126,19 @@ export const openclawRetryJobs = pgTable('openclaw_retry_jobs', {
   idxOpenclawRetryJobsPharmacyCreated: index('idx_openclaw_retry_jobs_pharmacy_created').on(table.pharmacyId, table.createdAt),
 }));
 
+export const openclawRunbookLogs = pgTable('openclaw_runbook_logs', {
+  id: serial('id').primaryKey(),
+  adminId: integer('admin_id').references(() => pharmacies.id, { onDelete: 'set null' }),
+  action: varchar('action', { length: 128 }).notNull(),
+  status: varchar('status', { length: 24 }).notNull().default('success'),
+  detail: text('detail'),
+  resultSummary: text('result_summary'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  idxOpenclawRunbookLogsCreated: index('idx_openclaw_runbook_logs_created').on(table.createdAt),
+  idxOpenclawRunbookLogsAdminCreated: index('idx_openclaw_runbook_logs_admin_created').on(table.adminId, table.createdAt),
+}));
+
 // DDS agent 関連テーブル
 export const ddsBootstrapTokens = pgTable('dds_bootstrap_tokens', {
   id: serial('id').primaryKey(),

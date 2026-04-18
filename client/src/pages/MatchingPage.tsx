@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
+import { Form, Modal } from 'react-bootstrap';
 import {
   createBookmark,
   deleteBookmark,
   fetchBookmarksPage,
+  fetchMatchingDismissStats,
+  recordMatchingDismissFeedback,
+  type MatchingDismissStats,
 } from '../api/match-bookmarks';
 import RequireUpload from '../components/RequireUpload';
 import { DEFAULT_FILTERS, type MatchingFilterState } from '../components/matching/MatchingFilters';
@@ -14,6 +18,8 @@ import MatchingSearchHeader from '../components/matching/MatchingSearchHeader';
 import ProposalTemplateSelector from '../components/matching/ProposalTemplateSelector';
 import { markMatchingDone, readOnboardingMatchingDone } from '../components/onboarding/onboardingSteps';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
+import AppButton from '../components/ui/AppButton';
+import AppCard from '../components/ui/AppCard';
 import { useAuth } from '../contexts/AuthContext';
 import { useGroupMembership } from '../hooks/useGroupMembership';
 import { useAsyncState } from '../hooks/useAsyncState';
@@ -30,6 +36,19 @@ import {
   resolveCandidateExpiryTime,
   resolveProposalMessageState,
 } from './matching-page-utils';
+import {
+  MATCHING_DISMISS_REASON_LABELS,
+  type MatchingDismissReason,
+} from '../utils/matching-dismiss-feedback';
+
+function countNearExpiryItems(candidate: MatchCandidate): number {
+  const thresholdMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
+  return candidate.itemsFromA
+    .concat(candidate.itemsFromB)
+    .map(resolveCandidateExpiryTime)
+    .filter((value): value is number => value !== null && value <= thresholdMs)
+    .length;
+}
 
 export default function MatchingPage() {
   const { user } = useAuth();
@@ -47,6 +66,16 @@ export default function MatchingPage() {
   const [proposalRetrySuggested, setProposalRetrySuggested] = useState(false);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [candidateForProposal, setCandidateForProposal] = useState<MatchCandidate | null>(null);
+  const [comparePharmacyIds, setComparePharmacyIds] = useState<number[]>([]);
+  const [dismissCandidate, setDismissCandidate] = useState<MatchCandidate | null>(null);
+  const [dismissReason, setDismissReason] = useState<MatchingDismissReason>('distance');
+  const [dismissStats, setDismissStats] = useState<MatchingDismissStats>({
+    distance: 0,
+    expiry: 0,
+    value_gap: 0,
+    item_fit: 0,
+    other: 0,
+  });
   const [bookmarkMap, setBookmarkMap] = useState<Map<string, number>>(new Map());
   const [bookmarkPending, setBookmarkPending] = useState<Set<string>>(new Set());
   const requestedTargetPharmacyId = useMemo(
@@ -109,6 +138,10 @@ export default function MatchingPage() {
     });
   }, [candidates, filters, groupPharmacyIds, requestedDrugTerms, requestedTargetPharmacyId]);
 
+  const comparedCandidates = useMemo(() => comparePharmacyIds
+    .map((pharmacyId) => candidates.find((candidate) => candidate.pharmacyId === pharmacyId) ?? null)
+    .filter((candidate): candidate is MatchCandidate => candidate !== null), [candidates, comparePharmacyIds]);
+
   useEffect(() => {
     async function loadBookmarks() {
       try {
@@ -124,6 +157,22 @@ export default function MatchingPage() {
     }
     void loadBookmarks();
   }, []);
+
+  useEffect(() => {
+    void fetchMatchingDismissStats()
+      .then((response) => {
+        if (response?.stats) {
+          setDismissStats(response.stats);
+        }
+      })
+      .catch(() => {
+        // noop
+      });
+  }, []);
+
+  useEffect(() => {
+    setComparePharmacyIds((prev) => prev.filter((pharmacyId) => candidates.some((candidate) => candidate.pharmacyId === pharmacyId)).slice(0, 2));
+  }, [candidates]);
 
   useEffect(() => {
     persistMatchingFilters(filters);
@@ -180,7 +229,7 @@ export default function MatchingPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters.groupOnly, setError, setLoading, setMessage, user?.id]);
+  }, [filters.groupOnly, setError, setLoading, setMessage, user]);
 
   useEffect(() => {
     if (!hasSearchContext) {
@@ -214,6 +263,48 @@ export default function MatchingPage() {
     }
   }, [setError, setMessage]);
 
+  const handleToggleCompareCandidate = useCallback((candidate: MatchCandidate) => {
+    setComparePharmacyIds((prev) => {
+      if (prev.includes(candidate.pharmacyId)) {
+        return prev.filter((pharmacyId) => pharmacyId !== candidate.pharmacyId);
+      }
+      if (prev.length >= 2) {
+        return prev;
+      }
+      return [...prev, candidate.pharmacyId];
+    });
+  }, []);
+
+  const handlePrioritizeUrgent = useCallback(() => {
+    setFilters((prev) => ({ ...prev, sortBy: 'expiry', sortOrder: 'asc' }));
+  }, []);
+
+  const dominantDismissReason = useMemo(() => Object.entries(dismissStats)
+    .sort((left, right) => Number(right[1]) - Number(left[1]))[0]?.[0] as MatchingDismissReason | undefined, [dismissStats]);
+
+  const handleConfirmDismiss = useCallback(async () => {
+    if (!dismissCandidate) return;
+    setCandidates((prev) => prev.filter((candidate) => candidate.pharmacyId !== dismissCandidate.pharmacyId));
+    try {
+      const response = await recordMatchingDismissFeedback({
+        candidatePharmacyId: dismissCandidate.pharmacyId,
+        reason: dismissReason,
+        drugCodes: [...new Set(dismissCandidate.itemsFromA.concat(dismissCandidate.itemsFromB)
+          .map((item) => item.drugCode?.trim() ?? '')
+          .filter(Boolean))],
+      });
+      if (response?.stats) {
+        setDismissStats(response.stats);
+      }
+    } catch {
+      setDismissStats((prev) => ({
+        ...prev,
+        [dismissReason]: prev[dismissReason] + 1,
+      }));
+    }
+    setDismissCandidate(null);
+  }, [dismissCandidate, dismissReason]);
+
   return (
     <RequireUpload>
       <PageShell>
@@ -223,9 +314,9 @@ export default function MatchingPage() {
             <div className="text-muted small">候補検索、ブックマーク、提案作成をこの画面から進めます。</div>
           </div>
           <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-            <Link to="/bookmarks" className="btn btn-outline-secondary btn-sm">ブックマーク</Link>
-            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
-            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+            <Link to="/bookmarks" className="btn btn-outline-secondary btn-sm">ブックマークを確認</Link>
+            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
+            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴を確認</Link>
           </div>
         </div>
         <ScrollArea>
@@ -252,6 +343,99 @@ export default function MatchingPage() {
             onFilterChange={setFilters}
           />
 
+          {searched && candidates.length > 0 && (
+            <AppCard className="mb-3">
+              <AppCard.Header>候補比較と優先表示</AppCard.Header>
+              <AppCard.Body>
+                <div className="d-flex gap-2 flex-wrap align-items-center mb-3">
+                  <AppButton
+                    type="button"
+                    size="sm"
+                    variant={filters.sortBy === 'expiry' && filters.sortOrder === 'asc' ? 'warning' : 'outline-warning'}
+                    onClick={handlePrioritizeUrgent}
+                  >
+                    期限切迫を優先
+                  </AppButton>
+                  {comparePharmacyIds.length > 0 && (
+                    <AppButton
+                      type="button"
+                      size="sm"
+                      variant="outline-secondary"
+                      onClick={() => setComparePharmacyIds([])}
+                    >
+                      比較をクリア
+                    </AppButton>
+                  )}
+                  <span className="small text-muted">
+                    候補カードから 2 件まで比較に追加できます。
+                  </span>
+                </div>
+                {comparedCandidates.length === 0 ? (
+                  <div className="small text-muted">
+                    比較したい候補で「比較に追加」を押すと、距離・総合スコア・期限切迫件数を横に見比べられます。
+                  </div>
+                ) : (
+                  <div className="row g-3">
+                    {comparedCandidates.map((candidate) => (
+                      <div key={`compare-${candidate.pharmacyId}`} className="col-12 col-lg-6">
+                        <div className="border rounded p-3 h-100">
+                          <div className="fw-semibold">{candidate.pharmacyName}</div>
+                          <div className="small text-muted mt-1">
+                            総合 {candidate.score?.toFixed(1) ?? '-'} / 距離 {candidate.distance}km / 差額 {candidate.valueDifference}円
+                          </div>
+                          <div className="small text-muted mt-1">
+                            期限切迫候補 {countNearExpiryItems(candidate)} 件 / 一致度 {Math.round(candidate.matchRate ?? 0)}%
+                          </div>
+                          {candidate.priorityReasons && candidate.priorityReasons.length > 0 && (
+                            <div className="small mt-2">
+                              {candidate.priorityReasons.slice(0, 3).map((reason) => reason.label).join(' / ')}
+                            </div>
+                          )}
+                          <div className="d-flex gap-2 flex-wrap mt-3">
+                            <AppButton type="button" size="sm" variant="primary" onClick={() => setCandidateForProposal(candidate)}>
+                              この候補で提案
+                            </AppButton>
+                            <AppButton
+                              type="button"
+                              size="sm"
+                              variant="outline-secondary"
+                              onClick={() => setComparePharmacyIds((prev) => prev.filter((pharmacyId) => pharmacyId !== candidate.pharmacyId))}
+                            >
+                              比較から外す
+                            </AppButton>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </AppCard.Body>
+            </AppCard>
+          )}
+
+          {searched && candidates.length > 0 && (
+            <AppCard className="mb-3">
+              <AppCard.Header>却下理由の傾向</AppCard.Header>
+              <AppCard.Body>
+                <div className="d-flex gap-2 flex-wrap">
+                  {Object.entries(MATCHING_DISMISS_REASON_LABELS).map(([reason, label]) => (
+                    <span key={reason} className="badge bg-secondary">
+                      {label}: {dismissStats[reason as MatchingDismissReason]}
+                    </span>
+                  ))}
+                </div>
+                {dominantDismissReason && dismissStats[dominantDismissReason] > 0 && (
+                  <div className="small text-muted mt-2">
+                    最近もっとも多い却下理由は「{MATCHING_DISMISS_REASON_LABELS[dominantDismissReason]}」です。
+                    {dominantDismissReason === 'distance' && ' 距離順やグループ絞り込みを優先すると精度が上がります。'}
+                    {dominantDismissReason === 'expiry' && ' 期限切迫優先を使うと判断しやすくなります。'}
+                    {dominantDismissReason === 'value_gap' && ' 差額の小さい候補を先に比較してください。'}
+                  </div>
+                )}
+              </AppCard.Body>
+            </AppCard>
+          )}
+
           <MatchingResultsList
             searched={searched}
             loading={loading}
@@ -262,12 +446,17 @@ export default function MatchingPage() {
             requestedTargetPharmacyId={requestedTargetPharmacyId}
             groupPharmacyIds={groupPharmacyIds}
             expandedIdx={expandedIdx}
+            comparePharmacyIds={comparePharmacyIds}
             proposalSubmitting={proposalSubmitting}
             bookmarkMap={bookmarkMap}
             bookmarkPending={bookmarkPending}
             onToggleExpanded={(idx) => setExpandedIdx(expandedIdx === idx ? null : idx)}
-            onDismissCandidate={(pharmacyId) => setCandidates((prev) => prev.filter((candidate) => candidate.pharmacyId !== pharmacyId))}
+            onDismissCandidate={(candidate) => {
+              setDismissReason('distance');
+              setDismissCandidate(candidate);
+            }}
             onOpenProposal={(candidate) => setCandidateForProposal(candidate)}
+            onToggleCompareCandidate={handleToggleCompareCandidate}
             onToggleBookmark={handleToggleBookmark}
             onRefresh={handleSearch}
             onShowAllCandidates={() => navigate('/matching')}
@@ -281,6 +470,37 @@ export default function MatchingPage() {
           onConfirm={handleSendProposal}
           pending={proposalSubmitting}
         />
+
+        <Modal show={dismissCandidate !== null} onHide={() => setDismissCandidate(null)} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>候補を閉じる理由</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="small text-muted mb-3">
+              {dismissCandidate?.pharmacyName} を除外する理由を記録します。次回の候補確認時の判断に使います。
+            </div>
+            {Object.entries(MATCHING_DISMISS_REASON_LABELS).map(([reason, label]) => (
+              <Form.Check
+                key={reason}
+                id={`dismiss-reason-${reason}`}
+                type="radio"
+                name="matching-dismiss-reason"
+                className="mb-2"
+                checked={dismissReason === reason}
+                onChange={() => setDismissReason(reason as MatchingDismissReason)}
+                label={label}
+              />
+            ))}
+          </Modal.Body>
+          <Modal.Footer>
+            <AppButton type="button" variant="outline-secondary" onClick={() => setDismissCandidate(null)}>
+              キャンセル
+            </AppButton>
+            <AppButton type="button" variant="primary" onClick={handleConfirmDismiss}>
+              理由を保存して閉じる
+            </AppButton>
+          </Modal.Footer>
+        </Modal>
       </PageShell>
     </RequireUpload>
   );

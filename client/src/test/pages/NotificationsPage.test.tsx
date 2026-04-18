@@ -69,15 +69,15 @@ describe('NotificationsPage', () => {
       expect(screen.getByText('通知センター')).toBeInTheDocument();
     });
 
-    expect(screen.getAllByRole('link', { name: '通知設定' }).some((link) => link.getAttribute('href') === '/account')).toBe(true);
-    expect(screen.getByRole('link', { name: 'マッチング' })).toHaveAttribute('href', '/matching');
+    expect(screen.getAllByRole('link', { name: '通知設定を確認' }).some((link) => link.getAttribute('href') === '/account')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '候補を確認' }).some((link) => link.getAttribute('href') === '/matching')).toBe(true);
     expect(screen.getByText('提案の確認が必要です')).toBeInTheDocument();
     expect(screen.getByText('運営からのお知らせ')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'メッセージ' })).toHaveAttribute('href', '/messages');
-    expect(screen.getByRole('link', { name: '要望一覧' })).toHaveAttribute('href', '/requests');
-    expect(screen.getAllByRole('link', { name: 'アラート一覧' }).every((link) => link.getAttribute('href') === '/alerts')).toBe(true);
-    expect(screen.getByRole('link', { name: 'ブックマーク' })).toHaveAttribute('href', '/bookmarks');
-    expect(screen.getAllByRole('link', { name: '通知設定' }).some((link) => link.getAttribute('href') === '/account')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'メッセージを確認' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '要望を確認' }).some((link) => link.getAttribute('href') === '/requests')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'アラートを確認' }).some((link) => link.getAttribute('href') === '/alerts')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'ブックマークを確認' }).some((link) => link.getAttribute('href') === '/bookmarks')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '通知設定を確認' }).some((link) => link.getAttribute('href') === '/account')).toBe(true);
 
     screen.getByLabelText('未読のみ').click();
 
@@ -119,7 +119,7 @@ describe('NotificationsPage', () => {
       expect(screen.getByText('危険なリンク通知')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('link', { name: '開く' })).toHaveAttribute('href', '/');
+    expect(screen.getAllByRole('link', { name: '案件を確認' }).some((link) => link.getAttribute('href') === '/')).toBe(true);
   });
 
   it('uses the notice action label on mobile cards as well as desktop rows', async () => {
@@ -165,7 +165,7 @@ describe('NotificationsPage', () => {
     renderWithProviders(<NotificationsPage />, { route: '/notifications', authUser: mockUser });
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: '詳細へ' })).toHaveAttribute('href', '/proposals/55');
+      expect(screen.getAllByRole('link', { name: '案件を確認' }).some((link) => link.getAttribute('href') === '/proposals/55')).toBe(true);
     });
   });
 
@@ -307,6 +307,6 @@ describe('NotificationsPage', () => {
       expect(screen.getByText('表示できる通知がありません')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('link', { name: '要望一覧を見る' })).toHaveAttribute('href', '/requests');
+    expect(screen.getAllByRole('link', { name: '要望を確認' }).some((link) => link.getAttribute('href') === '/requests')).toBe(true);
   });
 });

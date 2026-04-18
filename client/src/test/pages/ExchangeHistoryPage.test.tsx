@@ -65,10 +65,10 @@ describe('ExchangeHistoryPage', () => {
       expect(screen.getByRole('link', { name: '印刷' })).toHaveAttribute('href', '/proposals/31/print');
     });
 
-    expect(screen.getAllByRole('link', { name: 'マッチング一覧' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'メッセージ' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '提案一覧を確認' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'メッセージを確認' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
     expect(screen.getByRole('link', { name: '印刷' })).toHaveAttribute('href', '/proposals/31/print');
-    expect(screen.getAllByRole('link', { name: '通知センター' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'ブックマーク' }).some((link) => link.getAttribute('href') === '/bookmarks')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '通知を確認' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'ブックマークを確認' }).some((link) => link.getAttribute('href') === '/bookmarks')).toBe(true);
   });
 });

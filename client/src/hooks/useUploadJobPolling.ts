@@ -184,7 +184,7 @@ export function useUploadJobPolling() {
 
     const pollingStartedAt = Date.now();
     let transientPollFailures = 0;
-    let latestAttempts = 0;
+    let latestAttempts: number;
     let latestPartialSummary: PartialSummary | null = null;
     let latestErrorReportAvailable = false;
     let latestDeduplicated = false;

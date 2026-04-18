@@ -4,7 +4,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import AppAlert from '../components/ui/AppAlert';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import SavedViewsPanel from '../components/ui/SavedViewsPanel';
 import { useSseRefresh } from '../hooks/useSseRefresh';
+import { useSavedViews } from '../hooks/useSavedViews';
 import { matchesQueueFilter, requestSortRank } from './my-requests/helpers';
 import { NewRequestSection } from './my-requests/NewRequestSection';
 import { RequestListPane } from './my-requests/RequestListPane';
@@ -16,6 +18,12 @@ import {
   type RequestQueueFilter,
   type RequestThreadResponse,
 } from './my-requests/types';
+
+const REQUEST_SAVED_VIEWS_KEY = 'my-requests:saved-views';
+
+interface MyRequestSavedFilters {
+  queueFilter: RequestQueueFilter;
+}
 
 export default function MyRequestsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,9 +42,15 @@ export default function MyRequestsPage() {
   const [replyText, setReplyText] = useState('');
   const [replyFiles, setReplyFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
+  const [reminding, setReminding] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [queueFilter, setQueueFilter] = useState<RequestQueueFilter>('all');
+  const {
+    savedViews,
+    createSavedView,
+    deleteSavedView,
+  } = useSavedViews<MyRequestSavedFilters>(REQUEST_SAVED_VIEWS_KEY);
   const selectedRequestIdRef = useRef<number | null>(null);
   const preserveNullSelectionRef = useRef(false);
   const requestedRequestId = useMemo(() => {
@@ -221,6 +235,22 @@ export default function MyRequestsPage() {
     }
   };
 
+  const handleRemind = async () => {
+    if (!selectedRequestId || !thread) return;
+    setReminding(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await api.post<{ message: string; nextStep?: string }>(`/requests/${selectedRequestId}/remind`, {});
+      setMessage(response.nextStep ? `${response.message} ${response.nextStep}` : response.message);
+      await Promise.all([loadRequests(), loadThread(selectedRequestId)]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '再催促の送信に失敗しました');
+    } finally {
+      setReminding(false);
+    }
+  };
+
   const handleCreateRequest = async () => {
     const trimmed = newRequestText.trim();
     if (!trimmed && newFiles.length === 0) {
@@ -320,6 +350,16 @@ export default function MyRequestsPage() {
         - new Date(left.updatedAt ?? left.createdAt ?? '').getTime();
     }), [queueFilter, requests]);
 
+  const saveCurrentView = () => {
+    const name = window.prompt('保存ビュー名を入力してください');
+    if (!name) return;
+    createSavedView(name, { queueFilter });
+  };
+
+  const applySavedView = (filters: MyRequestSavedFilters) => {
+    setQueueFilter(filters.queueFilter);
+  };
+
   return (
     <PageShell>
       <div className="dl-page-header">
@@ -328,7 +368,7 @@ export default function MyRequestsPage() {
           <div className="text-muted small">新規要望の登録と、OpenClaw・管理者とのやり取りをここで追えます。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap align-items-center">
-          <Link to="/messages" className="btn btn-outline-secondary btn-sm">薬局間メッセージ</Link>
+          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
           <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
             自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
           </Badge>
@@ -336,6 +376,14 @@ export default function MyRequestsPage() {
       </div>
       {message && <AppAlert variant="success" dismissible onClose={() => setMessage('')}>{message}</AppAlert>}
       {error && <AppAlert variant="danger" dismissible onClose={() => setError('')}>{error}</AppAlert>}
+
+      <SavedViewsPanel
+        description="現在の一覧絞り込みを名前付きで保存できます。"
+        savedViews={savedViews}
+        onSave={saveCurrentView}
+        onApply={applySavedView}
+        onDelete={deleteSavedView}
+      />
 
       <NewRequestSection
         showCreateForm={showCreateForm}
@@ -378,6 +426,7 @@ export default function MyRequestsPage() {
               replyText={replyText}
               replyFiles={replyFiles}
               sending={sending}
+              reminding={reminding}
               onBack={() => {
                 preserveNullSelectionRef.current = true;
                 selectedRequestIdRef.current = null;
@@ -387,6 +436,7 @@ export default function MyRequestsPage() {
               onReplyFilesChange={handleReplyFilesChange}
               onReplyTemplateSelect={setReplyText}
               onSendReply={handleReply}
+              onRemind={handleRemind}
             />
           </div>
         </div>

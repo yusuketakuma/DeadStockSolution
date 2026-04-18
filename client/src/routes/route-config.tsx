@@ -120,7 +120,7 @@ export const ROUTE_META: readonly RouteMeta[] = Object.freeze([
   { path: '/subscription/success', access: 'protected', useLayout: false, component: SubscriptionSuccessPage },
   { path: '/subscription/cancel', access: 'protected', useLayout: false, component: SubscriptionCancelPage },
 
-  { path: '/admin', access: 'protected', adminOnly: true, useLayout: true, component: AdminDashboardPage, title: 'ダッシュボード' },
+  { path: '/admin', access: 'protected', adminOnly: true, useLayout: true, component: AdminDashboardPage, title: '管理者ダッシュボード' },
   { path: '/admin/pharmacies', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmaciesPage, title: '薬局管理', parent: '/admin' },
   { path: '/admin/pharmacies/:id/edit', access: 'protected', adminOnly: true, useLayout: true, component: AdminPharmacyEditPage, title: '薬局編集', parent: '/admin/pharmacies' },
   { path: '/admin/groups', access: 'protected', adminOnly: true, useLayout: true, component: AdminGroupsPage, title: 'グループ管理', parent: '/admin' },

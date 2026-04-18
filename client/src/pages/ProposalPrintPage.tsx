@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import AppButton from '../components/ui/AppButton';
 import PageLoader from '../components/ui/PageLoader';
 import { formatDateJa } from '../utils/formatters';
+import { sanitizeInternalPath } from '../utils/navigation';
 import '../styles/proposal-print.css';
 
 interface PharmacyInfo {
@@ -39,6 +40,14 @@ interface PrintData {
   items: PrintItem[];
   pharmacyA: PharmacyInfo | null;
   pharmacyB: PharmacyInfo | null;
+  counterOffers?: Array<{
+    id: number;
+    status: string;
+    summary: string;
+    items: Array<{ proposalItemId?: number; drugName: string; quantity: number }>;
+    createdAt: string | null;
+    respondedAt: string | null;
+  }>;
 }
 
 function safePharmacy(pharmacy: PharmacyInfo | null) {
@@ -54,6 +63,7 @@ function safePharmacy(pharmacy: PharmacyInfo | null) {
 
 export default function ProposalPrintPage() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const [data, setData] = useState<PrintData | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -82,13 +92,13 @@ export default function ProposalPrintPage() {
         <ErrorRetryAlert error={error} onRetry={() => void fetchPrintData()} />
         <div className="d-flex gap-2 flex-wrap">
           <Link to={id ? `/proposals/${id}` : '/proposals'} className="btn btn-outline-primary btn-sm">
-            提案詳細へ
+            提案を確認
           </Link>
           <Link to="/proposals" className="btn btn-outline-secondary btn-sm">
-            マッチング一覧
+            提案一覧を確認
           </Link>
           <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">
-            交換履歴
+            交換履歴を確認
           </Link>
         </div>
       </div>
@@ -97,22 +107,35 @@ export default function ProposalPrintPage() {
   if (!data) return <PageLoader />;
 
   const { proposal, items } = data;
+  const returnTo = sanitizeInternalPath((location.state as { from?: string } | null)?.from, '/proposals');
+  const detailPath = sanitizeInternalPath((location.state as { detailPath?: string } | null)?.detailPath, id ? `/proposals/${id}` : '/proposals');
   const pharmacyA = safePharmacy(data.pharmacyA);
   const pharmacyB = safePharmacy(data.pharmacyB);
   const itemsAtoB = items.filter((item) => item.fromPharmacyId === proposal.pharmacyAId);
   const itemsBtoA = items.filter((item) => item.fromPharmacyId === proposal.pharmacyBId);
+  const latestCounterOffer = data.counterOffers?.[0] ?? null;
+  const latestCounterOfferDiffs = latestCounterOffer
+    ? latestCounterOffer.items
+      .map((item) => {
+        const baseItem = items.find((proposalItem) => proposalItem.id === item.proposalItemId);
+        if (!baseItem) return null;
+        if (baseItem.quantity === item.quantity) return null;
+        return `${item.drugName}: ${baseItem.quantity} → ${item.quantity}`;
+      })
+      .filter((value): value is string => value !== null)
+    : [];
 
   return (
     <div className="proposal-print-sheet">
       <div className="proposal-print-actions no-print">
-        <Link to={`/proposals/${proposal.id}`} className="btn btn-outline-primary proposal-print-action-button">
-          提案詳細へ
+        <Link to={detailPath} className="btn btn-outline-primary proposal-print-action-button">
+          提案を確認
         </Link>
-        <Link to="/proposals" className="btn btn-outline-secondary proposal-print-action-button">
-          マッチング一覧
+        <Link to={returnTo} className="btn btn-outline-secondary proposal-print-action-button">
+          一覧の状態で戻る
         </Link>
         <Link to="/exchange-history" className="btn btn-outline-secondary proposal-print-action-button">
-          交換履歴
+          交換履歴を確認
         </Link>
         <AppButton type="button" onClick={() => window.print()} className="proposal-print-action-button">
           印刷
@@ -127,8 +150,25 @@ export default function ProposalPrintPage() {
         マッチング番号: {proposal.id} / 開始日: {formatDateJa(proposal.proposedAt)}
       </p>
       <p className="proposal-print-meta no-print">
-        印刷後は提案詳細に戻って、メッセージ確認と承認状況の更新を進めてください。
+        印刷後は提案詳細へ戻って FAX 送付済みメモ、承認状況、メッセージ確認を続けてください。
       </p>
+      <div className="proposal-print-actions no-print" style={{ justifyContent: 'flex-start' }}>
+        <Link to={detailPath} className="btn btn-outline-primary proposal-print-action-button">
+          戻って FAX 送付済みにする
+        </Link>
+        <Link to={`${detailPath}#proposal-timeline`} className="btn btn-outline-secondary proposal-print-action-button">
+          進行履歴を確認
+        </Link>
+      </div>
+      <div className="proposal-print-procedure-box no-print">
+        <strong>印刷後の進め方</strong>
+        <ol className="proposal-print-procedure-list">
+          <li>このページで印刷または PDF 化する</li>
+          <li>提案詳細へ戻って「FAX送付済み」にする</li>
+          <li>相手の承認待ちならリマインドを送る</li>
+          <li>返答後に提案詳細または進行履歴で確定状況を確認する</li>
+        </ol>
+      </div>
 
       <table className="proposal-print-table proposal-print-table-md">
         <tbody>
@@ -162,6 +202,24 @@ export default function ProposalPrintPage() {
           <li><strong>完了:</strong> 受渡し完了後にシステム上で「交換完了」を実行します。</li>
         </ol>
       </div>
+
+      {latestCounterOffer && (
+        <div className="proposal-print-procedure-box">
+          <strong>正式な反対提案</strong>
+          <div className="proposal-print-pharmacy-detail">
+            状態: {latestCounterOffer.status} / 作成: {formatDateJa(latestCounterOffer.createdAt)}
+          </div>
+          <div className="proposal-print-pharmacy-detail">{latestCounterOffer.summary}</div>
+          <div className="proposal-print-pharmacy-detail">
+            {latestCounterOffer.items.map((item) => `${item.drugName} x${item.quantity}`).join(' / ')}
+          </div>
+          {latestCounterOfferDiffs.length > 0 && (
+            <div className="proposal-print-pharmacy-detail">
+              差分: {latestCounterOfferDiffs.join(' / ')}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="proposal-print-pharmacy-grid">
         <div className="proposal-print-pharmacy-card">

@@ -1,7 +1,0 @@
-{
-  "timestamp": "2026-04-02T03:06:02Z",
-  "changed_file": "client/src/pages/admin/AdminDrugMasterPage.tsx",
-  "test_command": "npm test",
-  "related_test": "",
-  "recommendation": "テストの実行を推奨します"
-}

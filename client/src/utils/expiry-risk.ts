@@ -18,8 +18,10 @@ export function daysUntilExpiry(expirationDate: string | null | undefined, today
   const parsed = parseDateOnly(expirationDate);
   if (!parsed) return null;
   const now = today ?? new Date();
+  // JST (UTC+9) の日付を基準にする（ブラウザTZに依存しない）
+  const jstNow = today ? now : new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const todayUtc = today ? now : new Date(Date.UTC(
-    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
+    jstNow.getUTCFullYear(), jstNow.getUTCMonth(), jstNow.getUTCDate(),
   ));
   return Math.floor((parsed.getTime() - todayUtc.getTime()) / (24 * 60 * 60 * 1000));
 }

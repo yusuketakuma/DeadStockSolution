@@ -7,6 +7,7 @@ import { uploadOptionalAttachments } from '../middleware/attachment-upload';
 import { logger } from '../services/logger';
 import { buildOpenClawLogContext } from '../services/openclaw/log-context-service';
 import { handoffToOpenClaw } from '../services/openclaw';
+import { recordOpenClawRequestEvent } from '../services/openclaw/request-event-service';
 import {
   buildOpenClawConversationContext,
   ensureOpenClawWorkItem,
@@ -35,6 +36,7 @@ import { AuthRequest } from '../types';
 import { normalizeSearchTerm, parsePositiveInt } from '../utils/request-utils';
 
 const router = Router();
+const REQUEST_REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 router.use(requireLogin);
 
@@ -565,6 +567,7 @@ router.post('/:id/messages', uploadOptionalAttachments, async (req: AuthRequest,
       id: number;
       pharmacyId: number;
       requestText: string;
+      assignedAdminId: number | null;
       openclawStatus: string;
       openclawThreadId: string | null;
       workflowStatus: string | null;
@@ -576,6 +579,7 @@ router.post('/:id/messages', uploadOptionalAttachments, async (req: AuthRequest,
         id: userRequests.id,
         pharmacyId: userRequests.pharmacyId,
         requestText: userRequests.requestText,
+        assignedAdminId: userRequests.assignedAdminId,
         openclawStatus: userRequests.openclawStatus,
         openclawThreadId: userRequests.openclawThreadId,
         workflowStatus: openclawWorkItems.workflowStatus,
@@ -594,6 +598,7 @@ router.post('/:id/messages', uploadOptionalAttachments, async (req: AuthRequest,
         id: userRequests.id,
         pharmacyId: userRequests.pharmacyId,
         requestText: userRequests.requestText,
+        assignedAdminId: userRequests.assignedAdminId,
         openclawStatus: userRequests.openclawStatus,
         openclawThreadId: userRequests.openclawThreadId,
       })
@@ -602,6 +607,7 @@ router.post('/:id/messages', uploadOptionalAttachments, async (req: AuthRequest,
         .limit(1)
         .then((fallbackRows) => fallbackRows.map((row) => ({
           ...row,
+          assignedAdminId: row.assignedAdminId ?? null,
           workflowStatus: null,
           lastQuestion: null,
         })));
@@ -701,6 +707,217 @@ router.post('/:id/messages', uploadOptionalAttachments, async (req: AuthRequest,
   } catch (err) {
     logger.error('User request reply error', { error: (err as Error).message });
     res.status(500).json({ error: '返信の送信に失敗しました' });
+  }
+});
+
+router.post('/:id/remind', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({ error: 'ログインが必要です' });
+      return;
+    }
+
+    const requestId = parsePositiveInt(req.params.id);
+    if (!requestId) {
+      res.status(400).json({ error: '要望IDが不正です' });
+      return;
+    }
+
+    let requestRows: Array<{
+      id: number;
+      pharmacyId: number;
+      requestText: string;
+      assignedAdminId: number | null;
+      openclawStatus: string;
+      openclawThreadId: string | null;
+      workflowStatus: string | null;
+      lastQuestion: string | null;
+    }>;
+
+    try {
+      requestRows = await db.select({
+        id: userRequests.id,
+        pharmacyId: userRequests.pharmacyId,
+        requestText: userRequests.requestText,
+        assignedAdminId: userRequests.assignedAdminId,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+        workflowStatus: openclawWorkItems.workflowStatus,
+        lastQuestion: openclawWorkItems.lastQuestion,
+      })
+        .from(userRequests)
+        .leftJoin(openclawWorkItems, eq(openclawWorkItems.requestId, userRequests.id))
+        .where(eq(userRequests.id, requestId))
+        .limit(1);
+    } catch (err) {
+      if (!isMissingOpenClawSchemaError(err)) {
+        throw err;
+      }
+
+      requestRows = await db.select({
+        id: userRequests.id,
+        pharmacyId: userRequests.pharmacyId,
+        requestText: userRequests.requestText,
+        assignedAdminId: userRequests.assignedAdminId,
+        openclawStatus: userRequests.openclawStatus,
+        openclawThreadId: userRequests.openclawThreadId,
+      })
+        .from(userRequests)
+        .where(eq(userRequests.id, requestId))
+        .limit(1)
+        .then((fallbackRows) => fallbackRows.map((row) => ({
+          ...row,
+          assignedAdminId: row.assignedAdminId ?? null,
+          workflowStatus: null,
+          lastQuestion: null,
+        })));
+    }
+
+    const [requestRow] = requestRows;
+    if (!requestRow || requestRow.pharmacyId !== req.user.id) {
+      res.status(404).json({ error: '要望が見つかりません' });
+      return;
+    }
+    if (requestRow.openclawStatus === 'completed') {
+      res.status(400).json({ error: '完了済み要望には再催促できません' });
+      return;
+    }
+
+    const messages = await listOpenClawRequestMessages(requestId);
+    const latestReminder = [...messages]
+      .reverse()
+      .find((entry) =>
+        entry.authorType === 'user'
+        && entry.metadata?.kind === 'user_reminder');
+
+    if (latestReminder?.createdAt) {
+      const latestReminderMs = Date.parse(latestReminder.createdAt);
+      if (Number.isFinite(latestReminderMs) && Date.now() - latestReminderMs < REQUEST_REMINDER_COOLDOWN_MS) {
+        const nextAllowedAt = new Date(latestReminderMs + REQUEST_REMINDER_COOLDOWN_MS).toISOString();
+        res.status(429).json({
+          error: '再催促は6時間ごとに送信できます',
+          nextAllowedAt,
+        });
+        return;
+      }
+    }
+
+    const reminderBodyRaw = parseRequestBodyMessage(req.body.message);
+    const reminderBody = reminderBodyRaw || '対応状況を確認したいです。進捗があれば共有してください。';
+    const recorded = await recordOpenClawRequestMessage({
+      requestId,
+      authorType: 'user',
+      body: `[再催促] ${reminderBody}`,
+      metadata: {
+        kind: 'user_reminder',
+      },
+    });
+    await updateRequestActivity(requestId, 'user');
+    await touchRequestViewed(requestId, 'requester');
+
+    await updateOpenClawWorkItem({
+      requestId,
+      workflowStatus: requestRow.workflowStatus === 'awaiting_user' ? 'analyzing' : 'queued',
+      latestSummary: 'ユーザーから再催促があり、状況確認を再開しました',
+      lastQuestion: null,
+      lastError: null,
+    });
+
+    const handoffContext = await buildRequestHandoffContext(
+      req.user.id,
+      requestId,
+      'user_request_reminder',
+      requestRow.openclawThreadId,
+      {
+        followUp: {
+          type: 'user_reminder',
+          messageId: recorded.id,
+          message: reminderBody,
+          previousOpenClawStatus: requestRow.openclawStatus,
+          previousWorkflowStatus: requestRow.workflowStatus ?? null,
+          lastQuestion: requestRow.lastQuestion ?? null,
+          resumePolicy: 'continue_existing_case_without_reset',
+        },
+      },
+    );
+    const handoff = await handoffToOpenClaw({
+      requestId,
+      pharmacyId: req.user.id,
+      requestText: requestRow.requestText,
+      context: handoffContext,
+      handoffKey: `reminder-${recorded.id}`,
+    });
+
+    if (handoff.accepted) {
+      await db.update(userRequests)
+        .set({
+          openclawStatus: handoff.status,
+          openclawThreadId: handoff.threadId ?? requestRow.openclawThreadId,
+          openclawSummary: handoff.summary,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(userRequests.id, requestId));
+    }
+
+    await updateOpenClawWorkItem({
+      requestId,
+      workflowStatus: handoff.accepted ? mapOpenClawStatusToWorkflowStatus(handoff.status) : 'queued',
+      latestSummary: handoff.summary ?? (handoff.accepted ? '再催促をOpenClawへ送信しました' : '再催促を受付し、連携待ちです'),
+    });
+
+    if (requestRow.workflowStatus === 'awaiting_user' || requestRow.workflowStatus === 'implementing' || requestRow.workflowStatus === 'queued' || requestRow.workflowStatus === 'analyzing') {
+      await recordOpenClawRequestEvent({
+        requestId,
+        pharmacyId: req.user.id,
+        eventType: 'request_escalated',
+        summary: 'ユーザー再催促によりエスカレーション',
+        note: reminderBody,
+        metadata: {
+          source: 'user_reminder',
+        },
+      }).catch(() => {
+        // non-blocking
+      });
+    }
+
+    if (requestRow.assignedAdminId) {
+      const { createNotification } = await import('../services/notification-service');
+      await createNotification({
+        pharmacyId: requestRow.assignedAdminId,
+        type: 'request_update',
+        title: '再催促された要望があります',
+        message: reminderBody,
+        referenceType: 'request',
+        referenceId: requestId,
+        detailJson: {
+          source: 'user_reminder',
+        },
+      });
+    }
+
+    publishRequestsRefresh({
+      pharmacyId: req.user.id,
+      requestId,
+      reason: 'request_reminder_created',
+    });
+    publishAdminRequestsRefresh({
+      requestId,
+      reason: 'request_reminder_created',
+    });
+
+    res.json({
+      message: '再催促を送信しました',
+      nextStep: handoff.note,
+      handoff: {
+        accepted: handoff.accepted,
+        connectorConfigured: handoff.connectorConfigured,
+        implementationBranch: handoff.implementationBranch,
+        status: handoff.status,
+      },
+    });
+  } catch (err) {
+    logger.error('User request reminder error', { error: (err as Error).message });
+    res.status(500).json({ error: '再催促の送信に失敗しました' });
   }
 });
 

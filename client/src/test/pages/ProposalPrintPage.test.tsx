@@ -33,10 +33,10 @@ describe('ProposalPrintPage', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: '提案詳細へ' })).toHaveAttribute('href', '/proposals/9');
+      expect(screen.getByRole('link', { name: '提案を確認' })).toHaveAttribute('href', '/proposals/9');
     });
 
-    expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
-    expect(screen.getByRole('link', { name: '交換履歴' })).toHaveAttribute('href', '/exchange-history');
+    expect(screen.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
+    expect(screen.getByRole('link', { name: '交換履歴を確認' })).toHaveAttribute('href', '/exchange-history');
   });
 });

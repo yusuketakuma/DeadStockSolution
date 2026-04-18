@@ -283,6 +283,7 @@ function buildCandidateFromPharmacy(params: {
   myToTheirCache: Map<string, DrugMatchResult>;
   theirToMyCache: Map<string, DrugMatchResult>;
   successCountByPharmacy: Map<number, number>;
+  dismissPenaltyByPharmacy?: Map<number, Array<{ drugCode: string; penalty: number }>>;
 }): MatchCandidate | null {
   const {
     otherPharmacy,
@@ -350,6 +351,15 @@ function buildCandidateFromPharmacy(params: {
     now,
     successCount,
   );
+  const candidateDrugCodes = new Set(
+    balancedA.concat(balancedB)
+      .map((item) => item.drugCode?.trim() ?? '')
+      .filter(Boolean),
+  );
+  const dismissPenalty = (params.dismissPenaltyByPharmacy?.get(otherPharmacy.id) ?? []).reduce((sum, row) => {
+    if (!row.drugCode) return sum + row.penalty;
+    return candidateDrugCodes.has(row.drugCode) ? sum + row.penalty : sum;
+  }, 0);
   const matchRate = calculateMatchRate(balancedA, balancedB);
   const pharmacyHours = businessHoursByPharmacy.get(otherPharmacy.id);
   const pharmacySpecialHours = specialHoursByPharmacy.get(otherPharmacy.id);
@@ -374,6 +384,7 @@ function buildCandidateFromPharmacy(params: {
     totalValueB: roundTo2(totalB),
     valueDifference: diff,
     score: scoreResult.total,
+    dismissPenalty,
     scoreBreakdown: scoreResult.breakdown,
     matchRate,
     businessStatus,
@@ -469,6 +480,7 @@ export function collectCandidates(params: {
   includeIsConfiguredInBusinessStatus: boolean;
   equivalenceMap: Map<string, string[]>;
   successCountByPharmacy: Map<number, number>;
+  dismissPenaltyByPharmacy?: Map<number, Array<{ drugCode: string; penalty: number }>>;
 }): MatchCandidate[] {
   const candidates: MatchCandidate[] = [];
   const { pharmaciesWithInboundMatches, globalDrugMatchCache } = precomputeGlobalDrugMatches({
@@ -503,8 +515,12 @@ export function collectCandidates(params: {
       myToTheirCache: new Map<string, DrugMatchResult>(),
       theirToMyCache: globalDrugMatchCache,
       successCountByPharmacy: params.successCountByPharmacy,
+      dismissPenaltyByPharmacy: params.dismissPenaltyByPharmacy,
     });
     if (!candidate) continue;
+    if (candidate.score !== undefined && candidate.dismissPenalty) {
+      candidate.score = Math.max(0, roundTo2(candidate.score - candidate.dismissPenalty * 4));
+    }
     candidates.push(candidate);
   }
 

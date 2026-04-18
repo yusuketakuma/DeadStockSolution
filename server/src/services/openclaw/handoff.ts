@@ -330,10 +330,10 @@ export async function sendToOpenClawGateway(input: GatewaySendInput): Promise<{ 
         agentId: input.agentId,
         error: err instanceof Error ? err.message : String(err),
       });
-      throw new Error('OpenClaw Gateway CLI 送信に失敗しました');
+      throw new Error('OpenClaw Gateway CLI 送信に失敗しました', { cause: err });
     }
 
-    let parsed: Record<string, unknown> = {};
+    let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(stdout) as Record<string, unknown>;
     } catch {

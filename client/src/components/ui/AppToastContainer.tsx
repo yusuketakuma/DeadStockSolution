@@ -1,4 +1,4 @@
-import { Toast, ToastContainer } from 'react-bootstrap';
+import { Button, Toast, ToastContainer } from 'react-bootstrap';
 import { useToastData } from '../../contexts/ToastContext';
 
 export default function AppToastContainer() {
@@ -26,7 +26,21 @@ export default function AppToastContainer() {
             </strong>
           </Toast.Header>
           <Toast.Body className={toast.variant === 'danger' || toast.variant === 'success' ? 'text-white' : ''}>
-            {toast.message}
+            <div className="d-flex justify-content-between align-items-start gap-3">
+              <span>{toast.message}</span>
+              {toast.actionLabel && toast.onAction ? (
+                <Button
+                  size="sm"
+                  variant={toast.variant === 'danger' || toast.variant === 'success' ? 'light' : 'outline-secondary'}
+                  onClick={() => {
+                    void toast.onAction?.();
+                    removeToast(toast.id);
+                  }}
+                >
+                  {toast.actionLabel}
+                </Button>
+              ) : null}
+            </div>
           </Toast.Body>
         </Toast>
       ))}

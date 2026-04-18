@@ -13,8 +13,15 @@ export function isAuthorizedCron(reqAuthHeader: string | undefined, secret: stri
   const expected = `Bearer ${secret}`;
   const expectedBuffer = Buffer.from(expected, 'utf8');
   const receivedBuffer = Buffer.from(reqAuthHeader || '', 'utf8');
-  if (expectedBuffer.length !== receivedBuffer.length) {
-    return false;
+  if (expectedBuffer.length === receivedBuffer.length) {
+    return timingSafeEqual(expectedBuffer, receivedBuffer);
   }
-  return timingSafeEqual(expectedBuffer, receivedBuffer);
+  // Lengths differ — still run timingSafeEqual to avoid timing leak, but always return false
+  const maxLen = Math.max(expectedBuffer.length, receivedBuffer.length);
+  const aPadded = Buffer.alloc(maxLen);
+  const bPadded = Buffer.alloc(maxLen);
+  expectedBuffer.copy(aPadded);
+  receivedBuffer.copy(bPadded);
+  timingSafeEqual(aPadded, bPadded);
+  return false;
 }

@@ -318,14 +318,15 @@ describe('notifications route deep coverage', () => {
         createdAt: '2026-02-25T00:00:00.000Z',
       };
 
-      // matchRows is the 5th select call in first Promise.all.
-      // messageIds is empty → no db.select for messageReads.
-      // triggerPharmacyIds = [2] → db.select for triggerPharmacy is 7th call.
+      // First Promise.all has 7 selects (proposalsA, proposalsB, messagesAll,
+      // messagesPharmacy, matchRows, notificationRows, listNotificationGroupStates).
+      // matchRows = 5th call. Second Promise.all runs next:
+      // messageIds empty → no messageReads select. triggerPharmacyIds=[2] → 8th call.
       let callCount = 0;
       mocks.db.select.mockImplementation(() => {
         callCount++;
         if (callCount === 5) return createSelectQuery([matchRow]);
-        if (callCount === 7) return createSelectQuery([{ id: 2, name: '相手薬局' }]);
+        if (callCount === 8) return createSelectQuery([{ id: 2, name: '相手薬局' }]);
         return createSelectQuery([]);
       });
 

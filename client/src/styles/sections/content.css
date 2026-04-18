@@ -85,6 +85,24 @@
   word-break: break-word;
 }
 
+.dl-line-clamp-2,
+.dl-line-clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.dl-line-clamp-2 {
+  -webkit-line-clamp: 2;
+}
+
+.dl-line-clamp-3 {
+  -webkit-line-clamp: 3;
+}
+
 .mobile-table th {
   white-space: nowrap;
 }

@@ -5,6 +5,136 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.0.26] - 2026-04-17
+
+### テーマ: 依存関係アップデート + ESLint 10 / TypeScript 6 対応
+
+**OpenTelemetry, ESLint, TypeScript, Vite, undici など major バージョン含めて一括アップデート。** ESLint 10 / react-hooks 7.1 で新たに有効化された rule に合わせてコードを修正し、Error cause 構文対応のため client を ES2022 へ移行。TypeScript 6 へのアップグレードに伴う moduleResolution 調整も実施。既存テスト 10 件の失敗（実装変更に mock が追従していなかったもの）を修復しました。
+
+### Changed
+
+- 依存関係アップデート: patch/minor 全て + 選択的 major
+  - OpenTelemetry 0.71 → 0.72, exporter/sdk 0.213 → 0.214
+  - ESLint 9 → 10, @eslint/js 9 → 10
+  - TypeScript 5 → 6
+  - vite 7 → 8 (client), undici 7 → 8 (server)
+  - eslint-plugin-react-hooks 5 → 7 (client)
+  - その他 @sentry, @tanstack/react-query, drizzle-orm, redis, vitest など patch/minor
+- ESLint 10 / react-hooks 7.1 の新 rule を有効化
+  - `no-useless-assignment` 8 箇所修正
+  - `preserve-caught-error` 7 箇所に `{ cause: err }` 付与
+  - `react-hooks/purity` / `immutability` / `preserve-manual-memoization` を有効化し該当箇所を修正
+- `client/tsconfig.json` target/lib を ES2020 → ES2022 (Error cause 構文対応)
+- `server/tsconfig.json` moduleResolution を `node` → `node10` + `ignoreDeprecations: "6.0"` (TypeScript 6 対応)
+
+### Fixed
+
+- 既存テスト 10 件の失敗を修復(実装変更に test mock が追従していなかったため)
+  - `exchange-proposals-timeline`: counterOfferRows クエリ追加に対応
+  - `notifications-route-deep` / `notifications-route-ultra`: `listNotificationGroupStates` 挿入分の db.select 呼び出し順を更新
+  - `exchange-subroutes`: print payload に `counterOffers` フィールド追加
+- `server/package.json` に誤混入した `vite` devDependency を削除
+- `drug-package-scheduler-final.test` の flakiness 修復: `source-state-service` mock に `SOURCE_KEY_HOT_MASTER` を追加 (Vitest 4 の stricter mock 挙動対応)
+
+### Security
+
+- prod 依存の脆弱性: 0 件 (`npm audit --omit=dev` 確認済み)
+- dev 側 8 件は `vite-plugin-pwa` → `workbox-build` → `@rollup/plugin-terser` 連鎖で upstream 更新待ち
+
+## [0.0.25] - 2026-04-04
+
+### テーマ: セキュリティ強化 + タイムゾーン統一 + 管理画面リファクタリング + 11件バグ修正
+
+**本番環境のセキュリティを多層的に強化しました（Critical 3件・High 2件）。静的アセットへのセキュリティヘッダー追加、本番ソースマップ無効化、タイミングサイドチャネル修正などを実施。また、サーバー・クライアント双方のタイムゾーン処理をJST（Asia/Tokyo）に統一し、タイムラインや期限管理の日付ズレを根本解消。管理画面のコンポーネント肥大化をカスタムフック抽出で解消し、テストカバレッジを大幅に拡充しました。**
+
+---
+
+#### 1. セキュリティ強化 — Critical 3件・High 2件の修正
+
+**今まで**: 本番環境にいくつかのセキュリティリスクが潜在していました。Playwright テスト用アカウントのシーディングが本番ビルドでもブロックされていない、Cron認証にタイミングサイドチャネルがある、Stripeウェブフック検証が不完全、テスト用薬局パスワードが環境に関係なく露出する可能性がある、といった問題がありました。
+
+**今後**: 以下の5項目を修正し、本番環境のセキュリティを大幅に強化しました。
+
+| 重要度 | 修正内容 |
+|--------|---------|
+| 🔴 Critical | Playwright テストアカウントシーディングを本番ビルドでブロック（`vercel-build.sh`） |
+| 🔴 Critical | テスト薬局パスワード露出を環境変数でゲート（`auth.ts`） |
+| 🔴 Critical | Cron認証のタイミングサイドチャネルを修正（`internal-cron-auth.ts`） — シークレット長の漏洩を防止 |
+| 🟠 High | Stripeウェブフックで `rawBody` なしのリクエストを本番で拒否（`stripe-webhook.ts`） |
+| 🟠 High | OpenClawスクリプトのハードコード絶対パスをポータブルなパス導出に置換 |
+
+#### 2. 静的アセットへのセキュリティヘッダー追加＆ソースマップ無効化
+
+**今まで**: Helmet によるセキュリティヘッダーはAPIルートにのみ適用されており、Vercel CDN から配信される静的アセット（HTML、JS、CSS）にはセキュリティヘッダーが付与されていませんでした。また、本番ビルドでソースマップ（`.js.map`）が生成されており、サーバーのソースコードが外部から閲覧可能な状態でした。
+
+**今後**: `vercel.json` に以下のヘッダーを追加し、全静的アセットに適用されるようになりました。
+
+```
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: strict-origin-when-cross-origin
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+```
+
+さらに、`server/tsconfig.build.json` で `sourceMap` と `declarationMap` を無効化し、本番環境でのソースコード漏洩を防止しました。
+
+#### 3. タイムゾーン統一（JST / Asia/Tokyo）
+
+**今まで**: サーバー側の一部サービス（アーカイブ、ログセンター）がUTCで日付処理を行い、クライアント側も5箇所のフォーマッターでタイムゾーン指定がバラバラでした。その結果、DashboardTimelineの日付ラベルが1日ズレる、期限リスク判定が9時間ずれる、といった問題が発生していました。
+
+**今後**: サーバー側の `dead-stock-archive-service` と `log-center-query-service` をJST変換に修正。クライアント側の5つのタイムゾーンフォーマッターを `Asia/Tokyo` に統一。`DashboardTimeline` の日付ラベル、`expiry-risk` の基準日もJSTベースに修正しました。
+
+```
+修正前: 2026-04-03 23:30 (UTC) → 「4月3日」と表示
+修正後: 2026-04-04 08:30 (JST) → 「4月4日」と正しく表示
+```
+
+#### 4. Deep-dive Audit による11件のバグ修正
+
+**今まで**: 包括的なコード監査により、以下のバグが発見されました。
+
+**今後**: 11件を一括修正しました。
+
+| 修正 | 内容 |
+|------|------|
+| BookmarksPage | 初回ロード失敗時にエラー表示を追加 |
+| validateAndUpdateStock | 全数量割当時に数量を0にリセット |
+| AlertListPage | 不要な重複ロジックを削除・簡素化 |
+| MessagesPage | 日付フォーマットをJST統一 |
+| AdminMatchingRulesPage | 軽微なUI修正 |
+| TimelineEventCard | 表示修正 |
+| exchangeProposals | `(status, expiresAt)` 複合インデックス追加（クエリ性能向上） |
+| テスト3件 | 既存テストの失敗を修正 |
+
+#### 5. 管理画面カスタムフック抽出＆テスト拡充
+
+**今まで**: `AdminDrugMasterPage` は555行超の巨大コンポーネントで、検索・ステータス管理・詳細編集・メンテナンスのロジックが1ファイルに混在していました。`AdminUserRequestsPage` のキュー管理ロジックも同様に分離されていませんでした。
+
+**今後**: `AdminDrugMasterPage` を4つのカスタムフックに分割し、コンポーネントのコード量を大幅に削減しました。
+
+```
+AdminDrugMasterPage（555行 → ロジック分離）
+├── useAdminDrugMasterSearch      — 検索ロジック
+├── useAdminDrugMasterStatus      — ステータス管理
+├── useAdminDrugMasterDetailEditor — 詳細編集
+└── useAdminDrugMasterMaintenance — メンテナンス操作
+
+AdminUserRequestsPage
+└── useAdminUserRequestsQueue     — キュー管理ロジック
+```
+
+テストも大幅に追加し、`admin-drug-master-page.test.tsx`（481行）と `AdminUserRequestsPage.test.tsx`（157行）で管理画面の挙動を包括的にカバーしました。
+
+#### 6. ドキュメント拡充
+
+**今まで**: README.md は基本的なセットアップ情報のみでした。
+
+**今後**: アーキテクチャ概要、セキュリティ対策、API一覧、利用ガイドを追加し、プロジェクトの全体像を把握しやすくしました（+286行）。
+
+---
+
 ## [0.0.24] - 2026-04-02
 
 ### テーマ: Excelプレビュー＆カラムマッピングUI + 薬価マスター日次Cron同期 + ナビゲーション統一 + MyRequestsPageモジュール分割 + 管理画面拡充
@@ -1603,6 +1733,8 @@ npm run remotion:render # 90秒動画を out/video.mp4 に出力
 - Preview DB同期とテストアカウントパスワード更新
 - 本番環境でのCORS同一ホストオリジンチェック
 
+[Unreleased]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.26...HEAD
+[0.0.26]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.25...v0.0.26
 [0.0.13]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/yusuketakuma/DeadStockSolution/compare/v0.0.10...v0.0.11

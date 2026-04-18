@@ -1,6 +1,0 @@
-{"type":"session.start","ts":"2026-03-08T08:57:59Z","state":"initialized","data":{"cc_session_id":"583b75d3-d204-4f9d-8de0-376d4931eed0"}}
-{"id":"event-000001","type":"session.resume","ts":"2026-03-08T08:57:59Z","state":"initialized"}
-{"id":"event-000002","type":"tool.bash","ts":"2026-03-08T08:58:32Z","state":"initialized","data":{"command":"git diff HEAD 2>/dev/null | head -500"}}
-{"id":"event-000003","type":"tool.bash","ts":"2026-03-08T08:58:36Z","state":"initialized","data":{"command":"git diff HEAD --name-only 2>/dev/null | grep -v '\.claude/' | grep -v '\.sisyphus/' | grep -v 'package-lock.json'"}}
-{"id":"event-000004","type":"tool.bash","ts":"2026-03-08T08:58:39Z","state":"initialized","data":{"command":"git diff HEAD --name-only 2>/dev/null"}}
-{"id":"event-000005","type":"session.stop","ts":"2026-03-08T08:58:44Z","state":"stopped"}

@@ -371,7 +371,7 @@ export async function createProposal(
     });
   } catch (err) {
     if (isLockNotAvailableError(err)) {
-      throw new Error('他のユーザーが同じ在庫を処理中です。しばらく後に再試行してください');
+      throw new Error('他のユーザーが同じ在庫を処理中です。しばらく後に再試行してください', { cause: err });
     }
     throw err;
   }

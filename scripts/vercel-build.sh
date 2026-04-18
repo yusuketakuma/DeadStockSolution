@@ -20,8 +20,13 @@ if [ -n "${TEST_PHARMACY_SEED_JSON:-}" ]; then
   npx --prefix "$ROOT_DIR" tsx "$ROOT_DIR/server/src/db/seed-test-pharmacy-accounts.ts" || echo "[vercel-build] Warning: test pharmacy seeding failed (non-fatal)"
 fi
 
-echo "[vercel-build] Seeding Playwright verification accounts..."
-npx --prefix "$ROOT_DIR" tsx "$ROOT_DIR/server/src/db/seed-playwright-accounts.ts" || echo "[vercel-build] Warning: Playwright account seeding failed (non-fatal)"
+# Playwright accounts are only needed in non-production environments (preview/development)
+if [ "${VERCEL_ENV:-}" != "production" ]; then
+  echo "[vercel-build] Seeding Playwright verification accounts..."
+  npx --prefix "$ROOT_DIR" tsx "$ROOT_DIR/server/src/db/seed-playwright-accounts.ts" || echo "[vercel-build] Warning: Playwright account seeding failed (non-fatal)"
+else
+  echo "[vercel-build] Skipping Playwright account seeding (production)"
+fi
 
 # Sync VERSION → package.json (ensures app version matches)
 node "$ROOT_DIR/scripts/sync-version.mjs"

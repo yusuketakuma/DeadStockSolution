@@ -31,7 +31,7 @@ export default function DashboardStatusCards({ status, userName }: Props) {
               </div>
               <Link to="/upload" className="btn btn-outline-primary btn-sm">アップロード</Link>
               {' '}
-              <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">一覧を見る</Link>
+              <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
           </AppDataPanel>
         </Col>
 
@@ -50,7 +50,7 @@ export default function DashboardStatusCards({ status, userName }: Props) {
               </div>
               <Link to="/upload" className="btn btn-outline-primary btn-sm">アップロード</Link>
               {' '}
-              <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">一覧を見る</Link>
+              <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
           </AppDataPanel>
         </Col>
 
@@ -76,7 +76,7 @@ export default function DashboardStatusCards({ status, userName }: Props) {
           <AppDataPanel>
               <h5>在庫参照</h5>
               <p>全薬局の在庫を一覧で参照</p>
-              <Link to="/inventory/browse" className="btn btn-outline-primary btn-sm">在庫参照を開く</Link>
+              <Link to="/inventory/browse" className="btn btn-outline-primary btn-sm">在庫参照を確認</Link>
           </AppDataPanel>
         </Col>
 
@@ -84,7 +84,7 @@ export default function DashboardStatusCards({ status, userName }: Props) {
           <AppDataPanel>
               <h5>医薬品在庫検索</h5>
               <p>複数薬剤を指定して在庫を横断検索</p>
-              <Link to="/inventory/search" className="btn btn-outline-primary btn-sm">医薬品在庫検索を開く</Link>
+              <Link to="/inventory/search" className="btn btn-outline-primary btn-sm">検索画面を確認</Link>
           </AppDataPanel>
         </Col>
 
@@ -92,7 +92,7 @@ export default function DashboardStatusCards({ status, userName }: Props) {
           <AppDataPanel>
               <h5>マッチング状況</h5>
               <p>仮マッチング・確定済みの一覧を確認</p>
-              <Link to="/proposals" className="btn btn-outline-primary btn-sm">マッチング一覧</Link>
+              <Link to="/proposals" className="btn btn-outline-primary btn-sm">提案一覧を確認</Link>
           </AppDataPanel>
         </Col>
 
@@ -100,7 +100,7 @@ export default function DashboardStatusCards({ status, userName }: Props) {
           <AppDataPanel>
               <h5>交換履歴</h5>
               <p>過去の交換記録を確認</p>
-              <Link to="/exchange-history" className="btn btn-outline-primary btn-sm">履歴を見る</Link>
+              <Link to="/exchange-history" className="btn btn-outline-primary btn-sm">交換履歴を確認</Link>
           </AppDataPanel>
         </Col>
       </Row>

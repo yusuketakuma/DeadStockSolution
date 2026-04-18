@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, ilike, inArray, lte, sql, SQL } from 'drizzle-orm';
 import { db } from '../config/database';
-import { openclawStatusEnum, openclawWorkItems, pharmacies, userRequests } from '../db/schema';
+import { openclawRequestEvents, openclawStatusEnum, openclawWorkItems, pharmacies, userRequests } from '../db/schema';
 import { rowCount } from '../utils/db-utils';
 import {
   computeRequestWaitingState,
@@ -50,6 +50,7 @@ export interface AdminUserRequestListItem {
   hasUnread: boolean;
   waitingOn: 'user' | 'admin' | 'openclaw' | null;
   isOverdue: boolean;
+  latestEscalatedAt: string | null;
 }
 
 export async function listUserRequests(params: UserRequestListParams) {
@@ -166,6 +167,20 @@ export async function listUserRequests(params: UserRequestListParams) {
     : [];
 
   const assigneeMap = new Map(assignees.map((assignee) => [assignee.id, assignee.name]));
+  const requestIds = rows.map((row) => row.id);
+  const escalatedRows = requestIds.length > 0
+    ? await db.select({
+      requestId: openclawRequestEvents.requestId,
+      latestEscalatedAt: sql<string>`max(${openclawRequestEvents.createdAt})`,
+    })
+      .from(openclawRequestEvents)
+      .where(and(
+        inArray(openclawRequestEvents.requestId, requestIds),
+        eq(openclawRequestEvents.eventType, 'request_escalated'),
+      ))
+      .groupBy(openclawRequestEvents.requestId)
+    : [];
+  const escalatedAtByRequestId = new Map(escalatedRows.map((row) => [row.requestId, row.latestEscalatedAt ?? null]));
 
   const data = rows
     .map<AdminUserRequestListItem>((row) => {
@@ -201,6 +216,7 @@ export async function listUserRequests(params: UserRequestListParams) {
         hasUnread,
         waitingOn: waitingState.waitingOn,
         isOverdue: waitingState.isOverdue,
+        latestEscalatedAt: escalatedAtByRequestId.get(row.id) ?? null,
       };
     });
 

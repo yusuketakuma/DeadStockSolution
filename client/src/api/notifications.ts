@@ -24,6 +24,13 @@ export interface NoticeItem {
 
 export interface NoticesResponse {
   notices: NoticeItem[];
+  groupedCases?: Array<{
+    actionPath: string;
+    latest: NoticeItem;
+    count: number;
+    unreadCount: number;
+    types: string[];
+  }>;
   summary: {
     unreadMessages: number;
     actionableRequests: number;
@@ -50,6 +57,15 @@ export const fetchNotices = (cursor?: string, limit = 20) => {
 
 export const markAllNoticesRead = () =>
   api.patch<{ message: string; count: number }>('/notifications/read-all');
+
+export const markNotificationGroupRead = (actionPath: string) =>
+  api.post<{ message: string }>('/notifications/groups/read', { actionPath });
+
+export const snoozeNotificationGroup = (actionPath: string, hours = 2) =>
+  api.post<{ message: string; snoozedUntil: string }>('/notifications/groups/snooze', { actionPath, hours });
+
+export const clearNotificationGroupState = (actionPath: string) =>
+  api.post<{ message: string }>('/notifications/groups/clear', { actionPath });
 
 export async function markNoticeRead(id: string): Promise<boolean> {
   const notificationId = extractPrefixedId(id, 'notification-');

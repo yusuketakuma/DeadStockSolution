@@ -1,5 +1,0 @@
-{"type":"session.start","ts":"2026-03-15T05:25:22Z","state":"initialized","data":{"cc_session_id":"fc3631be-e7ff-47c4-a623-51f090107618"}}
-{"id":"event-000001","type":"session.resume","ts":"2026-03-15T05:25:22Z","state":"initialized"}
-{"id":"event-000002","type":"tool.bash","ts":"2026-03-15T05:26:34Z","state":"initialized","data":{"command":"cat ~/.claude/settings.json 2>/dev/null || echo "not found""}}
-{"id":"event-000003","type":"session.resume","ts":"2026-03-15T05:26:45Z","state":"initialized"}
-{"id":"event-000004","type":"session.stop","ts":"2026-03-15T05:26:54Z","state":"stopped"}

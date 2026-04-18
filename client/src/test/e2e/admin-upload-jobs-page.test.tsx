@@ -75,7 +75,7 @@ describe('AdminUploadJobsPage', () => {
       expect(screen.getByText('中央薬局 (ID:20)')).toBeInTheDocument();
     });
 
-    await userEvent.click(screen.getByRole('button', { name: '詳細' }));
+    await userEvent.click(screen.getByRole('button', { name: 'ジョブ状況を確認' }));
 
     await waitFor(() => {
       expect(screen.getByText('ジョブ詳細 #101')).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe('AdminUploadJobsPage', () => {
       expect(screen.getByText(/アップロードジョブ管理/)).toBeInTheDocument();
     });
 
-    await userEvent.click(screen.getByRole('button', { name: '詳細' }));
+    await userEvent.click(screen.getByRole('button', { name: 'ジョブ状況を確認' }));
 
     await waitFor(() => {
       expect(screen.getByText('ジョブ詳細 #101')).toBeInTheDocument();

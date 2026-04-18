@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Badge, Card, Col, Form, Row } from 'react-bootstrap';
-import { api } from '../api/client';
+import { api, buildApiUrl } from '../api/client';
 import Pagination from '../components/Pagination';
 import InlineLoader from '../components/ui/InlineLoader';
 import AppTable from '../components/ui/AppTable';
@@ -10,7 +10,11 @@ import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import SavedViewsPanel from '../components/ui/SavedViewsPanel';
+import WorkContextBar from '../components/ui/WorkContextBar';
+import { useSavedViews } from '../hooks/useSavedViews';
 import { usePaginatedList } from '../hooks/usePaginatedList';
+import { useTrackRecentWork } from '../hooks/useRecentWork';
 import { resolveUploadTypeLabel, type UploadType } from './upload/upload-job-utils';
 import { formatCountJa, formatDateTimeJa } from '../utils/formatters';
 
@@ -29,6 +33,7 @@ interface UploadQualityIssue {
   rowNumber: number;
   issueCode: string;
   issueMessage: string;
+  rowDataJson?: unknown;
   createdAt: string | null;
 }
 
@@ -48,6 +53,32 @@ interface UploadQualityIssuesResponse {
     totalPages: number;
   };
 }
+const UPLOAD_QUALITY_SAVED_VIEWS_KEY = 'upload-quality:saved-views';
+
+interface UploadQualitySavedFilters {
+  issueCodeFilter: string;
+}
+
+interface IssueRemediation {
+  cause: string;
+  fix: string;
+  verify: string;
+}
+
+type IssueRemediationMap = Record<string, IssueRemediation>;
+
+const DEFAULT_ISSUE_REMEDIATION: IssueRemediationMap = {
+  MISSING_EXPIRY: {
+    cause: '使用期限列が空か、Excel 内で日付として解釈できていません。',
+    fix: '対象行の使用期限を YYYY-MM-DD 形式または Excel の日付セルで埋めて再アップロードしてください。',
+    verify: '再取込前に raw row を確認し、期限セルに値が入っていることを確認します。',
+  },
+  INVALID_PRICE: {
+    cause: '薬価列に文字列や記号が含まれており、数値化に失敗しています。',
+    fix: '薬価列を半角数字のみへ修正し、通貨記号やカンマを除去してください。',
+    verify: 'CSV 出力した問題行で price 列が数値だけになっているか確認します。',
+  },
+};
 
 function resolveIssueDestination(uploadType: UploadType): string {
   return uploadType === 'used_medication' ? '/inventory/used-medication' : '/inventory/dead-stock';
@@ -55,6 +86,31 @@ function resolveIssueDestination(uploadType: UploadType): string {
 
 function resolveIssueDestinationLabel(uploadType: UploadType): string {
   return uploadType === 'used_medication' ? '使用量リストへ' : 'デッドストックへ';
+}
+
+function normalizeIssueRemediations(value: unknown): IssueRemediationMap {
+  const normalized: IssueRemediationMap = { ...DEFAULT_ISSUE_REMEDIATION };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return normalized;
+  }
+
+  for (const [issueCode, rawRemediation] of Object.entries(value as Record<string, unknown>)) {
+    if (!rawRemediation || typeof rawRemediation !== 'object' || Array.isArray(rawRemediation)) {
+      continue;
+    }
+
+    const remediation = rawRemediation as Partial<IssueRemediation>;
+    const cause = typeof remediation.cause === 'string' ? remediation.cause.trim() : '';
+    const fix = typeof remediation.fix === 'string' ? remediation.fix.trim() : '';
+    const verify = typeof remediation.verify === 'string' ? remediation.verify.trim() : '';
+    if (!cause || !fix || !verify) {
+      continue;
+    }
+
+    normalized[issueCode] = { cause, fix, verify };
+  }
+
+  return normalized;
 }
 
 function normalizeIssuesPayload(payload: UploadQualityIssuesPayload): UploadQualityIssuesResponse {
@@ -71,10 +127,14 @@ function normalizeIssuesPayload(payload: UploadQualityIssuesPayload): UploadQual
 }
 
 export default function UploadQualityPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState<QualitySummary | null>(null);
+  const [remediations, setRemediations] = useState<IssueRemediationMap>(DEFAULT_ISSUE_REMEDIATION);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState('');
-  const [issueCodeFilter, setIssueCodeFilter] = useState('');
+  const requestedIssueCodeFilter = searchParams.get('issueCode') ?? '';
+  const [issueCodeFilter, setIssueCodeFilter] = useState(requestedIssueCodeFilter);
+  const { savedViews, createSavedView, deleteSavedView } = useSavedViews<UploadQualitySavedFilters>(UPLOAD_QUALITY_SAVED_VIEWS_KEY);
 
   useEffect(() => {
     setSummaryLoading(true);
@@ -85,7 +145,30 @@ export default function UploadQualityPage() {
         setSummaryError(err instanceof Error ? err.message : 'アップロード品質サマリーの取得に失敗しました');
       })
       .finally(() => setSummaryLoading(false));
+    void api.get<{ data?: IssueRemediationMap }>('/upload-quality/remediations')
+      .then((res) => setRemediations(normalizeIssueRemediations(res?.data)))
+      .catch(() => setRemediations(DEFAULT_ISSUE_REMEDIATION));
   }, []);
+
+  useEffect(() => {
+    setIssueCodeFilter((current) => (current === requestedIssueCodeFilter ? current : requestedIssueCodeFilter));
+  }, [requestedIssueCodeFilter]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (issueCodeFilter) {
+      nextParams.set('issueCode', issueCodeFilter);
+    } else {
+      nextParams.delete('issueCode');
+    }
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [issueCodeFilter, searchParams, setSearchParams]);
+
+  const getIssueRemediation = useCallback((issueCode: string): IssueRemediation | null => (
+    remediations[issueCode] ?? null
+  ), [remediations]);
 
   const fetchIssues = useCallback(async (targetPage: number, signal?: AbortSignal) => {
     const params = new URLSearchParams({
@@ -114,9 +197,23 @@ export default function UploadQualityPage() {
 
   const hasIssues = (summary?.totalIssues ?? 0) > 0;
   const combinedError = summaryError || error;
+  const dominantIssueCode = summary?.issuesByCode[0]?.issueCode ?? '';
+  const dominantUploadType = items[0]?.uploadType ?? 'dead_stock';
+  const reuploadPath = `/upload?reuseSavedMapping=1&uploadType=${dominantUploadType}${dominantIssueCode ? `&issueCode=${encodeURIComponent(dominantIssueCode)}` : ''}`;
+  const groupedVisibleIssues = useMemo(() => {
+    const groups = new Map<string, UploadQualityIssue[]>();
+    for (const issue of items) {
+      const current = groups.get(issue.issueCode) ?? [];
+      current.push(issue);
+      groups.set(issue.issueCode, current);
+    }
+    return [...groups.entries()]
+      .map(([issueCode, groupedItems]) => ({ issueCode, items: groupedItems }))
+      .sort((left, right) => right.items.length - left.items.length || left.issueCode.localeCompare(right.issueCode));
+  }, [items]);
   const nextStepLinks = hasIssues
     ? [
-      { to: '/upload', label: '再アップロードする', variant: 'outline-primary' },
+      { to: reuploadPath, label: '保存済み設定で再アップロード', variant: 'outline-primary' },
       { to: '/inventory/dead-stock', label: 'デッドストックを見る', variant: 'outline-secondary' },
       { to: '/inventory/used-medication', label: '使用量リストを見る', variant: 'outline-secondary' },
       { to: '/statistics', label: '統計を見る', variant: 'outline-secondary' },
@@ -127,6 +224,14 @@ export default function UploadQualityPage() {
       { to: '/inventory/used-medication', label: '使用量リストを見る', variant: 'outline-secondary' },
     ];
 
+  useTrackRecentWork(useMemo(() => ({
+    id: `upload-quality${issueCodeFilter ? `-${issueCodeFilter}` : ''}`,
+    label: issueCodeFilter ? `アップロード品質 / ${issueCodeFilter}` : 'アップロード品質',
+    to: `/upload-quality${issueCodeFilter ? `?issueCode=${encodeURIComponent(issueCodeFilter)}` : ''}`,
+    section: 'アップロード品質',
+    subtitle: hasIssues ? `${summary?.totalIssues ?? 0} 件の問題` : '問題なし',
+  }), [hasIssues, issueCodeFilter, summary?.totalIssues]));
+
   return (
     <PageShell>
       <div className="dl-page-header">
@@ -136,11 +241,28 @@ export default function UploadQualityPage() {
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
           <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量リスト</Link>
-          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
+          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量を確認</Link>
+          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計を確認</Link>
         </div>
       </div>
+
+      <WorkContextBar
+        title="アップロード修正ワークベンチ"
+        currentLabel={issueCodeFilter ? `現在の issue: ${issueCodeFilter}` : '現在の issue: すべて'}
+        description="問題行の確認、CSV 出力、保存済みマッピングでの再取込までをここから進めます。"
+        backTo="/upload"
+        backLabel="アップロード画面へ"
+        badges={[
+          { label: hasIssues ? `問題 ${summary?.totalIssues ?? 0} 件` : '問題なし', bg: hasIssues ? 'warning' : 'success', text: hasIssues ? 'dark' : 'light' },
+          dominantIssueCode ? { label: `最多: ${dominantIssueCode}`, bg: 'secondary' } : null,
+        ]}
+        nextActions={[
+          { to: reuploadPath, label: '再アップロード', variant: 'outline-primary' },
+          { to: '/inventory/dead-stock', label: 'デッドストック', variant: 'outline-secondary' },
+          { to: '/inventory/used-medication', label: '使用量リスト', variant: 'outline-secondary' },
+        ]}
+      />
 
       {combinedError && (
         <ErrorRetryAlert
@@ -170,10 +292,43 @@ export default function UploadQualityPage() {
             </Link>
           ))}
           <span className="small text-muted">
-            {hasIssues ? '問題行を確認したら再アップロードし、在庫画面で反映状況を確認します。' : '問題がなければ在庫画面へ戻って結果を確認します。'}
+            {hasIssues
+              ? '問題行を確認したら、保存済みマッピングを使って再アップロードし、在庫画面で反映状況を確認します。'
+              : '問題がなければ在庫画面へ戻って結果を確認します。'}
           </span>
         </Card.Body>
       </Card>
+      <SavedViewsPanel
+        description="エラーコード別の見方を保存できます。"
+        shareUrl={typeof window !== 'undefined' ? window.location.href : null}
+        savedViews={savedViews}
+        presets={[
+          {
+            key: 'upload-all',
+            name: '全問題',
+            description: 'すべてのエラーコードを表示します。',
+            filters: { issueCodeFilter: '' },
+          },
+          ...(dominantIssueCode
+            ? [{
+                key: `upload-dominant-${dominantIssueCode}`,
+                name: `最多: ${dominantIssueCode}`,
+                description: '件数が多い issue を優先表示します。',
+                filters: { issueCodeFilter: dominantIssueCode },
+              }]
+            : []),
+        ]}
+        onSave={() => {
+          const name = window.prompt('保存ビュー名を入力してください');
+          if (!name) return;
+          createSavedView(name, { issueCodeFilter });
+        }}
+        onApply={(filters) => {
+          setIssueCodeFilter(filters.issueCodeFilter);
+          setPage(1);
+        }}
+        onDelete={deleteSavedView}
+      />
 
       <ScrollArea>
         {summaryLoading ? (
@@ -190,12 +345,35 @@ export default function UploadQualityPage() {
             </Col>
             <Col xs={12} md={8}>
               <Card>
-                <Card.Header className="py-2">エラーコード別</Card.Header>
+                <Card.Header className="py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                  <span>エラーコード別</span>
+                  {hasIssues && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm"
+                      onClick={() => {
+                        const params = new URLSearchParams();
+                        if (issueCodeFilter) params.set('issueCode', issueCodeFilter);
+                        window.open(buildApiUrl(`/upload-quality/my-issues/export.csv?${params.toString()}`), '_blank', 'noopener');
+                      }}
+                    >
+                      問題行をCSV出力
+                    </button>
+                  )}
+                </Card.Header>
                 <Card.Body className="p-2 d-flex flex-wrap gap-2">
                   {summary.issuesByCode.length > 0 ? summary.issuesByCode.map((issue) => (
-                    <Badge key={issue.issueCode} bg="secondary">
+                    <button
+                      key={issue.issueCode}
+                      type="button"
+                      className={`btn btn-sm ${issueCodeFilter === issue.issueCode ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                      onClick={() => {
+                        setIssueCodeFilter((current) => (current === issue.issueCode ? '' : issue.issueCode));
+                        setPage(1);
+                      }}
+                    >
                       {issue.issueCode}: {issue.count}
-                    </Badge>
+                    </button>
                   )) : (
                     <span className="small text-muted">現在、問題は検出されていません。</span>
                   )}
@@ -223,7 +401,70 @@ export default function UploadQualityPage() {
               ))}
             </Form.Select>
           </Col>
+          {hasIssues && (
+            <Col xs={12} md={8} className="d-flex align-items-center gap-2 flex-wrap">
+              <Link to={reuploadPath} className="btn btn-outline-primary btn-sm">
+                保存済み設定で再アップロード
+              </Link>
+              <span className="small text-muted">
+                過去プレビューで保存された列マッピングを再利用しながら修正できます。
+              </span>
+            </Col>
+          )}
         </Row>
+
+        {!loading && groupedVisibleIssues.length > 0 && (
+          <Card className="mb-3">
+            <Card.Header>エラータイプごとの確認</Card.Header>
+            <Card.Body className="d-flex flex-column gap-2">
+              {groupedVisibleIssues.map((group) => {
+                const firstIssue = group.items[0];
+                const remediation = getIssueRemediation(group.issueCode);
+                return (
+                  <div key={`group-${group.issueCode}`} className="border rounded p-3">
+                    <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                      <div>
+                        <div className="fw-semibold">{group.issueCode}</div>
+                        <div className="small text-muted">
+                          {group.items.length} 件 / 最新メッセージ: {firstIssue?.issueMessage ?? '-'}
+                        </div>
+                        {remediation && (
+                          <div className="small text-muted mt-2">
+                            原因: {remediation.cause}
+                          </div>
+                        )}
+                      </div>
+                      <div className="d-flex gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${issueCodeFilter === group.issueCode ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                          onClick={() => {
+                            setIssueCodeFilter(group.issueCode);
+                            setPage(1);
+                          }}
+                        >
+                          このタイプだけ見る
+                        </button>
+                        <Link
+                          to={`/upload?reuseSavedMapping=1&uploadType=${firstIssue?.uploadType ?? 'dead_stock'}&issueCode=${encodeURIComponent(group.issueCode)}`}
+                          className="btn btn-sm btn-outline-primary"
+                        >
+                          このエラーで再アップロード
+                        </Link>
+                      </div>
+                    </div>
+                    {remediation && (
+                      <div className="small mt-3">
+                        <div><strong>修正方法:</strong> {remediation.fix}</div>
+                        <div className="text-muted mt-1"><strong>再確認:</strong> {remediation.verify}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </Card.Body>
+          </Card>
+        )}
 
         {!loading && !hasIssues && !issueCodeFilter ? (
           <AppEmptyState
@@ -255,6 +496,7 @@ export default function UploadQualityPage() {
                         <th>エラーコード</th>
                         <th>メッセージ</th>
                         <th>検出日時</th>
+                        <th>元データ</th>
                         <th>関連画面</th>
                       </tr>
                     </thead>
@@ -267,10 +509,21 @@ export default function UploadQualityPage() {
                           <td><code>{issue.issueCode}</code></td>
                           <td className="small">{issue.issueMessage}</td>
                           <td className="small">{formatDateTimeJa(issue.createdAt)}</td>
+                          <td className="small">
+                            <code>{issue.rowDataJson ? JSON.stringify(issue.rowDataJson).slice(0, 160) : '-'}</code>
+                          </td>
                           <td>
-                            <Link to={resolveIssueDestination(issue.uploadType)} className="btn btn-outline-secondary btn-sm">
-                              {resolveIssueDestinationLabel(issue.uploadType)}
-                            </Link>
+                            <div className="d-flex gap-2 flex-wrap">
+                              <Link
+                                to={`/upload?reuseSavedMapping=1&uploadType=${issue.uploadType}&issueCode=${encodeURIComponent(issue.issueCode)}&jobId=${issue.jobId}`}
+                                className="btn btn-outline-primary btn-sm"
+                              >
+                                保存設定で再取込
+                              </Link>
+                              <Link to={resolveIssueDestination(issue.uploadType)} className="btn btn-outline-secondary btn-sm">
+                                {resolveIssueDestinationLabel(issue.uploadType)}
+                              </Link>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -289,11 +542,21 @@ export default function UploadQualityPage() {
                       fields={[
                         { label: 'メッセージ', value: issue.issueMessage },
                         { label: '検出日時', value: formatDateTimeJa(issue.createdAt) },
+                        { label: '元データ', value: issue.rowDataJson ? JSON.stringify(issue.rowDataJson).slice(0, 120) : '-' },
+                        { label: '修正', value: getIssueRemediation(issue.issueCode)?.fix ?? '保存済み設定で再取込し、raw row を確認してください。' },
                       ]}
                       actions={(
-                        <Link to={resolveIssueDestination(issue.uploadType)} className="btn btn-outline-secondary btn-sm">
-                          {resolveIssueDestinationLabel(issue.uploadType)}
-                        </Link>
+                        <div className="d-flex gap-2 flex-wrap">
+                          <Link
+                            to={`/upload?reuseSavedMapping=1&uploadType=${issue.uploadType}&issueCode=${encodeURIComponent(issue.issueCode)}&jobId=${issue.jobId}`}
+                            className="btn btn-outline-primary btn-sm"
+                          >
+                            保存設定で再取込
+                          </Link>
+                          <Link to={resolveIssueDestination(issue.uploadType)} className="btn btn-outline-secondary btn-sm">
+                            {resolveIssueDestinationLabel(issue.uploadType)}
+                          </Link>
+                        </div>
                       )}
                     />
                   ))}

@@ -99,6 +99,6 @@
   },
   "language": "japanese",
   "_harness_template": "claude/settings.security.json.template",
-  "_harness_version": "3.13.0",
+  "_harness_version": "4.0.3",
   "_harness_note": "Project-level settings template. Plugin defaults (.claude-plugin/settings.json) provide baseline deny/ask only; allow rules belong here at project scope."
 }

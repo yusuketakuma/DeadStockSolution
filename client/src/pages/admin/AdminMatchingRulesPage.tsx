@@ -192,7 +192,7 @@ export default function AdminMatchingRulesPage() {
       {profile && (
         <div className="mb-3 text-muted small">
           プロファイル: {profile.profileName} | バージョン: {profile.version} | ソース: {profile.source}
-          {profile.updatedAt && ` | 最終更新: ${new Date(profile.updatedAt).toLocaleString('ja-JP')}`}
+          {profile.updatedAt && ` | 最終更新: ${new Date(profile.updatedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`}
         </div>
       )}
 
