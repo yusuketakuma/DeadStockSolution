@@ -708,6 +708,7 @@ async function loadBaseline(): Promise<PerformanceBaseline> {
     if (maybeErr.code === 'ENOENT') {
       throw new Error(
         `Baseline not found at ${BASELINE_FILE_PATH}. Run PERF_BASELINE_UPDATE=true npm run test:perf --workspace=server first.`,
+        { cause: err },
       );
     }
     throw err;

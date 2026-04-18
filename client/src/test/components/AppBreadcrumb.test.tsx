@@ -10,6 +10,12 @@ describe('AppBreadcrumb', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('should render nothing when on admin root path (/admin)', () => {
+    const { container } = renderWithProviders(<AppBreadcrumb />, { route: '/admin', authUser: mockAdminUser });
+
+    expect(container.firstChild).toBeNull();
+  });
+
   it('should render breadcrumb chain for a detail page (/proposals/123)', () => {
     renderWithProviders(<AppBreadcrumb />, { route: '/proposals/123' });
 
@@ -87,7 +93,7 @@ describe('AppBreadcrumb', () => {
       authUser: mockAdminUser,
     });
 
-    expect(screen.getByText('ホーム')).toBeInTheDocument();
+    expect(screen.getByText('管理者ホーム')).toBeInTheDocument();
     expect(screen.getByText('薬局管理')).toBeInTheDocument();
     expect(screen.getByText('営業時間')).toBeInTheDocument();
   });
@@ -98,7 +104,7 @@ describe('AppBreadcrumb', () => {
       authUser: mockAdminUser,
     });
 
-    expect(screen.getByText('ホーム')).toBeInTheDocument();
+    expect(screen.getByText('管理者ホーム')).toBeInTheDocument();
     expect(screen.getByText('ログセンター')).toBeInTheDocument();
     expect(screen.getByText('レート制限設定')).toBeInTheDocument();
   });

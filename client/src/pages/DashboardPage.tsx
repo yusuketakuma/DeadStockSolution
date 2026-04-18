@@ -12,6 +12,7 @@ import DashboardTimeline from '../components/timeline/DashboardTimeline';
 import DashboardNextAction from '../components/dashboard/DashboardNextAction';
 import OnboardingGuide from '../components/onboarding/OnboardingGuide';
 import { useOnboardingVisibility } from '../hooks/useOnboardingVisibility';
+import { useRecentWorkList } from '../hooks/useRecentWork';
 import type { TimelineEvent } from '../types/timeline';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { sanitizeInternalPath } from '../utils/navigation';
@@ -60,31 +61,31 @@ const DASHBOARD_SHORTCUT_GROUPS = [
     description: '在庫更新と品質確認をここから進めます。',
     links: [
       { to: '/upload', label: 'アップロード', className: 'btn btn-outline-primary btn-sm py-0' },
-      { to: '/upload-quality', label: 'アップロード品質', className: 'btn btn-outline-danger btn-sm py-0' },
-      { to: '/inventory/browse', label: '在庫参照', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/inventory/search', label: '医薬品在庫検索', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/statistics', label: '統計', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/upload-quality', label: '品質を確認', className: 'btn btn-outline-danger btn-sm py-0' },
+      { to: '/inventory/browse', label: '在庫を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/inventory/search', label: '検索条件を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/statistics', label: '統計を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
     ],
   },
   {
     title: 'マッチング・対応',
     description: '候補確認から連絡対応までをまとめています。',
     links: [
-      { to: '/matching', label: 'マッチング', className: 'btn btn-outline-primary btn-sm py-0' },
-      { to: '/proposals', label: 'マッチング状況', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/exchange-history', label: '交換履歴', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/notifications', label: '通知センター', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/requests', label: '要望一覧', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/bookmarks', label: 'ブックマーク', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/matching', label: '候補を確認', className: 'btn btn-outline-primary btn-sm py-0' },
+      { to: '/proposals', label: '提案状況を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/exchange-history', label: '交換履歴を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/notifications', label: '通知を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/requests', label: '要望を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/bookmarks', label: 'ブックマークを確認', className: 'btn btn-outline-secondary btn-sm py-0' },
     ],
   },
   {
     title: 'ネットワーク・設定',
     description: '薬局間のつながりとアカウント設定を確認します。',
     links: [
-      { to: '/groups', label: 'グループ', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/pharmacies', label: '薬局一覧', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/account', label: '薬局設定', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/groups', label: 'グループを確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/pharmacies', label: '薬局を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/account', label: '薬局設定を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
     ],
   },
 ] as const;
@@ -114,6 +115,7 @@ function ChartFallback({ text }: { text: string }) {
 export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const recentWork = useRecentWorkList(5);
   const {
     events, total, hasMore, loading: timelineLoading, error: timelineError,
     digestEvents, digestLoading,
@@ -155,7 +157,7 @@ export default function DashboardPage() {
         description: '一覧と品質確認がそろうと、後続の在庫確認とマッチング準備が進めやすくなります。',
         primaryLabel: 'アップロード',
         primaryPath: '/upload',
-        secondaryLabel: 'アップロード品質',
+        secondaryLabel: '品質を確認',
         secondaryPath: '/upload-quality',
         badge: 'warning' as const,
       };
@@ -166,7 +168,7 @@ export default function DashboardPage() {
         description: 'マッチング候補の精度を出すため、今月の使用量データを先に入れてください。',
         primaryLabel: 'アップロード',
         primaryPath: '/upload',
-        secondaryLabel: '統計を見る',
+        secondaryLabel: '統計を確認',
         secondaryPath: '/statistics',
         badge: 'warning' as const,
       };
@@ -175,9 +177,9 @@ export default function DashboardPage() {
       return {
         title: '未解決アラートを先に確認',
         description: '期限切迫や過剰在庫の整理を優先すると、後続の提案確認がしやすくなります。',
-        primaryLabel: 'アラート一覧',
+        primaryLabel: 'アラートを確認',
         primaryPath: '/alerts',
-        secondaryLabel: '在庫参照',
+        secondaryLabel: '在庫を確認',
         secondaryPath: '/inventory/browse',
         badge: 'primary' as const,
       };
@@ -185,9 +187,9 @@ export default function DashboardPage() {
     return {
       title: '候補を確認して交換を進める',
       description: 'アップロードが揃っているので、候補確認から提案・交換履歴の確認へ進めます。',
-      primaryLabel: 'マッチング',
+      primaryLabel: '候補を確認',
       primaryPath: '/matching',
-      secondaryLabel: 'マッチング状況',
+      secondaryLabel: '提案状況を確認',
       secondaryPath: '/proposals',
       badge: 'success' as const,
     };
@@ -232,7 +234,21 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <DashboardNextAction nextAction={nextAction} />
+      {!showOnboarding && (
+        <DashboardNextAction nextAction={nextAction} />
+      )}
+
+      {recentWork.length > 0 && (
+        <AppDataPanel title="作業再開" className="mb-2">
+          <div className="d-flex gap-2 flex-wrap">
+            {recentWork.map((item) => (
+              <Link key={item.id} to={item.to} className="btn btn-outline-secondary btn-sm">
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </AppDataPanel>
+      )}
 
       <AppDataPanel title="機能ショートカット" className="mb-2">
         <Row className="g-3">
@@ -339,8 +355,8 @@ export default function DashboardPage() {
             </Row>
             <div className="dl-inline-actions">
               <Link to="/upload" className="btn btn-outline-primary btn-sm py-0">アップロード</Link>
-              <Link to="/upload-quality" className="btn btn-outline-danger btn-sm py-0">アップロード品質</Link>
-              <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm py-0">在庫参照</Link>
+              <Link to="/upload-quality" className="btn btn-outline-danger btn-sm py-0">品質を確認</Link>
+              <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm py-0">在庫を確認</Link>
             </div>
             {!status?.usedMedicationUploaded && (
               <div className="text-info mt-1 small">
@@ -355,7 +371,7 @@ export default function DashboardPage() {
       {alertStats && alertStats.unresolvedCount > 0 && (
         <AppDataPanel
           title="予兆アラート"
-          actions={<Link to="/alerts" className="btn btn-outline-primary btn-sm py-0">全て見る</Link>}
+          actions={<Link to="/alerts" className="btn btn-outline-primary btn-sm py-0">アラートを確認</Link>}
           className="mb-2"
         >
           <Row className="g-2">

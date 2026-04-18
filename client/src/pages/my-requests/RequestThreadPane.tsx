@@ -1,4 +1,4 @@
-import type { ChangeEvent } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import { Badge, Form } from 'react-bootstrap';
 import AttachmentPreviewList from '../../components/ui/AttachmentPreviewList';
 import AppCard from '../../components/ui/AppCard';
@@ -16,6 +16,7 @@ import {
   waitingBadge,
 } from './helpers';
 import { REQUEST_TEMPLATES, type RequestThreadResponse } from './types';
+import { getRequestSlaSummary } from '../../utils/request-sla';
 
 interface RequestThreadPaneProps {
   selectedRequestId: number | null;
@@ -24,11 +25,13 @@ interface RequestThreadPaneProps {
   replyText: string;
   replyFiles: File[];
   sending: boolean;
+  reminding: boolean;
   onBack: () => void;
   onReplyTextChange: (value: string) => void;
   onReplyFilesChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onReplyTemplateSelect: (template: string) => void;
   onSendReply: () => void;
+  onRemind: () => void;
 }
 
 export function RequestThreadPane({
@@ -38,15 +41,31 @@ export function RequestThreadPane({
   replyText,
   replyFiles,
   sending,
+  reminding,
   onBack,
   onReplyTextChange,
   onReplyFilesChange,
   onReplyTemplateSelect,
   onSendReply,
+  onRemind,
 }: RequestThreadPaneProps) {
   const workflowMeta = thread ? statusBadge(thread.request.workflowStatus) : null;
   const priorityMeta = thread ? priorityBadge(thread.request.priority) : null;
   const waitingMeta = thread ? waitingBadge(thread.request) : null;
+  const slaSummary = thread ? getRequestSlaSummary(thread.request) : null;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const latestReminderAt = thread
+    ? [...thread.messages]
+      .reverse()
+      .find((entry) => entry.authorType === 'user' && entry.metadata?.kind === 'user_reminder')
+      ?.createdAt ?? null
+    : null;
+  const nextReminderAt = latestReminderAt ? new Date(new Date(latestReminderAt).getTime() + 6 * 60 * 60 * 1000).toISOString() : null;
+  const reminderCooldownActive = nextReminderAt ? nowMs < Date.parse(nextReminderAt) : false;
+
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, [latestReminderAt]);
 
   return (
     <>
@@ -84,6 +103,21 @@ export function RequestThreadPane({
                 <div className="small text-muted mt-2">元の要望: {thread.request.requestText}</div>
                 {(thread.request.latestSummary || thread.request.openclawSummary) && (
                   <div className="small mt-2">{thread.request.latestSummary ?? thread.request.openclawSummary}</div>
+                )}
+                {slaSummary && (
+                  <div className="d-flex flex-wrap gap-2 align-items-center mt-2">
+                    <Badge bg={slaSummary.tone} text={slaSummary.tone === 'warning' ? 'dark' : undefined}>
+                      {slaSummary.nextActionLabel}
+                    </Badge>
+                    <span className="small text-muted">
+                      {slaSummary.dueLabel} / {slaSummary.elapsedLabel}
+                    </span>
+                    {slaSummary.dueAt && (
+                      <span className="small text-muted">
+                        目安: {formatDateTimeJa(slaSummary.dueAt)}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -175,6 +209,24 @@ export function RequestThreadPane({
                     追加情報を送信
                   </LoadingButton>
                 </div>
+                {(thread.request.waitingOn === 'admin' || thread.request.waitingOn === 'openclaw') && thread.request.workflowStatus !== 'completed' && (
+                  <div className="mt-2 d-flex gap-2 flex-wrap align-items-center">
+                    <LoadingButton
+                      variant="outline-warning"
+                      onClick={onRemind}
+                      loading={reminding}
+                      loadingLabel="送信中..."
+                      disabled={reminderCooldownActive}
+                    >
+                      再催促する
+                    </LoadingButton>
+                    <span className="small text-muted">
+                      {reminderCooldownActive && nextReminderAt
+                        ? `前回の再催促から6時間経過後に再送できます（次回: ${formatDateTimeJa(nextReminderAt)}）`
+                        : '返信がなく滞留している場合、状況確認の再催促を送れます。'}
+                    </span>
+                  </div>
+                )}
                 {thread.request.workflowStatus === 'completed' && (
                   <div className="text-muted small mt-2">完了済み要望のため返信はできません。</div>
                 )}

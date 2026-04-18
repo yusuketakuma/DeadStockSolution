@@ -356,9 +356,11 @@ export function stopDrugMasterScheduler(): void {
 export async function triggerManualAutoSync(options?: {
   sourceUrl?: string | null;
   sourceMode?: SourceMode;
+  awaitCompletion?: boolean;
 }): Promise<{
   triggered: boolean;
   message: string;
+  completed?: boolean;
 }> {
   const requestedMode = options?.sourceMode ?? getConfiguredSourceMode();
 
@@ -367,11 +369,19 @@ export async function triggerManualAutoSync(options?: {
     if (isRunning) {
       return { triggered: false, message: '同期が既に実行中です' };
     }
-    void runAutoSyncIndex().catch((err) => {
+    const runPromise = runAutoSyncIndex().catch((err) => {
       logger.error('Drug master auto-sync: manual index trigger failed', {
         error: getErrorMessage(err),
       });
     });
+    if (options?.awaitCompletion) {
+      await runPromise;
+      return {
+        triggered: true,
+        completed: true,
+        message: 'MHLW ポータルから自動探索を完了しました。同期ログで結果を確認してください。',
+      };
+    }
     return { triggered: true, message: 'MHLW ポータルから自動探索を開始しました。同期ログで進捗を確認してください。' };
   }
 
@@ -396,8 +406,15 @@ export async function triggerManualAutoSync(options?: {
     return { triggered: false, message: '同期が既に実行中です' };
   }
 
-  // バックグラウンドで実行（レスポンスは即時返す）
-  void runAutoSyncSafely('manual', sourceUrl);
+  const runPromise = runAutoSyncSafely('manual', sourceUrl);
+  if (options?.awaitCompletion) {
+    await runPromise;
+    return {
+      triggered: true,
+      completed: true,
+      message: '自動取得を完了しました。同期ログで結果を確認してください。',
+    };
+  }
 
   return { triggered: true, message: '自動取得を開始しました。同期ログで進捗を確認してください。' };
 }

@@ -153,6 +153,25 @@ describe('useIncrementalSearch', () => {
     expect(fetchFn).toHaveBeenCalledWith('新クエリ', 1, expect.any(AbortSignal));
   });
 
+  it('executeImmediate は page override を現在ページにも反映する', async () => {
+    const fetchFn = createMockFetch();
+
+    const { result } = renderHook(() =>
+      useIncrementalSearch({ fetchFn }),
+    );
+
+    act(() => {
+      result.current.setPage(3);
+    });
+    expect(result.current.page).toBe(3);
+
+    await act(async () => {
+      result.current.executeImmediate(undefined, 1);
+    });
+
+    expect(result.current.page).toBe(1);
+  });
+
   it('クエリ変更時にページを 1 にリセットする', async () => {
     const fetchFn = createMockFetch([{ id: 1 }], 10);
 

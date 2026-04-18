@@ -197,20 +197,20 @@ function StatisticsShell({ children }: { children: React.ReactNode }) {
           <div className="text-muted small">アップロード、在庫、マッチング、ネットワークの集計をまとめて確認します。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボード</Link>
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストック</Link>
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">マッチング</Link>
-          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">アップロード品質</Link>
+          <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボードへ戻る</Link>
+          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
+          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
+          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">品質を確認</Link>
         </div>
       </div>
       <ScrollArea>
         <Container>
           <AppDataPanel title="関連画面" className="mb-3">
             <div className="d-flex gap-2 flex-wrap">
-              <Link to="/upload-quality" className="btn btn-outline-danger btn-sm py-0">アップロード品質</Link>
-              <Link to="/alerts" className="btn btn-outline-warning btn-sm py-0">アラート</Link>
-              <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">提案一覧</Link>
-              <Link to="/groups" className="btn btn-outline-secondary btn-sm py-0">グループ</Link>
+              <Link to="/upload-quality" className="btn btn-outline-danger btn-sm py-0">品質を確認</Link>
+              <Link to="/alerts" className="btn btn-outline-warning btn-sm py-0">アラートを確認</Link>
+              <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">提案一覧を確認</Link>
+              <Link to="/groups" className="btn btn-outline-secondary btn-sm py-0">グループを確認</Link>
             </div>
             <div className="small text-muted mt-2">
               数値確認のあとに見直す画面を、在庫・対応・ネットワーク単位でまとめています。
@@ -283,7 +283,7 @@ export default function StatisticsPage() {
                 <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">提案を確認</Link>
               ) : null}
               {summary.alerts.activeCount > 0 ? (
-                <Link to="/alerts" className="btn btn-outline-danger btn-sm py-0">アラートを見る</Link>
+                <Link to="/alerts" className="btn btn-outline-danger btn-sm py-0">アラートを確認</Link>
               ) : null}
             </div>
           )}
@@ -360,9 +360,9 @@ export default function StatisticsPage() {
         title="在庫状況"
         className="mt-3"
         actions={<SectionActions links={[
-          { to: '/inventory/dead-stock', label: 'デッドストック', variant: 'btn-outline-primary' },
-          { to: '/inventory/used-medication', label: '使用量リスト' },
-          { to: '/inventory/browse', label: '在庫参照' },
+          { to: '/inventory/dead-stock', label: 'デッドストックを確認', variant: 'btn-outline-primary' },
+          { to: '/inventory/used-medication', label: '使用量リストを確認' },
+          { to: '/inventory/browse', label: '在庫参照を確認' },
         ]} />}
       >
         <Row className="g-3">
@@ -403,9 +403,9 @@ export default function StatisticsPage() {
         actions={(
           <SectionActions
             links={[
-              { to: '/matching', label: 'マッチング', variant: 'btn-outline-primary' },
-              { to: '/proposals', label: '提案一覧' },
-              { to: '/exchange-history', label: '交換履歴' },
+              { to: '/matching', label: '候補を確認', variant: 'btn-outline-primary' },
+              { to: '/proposals', label: '提案一覧を確認' },
+              { to: '/exchange-history', label: '交換履歴を確認' },
             ]}
           />
         )}

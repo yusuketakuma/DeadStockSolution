@@ -420,8 +420,8 @@ export default function LoginPage() {
                     <h3 className="h6 mb-1">開発者ログイン</h3>
                     <p className="text-muted small mb-0">
                       {isAdminMode
-                        ? 'Playwright 検証用の管理者アカウントを入力して、管理画面の確認をすぐ始められます。'
-                        : 'Playwright 検証用の一般ユーザーを入力して、業務画面の確認をすぐ始められます。'}
+                        ? '検証用の管理者アカウントを入力して、管理画面の確認をすぐ始められます。'
+                        : '検証用の一般ユーザーを入力して、業務画面の確認をすぐ始められます。'}
                     </p>
                   </div>
                   <div className="d-flex flex-wrap gap-2">

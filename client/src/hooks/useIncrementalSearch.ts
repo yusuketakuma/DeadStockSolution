@@ -173,6 +173,9 @@ export function useIncrementalSearch<T>(
     }
     const nextQuery = queryOverride ?? queryRef.current;
     const nextPage = pageOverride ?? pageRef.current;
+    if (pageOverride !== undefined) {
+      setPageState(pageOverride);
+    }
     setIsSearching(true);
     void doFetch(nextQuery, nextPage);
   }, [doFetch]);

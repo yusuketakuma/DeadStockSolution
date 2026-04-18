@@ -15,8 +15,8 @@ describe('Header quick actions', () => {
       authUser: mockUser,
     });
 
-    expect(screen.getAllByRole('link', { name: 'アップロード品質' }).some((link) => link.getAttribute('href') === '/upload-quality')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'マッチング' }).some((link) => link.getAttribute('href') === '/matching')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '品質を確認' }).some((link) => link.getAttribute('href') === '/upload-quality')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '候補を確認' }).some((link) => link.getAttribute('href') === '/matching')).toBe(true);
   });
 
   it('links matching-related admin routes together', () => {
@@ -65,9 +65,9 @@ describe('Header quick actions', () => {
       authUser: mockUser,
     });
 
-    expect(screen.queryAllByRole('link', { name: '通知センター' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(false);
-    expect(screen.getAllByRole('link', { name: 'メッセージ' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '薬局設定' }).some((link) => link.getAttribute('href') === '/account')).toBe(true);
+    expect(screen.queryAllByRole('link', { name: '通知を確認' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(false);
+    expect(screen.getAllByRole('link', { name: 'メッセージを確認' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
+    expect(screen.getAllByRole('link', { name: '薬局設定を確認' }).some((link) => link.getAttribute('href') === '/account')).toBe(true);
     expect(screen.queryAllByRole('link', { name: '要望対応' })).toHaveLength(0);
   });
 });

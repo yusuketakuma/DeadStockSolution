@@ -86,7 +86,7 @@ export default function AppBreadcrumb() {
   const { pathname } = useLocation();
 
   // ホーム（ダッシュボード）ではパンくずを表示しない
-  if (pathname === '/') return null;
+  if (pathname === '/' || pathname === '/admin') return null;
 
   const chain = buildBreadcrumbChain(pathname);
 
@@ -94,8 +94,9 @@ export default function AppBreadcrumb() {
   // チェーンが空の場合はそもそも表示しない
   if (chain.length === 0) return null;
 
+  const isAdminPath = pathname.startsWith('/admin');
   const items: BreadcrumbItem[] = [
-    { path: '/', title: 'ホーム' },
+    { path: isAdminPath ? '/admin' : '/', title: isAdminPath ? '管理者ホーム' : 'ホーム' },
     ...chain,
   ];
 

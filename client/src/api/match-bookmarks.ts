@@ -16,6 +16,14 @@ export interface BookmarkListResponse {
   limit: number;
 }
 
+export interface MatchingDismissStats {
+  distance: number;
+  expiry: number;
+  value_gap: number;
+  item_fit: number;
+  other: number;
+}
+
 export const fetchBookmarksPage = (page: number, limit: number) =>
   api.get<BookmarkListResponse>(`/match-bookmarks?page=${page}&limit=${limit}`);
 
@@ -30,3 +38,12 @@ export const updateBookmarkMemo = (id: number, memo: string) =>
 
 export const deleteBookmark = (id: number) =>
   api.delete<{ ok: boolean }>(`/match-bookmarks/${id}`);
+
+export const fetchMatchingDismissStats = () =>
+  api.get<{ stats: MatchingDismissStats }>('/match-bookmarks/dismiss-feedback');
+
+export const recordMatchingDismissFeedback = (data: {
+  candidatePharmacyId: number;
+  reason: keyof MatchingDismissStats;
+  drugCodes?: string[];
+}) => api.post<{ stats: MatchingDismissStats }>('/match-bookmarks/dismiss-feedback', data);

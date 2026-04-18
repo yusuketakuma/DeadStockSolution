@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-04-02T03:07:23Z",
-  "changed_file": "src/test/pages/StatisticsPage.test.tsx",
+  "timestamp": "2026-04-17T11:06:12Z",
+  "changed_file": "src/pages/NotificationsPage.tsx",
   "test_command": "npm test",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"

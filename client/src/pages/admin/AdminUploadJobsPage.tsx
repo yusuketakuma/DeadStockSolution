@@ -324,7 +324,7 @@ export default function AdminUploadJobsPage() {
                       <td>{formatDateTimeJa(job.createdAt)}</td>
                       <td>
                         <AppButton size="sm" variant="outline-primary" onClick={() => openJobDetail(job.id)}>
-                          詳細
+                          ジョブ状況を確認
                         </AppButton>
                       </td>
                     </tr>
@@ -355,7 +355,7 @@ export default function AdminUploadJobsPage() {
                   ]}
                   actions={(
                     <AppButton size="sm" variant="outline-primary" onClick={() => openJobDetail(job.id)}>
-                      詳細
+                      ジョブ状況を確認
                     </AppButton>
                   )}
                 />

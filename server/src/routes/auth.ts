@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { randomBytes } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../config/database';
@@ -152,7 +153,7 @@ function resolveTestAccountMode(value: unknown): TestAccountMode {
 
 function buildMissingTestAccountMessage(mode: TestAccountMode): string {
   return mode === 'admin'
-    ? 'テスト管理者アカウントがDBに登録されていません（Playwright 検証用アカウントを確認してください）'
+    ? 'テスト管理者アカウントがDBに登録されていません（検証用アカウントを確認してください）'
     : 'テスト薬局がDBに登録されていません（5件登録を確認してください）';
 }
 
@@ -173,12 +174,21 @@ router.post('/register', rejectIfLegacyPasswordDisabled, registerLimiter, async 
       address,
       phone,
       fax,
-      licenseNumber,
+      licenseNumber: rawLicenseInput,
       prefecture,
-      permitLicenseNumber,
+      permitLicenseNumber: rawPermitLicenseInput,
       permitPharmacyName,
       permitAddress,
     } = req.body;
+
+    const rawLicenseNumber = typeof rawLicenseInput === 'string' ? rawLicenseInput.trim() : '';
+    const rawPermitLicenseNumber = typeof rawPermitLicenseInput === 'string' ? rawPermitLicenseInput.trim() : '';
+    // Registration UI no longer collects license numbers; generate a unique
+    // placeholder so that pharmacies.license_number's NOT NULL + UNIQUE
+    // constraints are still satisfied without user input.
+    const licenseNumber = rawLicenseNumber
+      || `unregistered-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
+    const permitLicenseNumber = rawPermitLicenseNumber;
 
     // Check existing email
     const existing = await db.select({ id: pharmacies.id })
@@ -191,15 +201,16 @@ router.post('/register', rejectIfLegacyPasswordDisabled, registerLimiter, async 
       return;
     }
 
-    // Check existing license number
-    const existingLicense = await db.select({ id: pharmacies.id })
-      .from(pharmacies)
-      .where(eq(pharmacies.licenseNumber, licenseNumber))
-      .limit(1);
+    if (rawLicenseNumber) {
+      const existingLicense = await db.select({ id: pharmacies.id })
+        .from(pharmacies)
+        .where(eq(pharmacies.licenseNumber, rawLicenseNumber))
+        .limit(1);
 
-    if (existingLicense.length > 0) {
-      res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
-      return;
+      if (existingLicense.length > 0) {
+        res.status(409).json({ error: 'この薬局開設許可番号は既に登録されています' });
+        return;
+      }
     }
 
     const passwordHash = await hashPassword(password);
@@ -214,15 +225,23 @@ router.post('/register', rejectIfLegacyPasswordDisabled, registerLimiter, async 
       return;
     }
 
-    const screening = evaluateRegistrationScreening({
-      pharmacyName: name,
-      prefecture,
-      address,
-      licenseNumber,
-      permitLicenseNumber,
-      permitPharmacyName,
-      permitAddress,
-    });
+    const shouldRunScreening = Boolean(rawLicenseNumber && rawPermitLicenseNumber);
+    const screening = shouldRunScreening
+      ? evaluateRegistrationScreening({
+          pharmacyName: name,
+          prefecture,
+          address,
+          licenseNumber: rawLicenseNumber,
+          permitLicenseNumber: rawPermitLicenseNumber,
+          permitPharmacyName,
+          permitAddress,
+        })
+      : {
+          approved: true,
+          screeningScore: 0,
+          reasons: ['許可番号入力なし: 自動スクリーニング省略'],
+          mismatches: [],
+        };
 
     const registrationIp = getClientIp(req);
     const normalizedPostalCode = postalCode.replace(/[-ー－\s]/g, '');
@@ -235,7 +254,7 @@ router.post('/register', rejectIfLegacyPasswordDisabled, registerLimiter, async 
         address,
         phone,
         fax,
-        licenseNumber,
+        licenseNumber: rawLicenseNumber,
         permitLicenseNumber,
         permitPharmacyName,
         permitAddress,
@@ -280,7 +299,7 @@ router.post('/register', rejectIfLegacyPasswordDisabled, registerLimiter, async 
           postalCode: normalizedPostalCode,
           prefecture,
           address,
-          licenseNumber,
+          licenseNumber: rawLicenseNumber,
           instruction: '薬局機能情報提供制度APIで検索し、薬局名と開設許可番号の一致を確認してください',
         }),
       }).returning({ id: userRequests.id });
@@ -345,7 +364,7 @@ router.post('/register', rejectIfLegacyPasswordDisabled, registerLimiter, async 
         postalCode: normalizedPostalCode,
         prefecture,
         address,
-        licenseNumber,
+        licenseNumber: rawLicenseNumber,
       }),
       context: {
         source: 'pharmacy_verification_request',
@@ -655,7 +674,10 @@ router.get('/me', requireLogin, async (req: AuthRequest, res: Response) => {
 router.get('/test-pharmacies', testPharmacyPreviewLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const includePasswordRaw = req.query.includePassword;
-    const includePassword = includePasswordRaw === '1' || includePasswordRaw === 'true';
+    // In production, password exposure requires explicit opt-in via env var to prevent accidental credential leakage
+    const isPasswordExposureAllowed = process.env.NODE_ENV !== 'production'
+      || process.env.EXPOSE_TEST_PHARMACY_PASSWORDS === 'true';
+    const includePassword = (includePasswordRaw === '1' || includePasswordRaw === 'true') && isPasswordExposureAllowed;
     const mode = resolveTestAccountMode(req.query.mode);
     const cacheControlValue = includePassword ? 'no-store' : 'private, max-age=60';
     const cachedEntry = testPharmacyCache[mode];

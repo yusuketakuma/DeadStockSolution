@@ -70,6 +70,19 @@ export const matchNotifications = pgTable('match_notifications', {
     .on(table.pharmacyId, table.dedupeKey),
 }));
 
+export const notificationGroupStates = pgTable('notification_group_states', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  actionPath: text('action_path').notNull(),
+  snoozedUntil: timestamp('snoozed_until', { mode: 'string', withTimezone: true }),
+  lastReadAt: timestamp('last_read_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+}, (table) => ({
+  uqNotificationGroupState: uniqueIndex('uq_notification_group_state').on(table.pharmacyId, table.actionPath),
+  idxNotificationGroupStatePharmacy: index('idx_notification_group_state_pharmacy').on(table.pharmacyId, table.updatedAt),
+}));
+
 export const pushSubscriptions = pgTable('push_subscriptions', {
   id: serial('id').primaryKey(),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),

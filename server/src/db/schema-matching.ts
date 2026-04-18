@@ -148,3 +148,22 @@ export const matchCandidateBookmarks = pgTable('match_candidate_bookmarks', {
   idxBookmarkPharmacyId: index('idx_bookmark_pharmacy_id')
     .on(table.pharmacyId),
 }));
+
+export const matchDismissFeedback = pgTable('match_dismiss_feedback', {
+  id: serial('id').primaryKey(),
+  pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  candidatePharmacyId: integer('candidate_pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
+  reason: text('reason').notNull(),
+  drugCode: text('drug_code').notNull().default(''),
+  drugGroup: text('drug_group').notNull().default(''),
+  dismissCount: integer('dismiss_count').notNull().default(1),
+  lastDismissedAt: timestamp('last_dismissed_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  uqMatchDismissFeedback: uniqueIndex('uq_match_dismiss_feedback')
+    .on(table.pharmacyId, table.candidatePharmacyId, table.reason, table.drugCode, table.drugGroup),
+  idxMatchDismissFeedbackPharmacy: index('idx_match_dismiss_feedback_pharmacy')
+    .on(table.pharmacyId, table.lastDismissedAt),
+  chkMatchDismissReason: check('chk_match_dismiss_reason', sql`${table.reason} IN ('distance','expiry','value_gap','item_fit','other')`),
+}));

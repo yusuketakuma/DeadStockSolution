@@ -1,9 +1,0 @@
-{"type":"session.start","ts":"2026-03-06T03:02:47Z","state":"initialized","data":{"cc_session_id":"39d3b9a3-248f-4097-b0b6-61eb1c02a0d4"}}
-{"id":"event-000001","type":"session.resume","ts":"2026-03-06T03:02:47Z","state":"initialized"}
-{"id":"event-000002","type":"tool.bash","ts":"2026-03-06T03:03:21Z","state":"initialized","data":{"command":"git status --short"}}
-{"id":"event-000003","type":"tool.bash","ts":"2026-03-06T03:03:21Z","state":"initialized","data":{"command":"git branch --show-current"}}
-{"id":"event-000004","type":"tool.bash","ts":"2026-03-06T03:03:22Z","state":"initialized","data":{"command":"cat VERSION 2>/dev/null || jq -r '.version' package.json 2>/dev/null || echo "NO_VERSION""}}
-{"id":"event-000005","type":"tool.bash","ts":"2026-03-06T03:03:23Z","state":"initialized","data":{"command":"git log --oneline -10"}}
-{"id":"event-000006","type":"tool.bash","ts":"2026-03-06T03:03:24Z","state":"initialized","data":{"command":"command -v gh &>/dev/null && echo "gh: available" || echo "gh: not available""}}
-{"id":"event-000007","type":"tool.bash","ts":"2026-03-06T03:03:28Z","state":"initialized","data":{"command":"jq -r '.version // "null"' /Users/yusuke/DeadStockSolution/package.json"}}
-{"id":"event-000008","type":"session.stop","ts":"2026-03-06T03:03:44Z","state":"stopped"}

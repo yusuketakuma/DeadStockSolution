@@ -136,8 +136,8 @@ describe('ProposalDetailPage comment actions', () => {
       expect(screen.getByText('マッチング #1')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
-    expect(screen.getByRole('link', { name: '交換履歴' })).toHaveAttribute('href', '/exchange-history');
+    expect(screen.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
+    expect(screen.getByRole('link', { name: '交換履歴を確認' })).toHaveAttribute('href', '/exchange-history');
     expect(screen.getByRole('link', { name: '印刷用ページを開く' })).toHaveAttribute('href', '/proposals/1/print');
   });
 
@@ -171,8 +171,8 @@ describe('ProposalDetailPage comment actions', () => {
       expect(screen.getByText('提案詳細')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('link', { name: 'マッチング一覧' })).toHaveAttribute('href', '/proposals');
-    expect(screen.getByRole('link', { name: '交換履歴' })).toHaveAttribute('href', '/exchange-history');
+    expect(screen.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
+    expect(screen.getByRole('link', { name: '交換履歴を確認' })).toHaveAttribute('href', '/exchange-history');
   });
 
   it('allows editing own comment', async () => {

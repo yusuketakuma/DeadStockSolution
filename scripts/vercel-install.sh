@@ -18,5 +18,8 @@ fi
 # so npm install resolves platform deps from scratch.
 rm -rf "$ROOT_DIR/node_modules" "$ROOT_DIR/client/node_modules" "$ROOT_DIR/server/node_modules" "$ROOT_DIR/package-lock.json"
 
-# Install all workspaces at once (client + server + root devDeps)
-npm install --prefix "$ROOT_DIR" --no-audit --no-fund
+# Install all workspaces at once (client + server + root devDeps).
+# vite-plugin-pwa@1.2.0 still declares vite<=7 as peer while client uses vite@8,
+# so npm ERESOLVE fires without --legacy-peer-deps. Drop this flag once the plugin
+# ships vite@8 support.
+npm install --prefix "$ROOT_DIR" --no-audit --no-fund --legacy-peer-deps

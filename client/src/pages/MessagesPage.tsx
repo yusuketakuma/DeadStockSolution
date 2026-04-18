@@ -39,14 +39,17 @@ function formatDateTime(iso: string): string {
   try {
     const d = new Date(iso);
     const now = new Date();
+    const jstOptions = { timeZone: 'Asia/Tokyo' as const };
+    const dJst = new Date(d.toLocaleString('en-US', jstOptions));
+    const nowJst = new Date(now.toLocaleString('en-US', jstOptions));
     const isToday =
-      d.getFullYear() === now.getFullYear()
-      && d.getMonth() === now.getMonth()
-      && d.getDate() === now.getDate();
+      dJst.getFullYear() === nowJst.getFullYear()
+      && dJst.getMonth() === nowJst.getMonth()
+      && dJst.getDate() === nowJst.getDate();
     if (isToday) {
-      return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
     }
-    return d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
   } catch {
     return '';
   }
@@ -387,7 +390,7 @@ export default function MessagesPage() {
           <AppEmptyState
             title={search ? '検索条件に一致するメッセージはありません' : 'メッセージはありません'}
             description={search ? '検索条件を変えて再度確認してください。' : '薬局一覧やマッチングから相手を選んでメッセージを開始できます。'}
-            actionLabel={search ? undefined : '薬局一覧へ'}
+            actionLabel={search ? undefined : '薬局を確認'}
             actionTo={search ? undefined : '/pharmacies'}
           />
         </Card.Body>
@@ -618,8 +621,8 @@ export default function MessagesPage() {
           <div className="text-muted small">一覧と会話を device 幅に合わせて切り替えます。</div>
         </div>
         <div className="dl-page-header-actions d-flex gap-2 flex-wrap align-items-center">
-          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">マッチング一覧</Link>
-          <Link to="/requests" className="btn btn-outline-secondary btn-sm">要望一覧</Link>
+          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
+          <Link to="/requests" className="btn btn-outline-secondary btn-sm">要望一覧を確認</Link>
           <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
             自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
           </Badge>

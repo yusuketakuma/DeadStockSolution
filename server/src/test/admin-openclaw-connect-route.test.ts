@@ -3,7 +3,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  getDdsConnectionStatus: vi.fn(),
+  getAdminDdsConnectionStatus: vi.fn(),
   issueDdsBootstrapToken: vi.fn(),
   rotateDdsControlToken: vi.fn(),
 }));
@@ -20,8 +20,11 @@ vi.mock('../routes/admin-write-limiter', () => ({
   adminWriteLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
+vi.mock('../services/openclaw/admin-runtime-status-service', () => ({
+  getAdminDdsConnectionStatus: mocks.getAdminDdsConnectionStatus,
+}));
+
 vi.mock('../services/dds-agent-service', () => ({
-  getDdsConnectionStatus: mocks.getDdsConnectionStatus,
   issueDdsBootstrapToken: mocks.issueDdsBootstrapToken,
   rotateDdsControlToken: mocks.rotateDdsControlToken,
 }));
@@ -48,7 +51,7 @@ describe('admin openclaw connect routes', () => {
   });
 
   it('GET /openclaw/dds-agent returns connection status', async () => {
-    mocks.getDdsConnectionStatus.mockResolvedValue({
+    mocks.getAdminDdsConnectionStatus.mockResolvedValue({
       environment: 'production',
       connected: true,
       agentId: 'agent-1',
@@ -57,13 +60,20 @@ describe('admin openclaw connect routes', () => {
       queuedJobs: 2,
       awaitingUser: 1,
       latestPrUrl: 'https://github.com/org/repo/pull/42',
+      runtimeDigest: {
+        generatedAt: '2026-03-24T10:10:00.000Z',
+        latestConnection: null,
+        bufferedErrors: { count: 0, bySeverity: {}, bySource: {}, recent: [] },
+        codexResults: { todayCount: 0, todayByStatus: {}, recent: [] },
+      },
     });
 
     const res = await request(createApp()).get('/api/admin/openclaw/dds-agent');
 
     expect(res.status).toBe(200);
     expect(res.body.data.connected).toBe(true);
-    expect(mocks.getDdsConnectionStatus).toHaveBeenCalledTimes(1);
+    expect(res.body.data.runtimeDigest.bufferedErrors.count).toBe(0);
+    expect(mocks.getAdminDdsConnectionStatus).toHaveBeenCalledTimes(1);
   });
 
   it('POST /openclaw/bootstrap-token issues bootstrap token for current admin', async () => {

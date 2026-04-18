@@ -105,7 +105,7 @@ describe('MyRequestsPage', () => {
       expect(screen.getByText('要望 #31')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('link', { name: '薬局間メッセージ' })).toHaveAttribute('href', '/messages');
+    expect(screen.getByRole('link', { name: 'メッセージを確認' })).toHaveAttribute('href', '/messages');
     expect(screen.getAllByText('回答待ち').length).toBeGreaterThan(0);
     expect(screen.getByText('完了')).toBeInTheDocument();
     expect(screen.getAllByText('在庫一覧の検索を改善してほしい').length).toBeGreaterThan(0);

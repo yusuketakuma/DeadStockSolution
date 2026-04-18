@@ -354,9 +354,13 @@ export function stopDrugPackageScheduler(): void {
   }
 }
 
-export async function triggerManualPackageAutoSync(options?: { sourceUrl?: string | null }): Promise<{
+export async function triggerManualPackageAutoSync(options?: {
+  sourceUrl?: string | null;
+  awaitCompletion?: boolean;
+}): Promise<{
   triggered: boolean;
   message: string;
+  completed?: boolean;
 }> {
   const sourceUrl = options?.sourceUrl?.trim() || getConfiguredSourceUrl();
   if (!sourceUrl) {
@@ -378,7 +382,15 @@ export async function triggerManualPackageAutoSync(options?: { sourceUrl?: strin
     return { triggered: false, message: '包装単位同期が既に実行中です' };
   }
 
-  void runPackageAutoSyncSafely('manual', sourceUrl);
+  const runPromise = runPackageAutoSyncSafely('manual', sourceUrl);
+  if (options?.awaitCompletion) {
+    await runPromise;
+    return {
+      triggered: true,
+      completed: true,
+      message: '包装単位データの自動取得を完了しました。同期ログで結果を確認してください。',
+    };
+  }
 
   return { triggered: true, message: '包装単位データの自動取得を開始しました。同期ログで進捗を確認してください。' };
 }

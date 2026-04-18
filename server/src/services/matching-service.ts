@@ -2,6 +2,7 @@ import { and, eq, exists, gte, inArray, or, sql } from 'drizzle-orm';
 import {
   deadStockItems,
   groupMembers,
+  matchDismissFeedback,
   pharmacies,
   pharmacyRelationships,
   uploadJobs,
@@ -128,6 +129,18 @@ async function fetchPharmacyLocationById(
 
 function uniqueNumbers(values: number[]): number[] {
   return [...new Set(values)];
+}
+
+function resolveDismissReasonWeight(reason: string): number {
+  const byReason = {
+    distance: Number(process.env.MATCHING_DISMISS_WEIGHT_DISTANCE ?? 1.5),
+    expiry: Number(process.env.MATCHING_DISMISS_WEIGHT_EXPIRY ?? 1.2),
+    value_gap: Number(process.env.MATCHING_DISMISS_WEIGHT_VALUE_GAP ?? 1.1),
+    item_fit: Number(process.env.MATCHING_DISMISS_WEIGHT_ITEM_FIT ?? 1.0),
+    other: Number(process.env.MATCHING_DISMISS_WEIGHT_OTHER ?? 0.8),
+  } as const;
+  const resolved = byReason[reason as keyof typeof byReason] ?? 1;
+  return Number.isFinite(resolved) ? Math.max(0, resolved) : 1;
 }
 
 function groupToSet<T>(
@@ -426,6 +439,7 @@ function buildCandidatesForSource(params: {
   includeIsConfiguredInBusinessStatus: boolean;
   equivalenceMap: Map<string, string[]>;
   successCountByPharmacy: Map<number, number>;
+  dismissPenaltyByPharmacy: Map<number, Array<{ drugCode: string; penalty: number }>>;
 }): MatchCandidate[] {
   const sourcePreparedData = getSourcePreparedData(
     params.sourcePharmacyId,
@@ -457,9 +471,38 @@ function buildCandidatesForSource(params: {
     includeIsConfiguredInBusinessStatus: params.includeIsConfiguredInBusinessStatus,
     equivalenceMap: params.equivalenceMap,
     successCountByPharmacy: params.successCountByPharmacy,
+    dismissPenaltyByPharmacy: params.dismissPenaltyByPharmacy,
   });
 
   return sortAndLimitCandidates(candidates, params.matchingRuleProfile, params.now);
+}
+
+async function fetchDismissPenaltyBySourcePharmacy(
+  pharmacyId: number,
+  deps: ServiceDependencies,
+): Promise<Map<number, Array<{ drugCode: string; penalty: number }>>> {
+  const rows = await deps.db.select({
+    candidatePharmacyId: matchDismissFeedback.candidatePharmacyId,
+    reason: matchDismissFeedback.reason,
+    drugCode: matchDismissFeedback.drugCode,
+    count: sql<number>`coalesce(sum(${matchDismissFeedback.dismissCount}), 0)::int`,
+  })
+    .from(matchDismissFeedback)
+    .where(eq(matchDismissFeedback.pharmacyId, pharmacyId))
+    .groupBy(matchDismissFeedback.candidatePharmacyId, matchDismissFeedback.reason, matchDismissFeedback.drugCode);
+
+  const penaltyByPharmacy = new Map<number, Array<{ drugCode: string; penalty: number }>>();
+  for (const row of rows) {
+    const weighted = Math.min(Number(row.count ?? 0), 5) * resolveDismissReasonWeight(row.reason);
+    const current = penaltyByPharmacy.get(row.candidatePharmacyId) ?? [];
+    current.push({
+      drugCode: row.drugCode,
+      penalty: weighted,
+    });
+    penaltyByPharmacy.set(row.candidatePharmacyId, current);
+  }
+
+  return penaltyByPharmacy;
 }
 
 async function fetchSingleGroupMemberIds(
@@ -603,9 +646,13 @@ export async function findMatchesBatch(
     deps,
   );
 
-  const [successCountsByPharmacyMap, matchingRuleProfilesByPharmacy] = await Promise.all([
+  const [successCountsByPharmacyMap, matchingRuleProfilesByPharmacy, dismissPenaltiesByPharmacyMap] = await Promise.all([
     fetchSuccessCountsBySourcePharmacy(existingSourcePharmacyIds, deps),
     fetchMatchingRuleProfilesBySourcePharmacy(existingSourcePharmacyIds),
+    Promise.all(existingSourcePharmacyIds.map(async (sourcePharmacyId) => [
+      sourcePharmacyId,
+      await fetchDismissPenaltyBySourcePharmacy(sourcePharmacyId, deps),
+    ] as const)).then((entries) => new Map(entries)),
   ]);
 
   for (const sourcePharmacyId of existingSourcePharmacyIds) {
@@ -634,6 +681,7 @@ export async function findMatchesBatch(
       includeIsConfiguredInBusinessStatus: false,
       equivalenceMap,
       successCountByPharmacy: successCountsByPharmacyMap.get(sourcePharmacyId) ?? new Map<number, number>(),
+      dismissPenaltyByPharmacy: dismissPenaltiesByPharmacyMap.get(sourcePharmacyId) ?? new Map<number, Array<{ drugCode: string; penalty: number }>>(),
     }));
   }
 
@@ -686,7 +734,7 @@ export async function findMatches(
   }
 
   const favoriteIds = new Set(favoriteRows.map((row) => row.targetPharmacyId));
-  const [matchingIndexes, successCountByPharmacy] = await Promise.all([
+  const [matchingIndexes, successCountByPharmacy, dismissPenaltyByPharmacy] = await Promise.all([
     buildSingleMatchingIndexes(
       pharmacyId,
       filteredViablePharmacies.map((pharmacy) => pharmacy.id),
@@ -695,6 +743,7 @@ export async function findMatches(
       deps,
     ),
     getPharmacyPairSuccessCounts(pharmacyId, deps),
+    fetchDismissPenaltyBySourcePharmacy(pharmacyId, deps),
   ]);
   if (!matchingIndexes) {
     return [];
@@ -715,6 +764,7 @@ export async function findMatches(
     includeIsConfiguredInBusinessStatus: true,
     equivalenceMap,
     successCountByPharmacy,
+    dismissPenaltyByPharmacy,
   });
 }
 

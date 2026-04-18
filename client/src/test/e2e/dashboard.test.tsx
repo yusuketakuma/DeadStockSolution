@@ -116,11 +116,11 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getAllByText('在庫参照').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('品質を確認').length).toBeGreaterThan(0);
     });
-    expect(screen.getAllByText('医薬品在庫検索').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('マッチング状況').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('交換履歴').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('検索条件を確認').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('提案状況を確認').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('交換履歴を確認').length).toBeGreaterThan(0);
   });
 
   it('shows SmartDigest section', async () => {
@@ -148,6 +148,29 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('医薬品使用量リストをアップロード')).toBeInTheDocument();
     });
+  });
+
+  it('prioritizes onboarding guide over next-action card for first-time users', async () => {
+    mockAuthenticatedFetchWithDashboardData();
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('はじめてのセットアップガイド')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('次にやること')).not.toBeInTheDocument();
+  });
+
+  it('restores next-action card after onboarding is dismissed', async () => {
+    window.localStorage.setItem(`dss.onboarding.dismissed:${mockUser.id}`, 'true');
+    mockAuthenticatedFetchWithDashboardData();
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('次にやること')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('はじめてのセットアップガイド')).not.toBeInTheDocument();
   });
 
   it('shows empty timeline message when no timeline events', async () => {
@@ -340,6 +363,62 @@ describe('Layout with Sidebar navigation', () => {
     });
 
     expect(screen.queryByText('前回の画面へ戻る')).not.toBeInTheDocument();
+  });
+
+  it('shows route-aware previous-path label when stored path is safe', async () => {
+    window.localStorage.setItem('dss.previousPath', '/upload-quality');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(
+      <Layout><div>Test Content</div></Layout>,
+      { route: '/matching' },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByText('戻る: アップロード品質').length).toBeGreaterThan(0);
+  });
+
+  it('routes the brand link to admin home for admin users', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) {
+        return new Response(JSON.stringify(mockAdminUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    renderWithProviders(
+      <Layout><div>Test Content</div></Layout>,
+      { authUser: mockAdminUser, route: '/admin' },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('DeadStockSolution')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('link', { name: /DeadStockSolution/ })).toHaveAttribute('href', '/admin');
+    expect(screen.getByLabelText('現在の画面: 管理者ダッシュボード')).toBeInTheDocument();
   });
 
   it('shows github updates popover and expandable history', async () => {
@@ -630,17 +709,17 @@ describe('Layout with Sidebar navigation', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('主要操作')).toBeInTheDocument();
-      expect(screen.getByText('在庫・参照')).toBeInTheDocument();
+      expect(screen.getByText('更新と確認')).toBeInTheDocument();
+      expect(screen.getByText('在庫とネットワーク')).toBeInTheDocument();
     });
     expect(screen.getAllByText('アップロード').length).toBeGreaterThan(0);
-    expect(screen.getByText('デッドストックリスト')).toBeInTheDocument();
-    expect(screen.getByText('医薬品使用量リスト')).toBeInTheDocument();
-    expect(screen.getAllByText('在庫参照').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('マッチング').length).toBeGreaterThan(0);
-    expect(screen.getByText('マッチング一覧')).toBeInTheDocument();
-    expect(screen.getAllByText('交換履歴').length).toBeGreaterThan(0);
-    expect(screen.getByText('薬局一覧')).toBeInTheDocument();
+    expect(screen.getByText('デッドストックを確認')).toBeInTheDocument();
+    expect(screen.getByText('使用量を確認')).toBeInTheDocument();
+    expect(screen.getAllByText('在庫を確認').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('候補を確認').length).toBeGreaterThan(0);
+    expect(screen.getByText('提案一覧を確認')).toBeInTheDocument();
+    expect(screen.getAllByText('交換履歴を確認').length).toBeGreaterThan(0);
+    expect(screen.getByText('薬局を確認')).toBeInTheDocument();
   });
 
   it('shows logout button', async () => {

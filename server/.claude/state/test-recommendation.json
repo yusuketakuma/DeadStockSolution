@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-04-01T13:35:00Z",
-  "changed_file": "src/test/upload-confirm-job-service-final.test.ts",
-  "test_command": "npm test",
+  "timestamp": "2026-04-17T12:51:09Z",
+  "changed_file": "src/test/upload-service-ultra.test.ts",
+  "test_command": "npx vitest run --reporter=verbose",
   "related_test": "",
   "recommendation": "テストの実行を推奨します"
 }

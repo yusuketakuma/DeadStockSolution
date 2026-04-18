@@ -1,7 +1,0 @@
-{"type":"session.start","ts":"2026-03-24T02:36:11Z","state":"initialized","data":{"cc_session_id":"9614260c-02a4-4b91-8626-57889c73a9c4"}}
-{"id":"event-000001","type":"session.resume","ts":"2026-03-24T02:36:11Z","state":"initialized"}
-{"id":"event-000002","type":"tool.bash","ts":"2026-03-24T02:37:42Z","state":"initialized","data":{"command":"npm run test:server 2>&1 | tail -80"}}
-{"id":"event-000003","type":"tool.bash","ts":"2026-03-24T02:37:54Z","state":"initialized","data":{"command":"npm run test:client 2>&1 | tail -80"}}
-{"id":"event-000004","type":"tool.bash","ts":"2026-03-24T02:38:00Z","state":"initialized","data":{"command":"npm run build:server 2>&1 | tail -40"}}
-{"id":"event-000005","type":"tool.bash","ts":"2026-03-24T02:38:04Z","state":"initialized","data":{"command":"npm run build:client 2>&1 | tail -40"}}
-{"id":"event-000006","type":"session.stop","ts":"2026-03-24T02:38:11Z","state":"stopped"}

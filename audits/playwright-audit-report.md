@@ -120,6 +120,90 @@
 2. proposal-flow wrapper を repo の標準監査導線に昇格させ、master prompt にも destructive flow の安全手順を反映する
 3. 必要なら HTML report の index 集約運用を整理して、login-dashboard / proposal-flow のトップリンクを一箇所にまとめる
 
+---
+
+## 11. 2026-04-15 Frontend Follow-up Audit
+
+### 実行できた確認
+- `npm run build --workspace=client`: passed
+- `npm run lint --workspace=client`: passed
+- `npm run typecheck --workspace=client`: passed
+- `npm run test --workspace=client`: failed
+  - 136 test files 中 133 passed / 3 failed
+  - 801 tests 中 797 passed / 4 failed
+
+### 今回の制約
+- `bash scripts/run-local-login-dashboard-audit.sh` は現環境で fresh 実行できなかった
+  - 1回目: sandbox 内で `127.0.0.1:5432` 接続が `EPERM`
+  - 昇格後: ローカル Postgres 自体が未起動で `ECONNREFUSED`
+- そのため、今回の visual 判定は以下を組み合わせた
+  - 既存 Playwright スクリーンショットの確認
+  - 現行 client build / lint / typecheck / test の結果
+  - 主要ページ実装の静的確認
+
+### 追加で見つかった frontend 問題
+
+#### A. UploadQualityPage は remediation payload が崩れると描画ごと落ちる
+- 根拠:
+  - [client/src/pages/UploadQualityPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/UploadQualityPage.tsx:136)
+  - [client/src/test/e2e/routes-meta.test.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/test/e2e/routes-meta.test.tsx:368)
+- 症状:
+  - test 実行で `Cannot read properties of undefined (reading 'MISSING_DRUG_NAME')`
+  - route 表示確認がエラーバウンダリへ落ち、`問題総数` まで到達できていない
+- 解釈:
+  - 主要画面が補助データの shape に強く依存しており、ガイド辞書の欠落でページ全体が死ぬ
+- UX 影響:
+  - 本来は「ガイドが出ない」だけで済むべきケースで、画面全体が「予期しないエラー」になる
+
+#### B. MatchingPage は副次パネルの取得失敗が目立つエラーとして露出しやすい
+- 根拠:
+  - [client/src/components/matching/ProposalTemplateSelector.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/components/matching/ProposalTemplateSelector.tsx:21)
+  - [client/src/test/e2e/matching-bookmarks.test.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/test/e2e/matching-bookmarks.test.tsx:192)
+- 症状:
+  - Matching bookmark 系テストで `保存済み提案テンプレート` パネルが `Not found` を赤アラート表示
+  - コア機能の検索/候補閲覧より先に、補助機能の失敗が画面上で強く主張する
+- 解釈:
+  - Secondary panel failure が primary flow の可読性を壊している
+  - Matching 画面は候補比較・ブックマーク・提案テンプレート・絞り込みを一面に載せており、失敗時のノイズ耐性が低い
+
+#### C. 初回ユーザー dashboard は導線が二重オーバーレイになっている
+- 根拠:
+  - [local-user-authenticated.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/local-user-authenticated.png)
+  - [runtime-user-dashboard.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/runtime-user-dashboard.png)
+- 症状:
+  - `はじめてのセットアップガイド` モーダルが全面に出ている状態で、背後に別の導線カードも見えている
+- 解釈:
+  - 初回体験で「最初に何をすればいいか」を一つに絞れていない
+  - モーダルを閉じないと本来の dashboard 情報密度も読めず、加えて背後の CTA が視覚ノイズになる
+
+#### D. 管理者 dashboard は正常表示ではあるが、上部の情報密度が高く優先度が読みにくい
+- 根拠:
+  - [runtime-admin-dashboard.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/runtime-admin-dashboard.png)
+  - [client/src/pages/admin/AdminDashboardPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/admin/AdminDashboardPage.tsx:1)
+- 症状:
+  - 上部に quick links が 10 個超、その下に多数の KPI card が連続し、さらにフォームとテーブルが同一画面に積まれている
+- 解釈:
+  - レイアウト崩れではないが、情報階層が弱い
+  - 「今日まず確認すべきもの」「障害時に触るもの」「定常運用で使うもの」が視覚的に分離されていない
+- UX 影響:
+  - 慣れていない管理者ほど、最初の視線誘導が分散する
+
+### 複雑性の高いページ
+- 行数ベースで特に重い
+  - [client/src/pages/admin/AdminUserRequestsPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/admin/AdminUserRequestsPage.tsx:1) 1360行
+  - [client/src/pages/ProposalDetailPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/ProposalDetailPage.tsx:1) 1312行
+  - [client/src/pages/admin/AdminDashboardPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/admin/AdminDashboardPage.tsx:1) 980行
+  - [client/src/pages/NotificationsPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/NotificationsPage.tsx:1) 975行
+- この規模自体が直ちに表示崩れを意味するわけではないが、状態管理と表示責務が集中しており、操作系のズレや微妙な退行が起きやすい構造になっている
+
+### この時点の結論
+- 明確な「CSS が壊れて読めない」系は、今回参照できたスクリーンショット上では見えていない
+- ただし frontend 上の不都合はある
+  - UploadQualityPage の描画例外
+  - MatchingPage の補助パネル失敗が前面に出る設計
+  - 初回 dashboard の二重オーバーレイ
+  - Admin dashboard の優先度設計不足による過密感
+
 ## 実行コマンド
 ```bash
 npx playwright --help

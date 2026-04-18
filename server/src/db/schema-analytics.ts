@@ -54,3 +54,17 @@ export const predictiveAlerts = pgTable('predictive_alerts', {
     .on(table.pharmacyId, table.dedupeKey),
   chkPredictiveAlertsType: check('chk_predictive_alerts_type', sql`${table.alertType} IN ('near_expiry', 'excess_stock')`),
 }));
+
+export const adminDashboardSnapshots = pgTable('admin_dashboard_snapshots', {
+  id: serial('id').primaryKey(),
+  totalUploads: integer('total_uploads').notNull().default(0),
+  totalExchanges: integer('total_exchanges').notNull().default(0),
+  unreadNotifications: integer('unread_notifications').notNull().default(0),
+  failedUploadJobs24h: integer('failed_upload_jobs_24h').notNull().default(0),
+  pendingProposalActions24h: integer('pending_proposal_actions_24h').notNull().default(0),
+  escalatedRequests24h: integer('escalated_requests_24h').notNull().default(0),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  idxAdminDashboardSnapshotsCreated: index('idx_admin_dashboard_snapshots_created')
+    .on(table.createdAt),
+}));

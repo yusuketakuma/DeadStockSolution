@@ -334,7 +334,7 @@ describe('notifications-route-ultra', () => {
     it('includes match update notifications with pharmacy name', async () => {
       const app = await createApp();
 
-      // 6 queries in first Promise.all + 1 triggerPharmacy (messageIds is empty so that resolves inline)
+      // 7 queries in first Promise.all + 1 triggerPharmacy (messageIds is empty so that resolves inline)
       mocks.db.select
         .mockImplementationOnce(() => createSelectQuery([]))  // proposalsA
         .mockImplementationOnce(() => createSelectQuery([]))  // proposalsB
@@ -351,6 +351,7 @@ describe('notifications-route-ultra', () => {
           createdAt: '2026-03-01T00:00:00.000Z',
         }]))
         .mockImplementationOnce(() => createSelectQuery([]))  // notificationRows
+        .mockImplementationOnce(() => createSelectQuery([]))  // listNotificationGroupStates
         // second Promise.all: messageIds.length=0 -> Promise.resolve, triggerPharmacyIds.length=1 -> db.select
         .mockImplementationOnce(() => createSelectQuery([{ id: 2, name: 'テスト薬局' }]));
 

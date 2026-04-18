@@ -168,7 +168,7 @@ export function useAdminPharmacyForm({
           : prev));
         throw err; // re-throw so caller can set error message
       } else if (isVerificationStatusError(err)) {
-        throw new Error('審査ステータスにより操作を実行できません');
+        throw new Error('審査ステータスにより操作を実行できません', { cause: err });
       } else {
         throw err;
       }

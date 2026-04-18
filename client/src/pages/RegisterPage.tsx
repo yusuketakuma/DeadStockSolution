@@ -134,30 +134,6 @@ export default function RegisterPage() {
 
             <AppField
               className="mb-3"
-              controlId="register-license-number"
-              label="薬局開設許可番号 *"
-              type="text"
-              value={form.licenseNumber}
-              onChange={(value) => handleChange('licenseNumber', value)}
-              required
-              isInvalid={!!getFieldError('licenseNumber')}
-              errorText={getFieldError('licenseNumber')}
-            />
-
-            <AppField
-              className="mb-3"
-              controlId="register-permit-license-number"
-              label="許可証記載の許可番号 *"
-              type="text"
-              value={form.permitLicenseNumber}
-              onChange={(value) => handleChange('permitLicenseNumber', value)}
-              required
-              isInvalid={!!getFieldError('permitLicenseNumber')}
-              errorText={getFieldError('permitLicenseNumber')}
-            />
-
-            <AppField
-              className="mb-3"
               controlId="register-permit-pharmacy-name"
               label="許可証記載の薬局名 *"
               type="text"
@@ -291,8 +267,7 @@ export default function RegisterPage() {
           <h2 className="h6 mb-3">登録時の留意事項</h2>
           <ul className="dl-trust-list">
             <li>住所は位置情報推定に使われるため、省略せず入力してください。</li>
-            <li>許可番号は照合のため正確な表記で入力してください。</li>
-            <li>許可証記載の薬局名・所在地・許可番号は証票どおり入力してください。</li>
+            <li>許可証記載の薬局名・所在地は証票どおり入力してください。</li>
             <li>パスワードは8文字以上で、他システムと使い回さないでください。</li>
           </ul>
         </section>

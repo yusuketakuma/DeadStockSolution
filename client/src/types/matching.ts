@@ -67,4 +67,5 @@ export interface MatchCandidate {
   businessStatus?: import('../components/BusinessStatusBadge').BusinessHoursStatus;
   isFavorite?: boolean;
   matchType?: 'exact' | 'equivalent';
+  dismissPenalty?: number;
 }

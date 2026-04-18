@@ -61,6 +61,7 @@ vi.mock('../utils/crypto-utils', () => ({
 vi.mock('../services/drug-master/source-state-service', () => ({
   persistSourceHeaders: mocks.persistSourceHeaders,
   SOURCE_KEY_PACKAGE: 'package',
+  SOURCE_KEY_HOT_MASTER: 'hot:medis',
 }));
 
 vi.mock('../services/mhlw-source-fetch', () => ({

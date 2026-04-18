@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../config/database';
 import { requireLogin } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications, pharmacies, notifications as notificationsTable } from '../db/schema';
+import { adminMessages, adminMessageReads, exchangeProposals, matchNotifications, notificationGroupStates, pharmacies, notifications as notificationsTable } from '../db/schema';
 import { parsePositiveInt } from '../utils/request-utils';
 import { sanitizeInternalPath } from '../utils/path-utils';
 import { logger } from '../services/logger';
@@ -60,6 +60,10 @@ interface PostgresErrorLike {
 
 function isUndefinedTableError(err: unknown): err is PostgresErrorLike {
   return typeof err === 'object' && err !== null && (err as PostgresErrorLike).code === '42P01';
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function parseNumericList(raw: unknown): number[] {
@@ -214,6 +218,51 @@ function compareNoticeOrder(a: NoticeItem, b: NoticeItem): number {
   return a.id.localeCompare(b.id);
 }
 
+function applyGroupStateToNotice(
+  notice: NoticeItem,
+  groupState: { snoozedUntil: string | null; lastReadAt: string | null } | undefined,
+): NoticeItem | null {
+  if (!groupState) return notice;
+  if (groupState.snoozedUntil && Date.parse(groupState.snoozedUntil) > Date.now()) {
+    return null;
+  }
+  if (groupState.lastReadAt && notice.createdAt && Date.parse(notice.createdAt) <= Date.parse(groupState.lastReadAt)) {
+    return { ...notice, unread: false };
+  }
+  return notice;
+}
+
+function buildGroupedCases(notices: NoticeItem[]): Array<{
+  actionPath: string;
+  latest: NoticeItem;
+  count: number;
+  unreadCount: number;
+  types: string[];
+}> {
+  const groups = new Map<string, NoticeItem[]>();
+  for (const notice of notices) {
+    const key = notice.actionPath;
+    const current = groups.get(key) ?? [];
+    current.push(notice);
+    groups.set(key, current);
+  }
+
+  return [...groups.entries()]
+    .map(([actionPath, rows]) => {
+      const sorted = [...rows].sort(compareNoticeOrder);
+      const latest = sorted[0];
+      return {
+        actionPath,
+        latest,
+        count: rows.length,
+        unreadCount: rows.filter((row) => row.unread).length,
+        types: [...new Set(rows.map((row) => row.type))],
+      };
+    })
+    .sort((left, right) => right.count - left.count || compareNoticeOrder(left.latest, right.latest))
+    .slice(0, 10);
+}
+
 function parseNoticeCursor(raw: unknown): NoticeCursor | null {
   const cursor = decodeCursor<NoticeCursor>(raw);
   if (!cursor) return null;
@@ -341,6 +390,29 @@ function notificationToNotice(n: typeof notificationsTable.$inferSelect): Notice
 const router = Router();
 router.use(requireLogin);
 
+async function listNotificationGroupStates(pharmacyId: number) {
+  try {
+    const rows = await db.select({
+      actionPath: notificationGroupStates.actionPath,
+      snoozedUntil: notificationGroupStates.snoozedUntil,
+      lastReadAt: notificationGroupStates.lastReadAt,
+    })
+      .from(notificationGroupStates)
+      .where(eq(notificationGroupStates.pharmacyId, pharmacyId));
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    logger.warn('notification_group_states query failed; continuing without group state', {
+      pharmacyId,
+      error: getErrorMessage(err),
+    });
+    return [] as Array<{
+      actionPath: string;
+      snoozedUntil: string | null;
+      lastReadAt: string | null;
+    }>;
+  }
+}
+
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const pharmacyId = req.user!.id;
@@ -363,7 +435,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     };
 
     // 全6クエリを完全並列実行（直列→並列で約50%高速化）
-    const [proposalsA, proposalsB, messagesAll, messagesPharmacy, matchRows, notificationRows] = await Promise.all([
+    const [proposalsA, proposalsB, messagesAll, messagesPharmacy, matchRows, notificationRows, groupStateRows] = await Promise.all([
       db.select(proposalSelect)
         .from(exchangeProposals)
         .where(and(
@@ -424,7 +496,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         .where(eq(notificationsTable.pharmacyId, pharmacyId))
         .orderBy(desc(notificationsTable.createdAt), desc(notificationsTable.id))
         .limit(SOURCE_NOTICE_FETCH_LIMIT),
+      listNotificationGroupStates(pharmacyId),
     ]);
+    const groupStateByActionPath = new Map(groupStateRows.map((row) => [row.actionPath, row]));
 
     const proposalRows = mergeDedupSortByTimestamp(
       proposalsA,
@@ -497,7 +571,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     for (const proposal of proposalRows) {
       const linkedNotification = latestProposalNotificationById.get(proposal.id);
       const item = proposalActionNotice(proposal, pharmacyId, linkedNotification, lastTimelineViewedAt);
-      if (item) notices.push(item);
+      if (item) {
+        const resolved = applyGroupStateToNotice(item, groupStateByActionPath.get(item.actionPath));
+        if (resolved) notices.push(resolved);
+      }
       if (item && linkedNotification) {
         mappedProposalReferenceIds.add(proposal.id);
       }
@@ -506,7 +583,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     for (const message of messageRows) {
       const unread = !readMessageIdSet.has(message.id);
       const actionPath = sanitizeInternalPath(message.actionPath) ?? '/';
-      notices.push({
+      const nextNotice: NoticeItem = {
         id: `message-${message.id}`,
         type: 'admin_message',
         title: `管理者: ${message.title}`,
@@ -517,13 +594,15 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         deadlineAt: null,
         unread,
         priority: unread ? 1 : 4,
-      });
+      };
+      const resolved = applyGroupStateToNotice(nextNotice, groupStateByActionPath.get(nextNotice.actionPath));
+      if (resolved) notices.push(resolved);
     }
 
     const triggerPharmacyNameById = new Map(triggerPharmacyRows.map((row) => [row.id, row.name]));
     for (const row of matchRows) {
       if (!row.triggerPharmacyId || !row.triggerUploadType || row.candidateCountBefore == null || row.candidateCountAfter == null) continue;
-      notices.push(matchUpdateNotice(
+      const nextNotice = matchUpdateNotice(
         {
           id: row.id,
           triggerPharmacyId: row.triggerPharmacyId,
@@ -536,7 +615,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         },
         pharmacyId,
         triggerPharmacyNameById.get(row.triggerPharmacyId) ?? null,
-      ));
+      );
+      const resolved = applyGroupStateToNotice(nextNotice, groupStateByActionPath.get(nextNotice.actionPath));
+      if (resolved) notices.push(resolved);
     }
 
     for (const n of notificationRows) {
@@ -549,7 +630,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         continue;
       }
       const notice = notificationToNotice(n);
-      if (notice) notices.push(notice);
+      if (notice) {
+        const resolved = applyGroupStateToNotice(notice, groupStateByActionPath.get(notice.actionPath));
+        if (resolved) notices.push(resolved);
+      }
     }
 
     notices.sort(compareNoticeOrder);
@@ -595,6 +679,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     res.json({
       notices: pagedNotices,
+      groupedCases: buildGroupedCases(notices),
       summary: {
         unreadMessages,
         actionableRequests,
@@ -611,6 +696,82 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       error: err instanceof Error ? err.message : String(err),
     });
     res.status(500).json({ error: '通知の取得に失敗しました' });
+  }
+});
+
+router.post('/groups/read', async (req: AuthRequest, res: Response) => {
+  try {
+    const pharmacyId = req.user!.id;
+    const actionPath = sanitizeInternalPath(req.body?.actionPath) ?? '/';
+    const now = new Date().toISOString();
+    await db.insert(notificationGroupStates).values({
+      pharmacyId,
+      actionPath,
+      lastReadAt: now,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [notificationGroupStates.pharmacyId, notificationGroupStates.actionPath],
+      set: {
+        lastReadAt: now,
+        updatedAt: now,
+      },
+    });
+    publishTimelineRefresh({ pharmacyId, reason: 'notification_group_read' });
+    invalidateDashboardUnreadCache(pharmacyId);
+    res.json({ message: '案件単位で既読にしました' });
+  } catch (err) {
+    logger.error('Notification group read error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ error: '案件既読処理に失敗しました' });
+  }
+});
+
+router.post('/groups/snooze', async (req: AuthRequest, res: Response) => {
+  try {
+    const pharmacyId = req.user!.id;
+    const actionPath = sanitizeInternalPath(req.body?.actionPath) ?? '/';
+    const hours = Math.min(Math.max(Number(req.body?.hours ?? 2), 1), 24 * 7);
+    const now = new Date().toISOString();
+    const snoozedUntil = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+    await db.insert(notificationGroupStates).values({
+      pharmacyId,
+      actionPath,
+      snoozedUntil,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [notificationGroupStates.pharmacyId, notificationGroupStates.actionPath],
+      set: {
+        snoozedUntil,
+        updatedAt: now,
+      },
+    });
+    publishTimelineRefresh({ pharmacyId, reason: 'notification_group_snoozed' });
+    res.json({ message: '案件単位で後回しにしました', snoozedUntil });
+  } catch (err) {
+    logger.error('Notification group snooze error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ error: '案件スヌーズに失敗しました' });
+  }
+});
+
+router.post('/groups/clear', async (req: AuthRequest, res: Response) => {
+  try {
+    const pharmacyId = req.user!.id;
+    const actionPath = sanitizeInternalPath(req.body?.actionPath) ?? '/';
+    await db.delete(notificationGroupStates)
+      .where(and(
+        eq(notificationGroupStates.pharmacyId, pharmacyId),
+        eq(notificationGroupStates.actionPath, actionPath),
+      ));
+    publishTimelineRefresh({ pharmacyId, reason: 'notification_group_cleared' });
+    res.json({ message: '案件単位の通知状態を解除しました' });
+  } catch (err) {
+    logger.error('Notification group clear error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ error: '案件状態の解除に失敗しました' });
   }
 });
 

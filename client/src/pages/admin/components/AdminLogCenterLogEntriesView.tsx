@@ -376,7 +376,7 @@ export const LogEntriesView = memo(function LogEntriesView({
                                 JSON
                               </AppButton>
                               <AppButton size="sm" variant="outline-primary" onClick={() => setSelectedEntry(entry)}>
-                                詳細
+                                ログを確認
                               </AppButton>
                             </div>
                           </td>
@@ -403,7 +403,7 @@ export const LogEntriesView = memo(function LogEntriesView({
                             コピー
                           </AppButton>
                           <AppButton size="sm" variant="outline-primary" onClick={() => setSelectedEntry(entry)}>
-                            詳細
+                            ログを確認
                           </AppButton>
                         </div>
                       )}

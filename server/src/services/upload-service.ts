@@ -1,4 +1,4 @@
-import readXlsxFile from 'read-excel-file/node';
+import { readSheet } from 'read-excel-file/node';
 import crypto from 'crypto';
 
 const MAX_UPLOAD_ROWS = 100000;
@@ -95,7 +95,7 @@ export async function parseExcelBuffer(buffer: Buffer): Promise<unknown[][]> {
     }
   }
 
-  const rows = await readXlsxFile(buffer);
+  const rows = await readSheet(buffer);
   validateParsedRowSizes(rows);
   const normalized = rows.map((row) => {
     return row.map((cell) => normalizeCellValue(cell));
