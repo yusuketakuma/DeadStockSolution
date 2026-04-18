@@ -38,11 +38,17 @@ async function handleDrugMasterSync(req: Request, res: Response): Promise<void> 
       method: req.method,
     });
 
+    // Clients can opt out of completion-await via query param (?awaitCompletion=0)
+    // to keep the legacy fire-and-forget behaviour. Default is to wait for sync
+    // to finish so Vercel Functions don't terminate mid-flight (fire-and-forget
+    // is unreliable on serverless because the sandbox is frozen after response).
+    const awaitCompletion = req.query.awaitCompletion !== '0';
+
     // Phase 1: MHLW 薬価基準データ同期
-    const drugResult = await triggerManualAutoSync();
+    const drugResult = await triggerManualAutoSync({ awaitCompletion });
 
     // Phase 2: MEDIS 包装単位データ同期
-    const packageResult = await triggerManualPackageAutoSync();
+    const packageResult = await triggerManualPackageAutoSync({ awaitCompletion });
 
     const durationMs = Date.now() - startedAt;
     logger.info('Drug master sync cron completed', {
