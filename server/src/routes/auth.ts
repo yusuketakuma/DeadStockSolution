@@ -152,7 +152,7 @@ function resolveTestAccountMode(value: unknown): TestAccountMode {
 
 function buildMissingTestAccountMessage(mode: TestAccountMode): string {
   return mode === 'admin'
-    ? 'テスト管理者アカウントがDBに登録されていません（Playwright 検証用アカウントを確認してください）'
+    ? 'テスト管理者アカウントがDBに登録されていません（検証用アカウントを確認してください）'
     : 'テスト薬局がDBに登録されていません（5件登録を確認してください）';
 }
 
