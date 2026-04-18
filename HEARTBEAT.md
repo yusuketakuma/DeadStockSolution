@@ -20,3 +20,29 @@ Heartbeat here is for monitoring and triage only.
 ## Stop Conditions
 - If the target system is degraded, summarize the degradation and stop.
 - If checks require broad debugging or code changes, leave a handoff and stop.
+
+## Observability Artifacts (autonomous operation)
+The `exe-dss-manager` agent maintains the following artifacts outside of
+heartbeat (dispatch-driven, not from within heartbeat itself):
+
+- `reports/loops/dss-manager-latest.md` — refreshed by DSS monitoring cron;
+  primary health-state source for this heartbeat.
+- `reports/status/dss-manager-weekly.md` — weekly summary of processed work
+  items, PR counts, question counts, and Autonomy Budget utilization.
+- `/Users/yusuke/brain/sources/dss/<YYYY-MM-DD>-<slug>.md` — one note per
+  completed work item, ingested into GBrain so future incidents can query
+  past patches first.
+
+Heartbeat itself only *reads* the loops artifact; weekly/brain writes happen
+during dispatch cycles.
+
+## Autonomy Budget (enforced during dispatch)
+Heartbeat surfaces budget-breach signals when they appear in loops output:
+
+- `question` callbacks: <= 3 per 24h
+- Same-class PR: <= 1 per 4h
+- Cycles on same work-item: <= 3 (4th forces question)
+- Consecutive LLM timeouts: <= 3 (shrink context; 4th hands off)
+
+A breach observed during heartbeat is reported as
+`DEGRADED:autonomy-budget:<indicator>`.
