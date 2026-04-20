@@ -59,7 +59,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "pg": "^8.20.0",
-    "read-excel-file": "^8.0.3",
+    "read-excel-file": "^9.0.4",
     "redis": "^5.11.0",
     "stripe": "^22.0.2",
     "undici": "^8.1.0",
