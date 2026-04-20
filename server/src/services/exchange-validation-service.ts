@@ -244,13 +244,15 @@ export async function validateAndUpdateStock(
     throw new Error(`在庫状態の問題により交換を完了できません: ${issues.join(', ')}`);
   }
   // N回の逐次UPDATEをPromise.allで並列化しDBラウンドトリップを削減
+  // dead_stock_items には chk_dead_stock_quantity (quantity > 0) 制約があるため、
+  // 全量消費ケース (remaining <= 0) では quantity は更新せず isAvailable のみ false にする。
   const updateResults = await Promise.all(
     items.map((item) =>
       tx.update(deadStockItems)
         .set({
           quantity: sql`CASE
-            WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN 0
-            ELSE ${deadStockItems.quantity} - ${item.quantity}
+            WHEN (${deadStockItems.quantity} - ${item.quantity}) > 0 THEN ${deadStockItems.quantity} - ${item.quantity}
+            ELSE ${deadStockItems.quantity}
           END`,
           isAvailable: sql`CASE WHEN (${deadStockItems.quantity} - ${item.quantity}) <= 0 THEN false ELSE true END`,
         })
