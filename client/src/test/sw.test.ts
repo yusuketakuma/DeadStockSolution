@@ -38,6 +38,7 @@ describe('service worker notification clicks', () => {
       configurable: true,
       writable: true,
       value: {
+        skipWaiting: vi.fn(),
         __WB_MANIFEST: [],
         location: { origin: 'https://app.example' },
         registration: {

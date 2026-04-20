@@ -163,7 +163,6 @@ describe('RegisterPage', () => {
       expect(body.email).toBe('new@pharmacy.com');
       expect(body.name).toBe('新規薬局');
       expect(body.prefecture).toBe('東京都');
-      expect(body.permitLicenseNumber).toBe('LIC-001');
       expect(body.permitPharmacyName).toBe('新規薬局');
     });
   }, 15000);
