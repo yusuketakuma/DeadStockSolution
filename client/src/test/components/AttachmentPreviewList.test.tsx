@@ -26,7 +26,9 @@ describe('AttachmentPreviewList', () => {
     );
 
     expect(screen.getByRole('link', { name: 'ダウンロード' })).toHaveAttribute('href', '/api/files/1');
+    expect(screen.queryByRole('button', { name: 'プレビュー' })).not.toBeInTheDocument();
 
+    await userEvent.click(screen.getByRole('button', { name: 'その他' }));
     await userEvent.click(screen.getByRole('button', { name: 'プレビュー' }));
 
     await waitFor(() => {

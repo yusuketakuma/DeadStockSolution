@@ -307,8 +307,21 @@ describe('MyRequestsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('要望 #35')).toBeInTheDocument();
     });
+    await waitFor(() => {
+      expect(screen.getByText('元の要望: 通知設定の初期値を見直してほしい')).toBeInTheDocument();
+    });
 
-    await userEvent.click(screen.getByRole('button', { name: /未読あり 0/ }));
+    expect(screen.getByRole('button', { name: '定型文を挿入' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '再催促する' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '操作中にエラーが発生しました。再現手順は次のとおりです。' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '定型文を挿入' }));
+    expect(screen.getByRole('button', { name: '操作中にエラーが発生しました。再現手順は次のとおりです。' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'その他' }));
+    expect(screen.getByRole('button', { name: '再催促する' })).toBeInTheDocument();
+
+    const queueFilter = screen.getByRole('combobox', { name: '表示する要望' });
+    expect(screen.queryByRole('button', { name: /未読あり 0/ })).not.toBeInTheDocument();
+    await userEvent.selectOptions(queueFilter, 'unread');
 
     await waitFor(() => {
       expect(screen.getByText('現在の絞り込み条件に一致する要望はありません。')).toBeInTheDocument();
@@ -820,6 +833,10 @@ describe('MyRequestsPage', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: '新しい要望を入力' }));
+    expect(screen.getByRole('button', { name: '定型文を挿入' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '医薬品マスターの更新状況を確認したいです。' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '定型文を挿入' }));
+    expect(screen.getByRole('button', { name: '医薬品マスターの更新状況を確認したいです。' })).toBeInTheDocument();
     await userEvent.type(screen.getByPlaceholderText('依頼したい内容や困っていることを入力してください'), '新しい帳票を追加したい');
     await userEvent.click(screen.getByRole('button', { name: '要望を送信' }));
 

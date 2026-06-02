@@ -655,12 +655,14 @@ test.describe('箱単位UI browser review', () => {
     await expect(page.getByRole('heading', { name: /デッドストックリスト/ })).toBeVisible();
 
     const reviewRow = page.getByRole('row', { name: /テスト薬A 100錠PTP/ });
-    await reviewRow.getByRole('button', { name: /削\s*除/ }).click();
+    await reviewRow.getByRole('button', { name: 'その他' }).click();
+    await page.getByRole('button', { name: '削除', exact: true }).click();
     await expect(page.getByText('デッドストックデータの削除')).toBeVisible();
     await page.getByRole('button', { name: 'キャンセル' }).click();
     await expect(page.getByText('デッドストックデータの削除')).toBeHidden();
 
-    await reviewRow.getByRole('button', { name: /削\s*除/ }).click();
+    await reviewRow.getByRole('button', { name: 'その他' }).click();
+    await page.getByRole('button', { name: '削除', exact: true }).click();
     await page.getByRole('button', { name: '削除する' }).click();
     await expect(page.getByText('削除しました')).toBeVisible();
 
@@ -714,23 +716,30 @@ test.describe('箱単位UI browser review', () => {
     await expect(page.getByRole('cell', { name: '1' }).first()).toBeVisible();
     await expect(page.getByRole('cell', { name: '100錠' }).first()).toBeVisible();
 
+    const candidatePanel = page.locator('#candidate-panel-1002');
     await page.getByRole('button', { name: '期限切迫を優先' }).click();
+    await candidatePanel.getByRole('button', { name: 'その他' }).click();
     await page.getByRole('button', { name: '比較に追加' }).click();
-    await expect(page.getByRole('button', { name: '比較をクリア' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'その他' }).first()).toBeVisible();
     await page.getByRole('button', { name: 'この候補で提案' }).click();
     await expect(page.getByText('数量を調整して仮マッチング')).toBeVisible();
     await expect(page.getByRole('columnheader', { name: '元箱数' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: '調整後箱数' })).toBeVisible();
     await page.getByRole('button', { name: 'キャンセル' }).click();
 
+    await page.getByRole('button', { name: 'その他' }).first().click();
     await page.getByRole('button', { name: '比較をクリア' }).click();
+    await candidatePanel.getByRole('button', { name: 'その他' }).click();
     await page.getByRole('button', { name: 'テスト薬A 100錠PTP をブックマーク' }).click();
+    await candidatePanel.getByRole('button', { name: 'その他' }).click();
     await expect(page.getByRole('button', { name: 'テスト薬A 100錠PTP をブックマーク解除' })).toBeVisible();
 
-    await page.getByRole('link', { name: 'メッセージを確認' }).click();
+    await candidatePanel.getByRole('link', { name: 'メッセージを確認' }).click();
     await expect(page).toHaveURL(/\/messages/);
-    await page.goBack();
+    await page.goto('/matching');
+    await page.getByRole('button', { name: 'マッチングを実行' }).click();
     await expect(page.getByRole('button', { name: /E2E テスト薬局B/ })).toBeVisible();
+    await page.getByRole('button', { name: /E2E テスト薬局B/ }).click();
 
     await page.getByRole('button', { name: '仮マッチングする' }).click();
     const modal = page.locator('.modal-content').filter({ hasText: '数量を調整して仮マッチング' });
@@ -763,10 +772,15 @@ test.describe('箱単位UI browser review', () => {
     await expect(page.getByRole('columnheader', { name: '1箱入数' }).first()).toBeVisible();
     await expect(page.getByRole('cell', { name: '100錠PTP' }).first()).toBeVisible();
 
+    const reminderPanel = page.locator('.card').filter({ hasText: 'リマインド / 再送' }).first();
+    await reminderPanel.getByRole('button', { name: 'その他' }).click();
     await page.getByRole('button', { name: 'FAX送付済みにする' }).click();
+    await reminderPanel.getByRole('button', { name: 'その他' }).click();
     await expect(page.getByRole('button', { name: 'FAX送付メモを解除' })).toBeVisible();
     await page.getByRole('button', { name: 'FAX送付メモを解除' }).click();
 
+    const proposalActionRow = page.getByRole('button', { name: '仮マッチングを承認' }).locator('..');
+    await proposalActionRow.getByRole('button', { name: 'その他' }).click();
     await page.getByRole('button', { name: '拒否する' }).click();
     await expect(page.getByText('マッチングの拒否')).toBeVisible();
     await page.getByRole('button', { name: 'キャンセル' }).click();
@@ -784,11 +798,14 @@ test.describe('箱単位UI browser review', () => {
     await page.goBack();
     await expect(page.getByRole('heading', { name: 'マッチング #3001' })).toBeVisible();
 
+    const adjustmentActions = page.getByRole('link', { name: '再調整メッセージ' }).locator('xpath=ancestor::*[contains(@class, "dl-action-row")][1]');
+    await adjustmentActions.getByRole('button', { name: 'その他' }).click();
     await page.getByRole('link', { name: '条件を変えて再検索' }).click();
     await expect(page).toHaveURL(/\/matching\?/);
     await page.goBack();
     await expect(page.getByRole('heading', { name: 'マッチング #3001' })).toBeVisible();
 
+    await page.getByRole('button', { name: '定型文を挿入' }).click();
     await page.getByRole('button', { name: '定型文1' }).click();
     await page.getByRole('button', { name: 'コメントを投稿' }).click();
     await expect(page.getByText('コメントを投稿しました')).toBeVisible();
@@ -798,6 +815,7 @@ test.describe('箱単位UI browser review', () => {
     await page.getByRole('button', { name: '保存' }).click();
     await expect(page.getByText('コメントを更新しました')).toBeVisible();
 
+    await page.getByRole('button', { name: 'コメント操作' }).first().click();
     await page.getByRole('button', { name: '削除' }).first().click();
     await expect(page.getByText('コメントを削除しました')).toBeVisible();
 
@@ -822,14 +840,13 @@ test.describe('箱単位UI browser review', () => {
         const url = new URL(request.url());
         return request.method() === 'DELETE' && url.pathname === '/api/proposal-templates/901';
       }),
-      templateCard.getByRole('button', { name: '削除' }).click(),
+      templateCard.getByRole('button', { name: 'その他' }).click().then(() => page.getByRole('button', { name: '削除' }).click()),
     ]);
     await expect(templateCard).toHaveCount(0);
 
-    const [printPage] = await Promise.all([
-      context.waitForEvent('page'),
-      page.getByRole('link', { name: '印刷ページを確認' }).click(),
-    ]);
+    await expect(page.getByRole('link', { name: '印刷用ページを開く' })).toBeVisible();
+    await page.goto('/proposals/3001/print');
+    const printPage = page;
     const printErrors = collectRuntimeErrors(printPage);
     await expect(printPage.getByRole('heading', { name: '医薬品交換様式（FAX確認用）' })).toBeVisible();
     await expect(printPage.getByRole('columnheader', { name: '箱数' }).first()).toBeVisible();

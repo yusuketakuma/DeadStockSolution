@@ -136,23 +136,32 @@ describe('GroupDetailPage', () => {
   });
 
   // Owner controls
-  it('shows "設定編集" and "グループ削除" buttons for owner', async () => {
+  it('shows settings as primary and hides group delete in the secondary menu for owner', async () => {
     renderGroupDetail(sampleGroupAsOwner);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '設定編集' })).toBeInTheDocument();
     });
+    expect(screen.getByRole('button', { name: 'その他' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'グループ削除' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'その他' }));
+
     expect(screen.getByRole('button', { name: 'グループ削除' })).toBeInTheDocument();
   });
 
-  it('shows "除外" buttons for non-owner members when owner', async () => {
+  it('hides member removal behind member action menus when owner', async () => {
     renderGroupDetail(sampleGroupAsOwner);
 
     await waitFor(() => {
-      const removeButtons = screen.getAllByRole('button', { name: '除外' });
-      // Should have remove buttons for non-owner members (2 of 3)
-      expect(removeButtons).toHaveLength(2);
+      const actionMenus = screen.getAllByRole('button', { name: 'メンバー操作' });
+      expect(actionMenus).toHaveLength(2);
     });
+    expect(screen.queryByRole('button', { name: '除外' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'メンバー操作' })[0]);
+
+    expect(screen.getByRole('button', { name: '除外' })).toBeInTheDocument();
   });
 
   it('shows invite member form for owner', async () => {
@@ -173,6 +182,7 @@ describe('GroupDetailPage', () => {
       expect(screen.getByRole('button', { name: '設定編集' })).toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: 'グループ削除' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'その他' })).not.toBeInTheDocument();
   });
 
   it('shows invite member form for admin', async () => {
@@ -211,9 +221,10 @@ describe('GroupDetailPage', () => {
     renderGroupDetail(sampleGroupAsOwner);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'グループ削除' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'その他' })).toBeInTheDocument();
     });
 
+    await user.click(screen.getByRole('button', { name: 'その他' }));
     await user.click(screen.getByRole('button', { name: 'グループ削除' }));
 
     await waitFor(() => {
@@ -244,12 +255,12 @@ describe('GroupDetailPage', () => {
     renderGroupDetail(sampleGroupAsOwner);
 
     await waitFor(() => {
-      const removeButtons = screen.getAllByRole('button', { name: '除外' });
-      expect(removeButtons.length).toBeGreaterThan(0);
+      const actionMenus = screen.getAllByRole('button', { name: 'メンバー操作' });
+      expect(actionMenus.length).toBeGreaterThan(0);
     });
 
-    const removeButtons = screen.getAllByRole('button', { name: '除外' });
-    await user.click(removeButtons[0]);
+    await user.click(screen.getAllByRole('button', { name: 'メンバー操作' })[0]);
+    await user.click(screen.getByRole('button', { name: '除外' }));
 
     await waitFor(() => {
       expect(screen.getByText('メンバーの除外')).toBeInTheDocument();

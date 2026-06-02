@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import AdminDashboardPage from '../../pages/admin/AdminDashboardPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
@@ -16,6 +17,7 @@ describe('AdminDashboardPage', () => {
   });
 
   it('does not surface a page-level error when only OpenClaw health is degraded', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -211,19 +213,29 @@ describe('AdminDashboardPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'ログセンター' }).every((link) => link.getAttribute('href') === '/admin/log-center'),
     ).toBe(true);
-    expect(
-      screen.getAllByRole('link', { name: 'マッチング性能' }).every((link) => link.getAttribute('href') === '/admin/matching-performance'),
-    ).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'エラーコード' }).every((link) => link.getAttribute('href') === '/admin/error-codes')).toBe(true);
-    expect(
-      screen.getAllByRole('link', { name: '監査ログ' }).every((link) => link.getAttribute('href') === '/admin/audit'),
-    ).toBe(true);
-    expect(screen.getAllByRole('link', { name: '操作ログ' }).every((link) => link.getAttribute('href') === '/admin/logs')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '営業時間' }).every((link) => link.getAttribute('href') === '/admin/business-hours')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '関係性監査' }).every((link) => link.getAttribute('href') === '/admin/relationships')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '薬局ヘルス' }).every((link) => link.getAttribute('href') === '/admin/pharmacy-health')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '薬品同等性' }).every((link) => link.getAttribute('href') === '/admin/drug-equivalences')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'レート制限設定' }).every((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
+    const matchingMasterCard = screen.getByText('マッチング・マスター').closest('.border');
+    expect(matchingMasterCard).not.toBeNull();
+    const matchingMasterScope = within(matchingMasterCard as HTMLElement);
+    await user.click(matchingMasterScope.getByRole('button', { name: '関連画面' }));
+    expect(matchingMasterScope.getByRole('link', { name: 'マッチング性能' })).toHaveAttribute('href', '/admin/matching-performance');
+    expect(matchingMasterScope.getByRole('link', { name: '薬品同等性' })).toHaveAttribute('href', '/admin/drug-equivalences');
+
+    const maintenanceCard = screen.getByText('監査・保守').closest('.border');
+    expect(maintenanceCard).not.toBeNull();
+    const maintenanceScope = within(maintenanceCard as HTMLElement);
+    await user.click(maintenanceScope.getByRole('button', { name: '関連画面' }));
+    expect(maintenanceScope.getByRole('link', { name: 'エラーコード' })).toHaveAttribute('href', '/admin/error-codes');
+    expect(maintenanceScope.getByRole('link', { name: '監査ログ' })).toHaveAttribute('href', '/admin/audit');
+    expect(maintenanceScope.getByRole('link', { name: '操作ログ' })).toHaveAttribute('href', '/admin/logs');
+    expect(maintenanceScope.getByRole('link', { name: 'レート制限設定' })).toHaveAttribute('href', '/admin/rate-limits');
+
+    const pharmacyOpsCard = screen.getByText('薬局運用・承認').closest('.border');
+    expect(pharmacyOpsCard).not.toBeNull();
+    const pharmacyOpsScope = within(pharmacyOpsCard as HTMLElement);
+    await user.click(pharmacyOpsScope.getByRole('button', { name: '関連画面' }));
+    expect(pharmacyOpsScope.getByRole('link', { name: '営業時間' })).toHaveAttribute('href', '/admin/business-hours');
+    expect(pharmacyOpsScope.getByRole('link', { name: '関係性監査' })).toHaveAttribute('href', '/admin/relationships');
+    expect(pharmacyOpsScope.getByRole('link', { name: '薬局ヘルス' })).toHaveAttribute('href', '/admin/pharmacy-health');
     expect(screen.queryByText('一部のデータの取得に失敗しました')).not.toBeInTheDocument();
   });
 });

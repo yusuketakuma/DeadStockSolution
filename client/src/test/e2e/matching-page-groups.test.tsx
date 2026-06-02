@@ -450,10 +450,8 @@ describe('MatchingPage — Group Badge', () => {
     const candidateToggle = await screen.findByRole('button', { name: /グループ内薬局/ });
     await user.click(candidateToggle);
 
-    const bookmarkButton = await screen.findByRole('button', { name: 'アスピリン 100mg をブックマーク解除' });
-    expect(bookmarkButton).toHaveTextContent('★');
-
-    await user.click(bookmarkButton);
+    await user.click(screen.getAllByRole('button', { name: 'その他' })[0]);
+    await user.click(await screen.findByRole('button', { name: 'アスピリン 100mg をブックマーク解除' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(

@@ -1,4 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AccountPage from '../../pages/AccountPage';
 import { mockUser, renderWithProviders, setupFetchMock } from '../helpers';
@@ -41,6 +42,7 @@ describe('AccountPage', () => {
   });
 
   it('shows action-based shortcuts for post-settings checks', async () => {
+    const user = userEvent.setup();
     setupFetchMock({
       '/api/auth/me': mockUser,
       '/api/account': {
@@ -71,9 +73,12 @@ describe('AccountPage', () => {
 
     expect(screen.getByRole('link', { name: 'ダッシュボードを確認' })).toHaveAttribute('href', '/');
     expect(screen.getByRole('link', { name: '薬局を確認' })).toHaveAttribute('href', '/pharmacies');
+    const relatedMenus = screen.getAllByRole('button', { name: '関連' });
+    await user.click(relatedMenus[0]);
     expect(screen.getByRole('link', { name: '品質を確認' })).toHaveAttribute('href', '/upload-quality');
     expect(screen.getAllByRole('link', { name: '統計を確認' }).some((link) => link.getAttribute('href') === '/statistics')).toBe(true);
     expect(screen.getByRole('link', { name: '通知を確認' })).toHaveAttribute('href', '/notifications');
+    await user.click(screen.getAllByRole('button', { name: '関連' })[1]);
     expect(screen.getByRole('link', { name: 'メッセージを確認' })).toHaveAttribute('href', '/messages');
     expect(screen.getByRole('link', { name: 'グループを確認' })).toHaveAttribute('href', '/groups');
   });

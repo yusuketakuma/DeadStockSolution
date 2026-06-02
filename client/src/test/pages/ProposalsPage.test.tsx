@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ProposalsPage from '../../pages/ProposalsPage';
 import { mockUser, renderWithProviders } from '../helpers';
@@ -17,6 +18,7 @@ describe('ProposalsPage', () => {
   });
 
   it('keeps nearby navigation visible when the list is empty', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/me')) {
@@ -44,7 +46,10 @@ describe('ProposalsPage', () => {
     });
 
     expect(screen.getAllByRole('link', { name: '交換履歴を確認' }).some((link) => link.getAttribute('href') === '/exchange-history')).toBe(true);
+    const relatedMenus = screen.getAllByRole('button', { name: '関連画面' });
+    await user.click(relatedMenus[1]);
     expect(screen.getAllByRole('link', { name: 'メッセージを確認' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
+    await user.click(screen.getAllByRole('button', { name: '関連画面' })[2]);
     expect(screen.getAllByRole('link', { name: '通知を確認' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(true);
   });
 });

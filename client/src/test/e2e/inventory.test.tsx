@@ -138,11 +138,12 @@ describe('DeadStockListPage', () => {
       expect(uploadLink).toBeInTheDocument();
       expect(uploadLink).toHaveAttribute('href', '/upload');
     });
+    await userEvent.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getByRole('link', { name: '品質を確認' })).toHaveAttribute('href', '/upload-quality');
     expect(screen.getAllByRole('link', { name: '統計を確認' }).every((link) => link.getAttribute('href') === '/statistics')).toBe(true);
   });
 
-  it('has delete button for each item', async () => {
+  it('hides delete behind the row secondary menu', async () => {
     createMockFetch({
       '/api/auth/me': mockUser,
       '/api/inventory/dead-stock': {
@@ -158,8 +159,11 @@ describe('DeadStockListPage', () => {
     renderWithProviders(<DeadStockListPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '削除' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '候補検索' })).toBeInTheDocument();
     });
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'その他' }));
+    expect(screen.getByRole('button', { name: '削除' })).toBeInTheDocument();
   });
 
   it('calls delete API when delete button is clicked', async () => {
@@ -180,9 +184,10 @@ describe('DeadStockListPage', () => {
     renderWithProviders(<DeadStockListPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '削除' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '候補検索' })).toBeInTheDocument();
     });
 
+    await user.click(screen.getByRole('button', { name: 'その他' }));
     await user.click(screen.getByRole('button', { name: '削除' }));
     await user.click(screen.getByRole('button', { name: '削除する' }));
 
@@ -232,6 +237,7 @@ describe('UsedMedicationListPage', () => {
     await waitFor(() => {
       expect(screen.getByText('アムロジピン錠5mg')).toBeInTheDocument();
     });
+    await userEvent.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getByRole('link', { name: '品質を確認' })).toHaveAttribute('href', '/upload-quality');
     expect(screen.getAllByRole('link', { name: '統計を確認' }).every((link) => link.getAttribute('href') === '/statistics')).toBe(true);
   });

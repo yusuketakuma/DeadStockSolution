@@ -1,4 +1,5 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BookmarksPage from '../../pages/BookmarksPage';
 import { renderWithProviders, mockUser } from '../helpers';
@@ -22,14 +23,20 @@ describe('BookmarksPage', () => {
   });
 
   it('renders header shortcuts to matching and proposals', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<BookmarksPage />, { route: '/bookmarks', authUser: mockUser });
 
     await waitFor(() => {
       expect(screen.getByText('ブックマーク')).toBeInTheDocument();
     });
 
-    expect(screen.getAllByRole('link', { name: '候補を探す' })[0]).toHaveAttribute('href', '/matching');
-    expect(screen.getAllByRole('link', { name: '提案一覧を確認' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
+    const nextActionCard = screen.getByText('次にやること').closest('.card');
+    expect(nextActionCard).not.toBeNull();
+    const nextActionScope = within(nextActionCard as HTMLElement);
+
+    expect(nextActionScope.getByRole('link', { name: '候補を探す' })).toHaveAttribute('href', '/matching');
+    await user.click(nextActionScope.getByRole('button', { name: '関連' }));
+    expect(nextActionScope.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
   });
 
   it('links saved bookmarks back to matching candidates', async () => {

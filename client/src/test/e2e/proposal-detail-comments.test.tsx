@@ -123,6 +123,7 @@ describe('ProposalDetailPage comment actions', () => {
   });
 
   it('renders navigation links back to proposals and exchange history', async () => {
+    const user = userEvent.setup();
     createProposalDetailFetch([]);
 
     renderWithProviders(
@@ -136,12 +137,15 @@ describe('ProposalDetailPage comment actions', () => {
       expect(screen.getByText('マッチング #1')).toBeInTheDocument();
     });
 
+    expect(screen.getByRole('link', { name: '一覧の状態で戻る' })).toHaveAttribute('href', '/proposals');
+    await user.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
     expect(screen.getByRole('link', { name: '交換履歴を確認' })).toHaveAttribute('href', '/exchange-history');
     expect(screen.getByRole('link', { name: '印刷用ページを開く' })).toHaveAttribute('href', '/proposals/1/print');
   });
 
   it('keeps proposals and history reachable when loading the detail fails', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/me')) {
@@ -172,6 +176,7 @@ describe('ProposalDetailPage comment actions', () => {
     });
 
     expect(screen.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
+    await user.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getByRole('link', { name: '交換履歴を確認' })).toHaveAttribute('href', '/exchange-history');
   });
 
@@ -246,6 +251,7 @@ describe('ProposalDetailPage comment actions', () => {
       expect(screen.getByText('交渉メモ / コメント')).toBeInTheDocument();
     });
 
+    await userEvent.click(screen.getByRole('button', { name: '定型文を挿入' }));
     await userEvent.click(screen.getByRole('button', { name: '定型文1' }));
 
     expect((screen.getByLabelText('新規コメント') as HTMLTextAreaElement).value.length).toBeGreaterThan(0);
@@ -278,6 +284,9 @@ describe('ProposalDetailPage comment actions', () => {
       expect(screen.getByText('削除対象コメント')).toBeInTheDocument();
     });
 
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'コメント操作' }));
     await userEvent.click(screen.getByRole('button', { name: '削除' }));
 
     await waitFor(() => {

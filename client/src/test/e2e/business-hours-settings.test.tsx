@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import BusinessHoursSettings from '../../components/account/BusinessHoursSettings';
 import { createDefaultHours, type SpecialHourEntry } from '../../components/account/types';
 
@@ -65,5 +66,15 @@ describe('BusinessHoursSettings accessibility labels', () => {
     expect(screen.getByLabelText('特例営業時間 1 終了日')).toBeInTheDocument();
     expect(screen.getByLabelText('特例営業時間 1 開店時間')).toBeInTheDocument();
     expect(screen.getByLabelText('特例営業時間 1 閉店時間')).toBeInTheDocument();
+  });
+
+  it('hides special-hour deletion behind the row action menu', async () => {
+    render(<BusinessHoursSettings {...createProps()} />);
+
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '特例操作' }));
+
+    expect(screen.getByRole('button', { name: '削除' })).toBeInTheDocument();
   });
 });

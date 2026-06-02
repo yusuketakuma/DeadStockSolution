@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import StatisticsPage from '../../pages/StatisticsPage';
@@ -35,7 +36,8 @@ describe('StatisticsPage', () => {
     expect(screen.getByText('取引ネットワーク')).toBeInTheDocument();
   });
 
-  it('renders attention shortcuts when proposals or alerts require action', () => {
+  it('renders attention shortcuts when proposals or alerts require action', async () => {
+    const user = userEvent.setup();
     vi.mocked(useApiQuery)
       .mockReturnValueOnce({
         data: {
@@ -79,10 +81,16 @@ describe('StatisticsPage', () => {
     );
 
     expect(screen.getAllByRole('link', { name: '提案を確認' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'アラートを確認' }).some((link) => link.getAttribute('href') === '/alerts')).toBe(true);
+    expect(screen.queryByRole('link', { name: 'アラートを確認' })).not.toBeInTheDocument();
+    const attentionPanel = screen.getByText('要対応').closest('.card');
+    expect(attentionPanel).not.toBeNull();
+    const attentionScope = within(attentionPanel as HTMLElement);
+    await user.click(attentionScope.getByRole('button', { name: '関連' }));
+    expect(attentionScope.getByRole('link', { name: 'アラートを確認' })).toHaveAttribute('href', '/alerts');
   });
 
-  it('renders section shortcuts back to upload, inventory, matching, and network pages', () => {
+  it('renders section shortcuts back to upload, inventory, matching, and network pages', async () => {
+    const user = userEvent.setup();
     vi.mocked(useApiQuery)
       .mockReturnValueOnce({
         data: {
@@ -126,15 +134,25 @@ describe('StatisticsPage', () => {
     );
 
     expect(screen.getByRole('link', { name: 'アップロード' })).toHaveAttribute('href', '/upload');
-    const deadStockLinks = screen.getAllByRole('link', { name: 'デッドストックを確認' });
-    expect(deadStockLinks.some((link) => link.getAttribute('href') === '/inventory/dead-stock')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '使用量リストを確認' }).some((link) => link.getAttribute('href') === '/inventory/used-medication')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '在庫参照を確認' }).some((link) => link.getAttribute('href') === '/inventory/browse')).toBe(true);
-    const matchingLinks = screen.getAllByRole('link', { name: '候補を確認' });
-    expect(matchingLinks.some((link) => link.getAttribute('href') === '/matching')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '提案一覧を確認' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '交換履歴を確認' }).some((link) => link.getAttribute('href') === '/exchange-history')).toBe(true);
+
+    const inventoryPanel = screen.getByText('在庫状況').closest('.card');
+    expect(inventoryPanel).not.toBeNull();
+    const inventoryScope = within(inventoryPanel as HTMLElement);
+    expect(inventoryScope.getByRole('link', { name: 'デッドストックを確認' })).toHaveAttribute('href', '/inventory/dead-stock');
+    await user.click(inventoryScope.getByRole('button', { name: '関連' }));
+    expect(inventoryScope.getByRole('link', { name: '使用量リストを確認' })).toHaveAttribute('href', '/inventory/used-medication');
+    expect(inventoryScope.getByRole('link', { name: '在庫参照を確認' })).toHaveAttribute('href', '/inventory/browse');
+
+    const matchingPanel = screen.getByText('マッチング・交換').closest('.card');
+    expect(matchingPanel).not.toBeNull();
+    const matchingScope = within(matchingPanel as HTMLElement);
+    expect(matchingScope.getByRole('link', { name: '候補を確認' })).toHaveAttribute('href', '/matching');
+    await user.click(matchingScope.getByRole('button', { name: '関連' }));
+    expect(matchingScope.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
+    expect(matchingScope.getByRole('link', { name: '交換履歴を確認' })).toHaveAttribute('href', '/exchange-history');
+
     expect(screen.getByRole('link', { name: '薬局一覧' })).toHaveAttribute('href', '/pharmacies');
+    await user.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getAllByRole('link', { name: 'グループを確認' }).some((link) => link.getAttribute('href') === '/groups')).toBe(true);
     expect(screen.getAllByRole('link', { name: '品質を確認' }).some((link) => link.getAttribute('href') === '/upload-quality')).toBe(true);
   });

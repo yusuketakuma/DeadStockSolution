@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import MessagesPage from '../../pages/MessagesPage';
 import { mockUser, renderWithProviders } from '../helpers';
 
@@ -95,5 +96,11 @@ describe('MessagesPage - mobile layout', () => {
       expect(screen.getByText('確認お願いします')).toBeInTheDocument();
     });
     expect(screen.getAllByLabelText('メッセージ本文').length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '定型文を挿入' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'ありがとうございます。内容を確認して折り返します。' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByRole('button', { name: '定型文を挿入' }).at(-1)!);
+
+    expect(screen.getByRole('button', { name: 'ありがとうございます。内容を確認して折り返します。' })).toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import AdminAlertsPage from '../../pages/admin/AdminAlertsPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
@@ -26,6 +27,7 @@ describe('AdminAlertsPage', () => {
   });
 
   it('keeps nearby notification and pharmacy links in the empty state', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/admin/alerts?')) {
@@ -48,7 +50,12 @@ describe('AdminAlertsPage', () => {
 
     expect(screen.getByText('アラートがありません')).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: '通知・配信状況' }).some((link) => link.getAttribute('href') === '/admin/notifications')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '期限リスク分析' }).some((link) => link.getAttribute('href') === '/admin/risk')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '薬局管理' }).some((link) => link.getAttribute('href') === '/admin/pharmacies')).toBe(true);
+    const emptyState = screen.getByText('アラートがありません').closest('.card');
+    expect(emptyState).not.toBeNull();
+    await user.click(within(emptyState as HTMLElement).getByRole('button', { name: '関連' }));
+    await waitFor(() => {
+      expect(within(emptyState as HTMLElement).getByRole('link', { name: '期限リスク分析' })).toHaveAttribute('href', '/admin/risk');
+      expect(within(emptyState as HTMLElement).getByRole('link', { name: '薬局管理' })).toHaveAttribute('href', '/admin/pharmacies');
+    });
   });
 });

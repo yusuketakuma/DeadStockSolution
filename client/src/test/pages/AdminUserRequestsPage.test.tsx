@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AdminUserRequestsPage from '../../pages/admin/AdminUserRequestsPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
@@ -17,6 +17,7 @@ describe('AdminUserRequestsPage', () => {
   });
 
   it('keeps openclaw and log-center exits visible when no requests match', async () => {
+    const user = userEvent.setup();
     const requestUrls: string[] = [];
 
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -48,6 +49,7 @@ describe('AdminUserRequestsPage', () => {
       expect(screen.getByText('対象の要望がありません')).toBeInTheDocument();
     });
     expect(screen.getAllByRole('link', { name: 'OpenClaw連携' }).some((link) => link.getAttribute('href') === '/admin/openclaw')).toBe(true);
+    await user.click(screen.getAllByRole('button', { name: '関連' })[0]);
     expect(screen.getAllByRole('link', { name: 'ログセンター' }).some((link) => link.getAttribute('href') === '/admin/log-center')).toBe(true);
   });
 
@@ -195,11 +197,26 @@ describe('AdminUserRequestsPage', () => {
 
     await screen.findByText('ユーザーリクエスト管理');
     await screen.findByText('#11 薬局A');
-    expect(screen.getByRole('button', { name: /本日返答 2/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /24時間超 1/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /OpenClaw 1/ })).toBeInTheDocument();
+    await user.click(screen.getByText('#11 薬局A'));
+    await screen.findByText('トリアージ補助');
 
-    await user.click(screen.getByRole('button', { name: /OpenClaw 1/ }));
+    const triagePanel = screen.getByText('トリアージ補助').closest('.border');
+    expect(triagePanel).not.toBeNull();
+    expect(within(triagePanel as HTMLElement).getByRole('button', { name: '確認依頼文を入れる' })).toBeInTheDocument();
+    expect(within(triagePanel as HTMLElement).queryByRole('button', { name: '緊急不具合に寄せる' })).not.toBeInTheDocument();
+    await user.click(within(triagePanel as HTMLElement).getByRole('button', { name: 'その他' }));
+    expect(within(triagePanel as HTMLElement).getByRole('button', { name: '緊急不具合に寄せる' })).toBeInTheDocument();
+
+    const replyPanel = screen.getByText('ユーザーへの返信').closest('.border');
+    expect(replyPanel).not.toBeNull();
+    expect(within(replyPanel as HTMLElement).getByRole('button', { name: '定型文を挿入' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '追加情報ありがとうございます。内容を確認して進めます。' })).not.toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: /24時間超 1/ })).not.toBeInTheDocument();
+    const queueSelect = screen.getByRole('combobox', { name: '対応キュー' });
+    expect(queueSelect).toHaveDisplayValue('すべて 3');
+
+    await user.selectOptions(queueSelect, 'openclaw');
 
     await waitFor(() => {
       expect(screen.queryByText('#11 薬局A')).not.toBeInTheDocument();

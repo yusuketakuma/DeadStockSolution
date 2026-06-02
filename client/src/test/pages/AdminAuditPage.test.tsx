@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import AdminAuditPage from '../../pages/admin/AdminAuditPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
@@ -16,6 +17,7 @@ describe('AdminAuditPage', () => {
   });
 
   it('shows nearby navigation and CSV export for audit logs', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/admin/audit?')) {
@@ -50,6 +52,7 @@ describe('AdminAuditPage', () => {
     });
 
     expect(screen.getByRole('link', { name: '操作ログ' })).toHaveAttribute('href', '/admin/logs');
+    await user.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getByRole('link', { name: 'ログセンター' })).toHaveAttribute('href', '/admin/log-center');
     expect(screen.getByRole('link', { name: 'CSVエクスポート' })).toHaveAttribute('href', '/api/admin/csv/audit-logs');
   });

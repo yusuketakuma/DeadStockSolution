@@ -62,4 +62,28 @@ describe('OpenClawHealthCard', () => {
 
     expect(writeText).toHaveBeenCalledWith('12345678-secret-9876');
   });
+
+  it('keeps control token rotation under the secondary action menu', () => {
+    const rotate = vi.fn();
+
+    render(
+      <OpenClawHealthCard
+        health={null}
+        ddsStatus={null}
+        bootstrapToken={null}
+        issuingBootstrapToken={false}
+        rotatingControlToken={false}
+        onIssueBootstrapToken={() => {}}
+        onRotateControlToken={rotate}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'bootstrap token 発行' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'control token ローテーション' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'その他' }));
+    fireEvent.click(screen.getByRole('button', { name: 'control token ローテーション' }));
+
+    expect(rotate).toHaveBeenCalledTimes(1);
+  });
 });

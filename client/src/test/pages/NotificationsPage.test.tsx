@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import NotificationsPage from '../../pages/NotificationsPage';
 import { mockUser, renderWithProviders } from '../helpers';
 
@@ -25,6 +26,7 @@ describe('NotificationsPage', () => {
   });
 
   it('filters notices by unread state and renders the notification center link target', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/notifications?')) {
@@ -69,15 +71,18 @@ describe('NotificationsPage', () => {
       expect(screen.getByText('通知センター')).toBeInTheDocument();
     });
 
-    expect(screen.getAllByRole('link', { name: '通知設定を確認' }).some((link) => link.getAttribute('href') === '/account')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '候補を確認' }).some((link) => link.getAttribute('href') === '/matching')).toBe(true);
-    expect(screen.getByText('提案の確認が必要です')).toBeInTheDocument();
-    expect(screen.getByText('運営からのお知らせ')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'メッセージを確認' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '要望を確認' }).some((link) => link.getAttribute('href') === '/requests')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'アラートを確認' }).some((link) => link.getAttribute('href') === '/alerts')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'ブックマークを確認' }).some((link) => link.getAttribute('href') === '/bookmarks')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '通知設定を確認' }).some((link) => link.getAttribute('href') === '/account')).toBe(true);
+    const relatedCard = screen.getByText('関連画面').closest('.card');
+    expect(relatedCard).not.toBeNull();
+    const relatedScope = within(relatedCard as HTMLElement);
+    expect(relatedScope.getByRole('link', { name: '候補を確認' })).toHaveAttribute('href', '/matching');
+    await user.click(relatedScope.getByRole('button', { name: '関連' }));
+    expect(relatedScope.getByRole('link', { name: '通知設定' })).toHaveAttribute('href', '/account');
+    expect(screen.getAllByText('提案の確認が必要です').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('運営からのお知らせ').length).toBeGreaterThan(0);
+    expect(relatedScope.getByRole('link', { name: 'メッセージを確認' })).toHaveAttribute('href', '/messages');
+    expect(relatedScope.getByRole('link', { name: '要望を確認' })).toHaveAttribute('href', '/requests');
+    expect(relatedScope.getByRole('link', { name: 'アラートを確認' })).toHaveAttribute('href', '/alerts');
+    expect(relatedScope.getByRole('link', { name: 'ブックマークを確認' })).toHaveAttribute('href', '/bookmarks');
 
     screen.getByLabelText('未読のみ').click();
 

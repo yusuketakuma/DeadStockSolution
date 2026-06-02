@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import AdminErrorCodesPage from '../../pages/admin/AdminErrorCodesPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
@@ -16,6 +17,7 @@ describe('AdminErrorCodesPage', () => {
   });
 
   it('renders the standalone error-code management surface and nearby links', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/admin/error-codes')) {
@@ -47,6 +49,7 @@ describe('AdminErrorCodesPage', () => {
     });
 
     expect(screen.getByRole('link', { name: 'ログセンター' })).toHaveAttribute('href', '/admin/log-center');
+    await user.click(screen.getAllByRole('button', { name: '関連' })[1]);
     expect(screen.getByRole('link', { name: '通知・配信' })).toHaveAttribute('href', '/admin/notifications');
     expect(screen.getByText('ERR_UPLOAD_001')).toBeInTheDocument();
   });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import DashboardPage from '../../pages/DashboardPage';
 import Layout from '../../components/Layout';
@@ -112,15 +112,26 @@ describe('DashboardPage', () => {
   });
 
   it('shows navigation cards for all features', async () => {
+    const user = userEvent.setup();
     mockAuthenticatedFetchWithDashboardData();
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getAllByText('品質を確認').length).toBeGreaterThan(0);
+      expect(screen.getByText('機能ショートカット')).toBeInTheDocument();
     });
-    expect(screen.getAllByText('検索条件を確認').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('提案状況を確認').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('交換履歴を確認').length).toBeGreaterThan(0);
+    const uploadCard = screen.getByText('アップロード・在庫').closest('.border');
+    expect(uploadCard).not.toBeNull();
+    const uploadScope = within(uploadCard as HTMLElement);
+    await user.click(uploadScope.getByRole('button', { name: '関連画面' }));
+    expect(uploadScope.getByRole('link', { name: '品質を確認' })).toHaveAttribute('href', '/upload-quality');
+    expect(uploadScope.getByRole('link', { name: '検索条件を確認' })).toHaveAttribute('href', '/inventory/search');
+
+    const matchingCard = screen.getByText('マッチング・対応').closest('.border');
+    expect(matchingCard).not.toBeNull();
+    const matchingScope = within(matchingCard as HTMLElement);
+    await user.click(matchingScope.getByRole('button', { name: '関連画面' }));
+    expect(matchingScope.getByRole('link', { name: '提案状況を確認' })).toHaveAttribute('href', '/proposals');
+    expect(matchingScope.getByRole('link', { name: '交換履歴を確認' })).toHaveAttribute('href', '/exchange-history');
   });
 
   it('shows SmartDigest section', async () => {

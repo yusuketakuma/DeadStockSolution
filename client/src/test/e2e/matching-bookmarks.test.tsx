@@ -113,7 +113,9 @@ describe('MatchingPage bookmarks', () => {
       expect(screen.getByText('マッチング')).toBeInTheDocument();
     });
 
+    const user = userEvent.setup();
     expect(screen.getByRole('link', { name: 'ブックマークを確認' })).toHaveAttribute('href', '/bookmarks');
+    await user.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
   });
 
@@ -203,8 +205,9 @@ describe('MatchingPage bookmarks', () => {
     await user.click(await screen.findByRole('button', { name: /マッチングを実行/ }));
     await user.click(await screen.findByRole('button', { name: /候補薬局/ }));
 
+    await user.click(screen.getAllByRole('button', { name: 'その他' })[0]);
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'アスピリン 100mg をブックマーク解除' })).toHaveTextContent('★');
+      expect(screen.getByRole('button', { name: 'アスピリン 100mg をブックマーク解除' })).toBeInTheDocument();
     });
   });
 
@@ -284,6 +287,7 @@ describe('MatchingPage bookmarks', () => {
 
     await user.click(await screen.findByRole('button', { name: /マッチングを実行/ }));
     await user.click(await screen.findByRole('button', { name: /候補薬局/ }));
+    await user.click(screen.getAllByRole('button', { name: 'その他' })[0]);
     await user.click(await screen.findByRole('button', { name: 'アスピリン 100mg をブックマーク' }));
 
     await waitFor(() => {

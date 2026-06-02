@@ -127,8 +127,9 @@ describe('AdminPharmacyEditPage', () => {
     await user.click(screen.getByRole('button', { name: '一覧へ戻る' }));
 
     expect(mockNavigateToList).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: '関連' }));
     expect(screen.getByRole('button', { name: '薬局ヘルス' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '監査ログ' })).toHaveAttribute('href', '/admin/audit');
+    expect(screen.getByRole('button', { name: '操作履歴へ' })).toBeInTheDocument();
   });
 
   it('opens reject modal and submits the entered reason', async () => {
@@ -138,6 +139,8 @@ describe('AdminPharmacyEditPage', () => {
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('情報に不足があります');
     renderWithProviders(<AdminPharmacyEditPage />, { authUser: { ...mockAdminUser } });
 
+    expect(screen.queryByRole('button', { name: '却下' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '審査操作' }));
     await user.click(screen.getByRole('button', { name: '却下' }));
 
     await waitFor(() => {
@@ -151,6 +154,7 @@ describe('AdminPharmacyEditPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminPharmacyEditPage />, { authUser: { ...mockAdminUser } });
 
+    await user.click(screen.getByRole('button', { name: '関連' }));
     await user.click(screen.getByRole('button', { name: '薬局ヘルス' }));
 
     expect(mockNavigateToHealth).toHaveBeenCalledTimes(1);

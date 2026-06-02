@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import AdminOpenClawPage from '../../pages/admin/AdminOpenClawPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
@@ -17,6 +18,7 @@ describe('AdminOpenClawPage', () => {
   });
 
   it('surfaces failed workflow items and allows retry from the list', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/me')) {
@@ -195,11 +197,20 @@ describe('AdminOpenClawPage', () => {
     });
 
     expect(screen.getAllByText('失敗').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: '再連携' })).toBeTruthy();
+    const requestRow = screen.getByText('CSV出力を直してほしい').closest('tr');
+    expect(requestRow).not.toBeNull();
+    expect(within(requestRow as HTMLElement).getByRole('button', { name: '詳細' })).toBeTruthy();
+    expect(within(requestRow as HTMLElement).queryByRole('button', { name: '再連携' })).toBeNull();
+    await user.click(within(requestRow as HTMLElement).getByRole('button', { name: 'その他' }));
+    expect(within(requestRow as HTMLElement).getByRole('button', { name: '再連携' })).toBeTruthy();
     expect(screen.getByText('DSS Runtime ログ')).toBeTruthy();
     expect(screen.getByText('最近のエラーイベント')).toBeTruthy();
     expect(screen.getByText('最近の Auto-Fix')).toBeTruthy();
     expect(screen.getAllByRole('link', { name: 'ユーザーリクエスト管理' }).some((link) => link.getAttribute('href') === '/admin/user-requests')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'レート制限設定' }).some((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
+    const pageHeader = screen.getByText('OpenClaw連携').closest('.dl-page-header');
+    expect(pageHeader).not.toBeNull();
+    const pageHeaderScope = within(pageHeader as HTMLElement);
+    await user.click(pageHeaderScope.getByRole('button', { name: '関連' }));
+    expect(pageHeaderScope.getByRole('link', { name: 'レート制限設定' })).toHaveAttribute('href', '/admin/rate-limits');
   });
 });

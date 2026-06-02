@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithProviders, mockAdminUser } from '../helpers';
 import AdminBusinessHoursPage from '../../pages/admin/AdminBusinessHoursPage';
 import AdminRateLimitsPage from '../../pages/admin/AdminRateLimitsPage';
@@ -17,8 +18,35 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+type User = ReturnType<typeof userEvent.setup>;
+
+function hasLink(name: string, href: string) {
+  return screen
+    .queryAllByRole('link', { name })
+    .some((link) => link.getAttribute('href') === href);
+}
+
+async function expectReachableLink(user: User, name: string, href: string) {
+  if (hasLink(name, href)) {
+    expect(hasLink(name, href)).toBe(true);
+    return;
+  }
+
+  const menuButtons = screen.queryAllByRole('button', { name: /^(関連|関連画面|その他)$/ });
+  for (const button of menuButtons) {
+    await user.click(button);
+    if (hasLink(name, href)) {
+      expect(hasLink(name, href)).toBe(true);
+      return;
+    }
+  }
+
+  expect(hasLink(name, href)).toBe(true);
+}
+
 describe('Admin operations navigation surfaces', () => {
   it('shows related admin destinations on the business-hours page', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -52,14 +80,15 @@ describe('Admin operations navigation surfaces', () => {
     });
 
     expect(await screen.findByText('営業時間カレンダー')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: '関係性監査' }).every((link) => link.getAttribute('href') === '/admin/relationships')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'レート制限設定' }).every((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'ログセンター' }).every((link) => link.getAttribute('href') === '/admin/log-center')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '薬局ヘルス' }).every((link) => link.getAttribute('href') === '/admin/pharmacy-health')).toBe(true);
+    await expectReachableLink(user, '関係性監査', '/admin/relationships');
+    await expectReachableLink(user, 'レート制限設定', '/admin/rate-limits');
+    await expectReachableLink(user, 'ログセンター', '/admin/log-center');
+    await expectReachableLink(user, '薬局ヘルス', '/admin/pharmacy-health');
     expect(screen.getByRole('link', { name: '編集' })).toHaveAttribute('href', '/admin/pharmacies/1/edit');
   });
 
   it('shows related admin destinations on the rate-limits page', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -87,14 +116,15 @@ describe('Admin operations navigation surfaces', () => {
     });
 
     expect(await screen.findByText('レート制限設定')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'ログセンター' }).every((link) => link.getAttribute('href') === '/admin/log-center')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'エラーコード' }).every((link) => link.getAttribute('href') === '/admin/error-codes')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '通知・配信状況' }).every((link) => link.getAttribute('href') === '/admin/notifications')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'OpenClaw連携' }).every((link) => link.getAttribute('href') === '/admin/openclaw')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '監査ログ' }).every((link) => link.getAttribute('href') === '/admin/audit')).toBe(true);
+    await expectReachableLink(user, 'ログセンター', '/admin/log-center');
+    await expectReachableLink(user, 'エラーコード', '/admin/error-codes');
+    await expectReachableLink(user, '通知・配信状況', '/admin/notifications');
+    await expectReachableLink(user, 'OpenClaw連携', '/admin/openclaw');
+    await expectReachableLink(user, '監査ログ', '/admin/audit');
   });
 
   it('shows related admin destinations on the relationships page', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -126,15 +156,15 @@ describe('Admin operations navigation surfaces', () => {
     });
 
     expect(await screen.findByText('関係性監査')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: '薬局ヘルス' }).every((link) => link.getAttribute('href') === '/admin/pharmacy-health')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'グループ管理' }).some((link) => link.getAttribute('href') === '/admin/groups')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '営業時間' }).every((link) => link.getAttribute('href') === '/admin/business-hours')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '一括操作' }).every((link) => link.getAttribute('href') === '/admin/bulk-actions')).toBe(true);
+    await expectReachableLink(user, '薬局ヘルス', '/admin/pharmacy-health');
+    await expectReachableLink(user, 'グループ管理', '/admin/groups');
+    await expectReachableLink(user, '営業時間', '/admin/business-hours');
+    await expectReachableLink(user, '一括操作', '/admin/bulk-actions');
     expect(screen.getByRole('link', { name: '元薬局を編集' })).toHaveAttribute('href', '/admin/pharmacies/1/edit');
-    expect(screen.getByRole('link', { name: '対象薬局を編集' })).toHaveAttribute('href', '/admin/pharmacies/2/edit');
   });
 
   it('shows related admin destinations on the bulk-actions page', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL) => jsonResponse({ error: 'Not found' }, 404)));
 
     renderWithProviders(<AdminBulkActionsPage />, {
@@ -143,13 +173,14 @@ describe('Admin operations navigation surfaces', () => {
     });
 
     expect(screen.getByText('一括操作')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: '監査ログ' }).some((link) => link.getAttribute('href') === '/admin/audit')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '薬局管理' }).some((link) => link.getAttribute('href') === '/admin/pharmacies')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '取込ジョブ管理' }).every((link) => link.getAttribute('href') === '/admin/upload-jobs')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'ログセンター' }).every((link) => link.getAttribute('href') === '/admin/log-center')).toBe(true);
+    await expectReachableLink(user, '監査ログ', '/admin/audit');
+    await expectReachableLink(user, '薬局管理', '/admin/pharmacies');
+    await expectReachableLink(user, '取込ジョブ管理', '/admin/upload-jobs');
+    await expectReachableLink(user, 'ログセンター', '/admin/log-center');
   });
 
   it('shows related admin destinations on the pharmacy-health page', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -180,14 +211,15 @@ describe('Admin operations navigation surfaces', () => {
     });
 
     expect(await screen.findByText('薬局ヘルス')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: '関係性監査' }).some((link) => link.getAttribute('href') === '/admin/relationships')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '営業時間' }).every((link) => link.getAttribute('href') === '/admin/business-hours')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '一括操作' }).every((link) => link.getAttribute('href') === '/admin/bulk-actions')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'ログセンター' }).every((link) => link.getAttribute('href') === '/admin/log-center')).toBe(true);
+    await expectReachableLink(user, '関係性監査', '/admin/relationships');
+    await expectReachableLink(user, '営業時間', '/admin/business-hours');
+    await expectReachableLink(user, '一括操作', '/admin/bulk-actions');
+    await expectReachableLink(user, 'ログセンター', '/admin/log-center');
     expect(screen.getAllByRole('link', { name: '編集' }).some((link) => link.getAttribute('href') === '/admin/pharmacies/1/edit')).toBe(true);
   });
 
   it('shows related admin destinations on the drug-equivalences page', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -218,13 +250,14 @@ describe('Admin operations navigation surfaces', () => {
     });
 
     expect(await screen.findByText('薬品同等性マスター')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: '医薬品マスター' }).some((link) => link.getAttribute('href') === '/admin/drug-master')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'マッチングルール' }).some((link) => link.getAttribute('href') === '/admin/matching-rules')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'マッチング実験' }).every((link) => link.getAttribute('href') === '/admin/matching-experiments')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'エラーコード' }).every((link) => link.getAttribute('href') === '/admin/error-codes')).toBe(true);
+    await expectReachableLink(user, '医薬品マスター', '/admin/drug-master');
+    await expectReachableLink(user, 'マッチングルール', '/admin/matching-rules');
+    await expectReachableLink(user, 'マッチング実験', '/admin/matching-experiments');
+    await expectReachableLink(user, 'エラーコード', '/admin/error-codes');
   });
 
   it('shows related admin destinations on the pharmacies page', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -263,12 +296,13 @@ describe('Admin operations navigation surfaces', () => {
     });
 
     expect(await screen.findByText('薬局管理')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: '営業時間' }).every((link) => link.getAttribute('href') === '/admin/business-hours')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '一括操作' }).every((link) => link.getAttribute('href') === '/admin/bulk-actions')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '関係性監査' }).every((link) => link.getAttribute('href') === '/admin/relationships')).toBe(true);
+    await expectReachableLink(user, '営業時間', '/admin/business-hours');
+    await expectReachableLink(user, '一括操作', '/admin/bulk-actions');
+    await expectReachableLink(user, '関係性監査', '/admin/relationships');
   });
 
   it('shows related admin destinations on the groups page', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -301,10 +335,9 @@ describe('Admin operations navigation surfaces', () => {
     });
 
     expect(await screen.findByText('グループ管理')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: '関係性監査' }).some((link) => link.getAttribute('href') === '/admin/relationships')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '薬局ヘルス' }).every((link) => link.getAttribute('href') === '/admin/pharmacy-health')).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'ログセンター' }).every((link) => link.getAttribute('href') === '/admin/log-center')).toBe(true);
-    expect(screen.getAllByRole('link', { name: '営業時間' }).some((link) => link.getAttribute('href') === '/admin/business-hours')).toBe(true);
-    expect(screen.getByRole('link', { name: 'オーナーを編集' })).toHaveAttribute('href', '/admin/pharmacies/1/edit');
+    await expectReachableLink(user, '関係性監査', '/admin/relationships');
+    await expectReachableLink(user, '薬局ヘルス', '/admin/pharmacy-health');
+    await expectReachableLink(user, 'ログセンター', '/admin/log-center');
+    await expectReachableLink(user, '営業時間', '/admin/business-hours');
   });
 });

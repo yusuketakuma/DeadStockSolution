@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import AdminMatchingExperimentsPage from '../../pages/admin/AdminMatchingExperimentsPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
@@ -16,6 +17,7 @@ describe('AdminMatchingExperimentsPage', () => {
   });
 
   it('renders experiments and their assignment summary', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -65,9 +67,11 @@ describe('AdminMatchingExperimentsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('12')).toBeInTheDocument();
     });
+    await user.click(screen.getAllByRole('button', { name: '関連' })[0]);
     expect(screen.getByRole('link', { name: '管理ダッシュボード' })).toHaveAttribute('href', '/admin');
     expect(screen.getByRole('link', { name: 'マッチングルール' })).toHaveAttribute('href', '/admin/matching-rules');
     expect(screen.getByRole('link', { name: '通知・配信状況' })).toHaveAttribute('href', '/admin/notifications');
+    await user.click(screen.getAllByRole('button', { name: '関連' })[1]);
     expect(screen.getByRole('link', { name: 'エラーコード' })).toHaveAttribute('href', '/admin/error-codes');
     expect(screen.getByRole('link', { name: 'ログセンター' })).toHaveAttribute('href', '/admin/log-center');
   });

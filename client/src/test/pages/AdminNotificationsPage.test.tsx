@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import AdminNotificationsPage from '../../pages/admin/AdminNotificationsPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
@@ -16,6 +17,7 @@ describe('AdminNotificationsPage', () => {
   });
 
   it('shows backend notification types in filters and human labels', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/admin/notifications/stats')) {
@@ -61,12 +63,17 @@ describe('AdminNotificationsPage', () => {
       expect(screen.getByText('通知・配信状況')).toBeInTheDocument();
     });
 
+    await user.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getByRole('link', { name: 'マッチング実験' })).toHaveAttribute('href', '/admin/matching-experiments');
     expect(screen.getByRole('link', { name: 'アップロード品質' })).toHaveAttribute('href', '/admin/upload-quality');
     expect(screen.getAllByRole('link', { name: 'レート制限設定' }).some((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
     expect(screen.getAllByRole('link', { name: 'ユーザー間メッセージ' }).some((link) => link.getAttribute('href') === '/admin/direct-messages')).toBe(true);
-    expect(screen.getByRole('link', { name: 'ログセンター' })).toHaveAttribute('href', '/admin/log-center');
-    expect(screen.getByRole('link', { name: 'エラーコード' })).toHaveAttribute('href', '/admin/error-codes');
+    const relatedOperations = screen.getByText('関連運用').closest('.card');
+    expect(relatedOperations).not.toBeNull();
+    const relatedOperationsScope = within(relatedOperations as HTMLElement);
+    await user.click(relatedOperationsScope.getByRole('button', { name: '関連' }));
+    expect(relatedOperationsScope.getByRole('link', { name: 'ログセンター' })).toHaveAttribute('href', '/admin/log-center');
+    expect(relatedOperationsScope.getByRole('link', { name: 'エラーコード' })).toHaveAttribute('href', '/admin/error-codes');
     expect(screen.getByText('アラート解消: 3')).toBeInTheDocument();
     expect(screen.getByText('在庫アラートが解消しました')).toBeInTheDocument();
     expect(screen.getAllByText('アラート解消').length).toBeGreaterThan(0);
@@ -74,6 +81,7 @@ describe('AdminNotificationsPage', () => {
   });
 
   it('requests newly exposed backend notification types from the admin filter', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/admin/notifications/stats')) {
@@ -112,6 +120,7 @@ describe('AdminNotificationsPage', () => {
     });
 
     expect(screen.getByText('通知がありません')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: '関連' }).at(-1)!);
     expect(screen.getAllByRole('link', { name: 'レート制限設定' }).some((link) => link.getAttribute('href') === '/admin/rate-limits')).toBe(true);
   });
 });

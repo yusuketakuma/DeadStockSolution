@@ -163,6 +163,8 @@ describe('UploadPage camera register mode', () => {
     await waitFor(() => {
       expect(screen.getByText('候補確認待ち')).toBeInTheDocument();
     });
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '行操作' })).toBeInTheDocument();
 
     const searchInput = await screen.findByPlaceholderText('薬剤名 or YJコードで検索');
     await userEvent.clear(searchInput);

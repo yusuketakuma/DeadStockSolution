@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import InventorySearchPage from '../../pages/InventorySearchPage';
@@ -108,14 +109,18 @@ describe('InventorySearchPage', () => {
     });
   });
 
-  it('shows the pre-search guidance message when result is null and not searching', () => {
+  it('shows the pre-search guidance message when result is null and not searching', async () => {
     renderPage();
 
     expect(
       screen.getByText('検索したい薬剤を追加して在庫を確認してください'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '在庫を確認' })).toHaveAttribute('href', '/inventory/browse');
     expect(screen.getByRole('link', { name: 'この条件で候補を確認' })).toHaveAttribute('href', '/matching');
+    expect(screen.queryByRole('link', { name: '在庫を確認' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '関連画面' }));
+
+    expect(screen.getByRole('link', { name: '在庫を確認' })).toHaveAttribute('href', '/inventory/browse');
   });
 
   it('does not show the guidance message while searching', () => {

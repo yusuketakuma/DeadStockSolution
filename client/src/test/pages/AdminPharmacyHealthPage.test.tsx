@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import AdminPharmacyHealthPage from '../../pages/admin/AdminPharmacyHealthPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
@@ -16,6 +17,7 @@ describe('AdminPharmacyHealthPage', () => {
   });
 
   it('exposes nearby pharmacy-operation links when health data is empty', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/admin/pharmacy-health')) {
@@ -39,6 +41,7 @@ describe('AdminPharmacyHealthPage', () => {
     });
 
     expect(screen.getByText('薬局ヘルス情報がありません')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: '関連' }).at(-1)!);
     expect(screen.getAllByRole('link', { name: '営業時間' }).some((link) => link.getAttribute('href') === '/admin/business-hours')).toBe(true);
     expect(screen.getAllByRole('link', { name: '一括操作' }).some((link) => link.getAttribute('href') === '/admin/bulk-actions')).toBe(true);
   });
