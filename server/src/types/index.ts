@@ -114,8 +114,13 @@ export interface MatchItem {
   deadStockItemId: number;
   drugCode?: string | null;
   drugName: string;
+  drugMasterPackageId?: number | null;
   quantity: number;
   unit: string | null;
+  packageLabel?: string | null;
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
+  boxCount?: number | null;
   packageForm?: string | null;
   yakkaUnitPrice: number;
   yakkaValue: number;
@@ -162,3 +167,4 @@ export interface DrugEquivalence {
 }
 export * from './admin';
 export * from './notification';
+export * from './visit-plan';

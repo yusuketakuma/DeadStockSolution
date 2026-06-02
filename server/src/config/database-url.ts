@@ -48,3 +48,24 @@ export function resolveDatabaseUrls(env: NodeJS.ProcessEnv = process.env): Resol
 
   return { pooledUrl, nonPoolingUrl };
 }
+
+/**
+ * Resolve the admin database connection URL for the BYPASSRLS service role.
+ *
+ * Admin pool uses a separate PostgreSQL role with `BYPASSRLS` attribute so
+ * admin routes (dashboard, nightly jobs) can read/write across all tenants
+ * without RLS interference.
+ *
+ * Falls back to the regular pooled URL when `POSTGRES_URL_ADMIN` is not set
+ * (for development environments where separate roles aren't configured).
+ */
+export function resolveAdminDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const adminUrl = normalizeEnvValue(env.POSTGRES_URL_ADMIN);
+  if (adminUrl) return adminUrl;
+  if (env.NODE_ENV === 'production' || env.VERCEL_ENV === 'production') {
+    throw new Error('POSTGRES_URL_ADMIN is required in production for admin cross-tenant database access.');
+  }
+  // Fallback: use the regular pooled URL (dev environments without a separate admin role)
+  const { pooledUrl } = resolveDatabaseUrls(env);
+  return pooledUrl;
+}

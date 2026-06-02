@@ -4,6 +4,8 @@ import { db } from '../config/database';
 import {
   deadStockItems,
   deadStockReservations,
+  drugMaster,
+  drugMasterPackages,
   exchangeProposalItems,
   exchangeProposals,
   notifications,
@@ -94,6 +96,31 @@ async function insertUpload(pharmacyId: number, uploadType: 'dead_stock' | 'used
   return row.id;
 }
 
+async function insertPackagedDrugMaster(params: {
+  yjCode: string;
+  drugName: string;
+}) {
+  const [master] = await db.insert(drugMaster).values({
+    yjCode: `${params.yjCode}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    drugName: params.drugName,
+    unit: '錠',
+    yakkaPrice: '100',
+    category: 'e2e',
+  }).returning({ id: drugMaster.id });
+
+  const [pkg] = await db.insert(drugMasterPackages).values({
+    drugMasterId: master.id,
+    packageDescription: '100錠 PTP',
+    packageQuantity: 100,
+    packageUnit: '錠',
+    normalizedPackageLabel: '100錠PTP',
+    packageForm: 'ptp',
+    isLoosePackage: false,
+  }).returning({ id: drugMasterPackages.id });
+
+  return { masterId: master.id, packageId: pkg.id, packageLabel: '100錠PTP' };
+}
+
 router.post('/seed', async (req, res: Response) => {
   try {
     if (!isEnabled()) {
@@ -123,12 +150,17 @@ router.post('/seed', async (req, res: Response) => {
     const actorUsedUploadId = await insertUpload(actor.id, 'used_medication');
     const counterpartyDeadUploadId = await insertUpload(counterparty.id, 'dead_stock');
     const counterpartyUsedUploadId = await insertUpload(counterparty.id, 'used_medication');
+    const actorDrug = await insertPackagedDrugMaster({ yjCode: 'E2E-DRUG-A', drugName: 'テスト薬A' });
+    const counterpartyDrug = await insertPackagedDrugMaster({ yjCode: 'E2E-DRUG-B', drugName: 'テスト薬B' });
 
     const [actorDeadStock] = await db.insert(deadStockItems).values({
       pharmacyId: actor.id,
       uploadId: actorDeadUploadId,
       drugCode: 'E2E-DRUG-A',
       drugName: 'テスト薬A',
+      drugMasterId: actorDrug.masterId,
+      drugMasterPackageId: actorDrug.packageId,
+      packageLabel: actorDrug.packageLabel,
       quantity: 100,
       unit: '錠',
       yakkaUnitPrice: '100',
@@ -144,6 +176,9 @@ router.post('/seed', async (req, res: Response) => {
       uploadId: counterpartyDeadUploadId,
       drugCode: 'E2E-DRUG-B',
       drugName: 'テスト薬B',
+      drugMasterId: counterpartyDrug.masterId,
+      drugMasterPackageId: counterpartyDrug.packageId,
+      packageLabel: counterpartyDrug.packageLabel,
       quantity: 100,
       unit: '錠',
       yakkaUnitPrice: '100',
@@ -160,6 +195,9 @@ router.post('/seed', async (req, res: Response) => {
         uploadId: actorUsedUploadId,
         drugCode: 'E2E-DRUG-B',
         drugName: 'テスト薬B',
+        drugMasterId: counterpartyDrug.masterId,
+        drugMasterPackageId: counterpartyDrug.packageId,
+        packageLabel: counterpartyDrug.packageLabel,
         monthlyUsage: 20,
         unit: '錠',
         yakkaUnitPrice: '100',
@@ -169,6 +207,9 @@ router.post('/seed', async (req, res: Response) => {
         uploadId: counterpartyUsedUploadId,
         drugCode: 'E2E-DRUG-A',
         drugName: 'テスト薬A',
+        drugMasterId: actorDrug.masterId,
+        drugMasterPackageId: actorDrug.packageId,
+        packageLabel: actorDrug.packageLabel,
         monthlyUsage: 20,
         unit: '錠',
         yakkaUnitPrice: '100',

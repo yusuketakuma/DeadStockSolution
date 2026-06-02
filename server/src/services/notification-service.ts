@@ -16,6 +16,7 @@ import { dispatchNotificationPush } from './push-notification-dispatcher';
 
 interface CreateNotificationInput {
   pharmacyId: number;
+  tenantId?: number;
   type: NotificationType;
   title: string;
   message: string;
@@ -125,6 +126,7 @@ export async function createNotification(
 ): Promise<{ id: number } | null> {
   try {
     const [result] = await db.insert(notifications).values({
+      tenantId: input.tenantId ?? input.pharmacyId,
       pharmacyId: input.pharmacyId,
       type: input.type,
       title: input.title,

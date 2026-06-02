@@ -5,6 +5,8 @@ import { generateDrizzleJson, generateMigration } from 'drizzle-kit/api';
 import { drizzle } from 'drizzle-orm/pglite';
 import { sql } from 'drizzle-orm';
 import * as schema from '../../../db/schema';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -56,6 +58,18 @@ async function applyCurrentSchema(pg: PGlite): Promise<void> {
   for (const statement of ddlStatements) {
     await pg.exec(statement);
   }
+
+  // Apply RLS migration SQL to add tenant_id columns, FK constraints,
+  // RLS enable, and RLS policies — these are defined in migration SQL,
+  // not in the Drizzle schema, so PGlite needs them loaded separately.
+  // Uses a test-friendly version with nullable tenant_id columns and
+  // no data operations (INSERT/UPDATE), so Drizzle ORM inserts work.
+  const migrationSqlPath = path.join(
+    __dirname, 'apply-rls-all-tables.sql'
+  );
+  const migrationSql = fs.readFileSync(migrationSqlPath, 'utf-8');
+
+  await pg.exec(migrationSql);
 }
 
 /* ------------------------------------------------------------------ */

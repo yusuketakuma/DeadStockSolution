@@ -36,8 +36,13 @@ export interface MatchItem {
   deadStockItemId: number;
   drugCode?: string | null;
   drugName: string;
+  drugMasterPackageId?: number | null;
   quantity: number;
   unit: string | null;
+  packageLabel?: string | null;
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
+  boxCount?: number | null;
   yakkaUnitPrice: number;
   yakkaValue: number;
   expirationDate?: string | null;

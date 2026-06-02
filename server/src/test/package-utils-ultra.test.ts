@@ -113,14 +113,13 @@ describe('package-utils ultra coverage', () => {
       expect(result.normalizedPackageLabel).toBeNull();
     });
 
-    it('parses direct quantity from description (10錠×10) using direct match first', () => {
-      // The direct regex matches '10錠' before the multiplied regex, so quantity=10
+    it('parses multiplied package quantity from description (10錠×10)', () => {
       const result = normalizePackageInfo({
         packageDescription: '10錠×10',
         packageQuantity: null,
         packageUnit: null,
       });
-      expect(result.quantity).toBe(10);
+      expect(result.quantity).toBe(100);
       expect(result.unit).toBe('錠');
     });
 

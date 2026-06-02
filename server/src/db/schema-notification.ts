@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, serial, text, integer, boolean, timestamp, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
-import { adminMessageTargetTypeEnum } from './schema-common';
+import { adminMessageTargetTypeEnum, tenants } from './schema-common';
 
 export const adminMessages = pgTable('admin_messages', {
   id: serial('id').primaryKey(),
@@ -29,6 +29,7 @@ export const adminMessageReads = pgTable('admin_message_reads', {
 
 export const notifications = pgTable('notifications', {
   id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   type: text('type').notNull(),
   title: text('title').notNull(),
@@ -42,6 +43,8 @@ export const notifications = pgTable('notifications', {
   dedupeKey: text('dedupe_key'),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
+  idxNotificationsTenantCreated: index('idx_notifications_tenant_created')
+    .on(table.tenantId, table.createdAt),
   idxNotificationsPharmacyUnread: index('idx_notifications_pharmacy_unread')
     .on(table.pharmacyId, table.isRead, table.createdAt),
   idxNotificationsTypeCreated: index('idx_notifications_type_created')
@@ -55,6 +58,7 @@ export const notifications = pgTable('notifications', {
 
 export const matchNotifications = pgTable('match_notifications', {
   id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   triggerPharmacyId: integer('trigger_pharmacy_id').references(() => pharmacies.id, { onDelete: 'set null' }),
   triggerUploadType: text('trigger_upload_type'),
@@ -65,6 +69,8 @@ export const matchNotifications = pgTable('match_notifications', {
   dedupeKey: text('dedupe_key').notNull(),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
+  idxMatchNotificationsTenantCreated: index('idx_match_notifications_tenant_created')
+    .on(table.tenantId, table.createdAt),
   idxMatchNotificationsPharmacy: index('idx_match_notifications_pharmacy').on(table.pharmacyId, table.createdAt),
   uqMatchNotificationsDedupeKey: uniqueIndex('uq_match_notifications_dedupe_key')
     .on(table.pharmacyId, table.dedupeKey),
@@ -72,6 +78,7 @@ export const matchNotifications = pgTable('match_notifications', {
 
 export const notificationGroupStates = pgTable('notification_group_states', {
   id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   actionPath: text('action_path').notNull(),
   snoozedUntil: timestamp('snoozed_until', { mode: 'string', withTimezone: true }),
@@ -80,11 +87,13 @@ export const notificationGroupStates = pgTable('notification_group_states', {
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
   uqNotificationGroupState: uniqueIndex('uq_notification_group_state').on(table.pharmacyId, table.actionPath),
+  idxNotificationGroupStateTenant: index('idx_notification_group_state_tenant').on(table.tenantId, table.updatedAt),
   idxNotificationGroupStatePharmacy: index('idx_notification_group_state_pharmacy').on(table.pharmacyId, table.updatedAt),
 }));
 
 export const pushSubscriptions = pgTable('push_subscriptions', {
   id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   endpoint: text('endpoint').notNull(),
   p256dh: text('p256dh').notNull(),
@@ -94,6 +103,7 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   lastUsedAt: timestamp('last_used_at', { mode: 'string' }),
 }, (table) => ([
   uniqueIndex('idx_push_subscriptions_unique').on(table.pharmacyId, table.endpoint),
+  index('idx_push_subscriptions_tenant').on(table.tenantId),
   index('idx_push_subscriptions_pharmacy').on(table.pharmacyId),
   index('idx_push_subscriptions_created').on(table.createdAt),
 ]));

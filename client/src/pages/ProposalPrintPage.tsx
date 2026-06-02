@@ -25,6 +25,9 @@ interface PrintItem {
   yakkaValue: number;
   drugName: string;
   unit: string | null;
+  packageLabel?: string | null;
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
   yakkaUnitPrice: number | null;
 }
 
@@ -59,6 +62,23 @@ function safePharmacy(pharmacy: PharmacyInfo | null) {
     prefecture: pharmacy?.prefecture || '-',
     licenseNumber: pharmacy?.licenseNumber || '-',
   };
+}
+
+function formatQuantity(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-';
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
+}
+
+function resolveBoxCount(item: PrintItem): number | null {
+  const packageQuantity = Number(item.packageQuantity);
+  if (!Number.isFinite(packageQuantity) || packageQuantity <= 0) return null;
+  const boxCount = item.quantity / packageQuantity;
+  return Math.abs(boxCount - Math.round(boxCount)) < 0.0001 ? Math.round(boxCount) : Math.floor(boxCount);
+}
+
+function formatPackageSize(item: PrintItem): string {
+  if (!item.packageQuantity) return '-';
+  return `${formatQuantity(item.packageQuantity)}${item.packageUnit || item.unit || ''}`;
 }
 
 export default function ProposalPrintPage() {
@@ -247,9 +267,10 @@ export default function ProposalPrintPage() {
         <thead>
           <tr className="proposal-print-table-head">
             <th>薬品名</th>
-            <th>数量</th>
-            <th>単位</th>
-            <th>薬価(単価)</th>
+            <th>箱数</th>
+            <th>1箱入数</th>
+            <th>総数量</th>
+            <th>包装</th>
             <th>薬価(合計)</th>
           </tr>
         </thead>
@@ -257,9 +278,10 @@ export default function ProposalPrintPage() {
           {itemsAtoB.map((item) => (
             <tr key={item.id}>
               <td>{item.drugName}</td>
-              <td>{item.quantity}</td>
-              <td>{item.unit || '-'}</td>
-              <td>{item.yakkaUnitPrice?.toLocaleString() || '-'}</td>
+              <td>{resolveBoxCount(item) ?? '-'}</td>
+              <td>{formatPackageSize(item)}</td>
+              <td>{formatQuantity(item.quantity)}{item.unit || item.packageUnit || ''}</td>
+              <td>{item.packageLabel || '-'}</td>
               <td>{item.yakkaValue?.toLocaleString() || '-'}</td>
             </tr>
           ))}
@@ -273,9 +295,10 @@ export default function ProposalPrintPage() {
         <thead>
           <tr className="proposal-print-table-head">
             <th>薬品名</th>
-            <th>数量</th>
-            <th>単位</th>
-            <th>薬価(単価)</th>
+            <th>箱数</th>
+            <th>1箱入数</th>
+            <th>総数量</th>
+            <th>包装</th>
             <th>薬価(合計)</th>
           </tr>
         </thead>
@@ -283,9 +306,10 @@ export default function ProposalPrintPage() {
           {itemsBtoA.map((item) => (
             <tr key={item.id}>
               <td>{item.drugName}</td>
-              <td>{item.quantity}</td>
-              <td>{item.unit || '-'}</td>
-              <td>{item.yakkaUnitPrice?.toLocaleString() || '-'}</td>
+              <td>{resolveBoxCount(item) ?? '-'}</td>
+              <td>{formatPackageSize(item)}</td>
+              <td>{formatQuantity(item.quantity)}{item.unit || item.packageUnit || ''}</td>
+              <td>{item.packageLabel || '-'}</td>
               <td>{item.yakkaValue?.toLocaleString() || '-'}</td>
             </tr>
           ))}

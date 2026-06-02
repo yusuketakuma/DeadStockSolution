@@ -2,6 +2,7 @@ import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   deadStockItems,
+  drugMasterPackages,
   exchangeProposals,
   pharmacyRelationships,
 } from '../db/schema';
@@ -14,6 +15,9 @@ export const RESERVATION_ACTIVE_STATUSES = ['proposed', 'accepted_a', 'accepted_
 export interface ProposalItemInput {
   deadStockItemId: number;
   quantity: number;
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
+  boxCount?: number | null;
 }
 
 export interface ValidatedProposalItem extends ProposalItemInput {
@@ -34,6 +38,11 @@ export interface ProposalStockRow {
   id: number;
   pharmacyId: number;
   quantity: number | string | null;
+  unit?: string | null;
+  drugMasterPackageId?: number | null;
+  packageQuantity?: number | string | null;
+  packageUnit?: string | null;
+  isLoosePackage?: boolean | null;
   yakkaUnitPrice: number | string | null;
   isAvailable: boolean | null;
 }
@@ -45,6 +54,38 @@ export interface ProposalValueSummary {
 }
 
 export type TransactionClient = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+const normalizeUnit = (value: string | null | undefined) => value?.normalize('NFKC').trim() || null;
+
+function resolvePackageValidationIssue(
+  stock: Pick<ProposalStockRow, 'drugMasterPackageId' | 'packageQuantity' | 'packageUnit' | 'unit' | 'isLoosePackage'>,
+  quantity: number,
+): string | null {
+  if (stock.drugMasterPackageId === null || stock.drugMasterPackageId === undefined) {
+    return '包装単位マスター未設定';
+  }
+  if (stock.isLoosePackage === true) {
+    return 'バラ包装';
+  }
+
+  const packageQuantity = Number(stock.packageQuantity);
+  if (!Number.isFinite(packageQuantity) || packageQuantity <= 0) {
+    return '包装単位マスター未設定';
+  }
+
+  const stockPackageUnit = normalizeUnit(stock.packageUnit);
+  const stockUnit = normalizeUnit(stock.unit);
+  if (!stockPackageUnit || (stockUnit && stockPackageUnit !== stockUnit)) {
+    return '包装単位マスター未設定';
+  }
+
+  const boxCount = quantity / packageQuantity;
+  if (Math.abs(boxCount - Math.round(boxCount)) > 0.0001) {
+    return '箱入数の整数倍ではありません';
+  }
+
+  return null;
+}
 
 // Valid state transitions for exchange proposals
 export const VALID_TRANSITIONS = {
@@ -75,6 +116,18 @@ export function parseProposalItems(items: unknown, fieldName: string): ProposalI
     const id = Number((item as Record<string, unknown>).deadStockItemId);
     const quantityRaw = Number((item as Record<string, unknown>).quantity);
     const quantity = Math.round(quantityRaw * 1000) / 1000;
+    const packageQuantityRaw = (item as Record<string, unknown>).packageQuantity;
+    const packageQuantity = packageQuantityRaw === undefined || packageQuantityRaw === null
+      ? null
+      : Math.round(Number(packageQuantityRaw) * 1000) / 1000;
+    const boxCountRaw = (item as Record<string, unknown>).boxCount;
+    const boxCount = boxCountRaw === undefined || boxCountRaw === null
+      ? null
+      : Number(boxCountRaw);
+    const packageUnitRaw = (item as Record<string, unknown>).packageUnit;
+    const packageUnit = typeof packageUnitRaw === 'string' && packageUnitRaw.trim()
+      ? packageUnitRaw.trim()
+      : null;
 
     if (!Number.isInteger(id) || id <= 0) {
       throw new Error(`${fieldName} に不正な在庫IDが含まれています`);
@@ -82,8 +135,17 @@ export function parseProposalItems(items: unknown, fieldName: string): ProposalI
     if (!Number.isFinite(quantity) || quantity <= 0) {
       throw new Error(`${fieldName} に不正な数量が含まれています`);
     }
+    if (packageQuantity !== null && (!Number.isFinite(packageQuantity) || packageQuantity <= 0)) {
+      throw new Error(`${fieldName} に不正な包装入数が含まれています`);
+    }
+    if (boxCount !== null && (!Number.isInteger(boxCount) || boxCount <= 0)) {
+      throw new Error(`${fieldName} に不正な箱数が含まれています`);
+    }
+    if (packageQuantity !== null && boxCount !== null && Math.abs(quantity - packageQuantity * boxCount) > 0.0001) {
+      throw new Error(`${fieldName} の数量は箱入数の整数倍で指定してください`);
+    }
 
-    return { deadStockItemId: id, quantity };
+    return { deadStockItemId: id, quantity, packageQuantity, packageUnit, boxCount };
   });
 
   const idSet = new Set<number>();
@@ -144,6 +206,26 @@ export function validateAndMapProposalItems(params: {
     if (item.quantity > availableQty) throw new Error('提案数量が利用可能在庫数を超えています');
     const unitPrice = Number(stock.yakkaUnitPrice);
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error('薬価が設定されていない在庫は提案できません');
+
+    const packageIssue = resolvePackageValidationIssue(stock, item.quantity);
+    if (packageIssue === 'バラ包装') {
+      throw new Error('バラ包装の在庫は箱単位の提案に使用できません');
+    }
+    if (packageIssue === '包装単位マスター未設定') {
+      throw new Error('包装単位マスターが設定されていない在庫は箱単位の提案に使用できません');
+    }
+    if (packageIssue === '箱入数の整数倍ではありません') {
+      throw new Error('提案数量は箱入数の整数倍で指定してください');
+    }
+
+    const packageQuantity = Number(stock.packageQuantity);
+    const stockPackageUnit = normalizeUnit(stock.packageUnit);
+    if (item.packageQuantity !== null && item.packageQuantity !== undefined && Math.abs(item.packageQuantity - packageQuantity) > 0.0001) {
+      throw new Error('提案数量の包装入数が在庫マスターと一致しません');
+    }
+    if (item.packageUnit && stockPackageUnit !== normalizeUnit(item.packageUnit)) {
+      throw new Error('提案数量の包装単位が在庫マスターと一致しません');
+    }
 
     return {
       deadStockItemId: item.deadStockItemId,
@@ -222,6 +304,26 @@ export async function validateAndUpdateStock(
     quantity: deadStockItems.quantity,
     isAvailable: deadStockItems.isAvailable,
     drugName: deadStockItems.drugName,
+    unit: deadStockItems.unit,
+    drugMasterPackageId: deadStockItems.drugMasterPackageId,
+    packageQuantity: sql<number | null>`(
+      select ${drugMasterPackages.packageQuantity}
+      from ${drugMasterPackages}
+      where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+      limit 1
+    )`,
+    packageUnit: sql<string | null>`(
+      select ${drugMasterPackages.packageUnit}
+      from ${drugMasterPackages}
+      where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+      limit 1
+    )`,
+    isLoosePackage: sql<boolean | null>`(
+      select ${drugMasterPackages.isLoosePackage}
+      from ${drugMasterPackages}
+      where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+      limit 1
+    )`,
   })
     .from(deadStockItems)
     .where(inArray(deadStockItems.id, itemIds));
@@ -238,6 +340,11 @@ export async function validateAndUpdateStock(
     const currentQty = Number(stock.quantity);
     if (currentQty < Number(item.quantity)) {
       issues.push(`${stock.drugName}: 必要${item.quantity} / 残り${currentQty}`);
+      continue;
+    }
+    const packageIssue = resolvePackageValidationIssue(stock, Number(item.quantity));
+    if (packageIssue) {
+      issues.push(`${stock.drugName}: ${packageIssue}`);
     }
   }
   if (issues.length > 0) {

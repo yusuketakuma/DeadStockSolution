@@ -705,6 +705,7 @@ router.post('/groups/read', async (req: AuthRequest, res: Response) => {
     const actionPath = sanitizeInternalPath(req.body?.actionPath) ?? '/';
     const now = new Date().toISOString();
     await db.insert(notificationGroupStates).values({
+      tenantId: pharmacyId,
       pharmacyId,
       actionPath,
       lastReadAt: now,
@@ -735,6 +736,7 @@ router.post('/groups/snooze', async (req: AuthRequest, res: Response) => {
     const now = new Date().toISOString();
     const snoozedUntil = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
     await db.insert(notificationGroupStates).values({
+      tenantId: pharmacyId,
       pharmacyId,
       actionPath,
       snoozedUntil,

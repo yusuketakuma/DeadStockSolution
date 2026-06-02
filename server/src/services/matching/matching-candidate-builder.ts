@@ -25,6 +25,7 @@ const DISTANCE_FALLBACK = 9999;
 const MAX_COMPARISON_PHARMACIES_PER_SOURCE = resolveComparisonPharmacyLimit(
   process.env.MATCHING_MAX_COMPARISON_PHARMACIES_PER_SOURCE,
 );
+const BOX_QUANTITY_EPSILON = 0.0001;
 
 interface CandidateMatchItem {
   item: MatchItem;
@@ -32,6 +33,48 @@ interface CandidateMatchItem {
 }
 
 type PackageFormsByKey = Map<string, Set<string>>;
+
+interface BoxListingInfo {
+  boxCount: number;
+  packageQuantity: number;
+  packageUnit: string;
+  listingQuantity: number;
+  packageForm: PackageForm;
+}
+
+function normalizePackageUnit(value: string | null | undefined): string | null {
+  return value?.normalize('NFKC').trim() || null;
+}
+
+function isPositiveFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function resolveBoxListingInfo(stock: PreparedStockRow['stock']): BoxListingInfo | null {
+  const packageQuantity = Number(stock.packageQuantity);
+  if (!Number.isFinite(packageQuantity) || packageQuantity <= 0) return null;
+
+  const packageUnit = normalizePackageUnit(stock.packageUnit);
+  const stockUnit = normalizePackageUnit(stock.unit);
+  if (!packageUnit || (stockUnit && packageUnit !== stockUnit)) return null;
+
+  const packageForm = (stock.packageForm ?? classifyPackageFormFromUnit(stock.packageLabel ?? stock.unit)) as PackageForm;
+  if (stock.isLoosePackage === true || packageForm === 'loose') return null;
+
+  const stockQuantity = Number(stock.quantity);
+  if (!isPositiveFiniteNumber(stockQuantity)) return null;
+
+  const boxCount = Math.floor((stockQuantity + BOX_QUANTITY_EPSILON) / packageQuantity);
+  if (!Number.isInteger(boxCount) || boxCount <= 0) return null;
+
+  return {
+    boxCount,
+    packageQuantity,
+    packageUnit,
+    listingQuantity: roundTo2(boxCount * packageQuantity),
+    packageForm,
+  };
+}
 
 function buildCompatibilityKeys(
   preparedDrugName: PreparedStockRow['preparedDrugName'],
@@ -99,17 +142,27 @@ function buildCandidateMatchItem(
   preparedDrugName: PreparedStockRow['preparedDrugName'],
   price: number,
   match: DrugMatchResult,
-): CandidateMatchItem {
+): CandidateMatchItem | null {
+  const boxListing = resolveBoxListingInfo(stock);
+  if (!boxListing) {
+    return null;
+  }
+
   return {
     item: {
       deadStockItemId: stock.id,
       drugCode: stock.drugCode,
       drugName: stock.drugName,
-      quantity: stock.quantity,
-      unit: stock.unit,
-      packageForm: classifyPackageFormFromUnit(stock.packageLabel ?? stock.unit),
+      drugMasterPackageId: stock.drugMasterPackageId ?? null,
+      quantity: boxListing.listingQuantity,
+      unit: stock.unit ?? boxListing.packageUnit,
+      packageLabel: stock.packageLabel,
+      packageQuantity: boxListing.packageQuantity,
+      packageUnit: boxListing.packageUnit,
+      boxCount: boxListing.boxCount,
+      packageForm: boxListing.packageForm,
       yakkaUnitPrice: price,
-      yakkaValue: roundTo2(price * stock.quantity),
+      yakkaValue: roundTo2(price * boxListing.listingQuantity),
       expirationDate: stock.expirationDate,
       expirationDateIso: stock.expirationDateIso,
       lotNumber: stock.lotNumber,
@@ -157,7 +210,10 @@ function buildMatchItems(
       hasEquivalenceMatch = true;
     }
 
-    items.push(buildCandidateMatchItem(stock, preparedDrugName, price, match));
+    const item = buildCandidateMatchItem(stock, preparedDrugName, price, match);
+    if (item) {
+      items.push(item);
+    }
   }
 
   return { items, hasEquivalenceMatch };

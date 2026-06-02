@@ -107,6 +107,37 @@ describe('matching-filter-service', () => {
       });
     });
 
+    describe('箱単位の調整', () => {
+      it('包装入数があるアイテムは箱整数単位だけで削減する', () => {
+        const itemA = makeItem({
+          deadStockItemId: 1,
+          yakkaUnitPrice: 100,
+          quantity: 300,
+          packageQuantity: 100,
+          packageUnit: '錠',
+          boxCount: 3,
+        });
+        const itemB = makeItem({
+          deadStockItemId: 2,
+          yakkaUnitPrice: 100,
+          quantity: 200,
+          packageQuantity: 100,
+          packageUnit: '錠',
+          boxCount: 2,
+        });
+
+        const result = balanceValues([itemA], [itemB]);
+
+        expect(result.balancedA[0]).toEqual(expect.objectContaining({
+          quantity: 200,
+          boxCount: 2,
+          yakkaValue: 20000,
+        }));
+        expect(result.totalA).toBe(20000);
+        expect(result.totalB).toBe(20000);
+      });
+    });
+
     describe('quantity が 0 の除外', () => {
       it('quantity が 0 のアイテムは結果から除外される', () => {
         const zeroQty = makeItem({ deadStockItemId: 1, yakkaUnitPrice: 1000, quantity: 0 });

@@ -105,6 +105,8 @@ function prepareDeadStockIncoming(incoming: DeadStockDiffInput[]): PreparedDeadS
     const key = deadStockKey({
       drugCode: item.drugCode,
       drugName: item.drugName,
+      drugMasterPackageId: item.drugMasterPackageId ?? null,
+      packageLabel: item.packageLabel ?? null,
       unit: item.unit,
       expirationDate: normalizedDate,
       lotNumber: item.lotNumber,
@@ -171,6 +173,8 @@ function analyzeDeadStockDiff(
     (row) => deadStockKey({
       drugCode: row.drugCode,
       drugName: row.drugName,
+      drugMasterPackageId: row.drugMasterPackageId,
+      packageLabel: row.packageLabel,
       unit: row.unit,
       expirationDate: row.expirationDateIso ?? row.expirationDate,
       lotNumber: row.lotNumber,
@@ -178,6 +182,8 @@ function analyzeDeadStockDiff(
     (item) => deadStockKey({
       drugCode: item.drugCode,
       drugName: item.drugName,
+      drugMasterPackageId: item.drugMasterPackageId ?? null,
+      packageLabel: item.packageLabel ?? null,
       unit: item.unit,
       expirationDate: item.normalizedDate,
       lotNumber: item.lotNumber,

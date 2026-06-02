@@ -32,6 +32,10 @@ interface DeadStockItem {
   quantity: number;
   unit: string | null;
   packageLabel?: string | null;
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
+  packageForm?: string | null;
+  isLoosePackage?: boolean | null;
   yakkaUnitPrice: number | null;
   yakkaTotal: number | null;
   expirationDate: string | null;
@@ -69,6 +73,34 @@ const DEAD_STOCK_SORT_OPTIONS: SortOption<DeadStockSortKey>[] = [
   { value: 'quantityAsc', label: '数量が少ない順' },
   { value: 'createdDesc', label: '登録日が新しい順' },
 ];
+
+function formatQuantity(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-';
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
+}
+
+function isLoosePackage(item: DeadStockItem): boolean {
+  return item.isLoosePackage === true || item.packageForm === 'loose';
+}
+
+function resolveBoxCount(item: DeadStockItem): number | null {
+  if (isLoosePackage(item)) return null;
+  const packageQuantity = Number(item.packageQuantity);
+  if (!Number.isFinite(packageQuantity) || packageQuantity <= 0) return null;
+  const boxCount = Math.floor(item.quantity / packageQuantity);
+  return boxCount > 0 ? boxCount : null;
+}
+
+function formatPackageSize(item: DeadStockItem): string {
+  if (isLoosePackage(item)) return '-';
+  if (!item.packageQuantity) return '-';
+  return `${formatQuantity(item.packageQuantity)}${item.packageUnit || item.unit || ''}`;
+}
+
+function formatBoxCount(item: DeadStockItem): string {
+  if (isLoosePackage(item)) return '対象外';
+  return resolveBoxCount(item)?.toString() ?? '-';
+}
 
 interface EnrichedItem extends DeadStockItem {
   daysRemaining: number | null;
@@ -389,6 +421,8 @@ export default function DeadStockListPage() {
                     <th>コード</th>
                     <th>数量</th>
                     <th>単位</th>
+                    <th>出品可能箱数</th>
+                    <th>1箱入数</th>
                     <th>包装</th>
                     <th>薬価(単価)</th>
                     <th>薬価(合計)</th>
@@ -405,6 +439,8 @@ export default function DeadStockListPage() {
                       <td className="small text-muted">{item.drugCode}</td>
                       <td>{item.quantity}</td>
                       <td>{item.unit}</td>
+                      <td>{formatBoxCount(item)}</td>
+                      <td>{formatPackageSize(item)}</td>
                       <td>{item.packageLabel || '-'}</td>
                       <td>{item.yakkaUnitPrice?.toLocaleString()}</td>
                       <td>{item.yakkaTotal?.toLocaleString()}</td>
@@ -442,6 +478,8 @@ export default function DeadStockListPage() {
                   fields={[
                     { label: '数量', value: item.quantity },
                     { label: '単位', value: item.unit || '-' },
+                    { label: '出品可能箱数', value: formatBoxCount(item) },
+                    { label: '1箱入数', value: formatPackageSize(item) },
                     { label: '包装', value: item.packageLabel || '-' },
                     { label: '薬価(単価)', value: item.yakkaUnitPrice?.toLocaleString() ?? '-' },
                     { label: '薬価(合計)', value: item.yakkaTotal?.toLocaleString() ?? '-' },

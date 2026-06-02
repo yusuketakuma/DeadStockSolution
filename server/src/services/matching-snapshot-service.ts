@@ -194,6 +194,7 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
     }
   } else {
     await db.insert(matchCandidateSnapshots).values({
+      tenantId: pharmacyId,
       pharmacyId,
       candidateHash: next.hash,
       candidateCount: next.candidateCount,
@@ -232,6 +233,7 @@ export async function saveMatchSnapshotAndNotifyOnChange(params: {
       });
 
       const insertedRows = await db.insert(matchNotifications).values({
+        tenantId: pharmacyId,
         pharmacyId,
         triggerPharmacyId,
         triggerUploadType,
@@ -298,6 +300,7 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
   type ExistingRow = typeof existingRows[number];
   type SnapshotEntry = typeof entries[number];
   const upsertValues: Array<{
+    tenantId: number;
     pharmacyId: number;
     candidateHash: string;
     candidateCount: number;
@@ -322,6 +325,7 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
 
     if (hashOrCountChanged || stale) {
       upsertValues.push({
+        tenantId: entry.pharmacyId,
         pharmacyId: entry.pharmacyId,
         candidateHash: next.hash,
         candidateCount: next.candidateCount,
@@ -352,6 +356,7 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
 
   // 4. 変更があった薬局の通知を一括 INSERT
   const notificationValues: Array<{
+    tenantId: number;
     pharmacyId: number;
     triggerPharmacyId: number;
     triggerUploadType: 'dead_stock' | 'used_medication';
@@ -381,6 +386,7 @@ export async function saveMatchSnapshotsBatch(entries: Array<{
     });
 
     notificationValues.push({
+      tenantId: entry.pharmacyId,
       pharmacyId: entry.pharmacyId,
       triggerPharmacyId: entry.triggerPharmacyId,
       triggerUploadType: entry.triggerUploadType,

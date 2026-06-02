@@ -18,9 +18,14 @@ function makePreparedStockRow(params: {
       pharmacyId: params.pharmacyId,
       drugCode: `CODE-${params.id}`,
       drugName: params.drugName,
+      drugMasterPackageId: params.id + 1000,
       quantity: params.quantity,
       unit: '錠',
       packageLabel: params.packageLabel ?? 'PTP',
+      packageQuantity: 100,
+      packageUnit: '錠',
+      packageForm: null,
+      isLoosePackage: false,
       yakkaUnitPrice: params.yakkaUnitPrice,
       expirationDate: params.expirationDateIso,
       expirationDateIso: params.expirationDateIso,
@@ -104,8 +109,72 @@ describe('matching-candidate-builder', () => {
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.scoreBreakdown?.expiryScore ?? 0).toBeGreaterThan(0);
+    expect(candidates[0]?.itemsFromA[0]).toEqual(expect.objectContaining({
+      quantity: 100,
+      packageQuantity: 100,
+      boxCount: 1,
+    }));
 
     vi.useRealTimers();
+  });
+
+  it('lists only complete boxes when available quantity includes a partial box remainder', () => {
+    const now = new Date('2026-03-01T00:00:00.000Z');
+    const otherPharmacyId = 2;
+
+    const candidates = collectCandidates({
+      pharmaciesWithDistance: [{
+        id: otherPharmacyId,
+        name: '相手薬局',
+        phone: null,
+        fax: null,
+        latitude: 35.0,
+        longitude: 139.0,
+        distance: 2,
+      }],
+      myPreparedDeadStock: [
+        makePreparedStockRow({
+          id: 101,
+          pharmacyId: 1,
+          drugName: '薬A',
+          quantity: 250,
+          yakkaUnitPrice: 100,
+          expirationDateIso: '2026-12-31',
+        }),
+      ],
+      myUsedMedIndex: buildUsedMedIndex([{ pharmacyId: 1, drugName: '薬B' }]),
+      preparedDeadStockByPharmacy: new Map<number, PreparedStockRow[]>([
+        [otherPharmacyId, [
+          makePreparedStockRow({
+            id: 202,
+            pharmacyId: otherPharmacyId,
+            drugName: '薬B',
+            quantity: 200,
+            yakkaUnitPrice: 100,
+            expirationDateIso: '2026-12-31',
+          }),
+        ]],
+      ]),
+      usedMedIndexByPharmacy: new Map([
+        [otherPharmacyId, buildUsedMedIndex([{ pharmacyId: otherPharmacyId, drugName: '薬A' }])],
+      ]),
+      businessHoursByPharmacy: new Map(),
+      specialHoursByPharmacy: new Map(),
+      matchingRuleProfile: makeMatchingRuleProfile(),
+      favoriteIds: new Set<number>(),
+      groupMemberIds: new Set<number>(),
+      now,
+      includeIsConfiguredInBusinessStatus: false,
+      equivalenceMap: new Map(),
+      successCountByPharmacy: new Map(),
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.itemsFromA[0]).toEqual(expect.objectContaining({
+      quantity: 200,
+      boxCount: 2,
+      packageQuantity: 100,
+    }));
   });
 
   it('drops equivalence-based candidates when the matched package forms are incompatible', () => {

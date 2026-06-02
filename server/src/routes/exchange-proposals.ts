@@ -6,7 +6,9 @@ import { db } from '../config/database';
 import {
   exchangeProposals,
   exchangeProposalItems,
+  deadStockReservations,
   deadStockItems,
+  drugMasterPackages,
   pharmacies,
   proposalComments,
   exchangeFeedback,
@@ -15,6 +17,15 @@ import {
 import { AuthRequest } from '../types';
 import { findMatches } from '../services/matching-service';
 import { createProposal, acceptProposal, rejectProposal, completeProposal } from '../services/exchange-execution-service';
+import {
+  assertProposalValues,
+  buildReservedByStockId,
+  calculateProposalValues,
+  RESERVATION_ACTIVE_STATUSES,
+  validateAndMapProposalItems,
+  type TransactionClient,
+  type ValidatedProposalItem,
+} from '../services/exchange-validation-service';
 import { parsePagination, isPositiveSafeInteger } from '../utils/request-utils';
 import { rowCount } from '../utils/db-utils';
 import { logger } from '../services/logger';
@@ -42,6 +53,8 @@ function isProposalInputError(message: string): boolean {
     '提案',
     '交換金額',
     '数量',
+    '包装',
+    '箱',
   ].some((token) => message.includes(token));
 }
 
@@ -158,9 +171,40 @@ interface ProposalPrintPharmacyRow extends ProposalDetailPharmacyRow {
 }
 
 interface ProposalCounterOfferItemInput {
-  proposalItemId?: number;
+  proposalItemId: number;
   drugName: string;
   quantity: number;
+}
+
+interface CounterOfferProposalRow {
+  pharmacyAId: number;
+  pharmacyBId: number;
+  status: string;
+}
+
+interface CounterOfferProposalItemRow {
+  id: number;
+  deadStockItemId: number;
+  fromPharmacyId: number;
+  toPharmacyId: number;
+  quantity: number;
+  yakkaValue: string | null;
+  drugName: string;
+}
+
+interface CounterOfferNextItem extends CounterOfferProposalItemRow {
+  quantity: number;
+  yakkaValueNumber: number;
+}
+
+interface CounterOfferValidationResult {
+  normalizedItems: ProposalCounterOfferItemInput[];
+  changedItems: CounterOfferNextItem[];
+  values: {
+    totalValueA: number;
+    totalValueB: number;
+    valueDifference: number;
+  };
 }
 
 type ProposalData = {
@@ -174,9 +218,320 @@ type ProposalData = {
     yakkaValue: string | null;
     drugName: string;
     unit: string | null;
+    packageLabel: string | null;
+    packageQuantity: number | null;
+    packageUnit: string | null;
     yakkaUnitPrice: string | null;
   }>;
 };
+
+class CounterOfferHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'CounterOfferHttpError';
+    this.status = status;
+  }
+}
+
+function isCounterOfferHttpError(err: unknown): err is CounterOfferHttpError {
+  return err instanceof CounterOfferHttpError;
+}
+
+function counterOfferValidationStatus(message: string): number {
+  if (
+    message.includes('利用可能在庫数を超えています') ||
+    message.includes('既に利用不可') ||
+    message.includes('状態が変更') ||
+    message.includes('処理中')
+  ) {
+    return 409;
+  }
+  return 400;
+}
+
+function normalizeCounterOfferError(err: unknown): CounterOfferHttpError {
+  if (isCounterOfferHttpError(err)) return err;
+  const message = err instanceof Error ? err.message : '反対提案の内容が不正です';
+  return new CounterOfferHttpError(counterOfferValidationStatus(message), message);
+}
+
+function parseCounterOfferItems(rawItems: unknown): ProposalCounterOfferItemInput[] {
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    throw new CounterOfferHttpError(400, 'items が必要です');
+  }
+  if (rawItems.length > 20) {
+    throw new CounterOfferHttpError(400, '反対提案の項目は最大20件までです');
+  }
+
+  const seenIds = new Set<number>();
+  return rawItems.map((rawItem, index) => {
+    if (!rawItem || typeof rawItem !== 'object') {
+      throw new CounterOfferHttpError(400, `items[${index}] が不正です`);
+    }
+
+    const item = rawItem as Record<string, unknown>;
+    const proposalItemId = Number(item.proposalItemId);
+    const quantity = Math.round(Number(item.quantity) * 1000) / 1000;
+    const drugName = typeof item.drugName === 'string' ? item.drugName.trim() : '';
+
+    if (!Number.isInteger(proposalItemId) || proposalItemId <= 0) {
+      throw new CounterOfferHttpError(400, '反対提案の対象項目IDが不正です');
+    }
+    if (seenIds.has(proposalItemId)) {
+      throw new CounterOfferHttpError(400, '反対提案の対象項目IDが重複しています');
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new CounterOfferHttpError(400, '反対提案の数量が不正です');
+    }
+
+    seenIds.add(proposalItemId);
+    return { proposalItemId, drugName, quantity };
+  });
+}
+
+function parseStoredCounterOfferItems(itemsJson: string): ProposalCounterOfferItemInput[] {
+  try {
+    return parseCounterOfferItems(JSON.parse(itemsJson));
+  } catch (err) {
+    if (isCounterOfferHttpError(err)) throw err;
+    throw new CounterOfferHttpError(400, '反対提案の内容が不正です');
+  }
+}
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function toValidationItems(
+  rows: CounterOfferNextItem[],
+): ValidatedProposalItem[] {
+  return rows.map((row) => ({
+    deadStockItemId: row.deadStockItemId,
+    fromPharmacyId: row.fromPharmacyId,
+    toPharmacyId: row.toPharmacyId,
+    quantity: row.quantity,
+    yakkaValue: row.yakkaValueNumber,
+  }));
+}
+
+async function fetchCounterOfferProposalItems(
+  tx: TransactionClient,
+  proposalId: number,
+): Promise<CounterOfferProposalItemRow[]> {
+  return tx.select({
+    id: exchangeProposalItems.id,
+    deadStockItemId: exchangeProposalItems.deadStockItemId,
+    fromPharmacyId: exchangeProposalItems.fromPharmacyId,
+    toPharmacyId: exchangeProposalItems.toPharmacyId,
+    quantity: exchangeProposalItems.quantity,
+    yakkaValue: exchangeProposalItems.yakkaValue,
+    drugName: deadStockItems.drugName,
+  })
+    .from(exchangeProposalItems)
+    .innerJoin(deadStockItems, eq(exchangeProposalItems.deadStockItemId, deadStockItems.id))
+    .where(eq(exchangeProposalItems.proposalId, proposalId));
+}
+
+async function validateCounterOfferItemsForProposal(
+  tx: TransactionClient,
+  proposalId: number,
+  proposal: CounterOfferProposalRow,
+  requestedItems: ProposalCounterOfferItemInput[],
+): Promise<CounterOfferValidationResult> {
+  try {
+    const currentItems = await fetchCounterOfferProposalItems(tx, proposalId);
+    if (currentItems.length === 0) {
+      throw new Error('提案アイテムが存在しません');
+    }
+
+    const currentByProposalItemId = new Map(currentItems.map((item) => [item.id, item]));
+    const normalizedItems = requestedItems.map((item) => {
+      const current = currentByProposalItemId.get(item.proposalItemId);
+      if (!current) {
+        throw new Error('反対提案の対象項目が現在の提案に存在しません');
+      }
+      return {
+        proposalItemId: item.proposalItemId,
+        drugName: current.drugName,
+        quantity: item.quantity,
+      };
+    });
+
+    const sortedUniqueStockIds = [...new Set(currentItems.map((item) => item.deadStockItemId))]
+      .sort((a, b) => a - b);
+
+    await tx.execute(sql`
+      SELECT ${deadStockItems.id}
+      FROM ${deadStockItems}
+      WHERE ${inArray(deadStockItems.id, sortedUniqueStockIds)}
+      FOR UPDATE NOWAIT
+    `);
+
+    const stockRows = await tx.select({
+      id: deadStockItems.id,
+      pharmacyId: deadStockItems.pharmacyId,
+      quantity: deadStockItems.quantity,
+      unit: deadStockItems.unit,
+      drugMasterPackageId: deadStockItems.drugMasterPackageId,
+      packageQuantity: sql<number | null>`(
+        select ${drugMasterPackages.packageQuantity}
+        from ${drugMasterPackages}
+        where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+        limit 1
+      )`,
+      packageUnit: sql<string | null>`(
+        select ${drugMasterPackages.packageUnit}
+        from ${drugMasterPackages}
+        where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+        limit 1
+      )`,
+      isLoosePackage: sql<boolean | null>`(
+        select ${drugMasterPackages.isLoosePackage}
+        from ${drugMasterPackages}
+        where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+        limit 1
+      )`,
+      yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
+      isAvailable: deadStockItems.isAvailable,
+    })
+      .from(deadStockItems)
+      .where(inArray(deadStockItems.id, sortedUniqueStockIds));
+
+    const reservationRows = await tx.select({
+      deadStockItemId: deadStockReservations.deadStockItemId,
+      reservedQty: sql<number>`coalesce(sum(${deadStockReservations.reservedQuantity}), 0)`,
+    })
+      .from(deadStockReservations)
+      .innerJoin(exchangeProposals, eq(deadStockReservations.proposalId, exchangeProposals.id))
+      .where(and(
+        inArray(deadStockReservations.deadStockItemId, sortedUniqueStockIds),
+        inArray(exchangeProposals.status, RESERVATION_ACTIVE_STATUSES),
+        sql`${deadStockReservations.proposalId} <> ${proposalId}`,
+      ))
+      .groupBy(deadStockReservations.deadStockItemId);
+
+    const stockMap = new Map(stockRows.map((stock) => [stock.id, stock]));
+    const reservedByStockId = buildReservedByStockId(reservationRows);
+    const requestedByProposalItemId = new Map(normalizedItems.map((item) => [item.proposalItemId, item]));
+    const validationRows = currentItems.map((item) => ({
+      fromPharmacyId: item.fromPharmacyId,
+      deadStockItemId: item.deadStockItemId,
+      quantity: requestedByProposalItemId.get(item.id)?.quantity ?? Number(item.quantity),
+    }));
+
+    validateAndMapProposalItems({
+      items: validationRows
+        .filter((item) => item.fromPharmacyId === proposal.pharmacyAId)
+        .map((item) => ({
+          deadStockItemId: item.deadStockItemId,
+          quantity: item.quantity,
+        })),
+      stockMap,
+      reservedByStockId,
+      ownerPharmacyId: proposal.pharmacyAId,
+      ownerMismatchMessage: '薬局Aの提案在庫が不正です',
+      fromPharmacyId: proposal.pharmacyAId,
+      toPharmacyId: proposal.pharmacyBId,
+    });
+    validateAndMapProposalItems({
+      items: validationRows
+        .filter((item) => item.fromPharmacyId === proposal.pharmacyBId)
+        .map((item) => ({
+          deadStockItemId: item.deadStockItemId,
+          quantity: item.quantity,
+        })),
+      stockMap,
+      reservedByStockId,
+      ownerPharmacyId: proposal.pharmacyBId,
+      ownerMismatchMessage: '薬局Bの提案在庫が不正です',
+      fromPharmacyId: proposal.pharmacyBId,
+      toPharmacyId: proposal.pharmacyAId,
+    });
+
+    const nextItems = currentItems.map((item): CounterOfferNextItem => {
+      const nextQuantity = requestedByProposalItemId.get(item.id)?.quantity ?? Number(item.quantity);
+      const existingQuantity = Number(item.quantity);
+      const existingValue = Number(item.yakkaValue ?? 0);
+      const stock = stockMap.get(item.deadStockItemId);
+      const fallbackUnitPrice = Number(stock?.yakkaUnitPrice ?? 0);
+      const unitPrice = existingQuantity > 0 && existingValue > 0
+        ? existingValue / existingQuantity
+        : fallbackUnitPrice;
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        throw new Error('薬価が設定されていない在庫は提案できません');
+      }
+      return {
+        ...item,
+        quantity: nextQuantity,
+        yakkaValueNumber: roundCurrency(unitPrice * nextQuantity),
+      };
+    });
+
+    const nextValidatedItems = toValidationItems(nextItems);
+    const values = calculateProposalValues(
+      nextValidatedItems.filter((item) => item.fromPharmacyId === proposal.pharmacyAId),
+      nextValidatedItems.filter((item) => item.fromPharmacyId === proposal.pharmacyBId),
+    );
+    assertProposalValues(values);
+
+    return {
+      normalizedItems,
+      changedItems: nextItems.filter((item) => requestedByProposalItemId.has(item.id)),
+      values,
+    };
+  } catch (err) {
+    throw normalizeCounterOfferError(err);
+  }
+}
+
+async function updateAcceptedCounterOfferProposal(
+  tx: TransactionClient,
+  proposalId: number,
+  validation: CounterOfferValidationResult,
+): Promise<void> {
+  for (const item of validation.changedItems) {
+    const updatedItems = await tx.update(exchangeProposalItems)
+      .set({
+        quantity: item.quantity,
+        yakkaValue: String(item.yakkaValueNumber),
+      })
+      .where(and(
+        eq(exchangeProposalItems.id, item.id),
+        eq(exchangeProposalItems.proposalId, proposalId),
+      ))
+      .returning({ id: exchangeProposalItems.id });
+
+    if (updatedItems.length === 0) {
+      throw new CounterOfferHttpError(409, '提案アイテムの状態が変更されたため、再読み込みしてください');
+    }
+
+    const updatedReservations = await tx.update(deadStockReservations)
+      .set({ reservedQuantity: item.quantity })
+      .where(and(
+        eq(deadStockReservations.proposalId, proposalId),
+        eq(deadStockReservations.deadStockItemId, item.deadStockItemId),
+      ))
+      .returning({ id: deadStockReservations.id });
+
+    if (updatedReservations.length === 0) {
+      await tx.insert(deadStockReservations).values({
+        proposalId,
+        deadStockItemId: item.deadStockItemId,
+        reservedQuantity: item.quantity,
+      });
+    }
+  }
+
+  await tx.update(exchangeProposals)
+    .set({
+      totalValueA: String(validation.values.totalValueA),
+      totalValueB: String(validation.values.totalValueB),
+      valueDifference: String(validation.values.valueDifference),
+    })
+    .where(eq(exchangeProposals.id, proposalId));
+}
 
 async function handleProposalAction<TResult>(
   req: AuthRequest,
@@ -255,6 +610,19 @@ async function fetchProposalData(proposalId: number, pharmacyId: number): Promis
     yakkaValue: exchangeProposalItems.yakkaValue,
     drugName: deadStockItems.drugName,
     unit: deadStockItems.unit,
+    packageLabel: deadStockItems.packageLabel,
+    packageQuantity: sql<number | null>`(
+      select ${drugMasterPackages.packageQuantity}
+      from ${drugMasterPackages}
+      where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+      limit 1
+    )`,
+    packageUnit: sql<string | null>`(
+      select ${drugMasterPackages.packageUnit}
+      from ${drugMasterPackages}
+      where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+      limit 1
+    )`,
     yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
   })
     .from(exchangeProposalItems)
@@ -717,69 +1085,74 @@ const handleCreateCounterOffer = async (req: AuthRequest, res: Response): Promis
     const proposalId = parseExchangeIdOrBadRequest(res, req.params.id);
     if (!proposalId) return;
     const actorId = req.user!.id;
-
-    const [proposal] = await db.select()
-      .from(exchangeProposals)
-      .where(and(
-        eq(exchangeProposals.id, proposalId),
-        or(
-          eq(exchangeProposals.pharmacyAId, actorId),
-          eq(exchangeProposals.pharmacyBId, actorId),
-        ),
-      ))
-      .limit(1);
-
-    if (!proposal) {
-      res.status(404).json({ error: '提案が見つかりません' });
-      return;
-    }
-
-    const items = Array.isArray(req.body?.items) ? req.body.items as Array<Record<string, unknown>> : [];
-    const normalizedItems = items
-      .map((item: Record<string, unknown>) => ({
-        proposalItemId: Number.isInteger(item.proposalItemId) ? Number(item.proposalItemId) : undefined,
-        drugName: typeof item.drugName === 'string' ? item.drugName.trim() : '',
-        quantity: Number(item.quantity),
-      }))
-      .filter((item: ProposalCounterOfferItemInput) => item.drugName && Number.isFinite(item.quantity) && item.quantity > 0)
-      .slice(0, 20);
     const summary = typeof req.body?.summary === 'string' ? req.body.summary.trim().slice(0, 2000) : '';
 
-    if (!summary || normalizedItems.length === 0) {
-      res.status(400).json({ error: 'summary と items が必要です' });
+    if (!summary) {
+      res.status(400).json({ error: 'summary が必要です' });
       return;
     }
 
-    await db.update(proposalCounterOffers)
-      .set({
-        status: 'superseded',
-        respondedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(and(
-        eq(proposalCounterOffers.proposalId, proposalId),
-        eq(proposalCounterOffers.status, 'pending'),
-      ));
+    const requestedItems = parseCounterOfferItems(req.body?.items);
+    const created = await db.transaction(async (tx) => {
+      const [proposal] = await tx.select()
+        .from(exchangeProposals)
+        .where(and(
+          eq(exchangeProposals.id, proposalId),
+          or(
+            eq(exchangeProposals.pharmacyAId, actorId),
+            eq(exchangeProposals.pharmacyBId, actorId),
+          ),
+        ))
+        .limit(1);
 
-    const responderPharmacyId = proposal.pharmacyAId === actorId ? proposal.pharmacyBId : proposal.pharmacyAId;
-    const [created] = await db.insert(proposalCounterOffers).values({
-      proposalId,
-      proposerPharmacyId: actorId,
-      responderPharmacyId,
-      status: 'pending',
-      summary,
-      itemsJson: JSON.stringify(normalizedItems),
-      updatedAt: new Date().toISOString(),
-    }).returning({
-      id: proposalCounterOffers.id,
-      status: proposalCounterOffers.status,
+      if (!proposal) {
+        throw new CounterOfferHttpError(404, '提案が見つかりません');
+      }
+      if (proposal.status === 'rejected' || proposal.status === 'completed' || proposal.status === 'cancelled') {
+        throw new CounterOfferHttpError(400, 'この提案は現在反対提案できる状態ではありません');
+      }
+
+      const validation = await validateCounterOfferItemsForProposal(tx, proposalId, proposal, requestedItems);
+      await tx.update(proposalCounterOffers)
+        .set({
+          status: 'superseded',
+          respondedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(and(
+          eq(proposalCounterOffers.proposalId, proposalId),
+          eq(proposalCounterOffers.status, 'pending'),
+        ));
+
+      const responderPharmacyId = proposal.pharmacyAId === actorId ? proposal.pharmacyBId : proposal.pharmacyAId;
+      const [createdCounterOffer] = await tx.insert(proposalCounterOffers).values({
+        proposalId,
+        proposerPharmacyId: actorId,
+        responderPharmacyId,
+        status: 'pending',
+        summary,
+        itemsJson: JSON.stringify(validation.normalizedItems),
+        updatedAt: new Date().toISOString(),
+      }).returning({
+        id: proposalCounterOffers.id,
+        status: proposalCounterOffers.status,
+      });
+
+      if (!createdCounterOffer) {
+        throw new CounterOfferHttpError(500, '正式な反対提案の作成に失敗しました');
+      }
+      return {
+        id: createdCounterOffer.id,
+        status: createdCounterOffer.status,
+        responderPharmacyId,
+      };
     });
 
     await createNotification({
-      pharmacyId: responderPharmacyId,
+      pharmacyId: created.responderPharmacyId,
       type: 'proposal_status_changed',
       title: '正式な反対提案が届きました',
-      message: summary.slice(0, 200),
+      message: 'マッチング提案に正式な反対提案が届きました。',
       referenceType: 'proposal',
       referenceId: proposalId,
       detailJson: {
@@ -794,6 +1167,10 @@ const handleCreateCounterOffer = async (req: AuthRequest, res: Response): Promis
       status: created.status,
     });
   } catch (err) {
+    if (isCounterOfferHttpError(err)) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
     logger.error('Create counter offer error:', { error: getErrorMessage(err) });
     res.status(500).json({ error: '正式な反対提案の作成に失敗しました' });
   }
@@ -820,96 +1197,79 @@ const handleRespondCounterOffer = async (req: AuthRequest, res: Response): Promi
       return;
     }
 
-    const [counterOffer] = await db.select()
-      .from(proposalCounterOffers)
-      .where(and(
-        eq(proposalCounterOffers.id, counterOfferId),
-        eq(proposalCounterOffers.proposalId, proposalId),
-      ))
-      .limit(1);
-
-    if (!counterOffer) {
-      res.status(404).json({ error: '正式な反対提案が見つかりません' });
-      return;
-    }
-    if (counterOffer.responderPharmacyId !== actorId) {
-      res.status(403).json({ error: 'この反対提案には応答できません' });
-      return;
-    }
-    if (counterOffer.status !== 'pending') {
-      res.status(409).json({ error: 'この反対提案はすでに応答済みです' });
-      return;
-    }
-
-    await db.update(proposalCounterOffers)
-      .set({
-        status: decision,
-        responseNote,
-        respondedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(proposalCounterOffers.id, counterOfferId));
-
-    if (decision === 'accepted') {
-      const [proposal] = await db.select()
-        .from(exchangeProposals)
-        .where(eq(exchangeProposals.id, proposalId))
+    const result = await db.transaction(async (tx) => {
+      const [counterOffer] = await tx.select()
+        .from(proposalCounterOffers)
+        .where(and(
+          eq(proposalCounterOffers.id, counterOfferId),
+          eq(proposalCounterOffers.proposalId, proposalId),
+        ))
         .limit(1);
-      if (!proposal) {
-        res.status(404).json({ error: '提案が見つかりません' });
-        return;
-      }
-      const currentItems = await db.select({
-        id: exchangeProposalItems.id,
-        fromPharmacyId: exchangeProposalItems.fromPharmacyId,
-        quantity: exchangeProposalItems.quantity,
-        yakkaValue: exchangeProposalItems.yakkaValue,
-      })
-        .from(exchangeProposalItems)
-        .where(eq(exchangeProposalItems.proposalId, proposalId));
 
-      const parsedItems = JSON.parse(counterOffer.itemsJson) as ProposalCounterOfferItemInput[];
-      for (const item of parsedItems) {
-        if (!item.proposalItemId) continue;
-        const existing = currentItems.find((row) => row.id === item.proposalItemId);
-        if (!existing) continue;
-        const unitPrice = Number(existing.yakkaValue ?? 0) > 0 && existing.quantity > 0
-          ? Number(existing.yakkaValue) / existing.quantity
-          : 0;
-        await db.update(exchangeProposalItems)
-          .set({
-            quantity: item.quantity,
-            yakkaValue: unitPrice > 0 ? String(unitPrice * item.quantity) : existing.yakkaValue,
-          })
-          .where(eq(exchangeProposalItems.id, item.proposalItemId));
+      if (!counterOffer) {
+        throw new CounterOfferHttpError(404, '正式な反対提案が見つかりません');
+      }
+      if (counterOffer.responderPharmacyId !== actorId) {
+        throw new CounterOfferHttpError(403, 'この反対提案には応答できません');
+      }
+      if (counterOffer.status !== 'pending') {
+        throw new CounterOfferHttpError(409, 'この反対提案はすでに応答済みです');
       }
 
-      const updatedItems = await db.select({
-        fromPharmacyId: exchangeProposalItems.fromPharmacyId,
-        yakkaValue: exchangeProposalItems.yakkaValue,
-      })
-        .from(exchangeProposalItems)
-        .where(eq(exchangeProposalItems.proposalId, proposalId));
-      const totalValueA = updatedItems
-        .filter((item) => item.fromPharmacyId === proposal.pharmacyAId)
-        .reduce((sum, item) => sum + Number(item.yakkaValue ?? 0), 0);
-      const totalValueB = updatedItems
-        .filter((item) => item.fromPharmacyId === proposal.pharmacyBId)
-        .reduce((sum, item) => sum + Number(item.yakkaValue ?? 0), 0);
-      await db.update(exchangeProposals)
+      let validation: CounterOfferValidationResult | null = null;
+      if (decision === 'accepted') {
+        const [proposal] = await tx.select()
+          .from(exchangeProposals)
+          .where(eq(exchangeProposals.id, proposalId))
+          .limit(1);
+        if (!proposal) {
+          throw new CounterOfferHttpError(404, '提案が見つかりません');
+        }
+        if (proposal.status === 'rejected' || proposal.status === 'completed' || proposal.status === 'cancelled') {
+          throw new CounterOfferHttpError(409, 'この提案は現在反対提案を承認できる状態ではありません');
+        }
+
+        validation = await validateCounterOfferItemsForProposal(
+          tx,
+          proposalId,
+          proposal,
+          parseStoredCounterOfferItems(counterOffer.itemsJson),
+        );
+      }
+
+      const now = new Date().toISOString();
+      const [responded] = await tx.update(proposalCounterOffers)
         .set({
-          totalValueA: String(totalValueA),
-          totalValueB: String(totalValueB),
-          valueDifference: String(Math.abs(totalValueA - totalValueB)),
+          status: decision,
+          responseNote,
+          respondedAt: now,
+          updatedAt: now,
         })
-        .where(eq(exchangeProposals.id, proposalId));
-    }
+        .where(and(
+          eq(proposalCounterOffers.id, counterOfferId),
+          eq(proposalCounterOffers.proposalId, proposalId),
+          eq(proposalCounterOffers.status, 'pending'),
+        ))
+        .returning({ id: proposalCounterOffers.id });
+
+      if (!responded) {
+        throw new CounterOfferHttpError(409, 'この反対提案はすでに応答済みです');
+      }
+
+      if (decision === 'accepted' && validation) {
+        await updateAcceptedCounterOfferProposal(tx, proposalId, validation);
+      }
+
+      return {
+        proposerPharmacyId: counterOffer.proposerPharmacyId,
+      };
+    });
 
     await createNotification({
-      pharmacyId: counterOffer.proposerPharmacyId,
+      pharmacyId: result.proposerPharmacyId,
       type: 'proposal_status_changed',
       title: decision === 'accepted' ? '正式な反対提案が承認されました' : '正式な反対提案が却下されました',
-      message: responseNote || (decision === 'accepted' ? '相手薬局が反対提案を承認しました。' : '相手薬局が反対提案を却下しました。'),
+      message: decision === 'accepted' ? '相手薬局が反対提案を承認しました。' : '相手薬局が反対提案を却下しました。',
       referenceType: 'proposal',
       referenceId: proposalId,
       detailJson: {
@@ -921,6 +1281,10 @@ const handleRespondCounterOffer = async (req: AuthRequest, res: Response): Promi
 
     res.json({ message: decision === 'accepted' ? '反対提案を承認しました' : '反対提案を却下しました' });
   } catch (err) {
+    if (isCounterOfferHttpError(err)) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
     logger.error('Respond counter offer error:', { error: getErrorMessage(err) });
     res.status(500).json({ error: '正式な反対提案への応答に失敗しました' });
   }

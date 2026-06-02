@@ -147,6 +147,7 @@ describe('notification-service', () => {
       expect(mocks.db.insert).toHaveBeenCalledTimes(1);
       expect(chain.values).toHaveBeenCalledWith(
         expect.objectContaining({
+          tenantId: 10,
           pharmacyId: 10,
           type: 'proposal_received',
           title: 'テスト通知',

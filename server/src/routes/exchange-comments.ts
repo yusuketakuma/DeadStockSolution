@@ -221,7 +221,7 @@ router.post('/proposals/:id/comments', async (req: AuthRequest, res: Response) =
       pharmacyId: recipientId,
       type: 'new_comment',
       title: 'コメントが追加されました',
-      message: body.length > 50 ? body.substring(0, 50) + '...' : body,
+      message: 'マッチング提案に新しいコメントが追加されました',
       referenceType: 'proposal',
       referenceId: proposalId,
     });

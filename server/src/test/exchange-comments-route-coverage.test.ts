@@ -147,11 +147,21 @@ describe('exchange-comments routes — coverage', () => {
 
       const res = await request(app)
         .post('/api/exchanges/proposals/1/comments')
-        .send({ body: 'テストコメント' });
+        .send({ body: '患者名 山田太郎 の処方相談を含むコメント' });
 
       expect(res.status).toBe(201);
       expect(res.body.message).toContain('コメントを投稿');
       expect(res.body.comment.body).toBe('テストコメント');
+      expect(mocks.createNotification).toHaveBeenCalledWith(expect.objectContaining({
+        pharmacyId: 2,
+        type: 'new_comment',
+        message: 'マッチング提案に新しいコメントが追加されました',
+        referenceType: 'proposal',
+        referenceId: 1,
+      }));
+      expect(mocks.createNotification).not.toHaveBeenCalledWith(expect.objectContaining({
+        message: expect.stringContaining('山田太郎'),
+      }));
     });
 
     it('returns 404 when proposal not found', async () => {

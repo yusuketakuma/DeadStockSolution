@@ -6,6 +6,7 @@ import {
   exchangeProposals,
   exchangeProposalItems,
   deadStockItems,
+  drugMasterPackages,
   pharmacies,
   proposalComments,
   exchangeFeedback,
@@ -39,6 +40,8 @@ function isProposalInputError(message: string): boolean {
     '提案',
     '交換金額',
     '数量',
+    '包装',
+    '箱',
   ].some((token) => message.includes(token));
 }
 
@@ -165,6 +168,9 @@ type ProposalData = {
     yakkaValue: string | null;
     drugName: string;
     unit: string | null;
+    packageLabel: string | null;
+    packageQuantity: number | null;
+    packageUnit: string | null;
     yakkaUnitPrice: string | null;
   }>;
 };
@@ -246,6 +252,19 @@ async function fetchProposalData(proposalId: number, pharmacyId: number): Promis
     yakkaValue: exchangeProposalItems.yakkaValue,
     drugName: deadStockItems.drugName,
     unit: deadStockItems.unit,
+    packageLabel: deadStockItems.packageLabel,
+    packageQuantity: sql<number | null>`(
+      select ${drugMasterPackages.packageQuantity}
+      from ${drugMasterPackages}
+      where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+      limit 1
+    )`,
+    packageUnit: sql<string | null>`(
+      select ${drugMasterPackages.packageUnit}
+      from ${drugMasterPackages}
+      where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+      limit 1
+    )`,
     yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
   })
     .from(exchangeProposalItems)

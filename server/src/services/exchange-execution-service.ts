@@ -3,6 +3,7 @@ import { db } from '../config/database';
 import {
   deadStockItems,
   deadStockReservations,
+  drugMasterPackages,
   exchangeProposalItems,
   exchangeProposals,
   pharmacies,
@@ -286,6 +287,26 @@ export async function createProposal(
         id: deadStockItems.id,
         pharmacyId: deadStockItems.pharmacyId,
         quantity: deadStockItems.quantity,
+        unit: deadStockItems.unit,
+        drugMasterPackageId: deadStockItems.drugMasterPackageId,
+        packageQuantity: sql<number | null>`(
+          select ${drugMasterPackages.packageQuantity}
+          from ${drugMasterPackages}
+          where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+          limit 1
+        )`,
+        packageUnit: sql<string | null>`(
+          select ${drugMasterPackages.packageUnit}
+          from ${drugMasterPackages}
+          where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+          limit 1
+        )`,
+        isLoosePackage: sql<boolean | null>`(
+          select ${drugMasterPackages.isLoosePackage}
+          from ${drugMasterPackages}
+          where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+          limit 1
+        )`,
         yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
         isAvailable: deadStockItems.isAvailable,
       })

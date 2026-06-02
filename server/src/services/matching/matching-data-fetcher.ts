@@ -3,6 +3,7 @@ import { db } from '../../config/database';
 import {
   deadStockItems,
   deadStockReservations,
+  drugMasterPackages,
   exchangeProposals,
   pharmacies,
   pharmacyBusinessHours,
@@ -38,9 +39,34 @@ export const DEAD_STOCK_SELECT_FIELDS = {
   pharmacyId: deadStockItems.pharmacyId,
   drugCode: deadStockItems.drugCode,
   drugName: deadStockItems.drugName,
+  drugMasterPackageId: deadStockItems.drugMasterPackageId,
   quantity: deadStockItems.quantity,
   unit: deadStockItems.unit,
   packageLabel: deadStockItems.packageLabel,
+  packageQuantity: sql<number | null>`(
+    select ${drugMasterPackages.packageQuantity}
+    from ${drugMasterPackages}
+    where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+    limit 1
+  )`,
+  packageUnit: sql<string | null>`(
+    select ${drugMasterPackages.packageUnit}
+    from ${drugMasterPackages}
+    where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+    limit 1
+  )`,
+  packageForm: sql<string | null>`(
+    select ${drugMasterPackages.packageForm}
+    from ${drugMasterPackages}
+    where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+    limit 1
+  )`,
+  isLoosePackage: sql<boolean | null>`(
+    select ${drugMasterPackages.isLoosePackage}
+    from ${drugMasterPackages}
+    where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+    limit 1
+  )`,
   yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
   expirationDate: deadStockItems.expirationDate,
   expirationDateIso: deadStockItems.expirationDateIso,

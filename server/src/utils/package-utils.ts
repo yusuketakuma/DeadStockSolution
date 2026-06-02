@@ -49,13 +49,6 @@ function detectPackageForm(description: string, isLoose: boolean): PackageForm {
 function parseQuantityAndUnitFromDescription(description: string): { quantity: number | null; unit: string | null } {
   const normalized = description.normalize('NFKC');
 
-  const direct = normalized.match(/(\d+(?:\.\d+)?)\s*(錠|カプセル|包|袋|本|枚|個|管|キット|mL|ml|L|g|mg|μg|ug)/i);
-  if (direct) {
-    const quantity = parseNumber(direct[1]);
-    const unit = normalizeUnit(direct[2]);
-    return { quantity, unit };
-  }
-
   const multiplied = normalized.match(/(\d+(?:\.\d+)?)\s*(錠|カプセル|包|袋|本|枚|個)\s*[x×]\s*(\d+(?:\.\d+)?)/i);
   if (multiplied) {
     const left = parseNumber(multiplied[1]);
@@ -64,6 +57,13 @@ function parseQuantityAndUnitFromDescription(description: string): { quantity: n
     if (left !== null && right !== null) {
       return { quantity: left * right, unit };
     }
+  }
+
+  const direct = normalized.match(/(\d+(?:\.\d+)?)\s*(錠|カプセル|包|袋|本|枚|個|管|キット|mL|ml|L|g|mg|μg|ug)/i);
+  if (direct) {
+    const quantity = parseNumber(direct[1]);
+    const unit = normalizeUnit(direct[2]);
+    return { quantity, unit };
   }
 
   return { quantity: null, unit: null };

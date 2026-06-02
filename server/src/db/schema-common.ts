@@ -1,4 +1,12 @@
-import { pgEnum } from 'drizzle-orm/pg-core';
+import { pgEnum, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
+
+export const tenants = pgTable('tenants', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow(),
+});
 
 export const pharmacyRelationshipTypeEnum = pgEnum('pharmacy_relationship_type_enum', ['favorite', 'blocked']);
 export const uploadTypeEnum = pgEnum('upload_type_enum', ['dead_stock', 'used_medication']);

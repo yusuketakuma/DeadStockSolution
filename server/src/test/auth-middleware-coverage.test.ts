@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // ── Hoisted mocks ──────────────────────────────────
 const mocks = vi.hoisted(() => ({
   select: vi.fn(),
+  execute: vi.fn(),
   verifyToken: vi.fn(),
   deriveSessionVersion: vi.fn(),
   isJwtSecretMissingError: vi.fn(),
@@ -13,6 +14,7 @@ function mockAuthMiddlewareCoverageDependencies() {
   vi.doMock('../config/database', () => ({
     db: {
       select: mocks.select,
+      execute: mocks.execute,
     },
   }));
 
@@ -24,7 +26,7 @@ function mockAuthMiddlewareCoverageDependencies() {
 
   vi.doMock('drizzle-orm', () => ({
     eq: vi.fn(() => ({})),
-    sql: {},
+    sql: vi.fn(() => ({})),
   }));
 
   vi.doMock('../routes/auth-helpers', () => ({

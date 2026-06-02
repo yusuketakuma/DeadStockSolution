@@ -204,6 +204,13 @@
       "when": 1774667400000,
       "tag": "0043_push_notification_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1780354800000,
+      "tag": "0044_notification_tenant_expand",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,10 @@ function makeCandidate(): MatchCandidate {
         drugName: '薬A',
         quantity: 200,
         unit: '錠',
+        packageLabel: '100錠箱',
+        packageQuantity: 100,
+        packageUnit: '錠',
+        boxCount: 2,
         yakkaUnitPrice: 100,
         yakkaValue: 20000,
       },
@@ -25,6 +29,10 @@ function makeCandidate(): MatchCandidate {
         drugName: '薬B',
         quantity: 200,
         unit: '錠',
+        packageLabel: '100錠箱',
+        packageQuantity: 100,
+        packageUnit: '錠',
+        boxCount: 2,
         yakkaUnitPrice: 100,
         yakkaValue: 20000,
       },
@@ -38,7 +46,7 @@ function makeCandidate(): MatchCandidate {
 }
 
 describe('ProposalQuantityAdjustModal', () => {
-  it('disables confirmation when quantity exceeds the original stock amount', async () => {
+  it('disables confirmation when box count exceeds the original stock amount', async () => {
     const user = userEvent.setup();
 
     render(
@@ -52,13 +60,13 @@ describe('ProposalQuantityAdjustModal', () => {
 
     const quantityInputs = screen.getAllByRole('spinbutton');
     await user.clear(quantityInputs[0]);
-    await user.type(quantityInputs[0], '250');
+    await user.type(quantityInputs[0], '3');
 
-    expect(await screen.findByText(/元数量 200 を超えられません/)).toBeInTheDocument();
+    expect(await screen.findByText(/元箱数 2箱を超えられません/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '仮マッチングを開始' })).toBeDisabled();
   });
 
-  it('submits adjusted quantities and recalculated totals when values remain valid', async () => {
+  it('submits adjusted box counts as package-multiple quantities when values remain valid', async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();
 
@@ -73,19 +81,19 @@ describe('ProposalQuantityAdjustModal', () => {
 
     const quantityInputs = screen.getAllByRole('spinbutton');
     await user.clear(quantityInputs[0]);
-    await user.type(quantityInputs[0], '150');
+    await user.type(quantityInputs[0], '1');
     await user.clear(quantityInputs[1]);
-    await user.type(quantityInputs[1], '150');
+    await user.type(quantityInputs[1], '1');
     await user.click(screen.getByRole('button', { name: '仮マッチングを開始' }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
     expect(onConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        totalValueA: 15000,
-        totalValueB: 15000,
+        totalValueA: 10000,
+        totalValueB: 10000,
         valueDifference: 0,
-        itemsFromA: [expect.objectContaining({ deadStockItemId: 101, quantity: 150, yakkaValue: 15000 })],
-        itemsFromB: [expect.objectContaining({ deadStockItemId: 202, quantity: 150, yakkaValue: 15000 })],
+        itemsFromA: [expect.objectContaining({ deadStockItemId: 101, quantity: 100, boxCount: 1, yakkaValue: 10000 })],
+        itemsFromB: [expect.objectContaining({ deadStockItemId: 202, quantity: 100, boxCount: 1, yakkaValue: 10000 })],
       }),
     );
   });

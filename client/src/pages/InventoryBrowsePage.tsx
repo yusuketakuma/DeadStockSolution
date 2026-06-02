@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import AppTable from '../components/ui/AppTable';
 import AppButton from '../components/ui/AppButton';
 import AppEmptyState from '../components/ui/AppEmptyState';
@@ -27,6 +27,10 @@ interface BrowseItem {
   quantity: number;
   unit: string | null;
   packageLabel?: string | null;
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
+  packageForm?: string | null;
+  isLoosePackage?: boolean | null;
   yakkaUnitPrice: number | null;
   yakkaTotal: number | null;
   expirationDate: string | null;
@@ -48,6 +52,34 @@ const BROWSE_SORT_OPTIONS: SortOption<BrowseSortKey>[] = [
   { value: 'pharmacyName', label: '薬局名順' },
 ];
 
+function formatQuantity(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-';
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
+}
+
+function isLoosePackage(item: BrowseItem): boolean {
+  return item.isLoosePackage === true || item.packageForm === 'loose';
+}
+
+function resolveBoxCount(item: BrowseItem): number | null {
+  if (isLoosePackage(item)) return null;
+  const packageQuantity = Number(item.packageQuantity);
+  if (!Number.isFinite(packageQuantity) || packageQuantity <= 0) return null;
+  const boxCount = Math.floor(item.quantity / packageQuantity);
+  return boxCount > 0 ? boxCount : null;
+}
+
+function formatPackageSize(item: BrowseItem): string {
+  if (isLoosePackage(item)) return '-';
+  if (!item.packageQuantity) return '-';
+  return `${formatQuantity(item.packageQuantity)}${item.packageUnit || item.unit || ''}`;
+}
+
+function formatBoxCount(item: BrowseItem): string {
+  if (isLoosePackage(item)) return '対象外';
+  return resolveBoxCount(item)?.toString() ?? '-';
+}
+
 export default function InventoryBrowsePage() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
@@ -55,6 +87,7 @@ export default function InventoryBrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = searchParams.get('search') || '';
   const requestedSearch = searchParams.get('search') || '';
+  const lastAppliedRouteSearchRef = useRef(initialQuery);
 
   const fetchBrowse = useCallback(
     async (query: string, page: number, signal: AbortSignal) => {
@@ -94,12 +127,13 @@ export default function InventoryBrowsePage() {
   }, []);
 
   useEffect(() => {
-    if (requestedSearch === query) {
+    if (requestedSearch === lastAppliedRouteSearchRef.current) {
       return;
     }
+    lastAppliedRouteSearchRef.current = requestedSearch;
     setQuery(requestedSearch);
     executeImmediate(requestedSearch, 1);
-  }, [executeImmediate, query, requestedSearch, setQuery]);
+  }, [executeImmediate, requestedSearch, setQuery]);
 
   const items = incrementalSearch.results;
   const total = incrementalSearch.total;
@@ -249,6 +283,8 @@ export default function InventoryBrowsePage() {
                         <th>薬品名</th>
                         <th>数量</th>
                         <th>単位</th>
+                        <th>出品可能箱数</th>
+                        <th>1箱入数</th>
                         <th>包装</th>
                         <th>薬価(単価)</th>
                         <th>薬価(合計)</th>
@@ -264,6 +300,8 @@ export default function InventoryBrowsePage() {
                           <td>{item.drugName}</td>
                           <td>{item.quantity}</td>
                           <td>{item.unit}</td>
+                          <td>{formatBoxCount(item)}</td>
+                          <td>{formatPackageSize(item)}</td>
                           <td>{item.packageLabel || '-'}</td>
                           <td>{item.yakkaUnitPrice?.toLocaleString()}</td>
                           <td>{item.yakkaTotal?.toLocaleString()}</td>
@@ -289,6 +327,8 @@ export default function InventoryBrowsePage() {
                         fields={[
                           { label: '数量', value: item.quantity },
                           { label: '単位', value: item.unit || '-' },
+                          { label: '出品可能箱数', value: formatBoxCount(item) },
+                          { label: '1箱入数', value: formatPackageSize(item) },
                           { label: '包装', value: item.packageLabel || '-' },
                           { label: '薬価(単価)', value: item.yakkaUnitPrice?.toLocaleString() ?? '-' },
                           { label: '薬価(合計)', value: item.yakkaTotal?.toLocaleString() ?? '-' },

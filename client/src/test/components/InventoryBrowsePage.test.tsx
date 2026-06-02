@@ -91,4 +91,16 @@ describe('InventoryBrowsePage', () => {
     });
     expect(screen.getByRole('link', { name: 'この条件で候補を確認' })).toHaveAttribute('href', '/matching?drug=%E3%82%A2%E3%82%B9%E3%83%94%E3%83%AA%E3%83%B3');
   });
+
+  it('keeps a typed search query instead of resetting it from the current URL', async () => {
+    renderPage();
+
+    const input = await screen.findByPlaceholderText('薬品名で検索（ひらがな・カタカナ対応）...');
+    fireEvent.change(input, { target: { value: 'テスト薬A' } });
+
+    await waitFor(() => {
+      expect(input).toHaveValue('テスト薬A');
+    });
+    expect(screen.getByRole('link', { name: 'この条件で候補を確認' })).toHaveAttribute('href', '/matching?drug=%E3%83%86%E3%82%B9%E3%83%88%E8%96%ACA');
+  });
 });

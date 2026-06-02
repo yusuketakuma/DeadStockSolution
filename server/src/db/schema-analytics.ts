@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, serial, text, integer, date, timestamp, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { pharmacies } from './schema-pharmacy';
-import { monthlyReportStatusEnum, predictiveAlertTypeValues } from './schema-common';
+import { monthlyReportStatusEnum, predictiveAlertTypeValues, tenants } from './schema-common';
 import { notifications } from './schema-notification';
 
 export const monthlyReports = pgTable('monthly_reports', {
@@ -33,6 +33,7 @@ export const dailyStatistics = pgTable('daily_statistics', {
 
 export const predictiveAlerts = pgTable('predictive_alerts', {
   id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   pharmacyId: integer('pharmacy_id').notNull().references(() => pharmacies.id, { onDelete: 'cascade' }),
   alertType: text('alert_type').$type<(typeof predictiveAlertTypeValues)[number]>().notNull(),
   title: text('title').notNull(),
@@ -44,6 +45,8 @@ export const predictiveAlerts = pgTable('predictive_alerts', {
   resolvedAt: timestamp('resolved_at', { mode: 'string' }),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow(),
 }, (table) => ({
+  idxPredictiveAlertsTenantCreated: index('idx_predictive_alerts_tenant_created')
+    .on(table.tenantId, table.createdAt),
   idxPredictiveAlertsPharmacyCreated: index('idx_predictive_alerts_pharmacy_created')
     .on(table.pharmacyId, table.createdAt),
   idxPredictiveAlertsUnresolved: index('idx_predictive_alerts_unresolved')

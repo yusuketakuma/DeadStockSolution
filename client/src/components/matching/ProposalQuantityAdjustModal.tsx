@@ -12,6 +12,9 @@ interface DraftItem {
   key: QuantityInputKey;
   sideLabel: string;
   originalQuantity: number;
+  originalBoxCount: number | null;
+  packageQuantity: number | null;
+  packageUnit: string | null;
   quantityText: string;
   item: MatchItem;
 }
@@ -40,23 +43,56 @@ function formatQuantity(value: number): string {
     : String(Number(value.toFixed(3)));
 }
 
+function resolvePackageQuantity(item: MatchItem): number | null {
+  const packageQuantity = Number(item.packageQuantity);
+  return Number.isFinite(packageQuantity) && packageQuantity > 0 ? packageQuantity : null;
+}
+
+function resolveBoxCount(item: MatchItem): number | null {
+  if (Number.isInteger(item.boxCount) && Number(item.boxCount) > 0) {
+    return Number(item.boxCount);
+  }
+  const packageQuantity = resolvePackageQuantity(item);
+  if (!packageQuantity) return null;
+  const boxCount = Math.floor(item.quantity / packageQuantity);
+  return boxCount > 0 ? boxCount : null;
+}
+
+function formatPackageSize(item: MatchItem): string {
+  const packageQuantity = resolvePackageQuantity(item);
+  if (!packageQuantity) return '-';
+  return `${formatQuantity(packageQuantity)}${item.packageUnit || item.unit || ''}`;
+}
+
 function createDraftItems(candidate: MatchCandidate | null): DraftItem[] {
   if (!candidate) return [];
   return [
-    ...candidate.itemsFromA.map((item) => ({
-      key: `a:${item.deadStockItemId}` as const,
-      sideLabel: 'あなた → 相手',
-      originalQuantity: item.quantity,
-      quantityText: formatQuantity(item.quantity),
-      item,
-    })),
-    ...candidate.itemsFromB.map((item) => ({
-      key: `b:${item.deadStockItemId}` as const,
-      sideLabel: '相手 → あなた',
-      originalQuantity: item.quantity,
-      quantityText: formatQuantity(item.quantity),
-      item,
-    })),
+    ...candidate.itemsFromA.map((item) => {
+      const boxCount = resolveBoxCount(item);
+      return {
+        key: `a:${item.deadStockItemId}` as const,
+        sideLabel: 'あなた → 相手',
+        originalQuantity: item.quantity,
+        originalBoxCount: boxCount,
+        packageQuantity: resolvePackageQuantity(item),
+        packageUnit: item.packageUnit ?? item.unit ?? null,
+        quantityText: boxCount !== null ? String(boxCount) : formatQuantity(item.quantity),
+        item,
+      };
+    }),
+    ...candidate.itemsFromB.map((item) => {
+      const boxCount = resolveBoxCount(item);
+      return {
+        key: `b:${item.deadStockItemId}` as const,
+        sideLabel: '相手 → あなた',
+        originalQuantity: item.quantity,
+        originalBoxCount: boxCount,
+        packageQuantity: resolvePackageQuantity(item),
+        packageUnit: item.packageUnit ?? item.unit ?? null,
+        quantityText: boxCount !== null ? String(boxCount) : formatQuantity(item.quantity),
+        item,
+      };
+    }),
   ];
 }
 
@@ -72,8 +108,22 @@ function buildAdjustedCandidate(
   const adjustItem = (side: 'a' | 'b', item: MatchItem): { deadStockItemId: number; quantity: number } | { error: string } => {
     const key = `${side}:${item.deadStockItemId}` as QuantityInputKey;
     const raw = quantityByKey[key];
-    const quantity = Number(raw);
     const draftItem = draftByKey.get(key);
+    if (draftItem?.packageQuantity && draftItem.originalBoxCount !== null) {
+      const boxCount = Number(raw);
+      if (!Number.isInteger(boxCount) || boxCount <= 0) {
+        return { error: `${item.drugName} の箱数を整数で入力してください` };
+      }
+      if (boxCount > draftItem.originalBoxCount) {
+        return { error: `${item.drugName} の箱数は元箱数 ${draftItem.originalBoxCount}箱を超えられません` };
+      }
+      return {
+        deadStockItemId: item.deadStockItemId,
+        quantity: Math.round(boxCount * draftItem.packageQuantity * 1000) / 1000,
+      };
+    }
+
+    const quantity = Number(raw);
     if (!Number.isFinite(quantity) || quantity <= 0) {
       return { error: `${item.drugName} の数量を正しく入力してください` };
     }
@@ -110,6 +160,13 @@ function buildAdjustedCandidate(
     adjustedQuantityById.set(item.deadStockItemId, item.quantity);
   }
 
+  const resolveAdjustedBoxCount = (item: MatchItem): number | null => {
+    const adjustedQuantity = adjustedQuantityById.get(item.deadStockItemId) ?? item.quantity;
+    const packageQuantity = resolvePackageQuantity(item);
+    if (!packageQuantity) return item.boxCount ?? null;
+    return Math.round(adjustedQuantity / packageQuantity);
+  };
+
   const totalValueA = adjustedItemsA.reduce((sum, item) => {
     const price = priceById.get(item.deadStockItemId) ?? 0;
     return sum + (price * item.quantity);
@@ -136,11 +193,13 @@ function buildAdjustedCandidate(
       itemsFromA: candidate.itemsFromA.map((item) => ({
         ...item,
         quantity: adjustedItemsA.find((adjusted) => adjusted.deadStockItemId === item.deadStockItemId)?.quantity ?? item.quantity,
+        boxCount: resolveAdjustedBoxCount(item),
         yakkaValue: Math.round((item.yakkaUnitPrice * (adjustedQuantityById.get(item.deadStockItemId) ?? item.quantity)) * 100) / 100,
       })),
       itemsFromB: candidate.itemsFromB.map((item) => ({
         ...item,
         quantity: adjustedItemsB.find((adjusted) => adjusted.deadStockItemId === item.deadStockItemId)?.quantity ?? item.quantity,
+        boxCount: resolveAdjustedBoxCount(item),
         yakkaValue: Math.round((item.yakkaUnitPrice * (adjustedQuantityById.get(item.deadStockItemId) ?? item.quantity)) * 100) / 100,
       })),
       totalValueA: roundedTotalValueA,
@@ -251,29 +310,36 @@ export default function ProposalQuantityAdjustModal({
                         <tr>
                           <th>側</th>
                           <th>薬品名</th>
-                          <th>元数量</th>
-                          <th>調整後数量</th>
+                          <th>元箱数</th>
+                          <th>1箱入数</th>
+                          <th>調整後箱数</th>
+                          <th>総数量</th>
                           <th className="text-end">行金額</th>
                         </tr>
                       </thead>
                       <tbody>
                         {draftItems.map((draftItem) => {
                           const rawQuantity = quantityByKey[draftItem.key] ?? draftItem.quantityText;
-                          const quantity = Number(rawQuantity);
+                          const rawNumber = Number(rawQuantity);
+                          const quantity = draftItem.packageQuantity && draftItem.originalBoxCount !== null
+                            ? rawNumber * draftItem.packageQuantity
+                            : rawNumber;
                           const lineTotal = Number.isFinite(quantity) && quantity > 0
                             ? Math.round(draftItem.item.yakkaUnitPrice * quantity * 100) / 100
                             : null;
+                          const boxMode = draftItem.packageQuantity !== null && draftItem.originalBoxCount !== null;
 
                           return (
                             <tr key={draftItem.key}>
                               <td className="text-muted small">{draftItem.sideLabel}</td>
                               <td>{draftItem.item.drugName}</td>
-                              <td>{formatQuantity(draftItem.originalQuantity)}</td>
+                              <td>{draftItem.originalBoxCount !== null ? `${draftItem.originalBoxCount}箱` : '-'}</td>
+                              <td>{formatPackageSize(draftItem.item)}</td>
                               <td style={{ minWidth: 120 }}>
                                 <Form.Control
                                   type="number"
-                                  min="0.001"
-                                  step="0.001"
+                                  min={boxMode ? '1' : '0.001'}
+                                  step={boxMode ? '1' : '0.001'}
                                   value={rawQuantity}
                                   onChange={(event) => {
                                     const nextValue = event.target.value;
@@ -282,6 +348,7 @@ export default function ProposalQuantityAdjustModal({
                                   }}
                                 />
                               </td>
+                              <td>{Number.isFinite(quantity) && quantity > 0 ? `${formatQuantity(quantity)}${draftItem.packageUnit || draftItem.item.unit || ''}` : '-'}</td>
                               <td className="text-end">
                                 {lineTotal === null ? '-' : formatYen(lineTotal)}
                               </td>

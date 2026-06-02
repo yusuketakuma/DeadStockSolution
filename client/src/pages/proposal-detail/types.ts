@@ -17,6 +17,9 @@ export interface ProposalItem {
   yakkaValue: number;
   drugName: string;
   unit: string | null;
+  packageLabel?: string | null;
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
   yakkaUnitPrice: number | null;
 }
 

@@ -380,7 +380,7 @@ describe('upload-diff-service', () => {
     });
   });
 
-  it('treats drug master link updates as changed in dead stock diff', async () => {
+  it('treats package link changes as a distinct dead stock diff row', async () => {
     const { tx } = createTxMock([
       {
         id: 1,
@@ -417,8 +417,8 @@ describe('upload-diff-service', () => {
     ], { deleteMissing: false });
 
     expect(result).toEqual({
-      inserted: 0,
-      updated: 1,
+      inserted: 1,
+      updated: 0,
       deactivated: 0,
       unchanged: 0,
       totalIncoming: 1,

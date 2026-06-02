@@ -17,6 +17,8 @@ export function normalizeDate(value: string | null | undefined): string | null {
 export function deadStockKey(item: {
   drugCode: string | null;
   drugName: string;
+  drugMasterPackageId?: number | null;
+  packageLabel?: string | null;
   unit: string | null;
   expirationDate: string | null;
   lotNumber: string | null;
@@ -24,6 +26,8 @@ export function deadStockKey(item: {
   return [
     normalizeString(item.drugCode),
     normalizeString(item.drugName),
+    item.drugMasterPackageId ?? '',
+    normalizeString(item.packageLabel),
     normalizeString(item.unit),
     normalizeString(item.expirationDate),
     normalizeString(item.lotNumber),

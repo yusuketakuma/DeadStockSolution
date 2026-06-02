@@ -216,3 +216,66 @@ npm run test:e2e:proposal-flow
 RUN_MIGRATION_SMOKE=1 npm run test:e2e:local-login-dashboard
 RUN_MIGRATION_SMOKE=1 npm run test:e2e:proposal-flow
 ```
+
+---
+
+## 12. 2026-05-31 Box-unit UI Button Review
+
+### 対象
+- 箱単位出品を基本にした UI 変更後の主要操作を、ローカル Vite 画面で確認しました。
+- 実行 URL: `http://127.0.0.1:5174`
+- API は安全な browser route mock を使用し、外部 DB / 本番データへの書き込みは行っていません。
+- `agent-browser` で実 URL のログイン画面到達を確認したうえで、Playwright で実ブラウザ操作を自動化しました。
+
+### 確認した画面とボタン
+- デッドストック一覧:
+  - 検索、期限フィルタ、期限順ソート、候補確認リンク、削除モーダルのキャンセル/確定
+- 在庫参照:
+  - 検索、クリア、候補確認リンク
+- マッチング:
+  - 全候補表示、マッチング実行、絞り込み/並び替え、比較追加/クリア、候補提案、数量調整モーダル、ブックマーク、メッセージ導線、仮マッチング開始
+- 提案詳細:
+  - FAX送付メモの付与/解除、拒否モーダル、承認モーダル、正式な反対提案、メッセージ導線、条件変更再検索、コメント投稿/編集/削除、交換完了、評価登録、提案テンプレート保存/削除
+- 印刷ページ:
+  - 印刷、閉じる
+- モバイル表示:
+  - フィルタ/並び替えシートの開閉、クリア
+
+### 発見して修正した問題
+
+#### A. 在庫参照の検索入力が URL 同期で即時リセットされる
+- 根拠:
+  - [InventoryBrowsePage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/InventoryBrowsePage.tsx)
+  - [InventoryBrowsePage.test.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/test/components/InventoryBrowsePage.test.tsx)
+- 症状:
+  - `/inventory/browse` で検索欄へ入力すると、現在 URL の `search` パラメータ同期 effect が毎 render で再適用され、入力値が戻る。
+- 修正:
+  - 最後に適用した route search を `useRef` で保持し、URL の検索条件が実際に変わった場合のみフォーム状態へ反映するように変更。
+  - 回帰テストを追加。
+
+### 証跡
+- Spec:
+  - [box-unit-ui-review.spec.ts](/Users/yusuke/workspace/DeadStockSolution/dev/e2e/tests/box-unit-ui-review.spec.ts)
+- JSON report:
+  - [box-unit-ui-review.json](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/json/box-unit-ui-review.json)
+- HTML report:
+  - [index.html](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/html/box-unit-ui-review/index.html)
+- Screenshots:
+  - [box-unit-dead-stock.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-dead-stock.png)
+  - [box-unit-inventory-browse.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-inventory-browse.png)
+  - [box-unit-matching.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-matching.png)
+  - [box-unit-proposal-detail.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-proposal-detail.png)
+  - [box-unit-proposal-print.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-proposal-print.png)
+  - [box-unit-mobile-dead-stock.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-mobile-dead-stock.png)
+
+### 実行結果
+```bash
+E2E_BASE_URL=http://127.0.0.1:5174 PLAYWRIGHT_JSON_OUTPUT_FILE=artifacts/playwright-audit/reports/json/box-unit-ui-review.json PLAYWRIGHT_HTML_OUTPUT_DIR=artifacts/playwright-audit/reports/html/box-unit-ui-review npx playwright test dev/e2e/tests/box-unit-ui-review.spec.ts --project chromium --workers=1 --reporter=list,json,html --output artifacts/playwright-audit/test-results/box-unit-ui-review
+# 5 passed
+
+npm run test --workspace=client -- src/test/components/InventoryBrowsePage.test.tsx
+# 4 passed
+
+npx eslint client/src/pages/InventoryBrowsePage.tsx client/src/test/components/InventoryBrowsePage.test.tsx dev/e2e/tests/box-unit-ui-review.spec.ts --max-warnings=0
+# passed
+```

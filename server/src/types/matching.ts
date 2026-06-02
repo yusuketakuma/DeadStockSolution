@@ -90,9 +90,14 @@ export interface DeadStockRow {
   pharmacyId: number;
   drugCode: string | null;
   drugName: string;
+  drugMasterPackageId?: number | null;
   quantity: number;
   unit: string | null;
   packageLabel: string | null;
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
+  packageForm?: string | null;
+  isLoosePackage?: boolean | null;
   yakkaUnitPrice: number | string | null;
   expirationDate: string | null;
   expirationDateIso: string | null;

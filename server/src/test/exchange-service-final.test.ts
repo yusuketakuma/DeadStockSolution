@@ -78,6 +78,17 @@ describe('exchange-service-final', () => {
     mocks.createNotification.mockResolvedValue({ id: 99 });
   });
 
+  function packagedStockRow(overrides: Record<string, unknown>) {
+    return {
+      unit: '錠',
+      drugMasterPackageId: 100,
+      packageQuantity: 100,
+      packageUnit: '錠',
+      isLoosePackage: false,
+      ...overrides,
+    };
+  }
+
   describe('completeProposal — successful full path', () => {
     it('completes proposal successfully: updates stocks, inserts history, deletes reservations', async () => {
       const tx = {
@@ -99,13 +110,13 @@ describe('exchange-service-final', () => {
         }]))
         // 2nd: proposal items
         .mockImplementationOnce(() => createSimpleSelectQuery([
-          { deadStockItemId: 11, fromPharmacyId: 1, quantity: 5 },
-          { deadStockItemId: 22, fromPharmacyId: 2, quantity: 3 },
+          { deadStockItemId: 11, fromPharmacyId: 1, quantity: 100 },
+          { deadStockItemId: 22, fromPharmacyId: 2, quantity: 100 },
         ]))
         // 3rd: stock rows
         .mockImplementationOnce(() => createSimpleSelectQuery([
-          { id: 11, pharmacyId: 1, quantity: 10, isAvailable: true },
-          { id: 22, pharmacyId: 2, quantity: 5, isAvailable: true },
+          packagedStockRow({ id: 11, pharmacyId: 1, quantity: 200, isAvailable: true }),
+          packagedStockRow({ id: 22, pharmacyId: 2, quantity: 100, isAvailable: true }),
         ]));
 
       // 1st update: claim proposal (optimistic lock)
@@ -207,6 +218,80 @@ describe('exchange-service-final', () => {
       );
 
       await expect(completeProposal(100, 1)).rejects.toThrow('在庫状態の問題により交換を完了できません');
+    });
+
+    it('throws when completing a legacy proposal item without package master data', async () => {
+      const tx = {
+        select: vi.fn(),
+        update: vi.fn(),
+        insert: vi.fn(),
+        delete: vi.fn(),
+      };
+
+      tx.select
+        .mockImplementationOnce(() => createSelectQuery([{
+          pharmacyAId: 1,
+          pharmacyBId: 2,
+          status: 'confirmed',
+          totalValueA: '10000',
+          totalValueB: '10000',
+        }]))
+        .mockImplementationOnce(() => createSimpleSelectQuery([
+          { deadStockItemId: 11, fromPharmacyId: 1, quantity: 100 },
+        ]))
+        .mockImplementationOnce(() => createSimpleSelectQuery([
+          { id: 11, pharmacyId: 1, quantity: 200, isAvailable: true, drugName: '包装なし薬', unit: '錠', drugMasterPackageId: null, packageQuantity: null, packageUnit: null },
+        ]));
+
+      tx.update.mockImplementationOnce(() => createUpdateReturningQuery([{
+        pharmacyAId: 1,
+        pharmacyBId: 2,
+        totalValueA: '10000',
+        totalValueB: '10000',
+      }]));
+
+      mocks.db.transaction.mockImplementation(
+        async (cb: (t: typeof tx) => Promise<void>) => cb(tx),
+      );
+
+      await expect(completeProposal(100, 1)).rejects.toThrow('包装なし薬: 包装単位マスター未設定');
+    });
+
+    it('throws when completing a legacy proposal item whose quantity is not a whole package multiple', async () => {
+      const tx = {
+        select: vi.fn(),
+        update: vi.fn(),
+        insert: vi.fn(),
+        delete: vi.fn(),
+      };
+
+      tx.select
+        .mockImplementationOnce(() => createSelectQuery([{
+          pharmacyAId: 1,
+          pharmacyBId: 2,
+          status: 'confirmed',
+          totalValueA: '15000',
+          totalValueB: '15000',
+        }]))
+        .mockImplementationOnce(() => createSimpleSelectQuery([
+          { deadStockItemId: 11, fromPharmacyId: 1, quantity: 150 },
+        ]))
+        .mockImplementationOnce(() => createSimpleSelectQuery([
+          packagedStockRow({ id: 11, pharmacyId: 1, quantity: 200, isAvailable: true, drugName: '端数薬' }),
+        ]));
+
+      tx.update.mockImplementationOnce(() => createUpdateReturningQuery([{
+        pharmacyAId: 1,
+        pharmacyBId: 2,
+        totalValueA: '15000',
+        totalValueB: '15000',
+      }]));
+
+      mocks.db.transaction.mockImplementation(
+        async (cb: (t: typeof tx) => Promise<void>) => cb(tx),
+      );
+
+      await expect(completeProposal(100, 1)).rejects.toThrow('端数薬: 箱入数の整数倍ではありません');
     });
   });
 
@@ -351,7 +436,7 @@ describe('exchange-service-final', () => {
         .mockImplementationOnce(() => createSelectQuery([{ id: 2, isActive: true }]))
         .mockImplementationOnce(() => createSelectQuery([]))
         .mockImplementationOnce(() => createSimpleSelectQuery([
-          { id: 1, pharmacyId: 1, quantity: 10, yakkaUnitPrice: '1000', isAvailable: true },
+          packagedStockRow({ id: 1, pharmacyId: 1, quantity: 100, yakkaUnitPrice: '100', isAvailable: true }),
           { id: 2, pharmacyId: 99, quantity: 10, yakkaUnitPrice: '1000', isAvailable: true }, // wrong pharmacy
         ]))
         .mockImplementationOnce(() => createGroupByQuery([]));
@@ -361,7 +446,7 @@ describe('exchange-service-final', () => {
 
       const candidate = {
         pharmacyId: 2,
-        itemsFromA: [{ deadStockItemId: 1, quantity: 1 }],
+        itemsFromA: [{ deadStockItemId: 1, quantity: 100 }],
         itemsFromB: [{ deadStockItemId: 2, quantity: 1 }],
       };
 
@@ -377,8 +462,8 @@ describe('exchange-service-final', () => {
         .mockImplementationOnce(() => createSelectQuery([{ id: 2, isActive: true }]))
         .mockImplementationOnce(() => createSelectQuery([]))
         .mockImplementationOnce(() => createSimpleSelectQuery([
-          { id: 1, pharmacyId: 1, quantity: 10, yakkaUnitPrice: '10000', isAvailable: true },
-          { id: 2, pharmacyId: 2, quantity: 10, yakkaUnitPrice: '10500', isAvailable: true },
+          packagedStockRow({ id: 1, pharmacyId: 1, quantity: 100, yakkaUnitPrice: '100', isAvailable: true }),
+          packagedStockRow({ id: 2, pharmacyId: 2, quantity: 100, yakkaUnitPrice: '105', isAvailable: true }),
         ]))
         .mockImplementationOnce(() => createGroupByQuery([]));
 
@@ -387,11 +472,75 @@ describe('exchange-service-final', () => {
 
       const candidate = {
         pharmacyId: 2,
-        itemsFromA: [{ deadStockItemId: 1, quantity: 1 }],
-        itemsFromB: [{ deadStockItemId: 2, quantity: 1 }],
+        itemsFromA: [{ deadStockItemId: 1, quantity: 100 }],
+        itemsFromB: [{ deadStockItemId: 2, quantity: 100 }],
       };
 
       await expect(createProposal(1, candidate)).rejects.toThrow('交換金額差が許容範囲を超えています');
+    });
+
+    it('throws when proposal quantity is not a whole package multiple', async () => {
+      const tx = setupTx();
+
+      tx.select
+        .mockImplementationOnce(() => createSelectQuery([{ id: 2, isActive: true }]))
+        .mockImplementationOnce(() => createSelectQuery([]))
+        .mockImplementationOnce(() => createSimpleSelectQuery([
+          {
+            id: 1,
+            pharmacyId: 1,
+            quantity: 200,
+            unit: '錠',
+            drugMasterPackageId: 101,
+            packageQuantity: 100,
+            packageUnit: '錠',
+            yakkaUnitPrice: '100',
+            isAvailable: true,
+          },
+          {
+            id: 2,
+            pharmacyId: 2,
+            quantity: 200,
+            unit: '錠',
+            drugMasterPackageId: 202,
+            packageQuantity: 100,
+            packageUnit: '錠',
+            yakkaUnitPrice: '100',
+            isAvailable: true,
+          },
+        ]))
+        .mockImplementationOnce(() => createGroupByQuery([]));
+
+      tx.execute.mockResolvedValue(undefined);
+      mocks.db.transaction.mockImplementation(async (cb: (tx: unknown) => unknown | Promise<unknown>) => cb(tx));
+
+      await expect(createProposal(1, {
+        pharmacyId: 2,
+        itemsFromA: [{ deadStockItemId: 1, quantity: 150, packageQuantity: 100, packageUnit: '錠' }],
+        itemsFromB: [{ deadStockItemId: 2, quantity: 100, packageQuantity: 100, packageUnit: '錠', boxCount: 1 }],
+      })).rejects.toThrow('箱入数の整数倍');
+    });
+
+    it('throws when stock has no package master even if the request omits package metadata', async () => {
+      const tx = setupTx();
+
+      tx.select
+        .mockImplementationOnce(() => createSelectQuery([{ id: 2, isActive: true }]))
+        .mockImplementationOnce(() => createSelectQuery([]))
+        .mockImplementationOnce(() => createSimpleSelectQuery([
+          { id: 1, pharmacyId: 1, quantity: 200, unit: '錠', drugMasterPackageId: null, packageQuantity: null, packageUnit: null, yakkaUnitPrice: '100', isAvailable: true },
+          packagedStockRow({ id: 2, pharmacyId: 2, quantity: 200, yakkaUnitPrice: '100', isAvailable: true }),
+        ]))
+        .mockImplementationOnce(() => createGroupByQuery([]));
+
+      tx.execute.mockResolvedValue(undefined);
+      mocks.db.transaction.mockImplementation(async (cb: (tx: unknown) => unknown | Promise<unknown>) => cb(tx));
+
+      await expect(createProposal(1, {
+        pharmacyId: 2,
+        itemsFromA: [{ deadStockItemId: 1, quantity: 100 }],
+        itemsFromB: [{ deadStockItemId: 2, quantity: 100 }],
+      })).rejects.toThrow('包装単位マスターが設定されていない在庫は箱単位の提案に使用できません');
     });
 
     it('successfully creates proposal and returns proposal ID', async () => {
@@ -402,8 +551,8 @@ describe('exchange-service-final', () => {
         .mockImplementationOnce(() => createSelectQuery([{ id: 2, isActive: true }]))
         .mockImplementationOnce(() => createSelectQuery([])) // no blocked
         .mockImplementationOnce(() => createSimpleSelectQuery([
-          { id: 1, pharmacyId: 1, quantity: 10, yakkaUnitPrice: '10000', isAvailable: true },
-          { id: 2, pharmacyId: 2, quantity: 10, yakkaUnitPrice: '10000', isAvailable: true },
+          packagedStockRow({ id: 1, pharmacyId: 1, quantity: 100, yakkaUnitPrice: '100', isAvailable: true }),
+          packagedStockRow({ id: 2, pharmacyId: 2, quantity: 100, yakkaUnitPrice: '100', isAvailable: true }),
         ]))
         .mockImplementationOnce(() => createGroupByQuery([])); // no reservations
 
@@ -421,8 +570,8 @@ describe('exchange-service-final', () => {
 
       const proposalId = await createProposal(1, {
         pharmacyId: 2,
-        itemsFromA: [{ deadStockItemId: 1, quantity: 1 }],
-        itemsFromB: [{ deadStockItemId: 2, quantity: 1 }],
+        itemsFromA: [{ deadStockItemId: 1, quantity: 100 }],
+        itemsFromB: [{ deadStockItemId: 2, quantity: 100 }],
       });
 
       expect(proposalId).toBe(42);
@@ -441,8 +590,8 @@ describe('exchange-service-final', () => {
         .mockImplementationOnce(() => createSelectQuery([{ id: 2, isActive: true }]))
         .mockImplementationOnce(() => createSelectQuery([]))
         .mockImplementationOnce(() => createSimpleSelectQuery([
-          { id: 1, pharmacyId: 1, quantity: 10, yakkaUnitPrice: '10000', isAvailable: true },
-          { id: 2, pharmacyId: 2, quantity: 10, yakkaUnitPrice: '10000', isAvailable: true },
+          packagedStockRow({ id: 1, pharmacyId: 1, quantity: 100, yakkaUnitPrice: '100', isAvailable: true }),
+          packagedStockRow({ id: 2, pharmacyId: 2, quantity: 100, yakkaUnitPrice: '100', isAvailable: true }),
         ]))
         .mockImplementationOnce(() => createGroupByQuery([]));
 
@@ -456,8 +605,8 @@ describe('exchange-service-final', () => {
 
       const proposalId = await createProposal(1, {
         pharmacyId: 2,
-        itemsFromA: [{ deadStockItemId: 1, quantity: 1 }],
-        itemsFromB: [{ deadStockItemId: 2, quantity: 1 }],
+        itemsFromA: [{ deadStockItemId: 1, quantity: 100 }],
+        itemsFromB: [{ deadStockItemId: 2, quantity: 100 }],
       });
 
       expect(proposalId).toBe(55);

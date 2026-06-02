@@ -1,9 +1,10 @@
 import { Router, Response } from 'express';
-import { eq, and, or, desc, inArray, notExists, asc } from 'drizzle-orm';
+import { eq, and, or, desc, inArray, notExists, asc, sql } from 'drizzle-orm';
 import type { ZodType } from 'zod';
 import { db } from '../config/database';
 import {
   deadStockItems,
+  drugMasterPackages,
   usedMedicationItems,
   pharmacies,
   pharmacyRelationships,
@@ -108,6 +109,33 @@ const router = Router();
 
 router.use(requireLogin);
 
+const DEAD_STOCK_PACKAGE_SELECT_FIELDS = {
+  packageQuantity: sql<number | null>`(
+    select ${drugMasterPackages.packageQuantity}
+    from ${drugMasterPackages}
+    where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+    limit 1
+  )`,
+  packageUnit: sql<string | null>`(
+    select ${drugMasterPackages.packageUnit}
+    from ${drugMasterPackages}
+    where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+    limit 1
+  )`,
+  packageForm: sql<string | null>`(
+    select ${drugMasterPackages.packageForm}
+    from ${drugMasterPackages}
+    where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+    limit 1
+  )`,
+  isLoosePackage: sql<boolean | null>`(
+    select ${drugMasterPackages.isLoosePackage}
+    from ${drugMasterPackages}
+    where ${drugMasterPackages.id} = ${deadStockItems.drugMasterPackageId}
+    limit 1
+  )`,
+} as const;
+
 // My dead stock expiry risk summary
 router.get('/dead-stock/risk', async (req: AuthRequest, res: Response) => {
   try {
@@ -209,7 +237,26 @@ router.get('/dead-stock', async (req: AuthRequest, res: Response) => {
       searchCondition,
     );
 
-    const items = await db.select()
+    const items = await db.select({
+      id: deadStockItems.id,
+      pharmacyId: deadStockItems.pharmacyId,
+      uploadId: deadStockItems.uploadId,
+      drugCode: deadStockItems.drugCode,
+      drugName: deadStockItems.drugName,
+      drugMasterId: deadStockItems.drugMasterId,
+      drugMasterPackageId: deadStockItems.drugMasterPackageId,
+      packageLabel: deadStockItems.packageLabel,
+      quantity: deadStockItems.quantity,
+      unit: deadStockItems.unit,
+      yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
+      yakkaTotal: deadStockItems.yakkaTotal,
+      expirationDate: deadStockItems.expirationDate,
+      expirationDateIso: deadStockItems.expirationDateIso,
+      lotNumber: deadStockItems.lotNumber,
+      isAvailable: deadStockItems.isAvailable,
+      createdAt: deadStockItems.createdAt,
+      ...DEAD_STOCK_PACKAGE_SELECT_FIELDS,
+    })
       .from(deadStockItems)
       .where(whereExpr)
       .orderBy(
@@ -335,6 +382,8 @@ router.get('/browse', async (req: AuthRequest, res: Response) => {
       quantity: deadStockItems.quantity,
       unit: deadStockItems.unit,
       packageLabel: deadStockItems.packageLabel,
+      drugMasterPackageId: deadStockItems.drugMasterPackageId,
+      ...DEAD_STOCK_PACKAGE_SELECT_FIELDS,
       yakkaUnitPrice: deadStockItems.yakkaUnitPrice,
       yakkaTotal: deadStockItems.yakkaTotal,
       expirationDate: deadStockItems.expirationDate,

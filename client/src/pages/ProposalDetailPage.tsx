@@ -59,6 +59,9 @@ interface ProposalItem {
   yakkaValue: number;
   drugName: string;
   unit: string | null;
+  packageLabel?: string | null;
+  packageQuantity?: number | null;
+  packageUnit?: string | null;
   yakkaUnitPrice: number | null;
 }
 
@@ -151,9 +154,19 @@ function buildCounterProposalDraft(
   itemsAtoB: ProposalItem[],
   itemsBtoA: ProposalItem[],
 ): string {
+  const formatProposalItemQuantity = (item: ProposalItem) => {
+    const packageQuantity = Number(item.packageQuantity);
+    if (Number.isFinite(packageQuantity) && packageQuantity > 0) {
+      const boxCount = item.quantity / packageQuantity;
+      if (Math.abs(boxCount - Math.round(boxCount)) < 0.0001) {
+        return `${Math.round(boxCount)}箱`;
+      }
+    }
+    return `${item.quantity}${item.unit || ''}`;
+  };
   const summarizeItems = (items: ProposalItem[]) => items
     .slice(0, 3)
-    .map((item) => `${item.drugName} x${item.quantity}`)
+    .map((item) => `${item.drugName} x${formatProposalItemQuantity(item)}`)
     .join(' / ');
 
   return [

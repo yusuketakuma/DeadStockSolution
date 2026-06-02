@@ -20,6 +20,20 @@ function formatPercent(value?: number): string {
   return `${Math.round(value)}%`;
 }
 
+function formatQuantity(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-';
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
+}
+
+function formatPackageSize(item: MatchItem): string {
+  if (!item.packageQuantity) return '-';
+  return `${formatQuantity(item.packageQuantity)}${item.packageUnit || item.unit || ''}`;
+}
+
+function formatTotalQuantity(item: MatchItem): string {
+  return `${formatQuantity(item.quantity)}${item.unit || item.packageUnit || ''}`;
+}
+
 function buildCandidateMessageDraft(candidate: MatchCandidate): string {
   const focusDrugs = candidate.itemsFromA
     .slice(0, 3)
@@ -42,10 +56,11 @@ function MatchItemsTable({ items, keyPrefix }: MatchItemsTableProps) {
             <thead>
               <tr>
                 <th>薬品名</th>
-                <th>数量</th>
-                <th>単位</th>
+                <th>箱数</th>
+                <th>1箱入数</th>
+                <th>総数量</th>
+                <th>包装</th>
                 <th>使用期限</th>
-                <th>薬価(単価)</th>
                 <th>薬価(合計)</th>
                 <th>一致度</th>
               </tr>
@@ -54,10 +69,11 @@ function MatchItemsTable({ items, keyPrefix }: MatchItemsTableProps) {
               {items.map((item, itemIdx) => (
                 <tr key={itemIdx}>
                   <td>{item.drugName}</td>
-                  <td>{item.quantity}</td>
-                  <td>{item.unit || '-'}</td>
+                  <td>{item.boxCount ?? '-'}</td>
+                  <td>{formatPackageSize(item)}</td>
+                  <td>{formatTotalQuantity(item)}</td>
+                  <td>{item.packageLabel || '-'}</td>
                   <td>{item.expirationDate || '-'}</td>
-                  <td>{item.yakkaUnitPrice.toLocaleString()}</td>
                   <td>{item.yakkaValue.toLocaleString()}</td>
                   <td>{formatPercent((item.matchScore ?? 0) * 100)}</td>
                 </tr>
@@ -73,10 +89,11 @@ function MatchItemsTable({ items, keyPrefix }: MatchItemsTableProps) {
               key={`${keyPrefix}-${itemIdx}`}
               title={item.drugName}
               fields={[
-                { label: '数量', value: item.quantity },
-                { label: '単位', value: item.unit || '-' },
+                { label: '箱数', value: item.boxCount ?? '-' },
+                { label: '1箱入数', value: formatPackageSize(item) },
+                { label: '総数量', value: formatTotalQuantity(item) },
+                { label: '包装', value: item.packageLabel || '-' },
                 { label: '使用期限', value: item.expirationDate || '-' },
-                { label: '薬価(単価)', value: item.yakkaUnitPrice.toLocaleString() },
                 { label: '薬価(合計)', value: item.yakkaValue.toLocaleString() },
                 { label: '一致度', value: formatPercent((item.matchScore ?? 0) * 100) },
               ]}

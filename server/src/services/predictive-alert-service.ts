@@ -284,6 +284,7 @@ async function persistSignal(
     const dedupeKey = `${signal.alertType}:${dedupeDateKey}`;
     const [insertedAlert] = await tx.insert(predictiveAlerts)
       .values({
+        tenantId: signal.pharmacyId,
         pharmacyId: signal.pharmacyId,
         alertType: signal.alertType,
         title: signal.title,
@@ -302,6 +303,7 @@ async function persistSignal(
 
     const [notification] = await tx.insert(notifications)
       .values({
+        tenantId: signal.pharmacyId,
         pharmacyId: signal.pharmacyId,
         type: resolvePredictiveAlertNotificationType(signal.alertType),
         title: signal.title,

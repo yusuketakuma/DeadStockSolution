@@ -101,6 +101,7 @@ export async function subscribe(
   const [inserted] = await db
     .insert(pushSubscriptions)
     .values({
+      tenantId: pharmacyId,
       pharmacyId,
       endpoint: payload.endpoint,
       p256dh: payload.keys.p256dh,
