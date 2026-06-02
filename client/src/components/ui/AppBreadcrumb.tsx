@@ -95,9 +95,11 @@ export default function AppBreadcrumb() {
   if (chain.length === 0) return null;
 
   const isAdminPath = pathname.startsWith('/admin');
+  const homeItem: BreadcrumbItem = { path: isAdminPath ? '/admin' : '/', title: isAdminPath ? '管理者ホーム' : 'ホーム' };
+  const uniqueChain = chain[0]?.path === homeItem.path ? chain.slice(1) : chain;
   const items: BreadcrumbItem[] = [
-    { path: isAdminPath ? '/admin' : '/', title: isAdminPath ? '管理者ホーム' : 'ホーム' },
-    ...chain,
+    homeItem,
+    ...uniqueChain,
   ];
 
   return (

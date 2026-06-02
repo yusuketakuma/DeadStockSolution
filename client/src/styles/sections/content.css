@@ -80,6 +80,20 @@
   align-items: center;
 }
 
+.dl-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.dl-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .text-wrap-anywhere {
   overflow-wrap: anywhere;
   word-break: break-word;
