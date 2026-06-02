@@ -1,4 +1,5 @@
 import type { SavedView } from '../../utils/saved-views';
+import AppDropdownMenu from './AppDropdownMenu';
 
 interface SavedViewPreset<T> {
   key: string;
@@ -33,34 +34,38 @@ export default function SavedViewsPanel<T>({
   return (
     <div className="card mb-3">
       <div className="card-body">
-        <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack justify-content-between align-items-start">
           <div>
             <strong>{title}</strong>
             <div className="small text-muted">{description}</div>
           </div>
-          <div className="d-flex gap-2 flex-wrap">
-            {shareUrl ? (
-              <button
-                type="button"
-                className="btn btn-outline-secondary btn-sm"
-                onClick={() => {
-                  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-                    void navigator.clipboard.writeText(shareUrl);
-                  }
-                }}
-              >
-                URLをコピー
-              </button>
-            ) : null}
-            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onSave}>
+          <div className="dl-action-row mobile-stack">
+            <button type="button" className="btn btn-outline-primary btn-sm" onClick={onSave}>
               {buttonLabel}
             </button>
+            {shareUrl ? (
+              <AppDropdownMenu
+                label="共有"
+                size="sm"
+                variant="outline-secondary"
+                items={[
+                  {
+                    label: 'URLをコピー',
+                    onClick: () => {
+                      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(shareUrl);
+                      }
+                    },
+                  },
+                ]}
+              />
+            ) : null}
           </div>
         </div>
         {presets.length > 0 && (
           <div className="mt-3">
             <div className="small text-muted mb-2">作業モード</div>
-            <div className="d-flex gap-2 flex-wrap">
+            <div className="dl-action-row mobile-stack">
               {presets.map((preset) => (
                 <button
                   key={preset.key}
@@ -76,7 +81,7 @@ export default function SavedViewsPanel<T>({
           </div>
         )}
         {savedViews.length > 0 && (
-          <div className="d-flex gap-2 flex-wrap mt-2">
+          <div className="dl-action-row mobile-stack mt-2">
             {savedViews.map((view) => (
               <div key={view.id} className="d-flex align-items-center gap-1">
                 <button

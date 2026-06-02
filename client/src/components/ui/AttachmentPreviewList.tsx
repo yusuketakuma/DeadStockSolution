@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Spinner } from 'react-bootstrap';
 import AppAlert from './AppAlert';
 import AppButton from './AppButton';
+import AppDropdownMenu from './AppDropdownMenu';
 import AppModalShell from './AppModalShell';
 
 export interface PreviewAttachment {
@@ -117,16 +118,7 @@ export default function AttachmentPreviewList({
                 <div className="fw-semibold">{attachment.fileName}</div>
                 <div className="text-muted">{attachment.mimeType} / {formatFileSize(attachment.fileSize)}</div>
               </div>
-              <div className="d-flex gap-2 flex-wrap">
-                {itemPreviewKind !== 'unsupported' && (
-                  <AppButton
-                    size="sm"
-                    variant="outline-secondary"
-                    onClick={() => void handleOpenPreview(attachment)}
-                  >
-                    プレビュー
-                  </AppButton>
-                )}
+              <div className="dl-action-row mobile-stack">
                 <a
                   href={getDownloadUrl(attachment.id)}
                   target="_blank"
@@ -135,6 +127,20 @@ export default function AttachmentPreviewList({
                 >
                   ダウンロード
                 </a>
+                {itemPreviewKind !== 'unsupported' && (
+                  <AppDropdownMenu
+                    label="その他"
+                    size="sm"
+                    variant="outline-secondary"
+                    items={[
+                      {
+                        key: 'preview',
+                        label: 'プレビュー',
+                        onClick: () => { void handleOpenPreview(attachment); },
+                      },
+                    ]}
+                  />
+                )}
               </div>
             </div>
           );

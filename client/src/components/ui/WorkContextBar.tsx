@@ -1,6 +1,7 @@
 import { Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import AppCard from './AppCard';
+import AppDropdownMenu from './AppDropdownMenu';
 
 interface WorkContextBadge {
   label: string;
@@ -34,18 +35,20 @@ export default function WorkContextBar({
   nextActions = [],
 }: WorkContextBarProps) {
   const visibleBadges = badges.filter((badge): badge is WorkContextBadge => Boolean(badge));
+  const primaryNextAction = nextActions[0] ?? null;
+  const secondaryNextActions = nextActions.slice(1);
 
   return (
     <AppCard className="mb-3">
       <AppCard.Body className="d-flex flex-column gap-3">
-        <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div className="dl-action-row mobile-stack justify-content-between align-items-start">
           <div className="d-flex flex-column gap-1">
             <div className="small text-muted">作業コンテキスト</div>
             <div className="fw-semibold">{title}</div>
             {currentLabel ? <div className="small text-muted">{currentLabel}</div> : null}
             {description ? <div className="small text-muted">{description}</div> : null}
           </div>
-          <div className="d-flex gap-2 flex-wrap">
+          <div className="dl-action-row mobile-stack">
             {backTo ? (
               <Link to={backTo} className="btn btn-outline-secondary btn-sm">
                 {backLabel}
@@ -54,9 +57,9 @@ export default function WorkContextBar({
           </div>
         </div>
         {(visibleBadges.length > 0 || nextActions.length > 0) && (
-          <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+          <div className="dl-action-row mobile-stack justify-content-between align-items-start">
             {visibleBadges.length > 0 ? (
-              <div className="d-flex gap-2 flex-wrap">
+              <div className="dl-action-row mobile-stack">
                 {visibleBadges.map((badge) => (
                   <Badge key={`${badge.label}-${badge.bg ?? 'secondary'}`} bg={badge.bg ?? 'secondary'} text={badge.text}>
                     {badge.label}
@@ -64,13 +67,23 @@ export default function WorkContextBar({
                 ))}
               </div>
             ) : <div />}
-            {nextActions.length > 0 ? (
-              <div className="d-flex gap-2 flex-wrap">
-                {nextActions.map((action) => (
-                  <Link key={`${action.to}-${action.label}`} to={action.to} className={`btn btn-sm btn-${action.variant ?? 'outline-primary'}`}>
-                    {action.label}
-                  </Link>
-                ))}
+            {primaryNextAction ? (
+              <div className="dl-action-row mobile-stack">
+                <Link to={primaryNextAction.to} className={`btn btn-sm btn-${primaryNextAction.variant ?? 'outline-primary'}`}>
+                  {primaryNextAction.label}
+                </Link>
+                {secondaryNextActions.length > 0 ? (
+                  <AppDropdownMenu
+                    label="関連"
+                    size="sm"
+                    variant="outline-secondary"
+                    items={secondaryNextActions.map((action) => ({
+                      key: `${action.to}-${action.label}`,
+                      to: action.to,
+                      label: action.label,
+                    }))}
+                  />
+                ) : null}
               </div>
             ) : null}
           </div>
