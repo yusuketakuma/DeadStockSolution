@@ -63,7 +63,7 @@ function getStripe(): Stripe | null {
   }
 
   return new StripeCtor(secretKey, {
-    apiVersion: '2026-03-25.dahlia',
+    apiVersion: '2026-05-27.dahlia',
   });
 }
 

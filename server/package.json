@@ -35,9 +35,9 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.72.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.214.0",
-    "@opentelemetry/sdk-node": "^0.214.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.76.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
+    "@opentelemetry/sdk-node": "^0.218.0",
     "@sentry/node": "^10.45.0",
     "@types/pg": "^8.20.0",
     "@upstash/ratelimit": "^2.0.8",
@@ -64,7 +64,7 @@
     "stripe": "^22.0.2",
     "undici": "^8.1.0",
     "web-push": "^3.6.7",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.1",
