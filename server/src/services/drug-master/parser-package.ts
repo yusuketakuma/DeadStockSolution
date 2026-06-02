@@ -252,8 +252,17 @@ const MEDHOT_EXTRA_GS1_KEYWORDS: Record<string, string[]> = {
   outerPackageCode: ['元梱包装単位コード'],
 };
 
+function isPackageHeaderMatch(field: string, header: string, keyword: string): boolean {
+  if (field === 'packageUnit' && keyword === '単位') {
+    return header === keyword;
+  }
+  return header === keyword || header.includes(keyword);
+}
+
 export function parsePackageExcelData(rows: unknown[][]): ParsedPackageRow[] {
-  const { rowIndex, mapping } = detectHeaderRow(rows, PACKAGE_HEADER_KEYWORDS);
+  const { rowIndex, mapping } = detectHeaderRow(rows, PACKAGE_HEADER_KEYWORDS, {
+    isMatch: isPackageHeaderMatch,
+  });
   if (mapping.yjCode === undefined) {
     throw new Error('包装単位データのフォーマットを検出できません。YJコードの列が必要です。');
   }

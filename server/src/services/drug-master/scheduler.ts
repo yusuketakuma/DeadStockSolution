@@ -25,6 +25,7 @@ const CHECK_INTERVAL_MS = CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
 const AUTO_SYNC_ENABLED = process.env.DRUG_MASTER_AUTO_SYNC === 'true';
 const SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'SCHEDULER_OPTIMIZED_LOOP_ENABLED';
 const DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED_ENV = 'DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED';
+const DRUG_MASTER_SYNC_PACKAGES_ENV = 'DRUG_MASTER_SYNC_PACKAGES';
 
 // ソースモード: 'index'（MHLW ポータル自動探索）or 'single'（従来の単一URL）
 function getConfiguredSourceMode(): SourceMode {
@@ -100,17 +101,61 @@ async function persistSingleSourceState(
   await persistSourceHeaders(SOURCE_KEY_SINGLE, sourceUrl, data, changed);
 }
 
-function runAutoSyncSafely(mode: 'initial' | 'scheduled' | 'manual', sourceUrl?: string): Promise<void> {
+function shouldSyncPackageMasterAfterDrugMaster(): boolean {
+  return parseBooleanFlag(process.env[DRUG_MASTER_SYNC_PACKAGES_ENV], true);
+}
+
+async function syncPackageMasterAfterDrugMaster(mode: 'initial' | 'scheduled' | 'manual'): Promise<void> {
+  if (!shouldSyncPackageMasterAfterDrugMaster()) {
+    logger.info('Drug master auto-sync: package master follow-up sync disabled', {
+      flag: DRUG_MASTER_SYNC_PACKAGES_ENV,
+    });
+    return;
+  }
+
+  if (!process.env.DRUG_PACKAGE_SOURCE_URL?.trim()) {
+    logger.info('Drug master auto-sync: package master follow-up sync skipped, DRUG_PACKAGE_SOURCE_URL is not set');
+    return;
+  }
+
+  try {
+    const { triggerManualPackageAutoSync } = await import('../drug-package-scheduler');
+    const result = await triggerManualPackageAutoSync({ awaitCompletion: true });
+    logger.info('Drug master auto-sync: package master follow-up sync finished', {
+      mode,
+      triggered: result.triggered,
+      completed: result.completed ?? false,
+      message: result.message,
+    });
+  } catch (err) {
+    logger.error('Drug master auto-sync: package master follow-up sync failed', {
+      mode,
+      error: getErrorMessage(err),
+    });
+  }
+}
+
+function runAutoSyncSafely(
+  mode: 'initial' | 'scheduled' | 'manual',
+  sourceUrl?: string,
+  options?: { includePackageMaster?: boolean },
+): Promise<void> {
   const sourceMode = getConfiguredSourceMode();
   const task = sourceMode === 'index' && !sourceUrl
     ? runAutoSyncIndex()
     : (sourceUrl ? runAutoSyncWithSource(sourceUrl) : runAutoSync());
-  return task.catch((err) => {
-    const suffix = mode === 'manual' ? 'manual trigger' : `${mode} run`;
-    logger.error(`Drug master auto-sync: ${suffix} failed`, {
-      error: getErrorMessage(err),
+  return task
+    .then(async () => {
+      if (options?.includePackageMaster) {
+        await syncPackageMasterAfterDrugMaster(mode);
+      }
+    })
+    .catch((err) => {
+      const suffix = mode === 'manual' ? 'manual trigger' : `${mode} run`;
+      logger.error(`Drug master auto-sync: ${suffix} failed`, {
+        error: getErrorMessage(err),
+      });
     });
-  });
 }
 
 /**
@@ -257,7 +302,7 @@ function scheduleNextDrugMasterRun(delayMs: number, mode: 'initial' | 'scheduled
 
   schedulerTimer = setTimeout(() => {
     schedulerTimer = null;
-    void runAutoSyncSafely(mode).finally(() => {
+    void runAutoSyncSafely(mode, undefined, { includePackageMaster: true }).finally(() => {
       if (!schedulerActive) {
         return;
       }
@@ -280,7 +325,7 @@ function startLegacyDrugMasterIntervalScheduler(): void {
     if (!schedulerActive) {
       return;
     }
-    void runAutoSyncSafely('initial');
+    void runAutoSyncSafely('initial', undefined, { includePackageMaster: true });
   }, getInitialDrugMasterRunDelay());
   schedulerTimer.unref();
 
@@ -288,7 +333,7 @@ function startLegacyDrugMasterIntervalScheduler(): void {
     if (!schedulerActive) {
       return;
     }
-    void runAutoSyncSafely('scheduled');
+    void runAutoSyncSafely('scheduled', undefined, { includePackageMaster: true });
   }, CHECK_INTERVAL_MS);
   schedulerInterval.unref();
 }

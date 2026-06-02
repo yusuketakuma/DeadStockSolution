@@ -167,16 +167,17 @@ describe('medhot package parser', () => {
       expect(parsed[0].gs1Code).toBe('14987123456780');
       expect(parsed[0].packageDescription).toBe('PTP');
       expect(parsed[0].packageQuantity).toBe(100);
-      // packageUnit は medhot 44列フォーマットでは溶解液容量単位列に先行マッチするため null
-      // （実用上は packageDescription + packageQuantity で十分）
+      expect(parsed[0].packageUnit).toBe('錠');
 
       // 調剤包装単位コード
       expect(parsed[1].yjCode).toBe('2149047F2029');
       expect(parsed[1].gs1Code).toBe('04987123456789');
+      expect(parsed[1].packageUnit).toBe('錠');
 
       // 元梱包装単位コード
       expect(parsed[2].yjCode).toBe('2149047F2029');
       expect(parsed[2].gs1Code).toBe('24987123456781');
+      expect(parsed[2].packageUnit).toBe('錠');
     });
 
     it('handles row with only dispensing code (no sales/outer)', () => {

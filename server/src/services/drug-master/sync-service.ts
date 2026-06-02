@@ -328,6 +328,28 @@ function buildPackageInsertRow(drugMasterId: number, row: ParsedPackageRow): Ins
   };
 }
 
+function buildPackageSyncKey(row: ParsedPackageRow): string {
+  const codeParts = [row.gs1Code ?? '', row.janCode ?? '', row.hotCode ?? ''];
+  if (codeParts.some((code) => code.length > 0)) {
+    return [row.yjCode, ...codeParts].join('|');
+  }
+
+  return [
+    row.yjCode,
+    row.packageDescription ?? '',
+    row.packageQuantity ?? '',
+    row.packageUnit ?? '',
+  ].join('|');
+}
+
+function dedupePackageRowsForSync(parsedRows: ParsedPackageRow[]): ParsedPackageRow[] {
+  const deduped = new Map<string, ParsedPackageRow>();
+  for (const row of parsedRows) {
+    deduped.set(buildPackageSyncKey(row), row);
+  }
+  return [...deduped.values()];
+}
+
 async function insertPackageBatch(
   tx: Transaction,
   buckets: Map<number, PackageBucket>,
@@ -621,13 +643,14 @@ export async function syncDrugMaster(
 export async function syncPackageData(
   parsedRows: ParsedPackageRow[],
 ): Promise<{ added: number; updated: number }> {
+  const normalizedRows = dedupePackageRowsForSync(parsedRows);
   const counts: PackageMutationCounts = { added: 0, updated: 0 };
-  const yjToId = await fetchDrugMasterIdMap(parsedRows);
+  const yjToId = await fetchDrugMasterIdMap(normalizedRows);
   const existingPackages = await fetchExistingPackages(unique([...yjToId.values()]));
   const lookup = buildPackageLookupState(yjToId, existingPackages);
 
   await db.transaction(async (tx) => {
-    await processInBatches(parsedRows, BATCH_SIZE, async (batch) => {
+    await processInBatches(normalizedRows, BATCH_SIZE, async (batch) => {
       await syncPackageBatch(tx, batch, lookup, counts);
     });
   });

@@ -670,6 +670,45 @@ describe('drug-master-sync-deep', () => {
       expect(result.added).toBe(2);
     });
 
+    it('deduplicates identical package code rows before inserting', async () => {
+      const { spies } = createPackageDbMock(
+        [{ id: 1, yjCode: '111111111111' }],
+        [],
+      );
+      spies.insertReturning.mockResolvedValue([
+        {
+          id: 100,
+          drugMasterId: 1,
+          gs1Code: 'GS1-DUP',
+          janCode: null,
+          hotCode: null,
+          packageDescription: '10錠',
+          packageQuantity: 10,
+          packageUnit: '錠',
+          normalizedPackageLabel: '10錠',
+          packageForm: 'ptp',
+          isLoosePackage: false,
+        },
+      ]);
+
+      const duplicateRow = {
+        yjCode: '111111111111',
+        gs1Code: 'GS1-DUP',
+        janCode: null,
+        hotCode: null,
+        packageDescription: '10錠',
+        packageQuantity: 10,
+        packageUnit: '錠',
+      };
+
+      const result = await syncPackageData([duplicateRow, { ...duplicateRow }]);
+
+      expect(result.added).toBe(1);
+      expect(spies.insertValues).toHaveBeenCalledWith([
+        expect.objectContaining({ gs1Code: 'GS1-DUP' }),
+      ]);
+    });
+
     it('handles large dataset chunking (> 500 rows)', async () => {
       const rows = [];
       for (let i = 0; i < 600; i++) {

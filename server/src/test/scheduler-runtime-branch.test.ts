@@ -9,6 +9,7 @@ type SchedulerMocks = {
   validateExternalHttpsUrl: ReturnType<typeof vi.fn>;
   runMultiFileSync: ReturnType<typeof vi.fn>;
   checkForUpdates: ReturnType<typeof vi.fn>;
+  triggerManualPackageAutoSync?: ReturnType<typeof vi.fn>;
 };
 
 async function loadMasterScheduler(env: Record<string, string | undefined>) {
@@ -28,6 +29,11 @@ async function loadMasterScheduler(env: Record<string, string | undefined>) {
       compareByContentHash: false,
       previousContentHash: null,
     }),
+    triggerManualPackageAutoSync: vi.fn().mockResolvedValue({
+      triggered: true,
+      completed: true,
+      message: 'package sync completed',
+    }),
   };
 
   vi.doMock('../services/logger', () => ({
@@ -43,6 +49,9 @@ async function loadMasterScheduler(env: Record<string, string | undefined>) {
     createPinnedDnsAgent: vi.fn(() => ({ close: vi.fn().mockResolvedValue(undefined) })),
   }));
   vi.doMock('../services/mhlw-multi-file-fetcher', () => ({ runMultiFileSync: mocks.runMultiFileSync }));
+  vi.doMock('../services/drug-package-scheduler', () => ({
+    triggerManualPackageAutoSync: mocks.triggerManualPackageAutoSync,
+  }));
   vi.doMock('../services/mhlw-source-fetch', () => ({
     checkForUpdates: mocks.checkForUpdates,
     downloadFile: vi.fn(),
@@ -64,6 +73,7 @@ async function loadMasterScheduler(env: Record<string, string | undefined>) {
 
 async function loadPackageScheduler(env: Record<string, string | undefined>) {
   vi.resetModules();
+  vi.doUnmock('../services/drug-package-scheduler');
   process.env = { ...ORIGINAL_ENV, ...env };
 
   const mocks: SchedulerMocks = {
@@ -150,6 +160,29 @@ describe('scheduler runtime branches', () => {
     expect(started.mocks.loggerWarn).toHaveBeenCalledWith(expect.stringContaining('already running'));
     started.mod.stopDrugMasterScheduler();
     expect(started.mocks.loggerInfo).toHaveBeenCalledWith(expect.stringContaining('scheduler stopped'));
+  });
+
+  it('master scheduled run: follows up with configured package master sync', async () => {
+    vi.useFakeTimers();
+    try {
+      const started = await loadMasterScheduler({
+        DRUG_MASTER_AUTO_SYNC: 'true',
+        DRUG_MASTER_SOURCE_MODE: 'index',
+        DRUG_MASTER_SOURCE_URL: '',
+        DRUG_PACKAGE_SOURCE_URL: 'https://example.com/packages.csv',
+        DRUG_MASTER_SCHEDULER_OPTIMIZED_LOOP_ENABLED: 'true',
+      });
+
+      started.mod.startDrugMasterScheduler();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(started.mocks.runMultiFileSync).toHaveBeenCalled();
+      expect(started.mocks.triggerManualPackageAutoSync).toHaveBeenCalledWith({
+        awaitCompletion: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('master trigger: no-url and invalid-url branches', async () => {

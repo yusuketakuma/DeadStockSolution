@@ -121,7 +121,7 @@ describe('deadStockKey', () => {
       expirationDate: '2025-12-31',
       lotNumber: 'LOT001',
     };
-    expect(deadStockKey(item)).toBe('DC001|DrugA|mg|2025-12-31|LOT001');
+    expect(deadStockKey(item)).toBe('DC001|DrugA|||mg|2025-12-31|LOT001');
   });
 
   it('uses empty string for null fields', () => {
@@ -132,7 +132,7 @@ describe('deadStockKey', () => {
       expirationDate: null,
       lotNumber: null,
     };
-    expect(deadStockKey(item)).toBe('|DrugB|||');
+    expect(deadStockKey(item)).toBe('|DrugB|||||');
   });
 
   it('trims whitespace from all fields', () => {
@@ -143,7 +143,20 @@ describe('deadStockKey', () => {
       expirationDate: ' 2025-12-31 ',
       lotNumber: ' LOT001 ',
     };
-    expect(deadStockKey(item)).toBe('DC001|DrugA|mg|2025-12-31|LOT001');
+    expect(deadStockKey(item)).toBe('DC001|DrugA|||mg|2025-12-31|LOT001');
+  });
+
+  it('includes package identity fields', () => {
+    const item = {
+      drugCode: 'DC001',
+      drugName: 'DrugA',
+      drugMasterPackageId: 10,
+      packageLabel: 'PTP 100錠',
+      unit: '錠',
+      expirationDate: '2025-12-31',
+      lotNumber: 'LOT001',
+    };
+    expect(deadStockKey(item)).toBe('DC001|DrugA|10|PTP 100錠|錠|2025-12-31|LOT001');
   });
 });
 

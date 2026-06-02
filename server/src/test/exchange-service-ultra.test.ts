@@ -522,7 +522,18 @@ describe('exchange-service ultra invalidation follow-up', () => {
         .mockImplementationOnce(() => {
           const q = { from: vi.fn(), where: vi.fn() };
           q.from.mockReturnValue(q);
-          q.where.mockResolvedValue([{ id: 7, pharmacyId: 1, quantity: 5, isAvailable: true }]);
+          q.where.mockResolvedValue([{
+            id: 7,
+            pharmacyId: 1,
+            quantity: 5,
+            isAvailable: true,
+            drugName: 'DrugA',
+            unit: '錠',
+            drugMasterPackageId: 101,
+            packageQuantity: 1,
+            packageUnit: '錠',
+            isLoosePackage: false,
+          }]);
           return q;
         }),
       update: vi.fn()

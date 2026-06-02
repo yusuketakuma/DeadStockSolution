@@ -169,8 +169,30 @@ describe('exchange-service coverage', () => {
           };
           query.from.mockReturnValue(query);
           query.where.mockResolvedValue([
-            { id: 1, pharmacyId: 1, quantity: 1, yakkaUnitPrice: '1', isAvailable: true },
-            { id: 2, pharmacyId: 2, quantity: 1, yakkaUnitPrice: '1', isAvailable: true },
+            {
+              id: 1,
+              pharmacyId: 1,
+              quantity: 1,
+              yakkaUnitPrice: '1',
+              isAvailable: true,
+              unit: '錠',
+              drugMasterPackageId: 101,
+              packageQuantity: 1,
+              packageUnit: '錠',
+              isLoosePackage: false,
+            },
+            {
+              id: 2,
+              pharmacyId: 2,
+              quantity: 1,
+              yakkaUnitPrice: '1',
+              isAvailable: true,
+              unit: '錠',
+              drugMasterPackageId: 102,
+              packageQuantity: 1,
+              packageUnit: '錠',
+              isLoosePackage: false,
+            },
           ]);
           return query;
         })
@@ -553,7 +575,18 @@ describe('exchange-service coverage', () => {
           const q = { from: vi.fn(), where: vi.fn() };
           q.from.mockReturnValue(q);
           q.where.mockResolvedValue([
-            { id: 11, pharmacyId: 1, quantity: 10, isAvailable: true },
+            {
+              id: 11,
+              pharmacyId: 1,
+              quantity: 10,
+              isAvailable: true,
+              drugName: 'DrugA',
+              unit: '錠',
+              drugMasterPackageId: 101,
+              packageQuantity: 5,
+              packageUnit: '錠',
+              isLoosePackage: false,
+            },
           ]);
           return q;
         });
