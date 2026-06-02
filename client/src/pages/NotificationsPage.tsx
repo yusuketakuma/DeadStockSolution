@@ -546,18 +546,30 @@ export default function NotificationsPage() {
           <h4 className="page-title mb-0">通知センター</h4>
           <div className="text-muted small">対応待ち、運営連絡、候補更新を一画面で追跡します。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/alerts" className="btn btn-outline-secondary btn-sm">アラートを確認</Link>
-          <Link to="/account" className="btn btn-outline-secondary btn-sm">通知設定を確認</Link>
+        <div className="dl-action-row mobile-stack">
           <AppButton
             type="button"
             size="sm"
-            variant="outline-secondary"
+            variant="primary"
             onClick={() => void handleMarkAllRead()}
             disabled={markingAll || summary.unread === 0}
           >
             {markingAll ? '既読化中...' : '未読をすべて既読'}
           </AppButton>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: 'アラートを確認', to: '/alerts' },
+              { label: '通知設定を確認', to: '/account' },
+              {
+                label: markingAll ? '既読化中...' : '未読をすべて既読',
+                onClick: () => void handleMarkAllRead(),
+                disabled: markingAll || summary.unread === 0,
+              },
+            ]}
+          />
         </div>
       </div>
 
@@ -633,7 +645,7 @@ export default function NotificationsPage() {
                       {isDeadlineSoon(item.deadlineAt) ? <Badge bg="danger">24時間以内</Badge> : null}
                     </div>
                   </div>
-                  <div className="d-flex gap-2 flex-wrap mt-3">
+                  <div className="dl-action-row mobile-stack mt-3">
                     <AppButton
                       type="button"
                       size="sm"
@@ -642,14 +654,14 @@ export default function NotificationsPage() {
                     >
                       開いて処理する
                     </AppButton>
-                    <AppButton
-                      type="button"
+                    <AppDropdownMenu
+                      label="その他"
                       size="sm"
                       variant="outline-secondary"
-                      onClick={() => handleSnoozeNotice(item)}
-                    >
-                      2時間後に再表示
-                    </AppButton>
+                      items={[
+                        { label: '2時間後に再表示', onClick: () => handleSnoozeNotice(item) },
+                      ]}
+                    />
                   </div>
                 </div>
               ))}
@@ -694,22 +706,21 @@ export default function NotificationsPage() {
                       </div>
                       <div className="small text-muted mt-1">{group.latest.body}</div>
                     </div>
-                    <div className="d-flex gap-2 flex-wrap">
+                    <div className="dl-action-row mobile-stack">
                       <Link to={group.actionPath} className="btn btn-outline-primary btn-sm">
                         {resolveNoticeActionLabel(group.latest)}
                       </Link>
-                      <AppButton type="button" size="sm" variant="outline-secondary" onClick={() => void handleOpenNotice(group.latest)}>
-                        最新を確認して既読
-                      </AppButton>
-                      <AppButton type="button" size="sm" variant="outline-secondary" onClick={() => void handleMarkGroupRead(group.actionPath)}>
-                        案件を一括既読
-                      </AppButton>
-                      <AppButton type="button" size="sm" variant="outline-secondary" onClick={() => handleSnoozeGroup(group.actionPath)}>
-                        案件を後で
-                      </AppButton>
-                      <AppButton type="button" size="sm" variant="outline-secondary" onClick={() => void handleClearGroupState(group.actionPath)}>
-                        状態を解除
-                      </AppButton>
+                      <AppDropdownMenu
+                        label="その他"
+                        size="sm"
+                        variant="outline-secondary"
+                        items={[
+                          { label: '最新を確認して既読', onClick: () => { void handleOpenNotice(group.latest); } },
+                          { label: '案件を一括既読', onClick: () => { void handleMarkGroupRead(group.actionPath); } },
+                          { label: '案件を後で', onClick: () => handleSnoozeGroup(group.actionPath) },
+                          { label: '状態を解除', onClick: () => { void handleClearGroupState(group.actionPath); } },
+                        ]}
+                      />
                     </div>
                   </div>
                 </div>
@@ -720,18 +731,27 @@ export default function NotificationsPage() {
 
         <Card className="mb-3">
           <Card.Header>関連画面</Card.Header>
-          <Card.Body className="d-flex gap-2 flex-wrap align-items-center">
-            {relatedActionLinks.map((link) => (
-              <Link key={link.to} to={link.to} className={`btn btn-sm btn-${link.variant}`}>
-                {link.label}
+          <Card.Body>
+            <div className="dl-action-row mobile-stack align-items-center">
+              <Link to={relatedActionLinks[0].to} className={`btn btn-sm btn-${relatedActionLinks[0].variant}`}>
+                {relatedActionLinks[0].label}
               </Link>
-            ))}
+              <AppDropdownMenu
+                label="関連"
+                variant="outline-secondary"
+                items={relatedActionLinks.slice(1).map((link) => ({
+                  key: link.to,
+                  to: link.to,
+                  label: link.label,
+                }))}
+              />
             <span className="small text-muted">通知内容に応じて、対応画面と通知設定の両方へすぐ移動できます。</span>
+            </div>
           </Card.Body>
         </Card>
 
         <Card className="mb-3">
-          <Card.Body className="d-flex gap-2 flex-wrap align-items-center">
+          <Card.Body className="dl-action-row mobile-stack align-items-center">
             <Form.Select
               size="sm"
               value={typeFilter}
@@ -853,35 +873,29 @@ export default function NotificationsPage() {
                             </td>
                             <td>{formatDateTimeJa(item.createdAt)}</td>
                             <td onClick={(event) => event.stopPropagation()}>
-                              <div className="d-flex gap-2 flex-wrap">
-                                <Link to={resolveActionPath(item.actionPath)} className="btn btn-outline-primary btn-sm">
-                                  {resolveNoticeActionLabel(item)}
-                                </Link>
+                              <div className="dl-action-row mobile-stack">
                                 <Button
                                   size="sm"
-                                  variant="outline-primary"
+                                  variant="primary"
                                   disabled={markingId === item.id}
                                   onClick={() => void handleOpenNotice(item)}
                                 >
                                   {markingId === item.id ? '移動中...' : '確認して既読'}
                                 </Button>
-                                <Button
+                                <AppDropdownMenu
+                                  label="その他"
                                   size="sm"
                                   variant="outline-secondary"
-                                  onClick={() => handleSnoozeNotice(item)}
-                                >
-                                  後で
-                                </Button>
-                                {item.unread ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline-secondary"
-                                    disabled={markingId === item.id}
-                                    onClick={() => void handleMarkSingleRead(item)}
-                                  >
-                                    {markingId === item.id ? '更新中...' : '既読'}
-                                  </Button>
-                                ) : null}
+                                  items={[
+                                    { label: resolveNoticeActionLabel(item), to: resolveActionPath(item.actionPath) },
+                                    { label: '後で', onClick: () => handleSnoozeNotice(item) },
+                                    ...(item.unread ? [{
+                                      label: markingId === item.id ? '更新中...' : '既読',
+                                      onClick: () => { void handleMarkSingleRead(item); },
+                                      disabled: markingId === item.id,
+                                    }] : []),
+                                  ]}
+                                />
                               </div>
                             </td>
                           </tr>
@@ -900,7 +914,7 @@ export default function NotificationsPage() {
                             <div className="fw-semibold">{selectedNotice.title}</div>
                             <div className="small text-muted mt-1">{selectedNotice.body}</div>
                           </div>
-                          <div className="d-flex gap-2 flex-wrap">
+                          <div className="dl-badge-row">
                             {selectedNotice.unread ? <Badge bg="warning">未読</Badge> : <Badge bg="success">既読</Badge>}
                             <Badge bg={PRIORITY_BADGE[selectedNotice.priority] ?? 'secondary'}>{TYPE_LABELS[selectedNotice.type] ?? selectedNotice.type}</Badge>
                             {isDeadlineSoon(selectedNotice.deadlineAt) ? <Badge bg="danger">24時間以内</Badge> : null}
@@ -909,16 +923,19 @@ export default function NotificationsPage() {
                             <div>期限: {selectedNotice.deadlineAt ? formatDateTimeJa(selectedNotice.deadlineAt) : '-'}</div>
                             <div>日時: {formatDateTimeJa(selectedNotice.createdAt)}</div>
                           </div>
-                          <div className="d-flex gap-2 flex-wrap">
-                            <Link to={resolveActionPath(selectedNotice.actionPath)} className="btn btn-sm btn-outline-primary">
-                              {resolveNoticeActionLabel(selectedNotice)}
-                            </Link>
-                            <Button size="sm" variant="outline-primary" onClick={() => void handleOpenNotice(selectedNotice)}>
+                          <div className="dl-action-row mobile-stack">
+                            <Button size="sm" variant="primary" onClick={() => void handleOpenNotice(selectedNotice)}>
                               確認して既読
                             </Button>
-                            <Button size="sm" variant="outline-secondary" onClick={() => handleSnoozeNotice(selectedNotice)}>
-                              後で
-                            </Button>
+                            <AppDropdownMenu
+                              label="その他"
+                              size="sm"
+                              variant="outline-secondary"
+                              items={[
+                                { label: resolveNoticeActionLabel(selectedNotice), to: resolveActionPath(selectedNotice.actionPath) },
+                                { label: '後で', onClick: () => handleSnoozeNotice(selectedNotice) },
+                              ]}
+                            />
                           </div>
                         </>
                       ) : (
@@ -949,13 +966,10 @@ export default function NotificationsPage() {
                       { label: '日時', value: formatDateTimeJa(item.createdAt) },
                     ]}
                     actions={(
-                      <div className="d-flex gap-2 flex-wrap">
-                        <Link to={resolveActionPath(item.actionPath)} className="btn btn-outline-primary btn-sm">
-                          {resolveNoticeActionLabel(item)}
-                        </Link>
+                      <div className="dl-action-row mobile-stack">
                         <Button
                           size="sm"
-                          variant="outline-primary"
+                          variant="primary"
                           disabled={markingId === item.id}
                           onClick={() => void handleOpenNotice(item)}
                         >
@@ -967,7 +981,7 @@ export default function NotificationsPage() {
                             {
                               key: 'open',
                               label: resolveNoticeActionLabel(item),
-                              href: resolveActionPath(item.actionPath),
+                              to: resolveActionPath(item.actionPath),
                             },
                             {
                               key: 'snooze',

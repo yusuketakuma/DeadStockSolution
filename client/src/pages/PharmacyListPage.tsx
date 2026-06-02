@@ -18,6 +18,7 @@ import AppMobileDataCard from '../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -313,13 +314,21 @@ export default function PharmacyListPage() {
         <h4 className="page-title mb-0">登録薬局一覧</h4>
         <div className="text-muted small">薬局ネットワークとグループ参加状況をまとめて確認できます。</div>
       </div>
-      <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-        <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
-        <Link to={selectedGroup ? `/groups/${selectedGroup.id}` : '/groups'} className="btn btn-outline-secondary btn-sm">
-          {selectedGroup ? '選択中グループを確認' : 'グループを確認'}
-        </Link>
-        <Link to="/groups?tab=public" className="btn btn-outline-secondary btn-sm">公開グループを確認</Link>
-        <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
+      <div className="dl-page-header-actions mobile-stack">
+        <Link to="/matching" className="btn btn-primary btn-sm">候補を確認</Link>
+        <AppDropdownMenu
+          label="関連画面"
+          variant="outline-secondary"
+          items={[
+            {
+              key: 'group',
+              to: selectedGroup ? `/groups/${selectedGroup.id}` : '/groups',
+              label: selectedGroup ? '選択中グループを確認' : 'グループを確認',
+            },
+            { key: 'public-groups', to: '/groups?tab=public', label: '公開グループを確認' },
+            { key: 'messages', to: '/messages', label: 'メッセージを確認' },
+          ]}
+        />
       </div>
     </div>
 
@@ -419,27 +428,25 @@ export default function PharmacyListPage() {
                       </td>
                       <td>
                         {p.id !== user?.id ? (
-                          <div className="d-flex gap-1 flex-wrap">
+                          <div className="dl-action-row mobile-stack">
                             <Link to={`/matching?targetPharmacyId=${p.id}`} className="btn btn-sm btn-outline-primary">マッチング</Link>
-                            <Link to={`/messages?pharmacyId=${p.id}&pharmacyName=${encodeURIComponent(p.name)}`} className="btn btn-sm btn-outline-secondary">メッセージ</Link>
-                            <AppButton
+                            <AppDropdownMenu
+                              label="その他"
                               size="sm"
-                              variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
-                              title={favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り追加'}
-                              aria-label={favoriteIds.has(p.id) ? `${p.name}のお気に入りを解除` : `${p.name}をお気に入りに追加`}
-                              onClick={() => toggleFavorite(p.id)}
-                            >
-                              {favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り'}
-                            </AppButton>
-                            <AppButton
-                              size="sm"
-                              variant={blockedIds.has(p.id) ? 'dark' : 'outline-secondary'}
-                              title={blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
-                              aria-label={blockedIds.has(p.id) ? `${p.name}のブロックを解除` : `${p.name}をブロック`}
-                              onClick={() => toggleBlock(p.id)}
-                            >
-                              {blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
-                            </AppButton>
+                              variant="outline-secondary"
+                              items={[
+                                { label: 'メッセージ', to: `/messages?pharmacyId=${p.id}&pharmacyName=${encodeURIComponent(p.name)}` },
+                                {
+                                  label: favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り',
+                                  onClick: () => toggleFavorite(p.id),
+                                },
+                                {
+                                  label: blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック',
+                                  onClick: () => toggleBlock(p.id),
+                                  danger: !blockedIds.has(p.id),
+                                },
+                              ]}
+                            />
                           </div>
                         ) : (
                           <span className="text-muted small">自分</span>
@@ -478,28 +485,26 @@ export default function PharmacyListPage() {
                     { label: '営業状況', value: <BusinessStatusBadge status={p.businessStatus} showHours fallback="dash" /> },
                   ]}
                   actions={p.id !== user?.id ? (
-                    <>
+                    <div className="dl-action-row mobile-stack">
                       <Link to={`/matching?targetPharmacyId=${p.id}`} className="btn btn-sm btn-outline-primary">マッチング</Link>
-                      <Link to={`/messages?pharmacyId=${p.id}&pharmacyName=${encodeURIComponent(p.name)}`} className="btn btn-sm btn-outline-secondary">メッセージ</Link>
-                      <AppButton
+                      <AppDropdownMenu
+                        label="その他"
                         size="sm"
-                        variant={favoriteIds.has(p.id) ? 'warning' : 'outline-warning'}
-                        title={favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り追加'}
-                        aria-label={favoriteIds.has(p.id) ? `${p.name}のお気に入りを解除` : `${p.name}をお気に入りに追加`}
-                        onClick={() => toggleFavorite(p.id)}
-                      >
-                        {favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り'}
-                      </AppButton>
-                      <AppButton
-                        size="sm"
-                        variant={blockedIds.has(p.id) ? 'dark' : 'outline-secondary'}
-                        title={blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
-                        aria-label={blockedIds.has(p.id) ? `${p.name}のブロックを解除` : `${p.name}をブロック`}
-                        onClick={() => toggleBlock(p.id)}
-                      >
-                        {blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック'}
-                      </AppButton>
-                    </>
+                        variant="outline-secondary"
+                        items={[
+                          { label: 'メッセージ', to: `/messages?pharmacyId=${p.id}&pharmacyName=${encodeURIComponent(p.name)}` },
+                          {
+                            label: favoriteIds.has(p.id) ? 'お気に入り解除' : 'お気に入り',
+                            onClick: () => toggleFavorite(p.id),
+                          },
+                          {
+                            label: blockedIds.has(p.id) ? 'ブロック解除' : 'ブロック',
+                            onClick: () => toggleBlock(p.id),
+                            danger: !blockedIds.has(p.id),
+                          },
+                        ]}
+                      />
+                    </div>
                   ) : (
                     <span className="text-muted small">自分の薬局です</span>
                   )}

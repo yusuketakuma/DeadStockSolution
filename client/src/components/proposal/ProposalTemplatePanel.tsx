@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import type { ProposalTemplate } from '../../api/proposal-templates';
 import AppAlert from '../ui/AppAlert';
 import AppDataPanel from '../ui/AppDataPanel';
-import LoadingButton from '../ui/LoadingButton';
+import AppDropdownMenu from '../ui/AppDropdownMenu';
 import { formatDateTimeJa } from '../../utils/formatters';
 
 interface ProposalTemplatePanelProps {
@@ -62,7 +62,7 @@ export default function ProposalTemplatePanel({
                     {summarizeTemplateItems(template)}
                   </div>
                 </div>
-                <div className="d-flex gap-2 flex-wrap align-items-center">
+                <div className="dl-action-row mobile-stack align-items-center">
                   <Badge bg="secondary">{template.items.length}品目</Badge>
                   <Badge bg="light" text="dark">使用 {template.usageCount}回</Badge>
                 </div>
@@ -71,25 +71,28 @@ export default function ProposalTemplatePanel({
                 <div className="text-muted">
                   更新: {formatDateTimeJa(template.updatedAt ?? template.createdAt)}
                 </div>
-                <div className="d-flex gap-2 flex-wrap">
+                <div className="dl-action-row mobile-stack">
                   <Link
                     to={buildUseTo(template)}
-                    className="btn btn-sm btn-outline-primary"
+                    className="btn btn-sm btn-primary"
                     onClick={() => onUse?.(template)}
                   >
                     {useLabel}
                   </Link>
                   {onDelete ? (
-                    <LoadingButton
-                      type="button"
-                      size="sm"
-                      variant="outline-danger"
-                      loading={deletingTemplateId === template.id}
-                      loadingLabel="削除中..."
-                      onClick={() => onDelete(template.id)}
-                    >
-                      削除
-                    </LoadingButton>
+                    <AppDropdownMenu
+                      label="その他"
+                      variant="outline-secondary"
+                      items={[
+                        {
+                          key: 'delete',
+                          label: deletingTemplateId === template.id ? '削除中...' : '削除',
+                          onClick: () => onDelete(template.id),
+                          disabled: deletingTemplateId === template.id,
+                          danger: true,
+                        },
+                      ]}
+                    />
                   ) : null}
                 </div>
               </div>

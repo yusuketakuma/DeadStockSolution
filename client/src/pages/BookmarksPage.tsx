@@ -19,6 +19,7 @@ import {
   updateBookmarkMemo,
 } from '../api/match-bookmarks';
 import { formatDateTimeJa } from '../utils/formatters';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 const PAGE_SIZE = 20;
 
@@ -127,10 +128,16 @@ export default function BookmarksPage() {
           <h4 className="page-title mb-0">ブックマーク</h4>
           <div className="text-muted small">保存した候補からマッチングや一覧確認へ戻れます。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を探す</Link>
-          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
-          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to="/matching" className="btn btn-primary btn-sm">候補を探す</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'proposals', to: '/proposals', label: '提案一覧を確認' },
+              { key: 'inventory', to: '/inventory/browse', label: '在庫を確認' },
+            ]}
+          />
         </div>
       </div>
       <ScrollArea>
@@ -156,10 +163,19 @@ export default function BookmarksPage() {
 
         <AppCard className="mb-3">
           <AppCard.Header>次にやること</AppCard.Header>
-          <AppCard.Body className="d-flex gap-2 flex-wrap">
+          <AppCard.Body>
+            <div className="dl-action-row mobile-stack">
             <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を探す</Link>
-            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
-            <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
+            <AppDropdownMenu
+              label="関連"
+              size="sm"
+              variant="outline-secondary"
+              items={[
+                { label: '提案一覧を確認', to: '/proposals' },
+                { label: 'メッセージを確認', to: '/messages' },
+              ]}
+            />
+            </div>
           </AppCard.Body>
         </AppCard>
 
@@ -206,26 +222,20 @@ export default function BookmarksPage() {
                               {formatDateTimeJa(b.createdAt)}
                             </td>
                             <td className="text-nowrap">
-                              <Link to={buildMatchingCandidateLink(b)} className="btn btn-outline-primary btn-sm me-1">
-                                候補を確認
-                              </Link>
-                              <AppButton
-                                type="button"
-                                variant="outline-secondary"
-                                size="sm"
-                                className="me-1"
-                                onClick={() => openEditModal(b)}
-                              >
-                                メモ編集
-                              </AppButton>
-                              <AppButton
-                                type="button"
-                                variant="outline-danger"
-                                size="sm"
-                                onClick={() => openDeleteConfirm(b)}
-                              >
-                                削除
-                              </AppButton>
+                              <div className="dl-action-row mobile-stack">
+                                <Link to={buildMatchingCandidateLink(b)} className="btn btn-outline-primary btn-sm">
+                                  候補を確認
+                                </Link>
+                                <AppDropdownMenu
+                                  label="その他"
+                                  size="sm"
+                                  variant="outline-secondary"
+                                  items={[
+                                    { label: 'メモ編集', onClick: () => openEditModal(b) },
+                                    { label: '削除', onClick: () => openDeleteConfirm(b), danger: true },
+                                  ]}
+                                />
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -245,26 +255,19 @@ export default function BookmarksPage() {
                           { label: 'ブックマーク日時', value: formatDateTimeJa(b.createdAt) },
                         ]}
                         actions={
-                          <div className="d-flex gap-2 mt-2">
+                          <div className="dl-action-row mobile-stack mt-2">
                             <Link to={buildMatchingCandidateLink(b)} className="btn btn-outline-primary btn-sm">
                               候補を確認
                             </Link>
-                            <AppButton
-                              type="button"
+                            <AppDropdownMenu
+                              label="その他"
+                              size="sm"
                               variant="outline-secondary"
-                              size="sm"
-                              onClick={() => openEditModal(b)}
-                            >
-                              メモ編集
-                            </AppButton>
-                            <AppButton
-                              type="button"
-                              variant="outline-danger"
-                              size="sm"
-                              onClick={() => openDeleteConfirm(b)}
-                            >
-                              削除
-                            </AppButton>
+                              items={[
+                                { label: 'メモ編集', onClick: () => openEditModal(b) },
+                                { label: '削除', onClick: () => openDeleteConfirm(b), danger: true },
+                              ]}
+                            />
                           </div>
                         }
                       />

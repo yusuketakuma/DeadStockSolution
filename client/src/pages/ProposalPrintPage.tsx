@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import ErrorRetryAlert from '../components/ui/ErrorRetryAlert';
 import AppButton from '../components/ui/AppButton';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 import PageLoader from '../components/ui/PageLoader';
 import { formatDateJa } from '../utils/formatters';
 import { sanitizeInternalPath } from '../utils/navigation';
@@ -110,16 +111,19 @@ export default function ProposalPrintPage() {
     return (
       <div className="p-3 d-flex flex-column gap-3">
         <ErrorRetryAlert error={error} onRetry={() => void fetchPrintData()} />
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack">
           <Link to={id ? `/proposals/${id}` : '/proposals'} className="btn btn-outline-primary btn-sm">
             提案を確認
           </Link>
-          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">
-            提案一覧を確認
-          </Link>
-          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">
-            交換履歴を確認
-          </Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { key: 'proposals', to: '/proposals', label: '提案一覧を確認' },
+              { key: 'exchange-history', to: '/exchange-history', label: '交換履歴を確認' },
+            ]}
+          />
         </div>
       </div>
     );

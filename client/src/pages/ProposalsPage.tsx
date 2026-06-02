@@ -26,6 +26,7 @@ import { useListDetailRouteState } from '../hooks/useListDetailRouteState';
 import { useKeyboardListNavigation } from '../hooks/useKeyboardListNavigation';
 import { useSavedViews } from '../hooks/useSavedViews';
 import WorkContextBar from '../components/ui/WorkContextBar';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 interface Proposal {
   id: number;
@@ -356,7 +357,7 @@ export default function ProposalsPage() {
             <div className="fw-semibold">#{selectedProposal.id} {otherName}</div>
             <div className="small text-muted mt-1">一覧の状態を保ったまま、詳細判断に移れます。</div>
           </div>
-          <div className="d-flex flex-wrap gap-2">
+          <div className="dl-badge-row">
             <Badge bg={phaseInfo.variant}>{phaseInfo.phaseLabel}</Badge>
             {waitingInfo ? (
               <Badge bg={waitingInfo.waitingForYou ? 'warning' : 'info'} text="dark">
@@ -374,19 +375,24 @@ export default function ProposalsPage() {
             <div>期限: {deadlineMeta.remainingLabel}</div>
             <div>差額: {formatYen(selectedProposal.valueDifference)}</div>
           </div>
-          <div className="d-flex gap-2 flex-wrap">
+          <div className="dl-action-row mobile-stack">
             <Link to={`/proposals/${selectedProposal.id}`} state={{ from: returnTo }} className="btn btn-sm btn-outline-primary">
               詳細で処理
             </Link>
-            <Link
-              to={`/proposals/${selectedProposal.id}/print`}
-              state={{ from: returnTo, detailPath: `/proposals/${selectedProposal.id}` }}
-              className="btn btn-sm btn-outline-secondary"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              印刷/FAX
-            </Link>
+            <AppDropdownMenu
+              label="その他"
+              size="sm"
+              variant="outline-secondary"
+              items={[
+                {
+                  label: '印刷/FAX',
+                  to: `/proposals/${selectedProposal.id}/print`,
+                  state: { from: returnTo, detailPath: `/proposals/${selectedProposal.id}` },
+                  target: '_blank',
+                  rel: 'noopener noreferrer',
+                },
+              ]}
+            />
           </div>
         </AppCard.Body>
       </AppCard>
@@ -399,9 +405,15 @@ export default function ProposalsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">マッチング一覧</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
-          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴を確認</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to="/matching" className="btn btn-primary btn-sm">候補を確認</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'history', to: '/exchange-history', label: '交換履歴を確認' },
+            ]}
+          />
         </div>
       </div>
       {bulkError && <AppAlert variant="danger">{bulkError}</AppAlert>}
@@ -492,16 +504,19 @@ export default function ProposalsPage() {
             >
               一括承認
             </LoadingButton>
-            <LoadingButton
+            <AppDropdownMenu
+              label="選択操作"
               size="sm"
-              variant="danger"
-              onClick={() => void handleBulkAction('reject')}
-              disabled={selectedIds.length === 0}
-              loading={bulkActionLoading === 'reject'}
-              loadingLabel="拒否中..."
-            >
-              一括辞退
-            </LoadingButton>
+              variant="outline-secondary"
+              items={[
+                {
+                  label: bulkActionLoading === 'reject' ? '拒否中...' : '一括辞退',
+                  onClick: () => void handleBulkAction('reject'),
+                  disabled: selectedIds.length === 0 || bulkActionLoading === 'reject',
+                  danger: true,
+                },
+              ]}
+            />
           </>
         )}
       />
@@ -600,17 +615,22 @@ export default function ProposalsPage() {
                           <td>{formatDateTimeJa(p.proposedAt)}</td>
                           <td>{renderDeadlineCell(p.deadlineAt)}</td>
                           <td onClick={(event) => event.stopPropagation()}>
-                            <div className="d-flex gap-2 flex-wrap">
+                            <div className="dl-action-row mobile-stack">
                               <Link to={`/proposals/${p.id}`} state={{ from: returnTo }} className="btn btn-sm btn-outline-primary">提案を確認</Link>
-                              <Link
-                                to={`/proposals/${p.id}/print`}
-                                state={{ from: returnTo, detailPath: `/proposals/${p.id}` }}
-                                className="btn btn-sm btn-outline-secondary"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                印刷
-                              </Link>
+                              <AppDropdownMenu
+                                label="その他"
+                                size="sm"
+                                variant="outline-secondary"
+                                items={[
+                                  {
+                                    label: '印刷',
+                                    to: `/proposals/${p.id}/print`,
+                                    state: { from: returnTo, detailPath: `/proposals/${p.id}` },
+                                    target: '_blank',
+                                    rel: 'noopener noreferrer',
+                                  },
+                                ]}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -698,16 +718,23 @@ export default function ProposalsPage() {
                           label="一括対象に追加"
                           aria-label={`${otherName}との提案を一括対象に追加`}
                         />
-                        <Link to={`/proposals/${p.id}`} state={{ from: returnTo }} className="btn btn-sm btn-outline-primary w-100">提案を確認</Link>
-                        <Link
-                          to={`/proposals/${p.id}/print`}
-                          state={{ from: returnTo, detailPath: `/proposals/${p.id}` }}
-                          className="btn btn-sm btn-outline-secondary w-100"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          印刷
-                        </Link>
+                        <div className="dl-action-row mobile-stack">
+                          <Link to={`/proposals/${p.id}`} state={{ from: returnTo }} className="btn btn-sm btn-outline-primary">提案を確認</Link>
+                          <AppDropdownMenu
+                            label="その他"
+                            size="sm"
+                            variant="outline-secondary"
+                            items={[
+                              {
+                                label: '印刷',
+                                to: `/proposals/${p.id}/print`,
+                                state: { from: returnTo, detailPath: `/proposals/${p.id}` },
+                                target: '_blank',
+                                rel: 'noopener noreferrer',
+                              },
+                            ]}
+                          />
+                        </div>
                       </div>
                     )}
                   />

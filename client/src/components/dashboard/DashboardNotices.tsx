@@ -27,7 +27,7 @@ export default function DashboardNotices({
     <AppCard className="mb-3">
       <AppCard.Header className="d-flex justify-content-between align-items-center">
         <span>お知らせ</span>
-        <div className="d-flex gap-2 flex-wrap align-items-center">
+        <div className="dl-action-row mobile-stack align-items-center">
           {notifications && (
             <>
               <Badge bg="danger">対応要: {notifications.summary.actionableRequests}</Badge>

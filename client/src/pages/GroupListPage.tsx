@@ -14,6 +14,7 @@ import AppModalShell from '../components/ui/AppModalShell';
 import LoadingButton from '../components/ui/LoadingButton';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import type { PharmacyGroup, GroupListResponse, GroupVisibility } from '../../../server/src/types/group';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 type TabKey = 'mine' | 'public';
 
@@ -274,15 +275,21 @@ export default function GroupListPage() {
           <h4 className="page-title mb-0">グループ一覧</h4>
           <div className="text-muted small">グループ作成、参加、関連薬局やメッセージ画面への移動をまとめています。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/pharmacies" className="btn btn-outline-secondary btn-sm">薬局を確認</Link>
-          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
-          <Link to="/account" className="btn btn-outline-secondary btn-sm">薬局設定を確認</Link>
+        <div className="dl-page-header-actions mobile-stack">
           {user && (
             <AppButton variant="primary" size="sm" onClick={() => setShowCreateModal(true)}>
               グループ作成
             </AppButton>
           )}
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'pharmacies', to: '/pharmacies', label: '薬局を確認' },
+              { key: 'messages', to: '/messages', label: 'メッセージを確認' },
+              { key: 'account', to: '/account', label: '薬局設定を確認' },
+            ]}
+          />
         </div>
       </div>
 

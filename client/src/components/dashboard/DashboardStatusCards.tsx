@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { UploadStatus } from './types';
 import AppDataPanel from '../ui/AppDataPanel';
 import { formatDateJa } from '../../utils/formatters';
+import AppDropdownMenu from '../ui/AppDropdownMenu';
 
 interface Props {
   status: UploadStatus | null;
@@ -29,9 +30,17 @@ export default function DashboardStatusCards({ status, userName }: Props) {
                   ? <Badge bg="success">アップロード済み</Badge>
                   : <Badge bg="secondary">未アップロード</Badge>}
               </div>
-              <Link to="/upload" className="btn btn-outline-primary btn-sm">アップロード</Link>
-              {' '}
-              <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
+              <div className="dl-action-row mobile-stack mt-2">
+                <Link to="/upload" className="btn btn-outline-primary btn-sm">アップロード</Link>
+                <AppDropdownMenu
+                  label="関連"
+                  size="sm"
+                  variant="outline-secondary"
+                  items={[
+                    { key: 'dead-stock', to: '/inventory/dead-stock', label: '在庫を確認' },
+                  ]}
+                />
+              </div>
           </AppDataPanel>
         </Col>
 
@@ -48,9 +57,17 @@ export default function DashboardStatusCards({ status, userName }: Props) {
                   ? <Badge bg="success">当月アップロード済み</Badge>
                   : <Badge bg="warning" text="dark">当月未アップロード</Badge>}
               </div>
-              <Link to="/upload" className="btn btn-outline-primary btn-sm">アップロード</Link>
-              {' '}
-              <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
+              <div className="dl-action-row mobile-stack mt-2">
+                <Link to="/upload" className="btn btn-outline-primary btn-sm">アップロード</Link>
+                <AppDropdownMenu
+                  label="関連"
+                  size="sm"
+                  variant="outline-secondary"
+                  items={[
+                    { key: 'used-medication', to: '/inventory/used-medication', label: '在庫を確認' },
+                  ]}
+                />
+              </div>
           </AppDataPanel>
         </Col>
 

@@ -19,11 +19,33 @@ export const ProposalActionButtons = memo(function ProposalActionButtons({
   onReject,
   onComplete,
 }: ProposalActionsProps) {
+  const actions = [
+    canAccept ? { key: 'accept', label: '仮マッチングを承認', onClick: onAccept, variant: 'success' as const } : null,
+    canComplete ? { key: 'complete', label: '交換完了', onClick: onComplete, variant: 'primary' as const } : null,
+    canReject ? { key: 'reject', label: '拒否する', onClick: onReject, variant: 'danger' as const } : null,
+  ].filter((item): item is { key: string; label: string; onClick: () => void; variant: 'success' | 'primary' | 'danger' } => item !== null);
+
+  const [primaryAction, ...secondaryActions] = actions;
+
   return (
     <div className="d-flex gap-2 mobile-stack">
-      {canAccept && <AppButton variant="success" onClick={onAccept}>仮マッチングを承認</AppButton>}
-      {canReject && <AppButton variant="danger" onClick={onReject}>拒否する</AppButton>}
-      {canComplete && <AppButton variant="primary" onClick={onComplete}>交換完了</AppButton>}
+      {primaryAction && (
+        <AppButton variant={primaryAction.variant} onClick={primaryAction.onClick}>
+          {primaryAction.label}
+        </AppButton>
+      )}
+      {secondaryActions.length > 0 && (
+        <AppDropdownMenu
+          label="その他"
+          variant="outline-secondary"
+          items={secondaryActions.map((action) => ({
+            key: action.key,
+            label: action.label,
+            onClick: action.onClick,
+            danger: action.key === 'reject',
+          }))}
+        />
+      )}
     </div>
   );
 });

@@ -3,6 +3,7 @@ import { Badge, Form } from 'react-bootstrap';
 import AttachmentPreviewList from '../../components/ui/AttachmentPreviewList';
 import AppCard from '../../components/ui/AppCard';
 import AppControl from '../../components/ui/AppControl';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import InlineLoader from '../../components/ui/InlineLoader';
 import LoadingButton from '../../components/ui/LoadingButton';
 import { formatDateTimeJa } from '../../utils/formatters';
@@ -88,7 +89,7 @@ export function RequestThreadPane({
           ) : (
             <div className="d-flex flex-column gap-3">
               <div className="border rounded p-3 bg-light">
-                <div className="d-flex flex-wrap gap-2 align-items-center">
+                <div className="dl-badge-row">
                   <Badge bg={workflowMeta?.bg} text={workflowMeta?.text}>{workflowMeta?.label}</Badge>
                   <Badge bg="light" text="dark">{categoryLabel(thread.request.category)}</Badge>
                   <Badge bg={priorityMeta?.bg} text={priorityMeta?.text}>{priorityMeta?.label}</Badge>
@@ -105,7 +106,7 @@ export function RequestThreadPane({
                   <div className="small mt-2">{thread.request.latestSummary ?? thread.request.openclawSummary}</div>
                 )}
                 {slaSummary && (
-                  <div className="d-flex flex-wrap gap-2 align-items-center mt-2">
+                  <div className="dl-badge-row mt-2">
                     <Badge bg={slaSummary.tone} text={slaSummary.tone === 'warning' ? 'dark' : undefined}>
                       {slaSummary.nextActionLabel}
                     </Badge>
@@ -166,17 +167,17 @@ export function RequestThreadPane({
               </div>
 
               <div className="border-top pt-3">
-                <div className="d-flex flex-wrap gap-2 mb-2">
-                  {REQUEST_TEMPLATES.map((template) => (
-                    <button
-                      key={template}
-                      type="button"
-                      className="btn btn-outline-secondary btn-sm"
-                      onClick={() => onReplyTemplateSelect(template)}
-                    >
-                      {template}
-                    </button>
-                  ))}
+                <div className="dl-action-row mobile-stack mb-2">
+                  <AppDropdownMenu
+                    label="定型文を挿入"
+                    variant="outline-secondary"
+                    align="start"
+                    items={REQUEST_TEMPLATES.map((template, index) => ({
+                      key: `reply-template-${index}`,
+                      label: template,
+                      onClick: () => onReplyTemplateSelect(template),
+                    }))}
+                  />
                 </div>
                 <AppControl
                   as="textarea"
@@ -199,27 +200,34 @@ export function RequestThreadPane({
                       <div className="text-muted small">{replyFiles.map((file) => file.name).join(', ')}</div>
                     )}
                   </div>
-                  <LoadingButton
-                    variant="primary"
-                    onClick={onSendReply}
-                    loading={sending}
-                    loadingLabel="送信中..."
-                    disabled={thread.request.workflowStatus === 'completed'}
-                  >
-                    追加情報を送信
-                  </LoadingButton>
+                  <div className="dl-action-row mobile-stack justify-content-end align-items-start">
+                    <LoadingButton
+                      variant="primary"
+                      onClick={onSendReply}
+                      loading={sending}
+                      loadingLabel="送信中..."
+                      disabled={thread.request.workflowStatus === 'completed'}
+                    >
+                      追加情報を送信
+                    </LoadingButton>
+                    {(thread.request.waitingOn === 'admin' || thread.request.waitingOn === 'openclaw') && thread.request.workflowStatus !== 'completed' && (
+                      <AppDropdownMenu
+                        label="その他"
+                        variant="outline-secondary"
+                        items={[
+                          {
+                            key: 'remind',
+                            label: reminding ? '送信中...' : '再催促する',
+                            onClick: onRemind,
+                            disabled: reminding || reminderCooldownActive,
+                          },
+                        ]}
+                      />
+                    )}
+                  </div>
                 </div>
                 {(thread.request.waitingOn === 'admin' || thread.request.waitingOn === 'openclaw') && thread.request.workflowStatus !== 'completed' && (
-                  <div className="mt-2 d-flex gap-2 flex-wrap align-items-center">
-                    <LoadingButton
-                      variant="outline-warning"
-                      onClick={onRemind}
-                      loading={reminding}
-                      loadingLabel="送信中..."
-                      disabled={reminderCooldownActive}
-                    >
-                      再催促する
-                    </LoadingButton>
+                  <div className="mt-2 dl-action-row mobile-stack align-items-center">
                     <span className="small text-muted">
                       {reminderCooldownActive && nextReminderAt
                         ? `前回の再催促から6時間経過後に再送できます（次回: ${formatDateTimeJa(nextReminderAt)}）`

@@ -25,6 +25,7 @@ import { useGroupMembership } from '../hooks/useGroupMembership';
 import { useAsyncState } from '../hooks/useAsyncState';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 import type { MatchCandidate } from '../types/matching';
 import {
   buildMatchingFilterParams,
@@ -313,10 +314,16 @@ export default function MatchingPage() {
             <h4 className="page-title mb-0">マッチング</h4>
             <div className="text-muted small">候補検索、ブックマーク、提案作成をこの画面から進めます。</div>
           </div>
-          <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-            <Link to="/bookmarks" className="btn btn-outline-secondary btn-sm">ブックマークを確認</Link>
-            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
-            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴を確認</Link>
+          <div className="dl-page-header-actions mobile-stack">
+            <Link to="/bookmarks" className="btn btn-primary btn-sm">ブックマークを確認</Link>
+            <AppDropdownMenu
+              label="関連画面"
+              variant="outline-secondary"
+              items={[
+                { key: 'proposals', to: '/proposals', label: '提案一覧を確認' },
+                { key: 'history', to: '/exchange-history', label: '交換履歴を確認' },
+              ]}
+            />
           </div>
         </div>
         <ScrollArea>
@@ -347,24 +354,27 @@ export default function MatchingPage() {
             <AppCard className="mb-3">
               <AppCard.Header>候補比較と優先表示</AppCard.Header>
               <AppCard.Body>
-                <div className="d-flex gap-2 flex-wrap align-items-center mb-3">
+                <div className="dl-action-row mobile-stack align-items-center mb-3">
                   <AppButton
                     type="button"
                     size="sm"
-                    variant={filters.sortBy === 'expiry' && filters.sortOrder === 'asc' ? 'warning' : 'outline-warning'}
+                    variant={filters.sortBy === 'expiry' && filters.sortOrder === 'asc' ? 'warning' : 'primary'}
                     onClick={handlePrioritizeUrgent}
                   >
                     期限切迫を優先
                   </AppButton>
                   {comparePharmacyIds.length > 0 && (
-                    <AppButton
-                      type="button"
-                      size="sm"
+                    <AppDropdownMenu
+                      label="その他"
                       variant="outline-secondary"
-                      onClick={() => setComparePharmacyIds([])}
-                    >
-                      比較をクリア
-                    </AppButton>
+                      items={[
+                        {
+                          key: 'clear-compare',
+                          label: '比較をクリア',
+                          onClick: () => setComparePharmacyIds([]),
+                        },
+                      ]}
+                    />
                   )}
                   <span className="small text-muted">
                     候補カードから 2 件まで比較に追加できます。
@@ -391,18 +401,21 @@ export default function MatchingPage() {
                               {candidate.priorityReasons.slice(0, 3).map((reason) => reason.label).join(' / ')}
                             </div>
                           )}
-                          <div className="d-flex gap-2 flex-wrap mt-3">
+                          <div className="dl-action-row mobile-stack mt-3">
                             <AppButton type="button" size="sm" variant="primary" onClick={() => setCandidateForProposal(candidate)}>
                               この候補で提案
                             </AppButton>
-                            <AppButton
-                              type="button"
-                              size="sm"
+                            <AppDropdownMenu
+                              label="その他"
                               variant="outline-secondary"
-                              onClick={() => setComparePharmacyIds((prev) => prev.filter((pharmacyId) => pharmacyId !== candidate.pharmacyId))}
-                            >
-                              比較から外す
-                            </AppButton>
+                              items={[
+                                {
+                                  key: 'remove-compare',
+                                  label: '比較から外す',
+                                  onClick: () => setComparePharmacyIds((prev) => prev.filter((pharmacyId) => pharmacyId !== candidate.pharmacyId)),
+                                },
+                              ]}
+                            />
                           </div>
                         </div>
                       </div>
@@ -417,7 +430,7 @@ export default function MatchingPage() {
             <AppCard className="mb-3">
               <AppCard.Header>却下理由の傾向</AppCard.Header>
               <AppCard.Body>
-                <div className="d-flex gap-2 flex-wrap">
+                <div className="dl-badge-row">
                   {Object.entries(MATCHING_DISMISS_REASON_LABELS).map(([reason, label]) => (
                     <span key={reason} className="badge bg-secondary">
                       {label}: {dismissStats[reason as MatchingDismissReason]}

@@ -13,6 +13,7 @@ import InlineLoader from '../components/ui/InlineLoader';
 import LoadingButton from '../components/ui/LoadingButton';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import AppModalShell from '../components/ui/AppModalShell';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import type { GroupDetailResponse, GroupMemberRole, GroupVisibility } from '../../../server/src/types/group';
 
@@ -265,13 +266,18 @@ export default function GroupDetailPage() {
               {canManage && (
                 <td>
                   {m.role !== 'owner' && (
-                    <AppButton
-                      size="sm"
-                      variant="outline-danger"
-                      onClick={() => setConfirmState({ action: 'removeMember', targetPharmacyId: m.pharmacyId })}
-                    >
-                      除外
-                    </AppButton>
+                    <AppDropdownMenu
+                      label="メンバー操作"
+                      variant="outline-secondary"
+                      items={[
+                        {
+                          key: `remove-${m.pharmacyId}`,
+                          label: '除外',
+                          onClick: () => setConfirmState({ action: 'removeMember', targetPharmacyId: m.pharmacyId }),
+                          danger: true,
+                        },
+                      ]}
+                    />
                   )}
                 </td>
               )}
@@ -298,13 +304,18 @@ export default function GroupDetailPage() {
           ]}
           actions={
             canManage && m.role !== 'owner' ? (
-              <AppButton
-                size="sm"
-                variant="outline-danger"
-                onClick={() => setConfirmState({ action: 'removeMember', targetPharmacyId: m.pharmacyId })}
-              >
-                除外
-              </AppButton>
+              <AppDropdownMenu
+                label="メンバー操作"
+                variant="outline-secondary"
+                items={[
+                  {
+                    key: `remove-${m.pharmacyId}`,
+                    label: '除外',
+                    onClick: () => setConfirmState({ action: 'removeMember', targetPharmacyId: m.pharmacyId }),
+                    danger: true,
+                  },
+                ]}
+              />
             ) : undefined
           }
         />
@@ -314,18 +325,30 @@ export default function GroupDetailPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <h4 className="page-title mb-0">{group.name}</h4>
-        <div className="d-flex gap-2 flex-shrink-0">
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">{group.name}</h4>
+          <div className="text-muted small">メンバー、招待、公開設定をこの画面で管理します。</div>
+        </div>
+        <div className="dl-action-row mobile-stack">
           {canManage && (
             <AppButton size="sm" variant="outline-primary" onClick={openEditModal}>
               設定編集
             </AppButton>
           )}
           {isOwner && (
-            <AppButton size="sm" variant="outline-danger" onClick={() => setConfirmState({ action: 'delete' })}>
-              グループ削除
-            </AppButton>
+            <AppDropdownMenu
+              label="その他"
+              variant="outline-secondary"
+              items={[
+                {
+                  key: 'delete-group',
+                  label: 'グループ削除',
+                  onClick: () => setConfirmState({ action: 'delete' }),
+                  danger: true,
+                },
+              ]}
+            />
           )}
           {currentMember && !isOwner && (
             <AppButton size="sm" variant="outline-warning" onClick={() => setConfirmState({ action: 'leave' })}>

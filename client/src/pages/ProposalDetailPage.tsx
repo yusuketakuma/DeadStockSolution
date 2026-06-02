@@ -21,6 +21,7 @@ import { ProposalCommentSection, type ProposalComment } from '../components/prop
 import { ProposalActionButtons, ProposalMobileStickyActions } from '../components/proposal/ProposalActions';
 import ProposalTemplatePanel from '../components/proposal/ProposalTemplatePanel';
 import WorkContextBar from '../components/ui/WorkContextBar';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 import {
   compareProposalTemplates,
   createProposalTemplate,
@@ -408,9 +409,15 @@ export default function ProposalDetailPage() {
             <h4 className="page-title mb-0">提案詳細</h4>
           <div className="text-muted small">提案詳細を開けない場合でも、一覧や履歴から近い流れへ戻れます。</div>
           </div>
-          <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-            <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
-            <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴を確認</Link>
+          <div className="dl-page-header-actions mobile-stack">
+            <Link to="/proposals" className="btn btn-primary btn-sm">提案一覧を確認</Link>
+            <AppDropdownMenu
+              label="関連画面"
+              variant="outline-secondary"
+              items={[
+                { key: 'history', to: '/exchange-history', label: '交換履歴を確認' },
+              ]}
+            />
           </div>
         </div>
         <ErrorRetryAlert error={error || 'マッチング詳細を取得できませんでした。'} onRetry={() => void fetchDetail()} />
@@ -681,7 +688,7 @@ export default function ProposalDetailPage() {
 
   const ProposalDeadlineSection = () => (
     <AppDataPanel title="提案期限" className="mb-3" bodyClassName="small">
-      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div className="dl-action-row mobile-stack justify-content-between align-items-start">
         <div>
           <div className="fw-semibold">{formatDateTimeJa(proposalDeadline)}</div>
           <div className="text-muted">
@@ -720,20 +727,34 @@ export default function ProposalDetailPage() {
 
   const ProposalWorkflowSection = () => (
     <AppDataPanel title="印刷と次の操作" className="mb-3" bodyClassName="small">
-      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div className="dl-action-row mobile-stack justify-content-between align-items-start">
         <div>
           <div className="fw-semibold">FAX 確認と承認状況の往復をここから進めます。</div>
           <div className="text-muted">
             印刷用ページで様式を開き、送付後はメッセージ確認か進行履歴の確認へ戻ってください。
           </div>
         </div>
-        <div className="d-flex gap-2 flex-wrap">
-          <Link to={`/proposals/${id}/print`} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
+        <div className="dl-action-row mobile-stack">
+          <Link to={`/proposals/${id}/print`} className="btn btn-primary btn-sm" target="_blank" rel="noopener noreferrer">
             印刷用ページを開く
           </Link>
-          <a href="#proposal-timeline" className="btn btn-outline-secondary btn-sm">
-            進行履歴へ
-          </a>
+          <AppDropdownMenu
+            label="その他"
+            variant="outline-secondary"
+            items={[
+              { key: 'timeline', href: '#proposal-timeline', label: '進行履歴へ' },
+              {
+                key: 'message',
+                to: buildMessagesPath({
+                  pharmacyId: otherPharmacy.id,
+                  pharmacyName: otherPharmacy.name,
+                  context: 'proposal',
+                  contextId: proposal.id,
+                }),
+                label: 'メッセージで確認',
+              },
+            ]}
+          />
         </div>
       </div>
     </AppDataPanel>
@@ -741,7 +762,7 @@ export default function ProposalDetailPage() {
 
   const ProposalReminderSection = () => (!user?.isAdmin && !isCompletedPhase && !isTerminalPhase ? (
     <AppDataPanel title="リマインド / 再送" className="mb-3" bodyClassName="small">
-      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div className="dl-action-row mobile-stack justify-content-between align-items-start">
         <div>
           <div className="fw-semibold">承認待ちやFAX確認が滞留しているときの再送導線です。</div>
           <div className="text-muted">
@@ -751,7 +772,7 @@ export default function ProposalDetailPage() {
             <div className="text-muted mt-2">FAX送付済みメモ: {formatDateTimeJa(faxSentAt)}</div>
           )}
         </div>
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack">
           <Link
             to={buildMessagesPath({
               pharmacyId: otherPharmacy.id,
@@ -764,16 +785,21 @@ export default function ProposalDetailPage() {
           >
             リマインドを送る
           </Link>
-          <button
-            type="button"
-            className="btn btn-outline-secondary btn-sm"
-            onClick={() => setFaxSentMap((prev) => ({
-              ...prev,
-              [String(proposal.id)]: prev[String(proposal.id)] ? '' : new Date().toISOString(),
-            }))}
-          >
-            {faxSentAt ? 'FAX送付メモを解除' : 'FAX送付済みにする'}
-          </button>
+          <AppDropdownMenu
+            label="その他"
+            variant="outline-secondary"
+            items={[
+              {
+                key: 'fax-sent',
+                label: faxSentAt ? 'FAX送付メモを解除' : 'FAX送付済みにする',
+                onClick: () => setFaxSentMap((prev) => ({
+                  ...prev,
+                  [String(proposal.id)]: prev[String(proposal.id)] ? '' : new Date().toISOString(),
+                })),
+              },
+              { key: 'print', to: printPath, label: '印刷ページを確認', target: '_blank', rel: 'noopener noreferrer' },
+            ]}
+          />
         </div>
       </div>
     </AppDataPanel>
@@ -864,7 +890,7 @@ export default function ProposalDetailPage() {
             </div>
           )}
           {pendingCounterOffer.proposerPharmacyId !== user?.id && (
-            <div className="d-flex gap-2 flex-wrap mt-2">
+            <div className="dl-action-row mobile-stack mt-2">
               <LoadingButton
                 type="button"
                 size="sm"
@@ -875,21 +901,24 @@ export default function ProposalDetailPage() {
               >
                 反対提案を承認
               </LoadingButton>
-              <LoadingButton
-                type="button"
-                size="sm"
-                variant="outline-danger"
-                loading={counterOfferResponding === 'rejected'}
-                loadingLabel="却下中..."
-                onClick={() => void handleRespondCounterOffer('rejected')}
-              >
-                反対提案を却下
-              </LoadingButton>
+              <AppDropdownMenu
+                label="その他"
+                variant="outline-secondary"
+                items={[
+                  {
+                    key: 'reject',
+                    label: counterOfferResponding === 'rejected' ? '却下中...' : '反対提案を却下',
+                    disabled: counterOfferResponding !== null,
+                    danger: true,
+                    onClick: () => void handleRespondCounterOffer('rejected'),
+                  },
+                ]}
+              />
             </div>
           )}
         </div>
       ) : (
-        <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div className="dl-action-row mobile-stack justify-content-between align-items-start">
           <div>
             <div className="fw-semibold">数量や対象薬剤を変えた正式な反対提案を残せます。</div>
             <div className="text-muted">
@@ -933,14 +962,14 @@ export default function ProposalDetailPage() {
 
   const ProposalAdjustmentSection = () => (!user?.isAdmin && !isCompletedPhase && !isTerminalPhase ? (
     <AppDataPanel title="再調整" className="mb-3" bodyClassName="small">
-      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div className="dl-action-row mobile-stack justify-content-between align-items-start">
         <div>
           <div className="fw-semibold">数量や品目を少し変えて再提案できます。</div>
           <div className="text-muted">
             拒否に進む前に、相手薬局へ調整案を送りつつ同条件の候補を再確認できます。
           </div>
         </div>
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack">
           <Link
             to={buildMessagesPath({
               pharmacyId: otherPharmacy.id,
@@ -953,9 +982,14 @@ export default function ProposalDetailPage() {
           >
             再調整メッセージ
           </Link>
-          <Link to={proposalAdjustmentMatchingPath} className="btn btn-outline-secondary btn-sm">
-            条件を変えて再検索
-          </Link>
+          <AppDropdownMenu
+            label="その他"
+            variant="outline-secondary"
+            items={[
+              { key: 'matching', to: proposalAdjustmentMatchingPath, label: '条件を変えて再検索' },
+              { key: 'timeline', href: '#proposal-timeline', label: '進行履歴へ' },
+            ]}
+          />
         </div>
       </div>
     </AppDataPanel>
@@ -972,7 +1006,7 @@ export default function ProposalDetailPage() {
       buildUseTo={buildTemplateMatchingPath}
       onUse={handleUseTemplate}
       actions={canSaveTemplate ? (
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack">
           <input
             value={templateName}
             onChange={(event) => setTemplateName(event.target.value)}
@@ -1257,7 +1291,7 @@ export default function ProposalDetailPage() {
           <h4 className="page-title mb-0">マッチング #{proposal.id}</h4>
           <div className="text-muted small">提案詳細、タイムライン、コメント、相手薬局との連絡をここで確認します。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+        <div className="dl-page-header-actions mobile-stack">
           <Link
             to={buildMessagesPath({
               pharmacyId: otherPharmacy.id,
@@ -1269,11 +1303,15 @@ export default function ProposalDetailPage() {
           >
             相手にメッセージ
           </Link>
-          <Link to={returnTo} className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
-          <Link to="/exchange-history" className="btn btn-outline-secondary btn-sm">交換履歴を確認</Link>
-          <Link to={printPath} state={{ from: returnTo, detailPath: `/proposals/${proposal.id}` }} className="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">
-            印刷ページを確認
-          </Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'return', to: returnTo, label: '提案一覧を確認' },
+              { key: 'history', to: '/exchange-history', label: '交換履歴を確認' },
+              { key: 'print', href: printPath, label: '印刷ページを確認' },
+            ]}
+          />
         </div>
       </div>
 
@@ -1292,14 +1330,12 @@ export default function ProposalDetailPage() {
           latestCounterOffer ? { label: `反対提案: ${latestCounterOffer.status}`, bg: latestCounterOffer.status === 'pending' ? 'danger' : 'secondary' } : null,
         ]}
         nextActions={[
-          { to: printPath, label: '印刷/FAX確認', variant: 'outline-secondary' },
           { to: buildMessagesPath({
             pharmacyId: otherPharmacy.id,
             pharmacyName: otherPharmacy.name,
             context: 'proposal',
             contextId: proposal.id,
           }), label: 'メッセージ調整', variant: 'outline-primary' },
-          { to: proposalAdjustmentMatchingPath, label: '候補を再検索', variant: 'outline-secondary' },
         ]}
       />
 

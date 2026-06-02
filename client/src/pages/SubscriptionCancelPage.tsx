@@ -14,7 +14,7 @@ export default function SubscriptionCancelPage() {
 
           <p className="mb-3">ご不明点がある場合はサポートまでご連絡ください。</p>
 
-          <div className="d-flex gap-2 flex-wrap">
+          <div className="dl-action-row mobile-stack">
             <Link to="/account" className="btn btn-primary">アカウント設定へ戻る</Link>
             <Link to="/" className="btn btn-outline-secondary">ダッシュボードへ</Link>
           </div>

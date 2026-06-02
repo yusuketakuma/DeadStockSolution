@@ -17,6 +17,7 @@ import { usePaginatedList } from '../hooks/usePaginatedList';
 import { useTrackRecentWork } from '../hooks/useRecentWork';
 import { resolveUploadTypeLabel, type UploadType } from './upload/upload-job-utils';
 import { formatCountJa, formatDateTimeJa } from '../utils/formatters';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 interface QualitySummary {
   totalIssues: number;
@@ -200,6 +201,7 @@ export default function UploadQualityPage() {
   const dominantIssueCode = summary?.issuesByCode[0]?.issueCode ?? '';
   const dominantUploadType = items[0]?.uploadType ?? 'dead_stock';
   const reuploadPath = `/upload?reuseSavedMapping=1&uploadType=${dominantUploadType}${dominantIssueCode ? `&issueCode=${encodeURIComponent(dominantIssueCode)}` : ''}`;
+  const exportIssuesPath = `/upload-quality/my-issues/export.csv${issueCodeFilter ? `?issueCode=${encodeURIComponent(issueCodeFilter)}` : ''}`;
   const groupedVisibleIssues = useMemo(() => {
     const groups = new Map<string, UploadQualityIssue[]>();
     for (const issue of items) {
@@ -211,18 +213,9 @@ export default function UploadQualityPage() {
       .map(([issueCode, groupedItems]) => ({ issueCode, items: groupedItems }))
       .sort((left, right) => right.items.length - left.items.length || left.issueCode.localeCompare(right.issueCode));
   }, [items]);
-  const nextStepLinks = hasIssues
-    ? [
-      { to: reuploadPath, label: '保存済み設定で再アップロード', variant: 'outline-primary' },
-      { to: '/inventory/dead-stock', label: 'デッドストックを見る', variant: 'outline-secondary' },
-      { to: '/inventory/used-medication', label: '使用量リストを見る', variant: 'outline-secondary' },
-      { to: '/statistics', label: '統計を見る', variant: 'outline-secondary' },
-    ]
-    : [
-      { to: '/upload', label: 'アップロードへ戻る', variant: 'outline-primary' },
-      { to: '/inventory/dead-stock', label: 'デッドストックを見る', variant: 'outline-secondary' },
-      { to: '/inventory/used-medication', label: '使用量リストを見る', variant: 'outline-secondary' },
-    ];
+  const primaryNextStep = hasIssues
+    ? { to: reuploadPath, label: '保存済み設定で再アップロード' }
+    : { to: '/upload', label: 'アップロードへ戻る' };
 
   useTrackRecentWork(useMemo(() => ({
     id: `upload-quality${issueCodeFilter ? `-${issueCodeFilter}` : ''}`,
@@ -239,11 +232,17 @@ export default function UploadQualityPage() {
           <h4 className="page-title mb-0">アップロード品質</h4>
           <small className="text-muted">最近のアップロードで検出された問題を確認できます。</small>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+        <div className="dl-page-header-actions mobile-stack">
           <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量を確認</Link>
-          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計を確認</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'dead-stock', to: '/inventory/dead-stock', label: 'デッドストックを確認' },
+              { key: 'used-medication', to: '/inventory/used-medication', label: '使用量を確認' },
+              { key: 'statistics', to: '/statistics', label: '統計を確認' },
+            ]}
+          />
         </div>
       </div>
 
@@ -258,9 +257,7 @@ export default function UploadQualityPage() {
           dominantIssueCode ? { label: `最多: ${dominantIssueCode}`, bg: 'secondary' } : null,
         ]}
         nextActions={[
-          { to: reuploadPath, label: '再アップロード', variant: 'outline-primary' },
-          { to: '/inventory/dead-stock', label: 'デッドストック', variant: 'outline-secondary' },
-          { to: '/inventory/used-medication', label: '使用量リスト', variant: 'outline-secondary' },
+          { to: primaryNextStep.to, label: hasIssues ? '再アップロード' : 'アップロードへ戻る', variant: 'outline-primary' },
         ]}
       />
 
@@ -285,17 +282,33 @@ export default function UploadQualityPage() {
 
       <Card className="mb-3">
         <Card.Header>次にやること</Card.Header>
-        <Card.Body className="d-flex gap-2 flex-wrap align-items-center">
-          {nextStepLinks.map((link) => (
-            <Link key={link.to} to={link.to} className={`btn btn-sm btn-${link.variant}`}>
-              {link.label}
+        <Card.Body>
+          <div className="dl-action-row mobile-stack align-items-center">
+            <Link to={primaryNextStep.to} className="btn btn-sm btn-primary">
+              {primaryNextStep.label}
             </Link>
-          ))}
-          <span className="small text-muted">
-            {hasIssues
-              ? '問題行を確認したら、保存済みマッピングを使って再アップロードし、在庫画面で反映状況を確認します。'
-              : '問題がなければ在庫画面へ戻って結果を確認します。'}
-          </span>
+            <AppDropdownMenu
+              label="確認先"
+              variant="outline-secondary"
+              items={[
+                ...(hasIssues ? [{
+                  key: 'export',
+                  href: buildApiUrl(exportIssuesPath),
+                  label: '問題行をCSV出力',
+                  target: '_blank',
+                  rel: 'noopener noreferrer',
+                }] : []),
+                { key: 'dead-stock', to: '/inventory/dead-stock', label: 'デッドストックを見る' },
+                { key: 'used-medication', to: '/inventory/used-medication', label: '使用量リストを見る' },
+                { key: 'statistics', to: '/statistics', label: '統計を見る' },
+              ]}
+            />
+            <span className="small text-muted">
+              {hasIssues
+                ? '問題行を確認したら、保存済みマッピングを使って再アップロードし、在庫画面で反映状況を確認します。'
+                : '問題がなければ在庫画面へ戻って結果を確認します。'}
+            </span>
+          </div>
         </Card.Body>
       </Card>
       <SavedViewsPanel
@@ -348,20 +361,22 @@ export default function UploadQualityPage() {
                 <Card.Header className="py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
                   <span>エラーコード別</span>
                   {hasIssues && (
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary btn-sm"
-                      onClick={() => {
-                        const params = new URLSearchParams();
-                        if (issueCodeFilter) params.set('issueCode', issueCodeFilter);
-                        window.open(buildApiUrl(`/upload-quality/my-issues/export.csv?${params.toString()}`), '_blank', 'noopener');
-                      }}
-                    >
-                      問題行をCSV出力
-                    </button>
+                    <AppDropdownMenu
+                      label="出力"
+                      variant="outline-secondary"
+                      items={[
+                        {
+                          key: 'export-visible',
+                          href: buildApiUrl(exportIssuesPath),
+                          label: issueCodeFilter ? `${issueCodeFilter} をCSV出力` : '問題行をCSV出力',
+                          target: '_blank',
+                          rel: 'noopener noreferrer',
+                        },
+                      ]}
+                    />
                   )}
                 </Card.Header>
-                <Card.Body className="p-2 d-flex flex-wrap gap-2">
+                <Card.Body className="p-2 dl-action-row mobile-stack">
                   {summary.issuesByCode.length > 0 ? summary.issuesByCode.map((issue) => (
                     <button
                       key={issue.issueCode}
@@ -402,10 +417,7 @@ export default function UploadQualityPage() {
             </Form.Select>
           </Col>
           {hasIssues && (
-            <Col xs={12} md={8} className="d-flex align-items-center gap-2 flex-wrap">
-              <Link to={reuploadPath} className="btn btn-outline-primary btn-sm">
-                保存済み設定で再アップロード
-              </Link>
+            <Col xs={12} md={8} className="d-flex align-items-center">
               <span className="small text-muted">
                 過去プレビューで保存された列マッピングを再利用しながら修正できます。
               </span>
@@ -434,23 +446,33 @@ export default function UploadQualityPage() {
                           </div>
                         )}
                       </div>
-                      <div className="d-flex gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          className={`btn btn-sm ${issueCodeFilter === group.issueCode ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                          onClick={() => {
-                            setIssueCodeFilter(group.issueCode);
-                            setPage(1);
-                          }}
-                        >
-                          このタイプだけ見る
-                        </button>
+                      <div className="dl-action-row mobile-stack">
                         <Link
                           to={`/upload?reuseSavedMapping=1&uploadType=${firstIssue?.uploadType ?? 'dead_stock'}&issueCode=${encodeURIComponent(group.issueCode)}`}
-                          className="btn btn-sm btn-outline-primary"
+                          className="btn btn-sm btn-primary"
                         >
                           このエラーで再アップロード
                         </Link>
+                      <AppDropdownMenu
+                        label="その他"
+                        variant="outline-secondary"
+                        items={[
+                          {
+                            key: 'filter',
+                            label: issueCodeFilter === group.issueCode ? 'このタイプを表示中' : 'このタイプだけ見る',
+                            disabled: issueCodeFilter === group.issueCode,
+                            onClick: () => {
+                              setIssueCodeFilter(group.issueCode);
+                              setPage(1);
+                            },
+                          },
+                          {
+                            key: 'destination',
+                            to: resolveIssueDestination(firstIssue?.uploadType ?? 'dead_stock'),
+                            label: resolveIssueDestinationLabel(firstIssue?.uploadType ?? 'dead_stock'),
+                          },
+                        ]}
+                      />
                       </div>
                     </div>
                     {remediation && (
@@ -513,16 +535,32 @@ export default function UploadQualityPage() {
                             <code>{issue.rowDataJson ? JSON.stringify(issue.rowDataJson).slice(0, 160) : '-'}</code>
                           </td>
                           <td>
-                            <div className="d-flex gap-2 flex-wrap">
+                            <div className="dl-action-row mobile-stack">
                               <Link
                                 to={`/upload?reuseSavedMapping=1&uploadType=${issue.uploadType}&issueCode=${encodeURIComponent(issue.issueCode)}&jobId=${issue.jobId}`}
-                                className="btn btn-outline-primary btn-sm"
+                                className="btn btn-primary btn-sm"
                               >
                                 保存設定で再取込
                               </Link>
-                              <Link to={resolveIssueDestination(issue.uploadType)} className="btn btn-outline-secondary btn-sm">
-                                {resolveIssueDestinationLabel(issue.uploadType)}
-                              </Link>
+                              <AppDropdownMenu
+                                label="その他"
+                                variant="outline-secondary"
+                                items={[
+                                  {
+                                    key: 'destination',
+                                    to: resolveIssueDestination(issue.uploadType),
+                                    label: resolveIssueDestinationLabel(issue.uploadType),
+                                  },
+                                  {
+                                    key: 'filter',
+                                    label: `${issue.issueCode} だけ見る`,
+                                    onClick: () => {
+                                      setIssueCodeFilter(issue.issueCode);
+                                      setPage(1);
+                                    },
+                                  },
+                                ]}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -546,16 +584,32 @@ export default function UploadQualityPage() {
                         { label: '修正', value: getIssueRemediation(issue.issueCode)?.fix ?? '保存済み設定で再取込し、raw row を確認してください。' },
                       ]}
                       actions={(
-                        <div className="d-flex gap-2 flex-wrap">
+                        <div className="dl-action-row mobile-stack">
                           <Link
                             to={`/upload?reuseSavedMapping=1&uploadType=${issue.uploadType}&issueCode=${encodeURIComponent(issue.issueCode)}&jobId=${issue.jobId}`}
-                            className="btn btn-outline-primary btn-sm"
+                            className="btn btn-primary btn-sm"
                           >
                             保存設定で再取込
                           </Link>
-                          <Link to={resolveIssueDestination(issue.uploadType)} className="btn btn-outline-secondary btn-sm">
-                            {resolveIssueDestinationLabel(issue.uploadType)}
-                          </Link>
+                          <AppDropdownMenu
+                            label="その他"
+                            variant="outline-secondary"
+                            items={[
+                              {
+                                key: 'destination',
+                                to: resolveIssueDestination(issue.uploadType),
+                                label: resolveIssueDestinationLabel(issue.uploadType),
+                              },
+                              {
+                                key: 'filter',
+                                label: `${issue.issueCode} だけ見る`,
+                                onClick: () => {
+                                  setIssueCodeFilter(issue.issueCode);
+                                  setPage(1);
+                                },
+                              },
+                            ]}
+                          />
                         </div>
                       )}
                     />

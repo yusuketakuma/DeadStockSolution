@@ -20,6 +20,7 @@ import type { SortOption } from '../components/mobile/MobileSortSheet';
 import { Link, useSearchParams } from 'react-router-dom';
 import { daysUntilExpiry } from '../utils/expiry-risk';
 import BarcodeScanButton from '../components/mobile/BarcodeScanButton';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 interface BrowseItem {
   id: number;
@@ -181,11 +182,17 @@ export default function InventoryBrowsePage() {
           <h4 className="page-title mb-0">全薬局の在庫参照</h4>
           <div className="text-muted small">在庫確認から医薬品在庫検索やマッチングへ移動できます。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量を確認</Link>
-          <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm">検索条件を確認</Link>
-          <Link to={matchingHref} className="btn btn-outline-primary btn-sm">候補を確認</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to={matchingHref} className="btn btn-primary btn-sm">候補を確認</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'dead-stock', to: '/inventory/dead-stock', label: 'デッドストックを確認' },
+              { key: 'used', to: '/inventory/used-medication', label: '使用量を確認' },
+              { key: 'search', to: '/inventory/search', label: '検索条件を確認' },
+            ]}
+          />
         </div>
       </div>
       <ScrollArea>

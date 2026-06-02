@@ -20,6 +20,7 @@ import ScanViewfinder from '../../components/camera/ScanViewfinder';
 import ScanResultSheet from '../../components/camera/ScanResultSheet';
 import ScanStatsBar from '../../components/camera/ScanStatsBar';
 import DraftRowList from '../../components/camera/DraftRowList';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 
 interface CameraConfirmBatchResponse {
   message: string;
@@ -315,7 +316,7 @@ export default function CameraDeadStockRegisterPanel() {
                 読取結果の確認・数量入力後、一括登録でデッドストックに反映します。
               </div>
 
-              <div className="d-flex gap-2 flex-wrap align-items-end mb-3 mobile-stack camera-mobile-actions">
+              <div className="dl-action-row mobile-stack align-items-end mb-3 camera-mobile-actions">
                 <Form.Group className="flex-grow-1 mb-0" controlId="camera-manual-code">
                   <Form.Label>コード入力（手動補完）</Form.Label>
                   <AppControl
@@ -340,7 +341,7 @@ export default function CameraDeadStockRegisterPanel() {
                 </LoadingButton>
               </div>
 
-              <div className="d-flex gap-2 flex-wrap mb-3 mobile-stack camera-mobile-actions">
+              <div className="dl-action-row mb-3 mobile-stack camera-mobile-actions">
                 <AppButton
                   variant={cameraActive ? 'outline-danger' : 'primary'}
                   onClick={cameraActive ? handleStopCamera : () => void handleStartCameraWithFullscreen()}
@@ -348,43 +349,34 @@ export default function CameraDeadStockRegisterPanel() {
                 >
                   {cameraActive ? 'カメラ停止' : 'スキャン開始'}
                 </AppButton>
-                {torchSupported && (
-                  <AppButton
-                    variant={torchEnabled ? 'warning' : 'outline-warning'}
-                    onClick={() => void handleToggleTorch()}
-                    disabled={!cameraActive || cameraBusy || torchBusy}
-                  >
-                    {torchEnabled ? 'ライトOFF' : 'ライトON'}
-                  </AppButton>
-                )}
-                {barcodeDetectorSupported && (
-                  <LoadingButton
-                    variant="outline-secondary"
-                    size="sm"
-                    loading={frameCapturing}
-                    loadingLabel="検出中..."
-                    disabled={!cameraActive || cameraBusy || resolving || submitting}
-                    onClick={() => void handleCaptureFromFrame()}
-                  >
-                    手動検出
-                  </LoadingButton>
-                )}
-                <AppButton
+                <AppDropdownMenu
+                  label="その他"
                   variant="outline-secondary"
-                  onClick={() => {
-                    clearPendingCameraCodes();
-                    clearRows();
-                  }}
-                  disabled={rows.length === 0 || submitting}
-                >
-                  クリア
-                </AppButton>
-                <AppButton
-                  variant="outline-primary"
-                  onClick={() => navigate('/inventory/dead-stock')}
-                >
-                  一覧へ移動
-                </AppButton>
+                  items={[
+                    {
+                      key: 'torch',
+                      label: torchEnabled ? 'ライトOFF' : 'ライトON',
+                      onClick: () => void handleToggleTorch(),
+                      disabled: !torchSupported || !cameraActive || cameraBusy || torchBusy,
+                    },
+                    {
+                      key: 'capture',
+                      label: frameCapturing ? '検出中...' : '手動検出',
+                      onClick: () => void handleCaptureFromFrame(),
+                      disabled: !barcodeDetectorSupported || !cameraActive || cameraBusy || resolving || submitting,
+                    },
+                    {
+                      key: 'clear',
+                      label: 'クリア',
+                      onClick: () => {
+                        clearPendingCameraCodes();
+                        clearRows();
+                      },
+                      disabled: rows.length === 0 || submitting,
+                    },
+                    { key: 'list', label: '一覧へ移動', onClick: () => navigate('/inventory/dead-stock') },
+                  ]}
+                />
               </div>
 
               {cameraError && <AppAlert variant="warning" className="small">{cameraError}</AppAlert>}

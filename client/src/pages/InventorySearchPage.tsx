@@ -10,6 +10,7 @@ import { useGroupMembership } from '../hooks/useGroupMembership';
 import PharmacySummaryCards from '../components/inventory/PharmacySummaryCards';
 import InventoryMatrix from '../components/inventory/InventoryMatrix';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 import { useAuth } from '../contexts/AuthContext';
 import type {
   InventorySearchHistoryItem,
@@ -227,11 +228,17 @@ export default function InventorySearchPage() {
           <h4 className="page-title mb-0">医薬品在庫検索</h4>
           <div className="text-muted small">検索条件を保ったままマッチングや在庫参照へ移動できます。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量を確認</Link>
-          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
-          <Link to={matchingHref} className="btn btn-outline-primary btn-sm">この条件で候補を確認</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to={matchingHref} className="btn btn-primary btn-sm">この条件で候補を確認</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'dead-stock', to: '/inventory/dead-stock', label: 'デッドストックを確認' },
+              { key: 'used', to: '/inventory/used-medication', label: '使用量を確認' },
+              { key: 'browse', to: '/inventory/browse', label: '在庫を確認' },
+            ]}
+          />
         </div>
       </div>
       <ScrollArea>
@@ -251,7 +258,7 @@ export default function InventorySearchPage() {
           <Alert variant={preferencesConflict ? 'warning' : 'danger'}>
             <div>{preferencesSaveError}</div>
             {preferencesConflict && (
-              <div className="d-flex flex-wrap gap-2 mt-2">
+              <div className="dl-action-row mobile-stack mt-2">
                 <Button
                   size="sm"
                   variant="primary"

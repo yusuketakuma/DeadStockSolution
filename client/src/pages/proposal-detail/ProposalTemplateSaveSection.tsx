@@ -33,7 +33,7 @@ export function ProposalTemplateSaveSection({
   onUseTemplate,
 }: ProposalTemplateSaveSectionProps) {
   const actions: ReactNode | null = canSaveTemplate ? (
-    <div className="d-flex gap-2 flex-wrap">
+    <div className="dl-action-row mobile-stack">
       <input
         value={templateName}
         onChange={(event) => onTemplateNameChange(event.target.value)}

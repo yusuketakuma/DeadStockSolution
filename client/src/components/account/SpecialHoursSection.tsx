@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { Form } from 'react-bootstrap';
 import AppTable from '../ui/AppTable';
 import AppButton from '../ui/AppButton';
+import AppDropdownMenu from '../ui/AppDropdownMenu';
 import AppSelect from '../ui/AppSelect';
 import AppControl from '../ui/AppControl';
 import AppMobileDataCard from '../ui/AppMobileDataCard';
@@ -176,13 +177,18 @@ function SpecialHoursSection({
                     </td>
                     {hoursEditing && (
                       <td className="align-middle">
-                        <AppButton
-                          variant="outline-danger"
-                          size="sm"
-                          onClick={() => onRemoveSpecialHour(index)}
-                        >
-                          削除
-                        </AppButton>
+                        <AppDropdownMenu
+                          label="特例操作"
+                          variant="outline-secondary"
+                          items={[
+                            {
+                              key: `delete-special-hour-${index}`,
+                              label: '削除',
+                              onClick: () => onRemoveSpecialHour(index),
+                              danger: true,
+                            },
+                          ]}
+                        />
                       </td>
                     )}
                   </tr>
@@ -307,13 +313,18 @@ function SpecialHoursSection({
                     },
                   ]}
                   actions={hoursEditing ? (
-                    <AppButton
-                      variant="outline-danger"
-                      size="sm"
-                      onClick={() => onRemoveSpecialHour(index)}
-                    >
-                      削除
-                    </AppButton>
+                    <AppDropdownMenu
+                      label="特例操作"
+                      variant="outline-secondary"
+                      items={[
+                        {
+                          key: `delete-special-hour-${index}`,
+                          label: '削除',
+                          onClick: () => onRemoveSpecialHour(index),
+                          danger: true,
+                        },
+                      ]}
+                    />
                   ) : undefined}
                 />
               ))

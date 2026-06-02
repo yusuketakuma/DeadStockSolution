@@ -8,6 +8,7 @@ import { useApiQuery } from '../hooks/useApiQuery';
 import { formatYen, formatDateJa } from '../utils/formatters';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import InlineLoader from '../components/ui/InlineLoader';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 const TrendChart = lazy(() => import('../components/charts/TrendChart'));
 
@@ -196,26 +197,24 @@ function StatisticsShell({ children }: { children: React.ReactNode }) {
           <h4 className="page-title mb-0">統計</h4>
           <div className="text-muted small">アップロード、在庫、マッチング、ネットワークの集計をまとめて確認します。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボードへ戻る</Link>
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
-          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">品質を確認</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to="/matching" className="btn btn-primary btn-sm">候補を確認</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'dashboard', to: '/', label: 'ダッシュボードへ戻る' },
+              { key: 'dead-stock', to: '/inventory/dead-stock', label: 'デッドストックを確認' },
+              { key: 'quality', to: '/upload-quality', label: '品質を確認' },
+              { key: 'alerts', to: '/alerts', label: 'アラートを確認' },
+              { key: 'proposals', to: '/proposals', label: '提案一覧を確認' },
+              { key: 'groups', to: '/groups', label: 'グループを確認' },
+            ]}
+          />
         </div>
       </div>
       <ScrollArea>
         <Container>
-          <AppDataPanel title="関連画面" className="mb-3">
-            <div className="d-flex gap-2 flex-wrap">
-              <Link to="/upload-quality" className="btn btn-outline-danger btn-sm py-0">品質を確認</Link>
-              <Link to="/alerts" className="btn btn-outline-warning btn-sm py-0">アラートを確認</Link>
-              <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">提案一覧を確認</Link>
-              <Link to="/groups" className="btn btn-outline-secondary btn-sm py-0">グループを確認</Link>
-            </div>
-            <div className="small text-muted mt-2">
-              数値確認のあとに見直す画面を、在庫・対応・ネットワーク単位でまとめています。
-            </div>
-          </AppDataPanel>
           {children}
         </Container>
       </ScrollArea>
@@ -228,17 +227,29 @@ function ChartFallback({ text }: { text: string }) {
 }
 
 function SectionActions({ links }: { links: Array<{ to: string; label: string; variant?: string }> }) {
+  const [primaryLink, ...secondaryLinks] = links;
+  if (!primaryLink) return null;
+
   return (
-    <div className="d-flex gap-2 flex-wrap">
-      {links.map((link) => (
-        <Link
-          key={`${link.to}:${link.label}`}
-          to={link.to}
-          className={`btn btn-sm ${link.variant ?? 'btn-outline-secondary'} py-0`}
-        >
-          {link.label}
-        </Link>
-      ))}
+    <div className="dl-action-row mobile-stack">
+      <Link
+        to={primaryLink.to}
+        className={`btn btn-sm ${primaryLink.variant ?? 'btn-outline-secondary'} py-0`}
+      >
+        {primaryLink.label}
+      </Link>
+      {secondaryLinks.length > 0 ? (
+        <AppDropdownMenu
+          label="関連"
+          size="sm"
+          variant="outline-secondary"
+          items={secondaryLinks.map((link) => ({
+            key: `${link.to}:${link.label}`,
+            to: link.to,
+            label: link.label,
+          }))}
+        />
+      ) : null}
     </div>
   );
 }
@@ -278,14 +289,23 @@ export default function StatisticsPage() {
           title="要対応"
           className="mb-3"
           actions={(
-            <div className="d-flex gap-2 flex-wrap">
-              {summary.proposals.pendingAction > 0 ? (
+            summary.proposals.pendingAction > 0 ? (
+              <div className="dl-action-row mobile-stack">
                 <Link to="/proposals" className="btn btn-outline-secondary btn-sm py-0">提案を確認</Link>
-              ) : null}
-              {summary.alerts.activeCount > 0 ? (
-                <Link to="/alerts" className="btn btn-outline-danger btn-sm py-0">アラートを確認</Link>
-              ) : null}
-            </div>
+                {summary.alerts.activeCount > 0 ? (
+                  <AppDropdownMenu
+                    label="関連"
+                    size="sm"
+                    variant="outline-secondary"
+                    items={[
+                      { key: 'alerts', to: '/alerts', label: 'アラートを確認', danger: true },
+                    ]}
+                  />
+                ) : null}
+              </div>
+            ) : summary.alerts.activeCount > 0 ? (
+              <Link to="/alerts" className="btn btn-outline-danger btn-sm py-0">アラートを確認</Link>
+            ) : null
           )}
         >
           <Row className="g-3">

@@ -1,4 +1,4 @@
-import { Badge } from 'react-bootstrap';
+import { Badge, Form } from 'react-bootstrap';
 import AppCard from '../../components/ui/AppCard';
 import InlineLoader from '../../components/ui/InlineLoader';
 import { categoryLabel, priorityBadge, statusBadge, waitingBadge } from './helpers';
@@ -30,6 +30,13 @@ export function RequestListPane({
   const emptyStateMessage = requests.length === 0
     ? '送信済みの要望はまだありません。'
     : '現在の絞り込み条件に一致する要望はありません。';
+  const queueFilterOptions: Array<{ value: RequestQueueFilter; label: string }> = [
+    { value: 'all', label: `すべて ${requests.length}` },
+    { value: 'my_turn', label: `今日返答したい ${requestSummary.myTurn}` },
+    { value: 'overdue', label: `24時間超 ${requestSummary.overdue}` },
+    { value: 'unread', label: `未読あり ${requestSummary.unread}` },
+    { value: 'openclaw', label: `OpenClaw ${requestSummary.openclaw}` },
+  ];
 
   return (
     <AppCard>
@@ -38,12 +45,18 @@ export function RequestListPane({
         <div className="text-muted small mb-3">
           更新はリアルタイムで反映されます。OpenClaw の進行状況と管理者返信もここに集約されます。
         </div>
-        <div className="d-flex gap-2 flex-wrap mb-3">
-          <button type="button" className={`btn btn-sm ${queueFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => onQueueFilterChange('all')}>すべて {requests.length}</button>
-          <button type="button" className={`btn btn-sm ${queueFilter === 'my_turn' ? 'btn-primary' : 'btn-outline-warning'}`} onClick={() => onQueueFilterChange('my_turn')}>今日返答したい {requestSummary.myTurn}</button>
-          <button type="button" className={`btn btn-sm ${queueFilter === 'overdue' ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => onQueueFilterChange('overdue')}>24時間超 {requestSummary.overdue}</button>
-          <button type="button" className={`btn btn-sm ${queueFilter === 'unread' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => onQueueFilterChange('unread')}>未読あり {requestSummary.unread}</button>
-          <button type="button" className={`btn btn-sm ${queueFilter === 'openclaw' ? 'btn-dark' : 'btn-outline-dark'}`} onClick={() => onQueueFilterChange('openclaw')}>OpenClaw {requestSummary.openclaw}</button>
+        <div className="mb-3 form-max-360">
+          <Form.Label htmlFor="request-queue-filter" className="small text-muted">表示する要望</Form.Label>
+          <Form.Select
+            id="request-queue-filter"
+            size="sm"
+            value={queueFilter}
+            onChange={(event) => onQueueFilterChange(event.target.value as RequestQueueFilter)}
+          >
+            {queueFilterOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </Form.Select>
         </div>
         {loading ? (
           <InlineLoader text="読み込み中..." className="text-muted small" />
@@ -61,17 +74,18 @@ export function RequestListPane({
                 <button
                   key={item.id}
                   type="button"
-                  className={`btn text-start border ${
+                  className={`btn text-start text-wrap border w-100 ${
                     selectedRequestId === item.id
                       ? 'border-primary bg-light'
                       : item.isOverdue
                         ? 'border-danger bg-danger bg-opacity-10'
                         : 'border-light-subtle'
                   }`}
+                  style={{ display: 'block', whiteSpace: 'normal' }}
                   onClick={() => onSelectRequest(item.id)}
                 >
                   <div className="d-flex justify-content-between align-items-start gap-2">
-                    <strong>要望 #{item.id}</strong>
+                    <strong className="text-wrap-anywhere flex-grow-1" style={{ minWidth: 0 }}>要望 #{item.id}</strong>
                     <Badge bg={workflowMeta.bg} text={workflowMeta.text}>{workflowMeta.label}</Badge>
                   </div>
                   <div className="d-flex flex-wrap gap-1 mt-2">
@@ -80,9 +94,9 @@ export function RequestListPane({
                     {item.hasUnread && <Badge bg="danger">未読あり</Badge>}
                     {waitingMeta && <Badge bg={waitingMeta.bg} text={waitingMeta.text}>{waitingMeta.label}</Badge>}
                   </div>
-                  <div className="small mt-2">{item.requestText}</div>
+                  <div className="small mt-2 text-wrap-anywhere">{item.requestText}</div>
                   {(item.latestSummary || item.openclawSummary) && (
-                    <div className="text-muted small mt-2">{item.latestSummary ?? item.openclawSummary}</div>
+                    <div className="text-muted small mt-2 text-wrap-anywhere">{item.latestSummary ?? item.openclawSummary}</div>
                   )}
                   <div className="small mt-2">
                     <span className={`badge bg-${slaSummary.tone} ${slaSummary.tone === 'warning' ? 'text-dark' : ''}`}>

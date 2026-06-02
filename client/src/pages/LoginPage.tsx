@@ -424,7 +424,7 @@ export default function LoginPage() {
                         : '検証用の一般ユーザーを入力して、業務画面の確認をすぐ始められます。'}
                     </p>
                   </div>
-                  <div className="d-flex flex-wrap gap-2">
+                  <div className="dl-action-row mobile-stack">
                     <button
                       type="button"
                       className="btn btn-outline-primary"

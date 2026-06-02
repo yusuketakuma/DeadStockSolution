@@ -197,7 +197,7 @@ function MatchCandidateCard({
                 TEL: {candidate.pharmacyPhone || '-'} / FAX: {candidate.pharmacyFax || '-'}
               </span>
             </span>
-            <span className="d-flex flex-wrap gap-2">
+            <span className="dl-badge-row">
               <BusinessStatusBadge status={candidate.businessStatus} showHours />
               <Badge bg="info">{candidate.distance}km</Badge>
               <Badge bg="secondary">一致度 {formatPercent(candidate.matchRate)}</Badge>
@@ -300,53 +300,54 @@ function MatchCandidateCard({
 
             <AppResponsiveSwitch
               desktop={() => (
-                <div className="d-flex gap-2 mobile-stack flex-wrap">
+                <div className="dl-action-row mobile-stack">
                   <LoadingButton variant="success" onClick={onOpenProposal} loading={proposalSubmitting} loadingLabel="提案中...">
                     仮マッチングする
                   </LoadingButton>
-                  <AppButton
-                    as="a"
-                    href={buildMessagesPath({
-                      pharmacyId: candidate.pharmacyId,
-                      pharmacyName: candidate.pharmacyName,
-                      draft: buildCandidateMessageDraft(candidate),
-                      context: 'matching',
-                    })}
-                    variant="outline-primary"
-                  >
-                    メッセージを確認
-                  </AppButton>
-                  <AppButton
-                    type="button"
-                    variant={compareSelected ? 'primary' : 'outline-secondary'}
-                    disabled={compareDisabled}
-                    onClick={onToggleCompare}
-                  >
-                    {compareSelected ? '比較から外す' : '比較に追加'}
-                  </AppButton>
-                  {bookmarkItems.map((item) => (
-                    <LoadingButton
-                      key={item.key}
-                      variant={item.buttonLabel.startsWith('★') ? 'warning' : 'outline-secondary'}
-                      size="sm"
-                      loading={item.disabled}
-                      loadingLabel="..."
-                      onClick={item.onClick}
-                      aria-label={item.actionLabel}
-                      title={item.actionLabel}
-                    >
-                      {item.buttonLabel}
-                    </LoadingButton>
-                  ))}
+                  <AppDropdownMenu
+                    label="その他"
+                    variant="outline-secondary"
+                    items={[
+                      {
+                        key: 'message',
+                        label: 'メッセージを確認',
+                        href: buildMessagesPath({
+                          pharmacyId: candidate.pharmacyId,
+                          pharmacyName: candidate.pharmacyName,
+                          draft: buildCandidateMessageDraft(candidate),
+                          context: 'matching',
+                        }),
+                      },
+                      {
+                        key: 'compare',
+                        label: compareSelected ? '比較から外す' : '比較に追加',
+                        onClick: onToggleCompare,
+                        disabled: compareDisabled,
+                      },
+                      {
+                        key: 'dismiss',
+                        label: '候補から外す',
+                        onClick: onDismiss,
+                        danger: true,
+                      },
+                      ...bookmarkItems.map((item) => ({
+                        key: item.key,
+                        label: item.menuLabel,
+                        onClick: item.onClick,
+                        disabled: item.disabled,
+                      })),
+                    ]}
+                  />
                 </div>
               )}
               mobile={() => (
-                <div className="d-flex gap-2 flex-wrap">
+                <div className="dl-action-row mobile-stack">
                   <LoadingButton variant="success" onClick={onOpenProposal} loading={proposalSubmitting} loadingLabel="提案中..." className="flex-grow-1">
                     仮マッチングする
                   </LoadingButton>
                   <AppDropdownMenu
                     label="その他"
+                    variant="outline-secondary"
                     items={[
                       {
                         key: 'message',

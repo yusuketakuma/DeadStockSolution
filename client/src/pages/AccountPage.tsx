@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Form } from 'react-bootstrap';
 import AppAlert from '../components/ui/AppAlert';
 import AppButton from '../components/ui/AppButton';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import { useNavigate } from 'react-router-dom';
@@ -130,7 +131,7 @@ export default function AccountPage() {
           <div className="dl-page-header-copy">
             <h4 className="page-title mb-0">薬局登録情報の編集</h4>
           </div>
-          <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+          <div className="dl-action-row mobile-stack">
             <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボードを確認</Link>
           </div>
         </div>
@@ -148,7 +149,7 @@ export default function AccountPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">薬局登録情報の編集</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack">
           <Link to="/" className="btn btn-outline-secondary btn-sm">ダッシュボードを確認</Link>
         </div>
       </div>
@@ -164,12 +165,19 @@ export default function AccountPage() {
               <div className="border rounded-3 p-3 h-100">
                 <div className="fw-semibold mb-1">{group.title}</div>
                 <div className="small text-muted mb-2">{group.description}</div>
-                <div className="d-flex gap-2 flex-wrap">
-                  {group.links.map((link) => (
-                    <Link key={link.to} to={link.to} className="btn btn-outline-secondary btn-sm">
-                      {link.label}
-                    </Link>
-                  ))}
+                <div className="dl-action-row mobile-stack">
+                  <Link to={group.links[0].to} className="btn btn-outline-primary btn-sm">
+                    {group.links[0].label}
+                  </Link>
+                  <AppDropdownMenu
+                    label="関連"
+                    size="sm"
+                    variant="outline-secondary"
+                    items={group.links.slice(1).map((link) => ({
+                      label: link.label,
+                      to: link.to,
+                    }))}
+                  />
                 </div>
               </div>
             </div>

@@ -22,6 +22,7 @@ import {
 } from '../api/messages';
 import { notifyMessageNavUpdated } from '../lib/message-nav-events';
 import { useSseRefresh } from '../hooks/useSseRefresh';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 import AttachmentPreviewList from '../components/ui/AttachmentPreviewList';
 import AppEmptyState from '../components/ui/AppEmptyState';
 import AppSkeleton from '../components/ui/AppSkeleton';
@@ -477,7 +478,7 @@ export default function MessagesPage() {
         ) : (
           <>
             <div className="d-flex flex-column flex-md-row gap-2 align-items-md-center justify-content-between mb-3">
-              <div className="d-flex gap-2 flex-wrap">
+              <div className="dl-action-row mobile-stack">
                 <Form.Control
                   size="sm"
                   value={threadSearch}
@@ -551,18 +552,17 @@ export default function MessagesPage() {
 
       {selectedPharmacyId && (
         <Card.Footer className="bg-white border-top">
-          <div className="d-flex flex-wrap gap-2 mb-2">
-            {QUICK_REPLY_TEMPLATES.map((template) => (
-              <Button
-                key={template}
-                type="button"
-                size="sm"
-                variant="outline-secondary"
-                onClick={() => setInputBody(template)}
-              >
-                {template}
-              </Button>
-            ))}
+          <div className="dl-action-row mobile-stack mb-2">
+            <AppDropdownMenu
+              label="定型文を挿入"
+              variant="outline-secondary"
+              align="start"
+              items={QUICK_REPLY_TEMPLATES.map((template) => ({
+                key: template,
+                label: template,
+                onClick: () => setInputBody(template),
+              }))}
+            />
           </div>
           {sendError && <p className="text-danger small mb-1">{sendError}</p>}
           <Form
@@ -620,9 +620,15 @@ export default function MessagesPage() {
           <h4 className="page-title mb-0">薬局間メッセージ</h4>
           <div className="text-muted small">一覧と会話を device 幅に合わせて切り替えます。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap align-items-center">
-          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
-          <Link to="/requests" className="btn btn-outline-secondary btn-sm">要望一覧を確認</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to="/proposals" className="btn btn-primary btn-sm">提案一覧を確認</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'requests', to: '/requests', label: '要望一覧を確認' },
+            ]}
+          />
           <Badge bg={realtimeConnected ? 'success' : 'secondary'}>
             自動更新: {realtimeConnected ? '接続中' : 'ポーリング'}
           </Badge>

@@ -1,6 +1,7 @@
 import { memo, useCallback } from 'react';
 import AppButton from '../ui/AppButton';
 import AppDataPanel from '../ui/AppDataPanel';
+import AppDropdownMenu from '../ui/AppDropdownMenu';
 import AppField from '../ui/AppField';
 import LoadingButton from '../ui/LoadingButton';
 import { formatDateTimeJa } from '../../utils/formatters';
@@ -115,15 +116,19 @@ const CommentList = memo(function CommentList({
               >
                 編集
               </AppButton>
-              <LoadingButton
-                size="sm"
-                variant="outline-danger"
-                onClick={() => onDeleteComment(comment.id)}
-                loading={commentDeletingId === comment.id}
-                loadingLabel="削除中..."
-              >
-                削除
-              </LoadingButton>
+              <AppDropdownMenu
+                label="コメント操作"
+                variant="outline-secondary"
+                items={[
+                  {
+                    key: `delete-comment-${comment.id}`,
+                    label: commentDeletingId === comment.id ? '削除中...' : '削除',
+                    onClick: () => onDeleteComment(comment.id),
+                    disabled: commentDeletingId === comment.id,
+                    danger: true,
+                  },
+                ]}
+              />
             </div>
           )}
         </div>
@@ -166,17 +171,17 @@ const CommentComposer = memo(function CommentComposer({
           }
         : undefined}
     >
-      <div className="d-flex gap-2 flex-wrap">
-        {commentTemplates.map((template, index) => (
-          <AppButton
-            key={template}
-            size="sm"
-            variant="outline-secondary"
-            onClick={() => onApplyTemplate(template)}
-          >
-            定型文{index + 1}
-          </AppButton>
-        ))}
+      <div className="dl-action-row mobile-stack">
+        <AppDropdownMenu
+          label="定型文を挿入"
+          variant="outline-secondary"
+          align="start"
+          items={commentTemplates.map((template, index) => ({
+            key: template,
+            label: `定型文${index + 1}`,
+            onClick: () => onApplyTemplate(template),
+          }))}
+        />
       </div>
       <AppField
         controlId="proposal-comment-body"

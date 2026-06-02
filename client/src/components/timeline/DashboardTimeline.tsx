@@ -102,7 +102,7 @@ export default function DashboardTimeline({
           </div>
         </div>
 
-        <div className="d-flex gap-2 flex-wrap align-items-center">
+        <div className="dl-action-row mobile-stack align-items-center">
           {PRIORITY_FILTERS.map(({ label, value }) => (
             <Button
               key={label}

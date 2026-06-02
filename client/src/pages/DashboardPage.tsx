@@ -16,6 +16,7 @@ import { useRecentWorkList } from '../hooks/useRecentWork';
 import type { TimelineEvent } from '../types/timeline';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { sanitizeInternalPath } from '../utils/navigation';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 const RiskBucketBarChart = lazy(() => import('../components/charts/RiskBucketBarChart'));
 
@@ -59,33 +60,33 @@ const DASHBOARD_SHORTCUT_GROUPS = [
   {
     title: 'アップロード・在庫',
     description: '在庫更新と品質確認をここから進めます。',
+    primary: { to: '/upload', label: 'アップロード' },
     links: [
-      { to: '/upload', label: 'アップロード', className: 'btn btn-outline-primary btn-sm py-0' },
-      { to: '/upload-quality', label: '品質を確認', className: 'btn btn-outline-danger btn-sm py-0' },
-      { to: '/inventory/browse', label: '在庫を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/inventory/search', label: '検索条件を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/statistics', label: '統計を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/upload-quality', label: '品質を確認' },
+      { to: '/inventory/browse', label: '在庫を確認' },
+      { to: '/inventory/search', label: '検索条件を確認' },
+      { to: '/statistics', label: '統計を確認' },
     ],
   },
   {
     title: 'マッチング・対応',
     description: '候補確認から連絡対応までをまとめています。',
+    primary: { to: '/matching', label: '候補を確認' },
     links: [
-      { to: '/matching', label: '候補を確認', className: 'btn btn-outline-primary btn-sm py-0' },
-      { to: '/proposals', label: '提案状況を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/exchange-history', label: '交換履歴を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/notifications', label: '通知を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/requests', label: '要望を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/bookmarks', label: 'ブックマークを確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/proposals', label: '提案状況を確認' },
+      { to: '/exchange-history', label: '交換履歴を確認' },
+      { to: '/notifications', label: '通知を確認' },
+      { to: '/requests', label: '要望を確認' },
+      { to: '/bookmarks', label: 'ブックマークを確認' },
     ],
   },
   {
     title: 'ネットワーク・設定',
     description: '薬局間のつながりとアカウント設定を確認します。',
+    primary: { to: '/groups', label: 'グループを確認' },
     links: [
-      { to: '/groups', label: 'グループを確認', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/pharmacies', label: '薬局を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
-      { to: '/account', label: '薬局設定を確認', className: 'btn btn-outline-secondary btn-sm py-0' },
+      { to: '/pharmacies', label: '薬局を確認' },
+      { to: '/account', label: '薬局設定を確認' },
     ],
   },
 ] as const;
@@ -240,12 +241,22 @@ export default function DashboardPage() {
 
       {recentWork.length > 0 && (
         <AppDataPanel title="作業再開" className="mb-2">
-          <div className="d-flex gap-2 flex-wrap">
-            {recentWork.map((item) => (
-              <Link key={item.id} to={item.to} className="btn btn-outline-secondary btn-sm">
-                {item.label}
-              </Link>
-            ))}
+          <div className="dl-action-row mobile-stack">
+            <Link to={recentWork[0].to} className="btn btn-outline-primary btn-sm">
+              {recentWork[0].label}
+            </Link>
+            {recentWork.length > 1 ? (
+              <AppDropdownMenu
+                label="ほかの作業"
+                size="sm"
+                variant="outline-secondary"
+                items={recentWork.slice(1).map((item) => ({
+                  key: item.id,
+                  to: item.to,
+                  label: item.label,
+                }))}
+              />
+            ) : null}
           </div>
         </AppDataPanel>
       )}
@@ -257,12 +268,19 @@ export default function DashboardPage() {
               <div className="border rounded-3 p-3 h-100">
                 <div className="fw-semibold mb-1">{group.title}</div>
                 <div className="small text-muted mb-2">{group.description}</div>
-                <div className="d-flex gap-2 flex-wrap">
-                  {group.links.map((shortcut) => (
-                    <Link key={shortcut.to} to={shortcut.to} className={shortcut.className}>
-                      {shortcut.label}
-                    </Link>
-                  ))}
+                <div className="dl-action-row mobile-stack">
+                  <Link to={group.primary.to} className="btn btn-primary btn-sm">
+                    {group.primary.label}
+                  </Link>
+                  <AppDropdownMenu
+                    label="関連画面"
+                    variant="outline-secondary"
+                    items={group.links.map((shortcut) => ({
+                      key: shortcut.to,
+                      to: shortcut.to,
+                      label: shortcut.label,
+                    }))}
+                  />
                 </div>
               </div>
             </Col>
@@ -353,10 +371,16 @@ export default function DashboardPage() {
                 </div>
               </Col>
             </Row>
-            <div className="dl-inline-actions">
-              <Link to="/upload" className="btn btn-outline-primary btn-sm py-0">アップロード</Link>
-              <Link to="/upload-quality" className="btn btn-outline-danger btn-sm py-0">品質を確認</Link>
-              <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm py-0">在庫を確認</Link>
+            <div className="dl-action-row mobile-stack">
+              <Link to="/upload" className="btn btn-outline-primary btn-sm">アップロード</Link>
+              <AppDropdownMenu
+                label="関連操作"
+                variant="outline-secondary"
+                items={[
+                  { key: 'quality', to: '/upload-quality', label: '品質を確認' },
+                  { key: 'browse', to: '/inventory/browse', label: '在庫を確認' },
+                ]}
+              />
             </div>
             {!status?.usedMedicationUploaded && (
               <div className="text-info mt-1 small">
@@ -382,7 +406,7 @@ export default function DashboardPage() {
               </div>
             </Col>
             <Col xs={8}>
-              <div className="d-flex gap-2 flex-wrap align-items-center h-100">
+              <div className="dl-badge-row h-100">
                 {alertStats.byType.near_expiry ? (
                   <Link to="/alerts?tab=unresolved&type=near_expiry" className="text-decoration-none">
                     <Badge bg="danger">{`期限切迫 ${alertStats.byType.near_expiry}`}</Badge>

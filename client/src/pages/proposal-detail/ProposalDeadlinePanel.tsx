@@ -36,7 +36,7 @@ export function ProposalDeadlinePanel({ proposal, isA, pharmacyAName, pharmacyBN
 
   return (
     <AppDataPanel title="提案期限" className="mb-3" bodyClassName="small">
-      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div className="dl-action-row mobile-stack justify-content-between align-items-start">
         <div>
           <div className="fw-semibold">{formatDateTimeJa(proposalDeadline)}</div>
           <div className="text-muted">

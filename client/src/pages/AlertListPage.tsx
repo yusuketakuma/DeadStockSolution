@@ -15,6 +15,7 @@ import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import PullToRefresh from '../components/gesture/PullToRefresh';
 import SwipeableListItem from '../components/gesture/SwipeableListItem';
 import { formatDateTimeJa } from '../utils/formatters';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 // ── 型定義 ──────────────────────────────────────
 type AlertType = 'near_expiry' | 'excess_stock';
@@ -381,11 +382,17 @@ export default function AlertListPage() {
             </Badge>
           )}
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/notifications" className="btn btn-outline-secondary btn-sm">通知を確認</Link>
-          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">品質を確認</Link>
-          <Link to="/inventory/dead-stock" className="btn btn-outline-secondary btn-sm">デッドストックを確認</Link>
-          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to="/upload-quality" className="btn btn-primary btn-sm">品質を確認</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'notifications', to: '/notifications', label: '通知を確認' },
+              { key: 'dead-stock', to: '/inventory/dead-stock', label: 'デッドストックを確認' },
+              { key: 'browse', to: '/inventory/browse', label: '在庫を確認' },
+            ]}
+          />
         </div>
       </div>
 

@@ -10,6 +10,7 @@ import { formatDateJa, formatYen } from '../utils/formatters';
 import AppDataTable from '../components/ui/AppDataTable';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import ProposalNavigationLinks, { type ProposalNavigationLinkGroup } from '../components/proposal/ProposalNavigationLinks';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 interface HistoryItem {
   id: number;
@@ -78,10 +79,16 @@ export default function ExchangeHistoryPage() {
           <h4 className="page-title mb-0">交換履歴</h4>
           <div className="text-muted small">完了した交換から提案タイムラインや関連メッセージへ戻れます。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
-          <Link to="/proposals" className="btn btn-outline-secondary btn-sm">提案一覧を確認</Link>
-          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to="/matching" className="btn btn-primary btn-sm">候補を確認</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'proposals', to: '/proposals', label: '提案一覧を確認' },
+              { key: 'messages', to: '/messages', label: 'メッセージを確認' },
+            ]}
+          />
         </div>
       </div>
       <ScrollArea>
@@ -120,13 +127,23 @@ export default function ExchangeHistoryPage() {
                       <td>{formatYen(item.totalValue)}</td>
                       <td>{formatDateJa(item.completedAt, '')}</td>
                       <td>
-                        <div className="d-flex gap-2 flex-wrap">
+                        <div className="dl-action-row mobile-stack">
                           <Link to={timelineDetailTo(item.proposalId)} className="btn btn-sm btn-outline-primary">
                             タイムライン
                           </Link>
-                          <Link to={`/proposals/${item.proposalId}/print`} className="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer">
-                            印刷
-                          </Link>
+                          <AppDropdownMenu
+                            label="その他"
+                            size="sm"
+                            variant="outline-secondary"
+                            items={[
+                              {
+                                label: '印刷',
+                                to: `/proposals/${item.proposalId}/print`,
+                                target: '_blank',
+                                rel: 'noopener noreferrer',
+                              },
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>
@@ -153,9 +170,21 @@ export default function ExchangeHistoryPage() {
                     { label: '完了日', value: formatDateJa(item.completedAt) },
                   ]}
                   actions={(
-                    <div className="d-flex flex-column gap-2">
-                      <Link to={timelineDetailTo(item.proposalId)} className="btn btn-sm btn-outline-primary w-100">タイムライン</Link>
-                      <Link to={`/proposals/${item.proposalId}/print`} className="btn btn-sm btn-outline-secondary w-100" target="_blank" rel="noopener noreferrer">印刷</Link>
+                    <div className="dl-action-row mobile-stack">
+                      <Link to={timelineDetailTo(item.proposalId)} className="btn btn-sm btn-outline-primary">タイムライン</Link>
+                      <AppDropdownMenu
+                        label="その他"
+                        size="sm"
+                        variant="outline-secondary"
+                        items={[
+                          {
+                            label: '印刷',
+                            to: `/proposals/${item.proposalId}/print`,
+                            target: '_blank',
+                            rel: 'noopener noreferrer',
+                          },
+                        ]}
+                      />
                     </div>
                   )}
                 />

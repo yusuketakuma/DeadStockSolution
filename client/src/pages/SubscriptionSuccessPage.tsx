@@ -88,7 +88,7 @@ export default function SubscriptionSuccessPage() {
             </p>
           )}
 
-          <div className="d-flex gap-2 flex-wrap">
+          <div className="dl-action-row mobile-stack">
             <Link to="/" className="btn btn-primary">ダッシュボードへ</Link>
             <Link to="/account" className="btn btn-outline-secondary">アカウント設定へ</Link>
           </div>

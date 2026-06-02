@@ -14,7 +14,6 @@ import AppResponsiveSwitch from '../components/ui/AppResponsiveSwitch';
 import SearchInput from '../components/SearchInput';
 import SearchChips from '../components/search/SearchChips';
 import SearchResultStatus from '../components/search/SearchResultStatus';
-import AppDataPanel from '../components/ui/AppDataPanel';
 import { useIncrementalSearch } from '../hooks/useIncrementalSearch';
 import { useToast } from '../contexts/ToastContext';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
@@ -24,6 +23,7 @@ import MobileSortSheet from '../components/mobile/MobileSortSheet';
 import type { SortOption } from '../components/mobile/MobileSortSheet';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
 import BarcodeScanButton from '../components/mobile/BarcodeScanButton';
+import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 
 interface DeadStockItem {
   id: number;
@@ -238,36 +238,28 @@ export default function DeadStockListPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">デッドストックリスト ({total}件)</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
+        <div className="dl-page-header-actions mobile-stack">
           <Link to="/upload" className="btn btn-primary btn-sm">アップロード</Link>
-          <Link to="/upload-quality" className="btn btn-outline-danger btn-sm">品質を確認</Link>
-          <Link to="/alerts" className="btn btn-outline-warning btn-sm">アラートを確認</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'quality', to: '/upload-quality', label: '品質を確認' },
+              { key: 'alerts', to: '/alerts', label: 'アラートを確認' },
+              { key: 'matching', to: '/matching', label: '候補を確認' },
+              { key: 'browse', to: '/inventory/browse', label: '在庫を確認' },
+              { key: 'search', to: '/inventory/search', label: '検索条件を確認' },
+              { key: 'used', to: '/inventory/used-medication', label: '使用量を確認' },
+              { key: 'statistics', to: '/statistics', label: '統計を確認' },
+              { key: 'groups', to: '/groups', label: 'グループを確認' },
+              { key: 'pharmacies', to: '/pharmacies', label: '薬局を確認' },
+              { key: 'messages', to: '/messages', label: 'メッセージを確認' },
+            ]}
+          />
         </div>
       </div>
 
-      <AppDataPanel title="関連画面" className="mb-2">
-        <div className="d-flex gap-2 flex-wrap align-items-center">
-          <Link to="/inventory/browse" className="btn btn-outline-secondary btn-sm">在庫を確認</Link>
-          <Link to="/inventory/search" className="btn btn-outline-secondary btn-sm">検索条件を確認</Link>
-          <Link to="/inventory/used-medication" className="btn btn-outline-secondary btn-sm">使用量を確認</Link>
-          <Link to="/statistics" className="btn btn-outline-secondary btn-sm">統計を確認</Link>
-          <span className="small text-muted">在庫参照や使用量比較はここから切り替えます。</span>
-        </div>
-      </AppDataPanel>
-
       <ScrollArea>
-      <AppDataPanel title="次にやること" className="mb-3">
-        <div className="d-flex gap-2 flex-wrap">
-          <Link to="/matching" className="btn btn-outline-primary btn-sm">候補を確認</Link>
-          <Link to="/groups" className="btn btn-outline-secondary btn-sm">グループを確認</Link>
-          <Link to="/pharmacies" className="btn btn-outline-secondary btn-sm">薬局を確認</Link>
-          <Link to="/messages" className="btn btn-outline-secondary btn-sm">メッセージを確認</Link>
-        </div>
-        <div className="small text-muted mt-2">
-          在庫確認のあとに交換先探索や連絡へ進みやすい導線をまとめています。
-        </div>
-      </AppDataPanel>
-
       <div className="mb-2">
         <SearchInput
           placeholder="薬品名で検索（スペース区切りで絞り込み）..."
@@ -449,7 +441,8 @@ export default function DeadStockListPage() {
                         <Badge bg={bucketVariant(item.bucket)}>{formatDaysRemaining(item.daysRemaining)}</Badge>
                       </td>
                       <td className="small">{item.lotNumber}</td>
-                      <td className="d-flex gap-1">
+                      <td>
+                        <div className="dl-action-row mobile-stack">
                         <AppButton
                           size="sm"
                           variant="outline-primary"
@@ -457,9 +450,19 @@ export default function DeadStockListPage() {
                         >
                           候補検索
                         </AppButton>
-                        <AppButton size="sm" variant="outline-danger" onClick={() => setPendingDeleteId(item.id)}>
-                          削除
-                        </AppButton>
+                        <AppDropdownMenu
+                          label="その他"
+                          variant="outline-secondary"
+                          items={[
+                            {
+                              key: `delete-${item.id}`,
+                              label: '削除',
+                              onClick: () => setPendingDeleteId(item.id),
+                              danger: true,
+                            },
+                          ]}
+                        />
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -488,7 +491,7 @@ export default function DeadStockListPage() {
                     { label: 'ロット', value: item.lotNumber || '-' },
                   ]}
                   actions={(
-                    <div className="d-flex gap-1">
+                    <div className="dl-action-row mobile-stack">
                       <AppButton
                         size="sm"
                         variant="outline-primary"
@@ -496,9 +499,18 @@ export default function DeadStockListPage() {
                       >
                         候補検索
                       </AppButton>
-                      <AppButton size="sm" variant="outline-danger" onClick={() => setPendingDeleteId(item.id)}>
-                        削除
-                      </AppButton>
+                      <AppDropdownMenu
+                        label="その他"
+                        variant="outline-secondary"
+                        items={[
+                          {
+                            key: `delete-${item.id}`,
+                            label: '削除',
+                            onClick: () => setPendingDeleteId(item.id),
+                            danger: true,
+                          },
+                        ]}
+                      />
                     </div>
                   )}
                 />

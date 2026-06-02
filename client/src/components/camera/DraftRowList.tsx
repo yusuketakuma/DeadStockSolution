@@ -2,6 +2,7 @@ import { type ChangeEvent, type KeyboardEvent } from 'react';
 import { Badge, Form } from 'react-bootstrap';
 import AppButton from '../ui/AppButton';
 import AppControl from '../ui/AppControl';
+import AppDropdownMenu from '../ui/AppDropdownMenu';
 import LoadingButton from '../ui/LoadingButton';
 import {
   type CameraManualCandidate,
@@ -229,14 +230,18 @@ export default function DraftRowList({
               <Badge bg={row.status === 'resolved' ? 'success' : 'warning'}>
                 {row.status === 'resolved' ? '確定' : '要確認'}
               </Badge>
-              <AppButton
-                variant="outline-danger"
-                size="sm"
-                onClick={() => onRemoveRow(row.id)}
-                aria-label={`行${row.id}を削除`}
-              >
-                削除
-              </AppButton>
+              <AppDropdownMenu
+                label="行操作"
+                variant="outline-secondary"
+                items={[
+                  {
+                    key: `delete-${row.id}`,
+                    label: '削除',
+                    onClick: () => onRemoveRow(row.id),
+                    danger: true,
+                  },
+                ]}
+              />
             </div>
           </div>
         ))}
@@ -360,13 +365,18 @@ export default function DraftRowList({
                   >
                     再解析
                   </LoadingButton>
-                  <AppButton
-                    variant="outline-danger"
-                    size="sm"
-                    onClick={() => onRemoveRow(row.id)}
-                  >
-                    削除
-                  </AppButton>
+                  <AppDropdownMenu
+                    label="行操作"
+                    variant="outline-secondary"
+                    items={[
+                      {
+                        key: `delete-${row.id}`,
+                        label: '削除',
+                        onClick: () => onRemoveRow(row.id),
+                        danger: true,
+                      },
+                    ]}
+                  />
                 </div>
               </td>
             </tr>

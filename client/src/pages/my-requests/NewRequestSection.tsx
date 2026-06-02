@@ -2,6 +2,7 @@ import type { ChangeEvent } from 'react';
 import { Badge, Form } from 'react-bootstrap';
 import AppCard from '../../components/ui/AppCard';
 import AppControl from '../../components/ui/AppControl';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import LoadingButton from '../../components/ui/LoadingButton';
 import { categoryLabel, priorityLabel } from './helpers';
 import { REQUEST_TEMPLATES, type DuplicateRequestSuggestion } from './types';
@@ -58,17 +59,17 @@ export function NewRequestSection({
           </div>
         ) : (
           <div className="d-flex flex-column gap-3">
-            <div className="d-flex flex-wrap gap-2">
-              {REQUEST_TEMPLATES.map((template) => (
-                <button
-                  key={template}
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm"
-                  onClick={() => onRequestTextChange(template)}
-                >
-                  {template}
-                </button>
-              ))}
+            <div className="dl-action-row mobile-stack">
+              <AppDropdownMenu
+                label="定型文を挿入"
+                variant="outline-secondary"
+                align="start"
+                items={REQUEST_TEMPLATES.map((template, index) => ({
+                  key: `new-request-template-${index}`,
+                  label: template,
+                  onClick: () => onRequestTextChange(template),
+                }))}
+              />
             </div>
 
             <div className="row g-2">

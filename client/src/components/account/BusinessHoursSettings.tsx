@@ -144,7 +144,7 @@ function BusinessHoursSettings({
                 営業時間を編集
               </AppButton>
             ) : (
-              <div className="d-flex gap-2 flex-wrap mobile-stack">
+              <div className="dl-action-row mobile-stack">
                 <LoadingButton
                   variant="primary"
                   onClick={onHoursSave}

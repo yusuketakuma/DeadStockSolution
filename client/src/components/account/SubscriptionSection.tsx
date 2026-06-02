@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppAlert from '../ui/AppAlert';
 import AppButton from '../ui/AppButton';
 import AppDataPanel from '../ui/AppDataPanel';
+import AppDropdownMenu from '../ui/AppDropdownMenu';
 import InlineLoader from '../ui/InlineLoader';
 import LoadingButton from '../ui/LoadingButton';
 import ConfirmActionModal from '../ConfirmActionModal';
@@ -201,21 +202,29 @@ export default function SubscriptionSection({ enabled }: SubscriptionSectionProp
             </div>
 
             {activeSubscription ? (
-              <div className="d-flex gap-2 flex-wrap">
+              <div className="dl-action-row mobile-stack">
                 {!activeSubscription.cancelAtPeriodEnd && (
                   <AppButton variant="outline-warning" onClick={() => setCancelMode('period_end')}>
                     期間終了で解約する
                   </AppButton>
                 )}
-                <AppButton variant="outline-danger" onClick={() => setCancelMode('immediate')}>
-                  即時解約する
-                </AppButton>
+                <AppDropdownMenu
+                  label="解約操作"
+                  variant="outline-secondary"
+                  items={[
+                    {
+                      label: '即時解約する',
+                      onClick: () => setCancelMode('immediate'),
+                      danger: true,
+                    },
+                  ]}
+                />
               </div>
             ) : (
               <div className="d-flex flex-column gap-3">
                 {plans.map((plan) => (
                   <div key={plan.id} className="border rounded p-3">
-                    <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                    <div className="dl-action-row mobile-stack justify-content-between align-items-start">
                       <div>
                         <div className="fw-semibold">{plan.name}</div>
                         <div className="text-muted small">月額 {plan.priceFormatted}</div>
