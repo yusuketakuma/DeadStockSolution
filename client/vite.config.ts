@@ -40,6 +40,7 @@ export default defineConfig(({ mode }) => {
       filename: 'sw.ts',
       manifest: false,
       injectManifest: {
+        rollupFormat: 'iife',
         globDirectory: 'dist',
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
         globIgnores: ['**/node_modules/**/*', 'sw.js'],
@@ -99,9 +100,6 @@ export default defineConfig(({ mode }) => {
               if (id.includes('chart.js') || id.includes('react-chartjs-2')) {
                 return 'vendor-charts';
               }
-            }
-            if (id.includes('/pages/admin/')) {
-              return 'admin-pages';
             }
           },
         },

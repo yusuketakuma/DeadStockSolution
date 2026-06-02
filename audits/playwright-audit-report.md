@@ -1,281 +1,271 @@
-# Playwright Audit Report
+# UI Action Flow Audit
 
-## 1. 実行概要
-- 対象:
-  - Frontend `http://127.0.0.1:5173`
-  - API `http://127.0.0.1:3101`
-- 実施日:
-  - login/dashboard audit: 2026-03-29 17:51 JST
-  - proposal-flow audit: 2026-03-29 17:51 JST
-- 実施内容:
-  - Playwright CLI / config / suite をローカル実体で棚卸し
-  - disposable local Postgres を一時生成し、`db:push` / seed / server / client / Playwright 実行 / cleanup まで wrapper 化
-  - `login-smoke.spec.ts` 2件、`dashboard-runtime-audit.spec.ts` 2件、`proposal-flow.spec.ts` 3件を実行
-  - HTML report / JSON report / screenshot / trace を `artifacts/playwright-audit/` に保存
-- 集計:
-  - 7 passed / 0 failed / 0 flaky / 0 skipped
+Date: 2026-06-02
 
-## 2. 実際に使えた Playwright CLI capabilities
-- バージョン:
-  - Node `v24.14.1`
-  - npm `11.11.0`
-  - Playwright / `@playwright/test` `1.58.2`
-- `npx playwright --help` で確認:
-  - `test`
-  - `codegen`
-  - `show-report`
-  - `show-trace`
-  - `merge-reports`
-  - `clear-cache`
-- `npx playwright test --help` で確認:
-  - `--project`
-  - `--workers`
-  - `--list`
-  - `--trace`
-  - `--output`
-  - `--reporter`
-  - `--debug`
-  - `--headed`
-  - `--last-failed`
-- 今回実際に使ったもの:
-  - `npx playwright test --list`
-  - `npx playwright test ... --project chromium --workers=1 --trace on --output ... --reporter=list,html,json`
-  - `PLAYWRIGHT_HTML_OUTPUT_DIR`
-  - `PLAYWRIGHT_JSON_OUTPUT_FILE`
+## Scope
 
-## 3. 対象フロー
-- login/dashboard:
-  - 一般ユーザー login -> dashboard 初期表示
-  - 管理者 login -> admin dashboard 初期表示
-  - admin dashboard 上の OpenClaw degraded 表示確認
-  - console error / page error / failed response 採取
-- proposal-flow:
-  - seed -> 提案作成 -> 相互承認 -> 完了
-  - 提案拒否
-  - 在庫減少後の完了失敗
+- Dashboard
+- Dead stock list
+- Inventory browse
+- Inventory search
+- Used medication list
+- Upload / camera registration
+- Matching header and candidate action area
+- Proposal detail header and proposal decision actions
+- Admin dashboard and admin navigation panels
+- Admin pharmacies / notifications / audit headers
+- Bookmarks / groups / pharmacies / statistics / alerts / upload quality headers
+- Remaining user headers: notifications and account settings
+- Remaining admin headers across matching, upload jobs, logs, pharmacy operations, reports, and drug master maintenance
+- High-frequency row/card actions in notifications, pharmacy list, bookmarks, and admin log center
+- Remaining row actions in proposals, exchange history, monthly reports, admin relationships, and admin groups
+- Upload quality workbench and admin upload quality remediation queue
+- Proposal detail action panels and proposal template row actions
+- Matching comparison panel and candidate secondary actions
 
-## 4. 発見事項
-- product defect は今回の 7 ケースでは再現しませんでした。
-- login/dashboard runtime audit では console error / page error / failed response は 0 件でした。
-- proposal-flow は isolated local DB 上で 3 ケースとも通過しました。
-- 実装側の E2E 補助ルートには不整合がありました。
-  - `server/src/routes/internal-e2e-proposal-flow.ts` の seed 取得が admin test account を含んでおり、Playwright fixture の `mode=user` と index 対応がずれていました。
-  - その結果、`counterpartyIndex=1` が admin を指すケースがあり、reject / accept が 404 になる false negative を起こしていました。
-  - `isAdmin = false` で絞るよう修正し、fixture と seed の母集団を一致させました。
-- 運用上の既知リスクは残っています。
-  - `server/.env` は preview 系設定を含むため、wrapper なしのローカル監査は危険です。
-  - clean DB に対する `db:migrate` は現状 repo の migration chain 不整合で失敗します。
-  - 具体的には `server/drizzle/0019_upload_confirm_jobs.sql` と `server/drizzle/0021_clean_warpath.sql` が fresh DB 上で同じ `upload_job_status_enum` を重複作成します。
+## Findings
 
-## 5. 再現手順
-1. `npm run test:e2e:local-login-dashboard` を実行する
-2. proposal flow まで含める場合は `npm run test:e2e:proposal-flow` を実行する
-3. clean DB migration chain の既知不整合を再現したい場合だけ `RUN_MIGRATION_SMOKE=1` を付ける
-4. local Postgres が `127.0.0.1:5432` 以外なら `LOCAL_POSTGRES_ADMIN_URL=postgres://...@127.0.0.1:<port>/postgres` を付ける
+- Dashboard shortcut groups exposed many same-weight buttons, making the primary next action hard to identify.
+- Inventory list pages duplicated navigation across header panels such as "related screens" and "next action".
+- Matching candidate cards had too many desktop actions in one row, while mobile already used a better primary + menu pattern.
+- Proposal detail header mixed message, list, history, and print links as peers.
+- Upload and camera registration repeated post-upload navigation and exposed camera helper actions beside the primary scan action.
+- Admin dashboard and related admin panels exposed many same-weight operational shortcuts.
+- Several non-dashboard pages still had three or four peer header buttons even after the first inventory-focused pass.
+- Remaining admin pages still exposed two to five peer header buttons, so a staff user had to scan multiple equal-weight destinations before choosing the next operational path.
+- Several row and card action areas still exposed three to five peer buttons, especially notification processing, pharmacy relationship actions, bookmark maintenance, and admin log triage.
+- Secondary actions such as print, CSV download, owner edit, and target edit were still displayed as peer buttons in several list rows.
+- Upload quality pages repeated re-upload, export, inventory-check, filter, and remediation actions as peer controls, so the next repair step was less obvious than it should be.
+- Proposal detail panels still exposed print/timeline, reminder/FAX memo, counter-offer accept/reject, adjustment/search, and template search/delete as peer controls in several places.
+- Matching comparison panels still exposed prioritize/clear and propose/remove-compare as peer controls, while bookmark tests still expected direct per-drug buttons instead of the shared secondary menu.
+- React-Bootstrap dropdown toggles were not reliably observable through agent-browser clicks, so the shared menu was replaced with explicit React state management.
 
-## 6. 証拠パス
-- HTML report:
-  - [login-dashboard html](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/html/login-dashboard/index.html)
-  - [proposal-flow html](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/html/proposal-flow/index.html)
-- JSON report:
-  - [login-dashboard-audit.json](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/json/login-dashboard-audit.json)
-  - [proposal-flow-audit.json](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/json/proposal-flow-audit.json)
-- screenshot:
-  - [runtime-user-dashboard.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/runtime-user-dashboard.png)
-  - [runtime-admin-dashboard.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/runtime-admin-dashboard.png)
-- trace:
-  - [login user trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/login-dashboard-login-smoke-%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3-smoke-%E4%B8%80%E8%88%AC%E3%83%A6%E3%83%BC%E3%82%B6%E3%83%BC%E3%81%8C%E3%83%80%E3%83%83%E3%82%B7%E3%83%A5%E3%83%9C%E3%83%BC%E3%83%89%E3%81%B8%E5%88%B0%E9%81%94%E3%81%A7%E3%81%8D%E3%82%8B-chromium-trace.zip)
-  - [login admin trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/login-dashboard-login-smoke-%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3-smoke-%E7%AE%A1%E7%90%86%E8%80%85%E3%81%8C%E7%AE%A1%E7%90%86%E8%80%85%E3%83%80%E3%83%83%E3%82%B7%E3%83%A5%E3%83%9C%E3%83%BC%E3%83%89%E3%81%B8%E5%88%B0%E9%81%94%E3%81%A7%E3%81%8D%E3%82%8B-chromium-trace.zip)
-  - [proposal happy path trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/proposal-flow-proposal-flow-%E6%8F%90%E6%A1%88%E3%83%95%E3%83%AD%E3%83%BC-%E3%83%8F%E3%83%83%E3%83%94%E3%83%BC%E3%83%91%E3%82%B9-seed%E2%86%92%E6%8F%90%E6%A1%88%E2%86%92%E7%9B%B8%E4%BA%92%E6%89%BF%E8%AA%8D%E2%86%92%E5%AE%8C%E4%BA%86-chromium-trace.zip)
-  - [proposal reject trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/proposal-flow-proposal-flow-%E6%8F%90%E6%A1%88%E3%83%95%E3%83%AD%E3%83%BC-%E6%8F%90%E6%A1%88%E6%8B%92%E5%90%A6%E3%83%95%E3%83%AD%E3%83%BC-chromium-trace.zip)
-  - [proposal conflict trace](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/traces/proposal-flow-proposal-flow-%E6%8F%90%E6%A1%88%E3%83%95%E3%83%AD%E3%83%BC-%E7%AB%B6%E5%90%88%E3%82%B7%E3%83%8A%E3%83%AA%E3%82%AA-%E5%9C%A8%E5%BA%AB%E6%B8%9B%E5%B0%91%E5%BE%8C%E3%81%AE%E5%AE%8C%E4%BA%86%E5%A4%B1%E6%95%97%E3%82%92%E8%BF%94%E3%81%99-chromium-trace.zip)
+## Changes Implemented
 
-## 7. 修正内容
-- local audit 安全化:
-  - [playwright-local-db.sh](/Users/yusuke/workspace/DeadStockSolution/scripts/playwright-local-db.sh)
-  - [run-local-login-dashboard-audit.sh](/Users/yusuke/workspace/DeadStockSolution/scripts/run-local-login-dashboard-audit.sh)
-  - [run-proposal-flow-e2e.sh](/Users/yusuke/workspace/DeadStockSolution/scripts/run-proposal-flow-e2e.sh)
-  - [package.json](/Users/yusuke/workspace/DeadStockSolution/package.json)
-- proposal-flow false negative 修正:
-  - [internal-e2e-proposal-flow.ts](/Users/yusuke/workspace/DeadStockSolution/server/src/routes/internal-e2e-proposal-flow.ts)
-- prompt 固定化:
-  - [PROMPT_PLAYWRIGHT_AUDIT_LOCAL_LOGIN_DASHBOARD.md](/Users/yusuke/workspace/DeadStockSolution/PROMPT_PLAYWRIGHT_AUDIT_LOCAL_LOGIN_DASHBOARD.md)
-- wrapper は実行した suite ごとの `summary.json` も更新しますが、監査の source of truth は上記 per-suite JSON / HTML です。
+- Consolidated shared action menus through `AppDropdownMenu` with explicit `to`, `href`, and `onClick` support.
+- Changed Dashboard shortcut groups to one primary link plus a related-screen menu.
+- Removed duplicate related/next-action panels from inventory list pages and moved those routes into header menus.
+- Normalized Inventory Browse and Inventory Search headers to primary matching action plus related-screen menu.
+- Normalized Matching and Proposal Detail actions to primary CTA plus secondary menu.
+- Kept destructive or negative actions out of the main action row where possible, placing them under secondary menus with danger styling.
+- Simplified Upload page related navigation and moved camera helper controls under "その他".
+- Consolidated `AdminNavigationLinks` and `ProposalNavigationLinks` to one primary route plus a related-screen menu.
+- Normalized high-traffic admin headers: dashboard shortcuts, pharmacy management, notifications, and audit log.
+- Normalized additional user-facing headers: bookmarks, exchange history, groups, pharmacies, statistics, alerts, and upload quality.
+- Normalized the remaining user-facing headers: notifications and account settings.
+- Normalized the remaining admin headers: matching rules, matching experiments, matching performance, drug master, drug equivalences, upload quality, upload jobs, OpenClaw, business hours, alerts, rate limits, bulk actions, exchanges, log center, logs, error codes, monthly reports, pharmacy health, pharmacy edit fallback, relationships, and groups.
+- Relaxed `AppDropdownMenu` item keys so callers can use route/href/label-derived stable keys instead of duplicating boilerplate for every related action.
+- Fixed admin breadcrumb duplication so the `/admin` home item does not appear twice or emit duplicate React keys on child admin pages.
+- Verified that the legacy header selector `dl-page-header-actions d-flex gap-2 flex-wrap` no longer appears in page or component TSX files.
+- Consolidated notification case/list/detail actions so the primary action remains visible and read/snooze/state actions move under "その他".
+- Consolidated pharmacy list row actions to "マッチング" plus secondary menu for message, favorite, and block operations.
+- Consolidated bookmark row/card actions to "候補を確認" plus secondary menu for memo edit and delete.
+- Consolidated admin log center issue/log actions to the operational primary action plus copy/export menus.
+- Consolidated proposal and exchange history row actions so the confirmation/timeline action stays primary and print moves under a secondary menu.
+- Consolidated monthly report download actions so JSON stays primary and CSV moves under a secondary menu.
+- Consolidated admin relationship and group row actions so the main entity action stays primary and the secondary edit action moves under a menu.
+- Extended `AppDropdownMenu` to preserve `state`, `target`, and `rel` for route links so print links keep their original navigation behavior.
+- Consolidated the user upload quality workbench so re-upload remains the primary repair action, while CSV export, inventory checks, statistics, and issue filters move under secondary menus.
+- Consolidated admin upload quality issue rows so remediation guide editing is the primary action, while filtering, job inspection, and pharmacy editing move under secondary menus.
+- Consolidated proposal detail panels so print, reminder, counter-offer acceptance, and adjustment message remain primary actions while timeline, FAX memo, rejection, candidate re-search, and template deletion move under secondary menus.
+- Updated proposal detail tests to verify related links through the shared menu instead of expecting all destinations to be visible as peer header buttons.
+- Consolidated matching comparison controls so urgent-expiry prioritization and proposal creation stay primary while compare clearing, compare removal, and bookmark toggles are verified through secondary menus.
+- Updated matching tests to open related/action menus before asserting proposal links or bookmark API actions.
+- Consolidated admin user-request detail actions so confirmation-request insertion, metadata save, and admin reply remain the primary actions while triage presets, bulk metadata application, reply-template insertion, current-text saving, and saved-template deletion move under secondary menus.
+- Stabilized the admin user-request list fetcher with `useCallback` so an empty local queue resolves to the empty state instead of repeatedly re-fetching and leaving the list in a loading state.
+- Updated admin user-request tests to verify that triage presets are hidden until the "その他" menu is opened and reply templates are reached through the "定型文を挿入" menu.
+- Consolidated OpenClaw health actions so bootstrap token issuance remains the primary recovery action while control token rotation moves under the secondary menu.
+- Consolidated OpenClaw request row/card actions so "詳細" is the visible primary action and retry handoff is exposed from the row/card "その他" menu.
+- Fixed the OpenClaw work-context badge from `workflow undefined` to the actual request count.
+- Consolidated user request composer and reply helpers so template insertion is exposed through "定型文を挿入", while request submission and additional-info submission remain the visible primary actions.
+- Consolidated user request reminder actions so "再催促する" is hidden under the reply secondary menu instead of competing with the send action.
+- Consolidated pharmacy message reply templates so "送信" remains the form primary action and quick replies are inserted from "定型文を挿入".
+- Consolidated OpenClaw command row actions so "編集" remains the row primary action and "削除" is hidden under a danger-styled secondary menu.
+- Consolidated drug-equivalence row actions so "編集" remains primary and deletion moves under the row secondary menu.
+- Consolidated dead-stock row/card actions so "候補検索" remains primary and deletion moves under the row/card secondary menu.
+- Consolidated group owner actions so "設定編集" remains primary and "グループ削除" moves under the group secondary menu.
+- Consolidated proposal comment actions so "編集" remains primary, deletion moves under a labeled "コメント操作" menu, and comment templates are inserted from "定型文を挿入".
+- Consolidated camera draft row deletion so re-analysis remains primary and deletion moves under "行操作".
+- Consolidated special-hours deletion so each exception row exposes destructive removal through "特例操作".
+- Consolidated group member removal so owner users reach removal through "メンバー操作" instead of a peer row button.
+- Normalized admin risk, OpenClaw command, group detail, admin pharmacy list, and admin pharmacy edit headers to the shared page-header action model.
+- Consolidated admin pharmacy bulk rejection under "選択操作" while keeping bulk approval as the visible primary action.
+- Consolidated pharmacy verification rejection under "審査操作" while keeping approval as the visible primary action.
+- Consolidated proposal bulk rejection under "選択操作" while keeping bulk approval as the visible primary action.
+- Consolidated subscription cancellation so period-end cancellation remains visible while immediate cancellation moves under "解約操作".
+- Updated account shortcut tests to verify secondary destinations through the related menus instead of expecting every destination as a peer button.
+- Consolidated request queue filters on the user request list and admin user-request management page from five to six peer buttons into a single queue select.
+- Fixed request list cards so Bootstrap button display styles cannot compress Japanese request text into a one-character-wide column.
+- Removed the duplicate Statistics related-screen panel and moved those routes into the header related menu.
+- Consolidated Statistics attention actions so proposal review remains primary and alert review is exposed through the related menu when both are present.
+- Consolidated admin empty-state actions on user requests, business hours, pharmacies, and groups so the recovery/next-step action remains primary while adjacent operational destinations move under "関連".
+- Updated admin operations navigation tests to verify related destinations through the shared menu interaction instead of requiring every related destination to be visible as a peer button.
+- Consolidated the remaining admin empty-state actions on notifications, alerts, drug equivalences, rate limits, relationships, and pharmacy health so each empty state exposes one recovery action plus a related-destination menu.
+- Stabilized paginated admin pages that host related/action menus by passing memoized fetchers into `usePaginatedList`, preventing filter/list re-fetch loops from closing dropdown menus during user interaction.
+- Consolidated leftover admin near-navigation panels on audit logs, error codes, bulk actions, matching experiments, and log center so each panel keeps one operational destination visible and moves adjacent follow-up screens under "関連".
+- Updated the corresponding admin page tests to open related menus before asserting secondary destinations, preserving route coverage without reintroducing peer-button clutter.
+- Separated residual status-badge rows from action rows with `dl-badge-row`, including dashboard alerts, matching dismissal stats, notification status, admin trend spikes, and OpenClaw health/request/retry counts.
+- Separated the OpenClaw Retry Queue status counters from the retry status filter so state display no longer competes with the filtering control.
+- Reclassified the remaining runbook step selector as an intentional `dl-action-row` instead of an ad-hoc Bootstrap flex row.
+- Removed the forced `admin-pages` manual chunk so lazy-loaded admin routes build as smaller route-level chunks instead of emitting the Vite large chunk warning.
+- Switched the injected service worker build to `iife` output so `vite-plugin-pwa` no longer triggers the deprecated `inlineDynamicImports` warning.
 
-## 8. 追加/更新テスト
-- 追加した新規 spec はありません。
-- proof として既存 Playwright suite を local isolated DB 上で実行しました。
-- 実行した spec:
-  - [login-smoke.spec.ts](/Users/yusuke/workspace/DeadStockSolution/e2e/tests/login-smoke.spec.ts)
-  - [dashboard-runtime-audit.spec.ts](/Users/yusuke/workspace/DeadStockSolution/e2e/tests/dashboard-runtime-audit.spec.ts)
-  - [proposal-flow.spec.ts](/Users/yusuke/workspace/DeadStockSolution/e2e/tests/proposal-flow.spec.ts)
+## Browser Evidence
 
-## 9. 未解決事項
-- `RUN_MIGRATION_SMOKE=1` にすると fresh DB migration はまだ失敗します。
-- migration chain 問題自体は今回の task scope 外なので未修正です。
-- `artifacts/playwright-audit/` には過去実行の screenshot / trace も混在しています。今回分は `login-dashboard-` と `proposal-flow-` prefix で追加保存しています。
+Screenshots saved under `artifacts/playwright-audit/ui-action-flow/`:
 
-## 10. 次の一手
-1. `server/drizzle/0019_upload_confirm_jobs.sql` と `server/drizzle/0021_clean_warpath.sql` の duplicate enum 作成を整理し、`RUN_MIGRATION_SMOKE=1` を既定有効に戻す
-2. proposal-flow wrapper を repo の標準監査導線に昇格させ、master prompt にも destructive flow の安全手順を反映する
-3. 必要なら HTML report の index 集約運用を整理して、login-dashboard / proposal-flow のトップリンクを一箇所にまとめる
+- `dashboard-desktop.png`
+- `dashboard-dropdown-open.png`
+- `dashboard-mobile.png`
+- `dead-stock-desktop.png`
+- `inventory-browse-desktop.png`
+- `upload-desktop.png`
+- `upload-mobile.png`
+- `upload-mobile-dropdown-open.png`
+- `matching-desktop.png`
+- `admin-dashboard-desktop.png`
+- `admin-dashboard-dropdown-open.png`
+- `admin-pharmacies-desktop.png`
+- `admin-notifications-desktop.png`
+- `bookmarks-desktop.png`
+- `notifications-header.png`
+- `notifications-menu-open.png`
+- `account-loaded.png`
+- `admin-drug-master-header.png`
+- `admin-drug-master-menu-open.png`
+- `admin-log-center-header.png`
+- `admin-groups-header.png`
+- `admin-relationships-header.png`
+- `notifications-mobile-header.png`
+- `pharmacies-row-actions.png`
+- `pharmacies-row-menu-open.png`
+- `bookmarks-row-actions.png`
+- `notifications-row-actions.png`
+- `admin-log-center-row-actions.png`
+- `admin-log-center-row-menu-open.png`
+- `proposals-row-actions.png`
+- `exchange-history-row-actions.png`
+- `admin-relationships-row-actions.png`
+- `admin-groups-row-actions.png`
+- `admin-monthly-reports-row-actions.png`
+- `upload-quality-actions.png`
+- `upload-quality-actions-menu-open.png`
+- `admin-upload-quality-actions.png`
+- `proposal-detail-list-before.png`
+- `proposal-detail-route-proof.png`
+- `matching-actions-route-proof.png`
+- `admin-user-requests-empty-state.png`
+- `admin-openclaw-health-menu-open.png`
+- `my-requests-template-menu-open.png`
+- `messages-related-menu-open.png`
+- `admin-openclaw-commands-empty-state.png`
+- `statistics-action-flow.png`
+- `my-requests-queue-select.png`
+- `admin-user-requests-queue-select.png`
+- `dev-server-check.png`
+- `current-dead-stock-action-flow.png`
+- `current-inventory-browse-action-flow.png`
+- `current-matching-action-flow.png`
+- `current-mobile-dead-stock-action-flow.png`
+- `current-proposal-detail-action-flow.png`
+- `current-proposal-print-action-flow.png`
 
----
+## Validation
 
-## 11. 2026-04-15 Frontend Follow-up Audit
+- `npm run typecheck:client`: pass
+- `npm run lint --workspace=client`: pass
+- `npm run build --workspace=client`: pass
+- `npm run test --workspace=client -- AppBreadcrumb`: pass
+- `npm run test --workspace=client -- proposal-detail-comments`: pass
+- `npm run test --workspace=client -- matching-page-groups matching-bookmarks`: pass
+- `npm run test --workspace=client -- AdminUserRequestsPage`: pass
+- `npm run test --workspace=client -- OpenClawHealthCard admin-openclaw-page`: pass
+- `npm run test --workspace=client -- my-requests-page`: pass
+- `npm run test --workspace=client -- messages-page-mobile admin-openclaw-commands-page admin-direct-messages-page`: pass
+- `npm run test --workspace=client -- inventory group-detail-page admin-openclaw-commands-page messages-page-mobile InventorySearchPage`: pass
+- `npm run test --workspace=client -- proposal-detail-comments`: pass
+- `npm run test --workspace=client -- business-hours-settings upload-camera-register AdminPharmaciesPage admin-pharmacy-edit-page group-detail-page admin-openclaw-commands-page`: pass
+- `npm run test --workspace=client -- ProposalsPage business-hours-settings upload-camera-register AdminPharmaciesPage admin-pharmacy-edit-page group-detail-page admin-openclaw-commands-page`: pass
+- `npm run test --workspace=client -- SubscriptionSection AccountPage`: pass
+- `npm run test --workspace=client -- SubscriptionSection AccountPage ProposalsPage business-hours-settings upload-camera-register AdminPharmaciesPage admin-pharmacy-edit-page group-detail-page admin-openclaw-commands-page`: pass
+- `npm run test --workspace=client -- StatisticsPage AdminUserRequestsPage my-requests-page`: pass
+- `npm run test --workspace=client -- AdminUserRequestsPage my-requests-page`: pass
+- `npm run test --workspace=client -- AdminOpsNavigationPage AdminBusinessHoursPage AdminPharmaciesPage AdminUserRequestsPage`: pass
+- `npm run test --workspace=client -- AdminAlertsPage AdminRelationshipsPage AdminNotificationsPage AdminRateLimitsPage AdminPharmacyHealthPage AdminOpsNavigationPage`: pass
+- `npm run test --workspace=client -- AdminAlertsPage AdminRelationshipsPage AdminNotificationsPage AdminRateLimitsPage AdminPharmacyHealthPage AdminOpsNavigationPage AdminGroupsPage AdminBusinessHoursPage AdminPharmaciesPage AdminUserRequestsPage admin-direct-messages-page`: pass
+- `npm run test --workspace=client -- AdminAuditPage AdminErrorCodesPage AdminBulkActionsPage AdminOpsNavigationPage`: pass
+- `npm run test --workspace=client -- AdminMatchingExperimentsPage AdminLogCenterPage AdminAuditPage AdminErrorCodesPage AdminBulkActionsPage AdminOpsNavigationPage`: pass
+- `npm run test --workspace=client -- admin-openclaw-page admin-openclaw-page-mobile OpenClawHealthCard AdminUserRequestsPage my-requests-page messages-page-mobile proposal-detail-comments matching-page-groups matching-bookmarks StatisticsPage upload-camera-register inventory BookmarksPage NotificationsPage`: pass
+- `npm run test --workspace=client -- admin-openclaw-page admin-openclaw-page-mobile OpenClawHealthCard AdminUserRequestsPage my-requests-page messages-page-mobile proposal-detail-comments matching-page-groups matching-bookmarks StatisticsPage upload-camera-register inventory BookmarksPage NotificationsPage DashboardPage UploadPage AdminNotificationsPage AdminPharmaciesPage AdminPharmacyEditPage AdminLogCenterPage SubscriptionSection`: pass
+- `npm run test --workspace=client -- DashboardStatusCards`: pass
+- `npm run test --workspace=client -- DashboardStatusCards dashboard`: pass
+- `npm run test --workspace=client -- DashboardStatusCards dashboard admin-openclaw-page admin-openclaw-page-mobile OpenClawHealthCard AdminUserRequestsPage my-requests-page messages-page-mobile proposal-detail-comments matching-page-groups matching-bookmarks StatisticsPage upload-camera-register inventory BookmarksPage NotificationsPage DashboardPage UploadPage AdminNotificationsPage AdminPharmaciesPage AdminPharmacyEditPage AdminLogCenterPage SubscriptionSection`: pass
+- `npm run test --workspace=client -- AttachmentPreviewList business-hours-settings admin-openclaw-page`: pass
+- `npm run test --workspace=client -- AttachmentPreviewList business-hours-settings admin-openclaw-page DashboardStatusCards dashboard admin-openclaw-page admin-openclaw-page-mobile OpenClawHealthCard AdminUserRequestsPage my-requests-page messages-page-mobile proposal-detail-comments matching-page-groups matching-bookmarks StatisticsPage upload-camera-register inventory BookmarksPage NotificationsPage DashboardPage UploadPage AdminNotificationsPage AdminPharmaciesPage AdminPharmacyEditPage AdminLogCenterPage SubscriptionSection`: pass
+- `npm run test --workspace=client -- upload-camera-register NotificationsPage messages-page-mobile SubscriptionSection dashboard`: pass
+- `npm run test --workspace=client -- proposal-detail-comments DashboardStatusCards dashboard NotificationsPage matching-page-groups admin-openclaw-page OpenClawHealthCard`: pass
+- `npm run test --workspace=client -- AttachmentPreviewList business-hours-settings admin-openclaw-page DashboardStatusCards dashboard admin-openclaw-page admin-openclaw-page-mobile OpenClawHealthCard AdminUserRequestsPage my-requests-page messages-page-mobile proposal-detail-comments matching-page-groups matching-bookmarks StatisticsPage upload-camera-register inventory BookmarksPage NotificationsPage DashboardPage UploadPage AdminNotificationsPage AdminPharmaciesPage AdminPharmacyEditPage AdminLogCenterPage SubscriptionSection`: pass
+- `npm run test --workspace=client -- dashboard admin-dashboard-page admin-openclaw-page matching-page-groups NotificationsPage OpenClawHealthCard`: pass
+- `npm run test --workspace=client -- inventory matching-page-groups proposal-detail-comments`: pass
+- `npm run test --workspace=client -- inventory matching-page-groups proposal-detail-comments my-requests-page messages-page-mobile admin-openclaw-commands-page admin-drug-master-page AdminUserRequestsPage AdminLogCenterPage`: pass
+- `npm run typecheck:client`: pass
+- `npm run lint --workspace=client`: pass
+- `npm run build --workspace=client`: pass; no Vite large chunk warning and no deprecated PWA `inlineDynamicImports` warning.
+- `rg -n "d-flex gap-2 flex-wrap|d-flex justify-content-between align-items-start gap-3 flex-wrap|d-flex gap-2 align-items-center flex-wrap|btn-group" client/src/pages client/src/components -g '*.tsx'`: only the login type `btn-group` segmented control remains.
+- `rg -n "d-flex flex-wrap gap-2|d-flex gap-2 flex-wrap|d-flex justify-content-between align-items-start gap-3 flex-wrap|d-flex gap-2 align-items-center flex-wrap|btn-group" client/src/pages client/src/components -g '*.tsx'`: only the login type `btn-group` segmented control remains.
+- `E2E_BASE_URL=http://127.0.0.1:5173 npx playwright test dev/e2e/tests/box-unit-ui-review.spec.ts --project chromium --workers=1 --retries=0 --reporter=list,json,html --output artifacts/playwright-audit/test-results/box-unit-ui-review-rerun-ui-action-flow`: pass, 5 tests.
+- `rg -n "d-flex gap-2 flex-wrap" client/src/pages client/src/components -g '*.tsx'`: remaining matches reviewed as badges, filters, form input rows, attachment previews, or non-clutter contextual rows rather than same-weight action clusters
+- `rg -n "dl-page-header-actions d-flex gap-2 flex-wrap" client/src/pages client/src/components -g '*.tsx'`: no matches
+- `rg -n "<button[^\n]*24時間超|<button[^\n]*未読あり|<button[^\n]*本日返答|<button[^\n]*OpenClaw \\{|dl-page-header-actions d-flex gap-2 flex-wrap" client/src/pages client/src/components -g '*.tsx'`: no matches
+- `rg -n "mt-3 d-flex gap-2 flex-wrap justify-content-center|<button[^\n]*24時間超|<button[^\n]*未読あり|<button[^\n]*本日返答|<button[^\n]*OpenClaw \\{|dl-page-header-actions d-flex gap-2 flex-wrap" client/src/pages client/src/components -g '*.tsx'`: no matches
+- `rg -n "mt-3 d-flex gap-2 flex-wrap|dl-page-header-actions d-flex gap-2 flex-wrap|<Link to=\"/admin/upload-quality\" className=\"btn btn-outline-secondary btn-sm\">アップロード品質|<Link to=\"/admin/rate-limits\" className=\"btn btn-outline-secondary btn-sm\">レート制限設定|<Link to=\"/admin/notifications\" className=\"btn btn-outline-secondary btn-sm\">通知・配信" client/src/pages/admin -g '*.tsx'`: only expected primary recovery links remained
+- Local browser verification with agent-browser and route-mocked Playwright checks:
+  - Login via same-origin API session: pass
+  - Dashboard desktop/mobile: pass
+  - Dead stock list desktop: pass
+  - Inventory browse desktop: pass
+  - Upload desktop/mobile: pass
+  - Shared dropdown open state and menu items: pass
+  - Admin dashboard shortcuts and related menus: pass
+  - Admin pharmacies and notifications headers: pass
+  - Bookmarks user-facing header: pass
+  - Notifications header and related menu: pass
+  - Account settings header and related action groups: pass
+  - Admin drug master header and related menu: pass
+  - Admin log center header: pass
+  - Admin groups and relationships headers: pass
+  - Pharmacy list row actions and menu: pass
+  - Bookmark row/card action layout: pass
+  - Notification row action layout: pass by build/typecheck; local notification API data was unavailable for populated-row proof
+  - Admin log center row actions and menu: pass
+  - Proposal and exchange history row action pages: pass by route proof; local data had empty states for populated-row proof
+  - Admin relationships, groups, and monthly reports row action pages: pass by route proof
+  - Upload quality user page: pass by route proof; local data had no upload-quality issues, and the empty-state primary action plus confirmation menu were verified
+  - Admin upload quality page: pass by route proof; local data had no upload-quality issues, and remediation guide form placement was verified
+  - Upload quality dropdown open state: pass by DOM-triggered browser proof; direct agent-browser ref click was unreliable on this page
+  - Proposal list route: pass by route proof; local data had no proposal rows
+  - Proposal detail component behavior: pass by mocked Vitest e2e coverage for populated detail, navigation menu, comments, timeline, and failure fallback
+  - Matching route: pass by route proof; local data stopped at upload prerequisite, and populated candidate behavior is covered by mocked Vitest e2e
+  - Admin user requests route: pass by route proof; local data had no request rows, and the empty queue now resolves to the empty state without console errors
+  - Admin OpenClaw route: pass by route proof; local data had no request rows, health secondary menu opened correctly, and the work-context badge showed `workflow 0`
+  - User requests route: pass by route proof; new-request template menu opened correctly, and console errors were 0 for the current page state
+  - Messages route: pass by route proof; related-screen menu opened correctly, console errors were 0, and populated reply-template behavior is covered by mocked Vitest due to empty local thread data
+  - Admin OpenClaw commands route: pass by route proof; local data had no command rows, empty state preserved the "新規登録" primary action, console errors were 0, and populated row delete-menu behavior is covered by mocked Vitest
+  - Statistics route with mocked runtime data: pass; header related menu opened, duplicate related panel removed, console errors were 0
+  - User request route with mocked runtime data: pass; queue select replaced direct queue buttons, request-card Japanese text rendered horizontally, console errors were 0
+  - Admin user-request route with mocked runtime data: pass; queue select replaced direct queue buttons, OpenClaw filtered list rendered without text compression, console errors were 0
+  - Browser console/page error check after breadcrumb fix: pass
+  - Dev server check with agent-browser at `http://127.0.0.1:5173/`: pass; no Vite overlay, page had content, key login/developer-login controls rendered.
+  - Route-mocked browser review after current action-flow changes: pass; dead-stock row actions, inventory candidate navigation, matching candidate secondary menu, proposal detail secondary menus, proposal print route, and mobile dead-stock filters/sort all completed.
 
-### 実行できた確認
-- `npm run build --workspace=client`: passed
-- `npm run lint --workspace=client`: passed
-- `npm run typecheck --workspace=client`: passed
-- `npm run test --workspace=client`: failed
-  - 136 test files 中 133 passed / 3 failed
-  - 801 tests 中 797 passed / 4 failed
+## Notes
 
-### 今回の制約
-- `bash scripts/run-local-login-dashboard-audit.sh` は現環境で fresh 実行できなかった
-  - 1回目: sandbox 内で `127.0.0.1:5432` 接続が `EPERM`
-  - 昇格後: ローカル Postgres 自体が未起動で `ECONNREFUSED`
-- そのため、今回の visual 判定は以下を組み合わせた
-  - 既存 Playwright スクリーンショットの確認
-  - 現行 client build / lint / typecheck / test の結果
-  - 主要ページ実装の静的確認
-
-### 追加で見つかった frontend 問題
-
-#### A. UploadQualityPage は remediation payload が崩れると描画ごと落ちる
-- 根拠:
-  - [client/src/pages/UploadQualityPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/UploadQualityPage.tsx:136)
-  - [client/src/test/e2e/routes-meta.test.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/test/e2e/routes-meta.test.tsx:368)
-- 症状:
-  - test 実行で `Cannot read properties of undefined (reading 'MISSING_DRUG_NAME')`
-  - route 表示確認がエラーバウンダリへ落ち、`問題総数` まで到達できていない
-- 解釈:
-  - 主要画面が補助データの shape に強く依存しており、ガイド辞書の欠落でページ全体が死ぬ
-- UX 影響:
-  - 本来は「ガイドが出ない」だけで済むべきケースで、画面全体が「予期しないエラー」になる
-
-#### B. MatchingPage は副次パネルの取得失敗が目立つエラーとして露出しやすい
-- 根拠:
-  - [client/src/components/matching/ProposalTemplateSelector.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/components/matching/ProposalTemplateSelector.tsx:21)
-  - [client/src/test/e2e/matching-bookmarks.test.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/test/e2e/matching-bookmarks.test.tsx:192)
-- 症状:
-  - Matching bookmark 系テストで `保存済み提案テンプレート` パネルが `Not found` を赤アラート表示
-  - コア機能の検索/候補閲覧より先に、補助機能の失敗が画面上で強く主張する
-- 解釈:
-  - Secondary panel failure が primary flow の可読性を壊している
-  - Matching 画面は候補比較・ブックマーク・提案テンプレート・絞り込みを一面に載せており、失敗時のノイズ耐性が低い
-
-#### C. 初回ユーザー dashboard は導線が二重オーバーレイになっている
-- 根拠:
-  - [local-user-authenticated.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/local-user-authenticated.png)
-  - [runtime-user-dashboard.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/runtime-user-dashboard.png)
-- 症状:
-  - `はじめてのセットアップガイド` モーダルが全面に出ている状態で、背後に別の導線カードも見えている
-- 解釈:
-  - 初回体験で「最初に何をすればいいか」を一つに絞れていない
-  - モーダルを閉じないと本来の dashboard 情報密度も読めず、加えて背後の CTA が視覚ノイズになる
-
-#### D. 管理者 dashboard は正常表示ではあるが、上部の情報密度が高く優先度が読みにくい
-- 根拠:
-  - [runtime-admin-dashboard.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/runtime-admin-dashboard.png)
-  - [client/src/pages/admin/AdminDashboardPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/admin/AdminDashboardPage.tsx:1)
-- 症状:
-  - 上部に quick links が 10 個超、その下に多数の KPI card が連続し、さらにフォームとテーブルが同一画面に積まれている
-- 解釈:
-  - レイアウト崩れではないが、情報階層が弱い
-  - 「今日まず確認すべきもの」「障害時に触るもの」「定常運用で使うもの」が視覚的に分離されていない
-- UX 影響:
-  - 慣れていない管理者ほど、最初の視線誘導が分散する
-
-### 複雑性の高いページ
-- 行数ベースで特に重い
-  - [client/src/pages/admin/AdminUserRequestsPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/admin/AdminUserRequestsPage.tsx:1) 1360行
-  - [client/src/pages/ProposalDetailPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/ProposalDetailPage.tsx:1) 1312行
-  - [client/src/pages/admin/AdminDashboardPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/admin/AdminDashboardPage.tsx:1) 980行
-  - [client/src/pages/NotificationsPage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/NotificationsPage.tsx:1) 975行
-- この規模自体が直ちに表示崩れを意味するわけではないが、状態管理と表示責務が集中しており、操作系のズレや微妙な退行が起きやすい構造になっている
-
-### この時点の結論
-- 明確な「CSS が壊れて読めない」系は、今回参照できたスクリーンショット上では見えていない
-- ただし frontend 上の不都合はある
-  - UploadQualityPage の描画例外
-  - MatchingPage の補助パネル失敗が前面に出る設計
-  - 初回 dashboard の二重オーバーレイ
-  - Admin dashboard の優先度設計不足による過密感
-
-## 実行コマンド
-```bash
-npx playwright --help
-npx playwright test --help
-npx playwright test --list
-
-npm run test:e2e:local-login-dashboard
-npm run test:e2e:proposal-flow
-
-RUN_MIGRATION_SMOKE=1 npm run test:e2e:local-login-dashboard
-RUN_MIGRATION_SMOKE=1 npm run test:e2e:proposal-flow
-```
-
----
-
-## 12. 2026-05-31 Box-unit UI Button Review
-
-### 対象
-- 箱単位出品を基本にした UI 変更後の主要操作を、ローカル Vite 画面で確認しました。
-- 実行 URL: `http://127.0.0.1:5174`
-- API は安全な browser route mock を使用し、外部 DB / 本番データへの書き込みは行っていません。
-- `agent-browser` で実 URL のログイン画面到達を確認したうえで、Playwright で実ブラウザ操作を自動化しました。
-
-### 確認した画面とボタン
-- デッドストック一覧:
-  - 検索、期限フィルタ、期限順ソート、候補確認リンク、削除モーダルのキャンセル/確定
-- 在庫参照:
-  - 検索、クリア、候補確認リンク
-- マッチング:
-  - 全候補表示、マッチング実行、絞り込み/並び替え、比較追加/クリア、候補提案、数量調整モーダル、ブックマーク、メッセージ導線、仮マッチング開始
-- 提案詳細:
-  - FAX送付メモの付与/解除、拒否モーダル、承認モーダル、正式な反対提案、メッセージ導線、条件変更再検索、コメント投稿/編集/削除、交換完了、評価登録、提案テンプレート保存/削除
-- 印刷ページ:
-  - 印刷、閉じる
-- モバイル表示:
-  - フィルタ/並び替えシートの開閉、クリア
-
-### 発見して修正した問題
-
-#### A. 在庫参照の検索入力が URL 同期で即時リセットされる
-- 根拠:
-  - [InventoryBrowsePage.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/pages/InventoryBrowsePage.tsx)
-  - [InventoryBrowsePage.test.tsx](/Users/yusuke/workspace/DeadStockSolution/client/src/test/components/InventoryBrowsePage.test.tsx)
-- 症状:
-  - `/inventory/browse` で検索欄へ入力すると、現在 URL の `search` パラメータ同期 effect が毎 render で再適用され、入力値が戻る。
-- 修正:
-  - 最後に適用した route search を `useRef` で保持し、URL の検索条件が実際に変わった場合のみフォーム状態へ反映するように変更。
-  - 回帰テストを追加。
-
-### 証跡
-- Spec:
-  - [box-unit-ui-review.spec.ts](/Users/yusuke/workspace/DeadStockSolution/dev/e2e/tests/box-unit-ui-review.spec.ts)
-- JSON report:
-  - [box-unit-ui-review.json](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/json/box-unit-ui-review.json)
-- HTML report:
-  - [index.html](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/reports/html/box-unit-ui-review/index.html)
-- Screenshots:
-  - [box-unit-dead-stock.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-dead-stock.png)
-  - [box-unit-inventory-browse.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-inventory-browse.png)
-  - [box-unit-matching.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-matching.png)
-  - [box-unit-proposal-detail.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-proposal-detail.png)
-  - [box-unit-proposal-print.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-proposal-print.png)
-  - [box-unit-mobile-dead-stock.png](/Users/yusuke/workspace/DeadStockSolution/artifacts/playwright-audit/screenshots/box-unit-mobile-dead-stock.png)
-
-### 実行結果
-```bash
-E2E_BASE_URL=http://127.0.0.1:5174 PLAYWRIGHT_JSON_OUTPUT_FILE=artifacts/playwright-audit/reports/json/box-unit-ui-review.json PLAYWRIGHT_HTML_OUTPUT_DIR=artifacts/playwright-audit/reports/html/box-unit-ui-review npx playwright test dev/e2e/tests/box-unit-ui-review.spec.ts --project chromium --workers=1 --reporter=list,json,html --output artifacts/playwright-audit/test-results/box-unit-ui-review
-# 5 passed
-
-npm run test --workspace=client -- src/test/components/InventoryBrowsePage.test.tsx
-# 4 passed
-
-npx eslint client/src/pages/InventoryBrowsePage.tsx client/src/test/components/InventoryBrowsePage.test.tsx dev/e2e/tests/box-unit-ui-review.spec.ts --max-warnings=0
-# passed
-```
+- Live local data remains sparse for some populated rows, so browser proof uses route-mocked Playwright where needed instead of mutating database state.
+- Route-mocked browser proof now covers populated dead-stock rows, matching candidate cards, proposal detail secondary menus, proposal print route, and mobile dead-stock filters/sort.
+- Remaining sparse-data areas such as upload-quality issue rows, admin user-request rows, OpenClaw request/command rows, user request rows, and message threads remain covered by focused Vitest page/e2e tests plus typecheck/lint/build.
+- `npm run build --workspace=client` no longer emits the previous `admin-pages` large chunk warning or the deprecated PWA `inlineDynamicImports` warning.
+- Additional action-flow consolidation covered `WorkContextBar`, `SavedViewsPanel`, dashboard/upload recent-work panels, notifications action queue, admin notification related operations, admin log export actions, subscription completion/cancel recovery actions, matching comparison actions, and proposal print recovery actions.
+- Additional dashboard loop consolidated `DashboardStatusCards` upload cards and `DashboardNextAction` so the first-viewport dashboard path keeps one primary action visible and moves secondary navigation behind a related menu.
+- Additional residual-action loop moved attachment preview behind an "その他" menu while keeping download as the primary action, normalized business-hours save/cancel controls to the shared action row, and normalized OpenClaw runbook previous/next controls to the shared action row.
+- Additional layout-normalization loop converted remaining high-traffic form/filter/template/proposal detail rows to `dl-action-row mobile-stack`, including notification filters, message thread filters, subscription plan cards, proposal detail action sections, proposal template save controls, dashboard notice controls, and camera manual-code controls.
+- Residual broad flex-action scan now leaves only the LoginPage login-type `btn-group`, which is an intentional segmented control rather than a same-weight operational action cluster.
