@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Card, Col, Form, Row, Tab, Tabs } from 'react-bootstrap';
 import { api } from '../../api/client';
@@ -13,6 +13,7 @@ import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa } from '../../utils/formatters';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 
 const ADMIN_NOTIFICATION_TYPE_OPTIONS = [
   { value: 'proposal_received', label: '提案受信' },
@@ -91,6 +92,12 @@ export default function AdminNotificationsPage() {
       .finally(() => setSubsLoading(false));
   };
 
+  const fetchNotifications = useCallback((targetPage: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(targetPage) });
+    if (typeFilter) params.set('type', typeFilter);
+    return api.get<NotificationsResponse>(`/admin/notifications?${params}`, { signal });
+  }, [typeFilter]);
+
   const {
     items,
     page,
@@ -100,11 +107,7 @@ export default function AdminNotificationsPage() {
     error,
     retry,
   } = usePaginatedList<NotificationItem, NotificationsResponse>(
-    (targetPage, signal) => {
-      const params = new URLSearchParams({ page: String(targetPage) });
-      if (typeFilter) params.set('type', typeFilter);
-      return api.get<NotificationsResponse>(`/admin/notifications?${params}`, { signal });
-    },
+    fetchNotifications,
     { errorMessage: '通知一覧の取得に失敗しました' },
   );
 
@@ -114,12 +117,18 @@ export default function AdminNotificationsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">通知・配信状況</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/alerts" className="btn btn-outline-secondary btn-sm">アラート管理</Link>
-          <Link to="/admin/matching-experiments" className="btn btn-outline-secondary btn-sm">マッチング実験</Link>
-          <Link to="/admin/upload-quality" className="btn btn-outline-secondary btn-sm">アップロード品質</Link>
-          <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
-          <Link to="/admin/direct-messages" className="btn btn-outline-secondary btn-sm">ユーザー間メッセージ</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to="/admin/alerts" className="btn btn-primary btn-sm">アラート管理</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'matching-experiments', to: '/admin/matching-experiments', label: 'マッチング実験' },
+              { key: 'upload-quality', to: '/admin/upload-quality', label: 'アップロード品質' },
+              { key: 'rate-limits', to: '/admin/rate-limits', label: 'レート制限設定' },
+              { key: 'direct-messages', to: '/admin/direct-messages', label: 'ユーザー間メッセージ' },
+            ]}
+          />
         </div>
       </div>
 
@@ -160,11 +169,18 @@ export default function AdminNotificationsPage() {
         )}
 
         <AppDataPanel title="関連運用" className="mb-3">
-          <div className="d-flex gap-2 flex-wrap">
-            <Link to="/admin/direct-messages" className="btn btn-outline-secondary btn-sm">ユーザー間メッセージ</Link>
-            <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
-            <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
-            <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
+          <div className="dl-action-row mobile-stack">
+            <Link to="/admin/direct-messages" className="btn btn-outline-primary btn-sm">ユーザー間メッセージ</Link>
+            <AppDropdownMenu
+              label="関連"
+              size="sm"
+              variant="outline-secondary"
+              items={[
+                { key: 'log-center', to: '/admin/log-center', label: 'ログセンター' },
+                { key: 'error-codes', to: '/admin/error-codes', label: 'エラーコード' },
+                { key: 'rate-limits', to: '/admin/rate-limits', label: 'レート制限設定' },
+              ]}
+            />
           </div>
           <div className="small text-muted mt-2">
             通知の異常は、配信確認からログ調査、エラーコード確認、制限設定確認までこの近傍で追えます。
@@ -193,9 +209,15 @@ export default function AdminNotificationsPage() {
                 title="通知がありません"
                 description="通知が送信されるとここに表示されます。配信条件や制限設定を見直したい場合は近接導線から確認できます。"
                 action={(
-                  <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                  <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                     <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
-                    <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
+                    <AppDropdownMenu
+                      label="関連"
+                      variant="outline-secondary"
+                      items={[
+                        { key: 'rate-limits', to: '/admin/rate-limits', label: 'レート制限設定' },
+                      ]}
+                    />
                   </div>
                 )}
               />

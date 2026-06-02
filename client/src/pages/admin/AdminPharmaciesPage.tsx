@@ -15,6 +15,7 @@ import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateJa, formatNumberJa } from '../../utils/formatters';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 
 interface Pharmacy {
   id: number;
@@ -202,11 +203,17 @@ export default function AdminPharmaciesPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">薬局管理</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/groups" className="btn btn-outline-secondary btn-sm">グループ管理</Link>
-          <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
-          <Link to="/admin/business-hours" className="btn btn-outline-secondary btn-sm">営業時間</Link>
-          <Link to="/admin/bulk-actions" className="btn btn-outline-secondary btn-sm">一括操作</Link>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to="/admin/groups" className="btn btn-primary btn-sm">グループ管理</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'pharmacy-health', to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+              { key: 'business-hours', to: '/admin/business-hours', label: '営業時間' },
+              { key: 'bulk-actions', to: '/admin/bulk-actions', label: '一括操作' },
+            ]}
+          />
         </div>
       </div>
       <ScrollArea>
@@ -223,7 +230,7 @@ export default function AdminPharmaciesPage() {
           </Nav.Link>
         </Nav.Item>
       </Nav>
-      <div className="mb-3 d-flex gap-2 flex-wrap align-items-center">
+      <div className="mb-3 dl-action-row mobile-stack align-items-center">
         <AppButton size="sm" variant="outline-primary" onClick={() => void recalculateTrustScores()} disabled={recalculating}>
           {recalculating ? '再計算中...' : '信頼スコアを再計算'}
         </AppButton>
@@ -238,14 +245,19 @@ export default function AdminPharmaciesPage() {
             >
               {bulkLoading ? '処理中...' : '一括承認'}
             </AppButton>
-            <AppButton
-              size="sm"
-              variant="outline-danger"
-              onClick={() => void handleBulkReject()}
-              disabled={bulkLoading}
-            >
-              {bulkLoading ? '処理中...' : '一括拒否'}
-            </AppButton>
+            <AppDropdownMenu
+              label="選択操作"
+              variant="outline-secondary"
+              items={[
+                {
+                  key: 'bulk-reject',
+                  label: bulkLoading ? '処理中...' : '一括拒否',
+                  onClick: () => void handleBulkReject(),
+                  disabled: bulkLoading,
+                  danger: true,
+                },
+              ]}
+            />
           </>
         )}
       </div>
@@ -261,12 +273,18 @@ export default function AdminPharmaciesPage() {
           title={activeTab === 'pending' ? '承認待ちの薬局はありません' : '薬局データがありません'}
           description={activeTab === 'pending' ? '現在、審査待ちの薬局はありません。' : '登録が追加されるとここに表示されます。'}
           action={(
-            <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+            <div className="mt-3 dl-action-row mobile-stack justify-content-center">
               <Link to={activeTab === 'pending' ? '/admin/business-hours' : '/admin/pharmacy-health'} className="btn btn-outline-secondary btn-sm">
                 {activeTab === 'pending' ? '営業時間を確認' : '薬局ヘルスを見る'}
               </Link>
-              <Link to="/admin/bulk-actions" className="btn btn-outline-secondary btn-sm">一括操作</Link>
-              <Link to="/admin/relationships" className="btn btn-outline-secondary btn-sm">関係性監査</Link>
+              <AppDropdownMenu
+                label="関連"
+                variant="outline-secondary"
+                items={[
+                  { key: 'bulk-actions', to: '/admin/bulk-actions', label: '一括操作' },
+                  { key: 'relationships', to: '/admin/relationships', label: '関係性監査' },
+                ]}
+              />
             </div>
           )}
         />

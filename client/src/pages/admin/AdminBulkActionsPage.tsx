@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Alert, Badge, Card, Col, Form, Row } from 'react-bootstrap';
 import { api } from '../../api/client';
 import AppButton from '../../components/ui/AppButton';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
@@ -102,10 +103,17 @@ export default function AdminBulkActionsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">一括操作</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-          <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
-          <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログ</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/pharmacies" className="btn btn-outline-primary btn-sm">薬局管理</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '薬局ヘルス', to: '/admin/pharmacy-health' },
+              { label: '監査ログ', to: '/admin/audit' },
+            ]}
+          />
         </div>
       </div>
 
@@ -198,9 +206,16 @@ export default function AdminBulkActionsPage() {
               <div className="small text-muted mt-3">
                 実行後は <Link to="/admin/audit">監査ログ</Link> と <Link to="/admin/log-center">ログセンター</Link> で証跡を確認できます。
               </div>
-              <div className="mt-3 d-flex gap-2 flex-wrap">
+              <div className="mt-3 dl-action-row mobile-stack">
                 <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理で確認</Link>
-                <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログを見る</Link>
+                <AppDropdownMenu
+                  label="関連"
+                  size="sm"
+                  variant="outline-secondary"
+                  items={[
+                    { label: '監査ログを見る', to: '/admin/audit' },
+                  ]}
+                />
               </div>
             </Card.Body>
           </Card>

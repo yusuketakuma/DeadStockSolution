@@ -97,9 +97,12 @@ export default function AdminRiskPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="page-title mb-0">期限切れリスク分析</h4>
-        <a href={buildApiUrl('/admin/csv/risk')} className="btn btn-outline-secondary btn-sm" download>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">期限切れリスク分析</h4>
+          <div className="text-muted small">薬局ごとの期限リスクを確認し、必要に応じてCSVで出力します。</div>
+        </div>
+        <a href={buildApiUrl('/admin/csv/risk')} className="btn btn-primary btn-sm" download>
           CSVエクスポート
         </a>
       </div>

@@ -9,6 +9,7 @@ import Pagination from '../../components/Pagination';
 import AppSelect from '../../components/ui/AppSelect';
 import AppControl from '../../components/ui/AppControl';
 import AppCard from '../../components/ui/AppCard';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
@@ -186,10 +187,17 @@ export default function AdminLogsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">操作ログ ({total}件)</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
-          <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログ</Link>
-          <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/log-center" className="btn btn-outline-primary btn-sm">ログセンター</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '監査ログ', to: '/admin/audit' },
+              { label: 'エラーコード', to: '/admin/error-codes' },
+            ]}
+          />
         </div>
       </div>
       {error && (

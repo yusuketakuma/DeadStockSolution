@@ -3,6 +3,7 @@ import { Row, Col, Form } from 'react-bootstrap';
 import AppAlert from '../../../components/ui/AppAlert';
 import AppButton from '../../../components/ui/AppButton';
 import AppCard from '../../../components/ui/AppCard';
+import AppDropdownMenu from '../../../components/ui/AppDropdownMenu';
 import AppSelect from '../../../components/ui/AppSelect';
 import AppModalShell from '../../../components/ui/AppModalShell';
 import InlineLoader from '../../../components/ui/InlineLoader';
@@ -263,19 +264,20 @@ export const LogDetailModal = memo(function LogDetailModal({
       title={<span className="h6 mb-0">ログ詳細 #{entry.id}</span>}
       footer={(
         <div className="d-flex justify-content-between w-100 flex-wrap gap-2">
-          <div className="d-flex gap-2 flex-wrap">
-            <AppButton size="sm" variant="outline-secondary" onClick={() => void handleCopyCodeLocation()} disabled={!entry.codeLocation}>
-              発生コードをコピー
-            </AppButton>
-            <AppButton size="sm" variant="outline-primary" onClick={() => void handleCopyDetail()}>
-              共有テキストをコピー
-            </AppButton>
-            <AppButton size="sm" variant="outline-secondary" onClick={() => void handleCopyJson()}>
-              JSON をコピー
-            </AppButton>
+          <div className="dl-action-row mobile-stack">
             <AppButton size="sm" variant="primary" onClick={() => void handleEscalateToOpenClaw()} disabled={sending}>
               {sending ? '送信中...' : 'OpenClaw に通知'}
             </AppButton>
+            <AppDropdownMenu
+              label="コピー"
+              size="sm"
+              variant="outline-secondary"
+              items={[
+                { label: '発生コードをコピー', onClick: () => { void handleCopyCodeLocation(); }, disabled: !entry.codeLocation },
+                { label: '共有テキストをコピー', onClick: () => { void handleCopyDetail(); } },
+                { label: 'JSON をコピー', onClick: () => { void handleCopyJson(); } },
+              ]}
+            />
           </div>
           <AppButton size="sm" variant="secondary" onClick={onHide}>
             閉じる

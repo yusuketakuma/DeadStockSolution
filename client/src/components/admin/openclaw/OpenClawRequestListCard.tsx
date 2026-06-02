@@ -3,6 +3,7 @@ import AppCard from '../../ui/AppCard';
 import AppTable from '../../ui/AppTable';
 import AppSelect from '../../ui/AppSelect';
 import AppControl from '../../ui/AppControl';
+import AppDropdownMenu from '../../ui/AppDropdownMenu';
 import AppMobileDataCard from '../../ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../ui/AppResponsiveSwitch';
 import InlineLoader from '../../ui/InlineLoader';
@@ -58,7 +59,7 @@ export default function OpenClawRequestListCard({
           OpenClaw から反映された状態を SSE で自動更新し、接続できない場合は約1分ごとに再取得します。
         </div>
 
-        <div className="d-flex gap-2 align-items-center flex-wrap mb-3">
+        <div className="dl-badge-row mb-3">
           <Badge bg="secondary">受付済み: {workflowCount.queued ?? 0}</Badge>
           <Badge bg="secondary">解析中: {workflowCount.analyzing ?? 0}</Badge>
           <Badge bg="primary">回答待ち: {workflowCount.awaiting_user ?? 0}</Badge>
@@ -67,7 +68,7 @@ export default function OpenClawRequestListCard({
           <Badge bg="danger">失敗: {workflowCount.failed ?? 0}</Badge>
         </div>
 
-        <div className="d-flex gap-2 flex-wrap mb-3">
+        <div className="dl-action-row mobile-stack mb-3">
           <AppSelect
             size="sm"
             value={statusFilter}
@@ -119,17 +120,10 @@ export default function OpenClawRequestListCard({
                     {filteredRequests.map((item) => {
                       const status = openclawStatusMeta(item.openclawStatus);
                       const workflow = workflowStatusMeta(item.workflowStatus);
+                      const canRetryHandoff = item.openclawStatus === 'pending_handoff' || item.workflowStatus === 'failed';
                       return (
                         <tr key={item.id}>
-                          <td>
-                            <button
-                              type="button"
-                              className="btn btn-link p-0 text-decoration-none"
-                              onClick={() => onSelectRequest(item.id)}
-                            >
-                              {item.id}
-                            </button>
-                          </td>
+                          <td>#{item.id}</td>
                           <td>{item.pharmacyName} (ID: {item.pharmacyId})</td>
                           <td className="small">
                             <div>{item.requestText}</div>
@@ -145,20 +139,29 @@ export default function OpenClawRequestListCard({
                           </td>
                           <td>{formatDateTimeJa(item.createdAt)}</td>
                           <td>
-                            {item.openclawStatus === 'pending_handoff' || item.workflowStatus === 'failed' ? (
-                              <LoadingButton
-                                size="sm"
-                                variant="outline-primary"
-                                disabled={handoffingRequestId !== null && handoffingRequestId !== item.id}
-                                onClick={() => onRetryHandoff(item.id)}
-                                loading={handoffingRequestId === item.id}
-                                loadingLabel="再連携中..."
+                            <div className="dl-action-row mobile-stack">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-primary"
+                                onClick={() => onSelectRequest(item.id)}
                               >
-                                再連携
-                              </LoadingButton>
-                            ) : (
-                              <span className="text-muted small">-</span>
-                            )}
+                                詳細
+                              </button>
+                              {canRetryHandoff && (
+                                <AppDropdownMenu
+                                  label="その他"
+                                  variant="outline-secondary"
+                                  items={[
+                                    {
+                                      key: 'retry-handoff',
+                                      label: handoffingRequestId === item.id ? '再連携中...' : '再連携',
+                                      onClick: () => onRetryHandoff(item.id),
+                                      disabled: handoffingRequestId !== null,
+                                    },
+                                  ]}
+                                />
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -172,6 +175,7 @@ export default function OpenClawRequestListCard({
                 {filteredRequests.map((item) => {
                   const status = openclawStatusMeta(item.openclawStatus);
                   const workflow = workflowStatusMeta(item.workflowStatus);
+                  const canRetryHandoff = item.openclawStatus === 'pending_handoff' || item.workflowStatus === 'failed';
                   return (
                     <AppMobileDataCard
                       key={item.id}
@@ -191,27 +195,29 @@ export default function OpenClawRequestListCard({
                         { label: '受付日時', value: formatDateTimeJa(item.createdAt) },
                       ]}
                       actions={(
-                        <div className="d-flex gap-2 align-items-center">
+                        <div className="dl-action-row mobile-stack">
                           <LoadingButton
                             size="sm"
-                            variant="outline-secondary"
+                            variant="primary"
                             onClick={() => onSelectRequest(item.id)}
                             loading={false}
                             loadingLabel="読み込み中..."
                           >
                             詳細
                           </LoadingButton>
-                          {item.openclawStatus === 'pending_handoff' || item.workflowStatus === 'failed' ? (
-                            <LoadingButton
-                              size="sm"
+                          {canRetryHandoff ? (
+                            <AppDropdownMenu
+                              label="その他"
                               variant="outline-primary"
-                              disabled={handoffingRequestId !== null && handoffingRequestId !== item.id}
-                              onClick={() => onRetryHandoff(item.id)}
-                              loading={handoffingRequestId === item.id}
-                              loadingLabel="再連携中..."
-                            >
-                              再連携
-                            </LoadingButton>
+                              items={[
+                                {
+                                  key: 'retry-handoff',
+                                  label: handoffingRequestId === item.id ? '再連携中...' : '再連携',
+                                  onClick: () => onRetryHandoff(item.id),
+                                  disabled: handoffingRequestId !== null,
+                                },
+                              ]}
+                            />
                           ) : (
                             <span className="text-muted small">操作不要</span>
                           )}

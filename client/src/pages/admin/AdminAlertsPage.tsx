@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Col, Form, Row } from 'react-bootstrap';
 import { api } from '../../api/client';
@@ -10,6 +10,7 @@ import AppAlert from '../../components/ui/AppAlert';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
@@ -65,6 +66,13 @@ export default function AdminAlertsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkMessage, setBulkMessage] = useState('');
 
+  const fetchAlerts = useCallback((targetPage: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(targetPage) });
+    if (typeFilter) params.set('alertType', typeFilter);
+    if (resolvedFilter) params.set('resolved', resolvedFilter);
+    return api.get<AlertsResponse>(`/admin/alerts?${params}`, { signal });
+  }, [resolvedFilter, typeFilter]);
+
   const {
     items,
     page,
@@ -75,12 +83,7 @@ export default function AdminAlertsPage() {
     retry,
     invalidateCache,
   } = usePaginatedList<AlertItem, AlertsResponse>(
-    (targetPage, signal) => {
-      const params = new URLSearchParams({ page: String(targetPage) });
-      if (typeFilter) params.set('alertType', typeFilter);
-      if (resolvedFilter) params.set('resolved', resolvedFilter);
-      return api.get<AlertsResponse>(`/admin/alerts?${params}`, { signal });
-    },
+    fetchAlerts,
     { errorMessage: 'アラート一覧の取得に失敗しました' },
   );
 
@@ -112,9 +115,17 @@ export default function AdminAlertsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">アラート管理</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信状況</Link>
-          <Link to="/admin/risk" className="btn btn-outline-secondary btn-sm">期限リスク分析</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/notifications" className="btn btn-outline-primary btn-sm">通知・配信状況</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '期限リスク分析', to: '/admin/risk' },
+              { label: '薬局管理', to: '/admin/pharmacies' },
+            ]}
+          />
         </div>
       </div>
 
@@ -155,10 +166,16 @@ export default function AdminAlertsPage() {
             title="アラートがありません"
             description="予測アラートが検出されるとここに表示されます。通知設定やリスク分析、薬局側の状態確認に戻れます。"
             action={(
-              <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+              <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                 <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信状況</Link>
-                <Link to="/admin/risk" className="btn btn-outline-secondary btn-sm">期限リスク分析</Link>
-                <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+                <AppDropdownMenu
+                  label="関連"
+                  variant="outline-secondary"
+                  items={[
+                    { key: 'risk', to: '/admin/risk', label: '期限リスク分析' },
+                    { key: 'pharmacies', to: '/admin/pharmacies', label: '薬局管理' },
+                  ]}
+                />
               </div>
             )}
           />

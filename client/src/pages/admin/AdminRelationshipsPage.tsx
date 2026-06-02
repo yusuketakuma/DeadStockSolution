@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Col, Form, Row } from 'react-bootstrap';
 import { api } from '../../api/client';
@@ -8,6 +8,7 @@ import AppTable from '../../components/ui/AppTable';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
@@ -58,6 +59,12 @@ const RELATIONSHIP_LINK_GROUPS: readonly AdminNavigationLinkGroup[] = [
 export default function AdminRelationshipsPage() {
   const [typeFilter, setTypeFilter] = useState('');
 
+  const fetchRelationships = useCallback((targetPage: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(targetPage) });
+    if (typeFilter) params.set('type', typeFilter);
+    return api.get<RelationshipsResponse>(`/admin/relationships?${params}`, { signal });
+  }, [typeFilter]);
+
   const {
     items,
     page,
@@ -67,11 +74,7 @@ export default function AdminRelationshipsPage() {
     error,
     retry,
   } = usePaginatedList<RelationshipItem, RelationshipsResponse>(
-    (targetPage, signal) => {
-      const params = new URLSearchParams({ page: String(targetPage) });
-      if (typeFilter) params.set('type', typeFilter);
-      return api.get<RelationshipsResponse>(`/admin/relationships?${params}`, { signal });
-    },
+    fetchRelationships,
     { errorMessage: '関係性一覧の取得に失敗しました' },
   );
 
@@ -81,10 +84,17 @@ export default function AdminRelationshipsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">関係性監査</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-          <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
-          <Link to="/admin/groups" className="btn btn-outline-secondary btn-sm">グループ管理</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/pharmacies" className="btn btn-outline-primary btn-sm">薬局管理</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '薬局ヘルス', to: '/admin/pharmacy-health' },
+              { label: 'グループ管理', to: '/admin/groups' },
+            ]}
+          />
         </div>
       </div>
 
@@ -110,13 +120,19 @@ export default function AdminRelationshipsPage() {
             title="関係性データがありません"
             description="薬局間のお気に入り・ブロック関係が登録されるとここに表示されます。薬局一覧やグループ設定から近い運用面を確認できます。"
             action={(
-                  <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
-                    <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-                    <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
-                    <Link to="/admin/business-hours" className="btn btn-outline-secondary btn-sm">営業時間</Link>
-                  </div>
-                )}
-              />
+              <div className="mt-3 dl-action-row mobile-stack justify-content-center">
+                <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+                <AppDropdownMenu
+                  label="関連"
+                  variant="outline-secondary"
+                  items={[
+                    { key: 'pharmacy-health', to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+                    { key: 'business-hours', to: '/admin/business-hours', label: '営業時間' },
+                  ]}
+                />
+              </div>
+            )}
+          />
         ) : (
           <AppResponsiveSwitch
             desktop={() => (
@@ -145,9 +161,16 @@ export default function AdminRelationshipsPage() {
                         </td>
                         <td>{formatDateTimeJa(r.createdAt)}</td>
                         <td>
-                          <div className="d-flex gap-2 flex-wrap">
+                          <div className="dl-action-row mobile-stack">
                             <Link to={`/admin/pharmacies/${r.pharmacyId}/edit`} className="btn btn-outline-primary btn-sm">元薬局を編集</Link>
-                            <Link to={`/admin/pharmacies/${r.targetPharmacyId}/edit`} className="btn btn-outline-secondary btn-sm">対象薬局を編集</Link>
+                            <AppDropdownMenu
+                              label="その他"
+                              size="sm"
+                              variant="outline-secondary"
+                              items={[
+                                { label: '対象薬局を編集', to: `/admin/pharmacies/${r.targetPharmacyId}/edit` },
+                              ]}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -172,9 +195,16 @@ export default function AdminRelationshipsPage() {
                       { label: '登録日', value: formatDateTimeJa(r.createdAt) },
                     ]}
                     actions={(
-                      <div className="d-flex gap-2 flex-wrap">
+                      <div className="dl-action-row mobile-stack">
                         <Link to={`/admin/pharmacies/${r.pharmacyId}/edit`} className="btn btn-outline-primary btn-sm">元薬局を編集</Link>
-                        <Link to={`/admin/pharmacies/${r.targetPharmacyId}/edit`} className="btn btn-outline-secondary btn-sm">対象薬局を編集</Link>
+                        <AppDropdownMenu
+                          label="その他"
+                          size="sm"
+                          variant="outline-secondary"
+                          items={[
+                            { label: '対象薬局を編集', to: `/admin/pharmacies/${r.targetPharmacyId}/edit` },
+                          ]}
+                        />
                       </div>
                     )}
                   />

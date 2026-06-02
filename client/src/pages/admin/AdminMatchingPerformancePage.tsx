@@ -4,6 +4,7 @@ import { Badge, Card, Col, Row } from 'react-bootstrap';
 import { api } from '../../api/client';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppTable from '../../components/ui/AppTable';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { formatDateTimeJa } from '../../utils/formatters';
@@ -61,9 +62,17 @@ export default function AdminMatchingPerformancePage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">マッチング性能</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/matching-rules" className="btn btn-outline-secondary btn-sm">マッチングルール</Link>
-          <Link to="/admin/exchanges" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/matching-rules" className="btn btn-outline-primary btn-sm">マッチングルール</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '交換履歴', to: '/admin/exchanges' },
+              { label: 'マッチング実験', to: '/admin/matching-experiments' },
+            ]}
+          />
         </div>
       </div>
 

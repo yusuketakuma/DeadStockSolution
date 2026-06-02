@@ -1,5 +1,6 @@
 import { Badge } from 'react-bootstrap';
 import AppCard from '../../ui/AppCard';
+import AppDropdownMenu from '../../ui/AppDropdownMenu';
 import AppMobileDataCard from '../../ui/AppMobileDataCard';
 import LoadingButton from '../../ui/LoadingButton';
 import { formatDateTimeJa } from '../../../utils/formatters';
@@ -38,7 +39,7 @@ export default function OpenClawHealthCard({
     <AppCard className="mb-3">
       <AppCard.Header>DDS / OpenClaw ヘルス</AppCard.Header>
       <AppCard.Body>
-        <div className="d-flex gap-2 flex-wrap mb-3">
+        <div className="dl-badge-row mb-3">
           <Badge bg={health?.status === 'ok' ? 'success' : 'warning'}>{health?.status === 'ok' ? '稼働中' : '要確認'}</Badge>
           <Badge bg={health?.connector.configured ? 'success' : 'secondary'}>Connector {health?.connector.configured ? '接続済み' : '未接続'}</Badge>
           <Badge bg={health?.webhook.configured ? 'success' : 'secondary'}>Webhook {health?.webhook.configured ? '設定済み' : '未設定'}</Badge>
@@ -53,25 +54,28 @@ export default function OpenClawHealthCard({
           <div className="col-md-3 col-6"><AppMobileDataCard title="待機ジョブ" fields={[{ label: 'queued', value: ddsStatus?.queuedJobs ?? 0 }, { label: 'awaiting', value: ddsStatus?.awaitingUser ?? 0 }]} /></div>
           <div className="col-md-3 col-6"><AppMobileDataCard title="feature flags" fields={[{ label: 'commands', value: health?.commands.enabled ? 'ON' : 'OFF' }, { label: 'autoFix', value: health?.autoFix.enabled ? 'ON' : 'OFF' }]} /></div>
         </div>
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack">
           <LoadingButton
             size="sm"
-            variant="outline-primary"
+            variant="primary"
             onClick={onIssueBootstrapToken}
             loading={issuingBootstrapToken}
             loadingLabel="発行中..."
           >
             bootstrap token 発行
           </LoadingButton>
-          <LoadingButton
-            size="sm"
+          <AppDropdownMenu
+            label="その他"
             variant="outline-secondary"
-            onClick={onRotateControlToken}
-            loading={rotatingControlToken}
-            loadingLabel="更新中..."
-          >
-            control token ローテーション
-          </LoadingButton>
+            items={[
+              {
+                key: 'rotate-control-token',
+                label: rotatingControlToken ? '更新中...' : 'control token ローテーション',
+                onClick: onRotateControlToken,
+                disabled: rotatingControlToken,
+              },
+            ]}
+          />
         </div>
         {bootstrapToken ? (
           <div className="mt-3 small">

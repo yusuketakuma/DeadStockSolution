@@ -5,6 +5,7 @@ import Pagination from '../../components/Pagination';
 import AppAlert from '../../components/ui/AppAlert';
 import AttachmentPreviewList from '../../components/ui/AttachmentPreviewList';
 import AppCard from '../../components/ui/AppCard';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import InlineLoader from '../../components/ui/InlineLoader';
@@ -286,6 +287,20 @@ export default function AdminUserRequestsPage() {
     loadStoredTemplates(ADMIN_REQUESTS_REPLY_TEMPLATES_KEY));
   const filtersInitializedRef = useRef(false);
 
+  const fetchUserRequestsPage = useCallback((targetPage: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({
+      page: String(targetPage),
+      limit: '20',
+    });
+    if (search) params.set('search', search);
+    if (statusFilter) params.set('status', statusFilter);
+    if (categoryFilter) params.set('category', categoryFilter);
+    if (priorityFilter) params.set('priority', priorityFilter);
+    if (waitingOnFilter) params.set('waitingOn', waitingOnFilter);
+    if (onlyUnread) params.set('onlyUnread', 'true');
+    return api.get<AdminUserRequestsResponse>(`/admin/user-requests?${params}`, { signal });
+  }, [categoryFilter, onlyUnread, priorityFilter, search, statusFilter, waitingOnFilter]);
+
   const {
     items,
     page,
@@ -296,19 +311,7 @@ export default function AdminUserRequestsPage() {
     retry,
     fetchPage,
   } = usePaginatedList<AdminUserRequestItem, AdminUserRequestsResponse>(
-    (targetPage, signal) => {
-      const params = new URLSearchParams({
-        page: String(targetPage),
-        limit: '20',
-      });
-      if (search) params.set('search', search);
-      if (statusFilter) params.set('status', statusFilter);
-      if (categoryFilter) params.set('category', categoryFilter);
-      if (priorityFilter) params.set('priority', priorityFilter);
-      if (waitingOnFilter) params.set('waitingOn', waitingOnFilter);
-      if (onlyUnread) params.set('onlyUnread', 'true');
-      return api.get<AdminUserRequestsResponse>(`/admin/user-requests?${params}`, { signal });
-    },
+    fetchUserRequestsPage,
     { errorMessage: 'ユーザーリクエストの取得に失敗しました', initialPage: requestedPage },
   );
   const {
@@ -664,6 +667,19 @@ export default function AdminUserRequestsPage() {
     setSavedReplyTemplates((prev) => addStoredTemplate(prev, replyText));
   };
 
+  const replyTemplateMenuItems = useMemo(() => [
+    ...REPLY_TEMPLATES.map((template, index) => ({
+      key: `default-reply-${index}`,
+      label: template,
+      onClick: () => setReplyText(template),
+    })),
+    ...savedReplyTemplates.map((template, index) => ({
+      key: `saved-reply-${index}`,
+      label: `${template.slice(0, 28)}${template.length > 28 ? '…' : ''}`,
+      onClick: () => setReplyText(template),
+    })),
+  ], [savedReplyTemplates]);
+
   const recentRequestWork = useMemo(() => {
     if (!detail?.request) return null;
     const params = new URLSearchParams();
@@ -684,6 +700,14 @@ export default function AdminUserRequestsPage() {
       subtitle: detail.request.pharmacyName ?? detail.request.requestText,
     };
   }, [categoryFilter, detail, onlyUnread, page, priorityFilter, queueFilter, search, statusFilter, waitingOnFilter]);
+  const queueFilterOptions: Array<{ value: AdminQueueFilter; label: string }> = [
+    { value: 'all', label: `すべて ${items.length}` },
+    { value: 'my_turn', label: `本日返答 ${itemSummary.myTurn}` },
+    { value: 'overdue', label: `24時間超 ${itemSummary.overdue}` },
+    { value: 'unread', label: `未読 ${itemSummary.unread}` },
+    { value: 'openclaw', label: `OpenClaw ${itemSummary.openclaw}` },
+    { value: 'escalated', label: `再催促 ${itemSummary.escalated ?? 0}` },
+  ];
 
   useTrackRecentWork(recentRequestWork);
   useKeyboardListNavigation({
@@ -823,7 +847,7 @@ export default function AdminUserRequestsPage() {
                 <option value="openclaw">OpenClaw処理中</option>
               </Form.Select>
             </div>
-            <div className="col-12 d-flex flex-wrap gap-2 align-items-center">
+            <div className="col-12 dl-action-row mobile-stack">
               <Form.Check
                 type="checkbox"
                 id="admin-user-requests-only-unread"
@@ -839,13 +863,17 @@ export default function AdminUserRequestsPage() {
                 絞り込む
               </button>
             </div>
-            <div className="col-12 d-flex flex-wrap gap-2">
-              <button type="button" className={`btn btn-sm ${queueFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setQueueFilter('all')}>すべて {items.length}</button>
-              <button type="button" className={`btn btn-sm ${queueFilter === 'my_turn' ? 'btn-primary' : 'btn-outline-warning'}`} onClick={() => setQueueFilter('my_turn')}>本日返答 {itemSummary.myTurn}</button>
-              <button type="button" className={`btn btn-sm ${queueFilter === 'overdue' ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setQueueFilter('overdue')}>24時間超 {itemSummary.overdue}</button>
-              <button type="button" className={`btn btn-sm ${queueFilter === 'unread' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setQueueFilter('unread')}>未読 {itemSummary.unread}</button>
-              <button type="button" className={`btn btn-sm ${queueFilter === 'openclaw' ? 'btn-dark' : 'btn-outline-dark'}`} onClick={() => setQueueFilter('openclaw')}>OpenClaw {itemSummary.openclaw}</button>
-              <button type="button" className={`btn btn-sm ${queueFilter === 'escalated' ? 'btn-warning' : 'btn-outline-warning'}`} onClick={() => setQueueFilter('escalated')}>再催促 {itemSummary.escalated ?? 0}</button>
+            <div className="col-12 col-md-4">
+              <Form.Label htmlFor="admin-user-request-queue-filter" className="small text-muted">対応キュー</Form.Label>
+              <Form.Select
+                id="admin-user-request-queue-filter"
+                value={queueFilter}
+                onChange={(event) => setQueueFilter(event.target.value as AdminQueueFilter)}
+              >
+                {queueFilterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </Form.Select>
             </div>
           </div>
         </AppCard.Body>
@@ -924,10 +952,16 @@ export default function AdminUserRequestsPage() {
                     title="対象の要望がありません"
                     description="条件に一致する要望がありません。OpenClaw 連携や通知・ログ側の運用へ戻れます。"
                     action={(
-                      <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                      <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                         <Link to="/admin/openclaw" className="btn btn-outline-secondary btn-sm">OpenClaw連携</Link>
-                        <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信状況</Link>
-                        <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+                        <AppDropdownMenu
+                          label="関連"
+                          variant="outline-secondary"
+                          items={[
+                            { key: 'notifications', to: '/admin/notifications', label: '通知・配信状況' },
+                            { key: 'log-center', to: '/admin/log-center', label: 'ログセンター' },
+                          ]}
+                        />
                       </div>
                     )}
                   />
@@ -940,13 +974,14 @@ export default function AdminUserRequestsPage() {
                         <button
                           key={item.id}
                           type="button"
-                          className={`btn text-start border w-100 ${
+                          className={`btn text-start text-wrap border w-100 ${
                             selectedRequestId === item.id
                               ? 'border-primary bg-light'
                               : item.isOverdue
                                 ? 'border-danger bg-danger bg-opacity-10'
                                 : 'border-light-subtle'
                           }`}
+                          style={{ display: 'block', whiteSpace: 'normal' }}
                           onClick={() => setSelectedRequestId(item.id)}
                         >
                           <div className="d-flex justify-content-end mb-2">
@@ -963,7 +998,7 @@ export default function AdminUserRequestsPage() {
                             />
                           </div>
                           <div className="d-flex justify-content-between align-items-start gap-2">
-                            <strong className="text-wrap-anywhere flex-grow-1">#{item.id} {item.pharmacyName ?? `薬局ID:${item.pharmacyId}`}</strong>
+                            <strong className="text-wrap-anywhere flex-grow-1" style={{ minWidth: 0 }}>#{item.id} {item.pharmacyName ?? `薬局ID:${item.pharmacyId}`}</strong>
                             <span className="flex-shrink-0">{workflowBadge(item.workflowStatus)}</span>
                           </div>
                           <div className="d-flex flex-wrap gap-1 mt-2">
@@ -973,9 +1008,9 @@ export default function AdminUserRequestsPage() {
                             {waitingBadge(item)}
                             {item.latestEscalatedAt && <Badge bg="warning" text="dark">再催促あり</Badge>}
                           </div>
-                          <div className="small mt-2 dl-line-clamp-3">{item.requestText}</div>
+                          <div className="small mt-2 text-wrap-anywhere dl-line-clamp-3">{item.requestText}</div>
                           {(item.latestSummary || item.openclawSummary) && (
-                            <div className="small text-muted mt-2 dl-line-clamp-2">{item.latestSummary ?? item.openclawSummary}</div>
+                            <div className="small text-muted mt-2 text-wrap-anywhere dl-line-clamp-2">{item.latestSummary ?? item.openclawSummary}</div>
                           )}
                           <div className="small mt-2">
                             <span className={`badge bg-${slaSummary.tone} ${slaSummary.tone === 'warning' ? 'text-dark' : ''}`}>
@@ -1012,9 +1047,15 @@ export default function AdminUserRequestsPage() {
                     title="要望を選択してください"
                     description="左の一覧から対象要望を選ぶと詳細を表示します。OpenClaw の会話や運用ログに切り替えることもできます。"
                     action={(
-                      <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                      <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                         <Link to="/admin/openclaw" className="btn btn-outline-secondary btn-sm">OpenClaw連携</Link>
-                        <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+                        <AppDropdownMenu
+                          label="関連"
+                          variant="outline-secondary"
+                          items={[
+                            { key: 'log-center', to: '/admin/log-center', label: 'ログセンター' },
+                          ]}
+                        />
                       </div>
                     )}
                   />
@@ -1027,9 +1068,15 @@ export default function AdminUserRequestsPage() {
                     title="詳細を表示できません"
                     description="対象要望の取得に失敗しました。連携状態やログを確認してから再試行してください。"
                     action={(
-                      <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                      <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                         <Link to="/admin/openclaw" className="btn btn-outline-secondary btn-sm">OpenClaw連携</Link>
-                        <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+                        <AppDropdownMenu
+                          label="関連"
+                          variant="outline-secondary"
+                          items={[
+                            { key: 'log-center', to: '/admin/log-center', label: 'ログセンター' },
+                          ]}
+                        />
                       </div>
                     )}
                   />
@@ -1040,7 +1087,7 @@ export default function AdminUserRequestsPage() {
                       return (
                         <div className="border rounded p-3">
                           <div className="fw-semibold mb-2">SLA / 次アクション</div>
-                          <div className="d-flex flex-wrap gap-2 align-items-center">
+                          <div className="dl-badge-row">
                             <Badge bg={slaSummary.tone} text={slaSummary.tone === 'warning' ? 'dark' : undefined}>
                               {slaSummary.nextActionLabel}
                             </Badge>
@@ -1058,7 +1105,7 @@ export default function AdminUserRequestsPage() {
                     })()}
 
                     <div className="border rounded p-3 bg-light">
-                      <div className="d-flex flex-wrap gap-2">
+                      <div className="dl-badge-row">
                         {workflowBadge(detail.request.workflowStatus)}
                         <Badge bg="light" text="dark">{categoryLabel(detail.request.category)}</Badge>
                         {priorityBadge(detail.request.priority)}
@@ -1080,35 +1127,23 @@ export default function AdminUserRequestsPage() {
 
                     <div className="border rounded p-3">
                       <div className="fw-semibold mb-2">トリアージ補助</div>
-                      <div className="d-flex flex-wrap gap-2">
+                      <div className="dl-action-row mobile-stack">
                         <button
                           type="button"
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => applyMetaPreset('urgent_bug')}
-                        >
-                          緊急不具合に寄せる
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-secondary"
-                          onClick={() => applyMetaPreset('duplicate')}
-                        >
-                          重複候補にする
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-warning"
-                          onClick={() => applyMetaPreset('on_hold')}
-                        >
-                          保留にする
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-primary"
+                          className="btn btn-sm btn-primary"
                           onClick={() => setReplyText(REPLY_TEMPLATES[1])}
                         >
                           確認依頼文を入れる
                         </button>
+                        <AppDropdownMenu
+                          label="その他"
+                          variant="outline-secondary"
+                          items={[
+                            { key: 'urgent-bug', label: '緊急不具合に寄せる', onClick: () => applyMetaPreset('urgent_bug'), danger: true },
+                            { key: 'duplicate', label: '重複候補にする', onClick: () => applyMetaPreset('duplicate') },
+                            { key: 'on-hold', label: '保留にする', onClick: () => applyMetaPreset('on_hold') },
+                          ]}
+                        />
                       </div>
                     </div>
 
@@ -1151,20 +1186,30 @@ export default function AdminUserRequestsPage() {
                         </div>
                       </div>
                       <div className="d-flex justify-content-end mt-3">
-                        <div className="d-flex gap-2 flex-wrap">
-                          {selectedIds.length > 0 && (
-                            <button type="button" className="btn btn-outline-secondary" onClick={() => void handlePreviewBulkSaveMeta()}>
-                              一括適用をプレビュー
-                            </button>
-                          )}
-                          {selectedIds.length > 0 && (
-                            <LoadingButton variant="outline-primary" onClick={handleBulkSaveMeta} loading={savingMeta} loadingLabel="適用中...">
-                              選択中に一括適用
-                            </LoadingButton>
-                          )}
+                        <div className="dl-action-row mobile-stack">
                           <LoadingButton variant="primary" onClick={handleSaveMeta} loading={savingMeta} loadingLabel="保存中...">
                             管理情報を保存
                           </LoadingButton>
+                          {selectedIds.length > 0 && (
+                            <AppDropdownMenu
+                              label="一括操作"
+                              variant="outline-secondary"
+                              items={[
+                                {
+                                  key: 'preview-bulk',
+                                  label: '一括適用をプレビュー',
+                                  onClick: () => { void handlePreviewBulkSaveMeta(); },
+                                  disabled: savingMeta,
+                                },
+                                {
+                                  key: 'apply-bulk',
+                                  label: savingMeta ? '適用中...' : '選択中に一括適用',
+                                  onClick: () => { void handleBulkSaveMeta(); },
+                                  disabled: savingMeta,
+                                },
+                              ]}
+                            />
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1191,27 +1236,13 @@ export default function AdminUserRequestsPage() {
 
                     <div className="border rounded p-3">
                       <div className="fw-semibold mb-2">ユーザーへの返信</div>
-                      <div className="d-flex flex-wrap gap-2 mb-2">
-                        {REPLY_TEMPLATES.map((template) => (
-                          <button
-                            key={template}
-                            type="button"
-                            className="btn btn-outline-secondary btn-sm"
-                            onClick={() => setReplyText(template)}
-                          >
-                            {template}
-                          </button>
-                        ))}
-                        {savedReplyTemplates.map((template) => (
-                          <button
-                            key={`saved-${template}`}
-                            type="button"
-                            className="btn btn-outline-primary btn-sm"
-                            onClick={() => setReplyText(template)}
-                          >
-                            {template.slice(0, 18)}{template.length > 18 ? '…' : ''}
-                          </button>
-                        ))}
+                      <div className="dl-action-row mobile-stack mb-2">
+                        <AppDropdownMenu
+                          label="定型文を挿入"
+                          variant="outline-secondary"
+                          align="start"
+                          items={replyTemplateMenuItems}
+                        />
                       </div>
                       <Form.Control
                         as="textarea"
@@ -1234,34 +1265,36 @@ export default function AdminUserRequestsPage() {
                             <div className="small text-muted">保存済みテンプレート: {savedReplyTemplates.length} 件</div>
                           )}
                         </div>
-                        <div className="d-flex gap-2 flex-wrap">
-                          <button
-                            type="button"
-                            className="btn btn-outline-secondary btn-sm"
-                            onClick={saveCurrentReplyTemplate}
-                            disabled={!replyText.trim()}
-                          >
-                            現在文面を保存
-                          </button>
+                        <div className="dl-action-row mobile-stack justify-content-end">
                           <LoadingButton variant="primary" onClick={handleReply} loading={sendingReply} loadingLabel="送信中...">
                             管理者返信を送信
                           </LoadingButton>
+                          <AppDropdownMenu
+                            label="その他"
+                            variant="outline-secondary"
+                            items={[
+                              {
+                                key: 'save-current-reply',
+                                label: '現在文面を保存',
+                                onClick: saveCurrentReplyTemplate,
+                                disabled: !replyText.trim(),
+                              },
+                            ]}
+                          />
                         </div>
                       </div>
                       {savedReplyTemplates.length > 0 && (
-                        <div className="d-flex gap-2 flex-wrap mt-2">
-                          {savedReplyTemplates.map((template) => (
-                            <div key={`delete-${template}`} className="small text-muted d-flex align-items-center gap-1">
-                              <span>{template.slice(0, 24)}{template.length > 24 ? '…' : ''}</span>
-                              <button
-                                type="button"
-                                className="btn btn-link btn-sm p-0 text-danger text-decoration-none"
-                                onClick={() => setSavedReplyTemplates((prev) => removeStoredTemplate(prev, template))}
-                              >
-                                削除
-                              </button>
-                            </div>
-                          ))}
+                        <div className="dl-action-row mobile-stack mt-2">
+                          <AppDropdownMenu
+                            label="保存済み定型文を整理"
+                            variant="outline-secondary"
+                            items={savedReplyTemplates.map((template, index) => ({
+                              key: `delete-template-${index}`,
+                              label: `${template.slice(0, 28)}${template.length > 28 ? '…' : ''} を削除`,
+                              onClick: () => setSavedReplyTemplates((prev) => removeStoredTemplate(prev, template)),
+                              danger: true,
+                            }))}
+                          />
                         </div>
                       )}
                     </div>

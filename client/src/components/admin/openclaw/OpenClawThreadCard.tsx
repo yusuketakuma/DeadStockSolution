@@ -29,7 +29,7 @@ export default function OpenClawThreadCard({
           <div className="text-muted small">会話履歴を取得できませんでした。</div>
         ) : (
           <div className="d-flex flex-column gap-3">
-            <div className="d-flex flex-wrap gap-2">
+            <div className="dl-badge-row">
               <Badge bg={openclawStatusMeta(thread.request.openclawStatus).bg}>
                 {openclawStatusMeta(thread.request.openclawStatus).label}
               </Badge>

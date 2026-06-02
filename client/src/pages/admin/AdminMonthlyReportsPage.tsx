@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AppAlert from '../../components/ui/AppAlert';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
@@ -8,6 +8,7 @@ import AppTable from '../../components/ui/AppTable';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import InlineLoader from '../../components/ui/InlineLoader';
 import Pagination from '../../components/Pagination';
 import { api, buildApiUrl } from '../../api/client';
@@ -44,6 +45,10 @@ export default function AdminMonthlyReportsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
+  const fetchMonthlyReports = useCallback((targetPage: number, signal?: AbortSignal) => (
+    api.get<MonthlyReportsResponse>(`/admin/reports/monthly?page=${targetPage}`, { signal })
+  ), []);
+
   const {
     items: rows,
     page,
@@ -53,8 +58,8 @@ export default function AdminMonthlyReportsPage() {
     error,
     fetchPage,
     retry,
-  } = usePaginatedList<MonthlyReportListItem, MonthlyReportsResponse>((targetPage, signal) =>
-    api.get<MonthlyReportsResponse>(`/admin/reports/monthly?page=${targetPage}`, { signal }),
+  } = usePaginatedList<MonthlyReportListItem, MonthlyReportsResponse>(
+    fetchMonthlyReports,
     { errorMessage: '月次レポート一覧の取得に失敗しました' },
   );
 
@@ -87,9 +92,17 @@ export default function AdminMonthlyReportsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">月次レポート</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/exchanges" className="btn btn-outline-secondary btn-sm">交換履歴</Link>
-          <Link to="/admin/risk" className="btn btn-outline-secondary btn-sm">期限リスク分析</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/exchanges" className="btn btn-outline-primary btn-sm">交換履歴</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '期限リスク分析', to: '/admin/risk' },
+              { label: '薬局管理', to: '/admin/pharmacies' },
+            ]}
+          />
         </div>
       </div>
       {message && <AppAlert variant="success">{message}</AppAlert>}
@@ -158,9 +171,18 @@ export default function AdminMonthlyReportsPage() {
                       <td>{row.year}/{String(row.month).padStart(2, '0')}</td>
                       <td>{row.status === 'success' ? '成功' : '失敗'}</td>
                       <td>{formatDateTimeJa(row.generatedAt)}</td>
-                      <td className="d-flex gap-2">
-                        <a className="btn btn-sm btn-outline-primary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=json`)}>JSON</a>
-                        <a className="btn btn-sm btn-outline-secondary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=csv`)}>CSV</a>
+                      <td>
+                        <div className="dl-action-row mobile-stack">
+                          <a className="btn btn-sm btn-outline-primary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=json`)}>JSON</a>
+                          <AppDropdownMenu
+                            label="その他"
+                            size="sm"
+                            variant="outline-secondary"
+                            items={[
+                              { label: 'CSV', href: buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=csv`) },
+                            ]}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -180,9 +202,16 @@ export default function AdminMonthlyReportsPage() {
                     { label: '生成日時', value: formatDateTimeJa(row.generatedAt) },
                   ]}
                   actions={(
-                    <div className="d-flex gap-2">
+                    <div className="dl-action-row mobile-stack">
                       <a className="btn btn-sm btn-outline-primary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=json`)}>JSON</a>
-                      <a className="btn btn-sm btn-outline-secondary" href={buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=csv`)}>CSV</a>
+                      <AppDropdownMenu
+                        label="その他"
+                        size="sm"
+                        variant="outline-secondary"
+                        items={[
+                          { label: 'CSV', href: buildApiUrl(`/admin/reports/monthly/${row.id}/download?format=csv`) },
+                        ]}
+                      />
                     </div>
                   )}
                 />

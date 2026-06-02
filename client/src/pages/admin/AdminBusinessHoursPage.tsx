@@ -5,6 +5,7 @@ import { api } from '../../api/client';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppTable from '../../components/ui/AppTable';
 import AppEmptyState from '../../components/ui/AppEmptyState';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
@@ -109,10 +110,17 @@ export default function AdminBusinessHoursPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">営業時間カレンダー</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-          <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
-          <Link to="/admin/groups" className="btn btn-outline-secondary btn-sm">グループ管理</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/pharmacies" className="btn btn-outline-primary btn-sm">薬局管理</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '薬局ヘルス', to: '/admin/pharmacy-health' },
+              { label: 'グループ管理', to: '/admin/groups' },
+            ]}
+          />
         </div>
       </div>
 
@@ -130,9 +138,15 @@ export default function AdminBusinessHoursPage() {
                   title="営業時間データがありません"
                   description="薬局情報やグループ設定を確認してから、営業時間登録の有無を見直してください。"
                   action={(
-                    <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                    <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                       <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-                      <Link to="/admin/groups" className="btn btn-outline-secondary btn-sm">グループ管理</Link>
+                      <AppDropdownMenu
+                        label="関連"
+                        variant="outline-secondary"
+                        items={[
+                          { key: 'groups', to: '/admin/groups', label: 'グループ管理' },
+                        ]}
+                      />
                     </div>
                   )}
                 />
@@ -180,9 +194,15 @@ export default function AdminBusinessHoursPage() {
                   title="特別営業時間データがありません"
                   description="定休日や臨時休業の確認が必要な場合は、薬局管理と薬局ヘルスも合わせて確認してください。"
                   action={(
-                    <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                    <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                       <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-                      <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+                      <AppDropdownMenu
+                        label="関連"
+                        variant="outline-secondary"
+                        items={[
+                          { key: 'pharmacy-health', to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+                        ]}
+                      />
                     </div>
                   )}
                 />

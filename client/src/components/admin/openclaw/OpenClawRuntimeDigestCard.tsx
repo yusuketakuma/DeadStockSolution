@@ -50,7 +50,7 @@ export default function OpenClawRuntimeDigestCard({ digest }: OpenClawRuntimeDig
           <div className="text-muted small">runtime digest を取得できませんでした。</div>
         ) : (
           <>
-            <div className="d-flex flex-wrap gap-2 mb-3">
+            <div className="dl-badge-row mb-3">
               <Badge bg={latest?.status === 'ok' ? 'success' : 'warning'}>
                 最新状態 {latest?.status ?? 'unknown'}
               </Badge>

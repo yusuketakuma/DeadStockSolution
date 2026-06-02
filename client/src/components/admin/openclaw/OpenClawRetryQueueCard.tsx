@@ -26,11 +26,13 @@ export default function OpenClawRetryQueueCard({
     <AppCard className="mb-3">
       <AppCard.Header>Retry Queue</AppCard.Header>
       <AppCard.Body>
-        <div className="d-flex gap-2 align-items-center flex-wrap mb-3">
+        <div className="dl-badge-row mb-2">
           <Badge bg="secondary">pending: {retryStats?.pending ?? 0}</Badge>
           <Badge bg="primary">processing: {retryStats?.processing ?? 0}</Badge>
           <Badge bg="success">completed: {retryStats?.completed ?? 0}</Badge>
           <Badge bg="danger">failed: {retryStats?.failed ?? 0}</Badge>
+        </div>
+        <div className="dl-action-row mobile-stack mb-3">
           <AppSelect
             size="sm"
             value={retryStatusFilter}

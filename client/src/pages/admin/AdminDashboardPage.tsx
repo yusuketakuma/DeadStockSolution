@@ -17,6 +17,7 @@ import { formatDateTimeJa, formatNumberJa } from '../../utils/formatters';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { deriveAdminPriorityActions } from '../../utils/admin-dashboard-actions';
 import { useRecentWorkList } from '../../hooks/useRecentWork';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 
 interface Stats {
   totalPharmacies: number;
@@ -627,7 +628,7 @@ export default function AdminDashboardPage() {
             7回平均: 取込失敗 {trendAverageSnapshot.failedUploadJobs24h ?? 0} / 未読通知 {trendAverageSnapshot.unreadNotifications} / 要対応提案 {trendAverageSnapshot.pendingProposalActions24h}
           </div>
           {trendSpikes && (
-            <div className="d-flex gap-2 flex-wrap mt-2">
+            <div className="dl-badge-row mt-2">
               {trendSpikes.failedUploadJobs24h && <span className="badge bg-danger">取込失敗が急増</span>}
               {trendSpikes.unreadNotifications && <span className="badge bg-warning text-dark">未読通知が急増</span>}
               {trendSpikes.pendingProposalActions24h && <span className="badge bg-warning text-dark">要対応提案が急増</span>}
@@ -671,12 +672,23 @@ export default function AdminDashboardPage() {
               <div className="border rounded-3 p-3 h-100">
                 <div className="fw-semibold mb-1">{group.title}</div>
                 <div className="small text-muted mb-2">{group.description}</div>
-                <div className="d-flex gap-2 flex-wrap mobile-stack">
-                  {group.links.map((link) => (
+                <div className="dl-action-row mobile-stack">
+                  {group.links.slice(0, 1).map((link) => (
                     <Link key={link.to} to={link.to} className={link.className}>
                       {link.label}
                     </Link>
                   ))}
+                  {group.links.length > 1 && (
+                    <AppDropdownMenu
+                      label="関連画面"
+                      variant="outline-secondary"
+                      items={group.links.slice(1).map((link) => ({
+                        key: link.to,
+                        to: link.to,
+                        label: link.label,
+                      }))}
+                    />
+                  )}
                 </div>
               </div>
             </Col>

@@ -4,6 +4,7 @@ import { Badge, Form, Table } from 'react-bootstrap';
 import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
 import AppDataPanel from '../../components/ui/AppDataPanel';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import AppField from '../../components/ui/AppField';
 import ConflictAlert from '../../components/ConflictAlert';
 import InlineLoader from '../../components/ui/InlineLoader';
@@ -116,6 +117,11 @@ export default function AdminPharmacyEditPage() {
   const [auditLogsError, setAuditLogsError] = useState('');
   const auditLogRef = useRef<HTMLDivElement | null>(null);
 
+  const handleRejectVerification = () => {
+    const reason = window.prompt('却下理由を入力してください:');
+    if (reason !== null) void handleVerify(false, reason);
+  };
+
   useEffect(() => {
     if (!pharmacy?.id) return;
     const controller = new AbortController();
@@ -156,14 +162,22 @@ export default function AdminPharmacyEditPage() {
             <h4 className="page-title mb-0">薬局情報編集</h4>
             <div className="text-muted small">対象薬局を取得できない場合は、近い運用画面へ戻って状態を確認してください。</div>
           </div>
-          <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-            <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局一覧</Link>
-            <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
+          <div className="dl-action-row mobile-stack">
+            <Link to="/admin/pharmacies" className="btn btn-outline-primary btn-sm">薬局一覧</Link>
+            <AppDropdownMenu
+              label="関連"
+              size="sm"
+              variant="outline-secondary"
+              items={[
+                { label: '薬局ヘルス', to: '/admin/pharmacy-health' },
+                { label: 'グループ管理', to: '/admin/groups' },
+              ]}
+            />
           </div>
         </div>
         {error && <AppAlert variant="danger">{error}</AppAlert>}
         <AdminNavigationLinks groups={EDIT_FALLBACK_LINK_GROUPS} />
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack">
           <AppButton variant="outline-secondary" onClick={navigateToList}>一覧へ戻る</AppButton>
           <AppButton variant="outline-primary" onClick={() => void loadPharmacy()}>再読み込み</AppButton>
         </div>
@@ -173,25 +187,27 @@ export default function AdminPharmacyEditPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <div>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">薬局情報編集（ID: {pharmacy.id}）</h4>
           <div className="text-muted small">基本情報、営業時間、操作履歴を確認しながら周辺運用へ戻れます。</div>
         </div>
-        <div className="d-flex gap-2 flex-wrap">
-          <AppButton size="sm" variant="outline-secondary" onClick={navigateToList}>
+        <div className="dl-action-row mobile-stack">
+          <AppButton size="sm" variant="outline-primary" onClick={navigateToList}>
             一覧へ戻る
           </AppButton>
-          <AppButton size="sm" variant="outline-secondary" onClick={navigateToHealth}>
-            薬局ヘルス
-          </AppButton>
-          <AppButton
+          <AppDropdownMenu
+            label="関連"
             size="sm"
             variant="outline-secondary"
-            onClick={() => auditLogRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          >
-            操作履歴へ
-          </AppButton>
+            items={[
+              { label: '薬局ヘルス', onClick: navigateToHealth },
+              {
+                label: '操作履歴へ',
+                onClick: () => auditLogRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+              },
+            ]}
+          />
         </div>
       </div>
       <ScrollArea>
@@ -212,17 +228,19 @@ export default function AdminPharmacyEditPage() {
               >
                 承認
               </AppButton>
-              <AppButton
+              <AppDropdownMenu
+                label="審査操作"
                 size="sm"
-                variant="danger"
-                onClick={() => {
-                  const reason = window.prompt('却下理由を入力してください:');
-                  if (reason !== null) void handleVerify(false, reason);
-                }}
-                disabled={verifyLoading}
-              >
-                却下
-              </AppButton>
+                variant="outline-secondary"
+                items={[
+                  {
+                    label: '却下',
+                    onClick: handleRejectVerification,
+                    disabled: verifyLoading,
+                    danger: true,
+                  },
+                ]}
+              />
             </div>
           </div>
         </AppAlert>

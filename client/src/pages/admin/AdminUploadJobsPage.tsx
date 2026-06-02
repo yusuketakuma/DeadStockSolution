@@ -10,6 +10,7 @@ import AppControl from '../../components/ui/AppControl';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import AppSelect from '../../components/ui/AppSelect';
 import AppTable from '../../components/ui/AppTable';
 import InlineLoader from '../../components/ui/InlineLoader';
@@ -226,9 +227,17 @@ export default function AdminUploadJobsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">アップロードジョブ管理 ({formatCountJa(pagination?.total ?? 0)})</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/upload-quality" className="btn btn-outline-secondary btn-sm">アップロード品質</Link>
-          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/upload-quality" className="btn btn-outline-primary btn-sm">アップロード品質</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '薬局管理', to: '/admin/pharmacies' },
+              { label: 'ログセンター', to: '/admin/log-center' },
+            ]}
+          />
         </div>
       </div>
 
@@ -384,7 +393,7 @@ export default function AdminUploadJobsPage() {
                 <div className="small text-muted mb-2 text-wrap-anywhere">
                   ファイル: {selectedJob.originalFilename} / 試行回数: {formatNumberJa(selectedJob.attempts)}
                 </div>
-                <div className="d-flex flex-wrap gap-2 mb-3">
+                <div className="dl-action-row mobile-stack mb-3">
                   <AppButton
                     size="sm"
                     variant="outline-primary"
@@ -433,7 +442,7 @@ export default function AdminUploadJobsPage() {
                 {selectedPartialSummaryEntries.length > 0 && (
                   <div className="mt-3">
                     <div className="fw-semibold mb-2">部分サマリー</div>
-                    <div className="d-flex flex-wrap gap-2">
+                    <div className="dl-badge-row">
                       {selectedPartialSummaryEntries.map((entry) => (
                         <Badge key={entry.key} bg="light" text="dark">
                           {entry.label}: {formatCountJa(entry.value)}

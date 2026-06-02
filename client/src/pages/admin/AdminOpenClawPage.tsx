@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import AppAlert from '../../components/ui/AppAlert';
 import { Badge } from 'react-bootstrap';
 import AppCard from '../../components/ui/AppCard';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import SavedViewsPanel from '../../components/ui/SavedViewsPanel';
 import WorkContextBar from '../../components/ui/WorkContextBar';
@@ -202,8 +203,17 @@ export default function AdminOpenClawPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">OpenClaw連携</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/openclaw-commands" className="btn btn-outline-secondary btn-sm">コマンド管理</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/openclaw-commands" className="btn btn-outline-primary btn-sm">コマンド管理</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: 'ログセンター', to: '/admin/log-center' },
+              { label: 'レート制限設定', to: '/admin/rate-limits' },
+            ]}
+          />
         </div>
       </div>
 
@@ -214,7 +224,7 @@ export default function AdminOpenClawPage() {
         backTo="/admin"
         backLabel="管理ダッシュボードへ"
         badges={[
-          { label: `workflow ${workflowCount.total}`, bg: 'secondary' },
+          { label: `workflow ${requests.length}`, bg: 'secondary' },
           retryStats ? { label: `retry failed ${retryStats.failed}`, bg: retryStats.failed > 0 ? 'danger' : 'secondary' } : null,
           ddsStatus?.connected ? { label: 'DDS 接続中', bg: 'success' } : { label: 'DDS 要確認', bg: 'warning', text: 'dark' },
         ]}
@@ -290,7 +300,7 @@ export default function AdminOpenClawPage() {
       <AppCard className="mb-3">
         <AppCard.Header>step-by-step runbook</AppCard.Header>
         <AppCard.Body className="d-flex flex-column gap-3">
-          <div className="d-flex gap-2 flex-wrap">
+          <div className="dl-action-row">
             {runbookWizardSteps.map((step, index) => (
               <button
                 key={step.title}
@@ -307,7 +317,7 @@ export default function AdminOpenClawPage() {
             <div className="small text-muted mt-2">{runbookWizardSteps[wizardStep]?.description}</div>
             <div className="small mt-2">次の操作: {runbookWizardSteps[wizardStep]?.action}</div>
           </div>
-          <div className="d-flex gap-2 flex-wrap">
+          <div className="dl-action-row mobile-stack">
             <button
               type="button"
               className="btn btn-outline-secondary btn-sm"
@@ -351,42 +361,44 @@ export default function AdminOpenClawPage() {
                   </span>
                 </div>
                 <div className="mt-2">
-                  <div className="d-flex gap-2 flex-wrap">
-                    <Link to={action.to} className="btn btn-sm btn-outline-secondary">対応画面を開く</Link>
-                    {action.title !== 'DDS Agent を再確認' && (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-primary"
-                        onClick={() => {
-                          void appendRunbookLog(`${action.title} を開始`, action.description, 'started');
-                        }}
-                      >
-                        実行開始を記録
-                      </button>
-                    )}
-                    {action.title === 'DDS Agent を再確認' && (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-primary"
-                        onClick={async () => {
-                          const log = await appendRunbookLog('bootstrap token 発行', 'runbook から DDS agent の bootstrap token を発行', 'started');
-                          try {
-                            await handleIssueBootstrapToken();
-                            await updateRunbookLog(log.id, {
-                              status: 'success',
-                              resultSummary: 'bootstrap token 発行完了',
-                            });
-                          } catch (err) {
-                            await updateRunbookLog(log.id, {
-                              status: 'failed',
-                              resultSummary: err instanceof Error ? err.message : 'bootstrap token 発行失敗',
-                            });
-                          }
-                        }}
-                      >
-                        bootstrap token を発行
-                      </button>
-                    )}
+                  <div className="dl-action-row mobile-stack">
+                    <Link to={action.to} className="btn btn-sm btn-outline-primary">対応画面を開く</Link>
+                    <AppDropdownMenu
+                      label="その他"
+                      size="sm"
+                      variant="outline-secondary"
+                      items={[
+                        action.title === 'DDS Agent を再確認'
+                          ? {
+                              key: 'bootstrap-token',
+                              label: 'bootstrap token を発行',
+                              onClick: () => {
+                                void (async () => {
+                                  const log = await appendRunbookLog('bootstrap token 発行', 'runbook から DDS agent の bootstrap token を発行', 'started');
+                                  try {
+                                    await handleIssueBootstrapToken();
+                                    await updateRunbookLog(log.id, {
+                                      status: 'success',
+                                      resultSummary: 'bootstrap token 発行完了',
+                                    });
+                                  } catch (err) {
+                                    await updateRunbookLog(log.id, {
+                                      status: 'failed',
+                                      resultSummary: err instanceof Error ? err.message : 'bootstrap token 発行失敗',
+                                    });
+                                  }
+                                })();
+                              },
+                            }
+                          : {
+                              key: 'record-start',
+                              label: '実行開始を記録',
+                              onClick: () => {
+                                void appendRunbookLog(`${action.title} を開始`, action.description, 'started');
+                              },
+                            },
+                      ]}
+                    />
                   </div>
                 </div>
               </div>

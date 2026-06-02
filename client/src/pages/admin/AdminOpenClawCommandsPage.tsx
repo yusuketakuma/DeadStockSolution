@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import { api } from '../../api/client';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface OpenClawCommand {
@@ -122,8 +123,11 @@ export default function AdminOpenClawCommandsPage() {
 
   return (
     <PageShell>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="page-title mb-0">OpenClawコマンド管理</h4>
+      <div className="dl-page-header">
+        <div className="dl-page-header-copy">
+          <h4 className="page-title mb-0">OpenClawコマンド管理</h4>
+          <div className="text-muted small">OpenClaw に渡す許可済みコマンドを登録・編集します。</div>
+        </div>
         <Button variant="primary" size="sm" onClick={openCreateModal}>新規登録</Button>
       </div>
 
@@ -161,8 +165,21 @@ export default function AdminOpenClawCommandsPage() {
                       </Badge>
                     </td>
                     <td>
-                      <Button variant="outline-primary" size="sm" className="me-1" onClick={() => openEditModal(item)}>編集</Button>
-                      <Button variant="outline-danger" size="sm" onClick={() => setDeleteTarget(item)}>削除</Button>
+                      <div className="dl-action-row mobile-stack">
+                        <Button variant="outline-primary" size="sm" onClick={() => openEditModal(item)}>編集</Button>
+                        <AppDropdownMenu
+                          label="その他"
+                          variant="outline-secondary"
+                          items={[
+                            {
+                              key: `delete-${item.id}`,
+                              label: '削除',
+                              onClick: () => setDeleteTarget(item),
+                              danger: true,
+                            },
+                          ]}
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import { api } from '../../api/client';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
@@ -171,12 +172,19 @@ export default function AdminDrugEquivalencesPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">薬品同等性マスター</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/drug-master" className="btn btn-outline-secondary btn-sm">医薬品マスター</Link>
-          <Link to="/admin/matching-rules" className="btn btn-outline-secondary btn-sm">マッチングルール</Link>
+        <div className="dl-action-row mobile-stack">
           <Button variant="primary" size="sm" onClick={openCreateModal}>
             新規登録
           </Button>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '医薬品マスター', to: '/admin/drug-master' },
+              { label: 'マッチングルール', to: '/admin/matching-rules' },
+            ]}
+          />
         </div>
       </div>
 
@@ -194,9 +202,15 @@ export default function AdminDrugEquivalencesPage() {
           title="薬品同等性データがありません"
           description="医薬品マスターやマッチングルールを確認したうえで、必要な同等性を登録してください。"
           action={(
-            <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+            <div className="mt-3 dl-action-row mobile-stack justify-content-center">
               <Link to="/admin/drug-master" className="btn btn-outline-secondary btn-sm">医薬品マスター</Link>
-              <Link to="/admin/matching-rules" className="btn btn-outline-secondary btn-sm">マッチングルール</Link>
+              <AppDropdownMenu
+                label="関連"
+                variant="outline-secondary"
+                items={[
+                  { key: 'matching-rules', to: '/admin/matching-rules', label: 'マッチングルール' },
+                ]}
+              />
             </div>
           )}
         />
@@ -226,12 +240,23 @@ export default function AdminDrugEquivalencesPage() {
                   </td>
                   <td className="text-muted small">{item.notes ?? '—'}</td>
                   <td>
-                    <Button variant="outline-primary" size="sm" className="me-1" onClick={() => openEditModal(item)}>
-                      編集
-                    </Button>
-                    <Button variant="outline-danger" size="sm" onClick={() => setDeleteTarget(item)}>
-                      削除
-                    </Button>
+                    <div className="dl-action-row mobile-stack">
+                      <Button variant="outline-primary" size="sm" onClick={() => openEditModal(item)}>
+                        編集
+                      </Button>
+                      <AppDropdownMenu
+                        label="その他"
+                        variant="outline-secondary"
+                        items={[
+                          {
+                            key: `delete-${item.id}`,
+                            label: '削除',
+                            onClick: () => setDeleteTarget(item),
+                            danger: true,
+                          },
+                        ]}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}

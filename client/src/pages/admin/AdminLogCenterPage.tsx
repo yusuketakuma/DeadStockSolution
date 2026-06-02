@@ -5,6 +5,7 @@ import AppAlert from '../../components/ui/AppAlert';
 import AppButton from '../../components/ui/AppButton';
 import AppCard from '../../components/ui/AppCard';
 import AppDataPanel from '../../components/ui/AppDataPanel';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import AppSelect from '../../components/ui/AppSelect';
 import AppTable from '../../components/ui/AppTable';
 import LazyTab from '../../components/ui/LazyTab';
@@ -152,24 +153,36 @@ export default function AdminLogCenterPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">ログセンター</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/logs" className="btn btn-outline-secondary btn-sm">操作ログ</Link>
-          <Link to="/admin/audit" className="btn btn-outline-secondary btn-sm">監査ログ</Link>
-          <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
-          <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
-          <a href={buildApiUrl('/admin/csv/logs')} className="btn btn-outline-secondary btn-sm" download>
-            CSVエクスポート
-          </a>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/error-codes" className="btn btn-outline-primary btn-sm">エラーコード</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '操作ログ', to: '/admin/logs' },
+              { label: '監査ログ', to: '/admin/audit' },
+              { label: 'レート制限設定', to: '/admin/rate-limits' },
+              { label: 'CSVエクスポート', href: buildApiUrl('/admin/csv/logs'), download: true },
+            ]}
+          />
         </div>
       </div>
 
       <ScrollArea>
       <AppDataPanel title="近接導線" className="mb-3">
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack">
           <Link to="/admin/error-codes" className="btn btn-outline-primary btn-sm">エラーコードを管理</Link>
-          <Link to="/admin/rate-limits" className="btn btn-outline-secondary btn-sm">レート制限設定</Link>
-          <Link to="/admin/upload-quality" className="btn btn-outline-secondary btn-sm">アップロード品質</Link>
-          <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: 'レート制限設定', to: '/admin/rate-limits' },
+              { label: 'アップロード品質', to: '/admin/upload-quality' },
+              { label: '通知・配信', to: '/admin/notifications' },
+            ]}
+          />
         </div>
         <div className="small text-muted mt-2">
           再発論点の確認後に、コード定義や制限設定、品質監視へそのまま移れるようにしています。
@@ -255,13 +268,18 @@ export default function AdminLogCenterPage() {
                     <td className="small font-monospace">{issue.codeLocation ?? '-'}</td>
                     <td className="small">{formatDateTimeJa(issue.latestOccurredAt)}</td>
                     <td className="small">
-                      <div className="d-flex gap-2 flex-wrap">
-                        <AppButton size="sm" variant="outline-secondary" onClick={() => void handleCopyIssue(issue)}>
-                          コピー
-                        </AppButton>
+                      <div className="dl-action-row mobile-stack">
                         <AppButton size="sm" variant="outline-primary" onClick={() => void handleEscalateIssue(issue)}>
                           OpenClaw 通知
                         </AppButton>
+                        <AppDropdownMenu
+                          label="その他"
+                          size="sm"
+                          variant="outline-secondary"
+                          items={[
+                            { label: 'コピー', onClick: () => { void handleCopyIssue(issue); } },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

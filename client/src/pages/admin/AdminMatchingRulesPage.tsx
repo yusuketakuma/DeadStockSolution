@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Card, Col, Form, Row, Spinner } from 'react-bootstrap';
 import { api } from '../../api/client';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 
 interface MatchingRuleProfile {
@@ -179,10 +180,17 @@ export default function AdminMatchingRulesPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">マッチングルール設定</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/drug-master" className="btn btn-outline-secondary btn-sm">医薬品マスター</Link>
-          <Link to="/admin/drug-equivalences" className="btn btn-outline-secondary btn-sm">薬品同等性</Link>
-          <Link to="/admin/matching-experiments" className="btn btn-outline-secondary btn-sm">マッチング実験</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/drug-master" className="btn btn-outline-primary btn-sm">医薬品マスター</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '薬品同等性', to: '/admin/drug-equivalences' },
+              { label: 'マッチング実験', to: '/admin/matching-experiments' },
+            ]}
+          />
         </div>
       </div>
 

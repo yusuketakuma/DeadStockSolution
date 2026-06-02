@@ -6,6 +6,7 @@ import ErrorRetryAlert from '../../../components/ui/ErrorRetryAlert';
 import AppControl from '../../../components/ui/AppControl';
 import AppSelect from '../../../components/ui/AppSelect';
 import AppTable from '../../../components/ui/AppTable';
+import AppDropdownMenu from '../../../components/ui/AppDropdownMenu';
 import AppResponsiveSwitch from '../../../components/ui/AppResponsiveSwitch';
 import AppMobileDataCard from '../../../components/ui/AppMobileDataCard';
 import InlineLoader from '../../../components/ui/InlineLoader';
@@ -249,7 +250,7 @@ export const LogEntriesView = memo(function LogEntriesView({
 
       {activeFilters.length > 0 && (
         <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-          <div className="d-flex flex-wrap gap-2">
+          <div className="dl-badge-row">
             {activeFilters.map((filterLabel) => (
               <span key={filterLabel} className="badge bg-light text-dark border">
                 {filterLabel}
@@ -275,19 +276,25 @@ export const LogEntriesView = memo(function LogEntriesView({
         <div className="small text-muted">
           {total}件{activeFilters.length > 0 ? ' / 絞り込み中' : ''}
         </div>
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="dl-action-row mobile-stack">
           <a
             className="btn btn-sm btn-outline-primary"
             href={buildApiUrl(`/admin/log-center/export?${exportQuery.toString()}&format=json`)}
           >
             JSON Export
           </a>
-          <a
-            className="btn btn-sm btn-outline-secondary"
-            href={buildApiUrl(`/admin/log-center/export?${exportQuery.toString()}&format=csv`)}
-          >
-            CSV Export
-          </a>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              {
+                key: 'csv-export',
+                href: buildApiUrl(`/admin/log-center/export?${exportQuery.toString()}&format=csv`),
+                label: 'CSV Export',
+              },
+            ]}
+          />
         </div>
       </div>
 
@@ -368,16 +375,19 @@ export const LogEntriesView = memo(function LogEntriesView({
                             {insight ? `${insight.count}件 / ${insight.impactedTenantCount}テナント` : '-'}
                           </td>
                           <td className="small">
-                            <div className="d-flex gap-2 flex-wrap">
-                              <AppButton size="sm" variant="outline-secondary" onClick={() => void handleCopyEntry(entry)}>
-                                コピー
-                              </AppButton>
-                              <AppButton size="sm" variant="outline-secondary" onClick={() => void handleCopyEntryJson(entry)}>
-                                JSON
-                              </AppButton>
+                            <div className="dl-action-row mobile-stack">
                               <AppButton size="sm" variant="outline-primary" onClick={() => setSelectedEntry(entry)}>
                                 ログを確認
                               </AppButton>
+                              <AppDropdownMenu
+                                label="その他"
+                                size="sm"
+                                variant="outline-secondary"
+                                items={[
+                                  { label: 'コピー', onClick: () => { void handleCopyEntry(entry); } },
+                                  { label: 'JSON', onClick: () => { void handleCopyEntryJson(entry); } },
+                                ]}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -398,13 +408,18 @@ export const LogEntriesView = memo(function LogEntriesView({
                       subtitle={formatDateTimeJa(entry.timestamp)}
                       badges={<LevelBadge level={entry.level} />}
                       actions={(
-                        <div className="d-flex gap-2 flex-wrap">
-                          <AppButton size="sm" variant="outline-secondary" onClick={() => void handleCopyEntry(entry)}>
-                            コピー
-                          </AppButton>
+                        <div className="dl-action-row mobile-stack">
                           <AppButton size="sm" variant="outline-primary" onClick={() => setSelectedEntry(entry)}>
                             ログを確認
                           </AppButton>
+                          <AppDropdownMenu
+                            label="その他"
+                            size="sm"
+                            variant="outline-secondary"
+                            items={[
+                              { label: 'コピー', onClick: () => { void handleCopyEntry(entry); } },
+                            ]}
+                          />
                         </div>
                       )}
                       fields={[

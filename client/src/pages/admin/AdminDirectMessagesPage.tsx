@@ -85,6 +85,17 @@ export default function AdminDirectMessagesPage() {
   const [threadLoading, setThreadLoading] = useState(false);
   const [threadError, setThreadError] = useState('');
 
+  const fetchThreads = useCallback((targetPage: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({
+      page: String(targetPage),
+      limit: '20',
+    });
+    if (search) {
+      params.set('search', search);
+    }
+    return api.get<AdminDirectMessageThreadResponse>(`/admin/direct-messages/threads?${params}`, { signal });
+  }, [search]);
+
   const {
     items: threads,
     page,
@@ -95,16 +106,7 @@ export default function AdminDirectMessagesPage() {
     fetchPage,
     retry,
   } = usePaginatedList<AdminDirectMessageThread, AdminDirectMessageThreadResponse>(
-    (targetPage, signal) => {
-      const params = new URLSearchParams({
-        page: String(targetPage),
-        limit: '20',
-      });
-      if (search) {
-        params.set('search', search);
-      }
-      return api.get<AdminDirectMessageThreadResponse>(`/admin/direct-messages/threads?${params}`, { signal });
-    },
+    fetchThreads,
     { errorMessage: 'ユーザー間メッセージ一覧の取得に失敗しました' },
   );
 

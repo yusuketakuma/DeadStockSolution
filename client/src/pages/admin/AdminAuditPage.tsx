@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Form } from 'react-bootstrap';
 import { api, buildApiUrl } from '../../api/client';
@@ -13,6 +13,7 @@ import AppDataPanel from '../../components/ui/AppDataPanel';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { formatDateTimeJa } from '../../utils/formatters';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 
 interface AuditItem {
   id: number;
@@ -47,6 +48,12 @@ const ACTION_COLORS: Record<string, string> = {
 export default function AdminAuditPage() {
   const [actionFilter, setActionFilter] = useState('');
 
+  const fetchAuditItems = useCallback((targetPage: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(targetPage) });
+    if (actionFilter) params.set('action', actionFilter);
+    return api.get<AuditResponse>(`/admin/audit?${params}`, { signal });
+  }, [actionFilter]);
+
   const {
     items,
     page,
@@ -56,11 +63,7 @@ export default function AdminAuditPage() {
     error,
     retry,
   } = usePaginatedList<AuditItem, AuditResponse>(
-    (targetPage, signal) => {
-      const params = new URLSearchParams({ page: String(targetPage) });
-      if (actionFilter) params.set('action', actionFilter);
-      return api.get<AuditResponse>(`/admin/audit?${params}`, { signal });
-    },
+    fetchAuditItems,
     { errorMessage: '監査ログの取得に失敗しました' },
   );
 
@@ -70,12 +73,16 @@ export default function AdminAuditPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">監査ログ</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/logs" className="btn btn-outline-secondary btn-sm">操作ログ</Link>
-          <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
-          <a href={buildApiUrl('/admin/csv/audit-logs')} className="btn btn-outline-secondary btn-sm" download>
-            CSVエクスポート
-          </a>
+        <div className="dl-page-header-actions mobile-stack">
+          <Link to="/admin/logs" className="btn btn-primary btn-sm">操作ログ</Link>
+          <AppDropdownMenu
+            label="関連画面"
+            variant="outline-secondary"
+            items={[
+              { key: 'log-center', to: '/admin/log-center', label: 'ログセンター' },
+              { key: 'csv', href: buildApiUrl('/admin/csv/audit-logs'), label: 'CSVエクスポート', download: true },
+            ]}
+          />
         </div>
       </div>
 
@@ -83,7 +90,7 @@ export default function AdminAuditPage() {
 
       <ScrollArea>
         <AppDataPanel title="絞り込みと関連画面" className="mb-3">
-          <div className="d-flex gap-2 flex-wrap align-items-center">
+          <div className="dl-action-row mobile-stack align-items-center">
             <Form.Select
               size="sm"
               value={actionFilter}
@@ -96,8 +103,15 @@ export default function AdminAuditPage() {
                 <option key={v} value={v}>{l}</option>
               ))}
             </Form.Select>
-            <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
-            <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信</Link>
+            <Link to="/admin/error-codes" className="btn btn-outline-primary btn-sm">エラーコード</Link>
+            <AppDropdownMenu
+              label="関連"
+              size="sm"
+              variant="outline-secondary"
+              items={[
+                { key: 'notifications', to: '/admin/notifications', label: '通知・配信' },
+              ]}
+            />
           </div>
           <div className="small text-muted mt-2">
             監査結果の確認、CSV 出力、その後の通知運用やコード更新までを同じ入口にまとめています。

@@ -7,6 +7,7 @@ import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import AppTable from '../../components/ui/AppTable';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import InlineLoader from '../../components/ui/InlineLoader';
 import LoadingButton from '../../components/ui/LoadingButton';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
@@ -166,10 +167,17 @@ export default function AdminMatchingExperimentsPage() {
           <h4 className="page-title mb-0">マッチング実験</h4>
           <small className="text-muted">control / treatment の割当状況を確認し、実験を開始・停止できます。</small>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin" className="btn btn-outline-secondary btn-sm">管理ダッシュボード</Link>
-          <Link to="/admin/matching-rules" className="btn btn-outline-secondary btn-sm">マッチングルール</Link>
-          <Link to="/admin/matching-performance" className="btn btn-outline-secondary btn-sm">マッチング性能</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/matching-rules" className="btn btn-outline-primary btn-sm">マッチングルール</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '管理ダッシュボード', to: '/admin' },
+              { label: 'マッチング性能', to: '/admin/matching-performance' },
+            ]}
+          />
         </div>
       </div>
 
@@ -178,11 +186,18 @@ export default function AdminMatchingExperimentsPage() {
 
       <ScrollArea>
         <AppDataPanel title="関連運用" className="mb-3">
-          <div className="d-flex gap-2 flex-wrap">
-            <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信状況</Link>
-            <Link to="/admin/upload-quality" className="btn btn-outline-secondary btn-sm">アップロード品質</Link>
-            <Link to="/admin/error-codes" className="btn btn-outline-secondary btn-sm">エラーコード</Link>
-            <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
+          <div className="dl-action-row mobile-stack">
+            <Link to="/admin/notifications" className="btn btn-outline-primary btn-sm">通知・配信状況</Link>
+            <AppDropdownMenu
+              label="関連"
+              size="sm"
+              variant="outline-secondary"
+              items={[
+                { label: 'アップロード品質', to: '/admin/upload-quality' },
+                { label: 'エラーコード', to: '/admin/error-codes' },
+                { label: 'ログセンター', to: '/admin/log-center' },
+              ]}
+            />
           </div>
           <div className="small text-muted mt-2">
             実験結果の確認後に、通知影響と関連エラーの有無まで一段でたどれます。

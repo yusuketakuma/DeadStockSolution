@@ -5,6 +5,7 @@ import { api } from '../../api/client';
 import InlineLoader from '../../components/ui/InlineLoader';
 import AppTable from '../../components/ui/AppTable';
 import AppEmptyState from '../../components/ui/AppEmptyState';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { formatDateTimeJa } from '../../utils/formatters';
@@ -79,9 +80,17 @@ export default function AdminPharmacyHealthPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">薬局ヘルス</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-          <Link to="/admin/relationships" className="btn btn-outline-secondary btn-sm">関係性監査</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/pharmacies" className="btn btn-outline-primary btn-sm">薬局管理</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '関係性監査', to: '/admin/relationships' },
+              { label: '営業時間', to: '/admin/business-hours' },
+            ]}
+          />
         </div>
       </div>
 
@@ -177,10 +186,16 @@ export default function AdminPharmacyHealthPage() {
             title="薬局ヘルス情報がありません"
             description="薬局管理や関係性監査、営業時間の整備を進めると、ここでアクティビティや信頼スコアを追えるようになります。"
             action={(
-              <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+              <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                 <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-                <Link to="/admin/relationships" className="btn btn-outline-secondary btn-sm">関係性監査</Link>
-                <Link to="/admin/business-hours" className="btn btn-outline-secondary btn-sm">営業時間</Link>
+                <AppDropdownMenu
+                  label="関連"
+                  variant="outline-secondary"
+                  items={[
+                    { key: 'relationships', to: '/admin/relationships', label: '関係性監査' },
+                    { key: 'business-hours', to: '/admin/business-hours', label: '営業時間' },
+                  ]}
+                />
               </div>
             )}
           />

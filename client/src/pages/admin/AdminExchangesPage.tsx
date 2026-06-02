@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AppTable from '../../components/ui/AppTable';
 import AppAlert from '../../components/ui/AppAlert';
@@ -7,6 +7,7 @@ import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import { Badge } from 'react-bootstrap';
 import { api, buildApiUrl } from '../../api/client';
 import Pagination from '../../components/Pagination';
@@ -42,6 +43,10 @@ interface ProposalComment {
 }
 
 export default function AdminExchangesPage() {
+  const fetchExchangeHistory = useCallback((targetPage: number, signal?: AbortSignal) => (
+    api.get<HistoryResponse>(`/admin/history?page=${targetPage}`, { signal })
+  ), []);
+
   const {
     items: history,
     page,
@@ -50,8 +55,8 @@ export default function AdminExchangesPage() {
     loading,
     error,
     retry,
-  } = usePaginatedList<ExchangeHistoryItem, HistoryResponse>((targetPage, signal) =>
-    api.get<HistoryResponse>(`/admin/history?page=${targetPage}`, { signal }),
+  } = usePaginatedList<ExchangeHistoryItem, HistoryResponse>(
+    fetchExchangeHistory,
     { errorMessage: '交換履歴データの取得に失敗しました' },
   );
   const [commentModalOpen, setCommentModalOpen] = useState(false);
@@ -96,12 +101,17 @@ export default function AdminExchangesPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">交換履歴（管理者）</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-          <Link to="/admin/reports" className="btn btn-outline-secondary btn-sm">月次レポート</Link>
-          <a href={buildApiUrl('/admin/csv/exchanges')} className="btn btn-outline-secondary btn-sm" download>
-            CSVエクスポート
-          </a>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/reports" className="btn btn-outline-primary btn-sm">月次レポート</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '薬局管理', to: '/admin/pharmacies' },
+              { label: 'CSVエクスポート', href: buildApiUrl('/admin/csv/exchanges'), download: true },
+            ]}
+          />
         </div>
       </div>
       {error && (

@@ -4,6 +4,7 @@ import { Alert, Badge, Table } from 'react-bootstrap';
 import { api } from '../../api/client';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import AppEmptyState from '../../components/ui/AppEmptyState';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import AdminNavigationLinks, { type AdminNavigationLinkGroup } from './components/AdminNavigationLinks';
 
 interface RateLimiterConfig {
@@ -71,10 +72,17 @@ export default function AdminRateLimitsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">レート制限設定</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin" className="btn btn-outline-secondary btn-sm">管理ダッシュボード</Link>
-          <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
-          <Link to="/admin/openclaw" className="btn btn-outline-secondary btn-sm">OpenClaw連携</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/log-center" className="btn btn-outline-primary btn-sm">ログセンター</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '管理ダッシュボード', to: '/admin' },
+              { label: 'OpenClaw連携', to: '/admin/openclaw' },
+            ]}
+          />
         </div>
       </div>
 
@@ -93,10 +101,16 @@ export default function AdminRateLimitsPage() {
             title="レート制限設定はまだ表示できる項目がありません"
             description="ログセンターや通知状況と合わせて監視対象を確認し、必要なら一括操作や周辺設定へ移動してください。"
             action={(
-              <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+              <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                 <Link to="/admin/log-center" className="btn btn-outline-secondary btn-sm">ログセンター</Link>
-                <Link to="/admin/notifications" className="btn btn-outline-secondary btn-sm">通知・配信状況</Link>
-                <Link to="/admin/openclaw" className="btn btn-outline-secondary btn-sm">OpenClaw連携</Link>
+                <AppDropdownMenu
+                  label="関連"
+                  variant="outline-secondary"
+                  items={[
+                    { key: 'notifications', to: '/admin/notifications', label: '通知・配信状況' },
+                    { key: 'openclaw', to: '/admin/openclaw', label: 'OpenClaw連携' },
+                  ]}
+                />
               </div>
             )}
           />

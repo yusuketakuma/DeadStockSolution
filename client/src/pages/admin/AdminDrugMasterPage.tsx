@@ -8,6 +8,7 @@ import MobileFilterSheet from '../../components/mobile/MobileFilterSheet';
 import Pagination from '../../components/Pagination';
 import SearchChips from '../../components/search/SearchChips';
 import SearchResultStatus from '../../components/search/SearchResultStatus';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import DrugMasterSyncCard from './components/DrugMasterSyncCard';
 import PackageUploadCard from './components/PackageUploadCard';
 import MasterRefreshCard from './components/MasterRefreshCard';
@@ -126,9 +127,17 @@ export default function AdminDrugMasterPage() {
           <h4 className="page-title mb-0">医薬品マスター管理</h4>
           <div className="text-muted small">更新状況の追跡、絞り込み、手動メンテナンスを device 幅に合わせて配置します。</div>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/drug-equivalences" className="btn btn-outline-secondary btn-sm">薬品同等性</Link>
-          <Link to="/admin/matching-rules" className="btn btn-outline-secondary btn-sm">マッチングルール</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/drug-equivalences" className="btn btn-outline-primary btn-sm">薬品同等性</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: 'マッチングルール', to: '/admin/matching-rules' },
+              { label: 'アップロード品質', to: '/admin/upload-quality' },
+            ]}
+          />
         </div>
       </div>
 

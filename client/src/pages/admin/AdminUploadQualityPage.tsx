@@ -9,6 +9,7 @@ import AppTable from '../../components/ui/AppTable';
 import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
@@ -86,14 +87,36 @@ export default function AdminUploadQualityPage() {
     { errorMessage: 'アップロード問題の取得に失敗しました' },
   );
 
+  const selectRemediationCode = useCallback((nextCode: string) => {
+    setEditingCode(nextCode);
+    const current = remediations[nextCode] ?? { cause: '', fix: '', verify: '' };
+    setEditingRemediation(current);
+    if (nextCode) {
+      void api.get<{ data: Array<{ id: number; cause: string; fix: string; verify: string; createdAt: string | null }> }>(
+        `/admin/upload-quality/remediations/${encodeURIComponent(nextCode)}/history`,
+      ).then((res) => setRemediationHistory(res.data)).catch(() => setRemediationHistory([]));
+    } else {
+      setRemediationHistory([]);
+    }
+  }, [remediations]);
+
   return (
     <PageShell>
       <div className="dl-page-header">
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">アップロード品質</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/upload-jobs" className="btn btn-outline-secondary btn-sm">取込ジョブ管理</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/upload-jobs" className="btn btn-outline-primary btn-sm">取込ジョブ管理</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '薬局管理', to: '/admin/pharmacies' },
+              { label: 'エラーコード', to: '/admin/error-codes' },
+            ]}
+          />
         </div>
       </div>
       {message && <AppAlert variant="success" dismissible onClose={() => setMessage('')}>{message}</AppAlert>}
@@ -106,19 +129,7 @@ export default function AdminUploadQualityPage() {
               <div className="col-md-3">
                 <Form.Select
                   value={editingCode}
-                  onChange={(event) => {
-                    const nextCode = event.target.value;
-                    setEditingCode(nextCode);
-                    const current = remediations[nextCode] ?? { cause: '', fix: '', verify: '' };
-                    setEditingRemediation(current);
-                    if (nextCode) {
-                      void api.get<{ data: Array<{ id: number; cause: string; fix: string; verify: string; createdAt: string | null }> }>(
-                        `/admin/upload-quality/remediations/${encodeURIComponent(nextCode)}/history`,
-                      ).then((res) => setRemediationHistory(res.data)).catch(() => setRemediationHistory([]));
-                    } else {
-                      setRemediationHistory([]);
-                    }
-                  }}
+                  onChange={(event) => selectRemediationCode(event.target.value)}
                 >
                   <option value="">エラーコードを選択</option>
                   {summary?.issuesByCode.map((c) => (
@@ -268,6 +279,7 @@ export default function AdminUploadQualityPage() {
                       <th>エラーコード</th>
                       <th>メッセージ</th>
                       <th>日時</th>
+                      <th>操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -280,6 +292,33 @@ export default function AdminUploadQualityPage() {
                         <td><code>{i.issueCode}</code></td>
                         <td className="small">{i.issueMessage}</td>
                         <td className="small">{formatDateTimeJa(i.createdAt)}</td>
+                        <td>
+                          <div className="dl-action-row mobile-stack">
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => selectRemediationCode(i.issueCode)}
+                            >
+                              ガイド編集
+                            </button>
+                            <AppDropdownMenu
+                              label="その他"
+                              variant="outline-secondary"
+                              items={[
+                                {
+                                  key: 'filter',
+                                  label: `${i.issueCode} だけ見る`,
+                                  onClick: () => {
+                                    setCodeFilter(i.issueCode);
+                                    setPage(1);
+                                  },
+                                },
+                                { key: 'job', to: '/admin/upload-jobs', label: `取込ジョブ ${i.jobId} を確認` },
+                                { key: 'pharmacy', to: `/admin/pharmacies/${i.pharmacyId}/edit`, label: '薬局を編集' },
+                              ]}
+                            />
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -299,6 +338,33 @@ export default function AdminUploadQualityPage() {
                       { label: 'ジョブID', value: String(i.jobId) },
                       { label: '日時', value: formatDateTimeJa(i.createdAt) },
                     ]}
+                    actions={(
+                      <div className="dl-action-row mobile-stack">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => selectRemediationCode(i.issueCode)}
+                        >
+                          ガイド編集
+                        </button>
+                        <AppDropdownMenu
+                          label="その他"
+                          variant="outline-secondary"
+                          items={[
+                            {
+                              key: 'filter',
+                              label: `${i.issueCode} だけ見る`,
+                              onClick: () => {
+                                setCodeFilter(i.issueCode);
+                                setPage(1);
+                              },
+                            },
+                            { key: 'job', to: '/admin/upload-jobs', label: `取込ジョブ ${i.jobId} を確認` },
+                            { key: 'pharmacy', to: `/admin/pharmacies/${i.pharmacyId}/edit`, label: '薬局を編集' },
+                          ]}
+                        />
+                      </div>
+                    )}
                   />
                 ))}
               </div>

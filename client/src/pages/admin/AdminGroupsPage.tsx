@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Col, Form, Row } from 'react-bootstrap';
 import { api } from '../../api/client';
@@ -10,6 +10,7 @@ import AppEmptyState from '../../components/ui/AppEmptyState';
 import AppMobileDataCard from '../../components/ui/AppMobileDataCard';
 import AppResponsiveSwitch from '../../components/ui/AppResponsiveSwitch';
 import AppModalShell from '../../components/ui/AppModalShell';
+import AppDropdownMenu from '../../components/ui/AppDropdownMenu';
 import ErrorRetryAlert from '../../components/ui/ErrorRetryAlert';
 import PageShell, { ScrollArea } from '../../components/ui/PageShell';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
@@ -78,6 +79,12 @@ export default function AdminGroupsPage() {
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
 
+  const fetchGroups = useCallback((targetPage: number, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(targetPage) });
+    if (visibilityFilter) params.set('visibility', visibilityFilter);
+    return api.get<GroupsResponse>(`/admin/groups?${params}`, { signal });
+  }, [visibilityFilter]);
+
   const {
     items,
     page,
@@ -87,11 +94,7 @@ export default function AdminGroupsPage() {
     error,
     retry,
   } = usePaginatedList<GroupItem, GroupsResponse>(
-    (targetPage, signal) => {
-      const params = new URLSearchParams({ page: String(targetPage) });
-      if (visibilityFilter) params.set('visibility', visibilityFilter);
-      return api.get<GroupsResponse>(`/admin/groups?${params}`, { signal });
-    },
+    fetchGroups,
     { errorMessage: 'グループ一覧の取得に失敗しました' },
   );
 
@@ -114,10 +117,17 @@ export default function AdminGroupsPage() {
         <div className="dl-page-header-copy">
           <h4 className="page-title mb-0">グループ管理</h4>
         </div>
-        <div className="dl-page-header-actions d-flex gap-2 flex-wrap">
-          <Link to="/admin/pharmacies" className="btn btn-outline-secondary btn-sm">薬局管理</Link>
-          <Link to="/admin/relationships" className="btn btn-outline-secondary btn-sm">関係性監査</Link>
-          <Link to="/admin/business-hours" className="btn btn-outline-secondary btn-sm">営業時間</Link>
+        <div className="dl-action-row mobile-stack">
+          <Link to="/admin/pharmacies" className="btn btn-outline-primary btn-sm">薬局管理</Link>
+          <AppDropdownMenu
+            label="関連"
+            size="sm"
+            variant="outline-secondary"
+            items={[
+              { label: '関係性監査', to: '/admin/relationships' },
+              { label: '営業時間', to: '/admin/business-hours' },
+            ]}
+          />
         </div>
       </div>
 
@@ -143,10 +153,16 @@ export default function AdminGroupsPage() {
             title="グループがありません"
             description="グループが作成されるとここに表示されます。先に薬局の関係性や運用状態を確認する場合は近接画面へ進めます。"
             action={(
-              <div className="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+              <div className="mt-3 dl-action-row mobile-stack justify-content-center">
                 <Link to="/admin/relationships" className="btn btn-outline-secondary btn-sm">関係性監査を見る</Link>
-                <Link to="/admin/pharmacy-health" className="btn btn-outline-secondary btn-sm">薬局ヘルス</Link>
-                <Link to="/admin/bulk-actions" className="btn btn-outline-secondary btn-sm">一括操作</Link>
+                <AppDropdownMenu
+                  label="関連"
+                  variant="outline-secondary"
+                  items={[
+                    { key: 'pharmacy-health', to: '/admin/pharmacy-health', label: '薬局ヘルス' },
+                    { key: 'bulk-actions', to: '/admin/bulk-actions', label: '一括操作' },
+                  ]}
+                />
               </div>
             )}
           />
@@ -176,11 +192,16 @@ export default function AdminGroupsPage() {
                         <td>{g.memberCount}</td>
                         <td>{formatDateTimeJa(g.createdAt)}</td>
                         <td>
-                          <div className="d-flex gap-2 flex-wrap">
-                            <Link to={`/admin/pharmacies/${g.ownerPharmacyId}/edit`} className="btn btn-outline-secondary btn-sm">
-                              オーナーを編集
-                            </Link>
+                          <div className="dl-action-row mobile-stack">
                             <AppButton size="sm" variant="outline-primary" onClick={() => void openMembers(g)}>メンバー</AppButton>
+                            <AppDropdownMenu
+                              label="その他"
+                              size="sm"
+                              variant="outline-secondary"
+                              items={[
+                                { label: 'オーナーを編集', to: `/admin/pharmacies/${g.ownerPharmacyId}/edit` },
+                              ]}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -203,9 +224,16 @@ export default function AdminGroupsPage() {
                       { label: '作成日', value: formatDateTimeJa(g.createdAt) },
                     ]}
                     actions={(
-                      <div className="d-flex gap-2 flex-wrap">
-                        <Link to={`/admin/pharmacies/${g.ownerPharmacyId}/edit`} className="btn btn-outline-secondary btn-sm">オーナーを編集</Link>
+                      <div className="dl-action-row mobile-stack">
                         <AppButton size="sm" variant="outline-primary" onClick={() => void openMembers(g)}>メンバー</AppButton>
+                        <AppDropdownMenu
+                          label="その他"
+                          size="sm"
+                          variant="outline-secondary"
+                          items={[
+                            { label: 'オーナーを編集', to: `/admin/pharmacies/${g.ownerPharmacyId}/edit` },
+                          ]}
+                        />
                       </div>
                     )}
                   />
