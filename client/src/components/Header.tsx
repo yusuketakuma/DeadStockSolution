@@ -12,6 +12,7 @@ import { APP_VERSION } from '../constants/appVersion';
 import { ROUTE_META } from '../routes/route-config';
 import { useRecentWorkList } from '../hooks/useRecentWork';
 import type { RouteMeta } from '../routes/route-config';
+import { USER_DEFAULT_QUICK_ACTIONS } from '../navigation/workflow-navigation';
 
 interface Props {
   onToggleSidebar: () => void;
@@ -64,11 +65,6 @@ interface HeaderQuickJumpOpenClawRequest {
 const PATH_TRACK_CURRENT_KEY = 'dss.currentPath';
 const PATH_TRACK_PREV_KEY = 'dss.previousPath';
 const HIDDEN_PATH_PREFIXES = ['/login', '/register', '/password-reset'];
-const USER_QUICK_ACTIONS: QuickAction[] = [
-  { to: '/upload', label: 'アップロード' },
-  { to: '/matching', label: '候補を確認' },
-  { to: '/notifications', label: '通知を確認' },
-];
 const ADMIN_QUICK_ACTIONS: QuickAction[] = [
   { to: '/admin/user-requests', label: 'ユーザーリクエスト管理' },
   { to: '/admin/drug-master', label: '医薬品マスター管理' },
@@ -204,7 +200,7 @@ function resolveUserQuickActions(pathname: string): QuickAction[] {
     ];
   }
 
-  return USER_QUICK_ACTIONS;
+  return [...USER_DEFAULT_QUICK_ACTIONS];
 }
 
 function resolveAdminQuickActions(pathname: string): QuickAction[] {

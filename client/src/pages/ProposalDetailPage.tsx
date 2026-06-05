@@ -40,6 +40,7 @@ import { getProposalWaitingInfo } from '../utils/proposal-status';
 import { buildMessagesPath } from '../utils/message-links';
 import { sanitizeInternalPath } from '../utils/navigation';
 import { useTrackRecentWork } from '../hooks/useRecentWork';
+import { formatPackageSummary } from '../utils/package-display';
 
 const PROPOSAL_FAX_SENT_STORAGE_KEY = 'proposal:faxes:sent-at';
 
@@ -155,19 +156,9 @@ function buildCounterProposalDraft(
   itemsAtoB: ProposalItem[],
   itemsBtoA: ProposalItem[],
 ): string {
-  const formatProposalItemQuantity = (item: ProposalItem) => {
-    const packageQuantity = Number(item.packageQuantity);
-    if (Number.isFinite(packageQuantity) && packageQuantity > 0) {
-      const boxCount = item.quantity / packageQuantity;
-      if (Math.abs(boxCount - Math.round(boxCount)) < 0.0001) {
-        return `${Math.round(boxCount)}箱`;
-      }
-    }
-    return `${item.quantity}${item.unit || ''}`;
-  };
   const summarizeItems = (items: ProposalItem[]) => items
     .slice(0, 3)
-    .map((item) => `${item.drugName} x${formatProposalItemQuantity(item)}`)
+    .map((item) => `${item.drugName}: ${formatPackageSummary(item)}`)
     .join(' / ');
 
   return [
@@ -224,12 +215,14 @@ export default function ProposalDetailPage() {
   const [editingCommentBody, setEditingCommentBody] = useState('');
   const [commentUpdatingId, setCommentUpdatingId] = useState<number | null>(null);
   const [commentDeletingId, setCommentDeletingId] = useState<number | null>(null);
+  const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<number | null>(null);
   const [feedbackRating, setFeedbackRating] = useState('5');
   const [feedbackComment, setFeedbackComment] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [mobileTimelineKey, setMobileTimelineKey] = useState<string | null>(null);
   const [counterOfferSubmitting, setCounterOfferSubmitting] = useState(false);
   const [counterOfferResponding, setCounterOfferResponding] = useState<'accepted' | 'rejected' | null>(null);
+  const [pendingCounterOfferDecision, setPendingCounterOfferDecision] = useState<'accepted' | 'rejected' | null>(null);
   const [templates, setTemplates] = useState<ProposalTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateError, setTemplateError] = useState('');
@@ -534,15 +527,19 @@ export default function ProposalDetailPage() {
     }
   };
 
-  const handleDeleteComment = async (commentId: number) => {
-    if (!window.confirm('このコメントを削除してよろしいですか？')) {
-      return;
-    }
+  const handleDeleteComment = (commentId: number) => {
+    setPendingDeleteCommentId(commentId);
+  };
+
+  const handleDeleteCommentConfirmed = async () => {
+    if (pendingDeleteCommentId === null) return;
+    const commentId = pendingDeleteCommentId;
     setCommentDeletingId(commentId);
     setError('');
     try {
       await api.delete(`/exchange/proposals/${id}/comments/${commentId}`);
       setMessage('コメントを削除しました');
+      setPendingDeleteCommentId(null);
       if (editingCommentId === commentId) {
         setEditingCommentId(null);
         setEditingCommentBody('');
@@ -604,11 +601,16 @@ export default function ProposalDetailPage() {
   const proposalAdjustmentMatchingPath = buildProposalAdjustmentMatchingPath(otherPharmacy.id, itemsAtoB.concat(itemsBtoA));
   const faxSentAt = faxSentMap[String(proposal.id)] ?? null;
   const latestComment = comments.length > 0 ? comments[comments.length - 1] : null;
+  const pendingDeleteComment = comments.find((comment) => comment.id === pendingDeleteCommentId) ?? null;
   const timelineEvents = data.enrichedTimeline ?? [];
   const latestTimelineEvent = timelineEvents.length > 0 ? timelineEvents[timelineEvents.length - 1] : null;
   const counterOffers = data.counterOffers ?? [];
   const latestCounterOffer = counterOffers.length > 0 ? counterOffers[0] : null;
   const pendingCounterOffer = counterOffers.find((offer) => offer.status === 'pending') ?? null;
+  const formatCounterOfferItemQuantity = (item: { proposalItemId?: number; quantity: number }) => {
+    const baseItem = items.find((proposalItem) => proposalItem.id === item.proposalItemId);
+    return baseItem ? formatPackageSummary({ ...baseItem, quantity: item.quantity }) : `総数量 ${item.quantity}`;
+  };
   const latestCounterOfferDiffs = latestCounterOffer
     ? latestCounterOffer.items
       .map((item) => {
@@ -618,11 +620,11 @@ export default function ProposalDetailPage() {
         return {
           id: item.proposalItemId ?? baseItem.id,
           drugName: item.drugName,
-          fromQuantity: baseItem.quantity,
-          toQuantity: item.quantity,
+          fromQuantity: formatPackageSummary(baseItem),
+          toQuantity: formatPackageSummary({ ...baseItem, quantity: item.quantity }),
         };
       })
-      .filter((value): value is { id: number; drugName: string; fromQuantity: number; toQuantity: number } => value !== null)
+      .filter((value): value is { id: number; drugName: string; fromQuantity: string; toQuantity: string } => value !== null)
     : [];
   const returnTo = sanitizeInternalPath((location.state as { from?: string } | null)?.from, '/proposals');
   const printPath = `/proposals/${id}/print`;
@@ -861,6 +863,7 @@ export default function ProposalDetailPage() {
         decision,
       });
       setMessage(decision === 'accepted' ? '反対提案を承認しました' : '反対提案を却下しました');
+      setPendingCounterOfferDecision(null);
       await fetchDetail();
     } catch (err) {
       setError(err instanceof Error ? err.message : '正式な反対提案への応答に失敗しました');
@@ -878,7 +881,7 @@ export default function ProposalDetailPage() {
           </div>
           <div className="text-muted">{pendingCounterOffer.summary}</div>
           <div className="small text-muted">
-            提案項目: {pendingCounterOffer.items.map((item) => `${item.drugName} x${item.quantity}`).join(' / ')}
+            提案項目: {pendingCounterOffer.items.map((item) => `${item.drugName} ${formatCounterOfferItemQuantity(item)}`).join(' / ')}
           </div>
           <div className="small text-muted">作成日時: {formatDateTimeJa(pendingCounterOffer.createdAt)}</div>
           {pendingCounterOffer.proposerPharmacyId !== user?.id && latestCounterOfferDiffs.length > 0 && (
@@ -897,7 +900,7 @@ export default function ProposalDetailPage() {
                 variant="primary"
                 loading={counterOfferResponding === 'accepted'}
                 loadingLabel="承認中..."
-                onClick={() => void handleRespondCounterOffer('accepted')}
+                onClick={() => setPendingCounterOfferDecision('accepted')}
               >
                 反対提案を承認
               </LoadingButton>
@@ -910,7 +913,7 @@ export default function ProposalDetailPage() {
                     label: counterOfferResponding === 'rejected' ? '却下中...' : '反対提案を却下',
                     disabled: counterOfferResponding !== null,
                     danger: true,
-                    onClick: () => void handleRespondCounterOffer('rejected'),
+                    onClick: () => setPendingCounterOfferDecision('rejected'),
                   },
                 ]}
               />
@@ -952,7 +955,7 @@ export default function ProposalDetailPage() {
           <div key={`counter-offer-diff-${diff.id}`} className="border rounded p-2">
             <div className="fw-semibold">{diff.drugName}</div>
             <div className="text-muted">
-              数量 {diff.fromQuantity} → {diff.toQuantity}
+              {diff.fromQuantity} → {diff.toQuantity}
             </div>
           </div>
         ))}
@@ -1348,13 +1351,97 @@ export default function ProposalDetailPage() {
         show={pendingAction !== null}
         title={`マッチングの${pendingAction ? actionLabelMap[pendingAction] : ''}`}
         body={pendingAction
-          ? `このマッチングを${actionLabelMap[pendingAction]}してよろしいですか？`
+          ? (
+            <div className="dl-stack-gap-sm">
+              <p className="mb-0">
+                {`提案 #${proposal.id} を${actionLabelMap[pendingAction]}します。対象と状態を確認してください。`}
+              </p>
+              <ul className="small mb-0 ps-3">
+                <li>{`相手薬局: ${otherPharmacy.name}`}</li>
+                <li>{`現在の状態: ${statusLabel}`}</li>
+                <li>{`期限: ${formatDateTimeJa(proposalDeadline)}`}</li>
+                <li>{`A側合計: ${proposal.totalValueA?.toLocaleString() ?? '-'}円 / B側合計: ${proposal.totalValueB?.toLocaleString() ?? '-'}円`}</li>
+              </ul>
+              {pendingAction === 'complete' && (
+                <AppAlert variant="warning" className="small mb-0">
+                  受け渡し完了後の操作です。FAX確認と受渡し状況を確認してから実行してください。
+                </AppAlert>
+              )}
+            </div>
+          )
           : null}
         confirmLabel={pendingAction ? actionLabelMap[pendingAction] : '実行'}
         confirmVariant={pendingAction === 'reject' ? 'danger' : 'primary'}
         onCancel={() => setPendingAction(null)}
         onConfirm={handleAction}
         pending={actionSubmitting}
+      />
+      <ConfirmActionModal
+        show={pendingDeleteCommentId !== null}
+        title="コメントの削除"
+        body={(
+          <div className="dl-stack-gap-sm">
+            <p className="mb-0">
+              {`提案 #${proposal.id} のコメントを削除します。削除対象を確認してください。`}
+            </p>
+            {pendingDeleteComment ? (
+              <blockquote className="small border-start ps-3 mb-0">
+                {pendingDeleteComment.body.length > 120
+                  ? `${pendingDeleteComment.body.slice(0, 120)}...`
+                  : pendingDeleteComment.body}
+              </blockquote>
+            ) : (
+              <p className="small text-muted mb-0">削除対象のコメントを確認できませんでした。</p>
+            )}
+          </div>
+        )}
+        confirmLabel="削除する"
+        confirmVariant="danger"
+        onCancel={() => setPendingDeleteCommentId(null)}
+        onConfirm={() => void handleDeleteCommentConfirmed()}
+        pending={commentDeletingId !== null}
+      />
+      <ConfirmActionModal
+        show={pendingCounterOfferDecision !== null}
+        title={`反対提案の${pendingCounterOfferDecision === 'accepted' ? '承認' : '却下'}`}
+        body={pendingCounterOfferDecision && pendingCounterOffer
+          ? (
+            <div className="dl-stack-gap-sm">
+              <p className="mb-0">
+                {`提案 #${proposal.id} の反対提案を${pendingCounterOfferDecision === 'accepted' ? '承認' : '却下'}します。対象と数量条件を確認してください。`}
+              </p>
+              <ul className="small mb-0 ps-3">
+                <li>{`相手薬局: ${otherPharmacy.name}`}</li>
+                <li>{`現在の状態: ${statusLabel}`}</li>
+                <li>{`反対提案: ${pendingCounterOffer.summary}`}</li>
+                <li>
+                  提案項目:
+                  {' '}
+                  {pendingCounterOffer.items.map((item) => `${item.drugName} ${formatCounterOfferItemQuantity(item)}`).join(' / ')}
+                </li>
+              </ul>
+              {pendingCounterOfferDecision === 'accepted' && latestCounterOfferDiffs.length > 0 ? (
+                <AppAlert variant="warning" className="small mb-0">
+                  {`承認すると ${latestCounterOfferDiffs.map((diff) => `${diff.drugName}: ${diff.fromQuantity} → ${diff.toQuantity}`).join(' / ')} が反映されます。`}
+                </AppAlert>
+              ) : null}
+              {pendingCounterOfferDecision === 'rejected' ? (
+                <AppAlert variant="warning" className="small mb-0">
+                  却下すると相手薬局側の再調整フローにも影響します。薬局名と提案IDを確認してから実行してください。
+                </AppAlert>
+              ) : null}
+            </div>
+          )
+          : null}
+        confirmLabel={pendingCounterOfferDecision === 'accepted' ? '反対提案を承認する' : '反対提案を却下する'}
+        confirmVariant={pendingCounterOfferDecision === 'rejected' ? 'danger' : 'primary'}
+        onCancel={() => setPendingCounterOfferDecision(null)}
+        onConfirm={() => {
+          if (pendingCounterOfferDecision) {
+            void handleRespondCounterOffer(pendingCounterOfferDecision);
+          }
+        }}
+        pending={counterOfferResponding !== null}
       />
     </PageShell>
   );

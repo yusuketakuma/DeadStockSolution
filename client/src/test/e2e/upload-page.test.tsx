@@ -82,6 +82,8 @@ describe('UploadPage', () => {
       expect(screen.getByText('Excelアップロード')).toBeInTheDocument();
     });
 
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getAllByRole('link', { name: '品質を確認' }).every((link) => link.getAttribute('href') === '/upload-quality')).toBe(true);
     expect(screen.getAllByRole('link', { name: 'デッドストックを確認' }).every((link) => link.getAttribute('href') === '/inventory/dead-stock')).toBe(true);
     expect(screen.getByRole('link', { name: '候補を探す' })).toHaveAttribute('href', '/matching');
@@ -94,8 +96,8 @@ describe('UploadPage', () => {
     const file = new File(['dummy-xlsx-content'], 'dead-stock.xlsx', {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
-    await userEvent.upload(fileInput, file);
-    await userEvent.click(screen.getByRole('button', { name: 'プレビュー' }));
+    await user.upload(fileInput, file);
+    await user.click(screen.getByRole('button', { name: 'プレビュー' }));
 
     await waitFor(() => {
       expect(screen.getByText('プレビュー失敗テスト')).toBeInTheDocument();

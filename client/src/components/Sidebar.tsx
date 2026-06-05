@@ -5,6 +5,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchUnreadCount } from '../api/messages';
 import { MESSAGE_NAV_UPDATED_EVENT } from '../lib/message-nav-events';
+import { USER_WORKFLOW_GROUPS } from '../navigation/workflow-navigation';
 
 interface Props {
   isOpen: boolean;
@@ -24,37 +25,18 @@ interface SidebarNavGroup {
 
 const NAV_GROUPS: readonly SidebarNavGroup[] = [
   {
-    title: '更新と確認',
+    title: 'はじめに',
     items: [
       { to: '/', label: 'ダッシュボード', end: true },
-      { to: '/upload', label: 'アップロード' },
-      { to: '/upload-quality', label: '品質を確認' },
-      { to: '/matching', label: '候補を確認' },
-      { to: '/proposals', label: '提案一覧を確認' },
-      { to: '/messages', label: 'メッセージを確認' },
-      { to: '/exchange-history', label: '交換履歴を確認' },
-      { to: '/statistics', label: '統計を確認' },
     ],
   },
-  {
-    title: '交換と対応',
+  ...USER_WORKFLOW_GROUPS.map((group) => ({
+    title: group.title,
     items: [
-      { to: '/notifications', label: '通知を確認' },
-      { to: '/alerts', label: 'アラートを確認' },
-      { to: '/requests', label: '要望を確認' },
-      { to: '/bookmarks', label: 'ブックマークを確認' },
-      { to: '/groups', label: 'グループを確認' },
+      group.primary,
+      ...group.links,
     ],
-  },
-  {
-    title: '在庫とネットワーク',
-    items: [
-      { to: '/inventory/dead-stock', label: 'デッドストックを確認' },
-      { to: '/inventory/used-medication', label: '使用量を確認' },
-      { to: '/inventory/browse', label: '在庫を確認' },
-      { to: '/pharmacies', label: '薬局を確認' },
-    ],
-  },
+  })),
 ];
 
 const ADMIN_NAV_GROUPS: readonly SidebarNavGroup[] = [

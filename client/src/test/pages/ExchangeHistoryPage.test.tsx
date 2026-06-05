@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ExchangeHistoryPage from '../../pages/ExchangeHistoryPage';
 import { mockUser, renderWithProviders } from '../helpers';
@@ -17,6 +18,7 @@ describe('ExchangeHistoryPage', () => {
   });
 
   it('renders header shortcuts and print links for completed exchanges', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/me')) {
@@ -62,13 +64,16 @@ describe('ExchangeHistoryPage', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: '印刷' })).toHaveAttribute('href', '/proposals/31/print');
+      expect(screen.getAllByText('相手薬局').length).toBeGreaterThanOrEqual(1);
     });
 
     expect(screen.getAllByRole('link', { name: '提案一覧を確認' }).some((link) => link.getAttribute('href') === '/proposals')).toBe(true);
+    await user.click(screen.getAllByRole('button', { name: '関連画面' })[0]);
     expect(screen.getAllByRole('link', { name: 'メッセージを確認' }).some((link) => link.getAttribute('href') === '/messages')).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'その他' }));
     expect(screen.getByRole('link', { name: '印刷' })).toHaveAttribute('href', '/proposals/31/print');
     expect(screen.getAllByRole('link', { name: '通知を確認' }).some((link) => link.getAttribute('href') === '/notifications')).toBe(true);
+    await user.click(screen.getAllByRole('button', { name: '関連画面' })[2]);
     expect(screen.getAllByRole('link', { name: 'ブックマークを確認' }).some((link) => link.getAttribute('href') === '/bookmarks')).toBe(true);
   });
 });

@@ -21,6 +21,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { daysUntilExpiry } from '../utils/expiry-risk';
 import BarcodeScanButton from '../components/mobile/BarcodeScanButton';
 import AppDropdownMenu from '../components/ui/AppDropdownMenu';
+import { formatBoxCount, formatPackageSize, formatTotalQuantity } from '../utils/package-display';
 
 interface BrowseItem {
   id: number;
@@ -52,34 +53,6 @@ const BROWSE_SORT_OPTIONS: SortOption<BrowseSortKey>[] = [
   { value: 'expiryAsc', label: '期限日が近い順' },
   { value: 'pharmacyName', label: '薬局名順' },
 ];
-
-function formatQuantity(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
-}
-
-function isLoosePackage(item: BrowseItem): boolean {
-  return item.isLoosePackage === true || item.packageForm === 'loose';
-}
-
-function resolveBoxCount(item: BrowseItem): number | null {
-  if (isLoosePackage(item)) return null;
-  const packageQuantity = Number(item.packageQuantity);
-  if (!Number.isFinite(packageQuantity) || packageQuantity <= 0) return null;
-  const boxCount = Math.floor(item.quantity / packageQuantity);
-  return boxCount > 0 ? boxCount : null;
-}
-
-function formatPackageSize(item: BrowseItem): string {
-  if (isLoosePackage(item)) return '-';
-  if (!item.packageQuantity) return '-';
-  return `${formatQuantity(item.packageQuantity)}${item.packageUnit || item.unit || ''}`;
-}
-
-function formatBoxCount(item: BrowseItem): string {
-  if (isLoosePackage(item)) return '対象外';
-  return resolveBoxCount(item)?.toString() ?? '-';
-}
 
 export default function InventoryBrowsePage() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
@@ -288,8 +261,7 @@ export default function InventoryBrowsePage() {
                     <thead className="table-light">
                       <tr>
                         <th>薬品名</th>
-                        <th>数量</th>
-                        <th>単位</th>
+                        <th>総数量</th>
                         <th>出品可能箱数</th>
                         <th>1箱入数</th>
                         <th>包装</th>
@@ -305,8 +277,7 @@ export default function InventoryBrowsePage() {
                       {displayItems.map((item) => (
                         <tr key={item.id}>
                           <td>{item.drugName}</td>
-                          <td>{item.quantity}</td>
-                          <td>{item.unit}</td>
+                          <td>{formatTotalQuantity(item)}</td>
                           <td>{formatBoxCount(item)}</td>
                           <td>{formatPackageSize(item)}</td>
                           <td>{item.packageLabel || '-'}</td>
@@ -332,8 +303,7 @@ export default function InventoryBrowsePage() {
                         subtitle={`${item.pharmacyName}（${item.prefecture}）`}
                         badges={<BusinessStatusBadge status={item.businessStatus} fallback="dash" />}
                         fields={[
-                          { label: '数量', value: item.quantity },
-                          { label: '単位', value: item.unit || '-' },
+                          { label: '総数量', value: formatTotalQuantity(item) },
                           { label: '出品可能箱数', value: formatBoxCount(item) },
                           { label: '1箱入数', value: formatPackageSize(item) },
                           { label: '包装', value: item.packageLabel || '-' },

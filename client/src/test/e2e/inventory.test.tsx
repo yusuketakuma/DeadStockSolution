@@ -98,8 +98,7 @@ describe('DeadStockListPage', () => {
       expect(screen.getByText('薬品名')).toBeInTheDocument();
     });
     expect(screen.getByText('コード')).toBeInTheDocument();
-    expect(screen.getByText('数量')).toBeInTheDocument();
-    expect(screen.getByText('単位')).toBeInTheDocument();
+    expect(screen.getByText('総数量')).toBeInTheDocument();
     expect(screen.getByText('薬価(単価)')).toBeInTheDocument();
     expect(screen.getByText('薬価(合計)')).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '使用期限' })).toBeInTheDocument();
@@ -189,6 +188,10 @@ describe('DeadStockListPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'その他' }));
     await user.click(screen.getByRole('button', { name: '削除' }));
+    expect(screen.getByRole('dialog', { name: 'デッドストックデータの削除' })).toHaveTextContent('CODE1');
+    expect(screen.getByRole('dialog', { name: 'デッドストックデータの削除' })).toHaveTextContent('10錠');
+    expect(screen.getByRole('dialog', { name: 'デッドストックデータの削除' })).toHaveTextContent('テスト薬');
+    expect(screen.getByRole('dialog', { name: 'デッドストックデータの削除' })).not.toHaveTextContent('{pendingItem.drugName}');
     await user.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {

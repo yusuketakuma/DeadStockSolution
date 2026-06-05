@@ -117,21 +117,26 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('機能ショートカット')).toBeInTheDocument();
+      expect(screen.getByText('業務ステップ')).toBeInTheDocument();
     });
-    const uploadCard = screen.getByText('アップロード・在庫').closest('.border');
+    const uploadCard = screen.getByText('1. 登録と品質確認').closest('.border');
     expect(uploadCard).not.toBeNull();
     const uploadScope = within(uploadCard as HTMLElement);
     await user.click(uploadScope.getByRole('button', { name: '関連画面' }));
     expect(uploadScope.getByRole('link', { name: '品質を確認' })).toHaveAttribute('href', '/upload-quality');
-    expect(uploadScope.getByRole('link', { name: '検索条件を確認' })).toHaveAttribute('href', '/inventory/search');
+    expect(uploadScope.getByRole('link', { name: '在庫を検索' })).toHaveAttribute('href', '/inventory/search');
 
-    const matchingCard = screen.getByText('マッチング・対応').closest('.border');
+    const matchingCard = screen.getByText('2. 候補確認と提案対応').closest('.border');
     expect(matchingCard).not.toBeNull();
     const matchingScope = within(matchingCard as HTMLElement);
     await user.click(matchingScope.getByRole('button', { name: '関連画面' }));
-    expect(matchingScope.getByRole('link', { name: '提案状況を確認' })).toHaveAttribute('href', '/proposals');
+    expect(matchingScope.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
     expect(matchingScope.getByRole('link', { name: '交換履歴を確認' })).toHaveAttribute('href', '/exchange-history');
+
+    const communicationCard = screen.getByText('3. 連絡とネットワーク').closest('.border');
+    expect(communicationCard).not.toBeNull();
+    const communicationScope = within(communicationCard as HTMLElement);
+    expect(communicationScope.getByRole('link', { name: 'メッセージを確認' })).toHaveAttribute('href', '/messages');
   });
 
   it('shows SmartDigest section', async () => {
@@ -720,8 +725,9 @@ describe('Layout with Sidebar navigation', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('更新と確認')).toBeInTheDocument();
-      expect(screen.getByText('在庫とネットワーク')).toBeInTheDocument();
+      expect(screen.getByText('はじめに')).toBeInTheDocument();
+      expect(screen.getByText('1. 登録と品質確認')).toBeInTheDocument();
+      expect(screen.getByText('3. 連絡とネットワーク')).toBeInTheDocument();
     });
     expect(screen.getAllByText('アップロード').length).toBeGreaterThan(0);
     expect(screen.getByText('デッドストックを確認')).toBeInTheDocument();

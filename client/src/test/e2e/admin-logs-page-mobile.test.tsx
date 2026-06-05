@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import AdminLogsPage from '../../pages/admin/AdminLogsPage';
 import { mockAdminUser, renderWithProviders } from '../helpers';
 
@@ -44,6 +45,7 @@ describe('AdminLogsPage - Mobile Card View', () => {
   });
 
   it('renders mobile cards on mobile viewport', async () => {
+    const user = userEvent.setup();
     setMatchMedia(true);
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
@@ -76,6 +78,7 @@ describe('AdminLogsPage - Mobile Card View', () => {
 
     expect(screen.getByText('ログ #1001')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'ログセンター' })).toHaveAttribute('href', '/admin/log-center');
+    await user.click(screen.getByRole('button', { name: '関連' }));
     expect(screen.getByRole('link', { name: '監査ログ' })).toHaveAttribute('href', '/admin/audit');
     expect(screen.getByRole('link', { name: 'エラーコード' })).toHaveAttribute('href', '/admin/error-codes');
   });

@@ -76,6 +76,7 @@ describe('PharmacyListPage — Group Features', () => {
 
   describe('Group Badges', () => {
     it('renders cross-links to my groups, public groups, and messages in the page header', async () => {
+      const user = userEvent.setup();
       mockPharmacyListFetch();
       renderWithProviders(<PharmacyListPage />);
 
@@ -85,6 +86,7 @@ describe('PharmacyListPage — Group Features', () => {
 
       const matchingLinks = screen.getAllByRole('link', { name: '候補を確認' });
       expect(matchingLinks.some((link) => link.getAttribute('href') === '/matching')).toBe(true);
+      await user.click(screen.getByRole('button', { name: '関連画面' }));
       expect(screen.getByRole('link', { name: 'グループを確認' })).toHaveAttribute('href', '/groups');
       expect(screen.getByRole('link', { name: '公開グループを確認' })).toHaveAttribute('href', '/groups?tab=public');
       const messageLinks = screen.getAllByRole('link', { name: 'メッセージを確認' });
@@ -157,6 +159,7 @@ describe('PharmacyListPage — Group Features', () => {
 
   describe('Group Filter', () => {
     it('applies the group filter from the URL query', async () => {
+      const user = userEvent.setup();
       mockPharmacyListFetch();
       renderWithProviders(<PharmacyListPage />, { route: '/pharmacies?group=10' });
 
@@ -167,6 +170,7 @@ describe('PharmacyListPage — Group Features', () => {
 
       expect(screen.queryByText('ヘルス薬局')).not.toBeInTheDocument();
       expect(screen.getByRole('combobox', { name: 'グループで絞り込み' })).toHaveValue('10');
+      await user.click(screen.getByRole('button', { name: '関連画面' }));
       expect(screen.getByRole('link', { name: '選択中グループを確認' })).toHaveAttribute('href', '/groups/10');
     });
 
@@ -300,6 +304,7 @@ describe('PharmacyListPage — Group Features', () => {
       await waitFor(() => {
         expect(screen.getByText('このグループに属する薬局が見つかりません')).toBeInTheDocument();
       });
+      await user.click(screen.getByRole('button', { name: '関連画面' }));
       expect(screen.getByRole('link', { name: '東京グループを確認' })).toHaveAttribute('href', '/groups/10');
     });
 

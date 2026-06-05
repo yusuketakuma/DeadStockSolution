@@ -3,6 +3,7 @@ import AppDataPanel from './ui/AppDataPanel';
 import AppTable from './ui/AppTable';
 import AppMobileDataCard from './ui/AppMobileDataCard';
 import AppResponsiveSwitch from './ui/AppResponsiveSwitch';
+import { formatBoxCount, formatPackageSize, formatTotalQuantity } from '../utils/package-display';
 
 interface PanelItem {
   id: number;
@@ -23,23 +24,6 @@ interface ProposalItemsPanelProps {
   totalValue: number | null | undefined;
 }
 
-function formatQuantity(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
-}
-
-function resolveBoxCount(item: PanelItem): number | null {
-  const packageQuantity = Number(item.packageQuantity);
-  if (!Number.isFinite(packageQuantity) || packageQuantity <= 0) return null;
-  const boxCount = item.quantity / packageQuantity;
-  return Math.abs(boxCount - Math.round(boxCount)) < 0.0001 ? Math.round(boxCount) : Math.floor(boxCount);
-}
-
-function formatPackageSize(item: PanelItem): string {
-  if (!item.packageQuantity) return '-';
-  return `${formatQuantity(item.packageQuantity)}${item.packageUnit || item.unit || ''}`;
-}
-
 export default function ProposalItemsPanel({ items, fromName, toName, totalValue }: ProposalItemsPanelProps) {
   return (
     <AppDataPanel
@@ -55,8 +39,8 @@ export default function ProposalItemsPanel({ items, fromName, toName, totalValue
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id}>
-                    <td>{item.drugName}</td><td>{resolveBoxCount(item) ?? '-'}</td><td>{formatPackageSize(item)}</td>
-                    <td>{formatQuantity(item.quantity)}{item.unit || item.packageUnit || ''}</td><td>{item.packageLabel || '-'}</td><td>{item.yakkaValue?.toLocaleString()}</td>
+                    <td>{item.drugName}</td><td>{formatBoxCount(item)}</td><td>{formatPackageSize(item)}</td>
+                    <td>{formatTotalQuantity(item)}</td><td>{item.packageLabel || '-'}</td><td>{item.yakkaValue?.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -70,9 +54,9 @@ export default function ProposalItemsPanel({ items, fromName, toName, totalValue
                 key={item.id}
                 title={item.drugName}
                 fields={[
-                  { label: '箱数', value: resolveBoxCount(item) ?? '-' },
+                  { label: '箱数', value: formatBoxCount(item) },
                   { label: '1箱入数', value: formatPackageSize(item) },
-                  { label: '総数量', value: `${formatQuantity(item.quantity)}${item.unit || item.packageUnit || ''}` },
+                  { label: '総数量', value: formatTotalQuantity(item) },
                   { label: '包装', value: item.packageLabel || '-' },
                   { label: '薬価(合計)', value: item.yakkaValue?.toLocaleString() ?? '-' },
                 ]}

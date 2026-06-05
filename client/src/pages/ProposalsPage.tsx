@@ -27,6 +27,7 @@ import { useKeyboardListNavigation } from '../hooks/useKeyboardListNavigation';
 import { useSavedViews } from '../hooks/useSavedViews';
 import WorkContextBar from '../components/ui/WorkContextBar';
 import AppDropdownMenu from '../components/ui/AppDropdownMenu';
+import ConfirmActionModal from '../components/ConfirmActionModal';
 
 interface Proposal {
   id: number;
@@ -162,6 +163,7 @@ export default function ProposalsPage() {
   const [selectedProposalId, setSelectedProposalId] = useState<number | null>(Number.isInteger(requestedSelectedId) && requestedSelectedId > 0 ? requestedSelectedId : null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkActionLoading, setBulkActionLoading] = useState<'accept' | 'reject' | null>(null);
+  const [pendingBulkAction, setPendingBulkAction] = useState<'accept' | 'reject' | null>(null);
   const [message, setMessage] = useState('');
   const [bulkError, setBulkError] = useState('');
   const initializedSortRef = useRef(false);
@@ -272,9 +274,21 @@ export default function ProposalsPage() {
   const actionableIdSet = useMemo(() => new Set(actionableIds), [actionableIds]);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedProposal = useMemo(() => visibleProposals.find((proposal) => proposal.id === selectedProposalId) ?? null, [selectedProposalId, visibleProposals]);
+  const selectedBulkProposals = useMemo(
+    () => visibleProposals.filter((proposal) => selectedIdSet.has(proposal.id)),
+    [selectedIdSet, visibleProposals],
+  );
+  const selectedBulkIds = useMemo(() => selectedBulkProposals.map((proposal) => proposal.id), [selectedBulkProposals]);
   const returnTo = `${location.pathname}${location.search}`;
 
   const allSelected = actionableIds.length > 0 && actionableIds.every((id) => selectedIdSet.has(id));
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const next = current.filter((id) => actionableIdSet.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [actionableIdSet]);
 
   const toggleSelection = (id: number) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -286,25 +300,45 @@ export default function ProposalsPage() {
       : [...new Set([...prev, ...actionableIds])]));
   };
 
-  const handleBulkAction = async (action: 'accept' | 'reject') => {
-    if (selectedIds.length === 0) {
+  const startBulkAction = (action: 'accept' | 'reject') => {
+    if (selectedBulkIds.length === 0) {
       setBulkError('対象を選択してください');
       return;
     }
+    if (selectedBulkIds.length !== selectedIds.length) {
+      setSelectedIds(selectedBulkIds);
+      setBulkError('絞り込み変更後の表示対象だけを一括操作できます。対象を再確認してください。');
+      return;
+    }
+    setBulkError('');
+    setPendingBulkAction(action);
+  };
 
-    const confirmed = window.confirm(`選択中の${selectedIds.length}件を${action === 'accept' ? '承認' : '拒否'}します。よろしいですか？`);
-    if (!confirmed) return;
+  const handleBulkActionConfirmed = async () => {
+    if (!pendingBulkAction) return;
+    if (selectedBulkIds.length === 0) {
+      setBulkError('対象を選択してください');
+      setPendingBulkAction(null);
+      return;
+    }
+    if (selectedBulkIds.length !== selectedIds.length) {
+      setSelectedIds(selectedBulkIds);
+      setBulkError('確認画面と送信対象が一致しないため、一括操作を中止しました。対象を再確認してください。');
+      setPendingBulkAction(null);
+      return;
+    }
 
-    setBulkActionLoading(action);
+    setBulkActionLoading(pendingBulkAction);
     setBulkError('');
     setMessage('');
     try {
       const result = await api.post<BulkActionResponse>('/exchange/proposals/bulk-action', {
-        action,
-        ids: selectedIds,
+        action: pendingBulkAction,
+        ids: selectedBulkIds,
       });
-      setMessage(`一括${action === 'accept' ? '承認' : '拒否'}: 成功 ${result.summary.success} / 失敗 ${result.summary.failed}`);
+      setMessage(`一括${pendingBulkAction === 'accept' ? '承認' : '拒否'}: 成功 ${result.summary.success} / 失敗 ${result.summary.failed}`);
       setSelectedIds([]);
+      setPendingBulkAction(null);
       await retry();
     } catch (err) {
       setBulkError(err instanceof Error ? err.message : '一括操作に失敗しました');
@@ -497,7 +531,7 @@ export default function ProposalsPage() {
             <LoadingButton
               size="sm"
               variant="success"
-              onClick={() => void handleBulkAction('accept')}
+              onClick={() => startBulkAction('accept')}
               disabled={selectedIds.length === 0}
               loading={bulkActionLoading === 'accept'}
               loadingLabel="承認中..."
@@ -511,7 +545,7 @@ export default function ProposalsPage() {
               items={[
                 {
                   label: bulkActionLoading === 'reject' ? '拒否中...' : '一括辞退',
-                  onClick: () => void handleBulkAction('reject'),
+                  onClick: () => startBulkAction('reject'),
                   disabled: selectedIds.length === 0 || bulkActionLoading === 'reject',
                   danger: true,
                 },
@@ -571,12 +605,12 @@ export default function ProposalsPage() {
                           style={{ cursor: 'pointer' }}
                         >
                           <td onClick={(event) => event.stopPropagation()}>
-                            <FormCheck
-                              checked={selectedIdSet.has(p.id)}
-                              onChange={() => toggleSelection(p.id)}
-                              disabled={!selectable}
-                              aria-label={`proposal-${p.id}`}
-                            />
+                        <FormCheck
+                          checked={selectedIdSet.has(p.id)}
+                          onChange={() => toggleSelection(p.id)}
+                          disabled={!selectable}
+                          aria-label={`${otherName}との提案 #${p.id} を一括対象に追加`}
+                        />
                           </td>
                           <td>{p.id}</td>
                           <td>{otherName}</td>
@@ -747,6 +781,45 @@ export default function ProposalsPage() {
       </PullToRefresh>
       </ScrollArea>
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+      <ConfirmActionModal
+        show={pendingBulkAction !== null}
+        title={`提案の一括${pendingBulkAction === 'accept' ? '承認' : '辞退'}`}
+        body={(
+          <div className="dl-stack-gap-sm">
+            <p className="mb-0">
+              選択中の
+              <strong>{selectedBulkIds.length}</strong>
+              件を
+              {pendingBulkAction === 'accept' ? '承認' : '辞退'}
+              します。対象を確認してください。
+            </p>
+            <ul className="small mb-0 ps-3">
+              {selectedBulkProposals.slice(0, 5).map((proposal) => {
+                const isA = proposal.pharmacyAId === user?.id;
+                const otherName = isA ? proposal.pharmacyBName : proposal.pharmacyAName;
+                return (
+                  <li key={proposal.id}>
+                    {`提案 #${proposal.id}: ${otherName} / ${getProposalPhaseInfo(proposal.status, isA).phaseLabel}`}
+                  </li>
+                );
+              })}
+              {selectedBulkProposals.length > 5 && (
+                <li>{`ほか ${selectedBulkProposals.length - 5} 件`}</li>
+              )}
+            </ul>
+            {pendingBulkAction === 'reject' && (
+              <AppAlert variant="warning" className="small mb-0">
+                辞退すると相手薬局側の確認フローにも影響します。薬局名と提案IDを確認してから実行してください。
+              </AppAlert>
+            )}
+          </div>
+        )}
+        confirmLabel={pendingBulkAction === 'accept' ? '一括承認する' : '一括辞退する'}
+        confirmVariant={pendingBulkAction === 'reject' ? 'danger' : 'success'}
+        onCancel={() => setPendingBulkAction(null)}
+        onConfirm={() => void handleBulkActionConfirmed()}
+        pending={bulkActionLoading !== null}
+      />
     </PageShell>
   );
 }

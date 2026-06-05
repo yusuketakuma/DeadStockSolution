@@ -36,18 +36,34 @@ export default function AppDropdownMenu({
 }: AppDropdownMenuProps) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) {
+      requestAnimationFrame(() => toggleRef.current?.focus());
+    }
+  };
 
   useEffect(() => {
     if (!open) return undefined;
 
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      if (menuRef.current?.contains(event.target as Node)) return;
-      setOpen(false);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeMenu(true);
+      }
     };
 
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      closeMenu();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('mousedown', handlePointerDown);
     document.addEventListener('touchstart', handlePointerDown);
     return () => {
+      document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('touchstart', handlePointerDown);
     };
@@ -56,12 +72,13 @@ export default function AppDropdownMenu({
   const handleItemClick = (item: AppDropdownItem) => {
     if (item.disabled) return;
     item.onClick?.();
-    setOpen(false);
+    closeMenu(true);
   };
 
   return (
     <div ref={menuRef} className={`dropdown ${className}`}>
       <button
+        ref={toggleRef}
         type="button"
         className={`btn btn-${variant}${size ? ` btn-${size}` : ''} dropdown-toggle dl-dropdown-toggle`}
         aria-expanded={open}
@@ -86,6 +103,7 @@ export default function AppDropdownMenu({
                 rel={item.rel}
                 className={item.disabled ? `${classNames} disabled` : classNames}
                 aria-disabled={item.disabled || undefined}
+                tabIndex={item.disabled ? -1 : undefined}
                 onClick={(event) => {
                   if (item.disabled) {
                     event.preventDefault();
@@ -108,6 +126,7 @@ export default function AppDropdownMenu({
                 download={item.download}
                 className={item.disabled ? `${classNames} disabled` : classNames}
                 aria-disabled={item.disabled || undefined}
+                tabIndex={item.disabled ? -1 : undefined}
                 onClick={(event) => {
                   if (item.disabled) {
                     event.preventDefault();

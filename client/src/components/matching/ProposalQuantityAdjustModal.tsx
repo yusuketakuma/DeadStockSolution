@@ -5,6 +5,12 @@ import AppButton from '../ui/AppButton';
 import AppModalShell from '../ui/AppModalShell';
 import LoadingButton from '../ui/LoadingButton';
 import { formatYen } from '../../utils/formatters';
+import {
+  formatPackageNumber,
+  formatPackageSize,
+  resolvePackageBoxCount,
+  resolvePackageQuantity,
+} from '../../utils/package-display';
 
 type QuantityInputKey = `${'a' | 'b'}:${number}`;
 
@@ -37,38 +43,11 @@ interface ProposalQuantityAdjustModalProps {
 const MIN_EXCHANGE_VALUE = 10000;
 const VALUE_TOLERANCE = 10;
 
-function formatQuantity(value: number): string {
-  return Number.isInteger(value)
-    ? String(value)
-    : String(Number(value.toFixed(3)));
-}
-
-function resolvePackageQuantity(item: MatchItem): number | null {
-  const packageQuantity = Number(item.packageQuantity);
-  return Number.isFinite(packageQuantity) && packageQuantity > 0 ? packageQuantity : null;
-}
-
-function resolveBoxCount(item: MatchItem): number | null {
-  if (Number.isInteger(item.boxCount) && Number(item.boxCount) > 0) {
-    return Number(item.boxCount);
-  }
-  const packageQuantity = resolvePackageQuantity(item);
-  if (!packageQuantity) return null;
-  const boxCount = Math.floor(item.quantity / packageQuantity);
-  return boxCount > 0 ? boxCount : null;
-}
-
-function formatPackageSize(item: MatchItem): string {
-  const packageQuantity = resolvePackageQuantity(item);
-  if (!packageQuantity) return '-';
-  return `${formatQuantity(packageQuantity)}${item.packageUnit || item.unit || ''}`;
-}
-
 function createDraftItems(candidate: MatchCandidate | null): DraftItem[] {
   if (!candidate) return [];
   return [
     ...candidate.itemsFromA.map((item) => {
-      const boxCount = resolveBoxCount(item);
+      const boxCount = resolvePackageBoxCount(item);
       return {
         key: `a:${item.deadStockItemId}` as const,
         sideLabel: 'あなた → 相手',
@@ -76,12 +55,12 @@ function createDraftItems(candidate: MatchCandidate | null): DraftItem[] {
         originalBoxCount: boxCount,
         packageQuantity: resolvePackageQuantity(item),
         packageUnit: item.packageUnit ?? item.unit ?? null,
-        quantityText: boxCount !== null ? String(boxCount) : formatQuantity(item.quantity),
+        quantityText: boxCount !== null ? String(boxCount) : formatPackageNumber(item.quantity),
         item,
       };
     }),
     ...candidate.itemsFromB.map((item) => {
-      const boxCount = resolveBoxCount(item);
+      const boxCount = resolvePackageBoxCount(item);
       return {
         key: `b:${item.deadStockItemId}` as const,
         sideLabel: '相手 → あなた',
@@ -89,7 +68,7 @@ function createDraftItems(candidate: MatchCandidate | null): DraftItem[] {
         originalBoxCount: boxCount,
         packageQuantity: resolvePackageQuantity(item),
         packageUnit: item.packageUnit ?? item.unit ?? null,
-        quantityText: boxCount !== null ? String(boxCount) : formatQuantity(item.quantity),
+        quantityText: boxCount !== null ? String(boxCount) : formatPackageNumber(item.quantity),
         item,
       };
     }),
@@ -128,7 +107,7 @@ function buildAdjustedCandidate(
       return { error: `${item.drugName} の数量を正しく入力してください` };
     }
     if (draftItem && quantity > draftItem.originalQuantity) {
-      return { error: `${item.drugName} の数量は元数量 ${formatQuantity(draftItem.originalQuantity)} を超えられません` };
+      return { error: `${item.drugName} の数量は元数量 ${formatPackageNumber(draftItem.originalQuantity)} を超えられません` };
     }
     return {
       deadStockItemId: item.deadStockItemId,
@@ -348,7 +327,7 @@ export default function ProposalQuantityAdjustModal({
                                   }}
                                 />
                               </td>
-                              <td>{Number.isFinite(quantity) && quantity > 0 ? `${formatQuantity(quantity)}${draftItem.packageUnit || draftItem.item.unit || ''}` : '-'}</td>
+                              <td>{Number.isFinite(quantity) && quantity > 0 ? `${formatPackageNumber(quantity)}${draftItem.packageUnit || draftItem.item.unit || ''}` : '-'}</td>
                               <td className="text-end">
                                 {lineTotal === null ? '-' : formatYen(lineTotal)}
                               </td>

@@ -13,6 +13,8 @@ dss_append_error_buffer_event() {
   local context_json="$5"
   local artifacts_json="$6"
 
+  mkdir -p "$(dirname "${ERROR_BUFFER_FILE}")"
+
   jq -cn \
     --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg schema "${LOG_SCHEMA_VERSION}" \
@@ -51,6 +53,8 @@ dss_append_codex_result() {
   local error_hash="$6"
   local context_json="$7"
   local artifacts_json="$8"
+
+  mkdir -p "$(dirname "${CODEX_RESULTS_LOG}")"
 
   jq -cn \
     --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

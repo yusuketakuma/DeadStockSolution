@@ -7,6 +7,7 @@ import AppDropdownMenu from '../components/ui/AppDropdownMenu';
 import PageLoader from '../components/ui/PageLoader';
 import { formatDateJa } from '../utils/formatters';
 import { sanitizeInternalPath } from '../utils/navigation';
+import { formatBoxCount, formatPackageSize, formatPackageSummary, formatTotalQuantity } from '../utils/package-display';
 import '../styles/proposal-print.css';
 
 interface PharmacyInfo {
@@ -65,23 +66,6 @@ function safePharmacy(pharmacy: PharmacyInfo | null) {
   };
 }
 
-function formatQuantity(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
-}
-
-function resolveBoxCount(item: PrintItem): number | null {
-  const packageQuantity = Number(item.packageQuantity);
-  if (!Number.isFinite(packageQuantity) || packageQuantity <= 0) return null;
-  const boxCount = item.quantity / packageQuantity;
-  return Math.abs(boxCount - Math.round(boxCount)) < 0.0001 ? Math.round(boxCount) : Math.floor(boxCount);
-}
-
-function formatPackageSize(item: PrintItem): string {
-  if (!item.packageQuantity) return '-';
-  return `${formatQuantity(item.packageQuantity)}${item.packageUnit || item.unit || ''}`;
-}
-
 export default function ProposalPrintPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
@@ -138,13 +122,19 @@ export default function ProposalPrintPage() {
   const itemsAtoB = items.filter((item) => item.fromPharmacyId === proposal.pharmacyAId);
   const itemsBtoA = items.filter((item) => item.fromPharmacyId === proposal.pharmacyBId);
   const latestCounterOffer = data.counterOffers?.[0] ?? null;
+  const formatCounterOfferItem = (item: { proposalItemId?: number; drugName: string; quantity: number }) => {
+    const baseItem = items.find((proposalItem) => proposalItem.id === item.proposalItemId);
+    return baseItem
+      ? `${item.drugName}: ${formatPackageSummary({ ...baseItem, quantity: item.quantity })}`
+      : `${item.drugName}: 総数量 ${item.quantity}`;
+  };
   const latestCounterOfferDiffs = latestCounterOffer
     ? latestCounterOffer.items
       .map((item) => {
         const baseItem = items.find((proposalItem) => proposalItem.id === item.proposalItemId);
         if (!baseItem) return null;
         if (baseItem.quantity === item.quantity) return null;
-        return `${item.drugName}: ${baseItem.quantity} → ${item.quantity}`;
+        return `${item.drugName}: ${formatPackageSummary(baseItem)} → ${formatPackageSummary({ ...baseItem, quantity: item.quantity })}`;
       })
       .filter((value): value is string => value !== null)
     : [];
@@ -235,7 +225,7 @@ export default function ProposalPrintPage() {
           </div>
           <div className="proposal-print-pharmacy-detail">{latestCounterOffer.summary}</div>
           <div className="proposal-print-pharmacy-detail">
-            {latestCounterOffer.items.map((item) => `${item.drugName} x${item.quantity}`).join(' / ')}
+            {latestCounterOffer.items.map(formatCounterOfferItem).join(' / ')}
           </div>
           {latestCounterOfferDiffs.length > 0 && (
             <div className="proposal-print-pharmacy-detail">
@@ -282,9 +272,9 @@ export default function ProposalPrintPage() {
           {itemsAtoB.map((item) => (
             <tr key={item.id}>
               <td>{item.drugName}</td>
-              <td>{resolveBoxCount(item) ?? '-'}</td>
+              <td>{formatBoxCount(item)}</td>
               <td>{formatPackageSize(item)}</td>
-              <td>{formatQuantity(item.quantity)}{item.unit || item.packageUnit || ''}</td>
+              <td>{formatTotalQuantity(item)}</td>
               <td>{item.packageLabel || '-'}</td>
               <td>{item.yakkaValue?.toLocaleString() || '-'}</td>
             </tr>
@@ -310,9 +300,9 @@ export default function ProposalPrintPage() {
           {itemsBtoA.map((item) => (
             <tr key={item.id}>
               <td>{item.drugName}</td>
-              <td>{resolveBoxCount(item) ?? '-'}</td>
+              <td>{formatBoxCount(item)}</td>
               <td>{formatPackageSize(item)}</td>
-              <td>{formatQuantity(item.quantity)}{item.unit || item.packageUnit || ''}</td>
+              <td>{formatTotalQuantity(item)}</td>
               <td>{item.packageLabel || '-'}</td>
               <td>{item.yakkaValue?.toLocaleString() || '-'}</td>
             </tr>

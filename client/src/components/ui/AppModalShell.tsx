@@ -1,4 +1,5 @@
 import { Modal } from 'react-bootstrap';
+import { useId } from 'react';
 
 interface AppModalShellProps {
   show: boolean;
@@ -25,10 +26,20 @@ export default function AppModalShell({
   backdrop,
   keyboard,
 }: AppModalShellProps) {
+  const titleId = useId();
+
   return (
-    <Modal show={show} onHide={onHide} centered={centered} size={size} backdrop={backdrop} keyboard={keyboard}>
+    <Modal
+      show={show}
+      onHide={onHide}
+      centered={centered}
+      size={size}
+      backdrop={backdrop}
+      keyboard={keyboard}
+      aria-labelledby={titleId}
+    >
       <Modal.Header closeButton={closeButton}>
-        <Modal.Title>{title}</Modal.Title>
+        <Modal.Title id={titleId}>{title}</Modal.Title>
       </Modal.Header>
       <Modal.Body>{children}</Modal.Body>
       {footer ? <Modal.Footer>{footer}</Modal.Footer> : null}

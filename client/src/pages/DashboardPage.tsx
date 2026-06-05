@@ -17,6 +17,7 @@ import type { TimelineEvent } from '../types/timeline';
 import PageShell, { ScrollArea } from '../components/ui/PageShell';
 import { sanitizeInternalPath } from '../utils/navigation';
 import AppDropdownMenu from '../components/ui/AppDropdownMenu';
+import { USER_WORKFLOW_GROUPS } from '../navigation/workflow-navigation';
 
 const RiskBucketBarChart = lazy(() => import('../components/charts/RiskBucketBarChart'));
 
@@ -55,41 +56,6 @@ interface StatusAndRiskData {
   alertStats: AlertStatsData | null;
   partialError: string;
 }
-
-const DASHBOARD_SHORTCUT_GROUPS = [
-  {
-    title: 'アップロード・在庫',
-    description: '在庫更新と品質確認をここから進めます。',
-    primary: { to: '/upload', label: 'アップロード' },
-    links: [
-      { to: '/upload-quality', label: '品質を確認' },
-      { to: '/inventory/browse', label: '在庫を確認' },
-      { to: '/inventory/search', label: '検索条件を確認' },
-      { to: '/statistics', label: '統計を確認' },
-    ],
-  },
-  {
-    title: 'マッチング・対応',
-    description: '候補確認から連絡対応までをまとめています。',
-    primary: { to: '/matching', label: '候補を確認' },
-    links: [
-      { to: '/proposals', label: '提案状況を確認' },
-      { to: '/exchange-history', label: '交換履歴を確認' },
-      { to: '/notifications', label: '通知を確認' },
-      { to: '/requests', label: '要望を確認' },
-      { to: '/bookmarks', label: 'ブックマークを確認' },
-    ],
-  },
-  {
-    title: 'ネットワーク・設定',
-    description: '薬局間のつながりとアカウント設定を確認します。',
-    primary: { to: '/groups', label: 'グループを確認' },
-    links: [
-      { to: '/pharmacies', label: '薬局を確認' },
-      { to: '/account', label: '薬局設定を確認' },
-    ],
-  },
-] as const;
 
 function resolveSettledValue<T>(result: PromiseSettledResult<T>): T | null {
   return result.status === 'fulfilled' ? result.value : null;
@@ -261,9 +227,9 @@ export default function DashboardPage() {
         </AppDataPanel>
       )}
 
-      <AppDataPanel title="機能ショートカット" className="mb-2">
+      <AppDataPanel title="業務ステップ" className="mb-2">
         <Row className="g-3">
-          {DASHBOARD_SHORTCUT_GROUPS.map((group) => (
+          {USER_WORKFLOW_GROUPS.map((group) => (
             <Col key={group.title} md={4}>
               <div className="border rounded-3 p-3 h-100">
                 <div className="fw-semibold mb-1">{group.title}</div>

@@ -72,4 +72,24 @@ describe('Sidebar', () => {
     expect(fetchUnreadCount).toHaveBeenCalled();
     expect(screen.getByRole('link', { name: /メッセージ/ })).toHaveAttribute('href', '/messages');
   });
+
+  it('renders pharmacy workflow groups in first-time operation order', async () => {
+    authState.user = { id: 2, name: 'テスト薬局', isAdmin: false };
+
+    render(
+      <MemoryRouter>
+        <Sidebar isOpen={false} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('はじめに')).toBeInTheDocument();
+    expect(screen.getByText('1. 登録と品質確認')).toBeInTheDocument();
+    expect(screen.getByText('2. 候補確認と提案対応')).toBeInTheDocument();
+    expect(screen.getByText('3. 連絡とネットワーク')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'ダッシュボード' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'アップロード' })).toHaveAttribute('href', '/upload');
+    expect(screen.getByRole('link', { name: '候補を確認' })).toHaveAttribute('href', '/matching');
+    expect(screen.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
+    expect(await screen.findByRole('link', { name: /メッセージを確認/ })).toHaveAttribute('href', '/messages');
+  });
 });

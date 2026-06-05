@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import UploadQualityPage from '../../pages/UploadQualityPage';
 import { renderWithProviders } from '../helpers';
 
@@ -9,6 +10,7 @@ describe('UploadQualityPage', () => {
   });
 
   it('renders upload quality summary and issue destinations', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -61,10 +63,10 @@ describe('UploadQualityPage', () => {
 
     expect(screen.getByText('MISSING_EXPIRY: 2')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'アップロード' })).toHaveAttribute('href', '/upload');
+    await user.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getByRole('link', { name: '統計を確認' })).toHaveAttribute('href', '/statistics');
     expect(screen.getByRole('link', { name: 'デッドストックを確認' })).toHaveAttribute('href', '/inventory/dead-stock');
     expect(screen.getAllByRole('link', { name: '保存済み設定で再アップロード' })[0]).toHaveAttribute('href', expect.stringContaining('/upload?reuseSavedMapping=1'));
-    expect(screen.getByRole('link', { name: '統計を見る' })).toHaveAttribute('href', '/statistics');
   });
 
   it('shows empty state when no issues exist', async () => {
@@ -106,7 +108,7 @@ describe('UploadQualityPage', () => {
     });
 
     expect(screen.getByRole('link', { name: 'アップロードへ進む' })).toHaveAttribute('href', '/upload');
-    expect(screen.getByRole('link', { name: 'アップロードへ戻る' })).toHaveAttribute('href', '/upload');
+    expect(screen.getAllByRole('link', { name: 'アップロードへ戻る' }).some((link) => link.getAttribute('href') === '/upload')).toBe(true);
   });
 
   it('keeps rendering when remediations payload is empty and issue code is unknown', async () => {

@@ -638,7 +638,7 @@ test.describe('箱単位UI browser review', () => {
     await expect(page.getByText('テスト薬A 100錠PTP')).toBeVisible();
     await expect(page.getByRole('cell', { name: '2' }).first()).toBeVisible();
     await expect(page.getByRole('cell', { name: '100錠' }).first()).toBeVisible();
-    await expect(page.getByText('対象外')).toBeVisible();
+    await expect(page.getByText('対象外').first()).toBeVisible();
 
     await page.getByPlaceholder('薬品名で検索（スペース区切りで絞り込み）...').fill('テスト薬A');
     await page.keyboard.press('Enter');
@@ -678,7 +678,7 @@ test.describe('箱単位UI browser review', () => {
     await expect(page.getByRole('heading', { name: '全薬局の在庫参照' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: '出品可能箱数' })).toBeVisible();
     await expect(page.getByText('テスト薬A 100錠PTP')).toBeVisible();
-    await expect(page.getByText('対象外')).toBeVisible();
+    await expect(page.getByText('対象外').first()).toBeVisible();
 
     await page.getByPlaceholder('薬品名で検索（ひらがな・カタカナ対応）...').fill('テスト薬A');
     await page.getByRole('button', { name: '検索' }).click();
@@ -817,6 +817,8 @@ test.describe('箱単位UI browser review', () => {
 
     await page.getByRole('button', { name: 'コメント操作' }).first().click();
     await page.getByRole('button', { name: '削除' }).first().click();
+    await expect(page.getByRole('dialog', { name: 'コメントの削除' })).toBeVisible();
+    await page.getByRole('button', { name: '削除する' }).click();
     await expect(page.getByText('コメントを削除しました')).toBeVisible();
 
     state.proposalStatus = 'confirmed';
@@ -871,7 +873,7 @@ test.describe('箱単位UI browser review', () => {
 
     await page.goto('/inventory/dead-stock');
     await expect(page.getByText('出品可能箱数').first()).toBeVisible();
-    await expect(page.getByText('対象外')).toBeVisible();
+    await expect(page.getByText('対象外').first()).toBeVisible();
 
     await page.getByRole('button', { name: /フィルタ/ }).click();
     await expect(page.getByRole('dialog', { name: '期限フィルタ' })).toBeVisible();

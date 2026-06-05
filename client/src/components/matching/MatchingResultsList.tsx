@@ -14,24 +14,11 @@ import PullToRefresh from '../gesture/PullToRefresh';
 import SwipeableListItem from '../gesture/SwipeableListItem';
 import SwipeCoachingOverlay from '../gesture/SwipeCoachingOverlay';
 import MatchCandidateInsightsPanel from './MatchCandidateInsightsPanel';
+import { formatBoxCount, formatPackageSize, formatTotalQuantity } from '../../utils/package-display';
 
 function formatPercent(value?: number): string {
   if (value === undefined || value === null || Number.isNaN(value)) return '-';
   return `${Math.round(value)}%`;
-}
-
-function formatQuantity(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
-}
-
-function formatPackageSize(item: MatchItem): string {
-  if (!item.packageQuantity) return '-';
-  return `${formatQuantity(item.packageQuantity)}${item.packageUnit || item.unit || ''}`;
-}
-
-function formatTotalQuantity(item: MatchItem): string {
-  return `${formatQuantity(item.quantity)}${item.unit || item.packageUnit || ''}`;
 }
 
 function buildCandidateMessageDraft(candidate: MatchCandidate): string {
@@ -69,7 +56,7 @@ function MatchItemsTable({ items, keyPrefix }: MatchItemsTableProps) {
               {items.map((item, itemIdx) => (
                 <tr key={itemIdx}>
                   <td>{item.drugName}</td>
-                  <td>{item.boxCount ?? '-'}</td>
+                  <td>{formatBoxCount(item)}</td>
                   <td>{formatPackageSize(item)}</td>
                   <td>{formatTotalQuantity(item)}</td>
                   <td>{item.packageLabel || '-'}</td>
@@ -89,7 +76,7 @@ function MatchItemsTable({ items, keyPrefix }: MatchItemsTableProps) {
               key={`${keyPrefix}-${itemIdx}`}
               title={item.drugName}
               fields={[
-                { label: '箱数', value: item.boxCount ?? '-' },
+                { label: '箱数', value: formatBoxCount(item) },
                 { label: '1箱入数', value: formatPackageSize(item) },
                 { label: '総数量', value: formatTotalQuantity(item) },
                 { label: '包装', value: item.packageLabel || '-' },

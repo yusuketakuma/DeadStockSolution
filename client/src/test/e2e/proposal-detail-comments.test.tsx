@@ -22,6 +22,8 @@ type ProposalTimelineEventMock = ProposalTimelineEvent;
 interface ProposalDetailFetchOptions {
   status?: string;
   timeline?: Omit<ProposalTimelineEventMock, 'eventType'>[];
+  items?: Array<Record<string, unknown>>;
+  counterOffers?: Array<Record<string, unknown>>;
 }
 
 function setMatchMedia(matches: boolean) {
@@ -56,7 +58,7 @@ function createProposalDetailFetch(
       valueDifference: 0,
       proposedAt: '2026-03-01T00:00:00.000Z',
     },
-    items: [],
+    items: options.items ?? [],
     pharmacyA: {
       id: 1,
       name: 'テスト薬局',
@@ -74,6 +76,7 @@ function createProposalDetailFetch(
       prefecture: '神奈川県',
     },
     enrichedTimeline: options.timeline?.map((e) => ({ ...e, eventType: 'status_change' as const })),
+    counterOffers: options.counterOffers,
   };
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -102,6 +105,9 @@ function createProposalDetailFetch(
         updatedAt: '2026-03-03T00:00:00.000Z',
       };
       return new Response(JSON.stringify({ message: 'コメントを削除しました' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('/api/exchange/proposals/1/counter-offers/') && url.includes('/respond') && method === 'POST') {
+      return new Response(JSON.stringify({ message: '反対提案に応答しました' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.includes('/api/exchange/proposals/1')) {
       return new Response(JSON.stringify(detail), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -141,7 +147,7 @@ describe('ProposalDetailPage comment actions', () => {
     await user.click(screen.getByRole('button', { name: '関連画面' }));
     expect(screen.getByRole('link', { name: '提案一覧を確認' })).toHaveAttribute('href', '/proposals');
     expect(screen.getByRole('link', { name: '交換履歴を確認' })).toHaveAttribute('href', '/exchange-history');
-    expect(screen.getByRole('link', { name: '印刷用ページを開く' })).toHaveAttribute('href', '/proposals/1/print');
+    expect(screen.getByRole('link', { name: '印刷ページを確認' })).toHaveAttribute('href', '/proposals/1/print');
   });
 
   it('keeps proposals and history reachable when loading the detail fails', async () => {
@@ -258,7 +264,6 @@ describe('ProposalDetailPage comment actions', () => {
   });
 
   it('allows deleting own comment', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const commentsState: ProposalCommentMock[] = [
       {
         id: 101,
@@ -288,12 +293,126 @@ describe('ProposalDetailPage comment actions', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'コメント操作' }));
     await userEvent.click(screen.getByRole('button', { name: '削除' }));
+    expect(screen.getByRole('dialog', { name: 'コメントの削除' })).toHaveTextContent('削除対象コメント');
+    await userEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
       expect(screen.getByText('コメントを削除しました')).toBeInTheDocument();
     });
     expect(screen.getByText('（削除済み）')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument();
+  });
+
+  it('shows package context for pending counter-offer quantities and diffs', async () => {
+    const commentsState: ProposalCommentMock[] = [];
+    createProposalDetailFetch(commentsState, {
+      status: 'confirmed',
+      items: [{
+        id: 501,
+        fromPharmacyId: 1,
+        toPharmacyId: 2,
+        quantity: 200,
+        yakkaValue: 10000,
+        drugName: 'テスト薬A',
+        unit: '錠',
+        packageLabel: 'PTP 100錠',
+        packageQuantity: 100,
+        packageUnit: '錠',
+        yakkaUnitPrice: 50,
+      }],
+      counterOffers: [{
+        id: 9,
+        proposerPharmacyId: 2,
+        responderPharmacyId: 1,
+        status: 'pending',
+        summary: '数量を調整したいです',
+        items: [{ proposalItemId: 501, drugName: 'テスト薬A', quantity: 100 }],
+        responseNote: null,
+        createdAt: '2026-03-02T00:00:00.000Z',
+        respondedAt: null,
+      }],
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/proposals/:id" element={<ProposalDetailPage />} />
+      </Routes>,
+      { route: '/proposals/1' },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('相手薬局から正式な反対提案が届いています。')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/提案項目: テスト薬A 総数量 100錠/)).toBeInTheDocument();
+    expect(screen.getAllByText(/箱数 1箱/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/1箱入数 100錠/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/包装 PTP 100錠/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/総数量 200錠/).length).toBeGreaterThan(0);
+  });
+
+  it('requires confirmation before accepting a pending counter-offer', async () => {
+    const user = userEvent.setup();
+    const commentsState: ProposalCommentMock[] = [];
+    const fetchMock = createProposalDetailFetch(commentsState, {
+      status: 'confirmed',
+      items: [{
+        id: 501,
+        fromPharmacyId: 1,
+        toPharmacyId: 2,
+        quantity: 200,
+        yakkaValue: 10000,
+        drugName: 'テスト薬A',
+        unit: '錠',
+        packageLabel: 'PTP 100錠',
+        packageQuantity: 100,
+        packageUnit: '錠',
+        yakkaUnitPrice: 50,
+      }],
+      counterOffers: [{
+        id: 9,
+        proposerPharmacyId: 2,
+        responderPharmacyId: 1,
+        status: 'pending',
+        summary: '数量を調整したいです',
+        items: [{ proposalItemId: 501, drugName: 'テスト薬A', quantity: 100 }],
+        responseNote: null,
+        createdAt: '2026-03-02T00:00:00.000Z',
+        respondedAt: null,
+      }],
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/proposals/:id" element={<ProposalDetailPage />} />
+      </Routes>,
+      { route: '/proposals/1' },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('相手薬局から正式な反対提案が届いています。')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: '反対提案を承認' }));
+
+    expect(screen.getByRole('dialog', { name: '反対提案の承認' })).toHaveTextContent('テスト薬A');
+    expect(fetchMock.mock.calls.some(([input, init]) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      return url.includes('/counter-offers/9/respond') && init?.method === 'POST';
+    })).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: '反対提案を承認する' }));
+
+    await waitFor(() => {
+      const respondCall = fetchMock.mock.calls.find(([input, init]) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        return url.includes('/counter-offers/9/respond') && init?.method === 'POST';
+      });
+      expect(respondCall).toBeTruthy();
+      expect(JSON.parse(String((respondCall?.[1] as RequestInit | undefined)?.body))).toEqual({
+        decision: 'accepted',
+      });
+    });
   });
 });
 

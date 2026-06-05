@@ -24,6 +24,7 @@ import type { SortOption } from '../components/mobile/MobileSortSheet';
 import { daysUntilExpiry, resolveBucket, bucketVariant, formatDaysRemaining, type RiskBucket } from '../utils/expiry-risk';
 import BarcodeScanButton from '../components/mobile/BarcodeScanButton';
 import AppDropdownMenu from '../components/ui/AppDropdownMenu';
+import { formatBoxCount, formatPackageSize, formatTotalQuantity } from '../utils/package-display';
 
 interface DeadStockItem {
   id: number;
@@ -73,34 +74,6 @@ const DEAD_STOCK_SORT_OPTIONS: SortOption<DeadStockSortKey>[] = [
   { value: 'quantityAsc', label: '数量が少ない順' },
   { value: 'createdDesc', label: '登録日が新しい順' },
 ];
-
-function formatQuantity(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
-}
-
-function isLoosePackage(item: DeadStockItem): boolean {
-  return item.isLoosePackage === true || item.packageForm === 'loose';
-}
-
-function resolveBoxCount(item: DeadStockItem): number | null {
-  if (isLoosePackage(item)) return null;
-  const packageQuantity = Number(item.packageQuantity);
-  if (!Number.isFinite(packageQuantity) || packageQuantity <= 0) return null;
-  const boxCount = Math.floor(item.quantity / packageQuantity);
-  return boxCount > 0 ? boxCount : null;
-}
-
-function formatPackageSize(item: DeadStockItem): string {
-  if (isLoosePackage(item)) return '-';
-  if (!item.packageQuantity) return '-';
-  return `${formatQuantity(item.packageQuantity)}${item.packageUnit || item.unit || ''}`;
-}
-
-function formatBoxCount(item: DeadStockItem): string {
-  if (isLoosePackage(item)) return '対象外';
-  return resolveBoxCount(item)?.toString() ?? '-';
-}
 
 interface EnrichedItem extends DeadStockItem {
   daysRemaining: number | null;
@@ -411,9 +384,8 @@ export default function DeadStockListPage() {
                   <tr>
                     <th>薬品名</th>
                     <th>コード</th>
-                    <th>数量</th>
-                    <th>単位</th>
-                    <th>出品可能箱数</th>
+                      <th>総数量</th>
+                      <th>出品可能箱数</th>
                     <th>1箱入数</th>
                     <th>包装</th>
                     <th>薬価(単価)</th>
@@ -429,8 +401,7 @@ export default function DeadStockListPage() {
                     <tr key={item.id}>
                       <td>{item.drugName}</td>
                       <td className="small text-muted">{item.drugCode}</td>
-                      <td>{item.quantity}</td>
-                      <td>{item.unit}</td>
+                      <td>{formatTotalQuantity(item)}</td>
                       <td>{formatBoxCount(item)}</td>
                       <td>{formatPackageSize(item)}</td>
                       <td>{item.packageLabel || '-'}</td>
@@ -479,8 +450,7 @@ export default function DeadStockListPage() {
                   title={item.drugName}
                   subtitle={item.drugCode || '-'}
                   fields={[
-                    { label: '数量', value: item.quantity },
-                    { label: '単位', value: item.unit || '-' },
+                    { label: '総数量', value: formatTotalQuantity(item) },
                     { label: '出品可能箱数', value: formatBoxCount(item) },
                     { label: '1箱入数', value: formatPackageSize(item) },
                     { label: '包装', value: item.packageLabel || '-' },
@@ -528,7 +498,22 @@ export default function DeadStockListPage() {
         show={pendingDeleteId !== null}
         title="デッドストックデータの削除"
         body={pendingItem
-          ? `「${pendingItem.drugName}」をデッドストックリストから削除します。よろしいですか？`
+          ? (
+            <div className="dl-stack-gap-sm">
+              <p className="mb-0">
+                「{pendingItem.drugName}」をデッドストックリストから削除します。対象を確認してください。
+              </p>
+              <ul className="small mb-0 ps-3">
+                <li>{`薬剤コード: ${pendingItem.drugCode || '-'}`}</li>
+                <li>{`総数量: ${formatTotalQuantity(pendingItem)}`}</li>
+                <li>{`出品可能箱数: ${formatBoxCount(pendingItem)}`}</li>
+                <li>{`1箱入数: ${formatPackageSize(pendingItem)}`}</li>
+                <li>{`包装: ${pendingItem.packageLabel || '-'}`}</li>
+                <li>{`使用期限: ${pendingItem.expirationDate || '-'}`}</li>
+                <li>{`ロット: ${pendingItem.lotNumber || '-'}`}</li>
+              </ul>
+            </div>
+          )
           : 'このデッドストックデータを削除します。よろしいですか？'}
         confirmLabel="削除する"
         confirmVariant="danger"
