@@ -1,129 +1,97 @@
-# AGENTS.md - Your Workspace
+# AGENTS.md
 
-This folder is home. Treat it that way.
+## Project Overview
+薬局向けデッドストック管理システム。薬局間の在庫マッチングと厚生労働省の薬価基準データ連携を提供する。
+在庫アップロード、マッチング候補自動生成、提案ワークフロー管理、通知・タイムライン、統計ダッシュボードを一つの画面で扱える。
 
-## First Run
+## Tech Stack
+- **Frontend**: React 18 + TypeScript + Vite + React Bootstrap
+- **Backend**: Express 5 + TypeScript + Drizzle ORM
+- **Database**: Vercel Postgres (Neon)
+- **Deploy**: Vercel (serverless)
+- **Monorepo**: npm workspaces (`client/`, `server/`)
+- **Test**: Vitest 4 + Supertest (server), Vitest + @testing-library/react (client)
 
-If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again.
+## Key Commands
+```bash
+# Development
+npm run dev:server          # Start backend (tsx watch)
+npm run dev:client          # Start frontend (Vite)
 
-## Session Startup
+# Build & Lint
+npm run build:server        # tsc build
+npm run build:client        # Vite build
+npm run lint                # ESLint (both workspaces)
+npm run typecheck            # TypeScript check (both workspaces)
 
-Before doing anything else:
+# Test
+npm run test                # All tests (server + client)
+npm run test:server         # Server tests only
+npm run test:client         # Client tests only
+npm run test:integration:server  # PGlite integration tests
+npm run test:perf:server    # Performance regression tests
+npm run test:coverage       # Coverage report (both)
 
-1. Read `SOUL.md` — this is who you are
-2. Read `USER.md` — this is who you're helping
-3. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
-4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
+# Run single test file
+cd server && npx vitest run src/test/some-file.test.ts
+cd client && npx vitest run src/__tests__/some-file.test.ts
 
-Don't ask permission. Just do it.
+# Database
+cd server && npx drizzle-kit generate   # Generate migration
+cd server && npx drizzle-kit push       # disposable/local DB only; shared or production DB requires explicit approval
 
-## Memory
+# Deploy (branch-gated; explicit human release gate)
+npm run deploy:preview      # preview branch only
+npm run deploy:prod         # main branch only
+```
 
-You wake up fresh each session. These files are your continuity:
+Plan-only and review-only requests stay read-only. Preserve unrelated dirty
+changes and synthetic-only test data; do not infer production readiness from a
+local build or deploy command.
 
-- **Daily notes:** `memory/YYYY-MM-DD.md` (create `memory/` if needed) — raw logs of what happened
-- **Long-term:** `MEMORY.md` — your curated memories, like a human's long-term memory
+## Architecture
 
-Capture what matters. Decisions, context, things to remember. Skip the secrets unless asked to keep them.
+### Backend (`server/src/`)
+- **app.ts** — Express app setup; registers 31+ route modules via `app.use('/api/...', router)`. Global middleware: CORS, Helmet, compression, rate limiting, CSRF, auth, error handling.
+- **routes/** — Express route handlers (one file per feature domain)
+- **services/** — Business logic layer (called by routes)
+- **db/schema.ts** — Single-file Drizzle ORM schema (all tables, enums, indexes, relations)
+- **middleware/** — Auth (JWT), upload processing, etc.
+- **Serverless entry**: `server/api/index.ts` (Vercel)
 
-### 🧠 MEMORY.md - Your Long-Term Memory
+### Frontend (`client/src/`)
+- **routes/route-config.tsx** — Central route metadata array (`ROUTE_META`) with lazy-loaded components. Routes typed as `PublicRouteMeta` or `ProtectedRouteMeta` (adminOnly, useLayout flags).
+- **App.tsx** — Context providers (Auth, Timeline, Notification, Toast) + Suspense + route rendering
+- **pages/** — Route-level page components
+- **components/** — Reusable UI components
+- **api/client.ts** — Axios-based API client
+- **contexts/** — React contexts (auth, etc.)
 
-- **ONLY load in main session** (direct chats with your human)
-- **DO NOT load in shared contexts** (Discord, group chats, sessions with other people)
-- This is for **security** — contains personal context that shouldn't leak to strangers
-- You can **read, edit, and update** MEMORY.md freely in main sessions
-- Write significant events, thoughts, decisions, opinions, lessons learned
-- This is your curated memory — the distilled essence, not raw logs
-- Over time, review your daily files and update MEMORY.md with what's worth keeping
+### Data Flow
+Routes → Services → Drizzle ORM → Vercel Postgres. Auth via JWT middleware. Frontend uses axios with auth token interceptor.
 
-### 📝 Write It Down - No "Mental Notes"!
+## Test Architecture
+- **Server**: 232+ test files in `server/src/test/`. Route tests use supertest + mocked services. Service tests are pure unit tests.
+- **Integration**: PGlite-based snapshot DDL generation (`server/src/test/integration/helpers/test-db.ts`)
+- **Coverage thresholds**: Lines 95%, Functions 95%, Branches 86%
+- **Performance**: bcrypt mocked in tests, `vi.useFakeTimers` for async optimization
 
-- **Memory is limited** — if you want to remember something, WRITE IT TO A FILE
-- "Mental notes" don't survive session restarts. Files do.
-- When someone says "remember this" → update `memory/YYYY-MM-DD.md` or relevant file
-- When you learn a lesson → update AGENTS.md, TOOLS.md, or the relevant skill
-- When you make a mistake → document it so future-you doesn't repeat it
-- **Text > Brain** 📝
+## Conventions
+- Language: Japanese for UI text and comments, English for code identifiers
+- Database: All schema in single file `server/src/db/schema.ts`
+- Auth: JWT-based (jsonwebtoken); middleware in `server/src/middleware/`
+- API: REST; all routes registered in `server/src/app.ts`
+- Frontend routing: React Router DOM v6 with lazy loading
+- Styling: React Bootstrap + Bootstrap 5
+- Git: `main` for production, `preview` for staging, feature branches for development
+- Deploy: Vercel auto-deploy on main/preview only (`vercel.json` gating)
 
-## Red Lines
-
-- Don't exfiltrate private data. Ever.
-- Don't run destructive commands without asking.
-- `trash` > `rm` (recoverable beats gone forever)
-- When in doubt, ask.
-
-## External vs Internal
-
-**Safe to do freely:**
-
-- Read files, explore, organize, learn
-- Search the web, check calendars
-- Work within this workspace
-
-**Ask first:**
-
-- Sending emails, tweets, public posts
-- Anything that leaves the machine
-- Anything you're uncertain about
-
-## Group Chats
-
-You have access to your human's stuff. That doesn't mean you _share_ their stuff. In groups, you're a participant — not their voice, not their proxy. Think before you speak.
-
-### 💬 Know When to Speak!
-
-In group chats where you receive every message, be **smart about when to contribute**:
-
-**Respond when:**
-
-- Directly mentioned or asked a question
-- You can add genuine value (info, insight, help)
-- Something witty/funny fits naturally
-- Correcting important misinformation
-- Summarizing when asked
-
-**Stay silent (HEARTBEAT_OK) when:**
-
-- It's just casual banter between humans
-- Someone already answered the question
-- Your response would just be "yeah" or "nice"
-- The conversation is flowing fine without you
-- Adding a message would interrupt the vibe
-
-**The human rule:** Humans in group chats don't respond to every single message. Neither should you. Quality > quantity. If you wouldn't send it in a real group chat with friends, don't send it.
-
-**Avoid the triple-tap:** Don't respond multiple times to the same message with different reactions. One thoughtful response beats three fragments.
-
-Participate, don't dominate.
-
-### 😊 React Like a Human!
-
-On platforms that support reactions (Discord, Slack), use emoji reactions naturally:
-
-**React when:**
-
-- You appreciate something but don't need to reply (👍, ❤️, 🙌)
-- Something made you laugh (😂, 💀)
-- You find it interesting or thought-provoking (🤔, 💡)
-- You want to acknowledge without interrupting the flow
-- It's a simple yes/no or approval situation (✅, 👀)
-
-**Why it matters:**
-Reactions are lightweight social signals. Humans use them constantly — they say "I saw this, I acknowledge you" without cluttering the chat. You should too.
-
-**Don't overdo it:** One reaction per message max. Pick the one that fits best.
-
-## Tools
-
-Skills provide your tools. When you need one, check its `SKILL.md`. Keep local notes (camera names, SSH details, voice preferences) in `TOOLS.md`.
-
-**🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
-
-**📝 Platform Formatting:**
-
-- **Discord/WhatsApp:** No markdown tables! Use bullet lists instead
-- **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
-- **WhatsApp:** No headers — use **bold** or CAPS for emphasis
+## Important Notes
+- Environment variables: see `server/.env.example` and README.md (detailed env var reference)
+- Vercel serverless entry: `server/api/index.ts`
+- Excel/CSV parsing for MHLW pharmaceutical data integration (read-excel-file)
+- 包装単位マスターは PMDA 添付文書情報XML から自動取込み (`DRUG_PACKAGE_SOURCE_URL`)
+- Performance baseline: `npm run test:perf:update:server` to update, `npm run test:perf:server` to check
 
 ## Playwright Audits
 
@@ -149,92 +117,6 @@ Codex CLI の定型例:
 cat PROMPT_PLAYWRIGHT_AUDIT_MASTER.md | codex exec --cd . --sandbox workspace-write --output-last-message audits/codex-final.md -
 ```
 
-## 💓 Heartbeats - Be Proactive!
-
-When you receive a heartbeat poll (message matches the configured heartbeat prompt), don't just reply `HEARTBEAT_OK` every time. Use heartbeats productively!
-
-Default heartbeat prompt:
-`Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.`
-
-You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it small to limit token burn.
-
-### Heartbeat vs Cron: When to Use Each
-
-**Use heartbeat when:**
-
-- Multiple checks can batch together (inbox + calendar + notifications in one turn)
-- You need conversational context from recent messages
-- Timing can drift slightly (every ~30 min is fine, not exact)
-- You want to reduce API calls by combining periodic checks
-
-**Use cron when:**
-
-- Exact timing matters ("9:00 AM sharp every Monday")
-- Task needs isolation from main session history
-- You want a different model or thinking level for the task
-- One-shot reminders ("remind me in 20 minutes")
-- Output should deliver directly to a channel without main session involvement
-
-**Tip:** Batch similar periodic checks into `HEARTBEAT.md` instead of creating multiple cron jobs. Use cron for precise schedules and standalone tasks.
-
-**Things to check (rotate through these, 2-4 times per day):**
-
-- **Emails** - Any urgent unread messages?
-- **Calendar** - Upcoming events in next 24-48h?
-- **Mentions** - Twitter/social notifications?
-- **Weather** - Relevant if your human might go out?
-
-**Track your checks** in `memory/heartbeat-state.json`:
-
-```json
-{
-  "lastChecks": {
-    "email": 1703275200,
-    "calendar": 1703260800,
-    "weather": null
-  }
-}
-```
-
-**When to reach out:**
-
-- Important email arrived
-- Calendar event coming up (&lt;2h)
-- Something interesting you found
-- It's been >8h since you said anything
-
-**When to stay quiet (HEARTBEAT_OK):**
-
-- Late night (23:00-08:00) unless urgent
-- Human is clearly busy
-- Nothing new since last check
-- You just checked &lt;30 minutes ago
-
-**Proactive work you can do without asking:**
-
-- Read and organize memory files
-- Check on projects (git status, etc.)
-- Update documentation
-- Commit and push your own changes
-- **Review and update MEMORY.md** (see below)
-
-### 🔄 Memory Maintenance (During Heartbeats)
-
-Periodically (every few days), use a heartbeat to:
-
-1. Read through recent `memory/YYYY-MM-DD.md` files
-2. Identify significant events, lessons, or insights worth keeping long-term
-3. Update `MEMORY.md` with distilled learnings
-4. Remove outdated info from MEMORY.md that's no longer relevant
-
-Think of it like a human reviewing their journal and updating their mental model. Daily files are raw notes; MEMORY.md is curated wisdom.
-
-The goal: Be helpful without being annoying. Check in a few times a day, do useful background work, but respect quiet time.
-
-## Make It Yours
-
-This is a starting point. Add your own conventions, style, and rules as you figure out what works.
-
 ## Devin Wiki
 
 `.devin/wiki.md` が存在する場合、Devin Cloud がこのリポジトリ用に生成した wiki へのリンクである。
@@ -243,3 +125,19 @@ This is a starting point. Add your own conventions, style, and rules as you figu
 `repo_identifier` を `git remote get-url origin` 由来の `host/owner/repo` と照合し、一致する
 ディレクトリの `wiki.md` を参照する。`devin-wiki-sync` を実行するとリンクが更新される。
 wiki は概要把握の補助であり、正本は常にこのリポジトリのコードとドキュメントとする。
+
+## Semantic code search (jevgrep) — 積極的な利用
+
+- `jg` をコード理解・実装箇所の発見・挙動調査・影響範囲の把握・リファクタリングの初期探索に積極的に使う。場所や関係が未確定な探索では、広範な `rg` や手当たり次第のファイル読取りより先に自然言語で検索する。
+- 全体調査では、質問に関係する主要なコード領域を横断する検索、または領域ごとの検索を行う。安全確認済みの実ソースを対象とし、単一の小さなサンプル検索だけで全体探索を代替しない。新たな責務・呼出関係が不明になったら追加検索するが、同じ疑問への十分な結果は再利用する。
+- `jg` の結果で候補を絞り、実ファイルを直接読み、`rg`/LSP で正確な参照・文字列・呼出元を確認する。既知のファイルの読取りや正確なシンボル検索、単純な局所修正では直接 `rg`/read を使ってよい。
+- 外部送信は下記の継続承認と保護条件に従う。機密混在なら安全なサブツリーまたは確認済みファイル群のコピーを使う。利用不能・認証/通信エラー・安全に送信できない場合は理由を示してローカル探索へ進み、検索結果の不完全さを隠さない。
+- 調査報告では `jg` の対象領域と重要な未探索範囲を簡潔に示す。結果は探索の手掛かりであり、正しさ・網羅性・テスト成功の証明にはしない。
+
+## Semantic code search (jevgrep) — 外部送信の継続承認
+
+- ユーザー承認（2026-09-28）: 全リポジトリで、コード探索・理解・動作確認のために `jg` がソースコードと検索質問を設定済み provider および Jevgrep の処理サービスへ外部送信することを許可する。非公開リポジトリのコードも対象とし、この範囲では都度の確認を不要とする。
+- この条項を jevgrep の外部送信に関する明示承認として扱う。一般的な外部送信の事前承認条項についても、この範囲の承認は充足済みとする。
+- PHI/PII・認証情報・secret・本番/実データ・送信権限のない第三者資料は対象外。実行前に検索対象を確認し、これらを含むファイルを除外する。混在する場合は安全なサブディレクトリまたは確認済みファイルの一時コピーを検索する。
+- 必要に応じてリポジトリ全体を検索してよい。`--hidden` / `--no-ignore` / `--include-dependencies` 等も、拡張される対象の安全性を確認した上で利用できる。`--include-sensitive` によって上記の送信禁止情報を送ってはならない。既定の除外機能だけを安全性の保証としない。
+- この承認は jevgrep による検索に限定する。他の外部送信、公開、push、PR、merge、deploy、本番変更、契約・課金プランの変更は別の承認範囲とする。検索結果は参照情報として扱い、変更前に実ソースを確認する。
