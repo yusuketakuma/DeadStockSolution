@@ -334,9 +334,9 @@ describe('completeProposal', () => {
     await expect(completeProposal(proposalId, pharmacyA.id)).rejects.toThrow('まだ確定されていません');
   });
 
-  it('在庫全量交換はDB制約(quantity>0)によりエラーになる', async () => {
-    // dead_stock_items テーブルには chk_dead_stock_quantity (quantity > 0) 制約がある。
-    // 全量交換で quantity=0 にしようとすると制約違反でロールバックする。
+  it('在庫全量交換は isAvailable=false に設定されて正常に完了する', async () => {
+    // dead_stock_items には chk_dead_stock_quantity (quantity > 0) 制約があるため、
+    // 全量消費時は quantity は元の値のまま残し isAvailable=false にする。
     const { pharmacyA, pharmacyB, itemA, itemB } = await setupTwoPharmaciesWithStock({
       priceA: '200.00',
       priceB: '200.00',
@@ -350,11 +350,16 @@ describe('completeProposal', () => {
     await acceptProposal(proposalId, pharmacyB.id);
     await acceptProposal(proposalId, pharmacyA.id);
 
-    // 全量交換は CHECK 制約違反になる
-    await expect(completeProposal(proposalId, pharmacyA.id)).rejects.toThrow();
+    // 全量交換は制約に抵触せず完了する
+    await completeProposal(proposalId, pharmacyA.id);
 
-    // トランザクションがロールバックされ、ステータスはconfirmedのまま
     const [proposal] = await testDb.select().from(schema.exchangeProposals).where(eq(schema.exchangeProposals.id, proposalId));
-    expect(proposal.status).toBe('confirmed');
+    expect(proposal.status).toBe('completed');
+
+    // 全量消費されたアイテムは isAvailable=false になる
+    const [stockA] = await testDb.select().from(schema.deadStockItems).where(eq(schema.deadStockItems.id, itemA.id));
+    expect(stockA.isAvailable).toBe(false);
+    const [stockB] = await testDb.select().from(schema.deadStockItems).where(eq(schema.deadStockItems.id, itemB.id));
+    expect(stockB.isAvailable).toBe(false);
   });
 });
