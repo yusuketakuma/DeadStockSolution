@@ -66,13 +66,7 @@
     "@rollup/plugin-terser": "1.0.0",
     "tmp": "0.2.5",
     "serialize-javascript": "^6.0.2 || ^7.0.5",
-    "esbuild": "^0.25.0",
-    "@remotion/zod-types": {
-      "zod": "^4.6.6"
-    },
-    "@remotion/studio": {
-      "zod": "^4.6.6"
-    }
+    "esbuild": "^0.25.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",
@@ -80,9 +74,9 @@
     "@eslint/js": "^10.0.1",
     "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.58.2",
-    "@remotion/cli": "^4.0.438",
-    "@remotion/transitions": "^4.0.438",
-    "@remotion/zod-types": "^4.0.438",
+    "@remotion/cli": "^4.0.545",
+    "@remotion/transitions": "^4.0.545",
+    "@remotion/zod-types": "^4.0.545",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -95,7 +89,7 @@
     "lint-staged": "^16.4.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "remotion": "^4.0.438",
+    "remotion": "^4.0.545",
     "typescript-eslint": "^8.57.1",
     "vitest": "^4.1.0"
   },
