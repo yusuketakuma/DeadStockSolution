@@ -127,7 +127,7 @@ jobs:
         run: npm run test:integration:server
 
   proposal-flow-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -175,7 +175,7 @@ jobs:
         run: npm run test:e2e:proposal-flow
 
   login-dashboard-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:

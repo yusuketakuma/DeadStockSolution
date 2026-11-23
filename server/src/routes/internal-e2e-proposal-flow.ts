@@ -36,6 +36,14 @@ function isAuthorized(req: { headers: Record<string, unknown> }): boolean {
   return authHeader === `Bearer ${secret}`;
 }
 
+// 固定日付だと日付経過で期限切れになりマッチング対象外になるため、実行日基準で算出する
+function futureIsoDate(monthsAhead: number): string {
+  const date = new Date();
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() + monthsAhead);
+  return date.toISOString().slice(0, 10);
+}
+
 async function loadTestAccounts(): Promise<TestAccountRow[]> {
   return db.select({
     id: pharmacies.id,
@@ -119,6 +127,9 @@ router.post('/seed', async (req, res: Response) => {
     const pharmacyIds = [actor.id, counterparty.id];
     await resetFixtureData(pharmacyIds);
 
+    const actorExpirationDate = futureIsoDate(6);
+    const counterpartyExpirationDate = futureIsoDate(7);
+
     const actorDeadUploadId = await insertUpload(actor.id, 'dead_stock');
     const actorUsedUploadId = await insertUpload(actor.id, 'used_medication');
     const counterpartyDeadUploadId = await insertUpload(counterparty.id, 'dead_stock');
@@ -133,8 +144,8 @@ router.post('/seed', async (req, res: Response) => {
       unit: '錠',
       yakkaUnitPrice: '100',
       yakkaTotal: '10000',
-      expirationDate: '2026-06-30',
-      expirationDateIso: '2026-06-30',
+      expirationDate: actorExpirationDate,
+      expirationDateIso: actorExpirationDate,
       lotNumber: 'LOT-A',
       isAvailable: true,
     }).returning({ id: deadStockItems.id });
@@ -148,8 +159,8 @@ router.post('/seed', async (req, res: Response) => {
       unit: '錠',
       yakkaUnitPrice: '100',
       yakkaTotal: '10000',
-      expirationDate: '2026-07-31',
-      expirationDateIso: '2026-07-31',
+      expirationDate: counterpartyExpirationDate,
+      expirationDateIso: counterpartyExpirationDate,
       lotNumber: 'LOT-B',
       isAvailable: true,
     }).returning({ id: deadStockItems.id });
