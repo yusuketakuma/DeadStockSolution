@@ -10,10 +10,28 @@ jobs:
   reset-preview-branch:
     name: Reset preview branch from parent
     runs-on: ubuntu-latest
-    if: ${{ vars.NEON_PROJECT_ID != '' && secrets.NEON_API_KEY != '' }}
     steps:
+      # ジョブレベルの if では secrets コンテキストを参照できない（ワークフロー全体が無効になる）ため、
+      # ステップで設定有無を判定する。
+      - name: Check Neon configuration
+        id: neon-config
+        env:
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          if [ -n "$NEON_PROJECT_ID" ] && [ -n "$NEON_API_KEY" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping Neon preview DB sync."
+            echo "Set repository variable: NEON_PROJECT_ID"
+            echo "Optional repository variable: NEON_PREVIEW_BRANCH (default: preview)"
+            echo "Set repository secret: NEON_API_KEY"
+          fi
+
       - name: Reset Neon preview branch to parent head
         id: reset-neon-preview
+        if: steps.neon-config.outputs.configured == 'true'
         uses: neondatabase/reset-branch-action@v1
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
@@ -22,18 +40,7 @@ jobs:
           api_key: ${{ secrets.NEON_API_KEY }}
 
       - name: Show reset result
+        if: steps.neon-config.outputs.configured == 'true'
         run: |
           echo "Branch ID: ${{ steps.reset-neon-preview.outputs.branch_id }}"
           echo "Host: ${{ steps.reset-neon-preview.outputs.host }}"
-
-  skip-with-guide:
-    name: Missing Neon config
-    runs-on: ubuntu-latest
-    if: ${{ !(vars.NEON_PROJECT_ID != '' && secrets.NEON_API_KEY != '') }}
-    steps:
-      - name: Show required configuration
-        run: |
-          echo "Skipping Neon preview DB sync."
-          echo "Set repository variable: NEON_PROJECT_ID"
-          echo "Optional repository variable: NEON_PREVIEW_BRANCH (default: preview)"
-          echo "Set repository secret: NEON_API_KEY"
