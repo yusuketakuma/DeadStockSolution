@@ -1,18 +1,23 @@
 name: Preview Smoke
 
 on:
-  push:
-    branches:
-      - preview
+  # Cloudflare への preview デプロイ完了後に、デプロイ済み URL へスモークを実行する
+  workflow_run:
+    workflows: [Cloudflare Deploy]
+    types: [completed]
+    branches: [preview]
   workflow_dispatch:
 
 jobs:
   smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -25,10 +30,6 @@ jobs:
 
       - name: Run preview release-equivalent gate
         env:
+          # 例: https://deadstocksolution-preview.<account>.workers.dev
           RELEASE_SMOKE_BASE_URL: ${{ vars.PREVIEW_BRANCH_SMOKE_BASE_URL || vars.PREVIEW_SMOKE_BASE_URL }}
-          PREVIEW_PROTECTION_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          SMOKE_VERCEL_GITHUB_SHA: ${{ github.sha }}
-          SMOKE_VERCEL_GITHUB_REF: ${{ github.ref_name }}
-          SMOKE_RESOLVE_TIMEOUT_MS: "600000"
         run: npm run verify:release

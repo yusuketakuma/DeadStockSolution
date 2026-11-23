@@ -64,6 +64,7 @@ import { sql } from 'drizzle-orm';
 import { logger } from './services/logger';
 import { getOpenClawHealthSnapshot } from './services/openclaw/health-service';
 import { resolveTrustProxySetting } from './utils/trust-proxy';
+import { isCloudflareWorkersRuntime } from './utils/runtime';
 
 const app = express();
 app.disable('x-powered-by');
@@ -234,9 +235,12 @@ app.use((_req, res, next) => {
   res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()');
   next();
 });
-app.use(compression({
-  threshold: 1024,
-}));
+// Workers ではエッジが Content-Encoding に応じて自動圧縮するため、ここで圧縮すると二重圧縮になる
+if (!isCloudflareWorkersRuntime()) {
+  app.use(compression({
+    threshold: 1024,
+  }));
+}
 app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buf) => {

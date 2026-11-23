@@ -2,7 +2,7 @@ import * as Sentry from '@sentry/node';
 
 // 3省2ガイドライン準拠: PII（個人情報）をSentryに送信しない
 // email, name, address, phone, fax 等を除去する
-function scrubPii(event: Sentry.ErrorEvent): Sentry.ErrorEvent {
+export function scrubPii(event: Sentry.ErrorEvent): Sentry.ErrorEvent {
   // user コンテキストから PII を除去
   if (event.user) {
     delete event.user.email;

@@ -1,5 +1,5 @@
 import { and, eq, exists, gte, inArray, ne, notExists, or, sql } from 'drizzle-orm';
-import { db } from '../../config/database';
+import { db, isRequestScopedDatabase } from '../../config/database';
 import {
   deadStockItems,
   deadStockReservations,
@@ -71,6 +71,8 @@ function bindParam<T>(name: string): T {
 function getPreparedMatchingDeadStockByPharmacyId(): PreparedMatchingDeadStockByPharmacyId | null {
   const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
   if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') return null;
+  // Workers ではリクエストごとに接続が変わるため、接続に紐づく prepared statement をキャッシュしない
+  if (isRequestScopedDatabase()) return null;
   if (prepared_matching_dead_stock_by_pharmacy_id) {
     return prepared_matching_dead_stock_by_pharmacy_id;
   }

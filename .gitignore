@@ -193,3 +193,5 @@ stats.html
 playwright-report/
 test-results/
 .omx/
+.dev.vars*
+.wrangler/

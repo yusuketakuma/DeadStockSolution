@@ -87,6 +87,42 @@ describe('upload-confirm-job-service enqueue locks', () => {
     expect(tx.execute).toHaveBeenCalledTimes(2);
   });
 
+  it('stores null-prototype mappings (from parseMapping) as plain objects', async () => {
+    const values = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([
+        { id: 124, status: 'pending', canceledAt: null, cancelRequestedAt: null },
+      ]),
+    });
+    const tx = {
+      execute: vi.fn().mockResolvedValue(undefined),
+      select: vi.fn().mockImplementation(() => createCountSelectChain(0)),
+      insert: vi.fn().mockReturnValue({ values }),
+    };
+    mocks.db.transaction.mockImplementation(async (callback: (executor: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const mapping = Object.assign(Object.create(null) as Record<string, string | null>, {
+      drug_code: '0',
+      drug_name: '1',
+      quantity: '2',
+      unit: null,
+    });
+
+    await enqueueUploadConfirmJob({
+      pharmacyId: 7,
+      uploadType: 'dead_stock',
+      originalFilename: 'dead-stock.xlsx',
+      headerRowIndex: 0,
+      mapping: mapping as never,
+      applyMode: 'replace',
+      deleteMissing: false,
+      fileBuffer: Buffer.from('dummy-file'),
+    });
+
+    const inserted = values.mock.calls[0][0] as { mappingJson: Record<string, unknown> };
+    expect(Object.getPrototypeOf(inserted.mappingJson)).toBe(Object.prototype);
+    expect(inserted.mappingJson).toEqual({ drug_code: '0', drug_name: '1', quantity: '2', unit: null });
+  });
+
   it('returns deduplicated existing job when idempotency key matches', async () => {
     const tx = {
       execute: vi.fn().mockResolvedValue(undefined),
