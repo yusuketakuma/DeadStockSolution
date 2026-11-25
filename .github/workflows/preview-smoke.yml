@@ -25,5 +25,11 @@ jobs:
       - name: Run preview release-equivalent gate
         env:
           # 例: https://deadstocksolution-preview.<account>.workers.dev
-          RELEASE_SMOKE_BASE_URL: ${{ vars.PREVIEW_BRANCH_SMOKE_BASE_URL || vars.PREVIEW_SMOKE_BASE_URL }}
-        run: npm run verify:release
+          # 旧 Vercel の PREVIEW_BRANCH_SMOKE_BASE_URL には戻らない（旧環境を検証してしまうため）
+          RELEASE_SMOKE_BASE_URL: ${{ vars.PREVIEW_SMOKE_BASE_URL }}
+        run: |
+          if [ -z "$RELEASE_SMOKE_BASE_URL" ]; then
+            echo "::error::PREVIEW_SMOKE_BASE_URL（Cloudflare のプレビュー URL）を GitHub 変数に設定してください"
+            exit 1
+          fi
+          npm run verify:release

@@ -1,9 +1,10 @@
-import type { Pool } from 'pg';
+import { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 import { createDatabase, db, getDatabase, isRequestScopedDatabase, runWithDatabase } from '../config/database';
 
 function createPoolStub(): Pool {
-  return { query: async () => ({ rows: [] }) } as unknown as Pool;
+  // 接続文字列なしの Pool は接続しない限り I/O しないので、識別用のスタブとして使える
+  return new Pool();
 }
 
 describe('request-scoped database', () => {

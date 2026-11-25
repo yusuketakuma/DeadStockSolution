@@ -47,7 +47,7 @@ npx wrangler hyperdrive create deadstocksolution-preview --caching-disabled --co
 | Variable | `CLOUDFLARE_ACCOUNT_ID` | 手順 1 のアカウント ID |
 | Variable | `CLOUDFLARE_HYPERDRIVE_ID_PRODUCTION` | 手順 2 の本番 ID |
 | Variable | `CLOUDFLARE_HYPERDRIVE_ID_PREVIEW` | 手順 2 のステージング ID |
-| Variable | `PREVIEW_SMOKE_BASE_URL` | `https://deadstocksolution-preview.<サブドメイン>.workers.dev` |
+| Variable | `PREVIEW_SMOKE_BASE_URL` | `https://deadstocksolution-preview.<サブドメイン>.workers.dev`（必須。旧 `PREVIEW_BRANCH_SMOKE_BASE_URL` は使わない） |
 | Secret（任意） | `PRODUCTION_DATABASE_URL` / `PREVIEW_DATABASE_URL` | デプロイ時のアカウントシード用の直接接続 URL |
 | Secret（任意） | `TEST_PHARMACY_SEED_JSON` | 旧 Vercel と同じ値 |
 
@@ -84,7 +84,7 @@ rm .env.cf-production .env.cf-production.filtered
 1. `preview` ブランチへ push → `Cloudflare Deploy` → `Preview Smoke` が走る。
 2. `https://deadstocksolution-preview.<サブドメイン>.workers.dev/api/health` が `db.status: ok` を返すことを確認。
 3. ログイン、在庫アップロード（プレビュー → 確定）、1 分以内に確定ジョブが完了することを確認。
-4. **`main` へマージする直前に、Vercel の Cron だけを止める**（Vercel → Settings → Cron Jobs → Disable）。
+4. **`main` へマージする直前に、Vercel の Cron だけを止める**（Vercel のプロジェクト → サイドバーの Schedules → Cron Jobs → Disable Cron Jobs）。
    マージすると本番 Worker がデプロイされて Cloudflare の Cron Triggers が動き始めるため、止めないと定期ジョブが二重に実行される。
    どちらも同じ Neon DB を使うので、画面と API はドメイン切替まで Vercel のままでよい。プロジェクト自体はまだ止めない。
 5. `main` へマージ → 本番 Worker がデプロイされる。`https://deadstocksolution.<サブドメイン>.workers.dev/api/health` を確認する。
@@ -108,6 +108,9 @@ rm .env.cf-production .env.cf-production.filtered
 | DNS | OS のリゾルバがない | 外部取得 URL の検証は DNS over HTTPS（cloudflare-dns.com）で解決 |
 | `worker_threads` / `child_process` | 使えない | 解析はインライン実行にフォールバック（既存挙動）。OpenClaw CLI 連携は Vercel 同様に使えない |
 | レスポンス後の処理 | `void` で投げた非同期処理はレスポンス後に打ち切られることがある | 重要な処理は Cron（アップロード確定ジョブ等）で再実行される |
+| 長時間の手動同期 | 管理画面のマスター更新は応答後に続けると打ち切られる | Workers では同期の完了まで応答を返さない（画面側は最大 10 分待つ） |
+| リアルタイム配信（SSE） | Redis がないと別の isolate で起きた更新が届かない | Workers で `REALTIME_REDIS_URL` 未設定なら `/api/realtime/stream` は 503 を返し、画面は定期ポーリングで更新する |
+| Cron の失敗 | 内部 API のエラーをログだけにすると実行結果が成功に見える | 失敗したジョブがあれば scheduled ハンドラが例外を投げ、Cron Events に失敗として残る |
 
 ## 手元からデプロイする
 

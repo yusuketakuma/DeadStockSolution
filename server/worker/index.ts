@@ -127,19 +127,26 @@ async function runScheduledJobs(controller: ScheduledController, env: WorkerEnv,
     return;
   }
 
+  // 1 つが失敗しても残りのジョブは実行し、最後に失敗をまとめて投げて Cron の実行結果に反映する
+  const failures: string[] = [];
   for (const job of jobs) {
     const secret = resolveJobSecret(job, env);
     if (!secret) {
       logger.error('Cron secret is not configured', { path: job.path, secretEnvKey: job.secretEnvKey });
+      failures.push(`${job.path}: secret not configured`);
       continue;
     }
     const response = await handleWithRequestDatabase(buildCronRequest(job, secret), env, ctx);
     const body = await response.text();
     if (!response.ok) {
       logger.error('Cron job failed', { path: job.path, status: response.status, body: body.slice(0, 500) });
+      failures.push(`${job.path}: HTTP ${response.status}`);
       continue;
     }
     logger.info('Cron job completed', { path: job.path, status: response.status });
+  }
+  if (failures.length > 0) {
+    throw new Error(`Cron jobs failed (${controller.cron}): ${failures.join(', ')}`);
   }
 }
 

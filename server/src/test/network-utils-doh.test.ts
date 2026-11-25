@@ -7,7 +7,7 @@ function dohResponse(body: unknown, status = 200): Response {
 
 describe('resolveHostnameViaDoh', () => {
   it('returns A and AAAA addresses and ignores CNAME answers', async () => {
-    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url) => {
       const type = new URL(String(url)).searchParams.get('type');
       if (type === 'A') {
         return dohResponse({
@@ -22,7 +22,7 @@ describe('resolveHostnameViaDoh', () => {
       return dohResponse({ Status: 0, Answer: [{ type: 28, data: '2001:db8::1' }] });
     });
 
-    const addresses = await resolveHostnameViaDoh('www.example.com', fetchImpl as unknown as typeof fetch);
+    const addresses = await resolveHostnameViaDoh('www.example.com', fetchImpl);
 
     expect(addresses).toEqual(['203.0.113.10', '2001:db8::1']);
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -32,16 +32,16 @@ describe('resolveHostnameViaDoh', () => {
   });
 
   it('returns an empty list for NXDOMAIN', async () => {
-    const fetchImpl = vi.fn(async () => dohResponse({ Status: 3 }));
-    await expect(resolveHostnameViaDoh('missing.example.com', fetchImpl as unknown as typeof fetch)).resolves.toEqual([]);
+    const fetchImpl = vi.fn<typeof fetch>(async () => dohResponse({ Status: 3 }));
+    await expect(resolveHostnameViaDoh('missing.example.com', fetchImpl)).resolves.toEqual([]);
   });
 
   it('throws when the resolver fails', async () => {
-    const httpError = vi.fn(async () => dohResponse({}, 502));
-    await expect(resolveHostnameViaDoh('www.example.com', httpError as unknown as typeof fetch)).rejects.toThrow('HTTP 502');
+    const httpError = vi.fn<typeof fetch>(async () => dohResponse({}, 502));
+    await expect(resolveHostnameViaDoh('www.example.com', httpError)).rejects.toThrow('HTTP 502');
 
-    const servfail = vi.fn(async () => dohResponse({ Status: 2 }));
-    await expect(resolveHostnameViaDoh('www.example.com', servfail as unknown as typeof fetch)).rejects.toThrow('status 2');
+    const servfail = vi.fn<typeof fetch>(async () => dohResponse({ Status: 2 }));
+    await expect(resolveHostnameViaDoh('www.example.com', servfail)).rejects.toThrow('status 2');
   });
 });
 

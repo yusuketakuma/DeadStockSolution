@@ -211,6 +211,21 @@ describe('drug-master-scheduler coverage', () => {
       expect(result.triggered).toBe(true);
     });
 
+    it('waits for completion by default on Cloudflare Workers', async () => {
+      vi.stubGlobal('navigator', { userAgent: 'Cloudflare-Workers' });
+      try {
+        const single = await triggerManualAutoSync({
+          sourceUrl: 'https://example.com/drugs.xlsx',
+          sourceMode: 'single',
+        });
+        expect(single).toMatchObject({ triggered: true, completed: true });
+        const index = await triggerManualAutoSync({ sourceMode: 'index' });
+        expect(index).toMatchObject({ triggered: true, completed: true });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it('uses env URL when no explicit sourceUrl in single mode', async () => {
       process.env.DRUG_MASTER_SOURCE_URL = 'https://example.com/env-drugs.xlsx';
       const result = await triggerManualAutoSync({ sourceMode: 'single' });
