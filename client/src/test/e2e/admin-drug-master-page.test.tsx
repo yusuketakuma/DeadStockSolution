@@ -224,6 +224,91 @@ describe('AdminDrugMasterPage', () => {
     expect(syncLogsCallCount).toBeGreaterThanOrEqual(3);
   });
 
+  it('keeps polling sync logs while the master refresh request is still pending', async () => {
+    const user = userEvent.setup();
+    let syncLogsCallCount = 0;
+    let resolveRefresh: (response: Response) => void = () => undefined;
+    const refreshResponse = new Promise<Response>((resolve) => {
+      resolveRefresh = resolve;
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/auth/me')) return jsonResponse(mockAdminUser);
+      if (url.includes('/api/timeline/bootstrap')) {
+        return jsonResponse({
+          timeline: { events: [], total: 0, limit: 20, hasMore: false, nextCursor: null },
+          digest: { events: [] },
+          unreadCount: 0,
+        });
+      }
+      if (url.includes('/api/timeline/unread-count')) return jsonResponse({ unreadCount: 0 });
+      if (url.includes('/api/admin/drug-master/stats')) {
+        return jsonResponse({
+          totalItems: 100,
+          listedItems: 80,
+          transitionItems: 10,
+          delistedItems: 10,
+          lastSyncAt: '2026-03-24T09:00:00.000Z',
+        });
+      }
+      if (url.includes('/api/admin/drug-master/sync-logs')) {
+        syncLogsCallCount += 1;
+        return jsonResponse({ data: [] });
+      }
+      if (url.includes('/api/admin/drug-master/auto-sync/packages/status')) {
+        return jsonResponse({
+          enabled: true,
+          sourceHost: 'pmda.go.jp',
+          hasSourceUrl: true,
+          checkIntervalHours: 24,
+          supportsManualUrlOverride: false,
+        });
+      }
+      if (url.includes('/api/admin/drug-master/auto-sync/status')) {
+        return jsonResponse({
+          enabled: true,
+          sourceHost: 'mhlw.go.jp',
+          hasSourceUrl: false,
+          checkIntervalHours: 6,
+          supportsManualUrlOverride: false,
+          sourceMode: 'index',
+        });
+      }
+      if (url.includes('/api/admin/drug-master/master-refresh')) return refreshResponse;
+      if (url.includes('/api/admin/drug-master?')) {
+        return jsonResponse({
+          data: [],
+          pagination: { page: 1, limit: 100, total: 0, totalPages: 1 },
+        });
+      }
+      return jsonResponse({ error: 'Not found' }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<AdminDrugMasterPage />, { authUser: mockAdminUser });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'マスター更新' })).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(syncLogsCallCount).toBeGreaterThanOrEqual(1);
+    });
+    const callsBeforeRefresh = syncLogsCallCount;
+
+    await user.click(screen.getByRole('button', { name: 'マスター更新' }));
+
+    await waitFor(() => {
+      expect(syncLogsCallCount).toBeGreaterThan(callsBeforeRefresh);
+    }, { timeout: 4000 });
+
+    resolveRefresh(jsonResponse({
+      triggered: true,
+      completed: true,
+      message: 'マスター更新を完了しました。',
+      steps: [],
+    }));
+  });
+
   it('keeps manual maintenance hidden until expanded', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();

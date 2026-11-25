@@ -90,8 +90,13 @@ rm .env.cf-production .env.cf-production.filtered
 5. `main` へマージ → 本番 Worker がデプロイされる。`https://deadstocksolution.<サブドメイン>.workers.dev/api/health` を確認する。
 6. Cron が Cloudflare 側で動いていることを確認する。Workers & Pages → `deadstocksolution` → Settings → Trigger Events（Cron Events のログ）で、
    毎分の `* * * * *` と 5 分・10 分ごとのジョブが「成功」になっていること、`wrangler tail` に `Cron job completed` が出ることを見る。
-   30 分たっても成功が記録されない、または失敗が続く場合は、Vercel の Cron Jobs を Enable に戻して切り戻し、原因を調べる
-   （画面と API はまだ Vercel なので Cron を戻すだけで元の状態になる）。
+   Cron Events は内部 API の HTTP 応答だけを見るため、医薬品マスター同期のように処理失敗をログに残して 200 を返すジョブもある。
+   管理画面の医薬品マスター管理 → 同期ログで、翌朝（JST 4:00 の同期後）に自動取得が「完了」になっていることも確認する。
+   30 分たっても成功が記録されない、または失敗が続く場合は切り戻す。
+   先に Cloudflare 側の Cron を止める（Workers & Pages → `deadstocksolution` → Settings → Trigger Events で Cron Triggers をすべて削除）。
+   そのあとで Vercel の Cron Jobs を Enable に戻す。片方だけだと、成功しているジョブが両方の環境で二重に動く。
+   画面と API はまだ Vercel なので、これで元の状態に戻る。Cron Triggers は次回のデプロイで `wrangler.jsonc` から再登録されるため、
+   原因を直すまで `main` へのデプロイは控える。
 7. `preview` ブランチの必須チェックを更新する（Settings → Branches）。スモークは `Cloudflare Deploy` から呼ばれるため、
    チェック名は `preview-smoke / smoke` になる。旧 Vercel 用の `Preview Smoke` のチェック名が残っていれば外す。
 

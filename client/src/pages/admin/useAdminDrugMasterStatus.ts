@@ -180,14 +180,15 @@ export function useAdminDrugMasterStatus(showError: (message: string) => void) {
   }, [refreshAll]);
 
   useEffect(() => {
-    if (!masterRefreshPolling && !masterRefreshActive) return undefined;
+    // Workers では POST が同期完了まで返らないため、送信中もログを取得して進捗を出す
+    if (!masterRefreshPolling && !masterRefreshActive && !masterRefreshRunning) return undefined;
 
     const intervalId = setInterval(() => {
       refreshAll();
     }, 2000);
 
     return () => clearInterval(intervalId);
-  }, [masterRefreshActive, masterRefreshPolling, refreshAll]);
+  }, [masterRefreshActive, masterRefreshPolling, masterRefreshRunning, refreshAll]);
 
   useEffect(() => {
     if (!masterRefreshPolling) return;
