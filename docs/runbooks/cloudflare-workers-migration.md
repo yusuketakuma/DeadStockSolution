@@ -88,6 +88,12 @@ rm .env.cf-production .env.cf-production.filtered
    マージすると本番 Worker がデプロイされて Cloudflare の Cron Triggers が動き始めるため、止めないと定期ジョブが二重に実行される。
    どちらも同じ Neon DB を使うので、画面と API はドメイン切替まで Vercel のままでよい。プロジェクト自体はまだ止めない。
 5. `main` へマージ → 本番 Worker がデプロイされる。`https://deadstocksolution.<サブドメイン>.workers.dev/api/health` を確認する。
+6. Cron が Cloudflare 側で動いていることを確認する。Workers & Pages → `deadstocksolution` → Settings → Trigger Events（Cron Events のログ）で、
+   毎分の `* * * * *` と 5 分・10 分ごとのジョブが「成功」になっていること、`wrangler tail` に `Cron job completed` が出ることを見る。
+   30 分たっても成功が記録されない、または失敗が続く場合は、Vercel の Cron Jobs を Enable に戻して切り戻し、原因を調べる
+   （画面と API はまだ Vercel なので Cron を戻すだけで元の状態になる）。
+7. `preview` ブランチの必須チェックを更新する（Settings → Branches）。スモークは `Cloudflare Deploy` から呼ばれるため、
+   チェック名は `preview-smoke / smoke` になる。旧 Vercel 用の `Preview Smoke` のチェック名が残っていれば外す。
 
 ### 6. ドメインの切り替え
 

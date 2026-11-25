@@ -44,7 +44,7 @@ Vercel Git 連携が有効で `VERCEL_TOKEN` を使える場合、`smoke-check` 
 
 share URL を `SMOKE_BASE_URL` / `RELEASE_SMOKE_BASE_URL` にそのまま渡す運用も可能。`smoke-check` は query parameter 付き URL を保持したまま各 API に展開する。
 
-GitHub Actions の `Preview Smoke` workflow で token 自動解決を使わない場合は、repository variable `PREVIEW_BRANCH_SMOKE_BASE_URL` に Vercel の branch-specific URL を設定する。
+GitHub Actions の `Preview Smoke` workflow は repository variable `PREVIEW_SMOKE_BASE_URL`（Cloudflare のプレビュー Worker の URL）だけを使う。未設定なら失敗する。旧 Vercel 用の `PREVIEW_BRANCH_SMOKE_BASE_URL` は参照しない。
 
 ### 2. Release Gate
 
@@ -92,7 +92,7 @@ npm run verify:release
 ## CI の意味づけ
 
 - `.github/workflows/preview-smoke.yml`
-  - `preview` ブランチ専用の release-equivalent gate
+  - `preview` ブランチ専用の release-equivalent gate（`cloudflare-deploy.yml` がデプロイ成功後に呼び出す）
   - `verify:release` を使い、static checks と deployment smoke を両方通す
 - `.github/workflows/ci.yml`
   - `main` / `dev` / `pull_request` 向けの継続検証
@@ -103,6 +103,6 @@ npm run verify:release
 1. `preview` に載せる前に `npm run verify:preview` をローカルで通す
 2. `preview` branch の required check では `npm run verify:release` を実行し、最新 preview deployment まで確認する
 3. リリース候補を作ったら deployment URL を指定して `npm run verify:release` を通す
-4. Vercel preview が保護されている場合、smoke には bypass secret を使う
+4. smoke は `Cloudflare Deploy` の後続ジョブとして実行され、required check 名は `preview-smoke / smoke` になる
 5. full suite が不安定なら coverage や軽量テストに逃がさず、順序依存や環境依存を先に潰す
 6. workflow / job 名を変更した場合は GitHub branch protection の required checks も同時に更新する
