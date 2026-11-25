@@ -17,6 +17,7 @@ import { createDatabase, runWithDatabase } from '../src/config/database';
 import { scrubPii } from '../src/config/sentry';
 import { backfillTestPharmacyPasswords, ensureTestPharmacyColumnsAtStartup } from '../src/config/test-pharmacy-schema';
 import { logger } from '../src/services/logger';
+import { waitForPoolIdle } from '../src/utils/pool-drain';
 import { buildCronRequest, findCronJobs, resolveJobSecret } from '../src/config/cloudflare-cron-jobs';
 
 interface WorkerEnv {
@@ -80,10 +81,20 @@ async function handleWithRequestDatabase(
   // 既存コードの resolveDatabaseUrls（本番では URL 必須）向けに process.env にも反映する
   process.env.POSTGRES_URL ??= connectionString;
   const pool = new Pool({ connectionString, max: REQUEST_POOL_MAX });
-  // このリクエストで起動したバックグラウンド処理（waitUntil）が終わるまで接続を閉じない
+  // このリクエストで起動したバックグラウンド処理が終わるまで接続を閉じない。
+  // 明示的に登録した処理に加え、await せずに起動された処理（ログ書き込みなど）も
+  // Pool が使われなくなるまで待つ
   const backgroundTasks: Promise<unknown>[] = [];
   const closePool = async () => {
     await Promise.allSettled(backgroundTasks);
+    const drained = await waitForPoolIdle(pool);
+    if (!drained) {
+      logger.warn('Request DB pool still busy at close; ending anyway', {
+        totalCount: pool.totalCount,
+        idleCount: pool.idleCount,
+        waitingCount: pool.waitingCount,
+      });
+    }
     await pool.end().catch((err: unknown) => {
       logger.warn('Request DB pool close failed', { error: err instanceof Error ? err.message : String(err) });
     });

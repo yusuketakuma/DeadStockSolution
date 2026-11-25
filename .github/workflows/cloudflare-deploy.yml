@@ -78,10 +78,17 @@ jobs:
       - name: Seed accounts
         if: steps.cf-config.outputs.configured == 'true'
         env:
-          POSTGRES_URL: ${{ github.ref_name == 'main' && secrets.PRODUCTION_DATABASE_URL || secrets.PREVIEW_DATABASE_URL }}
-          POSTGRES_URL_NON_POOLING: ${{ github.ref_name == 'main' && secrets.PRODUCTION_DATABASE_URL || secrets.PREVIEW_DATABASE_URL }}
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          PREVIEW_DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
           TEST_PHARMACY_SEED_JSON: ${{ secrets.TEST_PHARMACY_SEED_JSON }}
         run: |
+          # 式の `a && b || c` は b が空だと c に倒れるため、ブランチごとの URL はシェルで厳密に選ぶ
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            POSTGRES_URL="${PRODUCTION_DATABASE_URL:-}"
+          else
+            POSTGRES_URL="${PREVIEW_DATABASE_URL:-}"
+          fi
+          export POSTGRES_URL POSTGRES_URL_NON_POOLING="$POSTGRES_URL"
           if [ -z "$POSTGRES_URL" ]; then
             echo "PRODUCTION_DATABASE_URL / PREVIEW_DATABASE_URL is not set; skipping seeds."
             exit 0

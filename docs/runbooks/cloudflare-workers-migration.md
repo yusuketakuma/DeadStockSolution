@@ -29,9 +29,13 @@ Neon の **直接接続（pooler ではない）URL** で、本番用とステ�
 
 ```bash
 npx wrangler login
-npx wrangler hyperdrive create deadstocksolution-prod    --connection-string="<本番 Neon の直接接続 URL>"
-npx wrangler hyperdrive create deadstocksolution-preview --connection-string="<preview ブランチの直接接続 URL>"
+npx wrangler hyperdrive create deadstocksolution-prod    --caching-disabled --connection-string="<本番 Neon の直接接続 URL>"
+npx wrangler hyperdrive create deadstocksolution-preview --caching-disabled --connection-string="<preview ブランチの直接接続 URL>"
 ```
+
+`--caching-disabled` は必須。Hyperdrive の既定のクエリキャッシュは読み取り結果を最大 60 秒保持し、書き込みで無効化されないため、
+パスワード変更やアカウント停止の直後でも古い認証状態や在庫が返ってしまう。作成済みなら
+`npx wrangler hyperdrive update <ID> --caching-disabled` で無効にする。
 
 表示された ID を次の手順の GitHub 変数に入れる（`wrangler.jsonc` のプレースホルダはデプロイ時に置き換わる）。
 
