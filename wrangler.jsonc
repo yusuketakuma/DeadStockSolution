@@ -20,7 +20,8 @@
   "alias": {
     "@sentry/node": "./server/worker/shims/sentry-node.ts",
     "undici": "./server/worker/shims/undici.ts",
-    "@aws-sdk/client-s3": "./server/worker/shims/unavailable-module.ts"
+    "@aws-sdk/client-s3": "./server/worker/shims/unavailable-module.ts",
+    "readable-stream": "./server/worker/shims/readable-stream.ts"
   },
   "hyperdrive": [
     // `npx wrangler hyperdrive create deadstocksolution-prod --connection-string="<Neon の直接接続URL>"` で作成した ID に置き換える
