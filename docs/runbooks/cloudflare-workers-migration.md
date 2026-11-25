@@ -93,8 +93,9 @@ rm .env.cf-production .env.cf-production.filtered
    Cron Events は内部 API の HTTP 応答だけを見るため、医薬品マスター同期のように処理失敗をログに残して 200 を返すジョブもある。
    翌朝（JST 4:00 の同期後）に、次のどちらかで同期の成否も確認する。
    - 公開元に更新があった日: 管理画面の医薬品マスター管理 → 同期ログに、当日分の自動取得が「完了」で記録されている。
-   - 更新がなかった日: 同期ログは追加されない。代わりに Workers & Pages → `deadstocksolution` → Logs（または `wrangler tail`）で、
+   - 更新がなかった日: 同期ログは追加されない。代わりに Workers & Pages → `deadstocksolution` → Logs（保存済みの Workers Logs）で、
      当日 4:00 前後に `Drug master sync cron completed` と、変更なしのログ（`no updates detected` または `all files unchanged`）が出ていることを見る。
+     `wrangler tail` は接続中のログしか表示しないため、使う場合は 4:00 より前に起動しておく。
    30 分たっても成功が記録されない、または失敗が続く場合は切り戻す。
    先に Cloudflare 側の Cron を止める（Workers & Pages → `deadstocksolution` → Settings → Trigger Events で Cron Triggers をすべて削除）。
    そのあとで Vercel の Cron Jobs を Enable に戻す。片方だけだと、成功しているジョブが両方の環境で二重に動く。
