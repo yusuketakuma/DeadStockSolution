@@ -8,7 +8,7 @@
  * Workers ではリクエストをまたいで TCP 接続を共有できないため、
  * リクエストごとに Hyperdrive 経由の pg Pool を作り、レスポンス本文の送信完了後に閉じる。
  */
-import { endGlobalScope } from './bootstrap-env';
+import { endGlobalScope, runDeferredTimers } from './bootstrap-env';
 import { httpServerHandler } from 'cloudflare:node';
 import * as Sentry from '@sentry/cloudflare';
 import { Pool } from 'pg';
@@ -68,7 +68,9 @@ function withForwardedHeaders(request: Request): Request {
   } else {
     headers.delete('x-forwarded-for');
   }
-  headers.set('x-forwarded-proto', new URL(request.url).protocol.replace(':', ''));
+  const url = new URL(request.url);
+  headers.set('x-forwarded-proto', url.protocol.replace(':', ''));
+  headers.set('x-forwarded-host', url.host);
   return new Request(request, { headers });
 }
 
@@ -144,10 +146,12 @@ async function runScheduledJobs(controller: ScheduledController, env: WorkerEnv,
 const handler: ExportedHandler<WorkerEnv> = {
   fetch: (request, env, ctx) => {
     endGlobalScope();
+    runDeferredTimers();
     return handleWithRequestDatabase(request as unknown as Request, env, ctx) as never;
   },
   scheduled: (controller, env, ctx) => {
     endGlobalScope();
+    runDeferredTimers();
     return runScheduledJobs(controller, env, ctx);
   },
 };

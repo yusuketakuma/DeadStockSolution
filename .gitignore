@@ -195,3 +195,4 @@ test-results/
 .omx/
 .dev.vars*
 .wrangler/
+wrangler.deploy.jsonc

@@ -84,14 +84,17 @@ rm .env.cf-production .env.cf-production.filtered
 1. `preview` ブランチへ push → `Cloudflare Deploy` → `Preview Smoke` が走る。
 2. `https://deadstocksolution-preview.<サブドメイン>.workers.dev/api/health` が `db.status: ok` を返すことを確認。
 3. ログイン、在庫アップロード（プレビュー → 確定）、1 分以内に確定ジョブが完了することを確認。
-4. `main` へマージ → 本番 Worker がデプロイされる。
+4. **`main` へマージする直前に、Vercel の Cron だけを止める**（Vercel → Settings → Cron Jobs → Disable）。
+   マージすると本番 Worker がデプロイされて Cloudflare の Cron Triggers が動き始めるため、止めないと定期ジョブが二重に実行される。
+   どちらも同じ Neon DB を使うので、画面と API はドメイン切替まで Vercel のままでよい。プロジェクト自体はまだ止めない。
+5. `main` へマージ → 本番 Worker がデプロイされる。`https://deadstocksolution.<サブドメイン>.workers.dev/api/health` を確認する。
 
 ### 6. ドメインの切り替え
 
 1. ドメインの DNS を Cloudflare に移す（ネームサーバー変更）。
 2. Workers & Pages → `deadstocksolution` → Settings → Domains & Routes → Custom domain を追加。
 3. 外部サービスの URL を新ドメインに更新: Stripe Webhook、WorkOS リダイレクト、OpenClaw Webhook、`DRUG_PACKAGE_SOURCE_URL` などの許可設定。
-4. **Vercel プロジェクトを停止する**。Vercel の Cron と Cloudflare の Cron Triggers が両方動くと、定期ジョブが二重に実行される。
+4. 新ドメインで問題がなければ Vercel プロジェクトを停止する（Cron は手順 5-4 で停止済み）。
 5. 安定したら `vercel.json`、`server/vercel.json`、`server/api/index.ts`、`scripts/vercel-*.sh` を削除する。
 
 ## Workers 上での制約
@@ -105,6 +108,15 @@ rm .env.cf-production .env.cf-production.filtered
 | DNS | OS のリゾルバがない | 外部取得 URL の検証は DNS over HTTPS（cloudflare-dns.com）で解決 |
 | `worker_threads` / `child_process` | 使えない | 解析はインライン実行にフォールバック（既存挙動）。OpenClaw CLI 連携は Vercel 同様に使えない |
 | レスポンス後の処理 | `void` で投げた非同期処理はレスポンス後に打ち切られることがある | 重要な処理は Cron（アップロード確定ジョブ等）で再実行される |
+
+## 手元からデプロイする
+
+GitHub Actions を使わずにデプロイする場合は、対象環境の Hyperdrive ID を渡す（未指定や形式違いなら停止する）。
+
+```bash
+CLOUDFLARE_HYPERDRIVE_ID_PREVIEW=<ID> npm run deploy:preview      # preview ブランチで
+CLOUDFLARE_HYPERDRIVE_ID_PRODUCTION=<ID> npm run deploy:prod      # main ブランチで
+```
 
 ## ローカルで Workers 版を動かす
 

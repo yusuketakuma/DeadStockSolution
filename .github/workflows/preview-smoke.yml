@@ -1,23 +1,17 @@
 name: Preview Smoke
 
 on:
-  # Cloudflare への preview デプロイ完了後に、デプロイ済み URL へスモークを実行する
-  workflow_run:
-    workflows: [Cloudflare Deploy]
-    types: [completed]
-    branches: [preview]
+  # Cloudflare Deploy が preview へ実際にデプロイしたときに呼び出される（手動実行も可）
+  workflow_call:
   workflow_dispatch:
 
 jobs:
   smoke:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

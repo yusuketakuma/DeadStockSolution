@@ -10,4 +10,6 @@ fi
 
 node scripts/sync-version.mjs
 npm run build:client
-npx wrangler deploy --env preview
+# Hyperdrive ID は CLOUDFLARE_HYPERDRIVE_ID_PREVIEW で渡す（GitHub 変数と同じ値）
+HYPERDRIVE_ID="${CLOUDFLARE_HYPERDRIVE_ID_PREVIEW:-}" sh scripts/cloudflare-render-config.sh preview
+npx wrangler deploy -c wrangler.deploy.jsonc --env preview
