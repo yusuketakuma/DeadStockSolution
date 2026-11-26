@@ -1,5 +1,5 @@
 import { eq, or, and, desc, sql, count } from 'drizzle-orm';
-import { db } from '../../config/database';
+import { db, isRequestScopedDatabase } from '../../config/database';
 import {
   drugMaster,
   drugMasterPackages,
@@ -97,6 +97,8 @@ function bindParam<T>(name: string): T {
 function getPreparedDrugMasterById(): PreparedDrugMasterById | null {
   const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
   if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') return null;
+  // Workers ではリクエストごとに接続が変わるため、接続に紐づく prepared statement をキャッシュしない
+  if (isRequestScopedDatabase()) return null;
   if (prepared_drug_master_by_id) return prepared_drug_master_by_id;
   const query = db.select()
     .from(drugMaster)
@@ -112,6 +114,8 @@ function getPreparedDrugMasterById(): PreparedDrugMasterById | null {
 function getPreparedDrugMasterByCode(): PreparedDrugMasterByCode | null {
   const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
   if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') return null;
+  // Workers ではリクエストごとに接続が変わるため、接続に紐づく prepared statement をキャッシュしない
+  if (isRequestScopedDatabase()) return null;
   if (prepared_drug_master_by_code) return prepared_drug_master_by_code;
   const query = db.select()
     .from(drugMaster)

@@ -163,6 +163,11 @@ function handleRealtimeEnvelope(rawMessage: string): void {
   }
 }
 
+/** 別インスタンスへの配信経路（Redis pub/sub）が設定されているか */
+export function isRealtimeSharedDeliveryConfigured(): boolean {
+  return REALTIME_REDIS_URL.length > 0;
+}
+
 export function isRealtimeTopic(value: unknown): value is RealtimeTopic {
   return typeof value === 'string' && realtimeTopics.includes(value as RealtimeTopic);
 }

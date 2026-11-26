@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { eq, sql } from 'drizzle-orm';
-import { db } from '../config/database';
+import { db, isRequestScopedDatabase } from '../config/database';
 import { pharmacies } from '../db/schema';
 import { deriveSessionVersion, isJwtSecretMissingError, verifyToken } from '../services/auth-service';
 import { isDependencyServiceUnavailableError } from '../routes/auth-helpers';
@@ -58,6 +58,8 @@ function bindParam<T>(name: string): T {
 function getPreparedPharmacyAuthUserById(): PreparedPharmacyAuthUserById | null {
   const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
   if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') return null;
+  // Workers ではリクエストごとに接続が変わるため、接続に紐づく prepared statement をキャッシュしない
+  if (isRequestScopedDatabase()) return null;
   if (prepared_pharmacy_auth_user_by_id) return prepared_pharmacy_auth_user_by_id;
   const query = db.select({
     id: pharmacies.id,

@@ -272,11 +272,14 @@ jobs:
       - name: Run OpenAPI contract test
         run: npm run test:openapi-contract --workspace=server
 
-      - name: Audit production dependencies (moderate+)
-        run: npm run audit:prod
-
       - name: Build server
         run: npm run build:server
 
       - name: Build client
         run: npm run build:client
+
+      - name: Bundle Cloudflare Worker (dry run)
+        run: npx wrangler deploy --dry-run --env "" --outdir .wrangler/dry-run
+
+      - name: Audit production dependencies (moderate+)
+        run: npm run audit:prod

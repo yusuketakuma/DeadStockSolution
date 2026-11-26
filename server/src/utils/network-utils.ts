@@ -2,6 +2,7 @@ import type { LookupAddress } from 'node:dns';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { Agent } from 'undici';
+import { isCloudflareWorkersRuntime } from './runtime';
 
 interface ExternalUrlValidationResult {
   ok: boolean;
@@ -163,9 +164,46 @@ function isBlockedHostname(hostname: string): boolean {
     || lower.endsWith('.local');
 }
 
+const DOH_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
+const DOH_RECORD_TYPES = [
+  { name: 'A', code: 1 },
+  { name: 'AAAA', code: 28 },
+] as const;
+
+interface DohResponse {
+  Status?: number;
+  Answer?: Array<{ type?: number; data?: string }>;
+}
+
+/**
+ * Workers には OS のリゾルバがないため、DNS over HTTPS で A / AAAA レコードを引く。
+ * CNAME などの中間レコードは除外し、IP アドレスとして解釈できる値だけを返す。
+ */
+export async function resolveHostnameViaDoh(hostname: string, fetchImpl: typeof fetch = fetch): Promise<string[]> {
+  const results = await Promise.all(DOH_RECORD_TYPES.map(async (recordType) => {
+    const url = `${DOH_ENDPOINT}?name=${encodeURIComponent(hostname)}&type=${recordType.name}`;
+    const response = await fetchImpl(url, { headers: { accept: 'application/dns-json' } });
+    if (!response.ok) {
+      throw new Error(`DNS over HTTPS lookup failed: HTTP ${response.status}`);
+    }
+    const body = await response.json() as DohResponse;
+    if (body.Status !== undefined && body.Status !== 0 && body.Status !== 3) {
+      throw new Error(`DNS over HTTPS lookup failed: status ${body.Status}`);
+    }
+    return (body.Answer ?? [])
+      .filter((answer) => answer.type === recordType.code && typeof answer.data === 'string' && net.isIP(answer.data))
+      .map((answer) => answer.data as string);
+  }));
+  return [...new Set(results.flat())];
+}
+
 async function resolveHostname(hostname: string): Promise<string[]> {
   if (net.isIP(hostname)) {
     return [hostname];
+  }
+
+  if (isCloudflareWorkersRuntime()) {
+    return resolveHostnameViaDoh(hostname);
   }
 
   const records = await dns.lookup(hostname, { all: true, verbatim: true });

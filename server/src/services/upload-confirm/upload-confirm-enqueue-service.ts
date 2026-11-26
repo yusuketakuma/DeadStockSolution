@@ -64,7 +64,9 @@ function buildNewUploadConfirmJobValues(
     idempotencyKey: params.idempotencyKey ?? null,
     fileHash,
     headerRowIndex: params.headerRowIndex,
-    mappingJson,
+    // parseMapping はプロトタイプ汚染対策で Object.create(null) を返すが、drizzle の is() は
+    // プロトタイプを持たないオブジェクトで例外になるため、通常のオブジェクトに詰め替える
+    mappingJson: mappingJson && typeof mappingJson === 'object' ? { ...mappingJson } : mappingJson,
     applyMode: params.applyMode,
     deleteMissing: params.deleteMissing,
     deduplicated: false,

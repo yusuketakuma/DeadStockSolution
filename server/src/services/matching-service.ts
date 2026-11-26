@@ -1,4 +1,5 @@
 import { and, eq, exists, gte, inArray, or, sql } from 'drizzle-orm';
+import { isRequestScopedDatabase } from '../config/database';
 import {
   deadStockItems,
   groupMembers,
@@ -86,6 +87,10 @@ function bindParam<T>(name: string): T {
 function getPreparedPharmacyLocationById(deps: ServiceDependencies): PreparedPharmacyLocationById | null {
   const placeholderFn = (sql as (typeof sql | undefined) & { placeholder?: unknown })?.placeholder;
   if (process.env.NODE_ENV === 'test' || typeof placeholderFn !== 'function') {
+    return null;
+  }
+  // Workers ではリクエストごとに接続が変わるため、接続に紐づく prepared statement をキャッシュしない
+  if (isRequestScopedDatabase()) {
     return null;
   }
   if (deps.db !== getServiceDeps().db) {

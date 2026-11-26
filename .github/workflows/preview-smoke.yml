@@ -1,9 +1,8 @@
 name: Preview Smoke
 
 on:
-  push:
-    branches:
-      - preview
+  # Cloudflare Deploy が preview へ実際にデプロイしたときに呼び出される（手動実行も可）
+  workflow_call:
   workflow_dispatch:
 
 jobs:
@@ -25,10 +24,12 @@ jobs:
 
       - name: Run preview release-equivalent gate
         env:
-          RELEASE_SMOKE_BASE_URL: ${{ vars.PREVIEW_BRANCH_SMOKE_BASE_URL || vars.PREVIEW_SMOKE_BASE_URL }}
-          PREVIEW_PROTECTION_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          SMOKE_VERCEL_GITHUB_SHA: ${{ github.sha }}
-          SMOKE_VERCEL_GITHUB_REF: ${{ github.ref_name }}
-          SMOKE_RESOLVE_TIMEOUT_MS: "600000"
-        run: npm run verify:release
+          # 例: https://deadstocksolution-preview.<account>.workers.dev
+          # 旧 Vercel の PREVIEW_BRANCH_SMOKE_BASE_URL には戻らない（旧環境を検証してしまうため）
+          RELEASE_SMOKE_BASE_URL: ${{ vars.PREVIEW_SMOKE_BASE_URL }}
+        run: |
+          if [ -z "$RELEASE_SMOKE_BASE_URL" ]; then
+            echo "::error::PREVIEW_SMOKE_BASE_URL（Cloudflare のプレビュー URL）を GitHub 変数に設定してください"
+            exit 1
+          fi
+          npm run verify:release

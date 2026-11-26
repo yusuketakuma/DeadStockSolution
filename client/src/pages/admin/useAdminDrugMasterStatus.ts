@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
 
+// Workers 版のサーバーは同期の完了まで応答しないため、通常の 30 秒より長く待つ
+const MASTER_REFRESH_TIMEOUT_MS = 10 * 60 * 1000;
+
 interface Stats {
   totalItems: number;
   listedItems: number;
@@ -155,7 +158,9 @@ export function useAdminDrugMasterStatus(showError: (message: string) => void) {
     setMasterRefreshMessage('');
     setMasterRefreshError('');
     try {
-      const result = await api.post<MasterRefreshResponse>('/admin/drug-master/master-refresh', {});
+      const result = await api.post<MasterRefreshResponse>('/admin/drug-master/master-refresh', {}, {
+        timeout: MASTER_REFRESH_TIMEOUT_MS,
+      });
       if (result.triggered) {
         setMasterRefreshMessage(result.message);
         setMasterRefreshPolling(true);
@@ -175,14 +180,15 @@ export function useAdminDrugMasterStatus(showError: (message: string) => void) {
   }, [refreshAll]);
 
   useEffect(() => {
-    if (!masterRefreshPolling && !masterRefreshActive) return undefined;
+    // Workers では POST が同期完了まで返らないため、送信中もログを取得して進捗を出す
+    if (!masterRefreshPolling && !masterRefreshActive && !masterRefreshRunning) return undefined;
 
     const intervalId = setInterval(() => {
       refreshAll();
     }, 2000);
 
     return () => clearInterval(intervalId);
-  }, [masterRefreshActive, masterRefreshPolling, refreshAll]);
+  }, [masterRefreshActive, masterRefreshPolling, masterRefreshRunning, refreshAll]);
 
   useEffect(() => {
     if (!masterRefreshPolling) return;

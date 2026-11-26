@@ -1,0 +1,53 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // 本番: main ブランチから `wrangler deploy`、ステージング: preview ブランチから `wrangler deploy --env preview`
+  "name": "deadstocksolution",
+  "main": "server/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  // 医薬品マスター同期など CPU 負荷の高い処理があるため上限を 5 分に引き上げる（Workers Paid が必要）
+  "limits": { "cpu_ms": 300000 },
+  "assets": {
+    "directory": "client/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // Node 専用パッケージを Workers 互換の実装へ差し替える
+  "alias": {
+    "@sentry/node": "./server/worker/shims/sentry-node.ts",
+    "undici": "./server/worker/shims/undici.ts",
+    "@aws-sdk/client-s3": "./server/worker/shims/unavailable-module.ts",
+    "readable-stream": "./server/worker/shims/readable-stream.ts"
+  },
+  "hyperdrive": [
+    // `npx wrangler hyperdrive create deadstocksolution-prod --connection-string="<Neon の直接接続URL>"` で作成した ID に置き換える
+    { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PRODUCTION_HYPERDRIVE_ID" }
+  ],
+  "triggers": {
+    // server/worker/cron-jobs.ts の CRON_JOBS と一致させること（テストで検証）
+    "crons": ["*/10 * * * *", "* * * * *", "*/5 * * * *", "0 1 1 * *", "0 2 * * *", "0 18 * * *", "0 * * * *", "0 19 * * *"]
+  },
+  "vars": {
+    "DEPLOY_ENV": "production",
+    "NODE_ENV": "production"
+  },
+  "env": {
+    "preview": {
+      "name": "deadstocksolution-preview",
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PREVIEW_HYPERDRIVE_ID" }
+      ],
+      "triggers": {
+        "crons": ["*/10 * * * *", "* * * * *", "*/5 * * * *", "0 1 1 * *", "0 2 * * *", "0 18 * * *", "0 * * * *", "0 19 * * *"]
+      },
+      "vars": {
+        "DEPLOY_ENV": "preview",
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}

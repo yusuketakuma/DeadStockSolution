@@ -1,8 +1,10 @@
 import { Router, Response } from 'express';
 import { requireLogin } from '../middleware/auth';
 import type { AuthRequest } from '../types';
+import { isCloudflareWorkersRuntime } from '../utils/runtime';
 import {
   initRealtimeInfrastructure,
+  isRealtimeSharedDeliveryConfigured,
   isRealtimeTopic,
   subscribeRealtimeClient,
   type RealtimeTopic,
@@ -46,6 +48,13 @@ router.get('/stream', async (req: AuthRequest, res: Response) => {
 
   if (!req.user?.id) {
     res.status(401).json({ error: 'ログインが必要です' });
+    return;
+  }
+
+  // Workers ではリクエストごとに別の isolate で動くため、共有の配信経路がないと
+  // 他の isolate で発生した更新が届かない。503 を返してクライアントをポーリングに切り替える
+  if (isCloudflareWorkersRuntime() && !isRealtimeSharedDeliveryConfigured()) {
+    res.status(503).json({ error: 'リアルタイム配信は利用できません' });
     return;
   }
 

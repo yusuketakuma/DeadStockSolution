@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Frontend**: React 18 + TypeScript + Vite + React Bootstrap
 - **Backend**: Express 5 + TypeScript + Drizzle ORM
 - **Database**: Vercel Postgres (Neon)
-- **Deploy**: Vercel (serverless)
+- **Deploy**: Cloudflare Workers（`wrangler.jsonc`、移行中。Vercel 設定は切替完了後に削除予定。手順: `docs/runbooks/cloudflare-workers-migration.md`）
 - **Monorepo**: npm workspaces (`client/`, `server/`)
 - **Test**: Vitest 4 + Supertest (server), Vitest + @testing-library/react (client)
 
@@ -55,7 +55,7 @@ npm run deploy:prod         # main branch only
 - **services/** — Business logic layer (called by routes)
 - **db/schema.ts** — Single-file Drizzle ORM schema (all tables, enums, indexes, relations)
 - **middleware/** — Auth (JWT), upload processing, etc.
-- **Serverless entry**: `server/api/index.ts` (Vercel)
+- **Workers entry**: `server/worker/index.ts`（Cloudflare。旧 Vercel は `server/api/index.ts`）
 
 ### Frontend (`client/src/`)
 - **routes/route-config.tsx** — Central route metadata array (`ROUTE_META`) with lazy-loaded components. Routes typed as `PublicRouteMeta` or `ProtectedRouteMeta` (adminOnly, useLayout flags).
@@ -82,11 +82,11 @@ Routes → Services → Drizzle ORM → Vercel Postgres. Auth via JWT middleware
 - Frontend routing: React Router DOM v6 with lazy loading
 - Styling: React Bootstrap + Bootstrap 5
 - Git: `main` for production, `preview` for staging, feature branches for development
-- Deploy: Vercel auto-deploy on main/preview only (`vercel.json` gating)
+- Deploy: `.github/workflows/cloudflare-deploy.yml` が main（本番）/ preview（ステージング）への push でデプロイ
 
 ## Important Notes
 - Environment variables: see `server/.env.example` and README.md (detailed env var reference)
-- Vercel serverless entry: `server/api/index.ts`
+- Workers 制約: グローバルスコープで I/O・タイマー禁止、DB はリクエスト単位（`runWithDatabase`）、メモリ 128MB
 - Excel/CSV parsing for MHLW pharmaceutical data integration (read-excel-file)
 - 包装単位マスターは PMDA 添付文書情報XML から自動取込み (`DRUG_PACKAGE_SOURCE_URL`)
 - Performance baseline: `npm run test:perf:update:server` to update, `npm run test:perf:server` to check

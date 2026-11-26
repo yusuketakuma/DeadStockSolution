@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { Worker } from 'worker_threads';
 import { decodeCsvBuffer, parseCsvContent } from './drug-master/parser-service';
 import { parseExcelBuffer } from './upload-service';
+import { isCloudflareWorkersRuntime } from '../utils/runtime';
 
 const WORKER_TIMEOUT_MS = 30_000;
 export const WORKER_PARSE_MIN_BYTES = 1024 * 1024;
@@ -71,6 +72,12 @@ function isWorkerErrorMessage(message: unknown): message is WorkerErrorMessage {
 }
 
 export async function parseInWorker(buffer: Buffer, options: ParseOptions): Promise<ParseResult> {
+  // Workers には worker_threads もファイルシステムもなく、ESM バンドルでは __dirname も未定義のため、
+  // パス解決の前にインライン解析へ切り替える
+  if (isCloudflareWorkersRuntime()) {
+    return parseInline(buffer, options);
+  }
+
   const workerConfig = resolveWorkerConfig();
   if (!workerConfig) {
     return parseInline(buffer, options);

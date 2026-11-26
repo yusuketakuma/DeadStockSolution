@@ -13,6 +13,7 @@ import { clearSchedulerHandle } from '../scheduler-utils';
 import { sha256 } from '../../utils/crypto-utils';
 import { persistSourceHeaders, SOURCE_KEY_SINGLE } from './source-state-service';
 import { runMultiFileSync } from '../mhlw-multi-file-fetcher';
+import { isCloudflareWorkersRuntime } from '../../utils/runtime';
 import { checkForUpdates, downloadFile } from '../mhlw-source-fetch';
 
 export type SourceMode = 'index' | 'single';
@@ -363,6 +364,8 @@ export async function triggerManualAutoSync(options?: {
   completed?: boolean;
 }> {
   const requestedMode = options?.sourceMode ?? getConfiguredSourceMode();
+  // Workers ではレスポンス後の処理が打ち切られ DB 接続も閉じるため、既定で完了まで待つ
+  const awaitCompletion = options?.awaitCompletion ?? isCloudflareWorkersRuntime();
 
   // index モード: ポータル自動探索（sourceUrl 不要）
   if (requestedMode === 'index' && !options?.sourceUrl?.trim()) {
@@ -374,7 +377,7 @@ export async function triggerManualAutoSync(options?: {
         error: getErrorMessage(err),
       });
     });
-    if (options?.awaitCompletion) {
+    if (awaitCompletion) {
       await runPromise;
       return {
         triggered: true,
@@ -407,7 +410,7 @@ export async function triggerManualAutoSync(options?: {
   }
 
   const runPromise = runAutoSyncSafely('manual', sourceUrl);
-  if (options?.awaitCompletion) {
+  if (awaitCompletion) {
     await runPromise;
     return {
       triggered: true,

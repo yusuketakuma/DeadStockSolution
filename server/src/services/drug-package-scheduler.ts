@@ -18,6 +18,7 @@ import { clearSchedulerHandle } from './scheduler-utils';
 import { sha256 } from '../utils/crypto-utils';
 import { persistSourceHeaders, SOURCE_KEY_PACKAGE } from './drug-master/source-state-service';
 import { checkForUpdates, downloadFile } from './mhlw-source-fetch';
+import { isCloudflareWorkersRuntime } from '../utils/runtime';
 
 const CHECK_INTERVAL_HOURS = parseBoundedInt(process.env.DRUG_PACKAGE_CHECK_INTERVAL_HOURS, 24, 1, 24 * 30);
 const CHECK_INTERVAL_MS = CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
@@ -383,7 +384,8 @@ export async function triggerManualPackageAutoSync(options?: {
   }
 
   const runPromise = runPackageAutoSyncSafely('manual', sourceUrl);
-  if (options?.awaitCompletion) {
+  // Workers ではレスポンス後の処理が打ち切られ DB 接続も閉じるため、既定で完了まで待つ
+  if (options?.awaitCompletion ?? isCloudflareWorkersRuntime()) {
     await runPromise;
     return {
       triggered: true,

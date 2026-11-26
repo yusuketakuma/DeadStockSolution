@@ -170,6 +170,31 @@ describe('drug-package-scheduler coverage', () => {
       expect(result.message).toContain('包装単位');
     });
 
+    it('waits for completion by default on Cloudflare Workers', async () => {
+      vi.stubGlobal('navigator', { userAgent: 'Cloudflare-Workers' });
+      try {
+        const result = await triggerManualPackageAutoSync({ sourceUrl: 'https://example.com/packages.xlsx' });
+        expect(result).toMatchObject({ triggered: true, completed: true });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('does not wait on Workers when awaitCompletion is explicitly false', async () => {
+      vi.stubGlobal('navigator', { userAgent: 'Cloudflare-Workers' });
+      try {
+        const result = await triggerManualPackageAutoSync({
+          sourceUrl: 'https://example.com/packages.xlsx',
+          awaitCompletion: false,
+        });
+        expect(result.triggered).toBe(true);
+        expect(result.completed).toBeUndefined();
+      } finally {
+        vi.unstubAllGlobals();
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+    });
+
     it('uses configured source URL when no explicit sourceUrl', async () => {
       process.env.DRUG_PACKAGE_SOURCE_URL = 'https://example.com/env-packages.xlsx';
       const result = await triggerManualPackageAutoSync();
